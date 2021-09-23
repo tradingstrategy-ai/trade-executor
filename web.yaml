@@ -1,0 +1,98 @@
+# This is an **example** API to demonstrate features of OpenAPI specification.
+# It doesn't cover all OpenAPI features. For more full example check out: https://github.com/APIs-guru/petstore_extended
+
+openapi: 3.0.2
+info:
+  version: '1.0.0' # Your API version
+
+  title: TradingStrategy.ai web
+
+  contact:
+    email: mikko@tradingstrategy.ai # [Optional] Replace with your contact email
+    url: 'https://tradingstrategy.ai' # [Optional] Replace with link to your contact form
+  license:
+    name: GNU AFFERO GENERAL PUBLIC LICENSE 3
+    url: 'https://github.com/tradingstrategy-ai/spec/blob/main/LICENSE'
+  x-logo:
+    url: 'https://github.com/tradingstrategy-ai/frontend/blob/master/src/lib/assets/logo-two-lines.svg'
+
+  # Describe your API here, you can use GFM (https://guides.github.com/features/mastering-markdown) here
+  description: |
+
+    This API describes access website publishablee data for [Trading Strategy](https://tradingstrategy.ai/).
+
+    # Introduction
+
+    Website backend servers data from the oracle to have easy human-readable access to exchanges, trading pairs,
+    signals and trading view.
+
+    These APIs are aimed to be consumed in the server-side frontend rendering and through direct web browser
+    JavaScript client acceses.
+
+    # OpenAPI Specification
+
+    The goal of The OpenAPI Specification is to define a standard, language-agnostic interface to REST APIs which
+    allows both humans and computers to discover and understand the capabilities of the service without access to source
+    code, documentation, or through network traffic inspection. When properly defined via OpenAPI, a consumer can
+    understand and interact with the remote service with a minimal amount of implementation logic. Similar to what
+    interfaces have done for lower-level programming, OpenAPI removes the guesswork in calling the service.
+externalDocs:
+  description: TradingStrategy Python client documentation
+  url: 'https://tradingstrategy.ai/docs/'
+
+# A list of tags used by the definition with additional metadata.
+# The order of the tags can be used to reflect on their order by the parsing tools.
+tags:
+  - name: Exchange
+    description: Data about decentralised exchanges
+servers:
+  - url: 'https://matilda.tradingstrategy.ai/web'
+
+# Holds the relative paths to the individual endpoints. The path is appended to the
+# basePath in order to construct the full URL.
+paths:
+  '/exchange/{exchange_slug}':
+    x-pyramid-route-name: web_exchange
+    get:
+      operationId: web_exchange
+      summary: Get summary data for one exchange to render the exchange page
+      parameters:
+        - name: exchange_slug
+          in: path
+          description: Exchange path slug
+          required: true
+          schema:
+            type: string
+      tags:
+        - Exchange
+      responses: # list of responses
+        '200':
+          description: Success
+          content:
+            application/json: # operation response mime type
+              schema: # response schema can be specified for each response
+                $ref: '#/components/schemas/Exchange'
+              example: # response example
+                exchange_id: 1
+                email: user@example.com
+        '403':
+          description: Forbidden
+        '404':
+          description: Exchange not found
+
+# An object to hold reusable parts that can be used across the definition
+components:
+  schemas:
+    Exchange:
+      type: object
+      properties:
+        exchange_id:
+          description: Machine readable string id for this exchange.
+          type: string
+          minLength: 4
+          example: uniswap_v2
+        human_readable_name:
+          description: Human readable name for this exchange
+          type: string
+          minLength: 4
+          example: John78
