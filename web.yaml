@@ -109,8 +109,16 @@ components:
     ExchangeSummary:
       type: object
       properties:
+        notable:
+          description: Should be shown by default
+          type: boolean
+          example: true
         exchange_id:
           description: Primary key for exchange
+          type: integer
+          example: 1
+        chain_id:
+          description: Ethereum chain id for the blockchain this exchange runs on, from https://chainlist.org/
           type: integer
           example: 1
         exchange_slug:
@@ -118,10 +126,20 @@ components:
           type: string
           example: uniswap_v2
         human_readable_name:
-          description: Human readable name for this exchange
+          description: Human readable name for this exchange. If there is no known name, then it is generated based on the address.
           type: string
           minLength: 4
           example: Uniswap (v2)
+        address:
+          description: Ethereum address, non-checksummed, for the exchange factory
+          type: string
+          minLength: 4
+          example: 0x0
+        exchange_type:
+          description: Exchange type enum - see https://tradingstrategy.ai/docs/programming/api/exchange.html#tradingstrategy.exchange.ExchangeType
+          type: string
+          minLength: 4
+          example: uni_v2
         usd_volume_30d:
           description: USD volume for the last 30 days
           type: number
