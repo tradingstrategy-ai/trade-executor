@@ -22,9 +22,11 @@ This specification covers
 
 # Notes
 
-[OpenAPI specification](https://swagger.io/specification/)
+- [Swagger online validator with human-readable errors](https://apitools.dev/swagger-parser/online/)
 
-[Pyramid example app](https://github.com/niteoweb/pyramid-realworld-example-app)
+- [OpenAPI specification](https://swagger.io/specification/)
 
-[Counduit OpenAPI yaml from Pyramid example app](https://github.com/niteoweb/pyramid-realworld-example-app/blob/master/src/conduit/openapi.yaml)
+- [Pyramid example app](https://github.com/niteoweb/pyramid-realworld-example-app)
+
+- [Counduit OpenAPI yaml from Pyramid example app](https://github.com/niteoweb/pyramid-realworld-example-app/blob/master/src/conduit/openapi.yaml)
 
