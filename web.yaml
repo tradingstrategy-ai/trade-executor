@@ -45,7 +45,7 @@ tags:
   - name: Exchange
     description: Data about decentralised exchanges
 servers:
-  - url: 'https://matilda.tradingstrategy.ai/web'
+  - url: 'https://matilda.tradingstrategy.ai/'
 
 # Holds the relative paths to the individual endpoints. The path is appended to the
 # basePath in order to construct the full URL.
