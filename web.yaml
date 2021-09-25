@@ -14,20 +14,18 @@ info:
     name: GNU AFFERO GENERAL PUBLIC LICENSE 3
     url: 'https://github.com/tradingstrategy-ai/spec/blob/main/LICENSE'
   x-logo:
-    url: 'https://github.com/tradingstrategy-ai/frontend/blob/master/src/lib/assets/logo-two-lines.svg'
+    url: 'https://raw.githubusercontent.com/tradingstrategy-ai/frontend/master/src/lib/assets/logo-two-lines.svg'
 
   # Describe your API here, you can use GFM (https://guides.github.com/features/mastering-markdown) here
   description: |
 
-    This API describes access website publishablee data for [Trading Strategy](https://tradingstrategy.ai/).
+    The backend API access for [Trading Strategy](https://tradingstrategy.ai/) website data.
 
     # Introduction
 
-    Website backend servers data from the oracle to have easy human-readable access to exchanges, trading pairs,
-    signals and trading view.
-
+    This API offers access to cryptocurrency trading data from decentralised exchanges running on various blockchains.
     These APIs are aimed to be consumed in the server-side frontend rendering and through direct web browser
-    JavaScript client acceses.
+    JavaScript client access. [For backtesting and tradingAPI, see the Trading Strategy client documentation](https://tradingstrategy.ai/docs/).
 
     # OpenAPI Specification
 
