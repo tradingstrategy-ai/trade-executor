@@ -30,3 +30,5 @@ This specification covers
 
 - [Counduit OpenAPI yaml from Pyramid example app](https://github.com/niteoweb/pyramid-realworld-example-app/blob/master/src/conduit/openapi.yaml)
 
+- [Describing parameters](https://swagger.io/docs/specification/describing-parameters/)
+

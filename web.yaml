@@ -52,7 +52,7 @@ servers:
 # Holds the relative paths to the individual endpoints. The path is appended to the
 # basePath in order to construct the full URL.
 paths:
-  '/exchanges/':
+  '/exchanges':
     x-pyramid-route-name: web_exchanges
     get:
       operationId: web_exchanges
@@ -67,34 +67,36 @@ paths:
               schema:
                 $ref: "#/components/schemas/ExchangeSummaryListing"
 
-  '/exchange/{exchange_slug}':
-    x-pyramid-route-name: web_exchange
+  '/exchange-details':
+    x-pyramid-route-name: web_exchange_details
     get:
-      operationId: web_exchange
+      operationId: web_exchange_details
       summary: Get data for one exchange to render the exchange page
       parameters:
-        - name: exchange_slug
-          in: path
-          description: Exchange path slug
+        - name: exchange-slug
+          in: query
+          description: Exchange path slug e.g, "uniswap-v2"
           required: true
           schema:
             type: string
+        - name: chain-slug
+          in: query
+          description: Blockchain slug, e.g, "ethereum"
+          required: true
+          schema:
+            type: string
+
       tags:
         - Exchange
       responses: # list of responses
         '200':
-          description: Success
+          description: OK
           content:
             application/json: # operation response mime type
               schema: # response schema can be specified for each response
-                $ref: '#/components/schemas/Exchange'
-              example: # response example
-                exchange_id: 1
-                email: user@example.com
-        '403':
-          description: Forbidden
+                $ref: '#/components/schemas/ExchangeDetails'
         '404':
-          description: Exchange not found
+          description: Exchange not found - either chain or exchange slug does not match
 
 # An object to hold reusable parts that can be used across the definition
 components:
@@ -125,6 +127,10 @@ components:
           description: URL slug for the exchange
           type: string
           example: uniswap_v2
+        chaiin_slug:
+          description: URL slug for the blockchain on which this exchange runs
+          type: string
+          example: ethereum
         human_readable_name:
           description: Human readable name for this exchange. If there is no known name, then it is generated based on the address.
           type: string
@@ -144,7 +150,7 @@ components:
           description: USD volume for the last 30 days
           type: number
           example: 100000.00
-    Exchange:
+    ExchangeDetails:
       type: object
       properties:
         exchange_id:
@@ -156,4 +162,80 @@ components:
           description: Human readable name for this exchange
           type: string
           minLength: 4
-          example: John78
+          example: Uniswap
+        homepage:
+          description: Link to the exchange trade page
+          type: string
+          format: uri
+          example: https://uniswap.org
+        twitter:
+          description: Link to the exchange Twitter
+          type: string
+          format: uri
+          example: https://twitter.com/uniswap
+        explorer:
+          description: Link to a smart contract explorer showing the main contract
+          type: string
+          format: uri
+          example: https://etherscan.io
+        address:
+          description: The factory address for Uniswap AMM like setups
+          example: 0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f
+        buy_volume_30d:
+          description: Buy USD volume for the last 30 days
+          type: number
+          example: 100000.00
+        sell_volume_30d:
+          description: Sell USD volume for the last 30 days
+          type: number
+          example: 100000.00
+        buy_volume_all_time:
+          description: Buy USD volume for all time
+          type: number
+          example: 100000.00
+        sell_volume_all_time:
+          description: Sell USD volume for all time
+          type: number
+          example: 100000.00
+        buy_count_all_time:
+          description: Number of individual buy transactions
+          type: integer
+          example: 1
+        sell_count_all_time:
+          description: Number of individual sell transactions
+          type: integer
+          example: 1
+
+    PairSummary:
+      type: object
+      properties:
+        pair_id:
+          description: Primary key for exchange
+          type: integer
+          example: 1
+        exchange_id:
+          description: Exchange primary key where this token trades
+          type: integer
+          example: 1
+        chain_id:
+          description: Ethereum chain id for the blockchain this exchange runs on, from https://chainlist.org/
+          type: integer
+          example: 1
+        base_token:
+          description: Token that is being bought
+          type: string
+          example: WETH
+        quote_token:
+          description: Token that is used as a currency
+          type: string
+          example: USDC
+        address:
+          description: Uniswap pool contract address
+          type: string
+          minLength: 4
+          example: 0x0
+          format: Ethereum address
+        usd_volume_30d:
+          description: USD volume for the last 30 days
+          type: number
+          example: 100000.00
