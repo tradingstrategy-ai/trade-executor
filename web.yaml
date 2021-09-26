@@ -171,7 +171,7 @@ paths:
         - name: token1
           in: query
           description: Symbol of one of the token pairs
-          required: true
+          required: false
           schema:
             type: string
             maximum: 32
