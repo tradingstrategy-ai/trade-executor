@@ -3,9 +3,9 @@
 
 openapi: 3.0.2
 info:
-  version: '1.0.0' # Your API version
+  version: '9.0.1'
 
-  title: TradingStrategy.ai web
+  title: Open on-chain data API
 
   contact:
     email: mikko@tradingstrategy.ai # [Optional] Replace with your contact email
@@ -19,13 +19,35 @@ info:
   # Describe your API here, you can use GFM (https://guides.github.com/features/mastering-markdown) here
   description: |
 
-    The backend API access for [Trading Strategy](https://tradingstrategy.ai/) website data.
+    An API access to decentralised exchange trading data, tokens and other information.
+    For more information see [Trading Strategy](https://tradingstrategy.ai/) website.
 
     # Introduction
 
     This API offers access to cryptocurrency trading data from decentralised exchanges running on various blockchains.
     These APIs are aimed to be consumed in the server-side frontend rendering and through direct web browser
     JavaScript client access. [For backtesting and tradingAPI, see the Trading Strategy client documentation](https://tradingstrategy.ai/docs/).
+
+    # Token uniqueness
+
+    There can be multiple trading pairs with the same name and symbol (fake tokens).
+    The tokens are uniquely identified by their smart contract address.
+
+    ## Token order
+
+    Base token and quote token follow a predefined order of token priorities.
+
+    Other tokens > ETH > BTC > any USD token.
+
+    ## Volume
+
+    The trading volume of all transactions for the last 24h.
+
+    ## Liquidity measuring
+
+    The highest available liquidity for the last 24h is given.
+
+    The XY liquidity is measured as the pool depth as the quote token pair of the pool.
 
     # OpenAPI Specification
 
@@ -95,6 +117,130 @@ paths:
                 $ref: '#/components/schemas/ExchangeDetails'
         '404':
           description: Exchange not found - either chain or exchange slug does not match
+
+  '/pairs':
+    x-pyramid-route-name: web_pairs
+    get:
+      operationId: web_pairs
+      summary: Query and filter trading pairs
+      description: >
+
+        Query different combinations of the trading pairs.
+
+        The most common query is all trading pairs of a decentralised exchange.
+
+        `/pairs?chain_slugs=ethereum&exchange-slugs=uniswap-v2`
+
+        The results are always paginated.
+
+        ## Parameter seralisation
+
+        Note that lists are not JSON serialised, but use [OpenAPI query parameter serialization](https://swagger.io/docs/specification/serialization/). I.e. lists are comma separated, no spaces between items.
+
+      parameters:
+        - name: exchange_slugs
+          in: query
+          description: Slugs for DEXes to look up
+          required: false
+          style: form
+          explode: true
+          schema:
+            type: array
+            items:
+              type: string
+          example: uniswap-v2
+        - name: chain_slugs
+          in: query
+          description: Slugs for blockchain to look up
+          required: false
+          style: form
+          explode: true
+          schema:
+            type: array
+            items:
+              type: string
+          example: ethereum
+        - name: token0
+          in: query
+          description: Symbol of one of the token pairs
+          required: false
+          schema:
+            type: string
+            maximum: 32
+          example: WETH
+        - name: token1
+          in: query
+          description: Symbol of one of the token pairs
+          required: true
+          schema:
+            type: string
+            maximum: 32
+          example: USDC
+        - name: page
+          in: query
+          description: Page number, zero-indexed
+          required: false
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+            maximum: 1000
+        - name: page_size
+          in: query
+          description: Limit number of pairs returned (default is 20)
+          required: false
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 1000
+        - name: sort
+          in: query
+          description: What sort method to use for the results
+          required: false
+          schema:
+            type: string
+            default: pair_id
+            minimum: 1
+            maximum: 100
+            # # https://swagger.io/docs/specification/data-models/enums/
+            enum: [pair_id, volume, transaction_count, base_token_name, quote_token-name]
+        - name: direction
+          in: query
+          description: >
+            Sort order:
+             * `asc` - Ascending, from A to Z
+             * `desc` - Descending, from Z to A
+          required: false
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: asc
+        - name: filter_junk
+          in: query
+          description: >
+             If there are multiple token pairs with matching symbols in the result,
+             choose one with the highest volume and hide the others.
+          required: false
+          schema:
+            type: boolean
+            default: true
+      tags:
+        - Pair
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedPairSummary'
+        "422":
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericErrorModel"
+
 
 # An object to hold reusable parts that can be used across the definition
 components:
@@ -205,35 +351,100 @@ components:
           example: 1
 
     PairSummary:
-      type: object
+      description: >
+          Summary of the trading pair.
+
+          Used to return pair data in listings.
+
       properties:
         pair_id:
-          description: Primary key for exchange
+          description: Primary key for the traidng pair
           type: integer
           example: 1
         exchange_id:
           description: Exchange primary key where this token trades
           type: integer
           example: 1
+        exchange_slug:
+          description: URL slug for the exchange
+          type: string
+          example: uniswap_v2
+        chain_slug:
+          description: URL slug for the blockchain on which this exchange runs
+          type: string
+          example: ethereum
         chain_id:
           description: Ethereum chain id for the blockchain this exchange runs on, from https://chainlist.org/
           type: integer
           example: 1
-        base_token:
+        base_token_symbol:
           description: Token that is being bought
           type: string
           example: WETH
-        quote_token:
+        quote_token_symbol:
           description: Token that is used as a currency
           type: string
           example: USDC
-        address:
-          description: Uniswap pool contract address
+        base_token_address:
+          description: Smart contract address of the base token
+          type: string
+          format: Ethereum address
+          example: 0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f
+        quote_token_address:
+          description: Smart contract address of the quote token
+          type: string
+          format: Ethereum address
+          example: 0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f
+        pool_address:
+          description: Pool contract address
           type: string
           minLength: 4
-          example: 0x0
+          example: 0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f
           format: Ethereum address
         usd_volume_30d:
-          description: USD volume for the last 30 days
+          description: USD trading volume for the last 30 days
           type: number
           example: 100000.00
+        liquidity_high_24h:
+          description: The maximum liquidity
+          type: number
+          example: 100000.00
+        liquidity_type:
+          description: What of liquidity measurement is used
+          type: string
+          example: xyliquidity
+          enum: [xyliquidity]
+
+    PaginatedPairSummary:
+      description: >
+          Iterate through a list of PairSummary responses
+
+      properties:
+        total:
+          description: Total results entries
+          type: integer
+          example: 100
+        pages:
+          description: Total result pages
+          type: integer
+          example: 10
+        results:
+          description: One page of pair summaries
+          type: array
+          items:
+            $ref: '#/components/schemas/PairSummary'
+
+    GenericErrorModel:
+      description: >
+          Returned in 422 Unprocessable Entity errors.
+
+          Usually means some of the query input parameters are invalid.
+
+      properties:
+        error_id:
+          description: Machine readable identifier for the error
+          type: string
+          example: LookupInputException
+        message:
+          description: Human readable message for the errir
+          type: string

@@ -32,3 +32,9 @@ This specification covers
 
 - [Describing parameters](https://swagger.io/docs/specification/describing-parameters/)
 
+- [Query page size example](https://github.com/Pylons/pyramid_openapi3/issues/155)
+
+- [OpenAPI and arrays as query parameters (explode keywor)](https://swagger.io/docs/specification/serialization/)
+
+- [OpenAPI and JSON query parameters](https://www.baeldung.com/openapi-json-query-parameters)
+
