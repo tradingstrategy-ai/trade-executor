@@ -93,13 +93,13 @@ paths:
       operationId: web_exchange_details
       summary: Get data for one exchange to render the exchange page
       parameters:
-        - name: exchange-slug
+        - name: exchange_slug
           in: query
           description: Exchange path slug e.g, "uniswap-v2"
           required: true
           schema:
             type: string
-        - name: chain-slug
+        - name: chain_slug
           in: query
           description: Blockchain slug, e.g, "ethereum"
           required: true
