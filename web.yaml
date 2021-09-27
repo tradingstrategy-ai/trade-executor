@@ -148,7 +148,9 @@ paths:
             type: array
             items:
               type: string
-          example: uniswap-v2
+            uniqueItems: true
+          example:
+            - uniswap-v2
         - name: chain_slugs
           in: query
           description: Slugs for blockchain to look up
@@ -159,23 +161,25 @@ paths:
             type: array
             items:
               type: string
-          example: ethereum
+            uniqueItems: true
+          example:
+            - ethereum
         - name: token0
           in: query
-          description: Symbol of one of the token pairs
+          description: Symbol of one of the token pairs e.g. WETH
           required: false
           schema:
             type: string
             maximum: 32
-          example: WETH
+          example:
         - name: token1
           in: query
-          description: Symbol of one of the token pairs
+          description: Symbol of one of the token pairs e.g. USDC
           required: false
           schema:
             type: string
             maximum: 32
-          example: USDC
+          example:
         - name: page
           in: query
           description: Page number, zero-indexed
