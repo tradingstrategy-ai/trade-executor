@@ -401,12 +401,19 @@ components:
           minLength: 4
           example: 0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f
           format: Ethereum address
-        usd_volume_30d:
-          description: USD trading volume for the last 30 days
+        usd_price_15m_close:
+          description: >
+              Base token/quote token converted to USD through direct quote token/USD exchange rate.
+
+              The close of the 15 minute candle.
+          type: number
+          example: 250.12
+        usd_volume_1d:
+          description: USD trading volume for the last day
           type: number
           example: 100000.00
-        liquidity_high_24h:
-          description: The maximum liquidity
+        usd_liquidity_1d_high:
+          description: The maximum liquidity for the last day
           type: number
           example: 100000.00
         liquidity_type:
