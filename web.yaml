@@ -200,15 +200,20 @@ paths:
             maximum: 1000
         - name: sort
           in: query
-          description: What sort method to use for the results
+          description: >
+
+            What kind of sort options is available for the list
+
+            The default `pair_id` sorting makes only sense for machine-to-machine actions.
+            The recommended sort method is by descending volume (most interesting trading pairs first).
+
           required: false
           schema:
             type: string
             default: pair_id
             minimum: 1
             maximum: 100
-            # # https://swagger.io/docs/specification/data-models/enums/
-            enum: [pair_id, volume, transaction_count, base_token_name, quote_token-name]
+            enum: [pair_id, volume, price_change, liquidity]
         - name: direction
           in: query
           description: >
@@ -405,26 +410,39 @@ components:
           minLength: 4
           example: 0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f
           format: Ethereum address
-        usd_price_15m_close:
+        usd_price_latest:
           description: >
               Base token/quote token converted to USD through direct quote token/USD exchange rate.
 
               The close of the 15 minute candle.
           type: number
           example: 250.12
-        usd_volume_1d:
+        price_change_24h:
+          description: >
+              The % how much price has changed for the last 24h.
+
+          type: number
+          example: 0.05
+        usd_volume_24h:
           description: USD trading volume for the last day
           type: number
           example: 100000.00
-        usd_liquidity_1d_high:
-          description: The maximum liquidity for the last day
+        usd_liquidity_latest:
+          description: The current available XY liquidity
           type: number
           example: 100000.00
+        liquidity_change_24h:
+          description: >
+              The % how much liquidity has changed for the last 24h.
+
+          type: number
+          example: 0.05
         liquidity_type:
           description: What of liquidity measurement is used
           type: string
           example: xyliquidity
           enum: [xyliquidity]
+
 
     PaginatedPairSummary:
       description: >
