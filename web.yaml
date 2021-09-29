@@ -250,6 +250,96 @@ paths:
               schema:
                 $ref: "#/components/schemas/GenericErrorModel"
 
+  '/candles':
+    x-pyramid-route-name: web_candles
+    get:
+      operationId: web_candles
+      summary: Get candle stick chart data for one trading pair
+      description: >
+
+        Fetch candle data for a single trading pair.
+
+        You need to resolve the `pair_id` either with `/pairs` or `/pair-details` first.
+
+        Candle response size is limited to 10,000 candles.
+
+        [Inspired by Bitfinex API](https://docs.bitfinex.com/reference#rest-public-candles).
+
+      parameters:
+        - name: pair_id
+          in: query
+          description: >
+
+            Primary key for the trading pair
+
+            For tests and demos use id `1` which is ETH/USDC pair on Uniswap v2,
+            as it is the first deployed Uniswap v2 compatible pool.
+
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+          example: 1
+        - name: time_bucket
+          in: query
+          description: >
+
+              What time bucket to use for the candle size.
+
+          required: true
+          schema:
+            type: string
+            enum: [1m, 5m, 15m, 1h, 4h, 1d, 7d, 30d]
+
+        - name: start
+          in: query
+          description: >
+
+              When the candle fetch period starts.
+
+              Use integer UNIX UTC timestamp, as number of seconds.
+
+              If not specific this will be resolved to now() - time_bucket * 100, or getting the last 100 candles.
+
+              This range parameter is inclusive.
+
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+        - name: end
+          in: query
+          description: >
+
+              When the candle fetch period ends.
+
+              Use integer UNIX UTC timestamp, as number of seconds.
+
+              If not specific this will be resolved to now().
+
+              This range parameter is inclusive.
+
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+
+      tags:
+        - Pair
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: 'candle.yaml#/CandleList'
+        "422":
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericErrorModel"
+
 
 # An object to hold reusable parts that can be used across the definition
 components:
