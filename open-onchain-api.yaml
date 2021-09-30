@@ -29,6 +29,8 @@ info:
     These APIs are aimed to be consumed in the server-side frontend rendering and through direct web browser
     JavaScript client access. [For backtesting and tradingAPI, see the Trading Strategy client documentation](https://tradingstrategy.ai/docs/).
 
+    You can fetch both live and historical data.
+
     # Remarks
 
     ## Trading pair and token uniqueness
@@ -255,14 +257,16 @@ paths:
     x-pyramid-route-name: web_candles
     get:
       operationId: web_candles
-      summary: Get candle stick chart data for one trading pair
+      summary: Get the candle stick chart data for one trading pair
       description: >
 
         Fetch candle data for a single trading pair.
 
-        You need to resolve the `pair_id` either with `/pairs` or `/pair-details` first.
+        You need to resolve the symbolic trading pair name to `pair_id` primarekey with `/pairs` or `/pair-details`
+        to call this API endpoint.
 
-        Candle response size is limited to 10,000 candles.
+        Candle response size is limited to 10,000 candles. Only the first 10,000 candles
+        since the start timestamp is returned.
 
         [Inspired by Bitfinex API](https://docs.bitfinex.com/reference#rest-public-candles).
 
@@ -291,14 +295,15 @@ paths:
           schema:
             type: string
             enum: [1m, 5m, 15m, 1h, 4h, 1d, 7d, 30d]
-
+          example: 1h
         - name: start
           in: query
           description: >
 
               When the candle fetch period starts.
 
-              Use integer UNIX UTC timestamp, as number of seconds.
+              Use UNIX UTC timestamp, as ISO 8601 formatted string.
+              [Read more information about the time format](https://docs.python.org/3/library/datetime.html#datetime.datetime.fromisoformat).
 
               If not specific this will be resolved to now() - time_bucket * 100, or getting the last 100 candles.
 
@@ -306,15 +311,16 @@ paths:
 
           required: false
           schema:
-            type: integer
-            minimum: 0
+            type: string
+            format: iso8601
+          example: 2020-05-18 00:00
         - name: end
           in: query
           description: >
 
               When the candle fetch period ends.
 
-              Use integer UNIX UTC timestamp, as number of seconds.
+              Use UNIX UTC timestamp, as ISO 8601 formatted string.
 
               If not specific this will be resolved to now().
 
@@ -322,8 +328,10 @@ paths:
 
           required: false
           schema:
-            type: integer
+            type: string
+            format: iso8601
             minimum: 0
+          example: 2020-05-19 00:00
 
       tags:
         - Pair
@@ -579,7 +587,9 @@ components:
       properties:
         ts:
           description: >
-            UNIX UTC timestamp as seconds when this candle started
+
+            UNIX UTC timestamp as ISO 8601 formatted string.
+
           type: number
           format: timestamp
         o:
