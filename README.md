@@ -22,9 +22,9 @@ Trading Strategy OpenAPI 3 specification covers
 
 # On-chain data oracle
 
-**TODO**: The specification not yet available.
+**TODO**: The specification not yet available. [See Trading Strategy Python client for more information](https://tradingstrategy.ai/docs/programming/index.html).
 
-Oracle data specification is intended for trading strategy backtesting, trading strategy oracles, judges and on-chain logic. 
+Oracle data specification is intended for trading strategy backtesting, trading strategy programming, trading strategy oracles, trade instruction judge smart contracts and other on-chain logic. 
 
 This specification covers
 
