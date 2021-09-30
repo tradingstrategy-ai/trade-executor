@@ -121,6 +121,69 @@ paths:
               schema:
                 $ref: "#/components/schemas/GenericErrorModel"
 
+  '/pair-details':
+    x-pyramid-route-name: web_pair_details
+    get:
+      operationId: web_pair_details
+      summary: Get the complete data for one trading pair to render the pair page
+      parameters:
+        - name: exchange_slug
+          in: query
+          description: Exchange path slug e.g, "uniswap-v2"
+          required: true
+          schema:
+            type: string
+          example: uniswap-v2
+        - name: chain_slug
+          in: query
+          description: Blockchain slug, e.g, "ethereum"
+          required: true
+          schema:
+            type: string
+          example: ethereum
+        - name: pair_slug
+          in: query
+          description: >
+
+            Trading pair friendly presentation (token0 symbol - token1 symbol) or pair pool contract address.
+
+            Symbols can be in any order: base token - quote token or quote token - base token.
+
+            If multiple trading pairs match the same symbol the one with the highest volume is returned
+            (assuming other trading pairs are ones with a fake token).
+
+            Examples of accepted `pair_slugs`:
+            - `ETH-USDC`
+            - `eth-usdc`
+            - `WETH-USDC`
+            - `USDC-WETH`
+            - `0xB4e16d0168e52d35CaCD2c6185b44281Ec28C9Dc`
+
+            The response is a composite of pair summary information, additional trading volume numbers and related links.
+
+          required: true
+          schema:
+            type: string
+          example: ETH-USDC
+
+      tags:
+        - Pair
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PairFullInfo'
+        '404':
+          description: Pair not found
+        "422":
+          description: Unexpected error - usually bad query input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericErrorModel"
+
   '/pairs':
     x-pyramid-route-name: web_pairs
     get:
@@ -262,7 +325,7 @@ paths:
 
         Fetch candle data for a single trading pair.
 
-        You need to resolve the symbolic trading pair name to `pair_id` primarekey with `/pairs` or `/pair-details`
+        You need to resolve the symbolic trading pair name to `pair_id` primary key with `/pairs` or `/pair-details`
         to call this API endpoint.
 
         Candle response size is limited to 10,000 candles. Only the first 10,000 candles
@@ -653,3 +716,102 @@ components:
       items:
         $ref: '#/components/schemas/Candle'
 
+    TimeSpanTradeData:
+      description: >
+
+        Trade data for a seleced timespan.
+
+      type: object
+      properties:
+        price_open:
+          description: >
+            Open value of the candle
+          type: number
+          format: us_dollar
+        price_high:
+          description: >
+            High value of the candle
+          type: number
+          format: us_dollar
+        price_low:
+          description: >
+            Low value of the candle
+          type: number
+          format: us_dollar
+        price_close:
+          description: >
+            Close value of the candle
+          type: number
+          format: us_dollar
+        volume:
+          description: >
+            Trade volume in US dollar
+          type: number
+          format: us_dollar
+        liquidity_high:
+          description: >
+            Max liquidity during the period
+          type: number
+          format: us_dollar
+        liquidity_low:
+          description: >
+            Min liquidity during the period
+          type: number
+          format: us_dollar
+        buys:
+          description: >
+            Number of individual buys
+          type: integer
+        sells:
+          description: >
+            Number of individual sells
+          type: integer
+        liquidity_events:
+          description: >
+            Number of individual liquidity events - how many times liquidity was added or removed from the pool
+          type: integer
+
+    PairAdditionalDetails:
+      description: >
+
+        Additional details on a trading pair.
+
+      type: object
+      properties:
+        first_trade_at:
+          description: >
+            When the first trade was made
+          type: string
+          format: iso8601
+        last_trade_at:
+          description: >
+            When the last seen trade was made
+          type: string
+          format: iso8601
+        base_token_homepage:
+          description: >
+            Homepage of the base token
+          type: string
+          format: url
+        quote_token_homepage:
+          description: >
+            Homepage of the quote token
+          type: string
+          format: url
+
+    PairFullInfo:
+      description: >
+
+        All information on the trading pair to render a full page on it.
+
+      type: object
+      properties:
+        summary:
+          type: object
+          $ref: '#/components/schemas/PairSummary'
+        additional_details:
+          type: object
+          $ref: '#/components/schemas/PairAdditionalDetails'
+        daily:
+          type: object
+          $ref: '#/components/schemas/TimeSpanTradeData'
