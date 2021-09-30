@@ -34,7 +34,10 @@ This specification covers
 
 - [Query page size example](https://github.com/Pylons/pyramid_openapi3/issues/155)
 
-- [OpenAPI and arrays as query parameters (explode keywor)](https://swagger.io/docs/specification/serialization/)
+- [OpenAPI and arrays as query parameters (explode keyword)](https://swagger.io/docs/specification/serialization/)
 
 - [OpenAPI and JSON query parameters](https://www.baeldung.com/openapi-json-query-parameters)
 
+- [OpenAPI inter-file refs](https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.0.0.md#referenceObject)
+
+- [OpenAPI inter-file refs](https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.0.0.md#referenceObject)
