@@ -92,7 +92,8 @@ paths:
       parameters:
         - name: exchange_slug
           in: query
-          description: Exchange path slug e.g, "uniswap-v2"
+          description: |
+            Exchange path slug e.g, `sushiswap`
           required: true
           schema:
             type: string
@@ -129,11 +130,12 @@ paths:
       parameters:
         - name: exchange_slug
           in: query
-          description: Exchange path slug e.g, "uniswap-v2"
+          description: |
+            Exchange path slug e.g, `sushiswap`
           required: true
           schema:
             type: string
-          example: uniswap-v2
+          example: sushiswap
         - name: chain_slug
           in: query
           description: Blockchain slug, e.g, "ethereum"
@@ -143,7 +145,7 @@ paths:
           example: ethereum
         - name: pair_slug
           in: query
-          description: >
+          description: |
 
             Trading pair friendly presentation (token0 symbol - token1 symbol) or pair pool contract address.
 
@@ -189,7 +191,7 @@ paths:
     get:
       operationId: web_pairs
       summary: Query and filter trading pairs
-      description: >
+      description: |
 
         Query different combinations of the trading pairs.
 
@@ -266,7 +268,7 @@ paths:
             maximum: 1000
         - name: sort
           in: query
-          description: >
+          description: |
 
             What kind of sort options is available for the list
 
@@ -282,7 +284,7 @@ paths:
             enum: [pair_id, volume, price_change, liquidity]
         - name: direction
           in: query
-          description: >
+          description: |
             Sort order:
              * `asc` - Ascending, from A to Z
              * `desc` - Descending, from Z to A
@@ -293,7 +295,7 @@ paths:
             default: asc
         - name: filter_junk
           in: query
-          description: >
+          description: |
              If there are multiple token pairs with matching symbols in the result,
              choose one with the highest volume and hide the others.
           required: false
@@ -321,7 +323,7 @@ paths:
     get:
       operationId: web_candles
       summary: Get the candle stick chart data for one trading pair
-      description: >
+      description: |
 
         Fetch candle data for a single trading pair.
 
@@ -336,7 +338,7 @@ paths:
       parameters:
         - name: pair_id
           in: query
-          description: >
+          description: |
 
             Primary key for the trading pair
 
@@ -361,7 +363,7 @@ paths:
           example: 1h
         - name: start
           in: query
-          description: >
+          description: |
 
               When the candle fetch period starts.
 
@@ -379,7 +381,7 @@ paths:
           example: 2020-05-18 00:00
         - name: end
           in: query
-          description: >
+          description: |
 
               When the candle fetch period ends.
 
@@ -522,7 +524,7 @@ components:
           example: 1
 
     PairSummary:
-      description: >
+      description: |
           Summary of the trading pair.
 
           Used to return pair data in listings.
@@ -573,14 +575,14 @@ components:
           example: 0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f
           format: Ethereum address
         usd_price_latest:
-          description: >
+          description: |
               Base token/quote token converted to USD through direct quote token/USD exchange rate.
 
               The close of the 15 minute candle.
           type: number
           example: 250.12
         price_change_24h:
-          description: >
+          description: |
               The % how much price has changed for the last 24h.
 
           type: number
@@ -594,7 +596,7 @@ components:
           type: number
           example: 100000.00
         liquidity_change_24h:
-          description: >
+          description: |
               The % how much liquidity has changed for the last 24h.
 
           type: number
@@ -625,7 +627,7 @@ components:
             $ref: '#/components/schemas/PairSummary'
 
     GenericErrorModel:
-      description: >
+      description: |
           Returned in 422 Unprocessable Entity errors.
 
           Usually means some of the query input parameters are invalid.
@@ -640,7 +642,7 @@ components:
           type: string
 
     Candle:
-      description: >
+      description: |
 
         One OHLCV candle for the candle charts
 
@@ -681,7 +683,7 @@ components:
           type: number
           format: us_dollar
         xr:
-          description: >
+          description: |
 
             `xr` stands for the exchange rate.
 
@@ -695,7 +697,7 @@ components:
 
           type: number
         tc:
-          description: >
+          description: |
 
             `ct` stands for the trade count.
 
@@ -703,7 +705,7 @@ components:
 
           type: number
     CandleList:
-      description: >
+      description: |
 
         Multiple candles to render.
 
@@ -717,7 +719,7 @@ components:
         $ref: '#/components/schemas/Candle'
 
     TimeSpanTradeData:
-      description: >
+      description: |
 
         Trade data for a seleced timespan.
 
