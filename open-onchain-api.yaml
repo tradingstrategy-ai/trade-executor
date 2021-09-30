@@ -1,9 +1,8 @@
-# This is an **example** API to demonstrate features of OpenAPI specification.
-# It doesn't cover all OpenAPI features. For more full example check out: https://github.com/APIs-guru/petstore_extended
+# Open on-chain data API specification
 
 openapi: 3.0.2
 info:
-  version: '9.0.1'
+  version: '0.1'
 
   title: Open on-chain data API
 
@@ -19,8 +18,10 @@ info:
   # Describe your API here, you can use GFM (https://guides.github.com/features/mastering-markdown) here
   description: |
 
-    An API access to decentralised exchange trading data, tokens and other information.
+    This is an API access to decentralised exchange trading data, tokens and other blockchain on-chain trading information.
     For more information see [Trading Strategy](https://tradingstrategy.ai/) website.
+
+    **This API is still in beta and subject to change radically**.
 
     # Introduction
 
@@ -28,28 +29,22 @@ info:
     These APIs are aimed to be consumed in the server-side frontend rendering and through direct web browser
     JavaScript client access. [For backtesting and tradingAPI, see the Trading Strategy client documentation](https://tradingstrategy.ai/docs/).
 
-    # Token uniqueness
+    # Remarks
+
+    ## Trading pair and token uniqueness
 
     There can be multiple trading pairs with the same name and symbol (fake tokens).
     The tokens are uniquely identified by their smart contract address.
 
-    ## Token order
+    ## Base and quote token order
 
     Base token and quote token follow a predefined order of token priorities.
 
-    Other tokens > ETH > BTC > any USD token.
+    The priorities are: Other tokens > ETH > BTC > any USD token.
 
-    ## Volume
+    # About OpenAPI Specification used
 
-    The trading volume of all transactions for the last 24h.
-
-    ## Liquidity measuring
-
-    The highest available liquidity for the last 24h is given.
-
-    The XY liquidity is measured as the pool depth as the quote token pair of the pool.
-
-    # OpenAPI Specification
+    This API specification is written in OpenAPI v3.
 
     The goal of The OpenAPI Specification is to define a standard, language-agnostic interface to REST APIs which
     allows both humans and computers to discover and understand the capabilities of the service without access to source
@@ -67,7 +62,7 @@ tags:
   - name: Exchange
     description: Data about decentralised exchanges
 servers:
-  - url: 'https://matilda.tradingstrategy.ai/'
+  - url: 'https://tradingstrategy.ai/api/'
 
 # Holds the relative paths to the individual endpoints. The path is appended to the
 # basePath in order to construct the full URL.
@@ -577,6 +572,8 @@ components:
       description: >
 
         One OHLCV candle for the candle charts
+
+        [Read more about what trading candles are](https://tradingstrategy.ai/docs/glossary.html#term-Candle).
 
       type: object
       properties:
