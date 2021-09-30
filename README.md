@@ -1,18 +1,30 @@
-# Trading Strategy API specification
+# Trading Strategy API specifications
 
-Web and oracle API specification as OpenAPI3
+Decentralised trading data API in [OpenAPI 3 standard](https://swagger.io/specification/). 
 
-# Web 
+**Beta warning**: Do not use at your own risk.
 
-This specification covers
+# Open on-chain data API
 
-* Website publishable data
+Open on-chain data provides basic web accessible endpoints for decentralised exchange and blockchain live data. This data is useful for websites, real-time candelstick charts, Telegram bots, live trading bots and similar.
 
-* Exchange listings
+[Open the Swagger API explorer](https://tradingstrategy.ai/api/explorer/).
 
-* Pair listings
+Trading Strategy OpenAPI 3 specification covers
 
-# Oracle
+* Blockchains
+
+* Exchanges
+
+* Trading pairs
+
+* OHLCV candles
+
+# On-chain data oracle
+
+**TODO**: The specification not yet available.
+
+Oracle data specification is intended for trading strategy backtesting, trading strategy oracles, judges and on-chain logic. 
 
 This specification covers
 
