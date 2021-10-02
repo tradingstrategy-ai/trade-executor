@@ -534,6 +534,35 @@ components:
           description: Primary key for the traidng pair
           type: integer
           example: 1
+        pair_name:
+          description: |
+
+            Human-readable name for this trading pair.
+
+          type: string
+          example: Ether-US Dollar Coin
+        pair_symbol:
+          description: |
+
+            Human-readable name for this trading pair.
+
+            Usually base token - quote token, uppercase.
+
+            WETH is displayed as ETH.
+
+          type: string
+          example: ETH-USDC
+        pair_slug:
+          description: |
+
+            URL slug for this trading pair.
+
+            Usually base token - quote token, lower case.
+
+            WETH is displayed as ETH.
+
+          type: string
+          example: eth-usdc
         exchange_id:
           description: Exchange primary key where this token trades
           type: integer
