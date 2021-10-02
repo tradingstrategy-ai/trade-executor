@@ -780,18 +780,57 @@ components:
 
       type: object
       properties:
+        chain_name:
+          description: |
+            Human readable name for the blockchain
+          type: string
+          example: Ethereum
+        chain_logo:
+          description: |
+            Direct link to the logo of the exchange.
+
+            Either SVG or high resh PNG.
+
+            Should be transparent.
+
+            Assuming white/light background version.
+
+          type: string
+          example: https://upload.wikimedia.org/wikipedia/commons/0/05/Ethereum_logo_2014.svg
+        exchange_name:
+          description: |
+            Human readable name for the exchange
+          type: string
+          example: Uniswap (v2)
+        exchange_link:
+          description: |
+            Direct link ot the exchange where this pair is
+          type: string
+          example: https://uniswap.org
+        exchange_logo:
+          description: |
+            Direct link to the logo of the exchange.
+
+            Either SVG or high resh PNG.
+
+            Should be transparent.
+
+            Assuming white/light background version.
+
+          type: string
+          example: https://upload.wikimedia.org/wikipedia/commons/5/5a/Uniswap_Logo_and_Wordmark.svg
         first_trade_at:
-          description: >
+          description: |
             When the first trade was made
           type: string
           format: iso8601
         last_trade_at:
-          description: >
+          description: |
             When the last seen trade was made
           type: string
           format: iso8601
         base_token_homepage:
-          description: >
+          description: |
             Homepage of the base token
           type: string
           format: url
