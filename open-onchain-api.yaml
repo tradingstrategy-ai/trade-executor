@@ -587,6 +587,21 @@ components:
           description: Token that is used as a currency
           type: string
           example: USDC
+        base_token_symbol_friendly:
+          description: |
+            Token that is being bought.
+
+            Human friendly symbol. E.g. WETH->ETH.
+
+          type: string
+          example: ETH
+        quote_token_symbol_friendly:
+          description: |
+            Token that is used as a currency
+
+            Human friendly symbol. E.g. WETH->ETH.
+          type: string
+          example: USDC
         base_token_address:
           description: Smart contract address of the base token
           type: string
