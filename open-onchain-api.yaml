@@ -186,6 +186,56 @@ paths:
               schema:
                 $ref: "#/components/schemas/GenericErrorModel"
 
+  '/pair-trade-data':
+    x-pyramid-route-name: web_pair_trade_data
+    get:
+      operationId: web_pair_trade_data
+      summary: Get the price and volume information for a given period
+      parameters:
+        - name: pair_id
+          in: query
+          description: |
+
+            Pair id as received in `/pairs` or `/pair-details`
+
+            As the endpoint /pair-details is preferred, this endpoint only gives direct pair_id access for now.
+
+          required: true
+          schema:
+            type: integer
+          example: 1
+        - name: period
+          in: query
+          description: |
+
+            The time perid for the stats.
+
+            Currently only latest stats are supported.
+
+          required: true
+          schema:
+            type: string
+            enum: [hourly, daily, weekly, monthly]
+          example: hourly
+
+      tags:
+        - Pair
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TimeSpanTradeData'
+        '404':
+          description: Pair not found or time bucket not suppoted
+        "422":
+          description: Unexpected error - usually bad query input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericErrorModel"
+
   '/pairs':
     x-pyramid-route-name: web_pairs
     get:
@@ -765,7 +815,10 @@ components:
     TimeSpanTradeData:
       description: |
 
-        Trade data for a seleced timespan.
+        Trade data for a selected timespan. Usually this is the summary data of the latest daily, hourly or weekly data.
+
+        For the pairs that do not have active trading, the data is based on the time of the last trade.
+        (This behavior is to be changed in the future.)
 
       type: object
       properties:
