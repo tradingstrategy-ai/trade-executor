@@ -498,6 +498,10 @@ components:
           description: URL slug for the blockchain on which this exchange runs
           type: string
           example: ethereum
+        chain_name:
+          description: Human readable name for the blockchain where the exchange is running
+          type: string
+          example: Ethereum
         human_readable_name:
           description: Human readable name for this exchange. If there is no known name, then it is generated based on the address.
           type: string
