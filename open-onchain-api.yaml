@@ -517,6 +517,11 @@ components:
           description: USD volume for the last 30 days
           type: number
           example: 100000.00
+        pair_count:
+          description: |
+            How many trading pairs this exchange has
+          type: integer
+          example: 555
     ExchangeDetails:
       type: object
       properties:
