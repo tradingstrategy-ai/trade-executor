@@ -464,6 +464,30 @@ paths:
               schema:
                 $ref: "#/components/schemas/GenericErrorModel"
 
+  '/top-momentum':
+    x-pyramid-route-name: web_top_momentum
+    get:
+      operationId: web_top_momentum
+      summary: Get pairs with fastest moving price
+      description: |
+
+        Return top up and down 100 price changes for 24h.
+
+        The results are split for all trading pairs and trading pairs with $1M min liquidity.
+
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TopMomentum'
+        "422":
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericErrorModel"
 
 # An object to hold reusable parts that can be used across the definition
 components:
@@ -962,3 +986,32 @@ components:
         daily:
           type: object
           $ref: '#/components/schemas/TimeSpanTradeData'
+
+    TopMomentum:
+      description: >
+
+        Return different categories of pairs exhibiting top price momentum action.
+
+      type: object
+      properties:
+        top_up_24h:
+          type: array
+          items:
+            $ref: "#/components/schemas/PairSummary"
+          uniqueItems: true
+        top_down_24h:
+          type: array
+          items:
+            $ref: "#/components/schemas/PairSummary"
+          uniqueItems: true
+        top_up_24h_min_1m_liq:
+          type: array
+          items:
+            $ref: "#/components/schemas/PairSummary"
+          uniqueItems: true
+        top_down_24h_min_1m_liq:
+          type: array
+          items:
+            $ref: "#/components/schemas/PairSummary"
+          uniqueItems: true
+
