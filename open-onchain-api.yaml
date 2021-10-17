@@ -724,6 +724,16 @@ components:
           description: URL slug for the exchange
           type: string
           example: uniswap_v2
+        exchange_name:
+          description: |
+            Human readable name of the exchange
+          type: string
+          example: Uniswap v2
+        chain_name:
+          description: |
+            Human-readable name of the blockchain
+          type: string
+          example: Ethereum
         chain_slug:
           description: URL slug for the blockchain on which this exchange runs
           type: string
