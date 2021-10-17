@@ -61,8 +61,15 @@ externalDocs:
 # A list of tags used by the definition with additional metadata.
 # The order of the tags can be used to reflect on their order by the parsing tools.
 tags:
+  - name: Blockchain
+    description: Data about supported blockchains
   - name: Exchange
     description: Data about decentralised exchanges
+  - name: Pair
+    description: Data about trading pair
+  - name: Trading signal
+    description: Data about trading signals
+
 servers:
   - url: 'https://tradingstrategy.ai/api/'
 
@@ -535,7 +542,7 @@ paths:
 
         The results are split for all trading pairs and trading pairs with $1M min liquidity.
       tags:
-        - Trading signals
+        - Trading signal
       responses:
         "200":
           description: OK
