@@ -65,7 +65,7 @@ tags:
     description: Data about supported blockchains
   - name: Exchange
     description: Data about decentralised exchanges
-  - name: Pair
+  - name: Trading pair
     description: Data about trading pair
   - name: Trading signal
     description: Data about trading signals
@@ -193,7 +193,8 @@ paths:
     x-pyramid-route-name: web_pair_details
     get:
       operationId: web_pair_details
-      summary: Get the complete data for one trading pair to render the pair page
+      summary: |
+        Additinal information for a trading pair
       parameters:
         - name: exchange_slug
           in: query
@@ -236,7 +237,7 @@ paths:
           example: ETH-USDC
 
       tags:
-        - Pair
+        - Trading pair
       responses:
         '200':
           description: OK
@@ -257,7 +258,8 @@ paths:
     x-pyramid-route-name: web_pair_trade_data
     get:
       operationId: web_pair_trade_data
-      summary: Get the price and volume information for a given period
+      summary: |
+        Key performance metrics of a trading pair for a given time window
       parameters:
         - name: pair_id
           in: query
@@ -286,7 +288,7 @@ paths:
           example: hourly
 
       tags:
-        - Pair
+        - Trading pair
       responses:
         '200':
           description: OK
@@ -420,7 +422,7 @@ paths:
             type: boolean
             default: true
       tags:
-        - Pair
+        - Trading pair
       responses:
         "200":
           description: OK
@@ -516,7 +518,7 @@ paths:
           example: 2020-05-19 00:00
 
       tags:
-        - Pair
+        - Trading pair
       responses:
         "200":
           description: OK
