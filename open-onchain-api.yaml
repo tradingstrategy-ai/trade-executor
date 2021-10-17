@@ -1114,11 +1114,6 @@ components:
             Trading pair count across all exchanges
           type: integer
           example: 1000
-        swaps:
-          description: |
-            Swap event count across all exchanges
-          type: integer
-          example: 1000
         first_swap_at:
           description: |
             First observed swap timestamp
@@ -1131,3 +1126,9 @@ components:
           type: string
           format: iso8601
           example: 2021-10-01T12:00
+        minute_candles:
+          description: |
+            Number of 1 min candles for all trading pairs on this chain
+          type: integer
+          example: 1000000
+
