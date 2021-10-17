@@ -1084,6 +1084,11 @@ components:
           items:
             $ref: "#/components/schemas/PairSummary"
           uniqueItems: true
+        top_liquidity_added_24h_min_liq_1m:
+          type: array
+          items:
+            $ref: "#/components/schemas/PairSummary"
+          uniqueItems: true
 
     ChainDetails:
       description: |
