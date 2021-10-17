@@ -69,6 +69,38 @@ servers:
 # Holds the relative paths to the individual endpoints. The path is appended to the
 # basePath in order to construct the full URL.
 paths:
+
+  '/chain-details':
+    x-pyramid-route-name: web_chain_details
+    get:
+      operationId: web_chain_details
+      summary: Return information on a blockchain status
+      parameters:
+        - name: chain_slug
+          in: query
+          description: \
+            Blockchain slug, e.g, `ethereum` for Ethereum mainnet
+          required: true
+          schema:
+            type: string
+          example: ethereum
+
+      responses: # list of responses
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChainDetails"
+        '404':
+          description: chain not found
+        "422":
+          description: Unexpected error - usually bad query input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericErrorModel"
+
   '/exchanges':
     x-pyramid-route-name: web_exchanges
     get:
@@ -971,7 +1003,7 @@ components:
           format: url
 
     PairFullInfo:
-      description: >
+      description: |
 
         All information on the trading pair to render a full page on it.
 
@@ -1015,3 +1047,87 @@ components:
             $ref: "#/components/schemas/PairSummary"
           uniqueItems: true
 
+    ChainDetails:
+      description: |
+
+        Details and indexing status of a blockchain.
+
+      type: object
+      properties:
+        chain_id:
+          description: |
+            Chain id
+          type: integer
+          example: 1
+        chain_slug:
+          description: |
+            URL formattable name of the chain
+          type: string
+          example: ethereum
+        chain_name:
+          description: |
+            Human readable name for the blockchain
+          type: string
+          example: Ethereum
+        homepage:
+          description: |
+            Link to the chain homepage
+          type: string
+          example: https://ethereum.org
+        chain_logo:
+          description: |
+            Direct link to the logo of the exchange.
+
+            Either SVG or high resh PNG.
+
+            Should be transparent.
+
+            Assuming white/light background version.
+
+          type: string
+          example: https://upload.wikimedia.org/wikipedia/commons/0/05/Ethereum_logo_2014.svg
+        start_block:
+          description: |
+            First block indexed
+          type: integer
+          example: 9900000
+        end_block:
+          description: |
+            Last block indexed
+          type: integer
+          example: 12900000
+        block_count:
+          description: |
+            Indexed block count.
+
+            This should be end_block - start_block unless some blocks have been skipped for some reason.
+
+          type: integer
+          example: 1000000
+        exchanges:
+          description: |
+            Number of indexed exchanges
+          type: integer
+          example: 10
+        pairs:
+          description: |
+            Trading pair count across all exchanges
+          type: integer
+          example: 1000
+        swaps:
+          description: |
+            Swap event count across all exchanges
+          type: integer
+          example: 1000
+        first_swap_at:
+          description: |
+            First observed swap timestamp
+          type: string
+          format: iso8601
+          example: 2020-05-01T12:00
+        last_swap_at:
+          description: |
+            Last observed swap timestamp
+          type: string
+          format: iso8601
+          example: 2021-10-01T12:00
