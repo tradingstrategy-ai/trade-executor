@@ -70,6 +70,32 @@ servers:
 # basePath in order to construct the full URL.
 paths:
 
+  '/chains':
+    x-pyramid-route-name: web_chains
+    get:
+      operationId: web_chains
+      summary: Return information on supported blockchains
+      tags:
+        - Blockchain
+      responses: # list of responses
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                description: List of chain summmaries
+                type: array
+                items:
+                  $ref: '#/components/schemas/ChainSummary'
+        '404':
+          description: chain not found
+        "422":
+          description: Unexpected error - usually bad query input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericErrorModel"
+
   '/chain-details':
     x-pyramid-route-name: web_chain_details
     get:
@@ -1135,3 +1161,42 @@ components:
           type: integer
           example: 1000000
 
+    ChainSummary:
+      description: |
+
+        Blockchain summary for listing.
+
+      type: object
+      properties:
+        chain_id:
+          description: |
+            Chain id
+          type: integer
+          example: 1
+        chain_slug:
+          description: |
+            URL formattable name of the chain
+          type: string
+          example: ethereum
+        chain_name:
+          description: |
+            Human readable name for the blockchain
+          type: string
+          example: Ethereum
+        chain_logo:
+          description: |
+            Direct link to the logo of the exchange.
+
+            Either SVG or high resh PNG.
+
+            Should be transparent.
+
+            Assuming white/light background version.
+
+          type: string
+          example: https://upload.wikimedia.org/wikipedia/commons/0/05/Ethereum_logo_2014.svg
+        exchanges:
+          description: |
+            Number of indexed exchanges
+          type: integer
+          example: 10
