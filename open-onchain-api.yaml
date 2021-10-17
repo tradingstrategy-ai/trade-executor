@@ -75,10 +75,12 @@ paths:
     get:
       operationId: web_chain_details
       summary: Return information on a blockchain status
+      tags:
+        - Blockchain
       parameters:
         - name: chain_slug
           in: query
-          description: \
+          description: |
             Blockchain slug, e.g, `ethereum` for Ethereum mainnet
           required: true
           schema:
@@ -506,7 +508,8 @@ paths:
         Return top up and down 100 price changes for 24h.
 
         The results are split for all trading pairs and trading pairs with $1M min liquidity.
-
+      tags:
+        - Trading signals
       responses:
         "200":
           description: OK
