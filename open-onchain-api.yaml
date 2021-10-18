@@ -1049,6 +1049,13 @@ components:
             Homepage of the quote token
           type: string
           format: url
+        trade_link:
+          description: |
+            Direct link to a page where this pair can be traded.
+
+            (optional)
+          type: string
+          format: url
 
     PairFullInfo:
       description: |
