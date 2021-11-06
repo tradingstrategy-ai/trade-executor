@@ -4,55 +4,64 @@ openapi: 3.0.2
 info:
   version: '0.1'
 
-  title: Open on-chain data API
+  title: Open DeFi API
 
   contact:
     email: mikko@tradingstrategy.ai # [Optional] Replace with your contact email
     url: 'https://tradingstrategy.ai' # [Optional] Replace with link to your contact form
-  license:
-    name: GNU AFFERO GENERAL PUBLIC LICENSE 3
-    url: 'https://github.com/tradingstrategy-ai/spec/blob/main/LICENSE'
   x-logo:
     url: 'https://raw.githubusercontent.com/tradingstrategy-ai/frontend/master/src/lib/assets/logo-two-lines.svg'
 
   # Describe your API here, you can use GFM (https://guides.github.com/features/mastering-markdown) here
   description: |
 
-    This is an API access to decentralised exchange trading data, tokens and other blockchain on-chain trading information.
+    Open DeFi API gives you access to decentralised exchange trading data, liquidity and tokens across multiple blockchains.
     For more information see [Trading Strategy](https://tradingstrategy.ai/) website.
 
-    **This API is still in beta and subject to change radically**.
+    **This API is still in beta and subject to change**.
 
     # Introduction
 
-    This API offers access to cryptocurrency trading data from decentralised exchanges running on various blockchains.
-    These APIs are aimed to be consumed in the server-side frontend rendering and through direct web browser
-    JavaScript client access. [For backtesting and tradingAPI, see the Trading Strategy client documentation](https://tradingstrategy.ai/docs/).
+    This API offres to access to so-called on-chain trading activity. You can fetch live and historical
+    trading data across different decentralised exchanges (DEXes)
 
-    You can fetch both live and historical data.
+    # Use cases
 
-    # Remarks
+    * Trading algorithms and bots
 
-    ## Trading pair and token uniqueness
+    * Market data websites and bots
 
-    There can be multiple trading pairs with the same name and symbol (fake tokens).
-    The tokens are uniquely identified by their smart contract address.
+    * On-chain oracle data feeds
 
-    ## Base and quote token order
+    * Blockchain macroeconomic research
 
-    Base token and quote token follow a predefined order of token priorities.
+    # Data availability
 
-    The priorities are: Other tokens > ETH > BTC > any USD token.
+    Visit [Trading Strategy website](https://tradingstrategy.ai/trading-view) to explore available data.
+    You can find supported blockchains and exchanges. Price candle chart is available for all trading pairs.
+    Ultimately all blockchains will be supported, depending on the implementation order.
+
+    # Live and historical data
+
+    This API provides live data. However, the API endpoints have not been designed for large data ignestion.
+    For backtesting trading strategies, [download the historical datasets from Trading Strategy website](https://tradingstrategy.ai/trading-view/backtesting).
+
+    # Data types
+
+    You can find
+
+    * Decentralised exchanges
+
+    * Trading pairs for the above
+
+    * OHLCV candle charts for pricing
+
+    * OHLC candle charts for automated-market making exchanges (AMM) liquidity
 
     # About OpenAPI Specification used
 
     This API specification is written in OpenAPI v3.
 
-    The goal of The OpenAPI Specification is to define a standard, language-agnostic interface to REST APIs which
-    allows both humans and computers to discover and understand the capabilities of the service without access to source
-    code, documentation, or through network traffic inspection. When properly defined via OpenAPI, a consumer can
-    understand and interact with the remote service with a minimal amount of implementation logic. Similar to what
-    interfaces have done for lower-level programming, OpenAPI removes the guesswork in calling the service.
 
 externalDocs:
   description: TradingStrategy Python client documentation
