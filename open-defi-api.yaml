@@ -149,9 +149,48 @@ paths:
     x-pyramid-route-name: web_exchanges
     get:
       operationId: web_exchanges
-      summary: List of available exchanges
+      summary: |
+
+        List of available decentralised exchanges
+
+        TODO: Currently pagination is not supported, but the result set should be fairly small (<2000)
+
       tags:
         - Exchange
+      parameters:
+        - name: chain_slug
+          in: query
+          description: |
+            Blockchain slug, e.g, `ethereum` for Ethereum mainnet.
+
+            If present, list exchanges only for this chain.
+          required: false
+          schema:
+            type: string
+        - name: sort
+          in: query
+          description: |
+
+            What kind of sort options is available for the output.
+
+            The default `usd_volume_30d` sorts the exchanges based on their monthly volume.
+
+          required: false
+          schema:
+            type: string
+            default: usd_volume_30d
+            enum: [usd_volume_30d, pair_count]
+        - name: direction
+          in: query
+          description: |
+            Sort order:
+             * `asc` - Ascending, from A to Z
+             * `desc` - Descending, from Z to A
+          required: false
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
       responses: # list of responses
         "200":
           description: OK
@@ -179,7 +218,6 @@ paths:
           required: true
           schema:
             type: string
-
       tags:
         - Exchange
       responses: # list of responses
