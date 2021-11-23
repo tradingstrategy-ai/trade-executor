@@ -1218,9 +1218,20 @@ components:
           example: 10
         pairs:
           description: |
-            Trading pair count across all exchanges
+            Identified trading pair count across all exchanges on this blockchain
           type: integer
           example: 1000
+        tracked_pairs:
+          description: |
+
+            How many trading pairs are being actively tracked.
+            The pair activity exceeds the threshold to make it appear on the website
+            and have OHLCV data generated for it.
+
+            For example, trading pairs with very low swap count are not active.
+
+          type: integer
+          example: 50
         first_swap_at:
           description: |
             First observed swap timestamp
