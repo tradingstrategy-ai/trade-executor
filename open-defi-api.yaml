@@ -41,9 +41,9 @@ info:
     You can find supported blockchains and exchanges. Price candle chart is available for all trading pairs.
     Ultimately all blockchains will be supported, depending on the implementation order.
 
-    # Live and historical data
+    # Live and historical market data
 
-    This API provides live data. However, the API endpoints have not been designed for large data ignestion.
+    This API provides live data. However, these API endpoints have not been designed for large data ignestion.
     For backtesting trading strategies, [download the historical datasets from Trading Strategy website](https://tradingstrategy.ai/trading-view/backtesting).
 
     # Data types
@@ -60,7 +60,7 @@ info:
 
     # About OpenAPI Specification used
 
-    This API specification is written in OpenAPI v3.
+    This API specification is written in [OpenAPI v3](https://swagger.io/specification/).
 
 
 externalDocs:
@@ -1232,6 +1232,15 @@ components:
 
           type: integer
           example: 50
+        tokens:
+          description: |
+            Number of tokens that appear in trading pairs.
+
+            - Tokens lacking a supported trading pair on a supported exchange are not included in this number
+            - Tokens that have a trading pair but no trades or volume are still counted
+
+          type: integer
+          example: 500
         first_swap_at:
           description: |
             First observed swap timestamp
