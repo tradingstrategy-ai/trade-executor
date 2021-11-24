@@ -1103,6 +1103,30 @@ components:
             (optional)
           type: string
           format: url
+        buy_link:
+          description: |
+            Direct link to a page where you scan swap quote token -> base token
+
+            (optional)
+          type: string
+          format: url
+        sell_link:
+          description: |
+            Direct link to a page where you scan swap base token -> quote token
+
+            (optional)
+          type: string
+          format: url
+        explorer_link:
+          description: |
+            Direct link to EIP-3091 compatible block explorer where you can view the smart contract
+            of this trading pair (read: EtherScan and its commercial clones).
+
+            https://eips.ethereum.org/EIPS/eip-3091
+
+            (optional)
+          type: string
+          format: url
 
     PairFullInfo:
       description: |
