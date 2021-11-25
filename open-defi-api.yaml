@@ -41,9 +41,9 @@ info:
     You can find supported blockchains and exchanges. Price candle chart is available for all trading pairs.
     Ultimately all blockchains will be supported, depending on the implementation order.
 
-    # Live and historical data
+    # Live and historical market data
 
-    This API provides live data. However, the API endpoints have not been designed for large data ignestion.
+    This API provides live data. However, these API endpoints have not been designed for large data ignestion.
     For backtesting trading strategies, [download the historical datasets from Trading Strategy website](https://tradingstrategy.ai/trading-view/backtesting).
 
     # Data types
@@ -60,7 +60,7 @@ info:
 
     # About OpenAPI Specification used
 
-    This API specification is written in OpenAPI v3.
+    This API specification is written in [OpenAPI v3](https://swagger.io/specification/).
 
 
 externalDocs:
@@ -149,9 +149,48 @@ paths:
     x-pyramid-route-name: web_exchanges
     get:
       operationId: web_exchanges
-      summary: List of available exchanges
+      summary: |
+
+        List of available decentralised exchanges
+
+        TODO: Currently pagination is not supported, but the result set should be fairly small (<2000)
+
       tags:
         - Exchange
+      parameters:
+        - name: chain_slug
+          in: query
+          description: |
+            Blockchain slug, e.g, `ethereum` for Ethereum mainnet.
+
+            If present, list exchanges only for this chain.
+          required: false
+          schema:
+            type: string
+        - name: sort
+          in: query
+          description: |
+
+            What kind of sort options is available for the output.
+
+            The default `usd_volume_30d` sorts the exchanges based on their monthly volume.
+
+          required: false
+          schema:
+            type: string
+            default: usd_volume_30d
+            enum: [usd_volume_30d, pair_count]
+        - name: direction
+          in: query
+          description: |
+            Sort order:
+             * `asc` - Ascending, from A to Z
+             * `desc` - Descending, from Z to A
+          required: false
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
       responses: # list of responses
         "200":
           description: OK
@@ -179,7 +218,6 @@ paths:
           required: true
           schema:
             type: string
-
       tags:
         - Exchange
       responses: # list of responses
@@ -1081,6 +1119,30 @@ components:
             (optional)
           type: string
           format: url
+        buy_link:
+          description: |
+            Direct link to a page where you scan swap quote token -> base token
+
+            (optional)
+          type: string
+          format: url
+        sell_link:
+          description: |
+            Direct link to a page where you scan swap base token -> quote token
+
+            (optional)
+          type: string
+          format: url
+        explorer_link:
+          description: |
+            Direct link to EIP-3091 compatible block explorer where you can view the smart contract
+            of this trading pair (read: EtherScan and its commercial clones).
+
+            https://eips.ethereum.org/EIPS/eip-3091
+
+            (optional)
+          type: string
+          format: url
 
     PairFullInfo:
       description: |
@@ -1196,9 +1258,29 @@ components:
           example: 10
         pairs:
           description: |
-            Trading pair count across all exchanges
+            Identified trading pair count across all exchanges on this blockchain
           type: integer
           example: 1000
+        tracked_pairs:
+          description: |
+
+            How many trading pairs are being actively tracked.
+            The pair activity exceeds the threshold to make it appear on the website
+            and have OHLCV data generated for it.
+
+            For example, trading pairs with very low swap count are not active.
+
+          type: integer
+          example: 50
+        tokens:
+          description: |
+            Number of tokens that appear in trading pairs.
+
+            - Tokens lacking a supported trading pair on a supported exchange are not included in this number
+            - Tokens that have a trading pair but no trades or volume are still counted
+
+          type: integer
+          example: 500
         first_swap_at:
           description: |
             First observed swap timestamp
