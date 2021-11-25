@@ -568,6 +568,22 @@ paths:
               schema:
                 $ref: "#/components/schemas/GenericErrorModel"
 
+  '/impressive-numbers':
+    x-pyramid-route-name: web_impressive_numbers
+    get:
+      operationId: web_impressive_numbers
+      summary: |
+
+        An API endpoint that spits out impressive numbers.
+
+      tags:
+        - Blockchain
+        - Exchange
+        - Pair
+      responses:
+        "200":
+          description: JSON dict of impressive numbers
+
 # An object to hold reusable parts that can be used across the definition
 components:
   schemas:
