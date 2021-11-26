@@ -615,9 +615,7 @@ paths:
         An API endpoint that spits out impressive numbers.
 
       tags:
-        - Blockchain
-        - Exchange
-        - Pair
+        - Data collection
       responses:
         "200":
           description: JSON dict of impressive numbers
