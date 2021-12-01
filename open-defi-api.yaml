@@ -191,6 +191,18 @@ paths:
             type: string
             enum: [asc, desc]
             default: desc
+         - name: filter_zero_volume
+           in: query
+          description: |
+            When set, do not return exchanegs which have had no volume for last 30 days.
+
+            This will speed up the response a bit, as most exchanges are ghost exchanges.
+
+          required: false
+          schema:
+            type: boolean
+            default: false
+
       responses: # list of responses
         "200":
           description: OK
@@ -447,7 +459,7 @@ paths:
             default: pair_id
             minimum: 1
             maximum: 100
-            enum: [pair_id, volume, price_change, liquidity]
+            enum: [pair_id, volume, volume_30d, price_change, liquidity]
         - name: direction
           in: query
           description: |
