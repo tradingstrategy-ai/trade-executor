@@ -853,6 +853,20 @@ components:
           minLength: 4
           example: 0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f
           format: Ethereum address
+        exchange_rate:
+          description: |
+              US dollar / quote token exchange rate used to calculate the latest price.
+
+              If the pair is quoted in a US dollar stablecoin this number is 1.0.
+
+              If the pair is quoted in ETH then this is the current ETH price.
+
+              In some situations, the exchange rate might be missing, in which case this is `null`.
+              (TODO: In the future the exchange rate will be always present.)
+
+          type: number
+          example: 1.000
+
         usd_price_latest:
           description: |
               Base token/quote token converted to USD through direct quote token/USD exchange rate.
