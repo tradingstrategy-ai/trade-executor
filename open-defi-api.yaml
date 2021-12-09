@@ -1135,6 +1135,11 @@ components:
             Homepage of the quote token
           type: string
           format: url
+        pair_contract_address:
+          description: |
+            The smart contract address of this trading pair.
+          type: string
+          format: blockchain_address
         trade_link:
           description: |
             Direct link to a page where this pair can be traded.
