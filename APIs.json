@@ -1,0 +1,62 @@
+{
+  "name": "Open DeFi API",
+  "description": "Open decentralised finance API gives you access to decentralised exchange trading data, liquidity and tokens across multiple blockchains.",
+  "image": "https://raw.githubusercontent.com/tradingstrategy-ai/frontend/master/src/lib/assets/logo-two-lines-new.png",
+  "tags": [
+    "Application Programming Interface",
+    "API",
+    "Blockchain",
+    "Finance",
+    "Trading",
+    "Ethereum"
+  ],
+  "created": "2021-10-01",
+  "modified": "2021-12-15",
+  "url": "https://tradingstrategy.ai/api/apis.json",
+  "specificationVersion": "0.14",
+  "apis": [
+    {
+      "name": "Open DeFi API",
+      "description": "Open DeFi API gives you access to decentralised exchange trading data, liquidity and tokens across multiple blockchains.",
+      "image": "https://raw.githubusercontent.com/tradingstrategy-ai/frontend/master/src/lib/assets/logo-two-lines-new.png",
+      "humanURL": "https://tradingstrategy.ai/api/explorer/",
+      "baseURL": "https://tradingstrategy.ai/api",
+      "tags": [
+        "Application Programming Interface",
+        "API",
+        "Blockchain",
+        "Finance",
+        "Trading",
+        "Ethereum"
+      ],
+      "properties": [
+        {
+          "type": "x-documentation",
+          "url": "https://tradingstrategy.ai/docs/"
+        },
+        {
+          "type": "x-openapi",
+          "url": "https://tradingstrategy.ai/api/onchain/open-defi-api.yaml"
+        },
+        {
+          "type": "x-blog",
+          "url": "https://tradingstrategy.ai/blog"
+        }
+      ],
+      "contact": [
+        {
+          "FN": "Trading Strategy",
+          "email": "info@tradingstrategy.ai",
+          "X-twitter": "tradingprotocol"
+        }
+      ]
+    }
+  ],
+  "maintainers": [
+    {
+      "FN": "Mikko Ohtamaa",
+      "X-twitter": "moo9000",
+      "email": "mikko@tradingstrategy.ai"
+    }
+  ]
+}

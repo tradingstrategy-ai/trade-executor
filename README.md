@@ -36,6 +36,8 @@ This specification covers
 
 * [APIguru](https://github.com/APIs-guru/openapi-directory)
 * [ProgrammableWeb](https://www.programmableweb.com/)
+* [RapidAPI](https://rapidapi.com/hub)
+* 
 
 # Notes
 
