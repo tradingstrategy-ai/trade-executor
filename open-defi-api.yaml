@@ -1,4 +1,4 @@
-# Open on-chain data API specification
+# Open DeFi API specification
 
 openapi: 3.0.2
 info:
@@ -20,45 +20,71 @@ info:
 
     **This API is still in beta and subject to change**.
 
-    # Introduction
+    ## Introduction
 
     This API offres to access to so-called on-chain trading activity. You can fetch live and historical
     trading data across different decentralised exchanges (DEXes)
 
-    # Use cases
+    ## Use cases
+
+    This data is useful e.g. for
 
     * Trading algorithms and bots
 
-    * Market data websites and bots
+    * Market data websites
 
     * On-chain oracle data feeds
 
-    * Blockchain macroeconomic research
+    * Blockchain research
 
-    # Data availability
+    * Risk analysis
+
+    ## Data availability
 
     Visit [Trading Strategy website](https://tradingstrategy.ai/trading-view) to explore available data.
     You can find supported blockchains and exchanges. Price candle chart is available for all trading pairs.
     Ultimately all blockchains will be supported, depending on the implementation order.
 
-    # Live and historical market data
+    ## Live and historical market data
 
     This API provides live data. However, these API endpoints have not been designed for large data ignestion.
     For backtesting trading strategies, [download the historical datasets from Trading Strategy website](https://tradingstrategy.ai/trading-view/backtesting).
 
-    # Data types
+    ## Data types
 
     You can find
 
     * Decentralised exchanges
 
-    * Trading pairs for the above
+    * Trading pairs
 
-    * OHLCV candle charts for pricing
+    * OHLCV price data for candle charts
 
-    * OHLC candle charts for automated-market making exchanges (AMM) liquidity
+    * OHLC liquidty data for liquidity maps
 
-    # About OpenAPI Specification used
+    # Supported blockchains
+
+    Examples of supported blockchains:
+
+    * Ethereum mainnet
+
+    * Binance Smart Chain
+
+    * Polygon
+
+    ## Supported exchanges
+
+    Examples of supported exchanges:
+
+    * Uniswap
+
+    * SushiSwap
+
+    * PancakeSwap
+
+    * QuickSwap
+
+    ## About OpenAPI Specification used
 
     This API specification is written in [OpenAPI v3](https://swagger.io/specification/).
 

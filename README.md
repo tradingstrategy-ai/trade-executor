@@ -4,9 +4,9 @@ Decentralised trading data API in [OpenAPI 3 standard](https://swagger.io/specif
 
 **Beta warning**: Do not use at your own risk.
 
-# Open on-chain data API
+# Open DeFi  API
 
-Open on-chain data provides basic web accessible endpoints for decentralised exchange and blockchain live data. This data is useful for websites, real-time candelstick charts, Telegram bots, live trading bots and similar.
+Open DeFi API provides server and browser accessible endpoints for decentralised exchange and blockchain live data. This data is useful for market data websites, real-time candel stick charts, chat bots, trading bots and similar.
 
 [Open the Swagger API explorer](https://tradingstrategy.ai/api/explorer/).
 
@@ -31,6 +31,11 @@ This specification covers
 * API key accessible endpoints
 
 * [Downloading backtesting datasets](https://tradingstrategy.ai/datasets)
+
+# API directories
+
+* [APIguru](https://github.com/APIs-guru/openapi-directory)
+* [ProgrammableWeb](https://www.programmableweb.com/)
 
 # Notes
 
