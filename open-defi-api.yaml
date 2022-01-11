@@ -545,14 +545,14 @@ paths:
 
             Primary key for the trading pair
 
-            For tests and demos use id `1` which is ETH/USDC pair on Uniswap v2,
-            as it is the first deployed Uniswap v2 compatible pool.
+            [You can grab any trading pair from Trading Strategy website](https://tradingstrategy.ai/trading-view/trading-pairs).
+            The primary key is displayed in as internal id.
 
           required: true
           schema:
             type: integer
             minimum: 1
-          example: 1
+          example:
         - name: time_bucket
           in: query
           description: >
@@ -639,14 +639,14 @@ paths:
 
             Primary key for the trading pair
 
-            For tests and demos use id `1` which is ETH/USDC pair on Uniswap v2,
-            as it is the first deployed Uniswap v2 compatible pool.
+            [You can grab any trading pair from Trading Strategy website](https://tradingstrategy.ai/trading-view/trading-pairs).
+            The primary key is displayed in as internal id.
 
           required: true
           schema:
             type: integer
             minimum: 1
-          example: 1
+          example:
         - name: time_bucket
           in: query
           description: >
