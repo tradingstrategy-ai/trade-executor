@@ -1112,6 +1112,24 @@ components:
             Trade volume in US dollar
           type: number
           format: us_dollar
+        b:
+          description: |
+            Number of buy transactions
+          type: integer
+        s:
+          description: |
+            Number of sell transactions
+          type: integer
+        bv:
+          description: |
+            Volume of buy transactions
+          type: number
+          format: us_dollar
+        sv:
+          description: |c
+            Volume of sell transactions
+          type: number
+          format: us_dollar
         xr:
           description: |
 
