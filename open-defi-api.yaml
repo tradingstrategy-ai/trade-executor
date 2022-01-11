@@ -581,7 +581,7 @@ paths:
           schema:
             type: string
             format: iso8601
-          example: 2020-05-18 00:00
+          example: 2022-01-01
         - name: end
           in: query
           description: |
@@ -599,7 +599,7 @@ paths:
             type: string
             format: iso8601
             minimum: 0
-          example: 2020-05-19 00:00
+          example: 2022-01-02
 
       tags:
         - Trading pair
@@ -637,7 +637,7 @@ paths:
           in: query
           description: |
 
-            Primary key for the trading pair
+            Primary key for the trading pair.
 
             [You can grab any trading pair from Trading Strategy website](https://tradingstrategy.ai/trading-view/trading-pairs).
             The primary key is displayed in as internal id.
@@ -646,7 +646,6 @@ paths:
           schema:
             type: integer
             minimum: 1
-          example:
         - name: time_bucket
           in: query
           description: >
@@ -675,7 +674,7 @@ paths:
           schema:
             type: string
             format: iso8601
-          example: 2020-05-18 00:00
+          example: 2022-01-01
         - name: end
           in: query
           description: |
@@ -693,7 +692,7 @@ paths:
             type: string
             format: iso8601
             minimum: 0
-          example: 2020-05-19 00:00
+          example: 2022-01-02
 
       tags:
         - Trading pair
