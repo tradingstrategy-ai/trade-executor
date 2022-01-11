@@ -617,6 +617,101 @@ paths:
               schema:
                 $ref: "#/components/schemas/GenericErrorModel"
 
+  '/xyliquidity':
+    x-pyramid-route-name: web_xyliquidity
+    get:
+      operationId: web_xyliquidity
+      summary: Get the XY liquidity chart data for one pair
+      description: |
+
+        Fetch [XYLiquidity](https://tradingstrategy.ai/docs/programming/api/liquidity.html) data for a single trading pair.
+
+        You need to resolve the symbolic trading pair name to `pair_id` primary key with `/pairs` or `/pair-details`
+        to call this API endpoint.
+
+        Liquidity sample response size is limited to 10,000 candles. Only the first 10,000 candles
+        since the start timestamp is returned.
+
+      parameters:
+        - name: pair_id
+          in: query
+          description: |
+
+            Primary key for the trading pair
+
+            For tests and demos use id `1` which is ETH/USDC pair on Uniswap v2,
+            as it is the first deployed Uniswap v2 compatible pool.
+
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+          example: 1
+        - name: time_bucket
+          in: query
+          description: >
+
+              What time bucket to use for the candle size.
+
+          required: true
+          schema:
+            type: string
+            enum: [1m, 5m, 15m, 1h, 4h, 1d, 7d, 30d]
+          example: 1h
+        - name: start
+          in: query
+          description: |
+
+              When the candle fetch period starts.
+
+              Use UNIX UTC timestamp, as ISO 8601 formatted string.
+              [Read more information about the time format](https://docs.python.org/3/library/datetime.html#datetime.datetime.fromisoformat).
+
+              If not specific this will be resolved to now() - time_bucket * 100, or getting the last 100 candles.
+
+              This range parameter is inclusive.
+
+          required: false
+          schema:
+            type: string
+            format: iso8601
+          example: 2020-05-18 00:00
+        - name: end
+          in: query
+          description: |
+
+              When the candle fetch period ends.
+
+              Use UNIX UTC timestamp, as ISO 8601 formatted string.
+
+              If not specific this will be resolved to now().
+
+              This range parameter is inclusive.
+
+          required: false
+          schema:
+            type: string
+            format: iso8601
+            minimum: 0
+          example: 2020-05-19 00:00
+
+      tags:
+        - Trading pair
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/XYLiquiditySampleList'
+        "422":
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericErrorModel"
+
+
   '/top-momentum':
     x-pyramid-route-name: web_top_momentum
     get:
@@ -1111,6 +1206,114 @@ components:
           description: >
             Number of individual liquidity events - how many times liquidity was added or removed from the pool
           type: integer
+
+
+    XYLiquiditySample:
+      description: |
+
+        One XY liquidity candle for the liquidity charts. It represents a liquidity bar during the sample period:
+        how much liquidity there was at the opening of the period, highest liquidity seen and how much liquidity
+        there was at the closing period.
+
+        This data can be used to calculate the price impact and gauge the popularity of a trading pair.
+
+        Any dollar amount presents one side of the liquidty. For example adding 100 BNB + 5000 USD to the liquidity
+        is presented as 5000 USD.
+
+        [Read more about XYLiquidity here](https://tradingstrategy.ai/docs/programming/api/liquidity.html).
+
+      type: object
+      properties:
+        ts:
+          description: |
+
+            UNIX UTC timestamp as ISO 8601 formatted string.
+
+          type: number
+          format: timestamp
+        o:
+          description: |
+            Open value of the candle
+          type: number
+          format: us_dollar
+        h:
+          description: |
+            High value of the candle
+          type: number
+          format: us_dollar
+        l:
+          description: |
+            Low value of the candle
+          type: number
+          format: us_dollar
+        c:
+          description: |
+            Close value of the candle
+          type: number
+          format: us_dollar
+        a:
+          description: |
+            Number of liquidity add events in this period.
+
+            Maybe zero if no data available.
+          type: integer
+        r:
+          description: |
+            Number of liquidity remove events in this period.
+
+            Maybe zero if no data available.
+
+          type: integer
+        av:
+          description: |
+            Amount of liquidity added during this period
+
+            Maybe zero if no data available.
+          type: number
+          format: us_dollar
+        rv:
+          description: |
+            Amount of liquidity removed during this period
+
+            Maybe zero if no data available.
+          type: number
+          format: us_dollar
+        xr:
+          description: |
+
+            `xr` stands for the exchange rate.
+
+            Appromaxime exchange rate between US dollar and quote token for this candle.
+
+            The actual exchange rate may be true only for 1 minute candles.
+            The 1 minute candles use reference price oracle for quote token/USD.
+            Other candle data is upsampled from the 1 minute candles and do not internally use any exchange rate.
+
+            Any USD stablecoin is assumed to be 1:1 to actual USD.
+
+          type: number
+        tc:
+          description: |
+
+            `ct` stands for the trade count.
+
+            Number of individual trades executed during the candle time period.
+
+          type: number
+    XYLiquiditySampleList:
+      description: |
+
+        Multiple liquidity samples to render.
+
+        Note that this data is sparse. If there were no trading events, there is no sample
+        for the time period in the array.
+
+        Samples are sorted from the first to the last.
+
+      type: array
+      items:
+        $ref: '#/components/schemas/XYLiquiditySample'
+
 
     PairAdditionalDetails:
       description: >
