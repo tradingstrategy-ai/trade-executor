@@ -1126,7 +1126,7 @@ components:
           type: number
           format: us_dollar
         sv:
-          description: |c
+          description: |
             Volume of sell transactions
           type: number
           format: us_dollar
@@ -1147,7 +1147,7 @@ components:
         tc:
           description: |
 
-            `ct` stands for the trade count.
+            `tc` stands for the trade count.
 
             Number of individual trades executed during the candle time period.
 
