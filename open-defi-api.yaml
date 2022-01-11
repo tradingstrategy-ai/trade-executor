@@ -484,7 +484,7 @@ paths:
             default: pair_id
             minimum: 1
             maximum: 100
-            enum: [pair_id, volume, volume_30d, price_change, liquidity]
+            enum: [pair_id, volume, volume_30d, price_change_24h, liquidity]
         - name: direction
           in: query
           description: |
@@ -741,11 +741,11 @@ components:
           type: string
           format: uri
           example: https://twitter.com/uniswap
-        explorer:
-          description: Link to a smart contract explorer showing the main contract
+        blockchain_explorer_link:
+          description: Link to a smart contract explorer showing the factory contract
           type: string
           format: uri
-          example: https://etherscan.io
+          example: https://etherscan.io/address/0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f
         address:
           description: The factory address for Uniswap AMM like setups
           example: 0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f
@@ -773,6 +773,23 @@ components:
           description: Number of individual sell transactions
           type: integer
           example: 1
+        pair_count:
+          description: Trading pair count (optional)
+          type: integer
+          example: 500
+        active_pair_count:
+          description: |
+
+              Active trading pair count (optional)
+
+              [See trading pair inclusion criteria](https://tradingstrategy.ai/docs/programming/tracking.html).
+          type: integer
+          example: 1
+        first_trade_at:
+          description: |
+            When the first trade was made on this exchange (optional)
+          type: string
+          format: iso8601
 
     PairSummary:
       description: |
