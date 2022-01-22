@@ -4,7 +4,8 @@ from typing import List
 from .tradeinstruction import TradeInstruction
 
 
-class HotWalletExecutionModel:
+class DummyExecutionModel:
+    """Trade executor that does not connect to anything."""
 
     def __init__(self, private_key: str):
         self.private_key = private_key

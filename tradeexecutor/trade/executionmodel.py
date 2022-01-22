@@ -1,8 +1,11 @@
 import enum
 
 
-class TradeInstructionExecutionModel(enum.Enum):
+class TradeExecutionModel(enum.Enum):
     """What kind of trade instruction execution model the strategy does"""
+
+    #: Does not make any trades, just captures and logs them
+    dummy = "dummy"
 
     #: Server-side normal Ethereum private eky account
     hot_wallet = "hot_wallet"
