@@ -2,12 +2,13 @@
 name = "tradeexecutor"
 version = "0.1.0"
 description = "Oracle algorithm executor and P2P"
-authors = ["Mikko Ohtamaa <mikko@opensourcehacker.com>"]
+authors = ["Mikko Ohtamaa <mikko@tradingstrategy.ai>"]
 license = "APGL"
 
 [tool.poetry.dependencies]
 python = "^3.9"
-tradingstrategy = "^0.4.0"
+#tradingstrategy = "^0.4.0"
+tradingstrategy = {path = "../client", develop = true}
 typer = "^0.4.0"
 colorama = "^0.4.4"
 pyramid = "^2.0"

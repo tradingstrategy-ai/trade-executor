@@ -55,6 +55,7 @@ def run(
     execution_model: TradeExecutionModel = typer.Option(..., envvar="EXECUTION_MODEL"),
     state_model: StateStoreModel = typer.Option(..., envvar="STATE_MODEL"),
     state_file: Optional[Path] = typer.Option("strategy-state.json", envvar="STATE_FILE"),
+    api_key: str = typer.Option(None, envvar="API_KEY", help="Trading Strategy API key"),
     ):
 
     logger = setup_logging()

@@ -1,5 +1,0 @@
-""""""
-
-
-class TradeInstruction:
-    pass
