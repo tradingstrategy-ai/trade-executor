@@ -10,8 +10,14 @@ python = "^3.9"
 tradingstrategy = "^0.4.0"
 typer = "^0.4.0"
 colorama = "^0.4.4"
+pyramid = "^2.0"
+coloredlogs = "^15.0.1"
+waitress = "^2.0.0"
+requests = "^2.27.1"
 
 [tool.poetry.dev-dependencies]
+pytest = "^6.2.5"
+ipdb = "^0.13.9"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]

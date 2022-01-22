@@ -3,16 +3,25 @@
 https://typer.tiangolo.com/
 """
 from pathlib import Path
+from queue import Queue
 from typing import Optional
+import pkg_resources
 
 import typer
 
+from tradeexecutor.cli.loop import run_main_loop
 from tradeexecutor.state.statemodel import StateModel
 from tradeexecutor.trade.executionmodel import TradeInstructionExecutionModel
+from tradeexecutor.cli.logging import setup_logging
 
 
 # https://typer.tiangolo.com/tutorial/package/
+from tradeexecutor.webhook.server import create_webhook_server
+
 app = typer.Typer()
+
+
+version = pkg_resources.get_distribution('tradeexecutor').version
 
 
 @app.command()
@@ -28,7 +37,24 @@ def run(
     state_model: StateModel = typer.Option(..., envvar="STATE_MODEL"),
     state_file: Optional[Path] = typer.Option("strategy-state.json", envvar="STATE_FILE"),
     ):
-    pass
+
+    logger = setup_logging()
+    logger.info("Trade Executor version %s starting", version)
+
+    # Start the queue that relays info from the web server to the strategy executor
+    command_queue = Queue()
+
+    if http_enabled:
+        server = create_webhook_server(http_host, http_port, http_username, http_password, command_queue)
+
+    else:
+        server = None
+
+    try:
+        run_main_loop()
+    finally:
+        if server:
+            server.close()
 
 
 
