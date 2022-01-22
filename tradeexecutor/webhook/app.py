@@ -67,13 +67,10 @@ def create_pyramid_app(username, password, command_queue: Queue, production=Fals
         config.set_root_factory(lambda request: Root())
 
         config.add_route('home', '/')
-        config.add_view(api.home, route_name='home')
-
         config.add_route('ping', '/ping')
-        config.add_view(api.ping, route_name='ping', renderer="json")
-
         config.add_route('notify', '/notify')
-        config.add_view(api.notify, route_name='notify', renderer="json")
+
+        config.scan(api)
 
         config.add_exception_view(exception_view)
 

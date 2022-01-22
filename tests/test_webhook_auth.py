@@ -15,9 +15,11 @@ def test_auth_ok():
     webhook_thread = Thread(target=server.run)
     webhook_thread.start()
     # Test home view
-    resp = requests.get(server_url)
-    assert resp.status_code == 200
-    server.close()
+    try:
+        resp = requests.get(server_url)
+        assert resp.status_code == 200
+    finally:
+        server.close()
 
 
 def test_auth_failed():
@@ -28,6 +30,8 @@ def test_auth_failed():
     webhook_thread = Thread(target=server.run)
     webhook_thread.start()
     # Test home view
-    resp = requests.get(server_url)
-    assert resp.status_code == 200
-    server.close()
+    try:
+        resp = requests.get(server_url)
+        assert resp.status_code == 403
+    finally:
+        server.close()
