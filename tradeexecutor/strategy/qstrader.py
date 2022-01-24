@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
+import datetime
 from contextlib import AbstractContextManager
-from datetime import datetime
 from typing import List, Type
 
 from qstrader.alpha_model.alpha_model import AlphaModel
@@ -26,8 +26,8 @@ class QSTraderLiveTrader(StrategyRunner):
     def on_data_signal(self):
         pass
 
-    def on_clock(self, clock: datetime.datetime, state: State) -> List[TradeExecution]:
-        pass
+    def on_clock(self, clock: datetime.datetime, universe: Universe, state: State) -> List[TradeExecution]:
+        raise NotImplementedError()
 
     def preflight_check(self, client: Client, universe: Universe, now_: datetime.datetime):
         """Check the data looks more or less sane."""

@@ -1,7 +1,9 @@
 """Example strategy that trades on PancakeSwap"""
 import datetime
 import logging
+from collections import Counter, defaultdict
 from contextlib import AbstractContextManager
+from typing import Dict
 
 import pandas as pd
 
@@ -12,8 +14,8 @@ from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId
 from tradingstrategy.exchange import ExchangeUniverse
 from tradingstrategy.frameworks.qstrader import prepare_candles_for_qstrader
-from tradingstrategy.liquidity import GroupedLiquidityUniverse
-from tradingstrategy.pair import filter_for_exchanges, PandasPairUniverse
+from tradingstrategy.liquidity import GroupedLiquidityUniverse, LiquidityDataUnavailable
+from tradingstrategy.pair import filter_for_exchanges, PandasPairUniverse, DEXPair
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.utils.groupeduniverse import filter_for_pairs
 from tradingstrategy.universe import Universe
@@ -235,11 +237,11 @@ class MomentumAlphaModel(AlphaModel):
         return dict(weighed_signals)
 
 
-class PancakeLiveTrade(QSTraderLiveTrader):
+class PancakeLiveTrader(QSTraderLiveTrader):
     """Live strategy set up."""
 
     def __init__(self, timed_task_context_manager: AbstractContextManager, max_data_age: datetime.timedelta):
-        super.__init__(MomentumAlphaModel, timed_task_context_manager, max_data_age)
+        super().__init__(MomentumAlphaModel, timed_task_context_manager, max_data_age)
 
     def get_strategy_time_frame(self) -> TimeBucket:
         """Strategy is run on the daily candles."""
@@ -259,7 +261,7 @@ class PancakeLiveTrade(QSTraderLiveTrader):
             exchange_universe.get_by_chain_and_slug(ChainId.bsc, "pancakeswap-v2"),
         ]
 
-        # Only choose pairs on exchanges we are interested in
+        # Choose all pairs that trade on exchanges we are interested in
         pairs_df = filter_for_exchanges(dataset.pairs, our_exchanges)
 
         # Get daily candles as Pandas DataFrame
@@ -286,7 +288,7 @@ class PancakeLiveTrade(QSTraderLiveTrader):
 
 
 def strategy_executor_factory(**kwargs):
-    return PancakeLiveTrade(**kwargs)
+    return PancakeLiveTrader(**kwargs)
 
 
 __all__ = [strategy_executor_factory]
