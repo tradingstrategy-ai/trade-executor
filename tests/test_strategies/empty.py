@@ -1,14 +1,32 @@
 import datetime
 
 from tradeexecutor.state.state import State
-from tradeexecutor.strategy.runner import StrategyRunner
+from tradeexecutor.strategy.runner import StrategyRunner, Dataset
 
 
-class DummyStrategyRunner(StrategyRunner):
-    """A strategy exercised by unit tests."""
+class EmptyStrategyRunner(StrategyRunner):
+    """A strategy runner that does nothing.
 
-    def on_clock(self, clock: datetime.datetime, state: State):
+    This is a dummy strategy runner and used in the unit testing.
+    """
+
+    def load_data(self, time_frame, client, lookback):
+        return None
+
+    def get_strategy_time_frame(self):
+        return None
+
+    def construct_universe(self, dataset: Dataset):
+        return None
+
+    def preflight_check(self, client, universe, now_):
+        pass
+
+    def on_clock(self, clock: datetime.datetime, universe, state: State):
+        # Always return "no trades"
         return []
 
 
-strategy_runner = DummyStrategyRunner()
+def strategy_executor_factory(**kwargs):
+    strategy_runner = EmptyStrategyRunner(**kwargs)
+    return strategy_runner

@@ -1,37 +1,39 @@
-from threading import Thread
 import os
-import requests
 import datetime
+from pathlib import Path
 
-from tradeexecutor.state.inmemory import InMemoryStore
 from tradeexecutor.state.state import State
-from tradeexecutor.strategy.importer import import_strategy_file
-from tradeexecutor.trade.dummy import DummyExecutionModel
-from tradeexecutor.webhook.server import create_webhook_server
+
+from tradeexecutor.strategy.bootstrap import bootstrap_strategy
+from tradeexecutor.strategy.runner import Dataset, StrategyRunner
+from tradeexecutor.utils.timer import timed_task
+from tradingstrategy.universe import Universe
 
 
-def test_execute_empty_strategy_cycle(strategy_folder):
-
-    strategy_path = os.path.join(strategy_folder, "empty.py")
-    runner = import_strategy_file(strategy_path)
-
-    state = State()
+def test_execute_empty_strategy_cycle(strategy_folder, persistent_test_client):
+    """Create an empty strategy and execute one tick."""
     clock_now = datetime.datetime(2022, 1, 1, tzinfo=datetime.timezone.utc)
-    trade_instructions = runner.on_clock(clock_now, state)
+    client = persistent_test_client
+    strategy_path = Path(os.path.join(strategy_folder, "empty.py"))
+    dataset, universe, runner = bootstrap_strategy(client, timed_task, strategy_path, clock_now)
+    state = State()
+    trade_instructions = runner.on_clock(clock_now, universe, state)
     assert len(trade_instructions) == 0
 
 
 def test_dummy_strategy_clock(strategy_folder, persistent_test_client):
-
+    """Run a test on a strategy that trades a single pair and always returns the same trading instructions."""
+    clock_now = datetime.datetime(2022, 1, 1, tzinfo=datetime.timezone.utc)
     client = persistent_test_client
-    strategy_path = os.path.join(strategy_folder, "dummy.py")
-    runner = import_strategy_file(strategy_path)
+    strategy_path = Path(os.path.join(strategy_folder, "dummy.py"))
+    dataset, universe, runner = bootstrap_strategy(client, timed_task, strategy_path, clock_now)
 
-    runner.load_datasets(client)
+    assert isinstance(dataset, Dataset)
+    assert isinstance(universe, Universe)
+    assert isinstance(runner, StrategyRunner)
 
     state = State()
-    clock_now = datetime.datetime(2022, 1, 1, tzinfo=datetime.timezone.utc)
-    trade_instructions = runner.on_clock(clock_now, state)
+    trade_instructions = runner.on_clock(clock_now, universe, state)
     assert len(trade_instructions) == 1
     instruction = trade_instructions[0]
     assert instruction.trade_id == 1
