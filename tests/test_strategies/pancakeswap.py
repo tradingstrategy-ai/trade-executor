@@ -79,16 +79,13 @@ class MomentumAlphaModel(AlphaModel):
 
     def __init__(
             self,
-            exchange_universe: ExchangeUniverse,
-            pair_universe: PandasPairUniverse,
-            candle_universe: GroupedCandleUniverse,
-            liquidity_universe: GroupedLiquidityUniverse,
+            universe: Universe,
             data_handler=None
     ):
-        self.exchange_universe = exchange_universe
-        self.pair_universe = pair_universe
-        self.candle_universe = candle_universe
-        self.liquidity_universe = liquidity_universe
+        self.exchange_universe = universe.exchanges
+        self.pair_universe = universe.pairs
+        self.candle_universe = universe.candles
+        self.liquidity_universe = universe.liquidity
         self.data_handler = data_handler
         self.liquidity_reached_state = {}
 
