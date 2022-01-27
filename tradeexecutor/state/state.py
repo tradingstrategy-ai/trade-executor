@@ -6,10 +6,8 @@ from typing import List, Optional, Dict, Callable, Iterable, Tuple
 
 from dataclasses_json import dataclass_json
 
-from tradingstrategy.pair import PandasPairUniverse, DEXPair
-from tradingstrategy.types import PrimaryKey, USDollarAmount
-
-from tradingstrategy.chain import ChainId
+# from tradingstrategy.pair import PandasPairUniverse, DEXPair
+from .types import USDollarAmount
 
 
 class PositionType(enum.Enum):
@@ -25,19 +23,24 @@ class TradeType(enum.Enum):
 
 class TradeStatus(enum.Enum):
 
-    #: Trade has been put to the planning pipeline
+    #: Trade has been put to the planning pipeline.
+    #: The trade instance has been created and stored in the state,
+    #: but no internal accounting changes have been made.
     planned = "planned"
 
-    #: Trade has txid allocated
+    #: Trade has txid allocated.
+    #: Any capital have been debited from the reserved and credited on the trade.
     started = "started"
 
     #: Trade has been pushed to the network
     broadcasted = "broadcasted"
 
     #: Trade was executed ok
+    #: Any capital on sell transaction have been credited back to the reserves.
     success = "success"
 
-    #: Trade was reversed e.g. due to too much slippage
+    #: Trade was reversed e.g. due to too much slippage.
+    #: Trade can be retries.
     failed = "failed"
 
 
@@ -50,8 +53,13 @@ class AssetIdentifier:
     referred by their smart contract addresses when a strategy decision moves to the execution.
     We duplicate data here to make sure we have a persistent record that helps to diagnose the sisues.
     """
-    chain_id: ChainId
+
+    #: Smart contract address of the asset
     address: str
+
+    #: See https://chainlist.org/
+    chain_id: int
+
     token_symbol: str
     decimals: Optional[int] = None
 
@@ -66,9 +74,6 @@ class TradingPairIdentifier:
     base: AssetIdentifier
     quote: AssetIdentifier
 
-    #: Internal pair_id might not be stable across differenet dataset versions
-    pair_id: PrimaryKey
-
     #: Smart contract address of the pool contract
     pool_address: str
 
@@ -76,9 +81,9 @@ class TradingPairIdentifier:
         """We use the smart contract pool address to uniquely identify trading positions."""
         return self.pool_address
 
-    def get_trading_pair(self, pair_universe: PandasPairUniverse) -> DEXPair:
-        """Reverse resolves the smart contract address to trading pair data in the current trading pair universe."""
-        return pair_universe.get_pair_by_smart_contract(self.pool_address)
+    #def get_trading_pair(self, pair_universe: PandasPairUniverse) -> DEXPair:
+    #    """Reverse resolves the smart contract address to trading pair data in the current trading pair universe."""
+    #    return pair_universe.get_pair_by_smart_contract(self.pool_address)
 
 
 @dataclass_json
@@ -86,14 +91,17 @@ class TradingPairIdentifier:
 class ReservePosition:
     asset: AssetIdentifier
     quantity: Decimal
-    current_usd_price: float
+
+    reserve_token_price: USDollarAmount
     last_pricing_at: datetime.datetime
 
     def get_identifier(self) -> str:
         return self.asset.get_identifier()
 
     def get_current_value(self) -> USDollarAmount:
-        return float(self.quantity) * self.current_usd_price
+        return float(self.quantity) * self.reserve_token_price
+
+
 
 
 @dataclass_json
@@ -108,13 +116,13 @@ class TradeExecution:
 
     planned_quantity: Decimal
     planned_price: USDollarAmount
-    planned_reserve_currency_amount: Decimal
+    planned_reserve: Decimal
 
     #: Which reserve currency we are going to take
     reserve_currency: AssetIdentifier
 
     #: When capital is allocated for this trade
-    capital_allocated_at: Optional[datetime.datetime] = None
+    started_at: Optional[datetime.datetime] = None
     reserve_currency_allocated: Optional[Decimal] = None
 
     #: When this trade entered mempool
@@ -125,7 +133,8 @@ class TradeExecution:
     failed_at: Optional[datetime.datetime] = None
 
     executed_price: Optional[USDollarAmount] = None
-    executed_quantity: Optional[USDollarAmount] = None
+    executed_quantity: Optional[Decimal] = None
+    executed_reserve: Optional[Decimal] = None
 
     #: LP fees estimated in the USD
     lp_fees_paid: Optional[USDollarAmount] = None
@@ -150,7 +159,8 @@ class TradeExecution:
         assert self.trade_id > 0
         assert self.planned_quantity != 0
         assert self.planned_price > 0
-        assert self.planned_reserve_currency_amount > 0
+        assert self.planned_reserve >= 0
+        assert self.opened_at.tzinfo == datetime.timezone.utc
 
     def is_sell(self):
         return self.planned_quantity < 0
@@ -160,7 +170,11 @@ class TradeExecution:
 
     def is_success(self):
         """This trade was succcessfully completed."""
-        return self.executed_at != None
+        return self.executed_at is not None
+
+    def is_failed(self):
+        """This trade was succcessfully completed."""
+        return self.failed_at is not None
 
     def is_pending(self):
         """This trade was succcessfully completed."""
@@ -170,6 +184,17 @@ class TradeExecution:
         """This trade is still in planning, unallocated."""
         return self.get_status() in (TradeStatus.planned,)
 
+    def is_started(self):
+        """This trade has a txid allocated."""
+        return self.get_status() in (TradeStatus.started,)
+
+    def is_accounted_for_equity(self):
+        """Does this trade contribute towards the trading position equity.
+
+        Failed trades are reverted. Only their fees account.
+        """
+        return self.get_status() in (TradeStatus.started, TradeStatus.broadcasted, TradeStatus.success)
+
     def get_status(self) -> TradeStatus:
         if self.failed_at:
             return TradeStatus.failed
@@ -177,45 +202,90 @@ class TradeExecution:
             return TradeStatus.success
         elif self.broadcasted_at:
             return TradeStatus.broadcasted
-        elif self.capital_allocated_at:
+        elif self.started_at:
             return TradeStatus.started
         else:
             return TradeStatus.planned
 
-    def allocate_reserves(self, ts: datetime.datetime, amount: Decimal):
-        self.capital_allocated_at = ts
-        self.reserve_currency_allocated = amount
-
     def get_executed_value(self) -> USDollarAmount:
-        return float(self.executed_quantity) * self.executed_price
+        return abs(float(self.executed_quantity) * self.executed_price)
 
     def get_planned_value(self) -> USDollarAmount:
-        return self.planned_price * self.planned_quantity
+        return abs(self.planned_price * float(abs(self.planned_quantity)))
+
+    def get_planned_reserve(self) -> Decimal:
+        return self.planned_reserve
 
     def get_allocated_value(self) -> USDollarAmount:
         return self.reserve_currency_allocated
 
+    def get_position_quantity(self) -> Decimal:
+        """Get the planned or executed quantity of the base token.
+
+        Positive for buy, negative for sell.
+        """
+        if self.executed_quantity is not None:
+            return self.executed_quantity
+        else:
+            return self.planned_quantity
+
+    def get_reserve_quantity(self) -> Decimal:
+        """Get the planned or executed quantity of the quote token.
+
+        Negative for buy, positive for sell.
+        """
+        if self.executed_reserve is not None:
+            return self.executed_quantity
+        else:
+            return self.planned_reserve
+
+    def get_equity_for_position(self) -> Decimal:
+        """Get the planned or executed quantity of the base token.
+
+        Positive for buy, negative for sell.
+        """
+        if self.executed_quantity is not None:
+            return self.executed_quantity
+        return Decimal(0)
+
+    def get_equity_for_reserve(self) -> Decimal:
+        """Get the planned or executed quantity of the quote token.
+
+        Negative for buy, positive for sell.
+        """
+
+        if self.is_buy():
+            if self.get_status() in (TradeStatus.started, TradeStatus.broadcasted):
+                return self.reserve_currency_allocated
+
+        return Decimal(0)
+
     def get_value(self) -> USDollarAmount:
-        """Get estimated or realised value of this trade."""
+        """Get estimated or realised value of this trade.
+
+        Value is always a positive number.
+        """
 
         if self.executed_at:
             return self.get_executed_value()
         elif self.failed_at:
             return self.get_planned_value()
-        elif self.capital_allocated_at:
+        elif self.started_at:
             # Trade is being planned, but capital has already moved
             # from the portfolio reservs to this trade object in internal accounting
-            return float(self.reserve_currency_allocated)
+            return self.get_planned_value()
         else:
             # Trade does not have value until capital is allocated to it
             return 0.0
 
-    def get_quantity(self) -> Decimal:
-        """Get estimated or realised value of this trade."""
-        if self.closed_at:
-            return self.executed_quantity
-        else:
-            return self.planned_quantity
+    def get_credit_debit(self) -> Tuple[Decimal, Decimal]:
+        """Returns the token quantity and reserve currency quantity for this trade.
+
+        If buy this is (+trading position quantity/-reserve currency quantity).
+
+        If sell this is (-trading position quantity/-reserve currency quantity).
+        """
+        return self.get_position_quantity(), self.get_reserve_quantity()
 
     def get_gas_fees_paid(self) -> USDollarAmount:
         native_token_consumed = self.gas_units_consumed * self.gas_price / (10**18)
@@ -230,10 +300,14 @@ class TradeExecution:
         else:
             raise AssertionError(f"Unsupported trade state to query fees: {self.get_status()}")
 
-    def mark_success(self, executed_at: datetime.datetime, executed_price: USDollarAmount, executed_quantity: Decimal, lp_fees: USDollarAmount, gas_price: int, gas_units_consumed: int, native_token_price: USDollarAmount):
+    def mark_success(self, executed_at: datetime.datetime, executed_price: USDollarAmount, executed_quantity: Decimal, executed_reserve: Decimal, lp_fees: USDollarAmount, gas_price: int, gas_units_consumed: int, native_token_price: USDollarAmount):
         assert self.get_status() == TradeStatus.broadcasted
+        assert isinstance(executed_quantity, Decimal)
+        assert type(executed_price) == float
+        assert executed_at.tzinfo == datetime.timezone.utc
         self.executed_at = executed_at
         self.executed_quantity = executed_quantity
+        self.executed_reserve = executed_reserve
         self.executed_price = executed_price
         self.lp_fees_paid = lp_fees
         self.gas_price = gas_price
@@ -243,6 +317,7 @@ class TradeExecution:
 
     def mark_failed(self, failed_at: datetime.datetime):
         assert self.get_status() == TradeStatus.broadcasted
+        assert failed_at.tzinfo == datetime.timezone.utc
         self.failed_at = failed_at
 
 
@@ -254,36 +329,44 @@ class TradingPosition:
     # type: PositionType
     opened_at: datetime.datetime
 
-    last_usd_price: USDollarAmount
+    #: When was the last time this position was (re)valued
     last_pricing_at: datetime.datetime
+    #: Base token price at the time of the valuation
+    last_token_price: USDollarAmount
+    # 1.0 for stablecoins, unless out of peg, in which case can be 0.99
+    last_reserve_price: USDollarAmount
 
     reserve_currency: AssetIdentifier
-
     trades: Dict[int, TradeExecution] = field(default_factory=dict)
 
     closed_at: Optional[datetime.datetime] = None
     last_trade_at: Optional[datetime.datetime] = None
 
-    next_trade_id = 1
+    next_trade_id: int = 1
 
     def __post_init__(self):
         assert self.position_id > 0
-        assert self.last_usd_price > 0
+        assert self.last_pricing_at is not None
         assert self.reserve_currency is not None
+        assert self.last_token_price > 0
+        assert self.last_reserve_price > 0
 
     def get_quantity(self) -> Decimal:
         """Get the tied up token quantity in all successfully executed trades.
 
         Does not account for trades that are currently being executd.
         """
-        sum([t.quantity for t in self.trades.values() if t.is_success()])
+        return sum([t.get_quantity() for t in self.trades.values() if t.is_success()])
 
     def get_live_quantity(self) -> Decimal:
         """Get all tied up token quantity.
 
         If there are trades being executed, us their estimated amounts.
         """
-        sum([t.quantity for t in self.trades.values() if not t.is_failed()])
+        return sum([t.quantity for t in self.trades.values() if not t.is_failed()])
+
+    def get_equity_for_position(self) -> Decimal:
+        return sum([t.get_equity_for_position() for t in self.trades.values() if t.is_success()])
 
     def has_unexecuted_trades(self) -> bool:
         return any([t for t in self.trades.values() if t.is_pending()])
@@ -299,15 +382,28 @@ class TradingPosition:
         """Get all trades that have been successfully executed and contribute to this position"""
         return [t for t in self.trades.values() if t.is_success()]
 
+    def calculate_value_using_price(self, token_price: USDollarAmount, reserve_price: USDollarAmount) -> USDollarAmount:
+        token_quantity = sum([t.get_equity_for_position() for t in self.trades.values() if t.is_accounted_for_equity()])
+        reserve_quantity = sum([t.get_equity_for_reserve() for t in self.trades.values() if t.is_accounted_for_equity()])
+        return float(token_quantity) * token_price + float(reserve_quantity) * reserve_price
+
     def get_value(self) -> USDollarAmount:
-        return sum([t.get_value() for t in self.trades.values()])
+        """Get the position value using the latest revaluation pricing."""
+        return self.calculate_value_using_price(self.last_token_price, self.last_reserve_price)
 
     def revalue(self, ts: datetime.datetime, price: USDollarAmount):
         assert isinstance(ts, datetime.datetime)
-        self.last_usd_price = price
+        self.last_token_price = price
         self.last_pricing_at = ts
 
-    def open_trade(self, ts: datetime.datetime, quantity: Decimal, assumed_price: USDollarAmount, trade_type: TradeType, reserve_currency: AssetIdentifier) -> TradeExecution:
+    def open_trade(self,
+                   ts: datetime.datetime,
+                   quantity: Decimal,
+                   assumed_price: USDollarAmount,
+                   trade_type: TradeType,
+                   reserve_currency: AssetIdentifier,
+                   reserve_currency_price: USDollarAmount) -> TradeExecution:
+        assert self.reserve_currency.get_identifier() == reserve_currency.get_identifier(), "New trade is using different reserve currency than the position has"
         trade = TradeExecution(
             trade_id=self.next_trade_id,
             position_id=self.position_id,
@@ -316,7 +412,7 @@ class TradingPosition:
             opened_at=ts,
             planned_quantity=quantity,
             planned_price=assumed_price,
-            planned_reserve_currency_amount=Decimal(quantity * assumed_price),
+            planned_reserve=Decimal(quantity * assumed_price) if quantity > 0 else 0,
             reserve_currency=self.reserve_currency,
         )
         self.trades[trade.trade_id] = trade
@@ -328,6 +424,10 @@ class TradingPosition:
         if trade.position_id != self.position_id:
             return False
         return trade.trade_id in self.trades
+
+    def can_be_closed(self) -> bool:
+        """There are no tied tokens in this position."""
+        return self.get_equity_for_position() == 0
 
 
 @dataclass
@@ -364,7 +464,7 @@ class Portfolio:
     reserves: Dict[str, ReservePosition] = field(default_factory=dict)
 
     #: Trades completed in the past
-    past_positions: List[TradingPosition] = field(default_factory=list)
+    closed_positions: Dict[int, TradingPosition] = field(default_factory=dict)
 
     def is_empty(self):
         return len(self.open_positions) == 0 and len(self.reserves) == 0 and len(self.past_positions) == 0
@@ -372,25 +472,41 @@ class Portfolio:
     def get_open_position_for_pair(self, pair: TradingPairIdentifier) -> TradingPosition:
         return self.open_positions.get(pair.pool_address)
 
-    def open_new_position(self, ts: datetime.datetime, pair: TradingPairIdentifier, assumed_price: USDollarAmount, reserve_currency: AssetIdentifier) -> TradingPosition:
+    def open_new_position(self, ts: datetime.datetime, pair: TradingPairIdentifier, assumed_price: USDollarAmount, reserve_currency: AssetIdentifier, reserve_currency_price: USDollarAmount) -> TradingPosition:
         p = TradingPosition(
             position_id=self.next_position_id,
             opened_at=ts,
             pair=pair,
             last_pricing_at=ts,
-            last_usd_price=assumed_price,
+            last_token_price=assumed_price,
+            last_reserve_price=reserve_currency_price,
             reserve_currency=reserve_currency,
+
         )
         self.open_positions[p.position_id] = p
         self.next_position_id += 1
         return p
 
-    def create_trade(self, ts: datetime.datetime, pair: TradingPairIdentifier, quantity: Decimal, assumed_price: USDollarAmount, trade_type: TradeType, reserve_currency: AssetIdentifier) -> Tuple[TradingPosition, TradeExecution]:
-        position = self.open_positions.get(pair.pool_address)
-        if position is None:
-            position = self.open_new_position(ts, pair, assumed_price, reserve_currency)
+    def get_position_by_trading_pair(self, pair: TradingPairIdentifier) -> Optional[TradingPosition]:
+        """Get open position by a trading pair smart contract address identifier."""
+        for p in self.open_positions.values():
+            if p.pair.pool_address == pair.pool_address:
+                return p
+        return None
 
-        trade = position.open_trade(ts, assumed_price, quantity, trade_type, reserve_currency)
+    def create_trade(self,
+                     ts: datetime.datetime,
+                     pair: TradingPairIdentifier,
+                     quantity: Decimal,
+                     assumed_price: USDollarAmount,
+                     trade_type: TradeType,
+                     reserve_currency: AssetIdentifier,
+                     reserve_currency_price: USDollarAmount) -> Tuple[TradingPosition, TradeExecution]:
+        position = self.get_position_by_trading_pair(pair)
+        if position is None:
+            position = self.open_new_position(ts, pair, assumed_price, reserve_currency, reserve_currency_price)
+
+        trade = position.open_trade(ts, quantity, assumed_price, trade_type, reserve_currency, reserve_currency_price)
         return position, trade
 
     def get_current_cash(self) -> USDollarAmount:
@@ -399,6 +515,10 @@ class Portfolio:
 
     def get_open_position_equity(self) -> USDollarAmount:
         """Get the value of current trading positions."""
+        return sum([p.get_value() for p in self.open_positions.values()])
+
+    def get_live_position_equity(self) -> USDollarAmount:
+        """Get the value of current trading positions plus unexecuted trades."""
         return sum([p.get_value() for p in self.open_positions.values()])
 
     def get_total_equity(self) -> USDollarAmount:
@@ -432,6 +552,30 @@ class Portfolio:
         reserve = self.get_reserve_position(asset)
         reserve.quantity += amount
 
+    def move_capital_from_reserves_to_trade(self, trade: TradeExecution, underflow_check=True):
+        """Allocate capital from reserves to trade instance.
+
+        Total equity of the porfolio stays the same.
+        """
+        assert trade.is_buy()
+
+        reserve = trade.get_planned_reserve()
+        available = self.reserves[trade.reserve_currency.get_identifier()].quantity
+
+        # Sanity check on price calculatins
+        assert abs(float(reserve) - trade.get_planned_value()) < 0.01, f"Trade {trade}: Planned value {trade.get_planned_value()}, but wants to allocate reserve currency for {reserve}"
+
+        if underflow_check:
+            assert available >= reserve, f"Not enough reserves. We have {available}, trade wants {reserve}"
+
+        trade.reserve_currency_allocated = reserve
+        self.adjust_reserves(trade.reserve_currency, -reserve)
+
+    def return_capital_to_reserves(self, trade: TradeExecution, underflow_check=True):
+        """Return capital to reserves after a sell."""
+        assert trade.is_sell()
+        self.adjust_reserves(trade.reserve_currency, +trade.executed_reserve)
+
     def has_unexecuted_trades(self) -> bool:
         """Do we have any trades that have capital allocated, but not executed yet."""
         return any([p.has_unexecuted_trades() for p in self.open_positions])
@@ -463,14 +607,21 @@ class State:
     def is_empty(self):
         return self.portfolio.is_empty()
 
-    def create_trade(self, ts: datetime.datetime, pair: TradingPairIdentifier, quantity: Decimal, assumed_price: USDollarAmount, trade_type: TradeType, reserve_currency: AssetIdentifier) -> Tuple[TradingPosition, TradeExecution]:
+    def create_trade(self,
+                     ts: datetime.datetime,
+                     pair: TradingPairIdentifier,
+                     quantity: Decimal,
+                     assumed_price: USDollarAmount,
+                     trade_type: TradeType,
+                     reserve_currency: AssetIdentifier,
+                     reserve_currency_price: USDollarAmount) -> Tuple[TradingPosition, TradeExecution]:
         """Creates a request for a new trade.
 
         If there is no open position, marks a position open.
 
         When the trade is created no balances are suff
         """
-        trade = self.portfolio.create_trade(ts, pair, quantity, assumed_price, trade_type, reserve_currency)
+        trade = self.portfolio.create_trade(ts, pair, quantity, assumed_price, trade_type, reserve_currency, reserve_currency_price)
         return trade
 
     def start_execution(self, ts: datetime.datetime, trade: TradeExecution, txid: str, nonce: int):
@@ -485,9 +636,9 @@ class State:
         assert position, f"Trade does not belong to an open position {trade}"
 
         if trade.is_buy():
-            value = trade.get_planned_value()
-            trade.allocate_reserves(ts, value)
-            self.portfolio.adjust_reserves(trade.reserve_currency, -value)
+            self.portfolio.move_capital_from_reserves_to_trade(trade)
+
+        trade.started_at = ts
 
         trade.txid = txid
         trade.nonce = nonce
@@ -497,9 +648,26 @@ class State:
         assert trade.get_status() == TradeStatus.started
         trade.broadcasted_at = broadcasted_at
 
-    def mark_trade_success(self, executed_at: datetime.datetime, trade: TradeExecution, executed_price: USDollarAmount, executed_amount: Decimal, lp_fees: USDollarAmount, gas_price: USDollarAmount, gas_used: Decimal, native_token_price: USDollarAmount):
+    def mark_trade_success(self, executed_at: datetime.datetime, trade: TradeExecution, executed_price: USDollarAmount, executed_amount: Decimal, executed_reserve: Decimal, lp_fees: USDollarAmount, gas_price: USDollarAmount, gas_used: Decimal, native_token_price: USDollarAmount):
         """"""
-        trade.mark_success(executed_at, executed_price, executed_amount, lp_fees, gas_price, gas_used, native_token_price)
+
+        position = self.portfolio.find_position_for_trade(trade)
+
+        if trade.is_buy():
+            assert executed_amount > 0
+        else:
+            assert executed_reserve > 0, f"Executed amount must be negative for sell, got {executed_amount}, {executed_reserve}"
+            assert executed_amount < 0
+
+        trade.mark_success(executed_at, executed_price, executed_amount, executed_reserve, lp_fees, gas_price, gas_used, native_token_price)
+
+        if trade.is_sell():
+            self.portfolio.return_capital_to_reserves(trade)
+
+        if position.can_be_closed():
+            # Move position to closed
+            del self.portfolio.open_positions[position.position_id]
+            self.portfolio.closed_positions[position.position_id] = position
 
     def mark_trade_failed(self, failed_at: datetime.datetime, trade: TradeExecution):
         """Unroll the allocated capital."""

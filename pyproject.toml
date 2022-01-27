@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "tradeexecutor"
 version = "0.1.0"
-description = "Oracle algorithm executor and P2P"
+description = "Trade executor for portfolio management on decentralised finance"
 authors = ["Mikko Ohtamaa <mikko@tradingstrategy.ai>"]
 license = "APGL"
 
