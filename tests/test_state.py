@@ -23,9 +23,21 @@ def weth() -> AssetIdentifier:
 
 
 @pytest.fixture
+def aave() -> AssetIdentifier:
+    """Mock some assets"""
+    return AssetIdentifier(ChainId.ethereum, "0x3", "AAVE", 18)
+
+
+@pytest.fixture
 def weth_usdc(usdc, weth) -> TradingPairIdentifier:
     """Mock some assets"""
-    return TradingPairIdentifier(weth, usdc, "0x2")
+    return TradingPairIdentifier(weth, usdc, "0x4")
+
+
+@pytest.fixture
+def aave_usdc(usdc, aave) -> TradingPairIdentifier:
+    """Mock some assets"""
+    return TradingPairIdentifier(aave, usdc, "0x5")
 
 
 @pytest.fixture
@@ -324,5 +336,46 @@ def test_buy_buy_sell_sell(usdc, weth, weth_usdc, start_ts):
     assert len(position.trades) == 4
     assert len(state.portfolio.open_positions) == 0
 
+
+def test_buy_sell_two_positions(usdc, weth_usdc, aave_usdc, start_ts):
+    """Open two parallel positions."""
+
+    state = State()
+    state.update_reserves([ReservePosition(usdc, Decimal(1000), 1.0, start_ts)])
+    trader = TestTrader(state)
+
+    # 0: start
+    assert state.portfolio.get_total_equity() == 1000.0
+
+    # 1: buy 1
+    position, trade = trader.buy(weth_usdc, Decimal(0.1), 1700)
+    assert state.portfolio.get_total_equity() == 998.3
+    assert position.get_equity_for_position() == pytest.approx(Decimal(0.099))
+
+    # 2: buy 2
+    position, trade = trader.buy(aave_usdc, Decimal(0.1), 200)
+    assert position.get_equity_for_position() == pytest.approx(Decimal(0.099 * 2))
+
+    assert len(state.portfolio.open_positions) == 2
+    assert state.portfolio.get_total_equity() == 996.6
+
+    # Sell all accrued tokens in two trades
+    half_1 = position.get_equity_for_position() / 2
+    half_2 = position.get_equity_for_position() - half_1
+
+    position, trade = trader.sell(weth_usdc, half_1, 1700)
+    assert trade.executed_quantity == -half_1
+    assert trade.get_equity_for_position() == -half_1
+    assert position.get_equity_for_position() == half_2
+
+    trader.sell(weth_usdc, half_2, 1700)
+
+    assert position.get_equity_for_position() == 0
+    assert len(state.portfolio.open_positions) == 0
+    assert state.portfolio.get_total_equity() == pytest.approx(993.234)
+
+    # All done
+    assert len(position.trades) == 4
+    assert len(state.portfolio.open_positions) == 0
 
 
