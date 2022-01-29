@@ -1,3 +1,9 @@
+"""Trade executor state.
+
+The whoe application date can be dumped and loaded as JSON.
+
+Any datetime must be naive, without timezone, and is assumed to be UTC.
+"""
 import enum
 from dataclasses import dataclass, field
 import datetime
@@ -19,6 +25,10 @@ class TradeType(enum.Enum):
     rebalance = "rebalance"
     stop_loss = "stop_loss"
     take_profit = "take_profit"
+
+
+class NotEnoughMoney(Exception):
+    """We try to allocate reserve for a buy, but do not have enough it."""
 
 
 class TradeStatus(enum.Enum):
@@ -54,14 +64,19 @@ class AssetIdentifier:
     We duplicate data here to make sure we have a persistent record that helps to diagnose the sisues.
     """
 
-    #: Smart contract address of the asset
-    address: str
-
     #: See https://chainlist.org/
     chain_id: int
 
+    #: Smart contract address of the asset
+    address: str
+
     token_symbol: str
     decimals: Optional[int] = None
+
+    def __post_init__(self):
+        assert type(self.address) == str, f"Got address {self.address} as {type(self.address)}"
+        assert self.address.startswith("0x")
+        assert type(self.chain_id) == int
 
     def get_identifier(self) -> str:
         """Assets are identified by their smart contract address."""
@@ -160,7 +175,7 @@ class TradeExecution:
         assert self.planned_quantity != 0
         assert self.planned_price > 0
         assert self.planned_reserve >= 0
-        assert self.opened_at.tzinfo == datetime.timezone.utc
+        assert self.opened_at.tzinfo is None, f"We got a datetime {self.opened_at} with tzinfo {self.opened_at.tzinfo}"
 
     def is_sell(self):
         return self.planned_quantity < 0
@@ -304,7 +319,7 @@ class TradeExecution:
         assert self.get_status() == TradeStatus.broadcasted
         assert isinstance(executed_quantity, Decimal)
         assert type(executed_price) == float
-        assert executed_at.tzinfo == datetime.timezone.utc
+        assert executed_at.tzinfo is None
         self.executed_at = executed_at
         self.executed_quantity = executed_quantity
         self.executed_reserve = executed_reserve
@@ -317,7 +332,7 @@ class TradeExecution:
 
     def mark_failed(self, failed_at: datetime.datetime):
         assert self.get_status() == TradeStatus.broadcasted
-        assert failed_at.tzinfo == datetime.timezone.utc
+        assert failed_at.tzinfo is None
         self.failed_at = failed_at
 
 
@@ -391,11 +406,6 @@ class TradingPosition:
         """Get the position value using the latest revaluation pricing."""
         return self.calculate_value_using_price(self.last_token_price, self.last_reserve_price)
 
-    def revalue(self, ts: datetime.datetime, price: USDollarAmount):
-        assert isinstance(ts, datetime.datetime)
-        self.last_token_price = price
-        self.last_pricing_at = ts
-
     def open_trade(self,
                    ts: datetime.datetime,
                    quantity: Decimal,
@@ -467,7 +477,8 @@ class Portfolio:
     closed_positions: Dict[int, TradingPosition] = field(default_factory=dict)
 
     def is_empty(self):
-        return len(self.open_positions) == 0 and len(self.reserves) == 0 and len(self.past_positions) == 0
+        """This portfolio has no open or past trades or any reserves."""
+        return len(self.open_positions) == 0 and len(self.reserves) == 0 and len(self.closed_positions) == 0
 
     def get_open_position_for_pair(self, pair: TradingPairIdentifier) -> TradingPosition:
         return self.open_positions.get(pair.pool_address)
@@ -525,27 +536,19 @@ class Portfolio:
         """Get the value of the portfolio based on the latest pricing."""
         return self.get_open_position_equity() + self.get_current_cash()
 
-    def revalue_portfolio(self, timestamp: datetime.datetime, revaluation_method: Callable) -> List[RevalueEvent]:
-        """Revalue the assets based on the latest trading universe prices.
-
-        Mutates the `TradingPosition` objects in-place.
-        """
-        assert isinstance(timestamp, datetime.datetime)
-        events = []
-        # TODO: Revalue reserves after we have stablecoin price feeds
-        for position in self.open_positions.values():
-            old_price = position.last_usd_price
-            new_price = revaluation_method(timestamp, position)
-            events.append(RevalueEvent(timestamp, position.quantiy, old_price, new_price))
-            position.revalue(timestamp, new_price)
-        return events
-
     def find_position_for_trade(self, trade) -> Optional[TradingPosition]:
         """Find a position tha trade belongs for."""
         return self.open_positions[trade.position_id]
 
     def get_reserve_position(self, asset: AssetIdentifier) -> ReservePosition:
         return self.reserves[asset.get_identifier()]
+
+    def get_equity_for_pair(self, pair: TradingPairIdentifier) -> Decimal:
+        """Return how much equity allocation we have in a certain trading pair."""
+        position = self.get_position_by_trading_pair(pair)
+        if position is None:
+            return 0
+        return position.get_equity_for_position()
 
     def adjust_reserves(self, asset: AssetIdentifier, amount: Decimal):
         """Remove currency from reserved"""
@@ -566,7 +569,8 @@ class Portfolio:
         assert abs(float(reserve) - trade.get_planned_value()) < 0.01, f"Trade {trade}: Planned value {trade.get_planned_value()}, but wants to allocate reserve currency for {reserve}"
 
         if underflow_check:
-            assert available >= reserve, f"Not enough reserves. We have {available}, trade wants {reserve}"
+            if available < reserve:
+                raise NotEnoughMoney(f"Not enough reserves. We have {available}, trade wants {reserve}")
 
         trade.reserve_currency_allocated = reserve
         self.adjust_reserves(trade.reserve_currency, -reserve)
@@ -593,6 +597,28 @@ class Portfolio:
         for r in new_reserves:
             self.reserves[r.get_identifier()] = r
 
+    def check_for_nonce_reuse(self, nonce: int):
+        """A helper assert to see we are not generating invalid transactions somewhere."""
+        for p in self.open_positions.values():
+            for t in p.trades.values():
+                assert t.nonce != nonce
+
+        for p in self.closed_positions.values():
+            for t in p.trades.values():
+                assert t.nonce != nonce
+
+    def revalue_positions(self, valuation_method: Callable):
+        """Revalue all open positions in the portfolio.
+
+        Reserves are not revalued.
+        """
+        for p in self.open_positions.values():
+            pair = p.pair
+            ts, price = valuation_method(pair)
+            assert ts.tzinfo is None
+            p.last_pricing_at = ts
+            p.last_token_price = price
+
 
 @dataclass_json
 @dataclass
@@ -604,7 +630,8 @@ class State:
     #: Strategy can store its internal thinking over different signals
     strategy_thinking: dict = field(default_factory=dict)
 
-    def is_empty(self):
+    def is_empty(self) -> bool:
+        """This state has no open or past trades or reserves."""
         return self.portfolio.is_empty()
 
     def create_trade(self,
@@ -634,6 +661,8 @@ class State:
 
         position = self.portfolio.find_position_for_trade(trade)
         assert position, f"Trade does not belong to an open position {trade}"
+
+        self.portfolio.check_for_nonce_reuse(nonce)
 
         if trade.is_buy():
             self.portfolio.move_capital_from_reserves_to_trade(trade)
@@ -676,6 +705,14 @@ class State:
 
     def update_reserves(self, new_reserves: List[ReservePosition]):
         self.portfolio.update_reserves(new_reserves)
+
+    def revalue_positions(self, valuation_method: Callable):
+        """Revalue all open positions in the portfolio.
+
+        Reserves are not revalued.
+        """
+        self.portfolio.revalue_positions(valuation_method)
+
 
 
 

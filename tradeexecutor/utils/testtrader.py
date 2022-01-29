@@ -16,7 +16,7 @@ class TestTrader:
     def __init__(self, state: State):
         self.state = state
         self.nonce = 1
-        self.ts = datetime.datetime(2022, 1, 1, tzinfo=datetime.timezone.utc)
+        self.ts = datetime.datetime(2022, 1, 1, tzinfo=None)
 
         self.lp_fees = 2.50  # $2.5
         self.gas_units_consumed = 150_000  # 150k gas units per swap

@@ -1,3 +1,5 @@
+import datetime
+
 # Wait until NumPy supports Python 3.10 on macOS
 # from typing import TypeAlias
 
@@ -7,4 +9,16 @@
 #: amount in the US dollar, mostly for being human readable purposes.
 class USDollarAmount(float):
     pass
+
+
+class NaiveDatetime(datetime.datetime):
+    """Always encode datetime with timezones.
+
+    By default datetime.datetime(ts) deserialises to a local timezone.
+    We want to force UTC every to make sure state is transferrable between different computers.
+    """
+    def __init__(self, *args, **kwargs):
+        """"""
+        if len(args) == 1:
+            pass
 
