@@ -9,12 +9,14 @@ license = "APGL"
 python = "^3.9"
 #tradingstrategy = "^0.4.0"
 tradingstrategy = {path = "../client", develop = true}
+smart_contracts_for_testing = {path = "../smart-contracts-for-testing", develop = true}
 typer = "^0.4.0"
 colorama = "^0.4.4"
 pyramid = "^2.0"
 coloredlogs = "^15.0.1"
 waitress = "^2.0.0"
 requests = "^2.27.1"
+web3 = "^5.26.0"
 
 [tool.poetry.dev-dependencies]
 pytest = "^6.2.5"

@@ -712,7 +712,3 @@ class State:
         Reserves are not revalued.
         """
         self.portfolio.revalue_positions(valuation_method)
-
-
-
-

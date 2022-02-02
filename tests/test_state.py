@@ -8,7 +8,7 @@ import pytest
 from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
 from tradeexecutor.state.state import State, AssetIdentifier, TradingPairIdentifier, ReservePosition, TradeType, \
     TradeStatus, Portfolio, TradeExecution, TradingPosition, NotEnoughMoney
-from tradeexecutor.utils.testtrader import TestTrader
+from tradeexecutor.testing.trader import TestTrader
 from tradingstrategy.chain import ChainId
 from tradingstrategy.types import USDollarAmount
 
