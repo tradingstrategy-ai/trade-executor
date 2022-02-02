@@ -2,6 +2,8 @@ import os
 import datetime
 from pathlib import Path
 
+import pytest
+
 from tradeexecutor.state.state import State
 
 from tradeexecutor.strategy.bootstrap import bootstrap_strategy
@@ -10,6 +12,7 @@ from tradeexecutor.utils.timer import timed_task
 from tradingstrategy.universe import Universe
 
 
+@pytest.mark.skip(msg="Not ready")
 def test_pancake_simple(strategy_folder, persistent_test_client):
     """Tests a QSTrader based strategy runner that is more or less real."""
     clock_now = datetime.datetime(2022, 1, 1, tzinfo=datetime.timezone.utc)

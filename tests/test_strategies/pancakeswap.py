@@ -8,11 +8,11 @@ from typing import Dict
 import pandas as pd
 
 from qstrader.alpha_model.alpha_model import AlphaModel
-from tradeexecutor.strategy.qstrader import QSTraderLiveTrader
+
+from tradeexecutor.strategy.qstrader.livetrader import QSTraderLiveTrader
 from tradeexecutor.strategy.runner import Dataset
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId
-from tradingstrategy.exchange import ExchangeUniverse
 from tradingstrategy.frameworks.qstrader import prepare_candles_for_qstrader
 from tradingstrategy.liquidity import GroupedLiquidityUniverse, LiquidityDataUnavailable
 from tradingstrategy.pair import filter_for_exchanges, PandasPairUniverse, DEXPair

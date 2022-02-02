@@ -426,7 +426,7 @@ class TradingPosition:
             opened_at=ts,
             planned_quantity=quantity,
             planned_price=assumed_price,
-            planned_reserve=Decimal(quantity * assumed_price) if quantity > 0 else 0,
+            planned_reserve=quantity * Decimal(assumed_price) if quantity > 0 else 0,
             reserve_currency=self.reserve_currency,
         )
         self.trades[trade.trade_id] = trade
@@ -622,6 +622,18 @@ class Portfolio:
             assert ts.tzinfo is None
             p.last_pricing_at = ts
             p.last_token_price = price
+
+    def get_default_reserve_currency(self) -> Tuple[AssetIdentifier, USDollarAmount]:
+        """Gets the default reserve currency associated with this state.
+
+        For strategies that use only one reserve currency.
+        This is the first in the reserve currency list.
+        """
+
+        assert len(self.reserves) > 0, "Portfolio has no reserve currencies"
+
+        res_pos = next(iter(self.reserves.values()))
+        return res_pos.asset, res_pos.reserve_token_price
 
 
 @dataclass_json

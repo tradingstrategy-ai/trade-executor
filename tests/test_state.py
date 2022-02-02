@@ -54,7 +54,7 @@ def single_asset_portfolio(start_ts, weth_usdc, weth, usdc) -> Portfolio:
     """Creates a mock portfolio that holds some reserve currency and WETH"""
     p = Portfolio()
 
-    reserve = ReservePosition(usdc, Decimal(500), 1.0, start_ts)
+    reserve = ReservePosition(usdc, Decimal(500), start_ts, 1.0, start_ts)
     p.reserves[reserve.get_identifier()] = reserve
 
     trade = TradeExecution(
@@ -111,7 +111,7 @@ def test_empty_state():
 def test_update_reserves(usdc, weth, weth_usdc, start_ts):
     """Set currency reserves for a portfolio."""
     state = State()
-    state.update_reserves([ReservePosition(usdc, Decimal(1000), 1.0, start_ts)])
+    state.update_reserves([ReservePosition(usdc, Decimal(1000), start_ts, 1.0, start_ts)])
     assert state.portfolio.get_current_cash() == 1_000
     assert state.portfolio.get_total_equity() == 1_000
 
@@ -119,7 +119,7 @@ def test_update_reserves(usdc, weth, weth_usdc, start_ts):
 def test_single_buy(usdc, weth, weth_usdc, start_ts):
     """Do a single token purchase."""
     state = State()
-    state.update_reserves([ReservePosition(usdc, Decimal(1000), 1.0, start_ts)])
+    state.update_reserves([ReservePosition(usdc, Decimal(1000), start_ts, 1.0, start_ts)])
 
     # #1 Planning stage
     # Buy 0.1 ETH at 1700 USD/ETH
@@ -292,7 +292,7 @@ def test_buy_buy_sell_sell(usdc, weth, weth_usdc, start_ts):
     """Execute four trades on a position."""
 
     state = State()
-    state.update_reserves([ReservePosition(usdc, Decimal(1000), 1.0, start_ts)])
+    state.update_reserves([ReservePosition(usdc, Decimal(1000), start_ts, 1.0, start_ts)])
     trader = TestTrader(state)
 
     # 0: start
@@ -344,7 +344,7 @@ def test_buy_sell_two_positions(usdc, weth_usdc, aave_usdc, start_ts):
     """Open two parallel positions."""
 
     state = State()
-    state.update_reserves([ReservePosition(usdc, Decimal(1000), 1.0, start_ts)])
+    state.update_reserves([ReservePosition(usdc, Decimal(1000), start_ts, 1.0, start_ts)])
     trader = TestTrader(state)
 
     # 0: start
@@ -375,7 +375,7 @@ def test_not_enough_cash(usdc, weth_usdc, start_ts):
     """Try to buy too much at once."""
 
     state = State()
-    state.update_reserves([ReservePosition(usdc, Decimal(1000), 1.0, start_ts)])
+    state.update_reserves([ReservePosition(usdc, Decimal(1000), start_ts, 1.0, start_ts)])
     trader = TestTrader(state)
 
     # 0: start
@@ -390,7 +390,7 @@ def test_buy_sell_buy(usdc, weth, weth_usdc, start_ts):
     """Execute three trades on a position."""
 
     state = State()
-    state.update_reserves([ReservePosition(usdc, Decimal(1000), 1.0, start_ts)])
+    state.update_reserves([ReservePosition(usdc, Decimal(1000), start_ts, 1.0, start_ts)])
     trader = TestTrader(state)
 
     # 0: start
@@ -420,7 +420,7 @@ def test_revalue(usdc, weth_usdc, start_ts: datetime.datetime):
     """Value the portfolio based on the market."""
 
     state = State()
-    state.update_reserves([ReservePosition(usdc, Decimal(1000), 1.0, start_ts)])
+    state.update_reserves([ReservePosition(usdc, Decimal(1000), start_ts, 1.0, start_ts)])
     trader = TestTrader(state)
 
     # 0: start
@@ -431,7 +431,7 @@ def test_revalue(usdc, weth_usdc, start_ts: datetime.datetime):
     assert state.portfolio.get_total_equity() == 998.3
     assert position.get_value() == pytest.approx(168.3)
 
-    revalue_date = datetime.datetime(2020, 1, 2, tzinfo=datetime.timezone.utc)
+    revalue_date = datetime.datetime(2020, 1, 2, tzinfo=None)
 
     def value_asset(pair: TradingPairIdentifier) -> Tuple[datetime.datetime, USDollarAmount]:
         # ETH drops 50%
@@ -448,7 +448,7 @@ def test_revalue(usdc, weth_usdc, start_ts: datetime.datetime):
 def test_single_buy_failed(usdc, weth, weth_usdc, start_ts):
     """A single token purchase tx fails."""
     state = State()
-    state.update_reserves([ReservePosition(usdc, Decimal(1000), 1.0, start_ts)])
+    state.update_reserves([ReservePosition(usdc, Decimal(1000), start_ts, 1.0, start_ts)])
 
     # #1 Planning stage
     # Buy 0.1 ETH at 1700 USD/ETH
@@ -482,18 +482,14 @@ def test_single_buy_failed(usdc, weth, weth_usdc, start_ts):
     gas_units_consumed = 150_000  # 150k gas units per swap
     gas_price = 15 * 10**9  # 15 Gwei/gas unit
     native_token_price = 1.9  # 1.9 USD/ETH
-    state.mark_failed(ts, trade)
+    state.mark_trade_failed(ts, trade)
 
     assert trade.get_status() == TradeStatus.failed
-    assert trade.get_value() == pytest.approx(value_after_trade)
-    assert trade.reserve_currency_allocated == 0
-    assert trade.get_gas_fees_paid() == pytest.approx(0.004274999999999999)
-    assert trade.get_fees_paid() == pytest.approx(0.004274999999999999 + 2.50)
 
     assert not position.has_unexecuted_trades()
     assert not position.has_planned_trades()
-    assert state.portfolio.get_current_cash() == 830  # Trades being executed do not show in the portfolio value
-    assert state.portfolio.get_total_equity() == 983  # Trades being executed do not show in the portfolio value7
+    assert state.portfolio.get_current_cash() == 1000.0  # Trades being executed do not show in the portfolio value
+    assert state.portfolio.get_total_equity() == 1000.0  # Trades being executed do not show in the portfolio value7
 
     assert len(state.portfolio.open_positions) == 1
 
@@ -504,7 +500,7 @@ def test_serialize_state(usdc, weth_usdc, start_ts: datetime.datetime):
     patch_dataclasses_json()
 
     state = State()
-    state.update_reserves([ReservePosition(usdc, Decimal(1000), 1.0, start_ts)])
+    state.update_reserves([ReservePosition(usdc, Decimal(1000), start_ts, 1.0, start_ts)])
     trader = TestTrader(state)
 
     # 1: buy 1

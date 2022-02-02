@@ -48,13 +48,16 @@ class DummyMATICUSDCStrategyRunner(StrategyRunner):
     def on_clock(self, clock: datetime.datetime, universe: Universe, state: State):
         """Always buy MATIC/USDC."""
         # Buy 100 MATIC
+
         quickswap = universe.exchanges[0]
         assert quickswap.exchange_slug == "quickswap"
         pair = universe.pairs.get_single()
         assert pair.base_token_symbol == "WMATIC"
         assert pair.quote_token_symbol == "USDC"
+
         # Buy 100 MATIC
-        instruction = create_trade(clock, state, pair, Decimal(100))
+        reserve_currency = state.portfolio.get_default_reserve_currency()
+        instruction = create_trade(clock, state, pair, quantity=Decimal(100), assumed_price=2.7)
         return [instruction]
 
 

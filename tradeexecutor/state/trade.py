@@ -30,17 +30,18 @@ def resolve_pair_and_address_asset(pair: DEXPair) -> TradingPairIdentifier:
     return trade_pair
 
 
-def create_trade(clock_at: datetime.datetime, state: State, pair: DEXPair, quantity: Decimal, trade_type: TradeType=TradeType.rebalance) -> TradeExecution:
+def create_trade(clock_at: datetime.datetime, state: State, pair: DEXPair, quantity: Decimal, assumed_price: float, trade_type: TradeType=TradeType.rebalance) -> TradeExecution:
     """Helper to create a trade instructions"""
 
-    trade_id = state.allocate_trade_id()
-    trading_pair = resolve_pair_and_address_asset(pair)
-    execution = TradeExecution(
-        trade_id=trade_id,
-        trade_type=trade_type,
-        clock_at=clock_at,
-        trading_pair=trading_pair,
-        requested_quantity=quantity,
-        started_at=datetime.datetime.utcnow(),
-    )
-    return execution
+    reserve_currency, reserve_currency_price = state.portfolio.get_default_reserve_currency()
+
+    position, trade = state.create_trade(
+        ts=clock_at,
+        pair=pair,
+        quantity=quantity,
+        assumed_price=assumed_price,
+        trade_type=TradeType.rebalance,
+        reserve_currency=reserve_currency,
+        reserve_currency_price=reserve_currency_price)
+
+    return trade

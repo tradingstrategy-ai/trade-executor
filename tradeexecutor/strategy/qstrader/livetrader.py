@@ -1,20 +1,19 @@
-from abc import ABC, abstractmethod
 import datetime
 from contextlib import AbstractContextManager
 from typing import List, Type
 import logging
 
 import pandas as pd
-
-from qstrader.alpha_model.alpha_model import AlphaModel
 from qstrader.asset.universe.static import StaticUniverse
 from qstrader.data.backtest_data_handler import BacktestDataHandler
-from tradeexecutor.state.state import State, TradeExecution
-from tradeexecutor.strategy.qstrader.pcm import PortfolioConstructionModel
-from tradeexecutor.strategy.runner import StrategyRunner, PreflightCheckFailed
+
 from tradingstrategy.client import Client
 from tradingstrategy.frameworks.qstrader import TradingStrategyDataSource
 from tradingstrategy.universe import Universe
+
+from tradeexecutor.state.state import State, TradeExecution
+from tradeexecutor.strategy.qstrader.pcm import PortfolioConstructionModel
+from tradeexecutor.strategy.runner import StrategyRunner, PreflightCheckFailed
 
 
 logger = logging.getLogger(__name__)
