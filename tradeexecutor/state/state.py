@@ -73,6 +73,9 @@ class AssetIdentifier:
     token_symbol: str
     decimals: Optional[int] = None
 
+    def __str__(self):
+        return f"<{self.token_symbol} at {self.address}>"
+
     def __post_init__(self):
         assert type(self.address) == str, f"Got address {self.address} as {type(self.address)}"
         assert self.address.startswith("0x")
@@ -106,6 +109,7 @@ class TradingPairIdentifier:
 class ReservePosition:
     asset: AssetIdentifier
     quantity: Decimal
+    last_sync_at: datetime.datetime
 
     reserve_token_price: USDollarAmount
     last_pricing_at: datetime.datetime

@@ -1,3 +1,4 @@
+import logging
 import dataclasses
 import datetime
 from decimal import Decimal
@@ -7,11 +8,10 @@ from eth_typing import HexAddress
 from web3 import Web3
 
 from smart_contracts_for_testing.portfolio import fetch_erc20_balances_decimal, DecimalisedHolding
-from tradeexecutor.state.state import State, Portfolio, AssetIdentifier, ReservePosition
-from tradingstrategy.pair import PairUniverse
+from tradeexecutor.state.state import Portfolio, AssetIdentifier, ReservePosition
 
 
-ReserveMap = Dict[AssetIdentifier, Decimal]
+logger = logging.getLogger(__name__)
 
 
 @dataclasses.dataclass
@@ -29,17 +29,13 @@ def update_wallet_balances(web3: Web3, address: HexAddress) -> Dict[HexAddress, 
     return fetch_erc20_balances_decimal(web3, address)
 
 
-def map_balances_to_trading_pairs(balances: Dict[HexAddress, Decimal], portfolio: Portfolio) -> Dict[HexAddress, Decimal]:
-    """Get the balances for each """
-
-
 def sync_reserves(
         web3: Web3,
         tick: int,
         clock: datetime.datetime,
         wallet_address: HexAddress,
         current_reserves: List[ReservePosition],
-        supported_reserve_currencies: List[AssetIdentifier]) -> Tuple[ReserveMap, List[ReserveUpdateEvent]]:
+        supported_reserve_currencies: List[AssetIdentifier]) -> List[ReserveUpdateEvent]:
     """Check the address for any incoming stablecoin transfers to see how much cash we have."""
 
     our_chain_id = web3.eth.chain_id
@@ -50,8 +46,6 @@ def sync_reserves(
     reserves_per_token = {r.asset.address: r for r in current_reserves}
 
     events: ReserveUpdateEvent = []
-
-    new_reserves: ReserveMap = {}
 
     for currency in supported_reserve_currencies:
         assert currency.chain_id == our_chain_id, f"Asset expects chain_id {currency.chain_id}, currently connected to {our_chain_id}"
@@ -74,7 +68,33 @@ def sync_reserves(
                 updated_at=clock
             )
             events.append(evt)
+            logger.info("Reserve currency update detected. Asset: %s, past: %s, new: %s", evt.asset, evt.past_balance, evt.new_balance)
 
-            new_reserves[currency.address] = decimal_holding.value
+    return events
 
-    return new_reserves, events
+
+def sync_portfolio(portfolio: Portfolio, new_reserves: List[ReserveUpdateEvent], default_price=1.0):
+    """Update reserves in the portfolio.
+
+    :param default_price: Set the reserve currency price for new reserves.
+    """
+
+    for evt in new_reserves:
+
+        res_pos = portfolio.reserves.get(evt.asset.get_identifier())
+        if res_pos is not None:
+            # Update existing
+            res_pos.quantity = evt.new_balance
+            res_pos.last_sync_at = evt.updated_at
+            logger.info("Portfolio reserve synced. Asset: %s", evt.asset)
+        else:
+            # Set new
+            res_pos = ReservePosition(
+                asset=evt.asset,
+                quantity=evt.new_balance,
+                last_sync_at=evt.updated_at,
+                reserve_token_price=default_price,
+                last_pricing_at=evt.updated_at,
+            )
+            portfolio.reserves[res_pos.get_identifier()] = res_pos
+            logger.info("Portfolio reserve created. Asset: %s", evt.asset)
