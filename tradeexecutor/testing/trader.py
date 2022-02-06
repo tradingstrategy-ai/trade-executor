@@ -24,8 +24,8 @@ class TestTrader:
 
         self.native_token_price = 1
 
-    def create_and_execute(self, pair: TradingPairIdentifier, quantity: Decimal, price: float, price_impact=0.99) -> Tuple[TradePosition, TradeExecution]:
-
+    def create(self, pair: TradingPairIdentifier, quantity: Decimal, price: float, price_impact=0.99) -> Tuple[TradePosition, TradeExecution]:
+        """Open a new trade."""
         # 1. Plan
         position, trade = self.state.create_trade(
             ts=self.ts,
@@ -37,6 +37,19 @@ class TestTrader:
             reserve_currency_price=1.0)
 
         self.ts += datetime.timedelta(seconds=1)
+        return position, trade
+
+    def create_and_execute(self, pair: TradingPairIdentifier, quantity: Decimal, price: float, price_impact=0.99) -> Tuple[TradePosition, TradeExecution]:
+
+        # 1. Plan
+        position, trade = self.create(
+            ts=self.ts,
+            pair=pair,
+            quantity=quantity,
+            assumed_price=price,
+            trade_type=TradeType.rebalance,
+            reserve_currency=pair.quote,
+            reserve_currency_price=1.0)
 
         # 2. Capital allocation
         txid = hex(self.nonce)
@@ -64,6 +77,9 @@ class TestTrader:
 
     def buy(self, pair, quantity, price) -> Tuple[TradePosition, TradeExecution]:
         return self.create_and_execute(pair, quantity, price)
+
+    def prepare_buy(self, pair, quantity, price) -> Tuple[TradePosition, TradeExecution]:
+        return self.create(pair, quantity, price)
 
     def sell(self, pair, quantity, price) -> Tuple[TradePosition, TradeExecution]:
         return self.create_and_execute(pair, -quantity, price)

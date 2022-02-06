@@ -8,11 +8,15 @@ import enum
 from dataclasses import dataclass, field
 import datetime
 from decimal import Decimal
+from itertools import chain
 from typing import List, Optional, Dict, Callable, Iterable, Tuple
 
 from dataclasses_json import dataclass_json
 
 # from tradingstrategy.pair import PandasPairUniverse, DEXPair
+from eth_typing import HexAddress
+from hexbytes import HexBytes
+
 from .types import USDollarAmount
 
 
@@ -68,7 +72,7 @@ class AssetIdentifier:
     chain_id: int
 
     #: Smart contract address of the asset
-    address: str
+    address: HexAddress
 
     token_symbol: str
     decimals: Optional[int] = None
@@ -121,6 +125,40 @@ class ReservePosition:
         return float(self.quantity) * self.reserve_token_price
 
 
+@dataclass_json
+@dataclass
+class BlockchainTransactionInfo:
+    """Information about a blockchain level transaction."""
+
+    #: Contract we called. Usually the Uniswap v2 router address.
+    contract_address: Optional[HexAddress] = None
+
+    #: Function we called
+    function_selector: Optional[str] = None
+
+    #: Arguments we passed to the smart contract function
+    args: Optional[list] = None
+
+    #: Blockchain bookkeeping
+    tx_hash: Optional[HexBytes] = None
+
+    #: Blockchain bookkeeping
+    nonce: Optional[int] = None
+
+    #: Raw Ethereum transaction dict
+    details: Optional[Dict] = None
+
+    #: Raw bytes of the signed transaction
+    signed_bytes: Optional[HexBytes] = None
+
+    included_in_block: Optional[int] = None
+    included_at: Optional[datetime.datetime] = None
+
+    #: Gas consumed by the tx
+    realised_gas_units_consumed: Optional[int] = None
+
+    #: Gas price for the tx in gwei
+    realised_gas_price: Optional[int] = None
 
 
 @dataclass_json
@@ -158,19 +196,11 @@ class TradeExecution:
     #: LP fees estimated in the USD
     lp_fees_paid: Optional[USDollarAmount] = None
 
-    #: Gas consumed by the tx
-    gas_units_consumed: Optional[int] = None
-
-    #: Gas price for the tx in gwei
-    gas_price: Optional[int] = None
+    #: Associated blockchain level details
+    tx_info: Optional[BlockchainTransactionInfo] = None
 
     #: USD price per blockchain native currency unit, at the time of execution
     native_token_price: Optional[USDollarAmount] = None
-
-    # Blockchain bookkeeping
-    txid: Optional[str] = None
-    nonce: Optional[int] = None
-
     # Trade retries
     retry_of: Optional[int] = None
 
@@ -484,6 +514,10 @@ class Portfolio:
         """This portfolio has no open or past trades or any reserves."""
         return len(self.open_positions) == 0 and len(self.reserves) == 0 and len(self.closed_positions) == 0
 
+    def get_all_positions(self) -> Iterable[TradingPosition]:
+        """Get open and closed positions."""
+        return chain(self.open_positions.values(), self.closed_positions.values())
+
     def get_open_position_for_pair(self, pair: TradingPairIdentifier) -> TradingPosition:
         return self.open_positions.get(pair.pool_address)
 
@@ -602,14 +636,14 @@ class Portfolio:
             self.reserves[r.get_identifier()] = r
 
     def check_for_nonce_reuse(self, nonce: int):
-        """A helper assert to see we are not generating invalid transactions somewhere."""
-        for p in self.open_positions.values():
-            for t in p.trades.values():
-                assert t.nonce != nonce
+        """A helper assert to see we are not generating invalid transactions somewhere.
 
-        for p in self.closed_positions.values():
+        :raise: AssertionError
+        """
+        for p in self.get_all_positions():
             for t in p.trades.values():
-                assert t.nonce != nonce
+                if t.tx_info:
+                    assert t.tx_info.nonce != nonce
 
     def revalue_positions(self, valuation_method: Callable):
         """Revalue all open positions in the portfolio.
@@ -634,6 +668,13 @@ class Portfolio:
 
         res_pos = next(iter(self.reserves.values()))
         return res_pos.asset, res_pos.reserve_token_price
+
+    def get_all_trades(self) -> Iterable[TradeExecution]:
+        """Iterate through all trades: completed, failed and in progress"""
+        pos: TradingPosition
+        for pos in zip(self.open_positions.values(), self.closed_positions.values()):
+            for t in pos.trades:
+                yield t
 
 
 @dataclass_json
@@ -728,3 +769,4 @@ class State:
         Reserves are not revalued.
         """
         self.portfolio.revalue_positions(valuation_method)
+
