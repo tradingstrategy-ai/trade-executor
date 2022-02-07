@@ -204,6 +204,12 @@ class TradeExecution:
     # Trade retries
     retry_of: Optional[int] = None
 
+    def __repr__(self):
+        if self.is_buy():
+            return f"<Buy {self.planned_quantity} {self.pair.base.token_symbol} at {self.planned_price}>"
+        else:
+            return f"<Sell {self.planned_quantity} {self.pair.base.token_symbol} at {self.planned_price}>"
+
     def __post_init__(self):
         assert self.trade_id > 0
         assert self.planned_quantity != 0
@@ -591,6 +597,8 @@ class Portfolio:
     def adjust_reserves(self, asset: AssetIdentifier, amount: Decimal):
         """Remove currency from reserved"""
         reserve = self.get_reserve_position(asset)
+        assert reserve, f"No reserves available for {asset}"
+        assert reserve.quantity, f"Reserve quantity missing for {asset}"
         reserve.quantity += amount
 
     def move_capital_from_reserves_to_trade(self, trade: TradeExecution, underflow_check=True):
@@ -643,7 +651,7 @@ class Portfolio:
         for p in self.get_all_positions():
             for t in p.trades.values():
                 if t.tx_info:
-                    assert t.tx_info.nonce != nonce
+                    assert t.tx_info.nonce != nonce, f"Nonce {nonce} is already being used by trade {t} with txinfo {t.tx_info}"
 
     def revalue_positions(self, valuation_method: Callable):
         """Revalue all open positions in the portfolio.

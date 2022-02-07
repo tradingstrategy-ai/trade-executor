@@ -14,10 +14,12 @@ from web3 import EthereumTesterProvider, Web3
 from web3.contract import Contract
 
 from smart_contracts_for_testing.abi import get_deployed_contract
+from smart_contracts_for_testing.hotwallet import HotWallet
 from smart_contracts_for_testing.token import create_token
 from smart_contracts_for_testing.uniswap_v2 import UniswapV2Deployment, deploy_uniswap_v2_like, deploy_trading_pair, \
     estimate_price
-from tradeexecutor.ethereum.execution import prepare_swaps, broadcast, wait_trades_to_complete, resolve_trades
+from tradeexecutor.ethereum.execution import prepare_swaps, broadcast, wait_trades_to_complete, resolve_trades, \
+    approve_tokens, confirm_approvals
 from tradeexecutor.ethereum.wallet import sync_reserves, sync_portfolio
 from tradeexecutor.state.state import AssetIdentifier, Portfolio, State, TradingPairIdentifier, TradeStatus
 from tradeexecutor.testing.trader import TestTrader
@@ -140,7 +142,7 @@ def supported_reserves(usdc) -> List[AssetIdentifier]:
 
 
 @pytest.fixture()
-def hot_wallet(web3: Web3, usdc_token: Contract, hot_wallet_private_key: HexBytes, deployer: HexAddress) -> LocalAccount:
+def hot_wallet(web3: Web3, usdc_token: Contract, hot_wallet_private_key: HexBytes, deployer: HexAddress) -> HotWallet:
     """Our trading Ethereum account.
 
     Start with 10,000 USDC cash and 2 ETH.
@@ -148,7 +150,9 @@ def hot_wallet(web3: Web3, usdc_token: Contract, hot_wallet_private_key: HexByte
     account = Account.from_key(hot_wallet_private_key)
     web3.eth.send_transaction({"from": deployer, "to": account.address, "value": 2*10**18})
     usdc_token.functions.transfer(account.address, 10_000 * 10**6).transact({"from": deployer})
-    return account
+    wallet = HotWallet(account)
+    wallet.sync_nonce(web3)
+    return wallet
 
 
 @pytest.fixture
@@ -175,10 +179,11 @@ def test_execute_trade_instructions_buy_weth(
         web3: Web3,
         state: State,
         uniswap_v2: UniswapV2Deployment,
-        hot_wallet: LocalAccount,
-        usdc_token, weth_token,
-        weth_usdc_pair,
-        start_ts):
+        hot_wallet: HotWallet,
+        usdc_token: AssetIdentifier,
+        weth_token: AssetIdentifier,
+        weth_usdc_pair: TradingPairIdentifier,
+        start_ts: datetime.datetime):
     """Sync reserves from one deposit."""
 
     portfolio = state.portfolio
@@ -203,6 +208,14 @@ def test_execute_trade_instructions_buy_weth(
 
     ts = start_ts + datetime.timedelta(seconds=1)
 
+    # Approvals
+    approvals = approve_tokens(
+        web3,
+        uniswap_v2,
+        hot_wallet,
+        [trade]
+    )
+
     # 2: prepare
     # Prepare transactions
     prepare_swaps(
@@ -214,13 +227,20 @@ def test_execute_trade_instructions_buy_weth(
         [trade]
     )
 
+    # approve() + swapExactTokensForTokens()
+    assert hot_wallet.current_nonce == 2
+
     assert trade.get_status() == TradeStatus.started
     assert trade.tx_info.tx_hash is not None
     assert trade.tx_info.details["from"] == hot_wallet.address
     assert trade.tx_info.signed_bytes is not None
-    assert trade.tx_info.nonce == 0
+    assert trade.tx_info.nonce == 1
 
     #: 3 broadcast
+
+    # Handle approvals separately for now
+    confirm_approvals(web3, approvals)
+
     ts = start_ts + datetime.timedelta(seconds=1)
     broadcasted = broadcast(web3, ts, [trade])
     assert trade.get_status() == TradeStatus.broadcasted
@@ -229,4 +249,14 @@ def test_execute_trade_instructions_buy_weth(
     #: 4 process results
     ts = start_ts + datetime.timedelta(seconds=1)
     receipts = wait_trades_to_complete(web3, [trade])
-    resolve_trades(state, ts, broadcasted, receipts)
+    resolve_trades(
+        web3,
+        uniswap_v2,
+        ts,
+        state,
+        broadcasted,
+        receipts)
+
+    assert trade.get_status() == TradeStatus.success
+    assert trade.executed_price == pytest.approx(Decimal(1705.6136999031144))
+    assert trade.executed_quantity == pytest.approx(Decimal(0.292184487629472304))

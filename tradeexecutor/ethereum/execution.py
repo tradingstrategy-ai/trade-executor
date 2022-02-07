@@ -1,20 +1,34 @@
 import datetime
-import time
+from collections import Counter
+from decimal import Decimal
 from typing import List, Dict
 
+from eth_account.datastructures import SignedTransaction
 from eth_account.signers.local import LocalAccount
 from eth_typing import HexAddress
 from hexbytes import HexBytes
 from web3 import Web3
 
+from smart_contracts_for_testing.abi import get_deployed_contract
 from smart_contracts_for_testing.gas import GasPriceSuggestion, apply_gas, estimate_gas_fees
-from smart_contracts_for_testing.token import fetch_erc20_details
-from smart_contracts_for_testing.txmonitor import wait_transactions_to_complete
+from smart_contracts_for_testing.hotwallet import HotWallet
+from smart_contracts_for_testing.token import fetch_erc20_details, TokenDetails
+from smart_contracts_for_testing.txmonitor import wait_transactions_to_complete, \
+    broadcast_and_wait_transactions_to_complete
 from smart_contracts_for_testing.uniswap_v2 import UniswapV2Deployment, FOREVER_DEADLINE
+from smart_contracts_for_testing.uniswap_v2_analysis import analyse_trade, TradeSuccess
 from tradeexecutor.state.state import TradeExecution, State, BlockchainTransactionInfo
 
 
-def translate_to_naive_swap(web3: Web3, deployment: UniswapV2Deployment, hot_wallet: LocalAccount, t: TradeExecution, nonce: int, gas_fees: GasPriceSuggestion):
+def translate_to_naive_swap(
+        web3: Web3,
+        deployment: UniswapV2Deployment,
+        hot_wallet: HotWallet,
+        t: TradeExecution,
+        gas_fees: GasPriceSuggestion,
+        base_token_details: TokenDetails,
+        quote_token_details: TokenDetails,
+    ):
     """Creates an AMM swap tranasction out of buy/sell.
 
     If buy tries to do the best execution for given `planned_reserve`.
@@ -29,19 +43,15 @@ def translate_to_naive_swap(web3: Web3, deployment: UniswapV2Deployment, hot_wal
     :return: Unsigned transaction
     """
 
-    base_token_details = fetch_erc20_details(web3, t.pair.base.address)
-    quote_token_details = fetch_erc20_details(web3, t.pair.quote.address)
-
-    assert base_token_details.decimals is not None, f"Bad token at {t.pair.base.address}"
-    assert quote_token_details.decimals is not None, f"Bad token at {t.pair.quote.address}"
-
     if t.is_buy():
         amount0_in = int(t.planned_reserve * 10**quote_token_details.decimals)
         path = [quote_token_details.address, base_token_details.address]
+        t.reserve_currency_allocated = t.planned_reserve
     else:
         # Reverse swap
         amount0_in = int(t.planned_quantity * 10**base_token_details.decimals)
         path = [base_token_details.address, quote_token_details.address]
+        t.reserve_currency_allocated = 0
 
     args = [
         amount0_in,
@@ -56,13 +66,14 @@ def translate_to_naive_swap(web3: Web3, deployment: UniswapV2Deployment, hot_wal
     tx = deployment.router.functions.swapExactTokensForTokens(
         *args,
     ).buildTransaction({
-        'chainId': 1,
+        'chainId': web3.eth.chain_id,
         'gas': 350_000,  # Estimate max 350k gas per swap
-        'nonce': nonce,
         'from': hot_wallet.address,
     })
 
     apply_gas(tx, gas_fees)
+
+    signed = hot_wallet.sign_transaction_with_new_nonce(tx)
 
     tx_info = t.tx_info = BlockchainTransactionInfo()
 
@@ -70,39 +81,103 @@ def translate_to_naive_swap(web3: Web3, deployment: UniswapV2Deployment, hot_wal
     tx_info.function_selector = selector.fn_name
     tx_info.args = args
     tx_info.details = tx
-    tx_info.nonce = nonce
+    tx_info.nonce = tx["nonce"]
+    t.tx_info.signed_bytes = signed.rawTransaction
+    t.tx_info.tx_hash = signed.hash
 
 
 def prepare_swaps(
         web3: Web3,
-        hot_wallet: LocalAccount,
+        hot_wallet: HotWallet,
         uniswap: UniswapV2Deployment,
         ts: datetime.datetime,
         state: State,
-        instructions: List[TradeExecution]):
-    """Prepare multiple swaps to be breoadcasted parallel from the hot wallet."""
+        instructions: List[TradeExecution]) -> Dict[HexAddress, int]:
+    """Prepare multiple swaps to be breoadcasted parallel from the hot wallet.
+
+    :return: Token approvals we need to execute the trades
+    """
 
     # Get our starting nonce
-    start_nonce = web3.eth.get_transaction_count(hot_wallet.address)
     gas_fees = estimate_gas_fees(web3)
 
     for idx, t in enumerate(instructions):
-        nonce = start_nonce + idx
 
-        state.portfolio.check_for_nonce_reuse(nonce)
+        base_token_details = fetch_erc20_details(web3, t.pair.base.address)
+        quote_token_details = fetch_erc20_details(web3, t.pair.quote.address)
+
+        assert base_token_details.decimals is not None, f"Bad token at {t.pair.base.address}"
+        assert quote_token_details.decimals is not None, f"Bad token at {t.pair.quote.address}"
+
+        state.portfolio.check_for_nonce_reuse(hot_wallet.current_nonce)
 
         translate_to_naive_swap(
             web3,
             uniswap,
             hot_wallet,
             t,
-            nonce,
             gas_fees,
+            base_token_details,
+            quote_token_details,
         )
-        signed = hot_wallet.sign_transaction(t.tx_info.details)
-        t.tx_info.signed_bytes = signed.rawTransaction
-        t.tx_info.tx_hash = signed.hash
+
         t.started_at = ts
+
+
+def approve_tokens(
+        web3: Web3,
+        deployment: UniswapV2Deployment,
+        hot_wallet: HotWallet,
+        instructions: List[TradeExecution],
+    ) -> List[SignedTransaction]:
+    """Approve multiple ERC-20 token allowances for the trades needed.
+
+    Each token is approved only once. E.g. if you have 4 trades using USDC,
+    you will get 1 USDC approval.
+    """
+
+    signed = []
+
+    approvals = Counter()
+
+    for idx, t in enumerate(instructions):
+
+        base_token_details = fetch_erc20_details(web3, t.pair.base.address)
+        quote_token_details = fetch_erc20_details(web3, t.pair.quote.address)
+
+        # Update approval counters for the whole batch
+        if t.is_buy():
+            approvals[quote_token_details.address] += int(t.planned_reserve * 10**quote_token_details.decimals)
+        else:
+            approvals[base_token_details.address] += int(t.planned_quantity * 10**base_token_details.decimals)
+
+    for idx, tpl in enumerate(approvals.items()):
+        token_address, amount = tpl
+        token = get_deployed_contract(web3, "IERC20.json", token_address)
+        tx = token.functions.approve(
+            deployment.router.address,
+            amount,
+        ).buildTransaction({
+            'chainId': web3.eth.chain_id,
+            'gas': 100_000,  # Estimate max 100k per approval
+            'from': hot_wallet.address,
+        })
+        signed.append(hot_wallet.sign_transaction_with_new_nonce(tx))
+
+    return signed
+
+
+def confirm_approvals(
+        web3: Web3,
+        txs: List[SignedTransaction],
+    ):
+    """Wait until all transactions are confirmed.
+
+    :raise: If any of the transactions fail
+    """
+
+    receipts = broadcast_and_wait_transactions_to_complete(web3, txs)
+    return receipts
 
 
 def broadcast(
@@ -136,25 +211,53 @@ def wait_trades_to_complete(
     return receipts
 
 
-def resolve_trades(state: State, ts: datetime.datetime, trades: Dict[HexBytes, TradeExecution], receipts: Dict[HexBytes, dict]):
-    """Resolve trade outcome."""
+def resolve_trades(web3: Web3, uniswap: UniswapV2Deployment, ts: datetime.datetime, state: State, trades: Dict[HexBytes, TradeExecution], receipts: Dict[HexBytes, dict]):
+    """Resolve trade outcome.
+
+    Read on-chain Uniswap swap data from the transaction receipt and record how it went.
+    """
 
     for tx_hash, receipt in receipts.items():
         trade = trades[tx_hash]
-        if receipt.status == 1:
+
+        base_token_details = fetch_erc20_details(web3, trade.pair.base.address)
+        quote_token_details = fetch_erc20_details(web3, trade.pair.quote.address)
+
+        result = analyse_trade(web3, uniswap, tx_hash)
+        if isinstance(result, TradeSuccess):
+
+            # TODO: Assumes stablecoin trades only ATM
+
+            if trade.is_buy():
+                assert result.path[0] == quote_token_details.address
+                price = 1 / result.price
+                executed_reserve = result.amount_in / Decimal(10**quote_token_details.decimals)
+                executed_amount = result.amount_out / Decimal(10**base_token_details.decimals)
+
+            else:
+                # Ordered other way around
+                assert result.path[0] == base_token_details.address
+                price = result.price
+                executed_reserve = result.amount_in / Decimal(10**quote_token_details.decimals)
+                executed_amount = result.amount_out / Decimal(10**base_token_details.decimals)
+
+            assert executed_reserve > 0
+            assert executed_amount > 0
+
             # Mark as success
             state.mark_trade_success(
                 ts,
                 trade,
-                executed_price=0,
-                executed_amount=0,
-                executed_reserve=0,
+                executed_price=float(price),
+                executed_amount=executed_amount,
+                executed_reserve=executed_reserve,
                 lp_fees=0,
                 gas_price=0,
                 gas_used=0,
-                native_token_price=0,
+                native_token_price=1.0,
             )
         else:
-            # Mark as reverted
-            pass
-
+            state.mark_trade_failed(
+                ts,
+                trade,
+            )
