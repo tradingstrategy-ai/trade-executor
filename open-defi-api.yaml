@@ -7,12 +7,11 @@ info:
   title: Open DeFi API
 
   contact:
-    email: mikko@tradingstrategy.ai # [Optional] Replace with your contact email
-    url: 'https://tradingstrategy.ai' # [Optional] Replace with link to your contact form
+    email: mikko@tradingstrategy.ai
+    url: 'https://tradingstrategy.ai'
   x-logo:
     url: 'https://raw.githubusercontent.com/tradingstrategy-ai/frontend/master/src/lib/assets/logo-two-lines.svg'
 
-  # Describe your API here, you can use GFM (https://guides.github.com/features/mastering-markdown) here
   description: |
 
     Open DeFi API gives you access to decentralised exchange trading data, liquidity and tokens across multiple blockchains.
@@ -107,6 +106,7 @@ tags:
 
 servers:
   - url: 'https://tradingstrategy.ai/api/'
+  - url: 'http://localhost:3456/api/'
 
 # Holds the relative paths to the individual endpoints. The path is appended to the
 # basePath in order to construct the full URL.
