@@ -17,11 +17,12 @@ from smart_contracts_for_testing.abi import get_deployed_contract
 from smart_contracts_for_testing.hotwallet import HotWallet
 from smart_contracts_for_testing.token import create_token
 from smart_contracts_for_testing.uniswap_v2 import UniswapV2Deployment, deploy_uniswap_v2_like, deploy_trading_pair, \
-    estimate_price
+    estimate_received_quantity
 from tradeexecutor.ethereum.execution import prepare_swaps, broadcast, wait_trades_to_complete, resolve_trades, \
     approve_tokens, confirm_approvals
 from tradeexecutor.ethereum.wallet import sync_reserves, sync_portfolio
 from tradeexecutor.state.state import AssetIdentifier, Portfolio, State, TradingPairIdentifier, TradeStatus
+from tradeexecutor.testing.ethereumtrader import EthereumTestTrader
 from tradeexecutor.testing.trader import TestTrader
 
 
@@ -198,8 +199,9 @@ def test_execute_trade_instructions_buy_weth(
     buy_amount = 500
 
     # Estimate price
-    raw_assumed_quantity = estimate_price(web3, uniswap_v2, weth_token, usdc_token, buy_amount*10**6)
+    raw_assumed_quantity = estimate_received_quantity(web3, uniswap_v2, weth_token, usdc_token, buy_amount * 10 ** 6)
     assumed_quantity = Decimal(raw_assumed_quantity) / Decimal(10**18)
+    assert assumed_quantity == pytest.approx(Decimal(0.293149332386944192))
 
     # 1: plan
     position, trade = trader.prepare_buy(weth_usdc_pair, assumed_quantity, 1700)
@@ -260,3 +262,72 @@ def test_execute_trade_instructions_buy_weth(
     assert trade.get_status() == TradeStatus.success
     assert trade.executed_price == pytest.approx(Decimal(1705.6136999031144))
     assert trade.executed_quantity == pytest.approx(Decimal(0.292184487629472304))
+
+
+def test_execute_trade_instructions_buy_weth_with_tester(
+        web3: Web3,
+        state: State,
+        uniswap_v2: UniswapV2Deployment,
+        hot_wallet: HotWallet,
+        usdc_token: AssetIdentifier,
+        weth_token: AssetIdentifier,
+        weth_usdc_pair: TradingPairIdentifier,
+        start_ts: datetime.datetime):
+    """Same as above but with the tester class.."""
+
+    portfolio = state.portfolio
+
+    # We have everything in cash
+    assert portfolio.get_total_equity() == 10_000
+    assert portfolio.get_current_cash() == 10_000
+
+    # Buy 500 USDC worth of WETH
+    trader = EthereumTestTrader(web3, uniswap_v2, hot_wallet, state)
+    position, trade = trader.buy(weth_usdc_pair, Decimal(500), 1700.0)
+
+    assert trade.planned_price == 1700
+    assert trade.planned_quantity == pytest.approx(Decimal('0.293149332386944181'))
+
+    assert trade.get_status() == TradeStatus.success
+    assert trade.executed_price == pytest.approx(1705.6136999031144)
+    assert trade.executed_quantity == pytest.approx(Decimal('0.292184487629472304'))
+
+    # Cash balance has been deducted
+    assert portfolio.get_current_cash() == pytest.approx(9501.646134942195)
+
+    # Portfolio is correctly valued
+    assert portfolio.get_total_equity() == pytest.approx(9998.359763912298)
+
+
+def test_buy_sell_buy(
+        web3: Web3,
+        state: State,
+        uniswap_v2: UniswapV2Deployment,
+        hot_wallet: HotWallet,
+        usdc_token: AssetIdentifier,
+        weth_token: AssetIdentifier,
+        weth_usdc_pair: TradingPairIdentifier,
+        start_ts: datetime.datetime):
+    """Execute three trades on a position."""
+
+    # 0: start
+    assert state.portfolio.get_total_equity() == 10_000
+
+    # 1: buy 1
+    position, trade = trader.buy(weth_usdc_pair, Decimal(0.1), 1700)
+    assert state.portfolio.get_total_equity() == 998.3
+    assert position.get_equity_for_position() == pytest.approx(Decimal(0.099))
+
+    # 2: Sell half of the tokens
+    half_1 = position.get_equity_for_position() / 2
+    position, trade = trader.sell(weth_usdc, half_1, 1700)
+    assert position.get_equity_for_position() == pytest.approx(Decimal(0.0495))
+    assert len(position.trades) == 2
+
+    # 3: buy more
+    position, trade = trader.buy(weth_usdc, Decimal(0.1), 1700)
+    assert position.get_equity_for_position() == pytest.approx(Decimal(0.1485))
+
+    # All done
+    assert len(position.trades) == 3
+    assert len(state.portfolio.open_positions) == 1

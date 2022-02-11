@@ -121,6 +121,9 @@ def prepare_swaps(
             quote_token_details,
         )
 
+        if t.is_buy():
+            state.portfolio.move_capital_from_reserves_to_trade(t)
+
         t.started_at = ts
 
 
