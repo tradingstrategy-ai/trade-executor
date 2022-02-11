@@ -9,8 +9,7 @@ from tradingstrategy.analysis.tradeanalyzer import TradePosition
 class TestTrader:
     """Helper class to generate trades for tests.
 
-    A helper class that simulates trades with 99% slippage.
-    Execution is always worse than wished price.
+    This trade helper is not connected to any blockchain - it just simulates txid and nonce values.
     """
 
     def __init__(self, state: State):
@@ -43,13 +42,9 @@ class TestTrader:
 
         # 1. Plan
         position, trade = self.create(
-            ts=self.ts,
             pair=pair,
             quantity=quantity,
-            assumed_price=price,
-            trade_type=TradeType.rebalance,
-            reserve_currency=pair.quote,
-            reserve_currency_price=1.0)
+            price=price)
 
         # 2. Capital allocation
         txid = hex(self.nonce)

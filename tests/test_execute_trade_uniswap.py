@@ -7,13 +7,11 @@ from typing import List
 
 import pytest
 from eth_account import Account
-from eth_account.signers.local import LocalAccount
 from eth_typing import HexAddress
 from hexbytes import HexBytes
 from web3 import EthereumTesterProvider, Web3
 from web3.contract import Contract
 
-from smart_contracts_for_testing.abi import get_deployed_contract
 from smart_contracts_for_testing.hotwallet import HotWallet
 from smart_contracts_for_testing.token import create_token
 from smart_contracts_for_testing.uniswap_v2 import UniswapV2Deployment, deploy_uniswap_v2_like, deploy_trading_pair, \
@@ -369,5 +367,3 @@ def test_buy_sell_buy_with_tester(
     assert trade3.planned_quantity == pytest.approx(Decimal('0.293148816143752232'))
     assert trade3.executed_price == pytest.approx(1705.618349674022)
     assert trade3.executed_quantity == pytest.approx(Decimal('0.293148816143752232'))
-
-

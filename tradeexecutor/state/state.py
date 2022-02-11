@@ -151,7 +151,8 @@ class BlockchainTransactionInfo:
     #: Raw bytes of the signed transaction
     signed_bytes: Optional[HexBytes] = None
 
-    included_in_block: Optional[int] = None
+    included_in_block_number: Optional[int] = None
+    included_in_block_hash: Optional[HexBytes] = None
     included_at: Optional[datetime.datetime] = None
 
     #: Gas consumed by the tx

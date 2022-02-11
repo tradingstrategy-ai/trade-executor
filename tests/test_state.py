@@ -4,10 +4,11 @@ from decimal import Decimal
 from typing import Tuple
 
 import pytest
+from hexbytes import HexBytes
 
 from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
 from tradeexecutor.state.state import State, AssetIdentifier, TradingPairIdentifier, ReservePosition, TradeType, \
-    TradeStatus, Portfolio, TradeExecution, TradingPosition, NotEnoughMoney
+    TradeStatus, Portfolio, TradeExecution, TradingPosition, NotEnoughMoney, BlockchainTransactionInfo
 from tradeexecutor.testing.trader import TestTrader
 from tradingstrategy.chain import ChainId
 from tradingstrategy.types import USDollarAmount
@@ -74,12 +75,14 @@ def single_asset_portfolio(start_ts, weth_usdc, weth, usdc) -> Portfolio:
         executed_price=1660,
         executed_quantity=Decimal(0.095),
         lp_fees_paid =2.5,
-        gas_units_consumed=150_000,
-        gas_price=15,
         native_token_price=1.9,
-        # Blockchain bookkeeping
-        txid="0x01",
+    )
+
+    trade.tx_info = BlockchainTransactionInfo(
+        tx_hash=HexBytes("0x01"),
         nonce=1,
+        realised_gas_units_consumed=150_000,
+        realised_gas_price=15,
     )
 
     assert trade.is_buy()
