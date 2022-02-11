@@ -7,6 +7,9 @@ import datetime
 #: This type alias cannot be used for accounting. For accountable amounts always use Decimal.
 #: This type is only used for symboling that the function return value will be approximately
 #: amount in the US dollar, mostly for being human readable purposes.
+from decimal import Decimal
+
+
 class USDollarAmount(float):
     pass
 

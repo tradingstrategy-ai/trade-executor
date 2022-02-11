@@ -283,23 +283,25 @@ def test_execute_trade_instructions_buy_weth_with_tester(
 
     # Buy 500 USDC worth of WETH
     trader = EthereumTestTrader(web3, uniswap_v2, hot_wallet, state)
-    position, trade = trader.buy(weth_usdc_pair, Decimal(500), 1700.0)
+    position, trade = trader.buy(weth_usdc_pair, Decimal(500))
 
-    assert trade.planned_price == 1700
+    assert position.is_open()
+
+    assert trade.planned_price == pytest.approx(1705.6153460381142)
     assert trade.planned_quantity == pytest.approx(Decimal('0.293149332386944181'))
 
     assert trade.get_status() == TradeStatus.success
     assert trade.executed_price == pytest.approx(1705.6136999031144)
-    assert trade.executed_quantity == pytest.approx(Decimal('0.292184487629472304'))
+    assert trade.executed_quantity == pytest.approx(Decimal('0.293149331800817389'))
 
     # Cash balance has been deducted
-    assert portfolio.get_current_cash() == pytest.approx(9501.646134942195)
+    assert portfolio.get_current_cash() == pytest.approx(9500.0)
 
     # Portfolio is correctly valued
-    assert portfolio.get_total_equity() == pytest.approx(9998.359763912298)
+    assert portfolio.get_total_equity() == pytest.approx(9999.999999000293)
 
 
-def test_buy_sell_buy(
+def test_buy_sell_buy_with_tester(
         web3: Web3,
         state: State,
         uniswap_v2: UniswapV2Deployment,
@@ -310,24 +312,62 @@ def test_buy_sell_buy(
         start_ts: datetime.datetime):
     """Execute three trades on a position."""
 
-    # 0: start
-    assert state.portfolio.get_total_equity() == 10_000
+    portfolio = state.portfolio
 
-    # 1: buy 1
-    position, trade = trader.buy(weth_usdc_pair, Decimal(0.1), 1700)
-    assert state.portfolio.get_total_equity() == 998.3
-    assert position.get_equity_for_position() == pytest.approx(Decimal(0.099))
+    # We have everything in cash
+    assert portfolio.get_total_equity() == 10_000
+    assert portfolio.get_current_cash() == 10_000
 
-    # 2: Sell half of the tokens
-    half_1 = position.get_equity_for_position() / 2
-    position, trade = trader.sell(weth_usdc, half_1, 1700)
-    assert position.get_equity_for_position() == pytest.approx(Decimal(0.0495))
-    assert len(position.trades) == 2
+    #
+    # 1. Buy 500 USDC worth of WETH
+    #
 
-    # 3: buy more
-    position, trade = trader.buy(weth_usdc, Decimal(0.1), 1700)
-    assert position.get_equity_for_position() == pytest.approx(Decimal(0.1485))
+    trader = EthereumTestTrader(web3, uniswap_v2, hot_wallet, state)
+    position, trade = trader.buy(weth_usdc_pair, Decimal(500))
 
-    # All done
-    assert len(position.trades) == 3
-    assert len(state.portfolio.open_positions) == 1
+    assert position.is_open()
+    assert trade.planned_price == pytest.approx(1705.6153460381142)
+    assert trade.planned_quantity == pytest.approx(Decimal('0.293149332386944181'))
+
+    assert trade.get_status() == TradeStatus.success
+    assert trade.executed_price == pytest.approx(1705.6136999031144)
+    assert trade.executed_quantity == pytest.approx(Decimal('0.293149331800817389'))
+
+    assert portfolio.get_current_cash() == pytest.approx(9500.0)
+    assert portfolio.get_total_equity() == pytest.approx(9999.999999000293)
+
+    #
+    # 2. Sell all bought ETH
+    #
+
+    assert position.get_quantity() == pytest.approx(Decimal('0.293149331800817389'))
+    position2, trade2 = trader.sell(weth_usdc_pair, position.get_quantity())
+
+    # We get the same position object as in the first buy
+    assert position2.position_id == position.position_id
+    assert position2.get_equity_for_position() == 0
+    assert position2.is_closed()
+
+    assert trade2.get_status() == TradeStatus.success
+    assert trade2.executed_price == pytest.approx(1695.3999893054308)
+    assert trade2.executed_quantity == pytest.approx(-Decimal('0.293149331800817389'))
+
+    assert portfolio.get_current_cash() == pytest.approx(9997.005374)
+    assert portfolio.get_total_equity() == pytest.approx(9997.005374)
+
+    #
+    # 3. Buy ETH again as a regret buy
+    # This will open a new position
+
+    position3, trade3 = trader.buy(weth_usdc_pair, Decimal(500))
+
+    assert position3.is_open()
+    assert position3.position_id != position.position_id
+    assert position3.get_equity_for_position() == pytest.approx(Decimal('0.293148815557626472'))
+
+    assert trade3.planned_price == pytest.approx(1705.618349674022)
+    assert trade3.planned_quantity == pytest.approx(Decimal('0.293148816143752232'))
+    assert trade3.executed_price == pytest.approx(1705.618349674022)
+    assert trade3.executed_quantity == pytest.approx(Decimal('0.293148816143752232'))
+
+

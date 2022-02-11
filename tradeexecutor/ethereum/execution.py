@@ -49,7 +49,7 @@ def translate_to_naive_swap(
         t.reserve_currency_allocated = t.planned_reserve
     else:
         # Reverse swap
-        amount0_in = int(t.planned_quantity * 10**base_token_details.decimals)
+        amount0_in = int(-t.planned_quantity * 10**base_token_details.decimals)
         path = [base_token_details.address, quote_token_details.address]
         t.reserve_currency_allocated = 0
 
@@ -152,10 +152,13 @@ def approve_tokens(
         if t.is_buy():
             approvals[quote_token_details.address] += int(t.planned_reserve * 10**quote_token_details.decimals)
         else:
-            approvals[base_token_details.address] += int(t.planned_quantity * 10**base_token_details.decimals)
+            approvals[base_token_details.address] += int(-t.planned_quantity * 10**base_token_details.decimals)
 
     for idx, tpl in enumerate(approvals.items()):
         token_address, amount = tpl
+
+        assert amount > 0, f"Got a non-positive approval {token_address}: {amount}"
+
         token = get_deployed_contract(web3, "IERC20.json", token_address)
         tx = token.functions.approve(
             deployment.router.address,
@@ -240,12 +243,12 @@ def resolve_trades(web3: Web3, uniswap: UniswapV2Deployment, ts: datetime.dateti
             else:
                 # Ordered other way around
                 assert result.path[0] == base_token_details.address
+                assert result.path[-1] == quote_token_details.address
                 price = result.price
-                executed_reserve = result.amount_in / Decimal(10**quote_token_details.decimals)
-                executed_amount = result.amount_out / Decimal(10**base_token_details.decimals)
+                executed_amount = -result.amount_in / Decimal(10**base_token_details.decimals)
+                executed_reserve = result.amount_out / Decimal(10**quote_token_details.decimals)
 
-            assert executed_reserve > 0
-            assert executed_amount > 0
+            assert (executed_reserve > 0) and (executed_amount != 0) and (price > 0), f"Executed amount {executed_amount}, executed_reserve: {executed_reserve}, price: {price}, tx info {trade.tx_info}"
 
             # Mark as success
             state.mark_trade_success(
@@ -255,8 +258,8 @@ def resolve_trades(web3: Web3, uniswap: UniswapV2Deployment, ts: datetime.dateti
                 executed_amount=executed_amount,
                 executed_reserve=executed_reserve,
                 lp_fees=0,
-                gas_price=0,
-                gas_used=0,
+                gas_price=result.effective_gas_price,
+                gas_used=result.gas_used,
                 native_token_price=1.0,
             )
         else:

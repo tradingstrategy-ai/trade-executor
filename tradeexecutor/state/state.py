@@ -171,7 +171,9 @@ class TradeExecution:
     pair: TradingPairIdentifier
     opened_at: datetime.datetime
 
+    #: Positive for buy, negative for sell
     planned_quantity: Decimal
+
     planned_price: USDollarAmount
     planned_reserve: Decimal
 
@@ -190,7 +192,10 @@ class TradeExecution:
     failed_at: Optional[datetime.datetime] = None
 
     executed_price: Optional[USDollarAmount] = None
+
+    #: Positive for buy, negative for sell
     executed_quantity: Optional[Decimal] = None
+
     executed_reserve: Optional[Decimal] = None
 
     #: LP fees estimated in the USD
@@ -406,12 +411,18 @@ class TradingPosition:
         assert self.last_token_price > 0
         assert self.last_reserve_price > 0
 
+    def is_open(self) -> bool:
+        return self.closed_at is None
+
+    def is_closed(self) -> bool:
+        return not self.is_open()
+
     def get_quantity(self) -> Decimal:
         """Get the tied up token quantity in all successfully executed trades.
 
         Does not account for trades that are currently being executd.
         """
-        return sum([t.get_quantity() for t in self.trades.values() if t.is_success()])
+        return sum([t.get_position_quantity() for t in self.trades.values() if t.is_success()])
 
     def get_live_quantity(self) -> Decimal:
         """Get all tied up token quantity.
@@ -760,6 +771,7 @@ class State:
 
         if position.can_be_closed():
             # Move position to closed
+            position.closed_at = executed_at
             del self.portfolio.open_positions[position.position_id]
             self.portfolio.closed_positions[position.position_id] = position
 

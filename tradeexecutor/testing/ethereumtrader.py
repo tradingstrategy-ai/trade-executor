@@ -8,11 +8,11 @@ from web3 import Web3
 
 from smart_contracts_for_testing.abi import get_deployed_contract
 from smart_contracts_for_testing.hotwallet import HotWallet
-from smart_contracts_for_testing.uniswap_v2 import UniswapV2Deployment, estimate_received_quantity
+from smart_contracts_for_testing.uniswap_v2 import UniswapV2Deployment, estimate_received_quantity, \
+    estimate_received_quote
 from tradeexecutor.ethereum.execution import approve_tokens, prepare_swaps, confirm_approvals, broadcast, \
     wait_trades_to_complete, resolve_trades
-from tradeexecutor.state.state import State, TradingPairIdentifier, TradeType, TradeExecution, TradeStatus
-from tradingstrategy.analysis.tradeanalyzer import TradePosition
+from tradeexecutor.state.state import State, TradingPairIdentifier, TradeType, TradeExecution, TradeStatus, TradingPosition
 
 
 class EthereumTestTrader:
@@ -31,7 +31,7 @@ class EthereumTestTrader:
 
         self.native_token_price = 1
 
-    def execute(self, trade: TradeExecution) -> Tuple[TradePosition, TradeExecution]:
+    def execute(self, trade: TradeExecution) -> Tuple[TradingPosition, TradeExecution]:
 
         # 2. Capital allocation
 
@@ -75,25 +75,20 @@ class EthereumTestTrader:
             broadcasted,
             receipts)
 
-    def buy(self, pair: TradingPairIdentifier, amount_in_usd: Decimal, assumed_price: float) -> Tuple[TradePosition, TradeExecution]:
+    def buy(self, pair: TradingPairIdentifier, amount_in_usd: Decimal) -> Tuple[TradingPosition, TradeExecution]:
+        """Buy token (trading pair) for a certain value."""
         # Estimate buy price
         base_token = get_deployed_contract(self.web3, "ERC20MockDecimals.json", pair.base.address)
         quote_token = get_deployed_contract(self.web3, "ERC20MockDecimals.json", pair.quote.address)
-
-        #base_token_decimals = base_token.functions.decimals().call()
-        #quote_token_decimals = quote_token.functions.decimals().call()
         raw_assumed_quantity = estimate_received_quantity(self.web3, self.uniswap, base_token, quote_token, amount_in_usd * (10**pair.quote.decimals))
-        # assumed_quantity = Decimal(raw_assumed_quantity) / Decimal(10**18)
-
-        # Estimate price
         assumed_quantity = Decimal(raw_assumed_quantity) / Decimal(10**pair.base.decimals)
+        assumed_price = amount_in_usd / assumed_quantity
 
-        # 1. Plan
         position, trade = self.state.create_trade(
             ts=self.ts,
             pair=pair,
             quantity=assumed_quantity,
-            assumed_price=assumed_price,
+            assumed_price=float(assumed_price),
             trade_type=TradeType.rebalance,
             reserve_currency=pair.quote,
             reserve_currency_price=1.0)
@@ -101,5 +96,29 @@ class EthereumTestTrader:
         self.execute(trade)
         return position, trade
 
-    def sell(self, pair, quantity, price) -> Tuple[TradePosition, TradeExecution]:
-        return self.create_and_execute(pair, -quantity, price)
+    def sell(self, pair: TradingPairIdentifier, quantity: Decimal) -> Tuple[TradingPosition, TradeExecution]:
+        """Sell token token (trading pair) for a certain quantity."""
+
+        assert isinstance(quantity, Decimal)
+
+        base_token = get_deployed_contract(self.web3, "ERC20MockDecimals.json", pair.base.address)
+        quote_token = get_deployed_contract(self.web3, "ERC20MockDecimals.json", pair.quote.address)
+
+        raw_quantity = int(quantity * 10**pair.base.decimals)
+        raw_assumed_quote_token = estimate_received_quote(self.web3, self.uniswap, base_token, quote_token, raw_quantity)
+        assumed_quota_token = Decimal(raw_assumed_quote_token) / Decimal(10**pair.quote.decimals)
+
+        # assumed_price = quantity / assumed_quota_token
+        assumed_price = assumed_quota_token / quantity
+
+        position, trade = self.state.create_trade(
+            ts=self.ts,
+            pair=pair,
+            quantity=-quantity,
+            assumed_price=float(assumed_price),
+            trade_type=TradeType.rebalance,
+            reserve_currency=pair.quote,
+            reserve_currency_price=1.0)
+
+        self.execute(trade)
+        return position, trade
