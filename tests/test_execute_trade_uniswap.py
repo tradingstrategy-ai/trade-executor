@@ -17,7 +17,7 @@ from smart_contracts_for_testing.token import create_token
 from smart_contracts_for_testing.uniswap_v2 import UniswapV2Deployment, deploy_uniswap_v2_like, deploy_trading_pair, \
     estimate_buy_quantity
 from tradeexecutor.ethereum.execution import prepare_swaps, broadcast, wait_trades_to_complete, resolve_trades, \
-    approve_tokens, confirm_approvals, get_current_price
+    approve_tokens, confirm_approvals, get_current_price, get_held_assets
 from tradeexecutor.ethereum.wallet import sync_reserves, sync_portfolio
 from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
 from tradeexecutor.state.state import AssetIdentifier, Portfolio, State, TradingPairIdentifier, TradeStatus
@@ -448,6 +448,9 @@ def test_two_parallel_positions(
         hot_wallet: HotWallet,
         weth_usdc_pair: TradingPairIdentifier,
         aave_usdc_pair: TradingPairIdentifier,
+        asset_aave,
+        asset_weth,
+        asset_usdc,
         start_ts: datetime.datetime):
     """Execute four trades on two positions at the same time."""
 
@@ -485,6 +488,11 @@ def test_two_parallel_positions(
     assert portfolio.get_total_equity() == pytest.approx(9999.999998002779)
     assert portfolio.get_current_cash() == pytest.approx(9000.0)
 
+    balances = get_held_assets(web3, hot_wallet.address, [asset_usdc, asset_aave, asset_weth])
+    assert balances[asset_usdc.address] == Decimal("9000.000002")
+    assert balances[asset_aave.address] == Decimal('2.486302885086316575')
+    assert balances[asset_weth.address] == Decimal("0.293149331800817389")
+
     #
     # 3. Sell all WETH
     # 4. Sell all AAVE
@@ -506,3 +514,8 @@ def test_two_parallel_positions(
     assert position4.is_closed()
     assert portfolio.get_total_equity() == pytest.approx(9994.017298)
     assert portfolio.get_current_cash() == pytest.approx(9994.017298)
+
+    balances = get_held_assets(web3, hot_wallet.address, [asset_usdc, asset_aave, asset_weth])
+    assert balances[asset_usdc.address] == pytest.approx(Decimal("9994.017298"))
+    assert balances[asset_aave.address] == 0
+    assert balances[asset_weth.address] == 0

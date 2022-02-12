@@ -17,7 +17,8 @@ from smart_contracts_for_testing.txmonitor import wait_transactions_to_complete,
     broadcast_and_wait_transactions_to_complete
 from smart_contracts_for_testing.uniswap_v2 import UniswapV2Deployment, FOREVER_DEADLINE, estimate_sell_price
 from smart_contracts_for_testing.uniswap_v2_analysis import analyse_trade, TradeSuccess
-from tradeexecutor.state.state import TradeExecution, State, BlockchainTransactionInfo, TradingPairIdentifier
+from tradeexecutor.state.state import TradeExecution, State, BlockchainTransactionInfo, TradingPairIdentifier, \
+    AssetIdentifier
 
 
 def translate_to_naive_swap(
@@ -298,3 +299,14 @@ def get_current_price(web3: Web3, uniswap: UniswapV2Deployment, pair: TradingPai
     price = estimate_sell_price(web3, uniswap, base_token_details.contract, quote_token_details.contract, unit)
 
     return price / (10**quote_token_details.decimals)
+
+
+def get_held_assets(web3: Web3, address: HexAddress, assets: List[AssetIdentifier]) -> Dict[HexAddress, Decimal]:
+    """Get list of assets hold by the a wallet."""
+
+    result = {}
+    for asset in assets:
+        token_details = fetch_erc20_details(web3, asset.address)
+        balance = token_details.contract.functions.balanceOf(address).call()
+        result[token_details.address] = Decimal(balance) / Decimal(10 ** token_details.decimals)
+    return result
