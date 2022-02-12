@@ -1,4 +1,4 @@
-"""Test trading against faux Uniswap pool."""
+"""Test trading and portfolio management against a Uniswap pool."""
 
 import datetime
 import secrets
@@ -15,9 +15,9 @@ from web3.contract import Contract
 from smart_contracts_for_testing.hotwallet import HotWallet
 from smart_contracts_for_testing.token import create_token
 from smart_contracts_for_testing.uniswap_v2 import UniswapV2Deployment, deploy_uniswap_v2_like, deploy_trading_pair, \
-    estimate_received_quantity
+    estimate_buy_quantity
 from tradeexecutor.ethereum.execution import prepare_swaps, broadcast, wait_trades_to_complete, resolve_trades, \
-    approve_tokens, confirm_approvals
+    approve_tokens, confirm_approvals, get_current_price
 from tradeexecutor.ethereum.wallet import sync_reserves, sync_portfolio
 from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
 from tradeexecutor.state.state import AssetIdentifier, Portfolio, State, TradingPairIdentifier, TradeStatus
@@ -73,15 +73,10 @@ def usdc_token(web3, deployer: HexAddress) -> Contract:
 
 
 @pytest.fixture
-def usdc(usdc_token, web3) -> AssetIdentifier:
-    """Mock some assets"""
-    return AssetIdentifier(web3.eth.chain_id, usdc_token.address, "USDC", 6)
-
-
-@pytest.fixture
-def weth(web3) -> AssetIdentifier:
-    """Mock some assets"""
-    return AssetIdentifier(web3.eth.chain_id, "0x1", "WETH", 18)
+def aave_token(web3, deployer: HexAddress) -> Contract:
+    """Create AAVE with 10M supply."""
+    token = create_token(web3, deployer, "Fake Aave coin", "AAVE", 10_000_000 * 10**18, 18)
+    return token
 
 
 @pytest.fixture()
@@ -110,8 +105,29 @@ def asset_weth(weth_token, chain_id) -> AssetIdentifier:
 
 
 @pytest.fixture
-def uniswap_trading_pair(web3, deployer, uniswap_v2, weth_token, usdc_token) -> HexAddress:
-    """WETH-USDC pool with 1.7M liquidity."""
+def asset_aave(aave_token, chain_id) -> AssetIdentifier:
+    """Mock some assets"""
+    return AssetIdentifier(chain_id, aave_token.address, aave_token.functions.symbol().call(), aave_token.functions.decimals().call())
+
+
+@pytest.fixture
+def aave_usdc_uniswap_trading_pair(web3, deployer, uniswap_v2, aave_token, usdc_token) -> HexAddress:
+    """AAVE-USDC pool with 200k liquidity."""
+    pair_address = deploy_trading_pair(
+        web3,
+        deployer,
+        uniswap_v2,
+        aave_token,
+        usdc_token,
+        1000 * 10**18,  # 1000 AAVE liquidity
+        200_000 * 10**6,  # 200k USDC liquidity
+    )
+    return pair_address
+
+
+@pytest.fixture
+def weth_usdc_uniswap_trading_pair(web3, deployer, uniswap_v2, weth_token, usdc_token) -> HexAddress:
+    """AAVE-USDC pool with 1.7M liquidity."""
     pair_address = deploy_trading_pair(
         web3,
         deployer,
@@ -125,8 +141,13 @@ def uniswap_trading_pair(web3, deployer, uniswap_v2, weth_token, usdc_token) -> 
 
 
 @pytest.fixture
-def weth_usdc_pair(uniswap_trading_pair, asset_usdc, asset_weth) -> TradingPairIdentifier:
-    return TradingPairIdentifier(asset_weth, asset_usdc, uniswap_trading_pair)
+def weth_usdc_pair(weth_usdc_uniswap_trading_pair, asset_usdc, asset_weth) -> TradingPairIdentifier:
+    return TradingPairIdentifier(asset_weth, asset_usdc, weth_usdc_uniswap_trading_pair)
+
+
+@pytest.fixture
+def aave_usdc_pair(aave_usdc_uniswap_trading_pair, asset_usdc, asset_aave) -> TradingPairIdentifier:
+    return TradingPairIdentifier(asset_aave, asset_usdc, aave_usdc_uniswap_trading_pair)
 
 
 @pytest.fixture
@@ -156,14 +177,17 @@ def hot_wallet(web3: Web3, usdc_token: Contract, hot_wallet_private_key: HexByte
 
 
 @pytest.fixture
-def supported_reserves(usdc) -> List[AssetIdentifier]:
+def supported_reserves(asset_usdc) -> List[AssetIdentifier]:
     """The reserve currencies we support."""
-    return [usdc]
+    return [asset_usdc]
 
 
 @pytest.fixture()
-def portfolio(web3, usdc, hot_wallet, start_ts, supported_reserves) -> Portfolio:
-    """A portfolio loaded with the initial cash"""
+def portfolio(web3, hot_wallet, start_ts, supported_reserves) -> Portfolio:
+    """A portfolio loaded with the initial cash.
+
+    We start with 10,000 USDC.
+    """
     portfolio = Portfolio({}, {}, {})
     events = sync_reserves(web3, 1, start_ts, hot_wallet.address, [], supported_reserves)
     sync_portfolio(portfolio, events)
@@ -198,7 +222,7 @@ def test_execute_trade_instructions_buy_weth(
     buy_amount = 500
 
     # Estimate price
-    raw_assumed_quantity = estimate_received_quantity(web3, uniswap_v2, weth_token, usdc_token, buy_amount * 10 ** 6)
+    raw_assumed_quantity = estimate_buy_quantity(web3, uniswap_v2, weth_token, usdc_token, buy_amount * 10 ** 6)
     assumed_quantity = Decimal(raw_assumed_quantity) / Decimal(10**18)
     assert assumed_quantity == pytest.approx(Decimal(0.293149332386944192))
 
@@ -268,8 +292,6 @@ def test_execute_trade_instructions_buy_weth_with_tester(
         state: State,
         uniswap_v2: UniswapV2Deployment,
         hot_wallet: HotWallet,
-        usdc_token: AssetIdentifier,
-        weth_token: AssetIdentifier,
         weth_usdc_pair: TradingPairIdentifier,
         start_ts: datetime.datetime):
     """Same as above but with the tester class.."""
@@ -305,8 +327,6 @@ def test_buy_sell_buy_with_tester(
         state: State,
         uniswap_v2: UniswapV2Deployment,
         hot_wallet: HotWallet,
-        usdc_token: AssetIdentifier,
-        weth_token: AssetIdentifier,
         weth_usdc_pair: TradingPairIdentifier,
         start_ts: datetime.datetime):
     """Execute three trades on a position."""
@@ -372,4 +392,117 @@ def test_buy_sell_buy_with_tester(
     # Double check See we can serialise state after all this
     patch_dataclasses_json()
     dump = state.to_json()
-    state2 = State.from_json(dump)
+    state2: State = State.from_json(dump)
+    assert len(state2.portfolio.closed_positions) == 1
+
+
+def test_buy_buy_sell_sell_tester(
+        web3: Web3,
+        state: State,
+        uniswap_v2: UniswapV2Deployment,
+        hot_wallet: HotWallet,
+        weth_usdc_pair: TradingPairIdentifier,
+        start_ts: datetime.datetime):
+    """Execute four trades on the same position."""
+
+    portfolio = state.portfolio
+
+    # We have everything in cash
+    assert portfolio.get_total_equity() == 10_000
+    assert portfolio.get_current_cash() == 10_000
+
+    #
+    # 1. Buy 500 USDC worth of WETH
+    # 2. Buy 500 USDC worth of WETH
+    #
+
+    trader = EthereumTestTrader(web3, uniswap_v2, hot_wallet, state)
+    position1, trade1 = trader.buy(weth_usdc_pair, Decimal(500))
+    position2, trade2 = trader.buy(weth_usdc_pair, Decimal(500))
+
+    # 1000 USDC for 1700 USD/ETH
+    weth_holding = position2.get_equity_for_position()
+    assert weth_holding == pytest.approx(Decimal("0.586126582552052406"))
+
+    # Now liquidate the portfolio
+    sell_quantity_1 = weth_holding / 2
+    sell_quantity_2 = weth_holding - sell_quantity_1
+
+    position3, trade3 = trader.sell(weth_usdc_pair, sell_quantity_1)
+    position4, trade4 = trader.sell(weth_usdc_pair, sell_quantity_2)
+
+    assert position4.is_closed()
+
+    assert len(state.portfolio.open_positions) == 0
+    assert len(state.portfolio.closed_positions) == 1
+
+    # We have everything in cash and lost some USDC in trading fees
+    assert portfolio.get_total_equity() == pytest.approx(9994.011623)
+    assert portfolio.get_current_cash() == pytest.approx(9994.011623)
+
+
+def test_two_parallel_positions(
+        web3: Web3,
+        state: State,
+        uniswap_v2: UniswapV2Deployment,
+        hot_wallet: HotWallet,
+        weth_usdc_pair: TradingPairIdentifier,
+        aave_usdc_pair: TradingPairIdentifier,
+        start_ts: datetime.datetime):
+    """Execute four trades on two positions at the same time."""
+
+    portfolio = state.portfolio
+
+    # We have everything in cash and initial assumptions on the price
+    assert portfolio.get_total_equity() == 10_000
+    assert portfolio.get_current_cash() == 10_000
+    assert get_current_price(web3, uniswap_v2, weth_usdc_pair) == pytest.approx(1693.211867)
+    assert get_current_price(web3, uniswap_v2, aave_usdc_pair) == pytest.approx(199.201396)
+    assert hot_wallet.current_nonce == 0
+
+    #
+    # 1. Buy 500 USDC worth of WETH at 1700 USD
+    # 2. Buy 500 USDC worth of AAVE at 200 USD
+    #
+
+    trader = EthereumTestTrader(web3, uniswap_v2, hot_wallet, state)
+    position1, trade1 = trader.buy(weth_usdc_pair, Decimal(500), execute=False)
+    position2, trade2 = trader.buy(aave_usdc_pair, Decimal(500), execute=False)
+
+    assert position1.position_id == 1
+    assert position2.position_id == 2
+
+    assert len(portfolio.open_positions) == 2
+
+    # Execute both trades
+    trader.execute([trade1, trade2])
+    assert hot_wallet.current_nonce == 3
+
+    assert position1.get_equity_for_position() == pytest.approx(Decimal("0.293149331800817389"))
+    assert position2.get_equity_for_position() == pytest.approx(Decimal('2.486302885086316575'))
+    assert position1.get_value() == pytest.approx(500)
+    assert position2.get_value() == pytest.approx(500)
+    assert portfolio.get_total_equity() == pytest.approx(9999.999998002779)
+    assert portfolio.get_current_cash() == pytest.approx(9000.0)
+
+    #
+    # 3. Sell all WETH
+    # 4. Sell all AAVE
+    #
+
+    position3, trade3 = trader.sell(weth_usdc_pair, position1.get_equity_for_position(), execute=False)
+    position4, trade4 = trader.sell(aave_usdc_pair, position2.get_equity_for_position(), execute=False)
+
+    trader.execute([trade3, trade4])
+
+    assert trade3.tx_info.nonce == 5
+    assert trade4.tx_info.nonce == 6
+
+    assert position3.position_id == 1
+    assert position4.position_id == 2
+    assert position3.get_quantity() == 0
+    assert position4.get_quantity() == 0
+    assert position3.is_closed()
+    assert position4.is_closed()
+    assert portfolio.get_total_equity() == pytest.approx(9994.017298)
+    assert portfolio.get_current_cash() == pytest.approx(9994.017298)

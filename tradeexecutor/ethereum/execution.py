@@ -15,9 +15,9 @@ from smart_contracts_for_testing.hotwallet import HotWallet
 from smart_contracts_for_testing.token import fetch_erc20_details, TokenDetails
 from smart_contracts_for_testing.txmonitor import wait_transactions_to_complete, \
     broadcast_and_wait_transactions_to_complete
-from smart_contracts_for_testing.uniswap_v2 import UniswapV2Deployment, FOREVER_DEADLINE
+from smart_contracts_for_testing.uniswap_v2 import UniswapV2Deployment, FOREVER_DEADLINE, estimate_sell_price
 from smart_contracts_for_testing.uniswap_v2_analysis import analyse_trade, TradeSuccess
-from tradeexecutor.state.state import TradeExecution, State, BlockchainTransactionInfo
+from tradeexecutor.state.state import TradeExecution, State, BlockchainTransactionInfo, TradingPairIdentifier
 
 
 def translate_to_naive_swap(
@@ -280,3 +280,21 @@ def resolve_trades(web3: Web3, uniswap: UniswapV2Deployment, ts: datetime.dateti
                 ts,
                 trade,
             )
+
+
+def get_current_price(web3: Web3, uniswap: UniswapV2Deployment, pair: TradingPairIdentifier, quantity=Decimal(1)) -> float:
+    """Get a price from Uniswap v2 pool, assuming you are selling 1 unit of base token.
+
+    Does decimal adjustment.
+
+    :return: Price in quote token.
+    """
+
+    base_token_details = fetch_erc20_details(web3, pair.base.address)
+    quote_token_details = fetch_erc20_details(web3, pair.quote.address)
+
+    unit = quantity * 10**base_token_details.decimals
+
+    price = estimate_sell_price(web3, uniswap, base_token_details.contract, quote_token_details.contract, unit)
+
+    return price / (10**quote_token_details.decimals)

@@ -2,14 +2,14 @@
 
 import datetime
 from decimal import Decimal
-from typing import Tuple
+from typing import Tuple, List
 
 from web3 import Web3
 
 from smart_contracts_for_testing.abi import get_deployed_contract
 from smart_contracts_for_testing.hotwallet import HotWallet
-from smart_contracts_for_testing.uniswap_v2 import UniswapV2Deployment, estimate_received_quantity, \
-    estimate_received_quote
+from smart_contracts_for_testing.uniswap_v2 import UniswapV2Deployment, estimate_buy_quantity, \
+    estimate_sell_price
 from tradeexecutor.ethereum.execution import approve_tokens, prepare_swaps, confirm_approvals, broadcast, \
     wait_trades_to_complete, resolve_trades
 from tradeexecutor.state.state import State, TradingPairIdentifier, TradeType, TradeExecution, TradeStatus, TradingPosition
@@ -31,7 +31,7 @@ class EthereumTestTrader:
 
         self.native_token_price = 1
 
-    def execute(self, trade: TradeExecution) -> Tuple[TradingPosition, TradeExecution]:
+    def execute(self, trades: List[TradeExecution]) -> Tuple[TradingPosition, TradeExecution]:
 
         # 2. Capital allocation
 
@@ -40,7 +40,7 @@ class EthereumTestTrader:
             self.web3,
             self.uniswap,
             self.hot_wallet,
-            [trade]
+            trades
         )
 
         # 2: prepare
@@ -51,7 +51,7 @@ class EthereumTestTrader:
             self.uniswap,
             self.ts,
             self.state,
-            [trade]
+            trades
         )
 
         #: 3 broadcast
@@ -61,12 +61,12 @@ class EthereumTestTrader:
 
         self.ts += datetime.timedelta(seconds=1)
 
-        broadcasted = broadcast(self.web3, self.ts, [trade])
-        assert trade.get_status() == TradeStatus.broadcasted
+        broadcasted = broadcast(self.web3, self.ts, trades)
+        #assert trade.get_status() == TradeStatus.broadcasted
 
         # Resolve
         self.ts += datetime.timedelta(seconds=1)
-        receipts = wait_trades_to_complete(self.web3, [trade])
+        receipts = wait_trades_to_complete(self.web3, trades)
         resolve_trades(
             self.web3,
             self.uniswap,
@@ -75,12 +75,12 @@ class EthereumTestTrader:
             broadcasted,
             receipts)
 
-    def buy(self, pair: TradingPairIdentifier, amount_in_usd: Decimal) -> Tuple[TradingPosition, TradeExecution]:
+    def buy(self, pair: TradingPairIdentifier, amount_in_usd: Decimal, execute=True) -> Tuple[TradingPosition, TradeExecution]:
         """Buy token (trading pair) for a certain value."""
         # Estimate buy price
         base_token = get_deployed_contract(self.web3, "ERC20MockDecimals.json", pair.base.address)
         quote_token = get_deployed_contract(self.web3, "ERC20MockDecimals.json", pair.quote.address)
-        raw_assumed_quantity = estimate_received_quantity(self.web3, self.uniswap, base_token, quote_token, amount_in_usd * (10**pair.quote.decimals))
+        raw_assumed_quantity = estimate_buy_quantity(self.web3, self.uniswap, base_token, quote_token, amount_in_usd * (10 ** pair.quote.decimals))
         assumed_quantity = Decimal(raw_assumed_quantity) / Decimal(10**pair.base.decimals)
         assumed_price = amount_in_usd / assumed_quantity
 
@@ -93,10 +93,11 @@ class EthereumTestTrader:
             reserve_currency=pair.quote,
             reserve_currency_price=1.0)
 
-        self.execute(trade)
+        if execute:
+            self.execute([trade])
         return position, trade
 
-    def sell(self, pair: TradingPairIdentifier, quantity: Decimal) -> Tuple[TradingPosition, TradeExecution]:
+    def sell(self, pair: TradingPairIdentifier, quantity: Decimal, execute=True) -> Tuple[TradingPosition, TradeExecution]:
         """Sell token token (trading pair) for a certain quantity."""
 
         assert isinstance(quantity, Decimal)
@@ -105,7 +106,7 @@ class EthereumTestTrader:
         quote_token = get_deployed_contract(self.web3, "ERC20MockDecimals.json", pair.quote.address)
 
         raw_quantity = int(quantity * 10**pair.base.decimals)
-        raw_assumed_quote_token = estimate_received_quote(self.web3, self.uniswap, base_token, quote_token, raw_quantity)
+        raw_assumed_quote_token = estimate_sell_price(self.web3, self.uniswap, base_token, quote_token, raw_quantity)
         assumed_quota_token = Decimal(raw_assumed_quote_token) / Decimal(10**pair.quote.decimals)
 
         # assumed_price = quantity / assumed_quota_token
@@ -120,5 +121,6 @@ class EthereumTestTrader:
             reserve_currency=pair.quote,
             reserve_currency_price=1.0)
 
-        self.execute(trade)
+        if execute:
+            self.execute([trade])
         return position, trade
