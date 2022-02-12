@@ -6,7 +6,7 @@ from tradeexecutor.state.state import State, TradingPairIdentifier, TradeType, T
 from tradingstrategy.analysis.tradeanalyzer import TradePosition
 
 
-class TestTrader:
+class DummyTestTrader:
     """Helper class to generate trades for tests.
 
     This trade helper is not connected to any blockchain - it just simulates txid and nonce values.
@@ -18,9 +18,6 @@ class TestTrader:
         self.ts = datetime.datetime(2022, 1, 1, tzinfo=None)
 
         self.lp_fees = 2.50  # $2.5
-        self.gas_units_consumed = 150_000  # 150k gas units per swap
-        self.gas_price = 15 * 10**9  # 15 Gwei/gas unit
-
         self.native_token_price = 1
 
     def create(self, pair: TradingPairIdentifier, quantity: Decimal, price: float, price_impact=0.99) -> Tuple[TradePosition, TradeExecution]:
@@ -67,7 +64,7 @@ class TestTrader:
             executed_quantity = quantity
             executed_reserve = abs(quantity * Decimal(executed_price))
 
-        self.state.mark_trade_success(self.ts, trade, executed_price, executed_quantity, executed_reserve, self.lp_fees, self.gas_price, self.gas_units_consumed, self.native_token_price)
+        self.state.mark_trade_success(self.ts, trade, executed_price, executed_quantity, executed_reserve, self.lp_fees, self.native_token_price)
         return position, trade
 
     def buy(self, pair, quantity, price) -> Tuple[TradePosition, TradeExecution]:

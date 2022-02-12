@@ -74,16 +74,19 @@ def translate_to_naive_swap(
     apply_gas(tx, gas_fees)
 
     signed = hot_wallet.sign_transaction_with_new_nonce(tx)
-
-    tx_info = t.tx_info = BlockchainTransactionInfo()
-
     selector = deployment.router.functions.swapExactTokensForTokens
-    tx_info.function_selector = selector.fn_name
-    tx_info.args = args
-    tx_info.details = tx
-    tx_info.nonce = tx["nonce"]
-    t.tx_info.signed_bytes = signed.rawTransaction
-    t.tx_info.tx_hash = signed.hash
+
+    # Create record of this transaction
+    tx_info = t.tx_info = BlockchainTransactionInfo()
+    tx_info.set_target_information(
+        web3.eth.chain_id,
+        deployment.router.address,
+        selector.fn_name,
+        args,
+        tx,
+    )
+
+    tx_info.set_broadcast_information(tx["nonce"], signed.hash.hex(), signed.rawTransaction.hex())
 
 
 def prepare_swaps(
@@ -196,8 +199,9 @@ def broadcast(
     """
     res = {}
     for t in instructions:
-        assert isinstance(t.tx_info.signed_bytes, HexBytes), f"Got signed transaction: {t.tx_info.signed_bytes}"
-        web3.eth.send_raw_transaction(t.tx_info.signed_bytes)
+        assert isinstance(t.tx_info.signed_bytes, str), f"Got signed transaction: {t.tx_info.signed_bytes}"
+        signed_bytes = HexBytes(t.tx_info.signed_bytes)
+        web3.eth.send_raw_transaction(signed_bytes)
         t.broadcasted_at = ts
         res[t.tx_info.tx_hash] = t
     return res
@@ -229,6 +233,17 @@ def resolve_trades(web3: Web3, uniswap: UniswapV2Deployment, ts: datetime.dateti
         base_token_details = fetch_erc20_details(web3, trade.pair.base.address)
         quote_token_details = fetch_erc20_details(web3, trade.pair.quote.address)
 
+        # Update the transaction confirmation status
+        status = receipt["status"] == 1
+        trade.tx_info.set_confirmation_information(
+            ts,
+            receipt["blockNumber"],
+            receipt["blockHash"].hex(),
+            receipt["effectiveGasPrice"],
+            receipt["gasUsed"],
+            status
+        )
+
         result = analyse_trade(web3, uniswap, tx_hash)
         if isinstance(result, TradeSuccess):
 
@@ -258,8 +273,6 @@ def resolve_trades(web3: Web3, uniswap: UniswapV2Deployment, ts: datetime.dateti
                 executed_amount=executed_amount,
                 executed_reserve=executed_reserve,
                 lp_fees=0,
-                gas_price=result.effective_gas_price,
-                gas_used=result.gas_used,
                 native_token_price=1.0,
             )
         else:

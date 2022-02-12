@@ -19,9 +19,10 @@ from smart_contracts_for_testing.uniswap_v2 import UniswapV2Deployment, deploy_u
 from tradeexecutor.ethereum.execution import prepare_swaps, broadcast, wait_trades_to_complete, resolve_trades, \
     approve_tokens, confirm_approvals
 from tradeexecutor.ethereum.wallet import sync_reserves, sync_portfolio
+from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
 from tradeexecutor.state.state import AssetIdentifier, Portfolio, State, TradingPairIdentifier, TradeStatus
 from tradeexecutor.testing.ethereumtrader import EthereumTestTrader
-from tradeexecutor.testing.trader import TestTrader
+from tradeexecutor.testing.trader import DummyTestTrader
 
 
 @pytest.fixture
@@ -163,7 +164,7 @@ def supported_reserves(usdc) -> List[AssetIdentifier]:
 @pytest.fixture()
 def portfolio(web3, usdc, hot_wallet, start_ts, supported_reserves) -> Portfolio:
     """A portfolio loaded with the initial cash"""
-    portfolio = Portfolio()
+    portfolio = Portfolio({}, {}, {})
     events = sync_reserves(web3, 1, start_ts, hot_wallet.address, [], supported_reserves)
     sync_portfolio(portfolio, events)
     return portfolio
@@ -192,7 +193,7 @@ def test_execute_trade_instructions_buy_weth(
     assert portfolio.get_current_cash() == 10_000
 
     # Buy 500 USDC worth of WETH
-    trader = TestTrader(state)
+    trader = DummyTestTrader(state)
 
     buy_amount = 500
 
@@ -367,3 +368,8 @@ def test_buy_sell_buy_with_tester(
     assert trade3.planned_quantity == pytest.approx(Decimal('0.293148816143752232'))
     assert trade3.executed_price == pytest.approx(1705.618349674022)
     assert trade3.executed_quantity == pytest.approx(Decimal('0.293148816143752232'))
+
+    # Double check See we can serialise state after all this
+    patch_dataclasses_json()
+    dump = state.to_json()
+    state2 = State.from_json(dump)

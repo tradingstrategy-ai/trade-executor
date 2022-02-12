@@ -1,4 +1,7 @@
-"""Test trade execution state management."""
+"""Test trade execution state management.
+
+TODO: Clean txid and nonce references properly.
+"""
 import datetime
 from decimal import Decimal
 from typing import Tuple
@@ -9,7 +12,7 @@ from hexbytes import HexBytes
 from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
 from tradeexecutor.state.state import State, AssetIdentifier, TradingPairIdentifier, ReservePosition, TradeType, \
     TradeStatus, Portfolio, TradeExecution, TradingPosition, NotEnoughMoney, BlockchainTransactionInfo
-from tradeexecutor.testing.trader import TestTrader
+from tradeexecutor.testing.trader import DummyTestTrader
 from tradingstrategy.chain import ChainId
 from tradingstrategy.types import USDollarAmount
 
@@ -174,14 +177,13 @@ def test_single_buy(usdc, weth, weth_usdc, start_ts):
     gas_units_consumed = 150_000  # 150k gas units per swap
     gas_price = 15 * 10**9  # 15 Gwei/gas unit
     native_token_price = 1.9  # 1.9 USD/ETH
-    state.mark_trade_success(ts, trade, executed_price, executed_quantity, 0, lp_fees, gas_price, gas_units_consumed, native_token_price)
+    state.mark_trade_success(ts, trade, executed_price, executed_quantity, 0, lp_fees, native_token_price)
 
     value_after_trade = 1690 * 0.09
     assert trade.get_status() == TradeStatus.success
     assert trade.get_value() == pytest.approx(value_after_trade)
     assert trade.reserve_currency_allocated == 0
-    assert trade.get_gas_fees_paid() == pytest.approx(0.004274999999999999)
-    assert trade.get_fees_paid() == pytest.approx(0.004274999999999999 + 2.50)
+    assert trade.get_fees_paid() == pytest.approx(2.50)
 
     assert not position.has_unexecuted_trades()
     assert not position.has_planned_trades()
@@ -258,7 +260,7 @@ def test_single_sell_all(usdc, weth, weth_usdc, start_ts, single_asset_portfolio
     gas_units_consumed = 150_000  # 150k gas units per swap
     gas_price = 15 * 10**9  # 15 Gwei/gas unit
     native_token_price = 1.9  # 1.9 USD/ETH
-    state.mark_trade_success(ts, trade, executed_price, executed_quantity, executed_reserve, lp_fees, gas_price, gas_units_consumed, native_token_price)
+    state.mark_trade_success(ts, trade, executed_price, executed_quantity, executed_reserve, lp_fees, native_token_price)
 
     value_after_trade = 1640 * float(eth_quantity)
     assert trade.get_status() == TradeStatus.success
@@ -272,8 +274,7 @@ def test_single_sell_all(usdc, weth, weth_usdc, start_ts, single_asset_portfolio
     assert trade.get_executed_value() == pytest.approx(float(executed_reserve))
     assert trade.get_value() == pytest.approx(value_after_trade)
     assert trade.reserve_currency_allocated == 0
-    assert trade.get_gas_fees_paid() == pytest.approx(0.004274999999999999)
-    assert trade.get_fees_paid() == pytest.approx(0.004274999999999999 + 2.50)
+    assert trade.get_fees_paid() == pytest.approx(2.50)
 
     # Position is properly finished
     assert not position.has_unexecuted_trades()
@@ -296,7 +297,7 @@ def test_buy_buy_sell_sell(usdc, weth, weth_usdc, start_ts):
 
     state = State()
     state.update_reserves([ReservePosition(usdc, Decimal(1000), start_ts, 1.0, start_ts)])
-    trader = TestTrader(state)
+    trader = DummyTestTrader(state)
 
     # 0: start
     assert state.portfolio.get_total_equity() == 1000.0
@@ -348,7 +349,7 @@ def test_buy_sell_two_positions(usdc, weth_usdc, aave_usdc, start_ts):
 
     state = State()
     state.update_reserves([ReservePosition(usdc, Decimal(1000), start_ts, 1.0, start_ts)])
-    trader = TestTrader(state)
+    trader = DummyTestTrader(state)
 
     # 0: start
     assert state.portfolio.get_total_equity() == 1000.0
@@ -379,7 +380,7 @@ def test_not_enough_cash(usdc, weth_usdc, start_ts):
 
     state = State()
     state.update_reserves([ReservePosition(usdc, Decimal(1000), start_ts, 1.0, start_ts)])
-    trader = TestTrader(state)
+    trader = DummyTestTrader(state)
 
     # 0: start
     assert state.portfolio.get_total_equity() == 1000.0
@@ -394,7 +395,7 @@ def test_buy_sell_buy(usdc, weth, weth_usdc, start_ts):
 
     state = State()
     state.update_reserves([ReservePosition(usdc, Decimal(1000), start_ts, 1.0, start_ts)])
-    trader = TestTrader(state)
+    trader = DummyTestTrader(state)
 
     # 0: start
     assert state.portfolio.get_total_equity() == 1000.0
@@ -424,7 +425,7 @@ def test_revalue(usdc, weth_usdc, start_ts: datetime.datetime):
 
     state = State()
     state.update_reserves([ReservePosition(usdc, Decimal(1000), start_ts, 1.0, start_ts)])
-    trader = TestTrader(state)
+    trader = DummyTestTrader(state)
 
     # 0: start
     assert state.portfolio.get_total_equity() == 1000.0
@@ -504,7 +505,7 @@ def test_serialize_state(usdc, weth_usdc, start_ts: datetime.datetime):
 
     state = State()
     state.update_reserves([ReservePosition(usdc, Decimal(1000), start_ts, 1.0, start_ts)])
-    trader = TestTrader(state)
+    trader = DummyTestTrader(state)
 
     # 1: buy 1
     position, trade = trader.buy(weth_usdc, Decimal(0.1), 1700)

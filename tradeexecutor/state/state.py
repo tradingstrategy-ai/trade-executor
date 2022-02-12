@@ -9,15 +9,24 @@ from dataclasses import dataclass, field
 import datetime
 from decimal import Decimal
 from itertools import chain
-from typing import List, Optional, Dict, Callable, Iterable, Tuple
+from typing import List, Optional, Dict, Callable, Iterable, Tuple, Any
 
 from dataclasses_json import dataclass_json
 
 # from tradingstrategy.pair import PandasPairUniverse, DEXPair
-from eth_typing import HexAddress
-from hexbytes import HexBytes
 
 from .types import USDollarAmount
+
+
+#
+# Define our own type aliases that compatible with JSON/dataclass_json serialisation
+#
+
+#: 0x prefixed address
+JSONHexAddress = str
+
+#: 0x prefixed byte payload
+JSONHexBytes = str
 
 
 class PositionType(enum.Enum):
@@ -72,7 +81,7 @@ class AssetIdentifier:
     chain_id: int
 
     #: Smart contract address of the asset
-    address: HexAddress
+    address: JSONHexAddress
 
     token_symbol: str
     decimals: Optional[int] = None
@@ -128,38 +137,94 @@ class ReservePosition:
 @dataclass_json
 @dataclass
 class BlockchainTransactionInfo:
-    """Information about a blockchain level transaction."""
+    """Information about a blockchain level transaction associated with the trades and anything else.
+
+    Transaction has four phases
+
+    1. Preparation
+    2. Signing
+    3. Broadcast
+    4. Confirmation
+    """
+
+    #: Chain id from https://github.com/ethereum-lists/chains
+    chain_id: Optional[int] = None
 
     #: Contract we called. Usually the Uniswap v2 router address.
-    contract_address: Optional[HexAddress] = None
+    contract_address: Optional[JSONHexAddress] = None
 
     #: Function we called
     function_selector: Optional[str] = None
 
     #: Arguments we passed to the smart contract function
-    args: Optional[list] = None
+    args: Optional[List[Any]] = None
 
     #: Blockchain bookkeeping
-    tx_hash: Optional[HexBytes] = None
+    tx_hash: Optional[JSONHexBytes] = None
 
     #: Blockchain bookkeeping
     nonce: Optional[int] = None
 
-    #: Raw Ethereum transaction dict
+    #: Raw Ethereum transaction dict.
+    #: Output from web3 buildTransaction()
     details: Optional[Dict] = None
 
     #: Raw bytes of the signed transaction
-    signed_bytes: Optional[HexBytes] = None
+    signed_bytes: Optional[JSONHexBytes] = None
 
-    included_in_block_number: Optional[int] = None
-    included_in_block_hash: Optional[HexBytes] = None
     included_at: Optional[datetime.datetime] = None
+    block_number: Optional[int] = None
+    block_hash: Optional[JSONHexBytes] = None
+
+    #: status from the tx receipt. True is success, false is revert.
+    status: Optional[bool] = None
 
     #: Gas consumed by the tx
     realised_gas_units_consumed: Optional[int] = None
 
     #: Gas price for the tx in gwei
     realised_gas_price: Optional[int] = None
+
+    def set_target_information(self, chain_id: int, contract_address: str, function_selector: str, args: list, details: dict):
+        """Update the information on which transaction we are going to perform."""
+        assert type(contract_address) == str
+        assert type(function_selector) == str
+        assert type(args) == list
+        self.chain_id = chain_id
+        self.contract_address = contract_address
+        self.function_selector = function_selector
+        self.args = args
+        self.details = details
+
+    def set_broadcast_information(self, nonce: int, tx_hash: str, signed_bytes: str):
+        """Update the information we are going to use to broadcast the transaction."""
+        assert type(nonce) == int
+        assert type(tx_hash) == str
+        assert type(signed_bytes) == str
+        self.nonce = nonce
+        self.tx_hash = tx_hash
+        self.signed_bytes = signed_bytes
+
+    def set_confirmation_information(self,
+        ts: datetime.datetime,
+        block_number: int,
+        block_hash: str,
+        realised_gas_units_consumed: int,
+        realised_gas_price: int,
+        status: bool):
+        """Update the information we are going to use to broadcast the transaction."""
+        assert isinstance(ts, datetime.datetime)
+        assert type(block_number) == int
+        assert type(block_hash) == str
+        assert type(realised_gas_units_consumed) == int
+        assert type(realised_gas_price) == int
+        assert type(status) == bool
+        self.included_at = ts
+        self.block_number = block_number
+        self.block_hash = block_hash
+        self.realised_gas_price = realised_gas_price
+        self.realised_gas_units_consumed = realised_gas_units_consumed
+        self.status = status
 
 
 @dataclass_json
@@ -348,20 +413,20 @@ class TradeExecution:
         """
         return self.get_position_quantity(), self.get_reserve_quantity()
 
-    def get_gas_fees_paid(self) -> USDollarAmount:
-        native_token_consumed = self.gas_units_consumed * self.gas_price / (10**18)
-        return self.native_token_price * native_token_consumed
-
     def get_fees_paid(self) -> USDollarAmount:
+        """
+        TODO: Make this functio to behave
+        :return:
+        """
         status = self.get_status()
         if status == TradeStatus.success:
-            return self.lp_fees_paid + self.get_gas_fees_paid()
+            return self.lp_fees_paid
         elif status == TradeStatus.failed:
-            return self.get_gas_fees_paid()
+            return 0
         else:
             raise AssertionError(f"Unsupported trade state to query fees: {self.get_status()}")
 
-    def mark_success(self, executed_at: datetime.datetime, executed_price: USDollarAmount, executed_quantity: Decimal, executed_reserve: Decimal, lp_fees: USDollarAmount, gas_price: int, gas_units_consumed: int, native_token_price: USDollarAmount):
+    def mark_success(self, executed_at: datetime.datetime, executed_price: USDollarAmount, executed_quantity: Decimal, executed_reserve: Decimal, lp_fees: USDollarAmount, native_token_price: USDollarAmount):
         assert self.get_status() == TradeStatus.broadcasted
         assert isinstance(executed_quantity, Decimal)
         assert type(executed_price) == float
@@ -371,8 +436,6 @@ class TradeExecution:
         self.executed_reserve = executed_reserve
         self.executed_price = executed_price
         self.lp_fees_paid = lp_fees
-        self.gas_price = gas_price
-        self.gas_units_consumed = gas_units_consumed
         self.native_token_price = native_token_price
         self.reserve_currency_allocated = Decimal(0)
 
@@ -754,7 +817,7 @@ class State:
         assert trade.get_status() == TradeStatus.started
         trade.broadcasted_at = broadcasted_at
 
-    def mark_trade_success(self, executed_at: datetime.datetime, trade: TradeExecution, executed_price: USDollarAmount, executed_amount: Decimal, executed_reserve: Decimal, lp_fees: USDollarAmount, gas_price: USDollarAmount, gas_used: Decimal, native_token_price: USDollarAmount):
+    def mark_trade_success(self, executed_at: datetime.datetime, trade: TradeExecution, executed_price: USDollarAmount, executed_amount: Decimal, executed_reserve: Decimal, lp_fees: USDollarAmount, native_token_price: USDollarAmount):
         """"""
 
         position = self.portfolio.find_position_for_trade(trade)
@@ -765,7 +828,7 @@ class State:
             assert executed_reserve > 0, f"Executed amount must be negative for sell, got {executed_amount}, {executed_reserve}"
             assert executed_amount < 0
 
-        trade.mark_success(executed_at, executed_price, executed_amount, executed_reserve, lp_fees, gas_price, gas_used, native_token_price)
+        trade.mark_success(executed_at, executed_price, executed_amount, executed_reserve, lp_fees, native_token_price)
 
         if trade.is_sell():
             self.portfolio.return_capital_to_reserves(trade)
