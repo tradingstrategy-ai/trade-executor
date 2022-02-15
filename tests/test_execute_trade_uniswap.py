@@ -15,7 +15,7 @@ from web3.contract import Contract
 from smart_contracts_for_testing.hotwallet import HotWallet
 from smart_contracts_for_testing.token import create_token
 from smart_contracts_for_testing.uniswap_v2 import UniswapV2Deployment, deploy_uniswap_v2_like, deploy_trading_pair, \
-    estimate_buy_quantity
+    estimate_buy_quantity, FOREVER_DEADLINE
 from tradeexecutor.ethereum.execution import prepare_swaps, broadcast, wait_trades_to_complete, resolve_trades, \
     approve_tokens, confirm_approvals, get_current_price, get_held_assets
 from tradeexecutor.ethereum.wallet import sync_reserves, sync_portfolio
@@ -519,3 +519,4 @@ def test_two_parallel_positions(
     assert balances[asset_usdc.address] == pytest.approx(Decimal("9994.017298"))
     assert balances[asset_aave.address] == 0
     assert balances[asset_weth.address] == 0
+

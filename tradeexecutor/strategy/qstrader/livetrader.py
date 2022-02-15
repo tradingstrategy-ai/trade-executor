@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 class QSTraderLiveTrader(StrategyRunner):
     """A live trading executor for QSTrade based algorithm."""
 
-    def __init__(self, alpha_model_factory: Type, timed_task_context_manager: AbstractContextManager, max_data_age: datetime.timedelta):
+    def __init__(self, alpha_model_factory: Type, timed_task_context_manager: AbstractContextManager, max_data_age: Optional[datetime.timedelta]=None):
         """
         :param alpha_model:
         :param timed_task_context_manager:
