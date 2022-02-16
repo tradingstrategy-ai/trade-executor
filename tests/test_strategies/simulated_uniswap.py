@@ -61,9 +61,6 @@ class BuyEverySecondDayAlpha(AlphaModel):
 class SimulatedUniswapV2LiveTrader(QSTraderLiveTrader):
     """Live strategy set up."""
 
-    def __init__(self, timed_task_context_manager: AbstractContextManager):
-        super().__init__(SimulatedUniswapV2LiveTrader, timed_task_context_manager)
-
     def get_strategy_time_frame(self) -> TimeBucket:
         """Strategy is run on the daily candles."""
         return TimeBucket.d1
@@ -75,41 +72,9 @@ class SimulatedUniswapV2LiveTrader(QSTraderLiveTrader):
         :return:
         """
 
-        exchange_universe = dataset.exchanges
 
-        our_exchanges = [
-            exchange_universe.get_by_chain_and_slug(ChainId.bsc, "pancakeswap"),
-            exchange_universe.get_by_chain_and_slug(ChainId.bsc, "pancakeswap-v2"),
-        ]
-
-        # Choose all pairs that trade on exchanges we are interested in
-        pairs_df = filter_for_exchanges(dataset.pairs, our_exchanges)
-
-        # Get daily candles as Pandas DataFrame
-        all_candles = dataset.candles
-        # filtered_candles = all_candles.loc[all_candles["pair_id"].isin(wanted_pair_ids)]
-        filtered_candles = filter_for_pairs(all_candles, pairs_df)
-        candle_universe = GroupedCandleUniverse(prepare_candles_for_qstrader(filtered_candles), timestamp_column="Date")
-
-        all_liquidity = dataset.liquidity
-        filtered_liquidity = filter_for_pairs(all_liquidity, pairs_df)
-        #filtered_liquidity = all_liquidity.loc[all_liquidity["pair_id"].isin(wanted_pair_ids)]
-        # filtered_liquidity = filtered_liquidity.set_index(filtered_liquidity["timestamp"])
-        #filtered_liquidity = filtered_liquidity.set_index(filtered_liquidity["timestamp"])
-        liquidity_universe = GroupedLiquidityUniverse(filtered_liquidity)
-
-        return Universe(
-            time_frame=dataset.time_frame,
-            chains=[ChainId.bsc],
-            pairs=PandasPairUniverse(pairs_df),
-            exchanges=our_exchanges,
-            candles=candle_universe,
-            liquidity=liquidity_universe,
-        )
-
-
-def strategy_executor_factory(**kwargs):
-    return SimulatedUniswapV2LiveTrader(**kwargs)
+def strategy_executor_factory(*args, **kwargs):
+    return SimulatedUniswapV2LiveTrader(*args, **kwargs)
 
 
 __all__ = [strategy_executor_factory]

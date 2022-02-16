@@ -17,7 +17,6 @@ logger = logging.getLogger(__name__)
 @dataclasses.dataclass
 class ReserveUpdateEvent:
     asset: AssetIdentifier
-    tick: int
     updated_at: datetime.datetime
     past_balance: Decimal
     new_balance: Decimal
@@ -31,7 +30,6 @@ def update_wallet_balances(web3: Web3, address: HexAddress) -> Dict[HexAddress, 
 
 def sync_reserves(
         web3: Web3,
-        tick: int,
         clock: datetime.datetime,
         wallet_address: HexAddress,
         current_reserves: List[ReservePosition],
@@ -64,7 +62,6 @@ def sync_reserves(
                 asset=currency,
                 past_balance=current_value,
                 new_balance=decimal_holding.value,
-                tick=tick,
                 updated_at=clock
             )
             events.append(evt)

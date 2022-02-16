@@ -1,3 +1,4 @@
+import contextlib
 import datetime
 import logging
 from contextlib import contextmanager
@@ -6,7 +7,7 @@ logger = logging.getLogger(__name__)
 
 
 @contextmanager
-def timed_task(task_name: str, **context_info):
+def timed_task(task_name: str, **context_info) -> contextlib.AbstractContextManager[None]:
     """A simple context manger to measure the duration of different tasks.
 
     Can be later plugged in to a metrics system like Statsd / Grafana / Datadog.

@@ -1,6 +1,6 @@
 import datetime
 from contextlib import AbstractContextManager
-from typing import List, Type
+from typing import List, Type, Optional
 import logging
 
 import pandas as pd
@@ -36,23 +36,6 @@ class QSTraderLiveTrader(StrategyRunner):
         pass
 
     def on_clock(self, clock: datetime.datetime, universe: Universe, state: State) -> List[TradeExecution]:
-        raise NotImplementedError()
-
-    def preflight_check(self, client: Client, universe: Universe, now_: datetime.datetime):
-        """Check the data looks more or less sane."""
-
-        if len(universe.exchanges) == 0:
-            raise PreflightCheckFailed("Exchange count zero")
-
-        if universe.pairs.get_count() == 0:
-            raise PreflightCheckFailed("Pair count zero")
-
-        start, end = universe.get_candle_availability()
-
-        if now_ - end > self.max_data_age:
-            raise PreflightCheckFailed(f"We do not have up-to-date data for candles. Last candles are at {end}")
-
-    def tick(self, clock: datetime.datetime, universe: Universe, state: State) -> List[TradeExecution]:
         """Run one strategy tick."""
 
         logger.info("Processing tick %s", clock)
@@ -74,6 +57,26 @@ class QSTraderLiveTrader(StrategyRunner):
 
         pcm = PortfolioConstructionModel(universe, state, alpha_model)
         rebalance_orders = pcm(pd.Timestamp(clock))
+
+        return rebalance_orders
+
+
+    def preflight_check(self, client: Client, universe: Universe, now_: datetime.datetime):
+        """Check the data looks more or less sane."""
+
+        if len(universe.exchanges) == 0:
+            raise PreflightCheckFailed("Exchange count zero")
+
+        if universe.pairs.get_count() == 0:
+            raise PreflightCheckFailed("Pair count zero")
+
+        # Don't assume we have candle or liquidity data e.g. for the testing strategies
+        if universe.candles.get_candle_count() > 0:
+            start, end = universe.get_candle_availability()
+
+            if now_ - end > self.max_data_age:
+                raise PreflightCheckFailed(f"We do not have up-to-date data for candles. Last candles are at {end}")
+
 
 
 

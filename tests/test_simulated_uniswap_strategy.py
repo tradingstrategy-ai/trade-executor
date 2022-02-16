@@ -15,9 +15,11 @@ from web3.contract import Contract
 from smart_contracts_for_testing.hotwallet import HotWallet
 from smart_contracts_for_testing.token import create_token
 from smart_contracts_for_testing.uniswap_v2 import UniswapV2Deployment, deploy_trading_pair, deploy_uniswap_v2_like
+from tradeexecutor.ethereum.uniswap_v2_execution import UniswapV2ExecutionModel
 from tradeexecutor.ethereum.universe import create_exchange_universe, create_pair_universe
 from tradeexecutor.ethereum.wallet import sync_portfolio, sync_reserves
 from tradeexecutor.state.state import State, AssetIdentifier, TradingPairIdentifier, Portfolio
+from tradeexecutor.strategy.approval import UncheckedApprovalModel
 
 from tradeexecutor.strategy.bootstrap import bootstrap_strategy, import_strategy_file
 from tradeexecutor.strategy.runner import Dataset, StrategyRunner
@@ -237,12 +239,20 @@ def strategy_path() -> Path:
     return Path(os.path.join(os.path.dirname(__file__), "test_strategies", "simulated_uniswap.py"))
 
 
-def test_simulated_uniswap_qstrader_strategy(strategy_path, universe: Universe):
+def test_simulated_uniswap_qstrader_strategy(strategy_path, universe: Universe, state: State):
     """Tests a strategy that runs against a simulated Uniswap environment."""
 
     factory = import_strategy_file(strategy_path)
-    runner: StrategyRunner = factory(timed_task_context_manager=timed_task, universe=universe)
+    approval_model = UncheckedApprovalModel()
+    execution_model = UniswapV2ExecutionModel()
+    runner: StrategyRunner = factory(timed_task, execution_model, approval_model)
 
     now_ = datetime.datetime.utcnow()
     runner.preflight_check(None, universe, now_)
 
+    # Run the trading over 14 days
+    # The test strategy will buy in/buy out position and flips every second day
+    start_ts = now_.replace(hour=0, minute=0, second=0, microsecond=0)
+    day_count = 14
+    for simulation_date in (start_ts + datetime.timedelta(n) for n in range(day_count)):
+        runner.tick(simulation_date, universe, state)

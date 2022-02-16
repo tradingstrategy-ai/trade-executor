@@ -11,6 +11,10 @@ import pandas as pd
 import pyarrow as pa
 from typing import List, ContextManager, Optional
 
+from tradeexecutor.strategy.approval import ApprovalModel
+from tradeexecutor.strategy.execution import ExecutionModel
+from tradeexecutor.strategy.revaluation import RevaluationMethod
+from tradeexecutor.strategy.sync import SyncMethod
 from tradingstrategy.client import Client
 
 from tradeexecutor.state.state import State, TradeExecution
@@ -37,12 +41,15 @@ class Dataset:
     liquidity: pd.DataFrame
 
 
-
 class StrategyRunner(abc.ABC):
     """A base class for a strategy live trade executor."""
 
-    def __init__(self, timed_task_context_manager: AbstractContextManager):
+    def __init__(self, timed_task_context_manager: AbstractContextManager, execution_model: ExecutionModel, approval_model: ApprovalModel, revaluation_method: RevaluationMethod, sync_method: SyncMethod):
         self.timed_task_context_manager = timed_task_context_manager
+        self.execution_model = execution_model
+        self.approval_model = approval_model
+        self.revaluation_method = revaluation_method
+        self.sync_method = sync_method
 
     def load_data(self, time_frame: TimeBucket, client: Client, lookback: Optional[datetime.timedelta]=None) -> Optional[Dataset]:
         """Loads the server-side data using the client.
@@ -122,8 +129,44 @@ class StrategyRunner(abc.ABC):
         :return: None if not relevant for the strategy
         """
 
+    def sync_portfolio(self, ts: datetime.datetime, state):
+        """Adjust portfolio balances based on the external events.
+
+        External events include
+        - Deposits
+        - Withdrawals
+        - Interest accrued
+        - Token rebases
+        """
+        self.sync_method(state.portfolio, ts, state.portfolio.)
+
+    def revalue_portfolio(self, universe: Universe, state: State):
+        """Revalue portfolio based on the data."""
+        state.revalue_positions(self.revaluation_method)
+
     def on_data_signal(self):
         pass
 
     def on_clock(self, clock: datetime.datetime, universe: Universe, state: State) -> List[TradeExecution]:
-        pass
+        return []
+
+    def tick(self, clock: datetime.datetime, universe: Universe, state: State):
+        """Perform the strategy main tick."""
+
+        with self.timed_task_context_manager("strategy_tick", clock=clock):
+
+            with self.timed_task_context_manager("revalue_portfolio"):
+                self.revalue_portfolio(universe, state)
+
+            with self.timed_task_context_manager("decide_trades"):
+                new_trades = self.on_clock(clock, universe, state)
+                assert type(new_trades) == list
+                logger.info("We have %d trades", len(new_trades))
+
+            with self.timed_task_context_manager("confirm_trades"):
+                approved_trades = self.approval_model.confirm_trades(state, new_trades)
+                assert type(approved_trades) == list
+                logger.info("After approval we have %d trades left", len(new_trades))
+
+            with self.timed_task_context_manager("execute_trades"):
+                self.execution_model.execute_trades(approved_trades)
