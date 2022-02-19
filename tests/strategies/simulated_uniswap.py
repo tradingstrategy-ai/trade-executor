@@ -3,7 +3,7 @@ import datetime
 import logging
 from collections import Counter, defaultdict
 from contextlib import AbstractContextManager
-from typing import Dict
+from typing import Dict, Any
 
 import pandas as pd
 
@@ -27,13 +27,17 @@ from tradingstrategy.universe import Universe
 logging = logging.getLogger("uniswap_simulatead_example")
 
 
-class BuyEverySecondDayAlpha(LiveAlphaModel):
+class SomeTestBuysAlphaModel(LiveAlphaModel):
     """An alpha model that switches between buying and selling ETH.
 
     On every secodn day, we buy with the full portfolio. On another day, we sell.
     """
 
-    def __call__(self, ts: pd.Timestamp, universe: Universe, state: State, debug_details: Dict) -> Dict[int, float]:
+    def calculate_day_number(self, ts: pd.Timestamp):
+        """Get how many days has past since 1-1-1970"""
+        return (ts - pd.Timestamp("1970-1-1")).days
+
+    def __call__(self, ts: pd.Timestamp, universe: Universe, state: State, debug_details: Dict) -> Dict[Any, float]:
         """
         Produce the dictionary of scalar signals for
         each of the Asset instances within the Universe.
@@ -58,7 +62,22 @@ class BuyEverySecondDayAlpha(LiveAlphaModel):
         assert weth_usdc
         assert aave_usdc
 
-        return dict()
+        day = self.calculate_day_number(ts)
+
+        # Switch between modes
+        if day % 3 == 0:
+            return {
+                weth_usdc.pair_id: 0.3,
+                aave_usdc.pair_id: 0.3,
+            }
+        elif day % 3 == 1:
+            return {
+                weth_usdc.pair_id: 1,
+            }
+        else:
+            return {
+                aave_usdc.pair_id: 1,
+            }
 
 
 class SimulatedUniswapV2LiveTrader(QSTraderLiveTrader):
@@ -80,7 +99,7 @@ def strategy_executor_factory(*ignore, **kwargs):
     if ignore:
         # https://www.python.org/dev/peps/pep-3102/
         raise TypeError("Only keyword arguments accepted")
-    return SimulatedUniswapV2LiveTrader(alpha_model=BuyEverySecondDayAlpha(), **kwargs)
+    return SimulatedUniswapV2LiveTrader(alpha_model=SomeTestBuysAlphaModel(), **kwargs)
 
 
 __all__ = [strategy_executor_factory]

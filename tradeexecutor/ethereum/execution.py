@@ -9,14 +9,15 @@ from eth_typing import HexAddress
 from hexbytes import HexBytes
 from web3 import Web3
 
-from smart_contracts_for_testing.abi import get_deployed_contract
-from smart_contracts_for_testing.gas import GasPriceSuggestion, apply_gas, estimate_gas_fees
-from smart_contracts_for_testing.hotwallet import HotWallet
-from smart_contracts_for_testing.token import fetch_erc20_details, TokenDetails
-from smart_contracts_for_testing.txmonitor import wait_transactions_to_complete, \
+from eth_hentai.abi import get_deployed_contract
+from eth_hentai.gas import GasPriceSuggestion, apply_gas, estimate_gas_fees
+from eth_hentai.hotwallet import HotWallet
+from eth_hentai.token import fetch_erc20_details, TokenDetails
+from eth_hentai.txmonitor import wait_transactions_to_complete, \
     broadcast_and_wait_transactions_to_complete
-from smart_contracts_for_testing.uniswap_v2 import UniswapV2Deployment, FOREVER_DEADLINE, estimate_sell_price
-from smart_contracts_for_testing.uniswap_v2_analysis import analyse_trade, TradeSuccess
+from eth_hentai.uniswap_v2 import UniswapV2Deployment, FOREVER_DEADLINE
+from eth_hentai.uniswap_v2_fees import estimate_sell_price
+from eth_hentai.uniswap_v2_analysis import analyse_trade, TradeSuccess
 from tradeexecutor.state.state import TradeExecution, State, BlockchainTransactionInfo, TradingPairIdentifier, \
     AssetIdentifier
 

@@ -7,7 +7,7 @@ from typing import Dict, List, Tuple
 from eth_typing import HexAddress
 from web3 import Web3
 
-from smart_contracts_for_testing.portfolio import fetch_erc20_balances_decimal, DecimalisedHolding
+from eth_hentai.portfolio import fetch_erc20_balances_decimal, DecimalisedHolding
 from tradeexecutor.state.state import Portfolio, AssetIdentifier, ReservePosition
 
 

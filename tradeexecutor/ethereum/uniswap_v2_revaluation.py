@@ -1,7 +1,8 @@
 import pandas as pd
 from web3 import Web3
 
-from smart_contracts_for_testing.uniswap_v2 import UniswapV2Deployment, estimate_sell_price_decimals
+from eth_hentai.uniswap_v2 import UniswapV2Deployment
+from eth_hentai.uniswap_v2_fees import estimate_sell_price_decimals
 from tradeexecutor.state.state import TradingPosition
 
 

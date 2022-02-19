@@ -13,9 +13,9 @@ from hexbytes import HexBytes
 from web3 import EthereumTesterProvider, Web3
 from web3.contract import Contract
 
-from smart_contracts_for_testing.hotwallet import HotWallet
-from smart_contracts_for_testing.token import create_token
-from smart_contracts_for_testing.uniswap_v2 import UniswapV2Deployment, deploy_trading_pair, deploy_uniswap_v2_like
+from eth_hentai.hotwallet import HotWallet
+from eth_hentai.token import create_token
+from eth_hentai.uniswap_v2 import UniswapV2Deployment, deploy_trading_pair, deploy_uniswap_v2_like
 from tradeexecutor.ethereum.sync import EthereumHotWalletReserveSyncer
 from tradeexecutor.ethereum.uniswap_v2_execution import UniswapV2ExecutionModel
 from tradeexecutor.ethereum.uniswap_v2_revaluation import UniswapV2PoolRevaluator
