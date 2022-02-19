@@ -8,6 +8,8 @@ from typing import Dict
 import pandas as pd
 
 from qstrader.alpha_model.alpha_model import AlphaModel
+from tradeexecutor.state.state import State
+from tradeexecutor.strategy.qstrader.livealphamodel import LiveAlphaModel
 
 from tradeexecutor.strategy.qstrader.livetrader import QSTraderLiveTrader
 from tradeexecutor.strategy.runner import Dataset
@@ -25,25 +27,13 @@ from tradingstrategy.universe import Universe
 logging = logging.getLogger("uniswap_simulatead_example")
 
 
-class BuyEverySecondDayAlpha(AlphaModel):
+class BuyEverySecondDayAlpha(LiveAlphaModel):
     """An alpha model that switches between buying and selling ETH.
 
     On every secodn day, we buy with the full portfolio. On another day, we sell.
     """
 
-    def __init__(
-            self,
-            universe: Universe,
-            data_handler=None
-    ):
-        self.exchange_universe = universe.exchanges
-        self.pair_universe = universe.pairs
-        self.candle_universe = universe.candles
-        self.liquidity_universe = universe.liquidity
-        self.data_handler = data_handler
-        self.liquidity_reached_state = {}
-
-    def __call__(self, ts: pd.Timestamp, debug_details: Dict) -> Dict[int, float]:
+    def __call__(self, ts: pd.Timestamp, universe: Universe, state: State, debug_details: Dict) -> Dict[int, float]:
         """
         Produce the dictionary of scalar signals for
         each of the Asset instances within the Universe.
@@ -54,8 +44,21 @@ class BuyEverySecondDayAlpha(AlphaModel):
         """
 
         assert debug_details
-        ts = fix_qstrader_date(ts)
-        return dict(weighed_signals)
+        assert isinstance(universe, Universe)
+        assert isinstance(state, State)
+
+        # Because this is a test strategy, we assume we have fixed 3 assets
+        assert len(universe.exchanges) == 1
+        uniswap = universe.get_single_exchange()
+        assert universe.pairs.get_count() == 2
+
+        weth_usdc = universe.pairs.get_one_pair_from_pandas_universe(uniswap.exchange_id, "WETH", "USDC")
+        aave_usdc = universe.pairs.get_one_pair_from_pandas_universe(uniswap.exchange_id, "AAVE", "USDC")
+
+        assert weth_usdc
+        assert aave_usdc
+
+        return dict()
 
 
 class SimulatedUniswapV2LiveTrader(QSTraderLiveTrader):
@@ -73,8 +76,11 @@ class SimulatedUniswapV2LiveTrader(QSTraderLiveTrader):
         """
 
 
-def strategy_executor_factory(*args, **kwargs):
-    return SimulatedUniswapV2LiveTrader(*args, **kwargs)
+def strategy_executor_factory(*ignore, **kwargs):
+    if ignore:
+        # https://www.python.org/dev/peps/pep-3102/
+        raise TypeError("Only keyword arguments accepted")
+    return SimulatedUniswapV2LiveTrader(alpha_model=BuyEverySecondDayAlpha(), **kwargs)
 
 
 __all__ = [strategy_executor_factory]

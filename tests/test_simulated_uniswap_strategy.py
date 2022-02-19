@@ -1,4 +1,5 @@
 """Sets up a virtual Uniswap v2 world that is compatible with our Trading Strategy client."""
+import logging
 import os
 import datetime
 import secrets
@@ -15,7 +16,9 @@ from web3.contract import Contract
 from smart_contracts_for_testing.hotwallet import HotWallet
 from smart_contracts_for_testing.token import create_token
 from smart_contracts_for_testing.uniswap_v2 import UniswapV2Deployment, deploy_trading_pair, deploy_uniswap_v2_like
+from tradeexecutor.ethereum.sync import EthereumHotWalletReserveSyncer
 from tradeexecutor.ethereum.uniswap_v2_execution import UniswapV2ExecutionModel
+from tradeexecutor.ethereum.uniswap_v2_revaluation import UniswapV2PoolRevaluator
 from tradeexecutor.ethereum.universe import create_exchange_universe, create_pair_universe
 from tradeexecutor.ethereum.wallet import sync_portfolio, sync_reserves
 from tradeexecutor.state.state import State, AssetIdentifier, TradingPairIdentifier, Portfolio
@@ -23,6 +26,7 @@ from tradeexecutor.strategy.approval import UncheckedApprovalModel
 
 from tradeexecutor.strategy.bootstrap import bootstrap_strategy, import_strategy_file
 from tradeexecutor.strategy.runner import Dataset, StrategyRunner
+from tradeexecutor.utils.log import setup_pytest_logging
 from tradeexecutor.utils.timer import timed_task
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId
@@ -31,6 +35,12 @@ from tradingstrategy.liquidity import GroupedLiquidityUniverse
 from tradingstrategy.pair import PairUniverse, PandasPairUniverse
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
+
+
+@pytest.fixture(scope="module")
+def logger(request):
+    """Setup test logger."""
+    return setup_pytest_logging(request)
 
 
 @pytest.fixture
@@ -191,14 +201,12 @@ def supported_reserves(asset_usdc) -> List[AssetIdentifier]:
 
 
 @pytest.fixture()
-def portfolio(web3, hot_wallet, start_ts, supported_reserves) -> Portfolio:
+def portfolio() -> Portfolio:
     """A portfolio loaded with the initial cash.
 
     We start with 10,000 USDC.
     """
     portfolio = Portfolio({}, {}, {})
-    events = sync_reserves(web3, 1, start_ts, hot_wallet.address, [], supported_reserves)
-    sync_portfolio(portfolio, events)
     return portfolio
 
 
@@ -228,7 +236,7 @@ def universe(web3, exchange_universe: ExchangeUniverse, pair_universe: PandasPai
         chains=[ChainId(web3.eth.chain_id)],
         exchanges=list(exchange_universe.exchanges.values()),
         pairs=pair_universe,
-        candles=GroupedCandleUniverse.create_empty(),
+        candles=GroupedCandleUniverse.create_empty_qstrader(),
         liquidity=GroupedLiquidityUniverse.create_empty(),
     )
 
@@ -236,16 +244,33 @@ def universe(web3, exchange_universe: ExchangeUniverse, pair_universe: PandasPai
 @pytest.fixture()
 def strategy_path() -> Path:
     """Where do we load our strategy file."""
-    return Path(os.path.join(os.path.dirname(__file__), "test_strategies", "simulated_uniswap.py"))
+    return Path(os.path.join(os.path.dirname(__file__), "strategies", "simulated_uniswap.py"))
 
 
-def test_simulated_uniswap_qstrader_strategy(strategy_path, universe: Universe, state: State):
+def test_simulated_uniswap_qstrader_strategy(
+        logger: logging.Logger,
+        strategy_path: Path,
+        web3: Web3,
+        hot_wallet: HotWallet,
+        uniswap_v2: UniswapV2Deployment,
+        universe: Universe,
+        state: State,
+        supported_reserves):
     """Tests a strategy that runs against a simulated Uniswap environment."""
 
     factory = import_strategy_file(strategy_path)
     approval_model = UncheckedApprovalModel()
-    execution_model = UniswapV2ExecutionModel()
-    runner: StrategyRunner = factory(timed_task, execution_model, approval_model)
+    execution_model = UniswapV2ExecutionModel(state, uniswap_v2, hot_wallet)
+    sync_method = EthereumHotWalletReserveSyncer(web3, hot_wallet.address)
+    revaluation_method = UniswapV2PoolRevaluator(uniswap_v2)
+
+    runner: StrategyRunner = factory(
+        timed_task_context_manager=timed_task,
+        execution_model=execution_model,
+        approval_model=approval_model,
+        revaluation_method=revaluation_method,
+        sync_method=sync_method,
+        reserve_assets=supported_reserves)
 
     now_ = datetime.datetime.utcnow()
     runner.preflight_check(None, universe, now_)
@@ -254,5 +279,7 @@ def test_simulated_uniswap_qstrader_strategy(strategy_path, universe: Universe, 
     # The test strategy will buy in/buy out position and flips every second day
     start_ts = now_.replace(hour=0, minute=0, second=0, microsecond=0)
     day_count = 14
-    for simulation_date in (start_ts + datetime.timedelta(n) for n in range(day_count)):
-        runner.tick(simulation_date, universe, state)
+    for n in range(day_count):
+        ts = start_ts + datetime.timedelta(n)
+        logger.info("Tick %d: %s", n, ts)
+        runner.tick(ts, universe, state)

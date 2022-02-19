@@ -2,7 +2,7 @@ import datetime
 from decimal import Decimal
 
 from tradeexecutor.state.state import TradingPosition
-from tradeexecutor.strategy.revaluation import RevaluationFailed
+from tradeexecutor.state.revaluation import RevaluationFailed
 from tradingstrategy.universe import Universe
 
 

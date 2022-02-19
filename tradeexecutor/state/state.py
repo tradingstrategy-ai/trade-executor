@@ -602,6 +602,13 @@ class Portfolio:
     def get_open_position_for_pair(self, pair: TradingPairIdentifier) -> TradingPosition:
         return self.open_positions.get(pair.pool_address)
 
+    def get_open_position_quantities_as_dict(self) -> Dict[str, Decimal]:
+        """Return the current ownerships.
+
+        Keyed by trading pair identifier -> quanatity.
+        """
+        return {p.get_identifier(): p.get_quantity() for p in self.open_positions.values()}
+
     def open_new_position(self, ts: datetime.datetime, pair: TradingPairIdentifier, assumed_price: USDollarAmount, reserve_currency: AssetIdentifier, reserve_currency_price: USDollarAmount) -> TradingPosition:
         p = TradingPosition(
             position_id=self.next_position_id,
@@ -728,14 +735,14 @@ class Portfolio:
                 if t.tx_info:
                     assert t.tx_info.nonce != nonce, f"Nonce {nonce} is already being used by trade {t} with txinfo {t.tx_info}"
 
-    def revalue_positions(self, valuation_method: Callable):
+    def revalue_positions(self, ts: datetime.datetime, valuation_method: Callable):
         """Revalue all open positions in the portfolio.
 
         Reserves are not revalued.
         """
         for p in self.open_positions.values():
             pair = p.pair
-            ts, price = valuation_method(pair)
+            ts, price = valuation_method(ts, pair)
             assert ts.tzinfo is None
             p.last_pricing_at = ts
             p.last_token_price = price
@@ -847,10 +854,10 @@ class State:
     def update_reserves(self, new_reserves: List[ReservePosition]):
         self.portfolio.update_reserves(new_reserves)
 
-    def revalue_positions(self, valuation_method: Callable):
+    def revalue_positions(self, ts: datetime.datetime, valuation_method: Callable):
         """Revalue all open positions in the portfolio.
 
         Reserves are not revalued.
         """
-        self.portfolio.revalue_positions(valuation_method)
+        self.portfolio.revalue_positions(ts, valuation_method)
 

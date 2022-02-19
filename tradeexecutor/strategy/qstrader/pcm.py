@@ -1,6 +1,8 @@
 import logging
 from typing import Optional, Dict
 
+import pandas as pd
+
 from qstrader import settings
 from qstrader.execution.order import Order
 from tradeexecutor.state.state import State
@@ -142,7 +144,7 @@ class PortfolioConstructionModel(object):
             Current broker account asset quantities in integral units.
         """
         # return self.broker.get_portfolio_as_dict(self.broker_portfolio_id)
-        return self.status.get_portfolio_as_dict()
+        return self.state.portfolio.get_open_position_quantities_as_dict()
 
     def _generate_rebalance_orders(
         self,
@@ -225,7 +227,7 @@ class PortfolioConstructionModel(object):
         assets = self.universe.get_assets(dt)
         return {asset: 0.0 for asset in assets}
 
-    def __call__(self, dt, stats=None, debug_details: Optional[Dict] = None):
+    def __call__(self, dt: pd.Timestamp, stats=None, debug_details: Optional[Dict] = None):
         """
         Execute the portfolio construction process at a particular
         provided date-time.
@@ -248,12 +250,8 @@ class PortfolioConstructionModel(object):
         `list[Order]`
             The list of rebalancing orders to be sent to Execution.
         """
-        # If an AlphaModel is provided use its suggestions, otherwise
-        # create a null weight vector (zero for all Assets).
-        if self.alpha_model:
-            weights = self.alpha_model(dt, debug_details)
-        else:
-            weights = self._create_zero_target_weights_vector(dt)
+
+        weights = self.alpha_model(dt, self.universe, self.state, debug_details)
 
         # If a risk model is present use it to potentially
         # override the alpha model weights

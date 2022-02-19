@@ -8,16 +8,15 @@ import logging
 from dataclasses import dataclass
 
 import pandas as pd
-import pyarrow as pa
-from typing import List, ContextManager, Optional
+from typing import List, Optional
 
 from tradeexecutor.strategy.approval import ApprovalModel
 from tradeexecutor.strategy.execution import ExecutionModel
-from tradeexecutor.strategy.revaluation import RevaluationMethod
-from tradeexecutor.strategy.sync import SyncMethod
+from tradeexecutor.state.revaluation import RevaluationMethod
+from tradeexecutor.state.sync import SyncMethod
 from tradingstrategy.client import Client
 
-from tradeexecutor.state.state import State, TradeExecution
+from tradeexecutor.state.state import State, TradeExecution, AssetIdentifier
 from tradingstrategy.exchange import ExchangeUniverse
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
@@ -44,12 +43,20 @@ class Dataset:
 class StrategyRunner(abc.ABC):
     """A base class for a strategy live trade executor."""
 
-    def __init__(self, timed_task_context_manager: AbstractContextManager, execution_model: ExecutionModel, approval_model: ApprovalModel, revaluation_method: RevaluationMethod, sync_method: SyncMethod):
+    def __init__(self,
+                 timed_task_context_manager: AbstractContextManager,
+                 execution_model: ExecutionModel,
+                 approval_model: ApprovalModel,
+                 revaluation_method: RevaluationMethod,
+                 sync_method: SyncMethod,
+                 reserve_assets: List[AssetIdentifier]):
         self.timed_task_context_manager = timed_task_context_manager
         self.execution_model = execution_model
         self.approval_model = approval_model
         self.revaluation_method = revaluation_method
         self.sync_method = sync_method
+        #: TODO: Make something more sensible how to the list of reseve assets are managed
+        self.reserve_assets = reserve_assets
 
     def load_data(self, time_frame: TimeBucket, client: Client, lookback: Optional[datetime.timedelta]=None) -> Optional[Dataset]:
         """Loads the server-side data using the client.
@@ -129,7 +136,7 @@ class StrategyRunner(abc.ABC):
         :return: None if not relevant for the strategy
         """
 
-    def sync_portfolio(self, ts: datetime.datetime, state):
+    def sync_portfolio(self, ts: datetime.datetime, state: State):
         """Adjust portfolio balances based on the external events.
 
         External events include
@@ -138,11 +145,11 @@ class StrategyRunner(abc.ABC):
         - Interest accrued
         - Token rebases
         """
-        self.sync_method(state.portfolio, ts, state.portfolio.)
+        self.sync_method(state.portfolio, ts, self.reserve_assets)
 
-    def revalue_portfolio(self, universe: Universe, state: State):
+    def revalue_portfolio(self, ts: datetime.datetime, state: State):
         """Revalue portfolio based on the data."""
-        state.revalue_positions(self.revaluation_method)
+        state.revalue_positions(ts, self.revaluation_method)
 
     def on_data_signal(self):
         pass
@@ -155,8 +162,11 @@ class StrategyRunner(abc.ABC):
 
         with self.timed_task_context_manager("strategy_tick", clock=clock):
 
+            with self.timed_task_context_manager("sync_portfolio"):
+                self.sync_portfolio(clock, state)
+
             with self.timed_task_context_manager("revalue_portfolio"):
-                self.revalue_portfolio(universe, state)
+                self.revalue_portfolio(clock, state)
 
             with self.timed_task_context_manager("decide_trades"):
                 new_trades = self.on_clock(clock, universe, state)
@@ -169,4 +179,4 @@ class StrategyRunner(abc.ABC):
                 logger.info("After approval we have %d trades left", len(new_trades))
 
             with self.timed_task_context_manager("execute_trades"):
-                self.execution_model.execute_trades(approved_trades)
+                self.execution_model.execute_trades(clock, approved_trades)

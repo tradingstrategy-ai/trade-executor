@@ -4,8 +4,13 @@ from typing import List, Type, Optional
 import logging
 
 import pandas as pd
+
+from qstrader.alpha_model.alpha_model import AlphaModel
 from qstrader.asset.universe.static import StaticUniverse
 from qstrader.data.backtest_data_handler import BacktestDataHandler
+from qstrader.portcon.optimiser.fixed_weight import FixedWeightPortfolioOptimiser
+from tradeexecutor.strategy.qstrader.livealphamodel import LiveAlphaModel
+from tradeexecutor.strategy.qstrader.ordersizer import CashBufferedOrderSizer
 
 from tradingstrategy.client import Client
 from tradingstrategy.frameworks.qstrader import TradingStrategyDataSource
@@ -22,15 +27,18 @@ logger = logging.getLogger(__name__)
 class QSTraderLiveTrader(StrategyRunner):
     """A live trading executor for QSTrade based algorithm."""
 
-    def __init__(self, alpha_model_factory: Type, timed_task_context_manager: AbstractContextManager, max_data_age: Optional[datetime.timedelta]=None):
+    def __init__(self, *args, alpha_model: LiveAlphaModel, max_data_age: Optional[datetime.timedelta] = None, cash_buffer=0.05, **kwargs):
         """
         :param alpha_model:
         :param timed_task_context_manager:
         :param max_data_age: Allow to unit test on old datasets
         """
-        super().__init__(timed_task_context_manager)
-        self.alpha_model_factory = alpha_model_factory
+        super().__init__(*args, **kwargs)
+        assert alpha_model
+        self.alpha_model = alpha_model
         self.max_data_age = max_data_age
+        # TODO: Make starter configuration
+        self.cash_buffer = cash_buffer
 
     def on_data_signal(self):
         pass
@@ -38,7 +46,7 @@ class QSTraderLiveTrader(StrategyRunner):
     def on_clock(self, clock: datetime.datetime, universe: Universe, state: State) -> List[TradeExecution]:
         """Run one strategy tick."""
 
-        logger.info("Processing tick %s", clock)
+        logger.info("Processing on_clock %s", clock)
 
         # TODO: Most of QSTrader execuion parts need to be rewritten to support these things better
         data_source = TradingStrategyDataSource(
@@ -49,17 +57,22 @@ class QSTraderLiveTrader(StrategyRunner):
         strategy_assets = list(data_source.asset_bar_frames.keys())
         strategy_universe = StaticUniverse(strategy_assets)
 
-        data_handler = BacktestDataHandler(strategy_universe, data_sources=[data_source])
+        #data_handler = BacktestDataHandler(strategy_universe, data_sources=[data_source])
+        optimiser = FixedWeightPortfolioOptimiser()
+        order_sizer = CashBufferedOrderSizer(state, self.cash_buffer)
+        pcm = PortfolioConstructionModel(
+            universe=universe,
+            state=state,
+            order_sizer=order_sizer,
+            optimiser=optimiser,
+            alpha_model=self.alpha_model,
+            risk_model=None,
+            cost_model=None,
+            data_handler=None)
 
-        # TODO: PortfolioConstructionModel is using trading pairs instead of underlying assets
-        # - adding routing support for AlphaModel is going to be major work
-        alpha_model = self.alpha_model_factory(universe)
-
-        pcm = PortfolioConstructionModel(universe, state, alpha_model)
-        rebalance_orders = pcm(pd.Timestamp(clock))
-
+        debug_details = {"clock": clock}
+        rebalance_orders = pcm(pd.Timestamp(clock), stats=None, debug_details=debug_details)
         return rebalance_orders
-
 
     def preflight_check(self, client: Client, universe: Universe, now_: datetime.datetime):
         """Check the data looks more or less sane."""
