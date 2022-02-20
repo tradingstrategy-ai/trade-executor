@@ -3,6 +3,7 @@ import numpy as np
 
 from qstrader.portcon.order_sizer.order_sizer import OrderSizer
 from tradeexecutor.state.state import State
+from tradeexecutor.strategy.pricingmethod import PricingMethod
 
 logger = logging.getLogger(__name__)
 
@@ -34,9 +35,11 @@ class CashBufferedOrderSizer(OrderSizer):
     def __init__(
         self,
         state: State,
+        pricing_method: PricingMethod,
         cash_buffer_percentage=0.05
     ):
         self.state = state
+        self.pricing_method = pricing_method
         self.cash_buffer_percentage = self._check_set_cash_buffer(
             cash_buffer_percentage
         )
@@ -163,10 +166,7 @@ class CashBufferedOrderSizer(OrderSizer):
             asset_quantity = 0
 
             if weight > 0:
-                asset_price = self.data_handler.get_asset_latest_ask_price(
-                    dt, asset,
-                    complain=True,
-                )
+                asset_price = self.pricing_method.get_simple_ask_price(dt, asset)
 
                 if after_cost_dollar_weight > 0:
                     if np.isnan(asset_price):

@@ -24,7 +24,7 @@ from tradeexecutor.strategy.runner import StrategyRunner, PreflightCheckFailed
 logger = logging.getLogger(__name__)
 
 
-class QSTraderLiveTrader(StrategyRunner):
+class QSTraderRunner(StrategyRunner):
     """A live trading executor for QSTrade based algorithm."""
 
     def __init__(self, *args, alpha_model: LiveAlphaModel, max_data_age: Optional[datetime.timedelta] = None, cash_buffer=0.05, **kwargs):
@@ -55,20 +55,17 @@ class QSTraderLiveTrader(StrategyRunner):
             universe.candles)
 
         strategy_assets = list(data_source.asset_bar_frames.keys())
-        strategy_universe = StaticUniverse(strategy_assets)
-
-        #data_handler = BacktestDataHandler(strategy_universe, data_sources=[data_source])
         optimiser = FixedWeightPortfolioOptimiser()
-        order_sizer = CashBufferedOrderSizer(state, self.cash_buffer)
+        order_sizer = CashBufferedOrderSizer(state, self.pricing_method, self.cash_buffer)
         pcm = PortfolioConstructionModel(
             universe=universe,
             state=state,
             order_sizer=order_sizer,
             optimiser=optimiser,
             alpha_model=self.alpha_model,
+            pricing_method=self.pricing_method,
             risk_model=None,
-            cost_model=None,
-            data_handler=None)
+            cost_model=None)
 
         debug_details = {"clock": clock}
         rebalance_orders = pcm(pd.Timestamp(clock), stats=None, debug_details=debug_details)

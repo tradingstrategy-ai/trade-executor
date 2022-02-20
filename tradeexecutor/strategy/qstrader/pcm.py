@@ -1,3 +1,4 @@
+import datetime
 import logging
 from typing import Optional, Dict
 
@@ -7,6 +8,8 @@ from qstrader import settings
 from qstrader.execution.order import Order
 from tradeexecutor.state.state import State
 from tradingstrategy.universe import Universe
+
+from tradeexecutor.strategy.pricingmethod import PricingMethod
 
 logger = logging.getLogger(__name__)
 
@@ -44,10 +47,10 @@ class PortfolioConstructionModel(object):
         state: State,
         order_sizer,
         optimiser,
+        pricing_method: PricingMethod,
         alpha_model=None,
         risk_model=None,
-        cost_model=None,
-        data_handler=None,
+        cost_model=None
     ):
         self.universe = universe
         self.state = state
@@ -56,7 +59,7 @@ class PortfolioConstructionModel(object):
         self.alpha_model = alpha_model
         self.risk_model = risk_model
         self.cost_model = cost_model
-        self.data_handler = data_handler
+        self.pricing_method = pricing_method
 
     def _obtain_full_asset_list(self, dt):
         """
@@ -148,7 +151,7 @@ class PortfolioConstructionModel(object):
 
     def _generate_rebalance_orders(
         self,
-        dt,
+        dt: datetime.datetime,
         target_portfolio,
         current_portfolio,
         debug_details: Optional[Dict] = None,

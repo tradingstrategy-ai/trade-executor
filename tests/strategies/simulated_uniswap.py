@@ -11,13 +11,8 @@ from qstrader.alpha_model.alpha_model import AlphaModel
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.qstrader.livealphamodel import LiveAlphaModel
 
-from tradeexecutor.strategy.qstrader.livetrader import QSTraderLiveTrader
+from tradeexecutor.strategy.qstrader.runner import QSTraderRunner
 from tradeexecutor.strategy.runner import Dataset
-from tradingstrategy.candle import GroupedCandleUniverse
-from tradingstrategy.chain import ChainId
-from tradingstrategy.frameworks.qstrader import prepare_candles_for_qstrader
-from tradingstrategy.liquidity import GroupedLiquidityUniverse, LiquidityDataUnavailable
-from tradingstrategy.pair import filter_for_exchanges, PandasPairUniverse, DEXPair
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.utils.groupeduniverse import filter_for_pairs
 from tradingstrategy.universe import Universe
@@ -80,7 +75,7 @@ class SomeTestBuysAlphaModel(LiveAlphaModel):
             }
 
 
-class SimulatedUniswapV2LiveTrader(QSTraderLiveTrader):
+class SimulatedUniswapV2LiveTrader(QSTraderRunner):
     """Live strategy set up."""
 
     def get_strategy_time_frame(self) -> TimeBucket:

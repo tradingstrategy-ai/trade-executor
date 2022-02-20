@@ -18,6 +18,7 @@ from eth_hentai.token import create_token
 from eth_hentai.uniswap_v2 import UniswapV2Deployment, deploy_trading_pair, deploy_uniswap_v2_like
 from tradeexecutor.ethereum.sync import EthereumHotWalletReserveSyncer
 from tradeexecutor.ethereum.uniswap_v2_execution import UniswapV2ExecutionModel
+from tradeexecutor.ethereum.uniswap_v2_live_pricing import UniswapV2LivePricing
 from tradeexecutor.ethereum.uniswap_v2_revaluation import UniswapV2PoolRevaluator
 from tradeexecutor.ethereum.universe import create_exchange_universe, create_pair_universe
 from tradeexecutor.ethereum.wallet import sync_portfolio, sync_reserves
@@ -263,6 +264,7 @@ def test_simulated_uniswap_qstrader_strategy(
     execution_model = UniswapV2ExecutionModel(state, uniswap_v2, hot_wallet)
     sync_method = EthereumHotWalletReserveSyncer(web3, hot_wallet.address)
     revaluation_method = UniswapV2PoolRevaluator(uniswap_v2)
+    pricing_method = UniswapV2LivePricing(uniswap_v2, universe.pairs)
 
     runner: StrategyRunner = factory(
         timed_task_context_manager=timed_task,
@@ -270,6 +272,7 @@ def test_simulated_uniswap_qstrader_strategy(
         approval_model=approval_model,
         revaluation_method=revaluation_method,
         sync_method=sync_method,
+        pricing_method=pricing_method,
         reserve_assets=supported_reserves)
 
     now_ = datetime.datetime.utcnow()

@@ -21,6 +21,7 @@ from tradingstrategy.exchange import ExchangeUniverse
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
 
+from tradeexecutor.strategy.pricingmethod import PricingMethod
 
 logger = logging.getLogger(__name__)
 
@@ -49,12 +50,14 @@ class StrategyRunner(abc.ABC):
                  approval_model: ApprovalModel,
                  revaluation_method: RevaluationMethod,
                  sync_method: SyncMethod,
+                 pricing_method: PricingMethod,
                  reserve_assets: List[AssetIdentifier]):
         self.timed_task_context_manager = timed_task_context_manager
         self.execution_model = execution_model
         self.approval_model = approval_model
         self.revaluation_method = revaluation_method
         self.sync_method = sync_method
+        self.pricing_method = pricing_method
         #: TODO: Make something more sensible how to the list of reseve assets are managed
         self.reserve_assets = reserve_assets
 
