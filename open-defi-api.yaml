@@ -278,7 +278,7 @@ paths:
     get:
       operationId: web_pair_details
       summary: |
-        Additinal information for a trading pair
+        Additional information for a trading pair
       parameters:
         - name: exchange_slug
           in: query
