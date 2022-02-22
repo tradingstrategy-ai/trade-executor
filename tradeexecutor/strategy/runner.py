@@ -139,7 +139,7 @@ class StrategyRunner(abc.ABC):
         :return: None if not relevant for the strategy
         """
 
-    def sync_portfolio(self, ts: datetime.datetime, state: State):
+    def sync_portfolio(self, ts: datetime.datetime, state: State, debug_details: dict):
         """Adjust portfolio balances based on the external events.
 
         External events include
@@ -148,7 +148,12 @@ class StrategyRunner(abc.ABC):
         - Interest accrued
         - Token rebases
         """
-        self.sync_method(state.portfolio, ts, self.reserve_assets)
+        reserve_update_events = self.sync_method(state.portfolio, ts, self.reserve_assets)
+        assert type(reserve_update_events) == list
+        debug_details["reserve_update_events"] = reserve_update_events
+        debug_details["total_equity_at_start"] = state.portfolio.get_total_equity()
+        debug_details["total_cash_at_start"] = state.portfolio.get_current_cash()
+
 
     def revalue_portfolio(self, ts: datetime.datetime, state: State):
         """Revalue portfolio based on the data."""
@@ -157,22 +162,28 @@ class StrategyRunner(abc.ABC):
     def on_data_signal(self):
         pass
 
-    def on_clock(self, clock: datetime.datetime, universe: Universe, state: State) -> List[TradeExecution]:
+    def on_clock(self, clock: datetime.datetime, universe: Universe, state: State, debug_details: dict) -> List[TradeExecution]:
         return []
 
-    def tick(self, clock: datetime.datetime, universe: Universe, state: State):
-        """Perform the strategy main tick."""
+    def tick(self, clock: datetime.datetime, universe: Universe, state: State) -> dict:
+        """Perform the strategy main tick.
+
+        :return: Debug details dictionary where different subsystems can write their diagnostics information what is happening during the dict.
+            Mostly useful for integration testing.
+        """
+
+        debug_details = {"clock": clock}
 
         with self.timed_task_context_manager("strategy_tick", clock=clock):
 
             with self.timed_task_context_manager("sync_portfolio"):
-                self.sync_portfolio(clock, state)
+                self.sync_portfolio(clock, state, debug_details)
 
             with self.timed_task_context_manager("revalue_portfolio"):
                 self.revalue_portfolio(clock, state)
 
             with self.timed_task_context_manager("decide_trades"):
-                new_trades = self.on_clock(clock, universe, state)
+                new_trades = self.on_clock(clock, universe, state, debug_details)
                 assert type(new_trades) == list
                 logger.info("We have %d trades", len(new_trades))
 
@@ -183,3 +194,6 @@ class StrategyRunner(abc.ABC):
 
             with self.timed_task_context_manager("execute_trades"):
                 self.execution_model.execute_trades(clock, approved_trades)
+
+        logger.info("Tick complete %s", clock)
+        return debug_details

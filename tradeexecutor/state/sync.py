@@ -3,6 +3,10 @@
 import datetime
 from typing import Callable, List
 
+from tradeexecutor.ethereum.wallet import ReserveUpdateEvent
 from tradeexecutor.state.state import Portfolio, AssetIdentifier
 
-SyncMethod = Callable[[Portfolio, datetime.datetime, List[AssetIdentifier]], None]
+
+#: Syncs the extenral portfolio changes from a (blockchain) source.
+#: See ethereum/hotwallet_sync.py for details.
+SyncMethod = Callable[[Portfolio, datetime.datetime, List[AssetIdentifier]], List[ReserveUpdateEvent]]

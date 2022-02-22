@@ -16,7 +16,7 @@ from web3.contract import Contract
 from eth_hentai.hotwallet import HotWallet
 from eth_hentai.token import create_token
 from eth_hentai.uniswap_v2 import UniswapV2Deployment, deploy_trading_pair, deploy_uniswap_v2_like
-from tradeexecutor.ethereum.sync import EthereumHotWalletReserveSyncer
+from tradeexecutor.ethereum.hot_wallet_sync import EthereumHotWalletReserveSyncer
 from tradeexecutor.ethereum.uniswap_v2_execution import UniswapV2ExecutionModel
 from tradeexecutor.ethereum.uniswap_v2_live_pricing import UniswapV2LivePricing
 from tradeexecutor.ethereum.uniswap_v2_revaluation import UniswapV2PoolRevaluator
@@ -280,9 +280,41 @@ def test_simulated_uniswap_qstrader_strategy(
 
     # Run the trading over 14 days
     # The test strategy will buy in/buy out position and flips every second day
-    start_ts = now_.replace(hour=0, minute=0, second=0, microsecond=0)
+    ts = datetime.datetime(2020, 1, 1)
     day_count = 14
-    for n in range(day_count):
-        ts = start_ts + datetime.timedelta(n)
-        logger.info("Tick %d: %s", n, ts)
-        runner.tick(ts, universe, state)
+
+    # Asset identifies used in testing
+    exchange = universe.exchanges[0]
+    weth_usdc = universe.pairs.get_one_pair_from_pandas_universe(exchange.exchange_id, "WETH", "USDC")
+    aave_usdc = universe.pairs.get_one_pair_from_pandas_universe(exchange.exchange_id, "AAVE", "USDC")
+
+    assert weth_usdc
+    assert aave_usdc
+
+    # see strategy/simulated_uniswap.py for different days we can have 0, 1, 2
+
+    #
+    # 1st day
+    #
+
+    # We start with day_kind 1 that is all ETH day.
+    debug_details = runner.tick(ts, universe, state)
+    assert debug_details["day_kind"] == 1
+
+    # We first check we got our 10,000 USDC deposit from hot_wallet fixture above
+    # See StrategyRunner.sync_portfolio()
+    assert len(debug_details["reserve_update_events"]) == 1
+    assert debug_details["total_equity_at_start"] == 10_000
+    assert debug_details["total_cash_at_start"] == 10_000
+
+    # Check that the strategy thinking is 100% ETH
+    # This comes from qstrader/portfolio_construction_model
+    assert debug_details["alpha_model_weights"] == {weth_usdc.pair_id: 1}
+    import ipdb ; ipdb.set_trace()
+    assert debug_details["portfolio_at_start_of_construction"] == {}
+
+    # The strategy should use all of our available USDC to buy ETH.
+    assert len(debug_details["rebalance_trades"]) == 1
+
+
+

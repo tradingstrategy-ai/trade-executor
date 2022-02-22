@@ -1,20 +1,15 @@
 """Example strategy that trades on Uniswap v2 using the local EthereumTester EVM deployment."""
-import datetime
 import logging
-from collections import Counter, defaultdict
-from contextlib import AbstractContextManager
 from typing import Dict, Any
 
 import pandas as pd
 
-from qstrader.alpha_model.alpha_model import AlphaModel
 from tradeexecutor.state.state import State
-from tradeexecutor.strategy.qstrader.livealphamodel import LiveAlphaModel
+from tradeexecutor.strategy.qstrader.alpha_model import AlphaModel
 
 from tradeexecutor.strategy.qstrader.runner import QSTraderRunner
 from tradeexecutor.strategy.runner import Dataset
 from tradingstrategy.timebucket import TimeBucket
-from tradingstrategy.utils.groupeduniverse import filter_for_pairs
 from tradingstrategy.universe import Universe
 
 
@@ -22,11 +17,8 @@ from tradingstrategy.universe import Universe
 logging = logging.getLogger("uniswap_simulatead_example")
 
 
-class SomeTestBuysAlphaModel(LiveAlphaModel):
-    """An alpha model that switches between buying and selling ETH.
-
-    On every secodn day, we buy with the full portfolio. On another day, we sell.
-    """
+class SomeTestBuysAlphaModel(AlphaModel):
+    """A test alpha model that switches between ETH/AAVE positions."""
 
     def calculate_day_number(self, ts: pd.Timestamp):
         """Get how many days has past since 1-1-1970"""
@@ -57,19 +49,26 @@ class SomeTestBuysAlphaModel(LiveAlphaModel):
         assert weth_usdc
         assert aave_usdc
 
+        # The test strategy rebalanced between three different positions daily
         day = self.calculate_day_number(ts)
+        day_kind = day % 3
+        # Expose our daily routine to unit tests
+        debug_details["day_kind"] = day_kind
 
         # Switch between modes
-        if day % 3 == 0:
+        if day_kind == 0:
+            # On 1/3 days buy 50%/50% ETH and AAVE
             return {
                 weth_usdc.pair_id: 0.3,
                 aave_usdc.pair_id: 0.3,
             }
-        elif day % 3 == 1:
+        elif day_kind == 1:
+            # On 1/3 days buy 100% ETH
             return {
                 weth_usdc.pair_id: 1,
             }
         else:
+            # On 1/3 days buy 100% AAVE
             return {
                 aave_usdc.pair_id: 1,
             }

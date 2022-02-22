@@ -6,15 +6,15 @@ import logging
 import pandas as pd
 
 from qstrader.portcon.optimiser.fixed_weight import FixedWeightPortfolioOptimiser
-from tradeexecutor.strategy.qstrader.livealphamodel import LiveAlphaModel
-from tradeexecutor.strategy.qstrader.ordersizer import CashBufferedOrderSizer
+from tradeexecutor.strategy.qstrader.alpha_model import AlphaModel
+from tradeexecutor.strategy.qstrader.order_sizer import CashBufferedOrderSizer
 
 from tradingstrategy.client import Client
 from tradingstrategy.frameworks.qstrader import TradingStrategyDataSource
 from tradingstrategy.universe import Universe
 
 from tradeexecutor.state.state import State, TradeExecution
-from tradeexecutor.strategy.qstrader.portfolioconstructionmodel import PortfolioConstructionModel
+from tradeexecutor.strategy.qstrader.portfolio_construction_model import PortfolioConstructionModel
 from tradeexecutor.strategy.runner import StrategyRunner, PreflightCheckFailed
 
 
@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 class QSTraderRunner(StrategyRunner):
     """A live trading executor for QSTrade based algorithm."""
 
-    def __init__(self, *args, alpha_model: LiveAlphaModel, max_data_age: Optional[datetime.timedelta] = None, cash_buffer=0.05, **kwargs):
+    def __init__(self, *args, alpha_model: AlphaModel, max_data_age: Optional[datetime.timedelta] = None, cash_buffer=0.05, **kwargs):
         """
         :param alpha_model:
         :param timed_task_context_manager:
@@ -40,16 +40,10 @@ class QSTraderRunner(StrategyRunner):
     def on_data_signal(self):
         pass
 
-    def on_clock(self, clock: datetime.datetime, universe: Universe, state: State) -> List[TradeExecution]:
+    def on_clock(self, clock: datetime.datetime, universe: Universe, state: State, debug_details: dict) -> List[TradeExecution]:
         """Run one strategy tick."""
 
-        logger.info("Processing on_clock %s", clock)
-
-        # TODO: Most of QSTrader execuion parts need to be rewritten to support these things better
-        data_source = TradingStrategyDataSource(
-            universe.exchanges,
-            universe.pairs,
-            universe.candles)
+        logger.info("QSTrader on_clock %s", clock)
 
         assert len(self.reserve_assets) == 1, f"We only support strategies with a single reserve asset, got {self.reserve_assets}"
 
@@ -66,9 +60,9 @@ class QSTraderRunner(StrategyRunner):
             risk_model=None,
             cost_model=None)
 
-        debug_details = {"clock": clock}
-        rebalance_orders = pcm(pd.Timestamp(clock), stats=None, debug_details=debug_details)
-        return rebalance_orders
+        rebalance_trades = pcm(pd.Timestamp(clock), stats=None, debug_details=debug_details)
+        debug_details["rebalance_trades"] = rebalance_trades
+        return rebalance_trades
 
     def preflight_check(self, client: Client, universe: Universe, now_: datetime.datetime):
         """Check the data looks more or less sane."""

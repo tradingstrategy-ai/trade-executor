@@ -7,7 +7,7 @@ from tradeexecutor.state.state import State
 from tradingstrategy.universe import Universe
 
 
-class LiveAlphaModel(abc.ABC):
+class AlphaModel(abc.ABC):
     """Generate alpha signals based on the current trading universe and execution state;.
 
     These signals are used by the PortfolioConstructionModel

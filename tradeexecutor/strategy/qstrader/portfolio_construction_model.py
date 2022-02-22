@@ -4,18 +4,17 @@ from typing import Optional, Dict, List, Tuple
 
 import pandas as pd
 
-from qstrader import settings
-from qstrader.execution.order import Order
 from tradeexecutor.client.translations import translate_trading_pair
 from tradeexecutor.state.state import State, AssetIdentifier, TradeType, TradeExecution
 from tradingstrategy.universe import Universe
 
 from tradeexecutor.strategy.pricingmethod import PricingMethod
 
-logger = logging.getLogger(__name__)
+logger =\
+    logging.getLogger(__name__)
 
 
-class PortfolioConstructionModel(object):
+class PortfolioConstructionModel:
     """
     Encapsulates the process of generating a target weight vector
     for a universe of assets, based on input from an AlphaModel,
@@ -143,7 +142,7 @@ class PortfolioConstructionModel(object):
         target_portfolio,
         current_portfolio,
         target_prices,
-        debug_details: Optional[Dict] = None,
+        debug_details: dict,
     ) -> List[TradeExecution]:
         """
         Creates an incremental list of rebalancing Orders from the provided
@@ -251,23 +250,14 @@ class PortfolioConstructionModel(object):
         Use the optional alpha model, risk model and cost model instances
         to create a list of desired weights that are then sent to the
         target weight generator instance to be optimised.
-
-        Parameters
-        ----------
-        dt : `pd.Timestamp`
-            The date-time used to for Asset list determination and
-            weight generation.
-        stats : `dict`, optional
-            An optional statistics dictionary to append values to
-            throughout the simulation lifetime.
-
-        Returns
-        -------
-        `list[Order]`
-            The list of rebalancing orders to be sent to Execution.
         """
 
+        logger.info("Performing portfolio constructions for %s", dt)
+        import ipdb ; ipdb.set_trace()
+
         weights = self.alpha_model(dt, self.universe, self.state, debug_details)
+
+        debug_details["alpha_model_weights"] = weights
 
         # If a risk model is present use it to potentially
         # override the alpha model weights
@@ -284,27 +274,23 @@ class PortfolioConstructionModel(object):
         full_weights = self._create_full_asset_weight_vector(
             full_zero_weights, optimised_weights
         )
-        if settings.PRINT_EVENTS:
-            logger.debug(
-                "(%s) - target weights: %s" % (dt, full_weights)
-            )
-
-        # TODO: Improve this with a full statistics logging handler
-        if stats is not None:
-            alloc_dict = {'Date': dt}
-            alloc_dict.update(full_weights)
-            stats['target_allocations'].append(alloc_dict)
 
         # Calculate target portfolio in notional
         target_portfolio, target_prices = self._generate_target_portfolio(dt, full_weights)
 
         # Obtain current Broker account portfolio
         current_portfolio = self._obtain_current_portfolio()
+        debug_details["portfolio_at_start_of_construction"] = current_portfolio
+        import ipdb ; ipdb.set_trace()
 
         # Create rebalance trade Orders
         rebalance_orders = self._generate_rebalance_orders(
             dt, target_portfolio, current_portfolio, target_prices, debug_details
         )
-        # TODO: Implement cost model
+
+        # Expose internal states to unit tests
+        debug_details["target_portfolio"] = target_portfolio
+        debug_details["target_prices"] = target_prices
+        debug_details["rebalance_orders"] = rebalance_orders
 
         return rebalance_orders

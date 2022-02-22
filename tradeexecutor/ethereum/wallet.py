@@ -95,3 +95,5 @@ def sync_portfolio(portfolio: Portfolio, new_reserves: List[ReserveUpdateEvent],
             )
             portfolio.reserves[res_pos.get_identifier()] = res_pos
             logger.info("Portfolio reserve created. Asset: %s", evt.asset)
+
+

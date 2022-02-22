@@ -9,6 +9,14 @@ from tradeexecutor.state.state import AssetIdentifier, Portfolio
 
 
 class EthereumHotWalletReserveSyncer:
+    """Checks any Ethereum address for changes in the portfolio that may have happened outside the drawing.
+
+    - Withdrawals
+    - Deposits
+    - Rebases
+    - Interest payments
+
+    """
 
     def __init__(self, web3: Web3, wallet_address: HexAddress):
         self.web3 = web3
@@ -17,3 +25,5 @@ class EthereumHotWalletReserveSyncer:
     def __call__(self, portfolio: Portfolio, ts: datetime.datetime, supported_reserves: List[AssetIdentifier]):
         events = sync_reserves(self.web3, ts, self.wallet_address, [], supported_reserves)
         sync_portfolio(portfolio, events)
+        return events
+
