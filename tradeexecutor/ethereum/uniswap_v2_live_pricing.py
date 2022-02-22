@@ -1,7 +1,7 @@
 import datetime
 from decimal import Decimal
 
-from tradingstrategy.pair import PairUniverse
+from tradingstrategy.pair import PairUniverse, PandasPairUniverse
 
 from eth_hentai.uniswap_v2 import UniswapV2Deployment
 from eth_hentai.uniswap_v2_fees import estimate_buy_price_decimals, estimate_sell_price_decimals
@@ -22,7 +22,7 @@ class UniswapV2LivePricing(PricingMethod):
 
     """
 
-    def __init__(self, uniswap: UniswapV2Deployment, pair_universe: PairUniverse, very_small_amount=Decimal("0.00001")):
+    def __init__(self, uniswap: UniswapV2Deployment, pair_universe: PandasPairUniverse, very_small_amount=Decimal("0.00001")):
         self.uniswap = uniswap
         self.very_small_amount = very_small_amount
         self.pair_universe = pair_universe

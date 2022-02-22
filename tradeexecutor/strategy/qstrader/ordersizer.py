@@ -1,4 +1,7 @@
 import logging
+from typing import Dict, Tuple
+
+import pandas as pd
 import numpy as np
 
 from qstrader.portcon.order_sizer.order_sizer import OrderSizer
@@ -115,7 +118,7 @@ class CashBufferedOrderSizer(OrderSizer):
             for asset, weight in weights.items()
         }
 
-    def __call__(self, dt, weights):
+    def __call__(self, dt: pd.Timestamp, weights: Dict[int, float]) -> Tuple[Dict, Dict]:
         """
         Creates a dollar-weighted cash-buffered target portfolio from the
         provided target weights at a particular timestamp.
@@ -127,10 +130,6 @@ class CashBufferedOrderSizer(OrderSizer):
         weights : `dict{Asset: float}`
             The (potentially unnormalised) target weights.
 
-        Returns
-        -------
-        `dict{Asset: dict}`
-            The cash-buffered target portfolio dictionary with quantities.
         """
         total_equity = self._obtain_broker_portfolio_total_equity()
         cash_buffered_total_equity = total_equity * (
@@ -150,6 +149,7 @@ class CashBufferedOrderSizer(OrderSizer):
         normalised_weights = self._normalise_weights(weights)
 
         target_portfolio = {}
+        target_prices = {}
 
         total_spend = 0
 
@@ -184,8 +184,9 @@ class CashBufferedOrderSizer(OrderSizer):
 
                 # Add to the target portfolio
                 target_portfolio[asset] = {"quantity": asset_quantity}
+                target_prices[asset] = asset_price
                 total_spend += (asset_quantity * asset_price) + est_costs
 
         logger.info(f"Total new portfolio cost {total_spend:,.2f}")
 
-        return target_portfolio
+        return target_portfolio, target_prices

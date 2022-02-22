@@ -5,9 +5,6 @@ import logging
 
 import pandas as pd
 
-from qstrader.alpha_model.alpha_model import AlphaModel
-from qstrader.asset.universe.static import StaticUniverse
-from qstrader.data.backtest_data_handler import BacktestDataHandler
 from qstrader.portcon.optimiser.fixed_weight import FixedWeightPortfolioOptimiser
 from tradeexecutor.strategy.qstrader.livealphamodel import LiveAlphaModel
 from tradeexecutor.strategy.qstrader.ordersizer import CashBufferedOrderSizer
@@ -17,7 +14,7 @@ from tradingstrategy.frameworks.qstrader import TradingStrategyDataSource
 from tradingstrategy.universe import Universe
 
 from tradeexecutor.state.state import State, TradeExecution
-from tradeexecutor.strategy.qstrader.pcm import PortfolioConstructionModel
+from tradeexecutor.strategy.qstrader.portfolioconstructionmodel import PortfolioConstructionModel
 from tradeexecutor.strategy.runner import StrategyRunner, PreflightCheckFailed
 
 
@@ -54,7 +51,8 @@ class QSTraderRunner(StrategyRunner):
             universe.pairs,
             universe.candles)
 
-        strategy_assets = list(data_source.asset_bar_frames.keys())
+        assert len(self.reserve_assets) == 1, f"We only support strategies with a single reserve asset, got {self.reserve_assets}"
+
         optimiser = FixedWeightPortfolioOptimiser()
         order_sizer = CashBufferedOrderSizer(state, self.pricing_method, self.cash_buffer)
         pcm = PortfolioConstructionModel(
@@ -64,6 +62,7 @@ class QSTraderRunner(StrategyRunner):
             optimiser=optimiser,
             alpha_model=self.alpha_model,
             pricing_method=self.pricing_method,
+            reserve_currency=self.reserve_assets[0],
             risk_model=None,
             cost_model=None)
 

@@ -6,7 +6,7 @@ from tradeexecutor.state.revaluation import RevaluationFailed
 from tradingstrategy.universe import Universe
 
 
-class ClosePriceRevaluator:
+class CandleClosePriceRevaluator:
     """Re-value assets based on their closing price at the timestamp.
 
     Used to calculate the portfolio total equity.

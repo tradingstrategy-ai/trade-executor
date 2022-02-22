@@ -741,8 +741,7 @@ class Portfolio:
         Reserves are not revalued.
         """
         for p in self.open_positions.values():
-            pair = p.pair
-            ts, price = valuation_method(ts, pair)
+            ts, price = valuation_method(ts, p)
             assert ts.tzinfo is None
             p.last_pricing_at = ts
             p.last_token_price = price

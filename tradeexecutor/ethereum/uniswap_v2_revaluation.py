@@ -1,9 +1,10 @@
-import pandas as pd
-from web3 import Web3
+import datetime
+from typing import Tuple
 
 from eth_hentai.uniswap_v2 import UniswapV2Deployment
 from eth_hentai.uniswap_v2_fees import estimate_sell_price_decimals
 from tradeexecutor.state.state import TradingPosition
+from tradeexecutor.state.types import USDollarAmount
 
 
 class UniswapV2PoolRevaluator:
@@ -18,10 +19,15 @@ class UniswapV2PoolRevaluator:
     def __init__(self, uniswap: UniswapV2Deployment):
         self.uniswap = uniswap
 
-    def __call__(self, timestamp: pd.Timestamp, position: TradingPosition):
+    def __call__(self, timestamp: datetime.datetime, position: TradingPosition) -> Tuple[datetime.datetime, USDollarAmount]:
+        assert isinstance(timestamp, datetime.datetime)
         pair = position.pair
-        price = estimate_sell_price_decimals(self.uniswap.web3, self.uniswap, pair.base.address, pair.quote.address)
-        return price
+        quantity = position.get_quantity()
+        # Cannot do pricing for zero quantity
+        if quantity == 0:
+            return timestamp, 0.0
+        price = estimate_sell_price_decimals(self.uniswap, pair.base.address, pair.quote.address, quantity)
+        return timestamp, price
 
 
 

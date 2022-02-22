@@ -1,12 +1,13 @@
 import datetime
 import logging
-from typing import Optional, Dict
+from typing import Optional, Dict, List, Tuple
 
 import pandas as pd
 
 from qstrader import settings
 from qstrader.execution.order import Order
-from tradeexecutor.state.state import State
+from tradeexecutor.client.translations import translate_trading_pair
+from tradeexecutor.state.state import State, AssetIdentifier, TradeType, TradeExecution
 from tradingstrategy.universe import Universe
 
 from tradeexecutor.strategy.pricingmethod import PricingMethod
@@ -48,6 +49,7 @@ class PortfolioConstructionModel(object):
         order_sizer,
         optimiser,
         pricing_method: PricingMethod,
+        reserve_currency: AssetIdentifier,
         alpha_model=None,
         risk_model=None,
         cost_model=None
@@ -57,6 +59,7 @@ class PortfolioConstructionModel(object):
         self.order_sizer = order_sizer
         self.optimiser = optimiser
         self.alpha_model = alpha_model
+        self.reserve_currency = reserve_currency
         self.risk_model = risk_model
         self.cost_model = cost_model
         self.pricing_method = pricing_method
@@ -116,23 +119,8 @@ class PortfolioConstructionModel(object):
         """
         return {**zero_weights, **optimised_weights}
 
-    def _generate_target_portfolio(self, dt, weights):
+    def _generate_target_portfolio(self, dt, weights) -> Tuple[dict, dict]:
         """
-        Generate the number of units (shares/lots) per Asset based on the
-        target weight vector.
-
-        Parameters
-        ----------
-        dt : `pd.Timestamp`
-            The current timestamp.
-        weights : `dict{str: float}`
-            The union of the zero-weights and optimised weights, where the
-            optimised weights take precedence.
-
-        Returns
-        -------
-        `dict{str: dict}`
-            Target asset quantities in integral units.
         """
         return self.order_sizer(dt, weights)
 
@@ -154,8 +142,9 @@ class PortfolioConstructionModel(object):
         dt: datetime.datetime,
         target_portfolio,
         current_portfolio,
+        target_prices,
         debug_details: Optional[Dict] = None,
-    ):
+    ) -> List[TradeExecution]:
         """
         Creates an incremental list of rebalancing Orders from the provided
         target and current portfolios.
@@ -168,11 +157,8 @@ class PortfolioConstructionModel(object):
             Target asset quantities in integral units.
         curent_portfolio : `dict{str: dict}`
             Current (broker) asset quantities in integral units.
-
-        Returns
-        -------
-        `list[Order]`
-            The list of rebalancing Orders
+        target_prices : `dict{str: decimal}`
+            Target asset price for 1 unit
         """
 
         # Set all assets from the target portfolio that
@@ -201,15 +187,42 @@ class PortfolioConstructionModel(object):
 
         # Create the rebalancing Order list from the order portfolio
         # only where quantities are non-zero
-        rebalance_orders = [
-            Order(dt, asset, rebalance_portfolio[asset]["quantity"], debug_details=debug_details)
-            for asset, asset_dict in sorted(
-                rebalance_portfolio.items(), key=lambda x: x[0]
-            )
-            if rebalance_portfolio[asset]["quantity"] != 0
-        ]
+        #rebalance_orders = [
+        #    Order(dt, asset, rebalance_portfolio[asset]["quantity"], debug_details=debug_details)
+        #    for asset, asset_dict in sorted(
+        #        rebalance_portfolio.items(), key=lambda x: x[0]
+        #    )
+        #    if rebalance_portfolio[asset]["quantity"] != 0
+        #]
 
-        return rebalance_orders
+        rebalance_trades = []
+        for asset, asset_dict in sorted(rebalance_portfolio.items(), key=lambda x: x[0]):
+            quantity = rebalance_portfolio[asset]["quantity"]
+            if quantity != 0:
+
+                pandas_pair = self.universe.pairs.get_pair_by_id(asset)
+                executor_pair = translate_trading_pair(pandas_pair)
+                price = target_prices[asset]
+
+                self.state.create_trade(
+                    dt,
+                    executor_pair,
+                    quantity,
+                    price,
+                    TradeType.rebalance,
+                    self.reserve_currency,
+                    1.0,  # TODO: Harcoded stablecoin USD exchange rate
+                )
+
+        #rebalance_orders = [
+        #    Order(dt, asset, rebalance_portfolio[asset]["quantity"], debug_details=debug_details)
+        #    for asset, asset_dict in sorted(
+        #        rebalance_portfolio.items(), key=lambda x: x[0]
+        #    )
+        #    if rebalance_portfolio[asset]["quantity"] != 0
+        #]
+
+        return rebalance_trades
 
     def _create_zero_target_weights_vector(self, dt):
         """
@@ -230,7 +243,7 @@ class PortfolioConstructionModel(object):
         assets = self.universe.get_assets(dt)
         return {asset: 0.0 for asset in assets}
 
-    def __call__(self, dt: pd.Timestamp, stats=None, debug_details: Optional[Dict] = None):
+    def __call__(self, dt: pd.Timestamp, stats=None, debug_details: Optional[Dict] = None) -> List[TradeExecution]:
         """
         Execute the portfolio construction process at a particular
         provided date-time.
@@ -283,14 +296,14 @@ class PortfolioConstructionModel(object):
             stats['target_allocations'].append(alloc_dict)
 
         # Calculate target portfolio in notional
-        target_portfolio = self._generate_target_portfolio(dt, full_weights)
+        target_portfolio, target_prices = self._generate_target_portfolio(dt, full_weights)
 
         # Obtain current Broker account portfolio
         current_portfolio = self._obtain_current_portfolio()
 
         # Create rebalance trade Orders
         rebalance_orders = self._generate_rebalance_orders(
-            dt, target_portfolio, current_portfolio, debug_details
+            dt, target_portfolio, current_portfolio, target_prices, debug_details
         )
         # TODO: Implement cost model
 
