@@ -183,14 +183,15 @@ class StrategyRunner(abc.ABC):
                 self.revalue_portfolio(clock, state)
 
             with self.timed_task_context_manager("decide_trades"):
-                new_trades = self.on_clock(clock, universe, state, debug_details)
-                assert type(new_trades) == list
-                logger.info("We have %d trades", len(new_trades))
+                rebalance_trades = self.on_clock(clock, universe, state, debug_details)
+                assert type(rebalance_trades) == list
+                debug_details["rebalance_trades"] = rebalance_trades
+                logger.info("We have %d trades", len(rebalance_trades))
 
             with self.timed_task_context_manager("confirm_trades"):
-                approved_trades = self.approval_model.confirm_trades(state, new_trades)
+                approved_trades = self.approval_model.confirm_trades(state, rebalance_trades)
                 assert type(approved_trades) == list
-                logger.info("After approval we have %d trades left", len(new_trades))
+                logger.info("After approval we have %d trades left", len(approved_trades))
 
             with self.timed_task_context_manager("execute_trades"):
                 self.execution_model.execute_trades(clock, approved_trades)

@@ -136,7 +136,7 @@ class PortfolioConstructionModel:
         # return self.broker.get_portfolio_as_dict(self.broker_portfolio_id)
         return self.state.portfolio.get_open_position_quantities_as_dict()
 
-    def _generate_rebalance_orders(
+    def _generate_rebalance_trades(
         self,
         dt: datetime.datetime,
         target_portfolio,
@@ -203,7 +203,7 @@ class PortfolioConstructionModel:
                 executor_pair = translate_trading_pair(pandas_pair)
                 price = target_prices[asset]
 
-                self.state.create_trade(
+                position, trade = self.state.create_trade(
                     dt,
                     executor_pair,
                     quantity,
@@ -212,6 +212,7 @@ class PortfolioConstructionModel:
                     self.reserve_currency,
                     1.0,  # TODO: Harcoded stablecoin USD exchange rate
                 )
+                rebalance_trades.append(trade)
 
         #rebalance_orders = [
         #    Order(dt, asset, rebalance_portfolio[asset]["quantity"], debug_details=debug_details)
@@ -282,13 +283,13 @@ class PortfolioConstructionModel:
         debug_details["portfolio_at_start_of_construction"] = current_portfolio.copy()  # current_portfolio is mutated later
 
         # Create rebalance trade Orders
-        rebalance_orders = self._generate_rebalance_orders(
+        rebalance_trades = self._generate_rebalance_trades(
             dt, target_portfolio, current_portfolio, target_prices, debug_details
         )
 
         # Expose internal states to unit tests
         debug_details["target_portfolio"] = target_portfolio
         debug_details["target_prices"] = target_prices
-        debug_details["rebalance_orders"] = rebalance_orders
+        debug_details["rebalance_trades"] = rebalance_trades
 
-        return rebalance_orders
+        return rebalance_trades

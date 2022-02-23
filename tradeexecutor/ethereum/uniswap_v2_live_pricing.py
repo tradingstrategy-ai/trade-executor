@@ -1,8 +1,9 @@
 import datetime
-from decimal import Decimal
+from decimal import Decimal, ROUND_DOWN
 
 from tradingstrategy.pair import PandasPairUniverse
 
+from eth_hentai.token import fetch_erc20_details
 from eth_hentai.uniswap_v2 import UniswapV2Deployment
 from eth_hentai.uniswap_v2_fees import estimate_buy_price_decimals, estimate_sell_price_decimals
 from tradeexecutor.state.types import USDollarAmount
@@ -45,3 +46,10 @@ class UniswapV2LivePricing(PricingMethod):
         assert pair.quote_token_symbol == "USDC"
         price_for_quantity = estimate_buy_price_decimals(self.uniswap, pair.base_token_address, pair.quote_token_address, self.very_small_amount)
         return float(price_for_quantity / self.very_small_amount)
+
+    def quantize_quantity(self, pair_id: int, quantity: float, rounding=ROUND_DOWN) -> Decimal:
+        """Convert any base token quantity to the native token units by its ERC-20 decimals."""
+        pair = self.get_pair(pair_id)
+        base_details = fetch_erc20_details(self.uniswap.web3, pair.base_token_address)
+        decimals = base_details.decimals
+        return Decimal(quantity).quantize((Decimal(10) ** Decimal(-decimals)), rounding=ROUND_DOWN)

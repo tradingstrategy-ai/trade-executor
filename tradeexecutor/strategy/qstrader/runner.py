@@ -1,6 +1,5 @@
 import datetime
-from contextlib import AbstractContextManager
-from typing import List, Type, Optional
+from typing import List, Optional
 import logging
 
 import pandas as pd
@@ -10,7 +9,6 @@ from tradeexecutor.strategy.qstrader.alpha_model import AlphaModel
 from tradeexecutor.strategy.qstrader.order_sizer import CashBufferedOrderSizer
 
 from tradingstrategy.client import Client
-from tradingstrategy.frameworks.qstrader import TradingStrategyDataSource
 from tradingstrategy.universe import Universe
 
 from tradeexecutor.state.state import State, TradeExecution
@@ -61,7 +59,6 @@ class QSTraderRunner(StrategyRunner):
             cost_model=None)
 
         rebalance_trades = pcm(pd.Timestamp(clock), stats=None, debug_details=debug_details)
-        debug_details["rebalance_trades"] = rebalance_trades
         return rebalance_trades
 
     def preflight_check(self, client: Client, universe: Universe, now_: datetime.datetime):

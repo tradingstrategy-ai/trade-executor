@@ -3,6 +3,7 @@ import logging
 import os
 import datetime
 import secrets
+from decimal import Decimal
 from pathlib import Path
 from typing import List
 
@@ -310,8 +311,8 @@ def test_simulated_uniswap_qstrader_strategy(
     # Check that the strategy thinking is 100% ETH
     # This comes from qstrader/portfolio_construction_model
     assert debug_details["alpha_model_weights"] == {weth_usdc.pair_id: 1}
-    assert debug_details["target_prices"] == {weth_usdc.pair_id: 1}
-    assert debug_details["target_portfolio"] == {weth_usdc.pair_id: 1}
+    assert debug_details["target_prices"] == {weth_usdc.pair_id: pytest.approx(1705.12)}
+    assert debug_details["target_portfolio"] == {weth_usdc.pair_id: {"quantity": pytest.approx(Decimal('5.571455381439429643'))}}
 
     # The strategy should use all of our available USDC to buy ETH.
     assert len(debug_details["rebalance_trades"]) == 1

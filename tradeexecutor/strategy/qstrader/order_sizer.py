@@ -1,4 +1,5 @@
 import logging
+from decimal import Decimal
 from typing import Dict, Tuple
 
 import pandas as pd
@@ -23,12 +24,7 @@ class CashBufferedOrderSizer(OrderSizer):
 
     Parameters
     ----------
-    broker : `Broker`
-        The derived Broker instance to obtain portfolio equity from.
-    broker_portfolio_id : `str`
-        The specific portfolio at the Broker to obtain equity from.
-    data_handler : `DataHandler`
-        To obtain latest asset prices from.
+
     cash_buffer_percentage : `float`, optional
         The percentage of the portfolio equity to retain in
         cash to avoid generating Orders that exceed account
@@ -43,9 +39,7 @@ class CashBufferedOrderSizer(OrderSizer):
     ):
         self.state = state
         self.pricing_method = pricing_method
-        self.cash_buffer_percentage = self._check_set_cash_buffer(
-            cash_buffer_percentage
-        )
+        self.cash_buffer_percentage = self._check_set_cash_buffer(cash_buffer_percentage)
 
     def _check_set_cash_buffer(self, cash_buffer_percentage):
         """
@@ -166,7 +160,7 @@ class CashBufferedOrderSizer(OrderSizer):
             asset_quantity = 0
 
             if weight > 0:
-                asset_price = self.pricing_method.get_simple_sell_price(dt, asset)
+                asset_price = self.pricing_method.get_simple_buy_price(dt, asset)
 
                 if after_cost_dollar_weight > 0:
                     if np.isnan(asset_price):
@@ -177,15 +171,13 @@ class CashBufferedOrderSizer(OrderSizer):
                             'modifying the backtest start date and re-running.' % (asset, dt)
                         )
 
-                    # TODO: Long only for the time being.
-                    asset_quantity = int(
-                        np.floor(after_cost_dollar_weight / asset_price)
-                    )
+                    asset_quantity = after_cost_dollar_weight / asset_price
+                    asset_quantity = self.pricing_method.quantize_quantity(asset, asset_quantity)
 
                 # Add to the target portfolio
                 target_portfolio[asset] = {"quantity": asset_quantity}
                 target_prices[asset] = asset_price
-                total_spend += (asset_quantity * asset_price) + est_costs
+                total_spend += (asset_quantity * Decimal(asset_price)) + est_costs
 
         logger.info(f"Total new portfolio cost {total_spend:,.2f}")
 
