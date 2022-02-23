@@ -99,6 +99,8 @@ tags:
     description: Data about supported blockchains
   - name: Exchange
     description: Data about decentralised exchanges
+  - name: Token
+    description: Data about tokens living on blockchains
   - name: Trading pair
     description: Data about trading pair
   - name: Trading signal
@@ -705,6 +707,48 @@ paths:
                 $ref: '#/components/schemas/XYLiquiditySampleList'
         "422":
           description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericErrorModel"
+
+  '/token/details':
+    x-pyramid-route-name: web_token_details
+    get:
+      operationId: web_token_details
+      summary: |
+        Information about a token living on a blockchain.
+      parameters:
+        - name: chain_slug
+          in: query
+          description: Blockchain slug, e.g, "ethereum"
+          required: true
+          schema:
+            type: string
+          example: ethereum
+        - name: address
+          in: query
+          description: |
+             The address location of the actual token contract that manages the logic
+             for the tokens.
+          required: true
+          schema:
+            type: string
+          example: "0x0123456789aBcDe0123456789AbCdE0123456789"
+
+      tags:
+        - Token
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenOnChainInfo'
+        '404':
+          description: Token not found
+        "422":
+          description: Unexpected error - usually bad query input
           content:
             application/json:
               schema:
@@ -1471,6 +1515,26 @@ components:
         daily:
           type: object
           $ref: '#/components/schemas/TimeSpanTradeData'
+
+    TokenOnChainInfo:
+      description: >
+        Basic info about a token from on-chain data.
+      type: object
+      properties:
+        name:
+          type: string
+        symbol:
+          type: string
+        total_supply:
+          type: integer
+          minimum: 0
+        decimals:
+          type: integer
+          minimum: 0
+          nullable: true
+          description: >
+             The number of decimals the token uses - e.g. 8, means to divide the token
+             amount by 100_000_000 to get its user representation.
 
     TopMomentum:
       description: >
