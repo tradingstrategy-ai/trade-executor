@@ -13,13 +13,13 @@ class PricingMethod(abc.ABC):
     """
 
     @abc.abstractmethod
-    def get_simple_ask_price(self, ts: datetime.datetime, pair: TradingPairIdentifier) -> USDollarAmount:
+    def get_simple_sell_price(self, ts: datetime.datetime, pair: TradingPairIdentifier) -> USDollarAmount:
         """Get simple buy price without the quantity identified.
         """
         pass
 
     @abc.abstractmethod
-    def get_simple_bid_price(self, ts: datetime.datetime, pair: TradingPairIdentifier) -> USDollarAmount:
+    def get_simple_buy_price(self, ts: datetime.datetime, pair: TradingPairIdentifier) -> USDollarAmount:
         """Get simple sell price without the quantity identified.
         """
         pass

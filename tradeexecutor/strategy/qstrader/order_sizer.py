@@ -166,7 +166,7 @@ class CashBufferedOrderSizer(OrderSizer):
             asset_quantity = 0
 
             if weight > 0:
-                asset_price = self.pricing_method.get_simple_ask_price(dt, asset)
+                asset_price = self.pricing_method.get_simple_sell_price(dt, asset)
 
                 if after_cost_dollar_weight > 0:
                     if np.isnan(asset_price):

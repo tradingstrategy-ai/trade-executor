@@ -253,7 +253,6 @@ class PortfolioConstructionModel:
         """
 
         logger.info("Performing portfolio constructions for %s", dt)
-        import ipdb ; ipdb.set_trace()
 
         weights = self.alpha_model(dt, self.universe, self.state, debug_details)
 
@@ -280,8 +279,7 @@ class PortfolioConstructionModel:
 
         # Obtain current Broker account portfolio
         current_portfolio = self._obtain_current_portfolio()
-        debug_details["portfolio_at_start_of_construction"] = current_portfolio
-        import ipdb ; ipdb.set_trace()
+        debug_details["portfolio_at_start_of_construction"] = current_portfolio.copy()  # current_portfolio is mutated later
 
         # Create rebalance trade Orders
         rebalance_orders = self._generate_rebalance_orders(

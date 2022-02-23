@@ -310,8 +310,8 @@ def test_simulated_uniswap_qstrader_strategy(
     # Check that the strategy thinking is 100% ETH
     # This comes from qstrader/portfolio_construction_model
     assert debug_details["alpha_model_weights"] == {weth_usdc.pair_id: 1}
-    import ipdb ; ipdb.set_trace()
-    assert debug_details["portfolio_at_start_of_construction"] == {}
+    assert debug_details["target_prices"] == {weth_usdc.pair_id: 1}
+    assert debug_details["target_portfolio"] == {weth_usdc.pair_id: 1}
 
     # The strategy should use all of our available USDC to buy ETH.
     assert len(debug_details["rebalance_trades"]) == 1
