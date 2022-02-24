@@ -99,6 +99,8 @@ tags:
     description: Data about supported blockchains
   - name: Exchange
     description: Data about decentralised exchanges
+  - name: Token
+    description: Data about tokens living on blockchains
   - name: Trading pair
     description: Data about trading pair
   - name: Trading signal
@@ -278,7 +280,7 @@ paths:
     get:
       operationId: web_pair_details
       summary: |
-        Additinal information for a trading pair
+        Additional information for a trading pair
       parameters:
         - name: exchange_slug
           in: query
@@ -710,6 +712,48 @@ paths:
               schema:
                 $ref: "#/components/schemas/GenericErrorModel"
 
+  '/token/details':
+    x-pyramid-route-name: web_token_details
+    get:
+      operationId: web_token_details
+      summary: |
+        Information about a token living on a blockchain.
+      parameters:
+        - name: chain_slug
+          in: query
+          description: Blockchain slug, e.g, "ethereum"
+          required: true
+          schema:
+            type: string
+          example: ethereum
+        - name: address
+          in: query
+          description: |
+             The address location of the actual token contract that manages the logic
+             for the tokens.
+          required: true
+          schema:
+            type: string
+          example: "0x0123456789aBcDe0123456789AbCdE0123456789"
+
+      tags:
+        - Token
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenOnChainInfo'
+        '404':
+          description: Token not found
+        "422":
+          description: Unexpected error - usually bad query input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericErrorModel"
+
 
   '/top-momentum':
     x-pyramid-route-name: web_top_momentum
@@ -984,6 +1028,16 @@ components:
           type: string
           format: Ethereum address
           example: 0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f
+        base_token_slug:
+          type: string
+          description: >
+            URL slug for the base token in the pair.
+          example: ETH
+        quote_token_slug:
+          type: string
+          description: >
+            URL slug for the quote token in the pair.
+          example: USDC
         pool_address:
           description: Pool contract address
           type: string
@@ -1471,6 +1525,28 @@ components:
         daily:
           type: object
           $ref: '#/components/schemas/TimeSpanTradeData'
+
+    TokenOnChainInfo:
+      description: >
+        Basic info about a token from on-chain data.
+      type: object
+      properties:
+        name:
+          type: string
+        symbol:
+          type: string
+        total_supply:
+          type: string
+          format: decimal
+          minimum: 0
+          example: "123000.456"
+        decimals:
+          type: integer
+          minimum: 0
+          nullable: true
+          description: >
+             The number of decimals the token uses - e.g. 8, means to divide the token
+             amount by 100_000_000 to get its user representation.
 
     TopMomentum:
       description: >
