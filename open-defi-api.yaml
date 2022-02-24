@@ -1028,6 +1028,16 @@ components:
           type: string
           format: Ethereum address
           example: 0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f
+        base_token_slug:
+          type: string
+          description: >
+            URL slug for the base token in the pair.
+          example: ETH
+        quote_token_slug:
+          type: string
+          description: >
+            URL slug for the quote token in the pair.
+          example: USDC
         pool_address:
           description: Pool contract address
           type: string
