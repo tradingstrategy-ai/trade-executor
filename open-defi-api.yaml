@@ -1526,8 +1526,10 @@ components:
         symbol:
           type: string
         total_supply:
-          type: integer
+          type: string
+          format: decimal
           minimum: 0
+          example: "123000.456"
         decimals:
           type: integer
           minimum: 0
