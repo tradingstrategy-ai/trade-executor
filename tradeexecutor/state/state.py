@@ -599,8 +599,13 @@ class Portfolio:
         """Get open and closed positions."""
         return chain(self.open_positions.values(), self.closed_positions.values())
 
-    def get_open_position_for_pair(self, pair: TradingPairIdentifier) -> TradingPosition:
-        return self.open_positions.get(pair.pool_address)
+    def get_open_position_for_pair(self, pair: TradingPairIdentifier) -> Optional[TradingPosition]:
+        assert isinstance(pair, TradingPairIdentifier)
+        pos: TradingPosition
+        for pos in self.open_positions.values():
+            if pos.pair.get_identifier() == pair.get_identifier():
+                return pos
+        return None
 
     def get_open_position_quantities_as_dict(self) -> Dict[str, Decimal]:
         """Return the current ownerships.
@@ -761,8 +766,11 @@ class Portfolio:
     def get_all_trades(self) -> Iterable[TradeExecution]:
         """Iterate through all trades: completed, failed and in progress"""
         pos: TradingPosition
-        for pos in zip(self.open_positions.values(), self.closed_positions.values()):
-            for t in pos.trades:
+        for pos in self.open_positions.values():
+            for t in pos.trades.values():
+                yield t
+        for pos in self.closed_positions.values():
+            for t in pos.trades.values():
                 yield t
 
 

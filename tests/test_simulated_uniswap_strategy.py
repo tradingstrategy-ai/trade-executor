@@ -15,6 +15,7 @@ from web3 import EthereumTesterProvider, Web3
 from web3.contract import Contract
 
 from eth_hentai.hotwallet import HotWallet
+from eth_hentai.balances import fetch_erc20_balances_decimal
 from eth_hentai.token import create_token
 from eth_hentai.uniswap_v2 import UniswapV2Deployment, deploy_trading_pair, deploy_uniswap_v2_like
 from tradeexecutor.ethereum.hot_wallet_sync import EthereumHotWalletReserveSyncer
@@ -249,7 +250,7 @@ def strategy_path() -> Path:
     return Path(os.path.join(os.path.dirname(__file__), "strategies", "simulated_uniswap.py"))
 
 
-def test_simulated_uniswap_qstrader_strategy(
+def test_simulated_uniswap_qstrader_strategy_single_trade(
         logger: logging.Logger,
         strategy_path: Path,
         web3: Web3,
@@ -257,8 +258,15 @@ def test_simulated_uniswap_qstrader_strategy(
         uniswap_v2: UniswapV2Deployment,
         universe: Universe,
         state: State,
-        supported_reserves):
-    """Tests a strategy that runs against a simulated Uniswap environment."""
+        supported_reserves,
+        weth_usdc_pair,
+        weth_token,
+        usdc_token,
+    ):
+    """Tests a strategy that runs against a simulated Uniswap environment.
+
+    Do a single trade and analyse data structures look correct after the trade.
+    """
 
     factory = import_strategy_file(strategy_path)
     approval_model = UncheckedApprovalModel()
@@ -317,5 +325,29 @@ def test_simulated_uniswap_qstrader_strategy(
     # The strategy should use all of our available USDC to buy ETH.
     assert len(debug_details["rebalance_trades"]) == 1
 
+    # Check the executed portfolio balances
+    assert state.portfolio.get_total_equity() == pytest.approx(9947.390072492823)
+    assert state.portfolio.get_current_cash() == pytest.approx(500)
 
+    # Check the open position
+    assert len(state.portfolio.open_positions) == 1
+    position = state.portfolio.get_open_position_for_pair(weth_usdc_pair)
+    assert position is not None
+    assert position.get_quantity() == Decimal('5.54060129052079779')
+    assert position.get_value() == pytest.approx(9447.390072492823)
+    assert len(position.trades) == 1
 
+    # Check the recorded trade history
+    trades = list(state.portfolio.get_all_trades())
+    assert len(trades) == 1
+    t = trades[0]
+
+    assert t.is_success()
+    assert t.tx_info.chain_id == 61   # Ethereum Tester
+    assert t.tx_info.tx_hash.startswith("0x")
+    assert t.tx_info.nonce == 1
+
+    # Check the raw on-chain token balances
+    balances = fetch_erc20_balances_decimal(web3, hot_wallet.address)
+    assert balances[weth_token.address].value == pytest.approx(Decimal('5.54060129052079779'))
+    assert balances[usdc_token.address].value == pytest.approx(Decimal('500'))
