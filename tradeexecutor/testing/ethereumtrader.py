@@ -80,7 +80,7 @@ class EthereumTestTrader:
         # Estimate buy price
         base_token = get_deployed_contract(self.web3, "ERC20MockDecimals.json", pair.base.address)
         quote_token = get_deployed_contract(self.web3, "ERC20MockDecimals.json", pair.quote.address)
-        raw_assumed_quantity = estimate_buy_quantity(self.web3, self.uniswap, base_token, quote_token, amount_in_usd * (10 ** pair.quote.decimals))
+        raw_assumed_quantity = estimate_buy_quantity(self.uniswap, base_token, quote_token, amount_in_usd * (10 ** pair.quote.decimals))
         assumed_quantity = Decimal(raw_assumed_quantity) / Decimal(10**pair.base.decimals)
         assumed_price = amount_in_usd / assumed_quantity
 
@@ -106,7 +106,7 @@ class EthereumTestTrader:
         quote_token = get_deployed_contract(self.web3, "ERC20MockDecimals.json", pair.quote.address)
 
         raw_quantity = int(quantity * 10**pair.base.decimals)
-        raw_assumed_quote_token = estimate_sell_price(self.web3, self.uniswap, base_token, quote_token, raw_quantity)
+        raw_assumed_quote_token = estimate_sell_price(self.uniswap, base_token, quote_token, raw_quantity)
         assumed_quota_token = Decimal(raw_assumed_quote_token) / Decimal(10**pair.quote.decimals)
 
         # assumed_price = quantity / assumed_quota_token

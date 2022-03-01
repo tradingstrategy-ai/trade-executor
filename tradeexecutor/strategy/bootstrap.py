@@ -35,7 +35,12 @@ def import_strategy_file(path: Path) -> Callable:
     return strategy_runner
 
 
-def bootstrap_strategy(client: Client, timed_task_context_manager: AbstractContextManager, path: Path, now_: datetime.datetime, lookback: Optional[datetime.timedelta]=None, **kwargs) -> [Dataset, Universe, StrategyRunner]:
+def bootstrap_strategy(
+        client: Client,
+        timed_task_context_manager: AbstractContextManager,
+        path: Path,
+        now_: datetime.datetime,
+        lookback: Optional[datetime.timedelta]=None, **kwargs) -> [Dataset, Universe, StrategyRunner]:
     """Bootstrap a strategy to the point it can accept its first tick.
 
     Returns an initialized strategy.

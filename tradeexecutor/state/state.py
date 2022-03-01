@@ -13,8 +13,6 @@ from typing import List, Optional, Dict, Callable, Iterable, Tuple, Any
 
 from dataclasses_json import dataclass_json
 
-# from tradingstrategy.pair import PandasPairUniverse, DEXPair
-
 from .types import USDollarAmount
 
 
@@ -236,6 +234,29 @@ class BlockchainTransactionInfo:
 @dataclass_json
 @dataclass
 class TradeExecution:
+    """Trade execution tracker.
+
+    Each trade has a reserve currency that we use to trade the token (usually USDC).
+
+    Each trade can be
+    - Buy: swap quote token -> base token
+    - Sell: swap base token -> quote token
+
+    When doing a buy `planned_reserve` (fiat) is the input. This yields to `executed_quantity` of tokens
+    that may be different from `planned_quantity`.
+
+    When doing a sell `planned_quantity` (token) is the input. This yields to `executed_reserve`
+    of fiat that might be different from `planned_reserve.
+
+    Trade execution has four states
+    - Planning: The execution object is prepared
+    - Capital allocation and transaction creation: We move reserve from out portfolio to the trade in internal accounting
+    - Transaction broadcast: trade cannot be cancelled in this point
+    - Resolving the trade: We check the Ethereum transaction receipt to see how well we succeeded in the trade
+
+    There trade state is resolved based on the market variables (usually timestamps).
+
+    """
 
     trade_id: int
     position_id: int

@@ -189,7 +189,7 @@ def portfolio(web3, hot_wallet, start_ts, supported_reserves) -> Portfolio:
     We start with 10,000 USDC.
     """
     portfolio = Portfolio({}, {}, {})
-    events = sync_reserves(web3, 1, start_ts, hot_wallet.address, [], supported_reserves)
+    events = sync_reserves(web3, start_ts, hot_wallet.address, [], supported_reserves)
     sync_portfolio(portfolio, events)
     return portfolio
 
@@ -222,7 +222,7 @@ def test_execute_trade_instructions_buy_weth(
     buy_amount = 500
 
     # Estimate price
-    raw_assumed_quantity = estimate_buy_quantity(web3, uniswap_v2, weth_token, usdc_token, buy_amount * 10 ** 6)
+    raw_assumed_quantity = estimate_buy_quantity(uniswap_v2, weth_token, usdc_token, buy_amount * 10 ** 6)
     assumed_quantity = Decimal(raw_assumed_quantity) / Decimal(10**18)
     assert assumed_quantity == pytest.approx(Decimal(0.293149332386944192))
 

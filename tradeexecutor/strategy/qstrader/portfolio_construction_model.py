@@ -6,6 +6,7 @@ import pandas as pd
 
 from tradeexecutor.client.translations import translate_trading_pair
 from tradeexecutor.state.state import State, AssetIdentifier, TradeType, TradeExecution
+from tradeexecutor.strategy.qstrader.order_sizer import CashBufferedOrderSizer
 from tradingstrategy.universe import Universe
 
 from tradeexecutor.strategy.pricingmethod import PricingMethod
@@ -45,7 +46,7 @@ class PortfolioConstructionModel:
         self,
         universe: Universe,
         state: State,
-        order_sizer,
+        order_sizer: CashBufferedOrderSizer,
         optimiser,
         pricing_method: PricingMethod,
         reserve_currency: AssetIdentifier,
@@ -117,11 +118,6 @@ class PortfolioConstructionModel:
             optimised weights take precedence.
         """
         return {**zero_weights, **optimised_weights}
-
-    def _generate_target_portfolio(self, dt, weights) -> Tuple[dict, dict]:
-        """
-        """
-        return self.order_sizer(dt, weights)
 
     def _obtain_current_portfolio(self):
         """
@@ -256,7 +252,6 @@ class PortfolioConstructionModel:
     def get_all_prices(self):
         """Get prices for all asssets."""
 
-
     def __call__(self, dt: pd.Timestamp, stats=None, debug_details: Optional[Dict] = None) -> List[TradeExecution]:
         """
         Execute the portfolio construction process at a particular
@@ -271,6 +266,7 @@ class PortfolioConstructionModel:
 
         weights = self.alpha_model(dt, self.universe, self.state, debug_details)
 
+        # Expose internal states to unit tests
         debug_details["alpha_model_weights"] = weights
 
         # If a risk model is present use it to potentially
@@ -290,7 +286,7 @@ class PortfolioConstructionModel:
         )
 
         # Calculate target portfolio in notional
-        target_portfolio, target_prices = self._generate_target_portfolio(dt, full_weights)
+        target_portfolio, target_prices = self.order_sizer(dt, weights, debug_details)
 
         # Obtain current Broker account portfolio
         current_portfolio = self._obtain_current_portfolio()
@@ -299,6 +295,7 @@ class PortfolioConstructionModel:
         for asset_id, asset_data in current_portfolio.items():
             target_prices[asset_id] = self.pricing_method.get_simple_buy_price(dt, asset_id)
 
+        # Expose internal states to unit tests
         debug_details["positions_at_start_of_construction"] = current_portfolio.copy()  # current_portfolio is mutated later
 
         # Create rebalance trade Orders

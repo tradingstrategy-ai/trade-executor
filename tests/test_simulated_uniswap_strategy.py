@@ -453,10 +453,11 @@ def test_simulated_uniswap_qstrader_strategy_round_trip(
         aave_usdc_pair,
         weth_token,
         usdc_token,
+        aave_token,
     ):
     """Tests a strategy that runs against a simulated Uniswap environment.
 
-    Cycle to the 50% ETH / 50% AAVE position.
+    Cycle to the 50% ETH / 50% AAVE positions through rebalance.
     """
 
     factory = import_strategy_file(strategy_path)
@@ -489,23 +490,38 @@ def test_simulated_uniswap_qstrader_strategy_round_trip(
     debug_details = runner.tick(datetime.datetime(2020, 1, 3), universe, state)
 
     #
-    # After Day #3 - we should be 50%/50% ETh aave
+    # After Day #3 - we should be 50%/50% ETH/AAVE
     #
 
     assert debug_details["target_portfolio"] == {
-        weth_usdc.pair_id: {"quantity": pytest.approx(Decimal('2.739308057084445469'))},
-        aave_usdc.pair_id: {"quantity": pytest.approx(Decimal('23.543766272992375121'))},
+        weth_usdc.pair_id: {"quantity": pytest.approx(Decimal('2.754805368333548720'))},
+        aave_usdc.pair_id: {"quantity": pytest.approx(Decimal('21.354907569100333830'))},
+    }
+
+    assert debug_details["normalised_weights"] == {
+        weth_usdc.pair_id: 0.5,
+        aave_usdc.pair_id: 0.5,
     }
 
     # We have lost some money in trading fees
-    assert state.portfolio.get_total_equity() == pytest.approx(9943.399899000002)
-    assert state.portfolio.get_current_cash() == pytest.approx(500)
+    assert state.portfolio.get_total_equity() == pytest.approx(9983.773698830146)
+    assert state.portfolio.get_current_cash() == pytest.approx(839.3295900249992)
 
     # Check our two open positions
     assert len(state.portfolio.open_positions) == 2
     position_1 = state.portfolio.get_open_position_for_pair(weth_usdc_pair)
-    assert position_1.get_quantity() == Decimal('2.739308057084445469')
-    assert position_1.get_value() == pytest.approx(4500)
-
+    assert position_1.get_quantity() == Decimal('2.747249930253346052')
+    assert position_1.get_value() == pytest.approx(4684.555636069401)
     position_2 = state.portfolio.get_open_position_for_pair(aave_usdc_pair)
-    assert position_2.get_value() == pytest.approx(4500)
+    assert position_2.get_value() == pytest.approx(4459.8884727357445)
+    assert position_2.get_quantity() == Decimal('21.354907569100333830')
+
+    # Check the raw on-chain token balances
+    balances = fetch_erc20_balances_decimal(web3, hot_wallet.address)
+    assert balances[weth_token.address].value == pytest.approx(Decimal('2.747249930253346052'))
+    assert balances[aave_token.address].value == pytest.approx(Decimal('21.354907569100333830'))
+
+    # The cash balance should be ~500 USD but due to huge AAVE price estimation error it is not
+    assert balances[usdc_token.address].value == pytest.approx(Decimal('839.3295900249992'))
+
+

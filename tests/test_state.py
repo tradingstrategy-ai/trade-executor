@@ -437,11 +437,11 @@ def test_revalue(usdc, weth_usdc, start_ts: datetime.datetime):
 
     revalue_date = datetime.datetime(2020, 1, 2, tzinfo=None)
 
-    def value_asset(pair: TradingPairIdentifier) -> Tuple[datetime.datetime, USDollarAmount]:
+    def value_asset(ts, pair: TradingPairIdentifier) -> Tuple[datetime.datetime, USDollarAmount]:
         # ETH drops 50%
         return revalue_date, 850.0
 
-    state.revalue_positions(value_asset)
+    state.revalue_positions(start_ts, value_asset)
 
     assert position.last_pricing_at == revalue_date
     assert position.last_token_price == 850.0

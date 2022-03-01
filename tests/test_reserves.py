@@ -83,41 +83,37 @@ def supported_reserves(usdc) -> List[AssetIdentifier]:
 
 def test_update_reserves_empty(web3, usdc, start_ts, hot_wallet: HexAddress, supported_reserves):
     """Syncing empty reserves does not cause errors."""
-    tick = 0
-    events = sync_reserves(web3, tick, start_ts, hot_wallet, [], supported_reserves)
+    events = sync_reserves(web3, start_ts, hot_wallet, [], supported_reserves)
     assert len(events) == 0
 
 
 def test_update_reserves_one_deposit(web3, usdc_token, deployer, start_ts, hot_wallet: HexAddress, supported_reserves):
     """Sync reserves from one deposit."""
-    tick = 0
 
     # Deposit 500 usd
     usdc_token.functions.transfer(hot_wallet, 500 * 10**6).transact({"from": deployer})
-    events = sync_reserves(web3, tick, start_ts, hot_wallet, [], supported_reserves)
+    events = sync_reserves(web3, start_ts, hot_wallet, [], supported_reserves)
     assert len(events) == 1
 
     evt = events[0]
     assert evt.updated_at == start_ts
-    assert evt.tick == 0
     assert evt.new_balance == 500
     assert evt.past_balance == 0
 
 
 def test_update_reserves_no_change(web3, usdc_token, deployer, start_ts, hot_wallet: HexAddress, supported_reserves):
     """Do not generate deposit events if there has not been changes."""
-    tick = 0
 
     portfolio = Portfolio()
 
     # Deposit 500 usd
     usdc_token.functions.transfer(hot_wallet, 500 * 10**6).transact({"from": deployer})
-    events = sync_reserves(web3, tick, start_ts, hot_wallet, [], supported_reserves)
+    events = sync_reserves(web3, start_ts, hot_wallet, [], supported_reserves)
     assert len(events) == 1
 
     sync_portfolio(portfolio, events)
 
-    events = sync_reserves(web3, tick, start_ts, hot_wallet, portfolio.reserves.values(), supported_reserves)
+    events = sync_reserves(web3, start_ts, hot_wallet, portfolio.reserves.values(), supported_reserves)
     assert len(events) == 0
 
 
@@ -126,11 +122,9 @@ def test_update_reserves_twice(web3, usdc_token, deployer, start_ts, hot_wallet:
 
     portfolio = Portfolio()
 
-    tick = 0
-
     # Deposit 500 usd
     usdc_token.functions.transfer(hot_wallet, 500 * 10**6).transact({"from": deployer})
-    events = sync_reserves(web3, tick, start_ts, hot_wallet, [], supported_reserves)
+    events = sync_reserves(web3, start_ts, hot_wallet, [], supported_reserves)
     assert len(events) == 1
 
     sync_portfolio(portfolio, events)
@@ -141,12 +135,11 @@ def test_update_reserves_twice(web3, usdc_token, deployer, start_ts, hot_wallet:
 
     # Deposit 200 usd more
     usdc_token.functions.transfer(hot_wallet, 200 * 10**6).transact({"from": deployer})
-    events = sync_reserves(web3, tick, start_ts, hot_wallet, portfolio.reserves.values(), supported_reserves)
+    events = sync_reserves(web3, start_ts, hot_wallet, portfolio.reserves.values(), supported_reserves)
     assert len(events) == 1
 
     evt = events[0]
     assert evt.updated_at == start_ts
-    assert evt.tick == 0
     assert evt.new_balance == 700
     assert evt.past_balance == 500
 

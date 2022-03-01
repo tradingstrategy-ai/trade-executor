@@ -24,7 +24,18 @@ def test_execute_empty_strategy_cycle(strategy_folder, persistent_test_client):
     clock_now = datetime.datetime(2022, 1, 1, tzinfo=None)
     client = persistent_test_client
     strategy_path = Path(os.path.join(strategy_folder, "empty.py"))
-    dataset, universe, runner = bootstrap_strategy(client, timed_task, strategy_path, clock_now)
+    dataset, universe, runner = bootstrap_strategy(
+        client,
+        timed_task,
+        strategy_path,
+        clock_now,
+        execution_model=None,
+        approval_model=None,
+        revaluation_method=None,
+        sync_method=None,
+        pricing_method=None,
+        reserve_assets=[],
+    )
     state = State()
     trade_instructions = runner.on_clock(clock_now, universe, state)
     assert len(trade_instructions) == 0
@@ -35,7 +46,18 @@ def test_dummy_strategy_clock(strategy_folder, persistent_test_client, usdc):
     clock_now = datetime.datetime(2022, 1, 1, tzinfo=None)
     client = persistent_test_client
     strategy_path = Path(os.path.join(strategy_folder, "dummy.py"))
-    dataset, universe, runner = bootstrap_strategy(client, timed_task, strategy_path, clock_now)
+    dataset, universe, runner = bootstrap_strategy(
+        client,
+        timed_task,
+        strategy_path,
+        clock_now,
+        execution_model=None,
+        approval_model=None,
+        revaluation_method=None,
+        sync_method=None,
+        pricing_method=None,
+        reserve_assets=[],
+        )
 
     assert isinstance(dataset, Dataset)
     assert isinstance(universe, Universe)

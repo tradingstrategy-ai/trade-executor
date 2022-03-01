@@ -101,7 +101,7 @@ class CashBufferedOrderSizer(OrderSizer):
             for asset, weight in weights.items()
         }
 
-    def __call__(self, dt: pd.Timestamp, weights: Dict[int, float]) -> Tuple[Dict, Dict]:
+    def __call__(self, dt: pd.Timestamp, weights: Dict[int, float], debug_details: dict) -> Tuple[Dict, Dict]:
         """
         Creates a dollar-weighted cash-buffered target portfolio from the
         provided target weights at a particular timestamp.
@@ -131,6 +131,9 @@ class CashBufferedOrderSizer(OrderSizer):
 
         # Ensure weight vector sums to unity
         normalised_weights = self._normalise_weights(weights)
+
+        # Expose internals to unit testing
+        debug_details["normalised_weights"] = normalised_weights
 
         target_portfolio = {}
         target_prices = {}

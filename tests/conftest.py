@@ -7,7 +7,7 @@ from tradingstrategy.client import Client
 @pytest.fixture()
 def strategy_folder():
     """Where unit test strategies are located."""
-    return os.path.join(os.path.dirname(__file__), "test_strategies")
+    return os.path.join(os.path.dirname(__file__), "strategies")
 
 
 @pytest.fixture(scope="session")
