@@ -14,11 +14,19 @@ from tradeexecutor.strategy.execution import ExecutionModel
 class UniswapV2ExecutionModel(ExecutionModel):
     """Run order execution for uniswap v2 style exchanges."""
 
-    def __init__(self, state: State, uniswap: UniswapV2Deployment, hot_wallet: HotWallet):
+    def __init__(self, state: State, uniswap: UniswapV2Deployment, hot_wallet: HotWallet, stop_on_execution_failure=True):
+        """
+
+        :param state:
+        :param uniswap:
+        :param hot_wallet:
+        :param stop_on_execution_failure: Raise an exception if any of the trades fail top execute
+        """
         self.state = state
         self.web3 = uniswap.web3
         self.uniswap = uniswap
         self.hot_wallet = hot_wallet
+        self.stop_on_execution_failure = stop_on_execution_failure
 
     def execute_trades(self, ts: datetime.datetime, trades: List[TradeExecution]):
 
@@ -41,7 +49,8 @@ class UniswapV2ExecutionModel(ExecutionModel):
             self.uniswap,
             ts,
             self.state,
-            trades
+            trades,
+            underflow_check=False,
         )
 
         #: 3 broadcast

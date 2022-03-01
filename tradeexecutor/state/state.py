@@ -86,6 +86,9 @@ class AssetIdentifier:
     token_symbol: str
     decimals: Optional[int] = None
 
+    #: How this asset is referred in the internal database
+    internal_id: Optional[int] = None
+
     def __str__(self):
         return f"<{self.token_symbol} at {self.address}>"
 
@@ -107,6 +110,9 @@ class TradingPairIdentifier:
 
     #: Smart contract address of the pool contract
     pool_address: str
+
+    #: How this asset is referred in the internal database
+    internal_id: Optional[int] = None
 
     def get_identifier(self) -> str:
         """We use the smart contract pool address to uniquely identify trading positions."""
@@ -426,6 +432,18 @@ class TradeExecution:
         else:
             raise AssertionError(f"Unsupported trade state to query fees: {self.get_status()}")
 
+    def get_execution_sort_position(self) -> int:
+        """When this trade should be executed.
+
+        Lower, negative, trades should be executed first.
+
+        We need to execute sells first because we need to have cash in hand to execute buys.
+        """
+        if self.is_sell():
+            return -self.trade_id
+        else:
+            return self.trade_id
+
     def mark_success(self, executed_at: datetime.datetime, executed_price: USDollarAmount, executed_quantity: Decimal, executed_reserve: Decimal, lp_fees: USDollarAmount, native_token_price: USDollarAmount):
         assert self.get_status() == TradeStatus.broadcasted
         assert isinstance(executed_quantity, Decimal)
@@ -607,12 +625,23 @@ class Portfolio:
                 return pos
         return None
 
-    def get_open_position_quantities_as_dict(self) -> Dict[str, Decimal]:
+    def get_open_quantities_by_position_id(self) -> Dict[str, Decimal]:
         """Return the current ownerships.
 
-        Keyed by trading pair identifier -> quanatity.
+        Keyed by position id -> quantity.
         """
         return {p.get_identifier(): p.get_quantity() for p in self.open_positions.values()}
+
+    def get_open_quantities_by_internal_id(self) -> Dict[int, Decimal]:
+        """Return the current holdings in different trading pairs.
+
+        Keyed by trading pair internal id -> quantity.
+        """
+        result = {}
+        for p in self.open_positions.values():
+            assert p.pair.internal_id, f"Did not have internal id for pair {p.pair}"
+            result[p.pair.internal_id] = p.get_quantity()
+        return result
 
     def open_new_position(self, ts: datetime.datetime, pair: TradingPairIdentifier, assumed_price: USDollarAmount, reserve_currency: AssetIdentifier, reserve_currency_price: USDollarAmount) -> TradingPosition:
         p = TradingPosition(

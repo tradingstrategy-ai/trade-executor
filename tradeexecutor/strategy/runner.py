@@ -158,6 +158,7 @@ class StrategyRunner(abc.ABC):
     def revalue_portfolio(self, ts: datetime.datetime, state: State):
         """Revalue portfolio based on the data."""
         state.revalue_positions(ts, self.revaluation_method)
+        logger.info("After revaluation at %s our equity is %f", ts, state.portfolio.get_total_equity())
 
     def on_data_signal(self):
         pass

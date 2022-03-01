@@ -1,3 +1,4 @@
+import logging
 import datetime
 from collections import Counter
 from decimal import Decimal
@@ -16,10 +17,17 @@ from eth_hentai.token import fetch_erc20_details, TokenDetails
 from eth_hentai.txmonitor import wait_transactions_to_complete, \
     broadcast_and_wait_transactions_to_complete
 from eth_hentai.uniswap_v2 import UniswapV2Deployment, FOREVER_DEADLINE
-from eth_hentai.uniswap_v2_fees import estimate_sell_price
+from eth_hentai.uniswap_v2_fees import estimate_sell_price, estimate_sell_price_decimals
 from eth_hentai.uniswap_v2_analysis import analyse_trade, TradeSuccess
 from tradeexecutor.state.state import TradeExecution, State, BlockchainTransactionInfo, TradingPairIdentifier, \
     AssetIdentifier
+
+
+logger = logging.getLogger(__name__)
+
+
+class TradeExecutionFailed(Exception):
+    """Our Uniswap trade reverted"""
 
 
 def translate_to_naive_swap(
@@ -97,8 +105,12 @@ def prepare_swaps(
         uniswap: UniswapV2Deployment,
         ts: datetime.datetime,
         state: State,
-        instructions: List[TradeExecution]) -> Dict[HexAddress, int]:
+        instructions: List[TradeExecution],
+        underflow_check=True) -> Dict[HexAddress, int]:
     """Prepare multiple swaps to be breoadcasted parallel from the hot wallet.
+
+    :param underflow_check: Do we check we have enough cash in hand before trying to prepare trades.
+        Note that because when executing sell orders first, we will have more cash in hand to make buys.
 
     :return: Token approvals we need to execute the trades
     """
@@ -127,7 +139,7 @@ def prepare_swaps(
         )
 
         if t.is_buy():
-            state.portfolio.move_capital_from_reserves_to_trade(t)
+            state.portfolio.move_capital_from_reserves_to_trade(t, underflow_check=underflow_check)
 
         t.started_at = ts
 
@@ -223,14 +235,18 @@ def wait_trades_to_complete(
     return receipts
 
 
-def resolve_trades(web3: Web3, uniswap: UniswapV2Deployment, ts: datetime.datetime, state: State, trades: Dict[HexBytes, TradeExecution], receipts: Dict[HexBytes, dict]):
+def resolve_trades(web3: Web3, uniswap: UniswapV2Deployment, ts: datetime.datetime, state: State, trades: Dict[HexBytes, TradeExecution], receipts: Dict[HexBytes, dict], stop_on_execution_failure=True):
     """Resolve trade outcome.
 
     Read on-chain Uniswap swap data from the transaction receipt and record how it went.
+
+    :stop_on_execution_failure: Raise an exception if any of the trades failed
     """
 
     for tx_hash, receipt in receipts.items():
         trade = trades[tx_hash]
+
+        logger.info("Resolved trade %s", trade)
 
         base_token_details = fetch_erc20_details(web3, trade.pair.base.address)
         quote_token_details = fetch_erc20_details(web3, trade.pair.quote.address)
@@ -256,7 +272,6 @@ def resolve_trades(web3: Web3, uniswap: UniswapV2Deployment, ts: datetime.dateti
                 price = 1 / result.price
                 executed_reserve = result.amount_in / Decimal(10**quote_token_details.decimals)
                 executed_amount = result.amount_out / Decimal(10**base_token_details.decimals)
-
             else:
                 # Ordered other way around
                 assert result.path[0] == base_token_details.address
@@ -278,10 +293,13 @@ def resolve_trades(web3: Web3, uniswap: UniswapV2Deployment, ts: datetime.dateti
                 native_token_price=1.0,
             )
         else:
+            logger.error("Trade failed %s: %s", ts, trade)
             state.mark_trade_failed(
                 ts,
                 trade,
             )
+            if stop_on_execution_failure:
+                raise TradeExecutionFailed(f"Could not execute a trade: {trade}")
 
 
 def get_current_price(web3: Web3, uniswap: UniswapV2Deployment, pair: TradingPairIdentifier, quantity=Decimal(1)) -> float:
@@ -291,15 +309,8 @@ def get_current_price(web3: Web3, uniswap: UniswapV2Deployment, pair: TradingPai
 
     :return: Price in quote token.
     """
-
-    base_token_details = fetch_erc20_details(web3, pair.base.address)
-    quote_token_details = fetch_erc20_details(web3, pair.quote.address)
-
-    unit = quantity * 10**base_token_details.decimals
-
-    price = estimate_sell_price(web3, uniswap, base_token_details.contract, quote_token_details.contract, unit)
-
-    return price / (10**quote_token_details.decimals)
+    price = estimate_sell_price_decimals(uniswap, pair.base.address, pair.quote.address, quantity)
+    return float(price)
 
 
 def get_held_assets(web3: Web3, address: HexAddress, assets: List[AssetIdentifier]) -> Dict[HexAddress, Decimal]:

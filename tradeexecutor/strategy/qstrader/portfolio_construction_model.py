@@ -133,8 +133,10 @@ class PortfolioConstructionModel:
         `dict{str: dict}`
             Current broker account asset quantities in integral units.
         """
-        # return self.broker.get_portfolio_as_dict(self.broker_portfolio_id)
-        return self.state.portfolio.get_open_position_quantities_as_dict()
+        res = {}
+        for id, quantity in self.state.portfolio.get_open_quantities_by_internal_id().items():
+            res[id] = {"quantity": quantity}
+        return res
 
     def _generate_rebalance_trades(
         self,
@@ -201,7 +203,11 @@ class PortfolioConstructionModel:
 
                 pandas_pair = self.universe.pairs.get_pair_by_id(asset)
                 executor_pair = translate_trading_pair(pandas_pair)
-                price = target_prices[asset]
+
+                price = target_prices.get(asset)
+                if price is None:
+                    raise RuntimeError(f"Price missing for asset {asset} - prices are {target_prices}")
+
 
                 position, trade = self.state.create_trade(
                     dt,
@@ -221,6 +227,10 @@ class PortfolioConstructionModel:
         #    )
         #    if rebalance_portfolio[asset]["quantity"] != 0
         #]
+
+        # Sort trades so that sells always go first
+
+        rebalance_trades.sort(key=lambda t: t.get_execution_sort_position())
 
         return rebalance_trades
 
@@ -242,6 +252,10 @@ class PortfolioConstructionModel:
         """
         assets = self.universe.get_assets(dt)
         return {asset: 0.0 for asset in assets}
+
+    def get_all_prices(self):
+        """Get prices for all asssets."""
+
 
     def __call__(self, dt: pd.Timestamp, stats=None, debug_details: Optional[Dict] = None) -> List[TradeExecution]:
         """
@@ -280,7 +294,12 @@ class PortfolioConstructionModel:
 
         # Obtain current Broker account portfolio
         current_portfolio = self._obtain_current_portfolio()
-        debug_details["portfolio_at_start_of_construction"] = current_portfolio.copy()  # current_portfolio is mutated later
+
+        # Get prices for existing assets so we have some idea how much they sell for
+        for asset_id, asset_data in current_portfolio.items():
+            target_prices[asset_id] = self.pricing_method.get_simple_buy_price(dt, asset_id)
+
+        debug_details["positions_at_start_of_construction"] = current_portfolio.copy()  # current_portfolio is mutated later
 
         # Create rebalance trade Orders
         rebalance_trades = self._generate_rebalance_trades(

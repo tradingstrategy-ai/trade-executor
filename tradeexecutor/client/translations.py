@@ -33,4 +33,5 @@ def translate_trading_pair(pair: DEXPair) -> TradingPairIdentifier:
         base=base,
         quote=quote,
         pool_address=pair.address,
+        internal_id=pair.pair_id,
     )

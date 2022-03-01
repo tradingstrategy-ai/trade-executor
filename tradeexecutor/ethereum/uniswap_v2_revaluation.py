@@ -26,8 +26,8 @@ class UniswapV2PoolRevaluator:
         # Cannot do pricing for zero quantity
         if quantity == 0:
             return timestamp, 0.0
-        price = estimate_sell_price_decimals(self.uniswap, pair.base.address, pair.quote.address, quantity)
-        return timestamp, price
+        total_price = estimate_sell_price_decimals(self.uniswap, pair.base.address, pair.quote.address, quantity)
+        return timestamp, float(total_price / quantity)
 
 
 

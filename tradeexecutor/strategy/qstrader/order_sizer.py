@@ -68,17 +68,6 @@ class CashBufferedOrderSizer(OrderSizer):
         else:
             return cash_buffer_percentage
 
-    def _obtain_broker_portfolio_total_equity(self):
-        """
-        Obtain the Broker portfolio total equity.
-
-        Returns
-        -------
-        `float`
-            The Broker portfolio total equity.
-        """
-        return self.state.portfolio.get_total_equity()
-
     def _normalise_weights(self, weights):
         """
         Rescale provided weight values to ensure
@@ -125,7 +114,8 @@ class CashBufferedOrderSizer(OrderSizer):
             The (potentially unnormalised) target weights.
 
         """
-        total_equity = self._obtain_broker_portfolio_total_equity()
+        total_equity = self.state.portfolio.get_total_equity()
+
         cash_buffered_total_equity = total_equity * (
             1.0 - self.cash_buffer_percentage
         )
