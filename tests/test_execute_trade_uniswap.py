@@ -1,4 +1,4 @@
-"""Test trading and portfolio management against a Uniswap pool."""
+"""Test trading and portfolio management against a Uniswap pool in Ethereum Tester environment."""
 
 import datetime
 import secrets

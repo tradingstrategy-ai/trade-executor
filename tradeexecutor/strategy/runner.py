@@ -154,7 +154,6 @@ class StrategyRunner(abc.ABC):
         debug_details["total_equity_at_start"] = state.portfolio.get_total_equity()
         debug_details["total_cash_at_start"] = state.portfolio.get_current_cash()
 
-
     def revalue_portfolio(self, ts: datetime.datetime, state: State):
         """Revalue portfolio based on the data."""
         state.revalue_positions(ts, self.revaluation_method)

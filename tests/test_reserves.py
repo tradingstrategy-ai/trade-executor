@@ -146,5 +146,3 @@ def test_update_reserves_twice(web3, usdc_token, deployer, start_ts, hot_wallet:
     sync_portfolio(portfolio, events)
 
     assert portfolio.reserves[usdc_token.address].quantity == Decimal(700)
-
-

@@ -1,4 +1,5 @@
-"""Sets up a virtual Uniswap v2 world that is compatible with our Trading Strategy client."""
+"""Sets up a virtual Uniswap v2 world. Make some random trades to see our Ethereum wallet management logic works."""
+
 import logging
 import os
 import datetime
@@ -162,23 +163,19 @@ def weth_usdc_uniswap_trading_pair(web3, deployer, uniswap_v2, weth_token, usdc_
 
 @pytest.fixture
 def weth_usdc_pair(weth_usdc_uniswap_trading_pair, asset_usdc, asset_weth) -> TradingPairIdentifier:
+    """WETH-USDC pair representation in the trade executor domain."""
     return TradingPairIdentifier(asset_weth, asset_usdc, weth_usdc_uniswap_trading_pair, internal_id=int(weth_usdc_uniswap_trading_pair, 16))
 
 
 @pytest.fixture
 def aave_usdc_pair(aave_usdc_uniswap_trading_pair, asset_usdc, asset_aave) -> TradingPairIdentifier:
+    """AAVE-USDC pair representation in the trade executor domain."""
     return TradingPairIdentifier(asset_aave, asset_usdc, aave_usdc_uniswap_trading_pair, internal_id=int(aave_usdc_uniswap_trading_pair, 16))
 
 
 @pytest.fixture
-def start_ts() -> datetime.datetime:
-    """Timestamp of action started"""
-    return datetime.datetime(2022, 1, 1, tzinfo=None)
-
-
-@pytest.fixture
 def supported_reserves(usdc) -> List[AssetIdentifier]:
-    """Timestamp of action started"""
+    """What reserve currencies we support for the strategy."""
     return [usdc]
 
 

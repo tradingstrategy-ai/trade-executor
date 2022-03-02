@@ -437,8 +437,8 @@ test = ["pytest (==5.4.1)", "pytest-xdist", "tox (==3.14.6)"]
 
 [[package]]
 name = "eth-hentai"
-version = "0.2"
-description = "Common Ethereum smart contracts, and related utilities, designed for automated testing, interaction from backends and building trading bots."
+version = "0.3"
+description = "Common Ethereum smart contracts, and related utilities, for developing automated test suites, backend integration and trading bots for EVM based blockchains."
 category = "main"
 optional = false
 python-versions = "^3.8"
@@ -2105,7 +2105,7 @@ testing = ["coverage (>=5.0.3)", "zope.event", "zope.testing"]
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.9"
-content-hash = "9d2f743efa9e277bbd10d26553c87e7d0a9ac2c0dba2c3131ed170db2bfa2251"
+content-hash = "9177390654df7b91bb532cee84cf2085c43824c671c803ead61a812b6558e90e"
 
 [metadata.files]
 aiohttp = [
