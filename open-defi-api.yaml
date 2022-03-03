@@ -730,9 +730,9 @@ paths:
         - name: exchange_slug
           in: query
           description: |
-             Exchange slug.
+             Exchange slug. Currently only Uniswap-like exchanges are supported.
 
-             Currently only Uniswap-like exchanges are supported.
+             NOTE: Providing this parameter requires providing chain_slug as well.
           required: false
           schema:
             type: string
