@@ -712,6 +712,68 @@ paths:
               schema:
                 $ref: "#/components/schemas/GenericErrorModel"
 
+  '/tokens':
+    x-pyramid-route-name: web_tokens
+    get:
+      operationId: web_tokens
+      summary: Information about supported tokens.
+      tags:
+        - Token
+      parameters:
+        - name: chain_slug
+          in: query
+          description: Blockchain slug.
+          required: false
+          schema:
+            type: string
+          example: "ethereum"
+        - name: exchange_slug
+          in: query
+          description: |
+             Exchange slug.
+
+             Currently only Uniswap-like exchanges are supported.
+          required: false
+          schema:
+            type: string
+          example: "sushiswap"
+        - name: token_symbol
+          in: query
+          description: |
+            Token symbol. Can be the either token in a trading pair, i.e. a base token
+            or a quote token symbol.
+          required: false
+          schema:
+            type: string
+          example: "WETH"
+        - name: token_name
+          in: query
+          description: |
+            Full name of the token
+          required: false
+          schema:
+            type: string
+          example: "Basic Attention Token"
+        # TODO: add sort order criteria (enum)... list of enum values
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                description: List of token summmaries.
+                type: array
+                items:
+                  $ref: '#/components/schemas/TokenOnChainInfo'
+        '404':
+          description: No tokens found.
+        "422":
+          description: Unexpected error - usually bad query input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericErrorModel"
+
   '/token/details':
     x-pyramid-route-name: web_token_details
     get:
