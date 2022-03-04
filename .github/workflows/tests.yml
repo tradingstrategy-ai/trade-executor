@@ -1,0 +1,31 @@
+name: Automated test suite
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Set up Python 3.9
+      uses: actions/setup-python@v2
+      with:
+        python-version: 3.9
+    - name: Get poetry
+      run: |
+        pip install poetry
+    - name: Setup master tracked dependencies
+      run: |
+        git clone --recurse-submodules https://github.com/tradingstrategy-ai/eth-hentai.git ../eth-hentai
+        git clone --recurse-submodules https://github.com/tradingstrategy-ai/client.git ../client
+    - name: Install dependencies
+      run: |
+        poetry install
+    - name: Run test scripts
+      run: |
+        poetry run pytest
