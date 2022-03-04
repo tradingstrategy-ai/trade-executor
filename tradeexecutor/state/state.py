@@ -315,6 +315,13 @@ class TradeExecution:
         assert self.planned_reserve >= 0
         assert self.opened_at.tzinfo is None, f"We got a datetime {self.opened_at} with tzinfo {self.opened_at.tzinfo}"
 
+    def get_human_description(self) -> str:
+        """User friendly description for this trade"""
+        if self.is_buy():
+            return f"Buy {self.planned_quantity} {self.pair.base.token_symbol} at {self.planned_price}"
+        else:
+            return f"Sell {self.planned_quantity} {self.pair.base.token_symbol} at {self.planned_price}"
+
     def is_sell(self):
         return self.planned_quantity < 0
 
@@ -515,10 +522,31 @@ class TradingPosition:
         assert self.last_reserve_price > 0
 
     def is_open(self) -> bool:
+        """This is an open trading position."""
         return self.closed_at is None
 
     def is_closed(self) -> bool:
+        """This position has been closed and does not have any capital tied to it."""
         return not self.is_open()
+
+    def has_executed_trades(self) -> bool:
+        """This position represents actual holdings and has executed trades on it.
+
+        This will return false for positions that are still planned or have zero successful trades.
+        """
+        t: TradeExecution
+        for t in self.trades.values():
+            if t.is_success():
+                return True
+        return False
+
+    def get_name(self) -> str:
+        """Get human readable name for this position"""
+        return f"#{self.position_id} {self.pair.base.token_symbol}-{self.pair.quote.token_symbol}"
+
+    def get_quantity_unit_name(self) -> str:
+        """Get the unit name we label the quantity in this position"""
+        return f"{self.pair.base.token_symbol}"
 
     def get_quantity(self) -> Decimal:
         """Get the tied up token quantity in all successfully executed trades.
@@ -637,6 +665,16 @@ class Portfolio:
     def get_all_positions(self) -> Iterable[TradingPosition]:
         """Get open and closed positions."""
         return chain(self.open_positions.values(), self.closed_positions.values())
+
+    def get_executed_positions(self) -> Iterable[TradingPosition]:
+        """Get all positions with already executed trades.
+
+        Ignore positions that are still pending - they have only planned trades.
+        """
+        p: TradingPosition
+        for p in self.open_positions.values():
+            if p.has_executed_trades():
+                yield p
 
     def get_open_position_for_pair(self, pair: TradingPairIdentifier) -> Optional[TradingPosition]:
         assert isinstance(pair, TradingPairIdentifier)

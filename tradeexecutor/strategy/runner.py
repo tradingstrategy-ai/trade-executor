@@ -192,6 +192,7 @@ class StrategyRunner(abc.ABC):
                 approved_trades = self.approval_model.confirm_trades(state, rebalance_trades)
                 assert type(approved_trades) == list
                 logger.info("After approval we have %d trades left", len(approved_trades))
+                debug_details["approved_trades"] = approved_trades
 
             with self.timed_task_context_manager("execute_trades"):
                 self.execution_model.execute_trades(clock, approved_trades)

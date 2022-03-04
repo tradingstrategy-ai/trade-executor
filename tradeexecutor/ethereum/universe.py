@@ -12,7 +12,10 @@ from tradingstrategy.pair import DEXPair, PandasPairUniverse, PairType
 
 
 def create_pair_universe(web3: Web3, exchange: Exchange, pairs: List[TradingPairIdentifier]) -> PandasPairUniverse:
-    """Creates a PairUniverse by giving a list of trading pairs."""
+    """Creates a PairUniverse from Trade Executor test data.
+
+    PairUniverse is used by QSTrader based tests, so we need to support it.
+    """
 
     chain_id = ChainId(web3.eth.chain_id)
 

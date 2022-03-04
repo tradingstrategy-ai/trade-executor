@@ -11,6 +11,9 @@ import pytest
 from eth_account import Account
 from eth_typing import HexAddress
 from hexbytes import HexBytes
+from prompt_toolkit.application import create_app_session
+from prompt_toolkit.input import create_pipe_input
+from prompt_toolkit.output import DummyOutput
 from web3 import EthereumTesterProvider, Web3
 from web3.contract import Contract
 
@@ -210,6 +213,12 @@ def strategy_path() -> Path:
     return Path(os.path.join(os.path.dirname(__file__), "strategies", "random_eth_usdc.py"))
 
 
+@pytest.fixture()
+def recorded_input() -> bool:
+    """Do we do interactive execution where the user presses the key, or use recorded key presses."""
+    return os.environ.get("USER_INTERACTION") is None
+
+
 def test_cli_approve_trades(
         logger: logging.Logger,
         strategy_path: Path,
@@ -222,8 +231,9 @@ def test_cli_approve_trades(
         weth_usdc_pair,
         weth_token,
         usdc_token,
+        recorded_input,
     ):
-    """Render the CLI approval dialog for the trades correctly."""
+    """CLI approval dialog can approve trades."""
 
     factory = import_strategy_file(strategy_path)
     approval_model = CLIApprovalModel()
@@ -241,7 +251,59 @@ def test_cli_approve_trades(
         pricing_method=pricing_method,
         reserve_assets=supported_reserves)
 
-    # Run 5 days
-    for i in range(1, 5):
-        # Run the trading for the first 3 days starting on arbitrarily chosen date 1-1-2020
-        runner.tick(datetime.datetime(2020, 1, i), universe, state)
+    if recorded_input:
+        # See hints at https://github.com/MarcoMernberger/mgenomicsremotemail/blob/ac5fbeaf02ae80b0c573c6361c9279c540b933e4/tests/tmp.py#L27
+        inp = create_pipe_input()
+        keys = " \t\r"  # Toggle checkbox with space, tab to ok, press enter
+        inp.send_text(keys)
+        with create_app_session(input=inp, output=DummyOutput()):
+            debug_details = runner.tick(datetime.datetime(2020, 1, 1), universe, state)
+    else:
+        debug_details = runner.tick(datetime.datetime(2020, 1, 1), universe, state)
+
+    assert len(debug_details["approved_trades"]) == 1
+
+
+def test_cli_disapprove_trades(
+        logger: logging.Logger,
+        strategy_path: Path,
+        web3: Web3,
+        hot_wallet: HotWallet,
+        uniswap_v2: UniswapV2Deployment,
+        universe: Universe,
+        state: State,
+        supported_reserves,
+        weth_usdc_pair,
+        weth_token,
+        usdc_token,
+        recorded_input,
+    ):
+    """CLI approval dialog can approve trades."""
+
+    factory = import_strategy_file(strategy_path)
+    approval_model = CLIApprovalModel()
+    execution_model = UniswapV2ExecutionModel(state, uniswap_v2, hot_wallet)
+    sync_method = EthereumHotWalletReserveSyncer(web3, hot_wallet.address)
+    revaluation_method = UniswapV2PoolRevaluator(uniswap_v2)
+    pricing_method = UniswapV2LivePricing(uniswap_v2, universe.pairs)
+
+    runner: StrategyRunner = factory(
+        timed_task_context_manager=timed_task,
+        execution_model=execution_model,
+        approval_model=approval_model,
+        revaluation_method=revaluation_method,
+        sync_method=sync_method,
+        pricing_method=pricing_method,
+        reserve_assets=supported_reserves)
+
+    if recorded_input:
+        # See hints at https://github.com/MarcoMernberger/mgenomicsremotemail/blob/ac5fbeaf02ae80b0c573c6361c9279c540b933e4/tests/tmp.py#L27
+        inp = create_pipe_input()
+        keys = "\t\r"  # Skip checkbox with tab, press enter
+        inp.send_text(keys)
+        with create_app_session(input=inp, output=DummyOutput()):
+            debug_details = runner.tick(datetime.datetime(2020, 1, 1), universe, state)
+    else:
+        debug_details = runner.tick(datetime.datetime(2020, 1, 1), universe, state)
+
+    assert len(debug_details["approved_trades"]) == 0
