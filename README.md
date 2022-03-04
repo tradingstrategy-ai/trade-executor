@@ -1,3 +1,5 @@
+[![.github/workflows/tests.yml](https://github.com/tradingstrategy-ai/trade-executor/actions/workflows/tests.yml/badge.svg)](https://github.com/tradingstrategy-ai/trade-executor/actions/workflows/tests.yml)
+
 # Trade Executor
 
 A trade executor is a Python framework to execute trades. It is designed for live trading and backtesting 
