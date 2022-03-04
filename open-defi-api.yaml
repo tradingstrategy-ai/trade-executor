@@ -730,13 +730,18 @@ paths:
         - name: exchange_slug
           in: query
           description: |
-             Exchange slug. Currently only Uniswap-like exchanges are supported.
+             Exchange slug or exchange address. Providing this parameter requires
+             providing `chain_slug` as well.
 
-             NOTE: Providing this parameter requires providing chain_slug as well.
+             Currently only Uniswap-like exchanges are supported.
           required: false
           schema:
             type: string
-          example: "sushiswap"
+          examples:
+            "exchange slug":
+              value: "sushiswap"
+            "exchange address":
+              value: "0xBF85FDCE9E4FA7D5A0177559150B15BF7F1BFD93"
         - name: token_symbol
           in: query
           description: |
