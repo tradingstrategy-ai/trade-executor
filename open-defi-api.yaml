@@ -1615,11 +1615,16 @@ components:
       properties:
         name:
           type: string
+          example: "Distant Universe Stardust Token"
         symbol:
+          type: string
+          example: "DUST"
+        address:
           type: string
           format: blockchain_address
           description: >
-            NOTE: Currently a token address is returned as the token symbol.
+            The address of the smart contract that governs the token.
+          example: "0xbca3c97837a39099ec3082df97e28ce91be14472"
         total_supply:
           type: string
           format: decimal
@@ -1632,6 +1637,7 @@ components:
           description: >
              The number of decimals the token uses - e.g. 8, means to divide the token
              amount by 100_000_000 to get its user representation.
+          example: 8
 
     TopMomentum:
       description: >
