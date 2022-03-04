@@ -20,7 +20,7 @@ of algorithmic trading strategies on decentralised markets.
 
 ## More information
 
-- Visit [Trading Strategy website to learn about algorithmic trading on decentralised exchanges](https://tradingstrategy.gi)
+- Visit [Trading Strategy website to learn about algorithmic trading on decentralised exchanges](https://tradingstrategy.ai)
 - [Join the Discord for any questions](https://tradingstrategy.ai/community)
 - For technical information see [docs](./docs)
 

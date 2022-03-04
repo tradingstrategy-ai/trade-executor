@@ -7,10 +7,9 @@ license = "APGL"
 
 [tool.poetry.dependencies]
 python = "^3.9"
-#tradingstrategy = "^0.4.0"
 eth-hentai = {path = "../eth-hentai", develop = true}
+#tradingstrategy = "^0.4.0"
 tradingstrategy = {path = "../client", develop = true}
-#smart_contracts_for_testing = {path = "../eth-hentai", develop = true}
 typer = "^0.4.0"
 colorama = "^0.4.4"
 pyramid = "^2.0"
