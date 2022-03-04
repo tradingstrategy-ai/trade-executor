@@ -1602,6 +1602,9 @@ components:
           type: string
         symbol:
           type: string
+          format: blockchain_address
+          description: >
+            NOTE: Currently a token address is returned as the token symbol.
         total_supply:
           type: string
           format: decimal
