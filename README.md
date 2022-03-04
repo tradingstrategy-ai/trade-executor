@@ -1,28 +1,27 @@
-# Trade executor for Trading Strategy oracles
+# Trade Executor
 
-# Features
+A trade executor is a Python framework to execute trades. It is designed for live trading and backtesting 
+of algorithmic trading strategies on decentralised markets.
 
-- Maintain the strategy state
-- Listen to external events to perform a duty cycle
-- Download historical datasets for the decision
-- Run a strategy ticks
+## Features
 
-# Architecture
+- Live trading, paper trading and backtesting
+- Maintain the strategy state on disk 
+- Webhooks to tick trading strategy ticks
+- Manual confirmation of trades when needed 
 
-- Each strategy is deployed with an executor
-- Each executor runs in its own process
-- Strategy state can be serialized to a file or read from on-chain
-- Executor open a WebHook port to accept ongoing signals
+## Supported exchanges, blockchains and strategy types
 
-# Executable strategy definition
+- All EVM compatible blockchains: Ethereum mainnet, BNB chain, Polygon, Avalanche, etc.
+- All Uniswap v2 compatible exchanges: SushiSwap, PancakeSwap, Trader Joe, QuickSwap, etc.
+- Portfolio rebalancing strategies via [QSTrade](https://github.com/tradingstrategy-ai/qstrader/)
 
-- Strategy must be a single Python module
-- Strategy cannot have Python dependencies outside what `tradeexecutor` has
-- Strategy module must export a class ``
+## More information
 
-# Execeutionn modes
+- Visit [Trading Strategy website to learn about algorithmic trading on decentralised exchanges](https://tradingstrategy.gi)
+- [Join the Discord for any questions](https://tradingstrategy.ai/community)
+- For technical information see [docs](./docs)
 
-# Running
+## License 
 
-Most of the options are passed as environment variables.
-
+- AGPL

@@ -25,6 +25,9 @@ pytest
 Some tests provide interactivity. By default everything runs non-interactively.
 But to test the user interface you might want to run the tests with user input enabled.
 
+Tests that use this feature include
+- `test_cli_approval`
+
 ```shell
 USER_INTERACTION=true pytest
 ```
