@@ -19,6 +19,7 @@ jobs:
     - name: Get poetry
       run: |
         pip install poetry
+    # See pyproject.toml for details
     - name: Setup master tracked dependencies
       run: |
         git clone --recurse-submodules https://github.com/tradingstrategy-ai/eth-hentai.git ../eth-hentai
@@ -29,3 +30,6 @@ jobs:
     - name: Run test scripts
       run: |
         poetry run pytest
+      env:
+        TRADING_STRATEGY_API_KEY: ${{ secrets.TRADING_STRATEGY_API_KEY }}
+t
