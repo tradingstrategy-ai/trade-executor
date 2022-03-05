@@ -1,7 +1,16 @@
 import abc
+import enum
 from typing import List
 
 from tradeexecutor.state.state import State, TradeExecution
+
+
+class ApprovalType(enum.Enum):
+    """What kind of approval model the trade executor uses."""
+
+    unchecked = "unchecked"
+
+    cli = "cli"
 
 
 class ApprovalModel(abc.ABC):
