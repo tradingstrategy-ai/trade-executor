@@ -6,6 +6,9 @@ from tradeexecutor.state.state import AssetIdentifier
 from tradeexecutor.state.sync import SyncMethod
 from tradeexecutor.strategy.pricing_method import PricingMethod
 from tradeexecutor.strategy.universe_constructor import UniverseConstructionMethod
+
+from tradeexecutor.strategy.runner import StrategyRunner
+from tradeexecutor.strategy.universe import UniverseConstructor
 from tradingstrategy.timebucket import TimeBucket
 
 
@@ -30,4 +33,8 @@ class StrategyRunDescription:
     #: What reserve assets this straegy uses e.g. BUSD
     reserve_asset: List[AssetIdentifier]
 
-    universe_construction_method: UniverseConstructionMethod
+    #: How to refresh the trading universe for the each tick
+    universe_constructor: UniverseConstructor
+
+    #: What kind of a strategy runner this strategy is using
+    runner: StrategyRunner

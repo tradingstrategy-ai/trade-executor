@@ -5,6 +5,7 @@ from pathlib import Path
 import logging
 from typing import Callable, Optional
 
+from tradeexecutor.strategy.factory import StrategyFactory
 from tradeexecutor.strategy.runner import StrategyRunner, Dataset
 from tradingstrategy.client import Client
 from tradingstrategy.universe import Universe
@@ -20,7 +21,7 @@ class BadStrategyFile(Exception):
     pass
 
 
-def import_strategy_file(path: Path) -> Callable:
+def import_strategy_file(path: Path) -> StrategyFactory:
     """Loads a strategy module and returns its factor function."""
     logger.info("Importing strategy %s", path)
 
@@ -59,6 +60,6 @@ def bootstrap_strategy(
     time_bucket = runner.get_strategy_time_frame()
     dataset = runner.load_data(time_bucket, client, lookback)
     universe = runner.setup_universe_timed(dataset)
-    runner.preflight_check(client, universe, now_)
+    runner.pretick_check(client, universe, now_)
     return [dataset, universe, runner]
 

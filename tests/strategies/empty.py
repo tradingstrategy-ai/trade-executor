@@ -19,7 +19,7 @@ class EmptyStrategyRunner(StrategyRunner):
     def construct_universe(self, dataset: Dataset):
         return None
 
-    def preflight_check(self, client, universe, now_):
+    def pretick_check(self, client, universe, now_):
         pass
 
     def on_clock(self, clock: datetime.datetime, universe, state: State):

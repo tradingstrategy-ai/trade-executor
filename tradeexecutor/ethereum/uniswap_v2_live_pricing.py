@@ -1,16 +1,19 @@
 import datetime
 from decimal import Decimal, ROUND_DOWN
 
+from tradeexecutor.ethereum.uniswap_v2_execution import UniswapV2ExecutionModel
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
+from tradeexecutor.strategy.universe import TradeExecutorTradingUniverse
 from tradingstrategy.pair import PandasPairUniverse
 
 from eth_hentai.token import fetch_erc20_details
 from eth_hentai.uniswap_v2 import UniswapV2Deployment
 from eth_hentai.uniswap_v2_fees import estimate_buy_price_decimals, estimate_sell_price_decimals
 from tradeexecutor.state.types import USDollarAmount
-from tradeexecutor.strategy.pricingmethod import PricingMethod
+from tradeexecutor.strategy.pricing_model import PricingModel
 
 
-class UniswapV2LivePricing(PricingMethod):
+class UniswapV2LivePricing(PricingModel):
     """Always pull the latest prices from Uniswap v2 deployment.
 
     Currently supports stablecoin pairs only.
@@ -53,3 +56,11 @@ class UniswapV2LivePricing(PricingMethod):
         base_details = fetch_erc20_details(self.uniswap.web3, pair.base_token_address)
         decimals = base_details.decimals
         return Decimal(quantity).quantize((Decimal(10) ** Decimal(-decimals)), rounding=ROUND_DOWN)
+
+
+def uniswap_v2_live_pricing_factory(execution_model: UniswapV2ExecutionModel, universe: TradeExecutorTradingUniverse) -> UniswapV2LivePricing:
+    assert isinstance(execution_model, UniswapV2ExecutionModel), "Pricing method is not compatible with this execution model"
+    assert isinstance(universe, TradingStrategyUniverse), "This pricing method only works with TradingStrategyUniverse"
+    uniswap = execution_model.uniswap
+    universe = universe.universe
+    return UniswapV2LivePricing(uniswap, universe.pairs)

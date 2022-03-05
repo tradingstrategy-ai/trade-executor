@@ -17,6 +17,8 @@ from tradeexecutor.cli.loop import run_main_loop
 from tradeexecutor.ethereum.hot_wallet_sync import EthereumHotWalletReserveSyncer
 
 from tradeexecutor.ethereum.uniswap_v2_execution import UniswapV2ExecutionModel
+from tradeexecutor.ethereum.uniswap_v2_live_pricing import UniswapV2LivePricing, uniswap_v2_live_pricing_factory
+from tradeexecutor.ethereum.uniswap_v2_revaluation import UniswapV2PoolRevaluator
 from tradeexecutor.state.store import JSONFileStore, StateStore
 from tradeexecutor.strategy.approval import ApprovalType, UncheckedApprovalModel, ApprovalModel
 from tradeexecutor.strategy.bootstrap import import_strategy_file
@@ -49,8 +51,11 @@ def create_trade_execution_model(
         web3 = create_web3(json_rpc)
         hot_wallet = HotWallet.from_private_key(private_key)
         uniswap = fetch_deployment(web3, factory_address, router_address)
-        sync_model = EthereumHotWalletReserveSyncer(web3, hot_wallet.address)
-        return UniswapV2ExecutionModel(web3, uniswap, hot_wallet), sync_model
+        sync_method = EthereumHotWalletReserveSyncer(web3, hot_wallet.address)
+        execution_model = UniswapV2ExecutionModel(uniswap, hot_wallet)
+        revaluation_method = UniswapV2PoolRevaluator(uniswap)
+        pricing_model_factory = uniswap_v2_live_pricing_factory
+        return execution_model, sync_method, revaluation_method, pricing_model_factory
     else:
         raise NotImplementedError()
 
@@ -91,13 +96,13 @@ def run(
     state_file: Optional[Path] = typer.Option("strategy-state.json", envvar="STATE_FILE"),
     trading_strategy_api_key: str = typer.Option(None, envvar="TRADING_STRATEGY_API_KEY", help="Trading Strategy API key"),
     reset_state: bool = typer.Option(False, "--reset-state"),
-    max_cycles: int = typer.Option(None, env_var="MAX_CYCLES")
+    max_cycles: int = typer.Option(None, env_var="MAX_CYCLES"),
     ):
 
     logger = setup_logging()
     logger.info("Trade Executor version %s starting", version)
 
-    execution_model, sync_model = create_trade_execution_model(
+    execution_model, sync_method, revaluation_method, pricing_model_factory = create_trade_execution_model(
         execution_type,
         uniswap_v2_factory_address,
         uniswap_v2_router_address,
@@ -127,13 +132,15 @@ def run(
 
     try:
         run_main_loop(
-            command_queue,
-            execution_model
-            sync_model,
-            approval_model,
-            store,
-            client,
-            strategy_factory,
+            command_queue=command_queue,
+            execution_model=execution_model,
+            sync_method=sync_method,
+            approval_model=approval_model,
+            pricing_model_factory=pricing_model_factory,
+            revaluation_method=revaluation_method,
+            store=store,
+            client=client,
+            strategy_factory=strategy_factory,
             reset=reset_state,
             max_cycles=max_cycles)
     finally:

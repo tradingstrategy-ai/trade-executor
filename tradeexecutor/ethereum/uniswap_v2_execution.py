@@ -28,6 +28,11 @@ class UniswapV2ExecutionModel(ExecutionModel):
         self.hot_wallet = hot_wallet
         self.stop_on_execution_failure = stop_on_execution_failure
 
+    @property
+    def chain_id(self) -> int:
+        """Which chain the live execution is connected to."""
+        return self.web3.chain_id
+
     def preflight_check(self):
         """Check that we can connect to the web3 node"""
 

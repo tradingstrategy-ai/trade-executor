@@ -6,13 +6,12 @@ import pandas as pd
 
 from tradeexecutor.client.translations import translate_trading_pair
 from tradeexecutor.state.state import State, AssetIdentifier, TradeType, TradeExecution
+from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.qstrader.order_sizer import CashBufferedOrderSizer
 from tradingstrategy.universe import Universe
 
-from tradeexecutor.strategy.pricingmethod import PricingMethod
 
-logger =\
-    logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class PortfolioConstructionModel:
@@ -48,7 +47,7 @@ class PortfolioConstructionModel:
         state: State,
         order_sizer: CashBufferedOrderSizer,
         optimiser,
-        pricing_method: PricingMethod,
+        pricing_model: PricingModel,
         reserve_currency: AssetIdentifier,
         alpha_model=None,
         risk_model=None,

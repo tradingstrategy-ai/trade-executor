@@ -1,8 +1,14 @@
 """Live trading implementation of PancakeSwap v2 momentum strategy."""
 from tradeexecutor.ethereum.uniswap_v2_execution import UniswapV2ExecutionModel
 from tradeexecutor.ethereum.uniswap_v2_revaluation import UniswapV2PoolRevaluator
+from tradeexecutor.state.revaluation import RevaluationMethod
+from tradeexecutor.state.sync import SyncMethod
+from tradeexecutor.strategy.approval import ApprovalModel
 from tradeexecutor.strategy.description import StrategyRunDescription
 from tradeexecutor.strategy.execution_model import ExecutionModel
+from tradeexecutor.strategy.pricing_model import PricingModelFactory
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverseConstructor, TradingStrategyUniverse
+from tradingstrategy.client import Client
 
 """Example strategy that trades on PancakeSwap"""
 import datetime
@@ -240,70 +246,97 @@ class MomentumAlphaModel(AlphaModel):
         return dict(weighed_signals)
 
 
-class PancakeLiveTrader(QSTraderLiveTrader):
+class OurStrategyLiverRunner(QSTraderLiveTrader):
     """Live strategy set up."""
 
-    def __init__(self, timed_task_context_manager: AbstractContextManager, max_data_age: datetime.timedelta):
-        super().__init__(MomentumAlphaModel, timed_task_context_manager, max_data_age)
-
-    def get_strategy_time_frame(self) -> TimeBucket:
-        """Strategy is run on the daily candles."""
-        return TimeBucket.d1
-
-def construct_universe(dataset: Dataset) -> Universe:
-    """Sets up pairs, candles and liquidity samples.
-
-    :param client: Client instance. Note that this cannot be stable across ticks, as e.g. API keys can change. Client is recreated for every tick.
-    :return:
-    """
-
-    exchange_universe = dataset.exchanges
-
-    our_exchanges = [
-        exchange_universe.get_by_chain_and_slug(ChainId.bsc, "pancakeswap"),
-        exchange_universe.get_by_chain_and_slug(ChainId.bsc, "pancakeswap-v2"),
-    ]
-
-    # Choose all pairs that trade on exchanges we are interested in
-    pairs_df = filter_for_exchanges(dataset.pairs, our_exchanges)
-
-    # Get daily candles as Pandas DataFrame
-    all_candles = dataset.candles
-    # filtered_candles = all_candles.loc[all_candles["pair_id"].isin(wanted_pair_ids)]
-    filtered_candles = filter_for_pairs(all_candles, pairs_df)
-    candle_universe = GroupedCandleUniverse(prepare_candles_for_qstrader(filtered_candles), timestamp_column="Date")
-
-    all_liquidity = dataset.liquidity
-    filtered_liquidity = filter_for_pairs(all_liquidity, pairs_df)
-    #filtered_liquidity = all_liquidity.loc[all_liquidity["pair_id"].isin(wanted_pair_ids)]
-    # filtered_liquidity = filtered_liquidity.set_index(filtered_liquidity["timestamp"])
-    #filtered_liquidity = filtered_liquidity.set_index(filtered_liquidity["timestamp"])
-    liquidity_universe = GroupedLiquidityUniverse(filtered_liquidity)
-
-    return Universe(
-        time_frame=dataset.time_frame,
-        chains=[ChainId.bsc],
-        pairs=PandasPairUniverse(pairs_df),
-        exchanges=our_exchanges,
-        candles=candle_universe,
-        liquidity=liquidity_universe,
-    )
+    def __init__(self, **kwargs):
+        super().__init__(MomentumAlphaModel, **kwargs)
 
 
-def strategy_executor_factory(execution_model: UniswapV2ExecutionModel, **kwargs) -> StrategyRunDescription:
+class OurStrategyUniverseConstructor(TradingStrategyUniverseConstructor):
+
+    def filter_universe(self, dataset: Dataset) -> Universe:
+        """Filter data streams we are interested in."""
+
+        with self.timed_task_context_manager("filter_universe"):
+            exchange_universe = dataset.exchanges
+
+            our_exchanges = [
+                exchange_universe.get_by_chain_and_slug(ChainId.bsc, "pancakeswap"),
+                exchange_universe.get_by_chain_and_slug(ChainId.bsc, "pancakeswap-v2"),
+            ]
+
+            # Choose all pairs that trade on exchanges we are interested in
+            pairs_df = filter_for_exchanges(dataset.pairs, our_exchanges)
+
+            # Get daily candles as Pandas DataFrame
+            all_candles = dataset.candles
+            # filtered_candles = all_candles.loc[all_candles["pair_id"].isin(wanted_pair_ids)]
+            filtered_candles = filter_for_pairs(all_candles, pairs_df)
+            candle_universe = GroupedCandleUniverse(prepare_candles_for_qstrader(filtered_candles), timestamp_column="Date")
+
+            all_liquidity = dataset.liquidity
+            filtered_liquidity = filter_for_pairs(all_liquidity, pairs_df)
+            #filtered_liquidity = all_liquidity.loc[all_liquidity["pair_id"].isin(wanted_pair_ids)]
+            # filtered_liquidity = filtered_liquidity.set_index(filtered_liquidity["timestamp"])
+            #filtered_liquidity = filtered_liquidity.set_index(filtered_liquidity["timestamp"])
+            liquidity_universe = GroupedLiquidityUniverse(filtered_liquidity)
+
+            universe = Universe(
+                time_frame=dataset.time_frame,
+                chains=[ChainId.bsc],
+                pairs=PandasPairUniverse(pairs_df),
+                exchanges=our_exchanges,
+                candles=candle_universe,
+                liquidity=liquidity_universe,
+            )
+            return universe
+
+    def construct_universe(self, execution_model: ExecutionModel) -> TradingStrategyUniverse:
+        dataset = self.load_data(TimeBucket.d1)
+        universe = self.filter_universe(dataset)
+        self.log_universe(universe)
+        return TradingStrategyUniverse(universe)
+
+
+def strategy_executor_factory(
+        *ignore,
+        execution_model: UniswapV2ExecutionModel,
+        sync_method: SyncMethod,
+        pricing_model_factory: PricingModelFactory,
+        revaluation_method: RevaluationMethod,
+        client: Client,
+        timed_task_context_manager: AbstractContextManager,
+        approval_model: ApprovalModel,
+        **kwargs) -> StrategyRunDescription:
+
+    if ignore:
+        # https://www.python.org/dev/peps/pep-3102/
+        raise TypeError("Only keyword arguments accepted")
 
     assert isinstance(execution_model, UniswapV2ExecutionModel), f"This strategy is compatible only with UniswapV2ExecutionModel, got {execution_model}"
 
-    uniswap = execution_model.uniswap
+    assert execution_model.chain_id == ChainId.bsc.value, f"This strategy is hardcoded to BSC/PancakeSwap, got chain {execution_model.chain_id}"
+
+    universe_constructor = OurStrategyUniverseConstructor(client, timed_task_context_manager)
+
+    cash_buffer = 0.30
+
+    runner = OurStrategyLiverRunner(
+        timed_task_context_manager=timed_task_context_manager,
+        execution_model=execution_model,
+        approval_model=approval_model,
+        revaluation_method=revaluation_method,
+        sync_method=sync_method,
+        pricing_model_factory=pricing_model_factory,
+        cash_buffer=cash_buffer,
+    )
 
     return StrategyRunDescription(
         time_bucket=TimeBucket.d1,
-        revaluation_method=UniswapV2PoolRevaluator(uniswap),
-        universe_construction_method=construct_universe,
-
+        universe_constructor=universe_constructor,
+        runner=runner,
     )
-
-    return PancakeLiveTrader(**kwargs)
 
 
 __all__ = [strategy_executor_factory]

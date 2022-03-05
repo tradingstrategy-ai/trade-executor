@@ -14,6 +14,8 @@ from tradeexecutor.strategy.approval import ApprovalModel
 from tradeexecutor.strategy.execution import ExecutionModel
 from tradeexecutor.state.revaluation import RevaluationMethod
 from tradeexecutor.state.sync import SyncMethod
+from tradeexecutor.strategy.pricing_model import PricingModelFactory
+from tradeexecutor.strategy.universe import TradeExecutorTradingUniverse
 from tradingstrategy.client import Client
 
 from tradeexecutor.state.state import State, TradeExecution, AssetIdentifier
@@ -30,17 +32,6 @@ class PreflightCheckFailed(Exception):
     """Something was wrong with the datafeeds."""
 
 
-@dataclass
-class Dataset:
-    """Contain raw loaded datasets."""
-
-    time_frame: TimeBucket
-    exchanges: ExchangeUniverse
-    pairs: pd.DataFrame
-    candles: pd.DataFrame
-    liquidity: pd.DataFrame
-
-
 class StrategyRunner(abc.ABC):
     """A base class for a strategy live trade executor."""
 
@@ -50,94 +41,30 @@ class StrategyRunner(abc.ABC):
                  approval_model: ApprovalModel,
                  revaluation_method: RevaluationMethod,
                  sync_method: SyncMethod,
-                 pricing_method: PricingMethod,
+                 pricing_model_factory: PricingModelFactory,
                  reserve_assets: List[AssetIdentifier]):
         self.timed_task_context_manager = timed_task_context_manager
         self.execution_model = execution_model
         self.approval_model = approval_model
         self.revaluation_method = revaluation_method
         self.sync_method = sync_method
-        self.pricing_method = pricing_method
+        self.pricing_model_factory = pricing_model_factory
         #: TODO: Make something more sensible how to the list of reseve assets are managed
         self.reserve_assets = reserve_assets
 
-    def load_data(self, time_frame: TimeBucket, client: Client, lookback: Optional[datetime.timedelta]=None) -> Optional[Dataset]:
-        """Loads the server-side data using the client.
-
-        :param client: Client instance. Note that this cannot be stable across ticks, as e.g. API keys can change. Client is recreated for every tick.
-
-        :param lookback: how long to the past load data e.g. 1 year, 1 month. **Not implemented yet**.
-
-        :return: None if not dataset for the strategy required
-        """
-        with self.timed_task_context_manager("load_data", time_frame=time_frame.value):
-            exchanges = client.fetch_exchange_universe()
-            pairs = client.fetch_pair_universe().to_pandas()
-            candles = client.fetch_all_candles(time_frame).to_pandas()
-            liquidity = client.fetch_all_liquidity_samples(time_frame).to_pandas()
-            return Dataset(
-                time_frame=time_frame,
-                exchanges=exchanges,
-                pairs=pairs,
-                candles=candles,
-                liquidity=liquidity,
-            )
-
-    def setup_universe_timed(self, dataset: Optional[Dataset]) -> Optional[Universe]:
-        """Time the setting up of the universe.
-
-        :return: None if no universe for the strategy required
-        """
-        if dataset:
-            with self.timed_task_context_manager("setup_universe", time_frame=dataset.time_frame.value):
-                universe = self.construct_universe(dataset)
-                data_start, data_end = universe.candles.get_timestamp_range()
-                logger.info(textwrap.dedent(f"""
-                        Universe constructed.                    
-                        
-                        Time periods
-                        - Time frame {universe.time_frame.value}
-                        - Candle data: {data_start} - {data_end}
-                        
-                        The size of our trading universe is
-                        - {len(universe.exchanges)} exchanges
-                        - {universe.pairs.get_count()} pairs
-                        - {universe.candles.get_sample_count()} candles
-                        - {universe.liquidity.get_sample_count()} liquidity samples                
-                        """))
-                return universe
-        else:
-            logger.info("Strategy did not load dataset, universe not generated")
-            return None
-
     @abc.abstractmethod
-    def construct_universe(self, dataset: Dataset) -> Universe:
-        """Sets up pairs, candles and liquidity samples.
-
-        :param client: Client instance. Note that this cannot be stable across ticks, as e.g. API keys can change. Client is recreated for every tick.
-        :return:
-        """
-
-    @abc.abstractmethod
-    def preflight_check(self, client: Client, universe: Universe, now_: datetime.datetime):
+    def pretick_check(self, ts: datetime.datetime, universe: TradeExecutorTradingUniverse):
         """Called when the trade executor instance is started.
 
         :param client: Trading Strategy client to check server versions etc.
 
         :param universe: THe currently constructed universe
 
-        :param now_: Real-time clock signal or past clock timestamp in the case of unit testing
+        :param ts: Real-time clock signal or past clock timestamp in the case of unit testing
 
         :raise PreflightCheckFailed: In the case we cannot go live
         """
         pass
-
-    @abc.abstractmethod
-    def get_strategy_time_frame(self) -> Optional[TimeBucket]:
-        """Return the default candle time bucket used in this strategy.
-
-        :return: None if not relevant for the strategy
-        """
 
     def sync_portfolio(self, ts: datetime.datetime, state: State, debug_details: dict):
         """Adjust portfolio balances based on the external events.
@@ -165,7 +92,7 @@ class StrategyRunner(abc.ABC):
     def on_clock(self, clock: datetime.datetime, universe: Universe, state: State, debug_details: dict) -> List[TradeExecution]:
         return []
 
-    def tick(self, clock: datetime.datetime, universe: Universe, state: State) -> dict:
+    def tick(self, clock: datetime.datetime, universe: TradeExecutorTradingUniverse, state: State) -> dict:
         """Perform the strategy main tick.
 
         :return: Debug details dictionary where different subsystems can write their diagnostics information what is happening during the dict.

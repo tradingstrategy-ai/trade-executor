@@ -282,7 +282,7 @@ def test_simulated_uniswap_qstrader_strategy_single_trade(
         reserve_assets=supported_reserves)
 
     now_ = datetime.datetime.utcnow()
-    runner.preflight_check(None, universe, now_)
+    runner.pretick_check(None, universe, now_)
 
     # Run the trading over for the first day
     ts = datetime.datetime(2020, 1, 1)
@@ -401,7 +401,7 @@ def test_simulated_uniswap_qstrader_strategy_one_rebalance(
     aave_usdc = universe.pairs.get_one_pair_from_pandas_universe(exchange.exchange_id, "AAVE", "USDC")
 
     now_ = datetime.datetime.utcnow()
-    runner.preflight_check(None, universe, now_)
+    runner.pretick_check(None, universe, now_)
 
     # Run the trading for the first 3 days starting on arbitrarily chosen date 1-1-2020
     runner.tick(datetime.datetime(2020, 1, 1), universe, state)
@@ -479,7 +479,7 @@ def test_simulated_uniswap_qstrader_strategy_round_trip(
     aave_usdc = universe.pairs.get_one_pair_from_pandas_universe(exchange.exchange_id, "AAVE", "USDC")
 
     now_ = datetime.datetime.utcnow()
-    runner.preflight_check(None, universe, now_)
+    runner.pretick_check(None, universe, now_)
 
     # Run the trading for the first 3 days starting on arbitrarily chosen date 1-1-2020
     runner.tick(datetime.datetime(2020, 1, 1), universe, state)

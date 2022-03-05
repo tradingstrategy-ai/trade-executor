@@ -7,8 +7,9 @@ import pandas as pd
 from qstrader.portcon.optimiser.fixed_weight import FixedWeightPortfolioOptimiser
 from tradeexecutor.strategy.qstrader.alpha_model import AlphaModel
 from tradeexecutor.strategy.qstrader.order_sizer import CashBufferedOrderSizer
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
+from tradeexecutor.strategy.universe import TradeExecutorTradingUniverse
 
-from tradingstrategy.client import Client
 from tradingstrategy.universe import Universe
 
 from tradeexecutor.state.state import State, TradeExecution
@@ -42,18 +43,17 @@ class QSTraderRunner(StrategyRunner):
         """Run one strategy tick."""
 
         logger.info("QSTrader on_clock %s", clock)
-
         assert len(self.reserve_assets) == 1, f"We only support strategies with a single reserve asset, got {self.reserve_assets}"
-
+        pricing_model = self.pricing_model_factory(self.execution_model, universe)
         optimiser = FixedWeightPortfolioOptimiser()
-        order_sizer = CashBufferedOrderSizer(state, self.pricing_method, self.cash_buffer)
+        order_sizer = CashBufferedOrderSizer(state, pricing_model, self.cash_buffer)
         pcm = PortfolioConstructionModel(
             universe=universe,
             state=state,
             order_sizer=order_sizer,
             optimiser=optimiser,
             alpha_model=self.alpha_model,
-            pricing_method=self.pricing_method,
+            pricing_model=pricing_model,
             reserve_currency=self.reserve_assets[0],
             risk_model=None,
             cost_model=None)
@@ -61,8 +61,13 @@ class QSTraderRunner(StrategyRunner):
         rebalance_trades = pcm(pd.Timestamp(clock), stats=None, debug_details=debug_details)
         return rebalance_trades
 
-    def preflight_check(self, client: Client, universe: Universe, now_: datetime.datetime):
+    def pretick_check(self, ts: datetime.datetime, universe: TradeExecutorTradingUniverse):
         """Check the data looks more or less sane."""
+
+        assert isinstance(universe, TradingStrategyUniverse)
+        universe = universe.universe
+
+        now_ = ts
 
         if len(universe.exchanges) == 0:
             raise PreflightCheckFailed("Exchange count zero")

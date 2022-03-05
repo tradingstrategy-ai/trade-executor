@@ -40,8 +40,8 @@ class DummyMATICUSDCStrategyRunner(StrategyRunner):
             liquidity=liquidity,
         )
 
-    def preflight_check(self, client: Client, universe: Universe, now_: datetime.datetime):
-        super().preflight_check(client, universe, now_)
+    def pretick_check(self, client: Client, universe: Universe, now_: datetime.datetime):
+        super().pretick_check(client, universe, now_)
         # We are trading only one trading pair
         assert universe.pairs.get_count() == 1
 
