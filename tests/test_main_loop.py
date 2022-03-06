@@ -164,33 +164,6 @@ def hot_wallet(web3: Web3, busd_token: Contract, hot_wallet_private_key: HexByte
     return wallet
 
 
-@pytest.fixture
-def supported_reserves(asset_busd) -> List[AssetIdentifier]:
-    """The reserve currencies we support."""
-    return [asset_busd]
-
-
-@pytest.fixture()
-def portfolio() -> Portfolio:
-    """A portfolio loaded with the initial cash.
-
-    We start with 10,000 USDC.
-    """
-    portfolio = Portfolio({}, {}, {})
-    return portfolio
-
-
-@pytest.fixture()
-def state(portfolio) -> State:
-    return State(portfolio=portfolio)
-
-
-@pytest.fixture()
-def exchange_universe(web3, uniswap_v2: UniswapV2Deployment) -> ExchangeUniverse:
-    """We trade on one Uniswap v2 deployment on tester."""
-    return create_exchange_universe(web3, [uniswap_v2])
-
-
 @pytest.fixture()
 def strategy_path() -> Path:
     """Where do we load our strategy file."""
@@ -203,8 +176,6 @@ def test_main_loop(
         ganache_bnb_chain_fork,
         hot_wallet: HotWallet,
         pancakeswap_v2: UniswapV2Deployment,
-        state: State,
-        supported_reserves,
     ):
     """Run the main loop 2 times.
 
@@ -220,6 +191,7 @@ def test_main_loop(
         "JSON_RPC": ganache_bnb_chain_fork,
         "UNISWAP_V2_FACTORY_ADDRESS": pancakeswap_v2.factory.address,
         "UNISWAP_V2_ROUTER_ADDRESS": pancakeswap_v2.router.address,
+        "UNISWAP_V2_INIT_CODE_HASH": pancakeswap_v2.init_code_hash,
         "STATE_FILE": "/tmp/test_main_loop.json",
         "RESET_STATE": "true",
         "MAX_CYCLES": "1",
@@ -230,6 +202,16 @@ def test_main_loop(
     # https://typer.tiangolo.com/tutorial/testing/
     runner = CliRunner()
     result = runner.invoke(app, env=environment)
+
+    if result.exception:
+        raise result.exception
+
+    if result.exit_code != 0:
+        logger.error("runner failed")
+        for line in result.stdout.split('\n'):
+            logger.error(line)
+        raise AssertionError("runner launch failed")
+
     assert result.exit_code == 0
 
 

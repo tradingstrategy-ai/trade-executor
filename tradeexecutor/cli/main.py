@@ -38,6 +38,7 @@ def create_trade_execution_model(
         execution_type: TradeExecutionType,
         factory_address: str,
         router_address: str,
+        uniswap_init_code_hash,
         json_rpc: str,
         private_key: str,
 ):
@@ -50,7 +51,7 @@ def create_trade_execution_model(
         assert json_rpc, "JSON-RPC endpoint is needed"
         web3 = create_web3(json_rpc)
         hot_wallet = HotWallet.from_private_key(private_key)
-        uniswap = fetch_deployment(web3, factory_address, router_address)
+        uniswap = fetch_deployment(web3, factory_address, router_address, init_code_hash=uniswap_init_code_hash)
         sync_method = EthereumHotWalletReserveSyncer(web3, hot_wallet.address)
         execution_model = UniswapV2ExecutionModel(uniswap, hot_wallet)
         revaluation_method = UniswapV2PoolRevaluator(uniswap)
@@ -93,6 +94,7 @@ def run(
     approval_type: ApprovalType = typer.Option(..., envvar="APPROVAL_TYPE"),
     uniswap_v2_factory_address: str = typer.Option(None, envvar="UNISWAP_V2_FACTORY_ADDRESS"),
     uniswap_v2_router_address: str = typer.Option(None, envvar="UNISWAP_V2_ROUTER_ADDRESS"),
+    uniswap_init_code_hash: str = typer.Option(None, envvar="UNISWAP_V2_INIT_CODE_HASH"),
     state_file: Optional[Path] = typer.Option("strategy-state.json", envvar="STATE_FILE"),
     trading_strategy_api_key: str = typer.Option(None, envvar="TRADING_STRATEGY_API_KEY", help="Trading Strategy API key"),
     reset_state: bool = typer.Option(False, "--reset-state", envvar="RESET_STATE"),
@@ -106,6 +108,7 @@ def run(
         execution_type,
         uniswap_v2_factory_address,
         uniswap_v2_router_address,
+        uniswap_init_code_hash,
         json_rpc,
         private_key)
 
