@@ -19,7 +19,6 @@ logger = logging.getLogger(__name__)
 @dataclass
 class Dataset:
     """Contain raw loaded datasets."""
-
     time_frame: TimeBucket
     exchanges: ExchangeUniverse
     pairs: pd.DataFrame
@@ -27,6 +26,7 @@ class Dataset:
     liquidity: pd.DataFrame
 
 
+@dataclass
 class TradingStrategyUniverse(TradeExecutorTradingUniverse):
     """A trading executor trading universe that using data from TradingStrategy.ai data feeds."""
     universe: Universe
@@ -54,10 +54,10 @@ class TradingStrategyUniverseConstructor(UniverseModel):
                 - Candle data: {data_start} - {data_end}
                 
                 The size of our trading universe is
-                - {len(universe.exchanges)} exchanges
-                - {universe.pairs.get_count()} pairs
-                - {universe.candles.get_sample_count()} candles
-                - {universe.liquidity.get_sample_count()} liquidity samples                
+                - {len(universe.exchanges):,} exchanges
+                - {universe.pairs.get_count():,} pairs
+                - {universe.candles.get_sample_count():,} candles
+                - {universe.liquidity.get_sample_count():,} liquidity samples                
                 """))
         return universe
 

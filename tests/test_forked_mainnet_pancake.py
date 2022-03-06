@@ -1,8 +1,5 @@
-"""Sets up the main loop and a strategy in a Ethereum Tester environment.
-
-We test with ganache-cli mainnet forking.
-"""
-import json
+"""Runs a test strategy with a forked Pancakeswap V2."""
+import datetime
 import logging
 import os
 import secrets
@@ -13,7 +10,7 @@ import pytest
 from eth_account import Account
 from eth_typing import HexAddress, HexStr
 from hexbytes import HexBytes
-from typer.testing import CliRunner
+from tradingstrategy.client import Client
 from web3 import Web3, HTTPProvider
 from web3.contract import Contract
 
@@ -21,13 +18,22 @@ from eth_hentai.abi import get_deployed_contract
 from eth_hentai.ganache import fork_network
 from eth_hentai.hotwallet import HotWallet
 from eth_hentai.uniswap_v2 import UniswapV2Deployment, fetch_deployment
-from tradeexecutor.cli.main import app
-from tradeexecutor.state.state import AssetIdentifier
+from tradeexecutor.ethereum.hot_wallet_sync import EthereumHotWalletReserveSyncer
+from tradeexecutor.ethereum.uniswap_v2_execution import UniswapV2ExecutionModel
+from tradeexecutor.ethereum.uniswap_v2_live_pricing import UniswapV2LivePricing, uniswap_v2_live_pricing_factory
+from tradeexecutor.ethereum.uniswap_v2_revaluation import UniswapV2PoolRevaluator
+from tradeexecutor.state.state import AssetIdentifier, Portfolio, State
+from tradeexecutor.strategy.approval import UncheckedApprovalModel
+from tradeexecutor.strategy.bootstrap import import_strategy_file
+from tradeexecutor.strategy.description import StrategyRunDescription
+from tradeexecutor.strategy.runner import StrategyRunner
 
 from tradeexecutor.utils.log import setup_pytest_logging
 
 
 # https://docs.pytest.org/en/latest/how-to/skipping.html#skip-all-test-functions-of-a-class-or-module
+from tradeexecutor.utils.timer import timed_task
+
 pytestmark = pytest.mark.skipif(os.environ.get("BNB_CHAIN_JSON_RPC") is None, reason="Set BNB_CHAIN_JSON_RPC environment variable to Binance Smart Chain node to run this test")
 
 
@@ -167,59 +173,67 @@ def strategy_path() -> Path:
     """Where do we load our strategy file."""
     return Path(os.path.join(os.path.dirname(__file__), "strategies", "pancakeswap_v2_main_loop.py"))
 
+@pytest.fixture()
+def portfolio() -> Portfolio:
+    """A portfolio loaded with the initial cash.
 
-def test_main_loop(
+    We start with 10,000 USDC.
+    """
+    portfolio = Portfolio({}, {}, {})
+    return portfolio
+
+
+@pytest.fixture()
+def state(portfolio) -> State:
+    return State(portfolio=portfolio)
+
+
+def test_forked_pancake(
         logger: logging.Logger,
+        web3: Web3,
         strategy_path: Path,
         ganache_bnb_chain_fork,
         hot_wallet: HotWallet,
         pancakeswap_v2: UniswapV2Deployment,
+        state: State,
+        persistent_test_client: Client,
     ):
-    """Run the main loop 2 times.
+    """Run a strategy tick against PancakeSwap v2 on forked BSC.
 
-    Sets up the whole trade executor live trading application in local Ethereum Tester environment
-    and then executed one trade.
+    This checks we can trade "live" assets.
     """
 
-    debug_dump_file = "/tmp/test_main_loop.debug.json"
+    strategy_factory = import_strategy_file(strategy_path)
+    approval_model = UncheckedApprovalModel()
+    execution_model = UniswapV2ExecutionModel(pancakeswap_v2, hot_wallet)
+    sync_method = EthereumHotWalletReserveSyncer(web3, hot_wallet.address)
+    revaluation_method = UniswapV2PoolRevaluator(pancakeswap_v2)
 
-    # Set up the configuration for the live trader
-    environment = {
-        "STRATEGY_FILE": strategy_path.as_posix(),
-        "PRIVATE_KEY": hot_wallet.account.privateKey.hex(),
-        "HTTP_ENABLED": "false",
-        "JSON_RPC": ganache_bnb_chain_fork,
-        "UNISWAP_V2_FACTORY_ADDRESS": pancakeswap_v2.factory.address,
-        "UNISWAP_V2_ROUTER_ADDRESS": pancakeswap_v2.router.address,
-        "UNISWAP_V2_INIT_CODE_HASH": pancakeswap_v2.init_code_hash,
-        "STATE_FILE": "/tmp/test_main_loop.json",
-        "RESET_STATE": "true",
-        "MAX_CYCLES": "1",
-        "EXECUTION_TYPE": "uniswap_v2_hot_wallet",
-        "APPROVAL_TYPE": "unchecked",
-        "CACHE_PATH": "/tmp/main_loop_tests",
-        "TRADING_STRATEGY_API_KEY": os.environ["TRADING_STRATEGY_API_KEY"],
-        "DEBUG_DUMP_FILE": debug_dump_file,
-    }
-    # https://typer.tiangolo.com/tutorial/testing/
-    runner = CliRunner()
-    result = runner.invoke(app, env=environment)
+    run_description: StrategyRunDescription = strategy_factory(
+        execution_model=execution_model,
+        timed_task_context_manager=timed_task,
+        sync_method=sync_method,
+        revaluation_method=revaluation_method,
+        pricing_model_factory=uniswap_v2_live_pricing_factory,
+        approval_model=approval_model,
+        client=persistent_test_client,
+    )
 
-    if result.exception:
-        raise result.exception
+    # Deconstruct strategy input
+    runner: StrategyRunner = run_description.runner
+    universe_constructor = run_description.universe_constructor
 
-    if result.exit_code != 0:
-        logger.error("runner failed")
-        for line in result.stdout.split('\n'):
-            logger.error(line)
-        raise AssertionError("runner launch failed")
+    # Set up internal tracing store
+    debug_details = {"cycle": 1}
 
-    assert result.exit_code == 0
+    # Reload the trading data
+    ts = datetime.datetime.utcnow()
 
-    with open(debug_dump_file, "rt") as inp:
-        debug_dump = json.load(inp)
+    # Refresh the trading universe for this cycle
+    universe = universe_constructor.construct_universe(ts)
 
-        # We should have data only for one cycle
-        assert len(debug_dump) == 1
+    # Run cycle checks
+    runner.pretick_check(ts, universe)
 
-
+    # Execute the strategy tick and trades
+    runner.tick(ts, universe, state, debug_details)
