@@ -3,7 +3,7 @@ from decimal import Decimal, ROUND_DOWN
 
 from tradeexecutor.ethereum.uniswap_v2_execution import UniswapV2ExecutionModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
-from tradeexecutor.strategy.universe import TradeExecutorTradingUniverse
+from tradeexecutor.strategy.universe_model import TradeExecutorTradingUniverse
 from tradingstrategy.pair import PandasPairUniverse
 
 from eth_hentai.token import fetch_erc20_details

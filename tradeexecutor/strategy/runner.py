@@ -8,11 +8,11 @@ import logging
 from typing import List
 
 from tradeexecutor.strategy.approval import ApprovalModel
-from tradeexecutor.strategy.execution import ExecutionModel
+from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.state.revaluation import RevaluationMethod
 from tradeexecutor.state.sync import SyncMethod
 from tradeexecutor.strategy.pricing_model import PricingModelFactory
-from tradeexecutor.strategy.universe import TradeExecutorTradingUniverse
+from tradeexecutor.strategy.universe_model import TradeExecutorTradingUniverse
 
 from tradeexecutor.state.state import State, TradeExecution, AssetIdentifier
 from tradingstrategy.universe import Universe

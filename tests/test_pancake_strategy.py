@@ -7,7 +7,7 @@ import pytest
 from tradeexecutor.state.state import State
 
 from tradeexecutor.strategy.bootstrap import bootstrap_strategy
-from tradeexecutor.strategy.runner import Dataset, StrategyRunner
+from tradeexecutor.strategy.runner import StrategyRunner
 from tradeexecutor.utils.timer import timed_task
 from tradingstrategy.universe import Universe
 

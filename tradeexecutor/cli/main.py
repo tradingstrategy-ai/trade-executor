@@ -95,8 +95,8 @@ def run(
     uniswap_v2_router_address: str = typer.Option(None, envvar="UNISWAP_V2_ROUTER_ADDRESS"),
     state_file: Optional[Path] = typer.Option("strategy-state.json", envvar="STATE_FILE"),
     trading_strategy_api_key: str = typer.Option(None, envvar="TRADING_STRATEGY_API_KEY", help="Trading Strategy API key"),
-    reset_state: bool = typer.Option(False, "--reset-state"),
-    max_cycles: int = typer.Option(None, env_var="MAX_CYCLES"),
+    reset_state: bool = typer.Option(False, "--reset-state", envvar="RESET_STATE"),
+    max_cycles: int = typer.Option(None, envvar="MAX_CYCLES", help="Max main loop cycles run in an automated testing mode"),
     ):
 
     logger = setup_logging()

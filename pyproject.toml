@@ -20,6 +20,9 @@ web3 = "^5.26.0"
 trading-strategy-qstrader = "^0.5"
 prompt-toolkit = "^3.0.28"
 
+# TODO: A gap fix to make eth-hentai to install. Remove later.
+psutil = "^5.9.0"
+
 [tool.poetry.dev-dependencies]
 pytest = "^6.2.5"
 ipdb = "^0.13.9"

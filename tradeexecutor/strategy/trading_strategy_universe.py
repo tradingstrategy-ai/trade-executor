@@ -1,15 +1,11 @@
-import abc
 import contextlib
-import datetime
 import textwrap
 from dataclasses import dataclass
-from typing import Optional
 import logging
 import pandas as pd
 
 from tradeexecutor.state.state import TradingPairIdentifier, AssetIdentifier
-from tradeexecutor.strategy.runner import Dataset
-from tradeexecutor.strategy.universe import TradeExecutorTradingUniverse, UniverseModel
+from tradeexecutor.strategy.universe_model import TradeExecutorTradingUniverse, UniverseModel
 from tradingstrategy.client import Client
 from tradingstrategy.exchange import ExchangeUniverse
 from tradingstrategy.pair import DEXPair

@@ -1,20 +1,16 @@
-import datetime
 import runpy
 from contextlib import AbstractContextManager
 from pathlib import Path
 import logging
-from typing import Callable, Optional
 
+from tradeexecutor.strategy.description import StrategyRunDescription
 from tradeexecutor.strategy.factory import StrategyFactory
-from tradeexecutor.strategy.runner import StrategyRunner, Dataset
-from tradingstrategy.client import Client
-from tradingstrategy.universe import Universe
 
 logger = logging.getLogger(__name__)
 
 
 #: What is our Python entry point for strategies
-FACTORY_VAR_NAME = "strategy_executor_factory"
+FACTORY_VAR_NAME = "strategy_factory"
 
 
 class BadStrategyFile(Exception):
@@ -37,11 +33,9 @@ def import_strategy_file(path: Path) -> StrategyFactory:
 
 
 def bootstrap_strategy(
-        client: Client,
         timed_task_context_manager: AbstractContextManager,
         path: Path,
-        now_: datetime.datetime,
-        lookback: Optional[datetime.timedelta]=None, **kwargs) -> [Dataset, Universe, StrategyRunner]:
+        **kwargs) -> StrategyRunDescription:
     """Bootstrap a strategy to the point it can accept its first tick.
 
     Returns an initialized strategy.
@@ -56,10 +50,7 @@ def bootstrap_strategy(
     :return: Tuple of loaded and initialized elements
     """
     factory = import_strategy_file(path)
-    runner: StrategyRunner = factory(timed_task_context_manager=timed_task_context_manager, **kwargs)
-    time_bucket = runner.get_strategy_time_frame()
-    dataset = runner.load_data(time_bucket, client, lookback)
-    universe = runner.setup_universe_timed(dataset)
-    runner.pretick_check(client, universe, now_)
-    return [dataset, universe, runner]
+    description = factory(
+        timed_task_context_manager=timed_task_context_manager, **kwargs)
+    return description
 

@@ -7,7 +7,7 @@ from typing import Callable
 
 from tradeexecutor.state.types import USDollarAmount
 from tradeexecutor.strategy.execution_model import ExecutionModel
-from tradeexecutor.strategy.universe import TradeExecutorTradingUniverse
+from tradeexecutor.strategy.universe_model import TradeExecutorTradingUniverse
 
 
 class PricingModel(abc.ABC):

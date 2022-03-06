@@ -1,3 +1,5 @@
+""""Strategy factory is the end point to the loaded strategies."""
+
 import typing
 
 from contextlib import AbstractContextManager

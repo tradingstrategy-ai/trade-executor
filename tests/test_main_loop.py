@@ -1,46 +1,36 @@
-"""Sets up the main loop and a strategy in a Ethereum Tester environment."""
+"""Sets up the main loop and a strategy in a Ethereum Tester environment.
+
+We test with ganache-cli mainnet forking.
+"""
 
 import logging
 import os
-import datetime
 import secrets
-from decimal import Decimal
 from pathlib import Path
 from typing import List
-from unittest.mock import patch
 
 import pytest
 from eth_account import Account
-from eth_typing import HexAddress
+from eth_typing import HexAddress, HexStr
 from hexbytes import HexBytes
 from typer.testing import CliRunner
-from web3 import EthereumTesterProvider, Web3
+from web3 import Web3, HTTPProvider
 from web3.contract import Contract
 
+from eth_hentai.abi import get_deployed_contract
+from eth_hentai.ganache import fork_network
 from eth_hentai.hotwallet import HotWallet
-from eth_hentai.balances import fetch_erc20_balances_decimal
-from eth_hentai.token import create_token
-from eth_hentai.uniswap_v2 import UniswapV2Deployment, deploy_trading_pair, deploy_uniswap_v2_like
+from eth_hentai.uniswap_v2 import UniswapV2Deployment, fetch_deployment
 from tradeexecutor.cli.main import app
-from tradeexecutor.ethereum.hot_wallet_sync import EthereumHotWalletReserveSyncer
-from tradeexecutor.ethereum.uniswap_v2_execution import UniswapV2ExecutionModel
-from tradeexecutor.ethereum.uniswap_v2_live_pricing import UniswapV2LivePricing
-from tradeexecutor.ethereum.uniswap_v2_revaluation import UniswapV2PoolRevaluator
-from tradeexecutor.ethereum.universe import create_exchange_universe, create_pair_universe
-from tradeexecutor.state.state import State, AssetIdentifier, TradingPairIdentifier, Portfolio, TradeExecution
-from tradeexecutor.strategy.approval import UncheckedApprovalModel
+from tradeexecutor.ethereum.universe import create_exchange_universe
+from tradeexecutor.state.state import State, AssetIdentifier, Portfolio
 
-from tradeexecutor.strategy.bootstrap import import_strategy_file
-from tradeexecutor.strategy.runner import StrategyRunner
 from tradeexecutor.utils.log import setup_pytest_logging
-from tradeexecutor.utils.timer import timed_task
-from tradingstrategy.candle import GroupedCandleUniverse
-from tradingstrategy.chain import ChainId
 from tradingstrategy.exchange import ExchangeUniverse
-from tradingstrategy.liquidity import GroupedLiquidityUniverse
-from tradingstrategy.pair import PairUniverse, PandasPairUniverse
-from tradingstrategy.timebucket import TimeBucket
-from tradingstrategy.universe import Universe
+
+
+# https://docs.pytest.org/en/latest/how-to/skipping.html#skip-all-test-functions-of-a-class-or-module
+pytestmark = pytest.mark.skipif(os.environ.get("BNB_CHAIN_JSON_RPC") is None, reason="Set BNB_CHAIN_JSON_RPC environment variable to Binance Smart Chain node to run this test")
 
 
 @pytest.fixture(scope="module")
@@ -49,38 +39,43 @@ def logger(request):
     return setup_pytest_logging(request)
 
 
-@pytest.fixture
-def tester_provider():
-    # https://web3py.readthedocs.io/en/stable/examples.html#contract-unit-tests-in-python
-    return EthereumTesterProvider()
+@pytest.fixture()
+def large_busd_holder() -> HexAddress:
+    """A random account picked from BNB Smart chain that holds a lot of BUSD.
 
+    This account is unlocked on Ganache, so you have access to good BUSD stash.
 
-@pytest.fixture
-def eth_tester(tester_provider):
-    # https://web3py.readthedocs.io/en/stable/examples.html#contract-unit-tests-in-python
-    return tester_provider.ethereum_tester
-
-
-@pytest.fixture
-def web3(tester_provider):
-    """Set up a local unit testing blockchain."""
-    # https://web3py.readthedocs.io/en/stable/examples.html#contract-unit-tests-in-python
-    return Web3(tester_provider)
-
-
-@pytest.fixture
-def chain_id(web3) -> int:
-    """The test chain id (67)."""
-    return web3.eth.chain_id
+    `To find large holder accounts, use bscscan <https://bscscan.com/token/0xe9e7cea3dedca5984780bafc599bd69add087d56#balances>`_.
+    """
+    # Binance Hot Wallet 6
+    return HexAddress(HexStr("0x8894E0a0c962CB723c1976a4421c95949bE2D4E3"))
 
 
 @pytest.fixture()
-def deployer(web3) -> HexAddress:
-    """Deploy account.
+def ganache_bnb_chain_fork(large_busd_holder) -> str:
+    """Create a testable fork of live BNB chain.
 
-    Do some account allocation for tests.
+    :return: JSON-RPC URL for Web3
     """
-    return web3.eth.accounts[0]
+    mainnet_rpc = os.environ["BNB_CHAIN_JSON_RPC"]
+    launch = fork_network(
+        mainnet_rpc,
+        unlocked_addresses=[large_busd_holder])
+    yield launch.json_rpc_url
+    # Wind down Ganache process after the test is complete
+    launch.close()
+
+
+@pytest.fixture
+def web3(ganache_bnb_chain_fork: str):
+    """Set up a local unit testing blockchain."""
+    # https://web3py.readthedocs.io/en/stable/examples.html#contract-unit-tests-in-python
+    return Web3(HTTPProvider(ganache_bnb_chain_fork))
+
+
+@pytest.fixture
+def chain_id(web3):
+    return web3.eth.chain_id
 
 
 @pytest.fixture()
@@ -90,116 +85,89 @@ def hot_wallet_private_key(web3) -> HexBytes:
 
 
 @pytest.fixture
-def usdc_token(web3, deployer: HexAddress) -> Contract:
-    """Create USDC with 10M supply."""
-    token = create_token(web3, deployer, "Fake USDC coin", "USDC", 10_000_000 * 10**6, 6)
+def busd_token(web3) -> Contract:
+    """BUSD with $4B supply."""
+    # https://bscscan.com/address/0xe9e7cea3dedca5984780bafc599bd69add087d56
+    token = get_deployed_contract(web3, "ERC20MockDecimals.json", "0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56")
     return token
 
 
-@pytest.fixture
-def aave_token(web3, deployer: HexAddress) -> Contract:
-    """Create AAVE with 10M supply."""
-    token = create_token(web3, deployer, "Fake Aave coin", "AAVE", 10_000_000 * 10**18, 18)
+def cake_token(web3) -> Contract:
+    """CAKE token."""
+    token = get_deployed_contract(web3, "ERC20MockDecimals.json", "0x0E09FaBB73Bd3Ade0a17ECC321fD13a19e81cE82")
     return token
 
 
 @pytest.fixture()
-def uniswap_v2(web3, deployer) -> UniswapV2Deployment:
-    """Uniswap v2 deployment."""
-    deployment = deploy_uniswap_v2_like(web3, deployer)
+def pancakeswap_v2(web3) -> UniswapV2Deployment:
+    """Fetch live PancakeSwap v2 deployment.
+
+    See https://docs.pancakeswap.finance/code/smart-contracts for more information
+    """
+    deployment = fetch_deployment(
+        web3,
+        "0xcA143Ce32Fe78f1f7019d7d551a6402fC5350c73",
+        "0x10ED43C718714eb63d5aA57B78B54704E256024E",
+        # Taken from https://bscscan.com/address/0xca143ce32fe78f1f7019d7d551a6402fc5350c73#readContract
+        init_code_hash="0x00fb7f630766e6a796048ea87d01acd3068e8ff67d078148a3fa3f4a84f69bd5",
+        )
     return deployment
 
 
 @pytest.fixture
-def weth_token(uniswap_v2: UniswapV2Deployment) -> Contract:
-    """Mock some assets"""
-    return uniswap_v2.weth
+def wbnb_token(pancakeswap_v2: UniswapV2Deployment) -> Contract:
+    return pancakeswap_v2.weth
 
 
 @pytest.fixture
-def asset_usdc(usdc_token, chain_id) -> AssetIdentifier:
-    """Mock some assets"""
-    return AssetIdentifier(chain_id, usdc_token.address, usdc_token.functions.symbol().call(), usdc_token.functions.decimals().call())
+def asset_busd(busd_token, chain_id) -> AssetIdentifier:
+    return AssetIdentifier(chain_id, busd_token.address, busd_token.functions.symbol().call(), busd_token.functions.decimals().call())
 
 
 @pytest.fixture
-def asset_weth(weth_token, chain_id) -> AssetIdentifier:
-    """Mock some assets"""
-    return AssetIdentifier(chain_id, weth_token.address, weth_token.functions.symbol().call(), weth_token.functions.decimals().call())
+def asset_wbnb(wbnb_token, chain_id) -> AssetIdentifier:
+    return AssetIdentifier(chain_id, wbnb_token.address, wbnb_token.functions.symbol().call(), wbnb_token.functions.decimals().call())
 
 
 @pytest.fixture
-def asset_aave(aave_token, chain_id) -> AssetIdentifier:
-    """Mock some assets"""
-    return AssetIdentifier(chain_id, aave_token.address, aave_token.functions.symbol().call(), aave_token.functions.decimals().call())
+def asset_cake(cake_token, chain_id) -> AssetIdentifier:
+    return AssetIdentifier(chain_id, cake_token.address, cake_token.functions.symbol().call(), cake_token.functions.decimals().call())
 
 
 @pytest.fixture
-def aave_usdc_uniswap_trading_pair(web3, deployer, uniswap_v2, aave_token, usdc_token) -> HexAddress:
-    """AAVE-USDC pool with 200k liquidity."""
-    pair_address = deploy_trading_pair(
-        web3,
-        deployer,
-        uniswap_v2,
-        aave_token,
-        usdc_token,
-        1000 * 10**18,  # 1000 AAVE liquidity
-        200_000 * 10**6,  # 200k USDC liquidity
-    )
-    return pair_address
+def cake_busd_uniswap_trading_pair() -> HexAddress:
+    return HexAddress(HexStr("0x804678fa97d91b974ec2af3c843270886528a9e6"))
 
 
 @pytest.fixture
-def weth_usdc_uniswap_trading_pair(web3, deployer, uniswap_v2, weth_token, usdc_token) -> HexAddress:
-    """AAVE-USDC pool with 1.7M liquidity."""
-    pair_address = deploy_trading_pair(
-        web3,
-        deployer,
-        uniswap_v2,
-        weth_token,
-        usdc_token,
-        1000 * 10**18,  # 1000 ETH liquidity
-        1_700_000 * 10**6,  # 1.7M USDC liquidity
-    )
-    return pair_address
+def wbnb_busd_uniswap_trading_pair() -> HexAddress:
+    return HexAddress(HexStr("0x58f876857a02d6762e0101bb5c46a8c1ed44dc16"))
 
 
 @pytest.fixture
-def weth_usdc_pair(weth_usdc_uniswap_trading_pair, asset_usdc, asset_weth) -> TradingPairIdentifier:
-    """WETH-USDC pair representation in the trade executor domain."""
-    return TradingPairIdentifier(asset_weth, asset_usdc, weth_usdc_uniswap_trading_pair, internal_id=int(weth_usdc_uniswap_trading_pair, 16))
-
-
-@pytest.fixture
-def aave_usdc_pair(aave_usdc_uniswap_trading_pair, asset_usdc, asset_aave) -> TradingPairIdentifier:
-    """AAVE-USDC pair representation in the trade executor domain."""
-    return TradingPairIdentifier(asset_aave, asset_usdc, aave_usdc_uniswap_trading_pair, internal_id=int(aave_usdc_uniswap_trading_pair, 16))
-
-
-@pytest.fixture
-def supported_reserves(usdc) -> List[AssetIdentifier]:
+def supported_reserves(busd) -> List[AssetIdentifier]:
     """What reserve currencies we support for the strategy."""
-    return [usdc]
+    return [busd]
 
 
 @pytest.fixture()
-def hot_wallet(web3: Web3, usdc_token: Contract, hot_wallet_private_key: HexBytes, deployer: HexAddress) -> HotWallet:
+def hot_wallet(web3: Web3, busd_token: Contract, hot_wallet_private_key: HexBytes, large_busd_holder: HexAddress) -> HotWallet:
     """Our trading Ethereum account.
 
-    Start with 10,000 USDC cash and 2 ETH.
+    Start with 10,000 USDC cash and 2 BNB.
     """
     account = Account.from_key(hot_wallet_private_key)
-    web3.eth.send_transaction({"from": deployer, "to": account.address, "value": 2*10**18})
-    usdc_token.functions.transfer(account.address, 10_000 * 10**6).transact({"from": deployer})
+    web3.eth.send_transaction({"from": large_busd_holder, "to": account.address, "value": 2*10**18})
+    busd_token.functions.transfer(account.address, 10_000 * 10**18).transact({"from": large_busd_holder})
     wallet = HotWallet(account)
     wallet.sync_nonce(web3)
     return wallet
 
 
 @pytest.fixture
-def supported_reserves(asset_usdc) -> List[AssetIdentifier]:
+def supported_reserves(asset_busd) -> List[AssetIdentifier]:
     """The reserve currencies we support."""
-    return [asset_usdc]
+    return [asset_busd]
 
 
 @pytest.fixture()
@@ -224,26 +192,6 @@ def exchange_universe(web3, uniswap_v2: UniswapV2Deployment) -> ExchangeUniverse
 
 
 @pytest.fixture()
-def pair_universe(web3, exchange_universe: ExchangeUniverse, weth_usdc_pair, aave_usdc_pair) -> PandasPairUniverse:
-    """We trade on two trading pairs."""
-    exchange = next(iter(exchange_universe.exchanges.values()))  # Get the first exchange from the universe
-    return create_pair_universe(web3, exchange, [weth_usdc_pair, aave_usdc_pair])
-
-
-@pytest.fixture()
-def universe(web3, exchange_universe: ExchangeUniverse, pair_universe: PandasPairUniverse) -> Universe:
-    """Get our trading universe."""
-    return Universe(
-        time_frame=TimeBucket.d1,
-        chains=[ChainId(web3.eth.chain_id)],
-        exchanges=list(exchange_universe.exchanges.values()),
-        pairs=pair_universe,
-        candles=GroupedCandleUniverse.create_empty_qstrader(),
-        liquidity=GroupedLiquidityUniverse.create_empty(),
-    )
-
-
-@pytest.fixture()
 def strategy_path() -> Path:
     """Where do we load our strategy file."""
     return Path(os.path.join(os.path.dirname(__file__), "strategies", "simulated_uniswap.py"))
@@ -252,15 +200,11 @@ def strategy_path() -> Path:
 def test_main_loop(
         logger: logging.Logger,
         strategy_path: Path,
-        tester_provider,
+        ganache_bnb_chain_fork,
         hot_wallet: HotWallet,
-        uniswap_v2: UniswapV2Deployment,
-        universe: Universe,
+        pancakeswap_v2: UniswapV2Deployment,
         state: State,
         supported_reserves,
-        weth_usdc_pair,
-        weth_token,
-        usdc_token,
     ):
     """Run the main loop 2 times.
 
@@ -268,17 +212,24 @@ def test_main_loop(
     and then executed one trade.
     """
 
-    import ipdb ; ipdb.set_trace()
-
+    # Set up the configuration for the live trader
     environment = {
-        "PRIVATE_KEY": hot_wallet.account.privateKey,
+        "STRATEGY_FILE": strategy_path.as_posix(),
+        "PRIVATE_KEY": hot_wallet.account.privateKey.hex(),
         "HTTP_ENABLED": "false",
-        "JSON_RPC": "false",
+        "JSON_RPC": ganache_bnb_chain_fork,
+        "UNISWAP_V2_FACTORY_ADDRESS": pancakeswap_v2.factory.address,
+        "UNISWAP_V2_ROUTER_ADDRESS": pancakeswap_v2.router.address,
+        "STATE_FILE": "/tmp/test_main_loop.json",
+        "RESET_STATE": "true",
+        "MAX_CYCLES": "1",
+        "EXECUTION_TYPE": "uniswap_v2_hot_wallet",
+        "APPROVAL_TYPE": "unchecked",
+        "TRADING_STRATEGY_API_KEY": os.environ["TRADING_STRATEGY_API_KEY"],
     }
-
     # https://typer.tiangolo.com/tutorial/testing/
     runner = CliRunner()
-    result = runner.run(app, env=environment)
+    result = runner.invoke(app, env=environment)
     assert result.exit_code == 0
 
 
