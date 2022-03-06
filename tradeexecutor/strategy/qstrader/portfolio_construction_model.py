@@ -4,12 +4,12 @@ from typing import Optional, Dict, List, Tuple
 
 import pandas as pd
 
-from tradeexecutor.client.translations import translate_trading_pair
 from tradeexecutor.state.state import State, AssetIdentifier, TradeType, TradeExecution
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.qstrader.order_sizer import CashBufferedOrderSizer
 from tradingstrategy.universe import Universe
 
+from tradeexecutor.strategy.trading_strategy_universe import translate_trading_pair
 
 logger = logging.getLogger(__name__)
 

@@ -14,8 +14,7 @@ from tradeexecutor.state.sync import SyncMethod
 from tradeexecutor.strategy.pricing_model import PricingModelFactory
 from tradeexecutor.strategy.universe_model import TradeExecutorTradingUniverse
 
-from tradeexecutor.state.state import State, TradeExecution, AssetIdentifier
-from tradingstrategy.universe import Universe
+from tradeexecutor.state.state import State, TradeExecution
 
 
 logger = logging.getLogger(__name__)
@@ -81,17 +80,15 @@ class StrategyRunner(abc.ABC):
     def on_data_signal(self):
         pass
 
-    def on_clock(self, clock: datetime.datetime, universe: Universe, state: State, debug_details: dict) -> List[TradeExecution]:
+    def on_clock(self, clock: datetime.datetime, universe: TradeExecutorTradingUniverse, state: State, debug_details: dict) -> List[TradeExecution]:
         return []
 
-    def tick(self, clock: datetime.datetime, universe: TradeExecutorTradingUniverse, state: State) -> dict:
+    def tick(self, clock: datetime.datetime, universe: TradeExecutorTradingUniverse, state: State, debug_details: dict) -> dict:
         """Perform the strategy main tick.
 
         :return: Debug details dictionary where different subsystems can write their diagnostics information what is happening during the dict.
             Mostly useful for integration testing.
         """
-
-        debug_details = {"clock": clock}
 
         with self.timed_task_context_manager("strategy_tick", clock=clock):
 

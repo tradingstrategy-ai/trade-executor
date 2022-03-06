@@ -1,11 +1,13 @@
 """Construct the trading universe for the strategy."""
 import abc
 import datetime
+from dataclasses import dataclass
 from typing import List
 
 from tradeexecutor.state.state import AssetIdentifier
 
 
+@dataclass
 class TradeExecutorTradingUniverse:
     """Represents whatever data a strategy needs to have in order to make trading decisions.
 

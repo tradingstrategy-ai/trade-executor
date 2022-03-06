@@ -1,5 +1,9 @@
+"""Main trade executor loop."""
+
 import datetime
+import json
 import time
+from pathlib import Path
 from queue import Queue
 from typing import Optional, Callable
 
@@ -32,11 +36,9 @@ def run_main_loop(
         reset=False,
         max_cycles: Optional[int]=None,
         sleep=1.0,
+        debug_dump_file: Optional[Path]=None,
     ):
-    """Runs the main loop of the strategy executor.
-
-    :param reset: Start the state from the scratch.
-    """
+    """The main loop of trade executor."""
 
     if ignore:
         # https://www.python.org/dev/peps/pep-3102/
@@ -62,27 +64,47 @@ def run_main_loop(
         client=client,
     )
 
+    # Deconstruct strategy input
     runner: StrategyRunner = run_description.runner
-
     universe_constructor = run_description.universe_constructor
+
+    # Debug details from every cycle
+    debug_dump_state = {}
 
     cycle = 1
     while True:
+
+        # This Python dict collects internal debugging data through this cycle.
+        # Any submodule of strategy execution can add internal information here for
+        # unit testing and manual diagnostics. Any data added must be JSON serializable.
+        debug_details = {"cycle": cycle}
 
         # Reload the trading data
         ts = datetime.datetime.utcnow()
         logger.info("Starting strategy executor main loop cycle %d, UTC is %s", cycle, ts)
 
+        # Refresh the trading universe for this cycle
         universe = universe_constructor.construct_universe(ts)
 
+        # Run cycle checks
         runner.pretick_check(ts, universe)
 
-        runner.tick(ts, universe, state)
+        # Execute the strategy tick and trades
+        runner.tick(ts, universe, state, debug_details)
+
+        # Store the current state to disk
         store.sync()
 
+        # Record and write out the internal debug state
+        if debug_dump_file is not None:
+            debug_dump_state[cycle] = debug_details
+            with open(debug_dump_file, "wt") as out:
+                json.dump(out, debug_dump_state)
+
+        # Advance to the next tick
         cycle += 1
 
-        # Termination in integration testing
+        # Check for termination in integration testing
         if max_cycles is not None:
             if cycle >= max_cycles:
                 break

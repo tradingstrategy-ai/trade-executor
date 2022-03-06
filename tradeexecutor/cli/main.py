@@ -97,8 +97,10 @@ def run(
     uniswap_init_code_hash: str = typer.Option(None, envvar="UNISWAP_V2_INIT_CODE_HASH"),
     state_file: Optional[Path] = typer.Option("strategy-state.json", envvar="STATE_FILE"),
     trading_strategy_api_key: str = typer.Option(None, envvar="TRADING_STRATEGY_API_KEY", help="Trading Strategy API key"),
+    cache_path: Optional[Path] = typer.Option(None, envvar="CACHE_PATH", help="Where to store downloaded datasets"),
     reset_state: bool = typer.Option(False, "--reset-state", envvar="RESET_STATE"),
     max_cycles: int = typer.Option(None, envvar="MAX_CYCLES", help="Max main loop cycles run in an automated testing mode"),
+    debug_dump_file: Optional[Path] = typer.Option(None, envvar="DEBUG_DUMP_FILE", help="Write JSON dump of all internal debugging state of the strategy run"),
     ):
 
     logger = setup_logging()
@@ -127,7 +129,7 @@ def run(
 
     # Create our data client
     if trading_strategy_api_key:
-        client = Client.create_live_client(trading_strategy_api_key)
+        client = Client.create_live_client(trading_strategy_api_key, cache_path=cache_path)
     else:
         client = None
 
@@ -145,7 +147,9 @@ def run(
             client=client,
             strategy_factory=strategy_factory,
             reset=reset_state,
-            max_cycles=max_cycles)
+            max_cycles=max_cycles,
+            debug_dump_file=debug_dump_file,
+        )
     finally:
         if server:
             server.close()

@@ -167,7 +167,7 @@ def hot_wallet(web3: Web3, busd_token: Contract, hot_wallet_private_key: HexByte
 @pytest.fixture()
 def strategy_path() -> Path:
     """Where do we load our strategy file."""
-    return Path(os.path.join(os.path.dirname(__file__), "strategies", "simulated_uniswap.py"))
+    return Path(os.path.join(os.path.dirname(__file__), "strategies", "pancakeswap_v2_main_loop.py"))
 
 
 def test_main_loop(
@@ -197,7 +197,9 @@ def test_main_loop(
         "MAX_CYCLES": "1",
         "EXECUTION_TYPE": "uniswap_v2_hot_wallet",
         "APPROVAL_TYPE": "unchecked",
+        "CACHE_PATH": "/tmp/main_loop_tests",
         "TRADING_STRATEGY_API_KEY": os.environ["TRADING_STRATEGY_API_KEY"],
+        "DEBUG_DUMP_FILE": "/tmp/test_main_loop.debug.json",
     }
     # https://typer.tiangolo.com/tutorial/testing/
     runner = CliRunner()

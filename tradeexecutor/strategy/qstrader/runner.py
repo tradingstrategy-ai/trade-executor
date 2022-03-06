@@ -8,9 +8,6 @@ from qstrader.portcon.optimiser.fixed_weight import FixedWeightPortfolioOptimise
 from tradeexecutor.strategy.qstrader.alpha_model import AlphaModel
 from tradeexecutor.strategy.qstrader.order_sizer import CashBufferedOrderSizer
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
-from tradeexecutor.strategy.universe import TradeExecutorTradingUniverse
-
-from tradingstrategy.universe import Universe
 
 from tradeexecutor.state.state import State, TradeExecution
 from tradeexecutor.strategy.qstrader.portfolio_construction_model import PortfolioConstructionModel
@@ -39,9 +36,10 @@ class QSTraderRunner(StrategyRunner):
     def on_data_signal(self):
         pass
 
-    def on_clock(self, clock: datetime.datetime, universe: Universe, state: State, debug_details: dict) -> List[TradeExecution]:
+    def on_clock(self, clock: datetime.datetime, executor_universe: TradingStrategyUniverse, state: State, debug_details: dict) -> List[TradeExecution]:
         """Run one strategy tick."""
 
+        universe = executor_universe.universe
         logger.info("QSTrader on_clock %s", clock)
         assert len(self.reserve_assets) == 1, f"We only support strategies with a single reserve asset, got {self.reserve_assets}"
         pricing_model = self.pricing_model_factory(self.execution_model, universe)
@@ -61,7 +59,7 @@ class QSTraderRunner(StrategyRunner):
         rebalance_trades = pcm(pd.Timestamp(clock), stats=None, debug_details=debug_details)
         return rebalance_trades
 
-    def pretick_check(self, ts: datetime.datetime, universe: TradeExecutorTradingUniverse):
+    def pretick_check(self, ts: datetime.datetime, universe: TradingStrategyUniverse):
         """Check the data looks more or less sane."""
 
         assert isinstance(universe, TradingStrategyUniverse)
