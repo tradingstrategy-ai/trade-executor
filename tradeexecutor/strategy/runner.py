@@ -2,13 +2,10 @@
 
 import abc
 import datetime
-import textwrap
 from contextlib import AbstractContextManager
 import logging
-from dataclasses import dataclass
 
-import pandas as pd
-from typing import List, Optional
+from typing import List
 
 from tradeexecutor.strategy.approval import ApprovalModel
 from tradeexecutor.strategy.execution import ExecutionModel
@@ -16,14 +13,10 @@ from tradeexecutor.state.revaluation import RevaluationMethod
 from tradeexecutor.state.sync import SyncMethod
 from tradeexecutor.strategy.pricing_model import PricingModelFactory
 from tradeexecutor.strategy.universe import TradeExecutorTradingUniverse
-from tradingstrategy.client import Client
 
 from tradeexecutor.state.state import State, TradeExecution, AssetIdentifier
-from tradingstrategy.exchange import ExchangeUniverse
-from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
 
-from tradeexecutor.strategy.pricingmethod import PricingMethod
 
 logger = logging.getLogger(__name__)
 
@@ -41,16 +34,13 @@ class StrategyRunner(abc.ABC):
                  approval_model: ApprovalModel,
                  revaluation_method: RevaluationMethod,
                  sync_method: SyncMethod,
-                 pricing_model_factory: PricingModelFactory,
-                 reserve_assets: List[AssetIdentifier]):
+                 pricing_model_factory: PricingModelFactory):
         self.timed_task_context_manager = timed_task_context_manager
         self.execution_model = execution_model
         self.approval_model = approval_model
         self.revaluation_method = revaluation_method
         self.sync_method = sync_method
         self.pricing_model_factory = pricing_model_factory
-        #: TODO: Make something more sensible how to the list of reseve assets are managed
-        self.reserve_assets = reserve_assets
 
     @abc.abstractmethod
     def pretick_check(self, ts: datetime.datetime, universe: TradeExecutorTradingUniverse):
@@ -66,7 +56,7 @@ class StrategyRunner(abc.ABC):
         """
         pass
 
-    def sync_portfolio(self, ts: datetime.datetime, state: State, debug_details: dict):
+    def sync_portfolio(self, ts: datetime.datetime, universe: TradeExecutorTradingUniverse, state: State, debug_details: dict):
         """Adjust portfolio balances based on the external events.
 
         External events include
@@ -75,7 +65,9 @@ class StrategyRunner(abc.ABC):
         - Interest accrued
         - Token rebases
         """
-        reserve_update_events = self.sync_method(state.portfolio, ts, self.reserve_assets)
+        reserve_assets = universe.reserve_assets
+        assert len(reserve_assets) > 0, "No reserve assets available"
+        reserve_update_events = self.sync_method(state.portfolio, ts, reserve_assets)
         assert type(reserve_update_events) == list
         debug_details["reserve_update_events"] = reserve_update_events
         debug_details["total_equity_at_start"] = state.portfolio.get_total_equity()

@@ -7,7 +7,8 @@ from tradeexecutor.strategy.approval import ApprovalModel
 from tradeexecutor.strategy.description import StrategyRunDescription
 from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.strategy.pricing_model import PricingModelFactory
-from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverseConstructor, TradingStrategyUniverse
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverseConstructor, \
+    TradingStrategyUniverse, translate_trading_pair
 from tradingstrategy.client import Client
 
 """Example strategy that trades on PancakeSwap"""
@@ -255,7 +256,7 @@ class OurStrategyLiverRunner(QSTraderLiveTrader):
 
 class OurStrategyUniverseConstructor(TradingStrategyUniverseConstructor):
 
-    def filter_universe(self, dataset: Dataset) -> Universe:
+    def filter_universe(self, dataset: Dataset) -> TradingStrategyUniverse:
         """Filter data streams we are interested in."""
 
         with self.timed_task_context_manager("filter_universe"):
@@ -282,21 +283,33 @@ class OurStrategyUniverseConstructor(TradingStrategyUniverseConstructor):
             #filtered_liquidity = filtered_liquidity.set_index(filtered_liquidity["timestamp"])
             liquidity_universe = GroupedLiquidityUniverse(filtered_liquidity)
 
+            pairs = PandasPairUniverse(pairs_df)
+
+            # We do a bit detour here as we need to address the assets by their trading pairs first
+            pancake_v2 = exchange_universe.get_by_chain_and_slug(ChainId.bsc, "pancakeswap-v2"),
+            bnb_busd = pairs.get_one_pair_from_pandas_universe(pancake_v2.exchange_id, "WBNB", "BUSD")
+
+            bnb_busd_pair = translate_trading_pair(bnb_busd)
+            reserve_assets = [
+                bnb_busd_pair.quote,
+            ]
+
             universe = Universe(
                 time_frame=dataset.time_frame,
                 chains=[ChainId.bsc],
-                pairs=PandasPairUniverse(pairs_df),
+                pairs=pairs,
                 exchanges=our_exchanges,
                 candles=candle_universe,
                 liquidity=liquidity_universe,
             )
-            return universe
+
+            return TradingStrategyUniverse(universe=universe, reserve_assets=reserve_assets)
 
     def construct_universe(self, execution_model: ExecutionModel) -> TradingStrategyUniverse:
         dataset = self.load_data(TimeBucket.d1)
         universe = self.filter_universe(dataset)
-        self.log_universe(universe)
-        return TradingStrategyUniverse(universe)
+        self.log_universe(universe.universe)
+        return universe
 
 
 def strategy_executor_factory(
@@ -320,9 +333,7 @@ def strategy_executor_factory(
 
     universe_constructor = OurStrategyUniverseConstructor(client, timed_task_context_manager)
 
-    cash_buffer = 0.30
-
-    runner = OurStrategyLiverRunner(
+    runner = QSTraderLiveTrader(
         timed_task_context_manager=timed_task_context_manager,
         execution_model=execution_model,
         approval_model=approval_model,

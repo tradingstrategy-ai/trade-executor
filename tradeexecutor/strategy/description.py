@@ -8,7 +8,7 @@ from tradeexecutor.strategy.pricing_method import PricingMethod
 from tradeexecutor.strategy.universe_constructor import UniverseConstructionMethod
 
 from tradeexecutor.strategy.runner import StrategyRunner
-from tradeexecutor.strategy.universe import UniverseConstructor
+from tradeexecutor.strategy.universe import UniverseModel
 from tradingstrategy.timebucket import TimeBucket
 
 
@@ -34,7 +34,7 @@ class StrategyRunDescription:
     reserve_asset: List[AssetIdentifier]
 
     #: How to refresh the trading universe for the each tick
-    universe_constructor: UniverseConstructor
+    universe_constructor: UniverseModel
 
     #: What kind of a strategy runner this strategy is using
     runner: StrategyRunner

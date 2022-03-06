@@ -7,11 +7,12 @@ from typing import Optional
 import logging
 import pandas as pd
 
-from tradeexecutor.strategy.execution_model import ExecutionModel
+from tradeexecutor.state.state import TradingPairIdentifier, AssetIdentifier
 from tradeexecutor.strategy.runner import Dataset
-from tradeexecutor.strategy.universe import TradeExecutorTradingUniverse, UniverseConstructor
+from tradeexecutor.strategy.universe import TradeExecutorTradingUniverse, UniverseModel
 from tradingstrategy.client import Client
 from tradingstrategy.exchange import ExchangeUniverse
+from tradingstrategy.pair import DEXPair
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
 
@@ -31,10 +32,11 @@ class Dataset:
 
 
 class TradingStrategyUniverse(TradeExecutorTradingUniverse):
+    """A trading executor trading universe that using data from TradingStrategy.ai data feeds."""
     universe: Universe
 
 
-class TradingStrategyUniverseConstructor(UniverseConstructor):
+class TradingStrategyUniverseConstructor(UniverseModel):
     """A universe constructor that builds the trading universe data using Trading Strategy client.
 
     On a live exeuction, trade universe is reconstructor for the every tick,
@@ -87,6 +89,36 @@ class TradingStrategyUniverseConstructor(UniverseConstructor):
             )
 
 
+def translate_trading_pair(pair: DEXPair) -> TradingPairIdentifier:
+    """Translate trading pair from Pandas universe to Trade Executor universe.
+
+    Translates a trading pair presentation from Trading Strategy client Pandas format to the trade executor format.
+
+    Trade executor work with multiple different strategies, not just Trading Strategy client based.
+    For example, you could have a completely on-chain data based strategy.
+    Thus, Trade Executor has its internal asset format.
+
+    This module contains functions to translate asset presentations between Trading Strategy client
+    and Trade Executor.
 
 
-
+    This is called when a trade is made: this is the moment when trade executor data format must be made available.
+    """
+    base = AssetIdentifier(
+        chain_id=pair.chain_id.value,
+        address=pair.base_token_address,
+        token_symbol=pair.base_token_symbol,
+        decimals=None
+    )
+    quote = AssetIdentifier(
+        chain_id=pair.chain_id.value,
+        address=pair.quote_token_address,
+        token_symbol=pair.quote_token_symbol,
+        decimals=None
+    )
+    return TradingPairIdentifier(
+        base=base,
+        quote=quote,
+        pool_address=pair.address,
+        internal_id=pair.pair_id,
+    )
