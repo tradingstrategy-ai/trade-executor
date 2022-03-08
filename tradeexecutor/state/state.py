@@ -12,6 +12,8 @@ from itertools import chain
 from typing import List, Optional, Dict, Callable, Iterable, Tuple, Any
 
 from dataclasses_json import dataclass_json
+from eth_typing import HexAddress
+from web3 import Web3
 
 from .types import USDollarAmount
 
@@ -98,6 +100,11 @@ class AssetIdentifier:
     def get_identifier(self) -> str:
         """Assets are identified by their smart contract address."""
         return self.address
+
+    @property
+    def checksum_address(self) -> HexAddress:
+        """Ethereum madness."""
+        return Web3.toChecksumAddress(self.address)
 
 
 @dataclass_json

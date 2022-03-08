@@ -191,6 +191,7 @@ def strategy_path() -> Path:
     """Where do we load our strategy file."""
     return Path(os.path.join(os.path.dirname(__file__), "strategies", "pancakeswap_v2_main_loop.py"))
 
+
 @pytest.fixture()
 def portfolio() -> Portfolio:
     """A portfolio loaded with the initial cash.
@@ -244,8 +245,8 @@ def test_forked_pancake(
     # Set up internal tracing store
     debug_details = {"cycle": 1}
 
-    # Reload the trading data
-    ts = datetime.datetime.now(datetime.timezone.utc)
+    # Use a fixed data in the past for the test
+    ts = datetime.datetime(2021, 12, 7)
 
     # Refresh the trading universe for this cycle
     universe = universe_constructor.construct_universe(ts)
@@ -255,3 +256,6 @@ def test_forked_pancake(
 
     # Execute the strategy tick and trades
     runner.tick(ts, universe, state, debug_details)
+
+    # The strategy is always going to do some trades
+    assert len(debug_details["approved_trades"]) > 0

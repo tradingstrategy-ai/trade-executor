@@ -24,14 +24,14 @@ from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId
 from tradingstrategy.frameworks.qstrader import prepare_candles_for_qstrader
 from tradingstrategy.liquidity import GroupedLiquidityUniverse, LiquidityDataUnavailable
-from tradingstrategy.pair import filter_for_exchanges, PandasPairUniverse, DEXPair
+from tradingstrategy.pair import filter_for_exchanges, PandasPairUniverse, DEXPair, filter_for_quote_tokens
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.utils.groupeduniverse import filter_for_pairs
 from tradingstrategy.universe import Universe
 
 
 # Cannot use Python __name__ here because the module is dynamically loaded
-logging = logging.getLogger("pancakeswap_example")
+logger = logging.getLogger("pancakeswap_example")
 
 
 # Not relevant for live execution
@@ -70,9 +70,6 @@ cash_buffer = 0.50
 
 # Use daily candles to run the algorithm
 candle_time_frame = TimeBucket.d1
-
-# Print algorithm internal state while it is running to debug issues
-debug = False
 
 
 def fix_qstrader_date(ts: pd.Timestamp) -> pd.Timestamp:
@@ -130,11 +127,13 @@ class MomentumAlphaModel(AlphaModel):
         """
 
         assert debug_details
+        assert isinstance(ts, pd.Timestamp), f"Got {ts}"
 
-        exchange_universe = universe.exchanges
         pair_universe = universe.pairs
         candle_universe = universe.candles
         liquidity_universe = universe.liquidity
+
+        logger.info("Entering the alpha model, we know %d pairs", pair_universe.get_count())
 
         ts = fix_qstrader_date(ts)
 
@@ -149,7 +148,8 @@ class MomentumAlphaModel(AlphaModel):
         alpha_signals = Counter()
 
         if len(timepoint_candles) == 0:
-            print(f"No candles at {ts}")
+            logger.error(f"No candles available at %s", ts_yesterday)
+            return {}
 
         ts_: pd.Timestamp
         candle: pd.Series
@@ -169,6 +169,8 @@ class MomentumAlphaModel(AlphaModel):
             open = candle["Open"]  # QStrader data frames are using capitalised version of OHLCV core variables
             close = candle["Close"]  # QStrader data frames are using capitalised version of OHLCV core variables
             pair = pair_universe.get_pair_by_id(pair_id)
+
+            # logger.debug("Checking pair %s", pair)
 
             if self.is_funny_price(open) or self.is_funny_price(close):
                 # This trading pair is too funny that we do not want to play with it
@@ -196,6 +198,7 @@ class MomentumAlphaModel(AlphaModel):
                 alpha_signals[pair_id] = momentum
             else:
                 # No alpha for illiquid pairs
+                # logger.warning("Liquidity not enough. Pair %s, liquidity %s, needed %s", pair, available_liquidity_for_pair, liquidity_threshold)
                 alpha_signals[pair_id] = 0
 
             extra_debug_data[pair_id] = {
@@ -218,13 +221,13 @@ class MomentumAlphaModel(AlphaModel):
             pair_id, alpha = tuple
             weighed_signals[pair_id] = 1 / idx
 
-        # Debug dump status
-        if debug:
-            for pair_id, momentum in top_signals:
-                debug_data = extra_debug_data[pair_id]
-                pair = debug_data["pair"]
-                print(f"{ts}: Signal for {pair.get_ticker()} (#{pair.pair_id}) is {momentum * 100:,.2f}%, open: {debug_data['open']:,.8f}, close: {debug_data['close']:,.8f}")
+        # Some debug dump for unit test ipdb tracking
+        for pair_id, momentum in top_signals:
+            debug_data = extra_debug_data[pair_id]
+            pair = debug_data["pair"]
+            logger.info(f"{ts}: Signal for {pair.get_ticker()} (#{pair.pair_id}) is {momentum * 100:,.2f}%, open: {debug_data['open']:,.8f}, close: {debug_data['close']:,.8f}")
 
+        logger.info("Got signals %s", weighed_signals)
         debug_details["signals"]: weighed_signals.copy()
         debug_details["pair_details"]: extra_debug_data
 
@@ -244,15 +247,22 @@ class OurStrategyUniverseConstructor(TradingStrategyUniverseConstructor):
             pancake_v2 = exchange_universe.get_by_chain_and_slug(ChainId.bsc, "pancakeswap-v2")
             assert pancake_v2, "PancakeSwap v2 missing in the dataset"
 
+            busd_address = "0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56".lower()
+
             our_exchanges = [
                 pancake_v2,
             ]
 
-            # Choose all pairs that trade on exchanges we are interested in
+            # Choose BUSD pairs on PancakeSwap v2
             pairs_df = filter_for_exchanges(dataset.pairs, our_exchanges)
+            pairs_df = filter_for_quote_tokens(pairs_df, [busd_address])
 
             # Create trading pair database
             pairs = PandasPairUniverse(pairs_df)
+
+            # We do a bit detour here as we need to address the assets by their trading pairs first
+            bnb_busd = pairs.get_one_pair_from_pandas_universe(pancake_v2.exchange_id, "WBNB", "BUSD")
+            assert bnb_busd, "We do not have BNB-BUSD, something wrong with the dataset"
 
             # Get daily candles as Pandas DataFrame
             all_candles = dataset.candles
@@ -263,9 +273,6 @@ class OurStrategyUniverseConstructor(TradingStrategyUniverseConstructor):
             all_liquidity = dataset.liquidity
             filtered_liquidity = filter_for_pairs(all_liquidity, pairs_df)
             liquidity_universe = GroupedLiquidityUniverse(filtered_liquidity)
-
-            # We do a bit detour here as we need to address the assets by their trading pairs first
-            bnb_busd = pairs.get_one_pair_from_pandas_universe(pancake_v2.exchange_id, "WBNB", "BUSD")
 
             # We are using BUSD as the reserve asset, pick it through BNB-BUSD pair
             bnb_busd_pair = translate_trading_pair(bnb_busd)

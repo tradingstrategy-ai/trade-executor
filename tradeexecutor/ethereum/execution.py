@@ -120,8 +120,8 @@ def prepare_swaps(
 
     for idx, t in enumerate(instructions):
 
-        base_token_details = fetch_erc20_details(web3, t.pair.base.address)
-        quote_token_details = fetch_erc20_details(web3, t.pair.quote.address)
+        base_token_details = fetch_erc20_details(web3, t.pair.base.checksum_address)
+        quote_token_details = fetch_erc20_details(web3, t.pair.quote.checksum_address)
 
         assert base_token_details.decimals is not None, f"Bad token at {t.pair.base.address}"
         assert quote_token_details.decimals is not None, f"Bad token at {t.pair.quote.address}"
@@ -162,8 +162,8 @@ def approve_tokens(
 
     for idx, t in enumerate(instructions):
 
-        base_token_details = fetch_erc20_details(web3, t.pair.base.address)
-        quote_token_details = fetch_erc20_details(web3, t.pair.quote.address)
+        base_token_details = fetch_erc20_details(web3, t.pair.base.checksum_address)
+        quote_token_details = fetch_erc20_details(web3, t.pair.quote.checksum_address)
 
         # Update approval counters for the whole batch
         if t.is_buy():
@@ -248,8 +248,8 @@ def resolve_trades(web3: Web3, uniswap: UniswapV2Deployment, ts: datetime.dateti
 
         logger.info("Resolved trade %s", trade)
 
-        base_token_details = fetch_erc20_details(web3, trade.pair.base.address)
-        quote_token_details = fetch_erc20_details(web3, trade.pair.quote.address)
+        base_token_details = fetch_erc20_details(web3, trade.pair.base.checksum_address)
+        quote_token_details = fetch_erc20_details(web3, trade.pair.quote.checksum_address)
 
         # Update the transaction confirmation status
         status = receipt["status"] == 1
@@ -309,7 +309,7 @@ def get_current_price(web3: Web3, uniswap: UniswapV2Deployment, pair: TradingPai
 
     :return: Price in quote token.
     """
-    price = estimate_sell_price_decimals(uniswap, pair.base.address, pair.quote.address, quantity)
+    price = estimate_sell_price_decimals(uniswap, pair.base.checksum_address, pair.quote.checksum_address, quantity)
     return float(price)
 
 
@@ -318,7 +318,7 @@ def get_held_assets(web3: Web3, address: HexAddress, assets: List[AssetIdentifie
 
     result = {}
     for asset in assets:
-        token_details = fetch_erc20_details(web3, asset.address)
+        token_details = fetch_erc20_details(web3, asset.checksum_address)
         balance = token_details.contract.functions.balanceOf(address).call()
         result[token_details.address] = Decimal(balance) / Decimal(10 ** token_details.decimals)
     return result
