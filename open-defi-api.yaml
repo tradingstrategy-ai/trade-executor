@@ -459,9 +459,8 @@ paths:
             items:
               type: string
               format: address
-              maximum: 42
           example:
-            - 0xe9e7cea3dedca5984780bafc599bd69add087d56
+            - "0xe9e7cea3dedca5984780bafc599bd69add087d56"
         - name: page
           in: query
           description: Page number, zero-indexed
