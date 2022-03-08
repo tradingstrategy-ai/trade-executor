@@ -6,14 +6,15 @@ from typing import Dict
 
 import pandas as pd
 
-from qstrader.alpha_model.alpha_model import AlphaModel
 from tradeexecutor.ethereum.uniswap_v2_execution import UniswapV2ExecutionModel
 from tradeexecutor.state.revaluation import RevaluationMethod
+from tradeexecutor.state.state import State
 from tradeexecutor.state.sync import SyncMethod
 from tradeexecutor.strategy.approval import ApprovalModel
 from tradeexecutor.strategy.description import StrategyRunDescription
 from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.strategy.pricing_model import PricingModelFactory
+from tradeexecutor.strategy.qstrader.alpha_model import AlphaModel
 from tradeexecutor.strategy.qstrader.runner import QSTraderRunner
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverseConstructor, \
     TradingStrategyUniverse, translate_trading_pair, Dataset
@@ -85,29 +86,12 @@ def fix_qstrader_date(ts: pd.Timestamp) -> pd.Timestamp:
 class MomentumAlphaModel(AlphaModel):
     """An alpha model that ranks pairs by the daily upwords price change %."""
 
-    def __init__(
-            self,
-            universe: Universe,
-            data_handler=None
-    ):
-        self.exchange_universe = universe.exchanges
-        self.pair_universe = universe.pairs
-        self.candle_universe = universe.candles
-        self.liquidity_universe = universe.liquidity
-        self.data_handler = data_handler
-        self.liquidity_reached_state = {}
-
     def is_funny_price(self, usd_unit_price: float) -> bool:
         """Avoid taking positions in tokens with too funny prices.
 
         Might cause good old floating point to crap out.
         """
         return (usd_unit_price < 0.0000001) or (usd_unit_price > 100_000)
-
-    def translate_pair(self, pair_id: int) -> str:
-        """Make pari ids human readable for logging."""
-        pair_info = self.pair_universe.get_pair_by_id(pair_id)
-        return pair_info.get_friendly_name(self.exchange_universe)
 
     def filter_duplicate_base_tokens(self, alpha_signals: Counter, debug_data: dict) -> Counter:
         """Filter duplicate alpha signals for trading pairs sharing the same base token.
@@ -135,7 +119,7 @@ class MomentumAlphaModel(AlphaModel):
             accumulated_quote_tokens.add(base_token)
         return filtered_alpha
 
-    def __call__(self, ts: pd.Timestamp, debug_details: Dict) -> Dict[int, float]:
+    def __call__(self, ts: pd.Timestamp, universe: Universe, state: State, debug_details: Dict) -> Dict[int, float]:
         """
         Produce the dictionary of scalar signals for
         each of the Asset instances within the Universe.
@@ -147,7 +131,10 @@ class MomentumAlphaModel(AlphaModel):
 
         assert debug_details
 
-        pair_universe = self.universe.pairs
+        exchange_universe = universe.exchanges
+        pair_universe = universe.pairs
+        candle_universe = universe.candles
+        liquidity_universe = universe.liquidity
 
         ts = fix_qstrader_date(ts)
 
@@ -158,7 +145,7 @@ class MomentumAlphaModel(AlphaModel):
         ts_yesterday = ts - pd.Timedelta(days=1)
 
         # For each pair, check the the diff between opening and closingn price
-        timepoint_candles = self.candle_universe.get_all_samples_by_timestamp(ts_yesterday)
+        timepoint_candles = candle_universe.get_all_samples_by_timestamp(ts_yesterday)
         alpha_signals = Counter()
 
         if len(timepoint_candles) == 0:
@@ -173,7 +160,7 @@ class MomentumAlphaModel(AlphaModel):
         # but we also have a minimum liquidity floor related to our portfolio size.
         # With high value portfolio, we will no longer invest in tokens with less liquidity.
         # TODO: Fix QSTrader to pass this information directly.
-        portflio_value = debug_details["broker"]["portfolios"]["000001"]["total_equity"]
+        portflio_value = state.portfolio.get_total_equity()
         liquidity_threshold = max(min_liquidity_threshold, portflio_value * portfolio_base_liquidity_threshold)
 
         # Iterate over all candles for all pairs in this timestamp (ts)
@@ -197,7 +184,7 @@ class MomentumAlphaModel(AlphaModel):
 
                 # Check for the liquidity requirement
                 try:
-                    available_liquidity_for_pair = self.liquidity_universe.get_closest_liquidity(pair_id, ts)
+                    available_liquidity_for_pair = liquidity_universe.get_closest_liquidity(pair_id, ts)
                 except LiquidityDataUnavailable as e:
                     # There might be holes in the data, because BSC network not syncing properly,
                     # BSC blockchain was halted or because BSC nodes themselves had crashed.
@@ -326,7 +313,7 @@ def strategy_factory(
     universe_constructor = OurStrategyUniverseConstructor(client, timed_task_context_manager)
 
     runner = QSTraderRunner(
-        alpha_model=MomentumAlphaModel,
+        alpha_model=MomentumAlphaModel(),
         timed_task_context_manager=timed_task_context_manager,
         execution_model=execution_model,
         approval_model=approval_model,

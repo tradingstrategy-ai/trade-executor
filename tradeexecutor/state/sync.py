@@ -7,6 +7,6 @@ from tradeexecutor.ethereum.wallet import ReserveUpdateEvent
 from tradeexecutor.state.state import Portfolio, AssetIdentifier
 
 
-#: Syncs the extenral portfolio changes from a (blockchain) source.
+#: Syncs the external portfolio changes from a (blockchain) source.
 #: See ethereum/hotwallet_sync.py for details.
 SyncMethod = Callable[[Portfolio, datetime.datetime, List[AssetIdentifier]], List[ReserveUpdateEvent]]

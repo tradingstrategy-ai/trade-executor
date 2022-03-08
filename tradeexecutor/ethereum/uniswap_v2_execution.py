@@ -84,7 +84,7 @@ class UniswapV2ExecutionModel(ExecutionModel):
             self.hot_wallet,
             self.uniswap,
             ts,
-            self.state,
+            state,
             trades,
             underflow_check=False,
         )
@@ -103,6 +103,6 @@ class UniswapV2ExecutionModel(ExecutionModel):
             self.web3,
             self.uniswap,
             ts,
-            self.state,
+            state,
             broadcasted,
             receipts)

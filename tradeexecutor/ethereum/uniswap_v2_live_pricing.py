@@ -60,7 +60,7 @@ class UniswapV2LivePricing(PricingModel):
 
 def uniswap_v2_live_pricing_factory(execution_model: UniswapV2ExecutionModel, universe: TradeExecutorTradingUniverse) -> UniswapV2LivePricing:
     assert isinstance(execution_model, UniswapV2ExecutionModel), "Pricing method is not compatible with this execution model"
-    assert isinstance(universe, TradingStrategyUniverse), "This pricing method only works with TradingStrategyUniverse"
+    assert isinstance(universe, TradingStrategyUniverse), f"This pricing method only works with TradingStrategyUniverse, we received {universe}"
     uniswap = execution_model.uniswap
     universe = universe.universe
     return UniswapV2LivePricing(uniswap, universe.pairs)

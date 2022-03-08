@@ -2,12 +2,13 @@ import logging
 import dataclasses
 import datetime
 from decimal import Decimal
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Union
 
 from eth_typing import HexAddress
 from web3 import Web3
 
-from eth_hentai.balances import fetch_erc20_balances_decimal, DecimalisedHolding
+from eth_hentai.balances import DecimalisedHolding, \
+    fetch_erc20_balances_by_token_list, convert_balances_to_decimal
 from tradeexecutor.state.state import Portfolio, AssetIdentifier, ReservePosition
 
 
@@ -22,10 +23,10 @@ class ReserveUpdateEvent:
     new_balance: Decimal
 
 
-def update_wallet_balances(web3: Web3, address: HexAddress) -> Dict[HexAddress, DecimalisedHolding]:
-    """Get raw balances of ERC-20 tokens.
-    """
-    return fetch_erc20_balances_decimal(web3, address)
+def update_wallet_balances(web3: Web3, address: HexAddress, tokens: List[HexAddress]) -> Dict[HexAddress, DecimalisedHolding]:
+    """Get raw balances of ERC-20 tokens."""
+    balances = fetch_erc20_balances_by_token_list(web3, address, tokens)
+    return convert_balances_to_decimal(web3, balances)
 
 
 def sync_reserves(
@@ -39,23 +40,27 @@ def sync_reserves(
     our_chain_id = web3.eth.chain_id
 
     # Get raw ERC-20 holdings of the address
-    balances = update_wallet_balances(web3, wallet_address)
+    balances = update_wallet_balances(web3, wallet_address, [web3.toChecksumAddress(a.address) for a in supported_reserve_currencies])
 
     reserves_per_token = {r.asset.address: r for r in current_reserves}
 
     events: ReserveUpdateEvent = []
 
     for currency in supported_reserve_currencies:
-        assert currency.chain_id == our_chain_id, f"Asset expects chain_id {currency.chain_id}, currently connected to {our_chain_id}"
+
+        address = web3.toChecksumAddress(currency.address)
+
+        # 1337 is Ganache
+        if our_chain_id != 1337:
+            assert currency.chain_id == our_chain_id, f"Asset expects chain_id {currency.chain_id}, currently connected to {our_chain_id}"
 
         if currency.address in reserves_per_token:
             # We have an existing record of having this reserve
-            current_value = reserves_per_token[currency.address].quantity
+            current_value = reserves_per_token[address].quantity
         else:
             current_value = Decimal(0)
 
-        assert web3.isChecksumAddress(currency.address)
-        decimal_holding = balances.get(currency.address)
+        decimal_holding = balances.get(address)
 
         if (decimal_holding is not None) and (decimal_holding.value != current_value):
             evt = ReserveUpdateEvent(

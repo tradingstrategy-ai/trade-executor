@@ -1,4 +1,13 @@
-"""Runs a test strategy with a forked Pancakeswap V2."""
+"""Runs a test strategy with a forked Pancakeswap V2.
+
+To run tests:
+
+.. code-block:: shell
+
+    export BNB_CHAIN_JSON_RPC=https://bsc-dataseed1.defibit.io/
+    pytest -s -k test_forked_pancake
+
+"""
 import datetime
 import logging
 import os
@@ -10,6 +19,8 @@ import pytest
 from eth_account import Account
 from eth_typing import HexAddress, HexStr
 from hexbytes import HexBytes
+
+from eth_hentai.utils import is_localhost_port_open
 from tradingstrategy.client import Client
 from web3 import Web3, HTTPProvider
 from web3.contract import Contract
@@ -40,7 +51,7 @@ pytestmark = pytest.mark.skipif(os.environ.get("BNB_CHAIN_JSON_RPC") is None, re
 @pytest.fixture(scope="module")
 def logger(request):
     """Setup test logger."""
-    return setup_pytest_logging(request)
+    return setup_pytest_logging(request, mute_requests=False)
 
 
 @pytest.fixture()
@@ -61,20 +72,23 @@ def ganache_bnb_chain_fork(large_busd_holder) -> str:
 
     :return: JSON-RPC URL for Web3
     """
+
     mainnet_rpc = os.environ["BNB_CHAIN_JSON_RPC"]
+
+    # Start Ganache
     launch = fork_network(
         mainnet_rpc,
         unlocked_addresses=[large_busd_holder])
     yield launch.json_rpc_url
     # Wind down Ganache process after the test is complete
-    launch.close()
+    launch.close(verbose=True)
 
 
 @pytest.fixture
 def web3(ganache_bnb_chain_fork: str):
     """Set up a local unit testing blockchain."""
     # https://web3py.readthedocs.io/en/stable/examples.html#contract-unit-tests-in-python
-    return Web3(HTTPProvider(ganache_bnb_chain_fork))
+    return Web3(HTTPProvider(ganache_bnb_chain_fork, request_kwargs={"timeout": 2}))
 
 
 @pytest.fixture
@@ -149,7 +163,7 @@ def wbnb_busd_uniswap_trading_pair() -> HexAddress:
 
 
 @pytest.fixture
-def supported_reserves(busd) -> List[AssetIdentifier]:
+def supported_reserves(web3: Web3, busd) -> List[AssetIdentifier]:
     """What reserve currencies we support for the strategy."""
     return [busd]
 
@@ -162,6 +176,10 @@ def hot_wallet(web3: Web3, busd_token: Contract, hot_wallet_private_key: HexByte
     """
     account = Account.from_key(hot_wallet_private_key)
     web3.eth.send_transaction({"from": large_busd_holder, "to": account.address, "value": 2*10**18})
+
+    balance = web3.eth.getBalance(large_busd_holder)
+    assert balance  > web3.toWei("1", "ether"), f"Account is empty {large_busd_holder}"
+
     busd_token.functions.transfer(account.address, 10_000 * 10**18).transact({"from": large_busd_holder})
     wallet = HotWallet(account)
     wallet.sync_nonce(web3)
@@ -227,7 +245,7 @@ def test_forked_pancake(
     debug_details = {"cycle": 1}
 
     # Reload the trading data
-    ts = datetime.datetime.utcnow()
+    ts = datetime.datetime.now(datetime.timezone.utc)
 
     # Refresh the trading universe for this cycle
     universe = universe_constructor.construct_universe(ts)

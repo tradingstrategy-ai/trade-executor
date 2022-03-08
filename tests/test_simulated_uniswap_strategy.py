@@ -16,7 +16,7 @@ from web3 import EthereumTesterProvider, Web3
 from web3.contract import Contract
 
 from eth_hentai.hotwallet import HotWallet
-from eth_hentai.balances import fetch_erc20_balances_decimal
+from eth_hentai.balances import fetch_erc20_balances_by_transfer_event, convert_balances_to_decimal
 from eth_hentai.token import create_token
 from eth_hentai.uniswap_v2 import UniswapV2Deployment, deploy_trading_pair, deploy_uniswap_v2_like
 from tradeexecutor.ethereum.hot_wallet_sync import EthereumHotWalletReserveSyncer
@@ -343,7 +343,8 @@ def test_simulated_uniswap_qstrader_strategy_single_trade(
     assert t.tx_info.nonce == 1
 
     # Check the raw on-chain token balances
-    balances = fetch_erc20_balances_decimal(web3, hot_wallet.address)
+    raw_balances = fetch_erc20_balances_by_transfer_event(web3, hot_wallet.address)
+    balances = convert_balances_to_decimal(web3, raw_balances)
     assert balances[weth_token.address].value == pytest.approx(Decimal('5.54060129052079779'))
     assert balances[usdc_token.address].value == pytest.approx(Decimal('500'))
 
@@ -431,7 +432,7 @@ def test_simulated_uniswap_qstrader_strategy_one_rebalance(
     assert trades[1].executed_quantity == pytest.approx(Decimal('44.971760338523757841'))
 
     # Check the raw on-chain token balances
-    balances = fetch_erc20_balances_decimal(web3, hot_wallet.address)
+    balances = fetch_erc20_balances_decimal_by_transfer_event(web3, hot_wallet.address)
     assert balances[weth_token.address].value == pytest.approx(Decimal('0'))
     assert balances[aave_token.address].value == pytest.approx(Decimal('44.971760338523757841'))
     assert balances[usdc_token.address].value == pytest.approx(Decimal('497.169995'))
@@ -514,7 +515,7 @@ def test_simulated_uniswap_qstrader_strategy_round_trip(
     assert position_2.get_quantity() == Decimal('21.354907569100333830')
 
     # Check the raw on-chain token balances
-    balances = fetch_erc20_balances_decimal(web3, hot_wallet.address)
+    balances = fetch_erc20_balances_decimal_by_transfer_event(web3, hot_wallet.address)
     assert balances[weth_token.address].value == pytest.approx(Decimal('2.747249930253346052'))
     assert balances[aave_token.address].value == pytest.approx(Decimal('21.354907569100333830'))
 

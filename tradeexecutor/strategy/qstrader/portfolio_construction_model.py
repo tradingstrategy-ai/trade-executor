@@ -6,6 +6,7 @@ import pandas as pd
 
 from tradeexecutor.state.state import State, AssetIdentifier, TradeType, TradeExecution
 from tradeexecutor.strategy.pricing_model import PricingModel
+from tradeexecutor.strategy.qstrader.alpha_model import AlphaModel
 from tradeexecutor.strategy.qstrader.order_sizer import CashBufferedOrderSizer
 from tradingstrategy.universe import Universe
 
@@ -49,7 +50,7 @@ class PortfolioConstructionModel:
         optimiser,
         pricing_model: PricingModel,
         reserve_currency: AssetIdentifier,
-        alpha_model=None,
+        alpha_model: AlphaModel,
         risk_model=None,
         cost_model=None
     ):
@@ -61,7 +62,7 @@ class PortfolioConstructionModel:
         self.reserve_currency = reserve_currency
         self.risk_model = risk_model
         self.cost_model = cost_model
-        self.pricing_method = pricing_method
+        self.pricing_model = pricing_model
 
     def _obtain_full_asset_list(self, dt):
         """
@@ -292,7 +293,7 @@ class PortfolioConstructionModel:
 
         # Get prices for existing assets so we have some idea how much they sell for
         for asset_id, asset_data in current_portfolio.items():
-            target_prices[asset_id] = self.pricing_method.get_simple_buy_price(dt, asset_id)
+            target_prices[asset_id] = self.pricing_model.get_simple_buy_price(dt, asset_id)
 
         # Expose internal states to unit tests
         debug_details["positions_at_start_of_construction"] = current_portfolio.copy()  # current_portfolio is mutated later

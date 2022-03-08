@@ -127,7 +127,7 @@ class CashBufferedOrderSizer(OrderSizer):
         if N == 0:
             # No forecasts so portfolio remains in cash
             # or is fully liquidated
-            return {}
+            return {}, {}
 
         # Ensure weight vector sums to unity
         normalised_weights = self._normalise_weights(weights)

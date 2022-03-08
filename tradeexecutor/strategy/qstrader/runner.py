@@ -27,7 +27,7 @@ class QSTraderRunner(StrategyRunner):
         :param max_data_age: Allow to unit test on old datasets
         """
         super().__init__(*args, **kwargs)
-        assert alpha_model
+        assert isinstance(alpha_model, AlphaModel), f"We got {alpha_model}"
         self.alpha_model = alpha_model
         self.max_data_age = max_data_age
         # TODO: Make starter configuration
@@ -39,10 +39,12 @@ class QSTraderRunner(StrategyRunner):
     def on_clock(self, clock: datetime.datetime, executor_universe: TradingStrategyUniverse, state: State, debug_details: dict) -> List[TradeExecution]:
         """Run one strategy tick."""
 
+        assert isinstance(executor_universe, TradingStrategyUniverse)
+
         universe = executor_universe.universe
+        reserve_assets = executor_universe.reserve_assets
         logger.info("QSTrader on_clock %s", clock)
-        assert len(self.reserve_assets) == 1, f"We only support strategies with a single reserve asset, got {self.reserve_assets}"
-        pricing_model = self.pricing_model_factory(self.execution_model, universe)
+        pricing_model = self.pricing_model_factory(self.execution_model, executor_universe)
         optimiser = FixedWeightPortfolioOptimiser()
         order_sizer = CashBufferedOrderSizer(state, pricing_model, self.cash_buffer)
         pcm = PortfolioConstructionModel(
@@ -52,7 +54,7 @@ class QSTraderRunner(StrategyRunner):
             optimiser=optimiser,
             alpha_model=self.alpha_model,
             pricing_model=pricing_model,
-            reserve_currency=self.reserve_assets[0],
+            reserve_currency=reserve_assets[0],
             risk_model=None,
             cost_model=None)
 
@@ -77,8 +79,9 @@ class QSTraderRunner(StrategyRunner):
         if universe.candles.get_candle_count() > 0:
             start, end = universe.get_candle_availability()
 
-            if now_ - end > self.max_data_age:
-                raise PreflightCheckFailed(f"We do not have up-to-date data for candles. Last candles are at {end}")
+            if self.max_data_age is not None:
+                if now_ - end > self.max_data_age:
+                    raise PreflightCheckFailed(f"We do not have up-to-date data for candles. Last candles are at {end}")
 
 
 
