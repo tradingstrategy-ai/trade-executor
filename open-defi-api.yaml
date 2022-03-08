@@ -453,14 +453,21 @@ paths:
             For a specific token, the query must also include `chain_slugs` condition, as
             any a token may share the same address across multiple chains.
 
+            Some tokens and their trading pairs exist in the database,
+            but `trading pairs do not fulfill the tracking threshold <https://tradingstrategy.ai/docs/programming/tracking.html>`_.
+            If you query a single such token address you will get an error, as a developer friendliness
+            features. These are often "spam tokens". Example:
+
+            ```shell
+            curl "https://tradingstrategy.ai/api/pairs?token_addresses=0xccf31fd34a364a21ad32ad91b09f5071f7200a3d"
+            ```
+
           required: false
           schema:
             type: array
             items:
               type: string
               format: address
-          example:
-            - "0xe9e7cea3dedca5984780bafc599bd69add087d56"
         - name: page
           in: query
           description: Page number, zero-indexed
