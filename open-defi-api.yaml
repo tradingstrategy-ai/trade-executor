@@ -437,22 +437,31 @@ paths:
             uniqueItems: true
           example:
             - ethereum
-        - name: token0
+        - name: token_addresses
           in: query
-          description: Symbol of one of the token pairs e.g. WETH
+          style: form
+          explode: true
+          description: |
+            For querying trading pairs for a specific token.
+
+            For example, to get BUSD trading pairs on BNB chain,
+            use the token address `0xe9e7cea3dedca5984780bafc599bd69add087d56`.
+            This will give you all BUSD trading pairs.
+
+            Multiple token addresses can be passed using OpenAPI form style array.
+
+            For a specific token, the query must also include `chain_slugs` condition, as
+            any a token may share the same address across multiple chains.
+
           required: false
           schema:
-            type: string
-            maximum: 32
+            type: array
+            items:
+              type: string
+              format: address
+              maximum: 42
           example:
-        - name: token1
-          in: query
-          description: Symbol of one of the token pairs e.g. USDC
-          required: false
-          schema:
-            type: string
-            maximum: 32
-          example:
+            - 0xe9e7cea3dedca5984780bafc599bd69add087d56
         - name: page
           in: query
           description: Page number, zero-indexed
