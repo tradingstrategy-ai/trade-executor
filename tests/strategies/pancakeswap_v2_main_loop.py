@@ -163,6 +163,9 @@ class MomentumAlphaModel(AlphaModel):
         portflio_value = state.portfolio.get_total_equity()
         liquidity_threshold = max(min_liquidity_threshold, portflio_value * portfolio_base_liquidity_threshold)
 
+        # Expose how many candles we evaluated to the testing
+        debug_details["timepoint_candles_count"] = len(timepoint_candles)
+
         # Iterate over all candles for all pairs in this timestamp (ts)
         for ts_, candle in timepoint_candles.iterrows():
             pair_id = candle["pair_id"]

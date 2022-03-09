@@ -12,6 +12,7 @@ import datetime
 import logging
 import os
 import secrets
+from decimal import Decimal
 from pathlib import Path
 from typing import List
 
@@ -20,7 +21,7 @@ from eth_account import Account
 from eth_typing import HexAddress, HexStr
 from hexbytes import HexBytes
 
-from eth_hentai.utils import is_localhost_port_open
+from eth_hentai.utils import is_localhost_port_listening
 from tradingstrategy.client import Client
 from web3 import Web3, HTTPProvider
 from web3.contract import Contract
@@ -33,7 +34,7 @@ from tradeexecutor.ethereum.hot_wallet_sync import EthereumHotWalletReserveSynce
 from tradeexecutor.ethereum.uniswap_v2_execution import UniswapV2ExecutionModel
 from tradeexecutor.ethereum.uniswap_v2_live_pricing import UniswapV2LivePricing, uniswap_v2_live_pricing_factory
 from tradeexecutor.ethereum.uniswap_v2_revaluation import UniswapV2PoolRevaluator
-from tradeexecutor.state.state import AssetIdentifier, Portfolio, State
+from tradeexecutor.state.state import AssetIdentifier, Portfolio, State, TradeExecution
 from tradeexecutor.strategy.approval import UncheckedApprovalModel
 from tradeexecutor.strategy.bootstrap import import_strategy_file
 from tradeexecutor.strategy.description import StrategyRunDescription
@@ -67,7 +68,7 @@ def large_busd_holder() -> HexAddress:
 
 
 @pytest.fixture()
-def ganache_bnb_chain_fork(large_busd_holder) -> str:
+def ganache_bnb_chain_fork(logger, large_busd_holder) -> str:
     """Create a testable fork of live BNB chain.
 
     :return: JSON-RPC URL for Web3
@@ -75,13 +76,18 @@ def ganache_bnb_chain_fork(large_busd_holder) -> str:
 
     mainnet_rpc = os.environ["BNB_CHAIN_JSON_RPC"]
 
-    # Start Ganache
-    launch = fork_network(
-        mainnet_rpc,
-        unlocked_addresses=[large_busd_holder])
-    yield launch.json_rpc_url
-    # Wind down Ganache process after the test is complete
-    launch.close(verbose=True)
+    if not is_localhost_port_listening(19999):
+        # Start Ganache
+        launch = fork_network(
+            mainnet_rpc,
+            unlocked_addresses=[large_busd_holder])
+        yield launch.json_rpc_url
+        # Wind down Ganache process after the test is complete
+        launch.close(verbose=True)
+    else:
+        logger.warning("Detected existing Ganache running - terminate with: kill -9 $(lsof -ti:19999)")
+        # Assume ganache-cli manually launched by the dev
+        yield "http://localhost:19999"
 
 
 @pytest.fixture
@@ -110,6 +116,7 @@ def busd_token(web3) -> Contract:
     return token
 
 
+@pytest.fixture()
 def cake_token(web3) -> Contract:
     """CAKE token."""
     token = get_deployed_contract(web3, "ERC20MockDecimals.json", "0x0E09FaBB73Bd3Ade0a17ECC321fD13a19e81cE82")
@@ -216,6 +223,7 @@ def test_forked_pancake(
         pancakeswap_v2: UniswapV2Deployment,
         state: State,
         persistent_test_client: Client,
+        cake_token: Contract,
     ):
     """Run a strategy tick against PancakeSwap v2 on forked BSC.
 
@@ -259,3 +267,19 @@ def test_forked_pancake(
 
     # The strategy is always going to do some trades
     assert len(debug_details["approved_trades"]) > 0
+
+    # We evaluated trading pair daily candles for momentum
+    assert debug_details["timepoint_candles_count"] == 1079
+
+    # The algo executes 4 buys,
+    # from the most weighted to least weighted
+    trades: List[TradeExecution] = debug_details["rebalance_trades"]
+    assert len(trades) == 4
+    assert trades[0].pair.base.token_symbol == "Cake"
+    assert trades[0].executed_quantity == pytest.approx(Decimal(190), rel=Decimal(0.05))
+    assert trades[1].pair.base.token_symbol == "BTT"
+    assert trades[2].pair.base.token_symbol == "CHR"
+    assert trades[3].pair.base.token_symbol == "CUB"
+
+    # Check on-chain Cake balance matches what we traded from Pancake
+    assert cake_token.functions.balanceOf(hot_wallet.address).call() == pytest.approx(190462016808402134330, rel=0.05)
