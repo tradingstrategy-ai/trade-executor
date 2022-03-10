@@ -318,8 +318,9 @@ def test_cli_disapprove_trades(
         keys = "\t\r"  # Skip checkbox with tab, press enter
         inp.send_text(keys)
         with create_app_session(input=inp, output=DummyOutput()):
-            runner.tick(datetime.datetime(2020, 1, 1), universe, state, debug_details)
+            runner.tick(datetime.datetime(2020, 1, 1), executor_universe, state, debug_details)
     else:
-        runner.tick(datetime.datetime(2020, 1, 1), universe, state, debug_details)
+        runner.tick(datetime.datetime(2020, 1, 1), executor_universe, state, debug_details)
 
+    assert len(debug_details["alpha_model_weights"]) == 1
     assert len(debug_details["approved_trades"]) == 0

@@ -1,4 +1,9 @@
-"""Live trading implementation of PancakeSwap v2 momentum strategy."""
+"""Live trading implementation of PancakeSwap v2 momentum strategy.
+
+Constructs the trading universe from TradingStrategy.ai client and implements a real momentum strategy.
+The universe considers only BUSD quoted PancakeSwap v2 pairs.
+"""
+
 import logging
 from collections import Counter, defaultdict
 from contextlib import AbstractContextManager
@@ -237,7 +242,7 @@ class MomentumAlphaModel(AlphaModel):
         return dict(weighed_signals)
 
 
-class OurStrategyUniverseConstructor(TradingStrategyUniverseConstructor):
+class OurUniverseModel(TradingStrategyUniverseConstructor):
     """Create PancakeSwap v2 trading universe."""
 
     def filter_universe(self, dataset: Dataset) -> TradingStrategyUniverse:
@@ -320,7 +325,7 @@ def strategy_factory(
 
     assert execution_model.chain_id == 1337, f"This strategy is hardcoded to ganache-cli test chain, got chain {execution_model.chain_id}"
 
-    universe_constructor = OurStrategyUniverseConstructor(client, timed_task_context_manager)
+    universe_model = OurUniverseModel(client, timed_task_context_manager)
 
     runner = QSTraderRunner(
         alpha_model=MomentumAlphaModel(),
@@ -335,7 +340,7 @@ def strategy_factory(
 
     return StrategyExecutionDescription(
         time_bucket=TimeBucket.d1,
-        universe_constructor=universe_constructor,
+        universe_model=universe_model,
         runner=runner,
     )
 

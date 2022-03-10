@@ -209,8 +209,6 @@ class PortfolioConstructionModel:
         # Sort trades so that sells always go first
         rebalance_trades.sort(key=lambda t: t.get_execution_sort_position())
 
-        logger.error("Got %s %s %s", current_portfolio, target_portfolio, rebalance_trades)
-
         return rebalance_trades
 
     def _create_zero_target_weights_vector(self, dt):
