@@ -13,7 +13,8 @@ from pyramid.authorization import ACLAuthorizationPolicy, Allow, Authenticated
 from pyramid.config import Configurator
 from pyramid.httpexceptions import HTTPUnauthorized, HTTPForbidden
 from pyramid.router import Router
-from pyramid.security import forget, ALL_PERMISSIONS
+from pyramid.security import forget
+from pyramid.authorization import ALL_PERMISSIONS
 from pyramid.view import forbidden_view_config
 
 from . import api

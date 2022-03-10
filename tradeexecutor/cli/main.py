@@ -9,6 +9,7 @@ import pkg_resources
 
 import typer
 from web3 import Web3, HTTPProvider
+import pandas as pd
 
 from eth_hentai.hotwallet import HotWallet
 from eth_hentai.uniswap_v2 import fetch_deployment
@@ -100,7 +101,8 @@ def run(
     cache_path: Optional[Path] = typer.Option(None, envvar="CACHE_PATH", help="Where to store downloaded datasets"),
     reset_state: bool = typer.Option(False, "--reset-state", envvar="RESET_STATE"),
     max_cycles: int = typer.Option(None, envvar="MAX_CYCLES", help="Max main loop cycles run in an automated testing mode"),
-    debug_dump_file: Optional[Path] = typer.Option(None, envvar="DEBUG_DUMP_FILE", help="Write JSON dump of all internal debugging state of the strategy run"),
+    debug_dump_file: Optional[Path] = typer.Option(None, envvar="DEBUG_DUMP_FILE", help="Write Python Pickle dump of all internal debugging states of the strategy run to this file"),
+    debug_backtest_date: Optional[str] = typer.Option(None, envvar="DEBUG_BACKTEST_DATE", help="A date in format YYYY-MM-DD if you want to run a backtested execution cycle"),
     ):
 
     logger = setup_logging()
@@ -135,6 +137,9 @@ def run(
 
     strategy_factory = import_strategy_file(strategy_file)
 
+    if debug_backtest_date:
+        debug_backtest_date = pd.Timestamp(debug_backtest_date).to_pydatetime()
+
     try:
         run_main_loop(
             command_queue=command_queue,
@@ -149,6 +154,7 @@ def run(
             reset=reset_state,
             max_cycles=max_cycles,
             debug_dump_file=debug_dump_file,
+            debug_backtest_date=debug_backtest_date,
         )
     finally:
         if server:

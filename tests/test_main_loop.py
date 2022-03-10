@@ -5,6 +5,7 @@ We test with ganache-cli mainnet forking.
 import json
 import logging
 import os
+import pickle
 import secrets
 from pathlib import Path
 from typing import List
@@ -21,6 +22,7 @@ from eth_hentai.abi import get_deployed_contract
 from eth_hentai.ganache import fork_network
 from eth_hentai.hotwallet import HotWallet
 from eth_hentai.uniswap_v2 import UniswapV2Deployment, fetch_deployment
+from eth_hentai.utils import is_localhost_port_listening
 from tradeexecutor.cli.main import app
 from tradeexecutor.state.state import AssetIdentifier
 
@@ -50,18 +52,24 @@ def large_busd_holder() -> HexAddress:
 
 
 @pytest.fixture()
-def ganache_bnb_chain_fork(large_busd_holder) -> str:
+def ganache_bnb_chain_fork(logger, large_busd_holder) -> str:
     """Create a testable fork of live BNB chain.
 
     :return: JSON-RPC URL for Web3
     """
+
     mainnet_rpc = os.environ["BNB_CHAIN_JSON_RPC"]
-    launch = fork_network(
-        mainnet_rpc,
-        unlocked_addresses=[large_busd_holder])
-    yield launch.json_rpc_url
-    # Wind down Ganache process after the test is complete
-    launch.close()
+
+    if not is_localhost_port_listening(19999):
+        # Start Ganache
+        launch = fork_network(
+            mainnet_rpc,
+            unlocked_addresses=[large_busd_holder])
+        yield launch.json_rpc_url
+        # Wind down Ganache process after the test is complete
+        launch.close(verbose=True)
+    else:
+        raise AssertionError("ganache zombie detected")
 
 
 @pytest.fixture
@@ -175,7 +183,7 @@ def test_main_loop(
         hot_wallet: HotWallet,
         pancakeswap_v2: UniswapV2Deployment,
     ):
-    """Run the main loop 2 times.
+    """Run the main loop one time in a backtested date.
 
     Sets up the whole trade executor live trading application in local Ethereum Tester environment
     and then executed one trade.
@@ -200,6 +208,7 @@ def test_main_loop(
         "CACHE_PATH": "/tmp/main_loop_tests",
         "TRADING_STRATEGY_API_KEY": os.environ["TRADING_STRATEGY_API_KEY"],
         "DEBUG_DUMP_FILE": debug_dump_file,
+        "DEBUG_BACKTEST_DATE": "2021-12-07",
     }
     # https://typer.tiangolo.com/tutorial/testing/
     runner = CliRunner()
@@ -216,10 +225,16 @@ def test_main_loop(
 
     assert result.exit_code == 0
 
-    with open(debug_dump_file, "rt") as inp:
-        debug_dump = json.load(inp)
+    with open(debug_dump_file, "rb") as inp:
+        debug_dump = pickle.load(inp)
 
         # We should have data only for one cycle
         assert len(debug_dump) == 1
 
+        cycle_1 = debug_dump[1]
+        # 'approved_trades': [<Buy 196.812600104142433110 Cake at 6.09717060475308>,
+        #                 <Buy 1373603.511131166713312268 BTT at 0.0017472290807>,
+        #                 <Buy 1602.240524 CHR at 0.37447561139782>,
+        #                 <Buy 3113.757811772156856022 CUB at 0.25692428517576>],
+        assert len(cycle_1["approved_trades"]) == 4
 

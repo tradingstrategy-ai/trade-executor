@@ -40,7 +40,8 @@ class JSONFileStore(StateStore):
 
     def sync(self, state: State):
         with open(self.path, "wt") as out:
-            return state.to_json(out)
+            txt = state.to_json()
+            out.write(txt)
 
     def create(self) -> State:
         return State()

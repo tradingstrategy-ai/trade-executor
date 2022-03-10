@@ -2,6 +2,7 @@
 
 import datetime
 import json
+import pickle
 import time
 from pathlib import Path
 from queue import Queue
@@ -37,6 +38,7 @@ def run_main_loop(
         max_cycles: Optional[int]=None,
         sleep=1.0,
         debug_dump_file: Optional[Path]=None,
+        debug_backtest_date: Optional[datetime.datetime]=None,
     ):
     """The main loop of trade executor."""
 
@@ -71,6 +73,9 @@ def run_main_loop(
     # Debug details from every cycle
     debug_dump_state = {}
 
+    if debug_backtest_date:
+        assert max_cycles == 1, "We can run a backtest for a single date only at the moment"
+
     cycle = 1
     while True:
 
@@ -80,7 +85,12 @@ def run_main_loop(
         debug_details = {"cycle": cycle}
 
         # Reload the trading data
-        ts = datetime.datetime.utcnow()
+        if debug_backtest_date:
+            logger.info("Performing backtest debugging")
+            ts = debug_backtest_date
+        else:
+            ts = datetime.datetime.utcnow()
+
         logger.info("Starting strategy executor main loop cycle %d, UTC is %s", cycle, ts)
 
         # Refresh the trading universe for this cycle
@@ -93,20 +103,23 @@ def run_main_loop(
         runner.tick(ts, universe, state, debug_details)
 
         # Store the current state to disk
-        store.sync()
+        store.sync(state)
 
-        # Record and write out the internal debug state
+        # Store debug trace
         if debug_dump_file is not None:
             debug_dump_state[cycle] = debug_details
-            with open(debug_dump_file, "wt") as out:
-                json.dump(out, debug_dump_state)
-
-        # Advance to the next tick
-        cycle += 1
 
         # Check for termination in integration testing
         if max_cycles is not None:
             if cycle >= max_cycles:
                 break
 
+        # Advance to the next tick
+        cycle += 1
+
         time.sleep(sleep)
+
+    # Record and write out the internal debug states
+    if debug_dump_file is not None:
+        with open(debug_dump_file, "wb") as out:
+            pickle.dump(debug_dump_state, out)

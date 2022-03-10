@@ -4,6 +4,7 @@ import datetime
 from decimal import Decimal
 from typing import Dict, List, Tuple, Union
 
+from dataclasses_json import dataclass_json
 from eth_typing import HexAddress
 from web3 import Web3
 
@@ -15,6 +16,7 @@ from tradeexecutor.state.state import Portfolio, AssetIdentifier, ReservePositio
 logger = logging.getLogger(__name__)
 
 
+@dataclass_json
 @dataclasses.dataclass
 class ReserveUpdateEvent:
     asset: AssetIdentifier
