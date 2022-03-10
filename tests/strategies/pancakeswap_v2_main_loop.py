@@ -21,7 +21,7 @@ from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.strategy.pricing_model import PricingModelFactory
 from tradeexecutor.strategy.qstrader.alpha_model import AlphaModel
 from tradeexecutor.strategy.qstrader.runner import QSTraderRunner
-from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverseConstructor, \
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverseModel, \
     TradingStrategyUniverse, translate_trading_pair, Dataset
 from tradingstrategy.client import Client
 
@@ -242,7 +242,7 @@ class MomentumAlphaModel(AlphaModel):
         return dict(weighed_signals)
 
 
-class OurUniverseModel(TradingStrategyUniverseConstructor):
+class OurUniverseModel(TradingStrategyUniverseModel):
     """Create PancakeSwap v2 trading universe."""
 
     def filter_universe(self, dataset: Dataset) -> TradingStrategyUniverse:

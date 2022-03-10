@@ -1,7 +1,6 @@
-"""Main trade executor loop."""
+"""Main loop for trade executor-."""
 
 import datetime
-import json
 import pickle
 import time
 from pathlib import Path
@@ -19,6 +18,7 @@ from tradeexecutor.strategy.pricing_model import PricingModelFactory
 from tradeexecutor.strategy.runner import StrategyRunner
 from tradeexecutor.utils.timer import timed_task
 from tradingstrategy.client import Client
+
 
 logger = logging.getLogger(__name__)
 

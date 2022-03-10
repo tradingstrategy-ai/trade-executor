@@ -32,7 +32,7 @@ class TradingStrategyUniverse(TradeExecutorTradingUniverse):
     universe: Universe
 
 
-class TradingStrategyUniverseConstructor(UniverseModel):
+class TradingStrategyUniverseModel(UniverseModel):
     """A universe constructor that builds the trading universe data using Trading Strategy client.
 
     On a live exeuction, trade universe is reconstructor for the every tick,

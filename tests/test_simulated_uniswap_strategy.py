@@ -21,14 +21,17 @@ from eth_hentai.token import create_token
 from eth_hentai.uniswap_v2 import UniswapV2Deployment, deploy_trading_pair, deploy_uniswap_v2_like
 from tradeexecutor.ethereum.hot_wallet_sync import EthereumHotWalletReserveSyncer
 from tradeexecutor.ethereum.uniswap_v2_execution import UniswapV2ExecutionModel
-from tradeexecutor.ethereum.uniswap_v2_live_pricing import UniswapV2LivePricing
+from tradeexecutor.ethereum.uniswap_v2_live_pricing import UniswapV2LivePricing, uniswap_v2_live_pricing_factory
 from tradeexecutor.ethereum.uniswap_v2_revaluation import UniswapV2PoolRevaluator
 from tradeexecutor.ethereum.universe import create_exchange_universe, create_pair_universe
 from tradeexecutor.state.state import State, AssetIdentifier, TradingPairIdentifier, Portfolio, TradeExecution
 from tradeexecutor.strategy.approval import UncheckedApprovalModel
 
 from tradeexecutor.strategy.bootstrap import import_strategy_file
+from tradeexecutor.strategy.description import StrategyExecutionDescription
 from tradeexecutor.strategy.runner import StrategyRunner
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
+from tradeexecutor.strategy.universe_model import StaticUniverseModel
 from tradeexecutor.utils.log import setup_pytest_logging
 from tradeexecutor.utils.timer import timed_task
 from tradingstrategy.candle import GroupedCandleUniverse
@@ -241,9 +244,59 @@ def universe(web3, exchange_universe: ExchangeUniverse, pair_universe: PandasPai
 
 
 @pytest.fixture()
+def universe_model(universe, supported_reserves) -> StaticUniverseModel:
+    """Model the trading universe for the trade executor."""
+    return StaticUniverseModel(TradingStrategyUniverse(
+        universe=universe,
+        reserve_assets=supported_reserves
+    ))
+
+
+@pytest.fixture()
 def strategy_path() -> Path:
     """Where do we load our strategy file."""
     return Path(os.path.join(os.path.dirname(__file__), "strategies", "simulated_uniswap.py"))
+
+
+@pytest.fixture()
+def revaluation_method(uniswap_v2):
+    """Revalue trading positions based on direct Uniswap v2 data."""
+    return UniswapV2PoolRevaluator(uniswap_v2)
+
+
+@pytest.fixture()
+def runner(
+        uniswap_v2,
+        strategy_path,
+        web3,
+        hot_wallet,
+        persistent_test_client,
+        universe_model,
+        revaluation_method,
+) -> StrategyRunner:
+    """Construct the strategy runner."""
+
+    strategy_factory = import_strategy_file(strategy_path)
+    approval_model = UncheckedApprovalModel()
+    execution_model = UniswapV2ExecutionModel(uniswap_v2, hot_wallet)
+    sync_method = EthereumHotWalletReserveSyncer(web3, hot_wallet.address)
+
+    run_description: StrategyExecutionDescription = strategy_factory(
+        execution_model=execution_model,
+        timed_task_context_manager=timed_task,
+        sync_method=sync_method,
+        revaluation_method=revaluation_method,
+        pricing_model_factory=uniswap_v2_live_pricing_factory,
+        approval_model=approval_model,
+        client=persistent_test_client,
+        universe_model=universe_model,
+        cash_buffer=0.05,
+    )
+
+    # Deconstruct strategy input
+    runner: StrategyRunner = run_description.runner
+
+    return runner
 
 
 def test_simulated_uniswap_qstrader_strategy_single_trade(
@@ -252,12 +305,14 @@ def test_simulated_uniswap_qstrader_strategy_single_trade(
         web3: Web3,
         hot_wallet: HotWallet,
         uniswap_v2: UniswapV2Deployment,
-        universe: Universe,
+        universe_model: StaticUniverseModel,
+        revaluation_method,
         state: State,
         supported_reserves,
         weth_usdc_pair,
         weth_token,
         usdc_token,
+        runner,
     ):
     """Tests a strategy that runs against a simulated Uniswap environment.
 
@@ -265,27 +320,13 @@ def test_simulated_uniswap_qstrader_strategy_single_trade(
     This trade wil buy 9500 USD worth of ETH and leave 500 USD in reserves.
     """
 
-    factory = import_strategy_file(strategy_path)
-    approval_model = UncheckedApprovalModel()
-    execution_model = UniswapV2ExecutionModel(state, uniswap_v2, hot_wallet)
-    sync_method = EthereumHotWalletReserveSyncer(web3, hot_wallet.address)
-    revaluation_method = UniswapV2PoolRevaluator(uniswap_v2)
-    pricing_method = UniswapV2LivePricing(uniswap_v2, universe.pairs)
-
-    runner: StrategyRunner = factory(
-        timed_task_context_manager=timed_task,
-        execution_model=execution_model,
-        approval_model=approval_model,
-        revaluation_method=revaluation_method,
-        sync_method=sync_method,
-        pricing_method=pricing_method,
-        reserve_assets=supported_reserves)
-
-    now_ = datetime.datetime.utcnow()
-    runner.pretick_check(None, universe, now_)
-
     # Run the trading over for the first day
     ts = datetime.datetime(2020, 1, 1)
+
+    executor_universe: TradingStrategyUniverse = universe_model.universe
+    universe = executor_universe.universe
+
+    runner.pretick_check(ts, executor_universe)
 
     # Asset identifies used in testing
     exchange = universe.exchanges[0]
@@ -301,8 +342,10 @@ def test_simulated_uniswap_qstrader_strategy_single_trade(
     # 1st day
     #
 
+    debug_details = {}
+
     # We start with day_kind 1 that is all ETH day.
-    debug_details = runner.tick(ts, universe, state)
+    debug_details = runner.tick(ts, executor_universe, state, debug_details)
     assert debug_details["day_kind"] == 1
 
     # We first check we got our 10,000 USDC deposit from hot_wallet fixture above
@@ -310,6 +353,7 @@ def test_simulated_uniswap_qstrader_strategy_single_trade(
     assert len(debug_details["reserve_update_events"]) == 1
     assert debug_details["total_equity_at_start"] == 10_000
     assert debug_details["total_cash_at_start"] == 10_000
+    assert debug_details["cash_buffer_percentage"] == 0.05
 
     # Check that the strategy thinking is 100% ETH
     # This comes from qstrader/portfolio_construction_model
@@ -374,39 +418,26 @@ def test_simulated_uniswap_qstrader_strategy_one_rebalance(
         aave_token,
         weth_token,
         usdc_token,
+        universe_model,
+        runner,
     ):
     """Tests a strategy that runs against a simulated Uniswap environment.
 
     Cycles 100% ETH > 100% AAVE through USDC on the second day.
     """
 
-    factory = import_strategy_file(strategy_path)
-    approval_model = UncheckedApprovalModel()
-    execution_model = UniswapV2ExecutionModel(state, uniswap_v2, hot_wallet)
-    sync_method = EthereumHotWalletReserveSyncer(web3, hot_wallet.address)
-    revaluation_method = UniswapV2PoolRevaluator(uniswap_v2)
-    pricing_method = UniswapV2LivePricing(uniswap_v2, universe.pairs)
-
-    runner: StrategyRunner = factory(
-        timed_task_context_manager=timed_task,
-        execution_model=execution_model,
-        approval_model=approval_model,
-        revaluation_method=revaluation_method,
-        sync_method=sync_method,
-        pricing_method=pricing_method,
-        reserve_assets=supported_reserves)
+    executor_universe: TradingStrategyUniverse = universe_model.universe
+    universe = executor_universe.universe
 
     # Asset identifies used in testing
     exchange = universe.exchanges[0]
     weth_usdc = universe.pairs.get_one_pair_from_pandas_universe(exchange.exchange_id, "WETH", "USDC")
     aave_usdc = universe.pairs.get_one_pair_from_pandas_universe(exchange.exchange_id, "AAVE", "USDC")
 
-    now_ = datetime.datetime.utcnow()
-    runner.pretick_check(None, universe, now_)
-
     # Run the trading for the first 3 days starting on arbitrarily chosen date 1-1-2020
-    runner.tick(datetime.datetime(2020, 1, 1), universe, state)
-    debug_details = runner.tick(datetime.datetime(2020, 1, 2), universe, state)
+    debug_details = {}
+    runner.tick(datetime.datetime(2020, 1, 1), executor_universe, state, debug_details)
+    runner.tick(datetime.datetime(2020, 1, 2), executor_universe, state, debug_details)
 
     #
     # After Day #2 - we rebalance be 100% ETH -> 100% AAVE
@@ -432,7 +463,8 @@ def test_simulated_uniswap_qstrader_strategy_one_rebalance(
     assert trades[1].executed_quantity == pytest.approx(Decimal('44.971760338523757841'))
 
     # Check the raw on-chain token balances
-    balances = fetch_erc20_balances_decimal_by_transfer_event(web3, hot_wallet.address)
+    raw_balances = fetch_erc20_balances_by_transfer_event(web3, hot_wallet.address)
+    balances = convert_balances_to_decimal(web3, raw_balances)
     assert balances[weth_token.address].value == pytest.approx(Decimal('0'))
     assert balances[aave_token.address].value == pytest.approx(Decimal('44.971760338523757841'))
     assert balances[usdc_token.address].value == pytest.approx(Decimal('497.169995'))
@@ -452,40 +484,27 @@ def test_simulated_uniswap_qstrader_strategy_round_trip(
         weth_token,
         usdc_token,
         aave_token,
+        universe_model,
+        runner,
     ):
     """Tests a strategy that runs against a simulated Uniswap environment.
 
     Cycle to the 50% ETH / 50% AAVE positions through rebalance.
     """
 
-    factory = import_strategy_file(strategy_path)
-    approval_model = UncheckedApprovalModel()
-    execution_model = UniswapV2ExecutionModel(state, uniswap_v2, hot_wallet)
-    sync_method = EthereumHotWalletReserveSyncer(web3, hot_wallet.address)
-    revaluation_method = UniswapV2PoolRevaluator(uniswap_v2)
-    pricing_method = UniswapV2LivePricing(uniswap_v2, universe.pairs)
-
-    runner: StrategyRunner = factory(
-        timed_task_context_manager=timed_task,
-        execution_model=execution_model,
-        approval_model=approval_model,
-        revaluation_method=revaluation_method,
-        sync_method=sync_method,
-        pricing_method=pricing_method,
-        reserve_assets=supported_reserves)
+    executor_universe = universe_model.universe
+    universe = executor_universe.universe
 
     # Asset identifies used in testing
     exchange = universe.exchanges[0]
     weth_usdc = universe.pairs.get_one_pair_from_pandas_universe(exchange.exchange_id, "WETH", "USDC")
     aave_usdc = universe.pairs.get_one_pair_from_pandas_universe(exchange.exchange_id, "AAVE", "USDC")
 
-    now_ = datetime.datetime.utcnow()
-    runner.pretick_check(None, universe, now_)
-
     # Run the trading for the first 3 days starting on arbitrarily chosen date 1-1-2020
-    runner.tick(datetime.datetime(2020, 1, 1), universe, state)
-    runner.tick(datetime.datetime(2020, 1, 2), universe, state)
-    debug_details = runner.tick(datetime.datetime(2020, 1, 3), universe, state)
+    debug_details = {}
+    runner.tick(datetime.datetime(2020, 1, 1), executor_universe, state, {})
+    runner.tick(datetime.datetime(2020, 1, 2), executor_universe, state, {})
+    runner.tick(datetime.datetime(2020, 1, 3), executor_universe, state, debug_details)
 
     #
     # After Day #3 - we should be 50%/50% ETH/AAVE
@@ -515,7 +534,8 @@ def test_simulated_uniswap_qstrader_strategy_round_trip(
     assert position_2.get_quantity() == Decimal('21.354907569100333830')
 
     # Check the raw on-chain token balances
-    balances = fetch_erc20_balances_decimal_by_transfer_event(web3, hot_wallet.address)
+    raw_balances = fetch_erc20_balances_by_transfer_event(web3, hot_wallet.address)
+    balances = convert_balances_to_decimal(web3, raw_balances)
     assert balances[weth_token.address].value == pytest.approx(Decimal('2.747249930253346052'))
     assert balances[aave_token.address].value == pytest.approx(Decimal('21.354907569100333830'))
 

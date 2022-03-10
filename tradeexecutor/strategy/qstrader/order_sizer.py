@@ -114,11 +114,17 @@ class CashBufferedOrderSizer(OrderSizer):
             The (potentially unnormalised) target weights.
 
         """
+
+        assert isinstance(debug_details, dict)
+
         total_equity = self.state.portfolio.get_total_equity()
 
         cash_buffered_total_equity = total_equity * (
             1.0 - self.cash_buffer_percentage
         )
+
+        debug_details["cash_buffer_percentage"] = self.cash_buffer_percentage
+        debug_details["cash_buffered_total_equity"] = cash_buffered_total_equity
 
         logger.info(f"Calculating dollar weights for the new portfolio. Total equity {total_equity:,.2f} USD, cash buffered total equity {cash_buffered_total_equity:,.2f} USD")
 

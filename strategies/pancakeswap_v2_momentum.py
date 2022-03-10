@@ -7,7 +7,7 @@ from tradeexecutor.strategy.approval import ApprovalModel
 from tradeexecutor.strategy.description import StrategyExecutionDescription
 from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.strategy.pricing_model import PricingModelFactory
-from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverseConstructor, \
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverseModel, \
     TradingStrategyUniverse, translate_trading_pair
 from tradingstrategy.client import Client
 
@@ -254,7 +254,7 @@ class OurStrategyLiverRunner(QSTraderLiveTrader):
         super().__init__(MomentumAlphaModel, **kwargs)
 
 
-class OurStrategyUniverseConstructor(TradingStrategyUniverseConstructor):
+class OurStrategyUniverseConstructor(TradingStrategyUniverseModel):
 
     def filter_universe(self, dataset: Dataset) -> TradingStrategyUniverse:
         """Filter data streams we are interested in."""

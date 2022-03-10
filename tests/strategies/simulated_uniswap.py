@@ -1,20 +1,27 @@
 """Example strategy that trades on Uniswap v2 using the local EthereumTester EVM deployment."""
 import logging
+from contextlib import AbstractContextManager
 from typing import Dict, Any
 
 import pandas as pd
 
-from tradeexecutor.state.state import State
-from tradeexecutor.strategy.qstrader.alpha_model import AlphaModel
-
-from tradeexecutor.strategy.qstrader.runner import QSTraderRunner
-from tradeexecutor.strategy.runner import Dataset
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
 
+from tradeexecutor.ethereum.uniswap_v2_execution import UniswapV2ExecutionModel
+from tradeexecutor.state.revaluation import RevaluationMethod
+from tradeexecutor.state.state import State
+from tradeexecutor.state.sync import SyncMethod
+from tradeexecutor.strategy.approval import ApprovalModel
+from tradeexecutor.strategy.description import StrategyExecutionDescription
+from tradeexecutor.strategy.pricing_model import PricingModelFactory
+from tradeexecutor.strategy.qstrader.alpha_model import AlphaModel
+from tradeexecutor.strategy.qstrader.runner import QSTraderRunner
+from tradeexecutor.strategy.universe_model import StaticUniverseModel
+
 
 # Cannot use Python __name__ here because the module is dynamically loaded
-logging = logging.getLogger("uniswap_simulatead_example")
+logging = logging.getLogger("simulated_uniswap")
 
 
 class SomeTestBuysAlphaModel(AlphaModel):
@@ -74,26 +81,42 @@ class SomeTestBuysAlphaModel(AlphaModel):
             }
 
 
-class SimulatedUniswapV2LiveTrader(QSTraderRunner):
-    """Live strategy set up."""
+def strategy_factory(
+        *ignore,
+        execution_model: UniswapV2ExecutionModel,
+        sync_method: SyncMethod,
+        pricing_model_factory: PricingModelFactory,
+        revaluation_method: RevaluationMethod,
+        client,
+        timed_task_context_manager: AbstractContextManager,
+        approval_model: ApprovalModel,
+        universe_model: StaticUniverseModel,
+        cash_buffer: float,
+        **kwargs) -> StrategyExecutionDescription:
 
-    def get_strategy_time_frame(self) -> TimeBucket:
-        """Strategy is run on the daily candles."""
-        return TimeBucket.d1
-
-    def construct_universe(self, dataset: Dataset) -> Universe:
-        """Sets up pairs, candles and liquidity samples.
-
-        :param client: Client instance. Note that this cannot be stable across ticks, as e.g. API keys can change. Client is recreated for every tick.
-        :return:
-        """
-
-
-def strategy_executor_factory(*ignore, **kwargs):
     if ignore:
         # https://www.python.org/dev/peps/pep-3102/
         raise TypeError("Only keyword arguments accepted")
-    return SimulatedUniswapV2LiveTrader(alpha_model=SomeTestBuysAlphaModel(), **kwargs)
+
+    # Use static universe passed from the tests
+    assert isinstance(universe_model, StaticUniverseModel)
+
+    runner = QSTraderRunner(
+        alpha_model=SomeTestBuysAlphaModel(),
+        timed_task_context_manager=timed_task_context_manager,
+        execution_model=execution_model,
+        approval_model=approval_model,
+        revaluation_method=revaluation_method,
+        sync_method=sync_method,
+        pricing_model_factory=pricing_model_factory,
+        cash_buffer=cash_buffer,
+    )
+
+    return StrategyExecutionDescription(
+        time_bucket=TimeBucket.d1,
+        universe_model=universe_model,
+        runner=runner,
+    )
 
 
-__all__ = [strategy_executor_factory]
+__all__ = [strategy_factory]
