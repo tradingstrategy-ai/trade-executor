@@ -311,16 +311,15 @@ def test_cli_disapprove_trades(
 
     runner = description.runner
 
-    runner = description.runner
-
+    debug_details = {}
     if recorded_input:
         # See hints at https://github.com/MarcoMernberger/mgenomicsremotemail/blob/ac5fbeaf02ae80b0c573c6361c9279c540b933e4/tests/tmp.py#L27
         inp = create_pipe_input()
         keys = "\t\r"  # Skip checkbox with tab, press enter
         inp.send_text(keys)
         with create_app_session(input=inp, output=DummyOutput()):
-            debug_details = runner.tick(datetime.datetime(2020, 1, 1), universe, state)
+            runner.tick(datetime.datetime(2020, 1, 1), universe, state, debug_details)
     else:
-        debug_details = runner.tick(datetime.datetime(2020, 1, 1), universe, state)
+        runner.tick(datetime.datetime(2020, 1, 1), universe, state, debug_details)
 
     assert len(debug_details["approved_trades"]) == 0
