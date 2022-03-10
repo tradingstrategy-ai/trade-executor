@@ -4,7 +4,7 @@ from typing import List
 import textwrap
 
 from prompt_toolkit import print_formatted_text, HTML
-from prompt_toolkit.shortcuts import checkboxlist_dialog
+from prompt_toolkit.shortcuts import checkboxlist_dialog, message_dialog
 
 from tradeexecutor.state.state import State, TradeExecution, Portfolio, TradingPosition
 from tradeexecutor.strategy.approval import ApprovalModel
@@ -59,6 +59,13 @@ class CLIApprovalModel(ApprovalModel):
             (t.trade_id, t.get_human_description())
             for t in trades
         ]
+
+        # Did not detect any new trades
+        if len(new_trades) == 0:
+            message_dialog(
+                title='No new trades to execute',
+                text=text).run()
+            return []
 
         approvals_dialog = checkboxlist_dialog(
             title="New trades to execute",

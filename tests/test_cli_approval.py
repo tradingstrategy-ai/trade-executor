@@ -23,13 +23,16 @@ from eth_hentai.uniswap_v2 import UniswapV2Deployment, deploy_trading_pair, depl
 from tradeexecutor.cli.approval import CLIApprovalModel
 from tradeexecutor.ethereum.hot_wallet_sync import EthereumHotWalletReserveSyncer
 from tradeexecutor.ethereum.uniswap_v2_execution import UniswapV2ExecutionModel
-from tradeexecutor.ethereum.uniswap_v2_live_pricing import UniswapV2LivePricing
+from tradeexecutor.ethereum.uniswap_v2_live_pricing import UniswapV2LivePricing, uniswap_v2_live_pricing_factory
 from tradeexecutor.ethereum.uniswap_v2_revaluation import UniswapV2PoolRevaluator
 from tradeexecutor.ethereum.universe import create_exchange_universe, create_pair_universe
 from tradeexecutor.state.state import State, AssetIdentifier, TradingPairIdentifier, Portfolio
 
 from tradeexecutor.strategy.bootstrap import import_strategy_file
+from tradeexecutor.strategy.description import StrategyExecutionDescription
 from tradeexecutor.strategy.runner import StrategyRunner
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
+from tradeexecutor.strategy.universe_model import StaticUniverseModel
 from tradeexecutor.utils.log import setup_pytest_logging
 from tradeexecutor.utils.timer import timed_task
 from tradingstrategy.candle import GroupedCandleUniverse
@@ -233,34 +236,41 @@ def test_cli_approve_trades(
         usdc_token,
         recorded_input,
     ):
-    """CLI approval dialog can approve trades."""
+    """CLI approval dialog for choosing which new trades to approve."""
 
     factory = import_strategy_file(strategy_path)
     approval_model = CLIApprovalModel()
-    execution_model = UniswapV2ExecutionModel(state, uniswap_v2, hot_wallet)
+    execution_model = UniswapV2ExecutionModel(uniswap_v2, hot_wallet)
     sync_method = EthereumHotWalletReserveSyncer(web3, hot_wallet.address)
     revaluation_method = UniswapV2PoolRevaluator(uniswap_v2)
-    pricing_method = UniswapV2LivePricing(uniswap_v2, universe.pairs)
+    pricing_model_factory = uniswap_v2_live_pricing_factory
+    executor_universe = TradingStrategyUniverse(universe=universe, reserve_assets=supported_reserves)
+    universe_model = StaticUniverseModel(executor_universe)
 
-    runner: StrategyRunner = factory(
+    description: StrategyExecutionDescription = factory(
         timed_task_context_manager=timed_task,
         execution_model=execution_model,
         approval_model=approval_model,
         revaluation_method=revaluation_method,
         sync_method=sync_method,
-        pricing_method=pricing_method,
-        reserve_assets=supported_reserves)
+        client=None,
+        pricing_model_factory=pricing_model_factory,
+        universe_model=universe_model)
 
+    runner = description.runner
+
+    debug_details = {}
     if recorded_input:
         # See hints at https://github.com/MarcoMernberger/mgenomicsremotemail/blob/ac5fbeaf02ae80b0c573c6361c9279c540b933e4/tests/tmp.py#L27
         inp = create_pipe_input()
         keys = " \t\r"  # Toggle checkbox with space, tab to ok, press enter
         inp.send_text(keys)
         with create_app_session(input=inp, output=DummyOutput()):
-            debug_details = runner.tick(datetime.datetime(2020, 1, 1), universe, state)
+            runner.tick(datetime.datetime(2020, 1, 1), executor_universe, state, debug_details)
     else:
-        debug_details = runner.tick(datetime.datetime(2020, 1, 1), universe, state)
+        runner.tick(datetime.datetime(2020, 1, 1), executor_universe, state, debug_details)
 
+    assert len(debug_details["alpha_model_weights"]) == 1
     assert len(debug_details["approved_trades"]) == 1
 
 
@@ -282,19 +292,26 @@ def test_cli_disapprove_trades(
 
     factory = import_strategy_file(strategy_path)
     approval_model = CLIApprovalModel()
-    execution_model = UniswapV2ExecutionModel(state, uniswap_v2, hot_wallet)
+    execution_model = UniswapV2ExecutionModel(uniswap_v2, hot_wallet)
     sync_method = EthereumHotWalletReserveSyncer(web3, hot_wallet.address)
     revaluation_method = UniswapV2PoolRevaluator(uniswap_v2)
-    pricing_method = UniswapV2LivePricing(uniswap_v2, universe.pairs)
+    pricing_model_factory = uniswap_v2_live_pricing_factory
+    executor_universe = TradingStrategyUniverse(universe=universe, reserve_assets=supported_reserves)
+    universe_model = StaticUniverseModel(executor_universe)
 
-    runner: StrategyRunner = factory(
+    description: StrategyExecutionDescription = factory(
         timed_task_context_manager=timed_task,
         execution_model=execution_model,
         approval_model=approval_model,
         revaluation_method=revaluation_method,
         sync_method=sync_method,
-        pricing_method=pricing_method,
-        reserve_assets=supported_reserves)
+        client=None,
+        pricing_model_factory=pricing_model_factory,
+        universe_model=universe_model)
+
+    runner = description.runner
+
+    runner = description.runner
 
     if recorded_input:
         # See hints at https://github.com/MarcoMernberger/mgenomicsremotemail/blob/ac5fbeaf02ae80b0c573c6361c9279c540b933e4/tests/tmp.py#L27

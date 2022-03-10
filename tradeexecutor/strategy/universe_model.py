@@ -39,4 +39,19 @@ class UniverseModel(abc.ABC):
         """
 
 
+class StaticUniverseModel(UniverseModel):
+    """Universe that never changes and all assets are in in-process memory.
+
+    Only useful for testing, because
+    - any real trading pair universe is deemed to change
+    - trade executor is deemed to go down and up again
+    """
+
+    def __init__(self, universe: TradeExecutorTradingUniverse):
+        assert isinstance(universe, TradeExecutorTradingUniverse)
+        self.universe = universe
+
+    def construct_universe(self, ts: datetime.datetime) -> TradeExecutorTradingUniverse:
+        """Always return the same universe copy - there is no refresh."""
+        return self.universe
 

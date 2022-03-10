@@ -6,19 +6,20 @@ from tradingstrategy.timebucket import TimeBucket
 
 
 @dataclass
-class StrategyRunDescription:
-    """Describe the strategy for the runner.
+class StrategyExecutionDescription:
+    """Describe how a strategy will be execuetd.
 
-    Tell details like what currencies, candles, etc. to use.
+    -universe_model: What currencies, candles, etc. to use and how to refresh this
+    -runner: Alpha model, communicating with the external environment, executing trades
 
-    This data class is returned from the strategy factory.
+    This data class is returned from the strategy_factory through :py:func:`tradeexecutor.strategy.bootstrap.import_strategy_file`.
     """
 
     #: What candles this strategy uses: 1d, 1h, etc.
     time_bucket: TimeBucket
 
     #: How to refresh the trading universe for the each tick
-    universe_constructor: UniverseModel
+    universe_model: UniverseModel
 
     #: What kind of a strategy runner this strategy is using
     runner: StrategyRunner

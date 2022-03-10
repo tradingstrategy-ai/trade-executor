@@ -64,6 +64,7 @@ class StrategyRunner(abc.ABC):
         - Interest accrued
         - Token rebases
         """
+        assert isinstance(universe, TradeExecutorTradingUniverse), f"Universe was {universe}"
         reserve_assets = universe.reserve_assets
         assert len(reserve_assets) > 0, "No reserve assets available"
         assert len(reserve_assets) == 1, f"We only support strategies with a single reserve asset, got {self.reserve_assets}"

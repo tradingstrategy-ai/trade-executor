@@ -4,7 +4,7 @@ from tradeexecutor.ethereum.uniswap_v2_revaluation import UniswapV2PoolRevaluato
 from tradeexecutor.state.revaluation import RevaluationMethod
 from tradeexecutor.state.sync import SyncMethod
 from tradeexecutor.strategy.approval import ApprovalModel
-from tradeexecutor.strategy.description import StrategyRunDescription
+from tradeexecutor.strategy.description import StrategyExecutionDescription
 from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.strategy.pricing_model import PricingModelFactory
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverseConstructor, \
@@ -321,7 +321,7 @@ def strategy_executor_factory(
         client: Client,
         timed_task_context_manager: AbstractContextManager,
         approval_model: ApprovalModel,
-        **kwargs) -> StrategyRunDescription:
+        **kwargs) -> StrategyExecutionDescription:
 
     if ignore:
         # https://www.python.org/dev/peps/pep-3102/
@@ -343,7 +343,7 @@ def strategy_executor_factory(
         cash_buffer=cash_buffer,
     )
 
-    return StrategyRunDescription(
+    return StrategyExecutionDescription(
         time_bucket=TimeBucket.d1,
         universe_constructor=universe_constructor,
         runner=runner,

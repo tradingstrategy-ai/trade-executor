@@ -3,7 +3,7 @@ from contextlib import AbstractContextManager
 from pathlib import Path
 import logging
 
-from tradeexecutor.strategy.description import StrategyRunDescription
+from tradeexecutor.strategy.description import StrategyExecutionDescription
 from tradeexecutor.strategy.factory import StrategyFactory
 
 logger = logging.getLogger(__name__)
@@ -35,7 +35,7 @@ def import_strategy_file(path: Path) -> StrategyFactory:
 def bootstrap_strategy(
         timed_task_context_manager: AbstractContextManager,
         path: Path,
-        **kwargs) -> StrategyRunDescription:
+        **kwargs) -> StrategyExecutionDescription:
     """Bootstrap a strategy to the point it can accept its first tick.
 
     Returns an initialized strategy.

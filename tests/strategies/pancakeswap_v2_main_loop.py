@@ -11,7 +11,7 @@ from tradeexecutor.state.revaluation import RevaluationMethod
 from tradeexecutor.state.state import State
 from tradeexecutor.state.sync import SyncMethod
 from tradeexecutor.strategy.approval import ApprovalModel
-from tradeexecutor.strategy.description import StrategyRunDescription
+from tradeexecutor.strategy.description import StrategyExecutionDescription
 from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.strategy.pricing_model import PricingModelFactory
 from tradeexecutor.strategy.qstrader.alpha_model import AlphaModel
@@ -310,7 +310,7 @@ def strategy_factory(
         client: Client,
         timed_task_context_manager: AbstractContextManager,
         approval_model: ApprovalModel,
-        **kwargs) -> StrategyRunDescription:
+        **kwargs) -> StrategyExecutionDescription:
 
     if ignore:
         # https://www.python.org/dev/peps/pep-3102/
@@ -333,7 +333,7 @@ def strategy_factory(
         cash_buffer=cash_buffer,
     )
 
-    return StrategyRunDescription(
+    return StrategyExecutionDescription(
         time_bucket=TimeBucket.d1,
         universe_constructor=universe_constructor,
         runner=runner,

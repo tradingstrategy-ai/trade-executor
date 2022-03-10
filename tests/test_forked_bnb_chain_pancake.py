@@ -37,7 +37,7 @@ from tradeexecutor.ethereum.uniswap_v2_revaluation import UniswapV2PoolRevaluato
 from tradeexecutor.state.state import AssetIdentifier, Portfolio, State, TradeExecution
 from tradeexecutor.strategy.approval import UncheckedApprovalModel
 from tradeexecutor.strategy.bootstrap import import_strategy_file
-from tradeexecutor.strategy.description import StrategyRunDescription
+from tradeexecutor.strategy.description import StrategyExecutionDescription
 from tradeexecutor.strategy.runner import StrategyRunner
 
 from tradeexecutor.utils.log import setup_pytest_logging
@@ -236,7 +236,7 @@ def test_forked_pancake(
     sync_method = EthereumHotWalletReserveSyncer(web3, hot_wallet.address)
     revaluation_method = UniswapV2PoolRevaluator(pancakeswap_v2)
 
-    run_description: StrategyRunDescription = strategy_factory(
+    run_description: StrategyExecutionDescription = strategy_factory(
         execution_model=execution_model,
         timed_task_context_manager=timed_task,
         sync_method=sync_method,
@@ -248,7 +248,7 @@ def test_forked_pancake(
 
     # Deconstruct strategy input
     runner: StrategyRunner = run_description.runner
-    universe_constructor = run_description.universe_constructor
+    universe_constructor = run_description.universe_model
 
     # Set up internal tracing store
     debug_details = {"cycle": 1}

@@ -6,7 +6,7 @@ from contextlib import AbstractContextManager
 
 from tradeexecutor.state.sync import SyncMethod
 from tradeexecutor.strategy.approval import ApprovalModel
-from tradeexecutor.strategy.description import StrategyRunDescription
+from tradeexecutor.strategy.description import StrategyExecutionDescription
 from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.strategy.pricing_model import PricingModelFactory
 from tradingstrategy.client import Client
@@ -25,5 +25,5 @@ class StrategyFactory(typing.Protocol):
         client: typing.Optional[Client],
         timed_task_context_manager: AbstractContextManager,
         approval_model: ApprovalModel,
-        **kwargs) -> StrategyRunDescription:
+        **kwargs) -> StrategyExecutionDescription:
         pass

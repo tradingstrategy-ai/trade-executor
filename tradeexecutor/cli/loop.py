@@ -12,7 +12,7 @@ from tradeexecutor.state.revaluation import RevaluationMethod
 from tradeexecutor.state.store import StateStore
 from tradeexecutor.state.sync import SyncMethod
 from tradeexecutor.strategy.approval import ApprovalModel
-from tradeexecutor.strategy.description import StrategyRunDescription
+from tradeexecutor.strategy.description import StrategyExecutionDescription
 from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.strategy.pricing_model import PricingModelFactory
 from tradeexecutor.strategy.runner import StrategyRunner
@@ -54,7 +54,7 @@ def run_main_loop(
     execution_model.initialize()
     execution_model.preflight_check()
 
-    run_description: StrategyRunDescription = strategy_factory(
+    run_description: StrategyExecutionDescription = strategy_factory(
         execution_model=execution_model,
         timed_task_context_manager=timed_task_context_manager,
         sync_method=sync_method,
@@ -66,7 +66,7 @@ def run_main_loop(
 
     # Deconstruct strategy input
     runner: StrategyRunner = run_description.runner
-    universe_constructor = run_description.universe_constructor
+    universe_constructor = run_description.universe_model
 
     # Debug details from every cycle
     debug_dump_state = {}

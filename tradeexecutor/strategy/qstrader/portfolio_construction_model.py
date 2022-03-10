@@ -182,16 +182,6 @@ class PortfolioConstructionModel:
             order_qty = target_qty - current_qty
             rebalance_portfolio[asset] = {"quantity": order_qty}
 
-        # Create the rebalancing Order list from the order portfolio
-        # only where quantities are non-zero
-        #rebalance_orders = [
-        #    Order(dt, asset, rebalance_portfolio[asset]["quantity"], debug_details=debug_details)
-        #    for asset, asset_dict in sorted(
-        #        rebalance_portfolio.items(), key=lambda x: x[0]
-        #    )
-        #    if rebalance_portfolio[asset]["quantity"] != 0
-        #]
-
         rebalance_trades = []
         for asset, asset_dict in sorted(rebalance_portfolio.items(), key=lambda x: x[0]):
             quantity = rebalance_portfolio[asset]["quantity"]
@@ -216,17 +206,10 @@ class PortfolioConstructionModel:
                 )
                 rebalance_trades.append(trade)
 
-        #rebalance_orders = [
-        #    Order(dt, asset, rebalance_portfolio[asset]["quantity"], debug_details=debug_details)
-        #    for asset, asset_dict in sorted(
-        #        rebalance_portfolio.items(), key=lambda x: x[0]
-        #    )
-        #    if rebalance_portfolio[asset]["quantity"] != 0
-        #]
-
         # Sort trades so that sells always go first
-
         rebalance_trades.sort(key=lambda t: t.get_execution_sort_position())
+
+        logger.error("Got %s %s %s", current_portfolio, target_portfolio, rebalance_trades)
 
         return rebalance_trades
 
@@ -269,6 +252,8 @@ class PortfolioConstructionModel:
         # Expose internal states to unit tests
         debug_details["alpha_model_weights"] = weights
 
+        logger.info("We have %d alpha model weights", len(weights))
+
         # If a risk model is present use it to potentially
         # override the alpha model weights
         if self.risk_model:
@@ -287,6 +272,8 @@ class PortfolioConstructionModel:
 
         # Calculate target portfolio in notional
         target_portfolio, target_prices = self.order_sizer(dt, weights, debug_details)
+
+        logger.info("We have %d entries in the target portfolio", len(target_portfolio))
 
         # Obtain current Broker account portfolio
         current_portfolio = self._obtain_current_portfolio()
@@ -307,5 +294,7 @@ class PortfolioConstructionModel:
         debug_details["target_portfolio"] = target_portfolio
         debug_details["target_prices"] = target_prices
         debug_details["rebalance_trades"] = rebalance_trades
+
+        logger.info("Requesting %d rebalance trades", len(rebalance_trades))
 
         return rebalance_trades

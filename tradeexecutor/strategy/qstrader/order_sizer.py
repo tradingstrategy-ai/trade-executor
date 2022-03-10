@@ -122,6 +122,8 @@ class CashBufferedOrderSizer(OrderSizer):
 
         logger.info(f"Calculating dollar weights for the new portfolio. Total equity {total_equity:,.2f} USD, cash buffered total equity {cash_buffered_total_equity:,.2f} USD")
 
+        assert cash_buffered_total_equity > 0, "No wealth"
+
         # Pre-cost dollar weight
         N = len(weights)
         if N == 0:
