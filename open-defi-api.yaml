@@ -1637,6 +1637,19 @@ components:
         symbol:
           type: string
           example: "DUST"
+        token_id:
+          description: The token's primary key.
+          type: integer
+          example: 27
+        chain_name:
+          description: |
+            Human-readable name of the blockchain the token lives on.
+          type: string
+          example: Ethereum
+        chain_slug:
+          description: URL slug of the blockchain on which the token lives.
+          type: string
+          example: ethereum
         address:
           type: string
           format: blockchain_address
