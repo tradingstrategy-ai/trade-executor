@@ -2,12 +2,14 @@
 
 https://typer.tiangolo.com/
 """
+import datetime
 from pathlib import Path
 from queue import Queue
 from typing import Optional
 import pkg_resources
 
 import typer
+from tradeexecutor.strategy.tick import TickSize
 from web3 import Web3, HTTPProvider
 import pandas as pd
 
@@ -102,7 +104,9 @@ def run(
     reset_state: bool = typer.Option(False, "--reset-state", envvar="RESET_STATE"),
     max_cycles: int = typer.Option(None, envvar="MAX_CYCLES", help="Max main loop cycles run in an automated testing mode"),
     debug_dump_file: Optional[Path] = typer.Option(None, envvar="DEBUG_DUMP_FILE", help="Write Python Pickle dump of all internal debugging states of the strategy run to this file"),
-    debug_backtest_date: Optional[str] = typer.Option(None, envvar="DEBUG_BACKTEST_DATE", help="A date in format YYYY-MM-DD if you want to run a backtested execution cycle"),
+    backtest_start: Optional[datetime.datetime] = typer.Option(None, envvar="BACKTEST_START", help="Start timestamp of backesting"),
+    backtest_end: Optional[datetime.datetime] = typer.Option(None, envvar="BACKTEST_END", help="End timestamp of backesting"),
+    tick_hours: TickSize = typer.Option(None, envvar="TICK_HOURS", help="How large tick use to execute the strategy"),
     ):
 
     logger = setup_logging()
@@ -137,9 +141,6 @@ def run(
 
     strategy_factory = import_strategy_file(strategy_file)
 
-    if debug_backtest_date:
-        debug_backtest_date = pd.Timestamp(debug_backtest_date).to_pydatetime()
-
     try:
         run_main_loop(
             command_queue=command_queue,
@@ -154,7 +155,9 @@ def run(
             reset=reset_state,
             max_cycles=max_cycles,
             debug_dump_file=debug_dump_file,
-            debug_backtest_date=debug_backtest_date,
+            backtest_start=backtest_start,
+            backtest_end=backtest_end,
+            tick_hours=tick_hours,
         )
     finally:
         if server:

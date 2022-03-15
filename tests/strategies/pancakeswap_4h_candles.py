@@ -125,27 +125,23 @@ class MomentumAlphaModel(AlphaModel):
         start = ts - lookback
         end = ts
 
-        # For each pair, check the the diff between opening and closingn price
-        candles = candle_universe.get_all_samples_by_range(start, end)
-        alpha_signals = Counter()
+        alpha_signals = {}
 
-        if len(candles) == 0:
-            logger.error(f"No candles available at %s - %s", start, end)
-            return {}
+        # For each pair, check the the diff between opening and closingn price
+        candle_data = candle_universe.iterate_samples_by_pair_range(start, end)
 
         liquidity_threshold = min_liquidity_threshold
 
-        # Expose how many candles we evaluated to the testing
-        debug_details["candles_count"] = len(candles)
+        extra_debug_data = {}
 
         # Iterate over all candles for all pairs in this timestamp (ts)
-        for ts_, candle in candles.iterrows():
-            pair_id = candle["pair_id"]
-            open = candle["Open"]  # QStrader data frames are using capitalised version of OHLCV core variables
-            close = candle["Close"]  # QStrader data frames are using capitalised version of OHLCV core variables
-            pair = pair_universe.get_pair_by_id(pair_id)
+        for pair_id, pair_df in candle_data.iterrows():
+            first_candle = pair_df.iloc[0]
+            last_candle = pair_df.iloc[-1]
 
-            # logger.debug("Checking pair %s", pair)
+            open = first_candle["Open"]  # QStrader data frames are using capitalised version of OHLCV core variables
+            close = last_candle["Close"]  # QStrader data frames are using capitalised version of OHLCV core variables
+            pair = pair_universe.get_pair_by_id(pair_id)
 
             if self.is_funny_price(open) or self.is_funny_price(close):
                 # This trading pair is too funny that we do not want to play with it

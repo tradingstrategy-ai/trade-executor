@@ -16,6 +16,7 @@ from tradeexecutor.strategy.description import StrategyExecutionDescription
 from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.strategy.pricing_model import PricingModelFactory
 from tradeexecutor.strategy.runner import StrategyRunner
+from tradeexecutor.strategy.tick import TickSize
 from tradeexecutor.utils.timer import timed_task
 from tradingstrategy.client import Client
 
@@ -34,11 +35,14 @@ def run_main_loop(
         store: StateStore,
         client: Optional[Client],
         strategy_factory: Callable,
+        tick_hours: TickSize,
         reset=False,
         max_cycles: Optional[int]=None,
         sleep=1.0,
         debug_dump_file: Optional[Path]=None,
         debug_backtest_date: Optional[datetime.datetime]=None,
+        backtest_start: Optional[datetime.datetime]=None,
+        backtest_end: Optional[datetime.datetime]=None,
     ):
     """The main loop of trade executor."""
 
@@ -77,6 +81,12 @@ def run_main_loop(
         assert max_cycles == 1, "We can run a backtest for a single date only at the moment"
 
     cycle = 1
+
+    if backtest_start:
+        ts = backtest_start
+    else:
+        ts = datetime.datetime.utcnow()
+
     while True:
 
         # This Python dict collects internal debugging data through this cycle.
