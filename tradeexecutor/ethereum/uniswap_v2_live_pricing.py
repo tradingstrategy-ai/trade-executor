@@ -8,8 +8,8 @@ from tradeexecutor.strategy.universe_model import TradeExecutorTradingUniverse
 from tradingstrategy.pair import PandasPairUniverse
 
 from eth_hentai.token import fetch_erc20_details
-from eth_hentai.uniswap_v2 import UniswapV2Deployment
-from eth_hentai.uniswap_v2_fees import estimate_buy_price_decimals, estimate_sell_price_decimals
+from eth_hentai.uniswap_v2.deployment import UniswapV2Deployment
+from eth_hentai.uniswap_v2.fees import estimate_buy_price_decimals, estimate_sell_price_decimals
 from tradeexecutor.state.types import USDollarAmount
 from tradeexecutor.strategy.pricing_model import PricingModel
 

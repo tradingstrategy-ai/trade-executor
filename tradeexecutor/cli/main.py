@@ -13,7 +13,7 @@ from tradeexecutor.strategy.tick import TickSize
 from web3 import Web3, HTTPProvider
 
 from eth_hentai.hotwallet import HotWallet
-from eth_hentai.uniswap_v2 import fetch_deployment
+from eth_hentai.uniswap_v2.deployment import fetch_deployment
 from tradeexecutor.cli.approval import CLIApprovalModel
 from tradeexecutor.cli.loop import run_main_loop
 from tradeexecutor.ethereum.hot_wallet_sync import EthereumHotWalletReserveSyncer

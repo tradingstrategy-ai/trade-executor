@@ -4,7 +4,7 @@ from typing import List
 import logging
 
 from eth_hentai.hotwallet import HotWallet
-from eth_hentai.uniswap_v2 import UniswapV2Deployment
+from eth_hentai.uniswap_v2.deployment import UniswapV2Deployment
 from tradeexecutor.ethereum.execution import approve_tokens, prepare_swaps, confirm_approvals, broadcast, \
     wait_trades_to_complete, resolve_trades
 from tradeexecutor.state.state import TradeExecution, State

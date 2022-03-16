@@ -16,9 +16,9 @@ from eth_hentai.hotwallet import HotWallet
 from eth_hentai.token import fetch_erc20_details, TokenDetails
 from eth_hentai.txmonitor import wait_transactions_to_complete, \
     broadcast_and_wait_transactions_to_complete
-from eth_hentai.uniswap_v2 import UniswapV2Deployment, FOREVER_DEADLINE
-from eth_hentai.uniswap_v2_fees import estimate_sell_price, estimate_sell_price_decimals
-from eth_hentai.uniswap_v2_analysis import analyse_trade, TradeSuccess
+from eth_hentai.uniswap_v2.deployment import UniswapV2Deployment, FOREVER_DEADLINE
+from eth_hentai.uniswap_v2.fees import estimate_sell_price, estimate_sell_price_decimals
+from eth_hentai.uniswap_v2.analysis import analyse_trade, TradeSuccess
 from tradeexecutor.state.state import TradeExecution, State, BlockchainTransactionInfo, TradingPairIdentifier, \
     AssetIdentifier
 
