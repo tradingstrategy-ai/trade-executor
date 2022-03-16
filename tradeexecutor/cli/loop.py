@@ -54,7 +54,7 @@ def run_main_loop(
         raise TypeError("Only keyword arguments accepted")
 
     if backtest_end or backtest_start:
-        assert backtest_start and backtest_end, "If backtesting both start and end must be given"
+        assert backtest_start and backtest_end, f"If backtesting both start and end must be given, we have {backtest_start} - {backtest_end}"
         mode = ExecutionMode.backtest
     else:
         mode = ExecutionMode.live_trade

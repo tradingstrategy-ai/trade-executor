@@ -185,8 +185,8 @@ def test_main_loop(
     ):
     """Run the main loop one time in a backtested date.
 
-    Sets up the whole trade executor live trading application in local Ethereum Tester environment
-    and then executed one trade.
+    A smoke test for setting up the whole trade executor live trading application in local Ethereum Tester environment
+    and then executed one rebalance.
     """
 
     debug_dump_file = "/tmp/test_main_loop.debug.json"
@@ -202,13 +202,14 @@ def test_main_loop(
         "UNISWAP_V2_INIT_CODE_HASH": pancakeswap_v2.init_code_hash,
         "STATE_FILE": "/tmp/test_main_loop.json",
         "RESET_STATE": "true",
-        "MAX_CYCLES": "1",
         "EXECUTION_TYPE": "uniswap_v2_hot_wallet",
         "APPROVAL_TYPE": "unchecked",
         "CACHE_PATH": "/tmp/main_loop_tests",
         "TRADING_STRATEGY_API_KEY": os.environ["TRADING_STRATEGY_API_KEY"],
         "DEBUG_DUMP_FILE": debug_dump_file,
-        "DEBUG_BACKTEST_DATE": "2021-12-07",
+        "BACKTEST_START": "2021-12-07",
+        "BACKTEST_END": "2022-01-07",
+        "MAX_CYCLES": "1",
     }
     # https://typer.tiangolo.com/tutorial/testing/
     runner = CliRunner()
@@ -232,9 +233,5 @@ def test_main_loop(
         assert len(debug_dump) == 1
 
         cycle_1 = debug_dump[1]
-        # 'approved_trades': [<Buy 196.812600104142433110 Cake at 6.09717060475308>,
-        #                 <Buy 1373603.511131166713312268 BTT at 0.0017472290807>,
-        #                 <Buy 1602.240524 CHR at 0.37447561139782>,
-        #                 <Buy 3113.757811772156856022 CUB at 0.25692428517576>],
         assert len(cycle_1["approved_trades"]) == 4
 
