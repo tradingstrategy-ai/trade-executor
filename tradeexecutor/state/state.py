@@ -325,9 +325,9 @@ class TradeExecution:
     def get_human_description(self) -> str:
         """User friendly description for this trade"""
         if self.is_buy():
-            return f"Buy {self.planned_quantity} {self.pair.base.token_symbol} at {self.planned_price}"
+            return f"Buy {self.planned_quantity} {self.pair.base.token_symbol} <id:{self.pair.base.internal_id}> at {self.planned_price}"
         else:
-            return f"Sell {self.planned_quantity} {self.pair.base.token_symbol} at {self.planned_price}"
+            return f"Sell {abs(self.planned_quantity)} {self.pair.base.token_symbol} <id:{self.pair.base.internal_id}> at {self.planned_price}"
 
     def is_sell(self):
         return self.planned_quantity < 0

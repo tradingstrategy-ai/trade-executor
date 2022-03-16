@@ -32,7 +32,7 @@ from tradeexecutor.strategy.description import StrategyExecutionDescription
 from tradeexecutor.strategy.runner import StrategyRunner
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.strategy.universe_model import StaticUniverseModel
-from tradeexecutor.utils.log import setup_pytest_logging
+from tradeexecutor.cli.log import setup_pytest_logging
 from tradeexecutor.utils.timer import timed_task
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId

@@ -26,7 +26,7 @@ from eth_hentai.utils import is_localhost_port_listening
 from tradeexecutor.cli.main import app
 from tradeexecutor.state.state import AssetIdentifier
 
-from tradeexecutor.utils.log import setup_pytest_logging
+from tradeexecutor.cli.log import setup_pytest_logging
 
 
 # https://docs.pytest.org/en/latest/how-to/skipping.html#skip-all-test-functions-of-a-class-or-module

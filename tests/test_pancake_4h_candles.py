@@ -8,7 +8,7 @@ To run:
     export BNB_CHAIN_JSON_RPC="https://bsc-dataseed.binance.org/"
 
 """
-import json
+import datetime
 import logging
 import os
 import pickle
@@ -32,7 +32,7 @@ from eth_hentai.utils import is_localhost_port_listening
 from tradeexecutor.cli.main import app
 from tradeexecutor.state.state import AssetIdentifier
 
-from tradeexecutor.utils.log import setup_pytest_logging
+from tradeexecutor.cli.log import setup_pytest_logging
 
 
 # https://docs.pytest.org/en/latest/how-to/skipping.html#skip-all-test-functions-of-a-class-or-module
@@ -193,6 +193,11 @@ def test_pancake_4h_candles(
 
     Sets up the whole trade executor live trading application in forked BNB Chain
     Ganache environment.
+
+    Note that because this integration test does not use historical price data
+    for estimating buy/sell prices the actual performance of the test
+    does not make any sense. The test is purely to stress out integrity
+    of code paths.
     """
 
     debug_dump_file = "/tmp/test_main_loop.debug.json"
@@ -221,18 +226,25 @@ def test_pancake_4h_candles(
     }
     # https://typer.tiangolo.com/tutorial/testing/
     runner = CliRunner()
-    result = runner.invoke(app, env=environment)
 
-    if result.exception:
-        raise result.exception
+    try:
+        result = runner.invoke(app, env=environment)
 
-    if result.exit_code != 0:
-        logger.error("runner failed")
-        for line in result.stdout.split('\n'):
-            logger.error(line)
-        raise AssertionError("runner launch failed")
+        if result.exception:
+            raise result.exception
 
-    assert result.exit_code == 0
+        if result.exit_code != 0:
+            logger.error("runner failed")
+            for line in result.stdout.split('\n'):
+                logger.error(line)
+            raise AssertionError("runner launch failed")
+
+        assert result.exit_code == 0
+
+    except IOError as e:
+        # ValueError: I/O operation on closed file.
+        # bug in Typer
+        logger.error("Typer failed to close cleanly %s", e)
 
     with open(debug_dump_file, "rb") as inp:
         debug_dump = pickle.load(inp)
@@ -241,11 +253,33 @@ def test_pancake_4h_candles(
         assert len(debug_dump) == 6
 
         cycle_1 = debug_dump[1]
-        assert len(cycle_1["approved_trades"]) == 4
-
         cycle_2 = debug_dump[2]
-        import ipdb ; ipdb.set_trace()
-        assert len(cycle_1["approved_trades"]) == 4
-
         cycle_3 = debug_dump[3]
+        cycle_4 = debug_dump[4]
+
+        logger.info("Cycle 1 trades %s", cycle_1["rebalance_trades"])
+        assert cycle_1["cycle"] == 1
+        assert cycle_1["timestamp"] == datetime.datetime(2021, 12, 7, 0, 0)
         assert len(cycle_1["approved_trades"]) == 4
+        assert len(cycle_1["positions_at_start_of_construction"]) == 0
+
+        # 4 buys + 4 sells
+        logger.info("Cycle 2 trades %s", cycle_2["rebalance_trades"])
+        assert cycle_2["cycle"] == 2
+        assert cycle_2["timestamp"].replace(minute=0) == datetime.datetime(2021, 12, 7, 8, 0)
+        assert len(cycle_2["approved_trades"]) == 8
+        assert len(cycle_2["positions_at_start_of_construction"]) == 8
+
+        # 4 buys, keep buying existing ones?
+        logger.info("Cycle 3 trades %s", cycle_3["rebalance_trades"])
+        assert cycle_3["cycle"] == 3
+        assert len(cycle_3["positions_at_start_of_construction"]) == 4
+        assert len(cycle_3["approved_trades"]) == 4
+        assert cycle_3["timestamp"].replace(minute=0) == datetime.datetime(2021, 12, 7, 16, 0)
+
+        # 4 buys + 4 sells
+        logger.info("Cycle 4 trades %s", cycle_4["rebalance_trades"])
+        assert cycle_4["cycle"] == 4
+        assert len(cycle_4["positions_at_start_of_construction"]) == 4
+        assert len(cycle_4["approved_trades"]) == 8
+        assert cycle_4["timestamp"].replace(minute=0) == datetime.datetime(2021, 12, 8, 0, 0)

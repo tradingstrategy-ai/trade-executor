@@ -15,6 +15,7 @@ from tradeexecutor.state.sync import SyncMethod
 from tradeexecutor.strategy.approval import ApprovalModel
 from tradeexecutor.strategy.description import StrategyExecutionDescription
 from tradeexecutor.strategy.execution_model import ExecutionModel
+from tradeexecutor.strategy.mode import ExecutionMode
 from tradeexecutor.strategy.pricing_model import PricingModelFactory
 from tradeexecutor.strategy.runner import StrategyRunner
 from tradeexecutor.strategy.tick import TickSize, snap_to_next_tick
@@ -27,6 +28,7 @@ logger = logging.getLogger(__name__)
 
 def run_main_loop(
         *ignore,
+        name: str,
         command_queue: Queue,
         execution_model: ExecutionModel,
         sync_method: SyncMethod,
@@ -53,6 +55,9 @@ def run_main_loop(
 
     if backtest_end or backtest_start:
         assert backtest_start and backtest_end, "If backtesting both start and end must be given"
+        mode = ExecutionMode.backtest
+    else:
+        mode = ExecutionMode.live_trade
 
     timed_task_context_manager = timed_task
 
@@ -95,14 +100,19 @@ def run_main_loop(
     # The first trade will be execute immediately, despite the time offset or tick
     assert execute_first_trade_immediately, "No calibration wait at the start supported"
 
+    logger.trade("Starting executor %s", name)
+
     while True:
 
         # This Python dict collects internal debugging data through this cycle.
         # Any submodule of strategy execution can add internal information here for
         # unit testing and manual diagnostics. Any data added must be JSON serializable.
-        debug_details = {"cycle": cycle}
+        debug_details = {
+            "cycle": cycle,
+            "timestamp": ts,
+        }
 
-        logger.info("Starting strategy executor main loop cycle %d, UTC is %s", cycle, ts)
+        logger.trade("Starting strategy cycle %d, UTC is %s", cycle, ts)
 
         # Refresh the trading universe for this cycle
         universe = universe_constructor.construct_universe(ts)
@@ -133,7 +143,7 @@ def run_main_loop(
         # Advance to the next tick
         cycle += 1
 
-        if backtest_start:
+        if mode == ExecutionMode.backtest:
             # Backtesting
             next_tick = snap_to_next_tick(ts + datetime.timedelta(seconds=1), tick_size, tick_offset)
 

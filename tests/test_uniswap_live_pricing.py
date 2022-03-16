@@ -18,7 +18,7 @@ from tradingstrategy.pair import PairUniverse, PandasPairUniverse
 from tradeexecutor.ethereum.uniswap_v2_live_pricing import UniswapV2LivePricing
 from tradeexecutor.ethereum.universe import create_exchange_universe, create_pair_universe
 from tradeexecutor.state.state import State, AssetIdentifier, TradingPairIdentifier, Portfolio
-from tradeexecutor.utils.log import setup_pytest_logging
+from tradeexecutor.cli.log import setup_pytest_logging
 
 
 @pytest.fixture

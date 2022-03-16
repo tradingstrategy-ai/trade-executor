@@ -6,7 +6,10 @@ from tradeexecutor.state.state import State, TradeExecution
 
 
 class ExecutionModel(abc.ABC):
-    """Define how live trades are executed."""
+    """Define how trades are executed.
+
+    See also :py:class:`tradeexecutor.strategy.mode.ExecutionMode`.
+    """
 
     @abc.abstractmethod
     def preflight_check(self):

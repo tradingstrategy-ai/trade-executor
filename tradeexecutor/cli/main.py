@@ -11,7 +11,6 @@ import pkg_resources
 import typer
 from tradeexecutor.strategy.tick import TickSize
 from web3 import Web3, HTTPProvider
-import pandas as pd
 
 from eth_hentai.hotwallet import HotWallet
 from eth_hentai.uniswap_v2 import fetch_deployment
@@ -27,7 +26,7 @@ from tradeexecutor.strategy.approval import ApprovalType, UncheckedApprovalModel
 from tradeexecutor.strategy.bootstrap import import_strategy_file
 from tradeexecutor.strategy.dummy import DummyExecutionModel
 from tradeexecutor.strategy.execution_type import TradeExecutionType
-from tradeexecutor.cli.logging import setup_logging
+from tradeexecutor.cli.log import setup_logging
 from tradeexecutor.webhook.server import create_webhook_server
 from tradingstrategy.client import Client
 
@@ -85,6 +84,7 @@ def create_web3(url) -> Web3:
 # Typer documentation https://typer.tiangolo.com/
 @app.command()
 def run(
+    name: Optional[str] = typer.Option(None, envvar="NAME", help="Executor name used in logging and notifications"),
     private_key: Optional[str] = typer.Option(None, envvar="PRIVATE_KEY"),
     strategy_file: Path = typer.Option(..., envvar="STRATEGY_FILE"),
     http_enabled: bool = typer.Option(True, envvar="HTTP_ENABLED", help="Enable Webhook server"),
@@ -112,6 +112,9 @@ def run(
 
     logger = setup_logging()
     logger.info("Trade Executor version %s starting", version)
+
+    if not name:
+        name = "Unnamed Executor"
 
     execution_model, sync_method, revaluation_method, pricing_model_factory = create_trade_execution_model(
         execution_type,
@@ -147,6 +150,7 @@ def run(
 
     try:
         run_main_loop(
+            name=name,
             command_queue=command_queue,
             execution_model=execution_model,
             sync_method=sync_method,

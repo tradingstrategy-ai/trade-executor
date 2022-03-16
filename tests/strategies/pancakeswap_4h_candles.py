@@ -167,6 +167,18 @@ class MomentumAlphaModel(AlphaModel):
 
             if available_liquidity_for_pair >= liquidity_threshold:
                 alpha_signals[pair_id] = momentum
+
+                # Do candle check only after we know the pair is "good" liquidity wise
+                # and should have candles
+                candle_count = len(pair_df)
+                if candle_count != 2:
+                    logger.error("Got problem with candles %s %s-%s", pair, start, end)
+                    # https://stackoverflow.com/a/55770434/315168
+                    logger.error('\t'+ pair_df.to_string().replace('\n', '\n\t'))
+                    assert candle_count == 2
+
+                extra_debug_data[pair_id]["candle_count"] = candle_count
+
             else:
                 # No alpha for illiquid pairs
                 # logger.warning("Liquidity not enough. Pair %s, liquidity %s, needed %s", pair, available_liquidity_for_pair, liquidity_threshold)
@@ -263,7 +275,7 @@ class OurUniverseModel(TradingStrategyUniverseModel):
             return TradingStrategyUniverse(universe=universe, reserve_assets=reserve_assets)
 
     def construct_universe(self, execution_model: ExecutionModel) -> TradingStrategyUniverse:
-        dataset = self.load_data(TimeBucket.d1)
+        dataset = self.load_data(TimeBucket.h4)
         universe = self.filter_universe(dataset)
         self.log_universe(universe.universe)
         return universe
