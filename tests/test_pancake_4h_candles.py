@@ -1,4 +1,12 @@
 """Test that Pancake strategy with 8h ticks and 4h candles work.
+
+To run:
+
+.. code-block:: shell
+
+    export TRADING_STRATEGY_API_KEY="secret-token:tradingstrategy-6ce98...."
+    export BNB_CHAIN_JSON_RPC="https://bsc-dataseed.binance.org/"
+
 """
 import json
 import logging
@@ -171,25 +179,26 @@ def hot_wallet(web3: Web3, busd_token: Contract, hot_wallet_private_key: HexByte
 @pytest.fixture()
 def strategy_path() -> Path:
     """Where do we load our strategy file."""
-    return Path(os.path.join(os.path.dirname(__file__), "strategies", "pancakeswap_v2_main_loop.py"))
+    return Path(os.path.join(os.path.dirname(__file__), "strategies", "pancakeswap_4h_candles.py"))
 
 
-def test_main_loop(
+def test_pancake_4h_candles(
         logger: logging.Logger,
         strategy_path: Path,
         ganache_bnb_chain_fork,
         hot_wallet: HotWallet,
         pancakeswap_v2: UniswapV2Deployment,
     ):
-    """Run the main loop one time in a backtested date.
+    """Run the main loop using 8h tick, 4h candles.
 
-    Sets up the whole trade executor live trading application in local Ethereum Tester environment
-    and then executed one trade.
+    Sets up the whole trade executor live trading application in forked BNB Chain
+    Ganache environment.
     """
 
     debug_dump_file = "/tmp/test_main_loop.debug.json"
 
-    # Set up the configuration for the live trader
+    # Set up the configuration for the backtesting, run
+    # run 2 weeks
     environment = {
         "STRATEGY_FILE": strategy_path.as_posix(),
         "PRIVATE_KEY": hot_wallet.account.privateKey.hex(),
@@ -200,13 +209,15 @@ def test_main_loop(
         "UNISWAP_V2_INIT_CODE_HASH": pancakeswap_v2.init_code_hash,
         "STATE_FILE": "/tmp/test_main_loop.json",
         "RESET_STATE": "true",
-        "MAX_CYCLES": "1",
         "EXECUTION_TYPE": "uniswap_v2_hot_wallet",
         "APPROVAL_TYPE": "unchecked",
         "CACHE_PATH": "/tmp/main_loop_tests",
         "TRADING_STRATEGY_API_KEY": os.environ["TRADING_STRATEGY_API_KEY"],
         "DEBUG_DUMP_FILE": debug_dump_file,
-        "DEBUG_BACKTEST_DATE": "2021-12-07",
+        "BACKTEST_START": "2021-12-07",
+        "BACKTEST_END": "2021-12-09",
+        "TICK_OFFSET_MINUTES": "10",
+        "TICK_SIZE": "8h",
     }
     # https://typer.tiangolo.com/tutorial/testing/
     runner = CliRunner()
@@ -226,9 +237,15 @@ def test_main_loop(
     with open(debug_dump_file, "rb") as inp:
         debug_dump = pickle.load(inp)
 
-        # We should have data only for one cycle
-        assert len(debug_dump) == 1
+        # We run for 2 days, 3 rebalances per day
+        assert len(debug_dump) == 6
 
         cycle_1 = debug_dump[1]
         assert len(cycle_1["approved_trades"]) == 4
 
+        cycle_2 = debug_dump[2]
+        import ipdb ; ipdb.set_trace()
+        assert len(cycle_1["approved_trades"]) == 4
+
+        cycle_3 = debug_dump[3]
+        assert len(cycle_1["approved_trades"]) == 4

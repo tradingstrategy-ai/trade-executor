@@ -1,13 +1,14 @@
 """Main loop for trade executor-."""
 
+import logging
 import datetime
 import pickle
+import random
 import time
 from pathlib import Path
 from queue import Queue
 from typing import Optional, Callable
 
-import logging
 from tradeexecutor.state.revaluation import RevaluationMethod
 from tradeexecutor.state.store import StateStore
 from tradeexecutor.state.sync import SyncMethod
@@ -16,7 +17,7 @@ from tradeexecutor.strategy.description import StrategyExecutionDescription
 from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.strategy.pricing_model import PricingModelFactory
 from tradeexecutor.strategy.runner import StrategyRunner
-from tradeexecutor.strategy.tick import TickSize
+from tradeexecutor.strategy.tick import TickSize, snap_to_next_tick
 from tradeexecutor.utils.timer import timed_task
 from tradingstrategy.client import Client
 
@@ -35,20 +36,23 @@ def run_main_loop(
         store: StateStore,
         client: Optional[Client],
         strategy_factory: Callable,
-        tick_hours: TickSize,
+        tick_size: TickSize,
         reset=False,
         max_cycles: Optional[int]=None,
-        sleep=1.0,
         debug_dump_file: Optional[Path]=None,
-        debug_backtest_date: Optional[datetime.datetime]=None,
         backtest_start: Optional[datetime.datetime]=None,
         backtest_end: Optional[datetime.datetime]=None,
+        tick_offset: datetime.timedelta=datetime.timedelta(minutes=0),
+        execute_first_trade_immediately=True,
     ):
     """The main loop of trade executor."""
 
     if ignore:
         # https://www.python.org/dev/peps/pep-3102/
         raise TypeError("Only keyword arguments accepted")
+
+    if backtest_end or backtest_start:
+        assert backtest_start and backtest_end, "If backtesting both start and end must be given"
 
     timed_task_context_manager = timed_task
 
@@ -77,15 +81,19 @@ def run_main_loop(
     # Debug details from every cycle
     debug_dump_state = {}
 
-    if debug_backtest_date:
-        assert max_cycles == 1, "We can run a backtest for a single date only at the moment"
-
     cycle = 1
 
     if backtest_start:
+        # Walk through backtesting range
         ts = backtest_start
+        logger.info("Strategy is executed in backtesting mode, starting at %s", ts)
     else:
+        # Live trading
         ts = datetime.datetime.utcnow()
+        logger.info("Strategy is executed in live mode, now is %s", ts)
+
+    # The first trade will be execute immediately, despite the time offset or tick
+    assert execute_first_trade_immediately, "No calibration wait at the start supported"
 
     while True:
 
@@ -93,13 +101,6 @@ def run_main_loop(
         # Any submodule of strategy execution can add internal information here for
         # unit testing and manual diagnostics. Any data added must be JSON serializable.
         debug_details = {"cycle": cycle}
-
-        # Reload the trading data
-        if debug_backtest_date:
-            logger.info("Performing backtest debugging")
-            ts = debug_backtest_date
-        else:
-            ts = datetime.datetime.utcnow()
 
         logger.info("Starting strategy executor main loop cycle %d, UTC is %s", cycle, ts)
 
@@ -119,17 +120,34 @@ def run_main_loop(
         if debug_dump_file is not None:
             debug_dump_state[cycle] = debug_details
 
+            # Record and write out the internal debug states after every tick
+            with open(debug_dump_file, "wb") as out:
+                pickle.dump(debug_dump_state, out)
+
         # Check for termination in integration testing
         if max_cycles is not None:
             if cycle >= max_cycles:
+                logger.info("Max test cycles reached")
                 break
 
         # Advance to the next tick
         cycle += 1
 
-        time.sleep(sleep)
+        if backtest_start:
+            # Backtesting
+            next_tick = snap_to_next_tick(ts + datetime.timedelta(seconds=1), tick_size, tick_offset)
 
-    # Record and write out the internal debug states
-    if debug_dump_file is not None:
-        with open(debug_dump_file, "wb") as out:
-            pickle.dump(debug_dump_state, out)
+            if next_tick >= backtest_end:
+                # Backteting has ended
+                logger.info("Terminating backesting. Backtest end %s, current timestamp %s", backtest_end, next_tick)
+                break
+
+            # Add some fuzziness to gacktesting timestamps
+            ts = next_tick + datetime.timedelta(minutes=random.randint(0, 4))
+        else:
+            # Live trading
+            next_tick = snap_to_next_tick(ts + datetime.timedelta(seconds=1), tick_size, tick_offset)
+            wait = next_tick - datetime.datetime.utcnow()
+            logger.info("Sleeping %s until the next tick at %s UTC", wait, next_tick)
+            time.sleep(wait.total_seconds())
+            ts = datetime.datetime.utcnow()

@@ -106,7 +106,8 @@ def run(
     debug_dump_file: Optional[Path] = typer.Option(None, envvar="DEBUG_DUMP_FILE", help="Write Python Pickle dump of all internal debugging states of the strategy run to this file"),
     backtest_start: Optional[datetime.datetime] = typer.Option(None, envvar="BACKTEST_START", help="Start timestamp of backesting"),
     backtest_end: Optional[datetime.datetime] = typer.Option(None, envvar="BACKTEST_END", help="End timestamp of backesting"),
-    tick_hours: TickSize = typer.Option(None, envvar="TICK_HOURS", help="How large tick use to execute the strategy"),
+    tick_size: TickSize = typer.Option(None, envvar="TICK_SIZE", help="How large tick use to execute the strategy"),
+    tick_offset_minutes: int = typer.Option(0, envvar="TICK_OFFSET_MINUTES", help="How many minutes we wait after the tick before executing the tick step"),
     ):
 
     logger = setup_logging()
@@ -139,6 +140,9 @@ def run(
     else:
         client = None
 
+    tick_offset = datetime.timedelta(minutes=tick_offset_minutes)
+
+    logger.info("Loading strategy file %s", strategy_file)
     strategy_factory = import_strategy_file(strategy_file)
 
     try:
@@ -157,7 +161,8 @@ def run(
             debug_dump_file=debug_dump_file,
             backtest_start=backtest_start,
             backtest_end=backtest_end,
-            tick_hours=tick_hours,
+            tick_size=tick_size,
+            tick_offset=tick_offset,
         )
     finally:
         if server:

@@ -125,7 +125,7 @@ class MomentumAlphaModel(AlphaModel):
         start = ts - lookback
         end = ts
 
-        alpha_signals = {}
+        alpha_signals = Counter()
 
         # For each pair, check the the diff between opening and closingn price
         candle_data = candle_universe.iterate_samples_by_pair_range(start, end)
@@ -135,7 +135,7 @@ class MomentumAlphaModel(AlphaModel):
         extra_debug_data = {}
 
         # Iterate over all candles for all pairs in this timestamp (ts)
-        for pair_id, pair_df in candle_data.iterrows():
+        for pair_id, pair_df in candle_data:
             first_candle = pair_df.iloc[0]
             last_candle = pair_df.iloc[-1]
 

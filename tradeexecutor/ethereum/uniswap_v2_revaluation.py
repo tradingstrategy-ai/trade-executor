@@ -14,6 +14,11 @@ class UniswapV2PoolRevaluator:
 
     Only uses direct route - mostly useful for testing, may not give a realistic price in real
     world with multiple order routing options.
+
+    .. warning ::
+
+        This valuation metohd always uses the latest price. It
+        cannot be used for backtesting.
     """
 
     def __init__(self, uniswap: UniswapV2Deployment):
@@ -26,7 +31,8 @@ class UniswapV2PoolRevaluator:
         # Cannot do pricing for zero quantity
         if quantity == 0:
             return timestamp, 0.0
-        total_price = estimate_sell_price_decimals(self.uniswap, pair.base.address, pair.quote.address, quantity)
+        web3 = self.uniswap.web3
+        total_price = estimate_sell_price_decimals(self.uniswap, web3.toChecksumAddress(pair.base.address), web3.toChecksumAddress(pair.quote.address), quantity)
         return timestamp, float(total_price / quantity)
 
 
