@@ -9,7 +9,7 @@ from web3 import EthereumTesterProvider, Web3
 from web3.contract import Contract
 
 from eth_hentai.token import create_token
-from eth_hentai.uniswap_v2 import UniswapV2Deployment, deploy_trading_pair, deploy_uniswap_v2_like
+from eth_hentai.uniswap_v2.deployment import UniswapV2Deployment, deploy_trading_pair, deploy_uniswap_v2_like
 
 from tradingstrategy.exchange import ExchangeUniverse
 from tradingstrategy.pair import PairUniverse, PandasPairUniverse

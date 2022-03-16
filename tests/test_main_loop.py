@@ -21,7 +21,7 @@ from web3.contract import Contract
 from eth_hentai.abi import get_deployed_contract
 from eth_hentai.ganache import fork_network
 from eth_hentai.hotwallet import HotWallet
-from eth_hentai.uniswap_v2 import UniswapV2Deployment, fetch_deployment
+from eth_hentai.uniswap_v2.deployment import UniswapV2Deployment, fetch_deployment
 from eth_hentai.utils import is_localhost_port_listening
 from tradeexecutor.cli.main import app
 from tradeexecutor.state.state import AssetIdentifier

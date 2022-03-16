@@ -14,8 +14,8 @@ from web3.contract import Contract
 
 from eth_hentai.hotwallet import HotWallet
 from eth_hentai.token import create_token
-from eth_hentai.uniswap_v2 import UniswapV2Deployment, deploy_uniswap_v2_like, deploy_trading_pair, FOREVER_DEADLINE
-from eth_hentai.uniswap_v2_fees import estimate_buy_quantity
+from eth_hentai.uniswap_v2.deployment import UniswapV2Deployment, deploy_uniswap_v2_like, deploy_trading_pair, FOREVER_DEADLINE
+from eth_hentai.uniswap_v2.fees import estimate_buy_quantity
 from tradeexecutor.ethereum.execution import prepare_swaps, broadcast, wait_trades_to_complete, resolve_trades, \
     approve_tokens, confirm_approvals, get_current_price, get_held_assets
 from tradeexecutor.ethereum.wallet import sync_reserves, sync_portfolio
