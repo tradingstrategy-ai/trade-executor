@@ -17,6 +17,10 @@ class StateStore(abc.ABC):
     """Backend to manage the trade exeuction persistent state."""
 
     @abc.abstractmethod
+    def is_empty(self) -> bool:
+        """State has not been written yet."""
+
+    @abc.abstractmethod
     def load(self) -> State:
         """Load the state from the storage."""
 
@@ -33,6 +37,9 @@ class JSONFileStore(StateStore):
 
     def __init__(self, path: Path):
         self.path = path
+
+    def is_empty(self) -> bool:
+        return not self.path.exists()
 
     def load(self) -> State:
         with open(self.path, "rt") as inp:

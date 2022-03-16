@@ -115,7 +115,8 @@ class TradingStrategyUniverseModel(UniverseModel):
             candle_end = candle_end.to_pydatetime().replace(tzinfo=None)
 
             if candle_end < max_age:
-                raise DataTooOld(f"Candle data is too old to work with {candle_start} - {candle_end}")
+                diff = max_age - candle_end
+                raise DataTooOld(f"Candle data {candle_start} - {candle_end} is too old to work with, we require threshold {max_age}, diff is {diff}")
 
         if universe.liquidity is not None:
             liquidity_start, liquidity_end = universe.liquidity.get_timestamp_range()

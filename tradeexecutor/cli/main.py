@@ -9,6 +9,9 @@ from typing import Optional
 import pkg_resources
 
 import typer
+
+from tradeexecutor.strategy.description import StrategyExecutionDescription
+from tradeexecutor.strategy.runner import StrategyRunner
 from tradeexecutor.strategy.tick import TickSize
 from web3 import Web3, HTTPProvider
 
@@ -27,6 +30,8 @@ from tradeexecutor.strategy.bootstrap import import_strategy_file
 from tradeexecutor.strategy.dummy import DummyExecutionModel
 from tradeexecutor.strategy.execution_type import TradeExecutionType
 from tradeexecutor.cli.log import setup_logging, setup_discord_logging
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverseModel
+from tradeexecutor.utils.timer import timed_task
 from tradeexecutor.webhook.server import create_webhook_server
 from tradingstrategy.client import Client
 
@@ -83,7 +88,7 @@ def create_web3(url) -> Web3:
 
 # Typer documentation https://typer.tiangolo.com/
 @app.command()
-def run(
+def start(
     name: Optional[str] = typer.Option("Unnamed Trade Executor", envvar="NAME", help="Executor name used in logging and notifications"),
     private_key: Optional[str] = typer.Option(None, envvar="PRIVATE_KEY"),
     strategy_file: Path = typer.Option(..., envvar="STRATEGY_FILE"),
@@ -111,12 +116,14 @@ def run(
     max_data_delay_minutes: int = typer.Option(None, envvar="MAX_DATA_DELAY_MINUTES", help="If our data feed is delayed more than this minutes, abort the execution"),
     discord_webhook_url: Optional[str] = typer.Option(None, envvar="DISCORD_WEBHOOK_URL", help="Discord webhook URL for notifications"),
     ):
+    """Launch Trade Executor instance."""
 
     logger = setup_logging()
-    logger.info("Trade Executor version %s starting", version)
 
     if discord_webhook_url:
         setup_discord_logging(name, discord_webhook_url)
+
+    logger.trade("Trade Executor version %s starting strategy %s", version, name)
 
     execution_model, sync_method, revaluation_method, pricing_model_factory = create_trade_execution_model(
         execution_type,
@@ -176,6 +183,56 @@ def run(
             tick_offset=tick_offset,
             max_data_delay=max_data_delay,
         )
+    except Exception as e:
+        logger.exception(e)
     finally:
         if server:
             server.close()
+
+
+@app.command()
+def check_universe(
+    strategy_file: Path = typer.Option(..., envvar="STRATEGY_FILE"),
+    trading_strategy_api_key: str = typer.Option(None, envvar="TRADING_STRATEGY_API_KEY", help="Trading Strategy API key"),
+    cache_path: Optional[Path] = typer.Option(None, envvar="CACHE_PATH", help="Where to store downloaded datasets"),
+    max_data_delay_minutes: int = typer.Option(None, envvar="MAX_DATA_DELAY_MINUTES", help="If our data feed is delayed more than this minutes, abort the execution"),
+):
+    """Checks that the trading universe is helthy for a given strategy."""
+
+    logger = setup_logging()
+
+    logger.info("Loading strategy file %s", strategy_file)
+    strategy_factory = import_strategy_file(strategy_file)
+
+    assert trading_strategy_api_key, "TRADING_STRATEGY_API_KEY missing"
+    assert max_data_delay_minutes, "MAX_DATA_DELAY_MINUTES missing"
+
+    client = Client.create_live_client(trading_strategy_api_key, cache_path=cache_path)
+
+    max_data_delay = datetime.timedelta(minutes=max_data_delay_minutes)
+
+    run_description: StrategyExecutionDescription = strategy_factory(
+        execution_model=None,
+        timed_task_context_manager=timed_task,
+        sync_method=None,
+        revaluation_method=None,
+        pricing_model_factory=None,
+        approval_model=None,
+        client=client,
+    )
+
+    # Deconstruct strategy input
+    universe_model: TradingStrategyUniverseModel = run_description.universe_model
+
+    ts = datetime.datetime.utcnow()
+    logger.info("Performing universe data check for timestamp %s", ts)
+    universe = universe_model.construct_universe(ts, live=True)
+
+    # universe_model.log_universe(universe.universe)
+
+    universe_model.check_data_age(ts, universe, max_data_delay)
+
+    logger.info("All ok!")
+
+
+

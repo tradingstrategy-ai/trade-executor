@@ -67,7 +67,10 @@ def run_main_loop(
     if reset:
         state = store.create()
     else:
-        state = store.load()
+        if store.is_empty():
+            state = store.create()
+        else:
+            state = store.load()
 
     execution_model.initialize()
     execution_model.preflight_check()
