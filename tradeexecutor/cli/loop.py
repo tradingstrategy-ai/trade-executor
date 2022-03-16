@@ -84,7 +84,7 @@ def run_main_loop(
 
     # Deconstruct strategy input
     runner: StrategyRunner = run_description.runner
-    universe_constructor = run_description.universe_model
+    universe_model = run_description.universe_model
 
     # Debug details from every cycle
     debug_dump_state = {}
@@ -118,7 +118,11 @@ def run_main_loop(
         logger.trade("Starting strategy cycle %d, UTC is %s", cycle, ts)
 
         # Refresh the trading universe for this cycle
-        universe = universe_constructor.construct_universe(ts, live)
+        universe = universe_model.construct_universe(ts, live)
+
+        # Check if our data is stagnated and we cannot execute the strategy
+        if max_data_delay is not None:
+            universe_model.check_data_age(ts, universe, max_data_delay)
 
         # Run cycle checks
         runner.pretick_check(ts, universe)

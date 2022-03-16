@@ -299,8 +299,8 @@ class OurUniverseModel(TradingStrategyUniverseModel):
 
             return TradingStrategyUniverse(universe=universe, reserve_assets=reserve_assets)
 
-    def construct_universe(self, execution_model: ExecutionModel) -> TradingStrategyUniverse:
-        dataset = self.load_data(TimeBucket.d1)
+    def construct_universe(self, execution_model: ExecutionModel, live) -> TradingStrategyUniverse:
+        dataset = self.load_data(TimeBucket.d1, live)
         universe = self.filter_universe(dataset)
         self.log_universe(universe.universe)
         return universe
