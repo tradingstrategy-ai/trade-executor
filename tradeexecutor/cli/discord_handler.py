@@ -15,11 +15,11 @@ from discord_webhook import DiscordEmbed, DiscordWebhook
 
 DEFAULT_COLOURS = {
     None: 2040357,
-    logging.CRITICAL: 14362664,
-    logging.ERROR: 14362664,
-    logging.WARNING: 16497928,
-    logging.INFO: 2196944,
-    logging.DEBUG: 2196944,
+    logging.CRITICAL: 14362664,  # Red
+    logging.ERROR: 14362664,  # Red
+    logging.WARNING: 16497928,  # Yellow
+    logging.INFO: 2196944,  # Blue
+    logging.DEBUG: 8947848,  # Gray
 }
 
 
@@ -58,6 +58,9 @@ class DiscordHandler(logging.Handler):
         """Figure out whether we want to use code block formatting in Discord"""
         return "\n" in msg
 
+    def clip_content(self, content: str) -> str:
+        return content[0:512]
+
     def emit(self, record: logging.LogRecord):
 
         if self.reentry_barrier:
@@ -83,8 +86,14 @@ class DiscordHandler(logging.Handler):
 
                 if self.should_format_as_code_block(record, msg):
                     first, remainder = msg.split("\n", maxsplit=1)
-                    content = f"{emoji} {first}\n```\n{remainder}\n```"
-                    discord.content = content
+                    embed_content = f"{emoji} {first}"
+                    content = f"```\n{remainder}\n```"
+
+                    discord.content = self.clip_content(content)
+
+                    embed = DiscordEmbed(description=embed_content, color=colour)
+                    embed.set_author(name=self.service_name)
+                    discord.add_embed(embed)
                 else:
                     payload = emoji + " " + msg
                     embed = DiscordEmbed(description=payload, color=colour)
