@@ -26,7 +26,7 @@ from tradeexecutor.strategy.approval import ApprovalType, UncheckedApprovalModel
 from tradeexecutor.strategy.bootstrap import import_strategy_file
 from tradeexecutor.strategy.dummy import DummyExecutionModel
 from tradeexecutor.strategy.execution_type import TradeExecutionType
-from tradeexecutor.cli.log import setup_logging
+from tradeexecutor.cli.log import setup_logging, setup_discord_logging
 from tradeexecutor.webhook.server import create_webhook_server
 from tradingstrategy.client import Client
 
@@ -84,7 +84,7 @@ def create_web3(url) -> Web3:
 # Typer documentation https://typer.tiangolo.com/
 @app.command()
 def run(
-    name: Optional[str] = typer.Option(None, envvar="NAME", help="Executor name used in logging and notifications"),
+    name: Optional[str] = typer.Option("Unnamed Trade Executor", envvar="NAME", help="Executor name used in logging and notifications"),
     private_key: Optional[str] = typer.Option(None, envvar="PRIVATE_KEY"),
     strategy_file: Path = typer.Option(..., envvar="STRATEGY_FILE"),
     http_enabled: bool = typer.Option(True, envvar="HTTP_ENABLED", help="Enable Webhook server"),
@@ -109,13 +109,14 @@ def run(
     tick_size: TickSize = typer.Option(None, envvar="TICK_SIZE", help="How large tick use to execute the strategy"),
     tick_offset_minutes: int = typer.Option(0, envvar="TICK_OFFSET_MINUTES", help="How many minutes we wait after the tick before executing the tick step"),
     max_data_delay_minutes: int = typer.Option(None, envvar="MAX_DATA_DELAY_MINUTES", help="If our data feed is delayed more than this minutes, abort the execution"),
+    discord_webhook_url: Optional[str] = typer.Option(None, envvar="DISCORD_WEBHOOK_URL", help="Discord webhook URL for notifications"),
     ):
 
     logger = setup_logging()
     logger.info("Trade Executor version %s starting", version)
 
-    if not name:
-        name = "Unnamed Executor"
+    if discord_webhook_url:
+        setup_discord_logging(name, discord_webhook_url)
 
     execution_model, sync_method, revaluation_method, pricing_model_factory = create_trade_execution_model(
         execution_type,

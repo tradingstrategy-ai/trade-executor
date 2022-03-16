@@ -8,6 +8,7 @@ from logging import Logger
 import coloredlogs
 from _pytest.fixtures import SubRequest
 
+from tradeexecutor.cli.discord_handler import DiscordHandler
 
 
 def setup_logging(log_level=logging.INFO) -> Logger:
@@ -88,7 +89,7 @@ def _setup_custom_log_levels():
     logging.Logger.trade = _trade
 
 
-def setup_discord_logging(name: str, url: str):
+def setup_discord_logging(name: str, webhook_url: str):
     """Setup Discord logger.
 
     Any log with level `logging.TRADE` is echoed to Discord channel given in the URL.
@@ -98,3 +99,8 @@ def setup_discord_logging(name: str, url: str):
     :param url:
     :return:
     """
+    discord_format = logging.Formatter("%(message)s")
+    discord_handler = DiscordHandler(name, webhook_url)
+    discord_handler.setFormatter(discord_format)
+    discord_handler.setLevel(logging.TRADE)
+    logging.getLogger().addHandler(discord_handler)
