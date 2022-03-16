@@ -268,18 +268,18 @@ def test_pancake_4h_candles(
         assert cycle_2["cycle"] == 2
         assert cycle_2["timestamp"].replace(minute=0) == datetime.datetime(2021, 12, 7, 8, 0)
         assert len(cycle_2["approved_trades"]) == 8
-        assert len(cycle_2["positions_at_start_of_construction"]) == 8
+        assert len(cycle_2["positions_at_start_of_construction"]) == 4
 
-        # 4 buys, keep buying existing ones?
+        # Does a rebalance of 4x sell + 1 buy
         logger.info("Cycle 3 trades %s", cycle_3["rebalance_trades"])
         assert cycle_3["cycle"] == 3
         assert len(cycle_3["positions_at_start_of_construction"]) == 4
-        assert len(cycle_3["approved_trades"]) == 4
+        assert len(cycle_3["approved_trades"]) == 5
         assert cycle_3["timestamp"].replace(minute=0) == datetime.datetime(2021, 12, 7, 16, 0)
 
-        # 4 buys + 4 sells
+        # 4 buys + 1 sells
         logger.info("Cycle 4 trades %s", cycle_4["rebalance_trades"])
         assert cycle_4["cycle"] == 4
         assert len(cycle_4["positions_at_start_of_construction"]) == 4
-        assert len(cycle_4["approved_trades"]) == 8
+        assert len(cycle_4["approved_trades"]) == 5
         assert cycle_4["timestamp"].replace(minute=0) == datetime.datetime(2021, 12, 8, 0, 0)

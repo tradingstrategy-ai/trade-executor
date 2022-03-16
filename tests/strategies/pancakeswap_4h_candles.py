@@ -3,7 +3,7 @@
 Constructs the trading universe from TradingStrategy.ai client and implements a real momentum strategy.
 The universe considers only BUSD quoted PancakeSwap v2 pairs.
 """
-
+import datetime
 import logging
 from collections import Counter, defaultdict
 from contextlib import AbstractContextManager
@@ -73,7 +73,10 @@ def fix_qstrader_date(ts: pd.Timestamp) -> pd.Timestamp:
 
 
 class MomentumAlphaModel(AlphaModel):
-    """An alpha model that ranks pairs by the daily upwords price change %."""
+    """An alpha model that ranks pairs by the daily upwords price change %.
+
+    We expose a lot of internal in debug data to make this code testable.
+    """
 
     def is_funny_price(self, usd_unit_price: float) -> bool:
         """Avoid taking positions in tokens with too funny prices.
@@ -116,14 +119,16 @@ class MomentumAlphaModel(AlphaModel):
         candle_universe = universe.candles
         liquidity_universe = universe.liquidity
 
-        logger.info("Entering the alpha model, we know %d pairs", pair_universe.get_count())
-
-        ts = fix_qstrader_date(ts)
+        logger.info("Entering the alpha model at timestamp %s, we know %d pairs", ts, pair_universe.get_count())
 
         # The time range end is the current candle
-        # The time range start is few hours back
-        start = ts - lookback
+        # The time range start is 2 * 4 hours back, and turn the range
+        # exclusive instead of inclusive
+        start = ts - lookback + datetime.timedelta(seconds=1)
         end = ts
+
+        debug_details["candle_range_start"] = start
+        debug_details["candle_range_end"] = end
 
         alpha_signals = Counter()
 
@@ -166,23 +171,24 @@ class MomentumAlphaModel(AlphaModel):
                     available_liquidity_for_pair = 0
 
             if available_liquidity_for_pair >= liquidity_threshold:
-                alpha_signals[pair_id] = momentum
 
                 # Do candle check only after we know the pair is "good" liquidity wise
                 # and should have candles
                 candle_count = len(pair_df)
-                if candle_count != 2:
+                if candle_count == 2:
+                    alpha_signals[pair_id] = momentum
+                else:
+                    # Pair two fresh and hasn't 2 candles yet?
                     logger.error("Got problem with candles %s %s-%s", pair, start, end)
                     # https://stackoverflow.com/a/55770434/315168
                     logger.error('\t'+ pair_df.to_string().replace('\n', '\n\t'))
-                    assert candle_count == 2
-
-                extra_debug_data[pair_id]["candle_count"] = candle_count
+                    alpha_signals[pair_id] = 0
 
             else:
                 # No alpha for illiquid pairs
                 # logger.warning("Liquidity not enough. Pair %s, liquidity %s, needed %s", pair, available_liquidity_for_pair, liquidity_threshold)
                 alpha_signals[pair_id] = 0
+                candle_count = None
 
             extra_debug_data[pair_id] = {
                 "pair": pair,
@@ -191,6 +197,7 @@ class MomentumAlphaModel(AlphaModel):
                 "momentum": momentum,
                 "liquidity": available_liquidity_for_pair,
                 "liquidity_threshold": liquidity_threshold,
+                "candle_count": candle_count,
             }
 
         # Pick top 10 momentum asset and filter out DEX duplicates

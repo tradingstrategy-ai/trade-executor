@@ -86,3 +86,15 @@ def _setup_custom_log_levels():
             logger._log(logging.TRADE, message, args, **kwargs)
 
     logging.Logger.trade = _trade
+
+
+def setup_discord_logging(name: str, url: str):
+    """Setup Discord logger.
+
+    Any log with level `logging.TRADE` is echoed to Discord channel given in the URL.
+
+    https://pypi.org/project/discord-logger/
+
+    :param url:
+    :return:
+    """
