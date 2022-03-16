@@ -108,6 +108,7 @@ def run(
     backtest_end: Optional[datetime.datetime] = typer.Option(None, envvar="BACKTEST_END", help="End timestamp of backesting"),
     tick_size: TickSize = typer.Option(None, envvar="TICK_SIZE", help="How large tick use to execute the strategy"),
     tick_offset_minutes: int = typer.Option(0, envvar="TICK_OFFSET_MINUTES", help="How many minutes we wait after the tick before executing the tick step"),
+    max_data_delay_minutes: int = typer.Option(None, envvar="MAX_DATA_DELAY_MINUTES", help="If our data feed is delayed more than this minutes, abort the execution"),
     ):
 
     logger = setup_logging()
@@ -145,6 +146,11 @@ def run(
 
     tick_offset = datetime.timedelta(minutes=tick_offset_minutes)
 
+    if max_data_delay_minutes:
+        max_data_delay = datetime.timedelta(minutes=max_data_delay_minutes)
+    else:
+        max_data_delay = None
+
     logger.info("Loading strategy file %s", strategy_file)
     strategy_factory = import_strategy_file(strategy_file)
 
@@ -167,6 +173,7 @@ def run(
             backtest_end=backtest_end,
             tick_size=tick_size,
             tick_offset=tick_offset,
+            max_data_delay=max_data_delay,
         )
     finally:
         if server:

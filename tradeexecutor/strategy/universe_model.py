@@ -7,6 +7,10 @@ from typing import List
 from tradeexecutor.state.state import AssetIdentifier
 
 
+class DataTooOld(Exception):
+    """We try to execute live trades, but our data is too old for us to work with."""
+
+
 @dataclass
 class TradeExecutorTradingUniverse:
     """Represents whatever data a strategy needs to have in order to make trading decisions.
@@ -23,6 +27,7 @@ class TradeExecutorTradingUniverse:
     reserve_assets: List[AssetIdentifier]
 
 
+
 class UniverseModel(abc.ABC):
     """Create and manage trade universe.
 
@@ -31,11 +36,22 @@ class UniverseModel(abc.ABC):
     """
 
     @abc.abstractmethod
-    def construct_universe(self, ts: datetime.datetime) -> TradeExecutorTradingUniverse:
+    def construct_universe(self, ts: datetime.datetime, live: bool) -> TradeExecutorTradingUniverse:
         """On each strategy tick, refresh/recreate the trading universe for the strategy.
 
         This is called in mainloop before the strategy tick. It needs to download
         any data updates since the last tick.
+
+        :param live:
+            The strategy is executed in live mode. Any cached data should be ignored.
+        """
+
+    def check_data_age(self, ts: datetime.datetime, universe: TradeExecutorTradingUniverse, best_before_duration: datetime.timedelta):
+        """Check if our data is up-to-date and we do not have issues with feeds.
+
+        Ensure we do not try to execute live trades with stale data.
+
+        :raise DataTooOld: in the case data is too old to execute.
         """
 
 
@@ -51,7 +67,7 @@ class StaticUniverseModel(UniverseModel):
         assert isinstance(universe, TradeExecutorTradingUniverse)
         self.universe = universe
 
-    def construct_universe(self, ts: datetime.datetime) -> TradeExecutorTradingUniverse:
+    def construct_universe(self, ts: datetime.datetime, live: bool) -> TradeExecutorTradingUniverse:
         """Always return the same universe copy - there is no refresh."""
         return self.universe
 

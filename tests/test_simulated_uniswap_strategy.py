@@ -1,4 +1,6 @@
-"""Sets up a virtual Uniswap v2 world. Make some random trades against Ethereum Tester to see our Ethereum wallet management logic works."""
+"""Sets up a virtual Uniswap v2 world with mocked tokens and pairs.
+
+Make some random trades against Ethereum Tester to see our Ethereum wallet management logic works."""
 
 import logging
 import os

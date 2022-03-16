@@ -1,14 +1,21 @@
 import contextlib
+import datetime
 import textwrap
+from abc import abstractmethod
 from dataclasses import dataclass
 import logging
+from typing import List
+
 import pandas as pd
 
 from tradeexecutor.state.state import TradingPairIdentifier, AssetIdentifier
-from tradeexecutor.strategy.universe_model import TradeExecutorTradingUniverse, UniverseModel
+from tradeexecutor.strategy.universe_model import TradeExecutorTradingUniverse, UniverseModel, DataTooOld
+from tradingstrategy.candle import GroupedCandleUniverse
+from tradingstrategy.chain import ChainId
 from tradingstrategy.client import Client
 from tradingstrategy.exchange import ExchangeUniverse
-from tradingstrategy.pair import DEXPair
+from tradingstrategy.liquidity import GroupedLiquidityUniverse
+from tradingstrategy.pair import DEXPair, PandasPairUniverse
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
 
@@ -61,17 +68,24 @@ class TradingStrategyUniverseModel(UniverseModel):
                 """))
         return universe
 
-    def load_data(self, time_frame: TimeBucket) -> Dataset:
+    def load_data(self, time_frame: TimeBucket, live: bool) -> Dataset:
         """Loads the server-side data using the client.
 
         :param client: Client instance. Note that this cannot be stable across ticks, as e.g. API keys can change. Client is recreated for every tick.
-
+        :param live: If True disable all caches
         :param lookback: how long to the past load data e.g. 1 year, 1 month. **Not implemented yet**.
-
         :return: None if not dataset for the strategy required
         """
         client = self.client
         with self.timed_task_context_manager("load_data", time_frame=time_frame.value):
+
+            if live:
+                # This will force client to redownload the data
+                logger.info("Purging trading data caches")
+                client.clear_caches()
+            else:
+                logger.info("Using cached data if available")
+
             exchanges = client.fetch_exchange_universe()
             pairs = client.fetch_pair_universe().to_pandas()
             candles = client.fetch_all_candles(time_frame).to_pandas()
@@ -83,6 +97,61 @@ class TradingStrategyUniverseModel(UniverseModel):
                 candles=candles,
                 liquidity=liquidity,
             )
+
+    def check_data_age(self, ts: datetime.datetime, universe: TradingStrategyUniverse, best_before_duration: datetime.timedelta):
+        """Check if our data is up-to-date and we do not have issues with feeds.
+
+        Ensure we do not try to execute live trades with stale data.
+
+        :raise DataTooOld: in the case data is too old to execute.
+        """
+        max_age = ts - best_before_duration
+        universe = universe.universe
+
+        if universe.candles is not None:
+            # Convert pandas.Timestamp to executor internal datetime format
+            candle_start, candle_end = universe.candles.get_timestamp_range()
+            candle_start = candle_start.to_pydatetime().replace(tzinfo=None)
+            candle_end = candle_end.to_pydatetime().replace(tzinfo=None)
+
+            if candle_end < max_age:
+                raise DataTooOld(f"Candle data is too old to work with {candle_start} - {candle_end}")
+
+        if universe.liquidity is not None:
+            liquidity_start, liquidity_end = universe.liquidity.get_timestamp_range()
+            liquidity_start = liquidity_start.to_pydatetime().replace(tzinfo=None)
+            liquidity_end = liquidity_end.to_pydatetime().replace(tzinfo=None)
+
+            if liquidity_end < max_age:
+                raise DataTooOld(f"Liquidity data is too old to work with {liquidity_start} - {liquidity_end}")
+
+    @staticmethod
+    def create_from_dataset(dataset: Dataset, chains: List[ChainId], reserve_assets: List[AssetIdentifier], pairs_index=True):
+        """Create an trading universe from dataset with zero filtering for the data."""
+
+        exchanges = list(dataset.exchanges.exchanges.values())
+        logger.debug("Preparing pairs")
+        pairs = PandasPairUniverse(dataset.pairs, build_index=pairs_index)
+        logger.debug("Preparing candles")
+        candle_universe = GroupedCandleUniverse(dataset.candles)
+        logger.debug("Preparing liquidity")
+        liquidity_universe = GroupedLiquidityUniverse(dataset.liquidity)
+
+        universe = Universe(
+            time_frame=dataset.time_frame,
+            chains=chains,
+            pairs=pairs,
+            exchanges=exchanges,
+            candles=candle_universe,
+            liquidity=liquidity_universe,
+        )
+
+        logger.debug("Universe created")
+        return TradingStrategyUniverse(universe=universe, reserve_assets=reserve_assets)
+
+    @abstractmethod
+    def construct_universe(self, ts: datetime.datetime, live: bool) -> TradingStrategyUniverse:
+        pass
 
 
 def translate_trading_pair(pair: DEXPair) -> TradingPairIdentifier:

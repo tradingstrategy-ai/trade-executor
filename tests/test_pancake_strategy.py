@@ -18,7 +18,7 @@ def test_pancake_simple(strategy_folder, persistent_test_client):
     clock_now = datetime.datetime(2022, 1, 1, tzinfo=datetime.timezone.utc)
     client = persistent_test_client
     strategy_path = Path(os.path.join(strategy_folder, "pancakeswap.py"))
-    dataset, universe, runner = bootstrap_strategy(client, timed_task, strategy_path, clock_now, max_data_age=datetime.timedelta(days=30))
+    dataset, universe, runner = bootstrap_strategy(client, timed_task, strategy_path, clock_now)
 
     assert isinstance(dataset, Dataset)
     assert isinstance(universe, Universe)

@@ -39,6 +39,7 @@ def run_main_loop(
         client: Optional[Client],
         strategy_factory: Callable,
         tick_size: TickSize,
+        max_data_delay: Optional[datetime.timedelta]=None,
         reset=False,
         max_cycles: Optional[int]=None,
         debug_dump_file: Optional[Path]=None,
@@ -56,8 +57,10 @@ def run_main_loop(
     if backtest_end or backtest_start:
         assert backtest_start and backtest_end, f"If backtesting both start and end must be given, we have {backtest_start} - {backtest_end}"
         mode = ExecutionMode.backtest
+        live = False
     else:
         mode = ExecutionMode.live_trade
+        live = True
 
     timed_task_context_manager = timed_task
 
@@ -115,7 +118,7 @@ def run_main_loop(
         logger.trade("Starting strategy cycle %d, UTC is %s", cycle, ts)
 
         # Refresh the trading universe for this cycle
-        universe = universe_constructor.construct_universe(ts)
+        universe = universe_constructor.construct_universe(ts, live)
 
         # Run cycle checks
         runner.pretick_check(ts, universe)
