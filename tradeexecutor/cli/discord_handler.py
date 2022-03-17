@@ -58,10 +58,15 @@ class DiscordHandler(logging.Handler):
         """Figure out whether we want to use code block formatting in Discord"""
         return "\n" in msg
 
-    def clip_content(self, content: str) -> str:
-        return content[0:512]
+    def clip_content(self, content: str, max_len=1024) -> str:
+        """Make sure the text fits to a Discord message."""
+        if len(content) > max_len - 5:
+            return content[0:max_len] + "..."
+        else:
+            return content
 
     def emit(self, record: logging.LogRecord):
+        """Send a log entry to Discord."""
 
         if self.reentry_barrier:
             # Don't let Discord and request internals to cause logging
@@ -87,9 +92,10 @@ class DiscordHandler(logging.Handler):
                 if self.should_format_as_code_block(record, msg):
                     first, remainder = msg.split("\n", maxsplit=1)
                     embed_content = f"{emoji} {first}"
-                    content = f"```\n{remainder}\n```"
+                    clipped = self.clip_content(remainder)
+                    content = f"```\n{clipped}\n```"
 
-                    discord.content = self.clip_content(content)
+                    discord.content = content
 
                     embed = DiscordEmbed(description=embed_content, color=colour)
                     embed.set_author(name=self.service_name)
