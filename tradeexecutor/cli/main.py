@@ -10,8 +10,9 @@ import pkg_resources
 
 import typer
 
+from eth_hentai.balances import fetch_erc20_balances_by_token_list
+from eth_hentai.token import fetch_erc20_details
 from tradeexecutor.strategy.description import StrategyExecutionDescription
-from tradeexecutor.strategy.runner import StrategyRunner
 from tradeexecutor.strategy.tick import TickSize
 from web3 import Web3, HTTPProvider
 
@@ -22,7 +23,7 @@ from tradeexecutor.cli.loop import run_main_loop
 from tradeexecutor.ethereum.hot_wallet_sync import EthereumHotWalletReserveSyncer
 
 from tradeexecutor.ethereum.uniswap_v2_execution import UniswapV2ExecutionModel
-from tradeexecutor.ethereum.uniswap_v2_live_pricing import UniswapV2LivePricing, uniswap_v2_live_pricing_factory
+from tradeexecutor.ethereum.uniswap_v2_live_pricing import uniswap_v2_live_pricing_factory
 from tradeexecutor.ethereum.uniswap_v2_revaluation import UniswapV2PoolRevaluator
 from tradeexecutor.state.store import JSONFileStore, StateStore
 from tradeexecutor.strategy.approval import ApprovalType, UncheckedApprovalModel, ApprovalModel
@@ -90,14 +91,14 @@ def create_web3(url) -> Web3:
 @app.command()
 def start(
     name: Optional[str] = typer.Option("Unnamed Trade Executor", envvar="NAME", help="Executor name used in logging and notifications"),
-    private_key: Optional[str] = typer.Option(None, envvar="PRIVATE_KEY"),
-    strategy_file: Path = typer.Option(..., envvar="STRATEGY_FILE"),
+    private_key: Optional[str] = typer.Option(None, envvar="PRIVATE_KEY", help="Ethereum private key to be used as a hot wallet/broadcast wallet"),
+    strategy_file: Path = typer.Option(..., envvar="STRATEGY_FILE", help="Python strategy file to run"),
     http_enabled: bool = typer.Option(True, envvar="HTTP_ENABLED", help="Enable Webhook server"),
     http_port: int = typer.Option(19000, envvar="HTTP_PORT"),
     http_host: str = typer.Option("0.0.0.0", envvar="HTTP_HOST"),
     http_username: str = typer.Option("webhook", envvar="HTTP_USERNAME"),
     http_password: str = typer.Option(None, envvar="HTTP_PASSWORD"),
-    json_rpc: str = typer.Option(None, envvar="JSON_RPC"),
+    json_rpc: str = typer.Option(None, envvar="JSON_RPC", help="Ethereum JSON-RPC node URL we connect to for execution"),
     execution_type: TradeExecutionType = typer.Option(..., envvar="EXECUTION_TYPE"),
     approval_type: ApprovalType = typer.Option(..., envvar="APPROVAL_TYPE"),
     uniswap_v2_factory_address: str = typer.Option(None, envvar="UNISWAP_V2_FACTORY_ADDRESS"),
@@ -115,6 +116,7 @@ def start(
     tick_offset_minutes: int = typer.Option(0, envvar="TICK_OFFSET_MINUTES", help="How many minutes we wait after the tick before executing the tick step"),
     max_data_delay_minutes: int = typer.Option(None, envvar="MAX_DATA_DELAY_MINUTES", help="If our data feed is delayed more than this minutes, abort the execution"),
     discord_webhook_url: Optional[str] = typer.Option(None, envvar="DISCORD_WEBHOOK_URL", help="Discord webhook URL for notifications"),
+    trade_immediately: bool = typer.Option(False, "--trade-immediately", envvar="TRADE_IMMEDIATELY", help="Perform the first rebalance immediately, do not wait for the next trading universe refresh"),
     ):
     """Launch Trade Executor instance."""
 
@@ -182,6 +184,7 @@ def start(
             tick_size=tick_size,
             tick_offset=tick_offset,
             max_data_delay=max_data_delay,
+            trade_immediately=trade_immediately,
         )
     except Exception as e:
         logger.exception(e)
@@ -228,11 +231,55 @@ def check_universe(
     logger.info("Performing universe data check for timestamp %s", ts)
     universe = universe_model.construct_universe(ts, live=True)
 
-    # universe_model.log_universe(universe.universe)
-
     universe_model.check_data_age(ts, universe, max_data_delay)
 
     logger.info("All ok!")
+
+
+@app.command()
+def check_wallet(
+    strategy_file: Path = typer.Option(..., envvar="STRATEGY_FILE"),
+    private_key: str = typer.Option(None, envvar="PRIVATE_KEY"),
+    json_rpc: str = typer.Option(None, envvar="JSON_RPC", help="Ethereum JSON-RPC node URL we connect to for execution"),
+    trading_strategy_api_key: str = typer.Option(None, envvar="TRADING_STRATEGY_API_KEY", help="Trading Strategy API key"),
+    cache_path: Optional[Path] = typer.Option(None, envvar="CACHE_PATH", help="Where to store downloaded datasets"),
+):
+    """Prints out the token balances of the hot wallet.
+
+    TODO: Add balances also for non-reserve assets. This would need to mapping of the trading universe.
+    """
+
+    logger = setup_logging()
+
+    logger.info("Loading strategy file %s", strategy_file)
+    strategy_factory = import_strategy_file(strategy_file)
+    client = Client.create_live_client(trading_strategy_api_key, cache_path=cache_path)
+
+    run_description: StrategyExecutionDescription = strategy_factory(
+        execution_model=None,
+        timed_task_context_manager=timed_task,
+        sync_method=None,
+        revaluation_method=None,
+        pricing_model_factory=None,
+        approval_model=None,
+        client=client,
+    )
+
+    hot_wallet = HotWallet.from_private_key(private_key)
+
+    # Deconstruct strategy input
+    universe_model: TradingStrategyUniverseModel = run_description.universe_model
+
+    ts = datetime.datetime.utcnow()
+    universe = universe_model.construct_universe(ts, live=False)
+    reserve_assets = universe.reserve_assets
+    web3 = create_web3(json_rpc)
+    tokens = [web3.toChecksumAddress(a.address) for a in reserve_assets]
+    balances = fetch_erc20_balances_by_token_list(web3, hot_wallet.address, tokens)
+    logger.info("Balances of %s", hot_wallet.address)
+    for address, balance in balances.items():
+        details = fetch_erc20_details(web3, address)
+        logger.info("%s: %s %s", details.name, details.convert_to_decimals(balance), details.symbol)
 
 
 

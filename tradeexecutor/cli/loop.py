@@ -1,4 +1,4 @@
-"""Main loop for trade executor-."""
+"""Trade executor main loop."""
 
 import logging
 import datetime
@@ -46,7 +46,7 @@ def run_main_loop(
         backtest_start: Optional[datetime.datetime]=None,
         backtest_end: Optional[datetime.datetime]=None,
         tick_offset: datetime.timedelta=datetime.timedelta(minutes=0),
-        execute_first_trade_immediately=True,
+        trade_immediately=False,
     ):
     """The main loop of trade executor."""
 
@@ -103,10 +103,17 @@ def run_main_loop(
         ts = datetime.datetime.utcnow()
         logger.info("Strategy is executed in live mode, now is %s", ts)
 
-    # The first trade will be execute immediately, despite the time offset or tick
-    assert execute_first_trade_immediately, "No calibration wait at the start supported"
+    logger.trade("Starting trade execution loop for %s", name)
 
-    logger.trade("Starting executor %s", name)
+    # The first trade will be execute immediately, despite the time offset or tick
+    if trade_immediately:
+        ts = datetime.datetime.now()
+    else:
+        next_tick = snap_to_next_tick(datetime.datetime.now() + datetime.timedelta(seconds=1), tick_size, tick_offset)
+        wait = next_tick - datetime.datetime.utcnow()
+        logger.info("Sleeping %s until the first tick at %s UTC", wait, next_tick)
+        time.sleep(wait.total_seconds())
+        ts = datetime.datetime.utcnow()
 
     while True:
 

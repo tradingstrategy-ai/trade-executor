@@ -51,6 +51,8 @@ export APPROVAL_TYPE="unchecked"
 export CACHE_PATH="${PWD}/.cache/${EXECUTOR_ID}"
 export TICK_OFFSET_MINUTES="10"
 export TICK_SIZE="8h"
+# 12 hours
+export MAX_DATA_DELAY_MINUTES=720
 
 # https://stackoverflow.com/a/1537695/315168
 poetry run trade-executor "$@"

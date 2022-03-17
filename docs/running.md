@@ -59,8 +59,6 @@ Check that the trading universe downloads correctly:
 bootstraps/pancake_8h_momentum.sh check-universe --max-data-delay-minutes=1440   
 ```
 
-Then check your wallet balance looks correct:
-
 ```
 Universe constructed.                    
 
@@ -73,5 +71,34 @@ The size of our trading universe is
 - 3,730 pairs
 - 1,230,381 candles
 - 827,067 liquidity samples       
+```
+
+
+Then check your wallet balance looks correct:
+
+```shell
+bootstraps/pancake_8h_momentum.sh check-wallet
+```
+
+```
+Balances of 0x4154fd0058a55dfDBBAEB7C340d8d42b21614Ed2
+BUSD Token: 200 BUSD
+```
+
+# First run
+
+Do the initial run. This run will try to make a trade immediately, assuming `MAX_DATA_DELAY_MINUTES` allows.
+The first trade might not make sense, but you will that the algorithm is up'n'running.
+
+```shell
+bootstraps/pancake_8h_momentum.sh start --trade-immediately
+```
+
+# Subsequent runs
+
+Start the executor with:
+
+``shell
+bootstraps/pancake_8h_momentum.sh start 
 ```
 
