@@ -1,6 +1,18 @@
 #!/bin/bash
 #
-# Pancake 8h momentum trading launch script
+# Pancake 8h momentum trading launch script.
+#
+# This script combines a strategy specific trade executor environt variables
+# with secret environment variables before running the trade-executor command line entry point.
+#
+# First source `~/secrets.env` and `~/$EXECUTOR_ID.secrets.env` files to set up the enviroment.
+#
+# source ~/$EXECUTOR_ID.secrets.env
+# source ~/secrets.env
+#
+# Then run the checks:
+#
+# bootstraps/pancake_8h_momentum.sh check-universe --max-data-delay-minutes=1440
 #
 
 set -e
@@ -40,4 +52,5 @@ export CACHE_PATH="${PWD}/.cache/${EXECUTOR_ID}"
 export TICK_OFFSET_MINUTES="10"
 export TICK_SIZE="8h"
 
-poetry run trade-executor start
+# https://stackoverflow.com/a/1537695/315168
+poetry run trade-executor "$@"

@@ -53,12 +53,19 @@ class TradingStrategyUniverseModel(UniverseModel):
     def log_universe(self, universe: Universe):
         """Log the state of the current universe.]"""
         data_start, data_end = universe.candles.get_timestamp_range()
+
+        if universe.liquidity:
+            liquidity_start, liquidity_end = universe.liquidity.get_timestamp_range()
+        else:
+            liquidity_start = liquidity_end = None
+
         logger.info(textwrap.dedent(f"""
                 Universe constructed.                    
                 
                 Time periods
                 - Time frame {universe.time_frame.value}
-                - Candle data: {data_start} - {data_end}
+                - Candle data range: {data_start} - {data_end}
+                - Liquidity data range: {liquidity_start} - {liquidity_end}
                 
                 The size of our trading universe is
                 - {len(universe.exchanges):,} exchanges
