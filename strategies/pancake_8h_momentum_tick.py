@@ -308,7 +308,7 @@ def strategy_factory(
 
         # 57 is the BSC mainnet
         # 1337 is Ganache
-        assert execution_model.chain_id in (57, 1337), f"This strategy is hardcoded to ganache-cli test chain, got chain {execution_model.chain_id}"
+        assert execution_model.chain_id in (56, 1337), f"This strategy is hardcoded to BNB chain/Ganache test chain, got chain {execution_model.chain_id}"
 
     universe_model = OurUniverseModel(client, timed_task_context_manager)
 
