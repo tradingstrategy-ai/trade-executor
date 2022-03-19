@@ -58,7 +58,8 @@ max_assets_per_portfolio = 4
 
 # How many % of all value we hold in cash all the time,
 # so that we can sustain hits
-cash_buffer = 0.50
+# We hold 90% in cash.
+cash_buffer = 0.9
 
 # Use daily candles to run the algorithm
 candle_time_frame = TimeBucket.d1

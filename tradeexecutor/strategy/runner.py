@@ -4,6 +4,7 @@ import abc
 import datetime
 from contextlib import AbstractContextManager
 import logging
+from io import StringIO
 
 from typing import List
 
@@ -14,8 +15,8 @@ from tradeexecutor.state.sync import SyncMethod
 from tradeexecutor.strategy.pricing_model import PricingModelFactory
 from tradeexecutor.strategy.universe_model import TradeExecutorTradingUniverse
 
-from tradeexecutor.state.state import State, TradeExecution
-
+from tradeexecutor.state.state import State, TradeExecution, ReservePosition
+from tradingstrategy.universe import Universe
 
 logger = logging.getLogger(__name__)
 
@@ -85,6 +86,30 @@ class StrategyRunner(abc.ABC):
     def on_clock(self, clock: datetime.datetime, universe: TradeExecutorTradingUniverse, state: State, debug_details: dict) -> List[TradeExecution]:
         return []
 
+    def report_after_sync_and_revaluation(self, clock: datetime.datetime, universe: TradeExecutorTradingUniverse, state: State, debug_details: dict):
+        buf = StringIO()
+        p = state.portfolio
+        print("Portfolio status", file=buf)
+        print("", file=buf)
+        print(f"Total equity: ${p.get_total_equity():,.2f}, Cash: ${p.get_current_cash():,.2f}", file=buf)
+        print("", file=buf)
+        print(f"Open positions", file=buf)
+        print("", file=buf)
+
+        print("Reserves", file=buf)
+        print("", file=buf)
+        reserve: ReservePosition
+        for reserve in state.portfolio.reserves.values():
+            print(f"    {reserve.quantity:,.2f} {reserve.asset.token_symbol}")
+
+        logger.trade(buf.getvalue())
+
+    def report_before_execution(self, clock: datetime.datetime, universe: TradeExecutorTradingUniverse, state: State, debug_details: dict):
+        pass
+
+    def report_after_execution(self, clock: datetime.datetime, universe: TradeExecutorTradingUniverse, state: State, debug_details: dict):
+        pass
+
     def tick(self, clock: datetime.datetime, universe: TradeExecutorTradingUniverse, state: State, debug_details: dict) -> dict:
         """Perform the strategy main tick.
 
@@ -100,6 +125,8 @@ class StrategyRunner(abc.ABC):
             with self.timed_task_context_manager("revalue_portfolio"):
                 self.revalue_portfolio(clock, state)
 
+            self.report_after_sync_and_revaluation(clock, universe, state, debug_details)
+
             with self.timed_task_context_manager("decide_trades"):
                 rebalance_trades = self.on_clock(clock, universe, state, debug_details)
                 assert type(rebalance_trades) == list
@@ -113,6 +140,7 @@ class StrategyRunner(abc.ABC):
                 debug_details["approved_trades"] = approved_trades
 
             with self.timed_task_context_manager("execute_trades"):
+                logger.trade("Executing trades: %s", approved_trades)
                 self.execution_model.execute_trades(clock, state, approved_trades)
 
         return debug_details

@@ -449,6 +449,49 @@ def test_revalue(usdc, weth_usdc, start_ts: datetime.datetime):
     assert state.portfolio.get_total_equity() == pytest.approx(914.15)
 
 
+def test_realised_profit_calculation(usdc, weth_usdc, start_ts: datetime.datetime):
+    """Calculate realised rofits correctly."""
+
+    state = State()
+    state.update_reserves([ReservePosition(usdc, Decimal(10000), start_ts, 1.0, start_ts)])
+    trader = DummyTestTrader(state, lp_fees=0, price_impact=1)
+
+    assert state.portfolio.get_total_equity() == 10000.0
+
+    # Do 2 buys w/ different prices
+    position, trade = trader.buy(weth_usdc, Decimal("1.0"), 1700.0)
+    position, trade = trader.buy(weth_usdc, Decimal("0.5"), 1900.0)
+    spent = 1700 + 1900/2
+    estimated_avg_buy = (1*1700 + 0.5*1900) / 1.5
+
+    assert position.is_long()
+    assert position.get_net_quantity() == pytest.approx(Decimal("1.5"))
+    assert position.get_total_bought_usd() == spent
+    assert position.get_average_buy() == pytest.approx(estimated_avg_buy)
+    assert position.get_buy_quantity() == Decimal("1.5")
+
+    # No sells yet, no realised profit
+    with pytest.raises(ZeroDivisionError):
+        position.get_average_sell()
+
+    assert position.get_realised_profit_usd() is None
+
+    position, trade = trader.sell(weth_usdc, Decimal("1.5"), 1850.0)
+    received = 1850 * 1.5
+    assert position.is_closed()
+    assert position.is_long()  # No change here
+    assert position.get_average_sell() == 1850
+    assert position.get_buy_quantity() == Decimal("1.5")
+    assert position.get_sell_quantity() == Decimal("1.5")
+    assert position.get_net_quantity() == Decimal("0")
+    assert position.get_total_bought_usd() == spent
+    assert position.get_total_sold_usd() == received
+
+    profit = received - spent
+    assert profit == 125
+    assert position.get_realised_profit_usd() == pytest.approx(profit)
+
+
 def test_single_buy_failed(usdc, weth, weth_usdc, start_ts):
     """A single token purchase tx fails."""
     state = State()
@@ -522,3 +565,5 @@ def test_serialize_state(usdc, weth_usdc, start_ts: datetime.datetime):
     assert position2.get_value() == pytest.approx(168.3)
     assert position2.last_pricing_at == start_ts
     assert position2.last_pricing_at.tzinfo == None  # Be especially careful with timestamps
+
+

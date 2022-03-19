@@ -175,6 +175,6 @@ def run_main_loop(
             # Live trading
             next_tick = snap_to_next_tick(ts + datetime.timedelta(seconds=1), tick_size, tick_offset)
             wait = next_tick - datetime.datetime.utcnow()
-            logger.info("Sleeping %s until the next tick at %s UTC", wait, next_tick)
+            logger.trade("Sleeping %s until the next tick at %s UTC", wait, next_tick)
             time.sleep(wait.total_seconds())
             ts = datetime.datetime.utcnow()

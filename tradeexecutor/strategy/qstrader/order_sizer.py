@@ -126,7 +126,7 @@ class CashBufferedOrderSizer(OrderSizer):
         debug_details["cash_buffer_percentage"] = self.cash_buffer_percentage
         debug_details["cash_buffered_total_equity"] = cash_buffered_total_equity
 
-        logger.info(f"Calculating dollar weights for the new portfolio. Total equity {total_equity:,.2f} USD, cash buffered total equity {cash_buffered_total_equity:,.2f} USD")
+        logger.trade(f"Calculating US dollar weights for the new portfolio. Total portfolio equity is {total_equity:,.2f} USD, the cash buffered total equity {cash_buffered_total_equity:,.2f} USD")
 
         assert cash_buffered_total_equity > 0, "No wealth"
 

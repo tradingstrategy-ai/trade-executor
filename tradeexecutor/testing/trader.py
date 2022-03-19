@@ -2,8 +2,7 @@ import datetime
 from decimal import Decimal
 from typing import Tuple
 
-from tradeexecutor.state.state import State, TradingPairIdentifier, TradeType, TradeExecution
-from tradingstrategy.analysis.tradeanalyzer import TradePosition
+from tradeexecutor.state.state import State, TradingPairIdentifier, TradeType, TradeExecution, TradingPosition
 
 
 class DummyTestTrader:
@@ -12,15 +11,16 @@ class DummyTestTrader:
     This trade helper is not connected to any blockchain - it just simulates txid and nonce values.
     """
 
-    def __init__(self, state: State):
+    def __init__(self, state: State, lp_fees=2.50, price_impact=0.99):
         self.state = state
         self.nonce = 1
         self.ts = datetime.datetime(2022, 1, 1, tzinfo=None)
 
-        self.lp_fees = 2.50  # $2.5
+        self.lp_fees = lp_fees
+        self.price_impact = price_impact
         self.native_token_price = 1
 
-    def create(self, pair: TradingPairIdentifier, quantity: Decimal, price: float, price_impact=0.99) -> Tuple[TradePosition, TradeExecution]:
+    def create(self, pair: TradingPairIdentifier, quantity: Decimal, price: float) -> Tuple[TradingPosition, TradeExecution]:
         """Open a new trade."""
         # 1. Plan
         position, trade = self.state.create_trade(
@@ -35,7 +35,9 @@ class DummyTestTrader:
         self.ts += datetime.timedelta(seconds=1)
         return position, trade
 
-    def create_and_execute(self, pair: TradingPairIdentifier, quantity: Decimal, price: float, price_impact=0.99) -> Tuple[TradePosition, TradeExecution]:
+    def create_and_execute(self, pair: TradingPairIdentifier, quantity: Decimal, price: float) -> Tuple[TradingPosition, TradeExecution]:
+
+        price_impact = self.price_impact
 
         # 1. Plan
         position, trade = self.create(
@@ -67,13 +69,13 @@ class DummyTestTrader:
         self.state.mark_trade_success(self.ts, trade, executed_price, executed_quantity, executed_reserve, self.lp_fees, self.native_token_price)
         return position, trade
 
-    def buy(self, pair, quantity, price) -> Tuple[TradePosition, TradeExecution]:
+    def buy(self, pair, quantity, price) -> Tuple[TradingPosition, TradeExecution]:
         return self.create_and_execute(pair, quantity, price)
 
-    def prepare_buy(self, pair, quantity, price) -> Tuple[TradePosition, TradeExecution]:
+    def prepare_buy(self, pair, quantity, price) -> Tuple[TradingPosition, TradeExecution]:
         return self.create(pair, quantity, price)
 
-    def sell(self, pair, quantity, price) -> Tuple[TradePosition, TradeExecution]:
+    def sell(self, pair, quantity, price) -> Tuple[TradingPosition, TradeExecution]:
         return self.create_and_execute(pair, -quantity, price)
 
 

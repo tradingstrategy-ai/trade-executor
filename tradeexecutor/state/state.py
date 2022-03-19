@@ -482,7 +482,7 @@ class TradeExecution:
     def mark_success(self, executed_at: datetime.datetime, executed_price: USDollarAmount, executed_quantity: Decimal, executed_reserve: Decimal, lp_fees: USDollarAmount, native_token_price: USDollarAmount):
         assert self.get_status() == TradeStatus.broadcasted
         assert isinstance(executed_quantity, Decimal)
-        assert type(executed_price) == float
+        assert type(executed_price) == float, f"Received executed price: {executed_price} {type(executed_price)}"
         assert executed_at.tzinfo is None
         self.executed_at = executed_at
         self.executed_quantity = executed_quantity
@@ -535,6 +535,25 @@ class TradingPosition:
     def is_closed(self) -> bool:
         """This position has been closed and does not have any capital tied to it."""
         return not self.is_open()
+
+    def get_first_trade(self) -> TradeExecution:
+        """Get the first trade for this position.
+
+        Considers unexecuted trades.
+        """
+        return next(iter(self.trades.values()))
+
+    def is_long(self) -> bool:
+        """Is this position long on the underlying base asset.
+
+        We consider the position long if the first trade is buy.
+        """
+        assert len(self.trades) > 0
+        return self.get_first_trade().is_buy()
+
+    def is_short(self) -> bool:
+        """Is this position short on the underlying base asset."""
+        return not self.is_long()
 
     def has_executed_trades(self) -> bool:
         """This position represents actual holdings and has executed trades on it.
@@ -628,6 +647,51 @@ class TradingPosition:
         """There are no tied tokens in this position."""
         return self.get_equity_for_position() == 0
 
+    def get_total_bought_usd(self) -> USDollarAmount:
+        """How much money we have used on buys"""
+        return sum([t.get_value() for t in self.trades.values() if t.is_success() if t.is_buy()])
+
+    def get_total_sold_usd(self) -> USDollarAmount:
+        """How much money we have received on sells"""
+        return sum([t.get_value() for t in self.trades.values() if t.is_success() if t.is_sell()])
+
+    def get_buy_quantity(self) -> Decimal:
+        """How many units we have bought total"""
+        return sum([t.get_position_quantity() for t in self.trades.values() if t.is_success() if t.is_buy()])
+
+    def get_sell_quantity(self) -> Decimal:
+        """How many units we have sold total"""
+        return sum([abs(t.get_position_quantity()) for t in self.trades.values() if t.is_success() if t.is_sell()])
+
+    def get_net_quantity(self) -> Decimal:
+        """The difference in the quantity of assets bought and sold to date."""
+        return self.get_quantity()
+
+    def get_average_buy(self) -> USDollarAmount:
+        """Calculate average buy price."""
+        return self.get_total_bought_usd() / float(self.get_buy_quantity())
+
+    def get_average_sell(self) -> USDollarAmount:
+        """Calculate average buy price."""
+        return self.get_total_sold_usd() / float(self.get_sell_quantity())
+
+    def get_realised_profit_usd(self) -> Optional[USDollarAmount]:
+        """Calculates the profit & loss (P&L) that has been 'realised' via two opposing asset transactions in the Position to date.
+
+        :return: profit in dollar or None if no opposite trade made
+        """
+
+        assert self.is_long(), "TODO: Only long supported"
+        if self.get_sell_quantity() == 0:
+            return None
+        return (self.get_average_sell() - self.get_average_buy()) * float(self.get_sell_quantity())
+
+    def calculate_unrealised_profit(self) -> Tuple[USDollarAmount, float]:
+        """Calculate the position profit.
+
+        :return: (profit in dollar, profit as percentage)
+        """
+        pass
 
 @dataclass
 class RevalueEvent:

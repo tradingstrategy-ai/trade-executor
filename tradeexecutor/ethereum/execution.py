@@ -257,7 +257,7 @@ def resolve_trades(web3: Web3, uniswap: UniswapV2Deployment, ts: datetime.dateti
             ts,
             receipt["blockNumber"],
             receipt["blockHash"].hex(),
-            receipt["effectiveGasPrice"],
+            receipt.get("effectiveGasPrice", 0),
             receipt["gasUsed"],
             status
         )

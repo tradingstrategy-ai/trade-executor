@@ -9,6 +9,8 @@ See also other inspirations and sources
 """
 import logging
 import os
+import sys
+import textwrap
 
 from discord_webhook import DiscordEmbed, DiscordWebhook
 
@@ -44,6 +46,7 @@ class DiscordHandler(logging.Handler):
                  webhook_url: str,
                  colours=DEFAULT_COLOURS,
                  emojis=DEFAULT_EMOJIS,
+                 avatar_url=None,
                  rate_limit_retry=True):
 
         logging.Handler.__init__(self)
@@ -52,16 +55,20 @@ class DiscordHandler(logging.Handler):
         self.colours = colours
         self.emojis = emojis
         self.rate_limit_retry = rate_limit_retry
+        self.avatar_url = avatar_url
         self.reentry_barrier = False
 
     def should_format_as_code_block(self, record: logging.LogRecord, msg: str) -> bool:
         """Figure out whether we want to use code block formatting in Discord"""
         return "\n" in msg
 
-    def clip_content(self, content: str, max_len=1024) -> str:
+    def clip_content(self, content: str, max_len=1024, clip_to_end=True) -> str:
         """Make sure the text fits to a Discord message."""
         if len(content) > max_len - 5:
-            return content[0:max_len] + "..."
+            if clip_to_end:
+                return content[-max_len:] + "..."
+            else:
+                return content[0:max_len] + "..."
         else:
             return content
 
@@ -81,29 +88,34 @@ class DiscordHandler(logging.Handler):
                 url=self.webhook_url,
                 username=self.service_name,
                 rate_limit_retry=self.rate_limit_retry,
+                avatar_url=self.avatar_url,
             )
 
             try:
                 msg = self.format(record)
 
                 colour = self.colours.get(record.levelno) or self.colours[None]
-                emoji = self.emojis.get(record.levelno) or self.emojis[None]
+                emoji = self.emojis.get(record.levelno)
 
                 if self.should_format_as_code_block(record, msg):
                     first, remainder = msg.split("\n", maxsplit=1)
-                    embed_content = f"{emoji} {first}"
+
                     clipped = self.clip_content(remainder)
                     content = f"```\n{clipped}\n```"
+                    if emoji:
+                        title = f"{emoji} {first}"
+                    else:
+                        title = first
 
-                    discord.content = content
-
-                    embed = DiscordEmbed(description=embed_content, color=colour)
-                    embed.set_author(name=self.service_name)
+                    embed = DiscordEmbed(title=title, description=content, color=colour)
                     discord.add_embed(embed)
                 else:
-                    payload = emoji + " " + msg
-                    embed = DiscordEmbed(description=payload, color=colour)
-                    embed.set_author(name=self.service_name)
+                    # discord.content = content
+                    if emoji:
+                        title = f"{emoji} {msg}"
+                    else:
+                        title = msg
+                    embed = DiscordEmbed(title=title, color=colour)
                     discord.add_embed(embed)
 
                 discord.execute()
@@ -120,13 +132,14 @@ class DiscordHandler(logging.Handler):
 
 if __name__ == "__main__":
     # Run a manual test
-    webhook_url = os.environ["DISCORD_WEBHOOK_URL"]
+    webhook_url = os.environ["DISCORD_TRASH_WEBHOOK_URL"]
     logger = logging.getLogger()
 
     stream_format = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     discord_format = logging.Formatter("%(message)s")
 
-    discord_handler = DiscordHandler("test logger", webhook_url)
+    discord_handler = DiscordHandler("Happy Bot", webhook_url, emojis={}, avatar_url="https://i0.wp.com/www.theterminatorfans.com/wp-content/uploads/2012/09/the-terminator3.jpg?resize=900%2C450&ssl=1")
+    #discord_handler = DiscordHandler("Happy Bot", webhook_url, emojis={})
     discord_handler.setFormatter(discord_format)
     stream_handler = logging.StreamHandler()
     stream_handler.setFormatter(stream_format)
@@ -134,8 +147,18 @@ if __name__ == "__main__":
     # Add the handlers to the Logger
     logger.addHandler(discord_handler)
     logger.addHandler(stream_handler)
-
     logger.setLevel(logging.DEBUG)
+
+    # Test logging output
+    # https://docs.python.org/3.9/library/textwrap.html#textwrap.dedent
+    detent_text = textwrap.dedent("""\
+    Test title
+    
+    🌲 Item 1     $200,00
+    🔻 Item 2     $12,123
+    """)
+    logger.info(detent_text)
+
     logger.debug("Debug message %d %d", 1, 2)
     logger.info("Info message")
     logger.warning("Warning message")

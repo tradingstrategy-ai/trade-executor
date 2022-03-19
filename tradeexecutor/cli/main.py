@@ -9,8 +9,10 @@ from typing import Optional
 import pkg_resources
 
 import typer
+from web3.middleware import geth_poa_middleware
 
 from eth_hentai.balances import fetch_erc20_balances_by_token_list
+from eth_hentai.gas import GasPriceMethod, node_default_gas_price_strategy
 from eth_hentai.token import fetch_erc20_details
 from tradeexecutor.strategy.description import StrategyExecutionDescription
 from tradeexecutor.strategy.tick import TickSize
@@ -49,6 +51,7 @@ def create_trade_execution_model(
         uniswap_init_code_hash,
         json_rpc: str,
         private_key: str,
+        gas_price_method: Optional[GasPriceMethod],
 ):
     if execution_type == TradeExecutionType.dummy:
         return DummyExecutionModel()
@@ -58,6 +61,13 @@ def create_trade_execution_model(
         assert router_address, "Uniswap v2 factory router needed"
         assert json_rpc, "JSON-RPC endpoint is needed"
         web3 = create_web3(json_rpc)
+
+        # London is the default method
+        if gas_price_method == GasPriceMethod.legacy:
+            web3.eth.set_gas_price_strategy(node_default_gas_price_strategy)
+            # Also assume BSC, set POA middleware
+            web3.middleware_onion.inject(geth_poa_middleware, layer=0)
+
         hot_wallet = HotWallet.from_private_key(private_key)
         uniswap = fetch_deployment(web3, factory_address, router_address, init_code_hash=uniswap_init_code_hash)
         sync_method = EthereumHotWalletReserveSyncer(web3, hot_wallet.address)
@@ -99,6 +109,7 @@ def start(
     http_username: str = typer.Option("webhook", envvar="HTTP_USERNAME"),
     http_password: str = typer.Option(None, envvar="HTTP_PASSWORD"),
     json_rpc: str = typer.Option(None, envvar="JSON_RPC", help="Ethereum JSON-RPC node URL we connect to for execution"),
+    gas_price_method: Optional[GasPriceMethod] = typer.Option(None, envvar="GAS_PRICE_METHOD", help="How to set the gas price for Ethereum transactions"),
     execution_type: TradeExecutionType = typer.Option(..., envvar="EXECUTION_TYPE"),
     approval_type: ApprovalType = typer.Option(..., envvar="APPROVAL_TYPE"),
     uniswap_v2_factory_address: str = typer.Option(None, envvar="UNISWAP_V2_FACTORY_ADDRESS"),
@@ -117,6 +128,7 @@ def start(
     max_data_delay_minutes: int = typer.Option(None, envvar="MAX_DATA_DELAY_MINUTES", help="If our data feed is delayed more than this minutes, abort the execution"),
     discord_webhook_url: Optional[str] = typer.Option(None, envvar="DISCORD_WEBHOOK_URL", help="Discord webhook URL for notifications"),
     trade_immediately: bool = typer.Option(False, "--trade-immediately", envvar="TRADE_IMMEDIATELY", help="Perform the first rebalance immediately, do not wait for the next trading universe refresh"),
+    port_mortem_debugging: bool = typer.Option(False, "--post-mortem-debugging", envvar="POST_MORTEM_DEBUGGING", help="Launch ipdb debugger on a main loop crash to debug the exception"),
     ):
     """Launch Trade Executor instance."""
 
@@ -133,7 +145,9 @@ def start(
         uniswap_v2_router_address,
         uniswap_init_code_hash,
         json_rpc,
-        private_key)
+        private_key,
+        gas_price_method
+    )
 
     approval_model = create_approval_model(approval_type)
 
@@ -187,6 +201,10 @@ def start(
             trade_immediately=trade_immediately,
         )
     except Exception as e:
+        # Debug exceptions in production
+        if port_mortem_debugging:
+            import ipdb
+            ipdb.post_mortem()
         logger.exception(e)
     finally:
         if server:
