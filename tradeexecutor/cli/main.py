@@ -127,6 +127,7 @@ def start(
     tick_offset_minutes: int = typer.Option(0, envvar="TICK_OFFSET_MINUTES", help="How many minutes we wait after the tick before executing the tick step"),
     max_data_delay_minutes: int = typer.Option(None, envvar="MAX_DATA_DELAY_MINUTES", help="If our data feed is delayed more than this minutes, abort the execution"),
     discord_webhook_url: Optional[str] = typer.Option(None, envvar="DISCORD_WEBHOOK_URL", help="Discord webhook URL for notifications"),
+    discord_avatar_url: Optional[str] = typer.Option(None, envvar="DISCORD_AVATAR_URL", help="Discord avatar image URL for notifications"),
     trade_immediately: bool = typer.Option(False, "--trade-immediately", envvar="TRADE_IMMEDIATELY", help="Perform the first rebalance immediately, do not wait for the next trading universe refresh"),
     port_mortem_debugging: bool = typer.Option(False, "--post-mortem-debugging", envvar="POST_MORTEM_DEBUGGING", help="Launch ipdb debugger on a main loop crash to debug the exception"),
     ):
@@ -135,7 +136,10 @@ def start(
     logger = setup_logging()
 
     if discord_webhook_url:
-        setup_discord_logging(name, discord_webhook_url)
+        setup_discord_logging(
+            name,
+            webhook_url=discord_webhook_url,
+            avatar_url=discord_avatar_url)
 
     logger.trade("Trade Executor version %s starting strategy %s", version, name)
 

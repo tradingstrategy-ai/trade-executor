@@ -193,6 +193,7 @@ def test_main_loop(
 
     # Set up the configuration for the live trader
     environment = {
+        "NAME": "test_main_loop.py",
         "STRATEGY_FILE": strategy_path.as_posix(),
         "PRIVATE_KEY": hot_wallet.account.privateKey.hex(),
         "HTTP_ENABLED": "false",
@@ -210,10 +211,12 @@ def test_main_loop(
         "BACKTEST_START": "2021-12-07",
         "BACKTEST_END": "2022-01-07",
         "MAX_CYCLES": "1",
+        "DISCORD_WEBHOOK_URL": "",
     }
+
     # https://typer.tiangolo.com/tutorial/testing/
     runner = CliRunner()
-    result = runner.invoke(app, env=environment)
+    result = runner.invoke(app, "start", env=environment)
 
     if result.exception:
         raise result.exception

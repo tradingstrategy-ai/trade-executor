@@ -181,17 +181,19 @@ def translate_trading_pair(pair: DEXPair) -> TradingPairIdentifier:
         chain_id=pair.chain_id.value,
         address=pair.base_token_address,
         token_symbol=pair.base_token_symbol,
-        decimals=None
+        decimals=None,
     )
     quote = AssetIdentifier(
         chain_id=pair.chain_id.value,
         address=pair.quote_token_address,
         token_symbol=pair.quote_token_symbol,
-        decimals=None
+        decimals=None,
     )
+
     return TradingPairIdentifier(
         base=base,
         quote=quote,
         pool_address=pair.address,
         internal_id=pair.pair_id,
+        info_url=pair.get_trading_pair_page_url(),
     )

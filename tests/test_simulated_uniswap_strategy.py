@@ -34,7 +34,7 @@ from tradeexecutor.strategy.description import StrategyExecutionDescription
 from tradeexecutor.strategy.runner import StrategyRunner
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.strategy.universe_model import StaticUniverseModel
-from tradeexecutor.cli.log import setup_pytest_logging
+from tradeexecutor.cli.log import setup_pytest_logging, setup_discord_logging
 from tradeexecutor.utils.timer import timed_task
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId
@@ -48,8 +48,8 @@ from tradingstrategy.universe import Universe
 @pytest.fixture(scope="module")
 def logger(request):
     """Setup test logger."""
-    return setup_pytest_logging(request)
-
+    logger = setup_pytest_logging(request)
+    return logger
 
 @pytest.fixture
 def tester_provider():

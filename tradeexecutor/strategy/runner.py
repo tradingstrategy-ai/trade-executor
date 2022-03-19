@@ -15,7 +15,8 @@ from tradeexecutor.state.sync import SyncMethod
 from tradeexecutor.strategy.pricing_model import PricingModelFactory
 from tradeexecutor.strategy.universe_model import TradeExecutorTradingUniverse
 
-from tradeexecutor.state.state import State, TradeExecution, ReservePosition
+from tradeexecutor.state.state import State, TradeExecution, ReservePosition, TradingPosition
+from tradingstrategy.analysis.tradeanalyzer import TradePosition
 from tradingstrategy.universe import Universe
 
 logger = logging.getLogger(__name__)
@@ -86,17 +87,28 @@ class StrategyRunner(abc.ABC):
     def on_clock(self, clock: datetime.datetime, universe: TradeExecutorTradingUniverse, state: State, debug_details: dict) -> List[TradeExecution]:
         return []
 
+    def format_open_position(self, position: TradingPosition, up_symbol="🌲", down_symbol="🔻") -> str:
+        """Write a position status line to logs.
+
+        Position can be open/closed.
+        """
+        symbol = up_symbol if position.get_total_profit_percent() >= 0 else down_symbol
+        return f"{symbol} {position.pair.get_human_description()} Profit:{position.get_total_profit_usd()::.2f}% ({position.get_total_profit_usd()} USD) Current price:{position.get_current_price():,.8f} USD"
+
     def report_after_sync_and_revaluation(self, clock: datetime.datetime, universe: TradeExecutorTradingUniverse, state: State, debug_details: dict):
         buf = StringIO()
-        p = state.portfolio
+        portfolio = state.portfolio
         print("Portfolio status", file=buf)
         print("", file=buf)
-        print(f"Total equity: ${p.get_total_equity():,.2f}, Cash: ${p.get_current_cash():,.2f}", file=buf)
+        print(f"Total equity: ${portfolio.get_total_equity():,.2f}, Cash: ${portfolio.get_current_cash():,.2f}", file=buf)
         print("", file=buf)
-        print(f"Open positions", file=buf)
+        print(f"Open positions:", file=buf)
         print("", file=buf)
+        position: TradingPosition
+        for position in portfolio.open_positions.values():
+            print("    " + self.format_open_position(position), file=buf)
 
-        print("Reserves", file=buf)
+        print("Reserves:", file=buf)
         print("", file=buf)
         reserve: ReservePosition
         for reserve in state.portfolio.reserves.values():

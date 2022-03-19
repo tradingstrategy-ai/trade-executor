@@ -34,3 +34,19 @@ Tests that use this feature include
 ```shell
 USER_INTERACTION=true pytest
 ```
+
+## Discord logging tests
+
+You might want to test how Discord trade position mesages look like.
+
+You can do it with:
+
+```shell
+# Webhook URL for the private trash channel
+export DISCORD_TRASH_WEBHOOK_URL=...
+export BNB_CHAIN_JSON_RPC="https://bsc-dataseed.binance.org/"
+pytest -k test_pancake_4h_candles
+```
+
+This will execute 6 strategy cycles and log output.
+

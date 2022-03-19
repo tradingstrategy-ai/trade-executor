@@ -103,17 +103,17 @@ def run_main_loop(
         ts = datetime.datetime.utcnow()
         logger.info("Strategy is executed in live mode, now is %s", ts)
 
-    logger.trade("Starting trade execution loop for %s", name)
+        # The first trade will be execute immediately, despite the time offset or tick
+        if trade_immediately:
+            ts = datetime.datetime.now()
+        else:
+            next_tick = snap_to_next_tick(datetime.datetime.now() + datetime.timedelta(seconds=1), tick_size, tick_offset)
+            wait = next_tick - datetime.datetime.utcnow()
+            logger.info("Sleeping %s until the first tick at %s UTC", wait, next_tick)
+            time.sleep(wait.total_seconds())
+            ts = datetime.datetime.utcnow()
 
-    # The first trade will be execute immediately, despite the time offset or tick
-    if trade_immediately:
-        ts = datetime.datetime.now()
-    else:
-        next_tick = snap_to_next_tick(datetime.datetime.now() + datetime.timedelta(seconds=1), tick_size, tick_offset)
-        wait = next_tick - datetime.datetime.utcnow()
-        logger.info("Sleeping %s until the first tick at %s UTC", wait, next_tick)
-        time.sleep(wait.total_seconds())
-        ts = datetime.datetime.utcnow()
+    logger.trade("Starting trade execution loop for %s", name)
 
     while True:
 

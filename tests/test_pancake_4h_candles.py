@@ -205,6 +205,7 @@ def test_pancake_4h_candles(
     # Set up the configuration for the backtesting, run
     # run 2 weeks
     environment = {
+        "NAME": "pytest: test_pancake_4g_candles.py",
         "STRATEGY_FILE": strategy_path.as_posix(),
         "PRIVATE_KEY": hot_wallet.account.privateKey.hex(),
         "HTTP_ENABLED": "false",
@@ -224,11 +225,18 @@ def test_pancake_4h_candles(
         "TICK_OFFSET_MINUTES": "10",
         "TICK_SIZE": "8h",
     }
+
+    # Points to the private test trash channel on Discord
+    discord_webhook_url = os.environ.get("DISCORD_TRASH_WEBHOOK_URL")
+    if discord_webhook_url:
+        environment["DISCORD_WEBHOOK_URL"] = discord_webhook_url
+        environment["DISCORD_AVATAR_URL"] = "https://i0.wp.com/www.theterminatorfans.com/wp-content/uploads/2012/09/the-terminator3.jpg?resize=900%2C450&ssl=1"
+
     # https://typer.tiangolo.com/tutorial/testing/
     runner = CliRunner()
 
     try:
-        result = runner.invoke(app, env=environment)
+        result = runner.invoke(app, "start", env=environment)
 
         if result.exception:
             raise result.exception

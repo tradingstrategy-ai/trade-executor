@@ -89,6 +89,9 @@ class AssetIdentifier:
     #: How this asset is referred in the internal database
     internal_id: Optional[int] = None
 
+    #: Info page URL for this asset
+    info_url: Optional[str] = None
+
     def __str__(self):
         return f"<{self.token_symbol} at {self.address}>"
 
@@ -119,9 +122,15 @@ class TradingPairIdentifier:
     #: How this asset is referred in the internal database
     internal_id: Optional[int] = None
 
+    #: Info page URL for this trading pair e.g. with the price charts
+    info_url: Optional[str] = None
+
     def get_identifier(self) -> str:
         """We use the smart contract pool address to uniquely identify trading positions."""
         return self.pool_address
+
+    def s(self) -> str:
+        return f"{self.base.token_symbol}-{self.quote.token_symbol}"
 
     #def get_trading_pair(self, pair_universe: PandasPairUniverse) -> DEXPair:
     #    """Reverse resolves the smart contract address to trading pair data in the current trading pair universe."""
@@ -696,7 +705,7 @@ class TradingPosition:
             return None
         return (self.get_average_sell() - self.get_average_buy()) * float(self.get_sell_quantity())
 
-    def get_unrealised_profit(self) -> USDollarAmount:
+    def get_unrealised_profit_usd(self) -> USDollarAmount:
         """Calculate the position unrealised profit.
 
         Calculates the profit & loss (P&L) that has yet to be 'realised'
@@ -707,13 +716,17 @@ class TradingPosition:
         """
         return (self.get_current_price() - self.get_average_price()) * float(self.get_net_quantity())
 
-    def get_profit_percent(self) -> float:
-        """How much % we have made profit so far."""
+    def get_total_profit_usd(self) -> USDollarAmount:
+        """Realised + unrealised profit."""
         realised_profit = self.get_realised_profit_usd() or 0
-        unrealised_profit = self.get_unrealised_profit()
+        unrealised_profit = self.get_unrealised_profit_usd()
         total_profit = realised_profit + unrealised_profit
+        return total_profit
+
+    def get_total_profit_percent(self) -> float:
+        """How much % we have made profit so far."""
         assert self.is_long()
-        return total_profit / self.get_total_bought_usd()
+        return self.get_total_profit_usd() / self.get_total_bought_usd()
 
 
 @dataclass
