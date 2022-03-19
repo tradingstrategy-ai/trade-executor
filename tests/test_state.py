@@ -551,10 +551,12 @@ def test_unrealised_profit_calculation(usdc, weth_usdc, start_ts: datetime.datet
     assert position.is_long()  # No change here
     assert position.get_realised_profit_usd() is None
     assert position.get_unrealised_profit() == pytest.approx(-400)
+    assert position.get_profit_percent() == pytest.approx(-0.15094339622641514)
 
     # Revalue ETH to 2000 USD, we are on green
     state.revalue_positions(start_ts, EthValuator(2000))
     assert position.get_unrealised_profit() == pytest.approx(350)
+    assert position.get_profit_percent() == pytest.approx(0.13207547169811318)
 
     # Sell half, gain 50% of the profit of the test_realised_profit_calculation
     state.revalue_positions(start_ts, EthValuator(1850))
@@ -571,12 +573,14 @@ def test_unrealised_profit_calculation(usdc, weth_usdc, start_ts: datetime.datet
 
     assert position.get_realised_profit_usd() == pytest.approx(62.5)
     assert position.get_unrealised_profit() == pytest.approx(62.5)
+    assert position.get_profit_percent() == pytest.approx(0.04716981132075467)
 
     # Close the remaining position
     position, trade = trader.sell(weth_usdc, Decimal("0.75"), 1850.0)
     assert position.is_closed()
     assert position.get_realised_profit_usd() == pytest.approx(125)
     assert position.get_unrealised_profit() == 0
+    assert position.get_profit_percent() == pytest.approx(0.04716981132075467)
 
 
 def test_single_buy_failed(usdc, weth, weth_usdc, start_ts):

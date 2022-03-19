@@ -691,7 +691,6 @@ class TradingPosition:
 
         :return: profit in dollar or None if no opposite trade made
         """
-
         assert self.is_long(), "TODO: Only long supported"
         if self.get_sell_quantity() == 0:
             return None
@@ -707,6 +706,14 @@ class TradingPosition:
         :return: profit in dollar
         """
         return (self.get_current_price() - self.get_average_price()) * float(self.get_net_quantity())
+
+    def get_profit_percent(self) -> float:
+        """How much % we have made profit so far."""
+        realised_profit = self.get_realised_profit_usd() or 0
+        unrealised_profit = self.get_unrealised_profit()
+        total_profit = realised_profit + unrealised_profit
+        assert self.is_long()
+        return total_profit / self.get_total_bought_usd()
 
 
 @dataclass
