@@ -450,7 +450,7 @@ def test_revalue(usdc, weth_usdc, start_ts: datetime.datetime):
 
 
 def test_realised_profit_calculation(usdc, weth_usdc, start_ts: datetime.datetime):
-    """Calculate realised rofits correctly."""
+    """Calculate realised profits correctly."""
 
     state = State()
     state.update_reserves([ReservePosition(usdc, Decimal(10000), start_ts, 1.0, start_ts)])
@@ -490,6 +490,93 @@ def test_realised_profit_calculation(usdc, weth_usdc, start_ts: datetime.datetim
     profit = received - spent
     assert profit == 125
     assert position.get_realised_profit_usd() == pytest.approx(profit)
+
+
+def test_realised_partial_profit_calculation(usdc, weth_usdc, start_ts: datetime.datetime):
+    """Calculate realised profits correctly when some of the position is still open."""
+
+    state = State()
+    state.update_reserves([ReservePosition(usdc, Decimal(10000), start_ts, 1.0, start_ts)])
+    trader = DummyTestTrader(state, lp_fees=0, price_impact=1)
+
+    assert state.portfolio.get_total_equity() == 10000.0
+
+    # Do 2 buys w/ different prices
+    trader.buy(weth_usdc, Decimal("1.0"), 1700.0)
+    trader.buy(weth_usdc, Decimal("0.5"), 1900.0)
+    spent = 1700 + 1900/2
+
+    # Sell half, gain 50% of the profit of the test_realised_profit_calculation
+    position, trade = trader.sell(weth_usdc, Decimal("0.75"), 1850.0)
+    received = 1850 * 0.75
+    assert not position.is_closed()
+    assert position.is_long()  # No change here
+    assert position.get_average_sell() == 1850
+    assert position.get_buy_quantity() == Decimal("1.5")
+    assert position.get_sell_quantity() == Decimal("0.75")
+    assert position.get_net_quantity() == Decimal("0.75")
+    assert position.get_total_bought_usd() == spent
+    assert position.get_total_sold_usd() == received
+
+    # TODO: Should we express this differently?
+    assert position.get_realised_profit_usd() == pytest.approx(62.5)
+
+
+def test_unrealised_profit_calculation(usdc, weth_usdc, start_ts: datetime.datetime):
+    """Calculate unrealised profits correctly."""
+
+    state = State()
+    state.update_reserves([ReservePosition(usdc, Decimal(10000), start_ts, 1.0, start_ts)])
+    trader = DummyTestTrader(state, lp_fees=0, price_impact=1)
+
+    assert state.portfolio.get_total_equity() == 10000.0
+
+    # Do 2 buys w/ different prices
+    trader.buy(weth_usdc, Decimal("1.0"), 1700.0)
+    position, _ = trader.buy(weth_usdc, Decimal("0.5"), 1900.0)
+    spent = 1700 + 1900/2
+
+    # Helper class to set ETH price
+    class EthValuator:
+
+        def __init__(self, price):
+            self.price = price
+
+        def __call__(self, ts, pair: TradingPairIdentifier):
+            return ts, self.price
+
+    # Revalue ETH to 1500 USD
+    state.revalue_positions(start_ts, EthValuator(1500))
+    assert position.is_open()
+    assert position.is_long()  # No change here
+    assert position.get_realised_profit_usd() is None
+    assert position.get_unrealised_profit() == pytest.approx(-400)
+
+    # Revalue ETH to 2000 USD, we are on green
+    state.revalue_positions(start_ts, EthValuator(2000))
+    assert position.get_unrealised_profit() == pytest.approx(350)
+
+    # Sell half, gain 50% of the profit of the test_realised_profit_calculation
+    state.revalue_positions(start_ts, EthValuator(1850))
+    position, trade = trader.sell(weth_usdc, Decimal("0.75"), 1850.0)
+    received = 1850 * 0.75
+    assert not position.is_closed()
+    assert position.is_long()  # No change here
+    assert position.get_average_sell() == 1850
+    assert position.get_buy_quantity() == Decimal("1.5")
+    assert position.get_sell_quantity() == Decimal("0.75")
+    assert position.get_net_quantity() == Decimal("0.75")
+    assert position.get_total_bought_usd() == spent
+    assert position.get_total_sold_usd() == received
+
+    assert position.get_realised_profit_usd() == pytest.approx(62.5)
+    assert position.get_unrealised_profit() == pytest.approx(62.5)
+
+    # Close the remaining position
+    position, trade = trader.sell(weth_usdc, Decimal("0.75"), 1850.0)
+    assert position.is_closed()
+    assert position.get_realised_profit_usd() == pytest.approx(125)
+    assert position.get_unrealised_profit() == 0
 
 
 def test_single_buy_failed(usdc, weth, weth_usdc, start_ts):

@@ -588,6 +588,10 @@ class TradingPosition:
         """
         return sum([t.quantity for t in self.trades.values() if not t.is_failed()])
 
+    def get_current_price(self) -> USDollarAmount:
+        """Get the price of the base asset based on the latest valuation."""
+        return self.last_token_price
+
     def get_equity_for_position(self) -> Decimal:
         return sum([t.get_equity_for_position() for t in self.trades.values() if t.is_success()])
 
@@ -675,6 +679,13 @@ class TradingPosition:
         """Calculate average buy price."""
         return self.get_total_sold_usd() / float(self.get_sell_quantity())
 
+    def get_average_price(self) -> USDollarAmount:
+        """The average price paid for all assets on the long or short side."""
+        if self.is_long():
+            return self.get_average_buy()
+        else:
+            return self.get_average_sell()
+
     def get_realised_profit_usd(self) -> Optional[USDollarAmount]:
         """Calculates the profit & loss (P&L) that has been 'realised' via two opposing asset transactions in the Position to date.
 
@@ -686,12 +697,17 @@ class TradingPosition:
             return None
         return (self.get_average_sell() - self.get_average_buy()) * float(self.get_sell_quantity())
 
-    def calculate_unrealised_profit(self) -> Tuple[USDollarAmount, float]:
-        """Calculate the position profit.
+    def get_unrealised_profit(self) -> USDollarAmount:
+        """Calculate the position unrealised profit.
 
-        :return: (profit in dollar, profit as percentage)
+        Calculates the profit & loss (P&L) that has yet to be 'realised'
+        in the remaining non-zero quantity of assets, due to the current
+        market price.
+
+        :return: profit in dollar
         """
-        pass
+        return (self.get_current_price() - self.get_average_price()) * float(self.get_net_quantity())
+
 
 @dataclass
 class RevalueEvent:
