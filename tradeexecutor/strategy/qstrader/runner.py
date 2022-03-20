@@ -44,7 +44,8 @@ class QSTraderRunner(StrategyRunner):
 
         print("Strategy thinking", file=buf)
         print("", file=buf)
-        print("Data status")
+        print("Dataset status:", file=buf)
+        print("", file=buf)
         print(f"   Cash buffer: {self.cash_buffer * 100:.2f}", file=buf)
         print(f"   Candle dataset: {data_start} - {data_end}", file=buf)
         print(f"   Liquidity dataset: {liquidity_start} - {liquidity_end}", file=buf)
