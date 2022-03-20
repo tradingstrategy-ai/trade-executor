@@ -103,7 +103,7 @@ class StrategyRunner(abc.ABC):
         return [
             f"{symbol} {position.pair.get_human_description()} size:${position.get_value():,.2f}, profit:{position.get_total_profit_usd():.2f}% ({position.get_total_profit_usd():,.4f} USD)",
             f"   current price:${position.get_current_price():,.8f}, open price:${position.get_opening_price():,.8f}, diff:{price_diff:,.8f} USD",
-            f"   link:{link}"
+            f"   link: {link}"
         ]
 
     def format_trade(self, portfolio: Portfolio, trade: TradeExecution) -> List[str]:
@@ -128,7 +128,7 @@ class StrategyRunner(abc.ABC):
 
         return [
             f"{trade_type:5} {pair.get_human_description()} ${trade.get_planned_value():,.2f} ({abs(trade.get_position_quantity())} {pair.base.token_symbol}){existing_text}",
-            f"      link:{link}"
+            f"      link: {link}"
         ]
 
     def report_after_sync_and_revaluation(self, clock: datetime.datetime, universe: TradeExecutorTradingUniverse, state: State, debug_details: dict):

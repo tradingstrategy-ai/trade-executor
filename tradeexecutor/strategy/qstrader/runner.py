@@ -46,7 +46,7 @@ class QSTraderRunner(StrategyRunner):
         print("", file=buf)
         print("Dataset status:", file=buf)
         print("", file=buf)
-        print(f"   Cash buffer: {self.cash_buffer * 100:.2f}", file=buf)
+        print(f"   Cash buffer: {self.cash_buffer * 100:.2f}%", file=buf)
         print(f"   Candle dataset: {data_start} - {data_end}", file=buf)
         print(f"   Liquidity dataset: {liquidity_start} - {liquidity_end}", file=buf)
         print("", file=buf)
@@ -63,7 +63,7 @@ class QSTraderRunner(StrategyRunner):
                 link = tp.info_url or ""
                 momentum = debug_details["extra_debug_data"][pair_id]["momentum"]
                 print(f"    {tp.get_human_description()} weight:{weight:.2f}, momentum:{momentum*100:.2f}%", file=buf)
-                print(f"    link:{link}", file=buf)
+                print(f"    link: {link}", file=buf)
                 print("", file=buf)
         else:
             print("Error: Could not calculate any momentum! Data missing?", file=buf)
