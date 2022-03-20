@@ -15,7 +15,7 @@ from tradeexecutor.state.sync import SyncMethod
 from tradeexecutor.strategy.pricing_model import PricingModelFactory
 from tradeexecutor.strategy.universe_model import TradeExecutorTradingUniverse
 
-from tradeexecutor.state.state import State, TradeExecution, ReservePosition, TradingPosition
+from tradeexecutor.state.state import State, TradeExecution, ReservePosition, TradingPosition, Portfolio
 from tradingstrategy.analysis.tradeanalyzer import TradePosition
 from tradingstrategy.universe import Universe
 
@@ -97,12 +97,16 @@ class StrategyRunner(abc.ABC):
             link = position.pair.info_url
         else:
             link = ""
+
+        price_diff = position.get_current_price() - position.get_opening_price()
+
         return [
-            f"{symbol} {position.pair.get_human_description()} size:${position.get_value():,.2f}, profit:{position.get_total_profit_usd():.2f}% ({position.get_total_profit_usd():,.4f} USD), current price:${position.get_current_price():,.8f}",
+            f"{symbol} {position.pair.get_human_description()} size:${position.get_value():,.2f}, profit:{position.get_total_profit_usd():.2f}% ({position.get_total_profit_usd():,.4f} USD)",
+            f"   current price:${position.get_current_price():,.8f}, open price:${position.get_opening_price():,.8f}, diff:{price_diff:,.8f} USD",
             f"   link:{link}"
         ]
 
-    def format_trade(self, trade: TradeExecution) -> List[str]:
+    def format_trade(self, portfolio: Portfolio, trade: TradeExecution) -> List[str]:
         """Write a trade status line to logs."""
         pair = trade.pair
         if pair.info_url:
@@ -115,9 +119,16 @@ class StrategyRunner(abc.ABC):
         else:
             trade_type = "Sell"
 
+        existing_position = portfolio.get_existing_open_position_by_trading_pair(trade.pair)
+        if existing_position:
+            amount = abs(trade.planned_quantity / existing_position.get_net_quantity())
+            existing_text = f", {amount*100:,.2f}% of existing position"
+        else:
+            existing_text = ""
+
         return [
-            f"{trade_type:5} {pair.get_human_description()} ${trade.get_planned_value():,.2f} ({trade.get_position_quantity()} {pair.base.token_symbol})",
-            f"     link:{link}"
+            f"{trade_type:5} {pair.get_human_description()} ${trade.get_planned_value():,.2f} ({abs(trade.get_position_quantity())} {pair.base.token_symbol}){existing_text}",
+            f"      link:{link}"
         ]
 
     def report_after_sync_and_revaluation(self, clock: datetime.datetime, universe: TradeExecutorTradingUniverse, state: State, debug_details: dict):
@@ -131,7 +142,7 @@ class StrategyRunner(abc.ABC):
         positions = list(portfolio.open_positions.values())
 
         if positions:
-            print(f"Open positions:", file=buf)
+            print(f"Current positions:", file=buf)
             print("", file=buf)
             position: TradingPosition
             for position in portfolio.open_positions.values():
@@ -150,14 +161,16 @@ class StrategyRunner(abc.ABC):
 
         logger.trade(buf.getvalue())
 
-    def report_before_execution(self, clock: datetime.datetime, universe: TradeExecutorTradingUniverse, trades: List[TradeExecution], debug_details: dict):
+    def report_before_execution(self, clock: datetime.datetime, universe: TradeExecutorTradingUniverse, state: State, trades: List[TradeExecution], debug_details: dict):
         buf = StringIO()
         print("New trades to be executed", file=buf)
+        print("", file=buf)
         position: TradingPosition
+        portfolio = state.portfolio
         for t in trades:
-            for line in self.format_trade(t):
+            for line in self.format_trade(portfolio, t):
                 print("    " + line, file=buf)
-                print("", file=buf)
+            print("", file=buf)
         logger.trade(buf.getvalue())
 
     def report_after_execution(self, clock: datetime.datetime, universe: TradeExecutorTradingUniverse, state: State, debug_details: dict):
@@ -167,7 +180,7 @@ class StrategyRunner(abc.ABC):
         print("", file=buf)
         print(f"Total equity: ${portfolio.get_total_equity():,.2f}, Cash: ${portfolio.get_current_cash():,.2f}", file=buf)
         print("", file=buf)
-        print(f"Open positions:", file=buf)
+        print(f"Opened/open positions:", file=buf)
         print("", file=buf)
         position: TradingPosition
         for position in portfolio.open_positions.values():
@@ -176,8 +189,8 @@ class StrategyRunner(abc.ABC):
             print("", file=buf)
 
         print("", file=buf)
-        closed_positions = portfolio.get_positions_closed_at(clock)
-        if closed_positions:
+        closed_positions = list(portfolio.get_positions_closed_at(clock))
+        if len(closed_positions) > 0:
             print(f"Closed positions:", file=buf)
             print("", file=buf)
             position: TradingPosition
@@ -233,7 +246,7 @@ class StrategyRunner(abc.ABC):
                 logger.info("After approval we have %d trades left", len(approved_trades))
                 debug_details["approved_trades"] = approved_trades
 
-            self.report_before_execution(clock, universe, approved_trades, debug_details)
+            self.report_before_execution(clock, universe, state, approved_trades, debug_details)
 
             with self.timed_task_context_manager("execute_trades"):
                 self.execution_model.execute_trades(clock, state, approved_trades)

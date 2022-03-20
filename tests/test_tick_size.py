@@ -1,7 +1,7 @@
 """Test trigger rounding"""
 import datetime
 
-from tradeexecutor.strategy.tick import snap_to_next_tick, TickSize
+from tradeexecutor.strategy.tick import snap_to_next_tick, TickSize, snap_to_previous_tick
 
 
 def test_tick_8h():
@@ -9,6 +9,19 @@ def test_tick_8h():
     time = datetime.datetime(2020, 1, 1, 5, 00)
     assert snap_to_next_tick(time, TickSize.tick_8h) == datetime.datetime(2020, 1, 1, 8, 00)
     assert snap_to_next_tick(time, TickSize.tick_8h, offset=datetime.timedelta(minutes=10)) == datetime.datetime(2020, 1, 1, 8, 10)
+
+
+def test_tick_8h_snap_previous():
+    """Snap our 8h ticks correctly."""
+    time = datetime.datetime(2020, 1, 1, 5, 00)
+    assert snap_to_previous_tick(time, TickSize.tick_8h) == datetime.datetime(2020, 1, 1, 00, 00)
+    assert snap_to_previous_tick(time, TickSize.tick_8h, offset=datetime.timedelta(minutes=10)) == datetime.datetime(2020, 1, 1, 00, 10)
+
+def test_tick_8h_snap_previous_equal():
+    # If we are already in the time, do not move the clok
+    assert snap_to_previous_tick(datetime.datetime(2020, 1, 1, 00, 00), TickSize.tick_8h) == datetime.datetime(2020, 1, 1, 00, 00)
+    assert snap_to_previous_tick(datetime.datetime(2020, 1, 1, 8, 00), TickSize.tick_8h) == datetime.datetime(2020, 1, 1, 8, 00)
+    assert snap_to_previous_tick(datetime.datetime(2020, 1, 1, 16, 00), TickSize.tick_8h) == datetime.datetime(2020, 1, 1, 16, 00)
 
 
 def test_tick_at_the_correct_time():

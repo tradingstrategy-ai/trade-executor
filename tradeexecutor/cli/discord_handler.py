@@ -48,7 +48,7 @@ class DiscordHandler(logging.Handler):
                  emojis=DEFAULT_EMOJIS,
                  avatar_url=None,
                  rate_limit_retry=True,
-                 embed_line_wrap_threshold=80):
+                 embed_line_wrap_threshold=60):
 
         logging.Handler.__init__(self)
         self.webhook_url = webhook_url

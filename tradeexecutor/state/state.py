@@ -300,6 +300,7 @@ class TradeExecution:
     executed_at: Optional[datetime.datetime] = None
     failed_at: Optional[datetime.datetime] = None
 
+    #: What was the actual price we received
     executed_price: Optional[USDollarAmount] = None
 
     #: Positive for buy, negative for sell
@@ -601,6 +602,11 @@ class TradingPosition:
         """Get the price of the base asset based on the latest valuation."""
         return self.last_token_price
 
+    def get_opening_price(self) -> USDollarAmount:
+        """Get the price when the position was opened."""
+        first_trade = self.get_first_trade()
+        return first_trade.executed_price
+
     def get_equity_for_position(self) -> Decimal:
         return sum([t.get_equity_for_position() for t in self.trades.values() if t.is_success()])
 
@@ -829,6 +835,17 @@ class Portfolio:
         for p in self.open_positions.values():
             if p.pair.pool_address == pair.pool_address:
                 return p
+        return None
+
+    def get_existing_open_position_by_trading_pair(self, pair: TradingPairIdentifier) -> Optional[TradingPosition]:
+        """Get a position by a trading pair smart contract address identifier.
+
+        The position must have already executed trades (cannot be planned position(.
+        """
+        for p in self.open_positions.values():
+            if p.has_executed_trades():
+                if p.pair.pool_address == pair.pool_address:
+                    return p
         return None
 
     def get_positions_closed_at(self, ts: datetime.datetime) -> Iterable[TradingPosition]:

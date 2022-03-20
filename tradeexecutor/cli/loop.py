@@ -18,7 +18,7 @@ from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.strategy.mode import ExecutionMode
 from tradeexecutor.strategy.pricing_model import PricingModelFactory
 from tradeexecutor.strategy.runner import StrategyRunner
-from tradeexecutor.strategy.tick import TickSize, snap_to_next_tick
+from tradeexecutor.strategy.tick import TickSize, snap_to_next_tick, snap_to_previous_tick
 from tradeexecutor.utils.timer import timed_task
 from tradingstrategy.client import Client
 
@@ -117,15 +117,19 @@ def run_main_loop(
 
     while True:
 
+        unrounded_timestamp = ts
+        ts = snap_to_previous_tick(unrounded_timestamp, tick_size)
+
         # This Python dict collects internal debugging data through this cycle.
         # Any submodule of strategy execution can add internal information here for
         # unit testing and manual diagnostics. Any data added must be JSON serializable.
         debug_details = {
             "cycle": cycle,
+            "unrounded_timestamp": unrounded_timestamp,
             "timestamp": ts,
         }
 
-        logger.trade("Starting strategy cycle %d, UTC is %s", cycle, ts)
+        logger.trade("Starting strategy tick #%d for timestamp %s, unrounded time is %s, in %s mode", cycle, ts, unrounded_timestamp, mode.value)
 
         # Refresh the trading universe for this cycle
         universe = universe_model.construct_universe(ts, live)

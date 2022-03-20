@@ -33,6 +33,28 @@ def round_datetime_up(
     return rounded + offset
 
 
+def round_datetime_down(
+        ts: datetime.datetime,
+        delta: datetime.timedelta,
+        offset: datetime.timedelta = datetime.timedelta(minutes=0)) -> datetime.datetime:
+    """Snap to previous available timedelta.
+
+    Preserve any timezone info on `ts`.
+
+    If we are at the the given exact delta, then do not round, only add offset.
+
+    :param ts: Timestamp we want to round
+    :param delta: Our snap grid
+    :param offset: Add a fixed time offset at the top of rounding
+    :return: When to wake up from the sleep next time
+    """
+    mod = (datetime.datetime.min.replace(tzinfo=ts.tzinfo) - ts) % delta
+    if mod == datetime.timedelta(0):
+        return ts
+    rounded = ts - delta + mod
+    return rounded + offset
+
+
 def snap_to_next_tick(
         ts: datetime.datetime,
         tick_size: TickSize,
@@ -46,6 +68,23 @@ def snap_to_next_tick(
     """
     delta = tick_size.to_timedelta()
     return round_datetime_up(ts, delta, offset)
+
+
+def snap_to_previous_tick(
+        ts: datetime.datetime,
+        tick_size: TickSize,
+        offset: datetime.timedelta = datetime.timedelta(minutes=0)) -> datetime.datetime:
+    """Calculate what should the tick time for given real time.
+
+    If `ts` matches the tick, do nothing.
+
+    :param ts: Current timestamp
+    :param tick_size: How big leaps we are taking
+    :param offset: How many minutes of offset we assume to ensure we have candle data generated after the timestamp
+    :return: What tick are we living in
+    """
+    delta = tick_size.to_timedelta()
+    return round_datetime_down(ts, delta, offset)
 
 
 _TICK_DURATIONS = {

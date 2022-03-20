@@ -46,14 +46,15 @@ class QSTraderRunner(StrategyRunner):
         print("", file=buf)
         print("Data status")
         print(f"   Cash buffer: {self.cash_buffer * 100:.2f}", file=buf)
-        print(f"   Candle data range: {data_start} - {data_end}", file=buf)
-        print(f"   Liquidity data range: {liquidity_start} - {liquidity_end}", file=buf)
+        print(f"   Candle dataset: {data_start} - {data_end}", file=buf)
+        print(f"   Liquidity dataset: {liquidity_start} - {liquidity_end}", file=buf)
         print("", file=buf)
 
         alpha_model_weights = debug_details["alpha_model_weights"]
 
         if alpha_model_weights:
-            print("Alpha model weights", file=buf)
+            print("Alpha model weights:", file=buf)
+            print("", file=buf)
 
             for pair_id, weight in alpha_model_weights.items():
                 pair = universe.pairs.get_pair_by_id(pair_id)
@@ -64,7 +65,24 @@ class QSTraderRunner(StrategyRunner):
                 print(f"    link:{link}", file=buf)
                 print("", file=buf)
         else:
-            logger.info("Error: Could not calculate any momentum! Data missing?")
+            print("Error: Could not calculate any momentum! Data missing?", file=buf)
+
+        good_candle_count = debug_details["good_candle_count"]
+        problem_candle_count = debug_details["problem_candle_count"]
+        low_liquidity_count = debug_details["low_liquidity_count"]
+        bad_momentum_count = debug_details["bad_momentum_count"]
+        funny_price_count = debug_details["funny_price_count"]
+        candle_range_start = debug_details["candle_range_start"]
+        candle_range_end = debug_details["candle_range_end"]
+        print("", file=buf)
+        print("Alpha model data quality:", file=buf)
+        print("", file=buf)
+        print(f"   Evaluated momentum range: {candle_range_start} - {candle_range_end}", file=buf)
+        print(f"   Pairs with good candles data: {good_candle_count}", file=buf)
+        print(f"   Pairs with bad price value: {funny_price_count}", file=buf)
+        print(f"   Pairs with negative momentum result: {bad_momentum_count}", file=buf)
+        print(f"   Pairs with problems in candles data: {problem_candle_count}", file=buf)
+        print(f"   Pairs with low liquidity: {low_liquidity_count}", file=buf)
 
         logger.trade(buf.getvalue())
 

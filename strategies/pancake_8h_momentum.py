@@ -36,7 +36,10 @@ from tradingstrategy.universe import Universe
 
 
 # Cannot use Python __name__ here because the module is dynamically loaded
-logger = logging.getLogger("pancakeswap_4f")
+logger = logging.getLogger("pancakeswap_8h_momentum")
+
+# Use daily candles to run the algorithm
+candle_time_frame = TimeBucket.h4
 
 # We are making a decision based on 8 hours (2 candles)
 # 1. The current 4h candle
@@ -58,11 +61,7 @@ max_assets_per_portfolio = 4
 
 # How many % of all value we hold in cash all the time,
 # so that we can sustain hits
-# We hold 90% in cash.
-cash_buffer = 0.9
-
-# Use daily candles to run the algorithm
-candle_time_frame = TimeBucket.d1
+cash_buffer = 0.90
 
 
 def fix_qstrader_date(ts: pd.Timestamp) -> pd.Timestamp:
@@ -120,16 +119,16 @@ class MomentumAlphaModel(AlphaModel):
         candle_universe = universe.candles
         liquidity_universe = universe.liquidity
 
-        logger.info("Entering the alpha model at timestamp %s, we know %d pairs", ts, pair_universe.get_count())
-
         # The time range end is the current candle
         # The time range start is 2 * 4 hours back, and turn the range
         # exclusive instead of inclusive
-        start = ts - lookback + datetime.timedelta(seconds=1)
+        start = ts - lookback - datetime.timedelta(minutes=59)
         end = ts
 
         debug_details["candle_range_start"] = start
         debug_details["candle_range_end"] = end
+
+        logger.info("Entering the alpha model at timestamp %s, we know %d pairs, our evaluation range is %s - %s", ts, pair_universe.get_count(), start, end)
 
         alpha_signals = Counter()
 
@@ -139,18 +138,36 @@ class MomentumAlphaModel(AlphaModel):
         liquidity_threshold = min_liquidity_threshold
 
         extra_debug_data = {}
+        problem_candle_count = good_candle_count = low_liquidity_count = bad_momentum_count = funny_price_count = 0
 
         # Iterate over all candles for all pairs in this timestamp (ts)
         for pair_id, pair_df in candle_data:
-            first_candle = pair_df.iloc[0]
+
+            # We have 0 or 1 candles in the range
+            if len(pair_df) < 2:
+                problem_candle_count += 1
+                continue
+
+            first_candle = pair_df.iloc[-2]
+            # mid-candle ignored
             last_candle = pair_df.iloc[-1]
 
             open = first_candle["Open"]  # QStrader data frames are using capitalised version of OHLCV core variables
             close = last_candle["Close"]  # QStrader data frames are using capitalised version of OHLCV core variables
             pair = pair_universe.get_pair_by_id(pair_id)
 
+            # We need 8h data to calculate the momentum.
+            # We have have
+            # opening of the first candle -> 4h -> opening of the second candle -> 4h -> closing of the second candle
+            lookback_duration = last_candle["Date"] - first_candle["Date"]
+            if lookback_duration < datetime.timedelta(hours=4):
+                logger.info("Bad lookback duration %s for %s, our range is %s - %s", lookback_duration, pair, start, end)
+                problem_candle_count += 1
+                continue
+
             if self.is_funny_price(open) or self.is_funny_price(close):
                 # This trading pair is too funny that we do not want to play with it
+                funny_price_count += 1
                 continue
 
             # We define momentum as how many % the trading pair price gained yesterday
@@ -169,28 +186,28 @@ class MomentumAlphaModel(AlphaModel):
                     # BSC blockchain was halted or because BSC nodes themselves had crashed.
                     # In this case, we just assume the liquidity was zero and don't backtest.
                     # logger.warning(f"No liquidity data for pair {pair}, currently backtesting at {ts}")
+                    logger.info("Holes in liquidity data for %s? %s", pair, ts)
                     available_liquidity_for_pair = 0
+            else:
+                #logger.info("Pair %s non-positive momentum for range %s - %s", pair, first_candle["Date"], last_candle["Date"])
+                bad_momentum_count += 1
+                continue
 
             if available_liquidity_for_pair >= liquidity_threshold:
 
                 # Do candle check only after we know the pair is "good" liquidity wise
                 # and should have candles
                 candle_count = len(pair_df)
-                if candle_count == 2:
-                    alpha_signals[pair_id] = momentum
-                else:
-                    # Pair two fresh and hasn't 2 candles yet?
-                    logger.error("Got problem with candles %s %s-%s", pair, start, end)
-                    # https://stackoverflow.com/a/55770434/315168
-                    logger.error('\t'+ pair_df.to_string().replace('\n', '\n\t'))
-                    alpha_signals[pair_id] = 0
-
+                alpha_signals[pair_id] = momentum
+                good_candle_count += 1
             else:
                 # No alpha for illiquid pairs
-                # logger.warning("Liquidity not enough. Pair %s, liquidity %s, needed %s", pair, available_liquidity_for_pair, liquidity_threshold)
+                # logger.info("Pair %s lacks liquidity, liquidity %s, needed %s", pair, available_liquidity_for_pair, liquidity_threshold)
                 alpha_signals[pair_id] = 0
                 candle_count = None
+                low_liquidity_count += 1
 
+            # Extra debug details are available for pairs for which a buy decision can be made
             extra_debug_data[pair_id] = {
                 "pair": pair,
                 "open": open,
@@ -221,7 +238,12 @@ class MomentumAlphaModel(AlphaModel):
         logger.info("Got signals %s", weighed_signals)
         debug_details["signals"]: weighed_signals.copy()
         debug_details["pair_details"]: extra_debug_data
-
+        debug_details["problem_candle_count"] = problem_candle_count
+        debug_details["good_candle_count"] = good_candle_count
+        debug_details["extra_debug_data"] = extra_debug_data
+        debug_details["bad_momentum_count"] = bad_momentum_count
+        debug_details["low_liquidity_count"] = low_liquidity_count
+        debug_details["funny_price_count"] = funny_price_count
         return dict(weighed_signals)
 
 
@@ -304,12 +326,9 @@ def strategy_factory(
         # https://www.python.org/dev/peps/pep-3102/
         raise TypeError("Only keyword arguments accepted")
 
-    if execution_model is not None:
-        assert isinstance(execution_model, UniswapV2ExecutionModel), f"This strategy is compatible only with UniswapV2ExecutionModel, got {execution_model}"
+    assert isinstance(execution_model, UniswapV2ExecutionModel), f"This strategy is compatible only with UniswapV2ExecutionModel, got {execution_model}"
 
-        # 57 is the BSC mainnet
-        # 1337 is Ganache
-        assert execution_model.chain_id in (56, 1337), f"This strategy is hardcoded to BNB chain/Ganache test chain, got chain {execution_model.chain_id}"
+    assert execution_model.chain_id == 1337, f"This strategy is hardcoded to ganache-cli test chain, got chain {execution_model.chain_id}"
 
     universe_model = OurUniverseModel(client, timed_task_context_manager)
 
