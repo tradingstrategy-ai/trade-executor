@@ -33,7 +33,7 @@ check_secret_envs()
 check_secret_envs PRIVATE_KEY JSON_RPC_BINANCE TRADING_STRATEGY_API_KEY DISCORD_WEBHOOK_URL
 
 # This id is used in various paths and such
-EXECUTOR_ID=pancake_8h_momentum_tick
+EXECUTOR_ID=pancake_8h_momentum
 
 export NAME="Pancake 8h momentum tick"
 export STRATEGY_FILE="${PWD}/strategies/${EXECUTOR_ID}.py"
