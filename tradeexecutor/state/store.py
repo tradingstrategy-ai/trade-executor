@@ -1,8 +1,12 @@
 import abc
 import enum
 from pathlib import Path
+import logging
 
 from tradeexecutor.state.state import State
+
+
+logger = logging.getLogger(__name__)
 
 
 class StateStoreModel(enum.Enum):
@@ -42,6 +46,7 @@ class JSONFileStore(StateStore):
         return not self.path.exists()
 
     def load(self) -> State:
+        logger.info("Loaded state from %s", self.path)
         with open(self.path, "rt") as inp:
             return State.from_json(inp)
 
@@ -49,7 +54,9 @@ class JSONFileStore(StateStore):
         with open(self.path, "wt") as out:
             txt = state.to_json()
             out.write(txt)
+            logger.info("Saved state to %s, total %d chars", self.path, len(txt))
 
     def create(self) -> State:
+        logger.info("Created new state for %s", self.path)
         return State()
 
