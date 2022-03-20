@@ -36,7 +36,10 @@ from tradingstrategy.universe import Universe
 
 
 # Cannot use Python __name__ here because the module is dynamically loaded
-logger = logging.getLogger("pancakeswap_4f")
+logger = logging.getLogger("pancakeswap_8h_momentum")
+
+# Use daily candles to run the algorithm
+candle_time_frame = TimeBucket.h4
 
 # We are making a decision based on 8 hours (2 candles)
 # 1. The current 4h candle
@@ -58,10 +61,7 @@ max_assets_per_portfolio = 4
 
 # How many % of all value we hold in cash all the time,
 # so that we can sustain hits
-cash_buffer = 0.50
-
-# Use daily candles to run the algorithm
-candle_time_frame = TimeBucket.d1
+cash_buffer = 0.90
 
 
 def fix_qstrader_date(ts: pd.Timestamp) -> pd.Timestamp:
@@ -138,6 +138,7 @@ class MomentumAlphaModel(AlphaModel):
         liquidity_threshold = min_liquidity_threshold
 
         extra_debug_data = {}
+        problem_candle_count = 0
 
         # Iterate over all candles for all pairs in this timestamp (ts)
         for pair_id, pair_df in candle_data:
@@ -179,9 +180,10 @@ class MomentumAlphaModel(AlphaModel):
                     alpha_signals[pair_id] = momentum
                 else:
                     # Pair two fresh and hasn't 2 candles yet?
-                    logger.error("Got problem with candles %s %s-%s", pair, start, end)
+                    problem_candle_count += 1
+                    logger.info("Got problem with candles %s %s-%s", pair, start, end)
                     # https://stackoverflow.com/a/55770434/315168
-                    logger.error('\t'+ pair_df.to_string().replace('\n', '\n\t'))
+                    logger.info('\t'+ pair_df.to_string().replace('\n', '\n\t'))
                     alpha_signals[pair_id] = 0
 
             else:
@@ -220,6 +222,8 @@ class MomentumAlphaModel(AlphaModel):
         logger.info("Got signals %s", weighed_signals)
         debug_details["signals"]: weighed_signals.copy()
         debug_details["pair_details"]: extra_debug_data
+        debug_details["problem_candle_count"] = problem_candle_count
+        debug_details["extra_debug_data"] = extra_debug_data
 
         return dict(weighed_signals)
 

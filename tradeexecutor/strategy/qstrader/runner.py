@@ -45,20 +45,26 @@ class QSTraderRunner(StrategyRunner):
         print("Strategy thinking", file=buf)
         print("", file=buf)
         print("Data status")
-        print(f"   Cash buffer: {self.cash_buffer * 100:.2}f", file=buf)
+        print(f"   Cash buffer: {self.cash_buffer * 100:.2f}", file=buf)
         print(f"   Candle data range: {data_start} - {data_end}", file=buf)
         print(f"   Liquidity data range: {liquidity_start} - {liquidity_end}", file=buf)
         print("", file=buf)
 
         alpha_model_weights = debug_details["alpha_model_weights"]
-        print("Alpha model weights", file=buf)
 
-        for pair_id, weight in alpha_model_weights.items():
-            pair = universe.pairs.get_pair_by_id(pair_id)
-            tp = translate_trading_pair(pair)
-            link = tp.info_url or ""
-            momentum = debug_details["extra_debug_data"][pair_id]["momentum"]
-            print(f"    {tp.get_human_description()}: {weight:.2f}, momentum {momentum*100:.2f}% {link}")
+        if alpha_model_weights:
+            print("Alpha model weights", file=buf)
+
+            for pair_id, weight in alpha_model_weights.items():
+                pair = universe.pairs.get_pair_by_id(pair_id)
+                tp = translate_trading_pair(pair)
+                link = tp.info_url or ""
+                momentum = debug_details["extra_debug_data"][pair_id]["momentum"]
+                print(f"    {tp.get_human_description()} weight:{weight:.2f}, momentum:{momentum*100:.2f}%", file=buf)
+                print(f"    link:{link}", file=buf)
+                print("", file=buf)
+        else:
+            logger.info("Error: Could not calculate any momentum! Data missing?")
 
         logger.trade(buf.getvalue())
 

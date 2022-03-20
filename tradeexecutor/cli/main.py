@@ -142,8 +142,6 @@ def start(
             webhook_url=discord_webhook_url,
             avatar_url=discord_avatar_url)
 
-    logger.trade("Trade Executor version %s starting strategy %s", version, name)
-
     execution_model, sync_method, revaluation_method, pricing_model_factory = create_trade_execution_model(
         execution_type,
         uniswap_v2_factory_address,
@@ -184,6 +182,8 @@ def start(
 
     logger.info("Loading strategy file %s", strategy_file)
     strategy_factory = import_strategy_file(strategy_file)
+
+    logger.trade("Trade Executor version %s starting strategy %s", version, name)
 
     try:
         run_main_loop(

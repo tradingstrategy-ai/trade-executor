@@ -179,7 +179,7 @@ def hot_wallet(web3: Web3, busd_token: Contract, hot_wallet_private_key: HexByte
 @pytest.fixture()
 def strategy_path() -> Path:
     """Where do we load our strategy file."""
-    return Path(os.path.join(os.path.dirname(__file__), "strategies", "pancakeswap_4h_candles.py"))
+    return Path(os.path.join(os.path.dirname(__file__), "strategies", "pancake_8h_momentum.py"))
 
 
 def test_pancake_4h_candles(
@@ -205,7 +205,7 @@ def test_pancake_4h_candles(
     # Set up the configuration for the backtesting, run
     # run 2 weeks
     environment = {
-        "NAME": "pytest: test_pancake_4g_candles.py",
+        "NAME": "pytest: pancake_8h_momentum_tick.py",
         "STRATEGY_FILE": strategy_path.as_posix(),
         "PRIVATE_KEY": hot_wallet.account.privateKey.hex(),
         "HTTP_ENABLED": "false",
