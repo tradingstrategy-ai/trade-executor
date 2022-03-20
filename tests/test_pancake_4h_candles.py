@@ -232,6 +232,10 @@ def test_pancake_4h_candles(
         environment["DISCORD_WEBHOOK_URL"] = discord_webhook_url
         environment["DISCORD_AVATAR_URL"] = "https://i0.wp.com/www.theterminatorfans.com/wp-content/uploads/2012/09/the-terminator3.jpg?resize=900%2C450&ssl=1"
 
+    clear_caches = os.environ.get("CLEAR_CACHES")
+    if clear_caches:
+        environment["clear_caches"] = clear_caches
+
     # https://typer.tiangolo.com/tutorial/testing/
     runner = CliRunner()
 

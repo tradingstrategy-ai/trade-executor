@@ -129,7 +129,7 @@ class TradingPairIdentifier:
         """We use the smart contract pool address to uniquely identify trading positions."""
         return self.pool_address
 
-    def s(self) -> str:
+    def get_human_description(self) -> str:
         return f"{self.base.token_symbol}-{self.quote.token_symbol}"
 
     #def get_trading_pair(self, pair_universe: PandasPairUniverse) -> DEXPair:
@@ -830,6 +830,15 @@ class Portfolio:
             if p.pair.pool_address == pair.pool_address:
                 return p
         return None
+
+    def get_positions_closed_at(self, ts: datetime.datetime) -> Iterable[TradingPosition]:
+        """Get positions that were closed at a specific timestamp.
+
+        Useful to display closed positions after the rebalance.
+        """
+        for p in self.closed_positions.values():
+            if p.closed_at == ts:
+                yield p
 
     def create_trade(self,
                      ts: datetime.datetime,

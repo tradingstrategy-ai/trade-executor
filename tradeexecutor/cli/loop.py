@@ -113,7 +113,7 @@ def run_main_loop(
             time.sleep(wait.total_seconds())
             ts = datetime.datetime.utcnow()
 
-    logger.trade("Starting trade execution loop for %s", name)
+    logger.trade("Preflight checks ok")
 
     while True:
 

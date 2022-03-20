@@ -1,4 +1,5 @@
 import datetime
+from io import StringIO
 from typing import List, Optional
 import logging
 
@@ -7,7 +8,7 @@ import pandas as pd
 from qstrader.portcon.optimiser.fixed_weight import FixedWeightPortfolioOptimiser
 from tradeexecutor.strategy.qstrader.alpha_model import AlphaModel
 from tradeexecutor.strategy.qstrader.order_sizer import CashBufferedOrderSizer
-from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_trading_pair
 
 from tradeexecutor.state.state import State, TradeExecution
 from tradeexecutor.strategy.qstrader.portfolio_construction_model import PortfolioConstructionModel
@@ -32,6 +33,34 @@ class QSTraderRunner(StrategyRunner):
         self.max_data_age = max_data_age
         # TODO: Make starter configuration
         self.cash_buffer = cash_buffer
+
+    def report_strategy_thinking(self, clock: datetime.datetime, universe: TradingStrategyUniverse, state: State, trades: List[TradeExecution], debug_details: dict):
+        """Report alpha model status."""
+        buf = StringIO()
+        universe = universe.universe
+
+        data_start, data_end = universe.candles.get_timestamp_range()
+        liquidity_start, liquidity_end = universe.liquidity.get_timestamp_range()
+
+        print("Strategy thinking", file=buf)
+        print("", file=buf)
+        print("Data status")
+        print(f"   Cash buffer: {self.cash_buffer * 100:.2}f", file=buf)
+        print(f"   Candle data range: {data_start} - {data_end}", file=buf)
+        print(f"   Liquidity data range: {liquidity_start} - {liquidity_end}", file=buf)
+        print("", file=buf)
+
+        alpha_model_weights = debug_details["alpha_model_weights"]
+        print("Alpha model weights", file=buf)
+
+        for pair_id, weight in alpha_model_weights.items():
+            pair = universe.pairs.get_pair_by_id(pair_id)
+            tp = translate_trading_pair(pair)
+            link = tp.info_url or ""
+            momentum = debug_details["extra_debug_data"][pair_id]["momentum"]
+            print(f"    {tp.get_human_description()}: {weight:.2f}, momentum {momentum*100:.2f}% {link}")
+
+        logger.trade(buf.getvalue())
 
     def on_data_signal(self):
         pass

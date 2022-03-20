@@ -87,18 +87,37 @@ class StrategyRunner(abc.ABC):
     def on_clock(self, clock: datetime.datetime, universe: TradeExecutorTradingUniverse, state: State, debug_details: dict) -> List[TradeExecution]:
         return []
 
-    def format_open_position(self, position: TradingPosition, up_symbol="🌲", down_symbol="🔻") -> str:
+    def format_position(self, position: TradingPosition, up_symbol="🌲", down_symbol="🔻") -> str:
         """Write a position status line to logs.
 
         Position can be open/closed.
         """
         symbol = up_symbol if position.get_total_profit_percent() >= 0 else down_symbol
-        return f"{symbol} {position.pair.get_human_description()} Profit:{position.get_total_profit_usd()::.2f}% ({position.get_total_profit_usd()} USD) Current price:{position.get_current_price():,.8f} USD"
+        if position.pair.info_url:
+            link = position.pair.info_url
+        else:
+            link = ""
+        return f"{symbol} {position.pair.get_human_description()} Profit:{position.get_total_profit_usd()::.2f}% ({position.get_total_profit_usd()} USD) Current price:{position.get_current_price():,.8f} USD {link}"
+
+    def format_trade(self, trade: TradeExecution) -> str:
+        """Write a trade status line to logs."""
+        pair = trade.pair
+        if pair.info_url:
+            link = pair.info_url
+        else:
+            link = ""
+
+        if trade.is_buy():
+            trade_type = "Buy"
+        else:
+            trade_type = "Sell"
+
+        return f"{trade_type} {pair.get_human_description()} ${trade.get_value():,.2f} ({trade.get_position_quantity()} {pair.base.token_symbol}) {link}"
 
     def report_after_sync_and_revaluation(self, clock: datetime.datetime, universe: TradeExecutorTradingUniverse, state: State, debug_details: dict):
         buf = StringIO()
         portfolio = state.portfolio
-        print("Portfolio status", file=buf)
+        print("Portfolio status (before rebalance)", file=buf)
         print("", file=buf)
         print(f"Total equity: ${portfolio.get_total_equity():,.2f}, Cash: ${portfolio.get_current_cash():,.2f}", file=buf)
         print("", file=buf)
@@ -106,21 +125,56 @@ class StrategyRunner(abc.ABC):
         print("", file=buf)
         position: TradingPosition
         for position in portfolio.open_positions.values():
-            print("    " + self.format_open_position(position), file=buf)
+            print("    " + self.format_position(position), file=buf)
 
         print("Reserves:", file=buf)
         print("", file=buf)
         reserve: ReservePosition
         for reserve in state.portfolio.reserves.values():
-            print(f"    {reserve.quantity:,.2f} {reserve.asset.token_symbol}")
+            print(f"    {reserve.quantity:,.2f} {reserve.asset.token_symbol}", file=buf)
 
         logger.trade(buf.getvalue())
 
-    def report_before_execution(self, clock: datetime.datetime, universe: TradeExecutorTradingUniverse, state: State, debug_details: dict):
-        pass
+    def report_before_execution(self, clock: datetime.datetime, universe: TradeExecutorTradingUniverse, trades: List[TradeExecution], debug_details: dict):
+        buf = StringIO()
+        print("New trades to be executed", file=buf)
+        position: TradingPosition
+        for t in trades:
+            print("    " + self.format_trade(t), file=buf)
+        logger.trade(buf.getvalue())
 
     def report_after_execution(self, clock: datetime.datetime, universe: TradeExecutorTradingUniverse, state: State, debug_details: dict):
-        pass
+        buf = StringIO()
+        portfolio = state.portfolio
+        print("Portfolio status (after rebalance)", file=buf)
+        print("", file=buf)
+        print(f"Total equity: ${portfolio.get_total_equity():,.2f}, Cash: ${portfolio.get_current_cash():,.2f}", file=buf)
+        print("", file=buf)
+        print(f"Open positions:", file=buf)
+        print("", file=buf)
+        position: TradingPosition
+        for position in portfolio.open_positions.values():
+            print("    " + self.format_position(position), file=buf)
+
+        print(f"Closed positions:", file=buf)
+        print("", file=buf)
+        position: TradingPosition
+        for position in portfolio.get_positions_closed_at(clock):
+            print("    " + self.format_position(position), file=buf)
+
+        print("Reserves:", file=buf)
+        print("", file=buf)
+        reserve: ReservePosition
+        for reserve in state.portfolio.reserves.values():
+            print(f"    {reserve.quantity:,.2f} {reserve.asset.token_symbol}", file=buf)
+
+        logger.trade(buf.getvalue())
+
+    def report_strategy_thinking(self, clock: datetime.datetime, universe: TradeExecutorTradingUniverse, state: State, trades: List[TradeExecution], debug_details: dict):
+        """Strategy runner subclass can fill in.
+
+        By default, no-op.
+        """
 
     def tick(self, clock: datetime.datetime, universe: TradeExecutorTradingUniverse, state: State, debug_details: dict) -> dict:
         """Perform the strategy main tick.
@@ -145,14 +199,20 @@ class StrategyRunner(abc.ABC):
                 debug_details["rebalance_trades"] = rebalance_trades
                 logger.info("We have %d trades", len(rebalance_trades))
 
+            self.report_strategy_thinking(clock, universe, state, rebalance_trades, debug_details)
+
             with self.timed_task_context_manager("confirm_trades"):
                 approved_trades = self.approval_model.confirm_trades(state, rebalance_trades)
                 assert type(approved_trades) == list
                 logger.info("After approval we have %d trades left", len(approved_trades))
                 debug_details["approved_trades"] = approved_trades
 
+            self.report_before_execution(clock, universe, approved_trades, debug_details)
+
             with self.timed_task_context_manager("execute_trades"):
                 logger.trade("Executing trades: %s", approved_trades)
                 self.execution_model.execute_trades(clock, state, approved_trades)
+
+            self.report_after_execution(clock, universe, state, debug_details)
 
         return debug_details

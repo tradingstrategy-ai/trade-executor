@@ -130,6 +130,7 @@ def start(
     discord_avatar_url: Optional[str] = typer.Option(None, envvar="DISCORD_AVATAR_URL", help="Discord avatar image URL for notifications"),
     trade_immediately: bool = typer.Option(False, "--trade-immediately", envvar="TRADE_IMMEDIATELY", help="Perform the first rebalance immediately, do not wait for the next trading universe refresh"),
     port_mortem_debugging: bool = typer.Option(False, "--post-mortem-debugging", envvar="POST_MORTEM_DEBUGGING", help="Launch ipdb debugger on a main loop crash to debug the exception"),
+    clear_caches: bool = typer.Option(False, "--clear-caches", envvar="CLEAR_CACHES", help="Purge any dataset download caches before starting"),
     ):
     """Launch Trade Executor instance."""
 
@@ -150,7 +151,7 @@ def start(
         uniswap_init_code_hash,
         json_rpc,
         private_key,
-        gas_price_method
+        gas_price_method,
     )
 
     approval_model = create_approval_model(approval_type)
@@ -169,6 +170,8 @@ def start(
     # Create our data client
     if trading_strategy_api_key:
         client = Client.create_live_client(trading_strategy_api_key, cache_path=cache_path)
+        if clear_caches:
+            client.clear_caches()
     else:
         client = None
 
