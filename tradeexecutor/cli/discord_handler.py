@@ -69,11 +69,14 @@ class DiscordHandler(logging.Handler):
 
         return "\n" in msg
 
-    def clip_content(self, content: str, max_len=1024, clip_to_end=True) -> str:
-        """Make sure the text fits to a Discord message."""
+    def clip_content(self, content: str, max_len=1900, clip_to_end=True) -> str:
+        """Make sure the text fits to a Discord message.
+
+        Discord max message length is 2000 chars.
+        """
         if len(content) > max_len - 5:
             if clip_to_end:
-                return content[-max_len:] + "..."
+                return "..." + content[-max_len:]
             else:
                 return content[0:max_len] + "..."
         else:
@@ -109,14 +112,20 @@ class DiscordHandler(logging.Handler):
 
                 # discord.content = msg
                 if self.should_format_as_code_block(record, msg):
-                    first, remainder = msg.split("\n", maxsplit=1)
+
+                    try:
+                        first, remainder = msg.split("\n", maxsplit=1)
+                    except ValueError:
+                        first = msg
+                        remainder = ""
 
                     max_line_length = max([len(l) for l in msg.split("\n")])
                     clipped = self.clip_content(remainder)
 
                     if max_line_length > self.embed_line_wrap_threshold:
                         # msg_with_bold = f"**{first}**\n```{clipped}```"
-                        discord.content = f"```{msg}```"
+                        clipped_msg = self.clip_content(msg)
+                        discord.content = f"```{clipped_msg}```"
                     else:
                         embed = DiscordEmbed(title=first, description=clipped, color=colour)
                         discord.add_embed(embed)
@@ -176,6 +185,8 @@ if __name__ == "__main__":
     logger.addHandler(stream_handler)
     logger.setLevel(logging.DEBUG)
 
+    logger.info("Long line of text Long line of text Long line of text Long line of text Long line of text  Long line of text Long line of text")
+
     # Test logging output
     # https://docs.python.org/3.9/library/textwrap.html#textwrap.dedent
     detent_text = textwrap.dedent("""\
@@ -196,6 +207,9 @@ if __name__ == "__main__":
             https://tradingstrategy.ai/blog 
     """)
     logger.info(long_lines_text)
+
+    logger.info("Line of text")
+
 
 
     logger.debug("Debug message %d %d", 1, 2)

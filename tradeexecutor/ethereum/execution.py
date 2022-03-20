@@ -215,7 +215,10 @@ def broadcast(
     for t in instructions:
         assert isinstance(t.tx_info.signed_bytes, str), f"Got signed transaction: {t.tx_info.signed_bytes}"
         signed_bytes = HexBytes(t.tx_info.signed_bytes)
-        web3.eth.send_raw_transaction(signed_bytes)
+        try:
+            web3.eth.send_raw_transaction(signed_bytes)
+        except Exception as e:
+            raise RuntimeError(f"Error when broadcasting transaction for trade {t}") from e
         t.broadcasted_at = ts
         res[t.tx_info.tx_hash] = t
     return res
