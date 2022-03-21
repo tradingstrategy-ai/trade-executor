@@ -48,7 +48,7 @@ class JSONFileStore(StateStore):
     def load(self) -> State:
         logger.info("Loaded state from %s", self.path)
         with open(self.path, "rt") as inp:
-            return State.from_json(inp)
+            return State.from_json(inp.read())
 
     def sync(self, state: State):
         with open(self.path, "wt") as out:
