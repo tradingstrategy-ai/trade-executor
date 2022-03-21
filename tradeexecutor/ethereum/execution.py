@@ -302,7 +302,8 @@ def resolve_trades(web3: Web3, uniswap: UniswapV2Deployment, ts: datetime.dateti
                 trade,
             )
             if stop_on_execution_failure:
-                raise TradeExecutionFailed(f"Could not execute a trade: {trade}")
+                tx_hash = trade.tx_info.tx_hash
+                raise TradeExecutionFailed(f"Could not execute a trade: {trade}, transaction was {tx_hash}")
 
 
 def get_current_price(web3: Web3, uniswap: UniswapV2Deployment, pair: TradingPairIdentifier, quantity=Decimal(1)) -> float:

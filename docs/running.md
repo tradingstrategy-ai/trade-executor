@@ -5,7 +5,7 @@ These instructions are for the `master` branch bleeding edge testing.
 First create a tmux session where you perform the work:
 
 ```shell
-EXECUTOR_ID=pancake_8h_momentum_tick
+export EXECUTOR_ID=pancake_8h_momentum
 tmux -CC -L $EXECUTOR_ID new    
 ```
 

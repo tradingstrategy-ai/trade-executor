@@ -13,6 +13,7 @@
 # Then run the checks:
 #
 # bootstraps/pancake_8h_momentum.sh check-universe --max-data-delay-minutes=1440
+
 #
 
 set -e
@@ -28,12 +29,13 @@ check_secret_envs()
     return 0
 }
 
+# This id is used in various paths and such
+export EXECUTOR_ID=pancake_8h_momentum
+
+source ~/$EXECUTOR_ID.secrets.env
 
 # These variables must come from the secrets file
 check_secret_envs PRIVATE_KEY JSON_RPC_BINANCE TRADING_STRATEGY_API_KEY DISCORD_WEBHOOK_URL
-
-# This id is used in various paths and such
-EXECUTOR_ID=pancake_8h_momentum
 
 export NAME="Pancake 8h momentum tick"
 export STRATEGY_FILE="${PWD}/strategies/${EXECUTOR_ID}.py"
