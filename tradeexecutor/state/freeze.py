@@ -22,7 +22,8 @@ def freeze_position_on_failed_trade(state: State, trades: List[TradeExecution]) 
     portfolio = state.portfolio
 
     for t in trades:
-        if t.is_failed() and t.is_sell():
+        # TODO: Check if we need special logic for failed buy trades
+        if t.is_failed():
 
             logger.warning("Freezing position for a failed trade: %s", t)
 
