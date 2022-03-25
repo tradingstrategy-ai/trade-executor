@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 import datetime
 from decimal import Decimal
 from itertools import chain
-from typing import List, Optional, Dict, Callable, Iterable, Tuple, Any
+from typing import List, Optional, Dict, Callable, Iterable, Tuple, Any, Set
 
 from dataclasses_json import dataclass_json
 from eth_typing import HexAddress
@@ -768,6 +768,13 @@ class Portfolio:
     #: Currently held reserve assets
     reserves: Dict[str, ReservePosition] = field(default_factory=dict)
 
+    #: Positions that have failed sells, or otherwise immovable and need manual clean up.
+    #: Failure reasons could include
+    #: - blockchain halted
+    #: - ERC-20 token tax fees
+    #: - rug pull token - transfer disabled
+    frozen_position: Dict[str, ReservePosition] = field(default_factory=dict)
+
     #: Trades completed in the past
     closed_positions: Dict[int, TradingPosition] = field(default_factory=dict)
 
@@ -1004,6 +1011,12 @@ class State:
 
     #: Strategy can store its internal thinking over different signals
     strategy_thinking: dict = field(default_factory=dict)
+
+    #: Assets that the strategy is not allowed to touch,
+    #: or have failed to trade in the past.
+    #: Besides this internal black list, the executor can have other blacklists
+    #:
+    asset_blacklist: Set[str] = field(default_factory=set)
 
     def is_empty(self) -> bool:
         """This state has no open or past trades or reserves."""

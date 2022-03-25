@@ -39,6 +39,8 @@ class QSTraderRunner(StrategyRunner):
         buf = StringIO()
         universe = universe.universe
 
+        # TODO: move report_strategy_thinking() to a separate reporter class
+
         data_start, data_end = universe.candles.get_timestamp_range()
         liquidity_start, liquidity_end = universe.liquidity.get_timestamp_range()
 
@@ -61,20 +63,21 @@ class QSTraderRunner(StrategyRunner):
                 pair = universe.pairs.get_pair_by_id(pair_id)
                 tp = translate_trading_pair(pair)
                 link = tp.info_url or ""
-                momentum = debug_details["extra_debug_data"][pair_id]["momentum"]
-                print(f"    {tp.get_human_description()} weight:{weight:.2f}, momentum:{momentum*100:.2f}%", file=buf)
-                print(f"    link: {link}", file=buf)
-                print("", file=buf)
+                if "extra_debug_data" in debug_details:
+                    momentum = debug_details["extra_debug_data"][pair_id]["momentum"]
+                    print(f"    {tp.get_human_description()} weight:{weight:.2f}, momentum:{momentum*100:.2f}%", file=buf)
+                    print(f"    link: {link}", file=buf)
+                    print("", file=buf)
         else:
             print("Error: Could not calculate any momentum! Data missing?", file=buf)
 
-        good_candle_count = debug_details["good_candle_count"]
-        problem_candle_count = debug_details["problem_candle_count"]
-        low_liquidity_count = debug_details["low_liquidity_count"]
-        bad_momentum_count = debug_details["bad_momentum_count"]
-        funny_price_count = debug_details["funny_price_count"]
-        candle_range_start = debug_details["candle_range_start"]
-        candle_range_end = debug_details["candle_range_end"]
+        good_candle_count = debug_details.get("good_candle_count")
+        problem_candle_count = debug_details.get("problem_candle_count")
+        low_liquidity_count = debug_details.get("low_liquidity_count")
+        bad_momentum_count = debug_details.get("bad_momentum_count")
+        funny_price_count = debug_details.get("funny_price_count")
+        candle_range_start = debug_details.get("candle_range_start")
+        candle_range_end = debug_details.get("candle_range_end")
         print("", file=buf)
         print("Alpha model data quality:", file=buf)
         print("", file=buf)
