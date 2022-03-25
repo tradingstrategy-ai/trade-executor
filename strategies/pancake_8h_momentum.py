@@ -13,7 +13,7 @@ import pandas as pd
 
 from tradeexecutor.ethereum.uniswap_v2_execution import UniswapV2ExecutionModel
 from tradeexecutor.state.revaluation import RevaluationMethod
-from tradeexecutor.state.state import State
+from tradeexecutor.state.state import State, TradingPairIdentifier
 from tradeexecutor.state.sync import SyncMethod
 from tradeexecutor.strategy.approval import ApprovalModel
 from tradeexecutor.strategy.description import StrategyExecutionDescription
@@ -111,6 +111,29 @@ class MomentumAlphaModel(AlphaModel):
             accumulated_quote_tokens.add(base_token)
         return filtered_alpha
 
+    def is_accepted_risk(self, state: State, pair: DEXPair, price: float, liquidity: float) -> bool:
+        """Do the risk check for the trading pair.
+
+        - There needs to be enough liquidity
+        - The price unit must look sensible
+
+        :param price: The current closing price
+        :param price: The current closing price
+        :param liquidity: The trading pair liquidity in USD
+        :return: True if the pair should be traded
+        """
+
+        if not state.is_good_pair(translate_trading_pair(pair)):
+            return False
+
+        if liquidity < min_liquidity_threshold:
+            return False
+
+        if self.is_funny_price(price):
+            return False
+
+        return True
+
     def __call__(self, ts: pd.Timestamp, universe: Universe, state: State, debug_details: Dict) -> Dict[int, float]:
 
         assert isinstance(ts, pd.Timestamp), f"Got {ts}"
@@ -134,8 +157,6 @@ class MomentumAlphaModel(AlphaModel):
 
         # For each pair, check the the diff between opening and closingn price
         candle_data = candle_universe.iterate_samples_by_pair_range(start, end)
-
-        liquidity_threshold = min_liquidity_threshold
 
         extra_debug_data = {}
         problem_candle_count = good_candle_count = low_liquidity_count = bad_momentum_count = funny_price_count = 0
@@ -165,10 +186,9 @@ class MomentumAlphaModel(AlphaModel):
                 problem_candle_count += 1
                 continue
 
-            if self.is_funny_price(open) or self.is_funny_price(close):
+            if self.is_funny_price(close):
                 # This trading pair is too funny that we do not want to play with it
                 funny_price_count += 1
-                continue
 
             # We define momentum as how many % the trading pair price gained yesterday
             momentum = (close - open) / open
@@ -193,8 +213,7 @@ class MomentumAlphaModel(AlphaModel):
                 bad_momentum_count += 1
                 continue
 
-            if available_liquidity_for_pair >= liquidity_threshold:
-
+            if self.is_accepted_risk(state, pair, close, available_liquidity_for_pair):
                 # Do candle check only after we know the pair is "good" liquidity wise
                 # and should have candles
                 candle_count = len(pair_df)
@@ -214,7 +233,6 @@ class MomentumAlphaModel(AlphaModel):
                 "close": close,
                 "momentum": momentum,
                 "liquidity": available_liquidity_for_pair,
-                "liquidity_threshold": liquidity_threshold,
                 "candle_count": candle_count,
             }
 
