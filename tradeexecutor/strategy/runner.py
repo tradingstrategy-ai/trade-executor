@@ -100,11 +100,15 @@ class StrategyRunner(abc.ABC):
 
         price_diff = position.get_current_price() - position.get_opening_price()
 
-        return [
-            f"{symbol} {position.pair.get_human_description()} size:${position.get_value():,.2f}, profit:{position.get_total_profit_usd():.2f}% ({position.get_total_profit_usd():,.4f} USD)",
+        lines =[
+            f"{symbol} #{position.position_id} {position.pair.get_human_description()} size:${position.get_value():,.2f}, profit:{position.get_total_profit_usd():.2f}% ({position.get_total_profit_usd():,.4f} USD)",
             f"   current price:${position.get_current_price():,.8f}, open price:${position.get_opening_price():,.8f}, diff:{price_diff:,.8f} USD",
-            f"   link: {link}"
         ]
+
+        if link:
+            lines.append(f"   link: {link}")
+
+        return lines
 
     def format_trade(self, portfolio: Portfolio, trade: TradeExecution) -> List[str]:
         """Write a trade status line to logs."""
@@ -126,10 +130,15 @@ class StrategyRunner(abc.ABC):
         else:
             existing_text = ""
 
-        return [
-            f"{trade_type:5} {pair.get_human_description()} ${trade.get_planned_value():,.2f} ({abs(trade.get_position_quantity())} {pair.base.token_symbol}){existing_text}",
-            f"      link: {link}"
+        lines = [
+            f"{trade_type:5} #{trade.trade_id} {pair.get_human_description()} ${trade.get_planned_value():,.2f} ({abs(trade.get_position_quantity())} {pair.base.token_symbol}){existing_text}",
         ]
+
+        if link:
+            lines.append(f"      link: {link}")
+
+        return lines
+
 
     def report_after_sync_and_revaluation(self, clock: datetime.datetime, universe: TradeExecutorTradingUniverse, state: State, debug_details: dict):
         buf = StringIO()
@@ -151,6 +160,21 @@ class StrategyRunner(abc.ABC):
                 print("", file=buf)
         else:
             print(f"No open positions.", file=buf)
+
+        frozen_positions = list(portfolio.open_positions.values())
+
+        if frozen_positions:
+            print(f"Frozen positions (${portfolio.get_frozen_position_equity():,.2f}):", file=buf)
+            print("", file=buf)
+            position: TradingPosition
+            for position in portfolio.frozen_positions.values():
+                for line in self.format_position(position):
+                    print("    " + line, file=buf)
+                print("", file=buf)
+        else:
+            # Should not happen in the first place,
+            # so let's not advertise this
+            pass
 
         print(f"", file=buf)
         print("Reserves:", file=buf)
@@ -249,7 +273,9 @@ class StrategyRunner(abc.ABC):
             self.report_before_execution(clock, universe, state, approved_trades, debug_details)
 
             with self.timed_task_context_manager("execute_trades"):
-                self.execution_model.execute_trades(clock, state, approved_trades)
+                succeeded_trades, failed_trades = self.execution_model.execute_trades(clock, state, approved_trades)
+                debug_details["succeeded_trades"] = succeeded_trades
+                debug_details["failed_trades"] = failed_trades
 
             self.report_after_execution(clock, universe, state, debug_details)
 

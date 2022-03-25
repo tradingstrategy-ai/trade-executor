@@ -4,6 +4,7 @@ from contextlib import AbstractContextManager
 from typing import Dict, Any
 
 import pandas as pd
+from tradeexecutor.strategy.trading_strategy_universe import translate_trading_pair
 
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
@@ -25,6 +26,7 @@ logging = logging.getLogger("frozen_asset")
 
 
 class BadAlpha(AlphaModel):
+    """Alpha model that buys Biconomy BIT tokan with transfer tax."""
 
     def __call__(self, ts: pd.Timestamp, universe: Universe, state: State, debug_details: Dict) -> Dict[Any, float]:
         pancake = universe.get_single_exchange()
@@ -40,19 +42,18 @@ class BadAlpha(AlphaModel):
             # Buy 50%/50%
             return {
                 wbnb_busd.pair_id: 0.5,
-                wbnb_busd.pair_id: 0.5,
+                bit_busd.pair_id: 0.5,
             }
         elif cycle == 2:
             # Sell all
             return {
-                wbnb_busd.pair_id: 0.5,
-                wbnb_busd.pair_id: 0.5,
             }
         elif cycle == 3:
-            assert
-            return {wbnb_busd.pair_id: 0.5}
+            assert state.is_good_pair(translate_trading_pair(wbnb_busd))
+            assert not state.is_good_pair(translate_trading_pair(bit_busd))
+            return {wbnb_busd.pair_id: 1.0}
         else:
-            raise NotImplementedError()
+            raise NotImplementedError(f"Bad cycle: {cycle}")
 
 
 def strategy_factory(

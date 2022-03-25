@@ -1,11 +1,12 @@
 import logging
 import datetime
+import time
 from collections import Counter
 from decimal import Decimal
-from typing import List, Dict
+from typing import List, Dict, Set
 
 from eth_account.datastructures import SignedTransaction
-from eth_account.signers.local import LocalAccount
+from eth_hentai.revert_reason import fetch_transaction_revert_reason
 from eth_typing import HexAddress
 from hexbytes import HexBytes
 from web3 import Web3
@@ -206,21 +207,35 @@ def confirm_approvals(
 def broadcast(
         web3: Web3,
         ts: datetime.datetime,
-        instructions: List[TradeExecution]) -> Dict[HexBytes, TradeExecution]:
+        instructions: List[TradeExecution],
+        ganache_sleep=0.5) -> Dict[HexBytes, TradeExecution]:
     """Broadcast multiple transations.
 
     :return: Map of transaction hashes to watch
     """
     res = {}
+    # Another nonce guard
+    nonces: Set[int] = set()
+
+    # Ganache rapid tx issue
+    # https://github.com/trufflesuite/ganache/issues/2509
+    if web3.eth.chain_id == 1337:
+        sleep = ganache_sleep
+    else:
+        sleep = 0
+
     for t in instructions:
         assert isinstance(t.tx_info.signed_bytes, str), f"Got signed transaction: {t.tx_info.signed_bytes}"
+        assert t.tx_info.nonce not in nonces, "Nonce already used"
+        nonces.add(t.tx_info.nonce)
         signed_bytes = HexBytes(t.tx_info.signed_bytes)
-        try:
-            web3.eth.send_raw_transaction(signed_bytes)
-        except Exception as e:
-            raise RuntimeError(f"Error when broadcasting transaction for trade {t}") from e
+
+        web3.eth.send_raw_transaction(signed_bytes)
         t.broadcasted_at = ts
         res[t.tx_info.tx_hash] = t
+
+        time.sleep(sleep)
+
     return res
 
 
@@ -238,10 +253,19 @@ def wait_trades_to_complete(
     return receipts
 
 
-def resolve_trades(web3: Web3, uniswap: UniswapV2Deployment, ts: datetime.datetime, state: State, trades: Dict[HexBytes, TradeExecution], receipts: Dict[HexBytes, dict], stop_on_execution_failure=True):
+def resolve_trades(
+        web3: Web3,
+        uniswap: UniswapV2Deployment,
+        ts: datetime.datetime,
+        state: State,
+        trades: Dict[HexBytes, TradeExecution],
+        receipts: Dict[HexBytes, dict],
+        stop_on_execution_failure=True):
     """Resolve trade outcome.
 
     Read on-chain Uniswap swap data from the transaction receipt and record how it went.
+
+    Mutates the trade objects in-place.
 
     :stop_on_execution_failure: Raise an exception if any of the trades failed
     """
@@ -301,9 +325,12 @@ def resolve_trades(web3: Web3, uniswap: UniswapV2Deployment, ts: datetime.dateti
                 ts,
                 trade,
             )
+
             if stop_on_execution_failure:
                 tx_hash = trade.tx_info.tx_hash
                 raise TradeExecutionFailed(f"Could not execute a trade: {trade}, transaction was {tx_hash}")
+
+            trade.tx_info.revert_reason = result.revert_reason
 
 
 def get_current_price(web3: Web3, uniswap: UniswapV2Deployment, pair: TradingPairIdentifier, quantity=Decimal(1)) -> float:

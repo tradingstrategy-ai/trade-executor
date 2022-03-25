@@ -10,7 +10,7 @@ from tradeexecutor.strategy.qstrader.alpha_model import AlphaModel
 from tradeexecutor.strategy.qstrader.order_sizer import CashBufferedOrderSizer
 from tradingstrategy.universe import Universe
 
-from tradeexecutor.strategy.trading_strategy_universe import translate_trading_pair
+from tradeexecutor.strategy.trading_strategy_universe import translate_trading_pair, TradingStrategyUniverse
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +54,7 @@ class PortfolioConstructionModel:
         risk_model=None,
         cost_model=None
     ):
+        assert isinstance(universe, Universe)
         self.universe = universe
         self.state = state
         self.order_sizer = order_sizer

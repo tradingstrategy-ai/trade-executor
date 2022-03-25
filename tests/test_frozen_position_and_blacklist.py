@@ -21,6 +21,7 @@ from typing import List
 
 import pytest
 from eth_account import Account
+from eth_hentai.txmonitor import wait_transactions_to_complete
 from eth_typing import HexAddress, HexStr
 from hexbytes import HexBytes
 
@@ -47,7 +48,8 @@ from tradeexecutor.ethereum.hot_wallet_sync import EthereumHotWalletReserveSynce
 from tradeexecutor.ethereum.uniswap_v2_execution import UniswapV2ExecutionModel
 from tradeexecutor.ethereum.uniswap_v2_live_pricing import uniswap_v2_live_pricing_factory
 from tradeexecutor.ethereum.uniswap_v2_revaluation import UniswapV2PoolRevaluator
-from tradeexecutor.state.state import AssetIdentifier, Portfolio, State, TradeExecution, TradingPairIdentifier
+from tradeexecutor.state.state import AssetIdentifier, Portfolio, State, TradeExecution, TradingPairIdentifier, \
+    TradingPosition
 from tradeexecutor.strategy.approval import UncheckedApprovalModel
 from tradeexecutor.strategy.bootstrap import import_strategy_file
 from tradeexecutor.strategy.description import StrategyExecutionDescription
@@ -83,6 +85,10 @@ def large_busd_holder() -> HexAddress:
 def ganache_bnb_chain_fork(logger, large_busd_holder) -> str:
     """Create a testable fork of live BNB chain.
 
+    Unlike other tests, we use 1 second block time,
+    because we need to test failed transaction scenarios
+    and otherwise this cannot be emulated.
+
     :return: JSON-RPC URL for Web3
     """
 
@@ -92,6 +98,7 @@ def ganache_bnb_chain_fork(logger, large_busd_holder) -> str:
     # Start Ganache
     launch = fork_network(
         mainnet_rpc,
+        block_time=1,
         unlocked_addresses=[large_busd_holder])
     yield launch.json_rpc_url
     # Wind down Ganache process after the test is complete
@@ -210,7 +217,7 @@ def supported_reserves(web3: Web3, asset_busd) -> List[AssetIdentifier]:
 def hot_wallet(web3: Web3, busd_token: Contract, hot_wallet_private_key: HexBytes, large_busd_holder: HexAddress) -> HotWallet:
     """Our trading Ethereum account.
 
-    Start with 10,000 USDC cash and 2 BNB.
+    Start with 100 USDC cash and 2 BNB.
     """
     account = Account.from_key(hot_wallet_private_key)
     web3.eth.send_transaction({"from": large_busd_holder, "to": account.address, "value": 2*10**18})
@@ -218,7 +225,9 @@ def hot_wallet(web3: Web3, busd_token: Contract, hot_wallet_private_key: HexByte
     balance = web3.eth.getBalance(large_busd_holder)
     assert balance  > web3.toWei("1", "ether"), f"Account is empty {large_busd_holder}"
 
-    busd_token.functions.transfer(account.address, 10_000 * 10**18).transact({"from": large_busd_holder})
+    txid = busd_token.functions.transfer(account.address, 100 * 10**18).transact({"from": large_busd_holder})
+    wait_transactions_to_complete(web3, [txid])
+
     wallet = HotWallet(account)
     wallet.sync_nonce(web3)
     return wallet
@@ -232,10 +241,7 @@ def strategy_path() -> Path:
 
 @pytest.fixture()
 def portfolio() -> Portfolio:
-    """A portfolio loaded with the initial cash.
-
-    We start with 10,000 USDC.
-    """
+    """An empty portfolio."""
     portfolio = Portfolio({}, {}, {})
     return portfolio
 
@@ -346,12 +352,12 @@ def test_buy_and_sell_blacklisted_asset(
     Day 3
 
     - See there is no further Bit token buy attempts
+
+    The actual timestamp datetime.datetime(2020, 1, 1) does not matter
+    in test, as the real live today prices are used from Ganache RPC.
     """
 
     assert len(state.asset_blacklist) == 0
-
-    # Run the trading over for the first day
-    ts = datetime.datetime(2020, 1, 1)
 
     executor_universe: TradingStrategyUniverse = universe_model.universe
     universe = executor_universe.universe
@@ -371,7 +377,45 @@ def test_buy_and_sell_blacklisted_asset(
     #
 
     # We start with day_kind 1 that is all ETH day.
-    debug_details = runner.tick(ts, executor_universe, state, {"cycle": 1})
+    debug_details = runner.tick(datetime.datetime(2020, 1, 1), executor_universe, state, {"cycle": 1})
     weights = debug_details["alpha_model_weights"]
-    assert weights[wbnb_busd_pair.internal_id] == 0.5
-    assert weights[bit_busd.internal_id] == 0.5
+    assert weights[wbnb_busd.pair_id] == 0.5
+    assert weights[bit_busd.pair_id] == 0.5
+
+    #
+    # 2nd day - cannot sell BIT
+    #
+    ts = datetime.datetime(2020, 1, 2)
+    state.revalue_positions(ts, UniswapV2PoolRevaluator(pancakeswap_v2))
+    debug_details = runner.tick(ts, executor_universe, state, {"cycle": 2})
+    weights = debug_details["alpha_model_weights"]
+    assert len(weights) == 0
+    assert len(debug_details["succeeded_trades"]) == 1
+    assert len(debug_details["failed_trades"]) == 1
+
+    # Position is now frozen
+    portfolio = state.portfolio
+    assert len(portfolio.open_positions) == 0
+    assert len(portfolio.frozen_positions) == 1
+    assert len(portfolio.closed_positions) == 1
+
+    failed_position: TradingPosition = next(iter(portfolio.frozen_positions.values()))
+    assert failed_position.position_id == 2
+    failed_trade = failed_position.get_last_trade()
+    assert failed_trade.trade_id == 4
+    assert failed_trade.failed_at is not None
+    assert failed_trade.is_failed()
+    assert failed_trade.tx_info.revert_reason == "VM Exception while processing transaction: revert TransferHelper: TRANSFER_FROM_FAILED"
+
+    # The asset is now blacklisted for the future trades
+    assert state.asset_blacklist == {bit_busd_pair.base.address.lower()}
+
+    #
+    # 3nd day - we no longer try to buy BIT,
+    # the alpha model ignores it as a blacklisted asset
+    #
+    ts = datetime.datetime(2020, 1, 3)
+    state.revalue_positions(ts, UniswapV2PoolRevaluator(pancakeswap_v2))
+    debug_details = runner.tick(ts, executor_universe, state, {"cycle": 3})
+    weights = debug_details["alpha_model_weights"]
+    assert weights[wbnb_busd.pair_id] == 1.0

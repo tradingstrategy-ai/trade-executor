@@ -66,7 +66,8 @@ class QSTraderRunner(StrategyRunner):
                 if "extra_debug_data" in debug_details:
                     momentum = debug_details["extra_debug_data"][pair_id]["momentum"]
                     print(f"    {tp.get_human_description()} weight:{weight:.2f}, momentum:{momentum*100:.2f}%", file=buf)
-                    print(f"    link: {link}", file=buf)
+                    if link:
+                        print(f"    link: {link}", file=buf)
                     print("", file=buf)
         else:
             print("Error: Could not calculate any momentum! Data missing?", file=buf)

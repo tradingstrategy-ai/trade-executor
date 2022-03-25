@@ -4,6 +4,7 @@ from typing import Dict
 import pandas as pd
 
 from tradeexecutor.state.state import State
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverseModel
 from tradingstrategy.universe import Universe
 
 
@@ -20,7 +21,7 @@ class AlphaModel(abc.ABC):
     @abc.abstractmethod
     def __call__(self,
                  ts: pd.Timestamp,
-                 state: State,
                  universe: Universe,
+                 state: State,
                  debug_details: Dict) -> Dict[int, float]:
         pass

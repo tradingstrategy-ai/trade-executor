@@ -1,12 +1,13 @@
 import datetime
 from decimal import Decimal
-from typing import List
+from typing import List, Tuple
 import logging
 
 from eth_hentai.hotwallet import HotWallet
 from eth_hentai.uniswap_v2.deployment import UniswapV2Deployment
 from tradeexecutor.ethereum.execution import approve_tokens, prepare_swaps, confirm_approvals, broadcast, \
     wait_trades_to_complete, resolve_trades
+from tradeexecutor.state.freeze import freeze_position_on_failed_trade
 from tradeexecutor.state.state import TradeExecution, State
 from tradeexecutor.strategy.execution_model import ExecutionModel
 
@@ -64,8 +65,11 @@ class UniswapV2ExecutionModel(ExecutionModel):
         balance = self.hot_wallet.get_native_currency_balance(self.web3)
         logger.info("Our hot wallet is %s with nonce %d and balance %s", self.hot_wallet.address, self.hot_wallet.current_nonce, balance)
 
-    def execute_trades(self, ts: datetime.datetime, state: State, trades: List[TradeExecution]):
-        """Execute the trades determined by the algo on a designed Uniswap v2 instance."""
+    def execute_trades(self, ts: datetime.datetime, state: State, trades: List[TradeExecution]) -> Tuple[List[TradeExecution], List[TradeExecution]]:
+        """Execute the trades determined by the algo on a designed Uniswap v2 instance.
+
+        :return: Tuple List of succeeded trades, List of failed trades
+        """
         assert isinstance(ts, datetime.datetime)
 
         # 2. Capital allocation
@@ -105,4 +109,8 @@ class UniswapV2ExecutionModel(ExecutionModel):
             ts,
             state,
             broadcasted,
-            receipts)
+            receipts,
+            stop_on_execution_failure=False)
+
+        # Clean up failed trades
+        return freeze_position_on_failed_trade(state, trades)

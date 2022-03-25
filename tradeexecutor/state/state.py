@@ -102,7 +102,7 @@ class AssetIdentifier:
 
     def get_identifier(self) -> str:
         """Assets are identified by their smart contract address."""
-        return self.address
+        return self.address.lower()
 
     @property
     def checksum_address(self) -> HexAddress:
@@ -116,7 +116,7 @@ class TradingPairIdentifier:
     base: AssetIdentifier
     quote: AssetIdentifier
 
-    #: Smart contract address of the pool contract
+    #: Smart contract address of the pool contract.
     pool_address: str
 
     #: How this asset is referred in the internal database
@@ -126,8 +126,11 @@ class TradingPairIdentifier:
     info_url: Optional[str] = None
 
     def get_identifier(self) -> str:
-        """We use the smart contract pool address to uniquely identify trading positions."""
-        return self.pool_address
+        """We use the smart contract pool address to uniquely identify trading positions.
+
+        Ethereum address is lowercased, not checksummed.
+        """
+        return self.pool_address.lower()
 
     def get_human_description(self) -> str:
         return f"{self.base.token_symbol}-{self.quote.token_symbol}"
@@ -205,6 +208,10 @@ class BlockchainTransactionInfo:
     #: Gas price for the tx in gwei
     realised_gas_price: Optional[int] = None
 
+    #: The transaction revert reason if we manage to extract it
+    revert_reason: Optional[str] = None
+
+
     def set_target_information(self, chain_id: int, contract_address: str, function_selector: str, args: list, details: dict):
         """Update the information on which transaction we are going to perform."""
         assert type(contract_address) == str
@@ -271,7 +278,6 @@ class TradeExecution:
     - Resolving the trade: We check the Ethereum transaction receipt to see how well we succeeded in the trade
 
     There trade state is resolved based on the market variables (usually timestamps).
-
     """
 
     trade_id: int
@@ -280,7 +286,7 @@ class TradeExecution:
     pair: TradingPairIdentifier
     opened_at: datetime.datetime
 
-    #: Positive for buy, negative for sell
+    #: Positive for buy, negative for sell.
     planned_quantity: Decimal
 
     planned_price: USDollarAmount
@@ -316,14 +322,15 @@ class TradeExecution:
 
     #: USD price per blockchain native currency unit, at the time of execution
     native_token_price: Optional[USDollarAmount] = None
+
     # Trade retries
     retry_of: Optional[int] = None
 
     def __repr__(self):
         if self.is_buy():
-            return f"<Buy {self.planned_quantity} {self.pair.base.token_symbol} at {self.planned_price}>"
+            return f"<Buy #{self.trade_id} {self.planned_quantity} {self.pair.base.token_symbol} at {self.planned_price}>"
         else:
-            return f"<Sell {self.planned_quantity} {self.pair.base.token_symbol} at {self.planned_price}>"
+            return f"<Sell #{self.trade_id} {abs(self.planned_quantity)} {self.pair.base.token_symbol} at {self.planned_price}>"
 
     def __post_init__(self):
         assert self.trade_id > 0
@@ -511,8 +518,13 @@ class TradeExecution:
 @dataclass_json
 @dataclass
 class TradingPosition:
+
+    #: Runnint int counter primary key for positions
     position_id: int
+
+    #: Trading pair this position is trading
     pair: TradingPairIdentifier
+
     # type: PositionType
     opened_at: datetime.datetime
 
@@ -523,13 +535,13 @@ class TradingPosition:
     # 1.0 for stablecoins, unless out of peg, in which case can be 0.99
     last_reserve_price: USDollarAmount
 
+    #: Which reserve currency we are going to receive when we sell the asset
     reserve_currency: AssetIdentifier
+
     trades: Dict[int, TradeExecution] = field(default_factory=dict)
 
     closed_at: Optional[datetime.datetime] = None
     last_trade_at: Optional[datetime.datetime] = None
-
-    next_trade_id: int = 1
 
     def __post_init__(self):
         assert self.position_id > 0
@@ -552,6 +564,13 @@ class TradingPosition:
         Considers unexecuted trades.
         """
         return next(iter(self.trades.values()))
+
+    def get_last_trade(self) -> TradeExecution:
+        """Get the the last trade for this position.
+
+        Considers unexecuted and failed trades.
+        """
+        return next(reversed(self.trades.values()))
 
     def is_long(self) -> bool:
         """Is this position long on the underlying base asset.
@@ -635,14 +654,17 @@ class TradingPosition:
 
     def open_trade(self,
                    ts: datetime.datetime,
+                   trade_id: int,
                    quantity: Decimal,
                    assumed_price: USDollarAmount,
                    trade_type: TradeType,
                    reserve_currency: AssetIdentifier,
                    reserve_currency_price: USDollarAmount) -> TradeExecution:
         assert self.reserve_currency.get_identifier() == reserve_currency.get_identifier(), "New trade is using different reserve currency than the position has"
+        assert isinstance(trade_id, int)
+        assert isinstance(ts, datetime.datetime)
         trade = TradeExecution(
-            trade_id=self.next_trade_id,
+            trade_id=trade_id,
             position_id=self.position_id,
             trade_type=trade_type,
             pair=self.pair,
@@ -653,7 +675,6 @@ class TradingPosition:
             reserve_currency=self.reserve_currency,
         )
         self.trades[trade.trade_id] = trade
-        self.next_trade_id += 1
         return trade
 
     def has_trade(self, trade: TradeExecution):
@@ -760,7 +781,12 @@ class Portfolio:
     we keep the tradition here.
     """
 
+    #: Each position gets it unique running counter id.
     next_position_id = 1
+
+    #: Each trade gets it unique id as a running counter.
+    #: Trade ids are unique across different positions.
+    next_trade_id = 1
 
     #: Currently open trading positions
     open_positions: Dict[int, TradingPosition] = field(default_factory=dict)
@@ -768,15 +794,15 @@ class Portfolio:
     #: Currently held reserve assets
     reserves: Dict[str, ReservePosition] = field(default_factory=dict)
 
+    #: Trades completed in the past
+    closed_positions: Dict[int, TradingPosition] = field(default_factory=dict)
+
     #: Positions that have failed sells, or otherwise immovable and need manual clean up.
     #: Failure reasons could include
     #: - blockchain halted
     #: - ERC-20 token tax fees
     #: - rug pull token - transfer disabled
-    frozen_position: Dict[str, ReservePosition] = field(default_factory=dict)
-
-    #: Trades completed in the past
-    closed_positions: Dict[int, TradingPosition] = field(default_factory=dict)
+    frozen_positions: Dict[int, ReservePosition] = field(default_factory=dict)
 
     def is_empty(self):
         """This portfolio has no open or past trades or any reserves."""
@@ -872,11 +898,15 @@ class Portfolio:
                      trade_type: TradeType,
                      reserve_currency: AssetIdentifier,
                      reserve_currency_price: USDollarAmount) -> Tuple[TradingPosition, TradeExecution]:
+
         position = self.get_position_by_trading_pair(pair)
         if position is None:
             position = self.open_new_position(ts, pair, assumed_price, reserve_currency, reserve_currency_price)
 
-        trade = position.open_trade(ts, quantity, assumed_price, trade_type, reserve_currency, reserve_currency_price)
+        trade = position.open_trade(ts, self.next_trade_id, quantity, assumed_price, trade_type, reserve_currency, reserve_currency_price)
+
+        self.next_trade_id += 1
+
         return position, trade
 
     def get_current_cash(self) -> USDollarAmount:
@@ -886,6 +916,10 @@ class Portfolio:
     def get_open_position_equity(self) -> USDollarAmount:
         """Get the value of current trading positions."""
         return sum([p.get_value() for p in self.open_positions.values()])
+
+    def get_frozen_position_equity(self) -> USDollarAmount:
+        """Get the value of trading positions that are frozen currently."""
+        return sum([p.get_value() for p in self.frozen_positions.values()])
 
     def get_live_position_equity(self) -> USDollarAmount:
         """Get the value of current trading positions plus unexecuted trades."""
@@ -968,16 +1002,25 @@ class Portfolio:
                 if t.tx_info:
                     assert t.tx_info.nonce != nonce, f"Nonce {nonce} is already being used by trade {t} with txinfo {t.tx_info}"
 
-    def revalue_positions(self, ts: datetime.datetime, valuation_method: Callable):
+    def revalue_positions(self, ts: datetime.datetime, valuation_method: Callable, revalue_frozen=True):
         """Revalue all open positions in the portfolio.
 
         Reserves are not revalued.
+
+        :param revalue_frozen: Revalue frozen positions as well
         """
         for p in self.open_positions.values():
             ts, price = valuation_method(ts, p)
             assert ts.tzinfo is None
             p.last_pricing_at = ts
             p.last_token_price = price
+
+        if revalue_frozen:
+            for p in self.frozen_positions.values():
+                ts, price = valuation_method(ts, p)
+                assert ts.tzinfo is None
+                p.last_pricing_at = ts
+                p.last_token_price = price
 
     def get_default_reserve_currency(self) -> Tuple[AssetIdentifier, USDollarAmount]:
         """Gets the default reserve currency associated with this state.
@@ -1013,14 +1056,21 @@ class State:
     strategy_thinking: dict = field(default_factory=dict)
 
     #: Assets that the strategy is not allowed to touch,
-    #: or have failed to trade in the past.
+    #: or have failed to trade in the past, resulting to a frozen position.
     #: Besides this internal black list, the executor can have other blacklists
-    #:
+    #: based on the trading universe and these are not part of the state.
+    #: The main motivation of this list is to avoid assets that caused a freeze in the future.
+    #: Key is Ethereum address, lowercased.
     asset_blacklist: Set[str] = field(default_factory=set)
 
     def is_empty(self) -> bool:
         """This state has no open or past trades or reserves."""
         return self.portfolio.is_empty()
+
+    def is_good_pair(self, pair: TradingPairIdentifier) -> bool:
+        """Check if the trading pair is blacklisted."""
+        assert isinstance(pair, TradingPairIdentifier)
+        return (pair.base.get_identifier() not in self.asset_blacklist) and (pair.quote.get_identifier() not in self.asset_blacklist)
 
     def create_trade(self,
                      ts: datetime.datetime,
@@ -1102,3 +1152,7 @@ class State:
         """
         self.portfolio.revalue_positions(ts, valuation_method)
 
+    def blacklist_asset(self, asset: AssetIdentifier):
+        """Add a asset to the blacklist."""
+        address = asset.get_identifier()
+        self.asset_blacklist.add(address)
