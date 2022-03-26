@@ -939,17 +939,22 @@ class Portfolio:
                      assumed_price: USDollarAmount,
                      trade_type: TradeType,
                      reserve_currency: AssetIdentifier,
-                     reserve_currency_price: USDollarAmount) -> Tuple[TradingPosition, TradeExecution]:
+                     reserve_currency_price: USDollarAmount) -> Tuple[TradingPosition, TradeExecution, bool]:
 
         position = self.get_position_by_trading_pair(pair)
         if position is None:
             position = self.open_new_position(ts, pair, assumed_price, reserve_currency, reserve_currency_price)
+            created = True
+        else:
+            created = False
 
         trade = position.open_trade(ts, self.next_trade_id, quantity, assumed_price, trade_type, reserve_currency, reserve_currency_price)
 
+        # Check we accidentally do not reuse trade id somehow
+
         self.next_trade_id += 1
 
-        return position, trade
+        return position, trade, created
 
     def get_current_cash(self) -> USDollarAmount:
         """Get how much reserve stablecoins we have."""
@@ -1121,15 +1126,15 @@ class State:
                      assumed_price: USDollarAmount,
                      trade_type: TradeType,
                      reserve_currency: AssetIdentifier,
-                     reserve_currency_price: USDollarAmount) -> Tuple[TradingPosition, TradeExecution]:
+                     reserve_currency_price: USDollarAmount) -> Tuple[TradingPosition, TradeExecution, bool]:
         """Creates a request for a new trade.
 
         If there is no open position, marks a position open.
 
-        When the trade is created no balances are suff
+        :return: Tuple position, trade, was a new position created
         """
-        trade = self.portfolio.create_trade(ts, pair, quantity, assumed_price, trade_type, reserve_currency, reserve_currency_price)
-        return trade
+        position, trade, created = self.portfolio.create_trade(ts, pair, quantity, assumed_price, trade_type, reserve_currency, reserve_currency_price)
+        return position, trade, created
 
     def start_execution(self, ts: datetime.datetime, trade: TradeExecution, txid: str, nonce: int):
         """Update our balances and mark the trade execution as started.

@@ -202,7 +202,7 @@ class PortfolioConstructionModel:
                 if price is None:
                     raise RuntimeError(f"Price missing for asset {asset} - prices are {target_prices}")
 
-                position, trade = self.state.create_trade(
+                position, trade, created = self.state.create_trade(
                     dt,
                     executor_pair,
                     quantity,
@@ -211,12 +211,9 @@ class PortfolioConstructionModel:
                     self.reserve_currency,
                     1.0,  # TODO: Harcoded stablecoin USD exchange rate
                 )
+                logger.info("Created a new trade. Position #%d, trade #%d, new:%s, pool address: %s", position.position_id, trade.trade_id, created, position.pair.pool_address)
                 rebalance_trades.append(trade)
                 new_positions.append(position)
-
-        # Sanity check for the old/new positions with logging
-        for pos in new_positions:
-            logger.info("Rebalance, new position #%d, pool: %s", pos.position_id, pos.pair.pool_address)
 
         # Sort trades so that sells always go first
         rebalance_trades.sort(key=lambda t: t.get_execution_sort_position())
