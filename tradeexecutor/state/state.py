@@ -902,9 +902,13 @@ class Portfolio:
         return p
 
     def get_position_by_trading_pair(self, pair: TradingPairIdentifier) -> Optional[TradingPosition]:
-        """Get open position by a trading pair smart contract address identifier."""
+        """Get open position by a trading pair smart contract address identifier.
+
+        For Uniswap-likes we use the pool address as the persistent identifier
+        for each trading pair.
+        """
         for p in self.open_positions.values():
-            if p.pair.pool_address == pair.pool_address:
+            if p.pair.pool_address.lower() == pair.pool_address.lower():
                 return p
         return None
 
