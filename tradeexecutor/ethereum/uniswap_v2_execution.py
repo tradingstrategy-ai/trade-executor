@@ -1,3 +1,5 @@
+"""Execution model where trade happens directly on Uniswap v2 style exchange."""
+
 import datetime
 from decimal import Decimal
 from typing import List, Tuple

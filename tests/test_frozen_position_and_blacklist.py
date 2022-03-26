@@ -304,7 +304,7 @@ def runner(
 
     strategy_factory = import_strategy_file(strategy_path)
     approval_model = UncheckedApprovalModel()
-    execution_model = UniswapV2ExecutionModel(pancakeswap_v2, hot_wallet)
+    execution_model = UniswapV2ExecutionModel(pancakeswap_v2, hot_wallet, confirmation_timeout=datetime.timedelta(minutes=1))
     sync_method = EthereumHotWalletReserveSyncer(web3, hot_wallet.address)
 
     run_description: StrategyExecutionDescription = strategy_factory(
