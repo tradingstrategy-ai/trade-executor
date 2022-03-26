@@ -242,6 +242,7 @@ def broadcast(
 def wait_trades_to_complete(
         web3: Web3,
         trades: List[TradeExecution],
+        confirmation_block_count=0,
         max_timeout=datetime.timedelta(minutes=5),
         poll_delay=datetime.timedelta(seconds=1)) -> Dict[HexBytes, dict]:
     """Watch multiple transactions executed at parallel.
@@ -249,7 +250,7 @@ def wait_trades_to_complete(
     :return: Map of transaction hashes -> receipt
     """
     tx_hashes = [t.tx_info.tx_hash for t in trades]
-    receipts = wait_transactions_to_complete(web3, tx_hashes, max_timeout, poll_delay)
+    receipts = wait_transactions_to_complete(web3, tx_hashes, confirmation_block_count, max_timeout, poll_delay)
     return receipts
 
 

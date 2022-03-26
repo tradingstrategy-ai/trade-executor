@@ -22,12 +22,14 @@ class UniswapV2ExecutionModel(ExecutionModel):
                  uniswap: UniswapV2Deployment,
                  hot_wallet: HotWallet,
                  min_balance_threshold=Decimal("0.5"),
+                 confirmation_block_count=6,
                  stop_on_execution_failure=True):
         """
         :param state:
         :param uniswap:
         :param hot_wallet:
         :param min_balance_threshold: Abort execution if our hot wallet gas fee balance drops below this
+        :param confirmation_block_count: How many blocks to wait for the receipt confirmations to mitigate unstable chain tip issues
         :param stop_on_execution_failure: Raise an exception if any of the trades fail top execute
         """
         self.web3 = uniswap.web3
@@ -35,6 +37,7 @@ class UniswapV2ExecutionModel(ExecutionModel):
         self.hot_wallet = hot_wallet
         self.stop_on_execution_failure = stop_on_execution_failure
         self.min_balance_threshold = min_balance_threshold
+        self.confirmation_block_count = confirmation_block_count
 
     @property
     def chain_id(self) -> int:
@@ -102,7 +105,7 @@ class UniswapV2ExecutionModel(ExecutionModel):
         #assert trade.get_status() == TradeStatus.broadcasted
 
         # Resolve
-        receipts = wait_trades_to_complete(self.web3, trades)
+        receipts = wait_trades_to_complete(self.web3, trades, confirmation_block_count=self.confirmation_block_count)
         resolve_trades(
             self.web3,
             self.uniswap,
