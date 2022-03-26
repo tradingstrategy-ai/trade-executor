@@ -30,6 +30,7 @@ class EthereumTestTrader:
         self.gas_price = 15 * 10**9  # 15 Gwei/gas unit
 
         self.native_token_price = 1
+        self.confirmation_block_count = 0
 
     def execute(self, trades: List[TradeExecution]) -> Tuple[TradingPosition, TradeExecution]:
 

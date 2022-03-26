@@ -79,7 +79,6 @@ def ganache_bnb_chain_fork(logger, large_busd_holder) -> str:
         # Start Ganache
         launch = fork_network(
             mainnet_rpc,
-            block_time=1,
             unlocked_addresses=[large_busd_holder])
         yield launch.json_rpc_url
         # Wind down Ganache process after the test is complete
@@ -232,7 +231,7 @@ def test_forked_pancake(
 
     strategy_factory = import_strategy_file(strategy_path)
     approval_model = UncheckedApprovalModel()
-    execution_model = UniswapV2ExecutionModel(pancakeswap_v2, hot_wallet, confirmation_timeout=datetime.timedelta(minutes=1))
+    execution_model = UniswapV2ExecutionModel(pancakeswap_v2, hot_wallet, confirmation_block_count=0, confirmation_timeout=datetime.timedelta(minutes=1))
     sync_method = EthereumHotWalletReserveSyncer(web3, hot_wallet.address)
     revaluation_method = UniswapV2PoolRevaluator(pancakeswap_v2)
 

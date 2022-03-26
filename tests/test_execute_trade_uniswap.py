@@ -264,7 +264,7 @@ def test_execute_trade_instructions_buy_weth(
     #: 3 broadcast
 
     # Handle approvals separately for now
-    confirm_approvals(web3, approvals)
+    confirm_approvals(web3, approvals, confirmation_block_count=0)
 
     ts = start_ts + datetime.timedelta(seconds=1)
     broadcasted = broadcast(web3, ts, [trade])

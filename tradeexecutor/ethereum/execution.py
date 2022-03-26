@@ -195,7 +195,7 @@ def confirm_approvals(
         web3: Web3,
         txs: List[SignedTransaction],
         confirmation_block_count=0,
-        max_timeout=30,
+        max_timeout=datetime.timedelta(minutes=5),
     ):
     """Wait until all transactions are confirmed.
 
