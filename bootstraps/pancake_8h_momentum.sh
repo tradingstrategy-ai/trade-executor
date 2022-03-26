@@ -5,15 +5,15 @@
 # This script combines a strategy specific trade executor environt variables
 # with secret environment variables before running the trade-executor command line entry point.
 #
-# First source `~/secrets.env` and `~/$EXECUTOR_ID.secrets.env` files to set up the enviroment.
-#
-# source ~/$EXECUTOR_ID.secrets.env
-# source ~/secrets.env
+# Check that `~/secrets.env` and `~/$EXECUTOR_ID.secrets.env` are set up.
 #
 # Then run the checks:
 #
-# bootstraps/pancake_8h_momentum.sh check-universe --max-data-delay-minutes=1440
-
+#     bootstraps/pancake_8h_momentum.sh check-universe --max-data-delay-minutes=1440
+#
+# Then start:
+#
+#     bootstraps/pancake_8h_momentum.sh start
 #
 
 set -e
@@ -33,6 +33,7 @@ check_secret_envs()
 export EXECUTOR_ID=pancake_8h_momentum
 
 source ~/$EXECUTOR_ID.secrets.env
+source ~/secrets.env
 
 # These variables must come from the secrets file
 check_secret_envs PRIVATE_KEY JSON_RPC_BINANCE TRADING_STRATEGY_API_KEY DISCORD_WEBHOOK_URL
