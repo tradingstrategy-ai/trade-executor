@@ -113,4 +113,4 @@ class UniswapV2ExecutionModel(ExecutionModel):
             stop_on_execution_failure=False)
 
         # Clean up failed trades
-        return freeze_position_on_failed_trade(state, trades)
+        return freeze_position_on_failed_trade(ts, state, trades)

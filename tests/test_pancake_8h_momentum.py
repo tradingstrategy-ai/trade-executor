@@ -1,4 +1,4 @@
-"""Test that Pancake strategy with 8h ticks and 4h candles work.
+"""Test that Pancake momentum strategy with 8h ticks and 4h candles.
 
 To run:
 
@@ -70,6 +70,8 @@ def ganache_bnb_chain_fork(logger, large_busd_holder) -> str:
         # Start Ganache
         launch = fork_network(
             mainnet_rpc,
+            block_time=1,  # Insta mining cannot be done in this test
+            evm_version="berlin",  # BSC is not yet London compatible?
             unlocked_addresses=[large_busd_holder])
         yield launch.json_rpc_url
         # Wind down Ganache process after the test is complete
@@ -202,14 +204,15 @@ def test_pancake_4h_candles(
 
     debug_dump_file = "/tmp/test_main_loop.debug.json"
 
-    # Set up the configuration for the backtesting, run
-    # run 2 weeks
+    # Set up the configuration for the backtesting,
+    # run the loop 6 cycles using Ganache + live BNB Chain fork
     environment = {
         "NAME": "pytest: pancake_8h_momentum_tick.py",
         "STRATEGY_FILE": strategy_path.as_posix(),
         "PRIVATE_KEY": hot_wallet.account.privateKey.hex(),
         "HTTP_ENABLED": "false",
         "JSON_RPC": ganache_bnb_chain_fork,
+        "GAS_PRICE_METHOD": "legacy",
         "UNISWAP_V2_FACTORY_ADDRESS": pancakeswap_v2.factory.address,
         "UNISWAP_V2_ROUTER_ADDRESS": pancakeswap_v2.router.address,
         "UNISWAP_V2_INIT_CODE_HASH": pancakeswap_v2.init_code_hash,
@@ -286,12 +289,12 @@ def test_pancake_4h_candles(
         logger.info("Cycle 3 trades %s", cycle_3["rebalance_trades"])
         assert cycle_3["cycle"] == 3
         assert len(cycle_3["positions_at_start_of_construction"]) == 4
-        assert len(cycle_3["approved_trades"]) == 5
+        assert len(cycle_3["approved_trades"]) == 8
         assert cycle_3["timestamp"].replace(minute=0) == datetime.datetime(2021, 12, 7, 16, 0)
 
         # 4 buys + 1 sells
         logger.info("Cycle 4 trades %s", cycle_4["rebalance_trades"])
         assert cycle_4["cycle"] == 4
         assert len(cycle_4["positions_at_start_of_construction"]) == 4
-        assert len(cycle_4["approved_trades"]) == 5
+        assert len(cycle_4["approved_trades"]) == 8
         assert cycle_4["timestamp"].replace(minute=0) == datetime.datetime(2021, 12, 8, 0, 0)

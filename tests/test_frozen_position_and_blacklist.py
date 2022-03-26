@@ -401,11 +401,16 @@ def test_buy_and_sell_blacklisted_asset(
 
     failed_position: TradingPosition = next(iter(portfolio.frozen_positions.values()))
     assert failed_position.position_id == 2
+    assert failed_position.frozen_at is not None
+    assert failed_position.is_frozen()
     failed_trade = failed_position.get_last_trade()
     assert failed_trade.trade_id == 4
     assert failed_trade.failed_at is not None
     assert failed_trade.is_failed()
+    assert failed_trade.is_sell()
     assert failed_trade.tx_info.revert_reason == "VM Exception while processing transaction: revert TransferHelper: TRANSFER_FROM_FAILED"
+    assert failed_position.get_freeze_reason() == "VM Exception while processing transaction: revert TransferHelper: TRANSFER_FROM_FAILED"
+    assert portfolio.get_frozen_position_equity() > 0
 
     # The asset is now blacklisted for the future trades
     assert state.asset_blacklist == {bit_busd_pair.base.address.lower()}

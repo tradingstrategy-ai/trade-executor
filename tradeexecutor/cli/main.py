@@ -9,6 +9,7 @@ from typing import Optional
 import pkg_resources
 
 import typer
+from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
 from web3.middleware import geth_poa_middleware
 
 from eth_hentai.balances import fetch_erc20_balances_by_token_list
@@ -97,6 +98,11 @@ def create_web3(url) -> Web3:
     return Web3(HTTPProvider(url))
 
 
+def monkey_patch():
+    """Apply all monkey patches."""
+    patch_dataclasses_json()
+
+
 # Typer documentation https://typer.tiangolo.com/
 @app.command()
 def start(
@@ -141,6 +147,8 @@ def start(
             name,
             webhook_url=discord_webhook_url,
             avatar_url=discord_avatar_url)
+
+    monkey_patch()
 
     execution_model, sync_method, revaluation_method, pricing_model_factory = create_trade_execution_model(
         execution_type,

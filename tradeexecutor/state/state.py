@@ -1,6 +1,6 @@
 """Trade executor state.
 
-The whoe application date can be dumped and loaded as JSON.
+The whole application date can be dumped and loaded as JSON.
 
 Any datetime must be naive, without timezone, and is assumed to be UTC.
 """
@@ -541,6 +541,10 @@ class TradingPosition:
     trades: Dict[int, TradeExecution] = field(default_factory=dict)
 
     closed_at: Optional[datetime.datetime] = None
+
+    #: Timestamp when this position was moved to a frozen state
+    frozen_at: Optional[datetime.datetime] = None
+
     last_trade_at: Optional[datetime.datetime] = None
 
     def __post_init__(self):
@@ -557,6 +561,10 @@ class TradingPosition:
     def is_closed(self) -> bool:
         """This position has been closed and does not have any capital tied to it."""
         return not self.is_open()
+
+    def is_frozen(self) -> bool:
+        """This position has had a failed trade and can no longer be automatically moved around."""
+        return self.frozen_at is not None
 
     def get_first_trade(self) -> TradeExecution:
         """Get the first trade for this position.
@@ -755,8 +763,12 @@ class TradingPosition:
         assert self.is_long()
         return self.get_total_profit_usd() / self.get_total_bought_usd()
 
+    def get_freeze_reason(self) -> str:
+        """Return the revert reason why this position is frozen."""
+        assert self.is_frozen()
+        return self.get_last_trade().tx_info.revert_reason
 
-@dataclass
+
 class RevalueEvent:
     """Describe how asset was revalued"""
     position_id: str

@@ -105,6 +105,10 @@ class StrategyRunner(abc.ABC):
             f"   current price:${position.get_current_price():,.8f}, open price:${position.get_opening_price():,.8f}, diff:{price_diff:,.8f} USD",
         ]
 
+        if position.is_frozen():
+            last_trade = "buy" if position.get_last_trade().is_buy() else "sell"
+            lines.append(f"   last trade: {last_trade}, freeze reason: {position.get_freeze_reason()}")
+
         if link:
             lines.append(f"   link: {link}")
 
@@ -139,7 +143,6 @@ class StrategyRunner(abc.ABC):
 
         return lines
 
-
     def report_after_sync_and_revaluation(self, clock: datetime.datetime, universe: TradeExecutorTradingUniverse, state: State, debug_details: dict):
         buf = StringIO()
         portfolio = state.portfolio
@@ -148,26 +151,27 @@ class StrategyRunner(abc.ABC):
         print(f"Total equity: ${portfolio.get_total_equity():,.2f}, in cash: ${portfolio.get_current_cash():,.2f}", file=buf)
         print("", file=buf)
 
-        positions = list(portfolio.open_positions.values())
+        open_positions = list(portfolio.open_positions.values())
 
-        if positions:
+        if open_positions:
             print(f"Current positions:", file=buf)
             print("", file=buf)
             position: TradingPosition
-            for position in portfolio.open_positions.values():
+            for position in open_positions:
                 for line in self.format_position(position):
                     print("    " + line, file=buf)
                 print("", file=buf)
         else:
             print(f"No open positions.", file=buf)
 
-        frozen_positions = list(portfolio.open_positions.values())
+        frozen_positions = list(portfolio.frozen_positions.values())
 
         if frozen_positions:
             print(f"Frozen positions (${portfolio.get_frozen_position_equity():,.2f}):", file=buf)
             print("", file=buf)
             position: TradingPosition
-            for position in portfolio.frozen_positions.values():
+            for position in frozen_positions:
+                assert position.is_frozen()
                 for line in self.format_position(position):
                     print("    " + line, file=buf)
                 print("", file=buf)

@@ -53,19 +53,24 @@ class QSTraderRunner(StrategyRunner):
         print(f"   Liquidity dataset: {liquidity_start} - {liquidity_end}", file=buf)
         print("", file=buf)
 
+        # Alpha model weights does not contain zero weight entries
         alpha_model_weights = debug_details["alpha_model_weights"]
+
+        # Normalised weights do contain zero weight entries
+        normalised_weights = debug_details.get("normalised_weights", {})
 
         if alpha_model_weights:
             print("Alpha model weights:", file=buf)
             print("", file=buf)
 
             for pair_id, weight in alpha_model_weights.items():
+                norm_weight = normalised_weights.get(pair_id, weight)
                 pair = universe.pairs.get_pair_by_id(pair_id)
                 tp = translate_trading_pair(pair)
                 link = tp.info_url or ""
                 if "extra_debug_data" in debug_details:
                     momentum = debug_details["extra_debug_data"][pair_id]["momentum"]
-                    print(f"    {tp.get_human_description()} weight:{weight:.2f}, momentum:{momentum*100:.2f}%", file=buf)
+                    print(f"    {tp.get_human_description()} weight:{norm_weight*100:.2f}%, momentum:{momentum*100:.2f}%", file=buf)
                     if link:
                         print(f"    link: {link}", file=buf)
                     print("", file=buf)
