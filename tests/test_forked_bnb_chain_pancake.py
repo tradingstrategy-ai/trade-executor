@@ -204,7 +204,7 @@ def portfolio() -> Portfolio:
 
     We start with 10,000 USDC.
     """
-    portfolio = Portfolio({}, {}, {})
+    portfolio = Portfolio()
     return portfolio
 
 

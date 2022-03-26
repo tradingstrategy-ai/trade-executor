@@ -188,7 +188,7 @@ def portfolio(web3, hot_wallet, start_ts, supported_reserves) -> Portfolio:
 
     We start with 10,000 USDC.
     """
-    portfolio = Portfolio({}, {}, {})
+    portfolio = Portfolio()
     events = sync_reserves(web3, start_ts, hot_wallet.address, [], supported_reserves)
     sync_portfolio(portfolio, events)
     return portfolio

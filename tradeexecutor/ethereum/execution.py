@@ -194,13 +194,15 @@ def approve_tokens(
 def confirm_approvals(
         web3: Web3,
         txs: List[SignedTransaction],
-        confirmation_block_count,
+        confirmation_block_count=0,
     ):
     """Wait until all transactions are confirmed.
 
+    :param confirmation_block_count: How many blocks to wait for the transaction to settle
+
     :raise: If any of the transactions fail
     """
-
+    logger.info("Confirming %d approvals", len(txs))
     receipts = broadcast_and_wait_transactions_to_complete(web3, txs, confirmation_block_count=confirmation_block_count)
     return receipts
 
@@ -214,6 +216,9 @@ def broadcast(
 
     :return: Map of transaction hashes to watch
     """
+
+    logger.info("Broadcasting %d trades", len(instructions))
+
     res = {}
     # Another nonce guard
     nonces: Set[int] = set()
@@ -250,6 +255,7 @@ def wait_trades_to_complete(
 
     :return: Map of transaction hashes -> receipt
     """
+    logger.info("Waiting %d trades to confirm", len(trades))
     assert isinstance(confirmation_block_count, int)
     tx_hashes = [t.tx_info.tx_hash for t in trades]
     receipts = wait_transactions_to_complete(web3, tx_hashes, confirmation_block_count, max_timeout, poll_delay)

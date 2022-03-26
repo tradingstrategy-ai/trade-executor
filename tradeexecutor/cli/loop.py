@@ -72,6 +72,7 @@ def run_main_loop(
         else:
             state = store.load()
 
+    # Check that we did not corrupt the state while writing it to the disk
     state.perform_integrity_check()
 
     execution_model.initialize()
@@ -145,6 +146,9 @@ def run_main_loop(
 
         # Execute the strategy tick and trades
         runner.tick(ts, universe, state, debug_details)
+
+        # Check that state is good before writing it to the disk
+        state.perform_integrity_check()
 
         # Store the current state to disk
         store.sync(state)

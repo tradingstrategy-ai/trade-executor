@@ -242,7 +242,7 @@ def strategy_path() -> Path:
 @pytest.fixture()
 def portfolio() -> Portfolio:
     """An empty portfolio."""
-    portfolio = Portfolio({}, {}, {})
+    portfolio = Portfolio()
     return portfolio
 
 
