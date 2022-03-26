@@ -44,6 +44,10 @@ class NotEnoughMoney(Exception):
     """We try to allocate reserve for a buy, but do not have enough it."""
 
 
+class IntegrityFailed(Exception):
+    """Internal state management has lost the count.."""
+
+
 class TradeStatus(enum.Enum):
 
     #: Trade has been put to the planning pipeline.
@@ -124,6 +128,9 @@ class TradingPairIdentifier:
 
     #: Info page URL for this trading pair e.g. with the price charts
     info_url: Optional[str] = None
+
+    def __repr__(self):
+        return f"<Pair {self.base.token_symbol}-{self.quote.token_symbol} at {self.pool_address}>"
 
     def get_identifier(self) -> str:
         """We use the smart contract pool address to uniquely identify trading positions.
@@ -847,8 +854,8 @@ class Portfolio:
         return len(self.open_positions) == 0 and len(self.reserves) == 0 and len(self.closed_positions) == 0
 
     def get_all_positions(self) -> Iterable[TradingPosition]:
-        """Get open and closed positions."""
-        return chain(self.open_positions.values(), self.closed_positions.values())
+        """Get open, closed and frozen, positions."""
+        return chain(self.open_positions.values(), self.closed_positions.values(), self.frozen_positions.values())
 
     def get_executed_positions(self) -> Iterable[TradingPosition]:
         """Get all positions with already executed trades.
@@ -1203,3 +1210,25 @@ class State:
         """Add a asset to the blacklist."""
         address = asset.get_identifier()
         self.asset_blacklist.add(address)
+
+    def perform_integrity_check(self):
+        """Check that we are not reusing any trade or position ids and counters are correct.
+
+        :raise: Assertion error in the case internal data structures are damaged
+        """
+
+        position_ids = set()
+        trade_ids = set()
+
+        for p in self.portfolio.get_all_positions():
+            assert p.position_id not in position_ids, f"Position id reuse {p.position_id}"
+            position_ids.add(p.position_id)
+            for t in p.trades.values():
+                assert t.trade_id not in trade_ids, f"Trade id reuse {p.trade_id}"
+                trade_ids.add(t.trade_id)
+
+        max_position_id = max(position_ids)
+        assert max_position_id + 1 == self.portfolio.next_position_id, f"Position id tracking lost. Max {max_position_id}, next {self.portfolio.next_position_id}"
+
+        max_trade_id = max(trade_ids)
+        assert max_trade_id + 1 == self.portfolio.next_trade_id, f"Trade id tracking lost. Max {max_trade_id}, next {self.portfolio.next_trade_id}"

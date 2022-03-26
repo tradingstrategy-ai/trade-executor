@@ -307,6 +307,7 @@ def test_pancake_4h_candles(
     # Mainly stresses on serialization/deserialization issues.
     json_text = open(state_file, "rt").read()
     state = State.from_json(json_text)
+    state.perform_integrity_check()
     assert len(state.portfolio.open_positions) > 0
     assert len(state.portfolio.closed_positions) > 0
 
