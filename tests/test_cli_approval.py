@@ -291,7 +291,7 @@ def test_cli_disapprove_trades(
 
     factory = import_strategy_file(strategy_path)
     approval_model = CLIApprovalModel()
-    execution_model = UniswapV2ExecutionModel(uniswap_v2, hot_wallet)
+    execution_model = UniswapV2ExecutionModel(uniswap_v2, hot_wallet, confirmation_block_count=0)
     sync_method = EthereumHotWalletReserveSyncer(web3, hot_wallet.address)
     revaluation_method = UniswapV2PoolRevaluator(uniswap_v2)
     pricing_model_factory = uniswap_v2_live_pricing_factory
