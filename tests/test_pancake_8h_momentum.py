@@ -72,7 +72,9 @@ def ganache_bnb_chain_fork(logger, large_busd_holder) -> str:
             mainnet_rpc,
             block_time=1,  # Insta mining cannot be done in this test
             evm_version="berlin",  # BSC is not yet London compatible?
-            unlocked_addresses=[large_busd_holder])
+            unlocked_addresses=[large_busd_holder],  # Unlock WBNB stealing
+            quiet=True,  # Otherwise the Ganache output is millions lines of long
+        )
         yield launch.json_rpc_url
         # Wind down Ganache process after the test is complete
         launch.close(verbose=True)
@@ -285,16 +287,16 @@ def test_pancake_4h_candles(
         assert len(cycle_2["approved_trades"]) == 8
         assert len(cycle_2["positions_at_start_of_construction"]) == 4
 
-        # Does a rebalance of 4x sell + 1 buy
+        # 4 buys + 4 sells
         logger.info("Cycle 3 trades %s", cycle_3["rebalance_trades"])
         assert cycle_3["cycle"] == 3
         assert len(cycle_3["positions_at_start_of_construction"]) == 4
         assert len(cycle_3["approved_trades"]) == 8
         assert cycle_3["timestamp"].replace(minute=0) == datetime.datetime(2021, 12, 7, 16, 0)
 
-        # 4 buys + 1 sells
+        # 3 buys + 4 sells
         logger.info("Cycle 4 trades %s", cycle_4["rebalance_trades"])
         assert cycle_4["cycle"] == 4
         assert len(cycle_4["positions_at_start_of_construction"]) == 4
-        assert len(cycle_4["approved_trades"]) == 8
+        assert len(cycle_4["approved_trades"]) == 7
         assert cycle_4["timestamp"].replace(minute=0) == datetime.datetime(2021, 12, 8, 0, 0)

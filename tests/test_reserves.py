@@ -131,7 +131,7 @@ def test_update_reserves_twice(web3, usdc_token, deployer, start_ts, hot_wallet:
 
     address = usdc_token.address.lower()
     assert portfolio.reserves[address].quantity == Decimal(500)
-    assert portfolio.reserves[address].asset.get_identifier() == usdc_token.address
+    assert portfolio.reserves[address].asset.get_identifier() == usdc_token.address.lower()
     assert portfolio.reserves[address].reserve_token_price == 1.0
 
     # Deposit 200 usd more
