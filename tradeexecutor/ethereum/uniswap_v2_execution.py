@@ -98,8 +98,9 @@ class UniswapV2ExecutionModel(ExecutionModel):
 
         #: 3 broadcast
 
-        # Handle approvals separately for now
-        confirm_approvals(self.web3, approvals)
+        # Handle approvals separately for now.
+        # We do not need to wait these to confirm.
+        confirm_approvals(self.web3, approvals, confirmation_block_count=0)
 
         broadcasted = broadcast(self.web3, ts, trades)
         #assert trade.get_status() == TradeStatus.broadcasted

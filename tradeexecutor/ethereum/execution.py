@@ -194,13 +194,14 @@ def approve_tokens(
 def confirm_approvals(
         web3: Web3,
         txs: List[SignedTransaction],
+        confirmation_block_count,
     ):
     """Wait until all transactions are confirmed.
 
     :raise: If any of the transactions fail
     """
 
-    receipts = broadcast_and_wait_transactions_to_complete(web3, txs)
+    receipts = broadcast_and_wait_transactions_to_complete(web3, txs, confirmation_block_count=confirmation_block_count)
     return receipts
 
 
@@ -249,6 +250,7 @@ def wait_trades_to_complete(
 
     :return: Map of transaction hashes -> receipt
     """
+    assert isinstance(confirmation_block_count, int)
     tx_hashes = [t.tx_info.tx_hash for t in trades]
     receipts = wait_transactions_to_complete(web3, tx_hashes, confirmation_block_count, max_timeout, poll_delay)
     return receipts
@@ -272,7 +274,7 @@ def resolve_trades(
     """
 
     for tx_hash, receipt in receipts.items():
-        trade = trades[tx_hash]
+        trade = trades[tx_hash.hex()]
 
         logger.info("Resolved trade %s", trade)
 

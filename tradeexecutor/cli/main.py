@@ -221,6 +221,7 @@ def start(
             import ipdb
             ipdb.post_mortem()
         logger.exception(e)
+        raise
     finally:
         if server:
             server.close()
