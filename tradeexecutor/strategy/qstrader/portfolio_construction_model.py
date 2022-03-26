@@ -4,7 +4,7 @@ from typing import Optional, Dict, List, Tuple
 
 import pandas as pd
 
-from tradeexecutor.state.state import State, AssetIdentifier, TradeType, TradeExecution
+from tradeexecutor.state.state import State, AssetIdentifier, TradeType, TradeExecution, TradingPosition
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.qstrader.alpha_model import AlphaModel
 from tradeexecutor.strategy.qstrader.order_sizer import CashBufferedOrderSizer
@@ -184,6 +184,13 @@ class PortfolioConstructionModel:
             rebalance_portfolio[asset] = {"quantity": order_qty}
 
         rebalance_trades = []
+        new_positions = []
+
+        # Sanity check for the old/new positions with logging
+        pos: TradingPosition
+        for pos in self.state.portfolio.open_positions.values():
+            logger.info("Rebalance, existing position #%d, pool: %s", pos.position_id, pos.pair.pool_address)
+
         for asset, asset_dict in sorted(rebalance_portfolio.items(), key=lambda x: x[0]):
             quantity = rebalance_portfolio[asset]["quantity"]
             if quantity != 0:
@@ -195,7 +202,6 @@ class PortfolioConstructionModel:
                 if price is None:
                     raise RuntimeError(f"Price missing for asset {asset} - prices are {target_prices}")
 
-
                 position, trade = self.state.create_trade(
                     dt,
                     executor_pair,
@@ -206,6 +212,11 @@ class PortfolioConstructionModel:
                     1.0,  # TODO: Harcoded stablecoin USD exchange rate
                 )
                 rebalance_trades.append(trade)
+                new_positions.append(position)
+
+        # Sanity check for the old/new positions with logging
+        for pos in new_positions:
+            logger.info("Rebalance, new position #%d, pool: %s", pos.position_id, pos.pair.pool_address)
 
         # Sort trades so that sells always go first
         rebalance_trades.sort(key=lambda t: t.get_execution_sort_position())
