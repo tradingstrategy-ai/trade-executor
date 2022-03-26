@@ -27,6 +27,9 @@ jobs:
     - name: Install dependencies
       run: |
         poetry install
+    - name: Install Ganache
+      run: |
+        npm install -g ganache
     - name: Run test scripts
       run: |
         poetry run pytest
