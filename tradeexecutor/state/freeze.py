@@ -34,6 +34,9 @@ def freeze_position_on_failed_trade(ts: datetime.datetime, state: State, trades:
             logger.warning("Freezing position for a failed trade: %s", t)
 
             position = portfolio.get_position_by_trading_pair(t.pair)
+
+            assert position is not None, f"Could not find the position for trade {t}"
+
             assert position.is_open(), "Cannot freeze position that is not open"
             portfolio.frozen_positions[position.position_id] = position
             position.frozen_at = ts

@@ -30,7 +30,7 @@ from eth_hentai.hotwallet import HotWallet
 from eth_hentai.uniswap_v2.deployment import UniswapV2Deployment, fetch_deployment
 from eth_hentai.utils import is_localhost_port_listening
 from tradeexecutor.cli.main import app
-from tradeexecutor.state.state import AssetIdentifier
+from tradeexecutor.state.state import AssetIdentifier, State
 
 from tradeexecutor.cli.log import setup_pytest_logging
 
@@ -206,6 +206,8 @@ def test_pancake_4h_candles(
 
     debug_dump_file = "/tmp/test_main_loop.debug.json"
 
+    state_file = "/tmp/test_main_loop.json"
+
     # Set up the configuration for the backtesting,
     # run the loop 6 cycles using Ganache + live BNB Chain fork
     environment = {
@@ -218,7 +220,7 @@ def test_pancake_4h_candles(
         "UNISWAP_V2_FACTORY_ADDRESS": pancakeswap_v2.factory.address,
         "UNISWAP_V2_ROUTER_ADDRESS": pancakeswap_v2.router.address,
         "UNISWAP_V2_INIT_CODE_HASH": pancakeswap_v2.init_code_hash,
-        "STATE_FILE": "/tmp/test_main_loop.json",
+        "STATE_FILE": state_file,
         "RESET_STATE": "true",
         "EXECUTION_TYPE": "uniswap_v2_hot_wallet",
         "APPROVAL_TYPE": "unchecked",
@@ -300,3 +302,12 @@ def test_pancake_4h_candles(
         assert len(cycle_4["positions_at_start_of_construction"]) == 4
         assert len(cycle_4["approved_trades"]) == 7
         assert cycle_4["timestamp"].replace(minute=0) == datetime.datetime(2021, 12, 8, 0, 0)
+
+    # See we can load the state after all this testing.
+    # Mainly stresses on serialization/deserialization issues.
+    json_text = open(state_file, "rt").read()
+    state = State.from_json(json_text)
+    assert len(state.portfolio.open_positions) > 0
+    assert len(state.portfolio.closed_positions) > 0
+
+    logger.info("All ok")

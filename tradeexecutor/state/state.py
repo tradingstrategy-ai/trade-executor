@@ -838,7 +838,7 @@ class Portfolio:
     #: - blockchain halted
     #: - ERC-20 token tax fees
     #: - rug pull token - transfer disabled
-    frozen_positions: Dict[int, ReservePosition] = field(default_factory=dict)
+    frozen_positions: Dict[int, TradingPosition] = field(default_factory=dict)
 
     def is_empty(self):
         """This portfolio has no open or past trades or any reserves."""
