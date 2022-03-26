@@ -827,11 +827,11 @@ class Portfolio:
     """
 
     #: Each position gets it unique running counter id.
-    next_position_id = 1
+    next_position_id: int = field(default=1)
 
     #: Each trade gets it unique id as a running counter.
     #: Trade ids are unique across different positions.
-    next_trade_id = 1
+    next_trade_id: int = field(default=1)
 
     #: Currently open trading positions
     open_positions: Dict[int, TradingPosition] = field(default_factory=dict)
@@ -1227,8 +1227,8 @@ class State:
                 assert t.trade_id not in trade_ids, f"Trade id reuse {p.trade_id}"
                 trade_ids.add(t.trade_id)
 
-        max_position_id = max(position_ids)
+        max_position_id = max(position_ids) if position_ids else 0
         assert max_position_id + 1 == self.portfolio.next_position_id, f"Position id tracking lost. Max {max_position_id}, next {self.portfolio.next_position_id}"
 
-        max_trade_id = max(trade_ids)
+        max_trade_id = max(trade_ids) if trade_ids else 0
         assert max_trade_id + 1 == self.portfolio.next_trade_id, f"Trade id tracking lost. Max {max_trade_id}, next {self.portfolio.next_trade_id}"

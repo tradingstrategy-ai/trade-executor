@@ -72,6 +72,8 @@ def run_main_loop(
         else:
             state = store.load()
 
+    state.perform_integrity_check()
+
     execution_model.initialize()
     execution_model.preflight_check()
 

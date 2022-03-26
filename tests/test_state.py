@@ -113,6 +113,7 @@ def test_empty_state():
     """"Create new empty trade executor state."""
     state = State()
     assert state.is_empty()
+    state.perform_integrity_check()
 
 
 def test_update_reserves(usdc, weth, weth_usdc, start_ts):
@@ -645,6 +646,8 @@ def test_serialize_state(usdc, weth_usdc, start_ts: datetime.datetime):
     assert state.portfolio.get_total_equity() == 998.3
     assert position.get_value() == pytest.approx(168.3)
     assert position.last_pricing_at == start_ts
+
+    state.perform_integrity_check()
 
     dump = state.to_json()
     state2 = State.from_json(dump)

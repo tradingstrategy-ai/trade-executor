@@ -23,7 +23,7 @@ class DummyTestTrader:
     def create(self, pair: TradingPairIdentifier, quantity: Decimal, price: float) -> Tuple[TradingPosition, TradeExecution]:
         """Open a new trade."""
         # 1. Plan
-        position, trade = self.state.create_trade(
+        position, trade, created = self.state.create_trade(
             ts=self.ts,
             pair=pair,
             quantity=quantity,
