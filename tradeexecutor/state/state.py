@@ -631,6 +631,7 @@ class TradingPosition:
 
     def get_opening_price(self) -> USDollarAmount:
         """Get the price when the position was opened."""
+        assert self.has_executed_trades()
         first_trade = self.get_first_trade()
         return first_trade.executed_price
 
@@ -715,16 +716,29 @@ class TradingPosition:
         """The difference in the quantity of assets bought and sold to date."""
         return self.get_quantity()
 
-    def get_average_buy(self) -> USDollarAmount:
-        """Calculate average buy price."""
-        return self.get_total_bought_usd() / float(self.get_buy_quantity())
+    def get_average_buy(self) -> Optional[USDollarAmount]:
+        """Calculate average buy price.
 
-    def get_average_sell(self) -> USDollarAmount:
-        """Calculate average buy price."""
-        return self.get_total_sold_usd() / float(self.get_sell_quantity())
+        :return: None if no buys
+        """
+        q = float(self.get_buy_quantity())
+        if not q:
+            return None
+        return self.get_total_bought_usd() / q
 
-    def get_average_price(self) -> USDollarAmount:
-        """The average price paid for all assets on the long or short side."""
+    def get_average_sell(self) -> Optional[USDollarAmount]:
+        """Calculate average buy price.
+
+        :return: None if no sells
+        """
+        q = float(self.get_sell_quantity())
+        return self.get_total_sold_usd() / q
+
+    def get_average_price(self) -> Optional[USDollarAmount]:
+        """The average price paid for all assets on the long or short side.
+
+        :return: None if no executed trades
+        """
         if self.is_long():
             return self.get_average_buy()
         else:
@@ -749,19 +763,29 @@ class TradingPosition:
 
         :return: profit in dollar
         """
-        return (self.get_current_price() - self.get_average_price()) * float(self.get_net_quantity())
+        avg_price = self.get_average_price()
+        if avg_price is None:
+            return 0
+        return (self.get_current_price() - avg_price) * float(self.get_net_quantity())
 
     def get_total_profit_usd(self) -> USDollarAmount:
         """Realised + unrealised profit."""
         realised_profit = self.get_realised_profit_usd() or 0
-        unrealised_profit = self.get_unrealised_profit_usd()
+        unrealised_profit = self.get_unrealised_profit_usd() or 0
         total_profit = realised_profit + unrealised_profit
         return total_profit
 
     def get_total_profit_percent(self) -> float:
-        """How much % we have made profit so far."""
+        """How much % we have made profit so far.
+
+        :return: 0 if profit calculation cannot be made yet
+        """
         assert self.is_long()
-        return self.get_total_profit_usd() / self.get_total_bought_usd()
+        profit = self.get_total_profit_usd()
+        bought = self.get_total_bought_usd()
+        if bought == 0:
+            return 0
+        return profit / bought
 
     def get_freeze_reason(self) -> str:
         """Return the revert reason why this position is frozen."""

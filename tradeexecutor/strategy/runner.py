@@ -98,12 +98,13 @@ class StrategyRunner(abc.ABC):
         else:
             link = ""
 
-        price_diff = position.get_current_price() - position.get_opening_price()
-
         lines =[
-            f"{symbol} #{position.position_id} {position.pair.get_human_description()} size:${position.get_value():,.2f}, profit:{position.get_total_profit_usd():.2f}% ({position.get_total_profit_usd():,.4f} USD)",
-            f"   current price:${position.get_current_price():,.8f}, open price:${position.get_opening_price():,.8f}, diff:{price_diff:,.8f} USD",
+            f"{symbol} #{position.position_id} {position.pair.get_human_description()} size:${position.get_value():,.2f}, profit:{position.get_total_profit_usd():.2f}% ({position.get_total_profit_usd():,.4f} USD)"
         ]
+
+        if position.has_executed_trades():
+            price_diff = position.get_current_price() - position.get_opening_price()
+            lines.append(f"   current price:${position.get_current_price():,.8f}, open price:${position.get_opening_price():,.8f}, diff:{price_diff:,.8f} USD")
 
         if position.is_frozen():
             last_trade = "buy" if position.get_last_trade().is_buy() else "sell"
