@@ -347,10 +347,12 @@ class TradeExecution:
             return f"Sell {abs(self.planned_quantity)} {self.pair.base.token_symbol} <id:{self.pair.base.internal_id}> at {self.planned_price}"
 
     def is_sell(self):
+        assert self.planned_quantity != 0, "Buy/sell concept does not exist for zero quantity"
         return self.planned_quantity < 0
 
     def is_buy(self):
-        return self.planned_quantity > 0
+        assert self.planned_quantity != 0, "Buy/sell concept does not exist for zero quantity"
+        return self.planned_quantity >= 0
 
     def is_success(self):
         """This trade was succcessfully completed."""
@@ -585,7 +587,7 @@ class TradingPosition:
 
         We consider the position long if the first trade is buy.
         """
-        assert len(self.trades) > 0
+        assert len(self.trades) > 0, "Cannot determine if position is long or short because there are no trades"
         return self.get_first_trade().is_buy()
 
     def is_short(self) -> bool:
@@ -780,7 +782,7 @@ class TradingPosition:
 
         :return: 0 if profit calculation cannot be made yet
         """
-        assert self.is_long()
+        assert self.is_long(), f"Profit pct for shorts unimplemented, got {self}, first trade was {self.get_first_trade()}"
         profit = self.get_total_profit_usd()
         bought = self.get_total_bought_usd()
         if bought == 0:
