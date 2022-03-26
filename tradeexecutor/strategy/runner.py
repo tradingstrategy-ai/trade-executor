@@ -150,6 +150,7 @@ class StrategyRunner(abc.ABC):
         print("Portfolio status (before rebalance)", file=buf)
         print("", file=buf)
         print(f"Total equity: ${portfolio.get_total_equity():,.2f}, in cash: ${portfolio.get_current_cash():,.2f}", file=buf)
+        print(f"Life-time positions: {portfolio.next_position_id - 1}, trades: {portfolio.next_trade_id - 1}", file=buf)
         print("", file=buf)
 
         open_positions = list(portfolio.open_positions.values())
