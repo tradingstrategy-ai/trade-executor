@@ -100,12 +100,13 @@ def single_asset_portfolio(start_ts, weth_usdc, weth, usdc) -> Portfolio:
         last_pricing_at=start_ts,
         reserve_currency=usdc,
         trades={1: trade},
-        next_trade_id=2,
     )
 
     p.open_positions = {1: position}
-    return p
 
+    p.next_trade_id = 2
+
+    return p
 
 
 def test_empty_state():
@@ -203,7 +204,6 @@ def test_single_sell_all(usdc, weth, weth_usdc, start_ts, single_asset_portfolio
     assert state.portfolio.get_open_position_equity() == 157.7
     eth_quantity = state.portfolio.open_positions[1].get_equity_for_position()
     assert eth_quantity == Decimal("0.09500000000000000111022302463")
-    assert state.portfolio.open_positions[1].next_trade_id == 2
 
     # #1 Planning stage
     # Sell all ETH at 1700 USD/ETH
@@ -220,7 +220,6 @@ def test_single_sell_all(usdc, weth, weth_usdc, start_ts, single_asset_portfolio
     assert position == state.portfolio.open_positions[1]
     assert position.position_id == 1
     assert trade.trade_id == 2
-    assert position.next_trade_id == 3
     assert len(state.portfolio.open_positions) == 1
     assert len(state.portfolio.open_positions[1].trades) == 2
     assert trade.is_sell()
