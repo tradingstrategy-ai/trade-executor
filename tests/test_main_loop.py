@@ -64,6 +64,7 @@ def ganache_bnb_chain_fork(logger, large_busd_holder) -> str:
         # Start Ganache
         launch = fork_network(
             mainnet_rpc,
+            block_time=1,
             unlocked_addresses=[large_busd_holder])
         yield launch.json_rpc_url
         # Wind down Ganache process after the test is complete
@@ -201,6 +202,7 @@ def test_main_loop(
         "UNISWAP_V2_FACTORY_ADDRESS": pancakeswap_v2.factory.address,
         "UNISWAP_V2_ROUTER_ADDRESS": pancakeswap_v2.router.address,
         "UNISWAP_V2_INIT_CODE_HASH": pancakeswap_v2.init_code_hash,
+        "CONFIRMATION_TIMEOUT": "30",
         "STATE_FILE": "/tmp/test_main_loop.json",
         "RESET_STATE": "true",
         "EXECUTION_TYPE": "uniswap_v2_hot_wallet",
@@ -212,6 +214,7 @@ def test_main_loop(
         "BACKTEST_END": "2022-01-07",
         "MAX_CYCLES": "1",
         "DISCORD_WEBHOOK_URL": "",
+        "TICK_SIZE": "24h",
     }
 
     # https://typer.tiangolo.com/tutorial/testing/

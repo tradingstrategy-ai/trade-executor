@@ -195,6 +195,7 @@ def confirm_approvals(
         web3: Web3,
         txs: List[SignedTransaction],
         confirmation_block_count=0,
+        max_timeout=30,
     ):
     """Wait until all transactions are confirmed.
 
@@ -203,7 +204,11 @@ def confirm_approvals(
     :raise: If any of the transactions fail
     """
     logger.info("Confirming %d approvals", len(txs))
-    receipts = broadcast_and_wait_transactions_to_complete(web3, txs, confirmation_block_count=confirmation_block_count)
+    receipts = broadcast_and_wait_transactions_to_complete(
+        web3,
+        txs,
+        confirmation_block_count=confirmation_block_count,
+        max_timeout=max_timeout)
     return receipts
 
 

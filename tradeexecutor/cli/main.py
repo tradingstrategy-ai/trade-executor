@@ -53,6 +53,7 @@ def create_trade_execution_model(
         json_rpc: str,
         private_key: str,
         gas_price_method: Optional[GasPriceMethod],
+        confirmation_timeout: datetime.timedelta,
 ):
     if execution_type == TradeExecutionType.dummy:
         return DummyExecutionModel()
@@ -72,7 +73,7 @@ def create_trade_execution_model(
         hot_wallet = HotWallet.from_private_key(private_key)
         uniswap = fetch_deployment(web3, factory_address, router_address, init_code_hash=uniswap_init_code_hash)
         sync_method = EthereumHotWalletReserveSyncer(web3, hot_wallet.address)
-        execution_model = UniswapV2ExecutionModel(uniswap, hot_wallet)
+        execution_model = UniswapV2ExecutionModel(uniswap, hot_wallet, confirmation_timeout=confirmation_timeout)
         revaluation_method = UniswapV2PoolRevaluator(uniswap)
         pricing_model_factory = uniswap_v2_live_pricing_factory
         return execution_model, sync_method, revaluation_method, pricing_model_factory
@@ -116,6 +117,7 @@ def start(
     http_password: str = typer.Option(None, envvar="HTTP_PASSWORD"),
     json_rpc: str = typer.Option(None, envvar="JSON_RPC", help="Ethereum JSON-RPC node URL we connect to for execution"),
     gas_price_method: Optional[GasPriceMethod] = typer.Option(None, envvar="GAS_PRICE_METHOD", help="How to set the gas price for Ethereum transactions"),
+    confirmation_timeout: int = typer.Option(90, envvar="CONFIRMATION_TIMEOUT", help="How many seconds to wait for transaction batches to confirm"),
     execution_type: TradeExecutionType = typer.Option(..., envvar="EXECUTION_TYPE"),
     approval_type: ApprovalType = typer.Option(..., envvar="APPROVAL_TYPE"),
     uniswap_v2_factory_address: str = typer.Option(None, envvar="UNISWAP_V2_FACTORY_ADDRESS"),
@@ -150,6 +152,8 @@ def start(
 
     monkey_patch()
 
+    confirmation_timeout = datetime.timedelta(seconds=confirmation_timeout)
+
     execution_model, sync_method, revaluation_method, pricing_model_factory = create_trade_execution_model(
         execution_type,
         uniswap_v2_factory_address,
@@ -158,6 +162,7 @@ def start(
         json_rpc,
         private_key,
         gas_price_method,
+        confirmation_timeout,
     )
 
     approval_model = create_approval_model(approval_type)

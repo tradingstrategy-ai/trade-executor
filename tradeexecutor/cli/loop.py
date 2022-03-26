@@ -50,6 +50,8 @@ def run_main_loop(
     ):
     """The main loop of trade executor."""
 
+    assert tick_size is not None
+
     if ignore:
         # https://www.python.org/dev/peps/pep-3102/
         raise TypeError("Only keyword arguments accepted")
