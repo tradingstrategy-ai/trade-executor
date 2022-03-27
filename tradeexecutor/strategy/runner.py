@@ -105,6 +105,7 @@ class StrategyRunner(abc.ABC):
         if position.has_executed_trades():
             price_diff = position.get_current_price() - position.get_opening_price()
             lines.append(f"   current price:${position.get_current_price():,.8f}, open price:${position.get_opening_price():,.8f}, diff:{price_diff:,.8f} USD")
+            lines.append(f"   last tx:${position.get_last_tx_hash()}")
 
         if position.is_frozen():
             last_trade = "buy" if position.get_last_trade().is_buy() else "sell"

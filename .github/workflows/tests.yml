@@ -35,5 +35,5 @@ jobs:
         poetry run pytest
       env:
         TRADING_STRATEGY_API_KEY: ${{ secrets.TRADING_STRATEGY_API_KEY }}
-        BNB_CHAIN_JSON_RPC: "https://bsc-dataseed1.defibit.io/"
+        BNB_CHAIN_JSON_RPC: ${{ secrets.BNB_CHAIN_JSON_RPC }}
 

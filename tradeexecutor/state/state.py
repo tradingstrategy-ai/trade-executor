@@ -801,6 +801,13 @@ class TradingPosition:
         assert self.is_frozen()
         return self.get_last_trade().tx_info.revert_reason
 
+    def get_last_tx_hash(self) -> Optional[str]:
+        """Get the latest transaction performed for this position.
+
+        It's the tx of the trade that was made for this position.
+        """
+        return self.get_last_trade().tx_info.tx_hash
+
 
 class RevalueEvent:
     """Describe how asset was revalued"""
@@ -1097,6 +1104,8 @@ class Portfolio:
         for pos in self.closed_positions.values():
             for t in pos.trades.values():
                 yield t
+
+
 
 
 @dataclass_json
