@@ -202,7 +202,7 @@ def confirm_approvals(
 
     :raise: If any of the transactions fail
     """
-    logger.info("Confirming %d approvals", len(txs))
+    logger.info("Confirming %d approvals, confirmation_block_count is %d", len(txs), confirmation_block_count)
     receipts = broadcast_and_wait_transactions_to_complete(
         web3,
         txs,
@@ -215,6 +215,7 @@ def broadcast(
         web3: Web3,
         ts: datetime.datetime,
         instructions: List[TradeExecution],
+        confirmation_block_count: int=0,
         ganache_sleep=0.5) -> Dict[HexBytes, TradeExecution]:
     """Broadcast multiple transations and manage the trade executor state for them.
 
@@ -239,7 +240,7 @@ def broadcast(
         tx = SignedTransaction(rawTransaction=t.tx_info.signed_bytes, hash=None, r=0, s=0, v=0)
         broadcast_batch.append(tx)
 
-    hashes = broadcast_transactions(web3, broadcast_batch)
+    hashes = broadcast_transactions(web3, broadcast_batch, confirmation_block_count=confirmation_block_count)
     assert len(hashes) == len(instructions)
 
     return res

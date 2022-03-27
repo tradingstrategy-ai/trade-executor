@@ -79,6 +79,7 @@ class UniswapV2ExecutionModel(ExecutionModel):
         :return: Tuple List of succeeded trades, List of failed trades
         """
         assert isinstance(ts, datetime.datetime)
+        assert self.confirmation_block_count > 0
 
         # 2. Capital allocation
         # Approvals
@@ -105,9 +106,18 @@ class UniswapV2ExecutionModel(ExecutionModel):
 
         # Handle approvals separately for now.
         # We do not need to wait these to confirm.
-        confirm_approvals(self.web3, approvals, confirmation_block_count=self.confirmation_block_count, max_timeout=self.confirmation_timeout)
+        confirm_approvals(
+            self.web3,
+            approvals,
+            confirmation_block_count=self.confirmation_block_count,
+            max_timeout=self.confirmation_timeout)
 
-        broadcasted = broadcast(self.web3, ts, trades)
+        broadcasted = broadcast(
+            self.web3,
+            ts,
+            trades,
+            confirmation_block_count=self.confirmation_block_count,
+        )
         #assert trade.get_status() == TradeStatus.broadcasted
 
         # Resolve
