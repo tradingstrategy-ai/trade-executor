@@ -148,7 +148,7 @@ class StrategyRunner(abc.ABC):
     def report_after_sync_and_revaluation(self, clock: datetime.datetime, universe: TradeExecutorTradingUniverse, state: State, debug_details: dict):
         buf = StringIO()
         portfolio = state.portfolio
-        tick = debug_details["cycle"]
+        tick = debug_details.get("cycle", 1)
         print(f"Portfolio status (before rebalance), tick #{tick}", file=buf)
         print("", file=buf)
         print(f"Total equity: ${portfolio.get_total_equity():,.2f}, in cash: ${portfolio.get_current_cash():,.2f}", file=buf)
