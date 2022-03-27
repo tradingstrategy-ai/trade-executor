@@ -231,7 +231,7 @@ def test_pancake_4h_candles(
         "BACKTEST_END": "2021-12-09",
         "TICK_OFFSET_MINUTES": "10",
         "TICK_SIZE": "8h",
-        "CONFIRMATION_BLOCK_COUNT": 2,
+        "CONFIRMATION_BLOCK_COUNT": "2",
     }
 
     # Points to the private test trash channel on Discord
