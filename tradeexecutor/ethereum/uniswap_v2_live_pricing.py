@@ -1,6 +1,7 @@
 import logging
 import datetime
 from decimal import Decimal, ROUND_DOWN
+from typing import Optional
 
 from tradeexecutor.ethereum.uniswap_v2_execution import UniswapV2ExecutionModel
 from tradeexecutor.strategy.execution_model import ExecutionModel
@@ -57,8 +58,10 @@ class UniswapV2LivePricing(PricingModel):
             self.very_small_amount)
         return float(price_for_quantity / self.very_small_amount)
 
-    def get_simple_buy_price(self, ts: datetime.datetime, pair_id: int) -> USDollarAmount:
+    def get_simple_buy_price(self, ts: datetime.datetime, pair_id: int) -> Optional[USDollarAmount]:
         """Get simple buy price without the quantity identified.
+
+        :return: None if
         """
         pair = self.get_pair(pair_id)
         logger.info("Getting buy price for %s", pair)
@@ -69,11 +72,12 @@ class UniswapV2LivePricing(PricingModel):
                 self.web3.toChecksumAddress(pair.base_token_address),
                 self.web3.toChecksumAddress(pair.quote_token_address),
                 self.very_small_amount)
-        except BadFunctionCallOutput as e:
+            return float(price_for_quantity / self.very_small_amount)
+        except (BadFunctionCallOutput, ValueError) as e:
             # TODO: Ganache hack
-            raise RuntimeError(f"Could not get price for %s, %s", pair, pair.address)
-
-        return float(price_for_quantity / self.very_small_amount)
+            # ValueError: {'message': 'empty resp', 'stack': 'Error: empty resp\n
+            logger.error("Exception when getting price for pair %s:  %s", pair, e)
+            return None  # raise RuntimeError(f"Could not get price for %s, %s", pair, pair.address)
 
     def quantize_quantity(self, pair_id: int, quantity: float, rounding=ROUND_DOWN) -> Decimal:
         """Convert any base token quantity to the native token units by its ERC-20 decimals."""

@@ -163,22 +163,26 @@ class CashBufferedOrderSizer(OrderSizer):
             if weight > 0:
                 asset_price = self.pricing_model.get_simple_buy_price(dt, asset)
 
-                if after_cost_dollar_weight > 0:
-                    if np.isnan(asset_price):
-                        raise ValueError(
-                            'Asset price for "%s" at timestamp "%s" is Not-a-Number (NaN). '
-                            'This can occur if the chosen backtest start date is earlier '
-                            'than the first available price for a particular asset. Try '
-                            'modifying the backtest start date and re-running.' % (asset, dt)
-                        )
+                if asset_price is not None:
 
-                    asset_quantity = after_cost_dollar_weight / asset_price
-                    asset_quantity = self.pricing_model.quantize_quantity(asset, asset_quantity)
+                    if after_cost_dollar_weight > 0:
+                        if np.isnan(asset_price):
+                            raise ValueError(
+                                'Asset price for "%s" at timestamp "%s" is Not-a-Number (NaN). '
+                                'This can occur if the chosen backtest start date is earlier '
+                                'than the first available price for a particular asset. Try '
+                                'modifying the backtest start date and re-running.' % (asset, dt)
+                            )
 
-                # Add to the target portfolio
-                target_portfolio[asset] = {"quantity": asset_quantity}
-                target_prices[asset] = asset_price
-                total_spend += (asset_quantity * Decimal(asset_price)) + est_costs
+                        asset_quantity = after_cost_dollar_weight / asset_price
+                        asset_quantity = self.pricing_model.quantize_quantity(asset, asset_quantity)
+
+                    # Add to the target portfolio
+                    target_portfolio[asset] = {"quantity": asset_quantity}
+                    target_prices[asset] = asset_price
+                    total_spend += (asset_quantity * Decimal(asset_price)) + est_costs
+                else:
+                    logger.warning("Skipping asset %s because of the price issue", asset)
 
         logger.info(f"Total new portfolio cost {total_spend:,.2f}")
 
