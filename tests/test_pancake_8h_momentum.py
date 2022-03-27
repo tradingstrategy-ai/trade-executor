@@ -81,7 +81,7 @@ def ganache_bnb_chain_fork(logger, large_busd_holder) -> str:
         launch.close(verbose=True)
     else:
         raise AssertionError("ganache zombie detected")
-g
+
 
 @pytest.fixture
 def web3(ganache_bnb_chain_fork: str):
