@@ -79,7 +79,6 @@ class UniswapV2ExecutionModel(ExecutionModel):
         :return: Tuple List of succeeded trades, List of failed trades
         """
         assert isinstance(ts, datetime.datetime)
-        assert self.confirmation_block_count > 0
 
         # 2. Capital allocation
         # Approvals
