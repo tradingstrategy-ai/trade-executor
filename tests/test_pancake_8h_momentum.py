@@ -74,14 +74,14 @@ def ganache_bnb_chain_fork(logger, large_busd_holder) -> str:
             block_time=1,  # Insta mining cannot be done in this test
             evm_version="berlin",  # BSC is not yet London compatible?
             unlocked_addresses=[large_busd_holder],  # Unlock WBNB stealing
-            quiet=False,  # Otherwise the Ganache output is millions lines of long
+            quiet=True,  # Otherwise the Ganache output is millions lines of long
         )
         yield launch.json_rpc_url
         # Wind down Ganache process after the test is complete
         launch.close(verbose=True)
     else:
         raise AssertionError("ganache zombie detected")
-
+g
 
 @pytest.fixture
 def web3(ganache_bnb_chain_fork: str):
