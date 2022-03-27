@@ -560,8 +560,10 @@ class TradingPosition:
         assert self.position_id > 0
         assert self.last_pricing_at is not None
         assert self.reserve_currency is not None
-        assert self.last_token_price > 0
-        assert self.last_reserve_price > 0
+        # Note that price *can* be zero,
+        # on some obscure cases when we load the state from the disk
+        assert self.last_token_price >= 0
+        assert self.last_reserve_price >= 0
 
     def is_open(self) -> bool:
         """This is an open trading position."""
