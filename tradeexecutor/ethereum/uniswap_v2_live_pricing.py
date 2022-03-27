@@ -1,3 +1,4 @@
+import logging
 import datetime
 from decimal import Decimal, ROUND_DOWN
 
@@ -5,13 +6,16 @@ from tradeexecutor.ethereum.uniswap_v2_execution import UniswapV2ExecutionModel
 from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.strategy.universe_model import TradeExecutorTradingUniverse
-from tradingstrategy.pair import PandasPairUniverse
+from tradingstrategy.pair import PandasPairUniverse, DEXPair
 
 from eth_hentai.token import fetch_erc20_details
 from eth_hentai.uniswap_v2.deployment import UniswapV2Deployment
 from eth_hentai.uniswap_v2.fees import estimate_buy_price_decimals, estimate_sell_price_decimals
 from tradeexecutor.state.types import USDollarAmount
 from tradeexecutor.strategy.pricing_model import PricingModel
+from web3.exceptions import BadFunctionCallOutput
+
+logger = logging.getLogger(__name__)
 
 
 class UniswapV2LivePricing(PricingModel):
@@ -38,7 +42,7 @@ class UniswapV2LivePricing(PricingModel):
         self.very_small_amount = very_small_amount
         self.supported_stablecoins = supported_stablecoins
 
-    def get_pair(self, pair_id: int):
+    def get_pair(self, pair_id: int) -> DEXPair:
         return self.pair_universe.get_pair_by_id(pair_id)
 
     def get_simple_sell_price(self, ts: datetime.datetime, pair_id: int) -> USDollarAmount:
@@ -57,12 +61,18 @@ class UniswapV2LivePricing(PricingModel):
         """Get simple buy price without the quantity identified.
         """
         pair = self.get_pair(pair_id)
+        logger.info("Getting buy price for %s", pair)
         assert pair.quote_token_symbol in self.supported_stablecoins, f"The quote token is not dollar like for the {pair}"
-        price_for_quantity = estimate_buy_price_decimals(
-            self.uniswap,
-            self.web3.toChecksumAddress(pair.base_token_address),
-            self.web3.toChecksumAddress(pair.quote_token_address),
-            self.very_small_amount)
+        try:
+            price_for_quantity = estimate_buy_price_decimals(
+                self.uniswap,
+                self.web3.toChecksumAddress(pair.base_token_address),
+                self.web3.toChecksumAddress(pair.quote_token_address),
+                self.very_small_amount)
+        except BadFunctionCallOutput as e:
+            # TODO: Ganache hack
+            raise RuntimeError(f"Could not get price for %s, %s", pair, pair.address)
+
         return float(price_for_quantity / self.very_small_amount)
 
     def quantize_quantity(self, pair_id: int, quantity: float, rounding=ROUND_DOWN) -> Decimal:

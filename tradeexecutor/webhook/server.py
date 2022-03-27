@@ -4,7 +4,6 @@ import time
 from queue import Queue
 
 from eth_hentai.utils import is_localhost_port_listening
-from waitress.server import create_server, MultiSocketServer
 from webtest.http import StopableWSGIServer
 
 from .app import create_pyramid_app
@@ -14,6 +13,10 @@ logger =  logging.getLogger(__name__)
 
 
 class WebhookServer(StopableWSGIServer):
+    """Create a Waitress server that we can gracefully shut down.
+
+    https://docs.pylonsproject.org/projects/waitress/en/latest/
+    """
 
     def shutdown(self, wait_gracefully=5):
         super().shutdown()
