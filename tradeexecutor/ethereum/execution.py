@@ -6,7 +6,6 @@ from decimal import Decimal
 from typing import List, Dict, Set
 
 from eth_account.datastructures import SignedTransaction
-from eth_hentai.revert_reason import fetch_transaction_revert_reason
 from eth_typing import HexAddress
 from hexbytes import HexBytes
 from web3 import Web3

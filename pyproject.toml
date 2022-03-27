@@ -23,6 +23,7 @@ prompt-toolkit = "^3.0.28"
 # TODO: A gap fix to make eth-hentai to install. Remove later.
 psutil = "^5.9.0"
 discord-webhook = "^0.15.0"
+WebTest = "^3.0.0"
 
 [tool.poetry.dev-dependencies]
 pytest = "^6.2.5"

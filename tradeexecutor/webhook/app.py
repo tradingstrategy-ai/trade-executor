@@ -6,6 +6,7 @@ HTTP Basic Auth setup.
 
 import os
 import logging
+import warnings
 from queue import Queue
 
 from pyramid.authentication import BasicAuthAuthenticationPolicy
@@ -60,11 +61,20 @@ def create_pyramid_app(username, password, command_queue: Queue, production=Fals
             # expand ACLs later
             return []
 
+
+
+
     with Configurator(settings=settings) as config:
 
         authn_policy = BasicAuthAuthenticationPolicy(check_credentials)
-        config.set_authentication_policy(authn_policy)
-        config.set_authorization_policy(ACLAuthorizationPolicy())
+
+        # https://stackoverflow.com/a/14463362/315168
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            # TODO: Upgrade to Pyramid 2.0
+            config.set_authentication_policy(authn_policy)
+            config.set_authorization_policy(ACLAuthorizationPolicy())
+
         config.set_root_factory(lambda request: Root())
 
         config.add_route('home', '/')
