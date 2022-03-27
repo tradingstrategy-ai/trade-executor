@@ -18,14 +18,16 @@ class WebhookServer(StopableWSGIServer):
     def shutdown(self, wait_gracefully=5):
         super().shutdown()
 
-        # Check that the server gets shut down
-        logger.info("Shutting down %s: %d", self.effective_host, self.effective_port)
+        # Check that the server gets shut down.
+        # Looks like this is being an issue on Github CI.
+        port = int(self.effective_port)
+        logger.info("Shutting down %s: %d", self.effective_host, port)
         deadline = time.time() + wait_gracefully
         while time.time() < deadline:
-            if not is_localhost_port_listening(host=self.effective_host, port=self.effective_port):
+            if not is_localhost_port_listening(host=self.effective_host, port=port):
                 return
             time.sleep(1)
-        raise AssertionError("Could not gracefully shut down %s: %d", self.effective_host, self.effective_port)
+        raise AssertionError("Could not gracefully shut down %s: %d", self.effective_host, port)
 
 
 def create_webhook_server(host: str, port: int, username: str, password: str, queue: Queue) -> WebhookServer:
@@ -38,7 +40,7 @@ def create_webhook_server(host: str, port: int, username: str, password: str, qu
     assert password, "Password must be given"
 
     app = create_pyramid_app(username, password, queue, production=False)
-    server = StopableWSGIServer.create(app, host=host, port=port, clear_untrusted_proxy_headers=True)
+    server = WebhookServer.create(app, host=host, port=port, clear_untrusted_proxy_headers=True)
     logger.info("Webhook server will spawn at %s:%d", host, port)
     # Wait until the server has started
     server.wait()
