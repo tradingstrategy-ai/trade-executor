@@ -365,7 +365,7 @@ def test_buy_and_sell_blacklisted_asset(
     # Check assets
     exchange = universe.exchanges[0]
     wbnb_busd = universe.pairs.get_one_pair_from_pandas_universe(exchange.exchange_id, "WBNB", "BUSD")
-    bit_busd = universe.pairs.get_one_pair_from_pandas_universe(exchange.exchange_id, "BIT", "BUSD")
+    bit_busd = universe.pairs. get_one_pair_from_pandas_universe(exchange.exchange_id, "BIT", "BUSD")
 
     assert wbnb_busd
     assert bit_busd
