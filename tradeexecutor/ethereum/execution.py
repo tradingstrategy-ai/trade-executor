@@ -15,7 +15,7 @@ from eth_hentai.gas import GasPriceSuggestion, apply_gas, estimate_gas_fees
 from eth_hentai.hotwallet import HotWallet
 from eth_hentai.token import fetch_erc20_details, TokenDetails
 from eth_hentai.txmonitor import wait_transactions_to_complete, \
-    broadcast_and_wait_transactions_to_complete
+    broadcast_and_wait_transactions_to_complete, broadcast_transactions
 from eth_hentai.uniswap_v2.deployment import UniswapV2Deployment, FOREVER_DEADLINE
 from eth_hentai.uniswap_v2.fees import estimate_sell_price, estimate_sell_price_decimals
 from eth_hentai.uniswap_v2.analysis import analyse_trade, TradeSuccess
@@ -227,24 +227,19 @@ def broadcast(
     # Another nonce guard
     nonces: Set[int] = set()
 
-    # Ganache rapid tx issue
-    # https://github.com/trufflesuite/ganache/issues/2509
-    if web3.eth.chain_id == 1337:
-        sleep = ganache_sleep
-    else:
-        sleep = 0
+    broadcast_batch: List[SignedTransaction] = []
 
     for t in instructions:
         assert isinstance(t.tx_info.signed_bytes, str), f"Got signed transaction: {t.tx_info.signed_bytes}"
         assert t.tx_info.nonce not in nonces, "Nonce already used"
         nonces.add(t.tx_info.nonce)
         signed_bytes = HexBytes(t.tx_info.signed_bytes)
-
-        web3.eth.send_raw_transaction(signed_bytes)
         t.broadcasted_at = ts
         res[t.tx_info.tx_hash] = t
+        broadcast_batch.append(t)
 
-        time.sleep(sleep)
+    hashes = broadcast_transactions(web3, broadcast_batch)
+    assert len(hashes) == len(instructions)
 
     return res
 
