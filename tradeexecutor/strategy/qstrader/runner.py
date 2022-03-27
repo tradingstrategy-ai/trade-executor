@@ -146,6 +146,9 @@ class QSTraderRunner(StrategyRunner):
                 if now_ - end > self.max_data_age:
                     raise PreflightCheckFailed(f"We do not have up-to-date data for candles. Last candles are at {end}")
 
+        # Check that the web3 conneciontion works by doing eth_call to a smart contract
+        # TODO
+
 
 
 

@@ -3,6 +3,7 @@
 https://typer.tiangolo.com/
 """
 import datetime
+import logging
 from pathlib import Path
 from queue import Queue
 from typing import Optional
@@ -41,8 +42,9 @@ from tradingstrategy.client import Client
 
 app = typer.Typer()
 
-
 version = pkg_resources.get_distribution('tradeexecutor').version
+
+logger: Optional[logging.Logger] = None
 
 
 def create_trade_execution_model(
@@ -66,6 +68,7 @@ def create_trade_execution_model(
 
         # London is the default method
         if gas_price_method == GasPriceMethod.legacy:
+            logger.info("Setting up BSC middleware for Web3")
             web3.eth.set_gas_price_strategy(node_default_gas_price_strategy)
             # Also assume BSC, set POA middleware
             web3.middleware_onion.inject(geth_poa_middleware, layer=0)
@@ -141,6 +144,7 @@ def start(
     clear_caches: bool = typer.Option(False, "--clear-caches", envvar="CLEAR_CACHES", help="Purge any dataset download caches before starting"),
     ):
     """Launch Trade Executor instance."""
+    global logger
 
     logger = setup_logging()
 

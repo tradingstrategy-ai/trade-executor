@@ -64,6 +64,9 @@ def sync_reserves(
 
         decimal_holding = balances.get(address)
 
+        # We get decimals = None if Ganache is acting
+        assert decimal_holding.decimals, f"Token did not have decimals: token:{currency} holding:{decimal_holding}"
+
         if (decimal_holding is not None) and (decimal_holding.value != current_value):
             evt = ReserveUpdateEvent(
                 asset=currency,
