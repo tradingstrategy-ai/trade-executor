@@ -233,10 +233,13 @@ def broadcast(
         assert isinstance(t.tx_info.signed_bytes, str), f"Got signed transaction: {t.tx_info.signed_bytes}"
         assert t.tx_info.nonce not in nonces, "Nonce already used"
         nonces.add(t.tx_info.nonce)
-        signed_bytes = HexBytes(t.tx_info.signed_bytes)
+        # signed_bytes = HexBytes(t.tx_info.signed_bytes)
         t.broadcasted_at = ts
         res[t.tx_info.tx_hash] = t
-        broadcast_batch.append(t)
+        # Only SignedTransaction.rawTransaction attribute is intresting in this point
+        tx = SignedTransaction(rawTransaction=t.tx_info.signed_bytes, hash=None, r=0, s=0, v=0
+                               )
+        broadcast_batch.append(tx)
 
     hashes = broadcast_transactions(web3, broadcast_batch)
     assert len(hashes) == len(instructions)
