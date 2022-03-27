@@ -11,12 +11,6 @@ from .app import create_pyramid_app
 logger =  logging.getLogger(__name__)
 
 
-class Server(StopableWSGIServer):
-
-    def close_for_use(self):
-        pass
-
-
 def create_webhook_server(host: str, port: int, username: str, password: str, queue: Queue) -> StopableWSGIServer:
     """Starts the webhook web  server in a separate thread.
 
@@ -32,11 +26,3 @@ def create_webhook_server(host: str, port: int, username: str, password: str, qu
     # Wait until the server has started
     server.wait()
     return server
-
-    #port = server.adj.port # 8521
-    #server.wait()
-    #url = f"http://{host}:{port}"
-    #logger.info("Webhook server spawned at %s", url)
-    #yield url
-    #server.shutdown()
-
