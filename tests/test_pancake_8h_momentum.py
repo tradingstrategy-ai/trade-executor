@@ -18,6 +18,7 @@ from typing import List
 
 import pytest
 from eth_account import Account
+from eth_hentai.txmonitor import wait_transactions_to_complete
 from eth_typing import HexAddress, HexStr
 from hexbytes import HexBytes
 from typer.testing import CliRunner
@@ -174,7 +175,8 @@ def hot_wallet(web3: Web3, busd_token: Contract, hot_wallet_private_key: HexByte
     """
     account = Account.from_key(hot_wallet_private_key)
     web3.eth.send_transaction({"from": large_busd_holder, "to": account.address, "value": 2*10**18})
-    busd_token.functions.transfer(account.address, 10_000 * 10**18).transact({"from": large_busd_holder})
+    tx_hash = busd_token.functions.transfer(account.address, 10_000 * 10**18).transact({"from": large_busd_holder})
+    wait_transactions_to_complete(web3, [tx_hash])
     wallet = HotWallet(account)
     wallet.sync_nonce(web3)
     return wallet
@@ -261,9 +263,10 @@ def test_pancake_4h_candles(
 
         assert result.exit_code == 0
 
-    except IOError as e:
+    except ValueError as e:
         # ValueError: I/O operation on closed file.
-        # bug in Typer
+        # bug in Typer,
+        # but the app should still have completed
         logger.error("Typer failed to close cleanly %s", e)
 
     with open(debug_dump_file, "rb") as inp:
