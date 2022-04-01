@@ -191,6 +191,7 @@ def strategy_path() -> Path:
     return Path(os.path.join(os.path.dirname(__file__), "..", "strategies", "pancake_8h_momentum.py"))
 
 
+@pytest.mark.skipif(os.environ.get("CI") is not None, reason="This test is too flaky on Github CI. Manual runs only.")
 def test_pancake_4h_candles(
         logger: logging.Logger,
         strategy_path: Path,
