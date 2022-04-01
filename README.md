@@ -4,13 +4,18 @@ Decentralised trading data API in [OpenAPI 3 standard](https://swagger.io/specif
 
 **Beta warning**: Do not use at your own risk.
 
-# Open DeFi  API
+This repository contains OpenAPI 3 specifications for two APIs
+
+* Open DeFi API for reading DEX data
+* Trade Executor API for managing automated trading strategies
+
+## Open DeFi  API
 
 Open DeFi API provides server and browser accessible endpoints for decentralised exchange and blockchain live data. This data is useful for market data websites, real-time candel stick charts, chat bots, trading bots and similar.
 
 [Open the Swagger API explorer](https://tradingstrategy.ai/api/explorer/).
 
-Trading Strategy OpenAPI 3 specification covers
+The data covers
 
 * Blockchains
 
@@ -20,7 +25,30 @@ Trading Strategy OpenAPI 3 specification covers
 
 * OHLCV candles
 
-# On-chain data oracle
+* Available liquidity
+
+## Trade Executor API
+
+A trade executor runs live trading strategies as a server-side process.
+It offers a webhook API to query its current state.
+
+The data covers
+ 
+* Current portfolio
+
+* Open and closed positions
+
+* Executed trades
+
+* Profit and loss
+
+* Deposit and withdraw events
+
+* Internal metrics and diagnostics
+
+**API explorer will be available later.**
+
+## On-chain data oracle
 
 **TODO**: The specification not yet available. [See Trading Strategy Python client for more information](https://tradingstrategy.ai/docs/programming/index.html).
 

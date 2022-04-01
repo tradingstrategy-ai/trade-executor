@@ -1,5 +1,3 @@
-# Open DeFi API specification
-
 openapi: 3.0.2
 info:
   version: '0.1'
@@ -89,7 +87,7 @@ info:
 
 
 externalDocs:
-  description: TradingStrategy Python client documentation
+  description: Trading Strategy documentation
   url: 'https://tradingstrategy.ai/docs/'
 
 # A list of tags used by the definition with additional metadata.

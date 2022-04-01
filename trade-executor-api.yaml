@@ -1,0 +1,89 @@
+openapi: 3.0.2
+info:
+  version: '0.1'
+
+  title: Trade Executor API
+
+  contact:
+    email: mikko@tradingstrategy.ai
+    url: 'https://tradingstrategy.ai'
+  x-logo:
+    url: 'https://raw.githubusercontent.com/tradingstrategy-ai/frontend/master/src/lib/assets/logo-two-lines.svg'
+
+  description: |
+
+    Trade executor API allows you to read the current state of the trading strategy execution. 
+
+    **This API is still in beta and subject to change**.
+
+    ## Introduction
+
+    [Trade Executor daemon](https://github.com/tradingstrategy-ai/trade-executor) offers execution for algorithmic trading strategies.
+    It runs its internal webhook server that allows to query the current execution state.
+
+    ## Execution state
+
+    The trade execution state includes the information like
+    
+    * Current portfolio
+
+    * Open and closed positions
+
+    * Executed trades
+
+    * Profit and loss
+
+    * Deposit and withdraw events
+    
+    * Internal metrics and diagnostics
+    
+    ## Security
+    
+    The API endpoints may be optionally protected with HTTP Basic Auth.
+
+    ## Data format
+    
+    Currently, all the state is serialised as one JSON blob, 
+    as [described here](https://github.com/tradingstrategy-ai/trade-executor/blob/master/tradeexecutor/state/state.py).
+
+    ## About OpenAPI Specification used
+
+    This API specification is written in [OpenAPI v3](https://swagger.io/specification/).
+
+externalDocs:
+  description: Trading Strategy documentation
+  url: 'https://tradingstrategy.ai/docs/'
+
+paths:
+
+  '/state':
+    x-pyramid-route-name: web_state
+    get:
+      operationId: web_state
+      summary: |
+        
+        Download the whole state of the trade executor.
+        
+        The state is served as a JSON blob, 
+        [as described in Python source code](https://github.com/tradingstrategy-ai/trade-executor/blob/master/tradeexecutor/state/state.py).
+        
+        Currently one trade executor deployment can have only one state.
+
+      responses: # list of responses
+        "200":
+          description: Downloading the state dump as a blob
+          content: application/json
+        "422":
+          description: Unexpected error - usually an internal error
+          content: application/json
+
+components:
+  securitySchemes:
+    basicAuth:
+      type: http
+      scheme: basic
+
+# Declare HTTP Basic Auth protection over the whole API
+# https://swagger.io/docs/specification/authentication/basic-authentication/
+security:
+  - basicAuth: []
