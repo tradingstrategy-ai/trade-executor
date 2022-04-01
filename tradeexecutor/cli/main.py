@@ -42,7 +42,7 @@ from tradingstrategy.client import Client
 
 app = typer.Typer()
 
-version = pkg_resources.get_distribution('tradeexecutor').version
+version = pkg_resources.get_distribution('trade-executor').version
 
 logger: Optional[logging.Logger] = None
 
