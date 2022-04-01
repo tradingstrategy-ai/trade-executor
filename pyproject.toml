@@ -4,6 +4,9 @@ version = "0.1.0"
 description = "Trade executor for algorithmic trading on decentralised exchanges"
 authors = ["Mikko Ohtamaa <mikko@tradingstrategy.ai>"]
 license = "APGL"
+packages = [
+    { include = "trade-executor" },
+]
 
 [tool.poetry.dependencies]
 python = "^3.9"
