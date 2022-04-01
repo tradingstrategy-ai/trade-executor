@@ -38,6 +38,11 @@ class StateStore(abc.ABC):
 
 
 class JSONFileStore(StateStore):
+    """Store the state of the executor as a JSON file.
+
+    - Read by strategy on a startup
+    - Read by webhook when asked over the API
+    """
 
     def __init__(self, path: Path):
         self.path = path

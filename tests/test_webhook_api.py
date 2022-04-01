@@ -5,13 +5,25 @@ from queue import Queue
 import pytest
 import requests
 
+from tradeexecutor.state.state import Portfolio, State
+from tradeexecutor.state.store import JSONFileStore
 from tradeexecutor.webhook.server import create_webhook_server
 
 
 @pytest.fixture()
-def server_url():
+def store() -> JSONFileStore:
+    """Dummy state and store for the tests."""
+    portfolio = Portfolio()
+    state = State(portfolio=portfolio)
+    store = JSONFileStore("/tmp/webhook-test.json")
+    store.sync(state)
+    return store
+
+
+@pytest.fixture()
+def server_url(store):
     queue = Queue()
-    server = create_webhook_server("127.0.0.1", 5000, "test", "test", queue)
+    server = create_webhook_server("127.0.0.1", 5000, "test", "test", queue, store)
     server_url = "http://test:test@127.0.0.1:5000"
     yield server_url
     server.shutdown()
@@ -32,3 +44,17 @@ def test_ping(server_url):
     assert resp.status_code == 200
     assert resp.json() == {"ping": "pong"}
 
+
+def test_state(server_url):
+    """Download an empty state."""
+
+    # Create a state.
+    resp = requests.get(f"{server_url}/state")
+    assert resp.status_code == 200
+
+    # Test deserialisation
+    state_dict = resp.json()
+    state = State.from_dict(state_dict)
+
+    assert state.portfolio.next_trade_id == 1
+    assert state.portfolio.next_position_id == 1

@@ -1,8 +1,10 @@
 import pkg_resources
 
 from pyramid.request import Request
-from pyramid.response import Response
+from pyramid.response import Response, FileResponse
 from pyramid.view import view_config
+
+from tradeexecutor.state.store import JSONFileStore
 
 
 @view_config(route_name='home', permission='view')
@@ -28,6 +30,11 @@ def web_notify(request: Request):
 
 @view_config(route_name='web_state', renderer='json', permission='view')
 def web_state(request: Request):
-    """Notify the strategy executor about the availability of new data."""
-    # TODO
-    return {"status": "OK"}
+    """Serve the latest full state of the bog."""
+
+    # Does "zero copy" WSGI file serving
+    store: JSONFileStore = request.registry["store"]
+    fname = store.path
+    assert 'wsgi.file_wrapper' in request.environ, "We need wsgi.file_wrapper or we will be too slow"
+    r = FileResponse(content_type="application/json", request=request, path=fname)
+    return r

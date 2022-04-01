@@ -20,7 +20,7 @@ from pyramid.view import forbidden_view_config
 
 from . import api
 from .error import exception_view
-
+from ..state.store import JSONFileStore
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +68,7 @@ def init_web_api(config: Configurator):
     config.scan(package='tradeexecutor.webhook.api')
 
 
-def create_pyramid_app(username, password, command_queue: Queue, production=False) -> Router:
+def create_pyramid_app(username, password, command_queue: Queue, store: JSONFileStore, production=False) -> Router:
     """Create WSGI app for Trading Strategy backend."""
 
     settings = {
@@ -97,6 +97,9 @@ def create_pyramid_app(username, password, command_queue: Queue, production=Fals
         config.set_root_factory(lambda request: Root())
 
         init_web_api(config)
+
+        # Expose the state store to the webhook
+        config.registry["store"] = store
 
         config.add_exception_view(exception_view)
 
