@@ -46,6 +46,27 @@ class Root:
     )
 
 
+def init_web_api(config: Configurator):
+    """Setup OpenAPI endpoints for the website backend."""
+
+    # Github submodule contents
+    cur_path = os.path.dirname(__file__)
+    web_spec = os.path.join(cur_path, "..", "..", "spec", "trade-executor-api.yaml")
+    web_spec = os.path.abspath(web_spec)
+    assert os.path.exists(web_spec), f"Web spec missing {web_spec}, did you do recursive git checkout?"
+
+    config.include("pyramid_openapi3")
+
+    config.pyramid_openapi3_spec_directory(web_spec, route='/api')
+
+    config.registry.settings["pyramid_openapi3.enable_endpoint_validation"] = False
+    config.registry.settings["pyramid_openapi3.enable_request_validation"] = False
+    config.registry.settings["pyramid_openapi3.enable_response_validation"] = False
+
+    config.pyramid_openapi3_register_routes()
+    config.scan(package='tradeexecutor.webhook.api')
+
+
 def create_pyramid_app(username, password, command_queue: Queue, production=False) -> Router:
     """Create WSGI app for Trading Strategy backend."""
 
@@ -60,9 +81,6 @@ def create_pyramid_app(username, password, command_queue: Queue, production=Fals
             # affects the principals returned in the home view if you want to
             # expand ACLs later
             return []
-
-
-
 
     with Configurator(settings=settings) as config:
 
