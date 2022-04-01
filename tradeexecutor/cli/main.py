@@ -1,7 +1,4 @@
-"""Command-line interface main entry point build on the top of typer.
-
-https://typer.tiangolo.com/
-"""
+"""Command-line entry point for the daemon build on the top of Typer."""
 import datetime
 import logging
 from pathlib import Path

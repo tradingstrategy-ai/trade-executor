@@ -10,7 +10,7 @@ from tradeexecutor.state.store import JSONFileStore
 @view_config(route_name='home', permission='view')
 def web_home(request: Request):
     url = request.application_url
-    version = pkg_resources.get_distribution('tradeexecutor').version
+    version = pkg_resources.get_distribution('trade-executor').version
     # https://angrybirds.fandom.com/wiki/The_Flock
     return Response(f'Chuck the Trade Executor server, version {version}, our URL is {url}\nFor more information see https://tradingstrategy.ai', content_type="text/plain")
 
