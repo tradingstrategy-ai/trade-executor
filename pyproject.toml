@@ -5,7 +5,7 @@ description = "Trade executor for algorithmic trading on decentralised exchanges
 authors = ["Mikko Ohtamaa <mikko@tradingstrategy.ai>"]
 license = "APGL"
 packages = [
-    { include = "trade-executor" },
+    { include = "tradeexecutor" },
 ]
 
 [tool.poetry.dependencies]
