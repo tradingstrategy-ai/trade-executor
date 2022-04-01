@@ -9,38 +9,19 @@ from tradeexecutor.webhook.server import create_webhook_server
 
 
 @pytest.fixture()
-def server():
+def server_url():
+    queue = Queue()
     server = create_webhook_server("127.0.0.1", 5000, "test", "test", queue)
     server_url = "http://test:test@127.0.0.1:5000"
     yield server_url
-    server
+    server.shutdown()
 
 
-def test_auth_ok():
+def test_home(server_url):
     """Username and password allow to access the webhook"""
-    queue = Queue()
-    server = create_webhook_server("127.0.0.1", 5000, "test", "test", queue)
-    server_url = "http://test:test@127.0.0.1:5000"
-    webhook_thread = Thread(target=server.run)
-    webhook_thread.start()
-    # Test home view
-    try:
-        resp = requests.get(server_url)
-        assert resp.status_code == 200
-    finally:
-        server.close()
+    resp = requests.get(server_url)
+    assert resp.status_code == 200
+    # Chuck the Trade Executor server, version 0.1.0, our URL is http://127.0.0.1:5000
+    assert resp.headers["content-type"] == "text/plain; charset=UTF-8"
+    assert "Chuck the Trade Executor server" in resp.text
 
-
-def test_auth_failed():
-    """Wrong password denies the access to the webhook"""
-    queue = Queue()
-    server = create_webhook_server("127.0.0.1", 5000, "test", "test", queue)
-    server_url = "http://test:wrong@127.0.0.1:5000"
-    webhook_thread = Thread(target=server.run)
-    webhook_thread.start()
-    # Test home view
-    try:
-        resp = requests.get(server_url)
-        assert resp.status_code == 403
-    finally:
-        server.close()

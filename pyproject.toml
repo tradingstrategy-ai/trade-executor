@@ -24,6 +24,7 @@ prompt-toolkit = "^3.0.28"
 psutil = "^5.9.0"
 discord-webhook = "^0.15.0"
 WebTest = "^3.0.0"
+pyramid-openapi3 = "^0.13"
 
 [tool.poetry.dev-dependencies]
 pytest = "^6.2.5"

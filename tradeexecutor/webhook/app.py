@@ -64,6 +64,7 @@ def init_web_api(config: Configurator):
     config.registry.settings["pyramid_openapi3.enable_response_validation"] = False
 
     config.pyramid_openapi3_register_routes()
+
     config.scan(package='tradeexecutor.webhook.api')
 
 
@@ -95,11 +96,7 @@ def create_pyramid_app(username, password, command_queue: Queue, production=Fals
 
         config.set_root_factory(lambda request: Root())
 
-        config.add_route('home', '/')
-        config.add_route('ping', '/ping')
-        config.add_route('notify', '/notify')
-
-        config.scan(api)
+        init_web_api(config)
 
         config.add_exception_view(exception_view)
 
