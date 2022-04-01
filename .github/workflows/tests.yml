@@ -22,8 +22,8 @@ jobs:
     # See pyproject.toml for details
     - name: Setup master tracked dependencies
       run: |
-        git clone --recurse-submodules https://github.com/tradingstrategy-ai/eth-hentai.git ../eth-hentai
-        git clone --recurse-submodules https://github.com/tradingstrategy-ai/client.git ../client
+        git clone --recurse-submodules https://github.com/tradingstrategy-ai/web3-ethereum-defi.git ../web3-ethereum-defi
+        git clone --recurse-submodules https://github.com/tradingstrategy-ai/trading-strategy.git ../trading-strategy
     - name: Install dependencies
       run: |
         poetry install

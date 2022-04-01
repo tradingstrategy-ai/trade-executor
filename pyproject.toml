@@ -8,7 +8,6 @@ license = "APGL"
 [tool.poetry.dependencies]
 python = "^3.9"
 web3-ethereum-defi = {path = "../web3-ethereum-defi", develop = true}
-#tradingstrategy = "^0.4.0"
 trading-strategy = {path = "../trading-strategy", develop = true}
 typer = "^0.4.0"
 colorama = "^0.4.4"
@@ -19,8 +18,6 @@ requests = "^2.27.1"
 web3 = "^5.26.0"
 trading-strategy-qstrader = "^0.5"
 prompt-toolkit = "^3.0.28"
-
-# TODO: A gap fix to make eth-hentai to install. Remove later.
 psutil = "^5.9.0"
 discord-webhook = "^0.15.0"
 WebTest = "^3.0.0"
