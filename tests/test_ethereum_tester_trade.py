@@ -17,10 +17,10 @@ from hexbytes import HexBytes
 from web3 import EthereumTesterProvider, Web3
 from web3.contract import Contract
 
-from eth_hentai.hotwallet import HotWallet
-from eth_hentai.balances import fetch_erc20_balances_by_transfer_event, convert_balances_to_decimal
-from eth_hentai.token import create_token
-from eth_hentai.uniswap_v2.deployment import UniswapV2Deployment, deploy_trading_pair, deploy_uniswap_v2_like
+from eth_defi.hotwallet import HotWallet
+from eth_defi.balances import fetch_erc20_balances_by_transfer_event, convert_balances_to_decimal
+from eth_defi.token import create_token
+from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, deploy_trading_pair, deploy_uniswap_v2_like
 from tradeexecutor.ethereum.hot_wallet_sync import EthereumHotWalletReserveSyncer
 from tradeexecutor.ethereum.uniswap_v2_execution import UniswapV2ExecutionModel
 from tradeexecutor.ethereum.uniswap_v2_live_pricing import UniswapV2LivePricing, uniswap_v2_live_pricing_factory

@@ -18,11 +18,11 @@ from typer.testing import CliRunner
 from web3 import Web3, HTTPProvider
 from web3.contract import Contract
 
-from eth_hentai.abi import get_deployed_contract
-from eth_hentai.ganache import fork_network
-from eth_hentai.hotwallet import HotWallet
-from eth_hentai.uniswap_v2.deployment import UniswapV2Deployment, fetch_deployment
-from eth_hentai.utils import is_localhost_port_listening
+from eth_defi.abi import get_deployed_contract
+from eth_defi.ganache import fork_network
+from eth_defi.hotwallet import HotWallet
+from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, fetch_deployment
+from eth_defi.utils import is_localhost_port_listening
 from tradeexecutor.cli.main import app
 from tradeexecutor.state.state import AssetIdentifier
 

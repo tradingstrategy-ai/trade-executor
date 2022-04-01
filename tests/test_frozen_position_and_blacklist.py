@@ -21,11 +21,11 @@ from typing import List
 
 import pytest
 from eth_account import Account
-from eth_hentai.txmonitor import wait_transactions_to_complete
+from eth_defi.txmonitor import wait_transactions_to_complete
 from eth_typing import HexAddress, HexStr
 from hexbytes import HexBytes
 
-from eth_hentai.utils import is_localhost_port_listening
+from eth_defi.utils import is_localhost_port_listening
 from tradeexecutor.ethereum.universe import create_exchange_universe, create_pair_universe
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.strategy.universe_model import StaticUniverseModel
@@ -40,10 +40,10 @@ from tradingstrategy.universe import Universe
 from web3 import Web3, HTTPProvider
 from web3.contract import Contract
 
-from eth_hentai.abi import get_deployed_contract
-from eth_hentai.ganache import fork_network
-from eth_hentai.hotwallet import HotWallet
-from eth_hentai.uniswap_v2.deployment import UniswapV2Deployment, fetch_deployment
+from eth_defi.abi import get_deployed_contract
+from eth_defi.ganache import fork_network
+from eth_defi.hotwallet import HotWallet
+from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, fetch_deployment
 from tradeexecutor.ethereum.hot_wallet_sync import EthereumHotWalletReserveSyncer
 from tradeexecutor.ethereum.uniswap_v2_execution import UniswapV2ExecutionModel
 from tradeexecutor.ethereum.uniswap_v2_live_pricing import uniswap_v2_live_pricing_factory

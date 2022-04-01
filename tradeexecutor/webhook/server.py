@@ -3,7 +3,7 @@ import logging
 import time
 from queue import Queue
 
-from eth_hentai.utils import is_localhost_port_listening
+from eth_defi.utils import is_localhost_port_listening
 from webtest.http import StopableWSGIServer
 
 from .app import create_pyramid_app

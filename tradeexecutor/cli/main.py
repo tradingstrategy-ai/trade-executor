@@ -13,15 +13,15 @@ import typer
 from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
 from web3.middleware import geth_poa_middleware
 
-from eth_hentai.balances import fetch_erc20_balances_by_token_list
-from eth_hentai.gas import GasPriceMethod, node_default_gas_price_strategy
-from eth_hentai.token import fetch_erc20_details
+from eth_defi.balances import fetch_erc20_balances_by_token_list
+from eth_defi.gas import GasPriceMethod, node_default_gas_price_strategy
+from eth_defi.token import fetch_erc20_details
 from tradeexecutor.strategy.description import StrategyExecutionDescription
 from tradeexecutor.strategy.tick import TickSize
 from web3 import Web3, HTTPProvider
 
-from eth_hentai.hotwallet import HotWallet
-from eth_hentai.uniswap_v2.deployment import fetch_deployment
+from eth_defi.hotwallet import HotWallet
+from eth_defi.uniswap_v2.deployment import fetch_deployment
 from tradeexecutor.cli.approval import CLIApprovalModel
 from tradeexecutor.cli.loop import run_main_loop
 from tradeexecutor.ethereum.hot_wallet_sync import EthereumHotWalletReserveSyncer

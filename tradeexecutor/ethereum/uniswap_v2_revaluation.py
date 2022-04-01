@@ -1,8 +1,8 @@
 import datetime
 from typing import Tuple
 
-from eth_hentai.uniswap_v2.deployment import UniswapV2Deployment
-from eth_hentai.uniswap_v2.fees import estimate_sell_price_decimals
+from eth_defi.uniswap_v2.deployment import UniswapV2Deployment
+from eth_defi.uniswap_v2.fees import estimate_sell_price_decimals
 from tradeexecutor.state.state import TradingPosition
 from tradeexecutor.state.types import USDollarAmount
 

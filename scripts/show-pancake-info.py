@@ -6,7 +6,7 @@ import os
 
 from web3 import Web3, HTTPProvider
 
-from eth_hentai.uniswap_v2.deployment import fetch_deployment
+from eth_defi.uniswap_v2.deployment import fetch_deployment
 
 rpc_url = os.environ["JSON_RPC_BINANCE"]
 

@@ -6,10 +6,10 @@ from typing import Tuple, List
 
 from web3 import Web3
 
-from eth_hentai.abi import get_deployed_contract
-from eth_hentai.hotwallet import HotWallet
-from eth_hentai.uniswap_v2.deployment import UniswapV2Deployment
-from eth_hentai.uniswap_v2.fees import estimate_buy_quantity, estimate_sell_price
+from eth_defi.abi import get_deployed_contract
+from eth_defi.hotwallet import HotWallet
+from eth_defi.uniswap_v2.deployment import UniswapV2Deployment
+from eth_defi.uniswap_v2.fees import estimate_buy_quantity, estimate_sell_price
 from tradeexecutor.ethereum.execution import approve_tokens, prepare_swaps, confirm_approvals, broadcast, \
     wait_trades_to_complete, resolve_trades
 from tradeexecutor.state.state import State, TradingPairIdentifier, TradeType, TradeExecution, TradeStatus, TradingPosition

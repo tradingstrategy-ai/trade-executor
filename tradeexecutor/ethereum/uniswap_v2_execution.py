@@ -5,8 +5,8 @@ from decimal import Decimal
 from typing import List, Tuple
 import logging
 
-from eth_hentai.hotwallet import HotWallet
-from eth_hentai.uniswap_v2.deployment import UniswapV2Deployment
+from eth_defi.hotwallet import HotWallet
+from eth_defi.uniswap_v2.deployment import UniswapV2Deployment
 from tradeexecutor.ethereum.execution import approve_tokens, prepare_swaps, confirm_approvals, broadcast, \
     wait_trades_to_complete, resolve_trades
 from tradeexecutor.state.freeze import freeze_position_on_failed_trade

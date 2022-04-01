@@ -8,7 +8,7 @@ from dataclasses_json import dataclass_json
 from eth_typing import HexAddress
 from web3 import Web3
 
-from eth_hentai.balances import DecimalisedHolding, \
+from eth_defi.balances import DecimalisedHolding, \
     fetch_erc20_balances_by_token_list, convert_balances_to_decimal
 from tradeexecutor.state.state import Portfolio, AssetIdentifier, ReservePosition
 
