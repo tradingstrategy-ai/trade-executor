@@ -1,6 +1,6 @@
 """Check API endpoints."""
+
 from queue import Queue
-from threading import Thread
 
 import pytest
 import requests
@@ -18,10 +18,17 @@ def server_url():
 
 
 def test_home(server_url):
-    """Username and password allow to access the webhook"""
+    """Homepage renders plain text"""
     resp = requests.get(server_url)
     assert resp.status_code == 200
     # Chuck the Trade Executor server, version 0.1.0, our URL is http://127.0.0.1:5000
     assert resp.headers["content-type"] == "text/plain; charset=UTF-8"
     assert "Chuck the Trade Executor server" in resp.text
+
+
+def test_ping(server_url):
+    """Get pong for ping"""
+    resp = requests.get(f"{server_url}/ping")
+    assert resp.status_code == 200
+    assert resp.json() == {"ping": "pong"}
 
