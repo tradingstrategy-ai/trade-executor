@@ -19,7 +19,8 @@ info:
     ## Introduction
 
     [Trade Executor daemon](https://github.com/tradingstrategy-ai/trade-executor) offers execution for algorithmic trading strategies.
-    It runs its internal webhook server that allows to query the current execution state.
+    It runs an internal webhook server allowing to query the current execution state.
+    This, in turn, allows website clients to render various statistics and numbers about the live trading strategy.
 
     ## Execution state
 
@@ -36,6 +37,14 @@ info:
     * Deposit and withdraw events
     
     * Execution daemon internal metrics and diagnostics
+    
+    ## Logistics
+    
+    There are additional endpoints for
+    
+    * Checking the trade executor process health
+    
+    * Notifying about the availabiltiy of new trading data in market data feeds (i.e. a new OHLCV candle available)
     
     ## Security
     
@@ -56,6 +65,38 @@ externalDocs:
 
 paths:
 
+  '/':
+    x-pyramid-route-name: home
+    get:
+      operationId: home
+      summary: |
+
+        Return the service name and version information as plain text.        
+
+      responses:
+        '200':
+          description: OK
+          content:
+            text/plain:
+              schema:
+                type: string
+
+  '/ping':
+    x-pyramid-route-name: web_ping
+    get:
+      operationId: web_ping
+      summary: |
+
+        An endpoint to get a JSON response to check the server is up.        
+
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+
   '/state':
     x-pyramid-route-name: web_state
     get:
@@ -71,11 +112,33 @@ paths:
 
       responses: # list of responses
         "200":
-          description: Downloading the state dump as a blob
-          content: application/json
+          description: | 
+            Downloading the state dump as a blob 
+          
+            [This returns the serialized State object](https://github.com/tradingstrategy-ai/trade-executor/blob/master/tradeexecutor/state/state.py). 
+
+          content:
+            application/json:
+              schema:
+                type: object
         "422":
           description: Unexpected error - usually an internal error
-          content: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+
+  '/notify':
+    x-pyramid-route-name: web_notify
+    post:
+      operationId: web_notify
+      summary: |
+
+        Notifies about the availability of new trading data on the market data feeds.        
+
+      responses: # list of responses
+        "200":
+          description: OK
 
 components:
   securitySchemes:
