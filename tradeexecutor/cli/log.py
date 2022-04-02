@@ -10,7 +10,7 @@ from typing import Optional
 import coloredlogs
 from _pytest.fixtures import SubRequest
 
-from tradeexecutor.cli.discord_handler import DiscordHandler
+from discord_logging.handler import DiscordHandler
 
 
 def setup_logging(log_level=logging.INFO) -> Logger:
@@ -102,7 +102,7 @@ def setup_discord_logging(name: str, webhook_url: str, avatar_url: Optional[str]
     :return:
     """
     discord_format = logging.Formatter("%(message)s")
-    discord_handler = DiscordHandler(name, webhook_url, avatar_url=avatar_url)
+    discord_handler = DiscordHandler(name, webhook_url, avatar_url=avatar_url, message_break_char="…")
     discord_handler.setFormatter(discord_format)
     discord_handler.setLevel(logging.TRADE)
     logging.getLogger().addHandler(discord_handler)

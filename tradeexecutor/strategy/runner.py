@@ -153,12 +153,12 @@ class StrategyRunner(abc.ABC):
         print("", file=buf)
         print(f"Total equity: ${portfolio.get_total_equity():,.2f}, in cash: ${portfolio.get_current_cash():,.2f}", file=buf)
         print(f"Life-time positions: {portfolio.next_position_id - 1}, trades: {portfolio.next_trade_id - 1}", file=buf)
-        print("", file=buf)
+        print("…", file=buf)
 
         open_positions = list(portfolio.open_positions.values())
 
         if open_positions:
-            print(f"Current positions:", file=buf)
+            print(f"Currently open positions:", file=buf)
             print("", file=buf)
             position: TradingPosition
             for position in open_positions:
@@ -168,6 +168,7 @@ class StrategyRunner(abc.ABC):
         else:
             print(f"No open positions.", file=buf)
 
+        print("…", file=buf)
         frozen_positions = list(portfolio.frozen_positions.values())
 
         if frozen_positions:
@@ -184,7 +185,7 @@ class StrategyRunner(abc.ABC):
             # so let's not advertise this
             pass
 
-        print(f"", file=buf)
+        print("…", file=buf)
         print("Reserves:", file=buf)
         print("", file=buf)
         reserve: ReservePosition
@@ -211,7 +212,7 @@ class StrategyRunner(abc.ABC):
         print("Portfolio status (after rebalance)", file=buf)
         print("", file=buf)
         print(f"Total equity: ${portfolio.get_total_equity():,.2f}, Cash: ${portfolio.get_current_cash():,.2f}", file=buf)
-        print("", file=buf)
+        print("…", file=buf)
         print(f"Opened/open positions:", file=buf)
         print("", file=buf)
         position: TradingPosition
@@ -220,7 +221,7 @@ class StrategyRunner(abc.ABC):
                 print("    " + line, file=buf)
             print("", file=buf)
 
-        print("", file=buf)
+        print("…", file=buf)
         closed_positions = list(portfolio.get_positions_closed_at(clock))
         if len(closed_positions) > 0:
             print(f"Closed positions:", file=buf)
@@ -232,7 +233,7 @@ class StrategyRunner(abc.ABC):
                 print("", file=buf)
         else:
             print("No positions were closed on this tick.", file=buf)
-        print(f"", file=buf)
+        print("…", file=buf)
         print("Reserves:", file=buf)
         print("", file=buf)
         reserve: ReservePosition
