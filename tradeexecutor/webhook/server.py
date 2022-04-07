@@ -39,12 +39,15 @@ def create_webhook_server(host: str, port: int, username: str, password: str, qu
     :param queue: The command queue for commands posted in the webhook that offers async execution.
     """
 
-    assert username, "Username must be given"
-    assert password, "Password must be given"
+    #assert username, "Username must be given"
+    #assert password, "Password must be given"
+
+    if (not username) and (not password):
+        logger.warning("Web server started without username and password")
 
     app = create_pyramid_app(username, password, queue, store, production=False)
     server = WebhookServer.create(app, host=host, port=port, clear_untrusted_proxy_headers=True)
-    logger.info("Webhook server will spawn at %s:%d", host, port)
+    logger.info("Webhook server will spawn at %s:%d, using username %s", host, port, username)
     # Wait until the server has started
     server.wait()
     return server

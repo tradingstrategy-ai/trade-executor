@@ -32,15 +32,23 @@ check_secret_envs()
 # This id is used in various paths and such
 export EXECUTOR_ID=pancake_8h_momentum
 
-source ~/$EXECUTOR_ID.secrets.env
+# Strategy specific secrets
+export STRATEGY_SECRETS_FILE=~/$EXECUTOR_ID.secrets.env
+if [ ! -f "$STRATEGY_SECRETS_FILE" ] ; then
+  echo "Strategy secrets missing: $STRATEGY_SECRETS_FILE"
+  exit 1
+fi
+
+
+# Read generic secrets, then strategy specific secrets
 source ~/secrets.env
+source $STRATEGY_SECRETS_FILE
 
 # These variables must come from the secrets file
-check_secret_envs PRIVATE_KEY JSON_RPC_BINANCE TRADING_STRATEGY_API_KEY DISCORD_WEBHOOK_URL
+check_secret_envs PRIVATE_KEY JSON_RPC_BINANCE TRADING_STRATEGY_API_KEY DISCORD_WEBHOOK_URL HTTP_ENABLED
 
 export NAME="Pancake 8h momentum tick"
 export STRATEGY_FILE="${PWD}/strategies/${EXECUTOR_ID}.py"
-export HTTP_ENABLED=false
 
 # As exported from scripts/show-pancake-info.py
 export UNISWAP_V2_FACTORY_ADDRESS=0xcA143Ce32Fe78f1f7019d7d551a6402fC5350c73
@@ -57,6 +65,8 @@ export TICK_OFFSET_MINUTES="10"
 export TICK_SIZE="8h"
 # 12 hours
 export MAX_DATA_DELAY_MINUTES=720
+
+echo "HTTP enabled is $HTTP_ENABLED"
 
 # https://stackoverflow.com/a/1537695/315168
 poetry run trade-executor "$@"

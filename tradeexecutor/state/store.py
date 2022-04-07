@@ -1,5 +1,8 @@
 import abc
 import enum
+import os
+import shutil
+import tempfile
 from pathlib import Path
 import logging
 
@@ -56,10 +59,15 @@ class JSONFileStore(StateStore):
             return State.from_json(inp.read())
 
     def sync(self, state: State):
-        with open(self.path, "wt") as out:
+        """Write new JSON state dump using Linux atomic file replacement."""
+        dirname, basename = os.path.split(self.path)
+        temp = tempfile.NamedTemporaryFile(mode='wt', delete=False, dir=dirname)
+        with open(temp.name, "wt") as out:
             txt = state.to_json()
             out.write(txt)
             logger.info("Saved state to %s, total %d chars", self.path, len(txt))
+        temp.close()
+        shutil.move(temp.name, self.path)
 
     def create(self) -> State:
         logger.info("Created new state for %s", self.path)

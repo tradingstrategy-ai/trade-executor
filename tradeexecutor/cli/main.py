@@ -111,9 +111,9 @@ def start(
     name: Optional[str] = typer.Option("Unnamed Trade Executor", envvar="NAME", help="Executor name used in logging and notifications"),
     private_key: Optional[str] = typer.Option(None, envvar="PRIVATE_KEY", help="Ethereum private key to be used as a hot wallet/broadcast wallet"),
     strategy_file: Path = typer.Option(..., envvar="STRATEGY_FILE", help="Python strategy file to run"),
-    http_enabled: bool = typer.Option(True, envvar="HTTP_ENABLED", help="Enable Webhook server"),
+    http_enabled: bool = typer.Option(False, envvar="HTTP_ENABLED", help="Enable Webhook server"),
     http_port: int = typer.Option(19000, envvar="HTTP_PORT"),
-    http_host: str = typer.Option("0.0.0.0", envvar="HTTP_HOST"),
+    http_host: str = typer.Option("127.0.0.1", envvar="HTTP_HOST"),
     http_username: str = typer.Option("webhook", envvar="HTTP_USERNAME"),
     http_password: str = typer.Option(None, envvar="HTTP_PASSWORD"),
     json_rpc: str = typer.Option(None, envvar="JSON_RPC", help="Ethereum JSON-RPC node URL we connect to for execution"),
@@ -178,8 +178,9 @@ def start(
 
     # Create our webhook server
     if http_enabled:
-        server = create_webhook_server(http_host, http_port, http_username, http_password, command_queue)
+        server = create_webhook_server(http_host, http_port, http_username, http_password, command_queue, store)
     else:
+        logger.info("Web server disabled")
         server = None
 
     # Create our data client
