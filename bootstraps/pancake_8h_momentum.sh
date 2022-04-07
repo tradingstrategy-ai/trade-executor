@@ -15,6 +15,10 @@
 #
 #     bootstraps/pancake_8h_momentum.sh start
 #
+# The strategy is mapped to a webhook in its secrets file:
+#
+# - https://t-100.tradingstrategy.ai/state
+#
 
 set -e
 

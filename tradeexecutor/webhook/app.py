@@ -76,6 +76,9 @@ def create_pyramid_app(username, password, command_queue: Queue, store: JSONFile
         'command_queue': command_queue,
     }
 
+    # Run the server without HTTP Basic Auth
+    http_basic_auth = (username) and (password)
+
     def check_credentials(username_, password_, request):
         if username == username_ and password == password_:
             # an empty list is enough to indicate logged-in... watch how this
@@ -85,16 +88,19 @@ def create_pyramid_app(username, password, command_queue: Queue, store: JSONFile
 
     with Configurator(settings=settings) as config:
 
-        authn_policy = BasicAuthAuthenticationPolicy(check_credentials)
+        if http_basic_auth:
+            authn_policy = BasicAuthAuthenticationPolicy(check_credentials)
 
-        # https://stackoverflow.com/a/14463362/315168
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            # TODO: Upgrade to Pyramid 2.0
-            config.set_authentication_policy(authn_policy)
-            config.set_authorization_policy(ACLAuthorizationPolicy())
+            # https://stackoverflow.com/a/14463362/315168
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                # TODO: Upgrade to Pyramid 2.0
+                config.set_authentication_policy(authn_policy)
+                config.set_authorization_policy(ACLAuthorizationPolicy())
 
-        config.set_root_factory(lambda request: Root())
+            config.set_root_factory(lambda request: Root())
+        else:
+            logger.warning("Authentication policy disabled")
 
         init_web_api(config)
 
