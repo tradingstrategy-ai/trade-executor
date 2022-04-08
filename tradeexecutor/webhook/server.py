@@ -1,5 +1,6 @@
 """Webhook web server."""
 import logging
+import platform
 import time
 from queue import Queue
 
@@ -25,6 +26,12 @@ class WebhookServer(StopableWSGIServer):
         # Looks like this is being an issue on Github CI.
         port = int(self.effective_port)
         logger.info("Shutting down %s: %d", self.effective_host, port)
+
+        # is_localhost_port_listening seems to never free up port on Mac M1
+        if platform.mac_ver()[0]:
+            time.sleep(0.25)
+            return
+
         deadline = time.time() + wait_gracefully
         while time.time() < deadline:
             if not is_localhost_port_listening(host=self.effective_host, port=port):
