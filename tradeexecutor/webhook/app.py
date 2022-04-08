@@ -57,6 +57,7 @@ def init_web_api(config: Configurator):
 
     config.include("pyramid_openapi3")
 
+    # config.pyramid_openapi3_spec_directory(web_spec, route='/onchain')
     config.pyramid_openapi3_spec_directory(web_spec, route='/api')
 
     config.registry.settings["pyramid_openapi3.enable_endpoint_validation"] = False
@@ -66,6 +67,7 @@ def init_web_api(config: Configurator):
     config.pyramid_openapi3_register_routes()
 
     config.scan(package='tradeexecutor.webhook.api')
+    config.scan(package='tradeexecutor.webhook.events')
 
 
 def create_pyramid_app(username, password, command_queue: Queue, store: JSONFileStore, production=False) -> Router:

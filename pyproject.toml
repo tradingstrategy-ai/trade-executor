@@ -22,7 +22,9 @@ waitress = "^2.0.0"
 requests = "^2.27.1"
 web3 = "^5.26.0"
 trading-strategy-qstrader = "^0.5"
-prompt-toolkit = "^3.0.28"
+# 3.0.29 contains a breaking schange for inp.send_text()
+# https://github.com/prompt-toolkit/python-prompt-toolkit/blob/master/CHANGELOG
+prompt-toolkit = "3.0.28"
 psutil = "^5.9.0"
 discord-webhook = "^0.15.0"
 WebTest = "^3.0.0"

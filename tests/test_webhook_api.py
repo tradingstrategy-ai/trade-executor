@@ -45,6 +45,12 @@ def test_ping(server_url):
     assert resp.json() == {"ping": "pong"}
 
 
+def test_cors(server_url):
+    """Cors headers are in place."""
+    resp = requests.get(f"{server_url}/ping")
+    assert "Access-Control-Allow-Origin" in resp.headers
+
+
 def test_state(server_url):
     """Download an empty state."""
 

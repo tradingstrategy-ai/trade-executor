@@ -39,6 +39,9 @@ def setup_logging(log_level=logging.INFO) -> Logger:
     # IPython notebook internal
     logging.getLogger("asyncio").setLevel(logging.WARNING)
 
+    # Maplotlib puke
+    logging.getLogger("matplotlib").setLevel(logging.WARNING)
+
     # Datadog tracer agent
     # https://ddtrace.readthedocs.io/en/stable/basic_usage.html
     logging.getLogger("ddtrace").setLevel(logging.INFO)

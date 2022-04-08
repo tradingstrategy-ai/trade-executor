@@ -18,7 +18,7 @@ class WebhookServer(StopableWSGIServer):
     https://docs.pylonsproject.org/projects/waitress/en/latest/
     """
 
-    def shutdown(self, wait_gracefully=5):
+    def shutdown(self, wait_gracefully=3.0):
         super().shutdown()
 
         # Check that the server gets shut down.
@@ -30,7 +30,7 @@ class WebhookServer(StopableWSGIServer):
             if not is_localhost_port_listening(host=self.effective_host, port=port):
                 return
             time.sleep(1)
-        raise AssertionError("Could not gracefully shut down %s: %d", self.effective_host, port)
+        raise AssertionError(f"Could not gracefully shut down {self.effective_host}:{port}, waited {wait_gracefully} seconds")
 
 
 def create_webhook_server(host: str, port: int, username: str, password: str, queue: Queue, store: JSONFileStore) -> WebhookServer:
