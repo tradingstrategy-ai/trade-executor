@@ -4,8 +4,8 @@ import datetime
 from typing import Callable, List
 
 from tradeexecutor.ethereum.wallet import ReserveUpdateEvent
-from tradeexecutor.state.state import Portfolio, AssetIdentifier
-
+from tradeexecutor.state.portfolio import Portfolio
+from tradeexecutor.state.identifier import AssetIdentifier
 
 #: Syncs the external portfolio changes from a (blockchain) source.
 #: See ethereum/hotwallet_sync.py for details.

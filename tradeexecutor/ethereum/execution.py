@@ -19,9 +19,10 @@ from eth_defi.txmonitor import wait_transactions_to_complete, \
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, FOREVER_DEADLINE
 from eth_defi.uniswap_v2.fees import estimate_sell_price, estimate_sell_price_decimals
 from eth_defi.uniswap_v2.analysis import analyse_trade, TradeSuccess
-from tradeexecutor.state.state import TradeExecution, State, BlockchainTransactionInfo, TradingPairIdentifier, \
-    AssetIdentifier
-
+from tradeexecutor.state.state import State
+from tradeexecutor.state.trade import TradeExecution
+from tradeexecutor.state.blockhain_transaction import BlockchainTransactionInfo
+from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 
 logger = logging.getLogger(__name__)
 

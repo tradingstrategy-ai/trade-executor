@@ -24,7 +24,7 @@ from eth_defi.hotwallet import HotWallet
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, fetch_deployment
 from eth_defi.utils import is_localhost_port_listening
 from tradeexecutor.cli.main import app
-from tradeexecutor.state.state import AssetIdentifier
+from tradeexecutor.state.identifier import AssetIdentifier
 
 from tradeexecutor.cli.log import setup_pytest_logging
 

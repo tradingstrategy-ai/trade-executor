@@ -2,7 +2,8 @@ import abc
 import datetime
 from typing import List, Tuple
 
-from tradeexecutor.state.state import State, TradeExecution
+from tradeexecutor.state.state import State
+from tradeexecutor.state.trade import TradeExecution
 
 
 class ExecutionModel(abc.ABC):

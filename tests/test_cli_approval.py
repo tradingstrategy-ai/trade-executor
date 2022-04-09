@@ -26,7 +26,9 @@ from tradeexecutor.ethereum.uniswap_v2_execution import UniswapV2ExecutionModel
 from tradeexecutor.ethereum.uniswap_v2_live_pricing import uniswap_v2_live_pricing_factory
 from tradeexecutor.ethereum.uniswap_v2_revaluation import UniswapV2PoolRevaluator
 from tradeexecutor.ethereum.universe import create_exchange_universe, create_pair_universe
-from tradeexecutor.state.state import State, AssetIdentifier, TradingPairIdentifier, Portfolio
+from tradeexecutor.state.state import State
+from tradeexecutor.state.portfolio import Portfolio
+from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 
 from tradeexecutor.strategy.bootstrap import import_strategy_file
 from tradeexecutor.strategy.description import StrategyExecutionDescription

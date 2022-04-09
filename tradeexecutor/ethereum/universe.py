@@ -5,7 +5,7 @@ import pandas as pd
 from web3 import Web3
 
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment
-from tradeexecutor.state.state import TradingPairIdentifier
+from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradingstrategy.chain import ChainId
 from tradingstrategy.exchange import ExchangeUniverse, Exchange, ExchangeType
 from tradingstrategy.pair import DEXPair, PandasPairUniverse, PairType

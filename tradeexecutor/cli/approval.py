@@ -6,7 +6,10 @@ import textwrap
 from prompt_toolkit import print_formatted_text, HTML
 from prompt_toolkit.shortcuts import checkboxlist_dialog, message_dialog
 
-from tradeexecutor.state.state import State, TradeExecution, Portfolio, TradingPosition
+from tradeexecutor.state.state import State
+from tradeexecutor.state.portfolio import Portfolio
+from tradeexecutor.state.position import TradingPosition
+from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.approval import ApprovalModel
 
 

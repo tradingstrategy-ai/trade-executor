@@ -10,8 +10,9 @@ from web3 import Web3
 
 from eth_defi.balances import DecimalisedHolding, \
     fetch_erc20_balances_by_token_list, convert_balances_to_decimal
-from tradeexecutor.state.state import Portfolio, AssetIdentifier, ReservePosition
-
+from tradeexecutor.state.portfolio import Portfolio
+from tradeexecutor.state.reserve import ReservePosition
+from tradeexecutor.state.identifier import AssetIdentifier
 
 logger = logging.getLogger(__name__)
 

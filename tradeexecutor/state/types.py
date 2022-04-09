@@ -25,3 +25,6 @@ class NaiveDatetime(datetime.datetime):
         if len(args) == 1:
             pass
 
+
+JSONHexAddress = str
+JSONHexBytes = str

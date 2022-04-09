@@ -11,7 +11,8 @@ from web3.contract import Contract
 
 from eth_defi.token import create_token
 from tradeexecutor.ethereum.wallet import sync_reserves, sync_portfolio
-from tradeexecutor.state.state import AssetIdentifier, Portfolio
+from tradeexecutor.state.portfolio import Portfolio
+from tradeexecutor.state.identifier import AssetIdentifier
 
 
 @pytest.fixture

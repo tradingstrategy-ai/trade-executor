@@ -16,7 +16,11 @@ from tradeexecutor.strategy.output import output_positions, DISCORD_BREAK_CHAR, 
 from tradeexecutor.strategy.pricing_model import PricingModelFactory
 from tradeexecutor.strategy.universe_model import TradeExecutorTradingUniverse
 
-from tradeexecutor.state.state import State, TradeExecution, ReservePosition, TradingPosition, Portfolio
+from tradeexecutor.state.state import State
+from tradeexecutor.state.portfolio import Portfolio
+from tradeexecutor.state.position import TradingPosition
+from tradeexecutor.state.trade import TradeExecution
+from tradeexecutor.state.reserve import ReservePosition
 from tradingstrategy.analysis.tradeanalyzer import TradePosition
 from tradingstrategy.universe import Universe
 

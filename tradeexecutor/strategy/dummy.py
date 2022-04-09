@@ -1,7 +1,7 @@
 """Trader where all assets are maintained on a single hot wallet."""
 from typing import List
 
-from tradeexecutor.state.state import TradeExecution
+from tradeexecutor.state.trade import TradeExecution
 
 
 class DummyExecutionModel:

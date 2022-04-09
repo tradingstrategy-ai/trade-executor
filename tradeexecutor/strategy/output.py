@@ -3,7 +3,9 @@
 from io import StringIO
 from typing import List, Iterable
 
-from tradeexecutor.state.state import TradingPosition, Portfolio, TradeExecution
+from tradeexecutor.state.portfolio import Portfolio
+from tradeexecutor.state.position import TradingPosition
+from tradeexecutor.state.trade import TradeExecution
 
 #: See setup_discord_logging()
 DISCORD_BREAK_CHAR = "…"

@@ -8,7 +8,7 @@ from typing import List
 
 import pandas as pd
 
-from tradeexecutor.state.state import TradingPairIdentifier, AssetIdentifier
+from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.strategy.universe_model import TradeExecutorTradingUniverse, UniverseModel, DataTooOld
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId

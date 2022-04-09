@@ -10,8 +10,14 @@ import pytest
 from hexbytes import HexBytes
 
 from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
-from tradeexecutor.state.state import State, AssetIdentifier, TradingPairIdentifier, ReservePosition, TradeType, \
-    TradeStatus, Portfolio, TradeExecution, TradingPosition, NotEnoughMoney, BlockchainTransactionInfo
+from tradeexecutor.state.state import State, TradeType
+from tradeexecutor.state.portfolio import NotEnoughMoney
+from tradeexecutor.state.portfolio import Portfolio
+from tradeexecutor.state.position import TradingPosition
+from tradeexecutor.state.trade import TradeExecution, TradeStatus
+from tradeexecutor.state.blockhain_transaction import BlockchainTransactionInfo
+from tradeexecutor.state.reserve import ReservePosition
+from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.testing.trader import DummyTestTrader
 from tradingstrategy.chain import ChainId
 from tradingstrategy.types import USDollarAmount

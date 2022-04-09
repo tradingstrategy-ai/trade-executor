@@ -20,7 +20,10 @@ from tradeexecutor.ethereum.execution import prepare_swaps, broadcast, wait_trad
     approve_tokens, confirm_approvals, get_current_price, get_held_assets
 from tradeexecutor.ethereum.wallet import sync_reserves, sync_portfolio
 from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
-from tradeexecutor.state.state import AssetIdentifier, Portfolio, State, TradingPairIdentifier, TradeStatus
+from tradeexecutor.state.state import State
+from tradeexecutor.state.trade import TradeStatus
+from tradeexecutor.state.portfolio import Portfolio
+from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.testing.ethereumtrader import EthereumTestTrader
 from tradeexecutor.testing.trader import DummyTestTrader
 

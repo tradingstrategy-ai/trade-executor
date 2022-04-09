@@ -10,7 +10,8 @@ from eth_defi.uniswap_v2.deployment import UniswapV2Deployment
 from tradeexecutor.ethereum.execution import approve_tokens, prepare_swaps, confirm_approvals, broadcast, \
     wait_trades_to_complete, resolve_trades
 from tradeexecutor.state.freeze import freeze_position_on_failed_trade
-from tradeexecutor.state.state import TradeExecution, State
+from tradeexecutor.state.state import State
+from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.execution_model import ExecutionModel
 
 

@@ -2,7 +2,8 @@ import abc
 import enum
 from typing import List
 
-from tradeexecutor.state.state import State, TradeExecution
+from tradeexecutor.state.state import State
+from tradeexecutor.state.trade import TradeExecution
 
 
 class ApprovalType(enum.Enum):

@@ -5,7 +5,8 @@ from queue import Queue
 import pytest
 import requests
 
-from tradeexecutor.state.state import Portfolio, State
+from tradeexecutor.state.state import State
+from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.store import JSONFileStore
 from tradeexecutor.webhook.server import create_webhook_server
 

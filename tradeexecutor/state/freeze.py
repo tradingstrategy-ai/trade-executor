@@ -4,8 +4,8 @@ import datetime
 import logging
 from typing import List, Tuple
 
-from tradeexecutor.state.state import TradeExecution, State
-
+from tradeexecutor.state.state import State
+from tradeexecutor.state.trade import TradeExecution
 
 logger = logging.getLogger(__name__)
 

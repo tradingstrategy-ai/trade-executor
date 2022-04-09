@@ -4,7 +4,10 @@ from typing import Optional, Dict, List, Tuple
 
 import pandas as pd
 
-from tradeexecutor.state.state import State, AssetIdentifier, TradeType, TradeExecution, TradingPosition
+from tradeexecutor.state.state import State, TradeType
+from tradeexecutor.state.position import TradingPosition
+from tradeexecutor.state.trade import TradeExecution
+from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.qstrader.alpha_model import AlphaModel
 from tradeexecutor.strategy.qstrader.order_sizer import CashBufferedOrderSizer

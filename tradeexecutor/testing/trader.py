@@ -2,7 +2,10 @@ import datetime
 from decimal import Decimal
 from typing import Tuple
 
-from tradeexecutor.state.state import State, TradingPairIdentifier, TradeType, TradeExecution, TradingPosition
+from tradeexecutor.state.state import State, TradeType
+from tradeexecutor.state.position import TradingPosition
+from tradeexecutor.state.trade import TradeExecution
+from tradeexecutor.state.identifier import TradingPairIdentifier
 
 
 class DummyTestTrader:

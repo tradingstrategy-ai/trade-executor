@@ -4,7 +4,7 @@ import datetime
 from dataclasses import dataclass
 from typing import List
 
-from tradeexecutor.state.state import AssetIdentifier
+from tradeexecutor.state.identifier import AssetIdentifier
 
 
 class DataTooOld(Exception):

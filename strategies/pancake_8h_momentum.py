@@ -13,7 +13,8 @@ import pandas as pd
 
 from tradeexecutor.ethereum.uniswap_v2_execution import UniswapV2ExecutionModel
 from tradeexecutor.state.revaluation import RevaluationMethod
-from tradeexecutor.state.state import State, TradingPairIdentifier
+from tradeexecutor.state.state import State
+from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.sync import SyncMethod
 from tradeexecutor.strategy.approval import ApprovalModel
 from tradeexecutor.strategy.description import StrategyExecutionDescription

@@ -10,7 +10,8 @@ from tradeexecutor.strategy.qstrader.alpha_model import AlphaModel
 from tradeexecutor.strategy.qstrader.order_sizer import CashBufferedOrderSizer
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_trading_pair
 
-from tradeexecutor.state.state import State, TradeExecution
+from tradeexecutor.state.state import State
+from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.qstrader.portfolio_construction_model import PortfolioConstructionModel
 from tradeexecutor.strategy.runner import StrategyRunner, PreflightCheckFailed
 
