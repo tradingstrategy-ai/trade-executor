@@ -191,6 +191,14 @@ class Portfolio:
         """Get the value of the portfolio based on the latest pricing."""
         return self.get_open_position_equity() + self.get_current_cash()
 
+    def get_unrealised_profit_usd(self) -> USDollarAmount:
+        """Get the profit of currently open positions."""
+        return sum([p.get_unrealised_profit_usd() for p in self.open_positions.values()])
+
+    def get_closed_profit_usd(self) -> USDollarAmount:
+        """Get the value of the portfolio based on the latest pricing."""
+        return sum([p.get_total_profit_usd() for p in self.closed_positions.values()])
+
     def find_position_for_trade(self, trade) -> Optional[TradingPosition]:
         """Find a position tha trade belongs for."""
         return self.open_positions[trade.position_id]

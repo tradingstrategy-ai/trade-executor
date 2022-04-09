@@ -20,7 +20,7 @@ from web3 import Web3, HTTPProvider
 from eth_defi.hotwallet import HotWallet
 from eth_defi.uniswap_v2.deployment import fetch_deployment
 from tradeexecutor.cli.approval import CLIApprovalModel
-from tradeexecutor.cli.loop import run_main_loop
+from tradeexecutor.cli.loop import ExecutionLoop
 from tradeexecutor.ethereum.hot_wallet_sync import EthereumHotWalletReserveSyncer
 
 from tradeexecutor.ethereum.uniswap_v2_execution import UniswapV2ExecutionModel
@@ -135,6 +135,7 @@ def start(
     backtest_end: Optional[datetime.datetime] = typer.Option(None, envvar="BACKTEST_END", help="End timestamp of backesting"),
     tick_size: TickSize = typer.Option(None, envvar="TICK_SIZE", help="How large tick use to execute the strategy"),
     tick_offset_minutes: int = typer.Option(0, envvar="TICK_OFFSET_MINUTES", help="How many minutes we wait after the tick before executing the tick step"),
+    stats_refresh_minutes: int = typer.Option(60, envvar="STATS_REFRESH_MINUTES", help="How often we refresh position statistics. Default to once in an hour."),
     max_data_delay_minutes: int = typer.Option(None, envvar="MAX_DATA_DELAY_MINUTES", help="If our data feed is delayed more than this minutes, abort the execution"),
     discord_webhook_url: Optional[str] = typer.Option(None, envvar="DISCORD_WEBHOOK_URL", help="Discord webhook URL for notifications"),
     discord_avatar_url: Optional[str] = typer.Option(None, envvar="DISCORD_AVATAR_URL", help="Discord avatar image URL for notifications"),
@@ -198,13 +199,15 @@ def start(
     else:
         max_data_delay = None
 
+    stats_refresh_frequency = datetime.timedelta(minutes=stats_refresh_minutes)
+
     logger.info("Loading strategy file %s", strategy_file)
     strategy_factory = import_strategy_file(strategy_file)
 
     logger.trade("Trade Executor version %s starting strategy %s", version, name)
 
     try:
-        run_main_loop(
+        loop = ExecutionLoop(
             name=name,
             command_queue=command_queue,
             execution_model=execution_model,
@@ -224,7 +227,9 @@ def start(
             tick_offset=tick_offset,
             max_data_delay=max_data_delay,
             trade_immediately=trade_immediately,
+            stats_refresh_frequency=stats_refresh_frequency,
         )
+        loop.run()
     except Exception as e:
         # Debug exceptions in production
         if port_mortem_debugging:

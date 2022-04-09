@@ -15,6 +15,7 @@ from .identifier import AssetIdentifier, TradingPairIdentifier
 from .portfolio import Portfolio
 from .position import TradingPosition
 from .reserve import ReservePosition
+from .statistics import Statistics
 from .trade import TradeExecution, TradeStatus, TradeType
 from .types import USDollarAmount
 
@@ -25,6 +26,9 @@ class State:
     """The current state of the trading strategy execution."""
 
     portfolio: Portfolio = field(default_factory=Portfolio)
+
+    #: Portfolio and position performance records over time.
+    stats: Statistics = field(default_factory=Statistics)
 
     #: Strategy can store its internal thinking over different signals
     strategy_thinking: dict = field(default_factory=dict)

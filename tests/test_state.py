@@ -18,6 +18,7 @@ from tradeexecutor.state.trade import TradeExecution, TradeStatus
 from tradeexecutor.state.blockhain_transaction import BlockchainTransactionInfo
 from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
+from tradeexecutor.statistics.core import update_statistics
 from tradeexecutor.testing.trader import DummyTestTrader
 from tradingstrategy.chain import ChainId
 from tradingstrategy.types import USDollarAmount
@@ -379,6 +380,53 @@ def test_buy_sell_two_positions(usdc, weth_usdc, aave_usdc, start_ts):
 
     assert len(state.portfolio.open_positions) == 0
     assert state.portfolio.get_total_equity() == pytest.approx(994.627)
+
+
+def test_statistics(usdc, weth_usdc, aave_usdc, start_ts):
+    """Open and close two parallel positions and calculate statistics for them."""
+
+    state = State()
+    state.update_reserves([ReservePosition(usdc, Decimal(1000), start_ts, 1.0, start_ts)])
+    trader = DummyTestTrader(state)
+
+    # 0: start
+    assert state.portfolio.get_total_equity() == 1000.0
+    portfolio = state.portfolio
+
+    # 1: buy token 1
+    trader.buy(weth_usdc, Decimal(0.1), 1700)
+    trader.buy(aave_usdc, Decimal(0.5), 200)
+
+    update_statistics(datetime.datetime.utcnow(), state.stats, portfolio)
+    stats = state.stats
+    assert len(stats.positions) == 2
+    assert len(stats.closed_positions) == 0
+    assert stats.positions[1].equity == 0
+    assert stats.positions[2].equity == 0
+
+    trader.sell(weth_usdc, portfolio.get_equity_for_pair(weth_usdc), 1700)
+    trader.sell(aave_usdc, portfolio.get_equity_for_pair(aave_usdc), 200)
+
+    assert len(state.portfolio.open_positions) == 0
+    assert state.portfolio.get_total_equity() == pytest.approx(994.627)
+
+    update_statistics(datetime.datetime.utcnow(), state.stats, portfolio)
+
+    stats = state.stats
+    assert len(stats.positions) == 2
+    assert len(stats.closed_positions) == 2
+    assert stats.portfolio.total_equity == pytest.approx(994.627)
+    assert stats.portfolio.free_cash == pytest.approx(994.627)
+    assert stats.portfolio.open_position_count == 0
+    assert stats.portfolio.closed_position_count == 2
+    assert stats.portfolio.frozen_position_count == 2
+    assert stats.portfolio.unrealised_profit_usd == 0
+    assert stats.portfolio.closed_profit_usd == 0
+
+    assert stats.positions[1].profitability == 0
+    assert stats.positions[1].profit_usd == 0
+    assert stats.positions[1].equity == 0
+    assert stats.positions[2].profitability == 0
 
 
 def test_not_enough_cash(usdc, weth_usdc, start_ts):
