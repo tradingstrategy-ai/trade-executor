@@ -206,13 +206,21 @@ class ExecutionLoop:
 
         def live_cycle():
             nonlocal cycle
-            cycle += 1
-            ts = datetime.datetime.now()
-            self.tick(ts, state, cycle, live=True)
+            try:
+                cycle += 1
+                ts = datetime.datetime.now()
+                self.tick(ts, state, cycle, live=True)
+            except Exception:
+                scheduler.shutdown(wait=False)
+                raise
 
         def live_positions():
-            ts = datetime.datetime.now()
-            self.create_stats_entry(ts, state)
+            try:
+                ts = datetime.datetime.now()
+                self.create_stats_entry(ts, state)
+            except Exception:
+                scheduler.shutdown(wait=False)
+                raise
 
         # Set up live trading tasks using APScheduler
         executors = {
@@ -222,7 +230,13 @@ class ExecutionLoop:
         scheduler = BlockingScheduler(executors=executors, timezone=datetime.timezone.utc)
         scheduler.add_job(live_cycle, 'interval', seconds=self.tick_size.to_timedelta().total_seconds(), start_date=start_time + self.tick_offset)
         scheduler.add_job(live_positions, 'interval', seconds=self.stats_refresh_frequency.total_seconds(), start_date=start_time)
-        scheduler.start()
+        try:
+            scheduler.start()
+        except KeyboardInterrupt:
+            # https://github.com/agronholm/apscheduler/issues/338
+            scheduler.shutdown(wait=False)
+            raise
+        logger.info("Scheduler finished - down the live trading loop")
 
     def run(self):
         """The main loop of trade executor.
