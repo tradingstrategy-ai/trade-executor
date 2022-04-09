@@ -217,7 +217,7 @@ class ExecutionLoop:
         start_time = datetime.datetime(1970, 1, 1)
         scheduler = BlockingScheduler()
         scheduler.add_job(live_cycle, 'interval', seconds=self.tick_size.to_timedelta().total_seconds(), start_date=start_time + self.tick_offset)
-        scheduler.add_job(live_positions, 'interval', seconds=self.stats_refresh_frequency.to_timedelta().total_seconds(), start_date=start_time)
+        scheduler.add_job(live_positions, 'interval', seconds=self.stats_refresh_frequency.total_seconds(), start_date=start_time)
         scheduler.start()
 
     def run(self):
