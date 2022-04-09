@@ -42,6 +42,9 @@ def setup_logging(log_level=logging.INFO) -> Logger:
     # Maplotlib puke
     logging.getLogger("matplotlib").setLevel(logging.WARNING)
 
+    # Disable warnings on startup
+    logging.getLogger("pyramid_openapi3").setLevel(logging.ERROR)
+
     # Datadog tracer agent
     # https://ddtrace.readthedocs.io/en/stable/basic_usage.html
     logging.getLogger("ddtrace").setLevel(logging.INFO)

@@ -216,8 +216,8 @@ class ExecutionLoop:
         # Set up live trading tasks using APScheduler
         start_time = datetime.datetime(1970, 1, 1)
         scheduler = BlockingScheduler()
-        scheduler.add_job(live_cycle, 'interval', seconds=self.tick_size.to_timedelta.total_seconds(), start_time=start_time + self.tick_offset)
-        scheduler.add_job(live_positions, 'interval', seconds=self.stats_refresh_frequency.to_timedelta.total_seconds(), start_time=start_time)
+        scheduler.add_job(live_cycle, 'interval', seconds=self.tick_size.to_timedelta().total_seconds(), start_time=start_time + self.tick_offset)
+        scheduler.add_job(live_positions, 'interval', seconds=self.stats_refresh_frequency.to_timedelta().total_seconds(), start_time=start_time)
         scheduler.start()
 
     def run(self):

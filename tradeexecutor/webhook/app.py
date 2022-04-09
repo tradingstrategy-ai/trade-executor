@@ -102,7 +102,7 @@ def create_pyramid_app(username, password, command_queue: Queue, store: JSONFile
 
             config.set_root_factory(lambda request: Root())
         else:
-            logger.warning("Authentication policy disabled")
+            logger.info("Authentication policy disabled")
 
         init_web_api(config)
 
