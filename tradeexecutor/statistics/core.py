@@ -71,7 +71,7 @@ def update_statistics(clock: datetime.datetime, stats: Statistics, portfolio: Po
     new_stats = calculate_statistics(clock, portfolio)
     stats.portfolio.append(new_stats.portfolio)
     for position_id, position_stats in new_stats.positions.items():
-        stats.positions[position_id].append(position_stats)
+        stats.add_positions_stats(position_id, position_stats)
 
     # Check if we have missing closed position statistics
     # by comparing which closed ids are missing from the stats list

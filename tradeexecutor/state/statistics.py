@@ -113,3 +113,14 @@ class Statistics:
 
     def get_latest_position_stats(self, position_id: int) -> PositionStatistics:
         return self.positions[position_id][-1]
+
+    def add_positions_stats(self, position_id: int, p_stats: PositionStatistics):
+        """Add a new sample to position stats.
+
+        We cannot use defaultdict() here because we lose defaultdict instance on state serialization.
+        """
+        assert isinstance(position_id, int)
+        assert isinstance(p_stats, PositionStatistics)
+        stat_list = self.positions.get(position_id, [])
+        stat_list.append(p_stats)
+        self.positions[position_id] = stat_list
