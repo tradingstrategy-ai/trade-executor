@@ -230,6 +230,9 @@ def start(
             stats_refresh_frequency=stats_refresh_frequency,
         )
         loop.run()
+    except KeyboardInterrupt as e:
+        # CTRL+C shutdown
+        logger.trade("Trade Executor %s shut down by CTRL+C requested: %s", name, e)
     except Exception as e:
         # Debug exceptions in production
         if port_mortem_debugging:

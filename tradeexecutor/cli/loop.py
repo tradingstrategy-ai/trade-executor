@@ -201,7 +201,7 @@ class ExecutionLoop:
         # The first trade will be execute immediately, despite the time offset or tick
         if self.trade_immediately:
             ts = datetime.datetime.now()
-            self.tick(state, ts, cycle, live=True)
+            self.tick(ts, state, cycle, live=True)
 
         def live_cycle():
             nonlocal cycle
