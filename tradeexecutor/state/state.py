@@ -156,3 +156,7 @@ class State:
 
         max_trade_id = max(trade_ids) if trade_ids else 0
         assert max_trade_id + 1 == self.portfolio.next_trade_id, f"Trade id tracking lost. Max {max_trade_id}, next {self.portfolio.next_trade_id}"
+
+        # Check that all stats have a matching position
+        for pos_stat_id in self.stats.positions.keys():
+            assert pos_stat_id in position_ids, f"Stats had position id {pos_stat_id} for which actual trades are missing"

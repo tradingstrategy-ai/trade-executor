@@ -1,3 +1,5 @@
+"""Core portfolio statistics calculations."""
+
 import datetime
 from dataclasses import dataclass, field
 from typing import Dict
@@ -17,6 +19,7 @@ class NewStatistics:
 def calculate_position_statistics(clock: datetime.datetime, position: TradingPosition) -> PositionStatistics:
     stats = PositionStatistics(
         calculated_at=clock,
+        last_valuation_at=position.last_pricing_at,
         profitability=position.get_total_profit_percent(),
         profit_usd=position.get_total_profit_usd(),
         equity=float(position.get_equity_for_position()),

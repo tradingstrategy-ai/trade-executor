@@ -4,7 +4,6 @@ import logging
 import datetime
 import pickle
 import random
-import time
 from pathlib import Path
 from queue import Queue
 from typing import Optional, Callable
@@ -19,7 +18,6 @@ from tradeexecutor.statistics.core import update_statistics
 from tradeexecutor.strategy.approval import ApprovalModel
 from tradeexecutor.strategy.description import StrategyExecutionDescription
 from tradeexecutor.strategy.execution_model import ExecutionModel
-from tradeexecutor.strategy.mode import ExecutionMode
 from tradeexecutor.strategy.pricing_model import PricingModelFactory
 from tradeexecutor.strategy.runner import StrategyRunner
 from tradeexecutor.strategy.tick import TickSize, snap_to_next_tick, snap_to_previous_tick
@@ -70,7 +68,6 @@ class ExecutionLoop:
 
         self.timed_task_context_manager = timed_task
 
-        self.mode: Optional[ExecutionMode] = None
         self.runner: Optional[StrategyRunner] = None
         self.universe_model: Optional[UniverseModel] = None
 
@@ -100,7 +97,7 @@ class ExecutionLoop:
     def tick(self, unrounded_timestamp: datetime.datetime, state: State, cycle: int, live: bool):
         """Run one trade execution tick."""
 
-        assert isinstance(unrounded_timestamp, datetime,datetime)
+        assert isinstance(unrounded_timestamp, datetime.datetime)
         assert isinstance(state, State)
 
         ts = snap_to_previous_tick(unrounded_timestamp, self.tick_size)
@@ -114,7 +111,7 @@ class ExecutionLoop:
             "timestamp": ts,
         }
 
-        logger.trade("Starting strategy tick #%d for timestamp %s, unrounded time is %s, in %s mode", cycle, ts, unrounded_timestamp, mode.value)
+        logger.trade("Performing strategy tick #%d for timestamp %s, unrounded time is %s, live trading is %s", cycle, ts, unrounded_timestamp, live)
 
         # Refresh the trading universe for this cycle
         universe = self.universe_model.construct_universe(ts, live)
@@ -143,8 +140,11 @@ class ExecutionLoop:
             with open(self.debug_dump_file, "wb") as out:
                 pickle.dump(self.debug_dump_state, out)
 
-    def update_positions(self, clock: datetime.datetime, state: State):
+    def create_stats_entry(self, clock: datetime.datetime, state: State):
         """Revalue positions and update statistics.
+
+        A new statistics entry is calculated for portfolio and all of its positions
+        and added to the state.
 
         :param clock: Real-time or historical clock
         """
@@ -159,8 +159,6 @@ class ExecutionLoop:
     def run_backtest(self, state: State):
         """Backtest loop."""
 
-        assert self.mode == ExecutionMode.backtest
-
         ts = self.backtest_start
 
         logger.info("Strategy is executed in backtesting mode, starting at %s", ts)
@@ -170,7 +168,7 @@ class ExecutionLoop:
 
             self.tick(ts, state, cycle, live=False)
 
-            self.update_positions(ts)
+            self.create_stats_entry(ts, state)
 
             # Check for termination in integration testing
             if self.max_cycles is not None:
@@ -213,7 +211,7 @@ class ExecutionLoop:
 
         def live_positions():
             ts = datetime.datetime.now()
-            self.update_positions(ts, state)
+            self.create_stats_entry(ts, state)
 
         # Set up live trading tasks using APScheduler
         start_time = datetime.datetime(1970, 1, 1)
@@ -240,6 +238,8 @@ class ExecutionLoop:
             assert self.backtest_start and self.backtest_end, f"If backtesting both start and end must be given, we have {self.backtest_start} - {self.backtest_end}"
 
         state = self.init_state()
+
+        self.init_execution_model()
 
         run_description: StrategyExecutionDescription = self.strategy_factory(
             execution_model=self.execution_model,

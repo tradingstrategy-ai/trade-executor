@@ -23,6 +23,11 @@ class PositionStatistics:
     #: Real-time clock when these stats were calculated
     calculated_at: datetime.datetime
 
+    #: When this position was revalued last time.
+    #: Should not be far off from `calculated_at`
+    #: because we should revalue positions always before calculating their stats.
+    last_valuation_at: datetime.datetime
+
     #: Profitability %
     profitability: float
 
