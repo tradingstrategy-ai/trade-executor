@@ -8,6 +8,7 @@ from pathlib import Path
 from queue import Queue
 from typing import Optional, Callable
 
+from apscheduler.executors.pool import ThreadPoolExecutor
 from apscheduler.schedulers.blocking import BlockingScheduler
 
 from tradeexecutor.state.revaluation import RevaluationMethod
@@ -214,8 +215,11 @@ class ExecutionLoop:
             self.create_stats_entry(ts, state)
 
         # Set up live trading tasks using APScheduler
+        executors = {
+            'default': ThreadPoolExecutor(1),
+        }
         start_time = datetime.datetime(1970, 1, 1)
-        scheduler = BlockingScheduler()
+        scheduler = BlockingScheduler(executors=executors, timezone=datetime.timezone.utc)
         scheduler.add_job(live_cycle, 'interval', seconds=self.tick_size.to_timedelta().total_seconds(), start_date=start_time + self.tick_offset)
         scheduler.add_job(live_positions, 'interval', seconds=self.stats_refresh_frequency.total_seconds(), start_date=start_time)
         scheduler.start()
