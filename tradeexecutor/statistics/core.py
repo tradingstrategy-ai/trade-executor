@@ -11,7 +11,7 @@ from tradeexecutor.state.statistics import Statistics, PortfolioStatistics, Posi
 class NewStatistics:
     """New statistics calcualted for the portfolio on each stats cycle."""
     portfolio: PortfolioStatistics
-    position: Dict[int, PositionStatistics] = field(default_factory=dict)
+    positions: Dict[int, PositionStatistics] = field(default_factory=dict)
 
 
 def calculate_position_statistics(clock: datetime.datetime, position: TradingPosition) -> PositionStatistics:
@@ -53,7 +53,10 @@ def calculate_statistics(clock: datetime.datetime, portfolio: Portfolio) -> NewS
     stats = NewStatistics(portfolio=pf_stats)
 
     for position in portfolio.open_positions.values():
-        stats.position[position.position_id] = calculate_position_statistics(clock, position)
+        stats.positions[position.position_id] = calculate_position_statistics(clock, position)
+
+    for position in portfolio.frozen_positions.values():
+        stats.positions[position.position_id] = calculate_position_statistics(clock, position)
 
     return stats
 
@@ -64,15 +67,18 @@ def update_statistics(clock: datetime.datetime, stats: Statistics, portfolio: Po
 
     new_stats = calculate_statistics(clock, portfolio)
     stats.portfolio.append(new_stats.portfolio)
-    for position_id, position_stats in new_stats.position.items():
+    for position_id, position_stats in new_stats.positions.items():
         stats.positions[position_id].append(position_stats)
 
     # Check if we have missing closed position statistics
     # by comparing which closed ids are missing from the stats list
     closed_position_stat_ids = set(stats.closed_positions.keys())
-    all_closed_position_ids = set(portfolio.closed_position.keys())
+    all_closed_position_ids = set(portfolio.closed_positions.keys())
 
     missing_closed_position_stats = all_closed_position_ids - closed_position_stat_ids
     for position_id in missing_closed_position_stats:
         position = portfolio.closed_positions[position_id]
-        stats.closed_positions[position_id] = calculate_closed_position_statistics(position)
+        # Calculate the closing value for the profitability
+        stats.positions[position_id].append(calculate_position_statistics(clock, position))
+        # Calculate stats that are only available for closed positions
+        stats.closed_positions[position_id] = calculate_closed_position_statistics(clock, position)

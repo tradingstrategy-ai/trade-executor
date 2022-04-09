@@ -33,6 +33,8 @@ class PositionStatistics:
     equity: USDollarAmount
 
 
+@dataclass_json
+@dataclass
 class FinalPositionStatistics:
     """When position is closed, its final statistics are calculated.
 
@@ -44,11 +46,11 @@ class FinalPositionStatistics:
 
     #: When this position was opened
     #: Only calculated after the position is closed.
-    first_trade_at: Optional[datetime.datetime] = None
+    first_trade_at: datetime.datetime
 
     #: When this position was closed
     #: Only calculated after the position is closed.
-    last_trade_at: Optional[datetime.datetime] = None
+    last_trade_at: datetime.datetime
 
     #: How many trades we have made
     trade_count: int
@@ -100,3 +102,9 @@ class Statistics:
 
     #: Per position statistics for closed positions.
     closed_positions: Dict[int, FinalPositionStatistics] = field(default_factory=dict)
+
+    def get_latest_portfolio_stats(self) -> PortfolioStatistics:
+        return self.portfolio[-1]
+
+    def get_latest_position_stats(self, position_id: int) -> PositionStatistics:
+        return self.positions[position_id][-1]

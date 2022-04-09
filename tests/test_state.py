@@ -401,8 +401,10 @@ def test_statistics(usdc, weth_usdc, aave_usdc, start_ts):
     stats = state.stats
     assert len(stats.positions) == 2
     assert len(stats.closed_positions) == 0
-    assert stats.positions[1].equity == 0
-    assert stats.positions[2].equity == 0
+    assert stats.get_latest_position_stats(1).equity == pytest.approx(0.099)
+    assert stats.get_latest_position_stats(2).equity == pytest.approx(0.495)
+    assert stats.get_latest_portfolio_stats().unrealised_profit_usd == pytest.approx(2.673)
+    assert stats.get_latest_portfolio_stats().closed_profit_usd == 0
 
     trader.sell(weth_usdc, portfolio.get_equity_for_pair(weth_usdc), 1700)
     trader.sell(aave_usdc, portfolio.get_equity_for_pair(aave_usdc), 200)
@@ -415,18 +417,22 @@ def test_statistics(usdc, weth_usdc, aave_usdc, start_ts):
     stats = state.stats
     assert len(stats.positions) == 2
     assert len(stats.closed_positions) == 2
-    assert stats.portfolio.total_equity == pytest.approx(994.627)
-    assert stats.portfolio.free_cash == pytest.approx(994.627)
-    assert stats.portfolio.open_position_count == 0
-    assert stats.portfolio.closed_position_count == 2
-    assert stats.portfolio.frozen_position_count == 2
-    assert stats.portfolio.unrealised_profit_usd == 0
-    assert stats.portfolio.closed_profit_usd == 0
+    assert stats.get_latest_portfolio_stats().total_equity == pytest.approx(994.627)
+    assert stats.get_latest_portfolio_stats().free_cash == pytest.approx(994.627)
+    assert stats.get_latest_portfolio_stats().open_position_count == 0
+    assert stats.get_latest_portfolio_stats().closed_position_count == 2
+    assert stats.get_latest_portfolio_stats().frozen_position_count == 0
+    assert stats.get_latest_portfolio_stats().unrealised_profit_usd == 0
+    assert stats.get_latest_portfolio_stats().closed_profit_usd == 0
 
-    assert stats.positions[1].profitability == 0
-    assert stats.positions[1].profit_usd == 0
-    assert stats.positions[1].equity == 0
-    assert stats.positions[2].profitability == 0
+    # Both positions have two stats samples because we have called update_statistics twice
+    assert len(stats.positions[1]) == 2
+    assert len(stats.positions[2]) == 2
+
+    assert stats.get_latest_position_stats(1).profitability == 0
+    assert stats.get_latest_position_stats(1).profit_usd == 0
+    assert stats.get_latest_position_stats(1).equity == 0
+    assert stats.get_latest_position_stats(2).profitability == 0
 
 
 def test_not_enough_cash(usdc, weth_usdc, start_ts):
