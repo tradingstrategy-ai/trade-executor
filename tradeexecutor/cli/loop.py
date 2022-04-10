@@ -232,7 +232,7 @@ class ExecutionLoop:
                 raise
 
         # Always immediately revalue positions on launch
-        update_statistics(datetime.datetime.utcnow(), state)
+        self.update_position_valuations(datetime.datetime.now(), state)
 
         # Set up live trading tasks using APScheduler
         executors = {
