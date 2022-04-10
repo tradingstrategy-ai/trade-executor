@@ -210,7 +210,8 @@ class ExecutionLoop:
                 cycle += 1
                 ts = datetime.datetime.now()
                 self.tick(ts, state, cycle, live=True)
-            except Exception:
+            except Exception as e:
+                logger.exception(e)
                 scheduler.shutdown(wait=False)
                 raise
 
@@ -218,7 +219,8 @@ class ExecutionLoop:
             try:
                 ts = datetime.datetime.now()
                 self.create_stats_entry(ts, state)
-            except Exception:
+            except Exception as e:
+                logger.exception(e)
                 scheduler.shutdown(wait=False)
                 raise
 
@@ -233,7 +235,7 @@ class ExecutionLoop:
         try:
             scheduler.start()
         except KeyboardInterrupt:
-            # https://github.com/agronholm/apscheduler/issues/338
+                # https://github.com/agronholm/apscheduler/issues/338
             scheduler.shutdown(wait=False)
             raise
         logger.info("Scheduler finished - down the live trading loop")

@@ -82,6 +82,7 @@ def update_statistics(clock: datetime.datetime, stats: Statistics, portfolio: Po
     for position_id in missing_closed_position_stats:
         position = portfolio.closed_positions[position_id]
         # Calculate the closing value for the profitability
-        stats.positions[position_id].append(calculate_position_statistics(clock, position))
+        position_stats = calculate_position_statistics(clock, position)
+        stats.add_positions_stats(position_id, position_stats)
         # Calculate stats that are only available for closed positions
         stats.closed_positions[position_id] = calculate_closed_position_statistics(clock, position)
