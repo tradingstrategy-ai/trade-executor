@@ -39,7 +39,8 @@ class PositionStatistics:
 
     #: When this position was opened
     #: Only calculated after the position is closed.
-    first_trade_at: datetime.datetime
+    # TODO: Remove None default for the future version
+    first_trade_at: Optional[datetime.datetime] = None
 
 
 @dataclass_json
@@ -83,8 +84,11 @@ class PortfolioStatistics:
     unrealised_profit_usd: USDollarAmount
     closed_profit_usd: USDollarAmount
 
-    first_trade_at: Optional[datetime.datetime]
-    last_trade_at: Optional[datetime.datetime]
+    # TODO: Remove None default for the future version
+    first_trade_at: Optional[datetime.datetime] = None
+
+    # TODO: Remove None default for the future version
+    last_trade_at: Optional[datetime.datetime] = None
 
 
 @dataclass_json
