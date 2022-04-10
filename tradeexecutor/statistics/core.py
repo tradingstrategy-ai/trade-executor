@@ -42,7 +42,7 @@ def calculate_closed_position_statistics(clock: datetime.datetime, position: Tra
 def calculate_statistics(clock: datetime.datetime, portfolio: Portfolio) -> NewStatistics:
     """Calculate statistics for a portfolio."""
 
-    first_trade, last_trade = portfolio.get_first_and_last_trade()
+    first_trade, last_trade = portfolio.get_first_and_last_executed_trade()
 
     pf_stats = PortfolioStatistics(
         calculated_at=clock,

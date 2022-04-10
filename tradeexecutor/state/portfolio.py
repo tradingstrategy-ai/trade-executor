@@ -311,18 +311,18 @@ class Portfolio:
             for t in pos.trades.values():
                 yield t
 
-    def get_first_and_last_trade(self) -> Tuple[Optional[TradeExecution], Optional[TradeExecution]]:
+    def get_first_and_last_executed_trade(self) -> Tuple[Optional[TradeExecution], Optional[TradeExecution]]:
         """Get first and last trades overall."""
 
         first = last = None
 
         for t in self.get_all_trades():
-            if not first:
+            if first is None:
                 first = t
-            if not last:
+            if last is None:
                 last = t
-            if t.executed_at < first.executed_at:
+            if t.executed_at and (t.executed_at < first.executed_at):
                 first = t
-            if t.executed_at > last.executed_at:
+            if t.executed_at and (t.executed_at > last.executed_at):
                 last = t
         return first, last
