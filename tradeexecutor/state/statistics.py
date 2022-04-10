@@ -82,7 +82,7 @@ class PortfolioStatistics:
     closed_position_count: int
 
     unrealised_profit_usd: USDollarAmount
-    closed_profit_usd: USDollarAmount
+    realised_profit_usd: USDollarAmount
 
     # TODO: Remove None default for the future version
     first_trade_at: Optional[datetime.datetime] = None

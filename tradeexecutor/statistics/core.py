@@ -54,7 +54,7 @@ def calculate_statistics(clock: datetime.datetime, portfolio: Portfolio) -> NewS
         frozen_position_count=len(portfolio.frozen_positions),
         closed_position_count=len(portfolio.closed_positions),
         unrealised_profit_usd=portfolio.get_unrealised_profit_usd(),
-        closed_profit_usd=portfolio.get_closed_profit_usd(),
+        realised_profit_usd=portfolio.get_closed_profit_usd(),
         first_trade_at=first_trade and first_trade.executed_at or None,
         last_trade_at=last_trade and last_trade.executed_at or None,
     )

@@ -404,7 +404,7 @@ def test_statistics(usdc, weth_usdc, aave_usdc, start_ts):
     assert stats.get_latest_position_stats(1).equity == pytest.approx(0.099)
     assert stats.get_latest_position_stats(2).equity == pytest.approx(0.495)
     assert stats.get_latest_portfolio_stats().unrealised_profit_usd == pytest.approx(2.673)
-    assert stats.get_latest_portfolio_stats().closed_profit_usd == 0
+    assert stats.get_latest_portfolio_stats().realised_profit_usd == 0
 
     trader.sell(weth_usdc, portfolio.get_equity_for_pair(weth_usdc), 1700)
     trader.sell(aave_usdc, portfolio.get_equity_for_pair(aave_usdc), 200)
@@ -423,7 +423,7 @@ def test_statistics(usdc, weth_usdc, aave_usdc, start_ts):
     assert stats.get_latest_portfolio_stats().closed_position_count == 2
     assert stats.get_latest_portfolio_stats().frozen_position_count == 0
     assert stats.get_latest_portfolio_stats().unrealised_profit_usd == 0
-    assert stats.get_latest_portfolio_stats().closed_profit_usd == 0
+    assert stats.get_latest_portfolio_stats().realised_profit_usd == 0
 
     # Both positions have two stats samples because we have called update_statistics twice
     assert len(stats.positions[1]) == 2
