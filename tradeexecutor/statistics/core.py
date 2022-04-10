@@ -17,12 +17,14 @@ class NewStatistics:
 
 
 def calculate_position_statistics(clock: datetime.datetime, position: TradingPosition) -> PositionStatistics:
+    first_trade = position.get_first_trade()
     stats = PositionStatistics(
         calculated_at=clock,
         last_valuation_at=position.last_pricing_at,
         profitability=position.get_total_profit_percent(),
         profit_usd=position.get_total_profit_usd(),
         equity=float(position.get_equity_for_position()),
+        first_trade_at=first_trade and first_trade.executed_at or None,
     )
     return stats
 
@@ -40,17 +42,21 @@ def calculate_closed_position_statistics(clock: datetime.datetime, position: Tra
 def calculate_statistics(clock: datetime.datetime, portfolio: Portfolio) -> NewStatistics:
     """Calculate statistics for a portfolio."""
 
+    first_trade, last_trade = portfolio.get_first_and_last_trade()
+
     pf_stats = PortfolioStatistics(
         calculated_at=clock,
         total_equity=portfolio.get_total_equity(),
+        free_cash=float(portfolio.get_current_cash()),
         open_position_count=len(portfolio.open_positions),
         open_position_equity=portfolio.get_open_position_equity(),
         frozen_position_equity=portfolio.get_frozen_position_equity(),
         frozen_position_count=len(portfolio.frozen_positions),
         closed_position_count=len(portfolio.closed_positions),
-        free_cash=portfolio.get_current_cash(),
         unrealised_profit_usd=portfolio.get_unrealised_profit_usd(),
         closed_profit_usd=portfolio.get_closed_profit_usd(),
+        first_trade_at=first_trade and first_trade.executed_at or None,
+        last_trade_at=last_trade and last_trade.executed_at or None,
     )
 
     stats = NewStatistics(portfolio=pf_stats)
@@ -62,7 +68,6 @@ def calculate_statistics(clock: datetime.datetime, portfolio: Portfolio) -> NewS
         stats.positions[position.position_id] = calculate_position_statistics(clock, position)
 
     return stats
-
 
 
 def update_statistics(clock: datetime.datetime, stats: Statistics, portfolio: Portfolio):

@@ -37,6 +37,10 @@ class PositionStatistics:
     #: All value tied to this position
     equity: USDollarAmount
 
+    #: When this position was opened
+    #: Only calculated after the position is closed.
+    first_trade_at: datetime.datetime
+
 
 @dataclass_json
 @dataclass
@@ -68,6 +72,7 @@ class PortfolioStatistics:
     #: Real-time clock when these stats were calculated
     calculated_at: datetime.datetime
     total_equity: USDollarAmount
+    free_cash: USDollarAmount
 
     open_position_count: int
     open_position_equity: USDollarAmount
@@ -75,10 +80,11 @@ class PortfolioStatistics:
     frozen_position_equity: USDollarAmount
     closed_position_count: int
 
-    free_cash: USDollarAmount
-
     unrealised_profit_usd: USDollarAmount
     closed_profit_usd: USDollarAmount
+
+    first_trade_at: Optional[datetime.datetime]
+    last_trade_at: Optional[datetime.datetime]
 
 
 @dataclass_json

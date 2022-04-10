@@ -307,9 +307,22 @@ class Portfolio:
     def get_all_trades(self) -> Iterable[TradeExecution]:
         """Iterate through all trades: completed, failed and in progress"""
         pos: TradingPosition
-        for pos in self.open_positions.values():
+        for pos in self.get_all_positions():
             for t in pos.trades.values():
                 yield t
-        for pos in self.closed_positions.values():
-            for t in pos.trades.values():
-                yield t
+
+    def get_first_and_last_trade(self) -> Tuple[Optional[TradeExecution], Optional[TradeExecution]]:
+        """Get first and last trades overall."""
+
+        first = last = None
+
+        for t in self.get_all_trades():
+            if not first:
+                first = t
+            if not last:
+                last = t
+            if t.executed_at < first.executed_at:
+                first = t
+            if t.executed_at > last.executed_at:
+                last = t
+        return first, last
