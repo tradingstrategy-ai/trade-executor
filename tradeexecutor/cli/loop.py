@@ -141,7 +141,7 @@ class ExecutionLoop:
             with open(self.debug_dump_file, "wb") as out:
                 pickle.dump(self.debug_dump_state, out)
 
-    def create_stats_entry(self, clock: datetime.datetime, state: State):
+    def update_position_valuations(self, clock: datetime.datetime, state: State):
         """Revalue positions and update statistics.
 
         A new statistics entry is calculated for portfolio and all of its positions
@@ -149,7 +149,14 @@ class ExecutionLoop:
 
         :param clock: Real-time or historical clock
         """
-        update_statistics(clock, state.stats, state.portfolio)
+
+        with self.timed_task_context_manager("revalue_portfolio_statistics"):
+            logger.info("Updating position valuations")
+            self.runner.revalue_portfolio(clock, state)
+
+        with self.timed_task_context_manager("update_statistics"):
+            logger.info("Updating position statistics")
+            update_statistics(clock, state.stats, state.portfolio)
 
         # Check that state is good before writing it to the disk
         state.perform_integrity_check()
@@ -169,7 +176,7 @@ class ExecutionLoop:
 
             self.tick(ts, state, cycle, live=False)
 
-            self.create_stats_entry(ts, state)
+            self.update_position_valuations(ts, state)
 
             # Check for termination in integration testing
             if self.max_cycles is not None:
@@ -218,7 +225,7 @@ class ExecutionLoop:
         def live_positions():
             try:
                 ts = datetime.datetime.now()
-                self.create_stats_entry(ts, state)
+                self.update_position_valuations(ts, state)
             except Exception as e:
                 logger.exception(e)
                 scheduler.shutdown(wait=False)
