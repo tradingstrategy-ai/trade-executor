@@ -231,6 +231,9 @@ class ExecutionLoop:
                 scheduler.shutdown(wait=False)
                 raise
 
+        # Always immediately revalue positions on launch
+        update_statistics(datetime.datetime.utcnow(), state)
+
         # Set up live trading tasks using APScheduler
         executors = {
             'default': ThreadPoolExecutor(1),
