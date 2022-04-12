@@ -1667,6 +1667,20 @@ components:
              The number of decimals the token uses - e.g. 8, means to divide the token
              amount by 100_000_000 to get its user representation.
           example: 8
+        liquidity_latest:
+          type: number
+          format: float
+          minimum: 0.0
+          nullable: true
+          description: >
+             The latest available token suply in USD.
+        volume_24h:
+          type: number
+          format: float
+          minimum: 0.0
+          nullable: true
+          description: >
+             The total token trade volume in USD in the last 24 hours.
 
     TopMomentum:
       description: >
