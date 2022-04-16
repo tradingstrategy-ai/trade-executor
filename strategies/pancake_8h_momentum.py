@@ -30,7 +30,8 @@ from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId
 from tradingstrategy.frameworks.qstrader import prepare_candles_for_qstrader
 from tradingstrategy.liquidity import GroupedLiquidityUniverse, LiquidityDataUnavailable
-from tradingstrategy.pair import filter_for_exchanges, PandasPairUniverse, DEXPair, filter_for_quote_tokens
+from tradingstrategy.pair import filter_for_exchanges, PandasPairUniverse, DEXPair, filter_for_quote_tokens, \
+    StablecoinFilteringMode, filter_for_stablecoins
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.utils.groupeduniverse import filter_for_pairs
 from tradingstrategy.universe import Universe
@@ -286,8 +287,10 @@ class OurUniverseModel(TradingStrategyUniverseModel):
             ]
 
             # Choose BUSD pairs on PancakeSwap v2
+            # that are not stablecoin pairs
             pairs_df = filter_for_exchanges(dataset.pairs, our_exchanges)
             pairs_df = filter_for_quote_tokens(pairs_df, [busd_address])
+            pairs_df = filter_for_stablecoins(pairs_df, StablecoinFilteringMode.only_volatile_pairs)
 
             # Create trading pair database
             pairs = PandasPairUniverse(pairs_df)
