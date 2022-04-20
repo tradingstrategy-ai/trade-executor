@@ -3,7 +3,8 @@ import datetime
 import enum
 from dataclasses import dataclass, field
 from decimal import Decimal
-from typing import Dict, Optional, List
+from math import copysign
+from typing import Dict, Optional, List, Iterable
 
 from dataclasses_json import dataclass_json
 
@@ -102,6 +103,11 @@ class TradingPosition:
             if t.is_success():
                 return True
         return False
+
+    def get_executed_trades(self) -> Iterable[TradeExecution]:
+        for t in self.trades.values():
+            if t.is_success():
+                yield t
 
     def get_name(self) -> str:
         """Get human readable name for this position"""

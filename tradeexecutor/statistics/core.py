@@ -2,7 +2,7 @@
 
 import datetime
 from dataclasses import dataclass, field
-from typing import Dict
+from typing import Dict, List
 
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.position import TradingPosition
@@ -24,17 +24,22 @@ def calculate_position_statistics(clock: datetime.datetime, position: TradingPos
         profitability=position.get_total_profit_percent(),
         profit_usd=position.get_total_profit_usd(),
         equity=float(position.get_equity_for_position()),
-        first_trade_at=first_trade and first_trade.executed_at or None,
+        value=position.get_value(),
+        first_trade_at=None,  # TODO: Remove - availble as position.opened_at
     )
     return stats
 
 
-def calculate_closed_position_statistics(clock: datetime.datetime, position: TradingPosition) -> PositionStatistics:
+def calculate_closed_position_statistics(clock: datetime.datetime, position: TradingPosition, position_stats: List[PositionStatistics]) -> PositionStatistics:
+    value_at_open = position_stats[0].value
+    value_at_max = max([p.value for p in position_stats])
     stats = FinalPositionStatistics(
         calculated_at=clock,
         first_trade_at=position.get_first_trade().executed_at,
         last_trade_at=position.get_last_trade().executed_at,
         trade_count=len(position.trades),
+        value_at_open=value_at_open,
+        value_at_max=value_at_max,
     )
     return stats
 
@@ -90,4 +95,4 @@ def update_statistics(clock: datetime.datetime, stats: Statistics, portfolio: Po
         position_stats = calculate_position_statistics(clock, position)
         stats.add_positions_stats(position_id, position_stats)
         # Calculate stats that are only available for closed positions
-        stats.closed_positions[position_id] = calculate_closed_position_statistics(clock, position)
+        stats.closed_positions[position_id] = calculate_closed_position_statistics(clock, position, stats.positions[position_id])

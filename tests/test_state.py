@@ -398,13 +398,23 @@ def test_statistics(usdc, weth_usdc, aave_usdc, start_ts):
     trader.buy(aave_usdc, Decimal(0.5), 200)
 
     update_statistics(datetime.datetime.utcnow(), state.stats, portfolio)
+
     stats = state.stats
     assert len(stats.positions) == 2
     assert len(stats.closed_positions) == 0
     assert stats.get_latest_position_stats(1).equity == pytest.approx(0.099)
     assert stats.get_latest_position_stats(2).equity == pytest.approx(0.495)
+
+    assert stats.get_latest_position_stats(1).value == pytest.approx(168.3)
+    assert stats.get_latest_position_stats(2).value == pytest.approx(99.0)
+
     assert stats.get_latest_portfolio_stats().unrealised_profit_usd == pytest.approx(2.673)
     assert stats.get_latest_portfolio_stats().realised_profit_usd == 0
+
+    update_statistics(datetime.datetime.utcnow(), state.stats, portfolio)
+
+    assert stats.get_latest_position_stats(1).value == pytest.approx(168.3)
+    assert stats.get_latest_position_stats(2).value == pytest.approx(99.0)
 
     trader.sell(weth_usdc, portfolio.get_equity_for_pair(weth_usdc), 1700)
     trader.sell(aave_usdc, portfolio.get_equity_for_pair(aave_usdc), 200)
@@ -425,14 +435,23 @@ def test_statistics(usdc, weth_usdc, aave_usdc, start_ts):
     assert stats.get_latest_portfolio_stats().unrealised_profit_usd == 0
     assert stats.get_latest_portfolio_stats().realised_profit_usd == 0
 
-    # Both positions have two stats samples because we have called update_statistics twice
-    assert len(stats.positions[1]) == 2
-    assert len(stats.positions[2]) == 2
+    # Both positions have three stats samples
+    # - One before valuations
+    # - One after revaluations
+    # - One after close
+    assert len(stats.positions[1]) == 3
+    assert len(stats.positions[2]) == 3
 
     assert stats.get_latest_position_stats(1).profitability == 0
     assert stats.get_latest_position_stats(1).profit_usd == 0
     assert stats.get_latest_position_stats(1).equity == 0
     assert stats.get_latest_position_stats(2).profitability == 0
+
+    assert stats.closed_positions[1].value_at_open == pytest.approx(168.3)
+    assert stats.closed_positions[1].value_at_max == pytest.approx(168.3)
+
+    assert stats.closed_positions[2].value_at_open == pytest.approx(99)
+    assert stats.closed_positions[2].value_at_max == pytest.approx(99)
 
 
 def test_not_enough_cash(usdc, weth_usdc, start_ts):

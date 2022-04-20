@@ -34,8 +34,11 @@ class PositionStatistics:
     #: How much profit we made so far
     profit_usd: USDollarAmount
 
-    #: All value tied to this position
-    equity: USDollarAmount
+    #: The current number of owned units
+    equity: float
+
+    #: The current position size dollars
+    value: Optional[USDollarAmount] = None
 
     #: When this position was opened
     #: Only calculated after the position is closed.
@@ -64,6 +67,12 @@ class FinalPositionStatistics:
 
     #: How many trades we have made
     trade_count: int
+
+    #: How much was the first purchase
+    value_at_open: Optional[USDollarAmount] = None
+
+    #: How much was we held at the maximum point of time
+    value_at_max: Optional[USDollarAmount] = None
 
 
 
