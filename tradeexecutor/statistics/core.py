@@ -35,8 +35,6 @@ def calculate_closed_position_statistics(clock: datetime.datetime, position: Tra
     value_at_max = max([p.value for p in position_stats])
     stats = FinalPositionStatistics(
         calculated_at=clock,
-        first_trade_at=position.get_first_trade().executed_at,
-        last_trade_at=position.get_last_trade().executed_at,
         trade_count=len(position.trades),
         value_at_open=value_at_open,
         value_at_max=value_at_max,

@@ -57,14 +57,6 @@ class FinalPositionStatistics:
     #: Real-time clock when these stats were calculated
     calculated_at: datetime.datetime
 
-    #: When this position was opened
-    #: Only calculated after the position is closed.
-    first_trade_at: datetime.datetime
-
-    #: When this position was closed
-    #: Only calculated after the position is closed.
-    last_trade_at: datetime.datetime
-
     #: How many trades we have made
     trade_count: int
 
