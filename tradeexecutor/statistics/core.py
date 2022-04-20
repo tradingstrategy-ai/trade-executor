@@ -32,7 +32,7 @@ def calculate_position_statistics(clock: datetime.datetime, position: TradingPos
 
 def calculate_closed_position_statistics(clock: datetime.datetime, position: TradingPosition, position_stats: List[PositionStatistics]) -> PositionStatistics:
     value_at_open = position_stats[0].value
-    value_at_max = max([p.value for p in position_stats])
+    value_at_max = max([(p.value or 0) for p in position_stats])
     stats = FinalPositionStatistics(
         calculated_at=clock,
         trade_count=len(position.trades),
