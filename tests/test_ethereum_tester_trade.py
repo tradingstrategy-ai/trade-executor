@@ -455,7 +455,7 @@ def test_simulated_uniswap_qstrader_strategy_one_rebalance(
     #
 
     assert debug_details["positions_at_start_of_construction"] == {
-        weth_usdc.pair_id: {'quantity': Decimal('5.54060129052079779')},
+        weth_usdc.pair_id: {'quantity': pytest.approx(Decimal('5.54060129052079779'), rel=APPROX_REL_DECIMAL)},
     }
 
     assert debug_details["target_portfolio"] == {
@@ -470,8 +470,8 @@ def test_simulated_uniswap_qstrader_strategy_one_rebalance(
     assert len(trades) == 2
     assert trades[0].is_sell()
     assert trades[1].is_buy()
-    assert trades[1].planned_quantity == pytest.approx(Decimal('47.087532545984750242'))
-    assert trades[1].executed_quantity == pytest.approx(Decimal('44.971760338523757841'))
+    assert trades[1].planned_quantity == pytest.approx(Decimal('47.087532545984750242'), rel=APPROX_REL_DECIMAL)
+    assert trades[1].executed_quantity == pytest.approx(Decimal('44.971760338523757841'), rel=APPROX_REL_DECIMAL)
 
     # Check the raw on-chain token balances
     raw_balances = fetch_erc20_balances_by_transfer_event(web3, hot_wallet.address)
