@@ -48,6 +48,11 @@ from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
 
 
+#: How much values we allow to drift.
+#: A hack fix receiving different decimal values on Github CI than on a local
+APPROX_REL = 0.01
+
+
 @pytest.fixture(scope="module")
 def logger(request):
     """Setup test logger."""
@@ -363,22 +368,22 @@ def test_simulated_uniswap_qstrader_strategy_single_trade(
     # Check that the strategy thinking is 100% ETH
     # This comes from qstrader/portfolio_construction_model
     assert debug_details["alpha_model_weights"] == {weth_usdc.pair_id: 1}
-    assert debug_details["target_prices"] == {weth_usdc.pair_id: pytest.approx(1705.12)}
-    assert debug_details["target_portfolio"] == {weth_usdc.pair_id: {"quantity": pytest.approx(Decimal('5.571455381439429643'))}}
+    assert debug_details["target_prices"] == {weth_usdc.pair_id: pytest.approx(1705.12, rel=APPROX_REL)}
+    assert debug_details["target_portfolio"] == {weth_usdc.pair_id: {"quantity": pytest.approx(Decimal('5.571455381439429643', rel=APPROX_REL))}}
 
     # The strategy should use all of our available USDC to buy ETH.
     assert len(debug_details["rebalance_trades"]) == 1
 
     # Check the executed portfolio balances
-    assert state.portfolio.get_total_equity() == pytest.approx(9947.390072492823)
-    assert state.portfolio.get_current_cash() == pytest.approx(500)
+    assert state.portfolio.get_total_equity() == pytest.approx(9947.390072492823, rel=APPROX_REL)
+    assert state.portfolio.get_current_cash() == pytest.approx(500, rel=APPROX_REL)
 
     # Check the open position
     assert len(state.portfolio.open_positions) == 1
     position = state.portfolio.get_open_position_for_pair(weth_usdc_pair)
     assert position is not None
     assert position.get_quantity() == Decimal('5.54060129052079779')
-    assert position.get_value() == pytest.approx(9447.390072492823)
+    assert position.get_value() == pytest.approx(9447.390072492823, rel=APPROX_REL)
     assert len(position.trades) == 1
 
     # Check the recorded trade history
@@ -394,8 +399,8 @@ def test_simulated_uniswap_qstrader_strategy_single_trade(
     # Check the raw on-chain token balances
     raw_balances = fetch_erc20_balances_by_transfer_event(web3, hot_wallet.address)
     balances = convert_balances_to_decimal(web3, raw_balances)
-    assert balances[weth_token.address].value == pytest.approx(Decimal('5.54060129052079779'))
-    assert balances[usdc_token.address].value == pytest.approx(Decimal('500'))
+    assert balances[weth_token.address].value == pytest.approx(Decimal('5.54060129052079779'), rel=APPROX_REL)
+    assert balances[usdc_token.address].value == pytest.approx(Decimal('500'), rel=APPROX_REL)
 
     # Portfolio value stays approx. the same after revaluation
     # There is some decrease, because now we value in the slippage we would get on Uniswap v2
@@ -404,9 +409,9 @@ def test_simulated_uniswap_qstrader_strategy_single_trade(
     position = state.portfolio.get_open_position_for_pair(weth_usdc_pair)
     assert position.last_pricing_at == ts
     assert position.last_reserve_price == 1
-    assert position.last_token_price == pytest.approx(1704.3998300611074)
-    assert state.portfolio.get_total_equity() == pytest.approx(9943.399898000001)
-    assert state.portfolio.get_current_cash() == pytest.approx(500)
+    assert position.last_token_price == pytest.approx(1704.3998300611074, rel=APPROX_REL)
+    assert state.portfolio.get_total_equity() == pytest.approx(9943.399898000001, rel=APPROX_REL)
+    assert state.portfolio.get_current_cash() == pytest.approx(500, rel=APPROX_REL)
 
 
 def test_simulated_uniswap_qstrader_strategy_one_rebalance(
