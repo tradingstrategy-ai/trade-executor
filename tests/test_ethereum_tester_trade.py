@@ -383,7 +383,7 @@ def test_simulated_uniswap_qstrader_strategy_single_trade(
     assert len(state.portfolio.open_positions) == 1
     position = state.portfolio.get_open_position_for_pair(weth_usdc_pair)
     assert position is not None
-    assert position.get_quantity() == Decimal('5.54060129052079779')
+    assert position.get_quantity() == pytest.approx(Decimal('5.54060129052079779'), rel=APPROX_REL_DECIMAL)
     assert position.get_value() == pytest.approx(9447.390072492823, rel=APPROX_REL)
     assert len(position.trades) == 1
 
@@ -542,7 +542,7 @@ def test_simulated_uniswap_qstrader_strategy_round_trip(
     assert position_1.get_value() == pytest.approx(4684.555636069401, rel=APPROX_REL)
     position_2 = state.portfolio.get_open_position_for_pair(aave_usdc_pair)
     assert position_2.get_value() == pytest.approx(4459.8884727357445, rel=APPROX_REL)
-    assert position_2.get_quantity() == Decimal('21.354907569100333830')
+    assert position_2.get_quantity() == pytest.approx(Decimal('21.354907569100333830'), rel=APPROX_REL_DECIMAL)
 
     # Check the raw on-chain token balances
     raw_balances = fetch_erc20_balances_by_transfer_event(web3, hot_wallet.address)
