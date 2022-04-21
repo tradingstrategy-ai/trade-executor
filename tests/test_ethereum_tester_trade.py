@@ -51,6 +51,7 @@ from tradingstrategy.universe import Universe
 #: How much values we allow to drift.
 #: A hack fix receiving different decimal values on Github CI than on a local
 APPROX_REL = 0.01
+APPROX_REL_DECIMAL = Decimal("0.1")
 
 
 @pytest.fixture(scope="module")
@@ -369,7 +370,7 @@ def test_simulated_uniswap_qstrader_strategy_single_trade(
     # This comes from qstrader/portfolio_construction_model
     assert debug_details["alpha_model_weights"] == {weth_usdc.pair_id: 1}
     assert debug_details["target_prices"] == {weth_usdc.pair_id: pytest.approx(1705.12, rel=APPROX_REL)}
-    assert debug_details["target_portfolio"] == {weth_usdc.pair_id: {"quantity": pytest.approx(Decimal('5.571455381439429643', rel=APPROX_REL))}}
+    assert debug_details["target_portfolio"] == {weth_usdc.pair_id: {"quantity": pytest.approx(Decimal('5.571455381439429643'), rel=APPROX_REL_DECIMAL)}}
 
     # The strategy should use all of our available USDC to buy ETH.
     assert len(debug_details["rebalance_trades"]) == 1
@@ -399,8 +400,8 @@ def test_simulated_uniswap_qstrader_strategy_single_trade(
     # Check the raw on-chain token balances
     raw_balances = fetch_erc20_balances_by_transfer_event(web3, hot_wallet.address)
     balances = convert_balances_to_decimal(web3, raw_balances)
-    assert balances[weth_token.address].value == pytest.approx(Decimal('5.54060129052079779'), rel=APPROX_REL)
-    assert balances[usdc_token.address].value == pytest.approx(Decimal('500'), rel=APPROX_REL)
+    assert balances[weth_token.address].value == pytest.approx(Decimal('5.54060129052079779'), rel=APPROX_REL_DECIMAL)
+    assert balances[usdc_token.address].value == pytest.approx(Decimal('500'), rel=APPROX_REL_DECIMAL)
 
     # Portfolio value stays approx. the same after revaluation
     # There is some decrease, because now we value in the slippage we would get on Uniswap v2
