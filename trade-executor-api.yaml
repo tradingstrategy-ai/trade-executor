@@ -97,6 +97,23 @@ paths:
               schema:
                 type: object
 
+  '/metadata':
+    x-pyramid-route-name: web_metadata
+    get:
+      operationId: web_metadata
+      summary: |
+
+        Return the strategy and executor metadata, needed
+        to render the strategy on a website.
+
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+
   '/state':
     x-pyramid-route-name: web_state
     get:
