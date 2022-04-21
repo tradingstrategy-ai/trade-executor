@@ -13,6 +13,7 @@ from web3.middleware import geth_poa_middleware
 from eth_defi.balances import fetch_erc20_balances_by_token_list
 from eth_defi.gas import GasPriceMethod, node_default_gas_price_strategy
 from eth_defi.token import fetch_erc20_details
+from tradeexecutor.state.metadata import Metadata
 from tradeexecutor.strategy.description import StrategyExecutionDescription
 from tradeexecutor.strategy.tick import TickSize
 from web3 import Web3, HTTPProvider
@@ -100,6 +101,16 @@ def create_web3(url) -> Web3:
     return Web3(HTTPProvider(url))
 
 
+def create_metadata(name, short_description, long_description, icon_url) -> Metadata:
+    return Metadata(
+        name,
+        short_description,
+        long_description,
+        icon_url,
+        datetime.datetime.utcnow(),
+    )
+
+
 def monkey_patch():
     """Apply all monkey patches."""
     patch_dataclasses_json()
@@ -109,6 +120,8 @@ def monkey_patch():
 @app.command()
 def start(
     name: Optional[str] = typer.Option("Unnamed Trade Executor", envvar="NAME", help="Executor name used in logging and notifications"),
+    short_description: Optional[str] = typer.Option(None, envvar="SHORT_DESCRIPTION", help="Short description for metadata"),
+    long_description: Optional[str] = typer.Option(None, envvar="LONG_DESCRIPTION", help="Long description for metadata"),
     private_key: Optional[str] = typer.Option(None, envvar="PRIVATE_KEY", help="Ethereum private key to be used as a hot wallet/broadcast wallet"),
     strategy_file: Path = typer.Option(..., envvar="STRATEGY_FILE", help="Python strategy file to run"),
     http_enabled: bool = typer.Option(False, envvar="HTTP_ENABLED", help="Enable Webhook server"),
@@ -174,12 +187,14 @@ def start(
 
     store = create_state_store(state_file)
 
+    metadata = create_metadata(name, short_description, long_description, icon_url)
+
     # Start the queue that relays info from the web server to the strategy executor
     command_queue = Queue()
 
     # Create our webhook server
     if http_enabled:
-        server = create_webhook_server(http_host, http_port, http_username, http_password, command_queue, store)
+        server = create_webhook_server(http_host, http_port, http_username, http_password, command_queue, store, metadata)
     else:
         logger.info("Web server disabled")
         server = None

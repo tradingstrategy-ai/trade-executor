@@ -8,6 +8,7 @@ from eth_defi.utils import is_localhost_port_listening
 from webtest.http import StopableWSGIServer
 
 from .app import create_pyramid_app
+from ..state.metadata import Metadata
 from ..state.store import JSONFileStore
 
 logger =  logging.getLogger(__name__)
@@ -40,7 +41,14 @@ class WebhookServer(StopableWSGIServer):
         raise AssertionError(f"Could not gracefully shut down {self.effective_host}:{port}, waited {wait_gracefully} seconds")
 
 
-def create_webhook_server(host: str, port: int, username: str, password: str, queue: Queue, store: JSONFileStore) -> WebhookServer:
+def create_webhook_server(
+        host: str,
+        port: int,
+        username: str,
+        password: str,
+        queue: Queue,
+        store: JSONFileStore,
+        metadata: Metadata) -> WebhookServer:
     """Starts the webhook web  server in a separate thread.
 
     :param queue: The command queue for commands posted in the webhook that offers async execution.
@@ -52,7 +60,7 @@ def create_webhook_server(host: str, port: int, username: str, password: str, qu
     if (not username) and (not password):
         logger.warning("Web server started without username and password")
 
-    app = create_pyramid_app(username, password, queue, store, production=False)
+    app = create_pyramid_app(username, password, queue, store, metadata, production=False)
     server = WebhookServer.create(app, host=host, port=port, clear_untrusted_proxy_headers=True)
     logger.info("Webhook server will spawn at %s:%d, using username %s", host, port, username)
     # Wait until the server has started

@@ -4,6 +4,7 @@ from pyramid.request import Request
 from pyramid.response import Response, FileResponse
 from pyramid.view import view_config
 
+from tradeexecutor.state.metadata import Metadata
 from tradeexecutor.state.store import JSONFileStore
 
 
@@ -19,6 +20,16 @@ def web_home(request: Request):
 def web_ping(request: Request):
     """Unauthenticated endpoint to check the server is up."""
     return {"ping": "pong"}
+
+
+@view_config(route_name='web_metadata', permission='view')
+def web_metadata(request: Request):
+    """Executor metadata."""
+    metadata: Metadata = request.registry["metadata"]
+    r = Response(content_type="application/json")
+    r.body = metadata.to_json().encode("utf-8")
+    return r
+
 
 
 @view_config(route_name='web_notify', renderer='json', permission='view')

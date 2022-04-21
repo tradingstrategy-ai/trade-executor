@@ -1,10 +1,11 @@
 """Check API endpoints."""
-
+import datetime
 from queue import Queue
 
 import pytest
 import requests
 
+from tradeexecutor.state.metadata import Metadata
 from tradeexecutor.state.state import State
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.store import JSONFileStore
@@ -24,7 +25,8 @@ def store() -> JSONFileStore:
 @pytest.fixture()
 def server_url(store):
     queue = Queue()
-    server = create_webhook_server("127.0.0.1", 5000, "test", "test", queue, store)
+    metadata = Metadata("Foobar", "Short desc", "Long desc", None, datetime.datetime.utcnow())
+    server = create_webhook_server("127.0.0.1", 5000, "test", "test", queue, store, metadata)
     server_url = "http://test:test@127.0.0.1:5000"
     yield server_url
     server.shutdown()
@@ -44,6 +46,16 @@ def test_ping(server_url):
     resp = requests.get(f"{server_url}/ping")
     assert resp.status_code == 200
     assert resp.json() == {"ping": "pong"}
+
+
+def test_metadata(server_url):
+    """Get executor metadata"""
+    resp = requests.get(f"{server_url}/metadata")
+    assert resp.status_code == 200
+    import ipdb ; ipdb.set_trace()
+    assert data["name"] == "Foobar"
+    assert data["short_description"] == "Short desc"
+    assert data["icon_url"] == None
 
 
 def test_cors(server_url):
