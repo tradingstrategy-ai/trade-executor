@@ -790,7 +790,31 @@ paths:
             default: 20
             minimum: 1
             maximum: 1000
-        # TODO: add sort order criteria (enum)... list of enum values
+        - name: sort
+          in: query
+          description: |
+
+            Which token property should be used to sort the search results.
+
+            The default sorting by `token_id` only makes sense for machine-to-machine
+            actions. The recommended sort method is to sort by descending volume (i.e.
+            most interesting tokens first).
+          required: false
+          schema:
+            type: string
+            enum: [token_id, volume_24h, liquidity_latest]
+            default: token_id
+        - name: direction
+          in: query
+          description: |
+            Sort order:
+             * `asc` - Ascending, from A to Z.
+             * `desc` - Descending, from Z to A.
+          required: false
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: asc
       responses:
         "200":
           description: OK
