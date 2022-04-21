@@ -804,7 +804,7 @@ paths:
           required: false
           schema:
             type: string
-            enum: [token_id, pair_count, volume_24h, liquidity]
+            enum: [token_id, volume_24h, liquidity_latest]
             default: token_id
         - name: direction
           in: query
