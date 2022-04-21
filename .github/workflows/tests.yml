@@ -11,20 +11,20 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v2
+    - name: Set up Python 3.9
+      uses: actions/setup-python@v2
+      with:
+        python-version: 3.9
+    - name: Get poetry
+      run: |
+        pip install poetry
+    # See pyproject.toml for details
     - name: Setup master tracked dependencies and submodules
       run: |
         git clone --recurse-submodules https://github.com/tradingstrategy-ai/web3-ethereum-defi.git ../web3-ethereum-defi
         git clone --recurse-submodules https://github.com/tradingstrategy-ai/trading-strategy.git ../trading-strategy
         git submodule update --init --recursive
-    - name: Install poetry
-      run: pipx install poetry
-    - name: Set up Python 3.9
-      uses: actions/setup-python@v3
-      with:
-        python-version: 3.9
-        cache: 'poetry'
-    # See pyproject.toml for details
     - name: Install dependencies
       run: |
         poetry install
@@ -33,7 +33,7 @@ jobs:
         npm install -g ganache
     - name: Run test scripts
       run: |
-        poetry run pytest --tb=native
+        poetry run pytest
       env:
         TRADING_STRATEGY_API_KEY: ${{ secrets.TRADING_STRATEGY_API_KEY }}
         BNB_CHAIN_JSON_RPC: ${{ secrets.BNB_CHAIN_JSON_RPC }}
