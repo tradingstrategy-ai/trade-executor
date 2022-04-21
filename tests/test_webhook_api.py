@@ -52,7 +52,7 @@ def test_metadata(server_url):
     """Get executor metadata"""
     resp = requests.get(f"{server_url}/metadata")
     assert resp.status_code == 200
-    import ipdb ; ipdb.set_trace()
+    data = resp.json()
     assert data["name"] == "Foobar"
     assert data["short_description"] == "Short desc"
     assert data["icon_url"] == None
