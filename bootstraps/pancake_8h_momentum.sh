@@ -51,7 +51,12 @@ source $STRATEGY_SECRETS_FILE
 # These variables must come from the secrets file
 check_secret_envs PRIVATE_KEY JSON_RPC_BINANCE TRADING_STRATEGY_API_KEY DISCORD_WEBHOOK_URL HTTP_ENABLED
 
+# Metadata
 export NAME="Pancake 8h momentum tick"
+export SHORT_DESCRIPTION="A data collection test strategy that trades on 8h ticks on PancakeSwap"
+export LONG_DESCRIPTION="For each two 4h candles, the strategy calculates the momentum and picks highest gainers. The portfolio holds 4 tokens at once. Only BUSD quoted pairs are considered."
+export ICON_URL="https://upload.wikimedia.org/wikipedia/commons/4/43/Blueberry_pancakes_%283%29.jpg"
+
 export STRATEGY_FILE="${PWD}/strategies/${EXECUTOR_ID}.py"
 
 # As exported from scripts/show-pancake-info.py

@@ -28,3 +28,13 @@ class Metadata:
 
     #: When the instance was started last time, UTC
     started_at: datetime.datetime
+
+    @staticmethod
+    def create_dummy() -> "Metadata":
+        return Metadata(
+            name="Dummy",
+            short_description="Dummy metadata",
+            long_description=None,
+            icon_url=None,
+            started_at=datetime.datetime.utcnow()
+        )
