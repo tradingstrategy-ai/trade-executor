@@ -21,6 +21,7 @@ from web3.contract import Contract
 from eth_defi.abi import get_deployed_contract
 from eth_defi.ganache import fork_network
 from eth_defi.hotwallet import HotWallet
+from eth_defi.txmonitor import wait_transactions_to_complete
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, fetch_deployment
 from eth_defi.utils import is_localhost_port_listening
 from tradeexecutor.cli.main import app
