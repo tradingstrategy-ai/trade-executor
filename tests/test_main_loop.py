@@ -165,7 +165,8 @@ def hot_wallet(web3: Web3, busd_token: Contract, hot_wallet_private_key: HexByte
     """
     account = Account.from_key(hot_wallet_private_key)
     web3.eth.send_transaction({"from": large_busd_holder, "to": account.address, "value": 2*10**18})
-    busd_token.functions.transfer(account.address, 10_000 * 10**18).transact({"from": large_busd_holder})
+    tx_hash = busd_token.functions.transfer(account.address, 10_000 * 10**18).transact({"from": large_busd_holder})
+    wait_transactions_to_complete(web3, [tx_hash])
     wallet = HotWallet(account)
     wallet.sync_nonce(web3)
     return wallet
