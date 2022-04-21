@@ -459,7 +459,7 @@ def test_simulated_uniswap_qstrader_strategy_one_rebalance(
     }
 
     assert debug_details["target_portfolio"] == {
-        aave_usdc.pair_id: {"quantity": pytest.approx(Decimal('47.087532545984750242'))},
+        aave_usdc.pair_id: {"quantity": pytest.approx(Decimal('47.087532545984750242'), rel=APPROX_REL_DECIMAL)},
         weth_usdc.pair_id:  {"quantity": 0},
     }
 
@@ -476,9 +476,9 @@ def test_simulated_uniswap_qstrader_strategy_one_rebalance(
     # Check the raw on-chain token balances
     raw_balances = fetch_erc20_balances_by_transfer_event(web3, hot_wallet.address)
     balances = convert_balances_to_decimal(web3, raw_balances)
-    assert balances[weth_token.address].value == pytest.approx(Decimal('0'))
-    assert balances[aave_token.address].value == pytest.approx(Decimal('44.971760338523757841'))
-    assert balances[usdc_token.address].value == pytest.approx(Decimal('497.169995'))
+    assert balances[weth_token.address].value == pytest.approx(Decimal('0'), rel=APPROX_REL_DECIMAL)
+    assert balances[aave_token.address].value == pytest.approx(Decimal('44.971760338523757841'), rel=APPROX_REL_DECIMAL)
+    assert balances[usdc_token.address].value == pytest.approx(Decimal('497.169995'), rel=APPROX_REL_DECIMAL)
 
 
 def test_simulated_uniswap_qstrader_strategy_round_trip(
@@ -522,8 +522,8 @@ def test_simulated_uniswap_qstrader_strategy_round_trip(
     #
 
     assert debug_details["target_portfolio"] == {
-        weth_usdc.pair_id: {"quantity": pytest.approx(Decimal('2.754805368333548720'))},
-        aave_usdc.pair_id: {"quantity": pytest.approx(Decimal('21.354907569100333830'))},
+        weth_usdc.pair_id: {"quantity": pytest.approx(Decimal('2.754805368333548720'), rel=APPROX_REL_DECIMAL)},
+        aave_usdc.pair_id: {"quantity": pytest.approx(Decimal('21.354907569100333830'), rel=APPROX_REL_DECIMAL)},
     }
 
     assert debug_details["normalised_weights"] == {
@@ -532,25 +532,25 @@ def test_simulated_uniswap_qstrader_strategy_round_trip(
     }
 
     # We have lost some money in trading fees
-    assert state.portfolio.get_total_equity() == pytest.approx(9983.773698830146)
-    assert state.portfolio.get_current_cash() == pytest.approx(839.3295900249992)
+    assert state.portfolio.get_total_equity() == pytest.approx(9983.773698830146, rel=APPROX_REL)
+    assert state.portfolio.get_current_cash() == pytest.approx(839.3295900249992, rel=APPROX_REL)
 
     # Check our two open positions
     assert len(state.portfolio.open_positions) == 2
     position_1 = state.portfolio.get_open_position_for_pair(weth_usdc_pair)
     assert position_1.get_quantity() == Decimal('2.747249930253346052')
-    assert position_1.get_value() == pytest.approx(4684.555636069401)
+    assert position_1.get_value() == pytest.approx(4684.555636069401, rel=APPROX_REL)
     position_2 = state.portfolio.get_open_position_for_pair(aave_usdc_pair)
-    assert position_2.get_value() == pytest.approx(4459.8884727357445)
+    assert position_2.get_value() == pytest.approx(4459.8884727357445, rel=APPROX_REL)
     assert position_2.get_quantity() == Decimal('21.354907569100333830')
 
     # Check the raw on-chain token balances
     raw_balances = fetch_erc20_balances_by_transfer_event(web3, hot_wallet.address)
     balances = convert_balances_to_decimal(web3, raw_balances)
-    assert balances[weth_token.address].value == pytest.approx(Decimal('2.747249930253346052'))
-    assert balances[aave_token.address].value == pytest.approx(Decimal('21.354907569100333830'))
+    assert balances[weth_token.address].value == pytest.approx(Decimal('2.747249930253346052'), rel=APPROX_REL_DECIMAL)
+    assert balances[aave_token.address].value == pytest.approx(Decimal('21.354907569100333830'), rel=APPROX_REL_DECIMAL)
 
     # The cash balance should be ~500 USD but due to huge AAVE price estimation error it is not
-    assert balances[usdc_token.address].value == pytest.approx(Decimal('839.3295900249992'))
+    assert balances[usdc_token.address].value == pytest.approx(Decimal('839.3295900249992'), rel=APPROX_REL_DECIMAL)
 
 
