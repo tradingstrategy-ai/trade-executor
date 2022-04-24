@@ -53,8 +53,8 @@ check_secret_envs PRIVATE_KEY JSON_RPC_BINANCE TRADING_STRATEGY_API_KEY DISCORD_
 
 # Metadata
 export NAME="Pancake 8h momentum tick"
-export SHORT_DESCRIPTION="A data collection test strategy that trades on 8h ticks on PancakeSwap"
-export LONG_DESCRIPTION="For each two 4h candles, the strategy calculates the momentum and picks highest gainers. The portfolio holds 4 tokens at once. Only BUSD quoted pairs are considered."
+export SHORT_DESCRIPTION="A data collection test that trades on PancakeSwap BUSD pairs."
+export LONG_DESCRIPTION="This strategy is a test strategy that does not aim to generated profit. The strategy trades on BUSD pairs on PancakeSwap. The strategy rebalances every 8 hours to generate maximum amount of data. For each two 4h candles, the strategy calculates the momentum and picks highest gainers. The portfolio can hold 4 positions at once."
 export ICON_URL="https://upload.wikimedia.org/wikipedia/commons/4/43/Blueberry_pancakes_%283%29.jpg"
 
 export STRATEGY_FILE="${PWD}/strategies/${EXECUTOR_ID}.py"
