@@ -830,6 +830,10 @@ paths:
             The default sorting by `token_id` only makes sense for machine-to-machine
             actions. The recommended sort method is to sort by descending volume (i.e.
             most interesting tokens first).
+
+            > **NOTE:** If sort property is specified, tokens that have that property
+            > set to NULL are excluded from the results.
+
           required: false
           schema:
             type: string
