@@ -501,7 +501,7 @@ paths:
             default: pair_id
             minimum: 1
             maximum: 100
-            enum: [pair_id, volume, volume_30d, price_change_24h, liquidity]
+            enum: [pair_id, volume, volume_30d, price_change_24h, liquidity, liquidity_change_abs_24h, liquidity_change_relative_24h]
         - name: direction
           in: query
           description: |
