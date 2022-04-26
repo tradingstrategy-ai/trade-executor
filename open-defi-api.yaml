@@ -402,7 +402,9 @@ paths:
 
         `/pairs?chain_slugs=ethereum&exchange-slugs=uniswap-v2`
 
-        The results are always paginated.
+        - Can return paginated JSON results for the frontend.
+        
+        - Can return Microsoft XLSX export of the data. In this case, always get the first 3000 entries.  
 
         ## Parameter seralisation
 
@@ -511,15 +513,44 @@ paths:
             type: string
             enum: [asc, desc]
             default: asc
+        - name: filter
+          in: query
+          description: |
+            Filter the results based on liquidity.
+            
+            This allows exclude noisy micro cap trading pairs.
+            
+             * `unfiltered` - Returns everything within [the tracking rules](https://tradingstrategy.ai/docs/programming/tracking.html).
+             * `min_liquidity_100k` - pairs with the current liquidity $100k  
+             * `min_liquidity_1M` - pairs with the current liquidity $1M
+          required: false
+          schema:
+            type: string
+            enum: [unfiltered, min_liquidity_100k, min_liquidity_1M]
+            default: min_liquidity_1M
         - name: filter_junk
           in: query
           description: |
+             Get rid of token symbol duplicates.
+            
              If there are multiple token pairs with matching symbols in the result,
              choose one with the highest volume and hide the others.
           required: false
           schema:
             type: boolean
             default: true
+        - name: format
+          in: query
+          description: |
+            Output format of the data.
+            
+             * `json` - return JSON data to be rendered in web frontend.  
+             * `excel` - always limited to top 3000 results. Returns a downloadable file.
+          required: false
+          schema:
+            type: string
+            enum: [json, excel]
+            default: json
       tags:
         - Trading pair
       responses:
@@ -1207,6 +1238,12 @@ components:
 
           type: number
           example: 0.05
+        usd_liquidity_change_24h:
+          description: |
+              The US dollar value how much liquidity has changed for the last 24h.
+
+          type: number
+          example: 120000
         liquidity_type:
           description: What of liquidity measurement is used
           type: string
