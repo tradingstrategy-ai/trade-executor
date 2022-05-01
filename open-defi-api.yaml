@@ -1671,6 +1671,45 @@ components:
             (optional)
           type: string
           format: url
+        buy_tax:
+          description: |
+            Measured buy tax for this token.
+            
+            The tax percent as 0...1 (100%) floating point.
+
+            Values > 1 are error codes meaning the token tax measurement has failed
+            and token is most likely out of liquidity, broken or a honeypot.
+            
+            Missing data or null values indicate the has not been measured yet.
+
+          type: number
+          format: float
+        transfer_tax:
+          description: |
+            Measured transfer tax for this token.
+            
+            The tax percent as 0...1 (100%) floating point.
+
+            Values > 1 are error codes meaning the token tax measurement has failed
+            and token is most likely out of liquidity, broken or a honeypot.
+            
+            Missing data or null values indicate the has not been measured yet.
+
+          type: number
+          format: float
+        sell_tax:
+          description: |
+            Measured selll tax for this token.
+            
+            The tax percent as 0...1 (100%) floating point.
+
+            Values > 1 are error codes meaning the token tax measurement has failed
+            and token is most likely out of liquidity, broken or a honeypot.
+            
+            Missing data or null values indicate the has not been measured yet.
+
+          type: number
+          format: float
 
     PairFullInfo:
       description: |
