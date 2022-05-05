@@ -859,7 +859,7 @@ paths:
                 description: List of token summmaries.
                 type: array
                 items:
-                  $ref: '#/components/schemas/TokenOnChainInfo'
+                  $ref: '#/components/schemas/PaginatedTokenOnChainInfo'
         '404':
           description: No tokens found.
         "422":
@@ -1785,6 +1785,25 @@ components:
           nullable: true
           description: >
              The total token trade volume in USD in the last 24 hours.
+
+    PaginatedTokenOnChainInfo:
+      description: >
+          Iterate through a list of TokenOnChainInfo responses.
+
+      properties:
+        total:
+          description: Total results entries
+          type: integer
+          example: 100
+        pages:
+          description: Total result pages
+          type: integer
+          example: 10
+        results:
+          description: One page of tokens info
+          type: array
+          items:
+            $ref: '#/components/schemas/TokenOnChainInfo'
 
     TopMomentum:
       description: >
