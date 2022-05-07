@@ -1,4 +1,4 @@
-"""Test that Pancake momentum strategy with 8h ticks and 4h candles.
+g"""Test that Pancake momentum strategy with 8h ticks and 4h candles.
 
 To run:
 
@@ -189,7 +189,7 @@ def hot_wallet(web3: Web3, busd_token: Contract, hot_wallet_private_key: HexByte
 @pytest.fixture()
 def strategy_path() -> Path:
     """Where do we load our strategy file."""
-    return Path(os.path.join(os.path.dirname(__file__), "..", "strategies", "pancake_8h_momentum.py"))
+    return Path(os.path.join(os.path.dirname(__file__), "../..", "strategies", "pancake_8h_momentum.py"))
 
 
 @pytest.mark.skipif(os.environ.get("CI") is not None, reason="This test is too flaky on Github CI. Manual runs only.")
