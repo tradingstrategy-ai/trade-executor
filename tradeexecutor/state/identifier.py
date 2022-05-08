@@ -54,6 +54,11 @@ class AssetIdentifier:
         """Ethereum madness."""
         return Web3.toChecksumAddress(self.address)
 
+    def __eq__(self, other: "AssetIdentifier") -> bool:
+        """Assets are considered be identical if they share the same smart contract address."""
+        assert isinstance(other, AssetIdentifier)
+        return self.address.lower() == other.address.lower()
+
 
 @dataclass_json
 @dataclass
@@ -70,8 +75,14 @@ class TradingPairIdentifier:
     #: Info page URL for this trading pair e.g. with the price charts
     info_url: Optional[str] = None
 
+    #: Exchange address.
+    #: Identifies a decentralised exchange.
+    #: Uniswap v2 likes are identified by their factor address.
+    #: TODO: Remove optionality in the future, as it is just legacy compatibility.
+    exchange_address: Optional[str] = None
+
     def __repr__(self):
-        return f"<Pair {self.base.token_symbol}-{self.quote.token_symbol} at {self.pool_address}>"
+        return f"<Pair {self.base.token_symbol}-{self.quote.token_symbol} at {self.pool_address} on exchange {self.exchange_address}>"
 
     def get_identifier(self) -> str:
         """We use the smart contract pool address to uniquely identify trading positions.
@@ -82,7 +93,3 @@ class TradingPairIdentifier:
 
     def get_human_description(self) -> str:
         return f"{self.base.token_symbol}-{self.quote.token_symbol}"
-
-    #def get_trading_pair(self, pair_universe: PandasPairUniverse) -> DEXPair:
-    #    """Reverse resolves the smart contract address to trading pair data in the current trading pair universe."""
-    #    return pair_universe.get_pair_by_smart_contract(self.pool_address)

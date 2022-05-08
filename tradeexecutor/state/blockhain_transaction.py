@@ -1,6 +1,6 @@
 import datetime
 from dataclasses import dataclass
-from typing import Optional, List, Any, Dict
+from typing import Optional, List, Any, Dict, Tuple
 
 from dataclasses_json import dataclass_json
 
@@ -9,8 +9,11 @@ from tradeexecutor.state.types import JSONHexAddress, JSONHexBytes
 
 @dataclass_json
 @dataclass
-class BlockchainTransactionInfo:
-    """Information about a blockchain level transaction associated with the trades and anything else.
+class BlockchainTransaction:
+    """An Ethereum transaction with its trade executor state associated.
+
+    The state tracks transaction over its life cycle.
+    Transaction information is easily exported to the frontend.
 
     Transaction has four phases
 
@@ -30,7 +33,7 @@ class BlockchainTransactionInfo:
     function_selector: Optional[str] = None
 
     #: Arguments we passed to the smart contract function
-    args: Optional[List[Any]] = None
+    args: Optional[Tuple[Any]] = None
 
     #: Blockchain bookkeeping
     tx_hash: Optional[JSONHexBytes] = None
@@ -60,7 +63,6 @@ class BlockchainTransactionInfo:
 
     #: The transaction revert reason if we manage to extract it
     revert_reason: Optional[str] = None
-
 
     def set_target_information(self, chain_id: int, contract_address: str, function_selector: str, args: list, details: dict):
         """Update the information on which transaction we are going to perform."""

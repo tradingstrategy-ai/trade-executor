@@ -15,7 +15,7 @@ from tradeexecutor.state.portfolio import NotEnoughMoney
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.trade import TradeExecution, TradeStatus
-from tradeexecutor.state.blockhain_transaction import BlockchainTransactionInfo
+from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.statistics.core import update_statistics
@@ -88,7 +88,7 @@ def single_asset_portfolio(start_ts, weth_usdc, weth, usdc) -> Portfolio:
         native_token_price=1.9,
     )
 
-    trade.tx_info = BlockchainTransactionInfo(
+    trade.tx_info = BlockchainTransaction(
         tx_hash=HexBytes("0x01"),
         nonce=1,
         realised_gas_units_consumed=150_000,

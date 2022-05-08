@@ -8,7 +8,7 @@ from typing import Optional, Tuple
 
 from dataclasses_json import dataclass_json
 
-from tradeexecutor.state.blockhain_transaction import BlockchainTransactionInfo
+from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
 from tradeexecutor.state.types import USDollarAmount
 
@@ -106,7 +106,7 @@ class TradeExecution:
     lp_fees_paid: Optional[USDollarAmount] = None
 
     #: Associated blockchain level details
-    tx_info: Optional[BlockchainTransactionInfo] = None
+    tx_info: Optional[BlockchainTransaction] = None
 
     #: USD price per blockchain native currency unit, at the time of execution
     native_token_price: Optional[USDollarAmount] = None

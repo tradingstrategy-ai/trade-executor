@@ -4,7 +4,7 @@ import textwrap
 from abc import abstractmethod
 from dataclasses import dataclass
 import logging
-from typing import List
+from typing import List, Optional
 
 import pandas as pd
 
@@ -36,7 +36,7 @@ class Dataset:
 @dataclass
 class TradingStrategyUniverse(TradeExecutorTradingUniverse):
     """A trading executor trading universe that using data from TradingStrategy.ai data feeds."""
-    universe: Universe
+    universe: Optional[Universe] = None
 
 
 class TradingStrategyUniverseModel(UniverseModel):
@@ -199,4 +199,5 @@ def translate_trading_pair(pair: DEXPair) -> TradingPairIdentifier:
         pool_address=pair.address,
         internal_id=pair.pair_id,
         info_url=pair.get_trading_pair_page_url(),
+        exchange_address=pair.exchange_address,
     )

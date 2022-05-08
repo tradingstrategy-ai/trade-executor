@@ -1,5 +1,3 @@
-from tradeexecutor.utils.price import is_legit_price_value
-
 """Live trading implementation of PancakeSwap v2 momentum strategy.
 
 - Trades BNB and stablecoin pairs
@@ -14,6 +12,7 @@ from tradeexecutor.utils.price import is_legit_price_value
 
 - Contains tradeable checks and does not touch tokens with transfer fees as a risk mitigation  
 """
+
 import datetime
 import logging
 from collections import Counter, defaultdict
@@ -21,6 +20,17 @@ from contextlib import AbstractContextManager
 from typing import Dict
 
 import pandas as pd
+
+from tradingstrategy.client import Client
+from tradingstrategy.candle import GroupedCandleUniverse
+from tradingstrategy.chain import ChainId
+from tradingstrategy.frameworks.qstrader import prepare_candles_for_qstrader
+from tradingstrategy.liquidity import GroupedLiquidityUniverse, LiquidityDataUnavailable
+from tradingstrategy.pair import filter_for_exchanges, PandasPairUniverse, DEXPair, filter_for_quote_tokens, \
+    StablecoinFilteringMode, filter_for_stablecoins
+from tradingstrategy.timebucket import TimeBucket
+from tradingstrategy.utils.groupeduniverse import filter_for_pairs
+from tradingstrategy.universe import Universe
 
 from tradeexecutor.ethereum.uniswap_v2_execution import UniswapV2ExecutionModel
 from tradeexecutor.state.revaluation import RevaluationMethod
@@ -34,21 +44,10 @@ from tradeexecutor.strategy.qstrader.alpha_model import AlphaModel
 from tradeexecutor.strategy.qstrader.runner import QSTraderRunner
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverseModel, \
     TradingStrategyUniverse, translate_trading_pair, Dataset
-from tradingstrategy.client import Client
-
-from tradingstrategy.candle import GroupedCandleUniverse
-from tradingstrategy.chain import ChainId
-from tradingstrategy.frameworks.qstrader import prepare_candles_for_qstrader
-from tradingstrategy.liquidity import GroupedLiquidityUniverse, LiquidityDataUnavailable
-from tradingstrategy.pair import filter_for_exchanges, PandasPairUniverse, DEXPair, filter_for_quote_tokens, \
-    StablecoinFilteringMode, filter_for_stablecoins
-from tradingstrategy.timebucket import TimeBucket
-from tradingstrategy.utils.groupeduniverse import filter_for_pairs
-from tradingstrategy.universe import Universe
-
+from tradeexecutor.utils.price import is_legit_price_value
 
 # Cannot use Python __name__ here because the module is dynamically loaded
-logger = logging.getLogger("pancakeswap_8h_momentum")
+logger = logging.getLogger("bnb_chain_16h_momentum")
 
 # Use daily candles to run the algorithm
 candle_time_frame = TimeBucket.h4
@@ -90,6 +89,10 @@ allowed_exchanges = {
     "0x9A272d734c5a0d7d84E0a892e891a553e8066dce": "0x1B6C9c20693afDE803B27F8782156c0f892ABC2d",
 }
 
+allowed_intermediary_tokens = {
+    "WBNB": "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c",
+    "USDT": "0x55d398326f99059fF775485246999027B3197955",
+}
 
 class MomentumAlphaModel(AlphaModel):
     """An alpha model that ranks pairs by the daily upwords price change %.
@@ -200,14 +203,14 @@ class MomentumAlphaModel(AlphaModel):
 
             # We need 8h data to calculate the momentum.
             # We have have
-            # opening of the first candle -> 4h -> opening of the second candle -> 4h -> closing of the second candle
+            # opening ofs the first candle -> 4h -> opening of the second candle -> 4h -> closing of the second candle
             lookback_duration = last_candle["Date"] - first_candle["Date"]
             if lookback_duration < datetime.timedelta(hours=4):
                 logger.info("Bad lookback duration %s for %s, our range is %s - %s", lookback_duration, pair, start, end)
                 problem_candle_count += 1
                 continue
 
-            if self.is_funny_price(close):
+            if is_legit_price_value(close):
                 # This trading pair is too funny that we do not want to play with it
                 funny_price_count += 1
 

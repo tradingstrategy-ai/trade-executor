@@ -21,7 +21,7 @@ from eth_defi.uniswap_v2.fees import estimate_sell_price, estimate_sell_price_de
 from eth_defi.uniswap_v2.analysis import analyse_trade, TradeSuccess
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
-from tradeexecutor.state.blockhain_transaction import BlockchainTransactionInfo
+from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 
 logger = logging.getLogger(__name__)
@@ -88,7 +88,7 @@ def translate_to_naive_swap(
     selector = deployment.router.functions.swapExactTokensForTokens
 
     # Create record of this transaction
-    tx_info = t.tx_info = BlockchainTransactionInfo()
+    tx_info = t.tx_info = BlockchainTransaction()
     tx_info.set_target_information(
         web3.eth.chain_id,
         deployment.router.address,
@@ -146,6 +146,52 @@ def prepare_swaps(
 
 
 def approve_tokens(
+        web3: Web3,
+        deployment: UniswapV2Deployment,
+        hot_wallet: HotWallet,
+        instructions: List[TradeExecution],
+    ) -> List[SignedTransaction]:
+    """Approve multiple ERC-20 token allowances for the trades needed.
+
+    Each token is approved only once. E.g. if you have 4 trades using USDC,
+    you will get 1 USDC approval.
+    """
+
+    signed = []
+
+    approvals = Counter()
+
+    for idx, t in enumerate(instructions):
+
+        base_token_details = fetch_erc20_details(web3, t.pair.base.checksum_address)
+        quote_token_details = fetch_erc20_details(web3, t.pair.quote.checksum_address)
+
+        # Update approval counters for the whole batch
+        if t.is_buy():
+            approvals[quote_token_details.address] += int(t.planned_reserve * 10**quote_token_details.decimals)
+        else:
+            approvals[base_token_details.address] += int(-t.planned_quantity * 10**base_token_details.decimals)
+
+    for idx, tpl in enumerate(approvals.items()):
+        token_address, amount = tpl
+
+        assert amount > 0, f"Got a non-positive approval {token_address}: {amount}"
+
+        token = get_deployed_contract(web3, "IERC20.json", token_address)
+        tx = token.functions.approve(
+            deployment.router.address,
+            amount,
+        ).buildTransaction({
+            'chainId': web3.eth.chain_id,
+            'gas': 100_000,  # Estimate max 100k per approval
+            'from': hot_wallet.address,
+        })
+        signed.append(hot_wallet.sign_transaction_with_new_nonce(tx))
+
+    return signed
+
+
+def approve_infinity(
         web3: Web3,
         deployment: UniswapV2Deployment,
         hot_wallet: HotWallet,

@@ -1,13 +1,5 @@
-"""Test that Pancake momentum strategy with 8h ticks and 4h candles.
+"""Uniswap v2 routing model tests."""
 
-To run:
-
-.. code-block:: shell
-
-    export TRADING_STRATEGY_API_KEY="secret-token:tradingstrategy-6ce98...."
-    export BNB_CHAIN_JSON_RPC="https://bsc-dataseed.binance.org/"
-
-"""
 import datetime
 import logging
 import os
@@ -161,8 +153,9 @@ def cake_busd_uniswap_trading_pair() -> HexAddress:
 
 
 @pytest.fixture
-def wbnb_busd_uniswap_trading_pair() -> HexAddress:
-    return HexAddress(HexStr("0x58f876857a02d6762e0101bb5c46a8c1ed44dc16"))
+def cake_bnb_pair_address() -> HexAddress:
+    """See https://tradingstrategy.ai/trading-view/binance/pancakeswap-v2/cake-bnb."""
+    return HexAddress(HexStr("0x0ed7e52944161450477ee417de9cd3a859b14fd0"))
 
 
 @pytest.fixture
@@ -186,138 +179,11 @@ def hot_wallet(web3: Web3, busd_token: Contract, hot_wallet_private_key: HexByte
     return wallet
 
 
-@pytest.fixture()
-def strategy_path() -> Path:
-    """Where do we load our strategy file."""
-    return Path(os.path.join(os.path.dirname(__file__), "../..", "strategies", "pancake_8h_momentum.py"))
+def test_routing_three_way(
+        hot_wallet,
+
+):
+    """Make a three way trade BUSD - > BNB -> Cake."""
 
 
-@pytest.mark.skipif(os.environ.get("CI") is not None, reason="This test is too flaky on Github CI. Manual runs only.")
-def test_pancake_4h_candles(
-        logger: logging.Logger,
-        strategy_path: Path,
-        ganache_bnb_chain_fork,
-        hot_wallet: HotWallet,
-        pancakeswap_v2: UniswapV2Deployment,
-    ):
-    """Run the main loop using 8h tick, 4h candles.
 
-    Sets up the whole trade executor live trading application in forked BNB Chain
-    Ganache environment.
-
-    Note that because this integration test does not use historical price data
-    for estimating buy/sell prices the actual performance of the test
-    does not make any sense. The test is purely to stress out integrity
-    of code paths.
-    """
-
-    debug_dump_file = "/tmp/test_main_loop.debug.json"
-
-    state_file = "/tmp/test_main_loop.json"
-
-    # Set up the configuration for the backtesting,
-    # run the loop 6 cycles using Ganache + live BNB Chain fork
-    environment = {
-        "NAME": "pytest: pancake_8h_momentum_tick.py",
-        "STRATEGY_FILE": strategy_path.as_posix(),
-        "PRIVATE_KEY": hot_wallet.account.privateKey.hex(),
-        "HTTP_ENABLED": "false",
-        "JSON_RPC": ganache_bnb_chain_fork,
-        "GAS_PRICE_METHOD": "legacy",
-        "UNISWAP_V2_FACTORY_ADDRESS": pancakeswap_v2.factory.address,
-        "UNISWAP_V2_ROUTER_ADDRESS": pancakeswap_v2.router.address,
-        "UNISWAP_V2_INIT_CODE_HASH": pancakeswap_v2.init_code_hash,
-        "STATE_FILE": state_file,
-        "RESET_STATE": "true",
-        "EXECUTION_TYPE": "uniswap_v2_hot_wallet",
-        "APPROVAL_TYPE": "unchecked",
-        "CACHE_PATH": "/tmp/main_loop_tests",
-        "TRADING_STRATEGY_API_KEY": os.environ["TRADING_STRATEGY_API_KEY"],
-        "DEBUG_DUMP_FILE": debug_dump_file,
-        "BACKTEST_START": "2021-12-07",
-        "BACKTEST_END": "2021-12-09",
-        "TICK_OFFSET_MINUTES": "10",
-        "TICK_SIZE": "8h",
-        "CONFIRMATION_BLOCK_COUNT": "8",
-    }
-
-    # Points to the private test trash channel on Discord
-    discord_webhook_url = os.environ.get("DISCORD_TRASH_WEBHOOK_URL")
-    if discord_webhook_url:
-        environment["DISCORD_WEBHOOK_URL"] = discord_webhook_url
-        environment["DISCORD_AVATAR_URL"] = "https://i0.wp.com/www.theterminatorfans.com/wp-content/uploads/2012/09/the-terminator3.jpg?resize=900%2C450&ssl=1"
-
-    clear_caches = os.environ.get("CLEAR_CACHES")
-    if clear_caches:
-        environment["clear_caches"] = clear_caches
-
-    # https://typer.tiangolo.com/tutorial/testing/
-    runner = CliRunner()
-
-    try:
-        result = runner.invoke(app, "start", env=environment)
-
-        if result.exception:
-            raise result.exception
-
-        if result.exit_code != 0:
-            logger.error("runner failed")
-            for line in result.stdout.split('\n'):
-                logger.error(line)
-            raise AssertionError("runner launch failed")
-
-        assert result.exit_code == 0
-
-    except ValueError as e:
-        # ValueError: I/O operation on closed file.
-        # bug in Typer,
-        # but the app should still have completed
-        logger.error("Typer failed to close cleanly %s", e)
-
-    with open(debug_dump_file, "rb") as inp:
-        debug_dump = pickle.load(inp)
-
-        # We run for 2 days, 3 rebalances per day
-        assert len(debug_dump) == 6
-
-        cycle_1 = debug_dump[1]
-        cycle_2 = debug_dump[2]
-        cycle_3 = debug_dump[3]
-        # cycle_4 = debug_dump[4]
-
-        logger.info("Cycle 1 trades %s", cycle_1["rebalance_trades"])
-        assert cycle_1["cycle"] == 1
-        assert cycle_1["timestamp"] == datetime.datetime(2021, 12, 7, 0, 0)
-        assert len(cycle_1["approved_trades"]) == 4
-        assert len(cycle_1["positions_at_start_of_construction"]) == 0
-
-        # 4 buys + 4 sells
-        logger.info("Cycle 2 trades %s", cycle_2["rebalance_trades"])
-        assert cycle_2["cycle"] == 2
-        assert cycle_2["timestamp"].replace(minute=0) == datetime.datetime(2021, 12, 7, 8, 0)
-        assert len(cycle_2["approved_trades"]) == 8
-        assert len(cycle_2["positions_at_start_of_construction"]) == 4
-
-        # 4 buys + 4 sells
-        logger.info("Cycle 3 trades %s", cycle_3["rebalance_trades"])
-        assert cycle_3["cycle"] == 3
-        assert len(cycle_3["positions_at_start_of_construction"]) == 4
-        assert len(cycle_3["approved_trades"]) == 8
-        assert cycle_3["timestamp"].replace(minute=0) == datetime.datetime(2021, 12, 7, 16, 0)
-
-        # 3 buys + 4 sells
-        #logger.info("Cycle 4 trades %s", cycle_4["rebalance_trades"])
-        #assert cycle_4["cycle"] == 4
-        #assert len(cycle_4["positions_at_start_of_construction"]) == 4
-        #assert len(cycle_4["approved_trades"]) == 7
-        #assert cycle_4["timestamp"].replace(minute=0) == datetime.datetime(2021, 12, 8, 0, 0)
-
-    # See we can load the state after all this testing.
-    # Mainly stresses on serialization/deserialization issues.
-    json_text = open(state_file, "rt").read()
-    state = State.from_json(json_text)
-    state.perform_integrity_check()
-    assert len(state.portfolio.open_positions) > 0
-    assert len(state.portfolio.closed_positions) > 0
-
-    logger.info("All ok")

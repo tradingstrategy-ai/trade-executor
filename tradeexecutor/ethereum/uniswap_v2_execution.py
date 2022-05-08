@@ -18,6 +18,21 @@ from tradeexecutor.strategy.execution_model import ExecutionModel
 logger = logging.getLogger(__name__)
 
 
+class UniswapV2RoutingInstructions:
+    """Helper class to router Uniswap trades.
+
+    - Define allowed routes to use
+
+    - Define routing for three way trades
+    """
+
+    def __init__(self, routing_table: dict):
+        """
+
+        :param routing_table: Exchange factory address -> router address data
+        """
+
+
 class UniswapV2ExecutionModel(ExecutionModel):
     """Run order execution on a single Uniswap v2 style exchanges."""
 
