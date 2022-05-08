@@ -68,7 +68,12 @@ class BlockchainTransaction:
     revert_reason: Optional[str] = None
 
     def __repr__(self):
-        return f"<TX nonce:{self.nonce} to:{self.contract_address} func:{self.function_selector} args:{self.args} status:{self.status}>"
+        if self.status is True:
+            return f"<TX nonce:{self.nonce} to:{self.contract_address} func:{self.function_selector} args:{self.args} status:{self.status}>"
+        elif self.status is False:
+            return f"<TX nonce:{self.nonce} to:{self.contract_address} func:{self.function_selector} args:{self.args} status:{self.status} reason:{self.revert_reason}>"
+        else:
+            return f"<TX nonce:{self.nonce} to:{self.contract_address} func:{self.function_selector} args:{self.args} unresolved>"
 
     def is_success(self) -> bool:
         return self.status
@@ -99,7 +104,9 @@ class BlockchainTransaction:
         block_hash: str,
         realised_gas_units_consumed: int,
         realised_gas_price: int,
-        status: bool):
+        status: bool,
+        revert_reason: Optional[str] = None,
+        ):
         """Update the information we are going to use to broadcast the transaction."""
         assert isinstance(ts, datetime.datetime)
         assert type(block_number) == int
@@ -113,3 +120,4 @@ class BlockchainTransaction:
         self.realised_gas_price = realised_gas_price
         self.realised_gas_units_consumed = realised_gas_units_consumed
         self.status = status
+        self.revert_reason = revert_reason

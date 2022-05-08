@@ -251,11 +251,12 @@ def test_simple_routing_one_leg(
     # Execute
     tx_builder.broadcast_and_wait_transactions_to_complete(
         web3,
-        txs
+        txs,
+        revert_reasons=True
     )
 
     for tx in txs:
-        assert tx.is_succes(), f"Transaction failed: {tx}"
+        assert tx.is_success(), f"Transaction failed: {tx}"
 
 
 

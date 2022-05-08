@@ -10,6 +10,7 @@ from web3.contract import Contract, ContractFunction
 
 from eth_defi.gas import GasPriceSuggestion, apply_gas
 from eth_defi.hotwallet import HotWallet
+from eth_defi.revert_reason import fetch_transaction_revert_reason
 from eth_defi.txmonitor import broadcast_transactions, wait_transactions_to_complete, \
     broadcast_and_wait_transactions_to_complete
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
@@ -73,6 +74,8 @@ class TransactionBuilder:
             function_selector=args_bound_func.fn_name,
             args=args_bound_func.args,
             signed_bytes=signed_bytes,
+            tx_hash=signed_tx.hash.hex(),
+            nonce=signed_tx.nonce,
         )
 
     def create_transaction(
@@ -123,7 +126,9 @@ class TransactionBuilder:
             txs: List[BlockchainTransaction],
             confirmation_block_count=0,
             max_timeout=datetime.timedelta(minutes=5),
-            poll_delay=datetime.timedelta(seconds=1)):
+            poll_delay=datetime.timedelta(seconds=1),
+            revert_reasons=False,
+    ):
         """Watch multiple transactions executed at parallel.
 
         Modifies the given transaction objects in-place
@@ -132,7 +137,10 @@ class TransactionBuilder:
         logger.info("Waiting %d txs to confirm", len(txs))
         assert isinstance(confirmation_block_count, int)
 
+        # tx hash -> BlockchainTransaction map
         tx_hashes = {t.tx_hash: t for t in txs}
+
+        signed_txs = [TransactionBuilder.get_signed_transaction(t) for t in txs]
 
         now_ = datetime.datetime.utcnow()
         for tx in txs:
@@ -140,21 +148,31 @@ class TransactionBuilder:
 
         receipts = broadcast_and_wait_transactions_to_complete(
             web3,
-            list(tx_hashes.keys()),
-            confirmation_block_count,
-            max_timeout,
-            poll_delay)
+            signed_txs,
+            confirm_ok=False,
+            confirmation_block_count=confirmation_block_count,
+            max_timeout=max_timeout,
+            poll_delay=poll_delay)
 
         now_ = datetime.datetime.utcnow()
 
+        # Update persistant status of transactions
+        # based on the result read from the chain
         for tx_hash, receipt in receipts.items():
             tx = tx_hashes[tx_hash.hex()]
             status = receipt["status"] == 1
+
+            reason = None
+            if not status:
+                if revert_reasons:
+                    reason = fetch_transaction_revert_reason(web3, tx_hash)
+
             tx.set_confirmation_information(
                 now_,
                 receipt["blockNumber"],
                 receipt["blockHash"].hex(),
                 receipt.get("effectiveGasPrice", 0),
                 receipt["gasUsed"],
-                status
+                status,
+                reason
             )
