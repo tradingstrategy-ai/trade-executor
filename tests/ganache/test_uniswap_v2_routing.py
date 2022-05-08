@@ -245,6 +245,18 @@ def test_simple_routing_one_leg(
         max_slippage=0.01,
     )
 
+    # We should have 1 approve, 1 swap
+    assert len(txs) == 2
+
+    # Execute
+    tx_builder.broadcast_and_wait_transactions_to_complete(
+        web3,
+        txs
+    )
+
+    for tx in txs:
+        assert tx.is_succes(), f"Transaction failed: {tx}"
+
 
 
 

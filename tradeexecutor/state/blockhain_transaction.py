@@ -48,6 +48,9 @@ class BlockchainTransaction:
     #: Raw bytes of the signed transaction
     signed_bytes: Optional[JSONHexBytes] = None
 
+    #: When this transaction was broadcasted
+    broadcasted_at: Optional[datetime.datetime] = None
+
     included_at: Optional[datetime.datetime] = None
     block_number: Optional[int] = None
     block_hash: Optional[JSONHexBytes] = None
@@ -63,6 +66,12 @@ class BlockchainTransaction:
 
     #: The transaction revert reason if we manage to extract it
     revert_reason: Optional[str] = None
+
+    def __repr__(self):
+        return f"<TX nonce:{self.nonce} to:{self.contract_address} func:{self.function_selector} args:{self.args} status:{self.status}>"
+
+    def is_success(self) -> bool:
+        return self.status
 
     def set_target_information(self, chain_id: int, contract_address: str, function_selector: str, args: list, details: dict):
         """Update the information on which transaction we are going to perform."""
