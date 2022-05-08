@@ -10,6 +10,8 @@ from typing import List
 
 import pytest
 from eth_account import Account
+
+from eth_defi.gas import estimate_gas_fees, node_default_gas_price_strategy
 from eth_defi.txmonitor import wait_transactions_to_complete
 from eth_typing import HexAddress, HexStr
 from hexbytes import HexBytes
@@ -23,8 +25,10 @@ from eth_defi.hotwallet import HotWallet
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, fetch_deployment
 from eth_defi.utils import is_localhost_port_listening
 from tradeexecutor.cli.main import app
+from tradeexecutor.ethereum.tx import TransactionBuilder
+from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2RoutingState, UniswapV2SimpleRoutingModel
 from tradeexecutor.state.state import State
-from tradeexecutor.state.identifier import AssetIdentifier
+from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 
 from tradeexecutor.cli.log import setup_pytest_logging
 
@@ -83,7 +87,9 @@ def ganache_bnb_chain_fork(logger, large_busd_holder) -> str:
 def web3(ganache_bnb_chain_fork: str):
     """Set up a local unit testing blockchain."""
     # https://web3py.readthedocs.io/en/stable/examples.html#contract-unit-tests-in-python
-    return Web3(HTTPProvider(ganache_bnb_chain_fork))
+    web3 = Web3(HTTPProvider(ganache_bnb_chain_fork))
+    web3.eth.set_gas_price_strategy(node_default_gas_price_strategy)
+    return web3
 
 
 @pytest.fixture
@@ -105,6 +111,7 @@ def busd_token(web3) -> Contract:
     return token
 
 
+@pytest.fixture
 def cake_token(web3) -> Contract:
     """CAKE token."""
     token = get_deployed_contract(web3, "ERC20MockDecimals.json", "0x0E09FaBB73Bd3Ade0a17ECC321fD13a19e81cE82")
@@ -133,8 +140,12 @@ def wbnb_token(pancakeswap_v2: UniswapV2Deployment) -> Contract:
 
 
 @pytest.fixture
-def asset_busd(busd_token, chain_id) -> AssetIdentifier:
-    return AssetIdentifier(chain_id, busd_token.address, busd_token.functions.symbol().call(), busd_token.functions.decimals().call())
+def busd_asset(busd_token, chain_id) -> AssetIdentifier:
+    return AssetIdentifier(
+        chain_id,
+        busd_token.address,
+        busd_token.functions.symbol().call(),
+        busd_token.functions.decimals().call())
 
 
 @pytest.fixture
@@ -143,7 +154,7 @@ def asset_wbnb(wbnb_token, chain_id) -> AssetIdentifier:
 
 
 @pytest.fixture
-def asset_cake(cake_token, chain_id) -> AssetIdentifier:
+def cake_asset(cake_token, chain_id) -> AssetIdentifier:
     return AssetIdentifier(chain_id, cake_token.address, cake_token.functions.symbol().call(), cake_token.functions.decimals().call())
 
 
@@ -156,12 +167,6 @@ def cake_busd_uniswap_trading_pair() -> HexAddress:
 def cake_bnb_pair_address() -> HexAddress:
     """See https://tradingstrategy.ai/trading-view/binance/pancakeswap-v2/cake-bnb."""
     return HexAddress(HexStr("0x0ed7e52944161450477ee417de9cd3a859b14fd0"))
-
-
-@pytest.fixture
-def supported_reserves(busd) -> List[AssetIdentifier]:
-    """What reserve currencies we support for the strategy."""
-    return [busd]
 
 
 @pytest.fixture()
@@ -179,11 +184,68 @@ def hot_wallet(web3: Web3, busd_token: Contract, hot_wallet_private_key: HexByte
     return wallet
 
 
-def test_routing_three_way(
-        hot_wallet,
+@pytest.fixture
+def cake_busd_trading_pair(cake_asset, busd_asset, pancakeswap_v2) -> TradingPairIdentifier:
+    """Cake-BUSD pair representation in the trade executor domain."""
+    return TradingPairIdentifier(
+        cake_asset,
+        busd_asset,
+        "0x804678fa97d91B974ec2af3c843270886528a9E6",  #  https://tradingstrategy.ai/trading-view/binance/pancakeswap-v2/cake-busd
+        internal_id=1000,  # random number
+        exchange_address=pancakeswap_v2.factory.address,
+    )
 
+
+@pytest.fixture(scope="module")
+def routing_model():
+
+    # Allowed exchanges as factory -> router pairs
+    factory_router_map = {
+        # Pancake
+        "0xcA143Ce32Fe78f1f7019d7d551a6402fC5350c73": ("0x10ED43C718714eb63d5aA57B78B54704E256024E", "0x00fb7f630766e6a796048ea87d01acd3068e8ff67d078148a3fa3f4a84f69bd5"),
+        # Biswap
+        #"0x858e3312ed3a876947ea49d572a7c42de08af7ee": ("0x3a6d8cA21D1CF76F653A67577FA0D27453350dD8", )
+        # FSTSwap
+        #"0x9A272d734c5a0d7d84E0a892e891a553e8066dce": ("0x1B6C9c20693afDE803B27F8782156c0f892ABC2d", ),
+    }
+
+    return UniswapV2SimpleRoutingModel(factory_router_map, set())
+
+
+def test_simple_routing_one_leg(
+        web3,
+        hot_wallet,
+        busd_asset,
+        routing_model,
+        cake_busd_trading_pair,
 ):
-    """Make a three way trade BUSD - > BNB -> Cake."""
+    """Make 1x two way trade BUSD -> Cake.
+
+    - Buy Cake with BUSD
+    """
+
+    # Get live fee structure from BNB Chain
+    fees = estimate_gas_fees(web3)
+
+    # Prepare a transaction builder
+    tx_builder = TransactionBuilder(
+        web3,
+        hot_wallet,
+        fees,
+    )
+
+    # Create
+    routing_state = UniswapV2RoutingState(tx_builder)
+
+    txs = routing_model.trade(
+        routing_state,
+        cake_busd_trading_pair,
+        busd_asset,
+        100 * 10**18,  # Buy Cake worth of 100 BUSD,
+        max_slippage=0.01,
+    )
+
+
 
 
 

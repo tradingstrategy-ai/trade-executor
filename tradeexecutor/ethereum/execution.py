@@ -9,6 +9,7 @@ from eth_account.datastructures import SignedTransaction
 from eth_typing import HexAddress
 from hexbytes import HexBytes
 from web3 import Web3
+from web3.contract import Contract
 
 from eth_defi.abi import get_deployed_contract
 from eth_defi.gas import GasPriceSuggestion, apply_gas, estimate_gas_fees
@@ -410,3 +411,9 @@ def get_held_assets(web3: Web3, address: HexAddress, assets: List[AssetIdentifie
         balance = token_details.contract.functions.balanceOf(address).call()
         result[token_details.address] = Decimal(balance) / Decimal(10 ** token_details.decimals)
     return result
+
+
+def get_token_for_asset(web3: Web3, asset: AssetIdentifier) -> Contract:
+    """Get ERC-20 contract proxy."""
+    erc_20 = get_deployed_contract(web3, "ERC20MockDecimals.json", asset.address)
+    return erc_20

@@ -4,7 +4,7 @@ import datetime
 from eth_account.datastructures import SignedTransaction
 from hexbytes import HexBytes
 from web3 import Web3
-from web3.contract import Contract
+from web3.contract import Contract, ContractFunction
 
 from eth_defi.gas import GasPriceSuggestion, apply_gas
 from eth_defi.hotwallet import HotWallet
@@ -34,9 +34,39 @@ class TransactionBuilder:
         assert isinstance(gas_fees, GasPriceSuggestion)
         self.hot_wallet = hot_wallet
         self.web3 = web3
+        self.gas_fees = gas_fees
         # Read once at the start, then cache
         self.chain_id = web3.eth.chain_id
-        self.gas_fees = gas_fees
+
+    def sign_transaction(
+            self,
+            args_bound_func: ContractFunction,
+            gas_limit: int
+    ) -> BlockchainTransaction:
+        """Createa a signed tranaction and set up tx broadcast parameters.
+
+        :param args_bound_func: Web3 function thingy
+        :param gas_limit: Max gas per this transaction
+        """
+
+        tx = args_bound_func.buildTransaction({
+            "chainId": self.chain_id,
+            "from": self.hot_wallet.address,
+            "gas": gas_limit,
+        })
+
+        apply_gas(tx, self.gas_fees)
+
+        signed_tx = self.hot_wallet.sign_transaction_with_new_nonce(tx)
+        signed_bytes = signed_tx.rawTransaction.hex()
+
+        return BlockchainTransaction(
+            chain_id=self.chain_id,
+            contract_address=args_bound_func.address,
+            function_selector=args_bound_func.fn_name,
+            args=args_bound_func.args,
+            signed_bytes=signed_bytes,
+        )
 
     def create_transaction(
             self,
@@ -60,29 +90,9 @@ class TransactionBuilder:
         #     'gas': 100_000,  # Estimate max 100k per approval
         #     'from': hot_wallet.address,
         # })
-
         contract_func = contract.functions[function_selector]
-
         args_bound_func = contract_func(*args)
-
-        tx = args_bound_func.buildTransaction({
-            "chainId": self.chain_id,
-            "from": self.hot_wallet.address,
-            "gas": gas_limit,
-        })
-
-        apply_gas(tx, self.gas_fees)
-
-        signed_tx = self.hot_wallet.sign_transaction_with_new_nonce(tx)
-        signed_bytes = signed_tx.rawTransaction.hex()
-
-        return BlockchainTransaction(
-            chain_id=self.chain_id,
-            contract_address=contract.address,
-            function_selector=function_selector,
-            args=args,
-            signed_bytes=signed_bytes,
-        )
+        return self.sign_transaction(args_bound_func, gas_limit)
 
     def broadcast(self, tx: "BlockchainTransaction") -> HexBytes:
         """Broadcast the transaction.
