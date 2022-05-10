@@ -922,6 +922,19 @@ paths:
         Return top up and down 100 price changes for 24h.
 
         The results are split for all trading pairs and trading pairs with $1M min liquidity.
+
+      parameters:
+        - name: summary
+          in: query
+          description: | 
+          
+            If set, return only the top 5 entries to reduce the download size.
+
+          required: false
+          schema:
+            type: boolean
+            default: false
+
       tags:
         - Trading signal
       responses:
