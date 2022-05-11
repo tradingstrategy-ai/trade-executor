@@ -26,7 +26,7 @@ from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, fetch_deployment
 from eth_defi.utils import is_localhost_port_listening
 from tradeexecutor.cli.main import app
 from tradeexecutor.ethereum.tx import TransactionBuilder
-from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2RoutingState, UniswapV2SimpleRoutingModel
+from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2RoutingState, UniswapV2SimpleRoutingModel, OutOfBalance
 from tradeexecutor.state.state import State
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 
@@ -243,6 +243,7 @@ def test_simple_routing_one_leg(
         busd_asset,
         100 * 10**18,  # Buy Cake worth of 100 BUSD,
         max_slippage=0.01,
+        check_balances=True,
     )
 
     # We should have 1 approve, 1 swap
@@ -255,11 +256,42 @@ def test_simple_routing_one_leg(
         revert_reasons=True
     )
 
+    # Check all transactions succeeded
     for tx in txs:
         print(tx)
-        # assert tx.is_success(), f"Transaction failed: {tx}"
+        assert tx.is_success(), f"Transaction failed: {tx}"
 
 
+def test_simple_routing_not_enough_balance(
+        web3,
+        hot_wallet,
+        busd_asset,
+        routing_model,
+        cake_busd_trading_pair,
+):
+    """Try to buy, but does not have cash."""
 
+    # Get live fee structure from BNB Chain
+    fees = estimate_gas_fees(web3)
+
+    # Prepare a transaction builder
+    tx_builder = TransactionBuilder(
+        web3,
+        hot_wallet,
+        fees,
+    )
+
+    # Create
+    routing_state = UniswapV2RoutingState(tx_builder)
+
+    with pytest.raises(OutOfBalance):
+        routing_model.trade(
+            routing_state,
+            cake_busd_trading_pair,
+            busd_asset,
+            1_000_000_000 * 10**18,  # Buy Cake worth of 10B BUSD,
+            max_slippage=0.01,
+            check_balances=True,
+        )
 
 

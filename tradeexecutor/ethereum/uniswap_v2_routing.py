@@ -4,9 +4,11 @@ from dataclasses import dataclass, field
 from typing import Dict, Set, List, Optional, Tuple
 
 from eth_typing import HexAddress
+from web3.contract import Contract
 
 from eth_defi.abi import get_deployed_contract
 from eth_defi.hotwallet import HotWallet
+from eth_defi.token import fetch_erc20_details
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, fetch_deployment
 from eth_defi.uniswap_v2.swap import swap_with_slippage_protection
 from tradeexecutor.ethereum.execution import get_token_for_asset
@@ -14,6 +16,10 @@ from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
 from tradeexecutor.strategy.routing import RoutingModel
+
+
+class OutOfBalance(Exception):
+    """Did not have enough tokens"""
 
 
 class UniswapV2RoutingState:
@@ -36,6 +42,7 @@ class UniswapV2RoutingState:
 
     def __init__(self, tx_builder: TransactionBuilder, swap_gas_limit=2_000_000):
         self.tx_builder = tx_builder
+        self.hot_wallet = tx_builder.hot_wallet
         self.web3 = self.tx_builder.web3
         # router -> erc-20 mappings
         self.approved_routes = defaultdict(set)
@@ -64,7 +71,29 @@ class UniswapV2RoutingState:
             init_code_hash=init_code_hash,
         )
 
-    def ensure_token_approved(self, token_address: str, router_address: str) -> List[BlockchainTransaction]:
+    def check_has_enough_tokens(
+            self,
+            erc_20: Contract,
+            amount: int,
+    ):
+        """Check we have enough buy side tokens to do a trade.
+
+        This might not be the case if we are preparing transactions ahead of time and
+        sell might have not happened yet.
+        """
+        balance = erc_20.functions.balanceOf(self.hot_wallet.address).call()
+        if balance < amount:
+            token_details = fetch_erc20_details(
+                erc_20.web3,
+                erc_20.address,
+            )
+            d_balance = token_details.convert_to_decimals(balance)
+            d_amount = token_details.convert_to_decimals(amount)
+            raise OutOfBalance(f"Address {self.hot_wallet.address} does not have enough {token_details} tokens to trade. Need {d_amount}, has {d_balance}")
+
+    def ensure_token_approved(self,
+                              token_address: str,
+                              router_address: str) -> List[BlockchainTransaction]:
         """Make sure we have ERC-20 approve() for the trade
 
         - Infinite approval on-chain
@@ -73,6 +102,7 @@ class UniswapV2RoutingState:
 
         :param token_address:
         :param router_address:
+
         :return: Create 0 or 1 transactions if needs to be approved
         """
 
@@ -106,8 +136,14 @@ class UniswapV2RoutingState:
             target_pair: TradingPairIdentifier,
             reserve_asset: AssetIdentifier,
             reserve_amount: int,
-            max_slippage: float):
-        """Prepare the actual swap"""
+            max_slippage: float,
+            check_balances: False):
+        """Prepare the actual swap.
+
+        :param check_balances:
+            Check on-chain balances that the account has enough tokens
+            and raise exception if not.
+        """
 
         web3 = self.web3
         hot_wallet = self.tx_builder.hot_wallet
@@ -118,6 +154,9 @@ class UniswapV2RoutingState:
             quote_token = get_token_for_asset(web3, target_pair.quote)
         else:
             raise RuntimeError(f"Cannot trade {target_pair}")
+
+        if check_balances:
+            self.check_has_enough_tokens(quote_token, reserve_amount)
 
         bound_swap_func = swap_with_slippage_protection(
             uniswap,
@@ -169,6 +208,7 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
                           reserve_asset: AssetIdentifier,
                           reserve_amount: int,
                           max_slippage: float,
+                          check_balances=False,
                           ) -> List[BlockchainTransaction]:
         """Prepare a trade where target pair has out reserve asset as a quote token.
 
@@ -184,6 +224,7 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
             reserve_asset,
             reserve_amount,
             max_slippage,
+            check_balances,
             )
         return txs
 
@@ -193,7 +234,23 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
               reserve_asset: AssetIdentifier,
               reserve_asset_amount: int,  # Raw amount of the reserve asset
               max_slippage: float,
+              check_balances=False,
               ) -> List[BlockchainTransaction]:
+        """
+
+        :param routing_state:
+        :param target_pair:
+        :param reserve_asset:
+        :param reserve_asset_amount:
+        :param max_slippage:
+        :param check_balances:
+            Check on-chain balances that the account has enough tokens
+            and raise exception if not.
+        :return:
+            List of prepared transactions to make this trade.
+            These transactions, like approve() may relate to the earlier
+            transactions in the `routing_state`.
+        """
 
         # Our reserves match directly the asset on trading pair
         # -> we can do one leg trade
@@ -204,4 +261,5 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
                 reserve_asset,
                 reserve_asset_amount,
                 max_slippage,
+                check_balances=check_balances,
             )

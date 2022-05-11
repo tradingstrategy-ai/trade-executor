@@ -70,6 +70,7 @@ class TransactionBuilder:
 
         return BlockchainTransaction(
             chain_id=self.chain_id,
+            from_address=self.hot_wallet.address,
             contract_address=args_bound_func.address,
             function_selector=args_bound_func.fn_name,
             args=args_bound_func.args,
@@ -134,6 +135,11 @@ class TransactionBuilder:
         Modifies the given transaction objects in-place
         and updates block inclusion and succeed status.
         """
+
+        # Log what we are doing
+        for tx in txs:
+            logger.info("Broadcasting and executing transaction %s", tx)
+
         logger.info("Waiting %d txs to confirm", len(txs))
         assert isinstance(confirmation_block_count, int)
 

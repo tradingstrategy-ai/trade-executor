@@ -10,21 +10,32 @@ from tradeexecutor.state.types import JSONHexAddress, JSONHexBytes
 @dataclass_json
 @dataclass
 class BlockchainTransaction:
-    """An Ethereum transaction with its trade executor state associated.
+    """A stateful blockchain transaction.
 
-    The state tracks transaction over its life cycle.
-    Transaction information is easily exported to the frontend.
+    - The state tracks a transaction over its life cycle
 
-    Transaction has four phases
+    - Transactions are part of a larger logical operation (a trade)
+
+    - Transactions can be resolved either to success or failed
+
+    - Transaction information is easily exported to the frontend
+
+    Transaction has (rough) four phases
 
     1. Preparation
+
     2. Signing
+
     3. Broadcast
+
     4. Confirmation
     """
 
     #: Chain id from https://github.com/ethereum-lists/chains
     chain_id: Optional[int] = None
+
+    #: TODO: Part of signed bytes. Create an accessor.
+    from_address: Optional[str] = None
 
     #: Contract we called. Usually the Uniswap v2 router address.
     contract_address: Optional[JSONHexAddress] = None
@@ -69,13 +80,14 @@ class BlockchainTransaction:
 
     def __repr__(self):
         if self.status is True:
-            return f"<TX nonce:{self.nonce} to:{self.contract_address} func:{self.function_selector} args:{self.args} status:{self.status}>"
+            return f"<Tx from:{self.from_address}\n  nonce:{self.nonce}\n  to:{self.contract_address}\n  func:{self.function_selector}\n  args:{self.args}\n  succeed>"
         elif self.status is False:
-            return f"<TX nonce:{self.nonce} to:{self.contract_address} func:{self.function_selector} args:{self.args} status:{self.status} reason:{self.revert_reason}>"
+            return f"<Tx from:{self.from_address}\n  nonce:{self.nonce}\n  to:{self.contract_address}\n  func:{self.function_selector}\n  args:{self.args}\n  fail reason:{self.revert_reason}>"
         else:
-            return f"<TX nonce:{self.nonce} to:{self.contract_address} func:{self.function_selector} args:{self.args} unresolved>"
+            return f"<Tx from:{self.from_address}\n  nonce:{self.nonce}\n  to:{self.contract_address}\n  func:{self.function_selector}\n  args:{self.args}\n  unresolved>"
 
     def is_success(self) -> bool:
+        """Transaction is success if it's succeed flag has been set."""
         return self.status
 
     def set_target_information(self, chain_id: int, contract_address: str, function_selector: str, args: list, details: dict):
