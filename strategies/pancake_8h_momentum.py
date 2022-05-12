@@ -1,8 +1,9 @@
-"""Live trading implementation of PancakeSwap v2 momentum strategy.
+"""Live trading strategy implementation fo ra single pair exponential moving average model.
 
 Constructs the trading universe from TradingStrategy.ai client and implements a real momentum strategy.
 The universe considers only BUSD quoted PancakeSwap v2 pairs.
 """
+
 import datetime
 import logging
 from collections import Counter, defaultdict
@@ -14,7 +15,7 @@ import pandas as pd
 from tradeexecutor.ethereum.uniswap_v2_execution import UniswapV2ExecutionModel
 from tradeexecutor.state.revaluation import RevaluationMethod
 from tradeexecutor.state.state import State
-from tradeexecutor.state.identifier import TradingPairIdentifier
+
 from tradeexecutor.state.sync import SyncMethod
 from tradeexecutor.strategy.approval import ApprovalModel
 from tradeexecutor.strategy.description import StrategyExecutionDescription
@@ -38,7 +39,7 @@ from tradingstrategy.universe import Universe
 
 
 # Cannot use Python __name__ here because the module is dynamically loaded
-logger = logging.getLogger("pancakeswap_8h_momentum")
+logger = logging.getLogger("ema_crossover")
 
 # Use daily candles to run the algorithm
 candle_time_frame = TimeBucket.h4
