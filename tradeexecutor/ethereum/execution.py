@@ -382,9 +382,8 @@ def resolve_trades(
         result = analyse_trade(web3, uniswap, swap_tx.tx_hash)
 
         if isinstance(result, TradeSuccess):
-
             if trade.is_buy():
-                assert result.path[0] == quote_token_details.address
+                assert result.path[0] == quote_token_details.address, f"Was expecting the route path to start with quote token {quote_token_details}, got path {result.path}"
                 price = 1 / result.price
                 executed_reserve = result.amount_in / Decimal(10**quote_token_details.decimals)
                 executed_amount = result.amount_out / Decimal(10**base_token_details.decimals)
