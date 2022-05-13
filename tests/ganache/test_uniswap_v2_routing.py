@@ -149,7 +149,7 @@ def busd_asset(busd_token, chain_id) -> AssetIdentifier:
 
 
 @pytest.fixture
-def asset_wbnb(wbnb_token, chain_id) -> AssetIdentifier:
+def bnb_asset(wbnb_token, chain_id) -> AssetIdentifier:
     return AssetIdentifier(chain_id, wbnb_token.address, wbnb_token.functions.symbol().call(), wbnb_token.functions.decimals().call())
 
 
@@ -159,14 +159,16 @@ def cake_asset(cake_token, chain_id) -> AssetIdentifier:
 
 
 @pytest.fixture
-def cake_busd_uniswap_trading_pair() -> HexAddress:
-    return HexAddress(HexStr("0x804678fa97d91b974ec2af3c843270886528a9e6"))
+def cake_bnb_trading_pair_address() -> HexAddress:
+    """See https://tradingstrategy.ai/trading-view/binance/pancakeswap-v2/cake-bnb."""
+    return HexAddress(HexStr("0x0ed7e52944161450477ee417de9cd3a859b14fd0"))
 
 
 @pytest.fixture
-def cake_bnb_pair_address() -> HexAddress:
-    """See https://tradingstrategy.ai/trading-view/binance/pancakeswap-v2/cake-bnb."""
-    return HexAddress(HexStr("0x0ed7e52944161450477ee417de9cd3a859b14fd0"))
+def bnb_busd_trading_pair_address() -> HexAddress:
+    """See https://tradingstrategy.ai/trading-view/binance/pancakeswap-v2/bnb-busd."""
+    return HexAddress(HexStr("0x58f876857a02d6762e0101bb5c46a8c1ed44dc16"))
+
 
 
 @pytest.fixture()
@@ -191,6 +193,29 @@ def cake_busd_trading_pair(cake_asset, busd_asset, pancakeswap_v2) -> TradingPai
         cake_asset,
         busd_asset,
         "0x804678fa97d91B974ec2af3c843270886528a9E6",  #  https://tradingstrategy.ai/trading-view/binance/pancakeswap-v2/cake-busd
+        internal_id=1000,  # random number
+        exchange_address=pancakeswap_v2.factory.address,
+    )
+
+
+@pytest.fixture
+def bnb_busd_trading_pair(bnb_asset, busd_asset, pancakeswap_v2) -> TradingPairIdentifier:
+    return TradingPairIdentifier(
+        bnb_asset,
+        busd_asset,
+        "0x58f876857a02d6762e0101bb5c46a8c1ed44dc16",  #  https://tradingstrategy.ai/trading-view/binance/pancakeswap-v2/bnb-busd
+        internal_id=1000,  # random number
+        exchange_address=pancakeswap_v2.factory.address,
+    )
+
+
+@pytest.fixture
+def cake_bnb_trading_pair(cake_asset, bnb_asset, pancakeswap_v2) -> TradingPairIdentifier:
+    """Cake-BUSD pair representation in the trade executor domain."""
+    return TradingPairIdentifier(
+        cake_asset,
+        bnb_asset,
+        "0x0ed7e52944161450477ee417de9cd3a859b14fd0",  #  https://tradingstrategy.ai/trading-view/binance/pancakeswap-v2/cake-bnb
         internal_id=1000,  # random number
         exchange_address=pancakeswap_v2.factory.address,
     )
@@ -271,6 +296,7 @@ def test_simple_routing_buy_sell(
         busd_asset,
         cake_asset,
         cake_token,
+        busd_token,
         routing_model,
         cake_busd_trading_pair,
 ):
@@ -331,6 +357,10 @@ def test_simple_routing_buy_sell(
     )
     assert all([tx.is_success() for tx in txs])
 
+    # We started with 10_000 BUSD
+    balance = busd_token.functions.balanceOf(hot_wallet.address).call()
+    assert balance == pytest.approx(9999500634326300440503)
+
 
 def test_simple_routing_not_enough_balance(
         web3,
@@ -364,4 +394,143 @@ def test_simple_routing_not_enough_balance(
             check_balances=True,
         )
 
+
+def test_simple_routing_three_leg(
+        web3,
+        hot_wallet,
+        busd_asset,
+        bnb_asset,
+        cake_asset,
+        cake_token,
+        routing_model,
+        cake_bnb_trading_pair,
+        bnb_busd_trading_pair,
+):
+    """Make 1x two way trade BUSD -> BNB -> Cake."""
+
+    # Get live fee structure from BNB Chain
+    fees = estimate_gas_fees(web3)
+
+    # Prepare a transaction builder
+    tx_builder = TransactionBuilder(
+        web3,
+        hot_wallet,
+        fees,
+    )
+
+    routing_state = UniswapV2RoutingState(tx_builder)
+
+    txs = routing_model.trade(
+        routing_state,
+        cake_bnb_trading_pair,
+        busd_asset,
+        100 * 10**18,  # Buy Cake worth of 100 BUSD,
+        max_slippage=0.01,
+        check_balances=True,
+        intermediary_pair=bnb_busd_trading_pair,
+    )
+
+    # We should have 1 approve, 1 swap
+    assert len(txs) == 2
+
+    # Execute
+    tx_builder.broadcast_and_wait_transactions_to_complete(
+        web3,
+        txs,
+        revert_reasons=True
+    )
+
+    # Check all transactions succeeded
+    for tx in txs:
+        assert tx.is_success(), f"Transaction failed: {tx}"
+
+    # We received the tokens we bought
+    assert cake_token.functions.balanceOf(hot_wallet.address).call() > 0
+
+
+def test_three_leg_buy_sell(
+        web3,
+        hot_wallet,
+        busd_asset,
+        bnb_asset,
+        cake_asset,
+        cake_token,
+        busd_token,
+        routing_model,
+        cake_bnb_trading_pair,
+        bnb_busd_trading_pair,
+):
+    """Make trades BUSD -> BNB -> Cake and Cake -> BNB -> BUSD."""
+
+    # We start without Cake
+    balance = cake_token.functions.balanceOf(hot_wallet.address).call()
+    assert balance == 0
+
+    # Get live fee structure from BNB Chain
+    fees = estimate_gas_fees(web3)
+
+    # Prepare a transaction builder
+    tx_builder = TransactionBuilder(
+        web3,
+        hot_wallet,
+        fees,
+    )
+
+    routing_state = UniswapV2RoutingState(tx_builder)
+
+    txs = routing_model.trade(
+        routing_state,
+        cake_bnb_trading_pair,
+        busd_asset,
+        100 * 10**18,  # Buy Cake worth of 100 BUSD,
+        max_slippage=0.01,
+        check_balances=True,
+        intermediary_pair=bnb_busd_trading_pair,
+    )
+
+    # We should have 1 approve, 1 swap
+    assert len(txs) == 2
+
+    # Execute
+    tx_builder.broadcast_and_wait_transactions_to_complete(
+        web3,
+        txs,
+        revert_reasons=True
+    )
+
+    # Check all transactions succeeded
+    for tx in txs:
+        assert tx.is_success(), f"Transaction failed: {tx}"
+
+    # We received the tokens we bought
+    balance = cake_token.functions.balanceOf(hot_wallet.address).call()
+    assert balance > 0
+
+    txs = routing_model.trade(
+        routing_state,
+        cake_bnb_trading_pair,
+        cake_asset,
+        balance,
+        max_slippage=0.01,
+        check_balances=True,
+        intermediary_pair=bnb_busd_trading_pair,
+    )
+
+    # We should have 1 approve, 1 swap
+    assert len(txs) == 2
+
+    # Execute
+    tx_builder.broadcast_and_wait_transactions_to_complete(
+        web3,
+        txs,
+        revert_reasons=True
+    )
+
+    # Check all transactions succeeded
+    for tx in txs:
+        assert tx.is_success(), f"Transaction failed: {tx}"
+
+    # We started with 10_000 BUSD
+    balance = busd_token.functions.balanceOf(hot_wallet.address).call()
+    import ipdb ; ipdb.set_trace()
 

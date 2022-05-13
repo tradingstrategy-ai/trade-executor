@@ -170,8 +170,59 @@ class UniswapV2RoutingState:
             amount_in=reserve_amount,
             max_slippage=max_slippage,
         )
+        tx = self.tx_builder.sign_transaction(bound_swap_func, self.swap_gas_limit)
+        return [tx]
 
-        # Create infinite approval
+    def trade_on_router_three_way(self,
+            uniswap: UniswapV2Deployment,
+            target_pair: TradingPairIdentifier,
+            intermediary_pair: TradingPairIdentifier,
+            reserve_asset: AssetIdentifier,
+            reserve_amount: int,
+            max_slippage: float,
+            check_balances: False):
+        """Prepare the actual swap for three way trade.
+
+        :param check_balances:
+            Check on-chain balances that the account has enough tokens
+            and raise exception if not.
+        """
+
+        web3 = self.web3
+        hot_wallet = self.tx_builder.hot_wallet
+
+        # Check we can chain two pairs
+        assert intermediary_pair.base == target_pair.quote, f"Could not hop from intermediary {intermediary_pair} -> destination {target_pair}"
+
+        # Check routing happens on the same exchange
+        assert intermediary_pair.exchange_address == target_pair.exchange_address
+
+        if reserve_asset == intermediary_pair.quote:
+            # Buy BUSD -> BNB -> Cake
+            base_token = get_token_for_asset(web3, target_pair.base)
+            quote_token = get_token_for_asset(web3, intermediary_pair.quote)
+            intermediary_token = get_token_for_asset(web3, intermediary_pair.base)
+        elif reserve_asset == target_pair.base:
+            # Sell, Cake -> BNB -> BUSD
+            base_token = get_token_for_asset(web3, target_pair.quote)
+            quote_token = get_token_for_asset(web3, target_pair.base)
+            intermediary_token = get_token_for_asset(web3, intermediary_pair.base)
+        else:
+            raise RuntimeError(f"Cannot trade {target_pair} through {intermediary_pair}")
+
+        if check_balances:
+            self.check_has_enough_tokens(quote_token, reserve_amount)
+
+        bound_swap_func = swap_with_slippage_protection(
+            uniswap,
+            recipient_address=hot_wallet.address,
+            base_token=base_token,
+            quote_token=quote_token,
+            amount_in=reserve_amount,
+            max_slippage=max_slippage,
+            intermediate_token=intermediary_token,
+        )
+
         tx = self.tx_builder.sign_transaction(bound_swap_func, self.swap_gas_limit)
         return [tx]
 
@@ -232,6 +283,34 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
             )
         return txs
 
+    def make_multihop_trade(self,
+                          routing_state: UniswapV2RoutingState,
+                          target_pair: TradingPairIdentifier,
+                          intermediary_pair: TradingPairIdentifier,
+                          reserve_asset: AssetIdentifier,
+                          reserve_amount: int,
+                          max_slippage: float,
+                          check_balances=False,
+                          ) -> List[BlockchainTransaction]:
+        """Prepare a trade where target pair has out reserve asset as a quote token.
+
+        :return:
+            List of approval transactions (if any needed)
+        """
+        uniswap = routing_state.get_uniswap_for_pair(self.factory_router_map, target_pair)
+        token_address = reserve_asset.address
+        txs = routing_state.ensure_token_approved(token_address, uniswap.router.address)
+        txs += routing_state.trade_on_router_three_way(
+            uniswap,
+            target_pair,
+            intermediary_pair,
+            reserve_asset,
+            reserve_amount,
+            max_slippage,
+            check_balances,
+            )
+        return txs
+
     def trade(self,
               routing_state: UniswapV2RoutingState,
               target_pair: TradingPairIdentifier,
@@ -239,6 +318,7 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
               reserve_asset_amount: int,  # Raw amount of the reserve asset
               max_slippage: float,
               check_balances=False,
+              intermediary_pair: Optional[TradingPairIdentifier] = None,
               ) -> List[BlockchainTransaction]:
         """
 
@@ -250,6 +330,9 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
         :param check_balances:
             Check on-chain balances that the account has enough tokens
             and raise exception if not.
+        :param intermediary_pair:
+            If the trade needs to be routed through a intermediary pool, e.g.
+            BUSD -> BNB -> Cake.
         :return:
             List of prepared transactions to make this trade.
             These transactions, like approve() may relate to the earlier
@@ -262,6 +345,17 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
             return self.make_direct_trade(
                 routing_state,
                 target_pair,
+                reserve_asset,
+                reserve_asset_amount,
+                max_slippage,
+                check_balances=check_balances,
+            )
+        else:
+            assert intermediary_pair, "For multihop trades you need to give intermediary"
+            return self.make_multihop_trade(
+                routing_state,
+                target_pair,
+                intermediary_pair,
                 reserve_asset,
                 reserve_asset_amount,
                 max_slippage,
