@@ -3,7 +3,7 @@ import datetime
 import enum
 from dataclasses import dataclass, field
 from decimal import Decimal
-from math import copysign
+
 from typing import Dict, Optional, List, Iterable
 
 from dataclasses_json import dataclass_json

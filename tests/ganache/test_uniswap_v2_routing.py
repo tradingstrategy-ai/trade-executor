@@ -216,6 +216,7 @@ def test_simple_routing_one_leg(
         web3,
         hot_wallet,
         busd_asset,
+        cake_token,
         routing_model,
         cake_busd_trading_pair,
 ):
@@ -258,8 +259,10 @@ def test_simple_routing_one_leg(
 
     # Check all transactions succeeded
     for tx in txs:
-        print(tx)
         assert tx.is_success(), f"Transaction failed: {tx}"
+
+    # We received the tokens we bought
+    assert cake_token.functions.balanceOf(hot_wallet.address).call() > 0
 
 
 def test_simple_routing_not_enough_balance(
