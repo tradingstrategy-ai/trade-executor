@@ -265,6 +265,73 @@ def test_simple_routing_one_leg(
     assert cake_token.functions.balanceOf(hot_wallet.address).call() > 0
 
 
+def test_simple_routing_buy_sell(
+        web3,
+        hot_wallet,
+        busd_asset,
+        cake_asset,
+        cake_token,
+        routing_model,
+        cake_busd_trading_pair,
+):
+    """Make 2x two way trade BUSD -> Cake -> BUSD."""
+
+    # Get live fee structure from BNB Chain
+    fees = estimate_gas_fees(web3)
+
+    # Prepare a transaction builder
+    tx_builder = TransactionBuilder(
+        web3,
+        hot_wallet,
+        fees,
+    )
+
+    # Create
+    routing_state = UniswapV2RoutingState(tx_builder)
+
+    txs = routing_model.trade(
+        routing_state,
+        cake_busd_trading_pair,
+        busd_asset,
+        100 * 10**18,  # Buy Cake worth of 100 BUSD,
+        max_slippage=0.01,
+        check_balances=True,
+    )
+
+    # We should have 1 approve, 1 swap
+    assert len(txs) == 2
+
+    # Execute
+    tx_builder.broadcast_and_wait_transactions_to_complete(
+        web3,
+        txs,
+        revert_reasons=True
+    )
+
+    assert all([tx.is_success() for tx in txs])
+
+    # We received the tokens we bought
+    cake_balance = cake_token.functions.balanceOf(hot_wallet.address).call()
+
+    # Sell Cake we received
+    txs = routing_model.trade(
+        routing_state,
+        cake_busd_trading_pair,
+        cake_asset,
+        cake_balance,  # Sell all cake
+        max_slippage=0.01,
+        check_balances=True,
+    )
+    assert len(txs) == 2
+    # Execute
+    tx_builder.broadcast_and_wait_transactions_to_complete(
+        web3,
+        txs,
+        revert_reasons=True
+    )
+    assert all([tx.is_success() for tx in txs])
+
+
 def test_simple_routing_not_enough_balance(
         web3,
         hot_wallet,

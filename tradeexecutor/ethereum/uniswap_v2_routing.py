@@ -152,6 +152,10 @@ class UniswapV2RoutingState:
             # Buy with e.g. BUSD
             base_token = get_token_for_asset(web3, target_pair.base)
             quote_token = get_token_for_asset(web3, target_pair.quote)
+        elif reserve_asset == target_pair.base:
+            # Sell, flip the direction
+            base_token = get_token_for_asset(web3, target_pair.quote)
+            quote_token = get_token_for_asset(web3, target_pair.base)
         else:
             raise RuntimeError(f"Cannot trade {target_pair}")
 
