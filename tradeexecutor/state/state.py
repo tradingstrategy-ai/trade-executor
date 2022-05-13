@@ -7,7 +7,7 @@ Any datetime must be naive, without timezone, and is assumed to be UTC.
 from dataclasses import dataclass, field
 import datetime
 from decimal import Decimal
-from typing import List, Callable, Tuple, Set
+from typing import List, Callable, Tuple, Set, Optional
 
 from dataclasses_json import dataclass_json
 
@@ -53,7 +53,8 @@ class State:
     def create_trade(self,
                      ts: datetime.datetime,
                      pair: TradingPairIdentifier,
-                     quantity: Decimal,
+                     quantity: Optional[Decimal],
+                     reserve: Optional[Decimal],
                      assumed_price: USDollarAmount,
                      trade_type: TradeType,
                      reserve_currency: AssetIdentifier,
@@ -62,9 +63,23 @@ class State:
 
         If there is no open position, marks a position open.
 
+        Trade can be opened by knowing how much you want to buy (quantity) or how much cash you have to buy (reserve).
+
         :return: Tuple position, trade, was a new position created
         """
-        position, trade, created = self.portfolio.create_trade(ts, pair, quantity, assumed_price, trade_type, reserve_currency, reserve_currency_price)
+
+        if quantity is not None:
+            assert reserve is None, "Quantity and reserve both cannot be given at the same time"
+
+        position, trade, created = self.portfolio.create_trade(
+            ts,
+            pair,
+            quantity,
+            reserve,
+            assumed_price,
+            trade_type,
+            reserve_currency,
+            reserve_currency_price)
         return position, trade, created
 
     def start_execution(self, ts: datetime.datetime, trade: TradeExecution, txid: str, nonce: int):

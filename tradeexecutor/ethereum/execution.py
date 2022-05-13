@@ -3,7 +3,7 @@ import datetime
 import time
 from collections import Counter
 from decimal import Decimal
-from typing import List, Dict, Set
+from typing import List, Dict, Set, Tuple
 
 from eth_account.datastructures import SignedTransaction
 from eth_typing import HexAddress
@@ -14,10 +14,12 @@ from web3.contract import Contract
 from eth_defi.abi import get_deployed_contract
 from eth_defi.gas import GasPriceSuggestion, apply_gas, estimate_gas_fees
 from eth_defi.hotwallet import HotWallet
+from eth_defi.revert_reason import fetch_transaction_revert_reason
 from eth_defi.token import fetch_erc20_details, TokenDetails
 from eth_defi.txmonitor import wait_transactions_to_complete, \
     broadcast_and_wait_transactions_to_complete, broadcast_transactions
-from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, FOREVER_DEADLINE
+from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, FOREVER_DEADLINE, fetch_deployment, \
+    INIT_CODE_HASH_MISSING, mock_partial_deployment_for_analysis
 from eth_defi.uniswap_v2.fees import estimate_sell_price, estimate_sell_price_decimals
 from eth_defi.uniswap_v2.analysis import analyse_trade, TradeSuccess
 from tradeexecutor.state.state import State
@@ -264,7 +266,7 @@ def broadcast(
         ts: datetime.datetime,
         instructions: List[TradeExecution],
         confirmation_block_count: int=0,
-        ganache_sleep=0.5) -> Dict[HexBytes, TradeExecution]:
+        ganache_sleep=0.5) -> Dict[HexBytes, Tuple[TradeExecution, BlockchainTransaction]]:
     """Broadcast multiple transations and manage the trade executor state for them.
 
     :return: Map of transaction hashes to watch
@@ -279,18 +281,18 @@ def broadcast(
     broadcast_batch: List[SignedTransaction] = []
 
     for t in instructions:
-        assert isinstance(t.tx_info.signed_bytes, str), f"Got signed transaction: {t.tx_info.signed_bytes}"
-        assert t.tx_info.nonce not in nonces, "Nonce already used"
-        nonces.add(t.tx_info.nonce)
-        t.broadcasted_at = ts
-        res[t.tx_info.tx_hash] = t
-        # Only SignedTransaction.rawTransaction attribute is intresting in this point
-        tx = SignedTransaction(rawTransaction=t.tx_info.signed_bytes, hash=None, r=0, s=0, v=0)
-        broadcast_batch.append(tx)
+        for tx in t.blockchain_transactions:
+            assert isinstance(tx.signed_bytes, str), f"Got signed transaction: {t.tx_info.signed_bytes}"
+            assert tx.nonce not in nonces, "Nonce already used"
+            nonces.add(tx.nonce)
+            tx.broadcasted_at = ts
+            res[tx.tx_hash] = (t, tx)
+            # Only SignedTransaction.rawTransaction attribute is intresting in this point
+            tx = SignedTransaction(rawTransaction=tx.signed_bytes, hash=None, r=0, s=0, v=0)
+            broadcast_batch.append(tx)
 
     hashes = broadcast_transactions(web3, broadcast_batch, confirmation_block_count=confirmation_block_count)
-    assert len(hashes) == len(instructions)
-
+    assert len(hashes) >= len(instructions)
     return res
 
 
@@ -306,17 +308,32 @@ def wait_trades_to_complete(
     """
     logger.info("Waiting %d trades to confirm", len(trades))
     assert isinstance(confirmation_block_count, int)
-    tx_hashes = [t.tx_info.tx_hash for t in trades]
+    tx_hashes = []
+    for t in trades:
+        for tx in t.blockchain_transactions:
+            tx_hashes.append(tx.tx_hash)
     receipts = wait_transactions_to_complete(web3, tx_hashes, confirmation_block_count, max_timeout, poll_delay)
     return receipts
 
 
+def is_swap_function(name: str):
+    return name in ("swapExactTokensForTokens",)
+
+
+def get_swap_transactions(trade: TradeExecution) -> BlockchainTransaction:
+    """Get the swap transaction from multiple transactions associated with the trade"""
+    for tx in trade.blockchain_transactions:
+        if tx.function_selector in ("swapExactTokensForTokens",):
+            return tx
+
+    raise RuntimeError("Should not happen")
+
+
 def resolve_trades(
         web3: Web3,
-        uniswap: UniswapV2Deployment,
         ts: datetime.datetime,
         state: State,
-        trades: Dict[HexBytes, TradeExecution],
+        tx_map: Dict[HexBytes, Tuple[TradeExecution, BlockchainTransaction]],
         receipts: Dict[HexBytes, dict],
         stop_on_execution_failure=True):
     """Resolve trade outcome.
@@ -328,8 +345,11 @@ def resolve_trades(
     :stop_on_execution_failure: Raise an exception if any of the trades failed
     """
 
+    trades = []
+
+    # First resolve transactions for all trades
     for tx_hash, receipt in receipts.items():
-        trade = trades[tx_hash.hex()]
+        trade, tx = tx_map[tx_hash.hex()]
 
         logger.info("Resolved trade %s", trade)
 
@@ -338,19 +358,30 @@ def resolve_trades(
 
         # Update the transaction confirmation status
         status = receipt["status"] == 1
-        trade.tx_info.set_confirmation_information(
+
+        reason = None
+        if status == 0:
+            reason = fetch_transaction_revert_reason(web3, tx_hash)
+
+        tx.set_confirmation_information(
             ts,
             receipt["blockNumber"],
             receipt["blockHash"].hex(),
             receipt.get("effectiveGasPrice", 0),
             receipt["gasUsed"],
-            status
+            status,
+            revert_reason=reason,
         )
 
-        result = analyse_trade(web3, uniswap, tx_hash)
-        if isinstance(result, TradeSuccess):
+        trades.append(trade)
 
-            # TODO: Assumes stablecoin trades only ATM
+    # Then resolve trade status by its transactions
+    for trade in trades:
+        swap_tx = get_swap_transactions(trade)
+        uniswap = mock_partial_deployment_for_analysis(web3, swap_tx.contract_address)
+        result = analyse_trade(web3, uniswap, swap_tx.tx_hash)
+
+        if isinstance(result, TradeSuccess):
 
             if trade.is_buy():
                 assert result.path[0] == quote_token_details.address
@@ -383,11 +414,9 @@ def resolve_trades(
                 ts,
                 trade,
             )
-
             if stop_on_execution_failure:
                 tx_hash = trade.tx_info.tx_hash
                 raise TradeExecutionFailed(f"Could not execute a trade: {trade}, transaction was {tx_hash}")
-
             trade.tx_info.revert_reason = result.revert_reason
 
 
@@ -417,3 +446,32 @@ def get_token_for_asset(web3: Web3, asset: AssetIdentifier) -> Contract:
     """Get ERC-20 contract proxy."""
     erc_20 = get_deployed_contract(web3, "ERC20MockDecimals.json", asset.address)
     return erc_20
+
+
+def broadcast_and_resolve(
+        web3: Web3,
+        state: State,
+        trades: List[TradeExecution],
+        stop_on_execution_failure=False
+):
+    """Do the live trade execution.
+
+    - Push trades to a live blockchain
+
+    - Wait transactions to be mined
+
+    - Based on the transaction result, update the state of the trade if it was success or not
+
+    :param stop_on_execution_failure:
+        If any of the transactions fail, then raise an exception.
+        Set for unit test.
+    """
+    broadcasted = broadcast(web3, datetime.datetime.utcnow(), trades)
+    receipts = wait_trades_to_complete(web3, trades)
+    resolve_trades(
+        web3,
+        datetime.datetime.now(),
+        state,
+        broadcasted,
+        receipts,
+        stop_on_execution_failure=stop_on_execution_failure)

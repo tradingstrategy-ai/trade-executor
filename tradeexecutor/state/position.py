@@ -170,23 +170,40 @@ class TradingPosition:
     def open_trade(self,
                    ts: datetime.datetime,
                    trade_id: int,
-                   quantity: Decimal,
+                   quantity: Optional[Decimal],
+                   reserve: Optional[Decimal],
                    assumed_price: USDollarAmount,
                    trade_type: TradeType,
                    reserve_currency: AssetIdentifier,
                    reserve_currency_price: USDollarAmount) -> TradeExecution:
+        """Open a new trade on position.
+
+        Trade can be opened by knowing how much you want to buy (quantity) or how much cash you have to buy (reserve).
+        """
+
+        if quantity is not None:
+            assert reserve is None, "Quantity and reserve both cannot be given at the same time"
+
         assert self.reserve_currency.get_identifier() == reserve_currency.get_identifier(), "New trade is using different reserve currency than the position has"
         assert isinstance(trade_id, int)
         assert isinstance(ts, datetime.datetime)
+
+        if reserve is not None:
+            planned_reserve = reserve
+            planned_quantity = reserve / Decimal(assumed_price)
+        else:
+            planned_quantity = quantity
+            planned_reserve = quantity * Decimal(assumed_price) if quantity > 0 else 0
+
         trade = TradeExecution(
             trade_id=trade_id,
             position_id=self.position_id,
             trade_type=trade_type,
             pair=self.pair,
             opened_at=ts,
-            planned_quantity=quantity,
+            planned_quantity=planned_quantity,
             planned_price=assumed_price,
-            planned_reserve=quantity * Decimal(assumed_price) if quantity > 0 else 0,
+            planned_reserve=planned_reserve,
             reserve_currency=self.reserve_currency,
         )
         self.trades[trade.trade_id] = trade

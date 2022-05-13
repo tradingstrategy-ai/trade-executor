@@ -276,6 +276,7 @@ def create_pair_universe_from_code(chain_id: ChainId, pairs: List[TradingPairIde
             chain_id=chain_id,
             exchange_id=0,
             address=p.pool_address,
+            exchange_address=p.exchange_address,
             dex_type=PairType.uniswap_v2,
             base_token_symbol=p.base.token_symbol,
             quote_token_symbol=p.quote.token_symbol,

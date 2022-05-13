@@ -194,8 +194,11 @@ class UniswapV2RoutingState(RoutingState):
         # Check we can chain two pairs
         assert intermediary_pair.base == target_pair.quote, f"Could not hop from intermediary {intermediary_pair} -> destination {target_pair}"
 
+        assert target_pair.exchange_address, f"Target pair {target_pair} missing exchange information"
+        assert intermediary_pair.exchange_address, f"Intermediary pair {intermediary_pair} missing exchange information"
+
         # Check routing happens on the same exchange
-        assert intermediary_pair.exchange_address == target_pair.exchange_address
+        assert intermediary_pair.exchange_address.lower() == target_pair.exchange_address.lower()
 
         if reserve_asset == intermediary_pair.quote:
             # Buy BUSD -> BNB -> Cake
@@ -395,7 +398,7 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
             return trade.pair, None
 
         # Try to find a mid-hop pool for the trade
-        intermediate_pair_contract_address = self.allowed_intermediary_pairs.get(trade.pair.quote.lower())
+        intermediate_pair_contract_address = self.allowed_intermediary_pairs.get(trade.pair.quote.address.lower())
 
         if not intermediate_pair_contract_address:
             raise CannotRouteTrade(f"Does not know how to trade pair {trade.pair} - supported intermediate tokens are {list(self.allowed_intermediary_pairs.keys())}")
@@ -405,18 +408,31 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
         if not intermediate_pair:
             raise CannotRouteTrade(f"Universe does not have a trading pair with smart contract address {intermediate_pair_contract_address}")
 
-        return trade.pair,intermediate_pair_contract_address
+        return trade.pair, intermediate_pair
 
     def execute_trades_internal(self,
                        pair_universe: PandasPairUniverse,
                        routing_state: UniswapV2RoutingState,
                        trades: List[TradeExecution],
-                       check_balances=False):
-        """Split for testability."""
+                       check_balances=False,
+                       check_trades=False):
+        """Split for testability.
+
+        :param check_balances:
+            Check that the wallet has enough reserves to perform the trades
+            before executing them. Because we are selling before buying.
+            sometimes we do no know this until the sell tx has been completed.
+
+        :param check_trades:
+            Raise an error if any of the trades failed
+        """
 
         # Watch out for executing trade twice
+
+        txs: List[BlockchainTransaction] = []
+
         for t in trades:
-            assert len(t.blockchain_transactions), f"Trade {t} had already blockchain transactions associated with it"
+            assert len(t.blockchain_transactions) == 0, f"Trade {t} had already blockchain transactions associated with it"
 
             target_pair, intermediary_pair = self.route_trade(pair_universe, t)
 
@@ -424,7 +440,7 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
                 # Two way trade
                 # Decide betwen buying and selling
                 if t.is_buy():
-                    self.trade(
+                   trade_txs = self.trade(
                         routing_state,
                         target_pair=target_pair,
                         reserve_asset=self.reserve_asset,
@@ -432,7 +448,7 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
                         check_balances=check_balances,
                     )
                 else:
-                    self.trade(
+                    trade_txs = self.trade(
                         routing_state,
                         target_pair=target_pair,
                         reserve_asset=target_pair.base,
@@ -442,7 +458,7 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
             else:
                 # Three-way trade!
                 if t.is_buy():
-                    self.trade(
+                    trade_txs = self.trade(
                         routing_state,
                         target_pair=target_pair,
                         reserve_asset=self.reserve_asset,
@@ -451,7 +467,7 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
                         intermediary_pair=intermediary_pair,
                     )
                 else:
-                    self.trade(
+                    trade_txs = self.trade(
                         routing_state,
                         target_pair=target_pair,
                         reserve_asset=target_pair.base,
@@ -459,6 +475,12 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
                         check_balances=check_balances,
                         intermediary_pair=intermediary_pair,
                     )
+
+            t.set_blockchain_transactions(trade_txs)
+            txs += trade_txs
+
+        # Now all trades have transactions associated with them.
+        # We can start to execute transactions.
 
     def execute_trades(self,
                        universe: TradingStrategyUniverse,
@@ -472,6 +494,11 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
         - Modifies TradeExecution objects in place and associates a blockchain transaction for each
 
         - Signs tranactions from the hot wallet and broadcasts them to the network
+
+        :param check_balances:
+            Check that the wallet has enough reserves to perform the trades
+            before executing them. Because we are selling before buying.
+            sometimes we do no know this until the sell tx has been completed.
         """
         return self.execute_trades_internal(universe.universe.pairs, routing_state, trades, check_balances)
 

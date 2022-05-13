@@ -5,6 +5,7 @@ import logging
 import os
 import pickle
 import secrets
+from decimal import Decimal
 from pathlib import Path
 from typing import List
 
@@ -25,6 +26,7 @@ from eth_defi.hotwallet import HotWallet
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, fetch_deployment
 from eth_defi.utils import is_localhost_port_listening
 from tradeexecutor.cli.main import app
+from tradeexecutor.ethereum.execution import broadcast_and_resolve
 from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2RoutingState, UniswapV2SimpleRoutingModel, OutOfBalance
 from tradeexecutor.state.state import State
@@ -35,6 +37,7 @@ from tradeexecutor.cli.log import setup_pytest_logging
 
 # https://docs.pytest.org/en/latest/how-to/skipping.html#skip-all-test-functions-of-a-class-or-module
 from tradeexecutor.strategy.trading_strategy_universe import create_pair_universe_from_code
+from tradeexecutor.testing.pairuniversetrader import PairUniverseTestTrader
 from tradingstrategy.chain import ChainId
 from tradingstrategy.pair import PandasPairUniverse
 
@@ -733,3 +736,37 @@ def test_three_leg_buy_sell_twice(
     txs_2 = trip()
     assert len(txs_2) == 2
 
+
+def test_stateful_route_buy_three_leg(
+        web3,
+        pair_universe,
+        hot_wallet,
+        busd_asset,
+        bnb_asset,
+        cake_asset,
+        cake_token,
+        routing_model,
+        cake_bnb_trading_pair,
+        bnb_busd_trading_pair,
+):
+    """Perform 3-leg buy using RoutingModel.execute_trades()"""
+
+    # Get live fee structure from BNB Chain
+    fees = estimate_gas_fees(web3)
+
+    # Prepare a transaction builder
+    tx_builder = TransactionBuilder(web3, hot_wallet, fees)
+
+    routing_state = UniswapV2RoutingState(tx_builder)
+
+    state = State()
+
+    trader = PairUniverseTestTrader(state)
+
+    # Buy Cake via BUSD -> BNB pool for 100 USD
+    trades = [
+        trader.buy(cake_bnb_trading_pair, Decimal(100))
+    ]
+
+    routing_model.execute_trades_internal(pair_universe, routing_state, trades, check_balances=True)
+    broadcast_and_resolve(web3, state, trades, stop_on_execution_failure=True)

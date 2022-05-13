@@ -150,11 +150,19 @@ class Portfolio:
     def create_trade(self,
                      ts: datetime.datetime,
                      pair: TradingPairIdentifier,
-                     quantity: Decimal,
+                     quantity: Optional[Decimal],
+                     reserve: Optional[Decimal],
                      assumed_price: USDollarAmount,
                      trade_type: TradeType,
                      reserve_currency: AssetIdentifier,
                      reserve_currency_price: USDollarAmount) -> Tuple[TradingPosition, TradeExecution, bool]:
+        """Create a trade.
+
+        Trade can be opened by knowing how much you want to buy (quantity) or how much cash you have to buy (reserve).
+        """
+
+        if quantity is not None:
+            assert reserve is None, "Quantity and reserve both cannot be given at the same time"
 
         position = self.get_position_by_trading_pair(pair)
         if position is None:
@@ -163,7 +171,15 @@ class Portfolio:
         else:
             created = False
 
-        trade = position.open_trade(ts, self.next_trade_id, quantity, assumed_price, trade_type, reserve_currency, reserve_currency_price)
+        trade = position.open_trade(
+            ts,
+            self.next_trade_id,
+            quantity,
+            reserve,
+            assumed_price,
+            trade_type,
+            reserve_currency,
+            reserve_currency_price)
 
         # Check we accidentally do not reuse trade id somehow
 
