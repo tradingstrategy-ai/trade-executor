@@ -491,6 +491,11 @@ def test_three_leg_buy_sell(
     # We should have 1 approve, 1 swap
     assert len(txs) == 2
 
+    # # Check for three legs
+    buy_tx = txs[1]
+    path = buy_tx.args[2]
+    assert len(path) == 3
+
     # Execute
     tx_builder.broadcast_and_wait_transactions_to_complete(
         web3,
@@ -519,6 +524,11 @@ def test_three_leg_buy_sell(
     # We should have 1 approve, 1 swap
     assert len(txs) == 2
 
+    # Check for three legs
+    sell_tx = txs[1]
+    path = sell_tx.args[2]
+    assert len(path) == 3, f"Bad sell tx {sell_tx}"
+
     # Execute
     tx_builder.broadcast_and_wait_transactions_to_complete(
         web3,
@@ -532,5 +542,4 @@ def test_three_leg_buy_sell(
 
     # We started with 10_000 BUSD
     balance = busd_token.functions.balanceOf(hot_wallet.address).call()
-    import ipdb ; ipdb.set_trace()
-
+    assert balance == pytest.approx(9999003745120046326850)

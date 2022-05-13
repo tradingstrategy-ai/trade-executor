@@ -1,13 +1,11 @@
 """Route trades to different Uniswap v2 like exchanges."""
 from collections import defaultdict
-from dataclasses import dataclass, field
 from typing import Dict, Set, List, Optional, Tuple
 
 from eth_typing import HexAddress
 from web3.contract import Contract
 
 from eth_defi.abi import get_deployed_contract
-from eth_defi.hotwallet import HotWallet
 from eth_defi.token import fetch_erc20_details
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, fetch_deployment
 from eth_defi.uniswap_v2.swap import swap_with_slippage_protection
@@ -204,9 +202,9 @@ class UniswapV2RoutingState:
             intermediary_token = get_token_for_asset(web3, intermediary_pair.base)
         elif reserve_asset == target_pair.base:
             # Sell, Cake -> BNB -> BUSD
-            base_token = get_token_for_asset(web3, target_pair.quote)
-            quote_token = get_token_for_asset(web3, target_pair.base)
-            intermediary_token = get_token_for_asset(web3, intermediary_pair.base)
+            base_token = get_token_for_asset(web3, intermediary_pair.quote)  # BUSD
+            quote_token = get_token_for_asset(web3, target_pair.base)  # Cake
+            intermediary_token = get_token_for_asset(web3, intermediary_pair.base)  # BNB
         else:
             raise RuntimeError(f"Cannot trade {target_pair} through {intermediary_pair}")
 
@@ -341,17 +339,18 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
 
         # Our reserves match directly the asset on trading pair
         # -> we can do one leg trade
-        if target_pair.quote == reserve_asset or target_pair.base == reserve_asset:
-            return self.make_direct_trade(
-                routing_state,
-                target_pair,
-                reserve_asset,
-                reserve_asset_amount,
-                max_slippage,
-                check_balances=check_balances,
-            )
+        if not intermediary_pair:
+            if target_pair.quote == reserve_asset or target_pair.base == reserve_asset:
+                return self.make_direct_trade(
+                    routing_state,
+                    target_pair,
+                    reserve_asset,
+                    reserve_asset_amount,
+                    max_slippage,
+                    check_balances=check_balances,
+                )
+            raise RuntimeError(f"Do not how to trade reserve {reserve_asset} with {target_pair}")
         else:
-            assert intermediary_pair, "For multihop trades you need to give intermediary"
             return self.make_multihop_trade(
                 routing_state,
                 target_pair,

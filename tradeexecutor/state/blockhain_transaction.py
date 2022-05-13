@@ -80,11 +80,11 @@ class BlockchainTransaction:
 
     def __repr__(self):
         if self.status is True:
-            return f"<Tx from:{self.from_address}\n  nonce:{self.nonce}\n  to:{self.contract_address}\n  func:{self.function_selector}\n  args:{self.args}\n  succeed>"
+            return f"<Tx from:{self.from_address}\n  nonce:{self.nonce}\n  to:{self.contract_address}\n  func:{self.function_selector}\n  args:{self.args}\n  succeed>\n"
         elif self.status is False:
-            return f"<Tx from:{self.from_address}\n  nonce:{self.nonce}\n  to:{self.contract_address}\n  func:{self.function_selector}\n  args:{self.args}\n  fail reason:{self.revert_reason}>"
+            return f"<Tx from:{self.from_address}\n  nonce:{self.nonce}\n  to:{self.contract_address}\n  func:{self.function_selector}\n  args:{self.args}\n  fail reason:{self.revert_reason}>\n"
         else:
-            return f"<Tx from:{self.from_address}\n  nonce:{self.nonce}\n  to:{self.contract_address}\n  func:{self.function_selector}\n  args:{self.args}\n  unresolved>"
+            return f"<Tx from:{self.from_address}\n  nonce:{self.nonce}\n  to:{self.contract_address}\n  func:{self.function_selector}\n  args:{self.args}\n  unresolved>\n"
 
     def is_success(self) -> bool:
         """Transaction is success if it's succeed flag has been set."""
