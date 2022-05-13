@@ -3,7 +3,7 @@ import datetime
 from decimal import Decimal, ROUND_DOWN
 from typing import Optional
 
-from tradeexecutor.ethereum.uniswap_v2_execution import UniswapV2ExecutionModel
+from tradeexecutor.ethereum.uniswap_v2_execution_v0 import UniswapV2ExecutionModelVersion0
 from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.strategy.universe_model import TradeExecutorTradingUniverse
@@ -88,7 +88,7 @@ class UniswapV2LivePricing(PricingModel):
 
 
 def uniswap_v2_live_pricing_factory(execution_model: ExecutionModel, universe: TradeExecutorTradingUniverse) -> UniswapV2LivePricing:
-    assert isinstance(execution_model, UniswapV2ExecutionModel), "Pricing method is not compatible with this execution model"
+    assert isinstance(execution_model, UniswapV2ExecutionModelVersion0), "Pricing method is not compatible with this execution model"
     assert isinstance(universe, TradingStrategyUniverse), f"This pricing method only works with TradingStrategyUniverse, we received {universe}"
     uniswap = execution_model.uniswap
     universe = universe.universe

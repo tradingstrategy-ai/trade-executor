@@ -9,13 +9,11 @@ from eth_defi.hotwallet import HotWallet
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment
 from tradeexecutor.ethereum.execution import approve_tokens, prepare_swaps, confirm_approvals, broadcast, \
     wait_trades_to_complete, resolve_trades
-from tradeexecutor.ethereum.tx import TransactionBuilder
-from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2SimpleRoutingModel, UniswapV2RoutingState
 from tradeexecutor.state.freeze import freeze_position_on_failed_trade
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.execution_model import ExecutionModel
-from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
+
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +33,7 @@ class UniswapV2RoutingInstructions:
         """
 
 
-class UniswapV2ExecutionModelVersion(ExecutionModel):
+class UniswapV2ExecutionModelVersion0(ExecutionModel):
     """Run order execution on a single Uniswap v2 style exchanges.
 
     TODO: This model was used in the first prototype and later discarded.
@@ -94,22 +92,67 @@ class UniswapV2ExecutionModelVersion(ExecutionModel):
         balance = self.hot_wallet.get_native_currency_balance(self.web3)
         logger.info("Our hot wallet is %s with nonce %d and balance %s", self.hot_wallet.address, self.hot_wallet.current_nonce, balance)
 
-    def execute_trades(self,
-                       ts: datetime.datetime,
-                       universe: TradingStrategyUniverse,
-                       state: State,
-                       trades: List[TradeExecution],
-                       routing_model: UniswapV2SimpleRoutingModel):
+    def execute_trades(self, ts: datetime.datetime, state: State, trades: List[TradeExecution]) -> Tuple[List[TradeExecution], List[TradeExecution]]:
         """Execute the trades determined by the algo on a designed Uniswap v2 instance.
 
         :return: Tuple List of succeeded trades, List of failed trades
         """
         assert isinstance(ts, datetime.datetime)
-        assert isinstance(routing_model, UniswapV2SimpleRoutingModel)
-        assert isinstance(universe, TradingStrategyUniverse)
 
-        tx_builder = TransactionBuilder(self.hot_wallet)
-        routing_state = UniswapV2RoutingState(tx_builder)
-        routing_model.execute_trades(universe, state, trades)
+        # 2. Capital allocation
+        # Approvals
+        approvals = approve_tokens(
+            self.web3,
+            self.uniswap,
+            self.hot_wallet,
+            trades
+        )
 
+        # 2: prepare
+        # Prepare transactions
+        prepare_swaps(
+            self.web3,
+            self.hot_wallet,
+            self.uniswap,
+            ts,
+            state,
+            trades,
+            underflow_check=False,
+        )
 
+        #: 3 broadcast
+
+        # Handle approvals separately for now.
+        # We do not need to wait these to confirm.
+        confirm_approvals(
+            self.web3,
+            approvals,
+            confirmation_block_count=self.confirmation_block_count,
+            max_timeout=self.confirmation_timeout)
+
+        broadcasted = broadcast(
+            self.web3,
+            ts,
+            trades,
+            confirmation_block_count=self.confirmation_block_count,
+        )
+        #assert trade.get_status() == TradeStatus.broadcasted
+
+        # Resolve
+        receipts = wait_trades_to_complete(
+            self.web3,
+            trades,
+            confirmation_block_count=self.confirmation_block_count,
+            max_timeout=self.confirmation_timeout)
+
+        resolve_trades(
+            self.web3,
+            self.uniswap,
+            ts,
+            state,
+            broadcasted,
+            receipts,
+            stop_on_execution_failure=False)
+
+        # Clean up failed trades
+        return freeze_position_on_failed_trade(ts, state, trades)

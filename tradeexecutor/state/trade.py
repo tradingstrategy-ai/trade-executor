@@ -2,9 +2,9 @@
 
 import datetime
 import enum
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List
 
 from dataclasses_json import dataclass_json
 
@@ -75,12 +75,22 @@ class TradeExecution:
     opened_at: datetime.datetime
 
     #: Positive for buy, negative for sell.
+    #: Always accurately known for sells.
     planned_quantity: Decimal
 
-    planned_price: USDollarAmount
+    #: How many reserve tokens (USD) we use in this trade
+    #: Always known accurately for buys.
+    #: Expressed in `reserve_currency`.
     planned_reserve: Decimal
 
-    #: Which reserve currency we are going to take
+    #: What we thought the execution price for this trade would have been
+    #: at the moment of strategy decision.
+    planned_price: USDollarAmount
+
+    #: Which reserve currency we are going to take.
+    #: Note that pair.quote might be different from reserve currency.
+    #: This is because we can do three-way trades like BUSD -> BNB -> Cake
+    #: when our routing model supports this.
     reserve_currency: AssetIdentifier
 
     #: When capital is allocated for this trade
@@ -105,14 +115,18 @@ class TradeExecution:
     #: LP fees estimated in the USD
     lp_fees_paid: Optional[USDollarAmount] = None
 
-    #: Associated blockchain level details
-    tx_info: Optional[BlockchainTransaction] = None
-
     #: USD price per blockchain native currency unit, at the time of execution
     native_token_price: Optional[USDollarAmount] = None
 
     # Trade retries
     retry_of: Optional[int] = None
+
+    #: Associated blockchain transaction details.
+    #: Each trade contains 1 ... n blockchain transactions.
+    #: Typically this is approve() + swap() for Uniswap v2
+    #: or just swap() if we have the prior approval and approve does not need to be
+    #: done for the hot wallet anymore.
+    blockchain_transactions: List[BlockchainTransaction] = field(default_factory=list)
 
     def __repr__(self):
         if self.is_buy():
@@ -189,6 +203,14 @@ class TradeExecution:
 
     def get_planned_reserve(self) -> Decimal:
         return self.planned_reserve
+
+    def get_raw_planned_reserve(self) -> int:
+        """Return the amount of USD token for the buy as raw token units."""
+        return self.reserve_currency.convert_to_raw_amount(self.planned_reserve)
+
+    def get_raw_planned_quantity(self) -> int:
+        """Return the amount of USD token for the buy as raw token units."""
+        return self.pair.base.convert_to_raw_amount(self.planned_quantity)
 
     def get_allocated_value(self) -> USDollarAmount:
         return self.reserve_currency_allocated
@@ -303,5 +325,11 @@ class TradeExecution:
         assert self.get_status() == TradeStatus.broadcasted
         assert failed_at.tzinfo is None
         self.failed_at = failed_at
+
+    def set_blockchain_transactions(self, txs: List[BlockchainTransaction]):
+        """Set the physical transactions needed to perform this trade."""
+        assert not self.blockchain_transactions
+        self.blockchain_transactions = txs
+
 
 

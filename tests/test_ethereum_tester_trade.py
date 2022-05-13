@@ -22,7 +22,7 @@ from eth_defi.balances import fetch_erc20_balances_by_transfer_event, convert_ba
 from eth_defi.token import create_token
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, deploy_trading_pair, deploy_uniswap_v2_like
 from tradeexecutor.ethereum.hot_wallet_sync import EthereumHotWalletReserveSyncer
-from tradeexecutor.ethereum.uniswap_v2_execution import UniswapV2ExecutionModel
+from tradeexecutor.ethereum.uniswap_v2_execution_v0 import UniswapV2ExecutionModelVersion0
 from tradeexecutor.ethereum.uniswap_v2_live_pricing import UniswapV2LivePricing, uniswap_v2_live_pricing_factory
 from tradeexecutor.ethereum.uniswap_v2_revaluation import UniswapV2PoolRevaluator
 from tradeexecutor.ethereum.universe import create_exchange_universe, create_pair_universe
@@ -289,7 +289,7 @@ def runner(
 
     strategy_factory = import_strategy_file(strategy_path)
     approval_model = UncheckedApprovalModel()
-    execution_model = UniswapV2ExecutionModel(uniswap_v2, hot_wallet, confirmation_block_count=0)
+    execution_model = UniswapV2ExecutionModelVersion0(uniswap_v2, hot_wallet, confirmation_block_count=0)
     sync_method = EthereumHotWalletReserveSyncer(web3, hot_wallet.address)
 
     run_description: StrategyExecutionDescription = strategy_factory(

@@ -31,7 +31,7 @@ from eth_defi.ganache import fork_network
 from eth_defi.hotwallet import HotWallet
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, fetch_deployment
 from tradeexecutor.ethereum.hot_wallet_sync import EthereumHotWalletReserveSyncer
-from tradeexecutor.ethereum.uniswap_v2_execution import UniswapV2ExecutionModel
+from tradeexecutor.ethereum.uniswap_v2_execution_v0 import UniswapV2ExecutionModelVersion0
 from tradeexecutor.ethereum.uniswap_v2_live_pricing import uniswap_v2_live_pricing_factory
 from tradeexecutor.ethereum.uniswap_v2_revaluation import UniswapV2PoolRevaluator
 from tradeexecutor.state.state import State
@@ -234,7 +234,7 @@ def test_forked_pancake(
 
     strategy_factory = import_strategy_file(strategy_path)
     approval_model = UncheckedApprovalModel()
-    execution_model = UniswapV2ExecutionModel(pancakeswap_v2, hot_wallet, confirmation_block_count=0, confirmation_timeout=datetime.timedelta(minutes=1))
+    execution_model = UniswapV2ExecutionModelVersion0(pancakeswap_v2, hot_wallet, confirmation_block_count=0, confirmation_timeout=datetime.timedelta(minutes=1))
     sync_method = EthereumHotWalletReserveSyncer(web3, hot_wallet.address)
     revaluation_method = UniswapV2PoolRevaluator(pancakeswap_v2)
 

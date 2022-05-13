@@ -6,7 +6,7 @@ from contextlib import AbstractContextManager
 import logging
 from io import StringIO
 
-from typing import List
+from typing import List, Optional
 
 from tradeexecutor.strategy.approval import ApprovalModel
 from tradeexecutor.strategy.execution_model import ExecutionModel
@@ -14,15 +14,13 @@ from tradeexecutor.state.revaluation import RevaluationMethod
 from tradeexecutor.state.sync import SyncMethod
 from tradeexecutor.strategy.output import output_positions, DISCORD_BREAK_CHAR, output_trades
 from tradeexecutor.strategy.pricing_model import PricingModelFactory
+from tradeexecutor.strategy.routing import RoutingModel
 from tradeexecutor.strategy.universe_model import TradeExecutorTradingUniverse
 
 from tradeexecutor.state.state import State
-from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.reserve import ReservePosition
-from tradingstrategy.analysis.tradeanalyzer import TradePosition
-from tradingstrategy.universe import Universe
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +30,10 @@ class PreflightCheckFailed(Exception):
 
 
 class StrategyRunner(abc.ABC):
-    """A base class for a strategy live trade executor."""
+    """A base class for a strategy live trade executor.
+
+    TODO: Make routing_model non-optional after eliminating legacy code.
+    """
 
     def __init__(self,
                  timed_task_context_manager: AbstractContextManager,
@@ -40,13 +41,15 @@ class StrategyRunner(abc.ABC):
                  approval_model: ApprovalModel,
                  revaluation_method: RevaluationMethod,
                  sync_method: SyncMethod,
-                 pricing_model_factory: PricingModelFactory):
+                 pricing_model_factory: PricingModelFactory,
+                 routing_model: Optional[RoutingModel]=None):
         self.timed_task_context_manager = timed_task_context_manager
         self.execution_model = execution_model
         self.approval_model = approval_model
         self.revaluation_method = revaluation_method
         self.sync_method = sync_method
         self.pricing_model_factory = pricing_model_factory
+        self.routing_model - routing_model
 
     @abc.abstractmethod
     def pretick_check(self, ts: datetime.datetime, universe: TradeExecutorTradingUniverse):

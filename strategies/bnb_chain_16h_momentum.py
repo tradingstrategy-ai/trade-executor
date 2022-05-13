@@ -21,6 +21,7 @@ from typing import Dict
 
 import pandas as pd
 
+from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2SimpleRoutingModel
 from tradingstrategy.client import Client
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId
@@ -32,7 +33,7 @@ from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.utils.groupeduniverse import filter_for_pairs
 from tradingstrategy.universe import Universe
 
-from tradeexecutor.ethereum.uniswap_v2_execution import UniswapV2ExecutionModel
+from tradeexecutor.ethereum.uniswap_v2_execution_v0 import UniswapV2ExecutionModelVersion0
 from tradeexecutor.state.revaluation import RevaluationMethod
 from tradeexecutor.state.state import State
 from tradeexecutor.state.sync import SyncMethod
@@ -46,7 +47,7 @@ from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniv
     TradingStrategyUniverse, translate_trading_pair, Dataset
 from tradeexecutor.utils.price import is_legit_price_value
 
-# Cannot use Python __name__ here because the module is dynamically loaded
+# Create a Python logger to help pinpointing issues during development
 logger = logging.getLogger("bnb_chain_16h_momentum")
 
 # Use daily candles to run the algorithm
@@ -79,20 +80,23 @@ allowed_quote_tokens = {
 # Keep everything internally in BUSD
 reserve = "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c"
 
-# Allowed exchanges as factory -> router pairs
-allowed_exchanges = {
+# Allowed exchanges as factory -> router pairs,
+# by their smart contract addresses
+factory_router_map = {
     # Pancake
     "0xcA143Ce32Fe78f1f7019d7d551a6402fC5350c73": "0x10ED43C718714eb63d5aA57B78B54704E256024E",
     # Biswap
-    "0x858e3312ed3a876947ea49d572a7c42de08af7ee": "0x3a6d8cA21D1CF76F653A67577FA0D27453350dD8",
+    # "0x858e3312ed3a876947ea49d572a7c42de08af7ee": "0x3a6d8cA21D1CF76F653A67577FA0D27453350dD8",
     # FSTSwap
-    "0x9A272d734c5a0d7d84E0a892e891a553e8066dce": "0x1B6C9c20693afDE803B27F8782156c0f892ABC2d",
+    # "0x9A272d734c5a0d7d84E0a892e891a553e8066dce": "0x1B6C9c20693afDE803B27F8782156c0f892ABC2d",
 }
 
-allowed_intermediary_tokens = {
-    "WBNB": "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c",
-    "USDT": "0x55d398326f99059fF775485246999027B3197955",
+# For three way trades, which pools we can use
+allowed_intermediary_pairs = {
+    # BUSD -> WBNB
+    "0x58f876857a02d6762e0101bb5c46a8c1ed44dc16",  # https://tradingstrategy.ai/trading-view/binance/pancakeswap-v2/bnb-busd
 }
+
 
 class MomentumAlphaModel(AlphaModel):
     """An alpha model that ranks pairs by the daily upwords price change %.
@@ -301,12 +305,12 @@ class OurUniverseModel(TradingStrategyUniverseModel):
             exchange_universe = dataset.exchanges
 
             our_exchanges = {
-                exchange_universe.get_by_chain_and_factory(ChainId.bsc, factory_address) for factory_address in allowed_exchanges.keys()
+                exchange_universe.get_by_chain_and_factory(ChainId.bsc, factory_address) for factory_address in factory_router_map.keys()
             }
 
             # Check we got all exchanges in the dataset
             for xchg in our_exchanges:
-                assert xchg, f"Could not look up all exchange factories: {allowed_exchanges}"
+                assert xchg, f"Could not look up all exchange factories, router map is: {factory_router_map}"
 
             # Choose all trading pairs that are on our supported exchanges and
             # with our supported quote tokens
@@ -320,7 +324,7 @@ class OurUniverseModel(TradingStrategyUniverseModel):
             pairs = PandasPairUniverse(pairs_df)
 
             # We do a bit detour here as we need to address the assets by their trading pairs first
-            pancake_v2 = exchange_universe.get_by_chain_and_slug(ChainId.bsc, factory_address)
+            pancake_v2 = exchange_universe.get_by_chain_and_slug(ChainId.bsc, "pancake-v2")
             bnb_busd = translate_trading_pair(pairs.get_one_pair_from_pandas_universe(pancake_v2.exchange_id, "WBNB", "BUSD"))
             assert bnb_busd, "We do not have BNB-BUSD, something wrong with the dataset"
             reserve_assets = [
@@ -339,7 +343,7 @@ class OurUniverseModel(TradingStrategyUniverseModel):
 
             universe = Universe(
                 time_frame=dataset.time_frame,
-                chains=[ChainId.bsc],
+                chains={ChainId.bsc},
                 pairs=pairs,
                 exchanges=our_exchanges,
                 candles=candle_universe,
@@ -357,7 +361,7 @@ class OurUniverseModel(TradingStrategyUniverseModel):
 
 def strategy_factory(
         *ignore,
-        execution_model: UniswapV2ExecutionModel,
+        execution_model: UniswapV2ExecutionModelVersion0,
         sync_method: SyncMethod,
         pricing_model_factory: PricingModelFactory,
         revaluation_method: RevaluationMethod,
@@ -370,9 +374,6 @@ def strategy_factory(
         # https://www.python.org/dev/peps/pep-3102/
         raise TypeError("Only keyword arguments accepted")
 
-    # assert isinstance(execution_model, UniswapV2ExecutionModel), f"This strategy is compatible only with UniswapV2ExecutionModel, got {execution_model}"
-    # assert execution_model.chain_id == 1337, f"This strategy is hardcoded to ganache-cli test chain, got chain {execution_model.chain_id}"
-
     universe_model = OurUniverseModel(client, timed_task_context_manager)
 
     runner = QSTraderRunner(
@@ -384,6 +385,10 @@ def strategy_factory(
         sync_method=sync_method,
         pricing_model_factory=pricing_model_factory,
         cash_buffer=cash_buffer,
+        routing_model=UniswapV2SimpleRoutingModel(
+            factory_router_map,
+            allowed_intermediary_pairs,
+        ),
     )
 
     return StrategyExecutionDescription(

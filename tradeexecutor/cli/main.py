@@ -24,7 +24,7 @@ from tradeexecutor.cli.approval import CLIApprovalModel
 from tradeexecutor.cli.loop import ExecutionLoop
 from tradeexecutor.ethereum.hot_wallet_sync import EthereumHotWalletReserveSyncer
 
-from tradeexecutor.ethereum.uniswap_v2_execution import UniswapV2ExecutionModel
+from tradeexecutor.ethereum.uniswap_v2_execution_v0 import UniswapV2ExecutionModelVersion0
 from tradeexecutor.ethereum.uniswap_v2_live_pricing import uniswap_v2_live_pricing_factory
 from tradeexecutor.ethereum.uniswap_v2_revaluation import UniswapV2PoolRevaluator
 from tradeexecutor.state.store import JSONFileStore, StateStore
@@ -75,7 +75,7 @@ def create_trade_execution_model(
         hot_wallet = HotWallet.from_private_key(private_key)
         uniswap = fetch_deployment(web3, factory_address, router_address, init_code_hash=uniswap_init_code_hash)
         sync_method = EthereumHotWalletReserveSyncer(web3, hot_wallet.address)
-        execution_model = UniswapV2ExecutionModel(uniswap, hot_wallet, confirmation_timeout=confirmation_timeout, confirmation_block_count=confirmation_block_count)
+        execution_model = UniswapV2ExecutionModelVersion0(uniswap, hot_wallet, confirmation_timeout=confirmation_timeout, confirmation_block_count=confirmation_block_count)
         revaluation_method = UniswapV2PoolRevaluator(uniswap)
         pricing_model_factory = uniswap_v2_live_pricing_factory
         return execution_model, sync_method, revaluation_method, pricing_model_factory

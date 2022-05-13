@@ -34,6 +34,11 @@ from tradeexecutor.cli.log import setup_pytest_logging
 
 
 # https://docs.pytest.org/en/latest/how-to/skipping.html#skip-all-test-functions-of-a-class-or-module
+from tradeexecutor.strategy.trading_strategy_universe import create_pair_universe_from_code
+from tradingstrategy.chain import ChainId
+from tradingstrategy.pair import PandasPairUniverse
+
+
 pytestmark = pytest.mark.skipif(os.environ.get("BNB_CHAIN_JSON_RPC") is None, reason="Set BNB_CHAIN_JSON_RPC environment variable to Binance Smart Chain node to run this test")
 
 
@@ -139,7 +144,7 @@ def wbnb_token(pancakeswap_v2: UniswapV2Deployment) -> Contract:
     return pancakeswap_v2.weth
 
 
-@pytest.fixture
+@pytest.fixture()
 def busd_asset(busd_token, chain_id) -> AssetIdentifier:
     return AssetIdentifier(
         chain_id,
@@ -221,8 +226,14 @@ def cake_bnb_trading_pair(cake_asset, bnb_asset, pancakeswap_v2) -> TradingPairI
     )
 
 
-@pytest.fixture(scope="module")
-def routing_model():
+@pytest.fixture
+def pair_universe(cake_busd_trading_pair, bnb_busd_trading_pair, cake_bnb_trading_pair) -> PandasPairUniverse:
+    """Pair universe needed for the trade routing."""
+    return create_pair_universe_from_code(ChainId.bsc, [cake_busd_trading_pair, bnb_busd_trading_pair, cake_bnb_trading_pair])
+
+
+@pytest.fixture()
+def routing_model(busd_asset):
 
     # Allowed exchanges as factory -> router pairs
     factory_router_map = {
@@ -234,7 +245,17 @@ def routing_model():
         #"0x9A272d734c5a0d7d84E0a892e891a553e8066dce": ("0x1B6C9c20693afDE803B27F8782156c0f892ABC2d", ),
     }
 
-    return UniswapV2SimpleRoutingModel(factory_router_map, set())
+    allowed_intermediary_pairs = {
+        # For WBNB pairs route thru (WBNB, BUSD) pool
+        # https://tradingstrategy.ai/trading-view/binance/pancakeswap-v2/bnb-busd
+        "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c": "0x58f876857a02d6762e0101bb5c46a8c1ed44dc16",
+    }
+
+    return UniswapV2SimpleRoutingModel(
+        factory_router_map,
+        allowed_intermediary_pairs,
+        reserve_asset=busd_asset,
+        max_slippage=0.01)
 
 
 def test_simple_routing_one_leg(
@@ -268,7 +289,6 @@ def test_simple_routing_one_leg(
         cake_busd_trading_pair,
         busd_asset,
         100 * 10**18,  # Buy Cake worth of 100 BUSD,
-        max_slippage=0.01,
         check_balances=True,
     )
 
@@ -320,7 +340,6 @@ def test_simple_routing_buy_sell(
         cake_busd_trading_pair,
         busd_asset,
         100 * 10**18,  # Buy Cake worth of 100 BUSD,
-        max_slippage=0.01,
         check_balances=True,
     )
 
@@ -345,7 +364,6 @@ def test_simple_routing_buy_sell(
         cake_busd_trading_pair,
         cake_asset,
         cake_balance,  # Sell all cake
-        max_slippage=0.01,
         check_balances=True,
     )
     assert len(txs) == 2
@@ -390,7 +408,6 @@ def test_simple_routing_not_enough_balance(
             cake_busd_trading_pair,
             busd_asset,
             1_000_000_000 * 10**18,  # Buy Cake worth of 10B BUSD,
-            max_slippage=0.01,
             check_balances=True,
         )
 
@@ -425,7 +442,6 @@ def test_simple_routing_three_leg(
         cake_bnb_trading_pair,
         busd_asset,
         100 * 10**18,  # Buy Cake worth of 100 BUSD,
-        max_slippage=0.01,
         check_balances=True,
         intermediary_pair=bnb_busd_trading_pair,
     )
@@ -483,7 +499,6 @@ def test_three_leg_buy_sell(
         cake_bnb_trading_pair,
         busd_asset,
         100 * 10**18,  # Buy Cake worth of 100 BUSD,
-        max_slippage=0.01,
         check_balances=True,
         intermediary_pair=bnb_busd_trading_pair,
     )
@@ -516,7 +531,6 @@ def test_three_leg_buy_sell(
         cake_bnb_trading_pair,
         cake_asset,
         balance,
-        max_slippage=0.01,
         check_balances=True,
         intermediary_pair=bnb_busd_trading_pair,
     )
@@ -586,7 +600,6 @@ def test_three_leg_buy_sell_twice_on_chain(
             cake_bnb_trading_pair,
             busd_asset,
             100 * 10**18,  # Buy Cake worth of 100 BUSD,
-            max_slippage=0.01,
             check_balances=True,
             intermediary_pair=bnb_busd_trading_pair,
         )
@@ -611,7 +624,6 @@ def test_three_leg_buy_sell_twice_on_chain(
             cake_bnb_trading_pair,
             cake_asset,
             balance,
-            max_slippage=0.01,
             check_balances=True,
             intermediary_pair=bnb_busd_trading_pair,
         )
@@ -629,7 +641,6 @@ def test_three_leg_buy_sell_twice_on_chain(
             assert tx.is_success(), f"Transaction failed: {tx}"
 
         return txs + txs2
-
 
     routing_state = UniswapV2RoutingState(tx_builder)
     txs_1 = trip()
@@ -676,7 +687,6 @@ def test_three_leg_buy_sell_twice(
             cake_bnb_trading_pair,
             busd_asset,
             100 * 10**18,  # Buy Cake worth of 100 BUSD,
-            max_slippage=0.01,
             check_balances=True,
             intermediary_pair=bnb_busd_trading_pair,
         )
@@ -701,11 +711,9 @@ def test_three_leg_buy_sell_twice(
             cake_bnb_trading_pair,
             cake_asset,
             balance,
-            max_slippage=0.01,
             check_balances=True,
             intermediary_pair=bnb_busd_trading_pair,
         )
-
 
         # Execute
         tx_builder.broadcast_and_wait_transactions_to_complete(
@@ -719,7 +727,6 @@ def test_three_leg_buy_sell_twice(
             assert tx.is_success(), f"Transaction failed: {tx}"
 
         return txs + txs2
-
 
     txs_1 = trip()
     assert len(txs_1) == 4

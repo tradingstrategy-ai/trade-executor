@@ -2,7 +2,6 @@
 from collections import defaultdict
 from typing import Dict, Set, List, Optional, Tuple
 
-from eth_typing import HexAddress
 from web3.contract import Contract
 
 from eth_defi.abi import get_deployed_contract
@@ -13,14 +12,17 @@ from tradeexecutor.ethereum.execution import get_token_for_asset
 from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
-from tradeexecutor.strategy.routing import RoutingModel
+from tradeexecutor.state.trade import TradeExecution
+from tradeexecutor.strategy.routing import RoutingModel, RoutingState, CannotRouteTrade
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_trading_pair
+from tradingstrategy.pair import PandasPairUniverse
 
 
 class OutOfBalance(Exception):
     """Did not have enough tokens"""
 
 
-class UniswapV2RoutingState:
+class UniswapV2RoutingState(RoutingState):
     """Manage transaction building for multiple Uniswap trades.
 
     - Lifespan is one rebalance - remembers already made approvals
@@ -236,7 +238,9 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
 
     def __init__(self,
                  factory_router_map: Dict[str, Tuple[str, Optional[str]]],
-                 allowed_intermediary_tokens: Set[HexAddress],
+                 allowed_intermediary_pairs: Dict[str, str],
+                 reserve_asset: AssetIdentifier,
+                 max_slippage: float,
                  ):
         """
         :param factory_router_map:
@@ -244,16 +248,26 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
             Each Uniswap v2 is uniquely identified by its factory contract.
             Addresses always lowercase.
 
-        :param allowed_intermediary_tokens:
+        :param allowed_intermediary_pairs:
+            Quote token address -> pair smart contract address mapping.
             Because we hold our reserves only in one currecy e.g. BUSD
-            and we want to trade XXX/BNB pairs, we need to whitelist
+            and we want to trade e.g. Cake/BNB pairs, we need to whitelist
             BNB as an allowed intermediary token.
+            This makes it possible to do BUSD -> BNB -> Cake trade.
+            This set is the list of pair smart contract addresses that
+            are allowed to be used as a hop.
 
-        :param allowed_slippage:
-            Maximum allowed slippage in trades
+        :param max_slippage:
+            Maximum allowed slippage in trades.
+
         """
+
+        # Convert all key addresses to lowercase to
+        # avoid mix up with Ethereum address checksums
         self.factory_router_map = {k.lower(): v for k, v in factory_router_map.items()}
-        self.allowed_intermediary_tokens = allowed_intermediary_tokens
+        self.allowed_intermediary_pairs = {k.lower(): v for k, v in allowed_intermediary_pairs.items()}
+        self.reserve_asset = reserve_asset
+        self.max_slippage = max_slippage
 
     def make_direct_trade(self,
                           routing_state: UniswapV2RoutingState,
@@ -314,7 +328,6 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
               target_pair: TradingPairIdentifier,
               reserve_asset: AssetIdentifier,
               reserve_asset_amount: int,  # Raw amount of the reserve asset
-              max_slippage: float,
               check_balances=False,
               intermediary_pair: Optional[TradingPairIdentifier] = None,
               ) -> List[BlockchainTransaction]:
@@ -337,6 +350,9 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
             transactions in the `routing_state`.
         """
 
+        assert type(reserve_asset_amount) == int
+        assert reserve_asset_amount > 0, "For sells, switch reserve_asset to different token"
+
         # Our reserves match directly the asset on trading pair
         # -> we can do one leg trade
         if not intermediary_pair:
@@ -346,17 +362,116 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
                     target_pair,
                     reserve_asset,
                     reserve_asset_amount,
-                    max_slippage,
+                    self.max_slippage,
                     check_balances=check_balances,
                 )
             raise RuntimeError(f"Do not how to trade reserve {reserve_asset} with {target_pair}")
         else:
+
+            assert intermediary_pair.pool_address.lower() in self.allowed_intermediary_pairs.values(), f"Intermediary pair {intermediary_pair} not allowed, allowed pairs are {self.allowed_intermediary_pairs}"
+
             return self.make_multihop_trade(
                 routing_state,
                 target_pair,
                 intermediary_pair,
                 reserve_asset,
                 reserve_asset_amount,
-                max_slippage,
+                self.max_slippage,
                 check_balances=check_balances,
             )
+
+    def route_trade(self, pair_universe: PandasPairUniverse, trade: TradeExecution) -> Tuple[TradingPairIdentifier, Optional[TradingPairIdentifier]]:
+        """Figure out how to map an abstract trade to smart contracts.
+
+        Decide if we can do a direct trade in the pair pool.
+        or if we need to hop through another pool to buy the token we want to buy.
+
+        :return:
+            target pair, intermediary pair tuple
+        """
+
+        # We can directly do a two-way trade
+        if trade.pair.quote == self.reserve_asset:
+            return trade.pair, None
+
+        # Try to find a mid-hop pool for the trade
+        intermediate_pair_contract_address = self.allowed_intermediary_pairs.get(trade.pair.quote.lower())
+
+        if not intermediate_pair_contract_address:
+            raise CannotRouteTrade(f"Does not know how to trade pair {trade.pair} - supported intermediate tokens are {list(self.allowed_intermediary_pairs.keys())}")
+
+        dex_pair = pair_universe.get_pair_by_smart_contract(intermediate_pair_contract_address)
+        intermediate_pair = translate_trading_pair(dex_pair)
+        if not intermediate_pair:
+            raise CannotRouteTrade(f"Universe does not have a trading pair with smart contract address {intermediate_pair_contract_address}")
+
+        return trade.pair,intermediate_pair_contract_address
+
+    def execute_trades_internal(self,
+                       pair_universe: PandasPairUniverse,
+                       routing_state: UniswapV2RoutingState,
+                       trades: List[TradeExecution],
+                       check_balances=False):
+        """Split for testability."""
+
+        # Watch out for executing trade twice
+        for t in trades:
+            assert len(t.blockchain_transactions), f"Trade {t} had already blockchain transactions associated with it"
+
+            target_pair, intermediary_pair = self.route_trade(pair_universe, t)
+
+            if intermediary_pair is None:
+                # Two way trade
+                # Decide betwen buying and selling
+                if t.is_buy():
+                    self.trade(
+                        routing_state,
+                        target_pair=target_pair,
+                        reserve_asset=self.reserve_asset,
+                        reserve_asset_amount=t.get_raw_planned_reserve(),
+                        check_balances=check_balances,
+                    )
+                else:
+                    self.trade(
+                        routing_state,
+                        target_pair=target_pair,
+                        reserve_asset=target_pair.base,
+                        reserve_asset_amount=t.get_raw_planned_quantity(),
+                        check_balances=check_balances,
+                    )
+            else:
+                # Three-way trade!
+                if t.is_buy():
+                    self.trade(
+                        routing_state,
+                        target_pair=target_pair,
+                        reserve_asset=self.reserve_asset,
+                        reserve_asset_amount=t.get_raw_planned_reserve(),
+                        check_balances=check_balances,
+                        intermediary_pair=intermediary_pair,
+                    )
+                else:
+                    self.trade(
+                        routing_state,
+                        target_pair=target_pair,
+                        reserve_asset=target_pair.base,
+                        reserve_asset_amount=t.get_raw_planned_quantity(),
+                        check_balances=check_balances,
+                        intermediary_pair=intermediary_pair,
+                    )
+
+    def execute_trades(self,
+                       universe: TradingStrategyUniverse,
+                       routing_state: UniswapV2RoutingState,
+                       trades: List[TradeExecution],
+                       check_balances=False):
+        """Strategy and live execution connection.
+
+        Turns abstract strategy trades to real blockchain transactions.
+
+        - Modifies TradeExecution objects in place and associates a blockchain transaction for each
+
+        - Signs tranactions from the hot wallet and broadcasts them to the network
+        """
+        return self.execute_trades_internal(universe.universe.pairs, routing_state, trades, check_balances)
+

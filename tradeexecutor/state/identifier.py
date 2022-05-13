@@ -3,6 +3,7 @@
 How executor internally knows how to connect trading pairs in data and in execution environment (on-chain).
 """
 from dataclasses import dataclass
+from decimal import Decimal
 from typing import Optional
 
 from dataclasses_json import dataclass_json
@@ -58,6 +59,13 @@ class AssetIdentifier:
         """Assets are considered be identical if they share the same smart contract address."""
         assert isinstance(other, AssetIdentifier)
         return self.address.lower() == other.address.lower()
+
+    def convert_to_raw_amount(self, amount: Decimal) -> int:
+        """Return any amount in token native units.
+
+        Convert decimal to fixed point integer.
+        """
+        return int(amount * Decimal(10**self.decimals))
 
 
 @dataclass_json

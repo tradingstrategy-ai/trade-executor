@@ -15,7 +15,7 @@ from tradingstrategy.chain import ChainId
 from tradingstrategy.client import Client
 from tradingstrategy.exchange import ExchangeUniverse
 from tradingstrategy.liquidity import GroupedLiquidityUniverse
-from tradingstrategy.pair import DEXPair, PandasPairUniverse
+from tradingstrategy.pair import DEXPair, PandasPairUniverse, PairType
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
 from tradingstrategy.utils.groupeduniverse import filter_for_pairs
@@ -92,6 +92,12 @@ class TradingStrategyUniverse(TradeExecutorTradingUniverse):
 
         return TradingStrategyUniverse(universe=universe, reserve_assets=reserve_assets)
 
+    def get_pair_by_address(self, address: str) -> Optional[TradingPairIdentifier]:
+        """Get a trading pair data by a smart contract address."""
+        pair = self.universe.pairs.get_pair_by_smart_contract(address)
+        if not pair:
+            return None
+        return translate_trading_pair(pair)
 
 
 class TradingStrategyUniverseModel(UniverseModel):
@@ -256,3 +262,32 @@ def translate_trading_pair(pair: DEXPair) -> TradingPairIdentifier:
         info_url=pair.get_trading_pair_page_url(),
         exchange_address=pair.exchange_address,
     )
+
+
+def create_pair_universe_from_code(chain_id: ChainId, pairs: List[TradingPairIdentifier]) -> "PandasPairUniverse":
+    """Create the trading universe from handcrafted data.
+
+    Used in unit testing.
+    """
+    data = []
+    for idx, p in enumerate(pairs):
+        dex_pair = DEXPair(
+            pair_id=idx,
+            chain_id=chain_id,
+            exchange_id=0,
+            address=p.pool_address,
+            dex_type=PairType.uniswap_v2,
+            base_token_symbol=p.base.token_symbol,
+            quote_token_symbol=p.quote.token_symbol,
+            token0_symbol=p.base.token_symbol,
+            token1_symbol=p.quote.token_symbol,
+            token0_address=p.base.address,
+            token1_address=p.quote.address,
+            flag_inactive=False,
+            flag_blacklisted_manually=False,
+            flag_unsupported_quote_token=False,
+            flag_unknown_exchange=False,
+        )
+        data.append(dex_pair.to_dict())
+    df = pd.DataFrame(data)
+    return PandasPairUniverse(df)

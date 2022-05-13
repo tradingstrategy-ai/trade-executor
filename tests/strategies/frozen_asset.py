@@ -9,7 +9,7 @@ from tradeexecutor.strategy.trading_strategy_universe import translate_trading_p
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
 
-from tradeexecutor.ethereum.uniswap_v2_execution import UniswapV2ExecutionModel
+from tradeexecutor.ethereum.uniswap_v2_execution_v0 import UniswapV2ExecutionModelVersion0
 from tradeexecutor.state.revaluation import RevaluationMethod
 from tradeexecutor.state.state import State
 from tradeexecutor.state.sync import SyncMethod
@@ -58,7 +58,7 @@ class BadAlpha(AlphaModel):
 
 def strategy_factory(
         *ignore,
-        execution_model: UniswapV2ExecutionModel,
+        execution_model: UniswapV2ExecutionModelVersion0,
         sync_method: SyncMethod,
         pricing_model_factory: PricingModelFactory,
         revaluation_method: RevaluationMethod,
