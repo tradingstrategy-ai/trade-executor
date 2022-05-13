@@ -543,3 +543,186 @@ def test_three_leg_buy_sell(
     # We started with 10_000 BUSD
     balance = busd_token.functions.balanceOf(hot_wallet.address).call()
     assert balance == pytest.approx(9999003745120046326850)
+
+
+def test_three_leg_buy_sell_twice_on_chain(
+        web3,
+        hot_wallet,
+        busd_asset,
+        bnb_asset,
+        cake_asset,
+        cake_token,
+        busd_token,
+        routing_model,
+        cake_bnb_trading_pair,
+        bnb_busd_trading_pair,
+):
+    """Make trades 2x BUSD -> BNB -> Cake and Cake -> BNB -> BUSD.
+
+    Because we do the round trip 2x, we should not need approvals
+    on the second time and we need one less transactions.
+
+    We reset the routing state between, forcing
+    the routing state to read the approval information
+    back from the chain.
+    """
+
+    # Get live fee structure from BNB Chain
+    fees = estimate_gas_fees(web3)
+
+    # Prepare a transaction builder
+    tx_builder = TransactionBuilder(
+        web3,
+        hot_wallet,
+        fees,
+    )
+
+    routing_state = None
+
+    def trip():
+
+        txs = routing_model.trade(
+            routing_state,
+            cake_bnb_trading_pair,
+            busd_asset,
+            100 * 10**18,  # Buy Cake worth of 100 BUSD,
+            max_slippage=0.01,
+            check_balances=True,
+            intermediary_pair=bnb_busd_trading_pair,
+        )
+
+        # Execute
+        tx_builder.broadcast_and_wait_transactions_to_complete(
+            web3,
+            txs,
+            revert_reasons=True
+        )
+
+        # Check all transactions succeeded
+        for tx in txs:
+            assert tx.is_success(), f"Transaction failed: {tx}"
+
+        # We received the tokens we bought
+        balance = cake_token.functions.balanceOf(hot_wallet.address).call()
+        assert balance > 0
+
+        txs2 = routing_model.trade(
+            routing_state,
+            cake_bnb_trading_pair,
+            cake_asset,
+            balance,
+            max_slippage=0.01,
+            check_balances=True,
+            intermediary_pair=bnb_busd_trading_pair,
+        )
+
+
+        # Execute
+        tx_builder.broadcast_and_wait_transactions_to_complete(
+            web3,
+            txs2,
+            revert_reasons=True
+        )
+
+        # Check all transactions succeeded
+        for tx in txs2:
+            assert tx.is_success(), f"Transaction failed: {tx}"
+
+        return txs + txs2
+
+
+    routing_state = UniswapV2RoutingState(tx_builder)
+    txs_1 = trip()
+    assert len(txs_1) == 4
+    routing_state = UniswapV2RoutingState(tx_builder)
+    txs_2 = trip()
+    assert len(txs_2) == 2
+
+
+def test_three_leg_buy_sell_twice(
+        web3,
+        hot_wallet,
+        busd_asset,
+        bnb_asset,
+        cake_asset,
+        cake_token,
+        busd_token,
+        routing_model,
+        cake_bnb_trading_pair,
+        bnb_busd_trading_pair,
+):
+    """Make trades 2x BUSD -> BNB -> Cake and Cake -> BNB -> BUSD.
+
+    Because we do the round trip 2x, we should not need approvals
+    on the second time and we need one less transactions.
+    """
+
+    # Get live fee structure from BNB Chain
+    fees = estimate_gas_fees(web3)
+
+    # Prepare a transaction builder
+    tx_builder = TransactionBuilder(
+        web3,
+        hot_wallet,
+        fees,
+    )
+
+    routing_state = UniswapV2RoutingState(tx_builder)
+
+    def trip():
+
+        txs = routing_model.trade(
+            routing_state,
+            cake_bnb_trading_pair,
+            busd_asset,
+            100 * 10**18,  # Buy Cake worth of 100 BUSD,
+            max_slippage=0.01,
+            check_balances=True,
+            intermediary_pair=bnb_busd_trading_pair,
+        )
+
+        # Execute
+        tx_builder.broadcast_and_wait_transactions_to_complete(
+            web3,
+            txs,
+            revert_reasons=True
+        )
+
+        # Check all transactions succeeded
+        for tx in txs:
+            assert tx.is_success(), f"Transaction failed: {tx}"
+
+        # We received the tokens we bought
+        balance = cake_token.functions.balanceOf(hot_wallet.address).call()
+        assert balance > 0
+
+        txs2 = routing_model.trade(
+            routing_state,
+            cake_bnb_trading_pair,
+            cake_asset,
+            balance,
+            max_slippage=0.01,
+            check_balances=True,
+            intermediary_pair=bnb_busd_trading_pair,
+        )
+
+
+        # Execute
+        tx_builder.broadcast_and_wait_transactions_to_complete(
+            web3,
+            txs2,
+            revert_reasons=True
+        )
+
+        # Check all transactions succeeded
+        for tx in txs2:
+            assert tx.is_success(), f"Transaction failed: {tx}"
+
+        return txs + txs2
+
+
+    txs_1 = trip()
+    assert len(txs_1) == 4
+    txs_2 = trip()
+    assert len(txs_2) == 2
+
