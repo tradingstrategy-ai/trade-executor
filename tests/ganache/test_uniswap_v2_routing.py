@@ -795,3 +795,6 @@ def test_stateful_route_buy_three_leg(
         assert t.is_success()
         for tx in t.blockchain_transactions:
             assert tx.is_success()
+
+    # We received the tokens we bought
+    assert cake_token.functions.balanceOf(hot_wallet.address).call() > 0
