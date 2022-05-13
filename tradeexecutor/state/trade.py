@@ -134,6 +134,14 @@ class TradeExecution:
         else:
             return f"<Sell #{self.trade_id} {abs(self.planned_quantity)} {self.pair.base.token_symbol} at {self.planned_price}>"
 
+    def __hash__(self):
+        # TODO: Hash better?
+        return hash(str(self))
+
+    def __eq__(self, other):
+        assert isinstance(other, TradeExecution)
+        return self.trade_id == other.trade_id
+
     def __post_init__(self):
         assert self.trade_id > 0
         assert self.planned_quantity != 0
@@ -308,8 +316,12 @@ class TradeExecution:
         else:
             return self.trade_id
 
+    def mark_broadcasted(self, broadcasted_at: datetime.datetime):
+        assert self.get_status() == TradeStatus.started, f"Trade in bad state: {self.get_status()}"
+        self.broadcasted_at = broadcasted_at
+
     def mark_success(self, executed_at: datetime.datetime, executed_price: USDollarAmount, executed_quantity: Decimal, executed_reserve: Decimal, lp_fees: USDollarAmount, native_token_price: USDollarAmount):
-        assert self.get_status() == TradeStatus.broadcasted
+        assert self.get_status() == TradeStatus.broadcasted, f"Cannot mark trade success if it is not broadcasted. Current status: {self.get_status()}"
         assert isinstance(executed_quantity, Decimal)
         assert type(executed_price) == float, f"Received executed price: {executed_price} {type(executed_price)}"
         assert executed_at.tzinfo is None

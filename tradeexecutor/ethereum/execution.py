@@ -290,6 +290,7 @@ def broadcast(
             # Only SignedTransaction.rawTransaction attribute is intresting in this point
             tx = SignedTransaction(rawTransaction=tx.signed_bytes, hash=None, r=0, s=0, v=0)
             broadcast_batch.append(tx)
+        t.mark_broadcasted(datetime.datetime.utcnow())
 
     hashes = broadcast_transactions(web3, broadcast_batch, confirmation_block_count=confirmation_block_count)
     assert len(hashes) >= len(instructions)
@@ -345,24 +346,18 @@ def resolve_trades(
     :stop_on_execution_failure: Raise an exception if any of the trades failed
     """
 
-    trades = []
+    trades = set()
 
-    # First resolve transactions for all trades
+    # First update the state of all transactions,
+    # as we now have receipt for them
     for tx_hash, receipt in receipts.items():
         trade, tx = tx_map[tx_hash.hex()]
-
         logger.info("Resolved trade %s", trade)
-
-        base_token_details = fetch_erc20_details(web3, trade.pair.base.checksum_address)
-        quote_token_details = fetch_erc20_details(web3, trade.pair.quote.checksum_address)
-
         # Update the transaction confirmation status
         status = receipt["status"] == 1
-
         reason = None
         if status == 0:
             reason = fetch_transaction_revert_reason(web3, tx_hash)
-
         tx.set_confirmation_information(
             ts,
             receipt["blockNumber"],
@@ -372,18 +367,23 @@ def resolve_trades(
             status,
             revert_reason=reason,
         )
+        trades.add(trade)
 
-        trades.append(trade)
-
-    # Then resolve trade status by its transactions
+    # Then resolve trade status by analysis the tx receipt
+    # if the blockchain transaction was successsful.
+    # Also get the actual executed token counts.
+    trade: TradeExecution
     for trade in trades:
+        base_token_details = fetch_erc20_details(web3, trade.pair.base.checksum_address)
+        quote_token_details = fetch_erc20_details(web3, trade.pair.quote.checksum_address)
+        reserve = trade.reserve_currency
         swap_tx = get_swap_transactions(trade)
         uniswap = mock_partial_deployment_for_analysis(web3, swap_tx.contract_address)
         result = analyse_trade(web3, uniswap, swap_tx.tx_hash)
 
         if isinstance(result, TradeSuccess):
             if trade.is_buy():
-                assert result.path[0] == quote_token_details.address, f"Was expecting the route path to start with quote token {quote_token_details}, got path {result.path}"
+                assert result.path[0] == reserve.address, f"Was expecting the route path to start with reserve token {reserve}, got path {result.path}"
                 price = 1 / result.price
                 executed_reserve = result.amount_in / Decimal(10**quote_token_details.decimals)
                 executed_amount = result.amount_out / Decimal(10**base_token_details.decimals)

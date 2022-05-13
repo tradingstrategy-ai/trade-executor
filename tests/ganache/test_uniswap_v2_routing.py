@@ -27,8 +27,11 @@ from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, fetch_deployment
 from eth_defi.utils import is_localhost_port_listening
 from tradeexecutor.cli.main import app
 from tradeexecutor.ethereum.execution import broadcast_and_resolve
+from tradeexecutor.ethereum.hot_wallet_sync import EthereumHotWalletReserveSyncer
 from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2RoutingState, UniswapV2SimpleRoutingModel, OutOfBalance
+from tradeexecutor.ethereum.wallet import sync_reserves, sync_portfolio
+from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.state import State
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 
@@ -105,12 +108,6 @@ def chain_id(web3):
     return web3.eth.chain_id
 
 
-@pytest.fixture()
-def hot_wallet_private_key(web3) -> HexBytes:
-    """Generate a private key"""
-    return HexBytes(secrets.token_bytes(32))
-
-
 @pytest.fixture
 def busd_token(web3) -> Contract:
     """BUSD with $4B supply."""
@@ -178,14 +175,13 @@ def bnb_busd_trading_pair_address() -> HexAddress:
     return HexAddress(HexStr("0x58f876857a02d6762e0101bb5c46a8c1ed44dc16"))
 
 
-
 @pytest.fixture()
-def hot_wallet(web3: Web3, busd_token: Contract, hot_wallet_private_key: HexBytes, large_busd_holder: HexAddress) -> HotWallet:
+def hot_wallet(web3: Web3, busd_token: Contract, large_busd_holder: HexAddress) -> HotWallet:
     """Our trading Ethereum account.
 
     Start with 10,000 USDC cash and 2 BNB.
     """
-    account = Account.from_key(hot_wallet_private_key)
+    account = Account.create()
     web3.eth.send_transaction({"from": large_busd_holder, "to": account.address, "value": 2*10**18})
     tx_hash = busd_token.functions.transfer(account.address, 10_000 * 10**18).transact({"from": large_busd_holder})
     wait_transactions_to_complete(web3, [tx_hash])
@@ -259,6 +255,25 @@ def routing_model(busd_asset):
         allowed_intermediary_pairs,
         reserve_asset=busd_asset,
         max_slippage=0.01)
+
+
+@pytest.fixture()
+def portfolio(web3, hot_wallet, busd_asset) -> Portfolio:
+    """A portfolio synced to the hot wallet, starting with 10_000 BUSD."""
+    portfolio = Portfolio()
+    events = sync_reserves(web3, datetime.datetime.utcnow(), hot_wallet.address, [], [busd_asset])
+    assert len(events) > 0
+    sync_portfolio(portfolio, events)
+    reserve_currency, exchange_rate = portfolio.get_default_reserve_currency()
+    assert reserve_currency == busd_asset
+    return portfolio
+
+
+@pytest.fixture
+def state(portfolio) -> State:
+    """State used in the tests."""
+    state = State(portfolio=portfolio)
+    return state
 
 
 def test_simple_routing_one_leg(
@@ -748,6 +763,7 @@ def test_stateful_route_buy_three_leg(
         routing_model,
         cake_bnb_trading_pair,
         bnb_busd_trading_pair,
+        state: State,
 ):
     """Perform 3-leg buy using RoutingModel.execute_trades()"""
 
@@ -759,8 +775,6 @@ def test_stateful_route_buy_three_leg(
 
     routing_state = UniswapV2RoutingState(tx_builder)
 
-    state = State()
-
     trader = PairUniverseTestTrader(state)
 
     # Buy Cake via BUSD -> BNB pool for 100 USD
@@ -768,5 +782,16 @@ def test_stateful_route_buy_three_leg(
         trader.buy(cake_bnb_trading_pair, Decimal(100))
     ]
 
+    t = trades[0]
+    assert t.reserve_currency == busd_asset
+    assert t.pair == cake_bnb_trading_pair
+
+    state.start_trades(datetime.datetime.utcnow(), trades)
+
     routing_model.execute_trades_internal(pair_universe, routing_state, trades, check_balances=True)
     broadcast_and_resolve(web3, state, trades, stop_on_execution_failure=True)
+
+    for t in trades:
+        assert t.is_success()
+        for tx in t.blockchain_transactions:
+            assert tx.is_success()

@@ -45,6 +45,7 @@ class Portfolio:
     open_positions: Dict[int, TradingPosition] = field(default_factory=dict)
 
     #: Currently held reserve assets
+    #: Token address -> reserve position mapping.
     reserves: Dict[str, ReservePosition] = field(default_factory=dict)
 
     #: Trades completed in the past
@@ -313,10 +314,12 @@ class Portfolio:
 
         For strategies that use only one reserve currency.
         This is the first in the reserve currency list.
+
+        :return:
+            Tuple (Reserve currency asset, its latest US dollar exchanage rate)
         """
 
         assert len(self.reserves) > 0, "Portfolio has no reserve currencies"
-
         res_pos = next(iter(self.reserves.values()))
         return res_pos.asset, res_pos.reserve_token_price
 

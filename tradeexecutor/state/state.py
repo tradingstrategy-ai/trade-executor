@@ -175,3 +175,20 @@ class State:
         # Check that all stats have a matching position
         for pos_stat_id in self.stats.positions.keys():
             assert pos_stat_id in position_ids, f"Stats had position id {pos_stat_id} for which actual trades are missing"
+
+    def start_trades(self, ts: datetime.datetime, trades: List[TradeExecution], underflow_check=False):
+        """Mark trades ready to go.
+
+        Update any internal accounting of capital allocation from reseves to trades.
+
+        :param underflow_check:
+            If true warn us if we do not have enough reserves to perform the trades.
+            This does not consider new reserves released from the closed positions
+            in this cycle.
+        """
+
+        for t in trades:
+            if t.is_buy():
+                self.portfolio.move_capital_from_reserves_to_trade(t, underflow_check=underflow_check)
+
+            t.started_at = ts
