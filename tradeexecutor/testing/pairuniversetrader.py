@@ -44,30 +44,19 @@ class PairUniverseTestTrader:
 
         return trade
 
-    def sell(self, pair: TradingPairIdentifier, quantity: Decimal, execute=True) -> Tuple[TradingPosition, TradeExecution]:
+    def sell(self, pair: TradingPairIdentifier, quantity: Decimal) -> TradeExecution:
         """Sell token token (trading pair) for a certain quantity."""
 
-        assert isinstance(quantity, Decimal)
-
-        base_token = get_deployed_contract(self.web3, "ERC20MockDecimals.json", pair.base.address)
-        quote_token = get_deployed_contract(self.web3, "ERC20MockDecimals.json", pair.quote.address)
-
-        raw_quantity = int(quantity * 10**pair.base.decimals)
-        raw_assumed_quote_token = estimate_sell_price(self.uniswap, base_token, quote_token, raw_quantity)
-        assumed_quota_token = Decimal(raw_assumed_quote_token) / Decimal(10**pair.quote.decimals)
-
-        # assumed_price = quantity / assumed_quota_token
-        assumed_price = assumed_quota_token / quantity
+        reserve_currency, exchange_rate = self.state.portfolio.get_default_reserve_currency()
 
         position, trade, created = self.state.create_trade(
-            ts=self.ts,
+            ts=datetime.datetime.utcnow(),
             pair=pair,
+            assumed_price=1.0,
             quantity=-quantity,
-            assumed_price=float(assumed_price),
+            reserve=None,
             trade_type=TradeType.rebalance,
-            reserve_currency=pair.quote,
+            reserve_currency=reserve_currency,
             reserve_currency_price=1.0)
 
-        if execute:
-            self.execute([trade])
-        return position, trade
+        return trade

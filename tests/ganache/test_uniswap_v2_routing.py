@@ -1,13 +1,17 @@
-"""Uniswap v2 routing model tests."""
+"""Uniswap v2 routing model tests.
+
+To run these tests, we need to connect to BNB Chain:
+
+.. code-block::  shell
+
+    export BNB_CHAIN_JSON_RPC="https://bsc-dataseed.binance.org/"
+    pytest -k test_uniswap_v2_routing
+
+"""
 
 import datetime
-import logging
 import os
-import pickle
-import secrets
 from decimal import Decimal
-from pathlib import Path
-from typing import List
 
 import pytest
 from eth_account import Account
@@ -15,8 +19,6 @@ from eth_account import Account
 from eth_defi.gas import estimate_gas_fees, node_default_gas_price_strategy
 from eth_defi.txmonitor import wait_transactions_to_complete
 from eth_typing import HexAddress, HexStr
-from hexbytes import HexBytes
-from typer.testing import CliRunner
 from web3 import Web3, HTTPProvider
 from web3.contract import Contract
 
@@ -25,15 +27,15 @@ from eth_defi.ganache import fork_network
 from eth_defi.hotwallet import HotWallet
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, fetch_deployment
 from eth_defi.utils import is_localhost_port_listening
-from tradeexecutor.cli.main import app
+
 from tradeexecutor.ethereum.execution import broadcast_and_resolve
-from tradeexecutor.ethereum.hot_wallet_sync import EthereumHotWalletReserveSyncer
 from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2RoutingState, UniswapV2SimpleRoutingModel, OutOfBalance
 from tradeexecutor.ethereum.wallet import sync_reserves, sync_portfolio
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.state import State
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
+from tradeexecutor.state.position import TradingPosition
 
 from tradeexecutor.cli.log import setup_pytest_logging
 
@@ -752,7 +754,7 @@ def test_three_leg_buy_sell_twice(
     assert len(txs_2) == 2
 
 
-def test_stateful_route_buy_three_leg(
+def test_stateful_routing_three_legs(
         web3,
         pair_universe,
         hot_wallet,
@@ -765,7 +767,11 @@ def test_stateful_route_buy_three_leg(
         bnb_busd_trading_pair,
         state: State,
 ):
-    """Perform 3-leg buy using RoutingModel.execute_trades()"""
+    """Perform 3-leg buy/sell using RoutingModel.execute_trades().
+
+    This also shows how blockchain native transactions
+    and state management integrate.
+    """
 
     # Get live fee structure from BNB Chain
     fees = estimate_gas_fees(web3)
@@ -783,14 +789,15 @@ def test_stateful_route_buy_three_leg(
     ]
 
     t = trades[0]
+    assert t.is_buy()
     assert t.reserve_currency == busd_asset
     assert t.pair == cake_bnb_trading_pair
 
     state.start_trades(datetime.datetime.utcnow(), trades)
-
     routing_model.execute_trades_internal(pair_universe, routing_state, trades, check_balances=True)
     broadcast_and_resolve(web3, state, trades, stop_on_execution_failure=True)
 
+    # Check all all trades and transactions completed
     for t in trades:
         assert t.is_success()
         for tx in t.blockchain_transactions:
@@ -798,3 +805,31 @@ def test_stateful_route_buy_three_leg(
 
     # We received the tokens we bought
     assert cake_token.functions.balanceOf(hot_wallet.address).call() > 0
+
+    cake_position: TradingPosition = state.portfolio.open_positions[1]
+    assert cake_position
+
+    # Buy Cake via BUSD -> BNB pool for 100 USD
+    trades = [
+        trader.sell(cake_bnb_trading_pair, cake_position.get_quantity())
+    ]
+
+    t = trades[0]
+    assert t.is_sell()
+    assert t.reserve_currency == busd_asset
+    assert t.pair == cake_bnb_trading_pair
+    assert t.planned_quantity == -cake_position.get_quantity()
+
+    state.start_trades(datetime.datetime.utcnow(), trades)
+    routing_model.execute_trades_internal(pair_universe, routing_state, trades, check_balances=True)
+    broadcast_and_resolve(web3, state, trades, stop_on_execution_failure=True)
+
+    # Check all all trades and transactions completed
+    for t in trades:
+        assert t.is_success()
+        for tx in t.blockchain_transactions:
+            assert tx.is_success()
+
+    # On-chain balance is zero after the sell
+    assert cake_token.functions.balanceOf(hot_wallet.address).call() == 0
+

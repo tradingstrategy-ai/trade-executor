@@ -354,7 +354,7 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
         """
 
         assert type(reserve_asset_amount) == int
-        assert reserve_asset_amount > 0, "For sells, switch reserve_asset to different token"
+        assert reserve_asset_amount > 0, f"For sells, switch reserve_asset to different token. Got target_pair: {target_pair}, reserve_asset: {reserve_asset}, amount: {reserve_asset_amount}"
 
         # Our reserves match directly the asset on trading pair
         # -> we can do one leg trade
@@ -452,7 +452,7 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
                         routing_state,
                         target_pair=target_pair,
                         reserve_asset=target_pair.base,
-                        reserve_asset_amount=t.get_raw_planned_quantity(),
+                        reserve_asset_amount=-t.get_raw_planned_quantity(),
                         check_balances=check_balances,
                     )
             else:
@@ -471,7 +471,7 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
                         routing_state,
                         target_pair=target_pair,
                         reserve_asset=target_pair.base,
-                        reserve_asset_amount=t.get_raw_planned_quantity(),
+                        reserve_asset_amount=-t.get_raw_planned_quantity(),
                         check_balances=check_balances,
                         intermediary_pair=intermediary_pair,
                     )

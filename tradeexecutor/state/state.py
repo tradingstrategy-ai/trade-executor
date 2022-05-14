@@ -65,6 +65,11 @@ class State:
 
         Trade can be opened by knowing how much you want to buy (quantity) or how much cash you have to buy (reserve).
 
+        - To open a spot buy, fill in `reseve` amount you wish to use for the buy
+
+        - To open a spot sell, fill in `quoantity` amount you wish to use for the buy,
+          as a negative number
+
         :return: Tuple position, trade, was a new position created
         """
 

@@ -390,7 +390,7 @@ def resolve_trades(
             else:
                 # Ordered other way around
                 assert result.path[0] == base_token_details.address
-                assert result.path[-1] == quote_token_details.address
+                assert result.path[-1] == reserve.address
                 price = result.price
                 executed_amount = -result.amount_in / Decimal(10**base_token_details.decimals)
                 executed_reserve = result.amount_out / Decimal(10**quote_token_details.decimals)
