@@ -1,7 +1,16 @@
 import datetime
 from decimal import Decimal
-from typing import Tuple
+from typing import Tuple, List
 
+from web3 import Web3
+
+from eth_defi.gas import estimate_gas_fees
+from eth_defi.hotwallet import HotWallet
+from eth_defi.uniswap_v2.deployment import UniswapV2Deployment
+from tradeexecutor.ethereum.execution import broadcast_and_resolve
+from tradeexecutor.ethereum.tx import TransactionBuilder
+from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2SimpleRoutingModel, UniswapV2RoutingState
+from tradeexecutor.state.freeze import freeze_position_on_failed_trade
 from tradeexecutor.state.state import State, TradeType
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.trade import TradeExecution
@@ -83,3 +92,53 @@ class DummyTestTrader:
         return self.create_and_execute(pair, -quantity, price)
 
 
+def execute_trades_simple(
+        state: State,
+        trades: List[TradeExecution],
+        web3: Web3,
+        hot_wallet: HotWallet,
+        uniswap: UniswapV2Deployment,
+        max_slippage=0.01, stop_on_execution_failure=True) -> Tuple[List[TradeExecution], List[TradeExecution]]:
+    """Execute trades on web3 instance.
+
+    A testing shortcut
+
+    - Create `BlockchainTransaction` instances
+
+    - Execute them on Web3 test connection (EthereumTester / Ganache)
+
+    - Works with single Uniswap test deployment
+    """
+
+    fees = estimate_gas_fees(web3)
+
+    tx_builder = TransactionBuilder(
+        web3,
+        hot_wallet,
+        fees,
+    )
+
+    reserve_asset, rate = state.portfolio.get_default_reserve_currency()
+
+    # We know only about one exchange
+    routing_model = UniswapV2SimpleRoutingModel(
+        factory_router_map={
+            uniswap.factory.address: (uniswap.router.address, uniswap.init_code_hash),
+        },
+        allowed_intermediary_pairs={},
+        reserve_asset=reserve_asset,
+        max_slippage=max_slippage,
+    )
+
+    state.start_trades(datetime.datetime.utcnow(), trades)
+    routing_state = UniswapV2RoutingState(tx_builder)
+    routing_model.execute_trades(None, routing_state, trades)
+    broadcast_and_resolve(web3, state, trades, stop_on_execution_failure=stop_on_execution_failure)
+
+    # Clean up failed trades
+    freeze_position_on_failed_trade(datetime.datetime.utcnow(), state, trades)
+
+    success = [t for t in trades if t.is_success()]
+    failed = [t for t in trades if t.is_failed()]
+
+    return success, failed

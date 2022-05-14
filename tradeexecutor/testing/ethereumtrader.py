@@ -92,6 +92,7 @@ class EthereumTestTrader:
             ts=self.ts,
             pair=pair,
             quantity=assumed_quantity,
+            reserve=None,
             assumed_price=float(assumed_price),
             trade_type=TradeType.rebalance,
             reserve_currency=pair.quote,

@@ -25,7 +25,7 @@ from tradeexecutor.state.trade import TradeStatus
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.testing.ethereumtrader import EthereumTestTrader
-from tradeexecutor.testing.trader import DummyTestTrader
+from tradeexecutor.testing.trader import DummyTestTrader, execute_trades_simple
 
 
 @pytest.fixture
@@ -229,61 +229,11 @@ def test_execute_trade_instructions_buy_weth(
     assumed_quantity = Decimal(raw_assumed_quantity) / Decimal(10**18)
     assert assumed_quantity == pytest.approx(Decimal(0.293149332386944192))
 
-    # 1: plan
     position, trade = trader.prepare_buy(weth_usdc_pair, assumed_quantity, 1700)
     assert state.portfolio.get_total_equity() == pytest.approx(10000.0)
     assert trade.get_status() == TradeStatus.planned
 
-    ts = start_ts + datetime.timedelta(seconds=1)
-
-    # Approvals
-    approvals = approve_tokens(
-        web3,
-        uniswap_v2,
-        hot_wallet,
-        [trade]
-    )
-
-    # 2: prepare
-    # Prepare transactions
-    prepare_swaps(
-        web3,
-        hot_wallet,
-        uniswap_v2,
-        ts,
-        state,
-        [trade]
-    )
-
-    # approve() + swapExactTokensForTokens()
-    assert hot_wallet.current_nonce == 2
-
-    assert trade.get_status() == TradeStatus.started
-    assert trade.tx_info.tx_hash is not None
-    assert trade.tx_info.details["from"] == hot_wallet.address
-    assert trade.tx_info.signed_bytes is not None
-    assert trade.tx_info.nonce == 1
-
-    #: 3 broadcast
-
-    # Handle approvals separately for now
-    confirm_approvals(web3, approvals, confirmation_block_count=0)
-
-    ts = start_ts + datetime.timedelta(seconds=1)
-    broadcasted = broadcast(web3, ts, [trade])
-    assert trade.get_status() == TradeStatus.broadcasted
-    assert trade.broadcasted_at is not None
-
-    #: 4 process results
-    ts = start_ts + datetime.timedelta(seconds=1)
-    receipts = wait_trades_to_complete(web3, [trade])
-    resolve_trades(
-        web3,
-        uniswap_v2,
-        ts,
-        state,
-        broadcasted,
-        receipts)
+    execute_trades_simple(state, [trade], web3, hot_wallet, uniswap_v2)
 
     assert trade.get_status() == TradeStatus.success
     assert trade.executed_price == pytest.approx(Decimal(1705.6136999031144))
