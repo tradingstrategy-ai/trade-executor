@@ -24,6 +24,13 @@ from tradingstrategy.chain import ChainId
 from tradingstrategy.types import USDollarAmount
 
 
+
+@pytest.fixture
+def mock_exchange_address() -> str:
+    """Mock some assets"""
+    return "0x1"
+
+
 @pytest.fixture
 def usdc() -> AssetIdentifier:
     """Mock some assets"""
@@ -43,15 +50,15 @@ def aave() -> AssetIdentifier:
 
 
 @pytest.fixture
-def weth_usdc(usdc, weth) -> TradingPairIdentifier:
+def weth_usdc(mock_exchange_address, usdc, weth) -> TradingPairIdentifier:
     """Mock some assets"""
-    return TradingPairIdentifier(weth, usdc, "0x4")
+    return TradingPairIdentifier(weth, usdc, "0x4", mock_exchange_address)
 
 
 @pytest.fixture
-def aave_usdc(usdc, aave) -> TradingPairIdentifier:
+def aave_usdc(mock_exchange_address, usdc, aave) -> TradingPairIdentifier:
     """Mock some assets"""
-    return TradingPairIdentifier(aave, usdc, "0x5")
+    return TradingPairIdentifier(aave, usdc, "0x5", mock_exchange_address)
 
 
 @pytest.fixture
@@ -88,12 +95,13 @@ def single_asset_portfolio(start_ts, weth_usdc, weth, usdc) -> Portfolio:
         native_token_price=1.9,
     )
 
-    trade.tx_info = BlockchainTransaction(
+    tx = BlockchainTransaction(
         tx_hash=HexBytes("0x01"),
         nonce=1,
         realised_gas_units_consumed=150_000,
         realised_gas_price=15,
     )
+    trade.blockchain_transactions = [tx]
 
     assert trade.is_buy()
     assert trade.is_success()
@@ -142,6 +150,7 @@ def test_single_buy(usdc, weth, weth_usdc, start_ts):
         ts=start_ts,
         pair=weth_usdc,
         quantity=Decimal("0.1"),
+        reserve=None,
         assumed_price=1700,
         trade_type=TradeType.rebalance,
         reserve_currency=usdc,
@@ -219,6 +228,7 @@ def test_single_sell_all(usdc, weth, weth_usdc, start_ts, single_asset_portfolio
         ts=start_ts,
         pair=weth_usdc,
         quantity=-eth_quantity,
+        reserve=None,
         assumed_price=1700,
         trade_type=TradeType.rebalance,
         reserve_currency=usdc,
@@ -673,6 +683,7 @@ def test_single_buy_failed(usdc, weth, weth_usdc, start_ts):
         ts=start_ts,
         pair=weth_usdc,
         quantity=Decimal("0.1"),
+        reserve=None,
         assumed_price=1700,
         trade_type=TradeType.rebalance,
         reserve_currency=usdc,
