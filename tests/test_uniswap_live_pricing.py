@@ -119,8 +119,13 @@ def exchange_universe(web3, uniswap_v2: UniswapV2Deployment) -> ExchangeUniverse
 
 
 @pytest.fixture
-def weth_usdc_pair(weth_usdc_uniswap_trading_pair, asset_usdc, asset_weth) -> TradingPairIdentifier:
-    return TradingPairIdentifier(asset_weth, asset_usdc, weth_usdc_uniswap_trading_pair)
+def weth_usdc_pair(uniswap_v2, weth_usdc_uniswap_trading_pair, asset_usdc, asset_weth) -> TradingPairIdentifier:
+    return TradingPairIdentifier(
+        asset_weth,
+        asset_usdc,
+        weth_usdc_uniswap_trading_pair,
+        uniswap_v2.factory.address,
+    )
 
 
 @pytest.fixture()
