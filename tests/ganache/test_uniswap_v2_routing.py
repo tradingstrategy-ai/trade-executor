@@ -833,3 +833,85 @@ def test_stateful_routing_three_legs(
     # On-chain balance is zero after the sell
     assert cake_token.functions.balanceOf(hot_wallet.address).call() == 0
 
+
+def test_stateful_routing_two_legs(
+        web3,
+        pair_universe,
+        hot_wallet,
+        busd_asset,
+        bnb_asset,
+        cake_asset,
+        cake_token,
+        routing_model,
+        cake_busd_trading_pair,
+        state: State,
+):
+    """Perform 2-leg buy/sell using RoutingModel.execute_trades().
+
+    This also shows how blockchain native transactions
+    and state management integrate.
+
+    Routing is abstracted away - this test is not different from one above,
+    except for the trading pair that we have changed.
+    """
+
+    # Get live fee structure from BNB Chain
+    fees = estimate_gas_fees(web3)
+
+    # Prepare a transaction builder
+    tx_builder = TransactionBuilder(web3, hot_wallet, fees)
+
+    routing_state = UniswapV2RoutingState(tx_builder)
+
+    trader = PairUniverseTestTrader(state)
+
+    # Buy Cake via BUSD -> BNB pool for 100 USD
+    trades = [
+        trader.buy(cake_busd_trading_pair, Decimal(100))
+    ]
+
+    t = trades[0]
+    assert t.is_buy()
+    assert t.reserve_currency == busd_asset
+    assert t.pair == cake_busd_trading_pair
+
+    state.start_trades(datetime.datetime.utcnow(), trades)
+    routing_model.execute_trades_internal(pair_universe, routing_state, trades, check_balances=True)
+    broadcast_and_resolve(web3, state, trades, stop_on_execution_failure=True)
+
+    # Check all all trades and transactions completed
+    for t in trades:
+        assert t.is_success()
+        for tx in t.blockchain_transactions:
+            assert tx.is_success()
+
+    # We received the tokens we bought
+    assert cake_token.functions.balanceOf(hot_wallet.address).call() > 0
+
+    cake_position: TradingPosition = state.portfolio.open_positions[1]
+    assert cake_position
+
+    # Buy Cake via BUSD -> BNB pool for 100 USD
+    trades = [
+        trader.sell(cake_busd_trading_pair, cake_position.get_quantity())
+    ]
+
+    t = trades[0]
+    assert t.is_sell()
+    assert t.reserve_currency == busd_asset
+    assert t.pair == cake_busd_trading_pair
+    assert t.planned_quantity == -cake_position.get_quantity()
+
+    state.start_trades(datetime.datetime.utcnow(), trades)
+    routing_model.execute_trades_internal(pair_universe, routing_state, trades, check_balances=True)
+    broadcast_and_resolve(web3, state, trades, stop_on_execution_failure=True)
+
+    # Check all all trades and transactions completed
+    for t in trades:
+        assert t.is_success()
+        for tx in t.blockchain_transactions:
+            assert tx.is_success()
+
+    # On-chain balance is zero after the sell
+    assert cake_token.functions.balanceOf(hot_wallet.address).call() == 0
+
