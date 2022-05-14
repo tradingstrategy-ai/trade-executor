@@ -281,6 +281,7 @@ def broadcast(
     broadcast_batch: List[SignedTransaction] = []
 
     for t in instructions:
+        assert len(t.blockchain_transactions) > 0, f"Trade {t} does not have any blockchain transactions prepared"
         for tx in t.blockchain_transactions:
             assert isinstance(tx.signed_bytes, str), f"Got signed transaction: {t.tx_info.signed_bytes}"
             assert tx.nonce not in nonces, "Nonce already used"
@@ -293,7 +294,7 @@ def broadcast(
         t.mark_broadcasted(datetime.datetime.utcnow())
 
     hashes = broadcast_transactions(web3, broadcast_batch, confirmation_block_count=confirmation_block_count)
-    assert len(hashes) >= len(instructions)
+    assert len(hashes) >= len(instructions), f"We got {len(hashes)} hashes for {len(instructions)} trades"
     return res
 
 

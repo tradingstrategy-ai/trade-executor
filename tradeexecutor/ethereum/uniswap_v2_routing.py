@@ -397,6 +397,9 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
         if trade.pair.quote == self.reserve_asset:
             return trade.pair, None
 
+        # Only issue for legacy code
+        assert pair_universe, "PairUniverse must be given so that we know how to route three way trades"
+
         # Try to find a mid-hop pool for the trade
         intermediate_pair_contract_address = self.allowed_intermediary_pairs.get(trade.pair.quote.address.lower())
 
@@ -483,7 +486,7 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
         # We can start to execute transactions.
 
     def execute_trades(self,
-                       universe: TradingStrategyUniverse,
+                       universe: Optional[TradingStrategyUniverse],
                        routing_state: UniswapV2RoutingState,
                        trades: List[TradeExecution],
                        check_balances=False):
@@ -495,10 +498,20 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
 
         - Signs tranactions from the hot wallet and broadcasts them to the network
 
+        :param universe:
+            Needed for pair universe to route three leg trades.
+            Two leg trades can be routed without the universe.
+
         :param check_balances:
             Check that the wallet has enough reserves to perform the trades
             before executing them. Because we are selling before buying.
             sometimes we do no know this until the sell tx has been completed.
+
         """
-        return self.execute_trades_internal(universe.universe.pairs, routing_state, trades, check_balances)
+
+        if universe is not None:
+            return self.execute_trades_internal(universe.universe.pairs, routing_state, trades, check_balances)
+        else:
+            # Legacy code path for testing compatibility
+            return self.execute_trades_internal(None, routing_state, trades, check_balances)
 

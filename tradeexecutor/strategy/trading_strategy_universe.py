@@ -239,19 +239,20 @@ def translate_trading_pair(pair: DEXPair) -> TradingPairIdentifier:
     This is called when a trade is made: this is the moment when trade executor data format must be made available.
     """
 
-    # TODO: Add decimals here
+    assert pair.base_token_decimals is not None
+    assert pair.quote_token_decimals is not None
 
     base = AssetIdentifier(
         chain_id=pair.chain_id.value,
         address=pair.base_token_address,
         token_symbol=pair.base_token_symbol,
-        decimals=None,
+        decimals=pair.base_token_decimals,
     )
     quote = AssetIdentifier(
         chain_id=pair.chain_id.value,
         address=pair.quote_token_address,
         token_symbol=pair.quote_token_symbol,
-        decimals=None,
+        decimals=pair.quote_token_decimals,
     )
 
     return TradingPairIdentifier(

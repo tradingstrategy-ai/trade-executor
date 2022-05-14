@@ -43,7 +43,7 @@ from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId
 from tradingstrategy.exchange import ExchangeUniverse
 from tradingstrategy.liquidity import GroupedLiquidityUniverse
-from tradingstrategy.pair import PairUniverse, PandasPairUniverse
+from tradingstrategy.pair import LegacyPairUniverse, PandasPairUniverse
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
 
@@ -59,6 +59,7 @@ def logger(request):
     """Setup test logger."""
     logger = setup_pytest_logging(request)
     return logger
+
 
 @pytest.fixture
 def tester_provider():
@@ -92,12 +93,6 @@ def deployer(web3) -> HexAddress:
     Do some account allocation for tests.
     """
     return web3.eth.accounts[0]
-
-
-@pytest.fixture()
-def hot_wallet_private_key(web3) -> HexBytes:
-    """Generate a private key"""
-    return HexBytes(secrets.token_bytes(32))
 
 
 @pytest.fixture
@@ -176,15 +171,26 @@ def weth_usdc_uniswap_trading_pair(web3, deployer, uniswap_v2, weth_token, usdc_
 
 
 @pytest.fixture
-def weth_usdc_pair(weth_usdc_uniswap_trading_pair, asset_usdc, asset_weth) -> TradingPairIdentifier:
+def weth_usdc_pair(uniswap_v2, weth_usdc_uniswap_trading_pair, asset_usdc, asset_weth) -> TradingPairIdentifier:
     """WETH-USDC pair representation in the trade executor domain."""
-    return TradingPairIdentifier(asset_weth, asset_usdc, weth_usdc_uniswap_trading_pair, internal_id=int(weth_usdc_uniswap_trading_pair, 16))
+    return TradingPairIdentifier(
+        asset_weth,
+        asset_usdc,
+        weth_usdc_uniswap_trading_pair,
+        exchange_address=uniswap_v2.factory.address,
+        internal_id=int(weth_usdc_uniswap_trading_pair, 16))
 
 
 @pytest.fixture
-def aave_usdc_pair(aave_usdc_uniswap_trading_pair, asset_usdc, asset_aave) -> TradingPairIdentifier:
+def aave_usdc_pair(uniswap_v2, aave_usdc_uniswap_trading_pair, asset_usdc, asset_aave) -> TradingPairIdentifier:
     """AAVE-USDC pair representation in the trade executor domain."""
-    return TradingPairIdentifier(asset_aave, asset_usdc, aave_usdc_uniswap_trading_pair, internal_id=int(aave_usdc_uniswap_trading_pair, 16))
+    return TradingPairIdentifier(
+        asset_aave,
+        asset_usdc,
+        aave_usdc_uniswap_trading_pair,
+        internal_id=int(aave_usdc_uniswap_trading_pair, 16),
+        exchange_address=uniswap_v2.factory.address,
+    )
 
 
 @pytest.fixture
@@ -194,12 +200,12 @@ def supported_reserves(usdc) -> List[AssetIdentifier]:
 
 
 @pytest.fixture()
-def hot_wallet(web3: Web3, usdc_token: Contract, hot_wallet_private_key: HexBytes, deployer: HexAddress) -> HotWallet:
+def hot_wallet(web3: Web3, usdc_token: Contract, deployer: HexAddress) -> HotWallet:
     """Our trading Ethereum account.
 
     Start with 10,000 USDC cash and 2 ETH.
     """
-    account = Account.from_key(hot_wallet_private_key)
+    account = Account.create()
     web3.eth.send_transaction({"from": deployer, "to": account.address, "value": 2*10**18})
     usdc_token.functions.transfer(account.address, 10_000 * 10**6).transact({"from": deployer})
     wallet = HotWallet(account)
@@ -393,9 +399,10 @@ def test_simulated_uniswap_qstrader_strategy_single_trade(
     t = trades[0]
 
     assert t.is_success()
-    assert t.tx_info.chain_id == 61   # Ethereum Tester
-    assert t.tx_info.tx_hash.startswith("0x")
-    assert t.tx_info.nonce == 1
+    tx_info = t.blockchain_transactions[-1]
+    assert tx_info.chain_id == 61   # Ethereum Tester
+    assert tx_info.tx_hash.startswith("0x")
+    assert tx_info.nonce == 1
 
     # Check the raw on-chain token balances
     raw_balances = fetch_erc20_balances_by_transfer_event(web3, hot_wallet.address)

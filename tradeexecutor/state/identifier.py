@@ -30,7 +30,8 @@ class AssetIdentifier:
     address: JSONHexAddress
 
     token_symbol: str
-    decimals: Optional[int] = None
+
+    decimals: int
 
     #: How this asset is referred in the internal database
     internal_id: Optional[int] = None
@@ -45,6 +46,7 @@ class AssetIdentifier:
         assert type(self.address) == str, f"Got address {self.address} as {type(self.address)}"
         assert self.address.startswith("0x")
         assert type(self.chain_id) == int
+        assert self.decimals is not None, f"Cannot create tradeable assets without decimals set"
 
     def get_identifier(self) -> str:
         """Assets are identified by their smart contract address."""
@@ -65,6 +67,7 @@ class AssetIdentifier:
 
         Convert decimal to fixed point integer.
         """
+        assert self.decimals is not None, f"Cannot perform human to raw token amount conversion, because no decimals given: {self}"
         return int(amount * Decimal(10**self.decimals))
 
 
@@ -77,17 +80,16 @@ class TradingPairIdentifier:
     #: Smart contract address of the pool contract.
     pool_address: str
 
+    #: Exchange address.
+    #: Identifies a decentralised exchange.
+    #: Uniswap v2 likes are identified by their factor address.
+    exchange_address: str
+
     #: How this asset is referred in the internal database
     internal_id: Optional[int] = None
 
     #: Info page URL for this trading pair e.g. with the price charts
     info_url: Optional[str] = None
-
-    #: Exchange address.
-    #: Identifies a decentralised exchange.
-    #: Uniswap v2 likes are identified by their factor address.
-    #: TODO: Remove optionality in the future, as it is just legacy compatibility.
-    exchange_address: Optional[str] = None
 
     def __repr__(self):
         return f"<Pair {self.base.token_symbol}-{self.quote.token_symbol} at {self.pool_address} on exchange {self.exchange_address}>"

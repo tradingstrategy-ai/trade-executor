@@ -30,6 +30,7 @@ class DummyTestTrader:
             ts=self.ts,
             pair=pair,
             quantity=quantity,
+            reserve=None,
             assumed_price=price,
             trade_type=TradeType.rebalance,
             reserve_currency=pair.quote,

@@ -209,6 +209,7 @@ class PortfolioConstructionModel:
                     dt,
                     executor_pair,
                     quantity,
+                    None,
                     price,
                     TradeType.rebalance,
                     self.reserve_currency,

@@ -113,3 +113,6 @@ class UniswapV2ExecutionModelVersion(ExecutionModel):
         routing_model.execute_trades(universe, routing_state, trades)
         broadcast_and_resolve(trades)
 
+        # Clean up failed trades
+        freeze_position_on_failed_trade(ts, state, trades)
+

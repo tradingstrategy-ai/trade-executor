@@ -319,8 +319,13 @@ class TradingPosition:
         """Get the latest transaction performed for this position.
 
         It's the tx of the trade that was made for this position.
+
+        TODO: Deprecate
         """
-        return self.get_last_trade().tx_info.tx_hash
+        t = self.get_last_trade()
+        if not t:
+            return None
+        return t.blockchain_transactions[-1].tx_hash
 
 
 class PositionType(enum.Enum):

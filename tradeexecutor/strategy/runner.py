@@ -49,7 +49,7 @@ class StrategyRunner(abc.ABC):
         self.revaluation_method = revaluation_method
         self.sync_method = sync_method
         self.pricing_model_factory = pricing_model_factory
-        self.routing_model - routing_model
+        self.routing_model = routing_model
 
     @abc.abstractmethod
     def pretick_check(self, ts: datetime.datetime, universe: TradeExecutorTradingUniverse):

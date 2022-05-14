@@ -21,10 +21,14 @@ def create_pair_universe(web3: Web3, exchange: Exchange, pairs: List[TradingPair
 
     data = []
     for p in pairs:
+        assert p.exchange_address
+        assert p.base.decimals
+        assert p.quote.decimals
         dex_pair = DEXPair(
             pair_id=int(p.get_identifier(), 16),
             chain_id=chain_id,
             exchange_id=exchange.exchange_id,
+            exchange_address=p.exchange_address,
             address=p.get_identifier(),
             dex_type=PairType.uniswap_v2,
             base_token_symbol=p.base.token_symbol,
@@ -33,10 +37,8 @@ def create_pair_universe(web3: Web3, exchange: Exchange, pairs: List[TradingPair
             token1_symbol=p.quote.token_symbol,
             token0_address=p.base.address,
             token1_address=p.quote.address,
-            flag_inactive=False,
-            flag_blacklisted_manually=False,
-            flag_unsupported_quote_token=False,
-            flag_unknown_exchange=False,
+            token0_decimals=p.base.decimals,
+            token1_decimals=p.quote.decimals,
         )
         data.append(dex_pair.to_dict())
     df = pd.DataFrame(data)

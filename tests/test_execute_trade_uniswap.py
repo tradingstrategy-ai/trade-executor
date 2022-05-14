@@ -144,13 +144,13 @@ def weth_usdc_uniswap_trading_pair(web3, deployer, uniswap_v2, weth_token, usdc_
 
 
 @pytest.fixture
-def weth_usdc_pair(weth_usdc_uniswap_trading_pair, asset_usdc, asset_weth) -> TradingPairIdentifier:
-    return TradingPairIdentifier(asset_weth, asset_usdc, weth_usdc_uniswap_trading_pair)
+def weth_usdc_pair(uniswap_v2, weth_usdc_uniswap_trading_pair, asset_usdc, asset_weth) -> TradingPairIdentifier:
+    return TradingPairIdentifier(asset_weth, asset_usdc, weth_usdc_uniswap_trading_pair, uniswap_v2.factory.address)
 
 
 @pytest.fixture
-def aave_usdc_pair(aave_usdc_uniswap_trading_pair, asset_usdc, asset_aave) -> TradingPairIdentifier:
-    return TradingPairIdentifier(asset_aave, asset_usdc, aave_usdc_uniswap_trading_pair)
+def aave_usdc_pair(uniswap_v2, aave_usdc_uniswap_trading_pair, asset_usdc, asset_aave) -> TradingPairIdentifier:
+    return TradingPairIdentifier(asset_aave, asset_usdc, aave_usdc_uniswap_trading_pair, uniswap_v2.factory.address)
 
 
 @pytest.fixture

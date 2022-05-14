@@ -286,8 +286,8 @@ class Portfolio:
         """
         for p in self.get_all_positions():
             for t in p.trades.values():
-                if t.tx_info:
-                    assert t.tx_info.nonce != nonce, f"Nonce {nonce} is already being used by trade {t} with txinfo {t.tx_info}"
+                for tx in t.blockchain_transactions:
+                    assert tx.nonce != nonce, f"Nonce {nonce} is already being used by trade {t} with txinfo {t.tx_info}"
 
     def revalue_positions(self, ts: datetime.datetime, valuation_method: Callable, revalue_frozen=True):
         """Revalue all open positions in the portfolio.

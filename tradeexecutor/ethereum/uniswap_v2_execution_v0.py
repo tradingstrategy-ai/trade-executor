@@ -1,14 +1,21 @@
-"""Execution model where trade happens directly on Uniswap v2 style exchange."""
+"""Execution model where trade happens directly on Uniswap v2 style exchange.
+
+TODO: Prototype code path. Only preserved for having unit test suite green.
+It has slight API incompatibilities in the later versions.
+"""
 
 import datetime
 from decimal import Decimal
 from typing import List, Tuple
 import logging
 
+from eth_defi.gas import estimate_gas_fees
 from eth_defi.hotwallet import HotWallet
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment
 from tradeexecutor.ethereum.execution import approve_tokens, prepare_swaps, confirm_approvals, broadcast, \
-    wait_trades_to_complete, resolve_trades
+    wait_trades_to_complete, resolve_trades, broadcast_and_resolve
+from tradeexecutor.ethereum.tx import TransactionBuilder
+from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2RoutingState, UniswapV2SimpleRoutingModel
 from tradeexecutor.state.freeze import freeze_position_on_failed_trade
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
@@ -45,6 +52,7 @@ class UniswapV2ExecutionModelVersion0(ExecutionModel):
                  min_balance_threshold=Decimal("0.5"),
                  confirmation_block_count=6,
                  confirmation_timeout=datetime.timedelta(minutes=5),
+                 max_slippage=0.01,
                  stop_on_execution_failure=True):
         """
         :param state:
@@ -62,6 +70,7 @@ class UniswapV2ExecutionModelVersion0(ExecutionModel):
         self.min_balance_threshold = min_balance_threshold
         self.confirmation_block_count = confirmation_block_count
         self.confirmation_timeout = confirmation_timeout
+        self.max_slippage = max_slippage
 
     @property
     def chain_id(self) -> int:
@@ -98,61 +107,95 @@ class UniswapV2ExecutionModelVersion0(ExecutionModel):
         :return: Tuple List of succeeded trades, List of failed trades
         """
         assert isinstance(ts, datetime.datetime)
+        assert isinstance(state, State)
 
-        # 2. Capital allocation
-        # Approvals
-        approvals = approve_tokens(
-            self.web3,
-            self.uniswap,
-            self.hot_wallet,
-            trades
-        )
+        fees = estimate_gas_fees(self.web3)
 
-        # 2: prepare
-        # Prepare transactions
-        prepare_swaps(
+        tx_builder = TransactionBuilder(
             self.web3,
             self.hot_wallet,
-            self.uniswap,
-            ts,
-            state,
-            trades,
-            underflow_check=False,
+            fees,
         )
 
-        #: 3 broadcast
+        reserve_asset, rate = state.portfolio.get_default_reserve_currency()
 
-        # Handle approvals separately for now.
-        # We do not need to wait these to confirm.
-        confirm_approvals(
-            self.web3,
-            approvals,
-            confirmation_block_count=self.confirmation_block_count,
-            max_timeout=self.confirmation_timeout)
-
-        broadcasted = broadcast(
-            self.web3,
-            ts,
-            trades,
-            confirmation_block_count=self.confirmation_block_count,
+        # We know only about one exchange
+        routing_model = UniswapV2SimpleRoutingModel(
+            factory_router_map={
+                self.uniswap.factory.address: (self.uniswap.router.address, self.uniswap.init_code_hash),
+            },
+            allowed_intermediary_pairs={},
+            reserve_asset=reserve_asset,
+            max_slippage=self.max_slippage,
         )
-        #assert trade.get_status() == TradeStatus.broadcasted
 
-        # Resolve
-        receipts = wait_trades_to_complete(
-            self.web3,
-            trades,
-            confirmation_block_count=self.confirmation_block_count,
-            max_timeout=self.confirmation_timeout)
-
-        resolve_trades(
-            self.web3,
-            self.uniswap,
-            ts,
-            state,
-            broadcasted,
-            receipts,
-            stop_on_execution_failure=False)
+        state.start_trades(datetime.datetime.utcnow(), trades)
+        routing_state = UniswapV2RoutingState(tx_builder)
+        routing_model.execute_trades(None, routing_state, trades)
+        broadcast_and_resolve(self.web3, state, trades, stop_on_execution_failure=self.stop_on_execution_failure)
 
         # Clean up failed trades
-        return freeze_position_on_failed_trade(ts, state, trades)
+        freeze_position_on_failed_trade(ts, state, trades)
+
+        success = [t for t in trades if t.is_success()]
+        failed = [t for t in trades if t.is_failed()]
+
+        return success, failed
+
+        # # 2. Capital allocation
+        # # Approvals
+        # approvals = approve_tokens(
+        #     self.web3,
+        #     self.uniswap,
+        #     self.hot_wallet,
+        #     trades
+        # )
+        #
+        # # 2: prepare
+        # # Prepare transactions
+        # prepare_swaps(
+        #     self.web3,
+        #     self.hot_wallet,
+        #     self.uniswap,
+        #     ts,
+        #     state,
+        #     trades,
+        #     underflow_check=False,
+        # )
+        #
+        # #: 3 broadcast
+        #
+        # # Handle approvals separately for now.
+        # # We do not need to wait these to confirm.
+        # confirm_approvals(
+        #     self.web3,
+        #     approvals,
+        #     confirmation_block_count=self.confirmation_block_count,
+        #     max_timeout=self.confirmation_timeout)
+        #
+        # broadcasted = broadcast(
+        #     self.web3,
+        #     ts,
+        #     trades,
+        #     confirmation_block_count=self.confirmation_block_count,
+        # )
+        # #assert trade.get_status() == TradeStatus.broadcasted
+        #
+        # # Resolve
+        # receipts = wait_trades_to_complete(
+        #     self.web3,
+        #     trades,
+        #     confirmation_block_count=self.confirmation_block_count,
+        #     max_timeout=self.confirmation_timeout)
+        #
+        # resolve_trades(
+        #     self.web3,
+        #     self.uniswap,
+        #     ts,
+        #     state,
+        #     broadcasted,
+        #     receipts,
+        #     stop_on_execution_failure=False)
+        #
+        # # Clean up failed trades
+        # return freeze_position_on_failed_trade(ts, state, trades)
