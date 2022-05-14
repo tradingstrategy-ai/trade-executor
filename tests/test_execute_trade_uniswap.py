@@ -24,8 +24,8 @@ from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeStatus
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
-from tradeexecutor.testing.ethereumtrader import EthereumTestTrader
-from tradeexecutor.testing.trader import DummyTestTrader, execute_trades_simple
+from tradeexecutor.testing.ethereumtrader import EthereumTestTrader, execute_trades_simple
+from tradeexecutor.testing.trader import DummyTestTrader
 
 
 @pytest.fixture
@@ -456,8 +456,8 @@ def test_two_parallel_positions(
 
     trader.execute([trade3, trade4])
 
-    assert trade3.tx_info.nonce == 5
-    assert trade4.tx_info.nonce == 6
+    assert trade3.blockchain_transactions[0].nonce == 3
+    assert trade4.blockchain_transactions[0].nonce == 5
 
     assert position3.position_id == 1
     assert position4.position_id == 2
