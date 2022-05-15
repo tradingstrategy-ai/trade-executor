@@ -51,7 +51,7 @@ def sync_reserves(
 
     for currency in supported_reserve_currencies:
 
-        address = web3.toChecksumAddress(currency.address)
+        address = currency.address
 
         # 1337 is Ganache
         if our_chain_id != 1337:
@@ -63,7 +63,7 @@ def sync_reserves(
         else:
             current_value = Decimal(0)
 
-        decimal_holding = balances.get(address)
+        decimal_holding = balances.get(Web3.toChecksumAddress(address))
 
         # We get decimals = None if Ganache is acting
         assert decimal_holding.decimals, f"Token did not have decimals: token:{currency} holding:{decimal_holding}"

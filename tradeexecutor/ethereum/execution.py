@@ -435,14 +435,14 @@ def get_current_price(web3: Web3, uniswap: UniswapV2Deployment, pair: TradingPai
     return float(price)
 
 
-def get_held_assets(web3: Web3, address: HexAddress, assets: List[AssetIdentifier]) -> Dict[HexAddress, Decimal]:
+def get_held_assets(web3: Web3, address: HexAddress, assets: List[AssetIdentifier]) -> Dict[str, Decimal]:
     """Get list of assets hold by the a wallet."""
 
     result = {}
     for asset in assets:
         token_details = fetch_erc20_details(web3, asset.checksum_address)
         balance = token_details.contract.functions.balanceOf(address).call()
-        result[token_details.address] = Decimal(balance) / Decimal(10 ** token_details.decimals)
+        result[token_details.address.lower()] = Decimal(balance) / Decimal(10 ** token_details.decimals)
     return result
 
 

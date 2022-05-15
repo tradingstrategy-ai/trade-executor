@@ -4,6 +4,7 @@ import datetime
 from decimal import Decimal
 from typing import Tuple, List
 
+from tradingstrategy.pair import PandasPairUniverse
 from web3 import Web3
 
 from eth_defi.abi import get_deployed_contract
@@ -19,16 +20,18 @@ from tradeexecutor.state.state import State, TradeType
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.trade import TradeExecution, TradeStatus
 from tradeexecutor.state.identifier import TradingPairIdentifier
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 
 
 class EthereumTestTrader:
     """Helper class to trade against EthereumTester unit testing network."""
 
-    def __init__(self, web3: Web3, uniswap: UniswapV2Deployment, hot_wallet: HotWallet, state: State):
+    def __init__(self, web3: Web3, uniswap: UniswapV2Deployment, hot_wallet: HotWallet, state: State, pair_universe: PandasPairUniverse):
         self.web3 = web3
         self.uniswap = uniswap
         self.state = state
         self.hot_wallet = hot_wallet
+        self.pair_universe = pair_universe
 
         self.ts = datetime.datetime(2022, 1, 1, tzinfo=None)
         self.lp_fees = 2.50  # $2.5
@@ -41,6 +44,7 @@ class EthereumTestTrader:
     def execute(self, trades: List[TradeExecution]):
         execute_trades_simple(
             self.state,
+            self.pair_universe,
             trades,
             self.web3,
             self.hot_wallet,
@@ -50,8 +54,8 @@ class EthereumTestTrader:
     def buy(self, pair: TradingPairIdentifier, amount_in_usd: Decimal, execute=True) -> Tuple[TradingPosition, TradeExecution]:
         """Buy token (trading pair) for a certain value."""
         # Estimate buy price
-        base_token = get_deployed_contract(self.web3, "ERC20MockDecimals.json", pair.base.address)
-        quote_token = get_deployed_contract(self.web3, "ERC20MockDecimals.json", pair.quote.address)
+        base_token = get_deployed_contract(self.web3, "ERC20MockDecimals.json", Web3.toChecksumAddress(pair.base.address))
+        quote_token = get_deployed_contract(self.web3, "ERC20MockDecimals.json", Web3.toChecksumAddress(pair.quote.address))
         raw_assumed_quantity = estimate_buy_quantity(self.uniswap, base_token, quote_token, amount_in_usd * (10 ** pair.quote.decimals))
         assumed_quantity = Decimal(raw_assumed_quantity) / Decimal(10**pair.base.decimals)
         assumed_price = amount_in_usd / assumed_quantity
@@ -75,8 +79,8 @@ class EthereumTestTrader:
 
         assert isinstance(quantity, Decimal)
 
-        base_token = get_deployed_contract(self.web3, "ERC20MockDecimals.json", pair.base.address)
-        quote_token = get_deployed_contract(self.web3, "ERC20MockDecimals.json", pair.quote.address)
+        base_token = get_deployed_contract(self.web3, "ERC20MockDecimals.json", Web3.toChecksumAddress(pair.base.address))
+        quote_token = get_deployed_contract(self.web3, "ERC20MockDecimals.json", Web3.toChecksumAddress(pair.quote.address))
 
         raw_quantity = int(quantity * 10**pair.base.decimals)
         raw_assumed_quote_token = estimate_sell_price(self.uniswap, base_token, quote_token, raw_quantity)
@@ -102,6 +106,7 @@ class EthereumTestTrader:
 
 def execute_trades_simple(
         state: State,
+        pair_universe: PandasPairUniverse,
         trades: List[TradeExecution],
         web3: Web3,
         hot_wallet: HotWallet,
@@ -117,6 +122,8 @@ def execute_trades_simple(
 
     - Works with single Uniswap test deployment
     """
+
+    assert isinstance(pair_universe, PandasPairUniverse)
 
     fees = estimate_gas_fees(web3)
 
@@ -134,13 +141,13 @@ def execute_trades_simple(
             uniswap.factory.address: (uniswap.router.address, uniswap.init_code_hash),
         },
         allowed_intermediary_pairs={},
-        reserve_asset=reserve_asset,
+        reserve_token_address=reserve_asset.address,
         max_slippage=max_slippage,
     )
 
     state.start_trades(datetime.datetime.utcnow(), trades)
     routing_state = UniswapV2RoutingState(tx_builder)
-    routing_model.execute_trades(None, routing_state, trades)
+    routing_model.execute_trades_internal(pair_universe, routing_state, trades)
     broadcast_and_resolve(web3, state, trades, stop_on_execution_failure=stop_on_execution_failure)
 
     # Clean up failed trades

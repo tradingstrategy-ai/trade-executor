@@ -46,7 +46,7 @@ class AssetIdentifier:
     def __post_init__(self):
         assert type(self.address) == str, f"Got address {self.address} as {type(self.address)}"
         assert self.address.startswith("0x")
-        assert self.address.lower() == self.address, f"Non-checksummed addresses not supported: {self.address}"
+        self.address= self.address.lower()
         assert type(self.chain_id) == int
         assert type(self.decimals) == int, f"Bad decimals {self.decimals}"
         assert self.decimals >= 0

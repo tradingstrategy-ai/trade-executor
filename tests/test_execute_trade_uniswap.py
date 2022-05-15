@@ -9,6 +9,7 @@ import pytest
 from eth_account import Account
 from eth_typing import HexAddress
 from hexbytes import HexBytes
+from tradingstrategy.pair import PandasPairUniverse
 from web3 import EthereumTesterProvider, Web3
 from web3.contract import Contract
 
@@ -17,6 +18,7 @@ from eth_defi.token import create_token
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, deploy_uniswap_v2_like, deploy_trading_pair, FOREVER_DEADLINE
 from eth_defi.uniswap_v2.fees import estimate_buy_quantity
 from tradeexecutor.ethereum.execution import get_current_price, get_held_assets
+from tradeexecutor.ethereum.universe import create_pair_universe
 from tradeexecutor.ethereum.wallet import sync_reserves, sync_portfolio
 from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
 from tradeexecutor.state.state import State
@@ -201,9 +203,15 @@ def state(portfolio) -> State:
     return State(portfolio=portfolio)
 
 
+@pytest.fixture()
+def pair_universe(web3, weth_usdc_pair, aave_usdc_pair) -> PandasPairUniverse:
+    return create_pair_universe(web3, None, [weth_usdc_pair, aave_usdc_pair])
+
+
 def test_execute_trade_instructions_buy_weth(
         web3: Web3,
         state: State,
+        pair_universe: PandasPairUniverse,
         uniswap_v2: UniswapV2Deployment,
         hot_wallet: HotWallet,
         usdc_token: AssetIdentifier,
@@ -232,7 +240,7 @@ def test_execute_trade_instructions_buy_weth(
     assert state.portfolio.get_total_equity() == pytest.approx(10000.0)
     assert trade.get_status() == TradeStatus.planned
 
-    execute_trades_simple(state, [trade], web3, hot_wallet, uniswap_v2)
+    execute_trades_simple(state, pair_universe, [trade], web3, hot_wallet, uniswap_v2)
 
     assert trade.get_status() == TradeStatus.success
     assert trade.executed_price == pytest.approx(Decimal(1705.6136999031144))
@@ -244,6 +252,7 @@ def test_execute_trade_instructions_buy_weth_with_tester(
         state: State,
         uniswap_v2: UniswapV2Deployment,
         hot_wallet: HotWallet,
+        pair_universe,
         weth_usdc_pair: TradingPairIdentifier,
         start_ts: datetime.datetime):
     """Same as above but with the tester class.."""
@@ -255,7 +264,7 @@ def test_execute_trade_instructions_buy_weth_with_tester(
     assert portfolio.get_current_cash() == 10_000
 
     # Buy 500 USDC worth of WETH
-    trader = EthereumTestTrader(web3, uniswap_v2, hot_wallet, state)
+    trader = EthereumTestTrader(web3, uniswap_v2, hot_wallet, state, pair_universe)
     position, trade = trader.buy(weth_usdc_pair, Decimal(500))
 
     assert position.is_open()
@@ -279,6 +288,7 @@ def test_buy_sell_buy_with_tester(
         state: State,
         uniswap_v2: UniswapV2Deployment,
         hot_wallet: HotWallet,
+        pair_universe,
         weth_usdc_pair: TradingPairIdentifier,
         start_ts: datetime.datetime):
     """Execute three trades on a position."""
@@ -293,7 +303,7 @@ def test_buy_sell_buy_with_tester(
     # 1. Buy 500 USDC worth of WETH
     #
 
-    trader = EthereumTestTrader(web3, uniswap_v2, hot_wallet, state)
+    trader = EthereumTestTrader(web3, uniswap_v2, hot_wallet, state, pair_universe)
     position, trade = trader.buy(weth_usdc_pair, Decimal(500))
 
     assert position.is_open()
@@ -354,6 +364,7 @@ def test_buy_buy_sell_sell_tester(
         uniswap_v2: UniswapV2Deployment,
         hot_wallet: HotWallet,
         weth_usdc_pair: TradingPairIdentifier,
+        pair_universe,
         start_ts: datetime.datetime):
     """Execute four trades on the same position."""
 
@@ -368,7 +379,7 @@ def test_buy_buy_sell_sell_tester(
     # 2. Buy 500 USDC worth of WETH
     #
 
-    trader = EthereumTestTrader(web3, uniswap_v2, hot_wallet, state)
+    trader = EthereumTestTrader(web3, uniswap_v2, hot_wallet, state, pair_universe)
     position1, trade1 = trader.buy(weth_usdc_pair, Decimal(500))
     position2, trade2 = trader.buy(weth_usdc_pair, Decimal(500))
 
@@ -403,6 +414,7 @@ def test_two_parallel_positions(
         asset_aave,
         asset_weth,
         asset_usdc,
+        pair_universe,
         start_ts: datetime.datetime):
     """Execute four trades on two positions at the same time."""
 
@@ -420,7 +432,7 @@ def test_two_parallel_positions(
     # 2. Buy 500 USDC worth of AAVE at 200 USD
     #
 
-    trader = EthereumTestTrader(web3, uniswap_v2, hot_wallet, state)
+    trader = EthereumTestTrader(web3, uniswap_v2, hot_wallet, state, pair_universe)
     position1, trade1 = trader.buy(weth_usdc_pair, Decimal(500), execute=False)
     position2, trade2 = trader.buy(aave_usdc_pair, Decimal(500), execute=False)
 

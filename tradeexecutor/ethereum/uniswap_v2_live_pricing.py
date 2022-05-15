@@ -79,7 +79,7 @@ class UniswapV2LivePricing(PricingModel):
         """Get live price on Uniswap.
         """
 
-        assert self.check_supported_quote_token(pair), f"The quote token is not dollar like for the {pair}"
+        self.check_supported_quote_token(pair)
 
         if quantity is None:
             quantity = Decimal(self.very_small_amount)
