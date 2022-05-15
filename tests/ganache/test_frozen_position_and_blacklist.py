@@ -27,7 +27,7 @@ from hexbytes import HexBytes
 
 from eth_defi.utils import is_localhost_port_listening
 from tradeexecutor.ethereum.universe import create_exchange_universe, create_pair_universe
-from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, TradingStrategyUniverseModel
 from tradeexecutor.strategy.universe_model import StaticUniverseModel
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId
@@ -177,17 +177,17 @@ def wbnb_token(pancakeswap_v2: UniswapV2Deployment) -> Contract:
 
 @pytest.fixture
 def asset_busd(busd_token, chain_id) -> AssetIdentifier:
-    return AssetIdentifier(chain_id, busd_token.address, busd_token.functions.symbol().call(), busd_token.functions.decimals().call())
+    return AssetIdentifier(chain_id, busd_token.address.lower(), busd_token.functions.symbol().call(), busd_token.functions.decimals().call())
 
 
 @pytest.fixture
 def asset_bit(bit_token, chain_id) -> AssetIdentifier:
-    return AssetIdentifier(chain_id, bit_token.address, bit_token.functions.symbol().call(), bit_token.functions.decimals().call())
+    return AssetIdentifier(chain_id, bit_token.address.lower(), bit_token.functions.symbol().call(), bit_token.functions.decimals().call())
 
 
 @pytest.fixture
 def asset_wbnb(wbnb_token, chain_id) -> AssetIdentifier:
-    return AssetIdentifier(chain_id, wbnb_token.address, wbnb_token.functions.symbol().call(), wbnb_token.functions.decimals().call())
+    return AssetIdentifier(chain_id, wbnb_token.address.lower(), wbnb_token.functions.symbol().call(), wbnb_token.functions.decimals().call())
 
 
 @pytest.fixture
@@ -307,7 +307,7 @@ def runner(
 
     strategy_factory = import_strategy_file(strategy_path)
     approval_model = UncheckedApprovalModel()
-    execution_model = UniswapV2ExecutionModelVersion0(pancakeswap_v2, hot_wallet, confirmation_timeout=datetime.timedelta(minutes=1))
+    execution_model = UniswapV2ExecutionModelVersion0(pancakeswap_v2, hot_wallet, confirmation_timeout=datetime.timedelta(minutes=1), stop_on_execution_failure=False)
     sync_method = EthereumHotWalletReserveSyncer(web3, hot_wallet.address)
 
     run_description: StrategyExecutionDescription = strategy_factory(
@@ -365,6 +365,8 @@ def test_buy_and_sell_blacklisted_asset(
     executor_universe: TradingStrategyUniverse = universe_model.universe
     universe = executor_universe.universe
 
+    assert universe.pairs
+
     # Check assets
     exchange = universe.exchanges[0]
     wbnb_busd = universe.pairs.get_one_pair_from_pandas_universe(exchange.exchange_id, "WBNB", "BUSD")
@@ -390,17 +392,16 @@ def test_buy_and_sell_blacklisted_asset(
     #
     ts = datetime.datetime(2020, 1, 2)
     state.revalue_positions(ts, UniswapV2PoolRevaluator(pancakeswap_v2))
-    debug_details = runner.tick(ts, executor_universe, state, {"cycle": 2})
+    debug_details = runner.tick(ts, executor_universe, state, {"cycle": 2, "check_balances": True})
     weights = debug_details["alpha_model_weights"]
-    assert len(weights) == 0
     assert len(debug_details["succeeded_trades"]) == 1
     assert len(debug_details["failed_trades"]) == 1
 
     # Position is now frozen
     portfolio = state.portfolio
-    assert len(portfolio.open_positions) == 0
-    assert len(portfolio.frozen_positions) == 1
-    assert len(portfolio.closed_positions) == 1
+    assert len(portfolio.open_positions) == 1  # BUSD open
+    assert len(portfolio.frozen_positions) == 1  # BIT frozen
+    assert len(portfolio.closed_positions) == 0
 
     failed_position: TradingPosition = next(iter(portfolio.frozen_positions.values()))
     assert failed_position.position_id == 2
@@ -411,8 +412,9 @@ def test_buy_and_sell_blacklisted_asset(
     assert failed_trade.failed_at is not None
     assert failed_trade.is_failed()
     assert failed_trade.is_sell()
-    assert failed_trade.tx_info.revert_reason == "VM Exception while processing transaction: revert TransferHelper: TRANSFER_FROM_FAILED"
-    assert failed_position.get_freeze_reason() == "VM Exception while processing transaction: revert TransferHelper: TRANSFER_FROM_FAILED"
+    tx_info = failed_trade.blockchain_transactions[-1]
+    #assert tx_info.revert_reason == "VM Exception while processing transaction: revert TransferHelper: TRANSFER_FROM_FAILED"
+    #assert failed_position.get_freeze_reason() == "VM Exception while processing transaction: revert TransferHelper: TRANSFER_FROM_FAILED"
     assert portfolio.get_frozen_position_equity() > 0
 
     # The asset is now blacklisted for the future trades

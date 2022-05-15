@@ -138,7 +138,9 @@ class State:
     def mark_trade_failed(self, failed_at: datetime.datetime, trade: TradeExecution):
         """Unroll the allocated capital."""
         trade.mark_failed(failed_at)
-        self.portfolio.adjust_reserves(trade.reserve_currency, trade.reserve_currency_allocated)
+        # Return unused reserves back to accounting
+        if trade.is_buy():
+            self.portfolio.adjust_reserves(trade.reserve_currency, trade.reserve_currency_allocated)
 
     def update_reserves(self, new_reserves: List[ReservePosition]):
         self.portfolio.update_reserves(new_reserves)

@@ -311,9 +311,13 @@ class TradingPosition:
         return profit / bought
 
     def get_freeze_reason(self) -> str:
-        """Return the revert reason why this position is frozen."""
+        """Return the revert reason why this position is frozen.
+
+        Get the revert reason of the last blockchain transaction, assumed to be swap,
+        for this trade.
+        """
         assert self.is_frozen()
-        return self.get_last_trade().tx_info.revert_reason
+        return self.get_last_trade().blockchain_transactions[-1].revert_reason
 
     def get_last_tx_hash(self) -> Optional[str]:
         """Get the latest transaction performed for this position.

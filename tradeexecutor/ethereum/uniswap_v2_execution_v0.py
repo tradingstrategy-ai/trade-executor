@@ -20,7 +20,7 @@ from tradeexecutor.state.freeze import freeze_position_on_failed_trade
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.execution_model import ExecutionModel
-
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +101,12 @@ class UniswapV2ExecutionModelVersion0(ExecutionModel):
         balance = self.hot_wallet.get_native_currency_balance(self.web3)
         logger.info("Our hot wallet is %s with nonce %d and balance %s", self.hot_wallet.address, self.hot_wallet.current_nonce, balance)
 
-    def execute_trades(self, ts: datetime.datetime, state: State, trades: List[TradeExecution]) -> Tuple[List[TradeExecution], List[TradeExecution]]:
+    def execute_trades(self,
+                       ts: datetime.datetime,
+                       universe: TradingStrategyUniverse,
+                       state: State,
+                       trades: List[TradeExecution],
+                       check_balances=False) -> Tuple[List[TradeExecution], List[TradeExecution]]:
         """Execute the trades determined by the algo on a designed Uniswap v2 instance.
 
         :return: Tuple List of succeeded trades, List of failed trades
@@ -125,13 +130,14 @@ class UniswapV2ExecutionModelVersion0(ExecutionModel):
                 self.uniswap.factory.address: (self.uniswap.router.address, self.uniswap.init_code_hash),
             },
             allowed_intermediary_pairs={},
-            reserve_asset=reserve_asset,
+            reserve_token_address=reserve_asset.address,
             max_slippage=self.max_slippage,
         )
 
         state.start_trades(datetime.datetime.utcnow(), trades)
         routing_state = UniswapV2RoutingState(tx_builder)
-        routing_model.execute_trades(None, routing_state, trades)
+
+        routing_model.execute_trades(universe, routing_state, trades, check_balances=check_balances)
         broadcast_and_resolve(self.web3, state, trades, stop_on_execution_failure=self.stop_on_execution_failure)
 
         # Clean up failed trades

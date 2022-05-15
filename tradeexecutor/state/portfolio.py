@@ -232,6 +232,7 @@ class Portfolio:
 
     def adjust_reserves(self, asset: AssetIdentifier, amount: Decimal):
         """Remove currency from reserved"""
+        assert isinstance(amount, Decimal), f"Got amount {amount}"
         reserve = self.get_reserve_position(asset)
         assert reserve, f"No reserves available for {asset}"
         assert reserve.quantity, f"Reserve quantity missing for {asset}"

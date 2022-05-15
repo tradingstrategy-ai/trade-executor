@@ -26,7 +26,8 @@ class AssetIdentifier:
     #: See https://chainlist.org/
     chain_id: int
 
-    #: Smart contract address of the asset
+    #: Smart contract address of the asset.
+    #: Always lowercase.
     address: JSONHexAddress
 
     token_symbol: str
@@ -45,8 +46,10 @@ class AssetIdentifier:
     def __post_init__(self):
         assert type(self.address) == str, f"Got address {self.address} as {type(self.address)}"
         assert self.address.startswith("0x")
+        assert self.address.lower() == self.address, f"Non-checksummed addresses not supported: {self.address}"
         assert type(self.chain_id) == int
-        assert self.decimals is not None, f"Cannot create tradeable assets without decimals set"
+        assert type(self.decimals) == int, f"Bad decimals {self.decimals}"
+        assert self.decimals >= 0
 
     def get_identifier(self) -> str:
         """Assets are identified by their smart contract address."""

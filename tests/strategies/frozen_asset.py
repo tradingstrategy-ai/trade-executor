@@ -27,6 +27,24 @@ from tradeexecutor.strategy.universe_model import StaticUniverseModel
 logging = logging.getLogger("frozen_asset")
 
 
+#
+# Trade routing info
+#
+
+# Keep everything internally in BUSD
+reserve_token_address = "0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56".lower()
+
+# Allowed exchanges as factory -> router pairs,
+# by their smart contract addresses
+factory_router_map = {
+    "0xcA143Ce32Fe78f1f7019d7d551a6402fC5350c73": ("0x10ED43C718714eb63d5aA57B78B54704E256024E", "0x00fb7f630766e6a796048ea87d01acd3068e8ff67d078148a3fa3f4a84f69bd5")
+}
+
+# For three way trades, which pools we can use
+allowed_intermediary_pairs = {}
+
+
+
 class BadAlpha(AlphaModel):
     """Alpha model that buys Biconomy BIT tokan with transfer tax."""
 
@@ -47,8 +65,10 @@ class BadAlpha(AlphaModel):
                 bit_busd.pair_id: 0.5,
             }
         elif cycle == 2:
-            # Sell all
+            # Sell tick
             return {
+                wbnb_busd.pair_id: 0.9,
+                bit_busd.pair_id: 0.1,
             }
         elif cycle == 3:
             assert state.is_good_pair(translate_trading_pair(wbnb_busd))
@@ -56,22 +76,6 @@ class BadAlpha(AlphaModel):
             return {wbnb_busd.pair_id: 1.0}
         else:
             raise NotImplementedError(f"Bad cycle: {cycle}")
-
-
-# Keep everything internally in BUSD
-reserve_token_address = "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c"
-
-# Allowed exchanges as factory -> router pairs,
-# by their smart contract addresses
-factory_router_map = {
-    "0xcA143Ce32Fe78f1f7019d7d551a6402fC5350c73": "0x10ED43C718714eb63d5aA57B78B54704E256024E",
-}
-
-# For three way trades, which pools we can use
-allowed_intermediary_pairs = {
-    # BUSD -> WBNB
-    "0x58f876857a02d6762e0101bb5c46a8c1ed44dc16",  # https://tradingstrategy.ai/trading-view/binance/pancakeswap-v2/bnb-busd
-}
 
 
 def strategy_factory(

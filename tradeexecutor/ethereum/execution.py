@@ -383,15 +383,16 @@ def resolve_trades(
         result = analyse_trade(web3, uniswap, swap_tx.tx_hash)
 
         if isinstance(result, TradeSuccess):
+            path = [a.lower() for a in result.path]
             if trade.is_buy():
-                assert result.path[0] == reserve.address, f"Was expecting the route path to start with reserve token {reserve}, got path {result.path}"
+                assert path[0] == reserve.address, f"Was expecting the route path to start with reserve token {reserve}, got path {result.path}"
                 price = 1 / result.price
                 executed_reserve = result.amount_in / Decimal(10**quote_token_details.decimals)
                 executed_amount = result.amount_out / Decimal(10**base_token_details.decimals)
             else:
                 # Ordered other way around
-                assert result.path[0] == base_token_details.address
-                assert result.path[-1] == reserve.address
+                assert path[0] == base_token_details.address.lower(), f"Path is {path}, base token is {base_token_details}"
+                assert path[-1] == reserve.address
                 price = result.price
                 executed_amount = -result.amount_in / Decimal(10**base_token_details.decimals)
                 executed_reserve = result.amount_out / Decimal(10**quote_token_details.decimals)
@@ -415,9 +416,12 @@ def resolve_trades(
                 trade,
             )
             if stop_on_execution_failure:
-                tx_hash = trade.tx_info.tx_hash
-                raise TradeExecutionFailed(f"Could not execute a trade: {trade}, transaction was {tx_hash}")
-            trade.tx_info.revert_reason = result.revert_reason
+                success_txs = []
+                for tx in trade.blockchain_transactions:
+                    if not tx.is_success():
+                        raise TradeExecutionFailed(f"Could not execute a trade: {trade}, transaction failed: {tx}, had other transactions {success_txs}")
+                    else:
+                        success_txs.append(tx)
 
 
 def get_current_price(web3: Web3, uniswap: UniswapV2Deployment, pair: TradingPairIdentifier, quantity=Decimal(1)) -> float:
@@ -444,7 +448,7 @@ def get_held_assets(web3: Web3, address: HexAddress, assets: List[AssetIdentifie
 
 def get_token_for_asset(web3: Web3, asset: AssetIdentifier) -> Contract:
     """Get ERC-20 contract proxy."""
-    erc_20 = get_deployed_contract(web3, "ERC20MockDecimals.json", asset.address)
+    erc_20 = get_deployed_contract(web3, "ERC20MockDecimals.json", Web3.toChecksumAddress(asset.address))
     return erc_20
 
 

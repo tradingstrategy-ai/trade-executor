@@ -7,6 +7,7 @@ import logging
 from typing import List, Optional
 
 import pandas as pd
+from tradingstrategy.token import Token
 
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.strategy.universe_model import TradeExecutorTradingUniverse, UniverseModel, DataTooOld
@@ -221,6 +222,15 @@ class TradingStrategyUniverseModel(UniverseModel):
     @abstractmethod
     def construct_universe(self, ts: datetime.datetime, live: bool) -> TradingStrategyUniverse:
         pass
+
+
+def translate_token(token: Token) -> AssetIdentifier:
+    return AssetIdentifier(
+        token.chain_id.value,
+        token.address,
+        token.symbol,
+        token.decimals
+    )
 
 
 def translate_trading_pair(pair: DEXPair) -> TradingPairIdentifier:

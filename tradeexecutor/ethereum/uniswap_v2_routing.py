@@ -16,7 +16,8 @@ from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.routing import RoutingModel, RoutingState, CannotRouteTrade
-from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_trading_pair
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_trading_pair, \
+    translate_token
 from tradingstrategy.pair import PandasPairUniverse
 
 
@@ -104,7 +105,7 @@ class UniswapV2RoutingState(RoutingState):
             # Already approved for this cycle in previous trade
             return []
 
-        erc_20 = get_deployed_contract(self.web3, "ERC20MockDecimals.json", token_address)
+        erc_20 = get_deployed_contract(self.web3, "ERC20MockDecimals.json", Web3.toChecksumAddress(token_address))
 
         # Set internal state we are approved
         self.mark_router_approved(token_address, router_address)
@@ -236,7 +237,7 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
     def __init__(self,
                  factory_router_map: Dict[str, Tuple[str, Optional[str]]],
                  allowed_intermediary_pairs: Dict[str, str],
-                 reserve_asset: AssetIdentifier,
+                 reserve_token_address: str,
                  max_slippage: float,
                  ):
         """
@@ -256,17 +257,35 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
             This set is the list of pair smart contract addresses that
             are allowed to be used as a hop.
 
+        :param reserve_token_address:
+            Token address of our reserve currency.
+            Relevent for buy/sell routing.
+            Lowercase.
+
         :param max_slippage:
             Maximum allowed slippage in trades.
 
         """
 
+        assert type(factory_router_map) == dict
+        assert type(allowed_intermediary_pairs) == dict
+        assert type(reserve_token_address) == str
+
+        assert reserve_token_address.lower() == reserve_token_address
+
         # Convert all key addresses to lowercase to
         # avoid mix up with Ethereum address checksums
         self.factory_router_map = {k.lower(): v for k, v in factory_router_map.items()}
         self.allowed_intermediary_pairs = {k.lower(): v for k, v in allowed_intermediary_pairs.items()}
-        self.reserve_asset = reserve_asset
+        self.reserve_token_address = reserve_token_address
         self.max_slippage = max_slippage
+
+    def get_reserve_asset(self, pair_universe: PandasPairUniverse) -> AssetIdentifier:
+        """Translate our reserve token address tok an asset description."""
+        assert pair_universe is not None, "Pair universe missing"
+        reserve_token = pair_universe.get_token(self.reserve_token_address)
+        assert reserve_token, f"Pair universe does not contain our reserve asset {self.reserve_token_address}"
+        return translate_token(reserve_token)
 
     def make_direct_trade(self,
                           routing_state: UniswapV2RoutingState,
@@ -391,8 +410,10 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
 
         assert isinstance(trading_pair, TradingPairIdentifier)
 
+        reserve_asset = self.get_reserve_asset(pair_universe)
+
         # We can directly do a two-way trade
-        if trading_pair.quote == self.reserve_asset:
+        if trading_pair.quote == reserve_asset:
             return trading_pair, None
 
         # Only issue for legacy code
@@ -445,6 +466,8 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
 
         txs: List[BlockchainTransaction] = []
 
+        reserve_asset = self.get_reserve_asset(pair_universe)
+
         for t in trades:
             assert len(t.blockchain_transactions) == 0, f"Trade {t} had already blockchain transactions associated with it"
 
@@ -457,7 +480,7 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
                    trade_txs = self.trade(
                         routing_state,
                         target_pair=target_pair,
-                        reserve_asset=self.reserve_asset,
+                        reserve_asset=reserve_asset,
                         reserve_asset_amount=t.get_raw_planned_reserve(),
                         check_balances=check_balances,
                     )
@@ -475,7 +498,7 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
                     trade_txs = self.trade(
                         routing_state,
                         target_pair=target_pair,
-                        reserve_asset=self.reserve_asset,
+                        reserve_asset=reserve_asset,
                         reserve_asset_amount=t.get_raw_planned_reserve(),
                         check_balances=check_balances,
                         intermediary_pair=intermediary_pair,
@@ -519,12 +542,9 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
             sometimes we do no know this until the sell tx has been completed.
 
         """
-
-        if universe is not None:
-            return self.execute_trades_internal(universe.universe.pairs, routing_state, trades, check_balances)
-        else:
-            # Legacy code path for testing compatibility
-            return self.execute_trades_internal(None, routing_state, trades, check_balances)
+        assert universe is not None, "Universe is required"
+        assert universe.universe.pairs is not None, "Pairs are required"
+        return self.execute_trades_internal(universe.universe.pairs, routing_state, trades, check_balances)
 
 
 def route_tokens(

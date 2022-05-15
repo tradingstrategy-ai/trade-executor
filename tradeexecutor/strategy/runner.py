@@ -204,7 +204,8 @@ class StrategyRunner(abc.ABC):
             self.report_before_execution(clock, universe, state, approved_trades, debug_details)
 
             with self.timed_task_context_manager("execute_trades"):
-                succeeded_trades, failed_trades = self.execution_model.execute_trades(clock, state, approved_trades)
+                check_balances = debug_details.get("check_balances", False)
+                succeeded_trades, failed_trades = self.execution_model.execute_trades(clock, universe, state, approved_trades, check_balances=check_balances)
                 debug_details["succeeded_trades"] = succeeded_trades
                 debug_details["failed_trades"] = failed_trades
 

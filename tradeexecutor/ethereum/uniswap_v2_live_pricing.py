@@ -68,8 +68,8 @@ class UniswapV2LivePricing(PricingModel):
         assert pair, f"No pair for id {internal_id}"
         return translate_trading_pair(pair)
 
-    def is_supported_quote_token(self, pair: TradingPairIdentifier):
-        return pair.quote == self.routing_model.reserve_asset
+    def check_supported_quote_token(self, pair: TradingPairIdentifier):
+        assert pair.quote.address == self.routing_model.reserve_token_address, f"Quote token {self.routing_model.reserve_token_address} not supported for pair {pair}, {pair.base.address} - {pair.quote.address}"
 
     def get_sell_price(self,
                        ts: datetime.datetime,
@@ -79,7 +79,7 @@ class UniswapV2LivePricing(PricingModel):
         """Get live price on Uniswap.
         """
 
-        assert self.is_supported_quote_token(pair), f"The quote token is not dollar like for the {pair}"
+        assert self.check_supported_quote_token(pair), f"The quote token is not dollar like for the {pair}"
 
         if quantity is None:
             quantity = Decimal(self.very_small_amount)
@@ -133,10 +133,10 @@ class UniswapV2LivePricing(PricingModel):
         # In three token trades, be careful to use the correct reserve token
         if intermediate_pair is not None:
             reserve_raw = intermediate_pair.quote.convert_to_raw_amount(reserve)
-            assert self.is_supported_quote_token(intermediate_pair), f"The quote token is not dollar like for the {pair}"
+            self.check_supported_quote_token(intermediate_pair)
         else:
             reserve_raw = target_pair.quote.convert_to_raw_amount(reserve)
-            assert self.is_supported_quote_token(pair), f"The quote token is not dollar like for the {pair}"
+            self.check_supported_quote_token(pair)
 
         token_raw_received = estimate_buy_received_amount_raw(
             uniswap,
