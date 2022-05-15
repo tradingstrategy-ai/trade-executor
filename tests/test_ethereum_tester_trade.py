@@ -25,6 +25,7 @@ from tradeexecutor.ethereum.hot_wallet_sync import EthereumHotWalletReserveSynce
 from tradeexecutor.ethereum.uniswap_v2_execution_v0 import UniswapV2ExecutionModelVersion0
 from tradeexecutor.ethereum.uniswap_v2_live_pricing import UniswapV2LivePricing, uniswap_v2_live_pricing_factory
 from tradeexecutor.ethereum.uniswap_v2_revaluation import UniswapV2PoolRevaluator
+from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2SimpleRoutingModel
 from tradeexecutor.ethereum.universe import create_exchange_universe, create_pair_universe
 from tradeexecutor.state.state import State
 from tradeexecutor.state.portfolio import Portfolio
@@ -282,6 +283,27 @@ def revaluation_method(uniswap_v2):
 
 
 @pytest.fixture()
+def routing_model(uniswap_v2, asset_usdc, asset_weth, weth_usdc_pair) -> UniswapV2SimpleRoutingModel:
+
+    # Allowed exchanges as factory -> router pairs
+    factory_router_map = {
+        uniswap_v2.factory.address: (uniswap_v2.router.address, uniswap_v2.init_code_hash),
+    }
+
+    # Three way ETH quoted trades are routed thru WETH/USDC pool
+    allowed_intermediary_pairs = {
+        asset_weth.address: weth_usdc_pair.pool_address
+    }
+
+    return UniswapV2SimpleRoutingModel(
+        factory_router_map,
+        allowed_intermediary_pairs,
+        reserve_asset=asset_usdc,
+        max_slippage=0.05,
+    )
+
+
+@pytest.fixture()
 def runner(
         uniswap_v2,
         strategy_path,
@@ -290,6 +312,7 @@ def runner(
         persistent_test_client,
         universe_model,
         revaluation_method,
+        routing_model,
 ) -> StrategyRunner:
     """Construct the strategy runner."""
 
@@ -304,6 +327,7 @@ def runner(
         sync_method=sync_method,
         revaluation_method=revaluation_method,
         pricing_model_factory=uniswap_v2_live_pricing_factory,
+        routing_model=routing_model,
         approval_model=approval_model,
         client=persistent_test_client,
         universe_model=universe_model,
@@ -540,7 +564,7 @@ def test_simulated_uniswap_qstrader_strategy_round_trip(
 
     # We have lost some money in trading fees
     assert state.portfolio.get_total_equity() == pytest.approx(9983.773698830146, rel=APPROX_REL)
-    assert state.portfolio.get_current_cash() == pytest.approx(839.3295900249992, rel=APPROX_REL)
+    assert state.portfolio.get_current_cash() == pytest.approx(936.5293500249995, rel=APPROX_REL)
 
     # Check our two open positions
     assert len(state.portfolio.open_positions) == 2
@@ -548,7 +572,7 @@ def test_simulated_uniswap_qstrader_strategy_round_trip(
     assert position_1.get_quantity() == Decimal('2.747249930253346052')
     assert position_1.get_value() == pytest.approx(4684.555636069401, rel=APPROX_REL)
     position_2 = state.portfolio.get_open_position_for_pair(aave_usdc_pair)
-    assert position_2.get_value() == pytest.approx(4459.8884727357445, rel=APPROX_REL)
+    assert position_2.get_value() == pytest.approx(4362.366674108017, rel=APPROX_REL)
     assert position_2.get_quantity() == pytest.approx(Decimal('21.354907569100333830'), rel=APPROX_REL_DECIMAL)
 
     # Check the raw on-chain token balances
@@ -558,6 +582,6 @@ def test_simulated_uniswap_qstrader_strategy_round_trip(
     assert balances[aave_token.address].value == pytest.approx(Decimal('21.354907569100333830'), rel=APPROX_REL_DECIMAL)
 
     # The cash balance should be ~500 USD but due to huge AAVE price estimation error it is not
-    assert balances[usdc_token.address].value == pytest.approx(Decimal('839.3295900249992'), rel=APPROX_REL_DECIMAL)
+    assert balances[usdc_token.address].value == pytest.approx(Decimal('936.529351'), rel=APPROX_REL_DECIMAL)
 
 

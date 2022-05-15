@@ -1,18 +1,12 @@
-"""Runs a test strategy with a forked Pancakeswap V2.
+"""Sets up the main loop and a strategy in a Ethereum Tester environment.
 
-To run tests:
-
-.. code-block:: shell
-
-    export BNB_CHAIN_JSON_RPC=https://bsc-dataseed1.defibit.io/
-    pytest -s -k test_forked_pancake
-
+We test with ganache-cli mainnet forking.
 """
-import datetime
+import json
 import logging
 import os
+import pickle
 import secrets
-from decimal import Decimal
 from pathlib import Path
 from typing import List
 
@@ -20,41 +14,30 @@ import pytest
 from eth_account import Account
 from eth_typing import HexAddress, HexStr
 from hexbytes import HexBytes
-
-from eth_defi.utils import is_localhost_port_listening
-from tradingstrategy.client import Client
+from typer.testing import CliRunner
 from web3 import Web3, HTTPProvider
 from web3.contract import Contract
 
 from eth_defi.abi import get_deployed_contract
 from eth_defi.ganache import fork_network
 from eth_defi.hotwallet import HotWallet
+from eth_defi.txmonitor import wait_transactions_to_complete
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, fetch_deployment
-from tradeexecutor.ethereum.hot_wallet_sync import EthereumHotWalletReserveSyncer
-from tradeexecutor.ethereum.uniswap_v2_execution_v0 import UniswapV2ExecutionModelVersion0
-from tradeexecutor.ethereum.uniswap_v2_live_pricing import uniswap_v2_live_pricing_factory
-from tradeexecutor.ethereum.uniswap_v2_revaluation import UniswapV2PoolRevaluator
-from tradeexecutor.state.state import State
-from tradeexecutor.state.portfolio import Portfolio
-from tradeexecutor.state.trade import TradeExecution
+from eth_defi.utils import is_localhost_port_listening
+from tradeexecutor.cli.main import app
 from tradeexecutor.state.identifier import AssetIdentifier
-from tradeexecutor.strategy.approval import UncheckedApprovalModel
-from tradeexecutor.strategy.bootstrap import import_strategy_file
-from tradeexecutor.strategy.description import StrategyExecutionDescription
-from tradeexecutor.strategy.runner import StrategyRunner
+
 from tradeexecutor.cli.log import setup_pytest_logging
 
 
 # https://docs.pytest.org/en/latest/how-to/skipping.html#skip-all-test-functions-of-a-class-or-module
-from tradeexecutor.utils.timer import timed_task
-
 pytestmark = pytest.mark.skipif(os.environ.get("BNB_CHAIN_JSON_RPC") is None, reason="Set BNB_CHAIN_JSON_RPC environment variable to Binance Smart Chain node to run this test")
 
 
 @pytest.fixture(scope="module")
 def logger(request):
     """Setup test logger."""
-    return setup_pytest_logging(request, mute_requests=False)
+    return setup_pytest_logging(request)
 
 
 @pytest.fixture()
@@ -82,21 +65,20 @@ def ganache_bnb_chain_fork(logger, large_busd_holder) -> str:
         # Start Ganache
         launch = fork_network(
             mainnet_rpc,
+            block_time=1,
             unlocked_addresses=[large_busd_holder])
         yield launch.json_rpc_url
         # Wind down Ganache process after the test is complete
         launch.close(verbose=True)
     else:
-        logger.warning("Detected existing Ganache running - terminate with: kill -9 $(lsof -ti:19999)")
-        # Assume ganache-cli manually launched by the dev
-        yield "http://localhost:19999"
+        raise AssertionError("ganache zombie detected")
 
 
 @pytest.fixture
 def web3(ganache_bnb_chain_fork: str):
     """Set up a local unit testing blockchain."""
     # https://web3py.readthedocs.io/en/stable/examples.html#contract-unit-tests-in-python
-    return Web3(HTTPProvider(ganache_bnb_chain_fork, request_kwargs={"timeout": 2}))
+    return Web3(HTTPProvider(ganache_bnb_chain_fork))
 
 
 @pytest.fixture
@@ -118,7 +100,6 @@ def busd_token(web3) -> Contract:
     return token
 
 
-@pytest.fixture()
 def cake_token(web3) -> Contract:
     """CAKE token."""
     token = get_deployed_contract(web3, "ERC20MockDecimals.json", "0x0E09FaBB73Bd3Ade0a17ECC321fD13a19e81cE82")
@@ -172,7 +153,7 @@ def wbnb_busd_uniswap_trading_pair() -> HexAddress:
 
 
 @pytest.fixture
-def supported_reserves(web3: Web3, busd) -> List[AssetIdentifier]:
+def supported_reserves(busd) -> List[AssetIdentifier]:
     """What reserve currencies we support for the strategy."""
     return [busd]
 
@@ -185,11 +166,8 @@ def hot_wallet(web3: Web3, busd_token: Contract, hot_wallet_private_key: HexByte
     """
     account = Account.from_key(hot_wallet_private_key)
     web3.eth.send_transaction({"from": large_busd_holder, "to": account.address, "value": 2*10**18})
-
-    balance = web3.eth.get_balance(large_busd_holder)
-    assert balance  > web3.toWei("1", "ether"), f"Account is empty {large_busd_holder}"
-
-    busd_token.functions.transfer(account.address, 10_000 * 10**18).transact({"from": large_busd_holder})
+    tx_hash = busd_token.functions.transfer(account.address, 10_000 * 10**18).transact({"from": large_busd_holder})
+    wait_transactions_to_complete(web3, [tx_hash])
     wallet = HotWallet(account)
     wallet.sync_nonce(web3)
     return wallet
@@ -198,90 +176,70 @@ def hot_wallet(web3: Web3, busd_token: Contract, hot_wallet_private_key: HexByte
 @pytest.fixture()
 def strategy_path() -> Path:
     """Where do we load our strategy file."""
-    return Path(os.path.join(os.path.dirname(__file__), "strategies", "pancakeswap_v2_main_loop.py"))
+    return Path(os.path.join(os.path.dirname(__file__), "../strategies", "pancakeswap_v2_main_loop.py"))
 
 
-@pytest.fixture()
-def portfolio() -> Portfolio:
-    """A portfolio loaded with the initial cash.
-
-    We start with 10,000 USDC.
-    """
-    portfolio = Portfolio()
-    return portfolio
-
-
-@pytest.fixture()
-def state(portfolio) -> State:
-    return State(portfolio=portfolio)
-
-
-def test_forked_pancake(
+def test_main_loop(
         logger: logging.Logger,
-        web3: Web3,
         strategy_path: Path,
         ganache_bnb_chain_fork,
         hot_wallet: HotWallet,
         pancakeswap_v2: UniswapV2Deployment,
-        state: State,
-        persistent_test_client: Client,
-        cake_token: Contract,
     ):
-    """Run a strategy tick against PancakeSwap v2 on forked BSC.
+    """Run the main loop one time in a backtested date.
 
-    This checks we can trade "live" assets.
+    A smoke test for setting up the whole trade executor live trading application in local Ethereum Tester environment
+    and then executed one rebalance.
     """
 
-    strategy_factory = import_strategy_file(strategy_path)
-    approval_model = UncheckedApprovalModel()
-    execution_model = UniswapV2ExecutionModelVersion0(pancakeswap_v2, hot_wallet, confirmation_block_count=0, confirmation_timeout=datetime.timedelta(minutes=1))
-    sync_method = EthereumHotWalletReserveSyncer(web3, hot_wallet.address)
-    revaluation_method = UniswapV2PoolRevaluator(pancakeswap_v2)
+    debug_dump_file = "/tmp/test_main_loop.debug.json"
 
-    run_description: StrategyExecutionDescription = strategy_factory(
-        execution_model=execution_model,
-        timed_task_context_manager=timed_task,
-        sync_method=sync_method,
-        revaluation_method=revaluation_method,
-        pricing_model_factory=uniswap_v2_live_pricing_factory,
-        approval_model=approval_model,
-        client=persistent_test_client,
-    )
+    # Set up the configuration for the live trader
+    environment = {
+        "NAME": "test_main_loop.py",
+        "STRATEGY_FILE": strategy_path.as_posix(),
+        "PRIVATE_KEY": hot_wallet.account.privateKey.hex(),
+        "HTTP_ENABLED": "false",
+        "JSON_RPC": ganache_bnb_chain_fork,
+        "UNISWAP_V2_FACTORY_ADDRESS": pancakeswap_v2.factory.address,
+        "UNISWAP_V2_ROUTER_ADDRESS": pancakeswap_v2.router.address,
+        "UNISWAP_V2_INIT_CODE_HASH": pancakeswap_v2.init_code_hash,
+        "CONFIRMATION_TIMEOUT": "30",
+        "STATE_FILE": "/tmp/test_main_loop.json",
+        "RESET_STATE": "true",
+        "EXECUTION_TYPE": "uniswap_v2_hot_wallet",
+        "APPROVAL_TYPE": "unchecked",
+        "CACHE_PATH": "/tmp/main_loop_tests",
+        "TRADING_STRATEGY_API_KEY": os.environ["TRADING_STRATEGY_API_KEY"],
+        "DEBUG_DUMP_FILE": debug_dump_file,
+        "BACKTEST_START": "2021-12-07",
+        "BACKTEST_END": "2022-01-07",
+        "MAX_CYCLES": "1",
+        "DISCORD_WEBHOOK_URL": "",
+        "TICK_SIZE": "24h",
+    }
 
-    # Deconstruct strategy input
-    runner: StrategyRunner = run_description.runner
-    universe_constructor = run_description.universe_model
+    # https://typer.tiangolo.com/tutorial/testing/
+    runner = CliRunner()
+    result = runner.invoke(app, "start", env=environment)
 
-    # Set up internal tracing store
-    debug_details = {"cycle": 1}
+    if result.exception:
+        raise result.exception
 
-    # Use a fixed data in the past for the test
-    ts = datetime.datetime(2021, 12, 7)
+    if result.exit_code != 0:
+        logger.error("runner failed")
+        for line in result.stdout.split('\n'):
+            logger.error(line)
+        raise AssertionError("runner launch failed")
 
-    # Refresh the trading universe for this cycle
-    universe = universe_constructor.construct_universe(ts, live=False)
+    assert result.exit_code == 0
 
-    # Run cycle checks
-    runner.pretick_check(ts, universe)
+    with open(debug_dump_file, "rb") as inp:
+        debug_dump = pickle.load(inp)
 
-    # Execute the strategy tick and trades
-    runner.tick(ts, universe, state, debug_details)
+        # We should have data only for one cycle
+        assert len(debug_dump) == 1
 
-    # The strategy is always going to do some trades
-    assert len(debug_details["approved_trades"]) > 0
+        cycle_1 = debug_dump[1]
+        assert len(cycle_1["approved_trades"]) == 4
 
-    # We evaluated trading pair daily candles for momentum
-    assert debug_details["timepoint_candles_count"] == 1079
-
-    # The algo executes 4 buys,
-    # from the most weighted to least weighted
-    trades: List[TradeExecution] = debug_details["rebalance_trades"]
-    assert len(trades) == 4
-    assert trades[0].pair.base.token_symbol == "Cake"
-    assert trades[0].executed_quantity > Decimal(100)  # TODO: Depends on daily Cake price - fix when we have a historical trade simulator
-    assert trades[1].pair.base.token_symbol == "BTT"
-    assert trades[2].pair.base.token_symbol == "CHR"
-    assert trades[3].pair.base.token_symbol == "CUB"
-
-    # Check on-chain Cake balance matches what we traded from Pancake
-    assert cake_token.functions.balanceOf(hot_wallet.address).call() > 0

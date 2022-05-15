@@ -14,7 +14,7 @@ from eth_defi.uniswap_v2.fees import estimate_buy_price_decimals, estimate_sell_
     estimate_buy_received_amount_raw, estimate_sell_received_amount_raw
 from tradeexecutor.state.types import USDollarAmount
 from tradeexecutor.strategy.pricing_model import PricingModel
-from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_trading_pair
 from tradingstrategy.pair import PandasPairUniverse
 
 logger = logging.getLogger(__name__)
@@ -58,6 +58,15 @@ class UniswapV2LivePricing(PricingModel):
         self.pair_universe = pair_universe
         self.very_small_amount = very_small_amount
         self.routing_model = routing_model
+
+    def get_pair_for_id(self, internal_id: int) -> TradingPairIdentifier:
+        """Look up a trading pair.
+
+        Useful if a strategy is only dealing with pair integer ids.
+        """
+        pair = self.pair_universe.get_pair_by_id(internal_id)
+        assert pair, f"No pair for id {internal_id}"
+        return translate_trading_pair(pair)
 
     def is_supported_quote_token(self, pair: TradingPairIdentifier):
         return pair.quote == self.routing_model.reserve_asset
@@ -141,6 +150,7 @@ class UniswapV2LivePricing(PricingModel):
 
     def quantize_base_quantity(self, pair: TradingPairIdentifier, quantity: Decimal, rounding=ROUND_DOWN) -> Decimal:
         """Convert any base token quantity to the native token units by its ERC-20 decimals."""
+        assert isinstance(pair, TradingPairIdentifier)
         decimals = pair.base.decimals
         return Decimal(quantity).quantize((Decimal(10) ** Decimal(-decimals)), rounding=ROUND_DOWN)
 
@@ -152,7 +162,7 @@ def uniswap_v2_live_pricing_factory(
 
     assert isinstance(universe, TradingStrategyUniverse)
     assert isinstance(execution_model, UniswapV2ExecutionModelVersion0), "Pricing method is not compatible with this execution model"
-    assert isinstance(routing_model, UniswapV2SimpleRoutingModel), f"This pricing method only works with TradingStrategyUniverse, we received {universe}"
+    assert isinstance(routing_model, UniswapV2SimpleRoutingModel), f"This pricing method only works with Uniswap routing model, we received {routing_model}"
 
     web3 = execution_model.web3
     return UniswapV2LivePricing(

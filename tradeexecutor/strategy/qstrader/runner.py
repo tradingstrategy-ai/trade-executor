@@ -35,6 +35,8 @@ class QSTraderRunner(StrategyRunner):
         # TODO: Make starter configuration
         self.cash_buffer = cash_buffer
 
+        assert kwargs.get("routing_model"), "Routing model missing"
+
     def report_strategy_thinking(self, clock: datetime.datetime, universe: TradingStrategyUniverse, state: State, trades: List[TradeExecution], debug_details: dict):
         """Report alpha model status."""
         buf = StringIO()
@@ -108,7 +110,7 @@ class QSTraderRunner(StrategyRunner):
         universe = executor_universe.universe
         reserve_assets = executor_universe.reserve_assets
         logger.info("QSTrader on_clock %s", clock)
-        pricing_model = self.pricing_model_factory(self.execution_model, executor_universe)
+        pricing_model = self.pricing_model_factory(self.execution_model, executor_universe, self.routing_model)
         optimiser = FixedWeightPortfolioOptimiser()
         order_sizer = CashBufferedOrderSizer(state, pricing_model, self.cash_buffer)
         pcm = PortfolioConstructionModel(

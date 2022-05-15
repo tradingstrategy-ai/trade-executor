@@ -239,8 +239,8 @@ def translate_trading_pair(pair: DEXPair) -> TradingPairIdentifier:
     This is called when a trade is made: this is the moment when trade executor data format must be made available.
     """
 
-    assert pair.base_token_decimals is not None
-    assert pair.quote_token_decimals is not None
+    assert pair.base_token_decimals is not None, f"Base token missing decimals: {pair}"
+    assert pair.quote_token_decimals is not None, f"Quote token missing decimals: {pair}"
 
     base = AssetIdentifier(
         chain_id=pair.chain_id.value,
@@ -272,6 +272,8 @@ def create_pair_universe_from_code(chain_id: ChainId, pairs: List[TradingPairIde
     """
     data = []
     for idx, p in enumerate(pairs):
+        assert p.base.decimals
+        assert p.quote.decimals
         dex_pair = DEXPair(
             pair_id=idx,
             chain_id=chain_id,
@@ -285,10 +287,8 @@ def create_pair_universe_from_code(chain_id: ChainId, pairs: List[TradingPairIde
             token1_symbol=p.quote.token_symbol,
             token0_address=p.base.address,
             token1_address=p.quote.address,
-            flag_inactive=False,
-            flag_blacklisted_manually=False,
-            flag_unsupported_quote_token=False,
-            flag_unknown_exchange=False,
+            token0_decimals=p.base.decimals,
+            token1_decimals=p.quote.decimals,
         )
         data.append(dex_pair.to_dict())
     df = pd.DataFrame(data)

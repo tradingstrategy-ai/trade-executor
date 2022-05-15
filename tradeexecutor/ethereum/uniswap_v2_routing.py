@@ -389,6 +389,8 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
             (router address, target pair, intermediate pair) tuple
         """
 
+        assert isinstance(trading_pair, TradingPairIdentifier)
+
         # We can directly do a two-way trade
         if trading_pair.quote == self.reserve_asset:
             return trading_pair, None
@@ -403,7 +405,6 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
             raise CannotRouteTrade(f"Does not know how to trade pair {trading_pair} - supported intermediate tokens are {list(self.allowed_intermediary_pairs.keys())}")
 
         dex_pair = pair_universe.get_pair_by_smart_contract(intermediate_pair_contract_address)
-
         assert dex_pair is not None, f"Pair universe did not contain pair for a pair contract address {intermediate_pair_contract_address}, quote token is {trading_pair.quote}"
 
         intermediate_pair = translate_trading_pair(dex_pair)

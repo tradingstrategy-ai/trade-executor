@@ -25,6 +25,7 @@ from tradeexecutor.ethereum.hot_wallet_sync import EthereumHotWalletReserveSynce
 from tradeexecutor.ethereum.uniswap_v2_execution_v0 import UniswapV2ExecutionModelVersion0
 from tradeexecutor.ethereum.uniswap_v2_live_pricing import uniswap_v2_live_pricing_factory
 from tradeexecutor.ethereum.uniswap_v2_revaluation import UniswapV2PoolRevaluator
+from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2SimpleRoutingModel
 from tradeexecutor.ethereum.universe import create_exchange_universe, create_pair_universe
 from tradeexecutor.state.state import State
 from tradeexecutor.state.portfolio import Portfolio
@@ -228,6 +229,27 @@ def recorded_input() -> bool:
     return os.environ.get("USER_INTERACTION") is None
 
 
+@pytest.fixture()
+def routing_model(uniswap_v2, asset_usdc, asset_weth, weth_usdc_pair) -> UniswapV2SimpleRoutingModel:
+
+    # Allowed exchanges as factory -> router pairs
+    factory_router_map = {
+        uniswap_v2.factory.address: (uniswap_v2.router.address, uniswap_v2.init_code_hash),
+    }
+
+    # Three way ETH quoted trades are routed thru WETH/USDC pool
+    allowed_intermediary_pairs = {
+        asset_weth.address: weth_usdc_pair.pool_address
+    }
+
+    return UniswapV2SimpleRoutingModel(
+        factory_router_map,
+        allowed_intermediary_pairs,
+        reserve_asset=asset_usdc,
+        max_slippage=0.05,
+    )
+
+
 def test_cli_approve_trades(
         logger: logging.Logger,
         strategy_path: Path,
@@ -235,6 +257,7 @@ def test_cli_approve_trades(
         hot_wallet: HotWallet,
         uniswap_v2: UniswapV2Deployment,
         universe: Universe,
+        routing_model,
         state: State,
         supported_reserves,
         weth_usdc_pair,
@@ -261,6 +284,7 @@ def test_cli_approve_trades(
         sync_method=sync_method,
         client=None,
         pricing_model_factory=pricing_model_factory,
+        routing_model=routing_model,
         universe_model=universe_model)
 
     runner = description.runner
@@ -288,6 +312,7 @@ def test_cli_disapprove_trades(
         uniswap_v2: UniswapV2Deployment,
         universe: Universe,
         state: State,
+        routing_model,
         supported_reserves,
         weth_usdc_pair,
         weth_token,
@@ -311,6 +336,7 @@ def test_cli_disapprove_trades(
         approval_model=approval_model,
         revaluation_method=revaluation_method,
         sync_method=sync_method,
+        routing_model=routing_model,
         client=None,
         pricing_model_factory=pricing_model_factory,
         universe_model=universe_model)

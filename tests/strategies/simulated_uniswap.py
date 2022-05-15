@@ -17,6 +17,7 @@ from tradeexecutor.strategy.description import StrategyExecutionDescription
 from tradeexecutor.strategy.pricing_model import PricingModelFactory
 from tradeexecutor.strategy.qstrader.alpha_model import AlphaModel
 from tradeexecutor.strategy.qstrader.runner import QSTraderRunner
+from tradeexecutor.strategy.routing import RoutingModel
 from tradeexecutor.strategy.universe_model import StaticUniverseModel
 
 
@@ -91,6 +92,7 @@ def strategy_factory(
         timed_task_context_manager: AbstractContextManager,
         approval_model: ApprovalModel,
         universe_model: StaticUniverseModel,
+        routing_model: RoutingModel,
         cash_buffer: float,
         **kwargs) -> StrategyExecutionDescription:
 
@@ -110,6 +112,7 @@ def strategy_factory(
         sync_method=sync_method,
         pricing_model_factory=pricing_model_factory,
         cash_buffer=cash_buffer,
+        routing_model=routing_model,
     )
 
     return StrategyExecutionDescription(
