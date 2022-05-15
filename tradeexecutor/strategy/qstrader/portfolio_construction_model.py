@@ -291,7 +291,7 @@ class PortfolioConstructionModel:
 
         # Get prices for existing assets so we have some idea how much they sell for
         for asset_id, asset_data in current_portfolio.items():
-            target_prices[asset_id] = self.pricing_model.get_simple_buy_price(dt, asset_id)
+            target_prices[asset_id] = self.pricing_model.get_buy_price(dt, asset_id)
 
         # Expose internal states to unit tests
         debug_details["positions_at_start_of_construction"] = current_portfolio.copy()  # current_portfolio is mutated later

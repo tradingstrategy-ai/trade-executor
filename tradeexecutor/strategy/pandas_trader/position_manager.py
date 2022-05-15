@@ -60,7 +60,7 @@ class PositionManager:
         # Translate DEXPair object to the trading pair model
         executor_pair = translate_trading_pair(pair)
 
-        price = self.pricing_model.get_simple_buy_price(self.timestamp, executor_pair.internal_id)
+        price = self.pricing_model.get_buy_price(self.timestamp, executor_pair.internal_id)
         quantity = Decimal(value) / Decimal(price)
 
         position, trade, created = self.state.create_trade(
@@ -91,7 +91,7 @@ class PositionManager:
 
             pair = position.pair
             value = position.get_value()
-            price = self.pricing_model.get_simple_buy_price(self.timestamp, pair.internal_id)
+            price = self.pricing_model.get_buy_price(self.timestamp, pair.internal_id)
 
             position2, trade, created = self.state.create_trade(
                 self.timestamp,

@@ -2,11 +2,13 @@
 from collections import defaultdict
 from typing import Dict, Set, List, Optional, Tuple
 
+from eth_typing import HexAddress, ChecksumAddress
+from web3 import Web3
 from web3.contract import Contract
 
 from eth_defi.abi import get_deployed_contract
 from eth_defi.token import fetch_erc20_details
-from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, fetch_deployment
+from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, fetch_deployment, mock_partial_deployment_for_analysis
 from eth_defi.uniswap_v2.swap import swap_with_slippage_protection
 from tradeexecutor.ethereum.execution import get_token_for_asset
 from tradeexecutor.ethereum.tx import TransactionBuilder
@@ -61,15 +63,7 @@ class UniswapV2RoutingState(RoutingState):
 
     def get_uniswap_for_pair(self, factory_router_map: dict, target_pair: TradingPairIdentifier) -> UniswapV2Deployment:
         """Get a router for a trading pair."""
-        assert target_pair.exchange_address, f"Exchange address missing for {target_pair}"
-        factory_address = target_pair.exchange_address
-        router_address, init_code_hash = factory_router_map[factory_address.lower()]
-        return fetch_deployment(
-            self.web3,
-            factory_address,
-            router_address,
-            init_code_hash=init_code_hash,
-        )
+        return get_uniswap_for_pair(self.web3, factory_router_map, target_pair)
 
     def check_has_enough_tokens(
             self,
@@ -252,7 +246,9 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
             Addresses always lowercase.
 
         :param allowed_intermediary_pairs:
+
             Quote token address -> pair smart contract address mapping.
+
             Because we hold our reserves only in one currecy e.g. BUSD
             and we want to trade e.g. Cake/BNB pairs, we need to whitelist
             BNB as an allowed intermediary token.
@@ -383,6 +379,34 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
                 check_balances=check_balances,
             )
 
+    def route_pair(self, pair_universe: PandasPairUniverse, trading_pair: TradingPairIdentifier) \
+            -> Tuple[TradingPairIdentifier, Optional[TradingPairIdentifier]]:
+        """Return Uniswap routing information (path components) for a trading pair.
+
+        For three-way pairs, figure out the intermedia step.
+
+        :return:
+            (router address, target pair, intermediate pair) tuple
+        """
+
+        # We can directly do a two-way trade
+        if trading_pair.quote == self.reserve_asset:
+            return trading_pair, None
+
+        # Only issue for legacy code
+        assert pair_universe, "PairUniverse must be given so that we know how to route three way trades"
+
+        # Try to find a mid-hop pool for the trade
+        intermediate_pair_contract_address = self.allowed_intermediary_pairs.get(trading_pair.quote.address.lower())
+
+        if not intermediate_pair_contract_address:
+            raise CannotRouteTrade(f"Does not know how to trade pair {trading_pair} - supported intermediate tokens are {list(self.allowed_intermediary_pairs.keys())}")
+
+        dex_pair = pair_universe.get_pair_by_smart_contract(intermediate_pair_contract_address)
+        intermediate_pair = translate_trading_pair(dex_pair)
+        if not intermediate_pair:
+            raise CannotRouteTrade(f"Universe does not have a trading pair with smart contract address {intermediate_pair_contract_address}")
+
     def route_trade(self, pair_universe: PandasPairUniverse, trade: TradeExecution) -> Tuple[TradingPairIdentifier, Optional[TradingPairIdentifier]]:
         """Figure out how to map an abstract trade to smart contracts.
 
@@ -392,26 +416,7 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
         :return:
             target pair, intermediary pair tuple
         """
-
-        # We can directly do a two-way trade
-        if trade.pair.quote == self.reserve_asset:
-            return trade.pair, None
-
-        # Only issue for legacy code
-        assert pair_universe, "PairUniverse must be given so that we know how to route three way trades"
-
-        # Try to find a mid-hop pool for the trade
-        intermediate_pair_contract_address = self.allowed_intermediary_pairs.get(trade.pair.quote.address.lower())
-
-        if not intermediate_pair_contract_address:
-            raise CannotRouteTrade(f"Does not know how to trade pair {trade.pair} - supported intermediate tokens are {list(self.allowed_intermediary_pairs.keys())}")
-
-        dex_pair = pair_universe.get_pair_by_smart_contract(intermediate_pair_contract_address)
-        intermediate_pair = translate_trading_pair(dex_pair)
-        if not intermediate_pair:
-            raise CannotRouteTrade(f"Universe does not have a trading pair with smart contract address {intermediate_pair_contract_address}")
-
-        return trade.pair, intermediate_pair
+        return self.route_pair(pair_universe, trade.pair)
 
     def execute_trades_internal(self,
                        pair_universe: PandasPairUniverse,
@@ -515,3 +520,35 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
             # Legacy code path for testing compatibility
             return self.execute_trades_internal(None, routing_state, trades, check_balances)
 
+
+def route_tokens(
+        trading_pair: TradingPairIdentifier,
+        intermediate_pair: Optional[TradingPairIdentifier],
+)-> Tuple[ChecksumAddress, ChecksumAddress, Optional[ChecksumAddress]]:
+    """Convert trading pair route to physical token addresses.
+    """
+
+    if intermediate_pair is None:
+        return (
+            Web3.toChecksumAddress(trading_pair.base.address),
+            Web3.toChecksumAddress(trading_pair.quote.address),
+            None)
+
+    return (
+        Web3.toChecksumAddress(trading_pair.base.address),
+        Web3.toChecksumAddress(trading_pair.quote.address),
+        Web3.toChecksumAddress(intermediate_pair.base.address))
+
+
+def get_uniswap_for_pair(web3: Web3, factory_router_map: dict, target_pair: TradingPairIdentifier) -> UniswapV2Deployment:
+    """Get a router for a trading pair."""
+    assert target_pair.exchange_address, f"Exchange address missing for {target_pair}"
+    factory_address = target_pair.exchange_address
+    router_address, init_code_hash = factory_router_map[factory_address.lower()]
+
+    return fetch_deployment(
+        web3,
+        factory_address,
+        router_address,
+        init_code_hash=init_code_hash,
+    )

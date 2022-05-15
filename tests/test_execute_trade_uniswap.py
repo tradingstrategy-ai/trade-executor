@@ -16,8 +16,7 @@ from eth_defi.hotwallet import HotWallet
 from eth_defi.token import create_token
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, deploy_uniswap_v2_like, deploy_trading_pair, FOREVER_DEADLINE
 from eth_defi.uniswap_v2.fees import estimate_buy_quantity
-from tradeexecutor.ethereum.execution import prepare_swaps, broadcast, wait_trades_to_complete, resolve_trades, \
-    approve_tokens, confirm_approvals, get_current_price, get_held_assets
+from tradeexecutor.ethereum.execution import get_current_price, get_held_assets
 from tradeexecutor.ethereum.wallet import sync_reserves, sync_portfolio
 from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
 from tradeexecutor.state.state import State

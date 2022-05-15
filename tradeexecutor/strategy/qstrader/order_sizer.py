@@ -161,7 +161,7 @@ class CashBufferedOrderSizer(OrderSizer):
             asset_quantity = 0
 
             if weight > 0:
-                asset_price = self.pricing_model.get_simple_buy_price(dt, asset)
+                asset_price = self.pricing_model.get_buy_price(dt, asset)
 
                 if asset_price is not None:
 
@@ -175,7 +175,7 @@ class CashBufferedOrderSizer(OrderSizer):
                             )
 
                         asset_quantity = after_cost_dollar_weight / asset_price
-                        asset_quantity = self.pricing_model.quantize_quantity(asset, asset_quantity)
+                        asset_quantity = self.pricing_model.quantize_base_quantity(asset, asset_quantity)
 
                     # Add to the target portfolio
                     target_portfolio[asset] = {"quantity": asset_quantity}

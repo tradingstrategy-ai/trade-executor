@@ -70,6 +70,11 @@ class AssetIdentifier:
         assert self.decimals is not None, f"Cannot perform human to raw token amount conversion, because no decimals given: {self}"
         return int(amount * Decimal(10**self.decimals))
 
+    def convert_to_decimal(self, raw_amount: int) -> Decimal:
+        assert self.decimals is not None, f"Cannot perform human to raw token amount conversion, because no decimals given: {self}"
+        return Decimal(raw_amount) / Decimal(10**self.decimals)
+
+
 
 @dataclass_json
 @dataclass
