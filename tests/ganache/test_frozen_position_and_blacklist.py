@@ -201,13 +201,13 @@ def wbnb_busd_pair_address() -> HexAddress:
 
 
 @pytest.fixture
-def wbnb_busd_pair(wbnb_busd_pair_address, asset_wbnb, asset_busd) -> TradingPairIdentifier:
-    return TradingPairIdentifier(asset_wbnb, asset_busd, wbnb_busd_pair_address, internal_id=int(wbnb_busd_pair_address, 16))
+def wbnb_busd_pair(pancakeswap_v2, wbnb_busd_pair_address, asset_wbnb, asset_busd) -> TradingPairIdentifier:
+    return TradingPairIdentifier(asset_wbnb, asset_busd, wbnb_busd_pair_address, pancakeswap_v2.factory.address, internal_id=int(wbnb_busd_pair_address, 16))
 
 
 @pytest.fixture
-def bit_busd_pair(bit_busd_pair_address, asset_bit, asset_busd) -> TradingPairIdentifier:
-    return TradingPairIdentifier(asset_bit, asset_busd, bit_busd_pair_address, internal_id=int(bit_busd_pair_address, 16))
+def bit_busd_pair(pancakeswap_v2, bit_busd_pair_address, asset_bit, asset_busd) -> TradingPairIdentifier:
+    return TradingPairIdentifier(asset_bit, asset_busd, bit_busd_pair_address, pancakeswap_v2.factory.address, internal_id=int(bit_busd_pair_address, 16))
 
 
 @pytest.fixture

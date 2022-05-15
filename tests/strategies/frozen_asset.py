@@ -4,6 +4,8 @@ from contextlib import AbstractContextManager
 from typing import Dict, Any
 
 import pandas as pd
+
+from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2SimpleRoutingModel
 from tradeexecutor.strategy.trading_strategy_universe import translate_trading_pair
 
 from tradingstrategy.timebucket import TimeBucket
@@ -56,6 +58,22 @@ class BadAlpha(AlphaModel):
             raise NotImplementedError(f"Bad cycle: {cycle}")
 
 
+# Keep everything internally in BUSD
+reserve_token_address = "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c"
+
+# Allowed exchanges as factory -> router pairs,
+# by their smart contract addresses
+factory_router_map = {
+    "0xcA143Ce32Fe78f1f7019d7d551a6402fC5350c73": "0x10ED43C718714eb63d5aA57B78B54704E256024E",
+}
+
+# For three way trades, which pools we can use
+allowed_intermediary_pairs = {
+    # BUSD -> WBNB
+    "0x58f876857a02d6762e0101bb5c46a8c1ed44dc16",  # https://tradingstrategy.ai/trading-view/binance/pancakeswap-v2/bnb-busd
+}
+
+
 def strategy_factory(
         *ignore,
         execution_model: UniswapV2ExecutionModelVersion0,
@@ -85,6 +103,12 @@ def strategy_factory(
         sync_method=sync_method,
         pricing_model_factory=pricing_model_factory,
         cash_buffer=cash_buffer,
+        routing_model=UniswapV2SimpleRoutingModel(
+            factory_router_map,
+            allowed_intermediary_pairs,
+            reserve_token_address,
+            max_slippage=0.01,
+        ),
     )
 
     return StrategyExecutionDescription(
