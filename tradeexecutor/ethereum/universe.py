@@ -24,12 +24,13 @@ def create_pair_universe(web3: Web3, exchange: Exchange, pairs: List[TradingPair
         assert p.exchange_address
         assert p.base.decimals
         assert p.quote.decimals
+        assert p.base.address != p.quote.address
         dex_pair = DEXPair(
             pair_id=int(p.get_identifier(), 16),
             chain_id=chain_id,
             exchange_id=exchange.exchange_id,
             exchange_address=p.exchange_address,
-            address=p.get_identifier(),
+            address=p.pool_address,
             dex_type=PairType.uniswap_v2,
             base_token_symbol=p.base.token_symbol,
             quote_token_symbol=p.quote.token_symbol,

@@ -74,6 +74,13 @@ def usdc_token(web3, deployer: HexAddress) -> Contract:
     return token
 
 
+@pytest.fixture
+def aave_token(web3, deployer: HexAddress) -> Contract:
+    """Create AAVE with 10M supply."""
+    token = create_token(web3, deployer, "Fake Aave coin", "AAVE", 10_000_000 * 10**18, 18)
+    return token
+
+
 @pytest.fixture()
 def uniswap_v2(web3, deployer) -> UniswapV2Deployment:
     """Uniswap v2 deployment."""
@@ -100,6 +107,12 @@ def asset_weth(weth_token, chain_id) -> AssetIdentifier:
 
 
 @pytest.fixture
+def asset_aave(aave_token, chain_id) -> AssetIdentifier:
+    """Mock some assets"""
+    return AssetIdentifier(chain_id, aave_token.address, aave_token.functions.symbol().call(), aave_token.functions.decimals().call())
+
+
+@pytest.fixture
 def weth_usdc_uniswap_trading_pair(web3, deployer, uniswap_v2, weth_token, usdc_token) -> HexAddress:
     """AAVE-USDC pool with 1.7M liquidity."""
     pair_address = deploy_trading_pair(
@@ -110,6 +123,24 @@ def weth_usdc_uniswap_trading_pair(web3, deployer, uniswap_v2, weth_token, usdc_
         usdc_token,
         1000 * 10**18,  # 1000 ETH liquidity
         1_700_000 * 10**6,  # 1.7M USDC liquidity
+    )
+    return pair_address
+
+
+@pytest.fixture
+def aave_weth_uniswap_trading_pair(web3, deployer, uniswap_v2, aave_token, weth_token) -> HexAddress:
+    """AAVE-ETH pool.
+
+    Price is 1:5 AAVE:ETH
+    """
+    pair_address = deploy_trading_pair(
+        web3,
+        deployer,
+        uniswap_v2,
+        weth_token,
+        aave_token,
+        1000 * 10**18,  # 1000 ETH liquidity
+        5000 * 10**18,  # 5000 AAVE liquidity
     )
     return pair_address
 
@@ -130,10 +161,20 @@ def weth_usdc_pair(uniswap_v2, weth_usdc_uniswap_trading_pair, asset_usdc, asset
     )
 
 
+@pytest.fixture
+def aave_weth_pair(uniswap_v2, aave_weth_uniswap_trading_pair, asset_aave, asset_weth) -> TradingPairIdentifier:
+    return TradingPairIdentifier(
+        asset_aave,
+        asset_weth,
+        aave_weth_uniswap_trading_pair,
+        uniswap_v2.factory.address,
+    )
+
+
 @pytest.fixture()
-def pair_universe(web3, exchange_universe: ExchangeUniverse, weth_usdc_pair) -> PandasPairUniverse:
+def pair_universe(web3, exchange_universe: ExchangeUniverse, weth_usdc_pair, aave_weth_pair) -> PandasPairUniverse:
     exchange = next(iter(exchange_universe.exchanges.values()))  # Get the first exchange from the universe
-    return create_pair_universe(web3, exchange, [weth_usdc_pair])
+    return create_pair_universe(web3, exchange, [weth_usdc_pair, aave_weth_pair])
 
 
 @pytest.fixture()
@@ -227,3 +268,33 @@ def test_uniswap_two_leg_sell_price_with_price_impact(
     # Sell 50 ETH
     price = pricing_method.get_sell_price(datetime.datetime.utcnow(), pair, Decimal(50))
     assert price == pytest.approx(1614.42110776, rel=APPROX_REL)
+
+
+def test_uniswap_three_leg_buy_price_with_price_impact(
+        web3: Web3,
+        exchange_universe,
+        pair_universe: PandasPairUniverse,
+        routing_model: UniswapV2SimpleRoutingModel,
+):
+    """Three leg trade w/signficant price impact.
+
+    ETH price is 1700 USD.
+    AAVE price should be 1/5 = 340 USD.
+    """
+    pricing_method = UniswapV2LivePricing(web3, pair_universe, routing_model)
+
+    exchange = next(iter(exchange_universe.exchanges.values()))  # Get the first exchange from the universe
+
+    aave_weth = pair_universe.get_one_pair_from_pandas_universe(exchange.exchange_id, "AAVE", "WETH")
+    pair = translate_trading_pair(aave_weth)
+    assert pair, "Pair missing?"
+
+    weth_usdc = pair_universe.get_one_pair_from_pandas_universe(exchange.exchange_id, "WETH", "USDC")
+    pair2 = translate_trading_pair(weth_usdc)
+    assert pair2, "Pair missing?"
+
+    print("WETH-USDC pool at", pair2.pool_address)
+
+    # Get price for 20_000 USDC
+    price = pricing_method.get_buy_price(datetime.datetime.utcnow(), pair, Decimal(20_000))
+    assert price == pytest.approx(1755.1153460381142, rel=APPROX_REL)

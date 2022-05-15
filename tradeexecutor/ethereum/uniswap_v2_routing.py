@@ -403,9 +403,14 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
             raise CannotRouteTrade(f"Does not know how to trade pair {trading_pair} - supported intermediate tokens are {list(self.allowed_intermediary_pairs.keys())}")
 
         dex_pair = pair_universe.get_pair_by_smart_contract(intermediate_pair_contract_address)
+
+        assert dex_pair is not None, f"Pair universe did not contain pair for a pair contract address {intermediate_pair_contract_address}, quote token is {trading_pair.quote}"
+
         intermediate_pair = translate_trading_pair(dex_pair)
         if not intermediate_pair:
             raise CannotRouteTrade(f"Universe does not have a trading pair with smart contract address {intermediate_pair_contract_address}")
+
+        return trading_pair, intermediate_pair
 
     def route_trade(self, pair_universe: PandasPairUniverse, trade: TradeExecution) -> Tuple[TradingPairIdentifier, Optional[TradingPairIdentifier]]:
         """Figure out how to map an abstract trade to smart contracts.
@@ -537,7 +542,7 @@ def route_tokens(
     return (
         Web3.toChecksumAddress(trading_pair.base.address),
         Web3.toChecksumAddress(trading_pair.quote.address),
-        Web3.toChecksumAddress(intermediate_pair.base.address))
+        Web3.toChecksumAddress(intermediate_pair.quote.address))
 
 
 def get_uniswap_for_pair(web3: Web3, factory_router_map: dict, target_pair: TradingPairIdentifier) -> UniswapV2Deployment:
