@@ -272,6 +272,7 @@ def test_uniswap_two_leg_sell_price_with_price_impact(
 
 def test_uniswap_three_leg_buy_price_with_price_impact(
         web3: Web3,
+        uniswap_v2,
         exchange_universe,
         pair_universe: PandasPairUniverse,
         routing_model: UniswapV2SimpleRoutingModel,
@@ -285,6 +286,10 @@ def test_uniswap_three_leg_buy_price_with_price_impact(
 
     exchange = next(iter(exchange_universe.exchanges.values()))  # Get the first exchange from the universe
 
+    #
+    # Do some setup checks before attempting to buy
+    #
+
     aave_weth = pair_universe.get_one_pair_from_pandas_universe(exchange.exchange_id, "AAVE", "WETH")
     pair = translate_trading_pair(aave_weth)
     assert pair, "Pair missing?"
@@ -293,9 +298,46 @@ def test_uniswap_three_leg_buy_price_with_price_impact(
     pair2 = translate_trading_pair(weth_usdc)
     assert pair2, "Pair missing?"
 
-    print("AAVE-WETH pool at", pair.pool_address)
-    print("WETH-USDC pool at", pair2.pool_address)
+    aave = pair.base.address
+    weth = pair.quote.address
+    usdc = pair2.quote.address
+
+    #print("AAVE is", aave)
+    #print("WETH is", weth)
+    #print("USDC is", usdc)
+    #print("AAVE-WETH pool at", pair.pool_address)
+    #print("WETH-USDC pool at", pair2.pool_address)
+
+    aave_pair_for, token0, token1 = uniswap_v2.pair_for(aave, weth)
+    assert aave_weth.address == aave_pair_for
+
+    weth_pair_for, token0, token1 = uniswap_v2.pair_for(weth, usdc)
+    assert weth_usdc.address == weth_pair_for
 
     # Get price for 20_000 USDC
     price = pricing_method.get_buy_price(datetime.datetime.utcnow(), pair, Decimal(20_000))
-    assert price == pytest.approx(1755.1153460381142, rel=APPROX_REL)
+    assert price == pytest.approx(1725.11534603, rel=APPROX_REL)
+
+
+def test_uniswap_three_leg_sell_price_with_price_impact(
+        web3: Web3,
+        uniswap_v2,
+        exchange_universe,
+        pair_universe: PandasPairUniverse,
+        routing_model: UniswapV2SimpleRoutingModel,
+):
+    """Three leg sell w/signficant price impact.
+
+    ETH price is 1700 USD.
+    AAVE price should be 1/5 = 340 USD.
+    """
+    pricing_method = UniswapV2LivePricing(web3, pair_universe, routing_model)
+
+    exchange = next(iter(exchange_universe.exchanges.values()))  # Get the first exchange from the universe
+
+    aave_weth = pair_universe.get_one_pair_from_pandas_universe(exchange.exchange_id, "AAVE", "WETH")
+    pair = translate_trading_pair(aave_weth)
+
+    # Get price for 500 AAVE
+    price = pricing_method.get_buy_price(datetime.datetime.utcnow(), pair, Decimal(500))
+    assert price == pytest.approx(1705.6153460381142, rel=APPROX_REL)

@@ -534,15 +534,13 @@ def route_tokens(
     """
 
     if intermediate_pair is None:
-        return (
-            Web3.toChecksumAddress(trading_pair.base.address),
+        return (Web3.toChecksumAddress(trading_pair.base.address),
             Web3.toChecksumAddress(trading_pair.quote.address),
             None)
 
-    return (
-        Web3.toChecksumAddress(trading_pair.base.address),
-        Web3.toChecksumAddress(trading_pair.quote.address),
-        Web3.toChecksumAddress(intermediate_pair.quote.address))
+    return (Web3.toChecksumAddress(trading_pair.base.address),
+        Web3.toChecksumAddress(intermediate_pair.quote.address),
+        Web3.toChecksumAddress(trading_pair.quote.address))
 
 
 def get_uniswap_for_pair(web3: Web3, factory_router_map: dict, target_pair: TradingPairIdentifier) -> UniswapV2Deployment:
