@@ -293,6 +293,7 @@ def test_uniswap_three_leg_buy_price_with_price_impact(
     pair2 = translate_trading_pair(weth_usdc)
     assert pair2, "Pair missing?"
 
+    print("AAVE-WETH pool at", pair.pool_address)
     print("WETH-USDC pool at", pair2.pool_address)
 
     # Get price for 20_000 USDC
