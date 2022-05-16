@@ -6,8 +6,10 @@ based on the exchanges the universe covers.
 Here we define the abstract overview of routing.
 """
 import abc
+from decimal import Decimal
 from typing import List
 
+from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.trade import TradeExecution
 
 
@@ -45,3 +47,18 @@ class RoutingModel(abc.ABC):
         :raise CannotExecuteTrade:
             If a trade cannot be executed, e.g. due to an unsupported pair or an exchange,
         """
+
+    @abc.abstractmethod
+    def estimate_price(self,
+                       state: RoutingState,
+                       pair: TradingPairIdentifier,
+                       quantity: Decimal,
+                       buy_side=True):
+        """Estimate the price of an asset.
+
+        - Price impact and fees are included
+
+        Used by the position revaluator to come up with the new prices
+        for the assets on every tick.
+        """
+

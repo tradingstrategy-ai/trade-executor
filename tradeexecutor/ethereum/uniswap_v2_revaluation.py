@@ -5,6 +5,7 @@ from eth_defi.uniswap_v2.deployment import UniswapV2Deployment
 from eth_defi.uniswap_v2.fees import estimate_sell_price_decimals
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.types import USDollarAmount
+from tradeexecutor.strategy.routing import RoutingModel
 
 
 class UniswapV2PoolRevaluator:
@@ -21,8 +22,8 @@ class UniswapV2PoolRevaluator:
         cannot be used for backtesting.
     """
 
-    def __init__(self, uniswap: UniswapV2Deployment):
-        self.uniswap = uniswap
+    def __init__(self, routing_model: RoutingModel):
+        self.routing_model = routing_model
 
     def __call__(self, timestamp: datetime.datetime, position: TradingPosition) -> Tuple[datetime.datetime, USDollarAmount]:
         assert isinstance(timestamp, datetime.datetime)

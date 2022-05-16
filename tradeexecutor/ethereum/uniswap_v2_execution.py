@@ -2,13 +2,13 @@
 
 import datetime
 from decimal import Decimal
-from typing import List, Tuple
+from typing import List
 import logging
 
+from web3 import Web3
+
 from eth_defi.hotwallet import HotWallet
-from eth_defi.uniswap_v2.deployment import UniswapV2Deployment
-from tradeexecutor.ethereum.execution import approve_tokens, prepare_swaps, confirm_approvals, broadcast, \
-    wait_trades_to_complete, resolve_trades, broadcast_and_resolve
+from tradeexecutor.ethereum.execution import broadcast_and_resolve
 from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2SimpleRoutingModel, UniswapV2RoutingState
 from tradeexecutor.state.freeze import freeze_position_on_failed_trade
@@ -20,29 +20,11 @@ from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniv
 logger = logging.getLogger(__name__)
 
 
-class UniswapV2RoutingInstructions:
-    """Helper class to router Uniswap trades.
-
-    - Define allowed routes to use
-
-    - Define routing for three way trades
-    """
-
-    def __init__(self, routing_table: dict):
-        """
-
-        :param routing_table: Exchange factory address -> router address data
-        """
-
-
-class UniswapV2ExecutionModelVersion(ExecutionModel):
-    """Run order execution on a single Uniswap v2 style exchanges.
-
-    TODO: This model was used in the first prototype and later discarded.
-    """
+class UniswapV2ExecutionModel(ExecutionModel):
+    """Run order execution on a single Uniswap v2 style exchanges."""
 
     def __init__(self,
-                 uniswap: UniswapV2Deployment,
+                 web3: Web3,
                  hot_wallet: HotWallet,
                  min_balance_threshold=Decimal("0.5"),
                  confirmation_block_count=6,
@@ -57,8 +39,7 @@ class UniswapV2ExecutionModelVersion(ExecutionModel):
         :param confirmation_timeout: How long we wait transactions to clear
         :param stop_on_execution_failure: Raise an exception if any of the trades fail top execute
         """
-        self.web3 = uniswap.web3
-        self.uniswap = uniswap
+        self.web3 = web3
         self.hot_wallet = hot_wallet
         self.stop_on_execution_failure = stop_on_execution_failure
         self.min_balance_threshold = min_balance_threshold

@@ -47,9 +47,9 @@ logger: Optional[logging.Logger] = None
 
 def create_trade_execution_model(
         execution_type: TradeExecutionType,
-        factory_address: str,
-        router_address: str,
-        uniswap_init_code_hash,
+        #factory_address: str,
+        #router_address: str,
+        #uniswap_init_code_hash,
         json_rpc: str,
         private_key: str,
         gas_price_method: Optional[GasPriceMethod],
@@ -60,8 +60,8 @@ def create_trade_execution_model(
         return DummyExecutionModel()
     elif execution_type == TradeExecutionType.uniswap_v2_hot_wallet:
         assert private_key, "Private key is needed"
-        assert factory_address, "Uniswap v2 factory address needed"
-        assert router_address, "Uniswap v2 factory router needed"
+        #assert factory_address, "Uniswap v2 factory address needed"
+        #assert router_address, "Uniswap v2 factory router needed"
         assert json_rpc, "JSON-RPC endpoint is needed"
         web3 = create_web3(json_rpc)
 
@@ -73,9 +73,9 @@ def create_trade_execution_model(
             web3.middleware_onion.inject(geth_poa_middleware, layer=0)
 
         hot_wallet = HotWallet.from_private_key(private_key)
-        uniswap = fetch_deployment(web3, factory_address, router_address, init_code_hash=uniswap_init_code_hash)
+        # uniswap = fetch_deployment(web3, factory_address, router_address, init_code_hash=uniswap_init_code_hash)
         sync_method = EthereumHotWalletReserveSyncer(web3, hot_wallet.address)
-        execution_model = UniswapV2ExecutionModelVersion0(uniswap, hot_wallet, confirmation_timeout=confirmation_timeout, confirmation_block_count=confirmation_block_count)
+        execution_model = UniswapV2ExecutionModel(web3, hot_wallet, confirmation_timeout=confirmation_timeout, confirmation_block_count=confirmation_block_count)
         revaluation_method = UniswapV2PoolRevaluator(uniswap)
         pricing_model_factory = uniswap_v2_live_pricing_factory
         return execution_model, sync_method, revaluation_method, pricing_model_factory
@@ -136,9 +136,9 @@ def start(
     confirmation_block_count: int = typer.Option(8, envvar="CONFIRMATION_BLOCK_COUNT", help="How many blocks we wait before we consider transaction receipt a final"),
     execution_type: TradeExecutionType = typer.Option(..., envvar="EXECUTION_TYPE"),
     approval_type: ApprovalType = typer.Option(..., envvar="APPROVAL_TYPE"),
-    uniswap_v2_factory_address: str = typer.Option(None, envvar="UNISWAP_V2_FACTORY_ADDRESS"),
-    uniswap_v2_router_address: str = typer.Option(None, envvar="UNISWAP_V2_ROUTER_ADDRESS"),
-    uniswap_init_code_hash: str = typer.Option(None, envvar="UNISWAP_V2_INIT_CODE_HASH"),
+    #uniswap_v2_factory_address: str = typer.Option(None, envvar="UNISWAP_V2_FACTORY_ADDRESS"),
+    #uniswap_v2_router_address: str = typer.Option(None, envvar="UNISWAP_V2_ROUTER_ADDRESS"),
+    #uniswap_init_code_hash: str = typer.Option(None, envvar="UNISWAP_V2_INIT_CODE_HASH"),
     state_file: Optional[Path] = typer.Option("strategy-state.json", envvar="STATE_FILE"),
     trading_strategy_api_key: str = typer.Option(None, envvar="TRADING_STRATEGY_API_KEY", help="Trading Strategy API key"),
     cache_path: Optional[Path] = typer.Option(None, envvar="CACHE_PATH", help="Where to store downloaded datasets"),
@@ -173,9 +173,6 @@ def start(
 
     execution_model, sync_method, revaluation_method, pricing_model_factory = create_trade_execution_model(
         execution_type,
-        uniswap_v2_factory_address,
-        uniswap_v2_router_address,
-        uniswap_init_code_hash,
         json_rpc,
         private_key,
         gas_price_method,
