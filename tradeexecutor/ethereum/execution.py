@@ -289,8 +289,9 @@ def broadcast(
             tx.broadcasted_at = ts
             res[tx.tx_hash] = (t, tx)
             # Only SignedTransaction.rawTransaction attribute is intresting in this point
-            tx = SignedTransaction(rawTransaction=tx.signed_bytes, hash=None, r=0, s=0, v=0)
-            broadcast_batch.append(tx)
+            signed_tx = SignedTransaction(rawTransaction=tx.signed_bytes, hash=None, r=0, s=0, v=0)
+            broadcast_batch.append(signed_tx)
+            logger.info("Broadcasting %s", tx)
         t.mark_broadcasted(datetime.datetime.utcnow())
 
     hashes = broadcast_transactions(web3, broadcast_batch, confirmation_block_count=confirmation_block_count)

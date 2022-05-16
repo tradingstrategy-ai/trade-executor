@@ -21,6 +21,7 @@ from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.strategy.pricing_model import PricingModelFactory
 from tradeexecutor.strategy.qstrader.alpha_model import AlphaModel
 from tradeexecutor.strategy.qstrader.runner import QSTraderRunner
+from tradeexecutor.strategy.routing import RoutingModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverseModel, \
     TradingStrategyUniverse, translate_trading_pair, Dataset
 from tradingstrategy.client import Client
@@ -316,6 +317,7 @@ def strategy_factory(
         client: Client,
         timed_task_context_manager: AbstractContextManager,
         approval_model: ApprovalModel,
+        routing_model: RoutingModel,
         **kwargs) -> StrategyExecutionDescription:
 
     if ignore:
@@ -337,6 +339,7 @@ def strategy_factory(
         sync_method=sync_method,
         pricing_model_factory=pricing_model_factory,
         cash_buffer=cash_buffer,
+        routing_model=routing_model,
     )
 
     return StrategyExecutionDescription(
