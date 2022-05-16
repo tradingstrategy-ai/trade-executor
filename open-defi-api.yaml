@@ -1791,6 +1791,47 @@ components:
           nullable: true
           description: >
              The latest available token suply in USD.
+        liquidity_change_7d:
+          type: number
+          format: float
+          minimum: 0.0
+          nullable: true
+          description: >
+             The relative liquidity change (%) in the last seven days.
+             If historical data does not span back long enough to compute it,
+             no value is returned.
+        liquidity_change_30d:
+          type: number
+          format: float
+          minimum: 0.0
+          nullable: true
+          description: >
+             The relative liquidity change (%) in the last thirty days.
+             If historical data does not span back long enough to compute it,
+             no value is returned.
+        liquidity_change_360d:
+          type: number
+          format: float
+          minimum: 0.0
+          nullable: true
+          description: >
+             The relative liquidity change (%) in the last 360 days.
+             If historical data does not span back long enough to compute it,
+             no value is returned.
+        liquidity_all_time_high:
+          type: number
+          format: float
+          minimum: 0.0
+          nullable: true
+          description: >
+             The highest 15-minute liquidity in USD of all times.
+        liquidity_all_time_low:
+          type: number
+          format: float
+          minimum: 0.0
+          nullable: true
+          description: >
+             The lowest 15-minute liquidity in USD of all times.
         volume_24h:
           type: number
           format: float
