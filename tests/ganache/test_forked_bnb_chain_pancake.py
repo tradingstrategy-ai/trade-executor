@@ -33,7 +33,7 @@ from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, fetch_deployment
 from tradeexecutor.ethereum.hot_wallet_sync import EthereumHotWalletReserveSyncer
 from tradeexecutor.ethereum.uniswap_v2_execution_v0 import UniswapV2ExecutionModelVersion0
 from tradeexecutor.ethereum.uniswap_v2_live_pricing import uniswap_v2_live_pricing_factory
-from tradeexecutor.ethereum.uniswap_v2_valuation import UniswapV2PoolRevaluator
+from tradeexecutor.ethereum.uniswap_v2_valuation import UniswapV2PoolRevaluator, uniswap_v2_sell_valuation_factory
 from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2SimpleRoutingModel
 from tradeexecutor.state.state import State
 from tradeexecutor.state.portfolio import Portfolio
@@ -264,13 +264,13 @@ def test_forked_pancake(
     approval_model = UncheckedApprovalModel()
     execution_model = UniswapV2ExecutionModelVersion0(pancakeswap_v2, hot_wallet, confirmation_block_count=0, confirmation_timeout=datetime.timedelta(minutes=1))
     sync_method = EthereumHotWalletReserveSyncer(web3, hot_wallet.address)
-    revaluation_method = UniswapV2PoolRevaluator(pancakeswap_v2)
+    valuation_model_factory = uniswap_v2_sell_valuation_factory
 
     run_description: StrategyExecutionDescription = strategy_factory(
         execution_model=execution_model,
         timed_task_context_manager=timed_task,
         sync_method=sync_method,
-        revaluation_method=revaluation_method,
+        valuation_model_factory=valuation_model_factory,
         pricing_model_factory=uniswap_v2_live_pricing_factory,
         approval_model=approval_model,
         client=persistent_test_client,

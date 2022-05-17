@@ -146,7 +146,7 @@ def execute_trades_simple(
     )
 
     state.start_trades(datetime.datetime.utcnow(), trades)
-    routing_state = UniswapV2RoutingState(tx_builder)
+    routing_state = UniswapV2RoutingState(pair_universe, tx_builder)
     routing_model.execute_trades_internal(pair_universe, routing_state, trades)
     broadcast_and_resolve(web3, state, trades, stop_on_execution_failure=stop_on_execution_failure)
 
