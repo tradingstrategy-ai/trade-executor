@@ -6,7 +6,7 @@ It has slight API incompatibilities in the later versions.
 
 import datetime
 from decimal import Decimal
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 import logging
 
 from eth_defi.gas import estimate_gas_fees
@@ -19,6 +19,7 @@ from tradeexecutor.state.freeze import freeze_position_on_failed_trade
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.execution_model import ExecutionModel
+from tradeexecutor.strategy.routing import RoutingModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 
 logger = logging.getLogger(__name__)
@@ -105,8 +106,12 @@ class UniswapV2ExecutionModelVersion0(ExecutionModel):
                        universe: TradingStrategyUniverse,
                        state: State,
                        trades: List[TradeExecution],
+                       routing_model: Optional[RoutingModel],
                        check_balances=False) -> Tuple[List[TradeExecution], List[TradeExecution]]:
         """Execute the trades determined by the algo on a designed Uniswap v2 instance.
+
+        :param routing_model:
+            Ignored.
 
         :return: Tuple List of succeeded trades, List of failed trades
         """

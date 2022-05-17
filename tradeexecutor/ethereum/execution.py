@@ -1,6 +1,7 @@
+"""Dealing with Ethereum low level tranasctions."""
+
 import logging
 import datetime
-import time
 from collections import Counter
 from decimal import Decimal
 from typing import List, Dict, Set, Tuple
@@ -18,9 +19,8 @@ from eth_defi.revert_reason import fetch_transaction_revert_reason
 from eth_defi.token import fetch_erc20_details, TokenDetails
 from eth_defi.txmonitor import wait_transactions_to_complete, \
     broadcast_and_wait_transactions_to_complete, broadcast_transactions
-from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, FOREVER_DEADLINE, fetch_deployment, \
-    INIT_CODE_HASH_MISSING, mock_partial_deployment_for_analysis
-from eth_defi.uniswap_v2.fees import estimate_sell_price, estimate_sell_price_decimals
+from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, FOREVER_DEADLINE,  mock_partial_deployment_for_analysis
+from eth_defi.uniswap_v2.fees import estimate_sell_price_decimals
 from eth_defi.uniswap_v2.analysis import analyse_trade, TradeSuccess
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution

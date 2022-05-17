@@ -7,6 +7,8 @@ from typing import Optional
 import pkg_resources
 
 import typer
+
+from tradeexecutor.ethereum.uniswap_v2_execution import UniswapV2ExecutionModel
 from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
 from web3.middleware import geth_poa_middleware
 
@@ -26,7 +28,7 @@ from tradeexecutor.ethereum.hot_wallet_sync import EthereumHotWalletReserveSynce
 
 from tradeexecutor.ethereum.uniswap_v2_execution_v0 import UniswapV2ExecutionModelVersion0
 from tradeexecutor.ethereum.uniswap_v2_live_pricing import uniswap_v2_live_pricing_factory
-from tradeexecutor.ethereum.uniswap_v2_revaluation import UniswapV2PoolRevaluator
+from tradeexecutor.ethereum.uniswap_v2_valuation import UniswapV2PoolRevaluator, uniswap_v2_sell_valuation_factory
 from tradeexecutor.state.store import JSONFileStore, StateStore
 from tradeexecutor.strategy.approval import ApprovalType, UncheckedApprovalModel, ApprovalModel
 from tradeexecutor.strategy.bootstrap import import_strategy_file
@@ -76,9 +78,9 @@ def create_trade_execution_model(
         # uniswap = fetch_deployment(web3, factory_address, router_address, init_code_hash=uniswap_init_code_hash)
         sync_method = EthereumHotWalletReserveSyncer(web3, hot_wallet.address)
         execution_model = UniswapV2ExecutionModel(web3, hot_wallet, confirmation_timeout=confirmation_timeout, confirmation_block_count=confirmation_block_count)
-        revaluation_method = UniswapV2PoolRevaluator(uniswap)
+        valuation_factory = uniswap_v2_sell_valuation_factory
         pricing_model_factory = uniswap_v2_live_pricing_factory
-        return execution_model, sync_method, revaluation_method, pricing_model_factory
+        return execution_model, sync_method, valuation_factory, pricing_model_factory
     else:
         raise NotImplementedError()
 
@@ -136,9 +138,6 @@ def start(
     confirmation_block_count: int = typer.Option(8, envvar="CONFIRMATION_BLOCK_COUNT", help="How many blocks we wait before we consider transaction receipt a final"),
     execution_type: TradeExecutionType = typer.Option(..., envvar="EXECUTION_TYPE"),
     approval_type: ApprovalType = typer.Option(..., envvar="APPROVAL_TYPE"),
-    #uniswap_v2_factory_address: str = typer.Option(None, envvar="UNISWAP_V2_FACTORY_ADDRESS"),
-    #uniswap_v2_router_address: str = typer.Option(None, envvar="UNISWAP_V2_ROUTER_ADDRESS"),
-    #uniswap_init_code_hash: str = typer.Option(None, envvar="UNISWAP_V2_INIT_CODE_HASH"),
     state_file: Optional[Path] = typer.Option("strategy-state.json", envvar="STATE_FILE"),
     trading_strategy_api_key: str = typer.Option(None, envvar="TRADING_STRATEGY_API_KEY", help="Trading Strategy API key"),
     cache_path: Optional[Path] = typer.Option(None, envvar="CACHE_PATH", help="Where to store downloaded datasets"),
@@ -171,7 +170,7 @@ def start(
 
     confirmation_timeout = datetime.timedelta(seconds=confirmation_timeout)
 
-    execution_model, sync_method, revaluation_method, pricing_model_factory = create_trade_execution_model(
+    execution_model, sync_method, valuation_factory, pricing_model_factory = create_trade_execution_model(
         execution_type,
         json_rpc,
         private_key,
@@ -226,7 +225,7 @@ def start(
             sync_method=sync_method,
             approval_model=approval_model,
             pricing_model_factory=pricing_model_factory,
-            revaluation_method=revaluation_method,
+            valuation_factory=valuation_factory,
             store=store,
             client=client,
             strategy_factory=strategy_factory,

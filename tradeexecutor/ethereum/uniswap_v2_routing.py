@@ -1,5 +1,8 @@
 """Route trades to different Uniswap v2 like exchanges."""
+
+import logging
 from collections import defaultdict
+from decimal import Decimal
 from typing import Dict, Set, List, Optional, Tuple
 
 from eth_typing import HexAddress, ChecksumAddress
@@ -7,8 +10,9 @@ from web3 import Web3
 from web3.contract import Contract
 
 from eth_defi.abi import get_deployed_contract
+from eth_defi.gas import estimate_gas_fees
 from eth_defi.token import fetch_erc20_details
-from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, fetch_deployment, mock_partial_deployment_for_analysis
+from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, fetch_deployment
 from eth_defi.uniswap_v2.swap import swap_with_slippage_protection
 from tradeexecutor.ethereum.execution import get_token_for_asset
 from tradeexecutor.ethereum.tx import TransactionBuilder
@@ -19,6 +23,11 @@ from tradeexecutor.strategy.routing import RoutingModel, RoutingState, CannotRou
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_trading_pair, \
     translate_token
 from tradingstrategy.pair import PandasPairUniverse
+
+from tradeexecutor.strategy.universe_model import TradeExecutorTradingUniverse
+
+
+logger = logging.getLogger(__name__)
 
 
 class OutOfBalance(Exception):
@@ -43,7 +52,11 @@ class UniswapV2RoutingState(RoutingState):
     but are specific for each cycle.
     """
 
-    def __init__(self, tx_builder: TransactionBuilder, swap_gas_limit=2_000_000):
+    def __init__(self,
+                 pair_universe: PandasPairUniverse,
+                 tx_builder: TransactionBuilder,
+                 swap_gas_limit=2_000_000):
+        self.pair_universe = pair_universe
         self.tx_builder = tx_builder
         self.hot_wallet = tx_builder.hot_wallet
         self.web3 = self.tx_builder.web3
@@ -520,7 +533,6 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
         # We can start to execute transactions.
 
     def execute_trades(self,
-                       universe: Optional[TradingStrategyUniverse],
                        routing_state: UniswapV2RoutingState,
                        trades: List[TradeExecution],
                        check_balances=False):
@@ -532,19 +544,57 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
 
         - Signs tranactions from the hot wallet and broadcasts them to the network
 
-        :param universe:
-            Needed for pair universe to route three leg trades.
-            Two leg trades can be routed without the universe.
-
         :param check_balances:
             Check that the wallet has enough reserves to perform the trades
             before executing them. Because we are selling before buying.
             sometimes we do no know this until the sell tx has been completed.
 
         """
+        return self.execute_trades_internal(routing_state.pair_universe, routing_state, trades, check_balances)
+
+    def estimate_price(self,
+                       state: RoutingState,
+                       pair: TradingPairIdentifier,
+                       quantity: Decimal,
+                       enter_position=True):
+        """Estimate the price of an asset.
+
+        - Price impact and fees are included
+
+        Used by the position revaluator to come up with the new prices
+        for the assets on every tick.
+        """
+        raise NotImplementedError()
+        #universe = state.universe
+        #assert universe.universe.pairs is not None, "Pairs are required"
+        #pair_universe = universe.universe.pairs
+        #trading_pair, intermediate_pair = self.route_pair(pair_universe)
+        #if enter_position:
+
+    def create_routing_state(self,
+                     universe: TradeExecutorTradingUniverse,
+                     execution_details: dict) -> RoutingState:
+        """Create a new routing state for this cycle.
+
+        - Connect routing to web3 and hot wallet
+
+        - Read on-chain data on what gas fee we are going to use
+
+        - Setup transaction builder based on this information
+        """
+
+        assert isinstance(universe, TradingStrategyUniverse)
         assert universe is not None, "Universe is required"
         assert universe.universe.pairs is not None, "Pairs are required"
-        return self.execute_trades_internal(universe.universe.pairs, routing_state, trades, check_balances)
+
+        web3 = execution_details["web3"]
+        hot_wallet = execution_details["hot_wallet"]
+
+        fees = estimate_gas_fees(web3)
+        logger.info("Estimated gas fees for chain %d: %s", web3.eth.chain_id, fees)
+        tx_builder = TransactionBuilder(web3, hot_wallet, fees)
+        routing_state = UniswapV2RoutingState(universe.universe.pairs, tx_builder)
+        return routing_state
 
 
 def route_tokens(

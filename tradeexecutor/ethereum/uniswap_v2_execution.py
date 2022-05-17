@@ -7,6 +7,7 @@ import logging
 
 from web3 import Web3
 
+from eth_defi.gas import estimate_gas_fees
 from eth_defi.hotwallet import HotWallet
 from tradeexecutor.ethereum.execution import broadcast_and_resolve
 from tradeexecutor.ethereum.tx import TransactionBuilder
@@ -16,6 +17,7 @@ from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
+from tradeexecutor.strategy.universe_model import TradeExecutorTradingUniverse
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +31,8 @@ class UniswapV2ExecutionModel(ExecutionModel):
                  min_balance_threshold=Decimal("0.5"),
                  confirmation_block_count=6,
                  confirmation_timeout=datetime.timedelta(minutes=5),
-                 stop_on_execution_failure=True):
+                 stop_on_execution_failure=True,
+                 swap_gas_fee_limit=2_000_000):
         """
         :param state:
         :param uniswap:
@@ -45,6 +48,7 @@ class UniswapV2ExecutionModel(ExecutionModel):
         self.min_balance_threshold = min_balance_threshold
         self.confirmation_block_count = confirmation_block_count
         self.confirmation_timeout = confirmation_timeout
+        self.swap_gas_fee_limit = swap_gas_fee_limit
 
     @property
     def chain_id(self) -> int:
@@ -63,10 +67,10 @@ class UniswapV2ExecutionModel(ExecutionModel):
 
         # Check Uniswap v2 instance is valid.
         # Different factories (Sushi, Pancake) share few common public accessors we can call here.
-        try:
-            self.uniswap.factory.functions.allPairsLength().call()
-        except Exception as e:
-            raise AssertionError(f"Uniswap does not function at chain {self.chain_id}, factory address {self.uniswap.factory.address}") from e
+        # try:
+        #    self.uniswap.factory.functions.allPairsLength().call()
+        # except Exception as e:
+        #    raise AssertionError(f"Uniswap does not function at chain {self.chain_id}, factory address {self.uniswap.factory.address}") from e
 
     def initialize(self):
         """Set up the wallet"""
@@ -77,23 +81,30 @@ class UniswapV2ExecutionModel(ExecutionModel):
 
     def execute_trades(self,
                        ts: datetime.datetime,
-                       universe: TradingStrategyUniverse,
                        state: State,
                        trades: List[TradeExecution],
-                       routing_model: UniswapV2SimpleRoutingModel):
+                       routing_model: UniswapV2SimpleRoutingModel,
+                       routing_state: UniswapV2RoutingState,
+                       check_balances=False):
         """Execute the trades determined by the algo on a designed Uniswap v2 instance.
 
         :return: Tuple List of succeeded trades, List of failed trades
         """
         assert isinstance(ts, datetime.datetime)
         assert isinstance(routing_model, UniswapV2SimpleRoutingModel)
-        assert isinstance(universe, TradingStrategyUniverse)
+        assert isinstance(routing_state, UniswapV2RoutingState)
 
-        tx_builder = TransactionBuilder(self.hot_wallet)
-        routing_state = UniswapV2RoutingState(tx_builder)
-        routing_model.execute_trades(universe, routing_state, trades)
-        broadcast_and_resolve(trades)
+        state.start_trades(datetime.datetime.utcnow(), trades)
+
+        routing_model.execute_trades(routing_state, trades, check_balances=check_balances)
+        broadcast_and_resolve(self.web3, state, trades)
 
         # Clean up failed trades
         freeze_position_on_failed_trade(ts, state, trades)
+
+    def get_routing_state_details(self) -> dict:
+        return {
+            "web3": self.web3,
+            "hot_wallet": self.hot_wallet,
+        }
 

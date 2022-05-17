@@ -5,7 +5,6 @@ from dataclasses import dataclass
 from typing import List, Optional
 
 from tradeexecutor.state.identifier import AssetIdentifier
-from tradeexecutor.strategy.routing import RoutingModel
 
 
 class DataTooOld(Exception):
@@ -26,11 +25,6 @@ class TradeExecutorTradingUniverse:
     #:
     #: Usually return the list of a BUSD/USDC/similar stablecoin.
     reserve_assets: List[AssetIdentifier]
-
-    #: Define trade routing for this universe.
-    #: Depening on the strategy this might not needed
-    #: e.g. when it is trading a single pair on a known exchange.
-    routing: Optional[RoutingModel] = None
 
 
 class UniverseModel(abc.ABC):

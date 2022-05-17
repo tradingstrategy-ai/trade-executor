@@ -23,3 +23,5 @@ class StrategyExecutionDescription:
 
     #: What kind of a strategy runner this strategy is using
     runner: StrategyRunner
+
+

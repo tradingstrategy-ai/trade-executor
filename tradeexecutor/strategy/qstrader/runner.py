@@ -6,6 +6,8 @@ import logging
 import pandas as pd
 
 from qstrader.portcon.optimiser.fixed_weight import FixedWeightPortfolioOptimiser
+
+from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.qstrader.alpha_model import AlphaModel
 from tradeexecutor.strategy.qstrader.order_sizer import CashBufferedOrderSizer
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_trading_pair
@@ -102,15 +104,24 @@ class QSTraderRunner(StrategyRunner):
     def on_data_signal(self):
         pass
 
-    def on_clock(self, clock: datetime.datetime, executor_universe: TradingStrategyUniverse, state: State, debug_details: dict) -> List[TradeExecution]:
-        """Run one strategy tick."""
+    def on_clock(self,
+                 clock: datetime.datetime,
+                 executor_universe: TradingStrategyUniverse,
+                 pricing_model: PricingModel,
+                 state: State,
+                 debug_details: dict) -> List[TradeExecution]:
+        """Run one strategy cycle.
+
+        - Takes universe, pricing model and state as an input
+
+        - Generates a list of new trades to change the current state
+        """
 
         assert isinstance(executor_universe, TradingStrategyUniverse)
 
         universe = executor_universe.universe
         reserve_assets = executor_universe.reserve_assets
         logger.info("QSTrader on_clock %s", clock)
-        pricing_model = self.pricing_model_factory(self.execution_model, executor_universe, self.routing_model)
         optimiser = FixedWeightPortfolioOptimiser()
         order_sizer = CashBufferedOrderSizer(state, pricing_model, self.cash_buffer)
         pcm = PortfolioConstructionModel(

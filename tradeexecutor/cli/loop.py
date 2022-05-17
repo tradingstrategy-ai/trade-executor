@@ -11,7 +11,6 @@ from typing import Optional, Callable
 from apscheduler.executors.pool import ThreadPoolExecutor
 from apscheduler.schedulers.blocking import BlockingScheduler
 
-from tradeexecutor.state.revaluation import RevaluationMethod
 from tradeexecutor.state.state import State
 from tradeexecutor.state.store import StateStore
 from tradeexecutor.state.sync import SyncMethod
@@ -22,7 +21,8 @@ from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.strategy.pricing_model import PricingModelFactory
 from tradeexecutor.strategy.runner import StrategyRunner
 from tradeexecutor.strategy.tick import TickSize, snap_to_next_tick, snap_to_previous_tick
-from tradeexecutor.strategy.universe_model import UniverseModel
+from tradeexecutor.strategy.universe_model import UniverseModel, TradeExecutorTradingUniverse
+from tradeexecutor.strategy.valuation import ValuationMethodFactory
 from tradeexecutor.utils.timer import timed_task
 from tradingstrategy.client import Client
 
@@ -42,7 +42,7 @@ class ExecutionLoop:
             sync_method: SyncMethod,
             approval_model: ApprovalModel,
             pricing_model_factory: PricingModelFactory,
-            revaluation_method: RevaluationMethod,
+            valuation_factory: ValuationMethodFactory,
             store: StateStore,
             client: Optional[Client],
             strategy_factory: Callable,
@@ -141,7 +141,11 @@ class ExecutionLoop:
             with open(self.debug_dump_file, "wb") as out:
                 pickle.dump(self.debug_dump_state, out)
 
-    def update_position_valuations(self, clock: datetime.datetime, state: State):
+        # Assume universe stays static between cycles
+        # for hourly revaluations
+        return universe
+
+    def update_position_valuations(self, clock: datetime.datetime, state: State, universe: TradeExecutorTradingUniverse):
         """Revalue positions and update statistics.
 
         A new statistics entry is calculated for portfolio and all of its positions
@@ -150,9 +154,13 @@ class ExecutionLoop:
         :param clock: Real-time or historical clock
         """
 
+        # Set up the execution to perform the valuation
+
+        routing_state, pricing_model, valuation_method = self.runner.setup_routing(universe)
+
         with self.timed_task_context_manager("revalue_portfolio_statistics"):
             logger.info("Updating position valuations")
-            self.runner.revalue_portfolio(clock, state)
+            self.runner.revalue_portfolio(clock, state, valuation_method)
 
         with self.timed_task_context_manager("update_statistics"):
             logger.info("Updating position statistics")
@@ -174,9 +182,9 @@ class ExecutionLoop:
         cycle = 1
         while True:
 
-            self.tick(ts, state, cycle, live=False)
+            universe = self.tick(ts, state, cycle, live=False)
 
-            self.update_position_valuations(ts, state)
+            self.update_position_valuations(ts, state, universe)
 
             # Check for termination in integration testing
             if self.max_cycles is not None:
@@ -275,10 +283,11 @@ class ExecutionLoop:
             execution_model=self.execution_model,
             timed_task_context_manager=self.timed_task_context_manager,
             sync_method=self.sync_method,
-            revaluation_method=self.revaluation_method,
+            valuation_factory=self.valuation_factory,
             pricing_model_factory=self.pricing_model_factory,
             approval_model=self.approval_model,
             client=self.client,
+            routing_model=None,  # Assume strategy factory produces its own routing model
         )
 
         # Deconstruct strategy input
