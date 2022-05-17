@@ -19,7 +19,7 @@ from tradeexecutor.state.freeze import freeze_position_on_failed_trade
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.execution_model import ExecutionModel
-from tradeexecutor.strategy.routing import RoutingModel
+from tradeexecutor.strategy.routing import RoutingModel, RoutingState
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 
 logger = logging.getLogger(__name__)
@@ -103,10 +103,10 @@ class UniswapV2ExecutionModelVersion0(ExecutionModel):
 
     def execute_trades(self,
                        ts: datetime.datetime,
-                       universe: TradingStrategyUniverse,
                        state: State,
                        trades: List[TradeExecution],
                        routing_model: Optional[RoutingModel],
+                       routing_state: Optional[RoutingState],
                        check_balances=False) -> Tuple[List[TradeExecution], List[TradeExecution]]:
         """Execute the trades determined by the algo on a designed Uniswap v2 instance.
 
@@ -116,7 +116,9 @@ class UniswapV2ExecutionModelVersion0(ExecutionModel):
         :return: Tuple List of succeeded trades, List of failed trades
         """
         assert isinstance(ts, datetime.datetime)
-        assert isinstance(state, State)
+        assert isinstance(state, State), f"Received {state.__class__}"
+        assert isinstance(routing_model, UniswapV2SimpleRoutingModel), f"Received {routing_state.__class__}"
+        assert isinstance(routing_state, UniswapV2RoutingState), f"Received {routing_state.__class__}"
 
         fees = estimate_gas_fees(self.web3)
 
@@ -139,9 +141,8 @@ class UniswapV2ExecutionModelVersion0(ExecutionModel):
         )
 
         state.start_trades(datetime.datetime.utcnow(), trades)
-        routing_state = UniswapV2RoutingState(tx_builder)
 
-        routing_model.execute_trades(universe, routing_state, trades, check_balances=check_balances)
+        routing_model.execute_trades(routing_state, trades, check_balances=check_balances)
         broadcast_and_resolve(self.web3, state, trades, stop_on_execution_failure=self.stop_on_execution_failure)
 
         # Clean up failed trades
@@ -209,3 +210,10 @@ class UniswapV2ExecutionModelVersion0(ExecutionModel):
         #
         # # Clean up failed trades
         # return freeze_position_on_failed_trade(ts, state, trades)
+
+    def get_routing_state_details(self) -> object:
+        """Prototype does not know much about routing."""
+        return {
+            "web3": self.web3,
+            "hot_wallet": self.hot_wallet,
+        }

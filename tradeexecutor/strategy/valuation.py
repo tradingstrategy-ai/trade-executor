@@ -20,7 +20,7 @@ from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.strategy.pricing_model import PricingModel
 
 
-class ValuationMethod(Protocol):
+class ValuationModel(Protocol):
     """Revalue a current position.
 
     TODO: See if this should be moved inside state module, as it is referred by state.revalue_positions.
@@ -56,7 +56,7 @@ class ValuationMethod(Protocol):
         return ts, price
 
 
-class ValuationMethodFactory(Protocol):
+class ValuationModelFactory(Protocol):
     """Creates a valuation method.
 
     - Valuation method is recreated for each cycle
@@ -66,5 +66,5 @@ class ValuationMethodFactory(Protocol):
     - Called after the pricing model has been established for the cycle
     """
 
-    def __call__(self, pricing_model: PricingModel) -> ValuationMethod:
+    def __call__(self, pricing_model: PricingModel) -> ValuationModel:
         pass

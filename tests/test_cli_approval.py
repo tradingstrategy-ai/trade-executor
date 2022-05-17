@@ -24,7 +24,7 @@ from tradeexecutor.cli.approval import CLIApprovalModel
 from tradeexecutor.ethereum.hot_wallet_sync import EthereumHotWalletReserveSyncer
 from tradeexecutor.ethereum.uniswap_v2_execution_v0 import UniswapV2ExecutionModelVersion0
 from tradeexecutor.ethereum.uniswap_v2_live_pricing import uniswap_v2_live_pricing_factory
-from tradeexecutor.ethereum.uniswap_v2_valuation import UniswapV2PoolRevaluator
+from tradeexecutor.ethereum.uniswap_v2_valuation import UniswapV2PoolRevaluator, uniswap_v2_sell_valuation_factory
 from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2SimpleRoutingModel
 from tradeexecutor.ethereum.universe import create_exchange_universe, create_pair_universe
 from tradeexecutor.state.state import State
@@ -271,7 +271,7 @@ def test_cli_approve_trades(
     approval_model = CLIApprovalModel()
     execution_model = UniswapV2ExecutionModelVersion0(uniswap_v2, hot_wallet, confirmation_block_count=0)
     sync_method = EthereumHotWalletReserveSyncer(web3, hot_wallet.address)
-    revaluation_method = UniswapV2PoolRevaluator(uniswap_v2)
+    valuation_model_factory = uniswap_v2_sell_valuation_factory
     pricing_model_factory = uniswap_v2_live_pricing_factory
     executor_universe = TradingStrategyUniverse(universe=universe, reserve_assets=supported_reserves)
     universe_model = StaticUniverseModel(executor_universe)
@@ -280,7 +280,7 @@ def test_cli_approve_trades(
         timed_task_context_manager=timed_task,
         execution_model=execution_model,
         approval_model=approval_model,
-        revaluation_method=revaluation_method,
+        valuation_model_factory=valuation_model_factory,
         sync_method=sync_method,
         client=None,
         pricing_model_factory=pricing_model_factory,
@@ -325,7 +325,7 @@ def test_cli_disapprove_trades(
     approval_model = CLIApprovalModel()
     execution_model = UniswapV2ExecutionModelVersion0(uniswap_v2, hot_wallet, confirmation_block_count=0)
     sync_method = EthereumHotWalletReserveSyncer(web3, hot_wallet.address)
-    revaluation_method = UniswapV2PoolRevaluator(uniswap_v2)
+    valuation_model_factory = uniswap_v2_sell_valuation_factory
     pricing_model_factory = uniswap_v2_live_pricing_factory
     executor_universe = TradingStrategyUniverse(universe=universe, reserve_assets=supported_reserves)
     universe_model = StaticUniverseModel(executor_universe)
@@ -334,7 +334,7 @@ def test_cli_disapprove_trades(
         timed_task_context_manager=timed_task,
         execution_model=execution_model,
         approval_model=approval_model,
-        revaluation_method=revaluation_method,
+        valuation_model_factory=valuation_model_factory,
         sync_method=sync_method,
         routing_model=routing_model,
         client=None,

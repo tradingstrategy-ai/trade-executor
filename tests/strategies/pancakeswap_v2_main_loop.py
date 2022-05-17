@@ -38,7 +38,7 @@ from tradingstrategy.universe import Universe
 
 
 # Cannot use Python __name__ here because the module is dynamically loaded
-from tradeexecutor.strategy.valuation import ValuationMethodFactory
+from tradeexecutor.strategy.valuation import ValuationModelFactory
 
 logger = logging.getLogger("pancakeswap_example")
 
@@ -332,7 +332,7 @@ def strategy_factory(
         execution_model: UniswapV2ExecutionModelVersion0,
         sync_method: SyncMethod,
         pricing_model_factory: PricingModelFactory,
-        valuation_factory: ValuationMethodFactory,
+        valuation_model_factory: ValuationModelFactory,
         client: Client,
         timed_task_context_manager: AbstractContextManager,
         approval_model: ApprovalModel,
@@ -361,7 +361,7 @@ def strategy_factory(
         timed_task_context_manager=timed_task_context_manager,
         execution_model=execution_model,
         approval_model=approval_model,
-        valuation_factory=valuation_factory,
+        valuation_model_factory=valuation_model_factory,
         sync_method=sync_method,
         pricing_model_factory=pricing_model_factory,
         cash_buffer=cash_buffer,

@@ -22,7 +22,7 @@ from tradeexecutor.strategy.pricing_model import PricingModelFactory
 from tradeexecutor.strategy.runner import StrategyRunner
 from tradeexecutor.strategy.tick import TickSize, snap_to_next_tick, snap_to_previous_tick
 from tradeexecutor.strategy.universe_model import UniverseModel, TradeExecutorTradingUniverse
-from tradeexecutor.strategy.valuation import ValuationMethodFactory
+from tradeexecutor.strategy.valuation import ValuationModelFactory
 from tradeexecutor.utils.timer import timed_task
 from tradingstrategy.client import Client
 
@@ -42,7 +42,7 @@ class ExecutionLoop:
             sync_method: SyncMethod,
             approval_model: ApprovalModel,
             pricing_model_factory: PricingModelFactory,
-            valuation_factory: ValuationMethodFactory,
+            valuation_factory: ValuationModelFactory,
             store: StateStore,
             client: Optional[Client],
             strategy_factory: Callable,

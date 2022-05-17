@@ -1,30 +1,20 @@
 import datetime
 from typing import Tuple
 
+from eth_defi.uniswap_v2.deployment import UniswapV2Deployment
+from eth_defi.uniswap_v2.fees import estimate_sell_received_amount_raw
 from tradeexecutor.ethereum.uniswap_v2_live_pricing import UniswapV2LivePricing
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.types import USDollarAmount
 from tradeexecutor.strategy.valuation import ValuationModel
 
 
-
-
-class UniswapV2PoolRevaluator(ValuationModel):
-    """Re-value assets based on their on-chain price.
-
-    Does directly JSON-RPC call to get the latest price in the Uniswap pools.
-
-    Only uses direct route - mostly useful for testing, may not give a realistic price in real
-    world with multiple order routing options.
-
-    .. warning ::
-
-        This valuation metohd always uses the latest price. It
-        cannot be used for backtesting.
+class UniswapV2PoolValuationMethodV0(ValuationModel):
+    """Legacy valuation methdd.
     """
 
-    def __init__(self, pricing_model: UniswapV2LivePricing):
-        self.pricing_model = pricing_model
+    def __init__(self, uniswap: UniswapV2Deployment):
+        self.uniswap = uniswap
 
     def __call__(self,
                  ts: datetime.datetime,
@@ -39,9 +29,16 @@ class UniswapV2PoolRevaluator(ValuationModel):
         if quantity == 0:
             return ts, 0.0
 
-        price = self.pricing_model.get_sell_price(ts, pair, quantity)
+        raw_price = estimate_sell_received_amount_raw(
+            self.uniswap,
+            pair.base.address,
+            pair.quote.address,
+            pair.base.convert_to_raw_amount(quantity)
+        )
 
-        return ts, price
+        price_in_dec = pair.quote.convert_to_decimal(raw_price)
+
+        return ts, float(price_in_dec / quantity)
 
 
 def uniswap_v2_sell_valuation_factory(pricing_model):

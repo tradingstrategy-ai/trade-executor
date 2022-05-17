@@ -12,7 +12,7 @@ from tradeexecutor.strategy.description import StrategyExecutionDescription
 from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.strategy.pricing_model import PricingModelFactory
 from tradeexecutor.strategy.routing import RoutingModel
-from tradeexecutor.strategy.valuation import ValuationMethodFactory
+from tradeexecutor.strategy.valuation import ValuationModelFactory
 
 
 class StrategyFactory(typing.Protocol):
@@ -24,7 +24,7 @@ class StrategyFactory(typing.Protocol):
         execution_model: ExecutionModel,
         sync_method: SyncMethod,
         pricing_model_factory: PricingModelFactory,
-        valuation_factory: ValuationMethodFactory,
+        valuation_model_factory: ValuationModelFactory,
         client: typing.Optional[Client],
         timed_task_context_manager: AbstractContextManager,
         approval_model: ApprovalModel,
@@ -43,7 +43,7 @@ class StrategyFactory(typing.Protocol):
         :param pricing_model_factory:
             TODO
 
-        :param valuation_factory:
+        :param valuation_model_factory:
             TODO
 
         :param client:

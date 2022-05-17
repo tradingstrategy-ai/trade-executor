@@ -20,7 +20,7 @@ from tradeexecutor.state.state import State
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.reserve import ReservePosition
-from tradeexecutor.strategy.valuation import ValuationMethodFactory, ValuationMethod
+from tradeexecutor.strategy.valuation import ValuationModelFactory, ValuationModel
 
 
 logger = logging.getLogger(__name__)
@@ -40,14 +40,14 @@ class StrategyRunner(abc.ABC):
                  timed_task_context_manager: AbstractContextManager,
                  execution_model: ExecutionModel,
                  approval_model: ApprovalModel,
-                 valuation_factory: ValuationMethodFactory,
+                 valuation_model_factory: ValuationModelFactory,
                  sync_method: SyncMethod,
                  pricing_model_factory: PricingModelFactory,
                  routing_model: Optional[RoutingModel]=None):
         self.timed_task_context_manager = timed_task_context_manager
         self.execution_model = execution_model
         self.approval_model = approval_model
-        self.valuation_factory = valuation_factory
+        self.valuation_model_factory = valuation_model_factory
         self.sync_method = sync_method
         self.pricing_model_factory = pricing_model_factory
         self.routing_model = routing_model
@@ -85,7 +85,7 @@ class StrategyRunner(abc.ABC):
         debug_details["total_equity_at_start"] = state.portfolio.get_total_equity()
         debug_details["total_cash_at_start"] = state.portfolio.get_current_cash()
 
-    def revalue_portfolio(self, ts: datetime.datetime, state: State, valuation_method: ValuationMethod):
+    def revalue_portfolio(self, ts: datetime.datetime, state: State, valuation_method: ValuationModel):
         """Revalue portfolio based on the data."""
         state.revalue_positions(ts, valuation_method)
         logger.info("After revaluation at %s our equity is %f", ts, state.portfolio.get_total_equity())
@@ -205,7 +205,7 @@ class StrategyRunner(abc.ABC):
         pricing_model = self.pricing_model_factory(self.execution_model, universe, self.routing_model)
 
         # Create a valuation model for positions
-        valuation_model = self.valuation_factory(pricing_model)
+        valuation_model = self.valuation_model_factory(pricing_model)
 
         return routing_state, pricing_model, valuation_model
 

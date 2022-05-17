@@ -24,8 +24,9 @@ from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, deploy_trading_p
 from tradeexecutor.ethereum.hot_wallet_sync import EthereumHotWalletReserveSyncer
 from tradeexecutor.ethereum.uniswap_v2_execution_v0 import UniswapV2ExecutionModelVersion0
 from tradeexecutor.ethereum.uniswap_v2_live_pricing import UniswapV2LivePricing, uniswap_v2_live_pricing_factory
-from tradeexecutor.ethereum.uniswap_v2_valuation import UniswapV2PoolRevaluator
+from tradeexecutor.ethereum.uniswap_v2_valuation import UniswapV2PoolRevaluator, uniswap_v2_sell_valuation_factory
 from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2SimpleRoutingModel
+from tradeexecutor.ethereum.uniswap_v2_valuation_v0 import UniswapV2PoolValuationMethodV0
 from tradeexecutor.ethereum.universe import create_exchange_universe, create_pair_universe
 from tradeexecutor.state.state import State
 from tradeexecutor.state.portfolio import Portfolio
@@ -277,9 +278,9 @@ def strategy_path() -> Path:
 
 
 @pytest.fixture()
-def revaluation_method(uniswap_v2):
+def valuation_model_factory():
     """Revalue trading positions based on direct Uniswap v2 data."""
-    return UniswapV2PoolRevaluator(uniswap_v2)
+    return uniswap_v2_sell_valuation_factory
 
 
 @pytest.fixture()
@@ -311,7 +312,7 @@ def runner(
         hot_wallet,
         persistent_test_client,
         universe_model,
-        revaluation_method,
+        valuation_model_factory,
         routing_model,
 ) -> StrategyRunner:
     """Construct the strategy runner."""
@@ -325,7 +326,7 @@ def runner(
         execution_model=execution_model,
         timed_task_context_manager=timed_task,
         sync_method=sync_method,
-        revaluation_method=revaluation_method,
+        valuation_model_factory=valuation_model_factory,
         pricing_model_factory=uniswap_v2_live_pricing_factory,
         routing_model=routing_model,
         approval_model=approval_model,
@@ -347,7 +348,7 @@ def test_simulated_uniswap_qstrader_strategy_single_trade(
         hot_wallet: HotWallet,
         uniswap_v2: UniswapV2Deployment,
         universe_model: StaticUniverseModel,
-        revaluation_method,
+        valuation_model_factory,
         state: State,
         supported_reserves,
         weth_usdc_pair,
@@ -437,6 +438,8 @@ def test_simulated_uniswap_qstrader_strategy_single_trade(
     # Portfolio value stays approx. the same after revaluation
     # There is some decrease, because now we value in the slippage we would get on Uniswap v2
     ts = datetime.datetime(2020, 1, 1, 12, 00)
+
+    revaluation_method = UniswapV2PoolValuationMethodV0(uniswap_v2)
     state.revalue_positions(ts, revaluation_method)
     position = state.portfolio.get_open_position_for_pair(weth_usdc_pair)
     assert position.last_pricing_at == ts
