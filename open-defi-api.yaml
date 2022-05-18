@@ -837,7 +837,11 @@ paths:
           required: false
           schema:
             type: string
-            enum: [token_id, volume_24h, liquidity_latest]
+            enum: [
+              token_id, volume_24h, liquidity_latest, liquidity_change_7d,
+              liquidity_change_30d, liquidity_change_360d, liquidity_all_time_high,
+              liquidity_all_time_low
+            ]
             default: token_id
         - name: direction
           in: query
