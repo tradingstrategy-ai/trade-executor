@@ -6,14 +6,14 @@ The universe considers only BUSD quoted PancakeSwap v2 pairs.
 
 import datetime
 import logging
-from collections import Counter, defaultdict
+from collections import Counter
 from contextlib import AbstractContextManager
 from typing import Dict
 
 import pandas as pd
 
 from tradeexecutor.ethereum.uniswap_v2_execution_v0 import UniswapV2ExecutionModelVersion0
-from tradeexecutor.state.revaluation import RevaluationMethod
+from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2SimpleRoutingModel
 from tradeexecutor.state.state import State
 
 from tradeexecutor.state.sync import SyncMethod
@@ -39,6 +39,8 @@ from tradingstrategy.universe import Universe
 
 
 # Cannot use Python __name__ here because the module is dynamically loaded
+from tradeexecutor.strategy.valuation import ValuationModelFactory
+
 logger = logging.getLogger("ema_crossover")
 
 # Use daily candles to run the algorithm
@@ -65,6 +67,22 @@ max_assets_per_portfolio = 4
 # How many % of all value we hold in cash all the time,
 # so that we can sustain hits
 cash_buffer = 0.90
+
+#
+# Routing options
+#
+
+# Keep everything internally in BUSD
+reserve_token_address = "0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56".lower()
+
+# Allowed exchanges as factory -> router pairs,
+# by their smart contract addresses
+factory_router_map = {
+    "0xcA143Ce32Fe78f1f7019d7d551a6402fC5350c73": ("0x10ED43C718714eb63d5aA57B78B54704E256024E", "0x00fb7f630766e6a796048ea87d01acd3068e8ff67d078148a3fa3f4a84f69bd5")
+}
+
+# For three way trades, which pools we can use
+allowed_intermediary_pairs = {}
 
 
 def fix_qstrader_date(ts: pd.Timestamp) -> pd.Timestamp:
@@ -297,8 +315,8 @@ class OurUniverseModel(TradingStrategyUniverseModel):
             pairs = PandasPairUniverse(pairs_df)
 
             # We do a bit detour here as we need to address the assets by their trading pairs first
-            bnb_busd = pairs.get_one_pair_from_pandas_universe(pancake_v2.exchange_id, "WBNB", "BUSD")
-            assert bnb_busd, "We do not have BNB-BUSD, something wrong with the dataset"
+            bnb_busd = pairs.get_one_pair_from_pandas_universe(pancake_v2.exchange_id, "WBNB", "BUSD", pick_by_highest_vol=True)
+            assert bnb_busd, "We do not have BNB-BUSD pair, something wrong with the dataset"
 
             # Get daily candles as Pandas DataFrame
             all_candles = dataset.candles
@@ -339,7 +357,7 @@ def strategy_factory(
         execution_model: UniswapV2ExecutionModelVersion0,
         sync_method: SyncMethod,
         pricing_model_factory: PricingModelFactory,
-        revaluation_method: RevaluationMethod,
+        valuation_model_factory: ValuationModelFactory,
         client: Client,
         timed_task_context_manager: AbstractContextManager,
         approval_model: ApprovalModel,
@@ -354,15 +372,23 @@ def strategy_factory(
 
     universe_model = OurUniverseModel(client, timed_task_context_manager)
 
+    routing_model = UniswapV2SimpleRoutingModel(
+        factory_router_map,
+        allowed_intermediary_pairs,
+        reserve_token_address,
+        max_slippage=0.01,
+    )
+
     runner = QSTraderRunner(
         alpha_model=MomentumAlphaModel(),
         timed_task_context_manager=timed_task_context_manager,
         execution_model=execution_model,
         approval_model=approval_model,
-        revaluation_method=revaluation_method,
+        valuation_model_factory=valuation_model_factory,
         sync_method=sync_method,
         pricing_model_factory=pricing_model_factory,
         cash_buffer=cash_buffer,
+        routing_model=routing_model,
     )
 
     return StrategyExecutionDescription(

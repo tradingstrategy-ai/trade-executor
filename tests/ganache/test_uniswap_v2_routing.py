@@ -285,6 +285,7 @@ def test_simple_routing_one_leg(
         cake_token,
         routing_model,
         cake_busd_trading_pair,
+        pair_universe,
 ):
     """Make 1x two way trade BUSD -> Cake.
 
@@ -302,7 +303,7 @@ def test_simple_routing_one_leg(
     )
 
     # Create
-    routing_state = UniswapV2RoutingState(tx_builder)
+    routing_state = UniswapV2RoutingState(pair_universe, tx_builder)
 
     txs = routing_model.trade(
         routing_state,
@@ -339,6 +340,7 @@ def test_simple_routing_buy_sell(
         busd_token,
         routing_model,
         cake_busd_trading_pair,
+        pair_universe,
 ):
     """Make 2x two way trade BUSD -> Cake -> BUSD."""
 
@@ -353,7 +355,7 @@ def test_simple_routing_buy_sell(
     )
 
     # Create
-    routing_state = UniswapV2RoutingState(tx_builder)
+    routing_state = UniswapV2RoutingState(pair_universe, tx_builder)
 
     txs = routing_model.trade(
         routing_state,
@@ -420,7 +422,7 @@ def test_simple_routing_not_enough_balance(
     )
 
     # Create
-    routing_state = UniswapV2RoutingState(tx_builder)
+    routing_state = UniswapV2RoutingState(pair_universe, tx_builder)
 
     with pytest.raises(OutOfBalance):
         routing_model.trade(
@@ -442,6 +444,7 @@ def test_simple_routing_three_leg(
         routing_model,
         cake_bnb_trading_pair,
         bnb_busd_trading_pair,
+        pair_universe,
 ):
     """Make 1x two way trade BUSD -> BNB -> Cake."""
 
@@ -455,7 +458,7 @@ def test_simple_routing_three_leg(
         fees,
     )
 
-    routing_state = UniswapV2RoutingState(tx_builder)
+    routing_state = UniswapV2RoutingState(pair_universe, tx_builder)
 
     txs = routing_model.trade(
         routing_state,
@@ -495,6 +498,7 @@ def test_three_leg_buy_sell(
         routing_model,
         cake_bnb_trading_pair,
         bnb_busd_trading_pair,
+        pair_universe,
 ):
     """Make trades BUSD -> BNB -> Cake and Cake -> BNB -> BUSD."""
 
@@ -512,7 +516,7 @@ def test_three_leg_buy_sell(
         fees,
     )
 
-    routing_state = UniswapV2RoutingState(tx_builder)
+    routing_state = UniswapV2RoutingState(pair_universe, tx_builder)
 
     txs = routing_model.trade(
         routing_state,
@@ -590,6 +594,7 @@ def test_three_leg_buy_sell_twice_on_chain(
         routing_model,
         cake_bnb_trading_pair,
         bnb_busd_trading_pair,
+        pair_universe,
 ):
     """Make trades 2x BUSD -> BNB -> Cake and Cake -> BNB -> BUSD.
 
@@ -662,10 +667,10 @@ def test_three_leg_buy_sell_twice_on_chain(
 
         return txs + txs2
 
-    routing_state = UniswapV2RoutingState(tx_builder)
+    routing_state = UniswapV2RoutingState(pair_universe, tx_builder)
     txs_1 = trip()
     assert len(txs_1) == 4
-    routing_state = UniswapV2RoutingState(tx_builder)
+    routing_state = UniswapV2RoutingState(pair_universe, tx_builder)
     txs_2 = trip()
     assert len(txs_2) == 2
 
@@ -681,6 +686,7 @@ def test_three_leg_buy_sell_twice(
         routing_model,
         cake_bnb_trading_pair,
         bnb_busd_trading_pair,
+        pair_universe,
 ):
     """Make trades 2x BUSD -> BNB -> Cake and Cake -> BNB -> BUSD.
 
@@ -698,7 +704,7 @@ def test_three_leg_buy_sell_twice(
         fees,
     )
 
-    routing_state = UniswapV2RoutingState(tx_builder)
+    routing_state = UniswapV2RoutingState(pair_universe, tx_builder)
 
     def trip():
 
@@ -779,7 +785,7 @@ def test_stateful_routing_three_legs(
     # Prepare a transaction builder
     tx_builder = TransactionBuilder(web3, hot_wallet, fees)
 
-    routing_state = UniswapV2RoutingState(tx_builder)
+    routing_state = UniswapV2RoutingState(pair_universe, tx_builder)
 
     trader = PairUniverseTestTrader(state)
 
@@ -861,7 +867,7 @@ def test_stateful_routing_two_legs(
     # Prepare a transaction builder
     tx_builder = TransactionBuilder(web3, hot_wallet, fees)
 
-    routing_state = UniswapV2RoutingState(tx_builder)
+    routing_state = UniswapV2RoutingState(pair_universe, tx_builder)
 
     trader = PairUniverseTestTrader(state)
 
