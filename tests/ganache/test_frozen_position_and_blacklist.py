@@ -26,6 +26,7 @@ from eth_typing import HexAddress, HexStr
 from hexbytes import HexBytes
 
 from eth_defi.utils import is_localhost_port_listening
+from tradeexecutor.ethereum.uniswap_v2_valuation_v0 import UniswapV2PoolValuationMethodV0
 from tradeexecutor.ethereum.universe import create_exchange_universe, create_pair_universe
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, TradingStrategyUniverseModel
 from tradeexecutor.strategy.universe_model import StaticUniverseModel
@@ -47,7 +48,7 @@ from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, fetch_deployment
 from tradeexecutor.ethereum.hot_wallet_sync import EthereumHotWalletReserveSyncer
 from tradeexecutor.ethereum.uniswap_v2_execution_v0 import UniswapV2ExecutionModelVersion0
 from tradeexecutor.ethereum.uniswap_v2_live_pricing import uniswap_v2_live_pricing_factory
-from tradeexecutor.ethereum.uniswap_v2_valuation import UniswapV2PoolRevaluator
+from tradeexecutor.ethereum.uniswap_v2_valuation import UniswapV2PoolRevaluator, uniswap_v2_sell_valuation_factory
 from tradeexecutor.state.state import State
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.position import TradingPosition
@@ -314,7 +315,7 @@ def runner(
         execution_model=execution_model,
         timed_task_context_manager=timed_task,
         sync_method=sync_method,
-        revaluation_method=UniswapV2PoolRevaluator(pancakeswap_v2),
+        valuation_model_factory=uniswap_v2_sell_valuation_factory,
         pricing_model_factory=uniswap_v2_live_pricing_factory,
         approval_model=approval_model,
         client=None,
@@ -391,11 +392,15 @@ def test_buy_and_sell_blacklisted_asset(
     # 2nd day - cannot sell BIT
     #
     ts = datetime.datetime(2020, 1, 2)
-    state.revalue_positions(ts, UniswapV2PoolRevaluator(pancakeswap_v2))
+    state.revalue_positions(ts, UniswapV2PoolValuationMethodV0(pancakeswap_v2))
     debug_details = runner.tick(ts, executor_universe, state, {"cycle": 2, "check_balances": True})
     weights = debug_details["alpha_model_weights"]
-    assert len(debug_details["succeeded_trades"]) == 1
-    assert len(debug_details["failed_trades"]) == 1
+
+    succeeded_trades = [t for t in debug_details["rebalance_trades"] if t.is_success()]
+    failed_trades = [t for t in debug_details["rebalance_trades"] if not t.is_success()]
+
+    assert len(succeeded_trades) == 1
+    assert len(failed_trades) == 1
 
     # Position is now frozen
     portfolio = state.portfolio
@@ -425,7 +430,7 @@ def test_buy_and_sell_blacklisted_asset(
     # the alpha model ignores it as a blacklisted asset
     #
     ts = datetime.datetime(2020, 1, 3)
-    state.revalue_positions(ts, UniswapV2PoolRevaluator(pancakeswap_v2))
+    state.revalue_positions(ts, UniswapV2PoolValuationMethodV0(pancakeswap_v2))
     debug_details = runner.tick(ts, executor_universe, state, {"cycle": 3})
     weights = debug_details["alpha_model_weights"]
     assert weights[wbnb_busd.pair_id] == 1.0

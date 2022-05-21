@@ -12,7 +12,6 @@ from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
 
 from tradeexecutor.ethereum.uniswap_v2_execution_v0 import UniswapV2ExecutionModelVersion0
-from tradeexecutor.state.revaluation import RevaluationMethod
 from tradeexecutor.state.state import State
 from tradeexecutor.state.sync import SyncMethod
 from tradeexecutor.strategy.approval import ApprovalModel
@@ -24,6 +23,8 @@ from tradeexecutor.strategy.universe_model import StaticUniverseModel
 
 
 # Cannot use Python __name__ here because the module is dynamically loaded
+from tradeexecutor.strategy.valuation import ValuationModelFactory
+
 logging = logging.getLogger("frozen_asset")
 
 
@@ -83,7 +84,7 @@ def strategy_factory(
         execution_model: UniswapV2ExecutionModelVersion0,
         sync_method: SyncMethod,
         pricing_model_factory: PricingModelFactory,
-        revaluation_method: RevaluationMethod,
+        valuation_model_factory: ValuationModelFactory,
         client,
         timed_task_context_manager: AbstractContextManager,
         approval_model: ApprovalModel,
@@ -103,7 +104,7 @@ def strategy_factory(
         timed_task_context_manager=timed_task_context_manager,
         execution_model=execution_model,
         approval_model=approval_model,
-        revaluation_method=revaluation_method,
+        valuation_model_factory=valuation_model_factory,
         sync_method=sync_method,
         pricing_model_factory=pricing_model_factory,
         cash_buffer=cash_buffer,
