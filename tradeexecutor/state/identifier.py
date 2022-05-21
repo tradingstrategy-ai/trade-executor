@@ -3,6 +3,7 @@
 How executor internally knows how to connect trading pairs in data and in execution environment (on-chain).
 """
 from dataclasses import dataclass
+from decimal import Decimal
 from typing import Optional
 
 from dataclasses_json import dataclass_json
@@ -25,11 +26,13 @@ class AssetIdentifier:
     #: See https://chainlist.org/
     chain_id: int
 
-    #: Smart contract address of the asset
+    #: Smart contract address of the asset.
+    #: Always lowercase.
     address: JSONHexAddress
 
     token_symbol: str
-    decimals: Optional[int] = None
+
+    decimals: int
 
     #: How this asset is referred in the internal database
     internal_id: Optional[int] = None
@@ -43,7 +46,10 @@ class AssetIdentifier:
     def __post_init__(self):
         assert type(self.address) == str, f"Got address {self.address} as {type(self.address)}"
         assert self.address.startswith("0x")
+        self.address= self.address.lower()
         assert type(self.chain_id) == int
+        assert type(self.decimals) == int, f"Bad decimals {self.decimals}"
+        assert self.decimals >= 0
 
     def get_identifier(self) -> str:
         """Assets are identified by their smart contract address."""
@@ -53,6 +59,24 @@ class AssetIdentifier:
     def checksum_address(self) -> HexAddress:
         """Ethereum madness."""
         return Web3.toChecksumAddress(self.address)
+
+    def __eq__(self, other: "AssetIdentifier") -> bool:
+        """Assets are considered be identical if they share the same smart contract address."""
+        assert isinstance(other, AssetIdentifier)
+        return self.address.lower() == other.address.lower()
+
+    def convert_to_raw_amount(self, amount: Decimal) -> int:
+        """Return any amount in token native units.
+
+        Convert decimal to fixed point integer.
+        """
+        assert self.decimals is not None, f"Cannot perform human to raw token amount conversion, because no decimals given: {self}"
+        return int(amount * Decimal(10**self.decimals))
+
+    def convert_to_decimal(self, raw_amount: int) -> Decimal:
+        assert self.decimals is not None, f"Cannot perform human to raw token amount conversion, because no decimals given: {self}"
+        return Decimal(raw_amount) / Decimal(10**self.decimals)
+
 
 
 @dataclass_json
@@ -64,6 +88,11 @@ class TradingPairIdentifier:
     #: Smart contract address of the pool contract.
     pool_address: str
 
+    #: Exchange address.
+    #: Identifies a decentralised exchange.
+    #: Uniswap v2 likes are identified by their factor address.
+    exchange_address: str
+
     #: How this asset is referred in the internal database
     internal_id: Optional[int] = None
 
@@ -71,7 +100,7 @@ class TradingPairIdentifier:
     info_url: Optional[str] = None
 
     def __repr__(self):
-        return f"<Pair {self.base.token_symbol}-{self.quote.token_symbol} at {self.pool_address}>"
+        return f"<Pair {self.base.token_symbol}-{self.quote.token_symbol} at {self.pool_address} on exchange {self.exchange_address}>"
 
     def get_identifier(self) -> str:
         """We use the smart contract pool address to uniquely identify trading positions.
@@ -82,7 +111,3 @@ class TradingPairIdentifier:
 
     def get_human_description(self) -> str:
         return f"{self.base.token_symbol}-{self.quote.token_symbol}"
-
-    #def get_trading_pair(self, pair_universe: PandasPairUniverse) -> DEXPair:
-    #    """Reverse resolves the smart contract address to trading pair data in the current trading pair universe."""
-    #    return pair_universe.get_pair_by_smart_contract(self.pool_address)

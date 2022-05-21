@@ -7,7 +7,7 @@ Any datetime must be naive, without timezone, and is assumed to be UTC.
 from dataclasses import dataclass, field
 import datetime
 from decimal import Decimal
-from typing import List, Callable, Tuple, Set
+from typing import List, Callable, Tuple, Set, Optional
 
 from dataclasses_json import dataclass_json
 
@@ -53,7 +53,8 @@ class State:
     def create_trade(self,
                      ts: datetime.datetime,
                      pair: TradingPairIdentifier,
-                     quantity: Decimal,
+                     quantity: Optional[Decimal],
+                     reserve: Optional[Decimal],
                      assumed_price: USDollarAmount,
                      trade_type: TradeType,
                      reserve_currency: AssetIdentifier,
@@ -62,9 +63,28 @@ class State:
 
         If there is no open position, marks a position open.
 
+        Trade can be opened by knowing how much you want to buy (quantity) or how much cash you have to buy (reserve).
+
+        - To open a spot buy, fill in `reseve` amount you wish to use for the buy
+
+        - To open a spot sell, fill in `quoantity` amount you wish to use for the buy,
+          as a negative number
+
         :return: Tuple position, trade, was a new position created
         """
-        position, trade, created = self.portfolio.create_trade(ts, pair, quantity, assumed_price, trade_type, reserve_currency, reserve_currency_price)
+
+        if quantity is not None:
+            assert reserve is None, "Quantity and reserve both cannot be given at the same time"
+
+        position, trade, created = self.portfolio.create_trade(
+            ts,
+            pair,
+            quantity,
+            reserve,
+            assumed_price,
+            trade_type,
+            reserve_currency,
+            reserve_currency_price)
         return position, trade, created
 
     def start_execution(self, ts: datetime.datetime, trade: TradeExecution, txid: str, nonce: int):
@@ -118,7 +138,9 @@ class State:
     def mark_trade_failed(self, failed_at: datetime.datetime, trade: TradeExecution):
         """Unroll the allocated capital."""
         trade.mark_failed(failed_at)
-        self.portfolio.adjust_reserves(trade.reserve_currency, trade.reserve_currency_allocated)
+        # Return unused reserves back to accounting
+        if trade.is_buy():
+            self.portfolio.adjust_reserves(trade.reserve_currency, trade.reserve_currency_allocated)
 
     def update_reserves(self, new_reserves: List[ReservePosition]):
         self.portfolio.update_reserves(new_reserves)
@@ -160,3 +182,20 @@ class State:
         # Check that all stats have a matching position
         for pos_stat_id in self.stats.positions.keys():
             assert pos_stat_id in position_ids, f"Stats had position id {pos_stat_id} for which actual trades are missing"
+
+    def start_trades(self, ts: datetime.datetime, trades: List[TradeExecution], underflow_check=False):
+        """Mark trades ready to go.
+
+        Update any internal accounting of capital allocation from reseves to trades.
+
+        :param underflow_check:
+            If true warn us if we do not have enough reserves to perform the trades.
+            This does not consider new reserves released from the closed positions
+            in this cycle.
+        """
+
+        for t in trades:
+            if t.is_buy():
+                self.portfolio.move_capital_from_reserves_to_trade(t, underflow_check=underflow_check)
+
+            t.started_at = ts

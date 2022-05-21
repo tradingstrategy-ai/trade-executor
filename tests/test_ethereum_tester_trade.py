@@ -22,9 +22,11 @@ from eth_defi.balances import fetch_erc20_balances_by_transfer_event, convert_ba
 from eth_defi.token import create_token
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, deploy_trading_pair, deploy_uniswap_v2_like
 from tradeexecutor.ethereum.hot_wallet_sync import EthereumHotWalletReserveSyncer
-from tradeexecutor.ethereum.uniswap_v2_execution import UniswapV2ExecutionModel
+from tradeexecutor.ethereum.uniswap_v2_execution_v0 import UniswapV2ExecutionModelVersion0
 from tradeexecutor.ethereum.uniswap_v2_live_pricing import UniswapV2LivePricing, uniswap_v2_live_pricing_factory
-from tradeexecutor.ethereum.uniswap_v2_revaluation import UniswapV2PoolRevaluator
+from tradeexecutor.ethereum.uniswap_v2_valuation import UniswapV2PoolRevaluator, uniswap_v2_sell_valuation_factory
+from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2SimpleRoutingModel
+from tradeexecutor.ethereum.uniswap_v2_valuation_v0 import UniswapV2PoolValuationMethodV0
 from tradeexecutor.ethereum.universe import create_exchange_universe, create_pair_universe
 from tradeexecutor.state.state import State
 from tradeexecutor.state.portfolio import Portfolio
@@ -43,7 +45,7 @@ from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId
 from tradingstrategy.exchange import ExchangeUniverse
 from tradingstrategy.liquidity import GroupedLiquidityUniverse
-from tradingstrategy.pair import PairUniverse, PandasPairUniverse
+from tradingstrategy.pair import LegacyPairUniverse, PandasPairUniverse
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
 
@@ -59,6 +61,7 @@ def logger(request):
     """Setup test logger."""
     logger = setup_pytest_logging(request)
     return logger
+
 
 @pytest.fixture
 def tester_provider():
@@ -92,12 +95,6 @@ def deployer(web3) -> HexAddress:
     Do some account allocation for tests.
     """
     return web3.eth.accounts[0]
-
-
-@pytest.fixture()
-def hot_wallet_private_key(web3) -> HexBytes:
-    """Generate a private key"""
-    return HexBytes(secrets.token_bytes(32))
 
 
 @pytest.fixture
@@ -176,15 +173,26 @@ def weth_usdc_uniswap_trading_pair(web3, deployer, uniswap_v2, weth_token, usdc_
 
 
 @pytest.fixture
-def weth_usdc_pair(weth_usdc_uniswap_trading_pair, asset_usdc, asset_weth) -> TradingPairIdentifier:
+def weth_usdc_pair(uniswap_v2, weth_usdc_uniswap_trading_pair, asset_usdc, asset_weth) -> TradingPairIdentifier:
     """WETH-USDC pair representation in the trade executor domain."""
-    return TradingPairIdentifier(asset_weth, asset_usdc, weth_usdc_uniswap_trading_pair, internal_id=int(weth_usdc_uniswap_trading_pair, 16))
+    return TradingPairIdentifier(
+        asset_weth,
+        asset_usdc,
+        weth_usdc_uniswap_trading_pair,
+        exchange_address=uniswap_v2.factory.address,
+        internal_id=int(weth_usdc_uniswap_trading_pair, 16))
 
 
 @pytest.fixture
-def aave_usdc_pair(aave_usdc_uniswap_trading_pair, asset_usdc, asset_aave) -> TradingPairIdentifier:
+def aave_usdc_pair(uniswap_v2, aave_usdc_uniswap_trading_pair, asset_usdc, asset_aave) -> TradingPairIdentifier:
     """AAVE-USDC pair representation in the trade executor domain."""
-    return TradingPairIdentifier(asset_aave, asset_usdc, aave_usdc_uniswap_trading_pair, internal_id=int(aave_usdc_uniswap_trading_pair, 16))
+    return TradingPairIdentifier(
+        asset_aave,
+        asset_usdc,
+        aave_usdc_uniswap_trading_pair,
+        internal_id=int(aave_usdc_uniswap_trading_pair, 16),
+        exchange_address=uniswap_v2.factory.address,
+    )
 
 
 @pytest.fixture
@@ -194,12 +202,12 @@ def supported_reserves(usdc) -> List[AssetIdentifier]:
 
 
 @pytest.fixture()
-def hot_wallet(web3: Web3, usdc_token: Contract, hot_wallet_private_key: HexBytes, deployer: HexAddress) -> HotWallet:
+def hot_wallet(web3: Web3, usdc_token: Contract, deployer: HexAddress) -> HotWallet:
     """Our trading Ethereum account.
 
     Start with 10,000 USDC cash and 2 ETH.
     """
-    account = Account.from_key(hot_wallet_private_key)
+    account = Account.create()
     web3.eth.send_transaction({"from": deployer, "to": account.address, "value": 2*10**18})
     usdc_token.functions.transfer(account.address, 10_000 * 10**6).transact({"from": deployer})
     wallet = HotWallet(account)
@@ -270,9 +278,30 @@ def strategy_path() -> Path:
 
 
 @pytest.fixture()
-def revaluation_method(uniswap_v2):
+def valuation_model_factory():
     """Revalue trading positions based on direct Uniswap v2 data."""
-    return UniswapV2PoolRevaluator(uniswap_v2)
+    return uniswap_v2_sell_valuation_factory
+
+
+@pytest.fixture()
+def routing_model(uniswap_v2, asset_usdc, asset_weth, weth_usdc_pair) -> UniswapV2SimpleRoutingModel:
+
+    # Allowed exchanges as factory -> router pairs
+    factory_router_map = {
+        uniswap_v2.factory.address: (uniswap_v2.router.address, uniswap_v2.init_code_hash),
+    }
+
+    # Three way ETH quoted trades are routed thru WETH/USDC pool
+    allowed_intermediary_pairs = {
+        asset_weth.address: weth_usdc_pair.pool_address
+    }
+
+    return UniswapV2SimpleRoutingModel(
+        factory_router_map,
+        allowed_intermediary_pairs,
+        reserve_token_address=asset_usdc.address,
+        max_slippage=0.05,
+    )
 
 
 @pytest.fixture()
@@ -283,21 +312,23 @@ def runner(
         hot_wallet,
         persistent_test_client,
         universe_model,
-        revaluation_method,
+        valuation_model_factory,
+        routing_model,
 ) -> StrategyRunner:
     """Construct the strategy runner."""
 
     strategy_factory = import_strategy_file(strategy_path)
     approval_model = UncheckedApprovalModel()
-    execution_model = UniswapV2ExecutionModel(uniswap_v2, hot_wallet, confirmation_block_count=0)
+    execution_model = UniswapV2ExecutionModelVersion0(uniswap_v2, hot_wallet, confirmation_block_count=0)
     sync_method = EthereumHotWalletReserveSyncer(web3, hot_wallet.address)
 
     run_description: StrategyExecutionDescription = strategy_factory(
         execution_model=execution_model,
         timed_task_context_manager=timed_task,
         sync_method=sync_method,
-        revaluation_method=revaluation_method,
+        valuation_model_factory=valuation_model_factory,
         pricing_model_factory=uniswap_v2_live_pricing_factory,
+        routing_model=routing_model,
         approval_model=approval_model,
         client=persistent_test_client,
         universe_model=universe_model,
@@ -317,7 +348,7 @@ def test_simulated_uniswap_qstrader_strategy_single_trade(
         hot_wallet: HotWallet,
         uniswap_v2: UniswapV2Deployment,
         universe_model: StaticUniverseModel,
-        revaluation_method,
+        valuation_model_factory,
         state: State,
         supported_reserves,
         weth_usdc_pair,
@@ -393,9 +424,10 @@ def test_simulated_uniswap_qstrader_strategy_single_trade(
     t = trades[0]
 
     assert t.is_success()
-    assert t.tx_info.chain_id == 61   # Ethereum Tester
-    assert t.tx_info.tx_hash.startswith("0x")
-    assert t.tx_info.nonce == 1
+    tx_info = t.blockchain_transactions[-1]
+    assert tx_info.chain_id == 61   # Ethereum Tester
+    assert tx_info.tx_hash.startswith("0x")
+    assert tx_info.nonce == 1
 
     # Check the raw on-chain token balances
     raw_balances = fetch_erc20_balances_by_transfer_event(web3, hot_wallet.address)
@@ -406,6 +438,8 @@ def test_simulated_uniswap_qstrader_strategy_single_trade(
     # Portfolio value stays approx. the same after revaluation
     # There is some decrease, because now we value in the slippage we would get on Uniswap v2
     ts = datetime.datetime(2020, 1, 1, 12, 00)
+
+    revaluation_method = UniswapV2PoolValuationMethodV0(uniswap_v2)
     state.revalue_positions(ts, revaluation_method)
     position = state.portfolio.get_open_position_for_pair(weth_usdc_pair)
     assert position.last_pricing_at == ts
@@ -533,7 +567,7 @@ def test_simulated_uniswap_qstrader_strategy_round_trip(
 
     # We have lost some money in trading fees
     assert state.portfolio.get_total_equity() == pytest.approx(9983.773698830146, rel=APPROX_REL)
-    assert state.portfolio.get_current_cash() == pytest.approx(839.3295900249992, rel=APPROX_REL)
+    assert state.portfolio.get_current_cash() == pytest.approx(936.5293500249995, rel=APPROX_REL)
 
     # Check our two open positions
     assert len(state.portfolio.open_positions) == 2
@@ -541,7 +575,7 @@ def test_simulated_uniswap_qstrader_strategy_round_trip(
     assert position_1.get_quantity() == Decimal('2.747249930253346052')
     assert position_1.get_value() == pytest.approx(4684.555636069401, rel=APPROX_REL)
     position_2 = state.portfolio.get_open_position_for_pair(aave_usdc_pair)
-    assert position_2.get_value() == pytest.approx(4459.8884727357445, rel=APPROX_REL)
+    assert position_2.get_value() == pytest.approx(4362.366674108017, rel=APPROX_REL)
     assert position_2.get_quantity() == pytest.approx(Decimal('21.354907569100333830'), rel=APPROX_REL_DECIMAL)
 
     # Check the raw on-chain token balances
@@ -551,6 +585,6 @@ def test_simulated_uniswap_qstrader_strategy_round_trip(
     assert balances[aave_token.address].value == pytest.approx(Decimal('21.354907569100333830'), rel=APPROX_REL_DECIMAL)
 
     # The cash balance should be ~500 USD but due to huge AAVE price estimation error it is not
-    assert balances[usdc_token.address].value == pytest.approx(Decimal('839.3295900249992'), rel=APPROX_REL_DECIMAL)
+    assert balances[usdc_token.address].value == pytest.approx(Decimal('936.529351'), rel=APPROX_REL_DECIMAL)
 
 

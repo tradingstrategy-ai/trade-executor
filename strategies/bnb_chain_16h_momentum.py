@@ -1,32 +1,28 @@
-"""Live trading strategy implementation fo ra single pair exponential moving average model.
+"""Live trading implementation of PancakeSwap v2 momentum strategy.
 
-Constructs the trading universe from TradingStrategy.ai client and implements a real momentum strategy.
-The universe considers only BUSD quoted PancakeSwap v2 pairs.
+- Trades BNB and stablecoin pairs
+
+- PancakeSwap https://tradingstrategy.ai/trading-view/binance/pancakeswap-v2
+
+- Biswap https://tradingstrategy.ai/trading-view/binance/pancakeswap-v2
+
+- FSTSSwap https://tradingstrategy.ai/trading-view/binance/fstswap
+
+- BabySwap https://tradingstrategy.ai/trading-view/binance/babyswap
+
+- Contains tradeable checks and does not touch tokens with transfer fees as a risk mitigation  
 """
 
 import datetime
 import logging
-from collections import Counter
+from collections import Counter, defaultdict
 from contextlib import AbstractContextManager
 from typing import Dict
 
 import pandas as pd
 
-from tradeexecutor.ethereum.uniswap_v2_execution_v0 import UniswapV2ExecutionModelVersion0
 from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2SimpleRoutingModel
-from tradeexecutor.state.state import State
-
-from tradeexecutor.state.sync import SyncMethod
-from tradeexecutor.strategy.approval import ApprovalModel
-from tradeexecutor.strategy.description import StrategyExecutionDescription
-from tradeexecutor.strategy.execution_model import ExecutionModel
-from tradeexecutor.strategy.pricing_model import PricingModelFactory
-from tradeexecutor.strategy.qstrader.alpha_model import AlphaModel
-from tradeexecutor.strategy.qstrader.runner import QSTraderRunner
-from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverseModel, \
-    TradingStrategyUniverse, translate_trading_pair, Dataset
 from tradingstrategy.client import Client
-
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId
 from tradingstrategy.frameworks.qstrader import prepare_candles_for_qstrader
@@ -37,60 +33,69 @@ from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.utils.groupeduniverse import filter_for_pairs
 from tradingstrategy.universe import Universe
 
+from tradeexecutor.ethereum.uniswap_v2_execution_v0 import UniswapV2ExecutionModelVersion0
+from tradeexecutor.state.revaluation import RevaluationMethod
+from tradeexecutor.state.state import State
+from tradeexecutor.state.sync import SyncMethod
+from tradeexecutor.strategy.approval import ApprovalModel
+from tradeexecutor.strategy.description import StrategyExecutionDescription
+from tradeexecutor.strategy.execution_model import ExecutionModel
+from tradeexecutor.strategy.pricing_model import PricingModelFactory
+from tradeexecutor.strategy.qstrader.alpha_model import AlphaModel
+from tradeexecutor.strategy.qstrader.runner import QSTraderRunner
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverseModel, \
+    TradingStrategyUniverse, translate_trading_pair, Dataset
+from tradeexecutor.utils.price import is_legit_price_value
 
-# Cannot use Python __name__ here because the module is dynamically loaded
-from tradeexecutor.strategy.valuation import ValuationModelFactory
-
-logger = logging.getLogger("ema_crossover")
+# Create a Python logger to help pinpointing issues during development
+logger = logging.getLogger("bnb_chain_16h_momentum")
 
 # Use daily candles to run the algorithm
 candle_time_frame = TimeBucket.h4
 
-# We are making a decision based on 8 hours (2 candles)
-# 1. The current 4h candle
-# 2. The next 4h candle
-lookback = pd.Timedelta(hours=8)
+# We are making a decision based on 16 hours (4 candles)
+lookback = pd.Timedelta(hours=16)
 
 # The liquidity threshold for a token to be considered
 # risk free enough to be purchased
 min_liquidity_threshold = 750_000
 
-# Any trading pair we enter must have
-# at least portflio total market value * portfolio_base_liquidity_threshold liquidity available
-portfolio_base_liquidity_threshold = 0.66
+# We need to present at least 2% of liquidity of any trading pair we enter
+portfolio_base_liquidity_threshold = 0.02
 
-# How many tokens we can hold in our portfolio
-# If there are more new tokens coming to market per day,
-# we just ignore those with less liquidity
-max_assets_per_portfolio = 4
+# Keep 6 positions open at once
+max_assets_per_portfolio = 6
 
 # How many % of all value we hold in cash all the time,
-# so that we can sustain hits
-cash_buffer = 0.90
+# so that we do not risk our trading capital
+cash_buffer = 0.80
 
-#
-# Routing options
-#
+# Trade only against these tokens
+allowed_quote_tokens = {
+    "WBNB": "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c",
+    "BUSD": "0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56",
+    "USDT": "0x55d398326f99059fF775485246999027B3197955",
+ }
 
 # Keep everything internally in BUSD
-reserve_token_address = "0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56".lower()
+reserve = "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c"
 
 # Allowed exchanges as factory -> router pairs,
 # by their smart contract addresses
 factory_router_map = {
-    "0xcA143Ce32Fe78f1f7019d7d551a6402fC5350c73": ("0x10ED43C718714eb63d5aA57B78B54704E256024E", "0x00fb7f630766e6a796048ea87d01acd3068e8ff67d078148a3fa3f4a84f69bd5")
+    # Pancake
+    "0xcA143Ce32Fe78f1f7019d7d551a6402fC5350c73": "0x10ED43C718714eb63d5aA57B78B54704E256024E",
+    # Biswap
+    # "0x858e3312ed3a876947ea49d572a7c42de08af7ee": "0x3a6d8cA21D1CF76F653A67577FA0D27453350dD8",
+    # FSTSwap
+    # "0x9A272d734c5a0d7d84E0a892e891a553e8066dce": "0x1B6C9c20693afDE803B27F8782156c0f892ABC2d",
 }
 
 # For three way trades, which pools we can use
-allowed_intermediary_pairs = {}
-
-
-def fix_qstrader_date(ts: pd.Timestamp) -> pd.Timestamp:
-    """Quick-fix for Qstrader to use its internal hour system.
-
-    TODO: Fix QSTrader framework in long run
-    """
-    return ts.replace(hour=0, minute=0)
+allowed_intermediary_pairs = {
+    # BUSD -> WBNB
+    "0x58f876857a02d6762e0101bb5c46a8c1ed44dc16",  # https://tradingstrategy.ai/trading-view/binance/pancakeswap-v2/bnb-busd
+}
 
 
 class MomentumAlphaModel(AlphaModel):
@@ -98,13 +103,6 @@ class MomentumAlphaModel(AlphaModel):
 
     We expose a lot of internal in debug data to make this code testable.
     """
-
-    def is_funny_price(self, usd_unit_price: float) -> bool:
-        """Avoid taking positions in tokens with too funny prices.
-
-        Might cause good old floating point to crap out.
-        """
-        return (usd_unit_price < 0.0000001) or (usd_unit_price > 100_000)
 
     def filter_duplicate_base_tokens(self, alpha_signals: Counter, debug_data: dict) -> Counter:
         """Filter duplicate alpha signals for trading pairs sharing the same base token.
@@ -144,13 +142,22 @@ class MomentumAlphaModel(AlphaModel):
         :return: True if the pair should be traded
         """
 
-        if not state.is_good_pair(translate_trading_pair(pair)):
+        # Wast this pair blacklisted earlier by the strategy itself
+        if not state.is_good_pair(pair):
             return False
 
+        # This token is marked as not tradeable, so we don't touch it
+        dex_pair = translate_trading_pair(pair)
+        if (dex_pair.buy_tax != 0) or (dex_pair.sell_tax != 0) or (dex_pair.transfer_tax != 0):
+            return False
+
+        # The pair does not have enough liquidity for us to enter
         if liquidity < min_liquidity_threshold:
             return False
 
-        if self.is_funny_price(price):
+        # The price value does not seem legit
+        # and might have floating point issues
+        if is_legit_price_value(price):
             return False
 
         return True
@@ -185,12 +192,12 @@ class MomentumAlphaModel(AlphaModel):
         # Iterate over all candles for all pairs in this timestamp (ts)
         for pair_id, pair_df in candle_data:
 
-            # We have 0 or 1 candles in the range
-            if len(pair_df) < 2:
+            # We have 0, 1, 2 or 3 4h candles in the range
+            if len(pair_df) < 4:
                 problem_candle_count += 1
                 continue
 
-            first_candle = pair_df.iloc[-2]
+            first_candle = pair_df.iloc[0]
             # mid-candle ignored
             last_candle = pair_df.iloc[-1]
 
@@ -200,14 +207,14 @@ class MomentumAlphaModel(AlphaModel):
 
             # We need 8h data to calculate the momentum.
             # We have have
-            # opening of the first candle -> 4h -> opening of the second candle -> 4h -> closing of the second candle
+            # opening ofs the first candle -> 4h -> opening of the second candle -> 4h -> closing of the second candle
             lookback_duration = last_candle["Date"] - first_candle["Date"]
             if lookback_duration < datetime.timedelta(hours=4):
                 logger.info("Bad lookback duration %s for %s, our range is %s - %s", lookback_duration, pair, start, end)
                 problem_candle_count += 1
                 continue
 
-            if self.is_funny_price(close):
+            if is_legit_price_value(close):
                 # This trading pair is too funny that we do not want to play with it
                 funny_price_count += 1
 
@@ -296,27 +303,33 @@ class OurUniverseModel(TradingStrategyUniverseModel):
 
             # We only trade on Pancakeswap v2
             exchange_universe = dataset.exchanges
-            pancake_v2 = exchange_universe.get_by_chain_and_slug(ChainId.bsc, "pancakeswap-v2")
-            assert pancake_v2, "PancakeSwap v2 missing in the dataset"
 
-            busd_address = "0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56".lower()
+            our_exchanges = {
+                exchange_universe.get_by_chain_and_factory(ChainId.bsc, factory_address) for factory_address in factory_router_map.keys()
+            }
 
-            our_exchanges = [
-                pancake_v2,
-            ]
+            # Check we got all exchanges in the dataset
+            for xchg in our_exchanges:
+                assert xchg, f"Could not look up all exchange factories, router map is: {factory_router_map}"
 
-            # Choose BUSD pairs on PancakeSwap v2
-            # that are not stablecoin pairs
+            # Choose all trading pairs that are on our supported exchanges and
+            # with our supported quote tokens
             pairs_df = filter_for_exchanges(dataset.pairs, our_exchanges)
-            pairs_df = filter_for_quote_tokens(pairs_df, [busd_address])
+            pairs_df = filter_for_quote_tokens(pairs_df, set(allowed_quote_tokens.values()))
+
+            # Remove stablecoin -> stablecoin pairs
             pairs_df = filter_for_stablecoins(pairs_df, StablecoinFilteringMode.only_volatile_pairs)
 
             # Create trading pair database
             pairs = PandasPairUniverse(pairs_df)
 
             # We do a bit detour here as we need to address the assets by their trading pairs first
-            bnb_busd = pairs.get_one_pair_from_pandas_universe(pancake_v2.exchange_id, "WBNB", "BUSD", pick_by_highest_vol=True)
-            assert bnb_busd, "We do not have BNB-BUSD pair, something wrong with the dataset"
+            pancake_v2 = exchange_universe.get_by_chain_and_slug(ChainId.bsc, "pancake-v2")
+            bnb_busd = translate_trading_pair(pairs.get_one_pair_from_pandas_universe(pancake_v2.exchange_id, "WBNB", "BUSD"))
+            assert bnb_busd, "We do not have BNB-BUSD, something wrong with the dataset"
+            reserve_assets = [
+                bnb_busd.quote,
+            ]
 
             # Get daily candles as Pandas DataFrame
             all_candles = dataset.candles
@@ -328,15 +341,9 @@ class OurUniverseModel(TradingStrategyUniverseModel):
             filtered_liquidity = filter_for_pairs(all_liquidity, pairs_df)
             liquidity_universe = GroupedLiquidityUniverse(filtered_liquidity)
 
-            # We are using BUSD as the reserve asset, pick it through BNB-BUSD pair
-            bnb_busd_pair = translate_trading_pair(bnb_busd)
-            reserve_assets = [
-                bnb_busd_pair.quote,
-            ]
-
             universe = Universe(
                 time_frame=dataset.time_frame,
-                chains=[ChainId.bsc],
+                chains={ChainId.bsc},
                 pairs=pairs,
                 exchanges=our_exchanges,
                 candles=candle_universe,
@@ -357,7 +364,7 @@ def strategy_factory(
         execution_model: UniswapV2ExecutionModelVersion0,
         sync_method: SyncMethod,
         pricing_model_factory: PricingModelFactory,
-        valuation_model_factory: ValuationModelFactory,
+        revaluation_method: RevaluationMethod,
         client: Client,
         timed_task_context_manager: AbstractContextManager,
         approval_model: ApprovalModel,
@@ -367,28 +374,21 @@ def strategy_factory(
         # https://www.python.org/dev/peps/pep-3102/
         raise TypeError("Only keyword arguments accepted")
 
-    # assert isinstance(execution_model, UniswapV2ExecutionModel), f"This strategy is compatible only with UniswapV2ExecutionModel, got {execution_model}"
-    # assert execution_model.chain_id == 1337, f"This strategy is hardcoded to ganache-cli test chain, got chain {execution_model.chain_id}"
-
     universe_model = OurUniverseModel(client, timed_task_context_manager)
-
-    routing_model = UniswapV2SimpleRoutingModel(
-        factory_router_map,
-        allowed_intermediary_pairs,
-        reserve_token_address,
-        max_slippage=0.01,
-    )
 
     runner = QSTraderRunner(
         alpha_model=MomentumAlphaModel(),
         timed_task_context_manager=timed_task_context_manager,
         execution_model=execution_model,
         approval_model=approval_model,
-        valuation_model_factory=valuation_model_factory,
+        revaluation_method=revaluation_method,
         sync_method=sync_method,
         pricing_model_factory=pricing_model_factory,
         cash_buffer=cash_buffer,
-        routing_model=routing_model,
+        routing_model=UniswapV2SimpleRoutingModel(
+            factory_router_map,
+            allowed_intermediary_pairs,
+        ),
     )
 
     return StrategyExecutionDescription(

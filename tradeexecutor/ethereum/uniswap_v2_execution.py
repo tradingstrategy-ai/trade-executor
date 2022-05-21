@@ -2,18 +2,22 @@
 
 import datetime
 from decimal import Decimal
-from typing import List, Tuple
+from typing import List
 import logging
 
+from web3 import Web3
+
+from eth_defi.gas import estimate_gas_fees
 from eth_defi.hotwallet import HotWallet
-from eth_defi.uniswap_v2.deployment import UniswapV2Deployment
-from tradeexecutor.ethereum.execution import approve_tokens, prepare_swaps, confirm_approvals, broadcast, \
-    wait_trades_to_complete, resolve_trades
+from tradeexecutor.ethereum.execution import broadcast_and_resolve
+from tradeexecutor.ethereum.tx import TransactionBuilder
+from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2SimpleRoutingModel, UniswapV2RoutingState
 from tradeexecutor.state.freeze import freeze_position_on_failed_trade
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.execution_model import ExecutionModel
-
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
+from tradeexecutor.strategy.universe_model import TradeExecutorTradingUniverse
 
 logger = logging.getLogger(__name__)
 
@@ -22,12 +26,13 @@ class UniswapV2ExecutionModel(ExecutionModel):
     """Run order execution on a single Uniswap v2 style exchanges."""
 
     def __init__(self,
-                 uniswap: UniswapV2Deployment,
+                 web3: Web3,
                  hot_wallet: HotWallet,
                  min_balance_threshold=Decimal("0.5"),
                  confirmation_block_count=6,
                  confirmation_timeout=datetime.timedelta(minutes=5),
-                 stop_on_execution_failure=True):
+                 stop_on_execution_failure=True,
+                 swap_gas_fee_limit=2_000_000):
         """
         :param state:
         :param uniswap:
@@ -37,13 +42,13 @@ class UniswapV2ExecutionModel(ExecutionModel):
         :param confirmation_timeout: How long we wait transactions to clear
         :param stop_on_execution_failure: Raise an exception if any of the trades fail top execute
         """
-        self.web3 = uniswap.web3
-        self.uniswap = uniswap
+        self.web3 = web3
         self.hot_wallet = hot_wallet
         self.stop_on_execution_failure = stop_on_execution_failure
         self.min_balance_threshold = min_balance_threshold
         self.confirmation_block_count = confirmation_block_count
         self.confirmation_timeout = confirmation_timeout
+        self.swap_gas_fee_limit = swap_gas_fee_limit
 
     @property
     def chain_id(self) -> int:
@@ -62,10 +67,10 @@ class UniswapV2ExecutionModel(ExecutionModel):
 
         # Check Uniswap v2 instance is valid.
         # Different factories (Sushi, Pancake) share few common public accessors we can call here.
-        try:
-            self.uniswap.factory.functions.allPairsLength().call()
-        except Exception as e:
-            raise AssertionError(f"Uniswap does not function at chain {self.chain_id}, factory address {self.uniswap.factory.address}") from e
+        # try:
+        #    self.uniswap.factory.functions.allPairsLength().call()
+        # except Exception as e:
+        #    raise AssertionError(f"Uniswap does not function at chain {self.chain_id}, factory address {self.uniswap.factory.address}") from e
 
     def initialize(self):
         """Set up the wallet"""
@@ -74,67 +79,32 @@ class UniswapV2ExecutionModel(ExecutionModel):
         balance = self.hot_wallet.get_native_currency_balance(self.web3)
         logger.info("Our hot wallet is %s with nonce %d and balance %s", self.hot_wallet.address, self.hot_wallet.current_nonce, balance)
 
-    def execute_trades(self, ts: datetime.datetime, state: State, trades: List[TradeExecution]) -> Tuple[List[TradeExecution], List[TradeExecution]]:
+    def execute_trades(self,
+                       ts: datetime.datetime,
+                       state: State,
+                       trades: List[TradeExecution],
+                       routing_model: UniswapV2SimpleRoutingModel,
+                       routing_state: UniswapV2RoutingState,
+                       check_balances=False):
         """Execute the trades determined by the algo on a designed Uniswap v2 instance.
 
         :return: Tuple List of succeeded trades, List of failed trades
         """
         assert isinstance(ts, datetime.datetime)
+        assert isinstance(routing_model, UniswapV2SimpleRoutingModel)
+        assert isinstance(routing_state, UniswapV2RoutingState)
 
-        # 2. Capital allocation
-        # Approvals
-        approvals = approve_tokens(
-            self.web3,
-            self.uniswap,
-            self.hot_wallet,
-            trades
-        )
+        state.start_trades(datetime.datetime.utcnow(), trades)
 
-        # 2: prepare
-        # Prepare transactions
-        prepare_swaps(
-            self.web3,
-            self.hot_wallet,
-            self.uniswap,
-            ts,
-            state,
-            trades,
-            underflow_check=False,
-        )
-
-        #: 3 broadcast
-
-        # Handle approvals separately for now.
-        # We do not need to wait these to confirm.
-        confirm_approvals(
-            self.web3,
-            approvals,
-            confirmation_block_count=self.confirmation_block_count,
-            max_timeout=self.confirmation_timeout)
-
-        broadcasted = broadcast(
-            self.web3,
-            ts,
-            trades,
-            confirmation_block_count=self.confirmation_block_count,
-        )
-        #assert trade.get_status() == TradeStatus.broadcasted
-
-        # Resolve
-        receipts = wait_trades_to_complete(
-            self.web3,
-            trades,
-            confirmation_block_count=self.confirmation_block_count,
-            max_timeout=self.confirmation_timeout)
-
-        resolve_trades(
-            self.web3,
-            self.uniswap,
-            ts,
-            state,
-            broadcasted,
-            receipts,
-            stop_on_execution_failure=False)
+        routing_model.execute_trades(routing_state, trades, check_balances=check_balances)
+        broadcast_and_resolve(self.web3, state, trades)
 
         # Clean up failed trades
-        return freeze_position_on_failed_trade(ts, state, trades)
+        freeze_position_on_failed_trade(ts, state, trades)
+
+    def get_routing_state_details(self) -> dict:
+        return {
+            "web3": self.web3,
+            "hot_wallet": self.hot_wallet,
+        }
+

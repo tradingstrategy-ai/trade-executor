@@ -2,7 +2,7 @@
 import abc
 import datetime
 from dataclasses import dataclass
-from typing import List
+from typing import List, Optional
 
 from tradeexecutor.state.identifier import AssetIdentifier
 
@@ -25,7 +25,6 @@ class TradeExecutorTradingUniverse:
     #:
     #: Usually return the list of a BUSD/USDC/similar stablecoin.
     reserve_assets: List[AssetIdentifier]
-
 
 
 class UniverseModel(abc.ABC):

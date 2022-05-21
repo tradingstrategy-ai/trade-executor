@@ -22,9 +22,10 @@ from eth_defi.token import create_token
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, deploy_trading_pair, deploy_uniswap_v2_like
 from tradeexecutor.cli.approval import CLIApprovalModel
 from tradeexecutor.ethereum.hot_wallet_sync import EthereumHotWalletReserveSyncer
-from tradeexecutor.ethereum.uniswap_v2_execution import UniswapV2ExecutionModel
+from tradeexecutor.ethereum.uniswap_v2_execution_v0 import UniswapV2ExecutionModelVersion0
 from tradeexecutor.ethereum.uniswap_v2_live_pricing import uniswap_v2_live_pricing_factory
-from tradeexecutor.ethereum.uniswap_v2_revaluation import UniswapV2PoolRevaluator
+from tradeexecutor.ethereum.uniswap_v2_valuation import UniswapV2PoolRevaluator, uniswap_v2_sell_valuation_factory
+from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2SimpleRoutingModel
 from tradeexecutor.ethereum.universe import create_exchange_universe, create_pair_universe
 from tradeexecutor.state.state import State
 from tradeexecutor.state.portfolio import Portfolio
@@ -139,9 +140,14 @@ def weth_usdc_uniswap_trading_pair(web3, deployer, uniswap_v2, weth_token, usdc_
 
 
 @pytest.fixture
-def weth_usdc_pair(weth_usdc_uniswap_trading_pair, asset_usdc, asset_weth) -> TradingPairIdentifier:
+def weth_usdc_pair(uniswap_v2, weth_usdc_uniswap_trading_pair, asset_usdc, asset_weth) -> TradingPairIdentifier:
     """WETH-USDC pair representation in the trade executor domain."""
-    return TradingPairIdentifier(asset_weth, asset_usdc, weth_usdc_uniswap_trading_pair, internal_id=int(weth_usdc_uniswap_trading_pair, 16))
+    return TradingPairIdentifier(
+        asset_weth,
+        asset_usdc,
+        weth_usdc_uniswap_trading_pair,
+        uniswap_v2.factory.address,
+        int(weth_usdc_uniswap_trading_pair, 16))
 
 
 @pytest.fixture
@@ -223,6 +229,27 @@ def recorded_input() -> bool:
     return os.environ.get("USER_INTERACTION") is None
 
 
+@pytest.fixture()
+def routing_model(uniswap_v2, asset_usdc, asset_weth, weth_usdc_pair) -> UniswapV2SimpleRoutingModel:
+
+    # Allowed exchanges as factory -> router pairs
+    factory_router_map = {
+        uniswap_v2.factory.address: (uniswap_v2.router.address, uniswap_v2.init_code_hash),
+    }
+
+    # Three way ETH quoted trades are routed thru WETH/USDC pool
+    allowed_intermediary_pairs = {
+        asset_weth.address: weth_usdc_pair.pool_address
+    }
+
+    return UniswapV2SimpleRoutingModel(
+        factory_router_map,
+        allowed_intermediary_pairs,
+        reserve_token_address=asset_usdc.address,
+        max_slippage=0.05,
+    )
+
+
 def test_cli_approve_trades(
         logger: logging.Logger,
         strategy_path: Path,
@@ -230,6 +257,7 @@ def test_cli_approve_trades(
         hot_wallet: HotWallet,
         uniswap_v2: UniswapV2Deployment,
         universe: Universe,
+        routing_model,
         state: State,
         supported_reserves,
         weth_usdc_pair,
@@ -241,9 +269,9 @@ def test_cli_approve_trades(
 
     factory = import_strategy_file(strategy_path)
     approval_model = CLIApprovalModel()
-    execution_model = UniswapV2ExecutionModel(uniswap_v2, hot_wallet, confirmation_block_count=0)
+    execution_model = UniswapV2ExecutionModelVersion0(uniswap_v2, hot_wallet, confirmation_block_count=0)
     sync_method = EthereumHotWalletReserveSyncer(web3, hot_wallet.address)
-    revaluation_method = UniswapV2PoolRevaluator(uniswap_v2)
+    valuation_model_factory = uniswap_v2_sell_valuation_factory
     pricing_model_factory = uniswap_v2_live_pricing_factory
     executor_universe = TradingStrategyUniverse(universe=universe, reserve_assets=supported_reserves)
     universe_model = StaticUniverseModel(executor_universe)
@@ -252,10 +280,11 @@ def test_cli_approve_trades(
         timed_task_context_manager=timed_task,
         execution_model=execution_model,
         approval_model=approval_model,
-        revaluation_method=revaluation_method,
+        valuation_model_factory=valuation_model_factory,
         sync_method=sync_method,
         client=None,
         pricing_model_factory=pricing_model_factory,
+        routing_model=routing_model,
         universe_model=universe_model)
 
     runner = description.runner
@@ -283,6 +312,7 @@ def test_cli_disapprove_trades(
         uniswap_v2: UniswapV2Deployment,
         universe: Universe,
         state: State,
+        routing_model,
         supported_reserves,
         weth_usdc_pair,
         weth_token,
@@ -293,9 +323,9 @@ def test_cli_disapprove_trades(
 
     factory = import_strategy_file(strategy_path)
     approval_model = CLIApprovalModel()
-    execution_model = UniswapV2ExecutionModel(uniswap_v2, hot_wallet, confirmation_block_count=0)
+    execution_model = UniswapV2ExecutionModelVersion0(uniswap_v2, hot_wallet, confirmation_block_count=0)
     sync_method = EthereumHotWalletReserveSyncer(web3, hot_wallet.address)
-    revaluation_method = UniswapV2PoolRevaluator(uniswap_v2)
+    valuation_model_factory = uniswap_v2_sell_valuation_factory
     pricing_model_factory = uniswap_v2_live_pricing_factory
     executor_universe = TradingStrategyUniverse(universe=universe, reserve_assets=supported_reserves)
     universe_model = StaticUniverseModel(executor_universe)
@@ -304,8 +334,9 @@ def test_cli_disapprove_trades(
         timed_task_context_manager=timed_task,
         execution_model=execution_model,
         approval_model=approval_model,
-        revaluation_method=revaluation_method,
+        valuation_model_factory=valuation_model_factory,
         sync_method=sync_method,
+        routing_model=routing_model,
         client=None,
         pricing_model_factory=pricing_model_factory,
         universe_model=universe_model)

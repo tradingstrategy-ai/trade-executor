@@ -1,6 +1,6 @@
 import datetime
 from dataclasses import dataclass
-from typing import Optional, List, Any, Dict
+from typing import Optional, List, Any, Dict, Tuple
 
 from dataclasses_json import dataclass_json
 
@@ -9,19 +9,33 @@ from tradeexecutor.state.types import JSONHexAddress, JSONHexBytes
 
 @dataclass_json
 @dataclass
-class BlockchainTransactionInfo:
-    """Information about a blockchain level transaction associated with the trades and anything else.
+class BlockchainTransaction:
+    """A stateful blockchain transaction.
 
-    Transaction has four phases
+    - The state tracks a transaction over its life cycle
+
+    - Transactions are part of a larger logical operation (a trade)
+
+    - Transactions can be resolved either to success or failed
+
+    - Transaction information is easily exported to the frontend
+
+    Transaction has (rough) four phases
 
     1. Preparation
+
     2. Signing
+
     3. Broadcast
+
     4. Confirmation
     """
 
     #: Chain id from https://github.com/ethereum-lists/chains
     chain_id: Optional[int] = None
+
+    #: TODO: Part of signed bytes. Create an accessor.
+    from_address: Optional[str] = None
 
     #: Contract we called. Usually the Uniswap v2 router address.
     contract_address: Optional[JSONHexAddress] = None
@@ -30,7 +44,7 @@ class BlockchainTransactionInfo:
     function_selector: Optional[str] = None
 
     #: Arguments we passed to the smart contract function
-    args: Optional[List[Any]] = None
+    args: Optional[Tuple[Any]] = None
 
     #: Blockchain bookkeeping
     tx_hash: Optional[JSONHexBytes] = None
@@ -44,6 +58,9 @@ class BlockchainTransactionInfo:
 
     #: Raw bytes of the signed transaction
     signed_bytes: Optional[JSONHexBytes] = None
+
+    #: When this transaction was broadcasted
+    broadcasted_at: Optional[datetime.datetime] = None
 
     included_at: Optional[datetime.datetime] = None
     block_number: Optional[int] = None
@@ -61,6 +78,17 @@ class BlockchainTransactionInfo:
     #: The transaction revert reason if we manage to extract it
     revert_reason: Optional[str] = None
 
+    def __repr__(self):
+        if self.status is True:
+            return f"<Tx from:{self.from_address}\n  nonce:{self.nonce}\n  to:{self.contract_address}\n  func:{self.function_selector}\n  args:{self.args}\n  succeed>\n"
+        elif self.status is False:
+            return f"<Tx from:{self.from_address}\n  nonce:{self.nonce}\n  to:{self.contract_address}\n  func:{self.function_selector}\n  args:{self.args}\n  fail reason:{self.revert_reason}>\n"
+        else:
+            return f"<Tx from:{self.from_address}\n  nonce:{self.nonce}\n  to:{self.contract_address}\n  func:{self.function_selector}\n  args:{self.args}\n  unresolved>\n"
+
+    def is_success(self) -> bool:
+        """Transaction is success if it's succeed flag has been set."""
+        return self.status
 
     def set_target_information(self, chain_id: int, contract_address: str, function_selector: str, args: list, details: dict):
         """Update the information on which transaction we are going to perform."""
@@ -88,7 +116,9 @@ class BlockchainTransactionInfo:
         block_hash: str,
         realised_gas_units_consumed: int,
         realised_gas_price: int,
-        status: bool):
+        status: bool,
+        revert_reason: Optional[str] = None,
+        ):
         """Update the information we are going to use to broadcast the transaction."""
         assert isinstance(ts, datetime.datetime)
         assert type(block_number) == int
@@ -102,3 +132,4 @@ class BlockchainTransactionInfo:
         self.realised_gas_price = realised_gas_price
         self.realised_gas_units_consumed = realised_gas_units_consumed
         self.status = status
+        self.revert_reason = revert_reason

@@ -31,9 +31,10 @@ from eth_defi.ganache import fork_network
 from eth_defi.hotwallet import HotWallet
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, fetch_deployment
 from tradeexecutor.ethereum.hot_wallet_sync import EthereumHotWalletReserveSyncer
-from tradeexecutor.ethereum.uniswap_v2_execution import UniswapV2ExecutionModel
+from tradeexecutor.ethereum.uniswap_v2_execution_v0 import UniswapV2ExecutionModelVersion0
 from tradeexecutor.ethereum.uniswap_v2_live_pricing import uniswap_v2_live_pricing_factory
-from tradeexecutor.ethereum.uniswap_v2_revaluation import UniswapV2PoolRevaluator
+from tradeexecutor.ethereum.uniswap_v2_valuation import UniswapV2PoolRevaluator, uniswap_v2_sell_valuation_factory
+from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2SimpleRoutingModel
 from tradeexecutor.state.state import State
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.trade import TradeExecution
@@ -198,7 +199,7 @@ def hot_wallet(web3: Web3, busd_token: Contract, hot_wallet_private_key: HexByte
 @pytest.fixture()
 def strategy_path() -> Path:
     """Where do we load our strategy file."""
-    return Path(os.path.join(os.path.dirname(__file__), "strategies", "pancakeswap_v2_main_loop.py"))
+    return Path(os.path.join(os.path.dirname(__file__), "../strategies", "pancakeswap_v2_main_loop.py"))
 
 
 @pytest.fixture()
@@ -216,6 +217,32 @@ def state(portfolio) -> State:
     return State(portfolio=portfolio)
 
 
+@pytest.fixture()
+def routing_model(asset_busd):
+
+    # Allowed exchanges as factory -> router pairs
+    factory_router_map = {
+        # Pancake
+        "0xcA143Ce32Fe78f1f7019d7d551a6402fC5350c73": ("0x10ED43C718714eb63d5aA57B78B54704E256024E", "0x00fb7f630766e6a796048ea87d01acd3068e8ff67d078148a3fa3f4a84f69bd5"),
+        # Biswap
+        #"0x858e3312ed3a876947ea49d572a7c42de08af7ee": ("0x3a6d8cA21D1CF76F653A67577FA0D27453350dD8", )
+        # FSTSwap
+        #"0x9A272d734c5a0d7d84E0a892e891a553e8066dce": ("0x1B6C9c20693afDE803B27F8782156c0f892ABC2d", ),
+    }
+
+    allowed_intermediary_pairs = {
+        # For WBNB pairs route thru (WBNB, BUSD) pool
+        # https://tradingstrategy.ai/trading-view/binance/pancakeswap-v2/bnb-busd
+        "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c": "0x58f876857a02d6762e0101bb5c46a8c1ed44dc16",
+    }
+
+    return UniswapV2SimpleRoutingModel(
+        factory_router_map,
+        allowed_intermediary_pairs,
+        reserve_token_address=asset_busd.address,
+        max_slippage=0.01)
+
+
 def test_forked_pancake(
         logger: logging.Logger,
         web3: Web3,
@@ -226,6 +253,7 @@ def test_forked_pancake(
         state: State,
         persistent_test_client: Client,
         cake_token: Contract,
+        routing_model,
     ):
     """Run a strategy tick against PancakeSwap v2 on forked BSC.
 
@@ -234,18 +262,19 @@ def test_forked_pancake(
 
     strategy_factory = import_strategy_file(strategy_path)
     approval_model = UncheckedApprovalModel()
-    execution_model = UniswapV2ExecutionModel(pancakeswap_v2, hot_wallet, confirmation_block_count=0, confirmation_timeout=datetime.timedelta(minutes=1))
+    execution_model = UniswapV2ExecutionModelVersion0(pancakeswap_v2, hot_wallet, confirmation_block_count=0, confirmation_timeout=datetime.timedelta(minutes=1))
     sync_method = EthereumHotWalletReserveSyncer(web3, hot_wallet.address)
-    revaluation_method = UniswapV2PoolRevaluator(pancakeswap_v2)
+    valuation_model_factory = uniswap_v2_sell_valuation_factory
 
     run_description: StrategyExecutionDescription = strategy_factory(
         execution_model=execution_model,
         timed_task_context_manager=timed_task,
         sync_method=sync_method,
-        revaluation_method=revaluation_method,
+        valuation_model_factory=valuation_model_factory,
         pricing_model_factory=uniswap_v2_live_pricing_factory,
         approval_model=approval_model,
         client=persistent_test_client,
+        routing_model=routing_model,
     )
 
     # Deconstruct strategy input

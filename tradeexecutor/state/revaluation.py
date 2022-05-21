@@ -1,8 +1,8 @@
+"""Position valuation state management."""
+
 import datetime
 from decimal import Decimal
-from typing import Callable
 
-from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.types import USDollarAmount
 
 
@@ -11,10 +11,6 @@ class RevaluationFailed(Exception):
 
     Something failed within the revaluation - like trading pair disappearing.
     """
-
-
-#: Callable for revaluating existing trading positions
-RevaluationMethod = Callable[[datetime.datetime, TradingPosition], Decimal]
 
 
 class RevalueEvent:

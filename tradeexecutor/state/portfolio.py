@@ -45,6 +45,7 @@ class Portfolio:
     open_positions: Dict[int, TradingPosition] = field(default_factory=dict)
 
     #: Currently held reserve assets
+    #: Token address -> reserve position mapping.
     reserves: Dict[str, ReservePosition] = field(default_factory=dict)
 
     #: Trades completed in the past
@@ -150,11 +151,19 @@ class Portfolio:
     def create_trade(self,
                      ts: datetime.datetime,
                      pair: TradingPairIdentifier,
-                     quantity: Decimal,
+                     quantity: Optional[Decimal],
+                     reserve: Optional[Decimal],
                      assumed_price: USDollarAmount,
                      trade_type: TradeType,
                      reserve_currency: AssetIdentifier,
                      reserve_currency_price: USDollarAmount) -> Tuple[TradingPosition, TradeExecution, bool]:
+        """Create a trade.
+
+        Trade can be opened by knowing how much you want to buy (quantity) or how much cash you have to buy (reserve).
+        """
+
+        if quantity is not None:
+            assert reserve is None, "Quantity and reserve both cannot be given at the same time"
 
         position = self.get_position_by_trading_pair(pair)
         if position is None:
@@ -163,7 +172,15 @@ class Portfolio:
         else:
             created = False
 
-        trade = position.open_trade(ts, self.next_trade_id, quantity, assumed_price, trade_type, reserve_currency, reserve_currency_price)
+        trade = position.open_trade(
+            ts,
+            self.next_trade_id,
+            quantity,
+            reserve,
+            assumed_price,
+            trade_type,
+            reserve_currency,
+            reserve_currency_price)
 
         # Check we accidentally do not reuse trade id somehow
 
@@ -215,6 +232,7 @@ class Portfolio:
 
     def adjust_reserves(self, asset: AssetIdentifier, amount: Decimal):
         """Remove currency from reserved"""
+        assert isinstance(amount, Decimal), f"Got amount {amount}"
         reserve = self.get_reserve_position(asset)
         assert reserve, f"No reserves available for {asset}"
         assert reserve.quantity, f"Reserve quantity missing for {asset}"
@@ -269,8 +287,8 @@ class Portfolio:
         """
         for p in self.get_all_positions():
             for t in p.trades.values():
-                if t.tx_info:
-                    assert t.tx_info.nonce != nonce, f"Nonce {nonce} is already being used by trade {t} with txinfo {t.tx_info}"
+                for tx in t.blockchain_transactions:
+                    assert tx.nonce != nonce, f"Nonce {nonce} is already being used by trade {t} with txinfo {t.tx_info}"
 
     def revalue_positions(self, ts: datetime.datetime, valuation_method: Callable, revalue_frozen=True):
         """Revalue all open positions in the portfolio.
@@ -297,10 +315,12 @@ class Portfolio:
 
         For strategies that use only one reserve currency.
         This is the first in the reserve currency list.
+
+        :return:
+            Tuple (Reserve currency asset, its latest US dollar exchanage rate)
         """
 
         assert len(self.reserves) > 0, "Portfolio has no reserve currencies"
-
         res_pos = next(iter(self.reserves.values()))
         return res_pos.asset, res_pos.reserve_token_price
 

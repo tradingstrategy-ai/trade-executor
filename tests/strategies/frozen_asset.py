@@ -4,13 +4,14 @@ from contextlib import AbstractContextManager
 from typing import Dict, Any
 
 import pandas as pd
+
+from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2SimpleRoutingModel
 from tradeexecutor.strategy.trading_strategy_universe import translate_trading_pair
 
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
 
-from tradeexecutor.ethereum.uniswap_v2_execution import UniswapV2ExecutionModel
-from tradeexecutor.state.revaluation import RevaluationMethod
+from tradeexecutor.ethereum.uniswap_v2_execution_v0 import UniswapV2ExecutionModelVersion0
 from tradeexecutor.state.state import State
 from tradeexecutor.state.sync import SyncMethod
 from tradeexecutor.strategy.approval import ApprovalModel
@@ -22,7 +23,27 @@ from tradeexecutor.strategy.universe_model import StaticUniverseModel
 
 
 # Cannot use Python __name__ here because the module is dynamically loaded
+from tradeexecutor.strategy.valuation import ValuationModelFactory
+
 logging = logging.getLogger("frozen_asset")
+
+
+#
+# Trade routing info
+#
+
+# Keep everything internally in BUSD
+reserve_token_address = "0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56".lower()
+
+# Allowed exchanges as factory -> router pairs,
+# by their smart contract addresses
+factory_router_map = {
+    "0xcA143Ce32Fe78f1f7019d7d551a6402fC5350c73": ("0x10ED43C718714eb63d5aA57B78B54704E256024E", "0x00fb7f630766e6a796048ea87d01acd3068e8ff67d078148a3fa3f4a84f69bd5")
+}
+
+# For three way trades, which pools we can use
+allowed_intermediary_pairs = {}
+
 
 
 class BadAlpha(AlphaModel):
@@ -45,8 +66,10 @@ class BadAlpha(AlphaModel):
                 bit_busd.pair_id: 0.5,
             }
         elif cycle == 2:
-            # Sell all
+            # Sell tick
             return {
+                wbnb_busd.pair_id: 0.9,
+                bit_busd.pair_id: 0.1,
             }
         elif cycle == 3:
             assert state.is_good_pair(translate_trading_pair(wbnb_busd))
@@ -58,10 +81,10 @@ class BadAlpha(AlphaModel):
 
 def strategy_factory(
         *ignore,
-        execution_model: UniswapV2ExecutionModel,
+        execution_model: UniswapV2ExecutionModelVersion0,
         sync_method: SyncMethod,
         pricing_model_factory: PricingModelFactory,
-        revaluation_method: RevaluationMethod,
+        valuation_model_factory: ValuationModelFactory,
         client,
         timed_task_context_manager: AbstractContextManager,
         approval_model: ApprovalModel,
@@ -81,10 +104,16 @@ def strategy_factory(
         timed_task_context_manager=timed_task_context_manager,
         execution_model=execution_model,
         approval_model=approval_model,
-        revaluation_method=revaluation_method,
+        valuation_model_factory=valuation_model_factory,
         sync_method=sync_method,
         pricing_model_factory=pricing_model_factory,
         cash_buffer=cash_buffer,
+        routing_model=UniswapV2SimpleRoutingModel(
+            factory_router_map,
+            allowed_intermediary_pairs,
+            reserve_token_address,
+            max_slippage=0.01,
+        ),
     )
 
     return StrategyExecutionDescription(

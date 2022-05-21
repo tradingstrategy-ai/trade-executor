@@ -1,9 +1,10 @@
 import abc
 import datetime
-from typing import List, Tuple
+from typing import List
 
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
+from tradeexecutor.strategy.routing import RoutingModel, RoutingState
 
 
 class ExecutionModel(abc.ABC):
@@ -25,9 +26,43 @@ class ExecutionModel(abc.ABC):
         """
 
     @abc.abstractmethod
-    def execute_trades(self, ts: datetime.datetime, state: State, trades: List[TradeExecution]) -> Tuple[List[TradeExecution], List[TradeExecution]]:
+    def get_routing_state_details(self) -> object:
+        """Get needed details to establish a routing state.
+
+        TODO: API Unfinished
+        """
+
+    @abc.abstractmethod
+    def execute_trades(self,
+                       ts: datetime.datetime,
+                       state: State,
+                       trades: List[TradeExecution],
+                       routing_model: RoutingModel,
+                       routing_state: RoutingState,
+                       check_balances=False,
+                       ):
         """Execute the trades determined by the algo on a designed Uniswap v2 instance.
 
-        :return: Tuple List of succeeded trades, List of failed trades
+        :param ts:
+            Timestamp of the trade cycle.
+
+        :param universe:
+            Current trading universe for this cycle.
+
+        :param state:
+            State of the trade executor.
+
+        :param trades:
+            List of trades decided by the strategy.
+            Will be executed and modified in place.
+
+        :param routing_model:
+            Routing model how to execute the trades
+
+        :param routing_state:
+            State of already made on-chain transactions and such on this cycle
+
+        :param check_balances:
+            Check that on-chain accounts have enough balance before creating transaction objects.
+            Useful during unit tests to spot issues in trade routing.
         """
-        pass

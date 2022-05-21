@@ -6,23 +6,22 @@ from contextlib import AbstractContextManager
 import logging
 from io import StringIO
 
-from typing import List
+from typing import List, Optional
 
 from tradeexecutor.strategy.approval import ApprovalModel
 from tradeexecutor.strategy.execution_model import ExecutionModel
-from tradeexecutor.state.revaluation import RevaluationMethod
 from tradeexecutor.state.sync import SyncMethod
 from tradeexecutor.strategy.output import output_positions, DISCORD_BREAK_CHAR, output_trades
-from tradeexecutor.strategy.pricing_model import PricingModelFactory
+from tradeexecutor.strategy.pricing_model import PricingModelFactory, PricingModel
+from tradeexecutor.strategy.routing import RoutingModel
 from tradeexecutor.strategy.universe_model import TradeExecutorTradingUniverse
 
 from tradeexecutor.state.state import State
-from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.reserve import ReservePosition
-from tradingstrategy.analysis.tradeanalyzer import TradePosition
-from tradingstrategy.universe import Universe
+from tradeexecutor.strategy.valuation import ValuationModelFactory, ValuationModel
+
 
 logger = logging.getLogger(__name__)
 
@@ -32,21 +31,26 @@ class PreflightCheckFailed(Exception):
 
 
 class StrategyRunner(abc.ABC):
-    """A base class for a strategy live trade executor."""
+    """A base class for a strategy live trade executor.
+
+    TODO: Make routing_model non-optional after eliminating legacy code.
+    """
 
     def __init__(self,
                  timed_task_context_manager: AbstractContextManager,
                  execution_model: ExecutionModel,
                  approval_model: ApprovalModel,
-                 revaluation_method: RevaluationMethod,
+                 valuation_model_factory: ValuationModelFactory,
                  sync_method: SyncMethod,
-                 pricing_model_factory: PricingModelFactory):
+                 pricing_model_factory: PricingModelFactory,
+                 routing_model: Optional[RoutingModel]=None):
         self.timed_task_context_manager = timed_task_context_manager
         self.execution_model = execution_model
         self.approval_model = approval_model
-        self.revaluation_method = revaluation_method
+        self.valuation_model_factory = valuation_model_factory
         self.sync_method = sync_method
         self.pricing_model_factory = pricing_model_factory
+        self.routing_model = routing_model
 
     @abc.abstractmethod
     def pretick_check(self, ts: datetime.datetime, universe: TradeExecutorTradingUniverse):
@@ -81,15 +85,37 @@ class StrategyRunner(abc.ABC):
         debug_details["total_equity_at_start"] = state.portfolio.get_total_equity()
         debug_details["total_cash_at_start"] = state.portfolio.get_current_cash()
 
-    def revalue_portfolio(self, ts: datetime.datetime, state: State):
+    def revalue_portfolio(self, ts: datetime.datetime, state: State, valuation_method: ValuationModel):
         """Revalue portfolio based on the data."""
-        state.revalue_positions(ts, self.revaluation_method)
+        state.revalue_positions(ts, valuation_method)
         logger.info("After revaluation at %s our equity is %f", ts, state.portfolio.get_total_equity())
 
     def on_data_signal(self):
         pass
 
-    def on_clock(self, clock: datetime.datetime, universe: TradeExecutorTradingUniverse, state: State, debug_details: dict) -> List[TradeExecution]:
+    def on_clock(self,
+                 clock: datetime.datetime,
+                 universe: TradeExecutorTradingUniverse,
+                 pricing_model: PricingModel,
+                 state: State,
+                 debug_details: dict) -> List[TradeExecution]:
+        """Perform the core strategy decision cycle.
+
+        :param clock:
+            The current cycle timestamp
+
+        :param universe:
+            Our trading pairs and such. Refreshed before the cycle.
+
+        :param pricing_model:
+            When constructing trades, uses pricing model to estimate the cost of a trade.
+
+        :param state:
+            The current trade execution and portfolio status
+
+        :return:
+            List of new trades to execute
+        """
         return []
 
     def report_after_sync_and_revaluation(self, clock: datetime.datetime, universe: TradeExecutorTradingUniverse, state: State, debug_details: dict):
@@ -167,44 +193,85 @@ class StrategyRunner(abc.ABC):
         """
         pass
 
-    def tick(self, clock: datetime.datetime, universe: TradeExecutorTradingUniverse, state: State, debug_details: dict) -> dict:
+    def setup_routing(self, universe: TradeExecutorTradingUniverse):
+
+        # Get web3 connection, hot wallet
+        routing_state_details = self.execution_model.get_routing_state_details()
+
+        # Initialise the current routing state with execution details
+        routing_state = self.routing_model.create_routing_state(universe, routing_state_details)
+
+        # Create a pricing model for assets
+        pricing_model = self.pricing_model_factory(self.execution_model, universe, self.routing_model)
+
+        # Create a valuation model for positions
+        valuation_model = self.valuation_model_factory(pricing_model)
+
+        return routing_state, pricing_model, valuation_model
+
+    def tick(self,
+             clock: datetime.datetime,
+             universe: TradeExecutorTradingUniverse,
+             state: State,
+             debug_details: dict) -> dict:
         """Perform the strategy main tick.
 
         :return: Debug details dictionary where different subsystems can write their diagnostics information what is happening during the dict.
             Mostly useful for integration testing.
         """
 
+        assert isinstance(universe, TradeExecutorTradingUniverse)
+
         with self.timed_task_context_manager("strategy_tick", clock=clock):
 
+            routing_state, pricing_model, valuation_model = self.setup_routing(universe)
+
+            # Watch incoming deposits
             with self.timed_task_context_manager("sync_portfolio"):
                 self.sync_portfolio(clock, universe, state, debug_details)
 
+            # Assing a new value for every existing position
             with self.timed_task_context_manager("revalue_portfolio"):
-                self.revalue_portfolio(clock, state)
+                self.revalue_portfolio(clock, state, valuation_model)
 
+            # Log output
             self.report_after_sync_and_revaluation(clock, universe, state, debug_details)
 
+            # Run the strategy cycle
             with self.timed_task_context_manager("decide_trades"):
-                rebalance_trades = self.on_clock(clock, universe, state, debug_details)
+                rebalance_trades = self.on_clock(clock, universe, pricing_model, state, debug_details)
                 assert type(rebalance_trades) == list
                 debug_details["rebalance_trades"] = rebalance_trades
                 logger.info("We have %d trades", len(rebalance_trades))
 
+            # Log output
             self.report_strategy_thinking(clock, universe, state, rebalance_trades, debug_details)
 
+            # Ask user confirmation for any trades
             with self.timed_task_context_manager("confirm_trades"):
                 approved_trades = self.approval_model.confirm_trades(state, rebalance_trades)
                 assert type(approved_trades) == list
                 logger.info("After approval we have %d trades left", len(approved_trades))
                 debug_details["approved_trades"] = approved_trades
 
+            # Log output
             self.report_before_execution(clock, universe, state, approved_trades, debug_details)
 
+            # Physically execute the trades
             with self.timed_task_context_manager("execute_trades"):
-                succeeded_trades, failed_trades = self.execution_model.execute_trades(clock, state, approved_trades)
-                debug_details["succeeded_trades"] = succeeded_trades
-                debug_details["failed_trades"] = failed_trades
 
+                # Unit tests can turn this flag to make it easier to see why trades fail
+                check_balances = debug_details.get("check_balances", False)
+
+                self.execution_model.execute_trades(
+                    clock,
+                    state,
+                    approved_trades,
+                    self.routing_model,
+                    routing_state,
+                    check_balances=check_balances)
+
+            # Log output
             self.report_after_execution(clock, universe, state, debug_details)
 
         return debug_details

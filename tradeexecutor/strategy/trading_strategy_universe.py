@@ -4,9 +4,10 @@ import textwrap
 from abc import abstractmethod
 from dataclasses import dataclass
 import logging
-from typing import List
+from typing import List, Optional
 
 import pandas as pd
+from tradingstrategy.token import Token
 
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.strategy.universe_model import TradeExecutorTradingUniverse, UniverseModel, DataTooOld
@@ -15,10 +16,10 @@ from tradingstrategy.chain import ChainId
 from tradingstrategy.client import Client
 from tradingstrategy.exchange import ExchangeUniverse
 from tradingstrategy.liquidity import GroupedLiquidityUniverse
-from tradingstrategy.pair import DEXPair, PandasPairUniverse
+from tradingstrategy.pair import DEXPair, PandasPairUniverse, PairType
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
-
+from tradingstrategy.utils.groupeduniverse import filter_for_pairs
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +37,68 @@ class Dataset:
 @dataclass
 class TradingStrategyUniverse(TradeExecutorTradingUniverse):
     """A trading executor trading universe that using data from TradingStrategy.ai data feeds."""
-    universe: Universe
+    universe: Optional[Universe] = None
+
+    @staticmethod
+    def create_single_pair_universe(
+        dataset: Dataset,
+        chain_id: ChainId,
+        exchange_slug: str,
+        base_token: str,
+        quote_token: str) -> "TradingStrategyUniverse":
+        """Filters down the dataset for a single trading pair.
+
+        This is ideal for strategies that only want to trade a single pair.
+        """
+
+        # We only trade on Pancakeswap v2
+        exchange_universe = dataset.exchanges
+        exchange = exchange_universe.get_by_chain_and_slug(chain_id, exchange_slug)
+        assert exchange, f"No exchange {exchange_slug} found on chain {chain_id.name}"
+
+        # Create trading pair database
+        pair_universe = PandasPairUniverse.create_single_pair_universe(
+            dataset.pairs,
+            exchange,
+            base_token,
+            quote_token,
+        )
+
+        # Get daily candles as Pandas DataFrame
+        all_candles = dataset.candles
+        filtered_candles = filter_for_pairs(all_candles, pair_universe.df)
+        candle_universe = GroupedCandleUniverse(filtered_candles)
+
+        # Get liquidity candles as Pandas Dataframe
+        all_liquidity = dataset.liquidity
+        filtered_liquidity = filter_for_pairs(all_liquidity, pair_universe.df)
+        liquidity_universe = GroupedLiquidityUniverse(filtered_liquidity)
+
+        pair = pair_universe.get_single()
+
+        # We have only a single pair, so the reserve asset must be its quote token
+        trading_pair_identifier = translate_trading_pair(pair)
+        reserve_assets = [
+            trading_pair_identifier.quote
+        ]
+
+        universe = Universe(
+            time_frame=dataset.time_frame,
+            chains={chain_id},
+            pairs=pair_universe,
+            exchanges={exchange},
+            candles=candle_universe,
+            liquidity=liquidity_universe,
+        )
+
+        return TradingStrategyUniverse(universe=universe, reserve_assets=reserve_assets)
+
+    def get_pair_by_address(self, address: str) -> Optional[TradingPairIdentifier]:
+        """Get a trading pair data by a smart contract address."""
+        pair = self.universe.pairs.get_pair_by_smart_contract(address)
+        if not pair:
+            return None
+        return translate_trading_pair(pair)
 
 
 class TradingStrategyUniverseModel(UniverseModel):
@@ -162,6 +224,15 @@ class TradingStrategyUniverseModel(UniverseModel):
         pass
 
 
+def translate_token(token: Token) -> AssetIdentifier:
+    return AssetIdentifier(
+        token.chain_id.value,
+        token.address,
+        token.symbol,
+        token.decimals
+    )
+
+
 def translate_trading_pair(pair: DEXPair) -> TradingPairIdentifier:
     """Translate trading pair from Pandas universe to Trade Executor universe.
 
@@ -178,19 +249,20 @@ def translate_trading_pair(pair: DEXPair) -> TradingPairIdentifier:
     This is called when a trade is made: this is the moment when trade executor data format must be made available.
     """
 
-    # TODO: Add decimals here
+    assert pair.base_token_decimals is not None, f"Base token missing decimals: {pair}"
+    assert pair.quote_token_decimals is not None, f"Quote token missing decimals: {pair}"
 
     base = AssetIdentifier(
         chain_id=pair.chain_id.value,
         address=pair.base_token_address,
         token_symbol=pair.base_token_symbol,
-        decimals=None,
+        decimals=pair.base_token_decimals,
     )
     quote = AssetIdentifier(
         chain_id=pair.chain_id.value,
         address=pair.quote_token_address,
         token_symbol=pair.quote_token_symbol,
-        decimals=None,
+        decimals=pair.quote_token_decimals,
     )
 
     return TradingPairIdentifier(
@@ -199,4 +271,35 @@ def translate_trading_pair(pair: DEXPair) -> TradingPairIdentifier:
         pool_address=pair.address,
         internal_id=pair.pair_id,
         info_url=pair.get_trading_pair_page_url(),
+        exchange_address=pair.exchange_address,
     )
+
+
+def create_pair_universe_from_code(chain_id: ChainId, pairs: List[TradingPairIdentifier]) -> "PandasPairUniverse":
+    """Create the trading universe from handcrafted data.
+
+    Used in unit testing.
+    """
+    data = []
+    for idx, p in enumerate(pairs):
+        assert p.base.decimals
+        assert p.quote.decimals
+        dex_pair = DEXPair(
+            pair_id=idx,
+            chain_id=chain_id,
+            exchange_id=0,
+            address=p.pool_address,
+            exchange_address=p.exchange_address,
+            dex_type=PairType.uniswap_v2,
+            base_token_symbol=p.base.token_symbol,
+            quote_token_symbol=p.quote.token_symbol,
+            token0_symbol=p.base.token_symbol,
+            token1_symbol=p.quote.token_symbol,
+            token0_address=p.base.address,
+            token1_address=p.quote.address,
+            token0_decimals=p.base.decimals,
+            token1_decimals=p.quote.decimals,
+        )
+        data.append(dex_pair.to_dict())
+    df = pd.DataFrame(data)
+    return PandasPairUniverse(df)

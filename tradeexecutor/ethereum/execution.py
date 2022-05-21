@@ -1,27 +1,30 @@
+"""Dealing with Ethereum low level tranasctions."""
+
 import logging
 import datetime
-import time
 from collections import Counter
 from decimal import Decimal
-from typing import List, Dict, Set
+from typing import List, Dict, Set, Tuple
 
 from eth_account.datastructures import SignedTransaction
 from eth_typing import HexAddress
 from hexbytes import HexBytes
 from web3 import Web3
+from web3.contract import Contract
 
 from eth_defi.abi import get_deployed_contract
 from eth_defi.gas import GasPriceSuggestion, apply_gas, estimate_gas_fees
 from eth_defi.hotwallet import HotWallet
+from eth_defi.revert_reason import fetch_transaction_revert_reason
 from eth_defi.token import fetch_erc20_details, TokenDetails
 from eth_defi.txmonitor import wait_transactions_to_complete, \
     broadcast_and_wait_transactions_to_complete, broadcast_transactions
-from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, FOREVER_DEADLINE
-from eth_defi.uniswap_v2.fees import estimate_sell_price, estimate_sell_price_decimals
+from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, FOREVER_DEADLINE,  mock_partial_deployment_for_analysis
+from eth_defi.uniswap_v2.fees import estimate_sell_price_decimals
 from eth_defi.uniswap_v2.analysis import analyse_trade, TradeSuccess
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
-from tradeexecutor.state.blockhain_transaction import BlockchainTransactionInfo
+from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 
 logger = logging.getLogger(__name__)
@@ -88,7 +91,7 @@ def translate_to_naive_swap(
     selector = deployment.router.functions.swapExactTokensForTokens
 
     # Create record of this transaction
-    tx_info = t.tx_info = BlockchainTransactionInfo()
+    tx_info = t.tx_info = BlockchainTransaction()
     tx_info.set_target_information(
         web3.eth.chain_id,
         deployment.router.address,
@@ -191,6 +194,52 @@ def approve_tokens(
     return signed
 
 
+def approve_infinity(
+        web3: Web3,
+        deployment: UniswapV2Deployment,
+        hot_wallet: HotWallet,
+        instructions: List[TradeExecution],
+    ) -> List[SignedTransaction]:
+    """Approve multiple ERC-20 token allowances for the trades needed.
+
+    Each token is approved only once. E.g. if you have 4 trades using USDC,
+    you will get 1 USDC approval.
+    """
+
+    signed = []
+
+    approvals = Counter()
+
+    for idx, t in enumerate(instructions):
+
+        base_token_details = fetch_erc20_details(web3, t.pair.base.checksum_address)
+        quote_token_details = fetch_erc20_details(web3, t.pair.quote.checksum_address)
+
+        # Update approval counters for the whole batch
+        if t.is_buy():
+            approvals[quote_token_details.address] += int(t.planned_reserve * 10**quote_token_details.decimals)
+        else:
+            approvals[base_token_details.address] += int(-t.planned_quantity * 10**base_token_details.decimals)
+
+    for idx, tpl in enumerate(approvals.items()):
+        token_address, amount = tpl
+
+        assert amount > 0, f"Got a non-positive approval {token_address}: {amount}"
+
+        token = get_deployed_contract(web3, "IERC20.json", token_address)
+        tx = token.functions.approve(
+            deployment.router.address,
+            amount,
+        ).buildTransaction({
+            'chainId': web3.eth.chain_id,
+            'gas': 100_000,  # Estimate max 100k per approval
+            'from': hot_wallet.address,
+        })
+        signed.append(hot_wallet.sign_transaction_with_new_nonce(tx))
+
+    return signed
+
+
 def confirm_approvals(
         web3: Web3,
         txs: List[SignedTransaction],
@@ -217,7 +266,7 @@ def broadcast(
         ts: datetime.datetime,
         instructions: List[TradeExecution],
         confirmation_block_count: int=0,
-        ganache_sleep=0.5) -> Dict[HexBytes, TradeExecution]:
+        ganache_sleep=0.5) -> Dict[HexBytes, Tuple[TradeExecution, BlockchainTransaction]]:
     """Broadcast multiple transations and manage the trade executor state for them.
 
     :return: Map of transaction hashes to watch
@@ -232,18 +281,21 @@ def broadcast(
     broadcast_batch: List[SignedTransaction] = []
 
     for t in instructions:
-        assert isinstance(t.tx_info.signed_bytes, str), f"Got signed transaction: {t.tx_info.signed_bytes}"
-        assert t.tx_info.nonce not in nonces, "Nonce already used"
-        nonces.add(t.tx_info.nonce)
-        t.broadcasted_at = ts
-        res[t.tx_info.tx_hash] = t
-        # Only SignedTransaction.rawTransaction attribute is intresting in this point
-        tx = SignedTransaction(rawTransaction=t.tx_info.signed_bytes, hash=None, r=0, s=0, v=0)
-        broadcast_batch.append(tx)
+        assert len(t.blockchain_transactions) > 0, f"Trade {t} does not have any blockchain transactions prepared"
+        for tx in t.blockchain_transactions:
+            assert isinstance(tx.signed_bytes, str), f"Got signed transaction: {t.tx_info.signed_bytes}"
+            assert tx.nonce not in nonces, "Nonce already used"
+            nonces.add(tx.nonce)
+            tx.broadcasted_at = ts
+            res[tx.tx_hash] = (t, tx)
+            # Only SignedTransaction.rawTransaction attribute is intresting in this point
+            signed_tx = SignedTransaction(rawTransaction=tx.signed_bytes, hash=None, r=0, s=0, v=0)
+            broadcast_batch.append(signed_tx)
+            logger.info("Broadcasting %s", tx)
+        t.mark_broadcasted(datetime.datetime.utcnow())
 
     hashes = broadcast_transactions(web3, broadcast_batch, confirmation_block_count=confirmation_block_count)
-    assert len(hashes) == len(instructions)
-
+    assert len(hashes) >= len(instructions), f"We got {len(hashes)} hashes for {len(instructions)} trades"
     return res
 
 
@@ -259,17 +311,32 @@ def wait_trades_to_complete(
     """
     logger.info("Waiting %d trades to confirm", len(trades))
     assert isinstance(confirmation_block_count, int)
-    tx_hashes = [t.tx_info.tx_hash for t in trades]
+    tx_hashes = []
+    for t in trades:
+        for tx in t.blockchain_transactions:
+            tx_hashes.append(tx.tx_hash)
     receipts = wait_transactions_to_complete(web3, tx_hashes, confirmation_block_count, max_timeout, poll_delay)
     return receipts
 
 
+def is_swap_function(name: str):
+    return name in ("swapExactTokensForTokens",)
+
+
+def get_swap_transactions(trade: TradeExecution) -> BlockchainTransaction:
+    """Get the swap transaction from multiple transactions associated with the trade"""
+    for tx in trade.blockchain_transactions:
+        if tx.function_selector in ("swapExactTokensForTokens",):
+            return tx
+
+    raise RuntimeError("Should not happen")
+
+
 def resolve_trades(
         web3: Web3,
-        uniswap: UniswapV2Deployment,
         ts: datetime.datetime,
         state: State,
-        trades: Dict[HexBytes, TradeExecution],
+        tx_map: Dict[HexBytes, Tuple[TradeExecution, BlockchainTransaction]],
         receipts: Dict[HexBytes, dict],
         stop_on_execution_failure=True):
     """Resolve trade outcome.
@@ -281,39 +348,52 @@ def resolve_trades(
     :stop_on_execution_failure: Raise an exception if any of the trades failed
     """
 
+    trades = set()
+
+    # First update the state of all transactions,
+    # as we now have receipt for them
     for tx_hash, receipt in receipts.items():
-        trade = trades[tx_hash.hex()]
-
+        trade, tx = tx_map[tx_hash.hex()]
         logger.info("Resolved trade %s", trade)
-
-        base_token_details = fetch_erc20_details(web3, trade.pair.base.checksum_address)
-        quote_token_details = fetch_erc20_details(web3, trade.pair.quote.checksum_address)
-
         # Update the transaction confirmation status
         status = receipt["status"] == 1
-        trade.tx_info.set_confirmation_information(
+        reason = None
+        if status == 0:
+            reason = fetch_transaction_revert_reason(web3, tx_hash)
+        tx.set_confirmation_information(
             ts,
             receipt["blockNumber"],
             receipt["blockHash"].hex(),
             receipt.get("effectiveGasPrice", 0),
             receipt["gasUsed"],
-            status
+            status,
+            revert_reason=reason,
         )
+        trades.add(trade)
 
-        result = analyse_trade(web3, uniswap, tx_hash)
+    # Then resolve trade status by analysis the tx receipt
+    # if the blockchain transaction was successsful.
+    # Also get the actual executed token counts.
+    trade: TradeExecution
+    for trade in trades:
+        base_token_details = fetch_erc20_details(web3, trade.pair.base.checksum_address)
+        quote_token_details = fetch_erc20_details(web3, trade.pair.quote.checksum_address)
+        reserve = trade.reserve_currency
+        swap_tx = get_swap_transactions(trade)
+        uniswap = mock_partial_deployment_for_analysis(web3, swap_tx.contract_address)
+        result = analyse_trade(web3, uniswap, swap_tx.tx_hash)
+
         if isinstance(result, TradeSuccess):
-
-            # TODO: Assumes stablecoin trades only ATM
-
+            path = [a.lower() for a in result.path]
             if trade.is_buy():
-                assert result.path[0] == quote_token_details.address
+                assert path[0] == reserve.address, f"Was expecting the route path to start with reserve token {reserve}, got path {result.path}"
                 price = 1 / result.price
                 executed_reserve = result.amount_in / Decimal(10**quote_token_details.decimals)
                 executed_amount = result.amount_out / Decimal(10**base_token_details.decimals)
             else:
                 # Ordered other way around
-                assert result.path[0] == base_token_details.address
-                assert result.path[-1] == quote_token_details.address
+                assert path[0] == base_token_details.address.lower(), f"Path is {path}, base token is {base_token_details}"
+                assert path[-1] == reserve.address
                 price = result.price
                 executed_amount = -result.amount_in / Decimal(10**base_token_details.decimals)
                 executed_reserve = result.amount_out / Decimal(10**quote_token_details.decimals)
@@ -336,12 +416,13 @@ def resolve_trades(
                 ts,
                 trade,
             )
-
             if stop_on_execution_failure:
-                tx_hash = trade.tx_info.tx_hash
-                raise TradeExecutionFailed(f"Could not execute a trade: {trade}, transaction was {tx_hash}")
-
-            trade.tx_info.revert_reason = result.revert_reason
+                success_txs = []
+                for tx in trade.blockchain_transactions:
+                    if not tx.is_success():
+                        raise TradeExecutionFailed(f"Could not execute a trade: {trade}, transaction failed: {tx}, had other transactions {success_txs}")
+                    else:
+                        success_txs.append(tx)
 
 
 def get_current_price(web3: Web3, uniswap: UniswapV2Deployment, pair: TradingPairIdentifier, quantity=Decimal(1)) -> float:
@@ -355,12 +436,47 @@ def get_current_price(web3: Web3, uniswap: UniswapV2Deployment, pair: TradingPai
     return float(price)
 
 
-def get_held_assets(web3: Web3, address: HexAddress, assets: List[AssetIdentifier]) -> Dict[HexAddress, Decimal]:
+def get_held_assets(web3: Web3, address: HexAddress, assets: List[AssetIdentifier]) -> Dict[str, Decimal]:
     """Get list of assets hold by the a wallet."""
 
     result = {}
     for asset in assets:
         token_details = fetch_erc20_details(web3, asset.checksum_address)
         balance = token_details.contract.functions.balanceOf(address).call()
-        result[token_details.address] = Decimal(balance) / Decimal(10 ** token_details.decimals)
+        result[token_details.address.lower()] = Decimal(balance) / Decimal(10 ** token_details.decimals)
     return result
+
+
+def get_token_for_asset(web3: Web3, asset: AssetIdentifier) -> Contract:
+    """Get ERC-20 contract proxy."""
+    erc_20 = get_deployed_contract(web3, "ERC20MockDecimals.json", Web3.toChecksumAddress(asset.address))
+    return erc_20
+
+
+def broadcast_and_resolve(
+        web3: Web3,
+        state: State,
+        trades: List[TradeExecution],
+        stop_on_execution_failure=False
+):
+    """Do the live trade execution.
+
+    - Push trades to a live blockchain
+
+    - Wait transactions to be mined
+
+    - Based on the transaction result, update the state of the trade if it was success or not
+
+    :param stop_on_execution_failure:
+        If any of the transactions fail, then raise an exception.
+        Set for unit test.
+    """
+    broadcasted = broadcast(web3, datetime.datetime.utcnow(), trades)
+    receipts = wait_trades_to_complete(web3, trades)
+    resolve_trades(
+        web3,
+        datetime.datetime.now(),
+        state,
+        broadcasted,
+        receipts,
+        stop_on_execution_failure=stop_on_execution_failure)

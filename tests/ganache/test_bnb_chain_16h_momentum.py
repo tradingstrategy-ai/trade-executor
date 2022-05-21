@@ -1,4 +1,7 @@
-"""Test that Pancake momentum strategy with 8h ticks and 4h candles.
+"""Run bnb_chain_16h_momentum strategy against Ganache.
+
+Run the strategy for few cycles against the live trading pools to see
+if the code paths are intact and trades can be made.
 
 To run:
 
@@ -38,7 +41,7 @@ from tradeexecutor.cli.log import setup_pytest_logging
 
 
 # https://docs.pytest.org/en/latest/how-to/skipping.html#skip-all-test-functions-of-a-class-or-module
-pytestmark = pytest.mark.skipif(os.environ.get("BNB_CHAIN_JSON_RPC") is None, reason="Set BNB_CHAIN_JSON_RPC environment variable to Binance Smart Chain node to run this test")
+pytestmark = pytest.mark.skip(msg="not ready")
 
 
 @pytest.fixture(scope="module")
@@ -189,21 +192,18 @@ def hot_wallet(web3: Web3, busd_token: Contract, hot_wallet_private_key: HexByte
 @pytest.fixture()
 def strategy_path() -> Path:
     """Where do we load our strategy file."""
-    return Path(os.path.join(os.path.dirname(__file__), "..", "strategies", "pancake_8h_momentum.py"))
+    return Path(os.path.join(os.path.dirname(__file__), "../..", "strategies", "bnb_chain_16h_momentum.py"))
 
 
 @pytest.mark.skipif(os.environ.get("CI") is not None, reason="This test is too flaky on Github CI. Manual runs only.")
-def test_pancake_4h_candles(
+def test_bnb_chain_16h_momentum(
         logger: logging.Logger,
         strategy_path: Path,
         ganache_bnb_chain_fork,
         hot_wallet: HotWallet,
         pancakeswap_v2: UniswapV2Deployment,
     ):
-    """Run the main loop using 8h tick, 4h candles.
-
-    Sets up the whole trade executor live trading application in forked BNB Chain
-    Ganache environment.
+    """Run the strategy.
 
     Note that because this integration test does not use historical price data
     for estimating buy/sell prices the actual performance of the test
@@ -218,15 +218,12 @@ def test_pancake_4h_candles(
     # Set up the configuration for the backtesting,
     # run the loop 6 cycles using Ganache + live BNB Chain fork
     environment = {
-        "NAME": "pytest: pancake_8h_momentum_tick.py",
+        "NAME": "Integration test strategy",
         "STRATEGY_FILE": strategy_path.as_posix(),
         "PRIVATE_KEY": hot_wallet.account.privateKey.hex(),
         "HTTP_ENABLED": "false",
         "JSON_RPC": ganache_bnb_chain_fork,
         "GAS_PRICE_METHOD": "legacy",
-        "UNISWAP_V2_FACTORY_ADDRESS": pancakeswap_v2.factory.address,
-        "UNISWAP_V2_ROUTER_ADDRESS": pancakeswap_v2.router.address,
-        "UNISWAP_V2_INIT_CODE_HASH": pancakeswap_v2.init_code_hash,
         "STATE_FILE": state_file,
         "RESET_STATE": "true",
         "EXECUTION_TYPE": "uniswap_v2_hot_wallet",
