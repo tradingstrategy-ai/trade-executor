@@ -78,9 +78,9 @@ def create_trade_execution_model(
         # uniswap = fetch_deployment(web3, factory_address, router_address, init_code_hash=uniswap_init_code_hash)
         sync_method = EthereumHotWalletReserveSyncer(web3, hot_wallet.address)
         execution_model = UniswapV2ExecutionModel(web3, hot_wallet, confirmation_timeout=confirmation_timeout, confirmation_block_count=confirmation_block_count)
-        valuation_factory = uniswap_v2_sell_valuation_factory
+        valuation_model_factory = uniswap_v2_sell_valuation_factory
         pricing_model_factory = uniswap_v2_live_pricing_factory
-        return execution_model, sync_method, valuation_factory, pricing_model_factory
+        return execution_model, sync_method, valuation_model_factory, pricing_model_factory
     else:
         raise NotImplementedError()
 
@@ -170,7 +170,7 @@ def start(
 
     confirmation_timeout = datetime.timedelta(seconds=confirmation_timeout)
 
-    execution_model, sync_method, valuation_factory, pricing_model_factory = create_trade_execution_model(
+    execution_model, sync_method, valuation_model_factory, pricing_model_factory = create_trade_execution_model(
         execution_type,
         json_rpc,
         private_key,
@@ -225,7 +225,7 @@ def start(
             sync_method=sync_method,
             approval_model=approval_model,
             pricing_model_factory=pricing_model_factory,
-            valuation_factory=valuation_factory,
+            valuation_model_factory=valuation_model_factory,
             store=store,
             client=client,
             strategy_factory=strategy_factory,
