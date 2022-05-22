@@ -25,6 +25,7 @@ class EthereumHotWalletReserveSyncer:
 
     def __call__(self, portfolio: Portfolio, ts: datetime.datetime, supported_reserves: List[AssetIdentifier]):
         events = sync_reserves(self.web3, ts, self.wallet_address, [], supported_reserves)
+        import ipdb ; ipdb.set_trace()
         sync_portfolio(portfolio, events)
         return events
 

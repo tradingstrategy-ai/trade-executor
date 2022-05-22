@@ -156,10 +156,11 @@ def test_bnb_chain_16h_momentum(
         "BACKTEST_START": "2021-12-07",
         "BACKTEST_END": "2021-12-09",
         "TICK_OFFSET_MINUTES": "10",
-        "TICK_SIZE": "16h",
         "CONFIRMATION_BLOCK_COUNT": "8",
     }
 
+    # Don't use CliRunner.invoke() here,
+    # as it patches stdout/stdin and causes our pdb to stop working
     with mock.patch.dict('os.environ', environment, clear=True):
         app(["start"])
 
