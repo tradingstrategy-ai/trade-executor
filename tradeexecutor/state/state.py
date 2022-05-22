@@ -47,7 +47,7 @@ class State:
 
     def is_good_pair(self, pair: TradingPairIdentifier) -> bool:
         """Check if the trading pair is blacklisted."""
-        assert isinstance(pair, TradingPairIdentifier)
+        assert isinstance(pair, TradingPairIdentifier), f"Expected TradingPairIdentifier, got {type(pair)}: {pair}"
         return (pair.base.get_identifier() not in self.asset_blacklist) and (pair.quote.get_identifier() not in self.asset_blacklist)
 
     def create_trade(self,

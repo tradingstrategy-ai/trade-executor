@@ -43,7 +43,7 @@ from tradeexecutor.strategy.pricing_model import PricingModelFactory
 from tradeexecutor.strategy.qstrader.alpha_model import AlphaModel
 from tradeexecutor.strategy.qstrader.runner import QSTraderRunner
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverseModel, \
-    TradingStrategyUniverse, translate_trading_pair, Dataset
+    TradingStrategyUniverse, translate_trading_pair, Dataset, translate_token
 from tradeexecutor.strategy.valuation import ValuationModelFactory
 from tradeexecutor.utils.price import is_legit_price_value
 
@@ -72,30 +72,24 @@ cash_buffer = 0.80
 
 # Trade only against these tokens
 allowed_quote_tokens = {
-    "WBNB": "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c",
-    "BUSD": "0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56",
+    "WBNB": "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c".lower(),
+    "BUSD": "0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56".lower(),
  }
 
 # Keep everything internally in BUSD
-reserve = "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c"
+reserve_token_address = "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c".lower()
 
 # Allowed exchanges as factory -> router pairs,
 # by their smart contract addresses
 factory_router_map = {
-    # Pancake
-    "0xcA143Ce32Fe78f1f7019d7d551a6402fC5350c73": "0x10ED43C718714eb63d5aA57B78B54704E256024E",
-    # Biswap
-    # "0x858e3312ed3a876947ea49d572a7c42de08af7ee": "0x3a6d8cA21D1CF76F653A67577FA0D27453350dD8",
-    # FSTSwap
-    # "0x9A272d734c5a0d7d84E0a892e891a553e8066dce": "0x1B6C9c20693afDE803B27F8782156c0f892ABC2d",
+    # PancakeSwap
+    "0xcA143Ce32Fe78f1f7019d7d551a6402fC5350c73": ("0x10ED43C718714eb63d5aA57B78B54704E256024E", "0x00fb7f630766e6a796048ea87d01acd3068e8ff67d078148a3fa3f4a84f69bd5")
 }
 
 # For three way trades, which pools we can use
 allowed_intermediary_pairs = {
-    # BUSD -> WBNB,
-    # Should be available on both Biswap and Pancakse
-    "0x58f876857a02d6762e0101bb5c46a8c1ed44dc16",
-    # https://tradingstrategy.ai/trading-view/binance/pancakeswap-v2/bnb-busd
+    # Route WBNB through BUSD:WBNB pool,
+    "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c": "0x58f876857a02d6762e0101bb5c46a8c1ed44dc16",
 }
 
 
@@ -143,13 +137,14 @@ class MomentumAlphaModel(AlphaModel):
         :return: True if the pair should be traded
         """
 
+        executor_pair = translate_trading_pair(pair)
+
         # Wast this pair blacklisted earlier by the strategy itself
-        if not state.is_good_pair(pair):
+        if not state.is_good_pair(executor_pair):
             return False
 
         # This token is marked as not tradeable, so we don't touch it
-        dex_pair = translate_trading_pair(pair)
-        if (dex_pair.buy_tax != 0) or (dex_pair.sell_tax != 0) or (dex_pair.transfer_tax != 0):
+        if (pair.buy_tax != 0) or (pair.sell_tax != 0) or (pair.transfer_tax != 0):
             return False
 
         # The pair does not have enough liquidity for us to enter
@@ -249,7 +244,7 @@ class MomentumAlphaModel(AlphaModel):
                 alpha_signals[pair_id] = momentum
                 good_candle_count += 1
             else:
-                # No alpha for illiquid pairs
+                # Set alpha zero for pairs that are beyond our risk model
                 # logger.info("Pair %s lacks liquidity, liquidity %s, needed %s", pair, available_liquidity_for_pair, liquidity_threshold)
                 alpha_signals[pair_id] = 0
                 candle_count = None
@@ -302,12 +297,11 @@ class OurUniverseModel(TradingStrategyUniverseModel):
 
         with self.timed_task_context_manager("filter_universe"):
 
-            # We only trade on Pancakeswap v2
             exchange_universe = dataset.exchanges
 
-            our_exchanges = {
+            our_exchanges = set([
                 exchange_universe.get_by_chain_and_factory(ChainId.bsc, factory_address) for factory_address in factory_router_map.keys()
-            }
+            ])
 
             # Check we got all exchanges in the dataset
             for xchg in our_exchanges:
@@ -318,18 +312,18 @@ class OurUniverseModel(TradingStrategyUniverseModel):
             pairs_df = filter_for_exchanges(dataset.pairs, our_exchanges)
             pairs_df = filter_for_quote_tokens(pairs_df, set(allowed_quote_tokens.values()))
 
-            # Remove stablecoin -> stablecoin pairs
+            # Remove stablecoin -> stablecoin pairs, because
+            # trading between stable does not make sense for the strategy
             pairs_df = filter_for_stablecoins(pairs_df, StablecoinFilteringMode.only_volatile_pairs)
 
             # Create trading pair database
             pairs = PandasPairUniverse(pairs_df)
 
             # We do a bit detour here as we need to address the assets by their trading pairs first
-            pancake_v2 = exchange_universe.get_by_chain_and_slug(ChainId.bsc, "pancake-v2")
-            bnb_busd = translate_trading_pair(pairs.get_one_pair_from_pandas_universe(pancake_v2.exchange_id, "WBNB", "BUSD", pick_by_highest_vol=True))
-            assert bnb_busd, "We do not have BNB-BUSD, something wrong with the dataset"
+            busd = pairs.get_token(reserve_token_address)
+            assert busd, "BUSD missing the trading pairset"
             reserve_assets = [
-                bnb_busd.quote,
+                translate_token(busd)
             ]
 
             # Get daily candles as Pandas DataFrame
@@ -389,6 +383,8 @@ def strategy_factory(
         routing_model=UniswapV2SimpleRoutingModel(
             factory_router_map,
             allowed_intermediary_pairs,
+            reserve_token_address=reserve_token_address,
+            max_slippage=0.01,
         ),
     )
 

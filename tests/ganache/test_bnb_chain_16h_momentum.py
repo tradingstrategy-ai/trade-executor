@@ -6,6 +6,7 @@ To run:
 
     export TRADING_STRATEGY_API_KEY="secret-token:tradingstrategy-6ce98...."
     export BNB_CHAIN_JSON_RPC="https://bsc-dataseed.binance.org/"
+    pytest --log-cli-level=info -s -k test_bnb_chain_16h_momentum
 
 """
 import datetime
@@ -13,6 +14,7 @@ import logging
 import os
 import pickle
 from pathlib import Path
+from unittest import mock
 
 import pytest
 from eth_account import Account
@@ -20,14 +22,14 @@ from eth_account import Account
 from eth_defi.abi import get_deployed_contract
 from eth_defi.txmonitor import wait_transactions_to_complete
 from eth_typing import HexAddress, HexStr
-from hexbytes import HexBytes
+
 from typer.testing import CliRunner
 from web3 import Web3, HTTPProvider
 from web3.contract import Contract
 
 from eth_defi.ganache import fork_network
 from eth_defi.hotwallet import HotWallet
-from tradeexecutor.cli.main import app
+from tradeexecutor.cli.main import app, start
 from tradeexecutor.state.state import State
 
 from tradeexecutor.cli.log import setup_pytest_logging
@@ -158,34 +160,8 @@ def test_bnb_chain_16h_momentum(
         "CONFIRMATION_BLOCK_COUNT": "8",
     }
 
-    # Points to the private test trash channel on Discord
-    discord_webhook_url = os.environ.get("DISCORD_TRASH_WEBHOOK_URL")
-    if discord_webhook_url:
-        environment["DISCORD_WEBHOOK_URL"] = discord_webhook_url
-        environment["DISCORD_AVATAR_URL"] = "https://i0.wp.com/www.theterminatorfans.com/wp-content/uploads/2012/09/the-terminator3.jpg?resize=900%2C450&ssl=1"
-
-    # https://typer.tiangolo.com/tutorial/testing/
-    runner = CliRunner()
-
-    try:
-        result = runner.invoke(app, "start", env=environment)
-
-        if result.exception:
-            raise result.exception
-
-        if result.exit_code != 0:
-            logger.error("runner failed")
-            for line in result.stdout.split('\n'):
-                logger.error(line)
-            raise AssertionError("runner launch failed")
-
-        assert result.exit_code == 0
-
-    except ValueError as e:
-        # ValueError: I/O operation on closed file.
-        # bug in Typer,
-        # but the app should still have completed
-        logger.error("Typer failed to close cleanly %s", e)
+    with mock.patch.dict('os.environ', environment, clear=True):
+        app(["start"])
 
     with open(debug_dump_file, "rb") as inp:
         debug_dump = pickle.load(inp)

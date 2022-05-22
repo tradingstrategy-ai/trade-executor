@@ -249,6 +249,7 @@ def translate_trading_pair(pair: DEXPair) -> TradingPairIdentifier:
     This is called when a trade is made: this is the moment when trade executor data format must be made available.
     """
 
+    assert isinstance(pair, DEXPair), f"Expected DEXPair, got {type(pair)}"
     assert pair.base_token_decimals is not None, f"Base token missing decimals: {pair}"
     assert pair.quote_token_decimals is not None, f"Quote token missing decimals: {pair}"
 
