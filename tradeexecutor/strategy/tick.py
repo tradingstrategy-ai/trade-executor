@@ -7,6 +7,7 @@ class TickSize(enum.Enum):
     """Supported strategy ticks.
     """
     tick_8h = "8h"
+    tick_16h = "16h"
     tick_24h = "24h"
 
     def to_timedelta(self) -> datetime.timedelta:
@@ -89,5 +90,6 @@ def snap_to_previous_tick(
 
 _TICK_DURATIONS = {
     TickSize.tick_8h: datetime.timedelta(hours=8),
+    TickSize.tick_16h: datetime.timedelta(hours=16),
     TickSize.tick_24h: datetime.timedelta(hours=24),
 }

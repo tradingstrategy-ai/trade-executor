@@ -1,7 +1,4 @@
-"""Run bnb_chain_16h_momentum strategy against Ganache.
-
-Run the strategy for few cycles against the live trading pools to see
-if the code paths are intact and trades can be made.
+"""Test that Pancake momentum strategy with 8h ticks and 4h candles.
 
 To run:
 
@@ -15,12 +12,12 @@ import datetime
 import logging
 import os
 import pickle
-import secrets
 from pathlib import Path
-from typing import List
 
 import pytest
 from eth_account import Account
+
+from eth_defi.abi import get_deployed_contract
 from eth_defi.txmonitor import wait_transactions_to_complete
 from eth_typing import HexAddress, HexStr
 from hexbytes import HexBytes
@@ -28,26 +25,30 @@ from typer.testing import CliRunner
 from web3 import Web3, HTTPProvider
 from web3.contract import Contract
 
-from eth_defi.abi import get_deployed_contract
 from eth_defi.ganache import fork_network
 from eth_defi.hotwallet import HotWallet
-from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, fetch_deployment
-from eth_defi.utils import is_localhost_port_listening
 from tradeexecutor.cli.main import app
 from tradeexecutor.state.state import State
-from tradeexecutor.state.identifier import AssetIdentifier
 
 from tradeexecutor.cli.log import setup_pytest_logging
 
 
 # https://docs.pytest.org/en/latest/how-to/skipping.html#skip-all-test-functions-of-a-class-or-module
-pytestmark = pytest.mark.skip(msg="not ready")
+pytestmark = pytest.mark.skipif(os.environ.get("BNB_CHAIN_JSON_RPC") is None, reason="Set BNB_CHAIN_JSON_RPC environment variable to Binance Smart Chain node to run this test")
 
 
 @pytest.fixture(scope="module")
 def logger(request):
     """Setup test logger."""
     return setup_pytest_logging(request)
+
+
+@pytest.fixture
+def busd_token(web3) -> Contract:
+    """BUSD with $4B supply."""
+    # https://bscscan.com/address/0xe9e7cea3dedca5984780bafc599bd69add087d56
+    token = get_deployed_contract(web3, "ERC20MockDecimals.json", "0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56")
+    return token
 
 
 @pytest.fixture()
@@ -71,23 +72,16 @@ def ganache_bnb_chain_fork(logger, large_busd_holder) -> str:
 
     mainnet_rpc = os.environ["BNB_CHAIN_JSON_RPC"]
 
-    if not is_localhost_port_listening(19999):
-        # Start Ganache
-        launch = fork_network(
-            mainnet_rpc,
-            block_time=1,  # Insta mining cannot be done in this test
-            evm_version="berlin",  # BSC is not yet London compatible?
-            unlocked_addresses=[large_busd_holder],  # Unlock WBNB stealing
-            quiet=True,  # Otherwise the Ganache output is millions lines of long
-        )
-        yield launch.json_rpc_url
-        # Wind down Ganache process after the test is complete
-        launch.close(verbose=True)
-    else:
-        # raise AssertionError("ganache zombie detected")
-
-        # Uncomment to test against manually started Ganache
-        yield "http://127.0.0.1:19999"
+    launch = fork_network(
+        mainnet_rpc,
+        block_time=1,  # Insta mining cannot be done in this test
+        evm_version="berlin",  # BSC is not yet London compatible?
+        unlocked_addresses=[large_busd_holder],  # Unlock WBNB stealing
+        quiet=True,  # Otherwise the Ganache output is millions lines of long
+    )
+    yield launch.json_rpc_url
+    # Wind down Ganache process after the test is complete
+    launch.close(verbose=True)
 
 
 @pytest.fixture
@@ -103,84 +97,12 @@ def chain_id(web3):
 
 
 @pytest.fixture()
-def hot_wallet_private_key(web3) -> HexBytes:
-    """Generate a private key"""
-    return HexBytes(secrets.token_bytes(32))
-
-
-@pytest.fixture
-def busd_token(web3) -> Contract:
-    """BUSD with $4B supply."""
-    # https://bscscan.com/address/0xe9e7cea3dedca5984780bafc599bd69add087d56
-    token = get_deployed_contract(web3, "ERC20MockDecimals.json", "0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56")
-    return token
-
-
-def cake_token(web3) -> Contract:
-    """CAKE token."""
-    token = get_deployed_contract(web3, "ERC20MockDecimals.json", "0x0E09FaBB73Bd3Ade0a17ECC321fD13a19e81cE82")
-    return token
-
-
-@pytest.fixture()
-def pancakeswap_v2(web3) -> UniswapV2Deployment:
-    """Fetch live PancakeSwap v2 deployment.
-
-    See https://docs.pancakeswap.finance/code/smart-contracts for more information
-    """
-    deployment = fetch_deployment(
-        web3,
-        "0xcA143Ce32Fe78f1f7019d7d551a6402fC5350c73",
-        "0x10ED43C718714eb63d5aA57B78B54704E256024E",
-        # Taken from https://bscscan.com/address/0xca143ce32fe78f1f7019d7d551a6402fc5350c73#readContract
-        init_code_hash="0x00fb7f630766e6a796048ea87d01acd3068e8ff67d078148a3fa3f4a84f69bd5",
-        )
-    return deployment
-
-
-@pytest.fixture
-def wbnb_token(pancakeswap_v2: UniswapV2Deployment) -> Contract:
-    return pancakeswap_v2.weth
-
-
-@pytest.fixture
-def asset_busd(busd_token, chain_id) -> AssetIdentifier:
-    return AssetIdentifier(chain_id, busd_token.address, busd_token.functions.symbol().call(), busd_token.functions.decimals().call())
-
-
-@pytest.fixture
-def asset_wbnb(wbnb_token, chain_id) -> AssetIdentifier:
-    return AssetIdentifier(chain_id, wbnb_token.address, wbnb_token.functions.symbol().call(), wbnb_token.functions.decimals().call())
-
-
-@pytest.fixture
-def asset_cake(cake_token, chain_id) -> AssetIdentifier:
-    return AssetIdentifier(chain_id, cake_token.address, cake_token.functions.symbol().call(), cake_token.functions.decimals().call())
-
-
-@pytest.fixture
-def cake_busd_uniswap_trading_pair() -> HexAddress:
-    return HexAddress(HexStr("0x804678fa97d91b974ec2af3c843270886528a9e6"))
-
-
-@pytest.fixture
-def wbnb_busd_uniswap_trading_pair() -> HexAddress:
-    return HexAddress(HexStr("0x58f876857a02d6762e0101bb5c46a8c1ed44dc16"))
-
-
-@pytest.fixture
-def supported_reserves(busd) -> List[AssetIdentifier]:
-    """What reserve currencies we support for the strategy."""
-    return [busd]
-
-
-@pytest.fixture()
-def hot_wallet(web3: Web3, busd_token: Contract, hot_wallet_private_key: HexBytes, large_busd_holder: HexAddress) -> HotWallet:
+def hot_wallet(web3: Web3, busd_token: Contract, large_busd_holder: HexAddress) -> HotWallet:
     """Our trading Ethereum account.
 
     Start with 10,000 USDC cash and 2 BNB.
     """
-    account = Account.from_key(hot_wallet_private_key)
+    account = Account.create()
     web3.eth.send_transaction({"from": large_busd_holder, "to": account.address, "value": 2*10**18})
     tx_hash = busd_token.functions.transfer(account.address, 10_000 * 10**18).transact({"from": large_busd_holder})
     wait_transactions_to_complete(web3, [tx_hash])
@@ -201,24 +123,22 @@ def test_bnb_chain_16h_momentum(
         strategy_path: Path,
         ganache_bnb_chain_fork,
         hot_wallet: HotWallet,
-        pancakeswap_v2: UniswapV2Deployment,
     ):
-    """Run the strategy.
+    """Run the strategy test
 
-    Note that because this integration test does not use historical price data
-    for estimating buy/sell prices the actual performance of the test
-    does not make any sense. The test is purely to stress out integrity
-    of code paths.
+    - Use decision data from the past
+
+    - Trade against live exchanges
     """
 
-    debug_dump_file = "/tmp/test_main_loop.debug.json"
+    debug_dump_file = "/tmp/test_bnb_chain_16h_momentum.debug.json"
 
-    state_file = "/tmp/test_main_loop.json"
+    state_file = "/tmp/test_bnb_chain_16h_momentum.json"
 
     # Set up the configuration for the backtesting,
     # run the loop 6 cycles using Ganache + live BNB Chain fork
     environment = {
-        "NAME": "Integration test strategy",
+        "NAME": "test_bnb_chain_16h_momentum",
         "STRATEGY_FILE": strategy_path.as_posix(),
         "PRIVATE_KEY": hot_wallet.account.privateKey.hex(),
         "HTTP_ENABLED": "false",
@@ -234,7 +154,7 @@ def test_bnb_chain_16h_momentum(
         "BACKTEST_START": "2021-12-07",
         "BACKTEST_END": "2021-12-09",
         "TICK_OFFSET_MINUTES": "10",
-        "TICK_SIZE": "8h",
+        "TICK_SIZE": "16h",
         "CONFIRMATION_BLOCK_COUNT": "8",
     }
 
@@ -243,10 +163,6 @@ def test_bnb_chain_16h_momentum(
     if discord_webhook_url:
         environment["DISCORD_WEBHOOK_URL"] = discord_webhook_url
         environment["DISCORD_AVATAR_URL"] = "https://i0.wp.com/www.theterminatorfans.com/wp-content/uploads/2012/09/the-terminator3.jpg?resize=900%2C450&ssl=1"
-
-    clear_caches = os.environ.get("CLEAR_CACHES")
-    if clear_caches:
-        environment["clear_caches"] = clear_caches
 
     # https://typer.tiangolo.com/tutorial/testing/
     runner = CliRunner()

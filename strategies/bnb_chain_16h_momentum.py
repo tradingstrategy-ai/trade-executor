@@ -34,7 +34,6 @@ from tradingstrategy.utils.groupeduniverse import filter_for_pairs
 from tradingstrategy.universe import Universe
 
 from tradeexecutor.ethereum.uniswap_v2_execution_v0 import UniswapV2ExecutionModelVersion0
-from tradeexecutor.state.revaluation import RevaluationMethod
 from tradeexecutor.state.state import State
 from tradeexecutor.state.sync import SyncMethod
 from tradeexecutor.strategy.approval import ApprovalModel
@@ -45,6 +44,7 @@ from tradeexecutor.strategy.qstrader.alpha_model import AlphaModel
 from tradeexecutor.strategy.qstrader.runner import QSTraderRunner
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverseModel, \
     TradingStrategyUniverse, translate_trading_pair, Dataset
+from tradeexecutor.strategy.valuation import ValuationModelFactory
 from tradeexecutor.utils.price import is_legit_price_value
 
 # Create a Python logger to help pinpointing issues during development
@@ -74,7 +74,6 @@ cash_buffer = 0.80
 allowed_quote_tokens = {
     "WBNB": "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c",
     "BUSD": "0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56",
-    "USDT": "0x55d398326f99059fF775485246999027B3197955",
  }
 
 # Keep everything internally in BUSD
@@ -93,8 +92,10 @@ factory_router_map = {
 
 # For three way trades, which pools we can use
 allowed_intermediary_pairs = {
-    # BUSD -> WBNB
-    "0x58f876857a02d6762e0101bb5c46a8c1ed44dc16",  # https://tradingstrategy.ai/trading-view/binance/pancakeswap-v2/bnb-busd
+    # BUSD -> WBNB,
+    # Should be available on both Biswap and Pancakse
+    "0x58f876857a02d6762e0101bb5c46a8c1ed44dc16",
+    # https://tradingstrategy.ai/trading-view/binance/pancakeswap-v2/bnb-busd
 }
 
 
@@ -325,7 +326,7 @@ class OurUniverseModel(TradingStrategyUniverseModel):
 
             # We do a bit detour here as we need to address the assets by their trading pairs first
             pancake_v2 = exchange_universe.get_by_chain_and_slug(ChainId.bsc, "pancake-v2")
-            bnb_busd = translate_trading_pair(pairs.get_one_pair_from_pandas_universe(pancake_v2.exchange_id, "WBNB", "BUSD"))
+            bnb_busd = translate_trading_pair(pairs.get_one_pair_from_pandas_universe(pancake_v2.exchange_id, "WBNB", "BUSD", pick_by_highest_vol=True))
             assert bnb_busd, "We do not have BNB-BUSD, something wrong with the dataset"
             reserve_assets = [
                 bnb_busd.quote,
@@ -364,7 +365,7 @@ def strategy_factory(
         execution_model: UniswapV2ExecutionModelVersion0,
         sync_method: SyncMethod,
         pricing_model_factory: PricingModelFactory,
-        revaluation_method: RevaluationMethod,
+        valuation_model_factory: ValuationModelFactory,
         client: Client,
         timed_task_context_manager: AbstractContextManager,
         approval_model: ApprovalModel,
@@ -381,7 +382,7 @@ def strategy_factory(
         timed_task_context_manager=timed_task_context_manager,
         execution_model=execution_model,
         approval_model=approval_model,
-        revaluation_method=revaluation_method,
+        valuation_model_factory=valuation_model_factory,
         sync_method=sync_method,
         pricing_model_factory=pricing_model_factory,
         cash_buffer=cash_buffer,
