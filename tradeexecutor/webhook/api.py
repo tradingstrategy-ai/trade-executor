@@ -1,3 +1,5 @@
+import os
+import logging
 import pkg_resources
 
 from pyramid.request import Request
@@ -6,6 +8,10 @@ from pyramid.view import view_config
 
 from tradeexecutor.state.metadata import Metadata
 from tradeexecutor.state.store import JSONFileStore
+from tradeexecutor.webhook.error import exception_response
+
+
+logger = logging.getLogger(__name__)
 
 
 @view_config(route_name='home', permission='view')
@@ -41,11 +47,20 @@ def web_notify(request: Request):
 
 @view_config(route_name='web_state', renderer='json', permission='view')
 def web_state(request: Request):
-    """Serve the latest full state of the bog."""
+    """Serve the latest full state of the bog.
+
+    :return 404:
+        If the state has not been yet created
+    """
 
     # Does "zero copy" WSGI file serving
     store: JSONFileStore = request.registry["store"]
     fname = store.path
+
+    if not os.path.exists(fname):
+        logger.warning("Someone is eager to access the server. IP:%s, user agent:%s", request.client_addr, request.user_agent)
+        return exception_response(404, detail="Status file not yet created")
+
     assert 'wsgi.file_wrapper' in request.environ, "We need wsgi.file_wrapper or we will be too slow"
     r = FileResponse(content_type="application/json", request=request, path=fname)
     return r

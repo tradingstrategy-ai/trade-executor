@@ -46,12 +46,23 @@ def exception_view(exc: Exception, request: Request):
 
 
 def exception_response(status_code, **kw):
-    """Creates an HTTP exception based on a status code. Example::
+    """Creates an HTTP exception based on a status code.
+
+    The values passed as ``kw`` are provided to the exception's constructor.
+
+    Example:
+
+    .. code-block:: python
+
+        return exception_response(404, detail="Status file not yet created")
+
+    Example:
+
+    .. code-block:: python
 
         raise exception_response(404) # raises an HTTPNotFound exception.
 
-    The values passed as ``kw`` are provided to the exception's constructor.
     """
-    logger.error("Backend error: %d %s", status_code, kw)
+    logger.warning("Web server returned an error: %d %s", status_code, kw)
     exc = status_map[status_code](**kw)
     return exc

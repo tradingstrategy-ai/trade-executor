@@ -59,11 +59,6 @@ export ICON_URL="https://upload.wikimedia.org/wikipedia/commons/4/43/Blueberry_p
 
 export STRATEGY_FILE="${PWD}/strategies/${EXECUTOR_ID}.py"
 
-# As exported from scripts/show-pancake-info.py
-export UNISWAP_V2_FACTORY_ADDRESS=0xcA143Ce32Fe78f1f7019d7d551a6402fC5350c73
-export UNISWAP_V2_ROUTER_ADDRESS=0x10ED43C718714eb63d5aA57B78B54704E256024E
-export UNISWAP_V2_INIT_CODE_HASH=0x00fb7f630766e6a796048ea87d01acd3068e8ff67d078148a3fa3f4a84f69bd5
-
 export JSON_RPC=$JSON_RPC_BINANCE
 export GAS_PRICE_METHOD="legacy"
 export STATE_FILE="$EXECUTOR_ID.json"

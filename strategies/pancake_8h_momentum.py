@@ -150,6 +150,10 @@ class MomentumAlphaModel(AlphaModel):
         if liquidity < min_liquidity_threshold:
             return False
 
+        # This token is marked as not tradeable, so we don't touch it
+        if (pair.buy_tax != 0) or (pair.sell_tax != 0) or (pair.transfer_tax != 0):
+            return False
+
         if self.is_funny_price(price):
             return False
 
