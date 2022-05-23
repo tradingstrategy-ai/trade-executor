@@ -23,9 +23,8 @@ def calculate_position_statistics(clock: datetime.datetime, position: TradingPos
         last_valuation_at=position.last_pricing_at,
         profitability=position.get_total_profit_percent(),
         profit_usd=position.get_total_profit_usd(),
-        equity=float(position.get_equity_for_position()),
+        quantity=float(position.get_equity_for_position()),
         value=position.get_value(),
-        first_trade_at=None,  # TODO: Remove - availble as position.opened_at
     )
     return stats
 

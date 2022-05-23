@@ -95,8 +95,21 @@ class ExecutionLoop:
         self.execution_model.preflight_check()
         logger.trade("Preflight checks ok")
 
-    def tick(self, unrounded_timestamp: datetime.datetime, state: State, cycle: int, live: bool):
-        """Run one trade execution tick."""
+    def tick(self,
+             unrounded_timestamp: datetime.datetime,
+             state: State,
+             cycle: int,
+             live: bool,
+             backtesting_universe: Optional[TradeExecutorTradingUniverse]=None):
+        """Run one trade execution tick.
+
+        :param backtesting_universe:
+            If passed, use this universe instead of trying to download
+            and filter new one. This is shortcut for backtesting
+            where the universe does not change between cycles
+            (as opposite to live trading new pairs pop in to the existince).
+
+        """
 
         assert isinstance(unrounded_timestamp, datetime.datetime)
         assert isinstance(state, State)
@@ -114,12 +127,19 @@ class ExecutionLoop:
 
         logger.trade("Performing strategy tick #%d for timestamp %s, unrounded time is %s, live trading is %s", cycle, ts, unrounded_timestamp, live)
 
-        # Refresh the trading universe for this cycle
-        universe = self.universe_model.construct_universe(ts, live)
+        if backtesting_universe is None:
 
-        # Check if our data is stagnated and we cannot execute the strategy
-        if self.max_data_delay is not None:
-            self.universe_model.check_data_age(ts, universe, self.max_data_delay)
+            # Refresh the trading universe for this cycle
+            universe = self.universe_model.construct_universe(ts, live)
+
+            # Check if our data is stagnated and we cannot execute the strategy
+            if self.max_data_delay is not None:
+                self.universe_model.check_data_age(ts, universe, self.max_data_delay)
+
+        else:
+            # Recycle the universe instance
+            logger.info("Reusing universe from the previous tick")
+            universe = backtesting_universe
 
         # Run cycle checks
         self.runner.pretick_check(ts, universe)
@@ -180,16 +200,17 @@ class ExecutionLoop:
         logger.info("Strategy is executed in backtesting mode, starting at %s", ts)
 
         cycle = 1
+        universe = None
         while True:
 
-            universe = self.tick(ts, state, cycle, live=False)
+            universe = self.tick(ts, state, cycle, live=False, backtesting_universe=universe)
 
             self.update_position_valuations(ts, state, universe)
 
             # Check for termination in integration testing
             if self.max_cycles is not None:
                 if cycle >= self.max_cycles:
-                    logger.info("Max test cycles reached")
+                    logger.info("Max backtest cycles reached")
                     break
 
             # Advance to the next tick

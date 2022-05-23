@@ -7,8 +7,6 @@ from tradeexecutor.state.types import USDollarAmount
 from tradeexecutor.strategy.valuation import ValuationModel
 
 
-
-
 class UniswapV2PoolRevaluator(ValuationModel):
     """Re-value assets based on their on-chain price.
 

@@ -23,13 +23,12 @@ from eth_defi.abi import get_deployed_contract
 from eth_defi.txmonitor import wait_transactions_to_complete
 from eth_typing import HexAddress, HexStr
 
-from typer.testing import CliRunner
 from web3 import Web3, HTTPProvider
 from web3.contract import Contract
 
 from eth_defi.ganache import fork_network
 from eth_defi.hotwallet import HotWallet
-from tradeexecutor.cli.main import app, start
+from tradeexecutor.cli.main import app
 from tradeexecutor.state.state import State
 
 from tradeexecutor.cli.log import setup_pytest_logging
@@ -156,51 +155,37 @@ def test_bnb_chain_16h_momentum(
         "BACKTEST_START": "2021-12-07",
         "BACKTEST_END": "2021-12-09",
         "TICK_OFFSET_MINUTES": "10",
+        "TICK_SIZE": "16h",
         "CONFIRMATION_BLOCK_COUNT": "8",
+        "MAX_POSITIONS": "2",
     }
 
     # Don't use CliRunner.invoke() here,
     # as it patches stdout/stdin and causes our pdb to stop working
     with mock.patch.dict('os.environ', environment, clear=True):
-        app(["start"])
+        app(["start"], standalone_mode=False)
 
     with open(debug_dump_file, "rb") as inp:
         debug_dump = pickle.load(inp)
 
-        # We run for 2 days, 3 rebalances per day
-        assert len(debug_dump) == 6
+        assert len(debug_dump) == 3
 
         cycle_1 = debug_dump[1]
         cycle_2 = debug_dump[2]
         cycle_3 = debug_dump[3]
-        # cycle_4 = debug_dump[4]
 
-        logger.info("Cycle 1 trades %s", cycle_1["rebalance_trades"])
+        # Check that we made trades based on 2 max position count
         assert cycle_1["cycle"] == 1
         assert cycle_1["timestamp"] == datetime.datetime(2021, 12, 7, 0, 0)
-        assert len(cycle_1["approved_trades"]) == 4
-        assert len(cycle_1["positions_at_start_of_construction"]) == 0
+        assert len(cycle_1["approved_trades"]) == 2
 
-        # 4 buys + 4 sells
-        logger.info("Cycle 2 trades %s", cycle_2["rebalance_trades"])
         assert cycle_2["cycle"] == 2
-        assert cycle_2["timestamp"].replace(minute=0) == datetime.datetime(2021, 12, 7, 8, 0)
-        assert len(cycle_2["approved_trades"]) == 8
-        assert len(cycle_2["positions_at_start_of_construction"]) == 4
+        assert cycle_2["timestamp"].replace(minute=0) == datetime.datetime(2021, 12, 7, 16, 0)
+        assert len(cycle_2["approved_trades"]) == 4
 
-        # 4 buys + 4 sells
-        logger.info("Cycle 3 trades %s", cycle_3["rebalance_trades"])
         assert cycle_3["cycle"] == 3
-        assert len(cycle_3["positions_at_start_of_construction"]) == 4
-        assert len(cycle_3["approved_trades"]) == 8
-        assert cycle_3["timestamp"].replace(minute=0) == datetime.datetime(2021, 12, 7, 16, 0)
-
-        # 3 buys + 4 sells
-        #logger.info("Cycle 4 trades %s", cycle_4["rebalance_trades"])
-        #assert cycle_4["cycle"] == 4
-        #assert len(cycle_4["positions_at_start_of_construction"]) == 4
-        #assert len(cycle_4["approved_trades"]) == 7
-        #assert cycle_4["timestamp"].replace(minute=0) == datetime.datetime(2021, 12, 8, 0, 0)
+        assert len(cycle_3["approved_trades"]) == 4
+        assert cycle_3["timestamp"].replace(minute=0) == datetime.datetime(2021, 12, 8, 8, 0)
 
     # See we can load the state after all this testing.
     # Mainly stresses on serialization/deserialization issues.
@@ -209,5 +194,9 @@ def test_bnb_chain_16h_momentum(
     state.perform_integrity_check()
     assert len(state.portfolio.open_positions) > 0
     assert len(state.portfolio.closed_positions) > 0
+
+    # Check the stats of the first position when it was opened
+    assert state.stats.positions[1][-2].quantity > 0
+    assert state.stats.positions[1][-2].value > 0
 
     logger.info("All ok")

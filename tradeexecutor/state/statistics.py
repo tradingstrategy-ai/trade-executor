@@ -35,14 +35,10 @@ class PositionStatistics:
     profit_usd: USDollarAmount
 
     #: The current number of owned units
-    equity: float
+    quantity: float
 
     #: The current position size dollars
     value: USDollarAmount
-
-    #: When this position was opened
-    #: Only calculated after the position is closed.
-    first_trade_at: datetime.datetime
 
 
 @dataclass_json

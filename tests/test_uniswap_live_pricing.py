@@ -316,7 +316,7 @@ def test_uniswap_three_leg_buy_price_with_price_impact(
 
     # Get price for 20_000 USDC
     price = pricing_method.get_buy_price(datetime.datetime.utcnow(), pair, Decimal(20_000))
-    assert price == pytest.approx(1725.11534603, rel=APPROX_REL)
+    assert price == pytest.approx(350.06125296652243, rel=APPROX_REL)
 
 
 def test_uniswap_three_leg_sell_price_with_price_impact(
@@ -340,4 +340,4 @@ def test_uniswap_three_leg_sell_price_with_price_impact(
 
     # Get price for 500 AAVE
     price = pricing_method.get_buy_price(datetime.datetime.utcnow(), pair, Decimal(500))
-    assert price == pytest.approx(1705.6153460381142, rel=APPROX_REL)
+    assert price == pytest.approx(342.2495177609056, rel=APPROX_REL)

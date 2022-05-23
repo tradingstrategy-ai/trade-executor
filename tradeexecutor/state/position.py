@@ -29,8 +29,19 @@ class TradingPosition:
 
     #: When was the last time this position was (re)valued
     last_pricing_at: datetime.datetime
-    #: Base token price at the time of the valuation
+
+    #: Last valued price for the base token.
+    #:
+    #: There are two ways to receive this
+    #:
+    #: - When the position is opened, set to the initial buy price
+    #:
+    #: - When the position is revalued, set to the sell price of the position
+    #:
+    #: Note that this might be initially incorrect, if revaluation has not been done
+    #: yet, because the buy price != sell price.
     last_token_price: USDollarAmount
+
     # 1.0 for stablecoins, unless out of peg, in which case can be 0.99
     last_reserve_price: USDollarAmount
 
@@ -142,6 +153,7 @@ class TradingPosition:
         return first_trade.executed_price
 
     def get_equity_for_position(self) -> Decimal:
+        # TODO: Rename to get_quantity_for_position
         return sum([t.get_equity_for_position() for t in self.trades.values() if t.is_success()])
 
     def has_unexecuted_trades(self) -> bool:

@@ -18,6 +18,7 @@ from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_trading_pair
 from tradingstrategy.pair import PandasPairUniverse
 
+
 logger = logging.getLogger(__name__)
 
 
@@ -70,17 +71,14 @@ class UniswapV2LivePricing(PricingModel):
         return translate_trading_pair(pair)
 
     def check_supported_quote_token(self, pair: TradingPairIdentifier):
-        assert pair.quote.address == self.routing_model.reserve_token_address, f"Quote token {self.routing_model.reserve_token_address} not supported for pair {pair}, {pair.base.address} - {pair.quote.address}"
+        assert pair.quote.address == self.routing_model.reserve_token_address, f"Quote token {self.routing_model.reserve_token_address} not supported for pair {pair}, pair tokens are {pair.base.address} - {pair.quote.address}"
 
     def get_sell_price(self,
                        ts: datetime.datetime,
                        pair: TradingPairIdentifier,
                        quantity: Optional[Decimal],
                        ) -> USDollarAmount:
-        """Get live price on Uniswap.
-        """
-
-        self.check_supported_quote_token(pair)
+        """Get live price on Uniswap."""
 
         if quantity is None:
             quantity = Decimal(self.very_small_amount)

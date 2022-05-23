@@ -15,6 +15,7 @@
 
 import datetime
 import logging
+import os
 from collections import Counter, defaultdict
 from contextlib import AbstractContextManager
 from typing import Dict
@@ -64,7 +65,8 @@ min_liquidity_threshold = 750_000
 portfolio_base_liquidity_threshold = 0.02
 
 # Keep 6 positions open at once
-max_assets_per_portfolio = 6
+# TODO: env var MAX_POSITIONS hack because Ganache is so unstable
+max_assets_per_portfolio = int(os.environ.get("MAX_POSITIONS", 6))
 
 # How many % of all value we hold in cash all the time,
 # so that we do not risk our trading capital
@@ -77,7 +79,7 @@ allowed_quote_tokens = {
  }
 
 # Keep everything internally in BUSD
-reserve_token_address = "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c".lower()
+reserve_token_address = "0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56".lower()
 
 # Allowed exchanges as factory -> router pairs,
 # by their smart contract addresses
@@ -230,7 +232,7 @@ class MomentumAlphaModel(AlphaModel):
                     # BSC blockchain was halted or because BSC nodes themselves had crashed.
                     # In this case, we just assume the liquidity was zero and don't backtest.
                     # logger.warning(f"No liquidity data for pair {pair}, currently backtesting at {ts}")
-                    logger.info("Holes in liquidity data for %s? %s", pair, ts)
+                    logger.debug("Holes in liquidity data for %s at %s", pair, ts)
                     available_liquidity_for_pair = 0
             else:
                 #logger.info("Pair %s non-positive momentum for range %s - %s", pair, first_candle["Date"], last_candle["Date"])
@@ -275,7 +277,7 @@ class MomentumAlphaModel(AlphaModel):
         for pair_id, momentum in top_signals:
             debug_data = extra_debug_data[pair_id]
             pair = debug_data["pair"]
-            logger.info(f"{ts}: Signal for {pair.get_ticker()} (#{pair.pair_id}) is {momentum * 100:,.2f}%, open: {debug_data['open']:,.8f}, close: {debug_data['close']:,.8f}")
+            logger.info(f"{ts}: Signal for {pair.get_ticker()} (#{pair.pair_id}) is {momentum * 100:,.2f}%, open: {debug_data['open']:,.8f}, close: {debug_data['close']:,.8f}, addr: {pair.address}")
 
         logger.info("Got signals %s", weighed_signals)
         debug_details["signals"]: weighed_signals.copy()

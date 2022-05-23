@@ -412,8 +412,8 @@ def test_statistics(usdc, weth_usdc, aave_usdc, start_ts):
     stats = state.stats
     assert len(stats.positions) == 2
     assert len(stats.closed_positions) == 0
-    assert stats.get_latest_position_stats(1).equity == pytest.approx(0.099)
-    assert stats.get_latest_position_stats(2).equity == pytest.approx(0.495)
+    assert stats.get_latest_position_stats(1).quantity == pytest.approx(0.099)
+    assert stats.get_latest_position_stats(2).quantity == pytest.approx(0.495)
 
     assert stats.get_latest_position_stats(1).value == pytest.approx(168.3)
     assert stats.get_latest_position_stats(2).value == pytest.approx(99.0)
@@ -454,7 +454,7 @@ def test_statistics(usdc, weth_usdc, aave_usdc, start_ts):
 
     assert stats.get_latest_position_stats(1).profitability == 0
     assert stats.get_latest_position_stats(1).profit_usd == 0
-    assert stats.get_latest_position_stats(1).equity == 0
+    assert stats.get_latest_position_stats(1).quantity == 0
     assert stats.get_latest_position_stats(2).profitability == 0
 
     assert stats.closed_positions[1].value_at_open == pytest.approx(168.3)
