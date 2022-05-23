@@ -215,7 +215,7 @@ class PortfolioConstructionModel:
                     self.reserve_currency,
                     1.0,  # TODO: Harcoded stablecoin USD exchange rate
                 )
-                logger.info("Created a new trade. pair:%s, position #%d, trade #%d, new:%s", position.pair, position.position_id, trade.trade_id, created)
+                logger.info("Created trade, pair:%s, position #%d, trade #%d, new position:%s", position.pair, position.position_id, trade.trade_id, created)
                 rebalance_trades.append(trade)
                 new_positions.append(position)
 

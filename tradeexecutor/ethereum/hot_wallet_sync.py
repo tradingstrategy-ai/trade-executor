@@ -13,10 +13,12 @@ class EthereumHotWalletReserveSyncer:
     """Checks any Ethereum address for changes in the portfolio that may have happened outside the drawing.
 
     - Withdrawals
-    - Deposits
-    - Rebases
-    - Interest payments
 
+    - Deposits
+
+    - Rebases
+
+    - Interest payments
     """
 
     def __init__(self, web3: Web3, wallet_address: HexAddress):

@@ -203,6 +203,9 @@ def start(
     else:
         client = None
 
+    if not tick_size:
+        raise RuntimeError("Tick size must be given")
+
     tick_offset = datetime.timedelta(minutes=tick_offset_minutes)
 
     if max_data_delay_minutes:

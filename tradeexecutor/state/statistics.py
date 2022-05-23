@@ -35,15 +35,10 @@ class PositionStatistics:
     profit_usd: USDollarAmount
 
     #: The current number of owned units
-    equity: float
+    quantity: float
 
     #: The current position size dollars
-    value: Optional[USDollarAmount] = None
-
-    #: When this position was opened
-    #: Only calculated after the position is closed.
-    # TODO: Remove None default for the future version
-    first_trade_at: Optional[datetime.datetime] = None
+    value: USDollarAmount
 
 
 @dataclass_json
@@ -61,10 +56,10 @@ class FinalPositionStatistics:
     trade_count: int
 
     #: How much was the first purchase
-    value_at_open: Optional[USDollarAmount] = None
+    value_at_open: USDollarAmount
 
     #: How much was we held at the maximum point of time
-    value_at_max: Optional[USDollarAmount] = None
+    value_at_max: USDollarAmount
 
 
 
@@ -83,13 +78,11 @@ class PortfolioStatistics:
     closed_position_count: int
 
     unrealised_profit_usd: USDollarAmount
+
+    first_trade_at: datetime.datetime
+    last_trade_at: datetime.datetime
+
     realised_profit_usd: USDollarAmount = 0
-
-    # TODO: Remove None default for the future version
-    first_trade_at: Optional[datetime.datetime] = None
-
-    # TODO: Remove None default for the future version
-    last_trade_at: Optional[datetime.datetime] = None
 
 
 @dataclass_json
