@@ -234,6 +234,7 @@ class ExecutionLoop:
         logger.info("Strategy is executed in live mode, now is %s", ts)
 
         cycle = 1
+        universe: Optional[TradeExecutorTradingUniverse] = None
 
         # The first trade will be execute immediately, despite the time offset or tick
         if self.trade_immediately:
@@ -242,26 +243,33 @@ class ExecutionLoop:
 
         def live_cycle():
             nonlocal cycle
+            nonlocal universe
             try:
                 cycle += 1
                 ts = datetime.datetime.now()
-                self.tick(ts, state, cycle, live=True)
+                universe = self.tick(ts, state, cycle, live=True)
             except Exception as e:
                 logger.exception(e)
                 scheduler.shutdown(wait=False)
                 raise
 
         def live_positions():
+            nonlocal universe
+
+            # We cannot update valuations until we know
+            # trading pair universe, because to know the valuation of the position
+            # we need to know the route how to sell the token of the position
+            if universe is None:
+                logger.info("Universe not yet downloaded")
+                return
+
             try:
                 ts = datetime.datetime.now()
-                self.update_position_valuations(ts, state)
+                self.update_position_valuations(ts, state, universe)
             except Exception as e:
                 logger.exception(e)
                 scheduler.shutdown(wait=False)
                 raise
-
-        # Always immediately revalue positions on launch
-        self.update_position_valuations(datetime.datetime.now(), state)
 
         # Set up live trading tasks using APScheduler
         executors = {
