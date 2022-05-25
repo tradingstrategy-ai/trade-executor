@@ -25,9 +25,13 @@ There is a mapping of 1 strategy : 1 container : 1 domain : 1 internal TCP/IP po
 
 # Building
 
+Builds the Docker image and tags it as `latest`:
+
 ```shell
 docker build -t trading-strategy/trade-executor:latest . 
 ```
+
+This image is referred in `docker-container.yml`.
 
 # Running
 
@@ -156,7 +160,7 @@ docker-compose exec -it quickswap-momentum /bin/bash
 Then curl within the container:
 
 ```shell
-curl -i localhost:3456
+curl -i http://localhost:3456
 ```
 
 # Publishing at DockerHub

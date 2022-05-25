@@ -6,4 +6,5 @@ dist
 .vscode
 .pytest_cache
 .cache
-
+cache
+state

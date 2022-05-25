@@ -3,29 +3,28 @@ import datetime
 import logging
 from pathlib import Path
 from queue import Queue
-from typing import Optional, List
+from typing import Optional
 import pkg_resources
 
 import typer
 
-from tradeexecutor.ethereum.uniswap_v2_execution import UniswapV2ExecutionModel
-from tradeexecutor.ethereum.uniswap_v2_valuation import uniswap_v2_sell_valuation_factory
-from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
 from web3.middleware import geth_poa_middleware
+from web3 import Web3, HTTPProvider
 
 from eth_defi.balances import fetch_erc20_balances_by_token_list
 from eth_defi.gas import GasPriceMethod, node_default_gas_price_strategy
 from eth_defi.token import fetch_erc20_details
+from eth_defi.hotwallet import HotWallet
+
 from tradeexecutor.state.metadata import Metadata
 from tradeexecutor.strategy.description import StrategyExecutionDescription
 from tradeexecutor.strategy.tick import TickSize
-from web3 import Web3, HTTPProvider
-
-from eth_defi.hotwallet import HotWallet
 from tradeexecutor.cli.approval import CLIApprovalModel
 from tradeexecutor.cli.loop import ExecutionLoop
 from tradeexecutor.ethereum.hot_wallet_sync import EthereumHotWalletReserveSyncer
-
+from tradeexecutor.ethereum.uniswap_v2_execution import UniswapV2ExecutionModel
+from tradeexecutor.ethereum.uniswap_v2_valuation import uniswap_v2_sell_valuation_factory
+from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
 from tradeexecutor.ethereum.uniswap_v2_live_pricing import uniswap_v2_live_pricing_factory
 from tradeexecutor.state.store import JSONFileStore, StateStore
 from tradeexecutor.strategy.approval import ApprovalType, UncheckedApprovalModel, ApprovalModel
@@ -49,9 +48,6 @@ logger: Optional[logging.Logger] = None
 
 def create_trade_execution_model(
         execution_type: TradeExecutionType,
-        #factory_address: str,
-        #router_address: str,
-        #uniswap_init_code_hash,
         json_rpc: str,
         private_key: str,
         gas_price_method: Optional[GasPriceMethod],
@@ -62,13 +58,10 @@ def create_trade_execution_model(
         return DummyExecutionModel()
     elif execution_type == TradeExecutionType.uniswap_v2_hot_wallet:
         assert private_key, "Private key is needed"
-        #assert factory_address, "Uniswap v2 factory address needed"
-        #assert router_address, "Uniswap v2 factory router needed"
         assert json_rpc, "JSON-RPC endpoint is needed"
         web3 = create_web3(json_rpc, gas_price_method)
 
         hot_wallet = HotWallet.from_private_key(private_key)
-        # uniswap = fetch_deployment(web3, factory_address, router_address, init_code_hash=uniswap_init_code_hash)
         sync_method = EthereumHotWalletReserveSyncer(web3, hot_wallet.address)
         execution_model = UniswapV2ExecutionModel(web3, hot_wallet, confirmation_timeout=confirmation_timeout, confirmation_block_count=confirmation_block_count)
         valuation_model_factory = uniswap_v2_sell_valuation_factory
@@ -108,6 +101,8 @@ def create_web3(url, gas_price_method: Optional[GasPriceMethod] = None) -> Web3:
     if chain_id in (ChainId.bsc.value, ChainId.polygon.value):
         logger.info("Using proof-of-authority web3 middleware")
         web3.middleware_onion.inject(geth_poa_middleware, layer=0)
+
+
 
     return web3
 
