@@ -87,6 +87,12 @@ Then start the strategy execution:
 docker-compose up --no-deps -d quickswap-momentum start --trade-immediately
 ```
 
+Or starting on foreground:
+
+```shell
+docker-compose up quickswap-momentum
+```
+
 This executor 
 
 - Maps a host port for the webhook access - each strategy execution gets its own port

@@ -25,6 +25,6 @@ RUN poetry config virtualenvs.create false \
 # Webhook port 3456
 EXPOSE 3456
 
-CMD ["poetry", "run", "trade-executor"]
+CMD ["poetry", "run", "trade-executor", "start"]
 
 ENTRYPOINT ["scripts/docker-entrypoint.sh"]
