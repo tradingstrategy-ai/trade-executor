@@ -22,8 +22,6 @@ jobs:
     # See pyproject.toml for details
     - name: Setup master tracked dependencies and submodules
       run: |
-        git clone --recurse-submodules https://github.com/tradingstrategy-ai/web3-ethereum-defi.git ../web3-ethereum-defi
-        git clone --recurse-submodules https://github.com/tradingstrategy-ai/trading-strategy.git ../trading-strategy
         git submodule update --init --recursive
     - name: Install dependencies
       run: |

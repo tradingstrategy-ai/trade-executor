@@ -8,7 +8,7 @@ from logging import Logger
 from typing import Optional
 
 import coloredlogs
-from _pytest.fixtures import SubRequest
+
 
 from discord_logging.handler import DiscordHandler
 
@@ -52,10 +52,13 @@ def setup_logging(log_level=logging.INFO) -> Logger:
     return logger
 
 
-def setup_pytest_logging(request: SubRequest, mute_requests=True) -> logging.Logger:
+def setup_pytest_logging(request, mute_requests=True) -> logging.Logger:
     """Setup logger in pytest environment.
 
     Quiets out unnecessary logging subsystems.
+
+    @param request:
+        pytest.fixtures.SubRequest instance
     """
 
     _setup_custom_log_levels()

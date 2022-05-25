@@ -12,8 +12,8 @@ packages = [
 # Scipy compatibility
 # https://stackoverflow.com/questions/71764027/numpy-installation-fails-when-installing-through-poetry-on-m1-and-macos/71764028#71764028
 python = ">=3.9,<3.11"
-web3-ethereum-defi = {path = "../web3-ethereum-defi", develop = true}
-trading-strategy = {path = "../trading-strategy", develop = true}
+web3-ethereum-defi = {path = "deps/web3-ethereum-defi", develop = true}
+trading-strategy = {path = "deps/trading-strategy", develop = true}
 typer = "^0.4.0"
 colorama = "^0.4.4"
 pyramid = "^2.0"

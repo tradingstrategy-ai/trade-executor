@@ -1,0 +1,15 @@
+#
+# A docker-compose file to manage all example trade executors and strategies
+#
+version: "3.9"
+services:
+  polygon-momentum:
+    build: .
+    ports:
+      - "10001:3456"
+    volumes:
+      - .:/state
+    environment:
+      FLASK_ENV: development
+  redis:
+    image: "redis:alpine"
