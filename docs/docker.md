@@ -93,6 +93,13 @@ Or starting on foreground:
 docker-compose up quickswap-momentum
 ```
 
+Then check the webhook status:
+
+
+```shell
+curl -I http://localhost:19002
+```
+
 This executor 
 
 - Maps a host port for the webhook access - each strategy execution gets its own port
@@ -132,10 +139,26 @@ docker-compose run --entrypoint /bin/bash quickswap-momentum
 
 To load an `.env` file in the bash:
 
-
 ```shell
 export $(cat ~/quickswap-momentum.env |  grep -v '#' | sed 's/\r$//' | awk '/=/ {print $1}' )
 ```
 
+## Checking ports inside the container
+
+Make sure a container is first running.
+
+Open a shell inside a running container.
+
+```shell
+docker-compose exec -it quickswap-momentum /bin/bash 
+```
+
+Then curl within the container:
+
+```shell
+curl -i localhost:3456
+```
+
 # Publishing at DockerHub
 
+TODO

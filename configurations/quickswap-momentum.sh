@@ -69,7 +69,10 @@ export APPROVAL_TYPE="unchecked"
 export CACHE_PATH="cache/${EXECUTOR_ID}"
 export TICK_OFFSET_MINUTES="10"
 export TICK_SIZE="16h"
+
+# Webhook server configuration for Docker
 export HTTP_PORT=3456
+export HTTP_HOST=0.0.0.0
 
 # 12 hours
 export MAX_DATA_DELAY_MINUTES=720
