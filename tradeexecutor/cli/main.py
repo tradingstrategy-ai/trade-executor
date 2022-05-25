@@ -7,10 +7,9 @@ from typing import Optional, List
 import pkg_resources
 
 import typer
-from click import Context
-from typer.main import get_command
 
 from tradeexecutor.ethereum.uniswap_v2_execution import UniswapV2ExecutionModel
+from tradeexecutor.ethereum.uniswap_v2_valuation import uniswap_v2_sell_valuation_factory
 from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
 from web3.middleware import geth_poa_middleware
 
@@ -23,14 +22,11 @@ from tradeexecutor.strategy.tick import TickSize
 from web3 import Web3, HTTPProvider
 
 from eth_defi.hotwallet import HotWallet
-from eth_defi.uniswap_v2.deployment import fetch_deployment
 from tradeexecutor.cli.approval import CLIApprovalModel
 from tradeexecutor.cli.loop import ExecutionLoop
 from tradeexecutor.ethereum.hot_wallet_sync import EthereumHotWalletReserveSyncer
 
-from tradeexecutor.ethereum.uniswap_v2_execution_v0 import UniswapV2ExecutionModelVersion0
 from tradeexecutor.ethereum.uniswap_v2_live_pricing import uniswap_v2_live_pricing_factory
-from tradeexecutor.ethereum.uniswap_v2_valuation import UniswapV2PoolRevaluator, uniswap_v2_sell_valuation_factory
 from tradeexecutor.state.store import JSONFileStore, StateStore
 from tradeexecutor.strategy.approval import ApprovalType, UncheckedApprovalModel, ApprovalModel
 from tradeexecutor.strategy.bootstrap import import_strategy_file
@@ -39,7 +35,9 @@ from tradeexecutor.strategy.execution_type import TradeExecutionType
 from tradeexecutor.cli.log import setup_logging, setup_discord_logging
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverseModel
 from tradeexecutor.utils.timer import timed_task
+from tradeexecutor.utils.url import redact_url_password
 from tradeexecutor.webhook.server import create_webhook_server
+from tradingstrategy.chain import ChainId
 from tradingstrategy.client import Client
 
 app = typer.Typer()
@@ -67,14 +65,7 @@ def create_trade_execution_model(
         #assert factory_address, "Uniswap v2 factory address needed"
         #assert router_address, "Uniswap v2 factory router needed"
         assert json_rpc, "JSON-RPC endpoint is needed"
-        web3 = create_web3(json_rpc)
-
-        # London is the default method
-        if gas_price_method == GasPriceMethod.legacy:
-            logger.info("Setting up BSC middleware for Web3")
-            web3.eth.set_gas_price_strategy(node_default_gas_price_strategy)
-            # Also assume BSC, set POA middleware
-            web3.middleware_onion.inject(geth_poa_middleware, layer=0)
+        web3 = create_web3(json_rpc, gas_price_method)
 
         hot_wallet = HotWallet.from_private_key(private_key)
         # uniswap = fetch_deployment(web3, factory_address, router_address, init_code_hash=uniswap_init_code_hash)
@@ -101,8 +92,24 @@ def create_state_store(state_file: Path) -> StateStore:
     return store
 
 
-def create_web3(url) -> Web3:
-    return Web3(HTTPProvider(url))
+def create_web3(url, gas_price_method: Optional[GasPriceMethod] = None) -> Web3:
+    web3 = Web3(HTTPProvider(url))
+
+    chain_id = web3.eth.chain_id
+
+    logger.info("Connected to chain id: %d", chain_id)
+
+    # London is the default method
+    if gas_price_method == GasPriceMethod.legacy:
+        logger.info("Setting up gas price middleware for Web3")
+        web3.eth.set_gas_price_strategy(node_default_gas_price_strategy)
+
+    # Set POA middleware if needed
+    if chain_id in (ChainId.bsc.value, ChainId.polygon.value):
+        logger.info("Using proof-of-authority web3 middleware")
+        web3.middleware_onion.inject(geth_poa_middleware, layer=0)
+
+    return web3
 
 
 def create_metadata(name, short_description, long_description, icon_url) -> Metadata:
@@ -270,6 +277,8 @@ def check_universe(
 ):
     """Checks that the trading universe is helthy for a given strategy."""
 
+    global logger
+
     logger = setup_logging()
 
     logger.info("Loading strategy file %s", strategy_file)
@@ -286,7 +295,7 @@ def check_universe(
         execution_model=None,
         timed_task_context_manager=timed_task,
         sync_method=None,
-        revaluation_method=None,
+        valuation_model_factory=None,
         pricing_model_factory=None,
         approval_model=None,
         client=client,
@@ -316,6 +325,7 @@ def check_wallet(
 
     TODO: Add balances also for non-reserve assets. This would need to mapping of the trading universe.
     """
+    global logger
 
     logger = setup_logging()
 
@@ -327,7 +337,7 @@ def check_wallet(
         execution_model=None,
         timed_task_context_manager=timed_task,
         sync_method=None,
-        revaluation_method=None,
+        valuation_model_factory=None,
         pricing_model_factory=None,
         approval_model=None,
         client=client,
@@ -335,18 +345,27 @@ def check_wallet(
 
     hot_wallet = HotWallet.from_private_key(private_key)
 
-    # Deconstruct strategy input
     universe_model: TradingStrategyUniverseModel = run_description.universe_model
-
     ts = datetime.datetime.utcnow()
     universe = universe_model.construct_universe(ts, live=False)
+
     reserve_assets = universe.reserve_assets
+
+    logger.info("Connecting to %s", redact_url_password(json_rpc))
+
     web3 = create_web3(json_rpc)
-    tokens = [web3.toChecksumAddress(a.address) for a in reserve_assets]
+
+    logger.info("Reserve assets are: %s", reserve_assets)
+    tokens = [Web3.toChecksumAddress(a.address) for a in reserve_assets]
+
+    logger.info("Checking JSON-RPC connection")
+
+    logger.info(f"Latest block is {web3.eth.block_number:,}")
+
+    logger.info("Hot wallet is %s", hot_wallet.address)
     balances = fetch_erc20_balances_by_token_list(web3, hot_wallet.address, tokens)
-    logger.info("Balances of %s", hot_wallet.address)
     for address, balance in balances.items():
         details = fetch_erc20_details(web3, address)
-        logger.info("%s: %s %s", details.name, details.convert_to_decimals(balance), details.symbol)
+        logger.info("Balance of %s: %s %s", details.name, details.convert_to_decimals(balance), details.symbol)
 
 

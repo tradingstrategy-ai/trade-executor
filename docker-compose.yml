@@ -5,10 +5,10 @@ version: "3.9"
 services:
   quickswap-momentum:
     container_name: quickswap-momentum
-    build: .
+    image: trading-strategy/trade-executor:latest
     ports:
       # Mapped in reverse proxy Caddyfile
-      - "127.0.0.1:10001:3456"
+      - "127.0.0.1:19002:3456"
     volumes:
       # Save the strategy execution state in the local filesystem
       - ./state:/usr/src/trade-executor/state

@@ -26,7 +26,7 @@ There is a mapping of 1 strategy : 1 container : 1 domain : 1 internal TCP/IP po
 # Building
 
 ```shell
-docker build -t trading-strategy/trade-executor . 
+docker build -t trading-strategy/trade-executor:latest . 
 ```
 
 # Running
@@ -56,15 +56,35 @@ This option splicing is done by a configuration helper script like `configuratio
 bash configuration/quickswap-momentum.sh 
 ```
 
-## Launching a strategty using docker-compose
+## Launching a strategy using docker-compose
 
 The project comes with a `docker-compose.yml` with configurations for example strategies.
 
 Now when we have created `~/quickswap-momentum.env` we can launch the executor.
 
+Build the container:
+
 ```shell
 docker-compose build quickswap-momentum
-docker-compose up --no-deps -d quickswap-momentum --trade-immediately
+```
+
+First do a pre-check:
+
+```shell
+# Load universe data and run timestamp check
+docker-compose run quickswap-momentum check-universe
+
+# Confirm cached files are available on the local file system 
+ls -lha cache/quickswap-momentum
+
+# Check walelt
+docker-compose run quickswap-momentum check-wallet
+```
+
+Then start the strategy execution:
+
+```shell
+docker-compose up --no-deps -d quickswap-momentum start --trade-immediately
 ```
 
 This executor 
@@ -72,7 +92,23 @@ This executor
 - Maps a host port for the webhook access - each strategy execution gets its own port
 - This port is mapped to the Internet through a Caddy reverse proxy
 
+## All together
+
+Single liner:
+
+```shell
+poetry shell
+bash configurations/quickswap-momentum.sh && \
+  docker-compose up --no-deps -d quickswap-momentum start --trade-immediately 
+```
+
+# Stopping the executor
+
+TODO
+
 # Troubleshooting the container
+
+## Opening a bash in the container
 
 You can do bash
 
@@ -84,6 +120,15 @@ Or:
 
 ```shell
 docker-compose run --entrypoint /bin/bash quickswap-momentum 
+```
+
+## Loading env file in the host environment
+
+To load an `.env` file in the bash:
+
+
+```shell
+export $(cat ~/quickswap-momentum.env |  grep -v '#' | sed 's/\r$//' | awk '/=/ {print $1}' )
 ```
 
 # Publishing at DockerHub

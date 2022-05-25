@@ -61,7 +61,7 @@ export ICON_URL="https://i0.wp.com/bloody-disgusting.com/wp-content/uploads/2022
 
 export STRATEGY_FILE="strategies/${EXECUTOR_ID}.py"
 
-export JSON_RPC=$JSON_RPC_BINANCE
+export JSON_RPC=$JSON_RPC_POLYGON
 export GAS_PRICE_METHOD="legacy"
 export STATE_FILE="$EXECUTOR_ID.json"
 export EXECUTION_TYPE="uniswap_v2_hot_wallet"
