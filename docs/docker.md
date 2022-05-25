@@ -5,12 +5,17 @@ Multiple strategy executors can use the same container image.
 The container is run by a docker-compose.
 Different strategies are configured by their environment variables.
 
+# Using your own strategies
+
+In these instructions, we only cover the bundled example strategies and `docker-compose.yml` recipes for them.
+But nothing prevents you to pass your own trading strategies through Docker volume mapping or by building your own container.  
+
 # Environment
 
 There is a mapping of 1 strategy : 1 container : 1 domain : 1 internal TCP/IP port : 1 domain name. 
 
 - Each strategy executor runs as its own container
-- Port 3456 is exposed for the executor webhook integration
+- Port 3456 is exposed for the executor webhook integration - mapped in `docker-compose.yml`
 - All executor parameters must be passed as environment variables
 - The application files are copied to `/usr/src/trade-executor`
 - Work dir is `/usr/src/trade-executor`
@@ -59,7 +64,7 @@ Now when we have created `~/quickswap-momentum.env` we can launch the executor.
 
 ```shell
 docker-compose build quickswap-momentum
-docker-compose up --no-deps -d quickswap-momentum
+docker-compose up --no-deps -d quickswap-momentum --trade-immediately
 ```
 
 This executor 
@@ -74,3 +79,12 @@ You can do bash
 ```shell
 docker run -it --entrypoint /bin/bash trading-strategy/trade-executor 
 ```
+
+Or:
+
+```shell
+docker-compose run --entrypoint /bin/bash quickswap-momentum 
+```
+
+# Publishing at DockerHub
+
