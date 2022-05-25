@@ -1,9 +1,15 @@
 # Running with Docker
 
-- The trade executor is packaged as a Docker container
+The trade executor is packaged as a Docker container.
+Multiple strategy executors can use the same container image. 
+The container is run by a docker-compose.
+Different strategies are configured by their environment variables.
 
 # Environment
 
+There is a mapping of 1 strategy : 1 container : 1 domain : 1 internal TCP/IP port : 1 domain name. 
+
+- Each strategy executor runs as its own container
 - Port 3456 is exposed for the executor webhook integration
 - All executor parameters must be passed as environment variables
 - The application files are copied to `/usr/src/trade-executor`

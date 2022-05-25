@@ -289,7 +289,7 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
         # Convert all key addresses to lowercase to
         # avoid mix up with Ethereum address checksums
         self.factory_router_map = {k.lower(): v for k, v in factory_router_map.items()}
-        self.allowed_intermediary_pairs = {k.lower(): v for k, v in allowed_intermediary_pairs.items()}
+        self.allowed_intermediary_pairs = {k.lower(): v.lower() for k, v in allowed_intermediary_pairs.items()}
         self.reserve_token_address = reserve_token_address
         self.max_slippage = max_slippage
 
@@ -399,7 +399,7 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
             raise RuntimeError(f"Do not how to trade reserve {reserve_asset} with {target_pair}")
         else:
 
-            assert intermediary_pair.pool_address.lower() in self.allowed_intermediary_pairs.values(), f"Intermediary pair {intermediary_pair} not allowed, allowed pairs are {self.allowed_intermediary_pairs}"
+            assert intermediary_pair.pool_address.lower() in self.allowed_intermediary_pairs.values(), f"Does not how to trade a pair. Got intermediary pair {intermediary_pair} that is not allowed, allowed intermediary pairs are {self.allowed_intermediary_pairs}"
 
             return self.make_multihop_trade(
                 routing_state,
