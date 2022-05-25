@@ -3,10 +3,12 @@ import datetime
 import logging
 from pathlib import Path
 from queue import Queue
-from typing import Optional
+from typing import Optional, List
 import pkg_resources
 
 import typer
+from click import Context
+from typer.main import get_command
 
 from tradeexecutor.ethereum.uniswap_v2_execution import UniswapV2ExecutionModel
 from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
@@ -346,6 +348,5 @@ def check_wallet(
     for address, balance in balances.items():
         details = fetch_erc20_details(web3, address)
         logger.info("%s: %s %s", details.name, details.convert_to_decimals(balance), details.symbol)
-
 
 
