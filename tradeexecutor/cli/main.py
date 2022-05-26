@@ -358,6 +358,7 @@ def check_wallet(
     logger.info(f"Latest block is {web3.eth.block_number:,}")
 
     logger.info("Hot wallet is %s", hot_wallet.address)
+    logger.info("We have %f gas money left", web3.eth.get_balance(hot_wallet.address) / 10**18)
     balances = fetch_erc20_balances_by_token_list(web3, hot_wallet.address, tokens)
     for address, balance in balances.items():
         details = fetch_erc20_details(web3, address)
