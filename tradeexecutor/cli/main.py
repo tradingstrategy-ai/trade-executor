@@ -90,7 +90,7 @@ def create_web3(url, gas_price_method: Optional[GasPriceMethod] = None) -> Web3:
 
     chain_id = web3.eth.chain_id
 
-    logger.info("Connected to chain id: %d", chain_id)
+    logger.info("Connected to chain id: %d, using gas price method %s", chain_id, gas_price_method.name)
 
     # London is the default method
     if gas_price_method == GasPriceMethod.legacy:
@@ -101,8 +101,6 @@ def create_web3(url, gas_price_method: Optional[GasPriceMethod] = None) -> Web3:
     if chain_id in (ChainId.bsc.value, ChainId.polygon.value):
         logger.info("Using proof-of-authority web3 middleware")
         web3.middleware_onion.inject(geth_poa_middleware, layer=0)
-
-
 
     return web3
 
