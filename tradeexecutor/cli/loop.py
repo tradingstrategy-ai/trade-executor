@@ -78,10 +78,14 @@ class ExecutionLoop:
     def init_state(self) -> State:
         """Initialize the state for this run."""
         if self.reset:
+            # Create empty state and save it
             state = self.store.create()
+            self.store.sync(state)
         else:
             if self.store.is_empty():
+                # Create empty state and save it
                 state = self.store.create()
+                self.store.sync(state)
             else:
                 state = self.store.load()
 
