@@ -176,7 +176,7 @@ class UniswapV2RoutingState(RoutingState):
             base_token=base_token,
             quote_token=quote_token,
             amount_in=reserve_amount,
-            max_slippage=max_slippage,
+            max_slippage=max_slippage * 100,  # In BPS
         )
         tx = self.tx_builder.sign_transaction(bound_swap_func, self.swap_gas_limit)
         return [tx]
@@ -230,7 +230,7 @@ class UniswapV2RoutingState(RoutingState):
             base_token=base_token,
             quote_token=quote_token,
             amount_in=reserve_amount,
-            max_slippage=max_slippage,
+            max_slippage=max_slippage * 100,  # In BPS,
             intermediate_token=intermediary_token,
         )
 
@@ -276,7 +276,7 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
             Lowercase.
 
         :param max_slippage:
-            Maximum allowed slippage in trades.
+            Maximum allowed slippage in trades in %.
 
         """
 

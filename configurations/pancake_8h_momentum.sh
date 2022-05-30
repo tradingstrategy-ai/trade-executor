@@ -53,6 +53,11 @@ export TICK_SIZE="8h"
 # 12 hours
 export MAX_DATA_DELAY_MINUTES=720
 
+# Webhook server configuration for Docker
+export HTTP_PORT=3456
+export HTTP_HOST=0.0.0.0
+
+
 OUTPUT=~/$EXECUTOR_ID.env
 python scripts/prepare-env.py > $OUTPUT
 echo "Created $OUTPUT"
