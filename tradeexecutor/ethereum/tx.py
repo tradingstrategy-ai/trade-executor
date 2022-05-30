@@ -152,7 +152,7 @@ class TransactionBuilder:
         # tx hash -> BlockchainTransaction map
         tx_hashes = {t.tx_hash: t for t in txs}
 
-        signed_txs = [TransactionBuilder.decode_transaction(t) for t in txs]
+        signed_txs = [TransactionBuilder.as_signed_tx(t) for t in txs]
 
         now_ = datetime.datetime.utcnow()
         for tx in txs:
