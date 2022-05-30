@@ -429,6 +429,14 @@ def test_simulated_uniswap_qstrader_strategy_single_trade(
     assert tx_info.tx_hash.startswith("0x")
     assert tx_info.nonce == 1
 
+    # Test raw Ethereum tx data access
+    tx_dict = tx_info.get_transaction()
+    assert tx_dict["chainId"] == 61
+    assert tx_dict["value"] == 0
+    assert tx_dict["v"] in (0, 1)
+    assert tx_dict["s"] > 0
+    assert tx_dict["r"] > 0
+
     # Check the raw on-chain token balances
     raw_balances = fetch_erc20_balances_by_transfer_event(web3, hot_wallet.address)
     balances = convert_balances_to_decimal(web3, raw_balances)

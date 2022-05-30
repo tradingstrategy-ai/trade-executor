@@ -17,11 +17,11 @@ from eth_defi.gas import GasPriceSuggestion, apply_gas, estimate_gas_fees
 from eth_defi.hotwallet import HotWallet
 from eth_defi.revert_reason import fetch_transaction_revert_reason
 from eth_defi.token import fetch_erc20_details, TokenDetails
-from eth_defi.txmonitor import wait_transactions_to_complete, \
+from eth_defi.confirmation import wait_transactions_to_complete, \
     broadcast_and_wait_transactions_to_complete, broadcast_transactions
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, FOREVER_DEADLINE,  mock_partial_deployment_for_analysis
 from eth_defi.uniswap_v2.fees import estimate_sell_price_decimals
-from eth_defi.uniswap_v2.analysis import analyse_trade, TradeSuccess
+from eth_defi.uniswap_v2.analysis import analyse_trade_by_hash, TradeSuccess, analyse_trade_by_receipt
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
@@ -345,7 +345,8 @@ def resolve_trades(
 
     Mutates the trade objects in-place.
 
-    :stop_on_execution_failure: Raise an exception if any of the trades failed
+    :param stop_on_execution_failure:
+        Raise an exception if any of the trades failed
     """
 
     trades = set()
@@ -381,7 +382,10 @@ def resolve_trades(
         reserve = trade.reserve_currency
         swap_tx = get_swap_transactions(trade)
         uniswap = mock_partial_deployment_for_analysis(web3, swap_tx.contract_address)
-        result = analyse_trade(web3, uniswap, swap_tx.tx_hash)
+
+        tx_dict = swap_tx.get_transaction()
+        receipt = receipts[HexBytes(swap_tx.tx_hash)]
+        result = analyse_trade_by_receipt(web3, uniswap, tx_dict, swap_tx.tx_hash, receipt)
 
         if isinstance(result, TradeSuccess):
             path = [a.lower() for a in result.path]

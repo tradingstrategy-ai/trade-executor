@@ -1,9 +1,12 @@
 import datetime
 from dataclasses import dataclass
-from typing import Optional, List, Any, Dict, Tuple
+from typing import Optional, Any, Dict, Tuple
 
 from dataclasses_json import dataclass_json
+from eth_account._utils.typed_transactions import TypedTransaction
+from hexbytes import HexBytes
 
+from eth_defi.tx import decode_signed_transaction
 from tradeexecutor.state.types import JSONHexAddress, JSONHexBytes
 
 
@@ -62,8 +65,13 @@ class BlockchainTransaction:
     #: When this transaction was broadcasted
     broadcasted_at: Optional[datetime.datetime] = None
 
+    #: Block timestamp when this tranasction was included in a block
     included_at: Optional[datetime.datetime] = None
+
+    #: Block number when this transaction was included in a block
     block_number: Optional[int] = None
+
+    #: Block has of the transaction where the executor saw the inclusion
     block_hash: Optional[JSONHexBytes] = None
 
     #: status from the tx receipt. True is success, false is revert.
@@ -85,6 +93,18 @@ class BlockchainTransaction:
             return f"<Tx from:{self.from_address}\n  nonce:{self.nonce}\n  to:{self.contract_address}\n  func:{self.function_selector}\n  args:{self.args}\n  fail reason:{self.revert_reason}>\n"
         else:
             return f"<Tx from:{self.from_address}\n  nonce:{self.nonce}\n  to:{self.contract_address}\n  func:{self.function_selector}\n  args:{self.args}\n  unresolved>\n"
+
+    def get_transaction(self) -> dict:
+        """Return the transaction object as it would be in web3.py.
+
+        Needed for :py:func:`analyse_trade_by_receipt`.
+        This will reconstruct :py:class:`TypedTransaction` instance from the
+        raw signed transaction bytes.
+        The object will have a dict containing "data" field which we can then
+        use for the trade analysis.
+        """
+        assert self.signed_bytes, "Not a signed transaction"
+        return decode_signed_transaction(self.signed_bytes)
 
     def is_success(self) -> bool:
         """Transaction is success if it's succeed flag has been set."""

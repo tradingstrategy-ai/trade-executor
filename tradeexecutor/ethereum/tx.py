@@ -3,6 +3,7 @@ import datetime
 import logging
 from typing import List
 
+from eth_account._utils.typed_transactions import TypedTransaction
 from eth_account.datastructures import SignedTransaction
 from hexbytes import HexBytes
 from web3 import Web3
@@ -11,8 +12,9 @@ from web3.contract import Contract, ContractFunction
 from eth_defi.gas import GasPriceSuggestion, apply_gas
 from eth_defi.hotwallet import HotWallet
 from eth_defi.revert_reason import fetch_transaction_revert_reason
-from eth_defi.txmonitor import broadcast_transactions, wait_transactions_to_complete, \
+from eth_defi.confirmation import broadcast_transactions, wait_transactions_to_complete, \
     broadcast_and_wait_transactions_to_complete
+from eth_defi.tx import decode_signed_transaction
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 
 
@@ -110,14 +112,18 @@ class TransactionBuilder:
 
         :return: tx_hash
         """
-        signed_tx = TransactionBuilder.get_signed_transaction(tx)
+        signed_tx = TransactionBuilder.as_signed_tx(tx)
         tx.broadcasted_at = datetime.datetime.utcnow()
         return broadcast_transactions(self.web3, [signed_tx])[0]
 
     @staticmethod
-    def get_signed_transaction(tx: "BlockchainTransaction") -> SignedTransaction:
-        """Convert expanded info to low-level Web3 transaction object."""
+    def decode_transaction(tx: "BlockchainTransaction") -> dict:
+        """Get raw transaction data out from the signed tx bytes."""
+        return decode_signed_transaction(tx.signed_bytes)
 
+    @staticmethod
+    def as_signed_tx(tx: "BlockchainTransaction") -> SignedTransaction:
+        """Get a transaction as a format ready to broadcast."""
         # TODO: Make hash, r, s, v filled up as well
         return SignedTransaction(rawTransaction=tx.signed_bytes, hash=None, r=0, s=0, v=0)
 
@@ -146,7 +152,7 @@ class TransactionBuilder:
         # tx hash -> BlockchainTransaction map
         tx_hashes = {t.tx_hash: t for t in txs}
 
-        signed_txs = [TransactionBuilder.get_signed_transaction(t) for t in txs]
+        signed_txs = [TransactionBuilder.decode_transaction(t) for t in txs]
 
         now_ = datetime.datetime.utcnow()
         for tx in txs:

@@ -24,7 +24,7 @@ import pytest
 from eth_account import Account
 
 from eth_defi.abi import get_deployed_contract
-from eth_defi.txmonitor import wait_transactions_to_complete
+from eth_defi.confirmation import wait_transactions_to_complete
 from eth_typing import HexAddress, HexStr
 
 from web3 import Web3, HTTPProvider

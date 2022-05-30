@@ -300,7 +300,8 @@ def test_forked_pancake(
     assert len(debug_details["approved_trades"]) > 0
 
     # We evaluated trading pair daily candles for momentum
-    assert debug_details["timepoint_candles_count"] == 1079
+    assert debug_details["timepoint_candles_count"] >= 1076
+    assert debug_details["timepoint_candles_count"] < 2000
 
     # The algo executes 4 buys,
     # from the most weighted to least weighted

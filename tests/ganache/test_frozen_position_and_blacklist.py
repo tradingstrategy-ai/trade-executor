@@ -21,7 +21,7 @@ from typing import List
 
 import pytest
 from eth_account import Account
-from eth_defi.txmonitor import wait_transactions_to_complete
+from eth_defi.confirmation import wait_transactions_to_complete
 from eth_typing import HexAddress, HexStr
 from hexbytes import HexBytes
 

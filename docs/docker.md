@@ -66,11 +66,7 @@ The project comes with a `docker-compose.yml` with configurations for example st
 
 Now when we have created `~/quickswap-momentum.env` we can launch the executor.
 
-Build the container:
-
-```shell
-docker-compose build quickswap-momentum
-```
+Build the container using instructions above.
 
 First do a pre-check:
 

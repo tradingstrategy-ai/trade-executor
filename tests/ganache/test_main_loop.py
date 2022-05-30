@@ -21,7 +21,7 @@ from web3.contract import Contract
 from eth_defi.abi import get_deployed_contract
 from eth_defi.ganache import fork_network
 from eth_defi.hotwallet import HotWallet
-from eth_defi.txmonitor import wait_transactions_to_complete
+from eth_defi.confirmation import wait_transactions_to_complete
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, fetch_deployment
 from eth_defi.utils import is_localhost_port_listening
 from tradeexecutor.cli.main import app
@@ -210,6 +210,7 @@ def test_main_loop(
         "EXECUTION_TYPE": "uniswap_v2_hot_wallet",
         "APPROVAL_TYPE": "unchecked",
         "CACHE_PATH": "/tmp/main_loop_tests",
+        "GAS_PRICE_METHOD": "legacy",
         "TRADING_STRATEGY_API_KEY": os.environ["TRADING_STRATEGY_API_KEY"],
         "DEBUG_DUMP_FILE": debug_dump_file,
         "BACKTEST_START": "2021-12-07",

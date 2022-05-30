@@ -54,6 +54,10 @@ def create_trade_execution_model(
         confirmation_timeout: datetime.timedelta,
         confirmation_block_count: int,
 ):
+
+    if not gas_price_method:
+        raise RuntimeError("GAS_PRICE_METHOD missing")
+
     if execution_type == TradeExecutionType.dummy:
         return DummyExecutionModel()
     elif execution_type == TradeExecutionType.uniswap_v2_hot_wallet:
@@ -86,6 +90,9 @@ def create_state_store(state_file: Path) -> StateStore:
 
 
 def create_web3(url, gas_price_method: Optional[GasPriceMethod] = None) -> Web3:
+
+    assert gas_price_method
+
     web3 = Web3(HTTPProvider(url))
 
     chain_id = web3.eth.chain_id

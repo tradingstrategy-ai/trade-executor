@@ -42,3 +42,8 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.scripts]
 trade-executor = 'tradeexecutor.cli.main:app'
+
+[tool.pytest.ini_options]
+testpaths = [
+    "tests",
+]

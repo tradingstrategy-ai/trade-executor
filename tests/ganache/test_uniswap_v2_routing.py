@@ -17,7 +17,7 @@ import pytest
 from eth_account import Account
 
 from eth_defi.gas import estimate_gas_fees, node_default_gas_price_strategy
-from eth_defi.txmonitor import wait_transactions_to_complete
+from eth_defi.confirmation import wait_transactions_to_complete
 from eth_typing import HexAddress, HexStr
 from web3 import Web3, HTTPProvider
 from web3.contract import Contract
