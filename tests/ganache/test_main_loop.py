@@ -10,6 +10,7 @@ import secrets
 from pathlib import Path
 from typing import List
 
+import flaky
 import pytest
 from eth_account import Account
 from eth_typing import HexAddress, HexStr
@@ -179,6 +180,8 @@ def strategy_path() -> Path:
     return Path(os.path.join(os.path.dirname(__file__), "../strategies", "pancakeswap_v2_main_loop.py"))
 
 
+# Flaky because of unstable Ganache
+@flaky.flaky
 def test_main_loop(
         logger: logging.Logger,
         strategy_path: Path,
