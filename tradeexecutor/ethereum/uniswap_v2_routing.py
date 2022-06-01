@@ -378,6 +378,8 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
         """
 
         assert type(reserve_asset_amount) == int
+        assert max_slippage is not None, "Max slippage must be given"
+        assert type(max_slippage) == float
         assert reserve_asset_amount > 0, f"For sells, switch reserve_asset to different token. Got target_pair: {target_pair}, reserve_asset: {reserve_asset}, amount: {reserve_asset_amount}"
 
         # Our reserves match directly the asset on trading pair
@@ -458,7 +460,6 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
                        pair_universe: PandasPairUniverse,
                        routing_state: UniswapV2RoutingState,
                        trades: List[TradeExecution],
-                       max_slippage: float=0.01,
                        check_balances=False):
         """Split for testability.
 
@@ -492,7 +493,6 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
                         target_pair=target_pair,
                         reserve_asset=reserve_asset,
                         reserve_asset_amount=t.get_raw_planned_reserve(),
-                        max_slippage=max_slippage,
                         check_balances=check_balances,
                     )
                 else:
@@ -501,7 +501,6 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
                         target_pair=target_pair,
                         reserve_asset=target_pair.base,
                         reserve_asset_amount=-t.get_raw_planned_quantity(),
-                        max_slippage=max_slippage,
                         check_balances=check_balances,
                     )
             else:
@@ -512,7 +511,6 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
                         target_pair=target_pair,
                         reserve_asset=reserve_asset,
                         reserve_asset_amount=t.get_raw_planned_reserve(),
-                        max_slippage=max_slippage,
                         check_balances=check_balances,
                         intermediary_pair=intermediary_pair,
                     )
@@ -522,7 +520,6 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
                         target_pair=target_pair,
                         reserve_asset=target_pair.base,
                         reserve_asset_amount=-t.get_raw_planned_quantity(),
-                        max_slippage=max_slippage,
                         check_balances=check_balances,
                         intermediary_pair=intermediary_pair,
                     )
@@ -536,7 +533,6 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
     def execute_trades(self,
                        routing_state: UniswapV2RoutingState,
                        trades: List[TradeExecution],
-                       max_slippage: float=0.0050,
                        check_balances=False):
         """Strategy and live execution connection.
 
@@ -556,7 +552,7 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
             Max slippaeg tolerated per trade. 0.01 is 1%.
 
         """
-        return self.execute_trades_internal(routing_state.pair_universe, routing_state, trades, max_slippage, check_balances)
+        return self.execute_trades_internal(routing_state.pair_universe, routing_state, trades, check_balances)
 
     def estimate_price(self,
                        state: RoutingState,

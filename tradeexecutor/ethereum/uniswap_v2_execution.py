@@ -106,13 +106,12 @@ class UniswapV2ExecutionModel(ExecutionModel):
         assert isinstance(routing_model, UniswapV2SimpleRoutingModel)
         assert isinstance(routing_state, UniswapV2RoutingState)
 
-        state.start_trades(datetime.datetime.utcnow(), trades)
+        state.start_trades(datetime.datetime.utcnow(), trades, max_slippage=self.max_slippage)
 
         routing_model.execute_trades(
             routing_state,
             trades,
-            check_balances=check_balances,
-            max_slippage=self.max_slippage)
+            check_balances=check_balances)
 
         broadcast_and_resolve(self.web3, state, trades)
 
