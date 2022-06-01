@@ -255,8 +255,7 @@ def routing_model(busd_asset):
     return UniswapV2SimpleRoutingModel(
         factory_router_map,
         allowed_intermediary_pairs,
-        reserve_token_address=busd_asset.address,
-        max_slippage=0.01)
+        reserve_token_address=busd_asset.address)
 
 
 @pytest.fixture()

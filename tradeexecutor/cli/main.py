@@ -53,6 +53,7 @@ def create_trade_execution_model(
         gas_price_method: Optional[GasPriceMethod],
         confirmation_timeout: datetime.timedelta,
         confirmation_block_count: int,
+        max_slippage: float,
 ):
 
     if not gas_price_method:
@@ -67,7 +68,12 @@ def create_trade_execution_model(
 
         hot_wallet = HotWallet.from_private_key(private_key)
         sync_method = EthereumHotWalletReserveSyncer(web3, hot_wallet.address)
-        execution_model = UniswapV2ExecutionModel(web3, hot_wallet, confirmation_timeout=confirmation_timeout, confirmation_block_count=confirmation_block_count)
+        execution_model = UniswapV2ExecutionModel(
+            web3,
+            hot_wallet,
+            confirmation_timeout=confirmation_timeout,
+            confirmation_block_count=confirmation_block_count,
+            max_slippage=max_slippage)
         valuation_model_factory = uniswap_v2_sell_valuation_factory
         pricing_model_factory = uniswap_v2_live_pricing_factory
         return execution_model, sync_method, valuation_model_factory, pricing_model_factory
@@ -146,6 +152,7 @@ def start(
     confirmation_timeout: int = typer.Option(900, envvar="CONFIRMATION_TIMEOUT", help="How many seconds to wait for transaction batches to confirm"),
     confirmation_block_count: int = typer.Option(8, envvar="CONFIRMATION_BLOCK_COUNT", help="How many blocks we wait before we consider transaction receipt a final"),
     execution_type: TradeExecutionType = typer.Option(..., envvar="EXECUTION_TYPE"),
+    max_slippage: float = typer.Option(0.005, envvar="MAX_SLIPPAGE", help="Max slippage allowed per trade before failing. 0.01 is 1%."),
     approval_type: ApprovalType = typer.Option(..., envvar="APPROVAL_TYPE"),
     state_file: Optional[Path] = typer.Option("strategy-state.json", envvar="STATE_FILE"),
     trading_strategy_api_key: str = typer.Option(None, envvar="TRADING_STRATEGY_API_KEY", help="Trading Strategy API key"),
@@ -186,6 +193,7 @@ def start(
         gas_price_method,
         confirmation_timeout,
         confirmation_block_count,
+        max_slippage,
     )
 
     approval_model = create_approval_model(approval_type)

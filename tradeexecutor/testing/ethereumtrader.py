@@ -142,12 +142,11 @@ def execute_trades_simple(
         },
         allowed_intermediary_pairs={},
         reserve_token_address=reserve_asset.address,
-        max_slippage=max_slippage,
     )
 
     state.start_trades(datetime.datetime.utcnow(), trades)
     routing_state = UniswapV2RoutingState(pair_universe, tx_builder)
-    routing_model.execute_trades_internal(pair_universe, routing_state, trades)
+    routing_model.execute_trades_internal(pair_universe, routing_state, trades, max_slippage=0.01)
     broadcast_and_resolve(web3, state, trades, stop_on_execution_failure=stop_on_execution_failure)
 
     # Clean up failed trades

@@ -137,7 +137,6 @@ class UniswapV2ExecutionModelVersion0(ExecutionModel):
             },
             allowed_intermediary_pairs={},
             reserve_token_address=reserve_asset.address,
-            max_slippage=self.max_slippage,
         )
 
         state.start_trades(datetime.datetime.utcnow(), trades)

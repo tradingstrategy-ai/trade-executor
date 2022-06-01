@@ -246,7 +246,6 @@ def routing_model(uniswap_v2, asset_usdc, asset_weth, weth_usdc_pair) -> Uniswap
         factory_router_map,
         allowed_intermediary_pairs,
         reserve_token_address=asset_usdc.address,
-        max_slippage=0.05,
     )
 
 
