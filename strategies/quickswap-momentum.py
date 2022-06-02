@@ -378,7 +378,6 @@ def strategy_factory(
             factory_router_map,
             allowed_intermediary_pairs,
             reserve_token_address=reserve_token_address,
-            max_slippage=0.01,
         ),
     )
 
