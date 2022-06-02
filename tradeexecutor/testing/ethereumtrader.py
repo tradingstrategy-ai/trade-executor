@@ -142,7 +142,6 @@ def execute_trades_simple(
         },
         allowed_intermediary_pairs={},
         reserve_token_address=reserve_asset.address,
-        max_slippage=max_slippage,
     )
 
     state.start_trades(datetime.datetime.utcnow(), trades)

@@ -251,7 +251,6 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
                  factory_router_map: Dict[str, Tuple[str, Optional[str]]],
                  allowed_intermediary_pairs: Dict[str, str],
                  reserve_token_address: str,
-                 max_slippage: float,
                  ):
         """
         :param factory_router_map:
@@ -274,10 +273,6 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
             Token address of our reserve currency.
             Relevent for buy/sell routing.
             Lowercase.
-
-        :param max_slippage:
-            Maximum allowed slippage in trades in %.
-
         """
 
         assert type(factory_router_map) == dict
@@ -291,7 +286,6 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
         self.factory_router_map = {k.lower(): v for k, v in factory_router_map.items()}
         self.allowed_intermediary_pairs = {k.lower(): v.lower() for k, v in allowed_intermediary_pairs.items()}
         self.reserve_token_address = reserve_token_address
-        self.max_slippage = max_slippage
 
     def get_reserve_asset(self, pair_universe: PandasPairUniverse) -> AssetIdentifier:
         """Translate our reserve token address tok an asset description."""
@@ -359,6 +353,7 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
               target_pair: TradingPairIdentifier,
               reserve_asset: AssetIdentifier,
               reserve_asset_amount: int,  # Raw amount of the reserve asset
+              max_slippage: float=0.01,
               check_balances=False,
               intermediary_pair: Optional[TradingPairIdentifier] = None,
               ) -> List[BlockchainTransaction]:
@@ -369,6 +364,7 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
         :param reserve_asset:
         :param reserve_asset_amount:
         :param max_slippage:
+            Max slippage per trade. 0.01 is 1%.
         :param check_balances:
             Check on-chain balances that the account has enough tokens
             and raise exception if not.
@@ -382,6 +378,8 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
         """
 
         assert type(reserve_asset_amount) == int
+        assert max_slippage is not None, "Max slippage must be given"
+        assert type(max_slippage) == float
         assert reserve_asset_amount > 0, f"For sells, switch reserve_asset to different token. Got target_pair: {target_pair}, reserve_asset: {reserve_asset}, amount: {reserve_asset_amount}"
 
         # Our reserves match directly the asset on trading pair
@@ -393,7 +391,7 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
                     target_pair,
                     reserve_asset,
                     reserve_asset_amount,
-                    self.max_slippage,
+                    max_slippage=max_slippage,
                     check_balances=check_balances,
                 )
             raise RuntimeError(f"Do not how to trade reserve {reserve_asset} with {target_pair}")
@@ -407,7 +405,7 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
                 intermediary_pair,
                 reserve_asset,
                 reserve_asset_amount,
-                self.max_slippage,
+                max_slippage=max_slippage,
                 check_balances=check_balances,
             )
 
@@ -462,8 +460,7 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
                        pair_universe: PandasPairUniverse,
                        routing_state: UniswapV2RoutingState,
                        trades: List[TradeExecution],
-                       check_balances=False,
-                       check_trades=False):
+                       check_balances=False):
         """Split for testability.
 
         :param check_balances:
@@ -471,8 +468,9 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
             before executing them. Because we are selling before buying.
             sometimes we do no know this until the sell tx has been completed.
 
-        :param check_trades:
-            Raise an error if any of the trades failed
+        :param max_slippage:
+            The max slipppage tolerated before the trade fails.
+            0.01 is 1%.
         """
 
         # Watch out for executing trade twice
@@ -548,6 +546,10 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
             Check that the wallet has enough reserves to perform the trades
             before executing them. Because we are selling before buying.
             sometimes we do no know this until the sell tx has been completed.
+
+
+        :param max_slippage:
+            Max slippaeg tolerated per trade. 0.01 is 1%.
 
         """
         return self.execute_trades_internal(routing_state.pair_universe, routing_state, trades, check_balances)

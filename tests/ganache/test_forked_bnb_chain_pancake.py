@@ -239,8 +239,7 @@ def routing_model(asset_busd):
     return UniswapV2SimpleRoutingModel(
         factory_router_map,
         allowed_intermediary_pairs,
-        reserve_token_address=asset_busd.address,
-        max_slippage=0.01)
+        reserve_token_address=asset_busd.address)
 
 
 def test_forked_pancake(

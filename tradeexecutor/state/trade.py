@@ -68,10 +68,19 @@ class TradeExecution:
     There trade state is resolved based on the market variables (usually timestamps).
     """
 
+    #: Trade id is unique among all trades in the same portfolio
     trade_id: int
+
+    #: Position id is unique among all trades in the same portfolio
     position_id: int
+
+    #: Spot, margin, lending, etc.
     trade_type: TradeType
+
+    #: Which trading pair this trade was for
     pair: TradingPairIdentifier
+
+    #: When the trade was opened
     opened_at: datetime.datetime
 
     #: Positive for buy, negative for sell.
@@ -93,8 +102,14 @@ class TradeExecution:
     #: when our routing model supports this.
     reserve_currency: AssetIdentifier
 
+    #: How much slippage we could initially tolerate,
+    #: 0.01 is 1% slippage.
+    planned_max_slippage: Optional[float] = None
+
     #: When capital is allocated for this trade
     started_at: Optional[datetime.datetime] = None
+
+    #: How much reserves was moved on this trade before execution
     reserve_currency_allocated: Optional[Decimal] = None
 
     #: When this trade entered mempool
@@ -102,14 +117,19 @@ class TradeExecution:
 
     #: Timestamp of the block where the txid was first mined
     executed_at: Optional[datetime.datetime] = None
+
+    #: The trade did not go through.
+    #: The timestamp when we figured this out.
     failed_at: Optional[datetime.datetime] = None
 
     #: What was the actual price we received
     executed_price: Optional[USDollarAmount] = None
 
+    #: How much underlying token we traded, the actual realised amount.
     #: Positive for buy, negative for sell
     executed_quantity: Optional[Decimal] = None
 
+    #: How much reserves we spend for this traded, the actual realised amount.
     executed_reserve: Optional[Decimal] = None
 
     #: LP fees estimated in the USD

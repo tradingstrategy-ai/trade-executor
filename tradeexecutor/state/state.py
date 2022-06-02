@@ -183,10 +183,16 @@ class State:
         for pos_stat_id in self.stats.positions.keys():
             assert pos_stat_id in position_ids, f"Stats had position id {pos_stat_id} for which actual trades are missing"
 
-    def start_trades(self, ts: datetime.datetime, trades: List[TradeExecution], underflow_check=False):
+    def start_trades(self, ts: datetime.datetime, trades: List[TradeExecution], max_slippage: float=0.01, underflow_check=False):
         """Mark trades ready to go.
 
         Update any internal accounting of capital allocation from reseves to trades.
+
+        Sets the execution model specific parameters like `max_slippage` on the trades.
+
+        :param max_slippage:
+            The slippage allowed for this trade before it fails in execution.
+            0.01 is 1%.
 
         :param underflow_check:
             If true warn us if we do not have enough reserves to perform the trades.
@@ -199,3 +205,4 @@ class State:
                 self.portfolio.move_capital_from_reserves_to_trade(t, underflow_check=underflow_check)
 
             t.started_at = ts
+            t.planned_max_slippage = max_slippage

@@ -39,6 +39,7 @@ class ExecutionModel(abc.ABC):
                        trades: List[TradeExecution],
                        routing_model: RoutingModel,
                        routing_state: RoutingState,
+                       max_slippage=0.005,
                        check_balances=False,
                        ):
         """Execute the trades determined by the algo on a designed Uniswap v2 instance.
@@ -61,6 +62,9 @@ class ExecutionModel(abc.ABC):
 
         :param routing_state:
             State of already made on-chain transactions and such on this cycle
+
+        :param max_slippage:
+            Max slippage % allowed on trades before trade execution fails.
 
         :param check_balances:
             Check that on-chain accounts have enough balance before creating transaction objects.

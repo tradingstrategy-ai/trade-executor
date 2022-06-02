@@ -7,17 +7,14 @@ import logging
 
 from web3 import Web3
 
-from eth_defi.gas import estimate_gas_fees
 from eth_defi.hotwallet import HotWallet
 from tradeexecutor.ethereum.execution import broadcast_and_resolve
-from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2SimpleRoutingModel, UniswapV2RoutingState
 from tradeexecutor.state.freeze import freeze_position_on_failed_trade
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.execution_model import ExecutionModel
-from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
-from tradeexecutor.strategy.universe_model import TradeExecutorTradingUniverse
+
 
 logger = logging.getLogger(__name__)
 
@@ -31,16 +28,30 @@ class UniswapV2ExecutionModel(ExecutionModel):
                  min_balance_threshold=Decimal("0.5"),
                  confirmation_block_count=6,
                  confirmation_timeout=datetime.timedelta(minutes=5),
+                 max_slippage: float = 0.01,
                  stop_on_execution_failure=True,
                  swap_gas_fee_limit=2_000_000):
         """
-        :param state:
-        :param uniswap:
+        :param web3:
+            Web3 connection used for this instance
+
         :param hot_wallet:
-        :param min_balance_threshold: Abort execution if our hot wallet gas fee balance drops below this
-        :param confirmation_block_count: How many blocks to wait for the receipt confirmations to mitigate unstable chain tip issues
-        :param confirmation_timeout: How long we wait transactions to clear
-        :param stop_on_execution_failure: Raise an exception if any of the trades fail top execute
+            Hot wallet instance used for this execution
+
+        :param min_balance_threshold:
+            Abort execution if our hot wallet gas fee balance drops below this
+
+        :param confirmation_block_count:
+            How many blocks to wait for the receipt confirmations to mitigate unstable chain tip issues
+
+        :param confirmation_timeout:
+            How long we wait transactions to clear
+
+        :param stop_on_execution_failure:
+            Raise an exception if any of the trades fail top execute
+
+        :param max_slippage:
+            Max slippage tolerance per trade. 0.01 is 1%.
         """
         self.web3 = web3
         self.hot_wallet = hot_wallet
@@ -49,6 +60,7 @@ class UniswapV2ExecutionModel(ExecutionModel):
         self.confirmation_block_count = confirmation_block_count
         self.confirmation_timeout = confirmation_timeout
         self.swap_gas_fee_limit = swap_gas_fee_limit
+        self.max_slippage = max_slippage
 
     @property
     def chain_id(self) -> int:
@@ -94,9 +106,13 @@ class UniswapV2ExecutionModel(ExecutionModel):
         assert isinstance(routing_model, UniswapV2SimpleRoutingModel)
         assert isinstance(routing_state, UniswapV2RoutingState)
 
-        state.start_trades(datetime.datetime.utcnow(), trades)
+        state.start_trades(datetime.datetime.utcnow(), trades, max_slippage=self.max_slippage)
 
-        routing_model.execute_trades(routing_state, trades, check_balances=check_balances)
+        routing_model.execute_trades(
+            routing_state,
+            trades,
+            check_balances=check_balances)
+
         broadcast_and_resolve(self.web3, state, trades)
 
         # Clean up failed trades
