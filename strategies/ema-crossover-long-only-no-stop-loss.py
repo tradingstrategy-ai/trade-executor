@@ -18,25 +18,37 @@ from tradeexecutor.state.state import State
 from tradeexecutor.state.sync import SyncMethod
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.approval import ApprovalModel
+from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.description import StrategyExecutionDescription
-from tradeexecutor.strategy.execution_model import ExecutionModel
+from tradeexecutor.strategy.execution_model import ExecutionModel, ExecutionContext
+from tradeexecutor.strategy.factory import StrategyType, TradeRouting
 from tradeexecutor.strategy.pandas_trader.runner import PandasTraderRunner
 from tradeexecutor.strategy.pandas_trader.output import StrategyOutput
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.strategy.pricing_model import PricingModelFactory
+from tradeexecutor.strategy.strategy_module import ReserveCurrency
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverseModel, \
-    TradingStrategyUniverse
+    TradingStrategyUniverse, load_all_data
 from tradingstrategy.client import Client
 
 from tradingstrategy.chain import ChainId
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
 
-# Cannot use Python __name__ here because the module is dynamically loaded
-logger = logging.getLogger("ema_crossover")
+# Tell what trade execution engine version this strategy needs to use
+trading_strategy_engine_version = "0.1"
 
-# Time bucket
-time_bucket = TimeBucket.h4
+trading_strategy_type = StrategyType.position_manager
+
+trading_strategy_routing = TradeRouting.pancakeswap_basic
+
+#: We operate on 16h cycles
+trading_strategy_cycle = CycleDuration.cycle_16h
+
+reserve_currency = ReserveCurrency.busd
+
+# Time bucket for our candles
+candle_time_bucket = TimeBucket.h4
 
 # Which chain we are trading
 chain_id = ChainId.bsc
@@ -138,56 +150,30 @@ def decide_trade(
     return trades, output
 
 
-class SinglePairUniverseModel(TradingStrategyUniverseModel):
-    """Create a trading universe that contains only single trading pair.
+def create_trading_universe(
+        client: Client,
+        execution_context: ExecutionContext) -> TradingStrategyUniverse:
+    """Creates the trading universe where we are trading.
 
-    This trading pair is selected based on the parameters in the script above.
+    If `execution_context.live_trading` is true then this function is called for
+    every execution cycle. If we are backtesting, then this function is
+    called only once at the start of backtesting and the `decide_trades`
+    need to deal with new and deprecated trading pairs.
+
+    As we are only trading a single pair, load data for the single pair only.
     """
 
-    def construct_universe(self, execution_model: ExecutionModel, live) -> TradingStrategyUniverse:
-        dataset = self.load_data(time_bucket, live)
-        universe = TradingStrategyUniverse.create_single_pair_universe(
-            dataset,
-            chain_id,
-            exchange_slug,
-            base_token,
-            quote_token,
-        )
-        self.log_universe(universe.universe)
-        return universe
+    # Load all datas we can get for our candle time bucket
+    dataset = load_all_data(client, candle_time_bucket, execution_context)
 
-
-def strategy_factory(
-        *ignore,
-        execution_model: UniswapV2ExecutionModelVersion0,
-        sync_method: SyncMethod,
-        pricing_model_factory: PricingModelFactory,
-        revaluation_method: RevaluationMethod,
-        client: Client,
-        timed_task_context_manager: AbstractContextManager,
-        approval_model: ApprovalModel,
-        **kwargs) -> StrategyExecutionDescription:
-
-    if ignore:
-        # https://www.python.org/dev/peps/pep-3102/
-        raise TypeError("Only keyword arguments accepted")
-    universe_model = SinglePairUniverseModel(client, timed_task_context_manager)
-
-    runner = PandasTraderRunner(
-        brain=decide_trade,
-        timed_task_context_manager=timed_task_context_manager,
-        execution_model=execution_model,
-        approval_model=approval_model,
-        revaluation_method=revaluation_method,
-        sync_method=sync_method,
-        pricing_model_factory=pricing_model_factory,
+    # Filter down to the single pair we are interested in
+    universe = TradingStrategyUniverse.create_single_pair_universe(
+        dataset,
+        chain_id,
+        exchange_slug,
+        base_token,
+        quote_token,
     )
 
-    return StrategyExecutionDescription(
-        time_bucket=TimeBucket.d1,
-        universe_model=universe_model,
-        runner=runner,
-    )
+    return universe
 
-
-__all__ = [strategy_factory]

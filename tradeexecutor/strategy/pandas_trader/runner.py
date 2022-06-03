@@ -6,7 +6,7 @@ import logging
 
 import pandas as pd
 
-from tradeexecutor.strategy.pandas_trader.brain import StrategyBrain
+from tradeexecutor.strategy.pandas_trader.brain import TradeDecider
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_trading_pair
 
 from tradeexecutor.state.state import State
@@ -20,9 +20,9 @@ logger = logging.getLogger(__name__)
 class PandasTraderRunner(StrategyRunner):
     """A trading executor for Pandas math based algorithm."""
 
-    def __init__(self, *args, brain: StrategyBrain, max_data_age: Optional[datetime.timedelta] = None, **kwargs):
+    def __init__(self, *args, decide_trades: TradeDecider, max_data_age: Optional[datetime.timedelta] = None, **kwargs):
         super().__init__(*args, **kwargs)
-        self.brain = brain
+        self.decide_trades = decide_trades
         self.max_data_age = max_data_age
 
     def on_data_signal(self):
@@ -34,7 +34,7 @@ class PandasTraderRunner(StrategyRunner):
         assert isinstance(executor_universe, TradingStrategyUniverse)
         universe = executor_universe.universe
         pd_timestamp = pd.Timestamp(clock)
-        return self.brain(
+        return self.decide_trades(
             timestamp=pd_timestamp,
             universe=universe,
             state=state,

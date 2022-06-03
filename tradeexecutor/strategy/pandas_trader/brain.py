@@ -14,7 +14,7 @@ from tradingstrategy.universe import Universe
 
 
 # For typing.Protocol see https://stackoverflow.com/questions/68472236/type-hint-for-callable-that-takes-kwargs
-class StrategyBrain(typing.Protocol):
+class TradeDecider(typing.Protocol):
     """A callable that decides on new trades for every cycle.
 
     Called for each cycle and returns new trades to be executed.

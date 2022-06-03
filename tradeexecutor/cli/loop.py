@@ -20,7 +20,7 @@ from tradeexecutor.strategy.description import StrategyExecutionDescription
 from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.strategy.pricing_model import PricingModelFactory
 from tradeexecutor.strategy.runner import StrategyRunner
-from tradeexecutor.strategy.tick import TickSize, snap_to_next_tick, snap_to_previous_tick
+from tradeexecutor.strategy.cycle import CycleDuration, snap_to_next_tick, snap_to_previous_tick
 from tradeexecutor.strategy.universe_model import UniverseModel, TradeExecutorTradingUniverse
 from tradeexecutor.strategy.valuation import ValuationModelFactory
 from tradeexecutor.utils.timer import timed_task
@@ -46,7 +46,7 @@ class ExecutionLoop:
             store: StateStore,
             client: Optional[Client],
             strategy_factory: Callable,
-            tick_size: TickSize,
+            tick_size: CycleDuration,
             stats_refresh_frequency: datetime.timedelta,
             max_data_delay: Optional[datetime.timedelta]=None,
             reset=False,

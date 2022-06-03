@@ -4,9 +4,11 @@ import textwrap
 from abc import abstractmethod
 from dataclasses import dataclass
 import logging
-from typing import List, Optional
+from typing import List, Optional, Callable
 
 import pandas as pd
+
+from tradeexecutor.strategy.execution_model import ExecutionContext
 from tradingstrategy.token import Token
 
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
@@ -224,6 +226,30 @@ class TradingStrategyUniverseModel(UniverseModel):
         pass
 
 
+
+class DefaultTradingStrategyUniverseModel(TradingStrategyUniverseModel):
+    """Shortcut for simple strategies.
+
+    See factory.py.
+    """
+
+    def __init__(self,
+                 client: Client,
+                 time_bucket: TimeBucket,
+                 timed_task_context_manager: contextlib.AbstractContextManager,
+                 create_trading_universe: Callable):
+        self.client = client
+        self.time_bucket = time_bucket
+        self.timed_task_context_manager = timed_task_context_manager
+        self.create_trading_universe = create_trading_universe
+
+    def construct_universe(self,
+                           ts: datetime.datetime,
+                           live: bool) -> TradingStrategyUniverse:
+        with self.timed_task_context_manager:
+            return self.create_trading_universe(execution_model)
+
+
 def translate_token(token: Token) -> AssetIdentifier:
     return AssetIdentifier(
         token.chain_id.value,
@@ -304,3 +330,25 @@ def create_pair_universe_from_code(chain_id: ChainId, pairs: List[TradingPairIde
         data.append(dex_pair.to_dict())
     df = pd.DataFrame(data)
     return PandasPairUniverse(df)
+
+
+def load_all_data(client: Client, time_frame: TimeBucket, execution_context: ExecutionContext) -> Dataset:
+    live = execution_context.live_trading
+    with execution_context.timed_task_context_manager("load_data", time_frame=time_frame.value):
+        if live:
+            # This will force client to redownload the data
+            logger.info("Purging trading data caches")
+            client.clear_caches()
+        else:
+            logger.info("Using cached data if available")
+        exchanges = client.fetch_exchange_universe()
+        pairs = client.fetch_pair_universe().to_pandas()
+        candles = client.fetch_all_candles(time_frame).to_pandas()
+        liquidity = client.fetch_all_liquidity_samples(time_frame).to_pandas()
+        return Dataset(
+            time_frame=time_frame,
+            exchanges=exchanges,
+            pairs=pairs,
+            candles=candles,
+            liquidity=liquidity,
+        )

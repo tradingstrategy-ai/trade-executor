@@ -3,12 +3,12 @@ import datetime
 import enum
 
 
-class TickSize(enum.Enum):
+class CycleDuration(enum.Enum):
     """Supported strategy ticks.
     """
-    tick_8h = "8h"
-    tick_16h = "16h"
-    tick_24h = "24h"
+    cycle_8h = "8h"
+    cycle_16h = "16h"
+    cycle_24h = "24h"
 
     def to_timedelta(self) -> datetime.timedelta:
         """Get the duration of the tick."""
@@ -58,7 +58,7 @@ def round_datetime_down(
 
 def snap_to_next_tick(
         ts: datetime.datetime,
-        tick_size: TickSize,
+        tick_size: CycleDuration,
         offset: datetime.timedelta = datetime.timedelta(minutes=0)) -> datetime.datetime:
     """Calculate when the trading logic should wake up from the sleep next time.
 
@@ -73,7 +73,7 @@ def snap_to_next_tick(
 
 def snap_to_previous_tick(
         ts: datetime.datetime,
-        tick_size: TickSize,
+        tick_size: CycleDuration,
         offset: datetime.timedelta = datetime.timedelta(minutes=0)) -> datetime.datetime:
     """Calculate what should the tick time for given real time.
 
@@ -89,7 +89,7 @@ def snap_to_previous_tick(
 
 
 _TICK_DURATIONS = {
-    TickSize.tick_8h: datetime.timedelta(hours=8),
-    TickSize.tick_16h: datetime.timedelta(hours=16),
-    TickSize.tick_24h: datetime.timedelta(hours=24),
+    CycleDuration.cycle_8h: datetime.timedelta(hours=8),
+    CycleDuration.cycle_16h: datetime.timedelta(hours=16),
+    CycleDuration.cycle_24h: datetime.timedelta(hours=24),
 }

@@ -18,7 +18,7 @@ from eth_defi.hotwallet import HotWallet
 
 from tradeexecutor.state.metadata import Metadata
 from tradeexecutor.strategy.description import StrategyExecutionDescription
-from tradeexecutor.strategy.tick import TickSize
+from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.cli.approval import CLIApprovalModel
 from tradeexecutor.cli.loop import ExecutionLoop
 from tradeexecutor.ethereum.hot_wallet_sync import EthereumHotWalletReserveSyncer
@@ -162,7 +162,7 @@ def start(
     debug_dump_file: Optional[Path] = typer.Option(None, envvar="DEBUG_DUMP_FILE", help="Write Python Pickle dump of all internal debugging states of the strategy run to this file"),
     backtest_start: Optional[datetime.datetime] = typer.Option(None, envvar="BACKTEST_START", help="Start timestamp of backesting"),
     backtest_end: Optional[datetime.datetime] = typer.Option(None, envvar="BACKTEST_END", help="End timestamp of backesting"),
-    tick_size: TickSize = typer.Option(None, envvar="TICK_SIZE", help="How large tick use to execute the strategy"),
+    tick_size: CycleDuration = typer.Option(None, envvar="TICK_SIZE", help="How large tick use to execute the strategy"),
     tick_offset_minutes: int = typer.Option(0, envvar="TICK_OFFSET_MINUTES", help="How many minutes we wait after the tick before executing the tick step"),
     stats_refresh_minutes: int = typer.Option(60, envvar="STATS_REFRESH_MINUTES", help="How often we refresh position statistics. Default to once in an hour."),
     max_data_delay_minutes: int = typer.Option(None, envvar="MAX_DATA_DELAY_MINUTES", help="If our data feed is delayed more than this minutes, abort the execution"),

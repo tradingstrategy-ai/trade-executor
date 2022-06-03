@@ -25,6 +25,11 @@ def import_strategy_file(path: Path) -> StrategyFactory:
 
     strategy_exports = runpy.run_path(path)
 
+    # New apprach
+    if "trading_strategy_engine_version" in strategy_exports:
+        return make_runner_for_strategy_mod(strategy_exports)
+
+    # Legacy path
     strategy_runner = strategy_exports.get(FACTORY_VAR_NAME)
     if strategy_runner is None:
         raise BadStrategyFile(f"{path} Python module does not declare {FACTORY_VAR_NAME} module variable")

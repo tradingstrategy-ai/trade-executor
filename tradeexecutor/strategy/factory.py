@@ -1,9 +1,12 @@
 """"Strategy factory is the end point to the loaded strategies."""
-
-import typing
+import enum
+from typing import Callable, Protocol
 
 from contextlib import AbstractContextManager
+from dataclasses import dataclass
 
+from tradeexecutor.strategy.strategy_module import StrategyType, parse_strategy_module
+from tradeexecutor.strategy.trading_strategy_universe import DefaultTradingStrategyUniverseModel
 from tradingstrategy.client import Client
 
 from tradeexecutor.state.sync import SyncMethod
@@ -15,7 +18,10 @@ from tradeexecutor.strategy.routing import RoutingModel
 from tradeexecutor.strategy.valuation import ValuationModelFactory
 
 
-class StrategyFactory(typing.Protocol):
+
+
+
+class StrategyFactory(Protocol):
     """A callable that creates a new strategy when loaded from an external script."""
 
     # Only accept kwargs as per https://www.python.org/dev/peps/pep-3102/
@@ -25,10 +31,10 @@ class StrategyFactory(typing.Protocol):
         sync_method: SyncMethod,
         pricing_model_factory: PricingModelFactory,
         valuation_model_factory: ValuationModelFactory,
-        client: typing.Optional[Client],
+        client: Optional[Client],
         timed_task_context_manager: AbstractContextManager,
         approval_model: ApprovalModel,
-        routing_model: typing.Optional[RoutingModel] = None,
+        routing_model: Optional[RoutingModel] = None,
         **kwargs) -> StrategyExecutionDescription:
         """
 
@@ -62,3 +68,63 @@ class StrategyFactory(typing.Protocol):
         :param kwargs:
         :return:
         """
+
+
+def make_runner_for_strategy_mod(mod) -> StrategyExecutionDescription:
+    """Initialises the strategy script file and hooks it to the executor.
+
+    Assumes the module has two functions
+
+    - `decide_trade`
+
+    - `create_trading_universe`
+
+    Hook this up the strategy execution system.
+    """
+
+    mod_info = parse_strategy_module(mod)
+
+    mod_info.check_valid()
+
+    assert mod_info.trading_strategy_type == StrategyType.position_manager, "Unsupported strategy tpe"
+
+    def default_strategy_factory(
+            *ignore,
+            execution_model: ExecutionModel,
+            sync_method: SyncMethod,
+            pricing_model_factory: PricingModelFactory,
+            valuation_model_factory: ValuationModelFactory,
+            client: Client,
+            timed_task_context_manager: AbstractContextManager,
+            approval_model: ApprovalModel,
+            **kwargs) -> StrategyExecutionDescription:
+
+       if ignore:
+            # https://www.python.org/dev/peps/pep-3102/
+            raise TypeError("Only keyword arguments accepted")
+
+        universe_model = DefaultTradingStrategyUniverseModel(
+            client,
+            timed_task_context_manager,
+            mod_info.create_trading_universe)
+
+        routing_model = get_routing_model(mod_info.)
+
+        runner = PandasTraderRunner(
+            alpha_model=MomentumAlphaModel(),
+            timed_task_context_manager=timed_task_context_manager,
+            execution_model=execution_model,
+            approval_model=approval_model,
+            valuation_model_factory=valuation_model_factory,
+            sync_method=sync_method,
+            pricing_model_factory=pricing_model_factory,
+            routing_model=routing_model,
+        )
+
+        return StrategyExecutionDescription(
+            time_bucket=TimeBucket.d1,
+            universe_model=universe_model,
+            runner=runner,
+        )
+
+    return default_strategy_factory
