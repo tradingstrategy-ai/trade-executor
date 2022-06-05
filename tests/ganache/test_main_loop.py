@@ -177,7 +177,7 @@ def hot_wallet(web3: Web3, busd_token: Contract, hot_wallet_private_key: HexByte
 @pytest.fixture()
 def strategy_path() -> Path:
     """Where do we load our strategy file."""
-    return Path(os.path.join(os.path.dirname(__file__), "../strategies", "pancakeswap_v2_main_loop.py"))
+    return Path(os.path.join(os.path.dirname(__file__), "../../strategies/test_only", "pancakeswap_v2_main_loop.py"))
 
 
 # Flaky because of unstable Ganache

@@ -23,6 +23,9 @@ class DummyTestTrader:
         self.price_impact = price_impact
         self.native_token_price = 1
 
+    def time_travel(self, timestamp: datetime.datetime):
+        self.ts = timestamp
+
     def create(self, pair: TradingPairIdentifier, quantity: Decimal, price: float) -> Tuple[TradingPosition, TradeExecution]:
         """Open a new trade."""
         # 1. Plan

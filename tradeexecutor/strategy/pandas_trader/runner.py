@@ -1,13 +1,16 @@
 """A strategy runner that does simple execution of trades based on Pandas calculations."""
 
 import datetime
-from typing import List, Optional, Dict
+from typing import List, Optional
 import logging
 
 import pandas as pd
 
-from tradeexecutor.strategy.pandas_trader.brain import TradeDecider
-from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_trading_pair
+from tradeexecutor.state.visualisation import Visualisation
+from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
+from tradeexecutor.strategy.pandas_trader.trade_decision import TradeDecider
+from tradeexecutor.strategy.pricing_model import PricingModel
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
@@ -28,17 +31,36 @@ class PandasTraderRunner(StrategyRunner):
     def on_data_signal(self):
         pass
 
-    def on_clock(self, clock: datetime.datetime, executor_universe: TradingStrategyUniverse, state: State, debug_details: dict) -> List[TradeExecution]:
+    def on_clock(self,
+                 clock: datetime.datetime,
+                 executor_universe: TradingStrategyUniverse,
+                 pricing_model: PricingModel,
+                 state: State,
+                 debug_details: dict) -> List[TradeExecution]:
         """Run one strategy tick."""
 
         assert isinstance(executor_universe, TradingStrategyUniverse)
         universe = executor_universe.universe
         pd_timestamp = pd.Timestamp(clock)
+
+        assert len(executor_universe.reserve_assets) == 1
+
+        position_manager = PositionManager(
+            clock,
+            universe,
+            state,
+            pricing_model,
+            executor_universe.reserve_assets[0],
+        )
+
+        # Call the strategy script decide_trades()
+        # callback
         return self.decide_trades(
             timestamp=pd_timestamp,
             universe=universe,
             state=state,
-            debug_details=debug_details,
+            position_manager=position_manager,
+            cycle_debug_data=debug_details,
         )
 
     def pretick_check(self, ts: datetime.datetime, universe: TradingStrategyUniverse):

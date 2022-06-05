@@ -220,7 +220,7 @@ def universe(web3, exchange_universe: ExchangeUniverse, pair_universe: PandasPai
 @pytest.fixture()
 def strategy_path() -> Path:
     """Where do we load our strategy file."""
-    return Path(os.path.join(os.path.dirname(__file__), "strategies", "random_eth_usdc.py"))
+    return Path(os.path.join(os.path.dirname(__file__), "../strategies/test_only", "random_eth_usdc.py"))
 
 
 @pytest.fixture()

@@ -17,7 +17,7 @@ from tradeexecutor.state.sync import SyncMethod
 from tradeexecutor.statistics.core import update_statistics
 from tradeexecutor.strategy.approval import ApprovalModel
 from tradeexecutor.strategy.description import StrategyExecutionDescription
-from tradeexecutor.strategy.execution_model import ExecutionModel
+from tradeexecutor.strategy.execution_model import ExecutionModel, ExecutionContext
 from tradeexecutor.strategy.pricing_model import PricingModelFactory
 from tradeexecutor.strategy.runner import StrategyRunner
 from tradeexecutor.strategy.cycle import CycleDuration, snap_to_next_tick, snap_to_previous_tick
@@ -46,7 +46,7 @@ class ExecutionLoop:
             store: StateStore,
             client: Optional[Client],
             strategy_factory: Callable,
-            tick_size: CycleDuration,
+            cycle_duration: CycleDuration,
             stats_refresh_frequency: datetime.timedelta,
             max_data_delay: Optional[datetime.timedelta]=None,
             reset=False,
@@ -62,6 +62,8 @@ class ExecutionLoop:
         if ignore:
             # https://www.python.org/dev/peps/pep-3102/
             raise TypeError("Only keyword arguments accepted")
+
+        self.cycle_duration = cycle_duration
 
         args = locals().copy()
         args.pop("self")
@@ -118,7 +120,7 @@ class ExecutionLoop:
         assert isinstance(unrounded_timestamp, datetime.datetime)
         assert isinstance(state, State)
 
-        ts = snap_to_previous_tick(unrounded_timestamp, self.tick_size)
+        ts = snap_to_previous_tick(unrounded_timestamp, self.cycle_duration)
 
         # This Python dict collects internal debugging data through this cycle.
         # Any submodule of strategy execution can add internal information here for
@@ -221,7 +223,7 @@ class ExecutionLoop:
             cycle += 1
 
             # Backtesting
-            next_tick = snap_to_next_tick(ts + datetime.timedelta(seconds=1), self.tick_size, self.tick_offset)
+            next_tick = snap_to_next_tick(ts + datetime.timedelta(seconds=1), self.cycle_duration, self.tick_offset)
 
             if next_tick >= self.backtest_end:
                 # Backteting has ended
@@ -281,7 +283,7 @@ class ExecutionLoop:
         }
         start_time = datetime.datetime(1970, 1, 1)
         scheduler = BlockingScheduler(executors=executors, timezone=datetime.timezone.utc)
-        scheduler.add_job(live_cycle, 'interval', seconds=self.tick_size.to_timedelta().total_seconds(), start_date=start_time + self.tick_offset)
+        scheduler.add_job(live_cycle, 'interval', seconds=self.cycle_duration.to_timedelta().total_seconds(), start_date=start_time + self.tick_offset)
         scheduler.add_job(live_positions, 'interval', seconds=self.stats_refresh_frequency.total_seconds(), start_date=start_time)
         try:
             scheduler.start()
@@ -303,8 +305,6 @@ class ExecutionLoop:
         - Sets up strategy runner
         """
 
-        assert self.tick_size is not None
-
         if self.backtest_end or self.backtest_start:
             assert self.backtest_start and self.backtest_end, f"If backtesting both start and end must be given, we have {self.backtest_start} - {self.backtest_end}"
 
@@ -312,8 +312,16 @@ class ExecutionLoop:
 
         self.init_execution_model()
 
+        live_trading = self.backtest_start is not None
+
+        execution_context = ExecutionContext(
+            live_trading=live_trading,
+            timed_task_context_manager=self.timed_task_context_manager,
+        )
+
         run_description: StrategyExecutionDescription = self.strategy_factory(
             execution_model=self.execution_model,
+            execution_context=execution_context,
             timed_task_context_manager=self.timed_task_context_manager,
             sync_method=self.sync_method,
             valuation_model_factory=self.valuation_model_factory,
@@ -326,6 +334,12 @@ class ExecutionLoop:
         # Deconstruct strategy input
         self.runner: StrategyRunner = run_description.runner
         self.universe_model = run_description.universe_model
+
+        # Load cycle_duration from v0.1 strategies
+        if run_description.cycle_duration:
+            self.cycle_duration = run_description.cycle_duration
+
+        assert self.cycle_duration is not None
 
         if self.backtest_start:
             # Walk through backtesting range

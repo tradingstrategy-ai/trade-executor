@@ -26,6 +26,10 @@ from tradingstrategy.utils.groupeduniverse import filter_for_pairs
 logger = logging.getLogger(__name__)
 
 
+class TradingUniverseIssue(Exception):
+    """Raised in the case trading universe has some bad data etc. issues."""
+
+
 @dataclass
 class Dataset:
     """Contain raw loaded datasets."""
@@ -40,6 +44,19 @@ class Dataset:
 class TradingStrategyUniverse(TradeExecutorTradingUniverse):
     """A trading executor trading universe that using data from TradingStrategy.ai data feeds."""
     universe: Optional[Universe] = None
+
+    def validate(self):
+        """Check that the created universe looks good.
+
+        :raise TradingUniverseIssue:
+            In the case of detected issues
+        """
+        if len(self.reserve_assets) != 1:
+            raise TradingUniverseIssue(f"Only single reserve asset strategies supported for now, got {self.reserve_assets}")
+
+        for a in self.reserve_assets:
+            if a.decimals == 0:
+                raise TradingUniverseIssue(f"Reserve asset lacks decimals {a}")
 
     @staticmethod
     def create_single_pair_universe(
@@ -85,7 +102,7 @@ class TradingStrategyUniverse(TradeExecutorTradingUniverse):
         ]
 
         universe = Universe(
-            time_frame=dataset.time_frame,
+            time_bucket=dataset.time_frame,
             chains={chain_id},
             pairs=pair_universe,
             exchanges={exchange},
@@ -127,7 +144,7 @@ class TradingStrategyUniverseModel(UniverseModel):
                 Universe constructed.                    
                 
                 Time periods
-                - Time frame {universe.time_frame.value}
+                - Time frame {universe.time_bucket.value}
                 - Candle data range: {data_start} - {data_end}
                 - Liquidity data range: {liquidity_start} - {liquidity_end}
                 
@@ -226,28 +243,34 @@ class TradingStrategyUniverseModel(UniverseModel):
         pass
 
 
-
 class DefaultTradingStrategyUniverseModel(TradingStrategyUniverseModel):
     """Shortcut for simple strategies.
 
-    See factory.py.
+    - Assumes we have a strategy that fits to :py:mod:`tradeexecutor.strategy_module` definiton
+
+    - At the start of the backtests or at each cycle of live trading, call
+      the `create_trading_universe` callback of the strategy
+
+    - Validate the output of the function
     """
 
     def __init__(self,
                  client: Client,
-                 time_bucket: TimeBucket,
-                 timed_task_context_manager: contextlib.AbstractContextManager,
+                 execution_context: ExecutionContext,
                  create_trading_universe: Callable):
+        assert isinstance(client, Client)
+        assert isinstance(execution_context, ExecutionContext), f"Got {execution_context}"
+        assert isinstance(create_trading_universe, Callable), f"Got {create_trading_universe}"
         self.client = client
-        self.time_bucket = time_bucket
-        self.timed_task_context_manager = timed_task_context_manager
+        self.execution_context = execution_context
         self.create_trading_universe = create_trading_universe
 
-    def construct_universe(self,
-                           ts: datetime.datetime,
-                           live: bool) -> TradingStrategyUniverse:
-        with self.timed_task_context_manager:
-            return self.create_trading_universe(execution_model)
+    def construct_universe(self, ts: datetime.datetime, live: bool) -> TradingStrategyUniverse:
+        with self.execution_context.timed_task_context_manager(task_name="create_trading_universe"):
+            universe = self.create_trading_universe(ts, self.client, self.execution_context)
+            assert isinstance(universe, TradingStrategyUniverse), f"Expected TradingStrategyUniverse, got {universe.__class__}"
+            universe.validate()
+            return universe
 
 
 def translate_token(token: Token) -> AssetIdentifier:
@@ -333,6 +356,11 @@ def create_pair_universe_from_code(chain_id: ChainId, pairs: List[TradingPairIde
 
 
 def load_all_data(client: Client, time_frame: TimeBucket, execution_context: ExecutionContext) -> Dataset:
+
+    assert isinstance(client, Client)
+    assert isinstance(time_frame, TimeBucket)
+    assert isinstance(execution_context, ExecutionContext)
+
     live = execution_context.live_trading
     with execution_context.timed_task_context_manager("load_data", time_frame=time_frame.value):
         if live:
@@ -341,6 +369,7 @@ def load_all_data(client: Client, time_frame: TimeBucket, execution_context: Exe
             client.clear_caches()
         else:
             logger.info("Using cached data if available")
+
         exchanges = client.fetch_exchange_universe()
         pairs = client.fetch_pair_universe().to_pandas()
         candles = client.fetch_all_candles(time_frame).to_pandas()

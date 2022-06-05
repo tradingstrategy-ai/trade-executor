@@ -4,12 +4,11 @@ import datetime
 from decimal import Decimal
 from typing import List
 
-from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
+from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeType, TradeExecution
 from tradeexecutor.state.types import USDollarAmount
-from tradeexecutor.strategy.pandas_trader.output import StrategyOutput
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradingstrategy.pair import DEXPair
 from tradingstrategy.universe import Universe
@@ -31,14 +30,12 @@ class PositionManager:
                  state: State,
                  pricing_model: PricingModel,
                  reserve_currency: AssetIdentifier,
-                 output: StrategyOutput,
                  ):
         self.timestamp = timestamp
         self.universe = universe
         self.state = state
         self.pricing_model = pricing_model
         self.reserve_currency = reserve_currency
-        self.output = output
 
     def is_any_open(self) -> bool:
         """Do we have any positions open."""
@@ -75,7 +72,9 @@ class PositionManager:
 
         assert created, f"There was conflicting open position for pair: {executor_pair}"
 
-        self.output.debug(f"Opened 1x long on {pair}, position value {value} USD")
+        self.state.visualisation.add_message(
+            self.timestamp,
+            f"Opened 1x long on {pair}, position value {value} USD")
 
         return [trade]
 

@@ -6,11 +6,9 @@ import pandas as pd
 
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
-from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverseModel
+from tradeexecutor.state.visualisation import Visualisation
+from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradingstrategy.universe import Universe
-
-
-
 
 
 # For typing.Protocol see https://stackoverflow.com/questions/68472236/type-hint-for-callable-that-takes-kwargs
@@ -27,7 +25,7 @@ class TradeDecider(typing.Protocol):
         universe: Universe,
         state: State,
         position_manager: PositionManager,
-        cycle_debug_data: Dict) -> typing.Tuple[List[TradeExecution], StrategyOutput]:
+        cycle_debug_data: Dict) -> typing.Tuple[List[TradeExecution], Visualisation]:
         """
 
         :param ignore:

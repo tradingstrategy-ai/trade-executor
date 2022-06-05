@@ -274,7 +274,7 @@ def universe_model(universe, supported_reserves) -> StaticUniverseModel:
 @pytest.fixture()
 def strategy_path() -> Path:
     """Where do we load our strategy file."""
-    return Path(os.path.join(os.path.dirname(__file__), "strategies", "simulated_uniswap.py"))
+    return Path(os.path.join(os.path.dirname(__file__), "../strategies/test_only", "simulated_uniswap.py"))
 
 
 @pytest.fixture()

@@ -18,6 +18,7 @@ from .reserve import ReservePosition
 from .statistics import Statistics
 from .trade import TradeExecution, TradeStatus, TradeType
 from .types import USDollarAmount
+from .visualisation import Visualisation
 
 
 @dataclass_json
@@ -30,9 +31,6 @@ class State:
     #: Portfolio and position performance records over time.
     stats: Statistics = field(default_factory=Statistics)
 
-    #: Strategy can store its internal thinking over different signals
-    strategy_thinking: dict = field(default_factory=dict)
-
     #: Assets that the strategy is not allowed to touch,
     #: or have failed to trade in the past, resulting to a frozen position.
     #: Besides this internal black list, the executor can have other blacklists
@@ -40,6 +38,10 @@ class State:
     #: The main motivation of this list is to avoid assets that caused a freeze in the future.
     #: Key is Ethereum address, lowercased.
     asset_blacklist: Set[str] = field(default_factory=set)
+
+    #: Strategy visualisation and debug messages
+    #: to show how the strategy is thinking.
+    visualisation: Visualisation = field(default_factory=Visualisation)
 
     def is_empty(self) -> bool:
         """This state has no open or past trades or reserves."""

@@ -219,10 +219,6 @@ def start(
             client.clear_caches()
     else:
         client = None
-
-    if not tick_size:
-        raise RuntimeError("Tick size must be given")
-
     tick_offset = datetime.timedelta(minutes=tick_offset_minutes)
 
     if max_data_delay_minutes:
@@ -254,7 +250,7 @@ def start(
             debug_dump_file=debug_dump_file,
             backtest_start=backtest_start,
             backtest_end=backtest_end,
-            tick_size=tick_size,
+            cycle_duration=tick_size,
             tick_offset=tick_offset,
             max_data_delay=max_data_delay,
             trade_immediately=trade_immediately,

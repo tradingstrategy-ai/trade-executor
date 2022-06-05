@@ -1,9 +1,9 @@
 """Describe strategy modules and their loading."""
 import enum
+from dataclasses import dataclass
 from typing import Callable
 
 from tradeexecutor.strategy.cycle import CycleDuration
-from tradeexecutor.utils import dataclass
 
 
 class StrategyType(enum.Enum):
@@ -50,7 +50,7 @@ class StrategyModuleInformation:
     trading_strategy_cycle: CycleDuration
     trade_routing: TradeRouting
     reserve_currency: ReserveCurrency
-    decide_trade: Callable
+    decide_trades: Callable
 
     #: If `execution_context.live_trading` is true then this function is called for
     #: every execution cycle. If we are backtesting, then this function is
@@ -58,7 +58,7 @@ class StrategyModuleInformation:
     #: need to deal with new and deprecated trading pairs.
     create_trading_universe: Callable
 
-    def check_valid(self):
+    def validate(self):
         """
 
         :raise StrategyModuleNotValid:
@@ -80,16 +80,19 @@ class StrategyModuleInformation:
         if not isinstance(self.trading_strategy_type, StrategyType):
             raise StrategyModuleNotValid(f"trading_strategy_type not StrategyType instance")
 
-        if not isinstance(self.trading_strategy_type, CycleDuration):
-            raise StrategyModuleNotValid(f"trading_strategy_cycle not CycleDuration instance")
+        if not isinstance(self.trading_strategy_cycle, CycleDuration):
+            raise StrategyModuleNotValid(f"trading_strategy_cycle not CycleDuration instance, got {self.trading_strategy_cycle}")
+
+        if self.trade_routing is None:
+            raise StrategyModuleNotValid(f"trade_routing missing on the strategy")
 
         if not isinstance(self.trade_routing, TradeRouting):
-            raise StrategyModuleNotValid(f"trade_routing not TradeRouting instance")
+            raise StrategyModuleNotValid(f"trade_routing not TradeRouting instance, got {self.trade_routing}")
 
-        if not type(self.decide_trade) == str:
-            raise StrategyModuleNotValid(f"decide_trade function missing/invalid")
+        if not isinstance(self.decide_trades, Callable):
+            raise StrategyModuleNotValid(f"decide_trades function missing/invalid")
 
-        if not type(self.create_trading_universe) == str:
+        if not isinstance(self.create_trading_universe, Callable):
             raise StrategyModuleNotValid(f"create_trading_universe function missing/invalid")
 
 
@@ -100,6 +103,6 @@ def parse_strategy_module(mod) -> StrategyModuleInformation:
         mod.get("trading_strategy_cycle"),
         mod.get("trade_routing"),
         mod.get("reserve_currency"),
-        mod.get("decide_trade"),
+        mod.get("decide_trades"),
         mod.get("create_trading_universe"),
     )

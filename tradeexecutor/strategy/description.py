@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from typing import Optional
 
+from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.universe_model import UniverseModel
 from tradeexecutor.strategy.runner import StrategyRunner
 from tradingstrategy.timebucket import TimeBucket
@@ -21,6 +22,12 @@ class StrategyExecutionDescription:
 
     #: What kind of a strategy runner this strategy is using
     runner: StrategyRunner
+
+    #: As read from the strategy
+    trading_strategy_engine_version: Optional[str] = None
+
+    #: How long is the strategy execution cycle
+    cycle_duration: Optional[CycleDuration] = None
 
     # TODO: Deprecate?
     #: What candles this strategy uses: 1d, 1h, etc.

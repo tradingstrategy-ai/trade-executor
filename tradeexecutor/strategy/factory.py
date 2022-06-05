@@ -1,10 +1,11 @@
 """"Strategy factory is the end point to the loaded strategies."""
-import enum
-from typing import Callable, Protocol
+
+from typing import Protocol, Optional
 
 from contextlib import AbstractContextManager
-from dataclasses import dataclass
 
+from tradeexecutor.ethereum.default_routes import get_routing_model
+from tradeexecutor.strategy.pandas_trader.runner import PandasTraderRunner
 from tradeexecutor.strategy.strategy_module import StrategyType, parse_strategy_module
 from tradeexecutor.strategy.trading_strategy_universe import DefaultTradingStrategyUniverseModel
 from tradingstrategy.client import Client
@@ -12,12 +13,10 @@ from tradingstrategy.client import Client
 from tradeexecutor.state.sync import SyncMethod
 from tradeexecutor.strategy.approval import ApprovalModel
 from tradeexecutor.strategy.description import StrategyExecutionDescription
-from tradeexecutor.strategy.execution_model import ExecutionModel
+from tradeexecutor.strategy.execution_model import ExecutionModel, ExecutionContext
 from tradeexecutor.strategy.pricing_model import PricingModelFactory
 from tradeexecutor.strategy.routing import RoutingModel
 from tradeexecutor.strategy.valuation import ValuationModelFactory
-
-
 
 
 
@@ -70,7 +69,7 @@ class StrategyFactory(Protocol):
         """
 
 
-def make_runner_for_strategy_mod(mod) -> StrategyExecutionDescription:
+def make_runner_for_strategy_mod(mod) -> StrategyFactory:
     """Initialises the strategy script file and hooks it to the executor.
 
     Assumes the module has two functions
@@ -84,13 +83,14 @@ def make_runner_for_strategy_mod(mod) -> StrategyExecutionDescription:
 
     mod_info = parse_strategy_module(mod)
 
-    mod_info.check_valid()
+    mod_info.validate()
 
     assert mod_info.trading_strategy_type == StrategyType.position_manager, "Unsupported strategy tpe"
 
     def default_strategy_factory(
             *ignore,
             execution_model: ExecutionModel,
+            execution_context: ExecutionContext,
             sync_method: SyncMethod,
             pricing_model_factory: PricingModelFactory,
             valuation_model_factory: ValuationModelFactory,
@@ -99,19 +99,18 @@ def make_runner_for_strategy_mod(mod) -> StrategyExecutionDescription:
             approval_model: ApprovalModel,
             **kwargs) -> StrategyExecutionDescription:
 
-       if ignore:
+        if ignore:
             # https://www.python.org/dev/peps/pep-3102/
             raise TypeError("Only keyword arguments accepted")
 
         universe_model = DefaultTradingStrategyUniverseModel(
             client,
-            timed_task_context_manager,
+            execution_context,
             mod_info.create_trading_universe)
 
-        routing_model = get_routing_model(mod_info.)
+        routing_model = get_routing_model(mod_info.trade_routing, mod_info.reserve_currency)
 
         runner = PandasTraderRunner(
-            alpha_model=MomentumAlphaModel(),
             timed_task_context_manager=timed_task_context_manager,
             execution_model=execution_model,
             approval_model=approval_model,
@@ -119,12 +118,14 @@ def make_runner_for_strategy_mod(mod) -> StrategyExecutionDescription:
             sync_method=sync_method,
             pricing_model_factory=pricing_model_factory,
             routing_model=routing_model,
+            decide_trades=mod_info.decide_trades,
         )
 
         return StrategyExecutionDescription(
-            time_bucket=TimeBucket.d1,
             universe_model=universe_model,
             runner=runner,
+            trading_strategy_engine_version=mod_info.trading_strategy_engine_version,
+            cycle_duration=mod_info.trading_strategy_cycle,
         )
 
     return default_strategy_factory
