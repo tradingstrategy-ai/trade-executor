@@ -275,7 +275,7 @@ class PancakeLiveTrader(QSTraderLiveTrader):
         liquidity_universe = GroupedLiquidityUniverse(filtered_liquidity)
 
         return Universe(
-            time_frame=dataset.time_bucket,
+            time_bucket=dataset.time_bucket,
             chains=[ChainId.bsc],
             pairs=PandasPairUniverse(pairs_df),
             exchanges=our_exchanges,

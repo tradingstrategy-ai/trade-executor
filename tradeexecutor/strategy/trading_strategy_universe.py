@@ -33,7 +33,7 @@ class TradingUniverseIssue(Exception):
 @dataclass
 class Dataset:
     """Contain raw loaded datasets."""
-    time_frame: TimeBucket
+    time_bucket: TimeBucket
     exchanges: ExchangeUniverse
     pairs: pd.DataFrame
     candles: pd.DataFrame
@@ -102,7 +102,7 @@ class TradingStrategyUniverse(TradeExecutorTradingUniverse):
         ]
 
         universe = Universe(
-            time_bucket=dataset.time_frame,
+            time_bucket=dataset.time_bucket,
             chains={chain_id},
             pairs=pair_universe,
             exchanges={exchange},
@@ -165,7 +165,7 @@ class TradingStrategyUniverseModel(UniverseModel):
         :return: None if not dataset for the strategy required
         """
         client = self.client
-        with self.timed_task_context_manager("load_data", time_frame=time_frame.value):
+        with self.timed_task_context_manager("load_data", time_bucket=time_frame.value):
 
             if live:
                 # This will force client to redownload the data
@@ -179,7 +179,7 @@ class TradingStrategyUniverseModel(UniverseModel):
             candles = client.fetch_all_candles(time_frame).to_pandas()
             liquidity = client.fetch_all_liquidity_samples(time_frame).to_pandas()
             return Dataset(
-                time_frame=time_frame,
+                time_bucket=time_frame,
                 exchanges=exchanges,
                 pairs=pairs,
                 candles=candles,
@@ -227,7 +227,7 @@ class TradingStrategyUniverseModel(UniverseModel):
         liquidity_universe = GroupedLiquidityUniverse(dataset.liquidity)
 
         universe = Universe(
-            time_frame=dataset.time_frame,
+            time_bucket=dataset.time_bucket,
             chains=chains,
             pairs=pairs,
             exchanges=exchanges,
@@ -362,7 +362,7 @@ def load_all_data(client: Client, time_frame: TimeBucket, execution_context: Exe
     assert isinstance(execution_context, ExecutionContext)
 
     live = execution_context.live_trading
-    with execution_context.timed_task_context_manager("load_data", time_frame=time_frame.value):
+    with execution_context.timed_task_context_manager("load_data", time_bucket=time_frame.value):
         if live:
             # This will force client to redownload the data
             logger.info("Purging trading data caches")
@@ -375,7 +375,7 @@ def load_all_data(client: Client, time_frame: TimeBucket, execution_context: Exe
         candles = client.fetch_all_candles(time_frame).to_pandas()
         liquidity = client.fetch_all_liquidity_samples(time_frame).to_pandas()
         return Dataset(
-            time_frame=time_frame,
+            time_bucket=time_frame,
             exchanges=exchanges,
             pairs=pairs,
             candles=candles,

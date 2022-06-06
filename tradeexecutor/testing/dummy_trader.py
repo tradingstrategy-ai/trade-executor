@@ -2,10 +2,13 @@ import datetime
 from decimal import Decimal
 from typing import Tuple
 
+import pandas as pd
+
 from tradeexecutor.state.state import State, TradeType
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.identifier import TradingPairIdentifier
+from tradingstrategy.candle import GroupedCandleUniverse
 
 
 class DummyTestTrader:
@@ -43,6 +46,9 @@ class DummyTestTrader:
         return position, trade
 
     def create_and_execute(self, pair: TradingPairIdentifier, quantity: Decimal, price: float) -> Tuple[TradingPosition, TradeExecution]:
+
+        assert price > 0
+        assert quantity != 0
 
         price_impact = self.price_impact
 
@@ -85,4 +91,10 @@ class DummyTestTrader:
     def sell(self, pair, quantity, price) -> Tuple[TradingPosition, TradeExecution]:
         return self.create_and_execute(pair, -quantity, price)
 
+    def buy_with_price_data(self, pair, quantity, candle_universe: GroupedCandleUniverse) -> Tuple[TradingPosition, TradeExecution]:
+        price = candle_universe.get_closest_price(pair.internal_id, pd.Timestamp(self.ts))
+        return self.create_and_execute(pair, quantity, float(price))
 
+    def sell_with_price_data(self, pair, quantity, candle_universe: GroupedCandleUniverse) -> Tuple[TradingPosition, TradeExecution]:
+        price = candle_universe.get_closest_price(pair.internal_id, pd.Timestamp(self.ts))
+        return self.create_and_execute(pair, -quantity, float(price))

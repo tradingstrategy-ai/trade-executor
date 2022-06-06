@@ -1,9 +1,14 @@
 """Describe strategy modules and their loading."""
 import enum
 from dataclasses import dataclass
-from typing import Callable
+from typing import Callable, Dict, Protocol, List
+import pandas
 
+from tradeexecutor.state.state import State
+from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.cycle import CycleDuration
+from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
+from tradingstrategy.universe import Universe
 
 
 class StrategyType(enum.Enum):
@@ -40,6 +45,52 @@ class ReserveCurrency(enum.Enum):
 
 class StrategyModuleNotValid(Exception):
     """Raised when we cannot load a strategy module."""
+
+
+class DecideTradesProtocol(Protocol):
+    """A call signature protocol for user's decide_trades() functions."""
+
+    def __call__(self,
+            timestamp: pandas.Timestamp,
+            universe: Universe,
+            state: State,
+            position_manager: PositionManager,
+            cycle_debug_data: Dict) -> List[TradeExecution]:
+            """
+
+        The brain function to decide the trades on each trading strategy cycle.
+
+        - Reads incoming execution state (positions, past trades)
+
+        - Reads the current universe (candles)
+
+        - Decides what to do next
+
+        - Outputs strategy thinking for visualisation and debug messages
+
+        :param timestamp:
+            The Pandas timestamp object for this cycle. Matches
+            trading_strategy_cycle division.
+            Always truncated to the zero seconds and minutes, never a real-time clock.
+
+        :param universe:
+            Trading universe that was constructed earlier.
+
+        :param state:
+            The current trade execution state.
+            Contains current open positions and all previously executed trades.
+
+        :param position_manager:
+            Position manager helps to create trade execution instructions to open and close positions.
+
+        :param cycle_debug_data:
+            Python dictionary for various debug variables you can read or set, specific to this trade cycle.
+            This data is discarded at the end of the trade cycle.
+
+        :return:
+            List of trade instructions in the form of :py:class:`TradeExecution` instances.
+            The trades can be generated using `position_manager` but strategy could also handcraft its trades.
+        """
 
 
 @dataclass

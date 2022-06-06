@@ -4,13 +4,13 @@ import pytest
 from tradingstrategy.client import Client
 
 
-@pytest.fixture()
+@pytest.fixture(scope="session")
 def strategy_folder():
     """Where unit test strategies are located."""
     return os.path.join(os.path.dirname(__file__), "../strategies/test_only")
 
 
-@pytest.fixture()
+@pytest.fixture(scope="session")
 def persistent_test_cache_path() -> str:
     return "/tmp/trading-strategy-tests"
 

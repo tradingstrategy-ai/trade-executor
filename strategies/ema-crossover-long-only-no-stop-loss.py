@@ -5,10 +5,14 @@
 - Does long positions only, based on exponential moving average indicators
 
 """
-
+import datetime
 from typing import Dict, Tuple, List
 
 import pandas as pd
+
+from tradingstrategy.chain import ChainId
+from tradingstrategy.timebucket import TimeBucket
+from tradingstrategy.universe import Universe
 
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
@@ -20,10 +24,6 @@ from tradeexecutor.strategy.pandas_trader.position_manager import PositionManage
 from tradeexecutor.strategy.strategy_module import ReserveCurrency, TradeRouting
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, load_all_data
 from tradingstrategy.client import Client
-
-from tradingstrategy.chain import ChainId
-from tradingstrategy.timebucket import TimeBucket
-from tradingstrategy.universe import Universe
 
 # Tell what trade execution engine version this strategy needs to use
 trading_strategy_engine_version = "0.1"
@@ -78,8 +78,8 @@ def decide_trades(
         universe: Universe,
         state: State,
         position_manager: PositionManager,
-        cycle_debug_data: Dict) -> Tuple[List[TradeExecution], Visualisation]:
-    """The brain functoin to decide on trades.
+        cycle_debug_data: Dict) -> List[TradeExecution]:
+    """The brain function to decide the trades on each trading strategy cycle.
 
     - Reads incoming execution state (positions, past trades)
 
@@ -89,7 +89,7 @@ def decide_trades(
 
     - Outputs strategy thinking for visualisation and debug messages
 
-    :param ts:
+    :param timestamp:
         The Pandas timestamp object for this cycle. Matches
         trading_strategy_cycle division.
         Always truncated to the zero seconds and minutes, never a real-time clock.
@@ -99,7 +99,8 @@ def decide_trades(
 
     :param state:
         The current trade execution state.
-        Contains current open positions and all previously executed trades.
+        Contains current open positions and all previously executed trades, plus output
+        for statistics, visualisation and diangnostics of the strategy.
 
     :param position_manager:
         Position manager helps to create trade execution instructions to open and close positions.
@@ -109,9 +110,8 @@ def decide_trades(
         This data is discarded at the end of the trade cycle.
 
     :return:
-        You return two outputs from this function
-
-        - List of trade instructions in the form of :py:class:`TradeExecution` instances
+        List of trade instructions in the form of :py:class:`TradeExecution` instances.
+        The trades can be generated using `position_manager` but strategy could also hand craft its trades.
     """
 
     # The pair we are trading
@@ -174,10 +174,10 @@ def decide_trades(
 
 
 def create_trading_universe(
-        ts: pd.Timestamp,
+        ts: datetime.datetime,
         client: Client,
         execution_context: ExecutionContext) -> TradingStrategyUniverse:
-    """Creates the trading universe where we are trading.
+    """Creates the trading universe where the strategy trades.
 
     If `execution_context.live_trading` is true then this function is called for
     every execution cycle. If we are backtesting, then this function is
@@ -185,6 +185,24 @@ def create_trading_universe(
     need to deal with new and deprecated trading pairs.
 
     As we are only trading a single pair, load data for the single pair only.
+
+    :param ts:
+        The timestamp of the trading cycle. For live trading,
+        `create_trading_universe` is called on every cycle.
+        For backtesting, it is only called at the start
+
+    :param client:
+        Trading Strategy Python client instance.
+
+    :param execution_context:
+        Information how the strategy is executed. E.g.
+        if we are live trading or not.
+
+    :return:
+        This function must return :py:class:`TradingStrategyUniverse` instance
+        filled with the data for exchanges, pairs and candles needed to decide trades.
+        The trading universe also contains information about the reserve asset,
+        usually stablecoin, we use for the strategy.
     """
 
     # Load all datas we can get for our candle time bucket

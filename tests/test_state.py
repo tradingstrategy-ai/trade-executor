@@ -19,7 +19,7 @@ from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.statistics.core import update_statistics
-from tradeexecutor.testing.trader import DummyTestTrader
+from tradeexecutor.testing.dummy_trader import DummyTestTrader
 from tradingstrategy.chain import ChainId
 from tradingstrategy.types import USDollarAmount
 

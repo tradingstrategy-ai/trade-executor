@@ -26,7 +26,7 @@ from tradeexecutor.state.trade import TradeStatus
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.testing.ethereumtrader import EthereumTestTrader, execute_trades_simple
-from tradeexecutor.testing.trader import DummyTestTrader
+from tradeexecutor.testing.dummy_trader import DummyTestTrader
 
 
 @pytest.fixture

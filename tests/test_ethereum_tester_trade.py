@@ -253,7 +253,7 @@ def pair_universe(web3, exchange_universe: ExchangeUniverse, weth_usdc_pair, aav
 def universe(web3, exchange_universe: ExchangeUniverse, pair_universe: PandasPairUniverse) -> Universe:
     """Get our trading universe."""
     return Universe(
-        time_frame=TimeBucket.d1,
+        time_bucket=TimeBucket.d1,
         chains=[ChainId(web3.eth.chain_id)],
         exchanges=list(exchange_universe.exchanges.values()),
         pairs=pair_universe,

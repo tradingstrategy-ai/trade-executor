@@ -331,7 +331,7 @@ class OurUniverseModel(TradingStrategyUniverseModel):
             liquidity_universe = GroupedLiquidityUniverse(filtered_liquidity)
 
             universe = Universe(
-                time_frame=dataset.time_frame,
+                time_bucket=dataset.time_bucket,
                 chains={ChainId.bsc},
                 pairs=pairs,
                 exchanges=our_exchanges,
