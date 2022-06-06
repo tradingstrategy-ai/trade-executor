@@ -16,6 +16,7 @@ import secrets
 from pathlib import Path
 from typing import List
 
+import flaky
 import pytest
 from eth_account import Account
 from eth_defi.confirmation import wait_transactions_to_complete
@@ -193,6 +194,7 @@ def strategy_path() -> Path:
 
 
 @pytest.mark.skipif(os.environ.get("CI") is not None, reason="This test is too flaky on Github CI. Manual runs only.")
+@flaky.flaky
 def test_pancake_4h_candles(
         logger: logging.Logger,
         strategy_path: Path,

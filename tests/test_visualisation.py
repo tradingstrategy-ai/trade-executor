@@ -7,6 +7,7 @@ import pytest
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.state import State
+from tradeexecutor.state.visualisation import PlotKind
 from tradeexecutor.testing.synthetic_price_data import generate_ohlcv_candles
 from tradeexecutor.testing.dummy_trader import DummyTestTrader
 from tradeexecutor.visual.single_pair import visualise_single_pair
@@ -63,6 +64,7 @@ def test_visualise_trades_with_indicator(usdc, weth, weth_usdc):
     assert trade.is_buy()
     assert pos.get_quantity() == pytest.approx(start_q)
     assert pos.get_opening_price() == pytest.approx(1716.8437083008298)
+    state.visualisation.plot_indicator(trader.ts, "Test indicator", PlotKind.technical_indicator_on_price, 1700)
 
     sell_q_1 = start_q / 2
     sell_q_2 = start_q - sell_q_1
@@ -73,12 +75,14 @@ def test_visualise_trades_with_indicator(usdc, weth, weth_usdc):
     pos, trade = trader.sell_with_price_data(weth_usdc, sell_q_1, candle_universe)
     assert trade.is_sell()
     assert pos.get_quantity() == pytest.approx(Decimal('4.949999999999999955591079015'))
+    state.visualisation.plot_indicator(trader.ts, "Test indicator", PlotKind.technical_indicator_on_price, 1700)
 
     # Day 2
     # Sell 5 ETH at 1800 USD/ETH
     trader.time_travel(end_date)
     pos, trade = trader.sell_with_price_data(weth_usdc, sell_q_2, candle_universe)
     assert pos.get_quantity() == 0
+    state.visualisation.plot_indicator(trader.ts, "Test indicator", PlotKind.technical_indicator_on_price, 1700)
 
     assert len(list(state.portfolio.get_all_trades())) == 3
     assert len(state.portfolio.open_positions) == 0
@@ -91,9 +95,10 @@ def test_visualise_trades_with_indicator(usdc, weth, weth_usdc):
 
     # List of candles, markers 1, markers
     data = fig.to_dict()["data"]
-    assert len(data) == 3
-    assert data[1]["name"] == "Buys"
-    assert data[2]["name"] == "Sells"
+    assert len(data) == 4
+    assert data[1]["name"] == "Test indicator"
+    assert data[2]["name"] == "Buys"
+    assert data[3]["name"] == "Sells"
 
     return fig
 

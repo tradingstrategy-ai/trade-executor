@@ -7,9 +7,8 @@ import pandas as pd
 
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
-from tradeexecutor.state.visualisation import Visualisation
+from tradeexecutor.state.visualisation import Visualisation, Plot
 from tradingstrategy.candle import GroupedCandleUniverse
-from tradingstrategy.universe import Universe
 
 
 def export_trade_for_dataframe(t: TradeExecution, marker_size=12) -> dict:
@@ -40,6 +39,33 @@ def export_trades_as_dataframe(trades: Iterable[TradeExecution]) -> pd.DataFrame
     """Convert executed trades to a dataframe, so it is easier to work with them in Plotly."""
     data = [export_trade_for_dataframe(t) for t in trades]
     return pd.DataFrame(data)
+
+
+def export_plot_as_dataframe(plot: Plot) -> pd.DataFrame:
+    """Convert visualisation state to Plotly friendly df."""
+    data = []
+    for time, value in plot.points.items():
+        data.append({
+            "timestamp": time,
+            "value": value,
+        })
+    return pd.DataFrame(data)
+
+
+def add_technical_indicators(fig: go.Figure, visualisation: Visualisation):
+    """Draw technical indicators over candle chart."""
+
+    # https://plotly.com/python/graphing-multiple-chart-types/
+    # https://plotly.com/python/graphing-multiple-chart-types/
+    for plot_id, plot in visualisation.plots.items():
+        df = export_plot_as_dataframe(plot)
+        fig.add_trace(go.Scatter(
+            x=df["timestamp"],
+            y=df["value"],
+            mode="lines",
+            name=plot.name,
+            line=dict(color=plot.color),
+        ))
 
 
 def visualise_single_pair(
@@ -79,6 +105,8 @@ def visualise_single_pair(
         high=candles['high'],
         low=candles['low'],
         close=candles['close'])
+
+    add_technical_indicators(fig, state.visualisation)
 
     # Add trade markers
 
