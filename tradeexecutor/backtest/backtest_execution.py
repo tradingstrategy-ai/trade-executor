@@ -19,8 +19,11 @@ from tradeexecutor.strategy.execution_model import ExecutionModel
 logger = logging.getLogger(__name__)
 
 
-class BacktestxecutionModel(ExecutionModel):
+class BacktestExecutionModel(ExecutionModel):
     """Simulate trades against historical data."""
+
+    def __init__(self, max_slippage: float):
+        self.max_slippage = max_slippage
 
     def is_live_trading(self):
         return False

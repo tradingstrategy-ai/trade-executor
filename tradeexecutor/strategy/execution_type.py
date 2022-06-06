@@ -15,3 +15,6 @@ class TradeExecutionType(enum.Enum):
 
     #: Trading using oracle network, oracles form a consensus using a judge smart contract
     multi_oracle_judged = "multi_oracle_judged"
+
+    #: Simulate execution using backtest data
+    backtest = "backtest"
