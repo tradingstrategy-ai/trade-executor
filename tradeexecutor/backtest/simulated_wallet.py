@@ -21,4 +21,8 @@ class SimulatedWallet:
             raise OutOfSimulatedBalance(f"Simulated wallet balance went negative {new_balance} for token {token_address}")
         self.balances[token_address] = new_balance
 
+    def get_balance(self, token_address: str) -> Decimal:
+        assert token_address.lower() == token_address, "No checksummed addresses"
+        return self.balances.get(token_address, Decimal(0))
+
 

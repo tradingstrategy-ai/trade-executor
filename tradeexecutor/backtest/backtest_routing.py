@@ -14,6 +14,7 @@ from eth_defi.gas import estimate_gas_fees
 from eth_defi.token import fetch_erc20_details
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, fetch_deployment
 from eth_defi.uniswap_v2.swap import swap_with_slippage_protection
+from tradeexecutor.backtest.simulated_wallet import SimulatedWallet
 from tradeexecutor.ethereum.execution import get_token_for_asset
 from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
@@ -38,8 +39,10 @@ class BacktestRoutingState(RoutingState):
 
     def __init__(self,
                  pair_universe: PandasPairUniverse,
+                 wallet: SimulatedWallet,
                  ):
         self.pair_universe = pair_universe
+        self.wallet = wallet
 
     def is_route_approved(self, router_address: str):
         return router_address in self.approved_routes
@@ -47,80 +50,20 @@ class BacktestRoutingState(RoutingState):
     def mark_router_approved(self, token_address, router_address):
         self.approved_routes[router_address].add(token_address)
 
-    def is_approved_on_chain(self, token_address: str, router_address: str) -> bool:
-        erc_20 = get_deployed_contract(self.web3, "ERC20MockDecimals.json", token_address)
-        # Assume allowance is always infinity
-        return erc_20.functions.allowance.call(self.hot_wallet.address, router_address) > 0
-
-    def get_uniswap_for_pair(self, factory_router_map: dict, target_pair: TradingPairIdentifier) -> UniswapV2Deployment:
-        """Get a router for a trading pair."""
-        return get_uniswap_for_pair(self.web3, factory_router_map, target_pair)
-
     def check_has_enough_tokens(
             self,
-            erc_20: Contract,
-            amount: int,
+            token: AssetIdentifier,
+            amount: Decimal,
     ):
-        """Check we have enough buy side tokens to do a trade.
-
-        This might not be the case if we are preparing transactions ahead of time and
-        sell might have not happened yet.
-        """
-        balance = erc_20.functions.balanceOf(self.hot_wallet.address).call()
+        """Check we have enough buy side tokens to do a trade."""
+        balance = self.wallet.get_balance(token.address)
         if balance < amount:
-            token_details = fetch_erc20_details(
-                erc_20.web3,
-                erc_20.address,
-            )
-            d_balance = token_details.convert_to_decimals(balance)
-            d_amount = token_details.convert_to_decimals(amount)
-            raise OutOfBalance(f"Address {self.hot_wallet.address} does not have enough {token_details} tokens to trade. Need {d_amount}, has {d_balance}")
+            raise OutOfBalance(f"SimulatedWallet does not have enough {token} tokens to trade. Need {amount}, has {balance}")
 
-    def ensure_token_approved(self,
-                              token_address: str,
-                              router_address: str) -> List[BlockchainTransaction]:
-        """Make sure we have ERC-20 approve() for the trade
-
-        - Infinite approval on-chain
-
-        - ...or previous approval in this state,
-
-        :param token_address:
-        :param router_address:
-
-        :return: Create 0 or 1 transactions if needs to be approved
-        """
-
-        if token_address in self.approved_routes[router_address]:
-            # Already approved for this cycle in previous trade
-            return []
-
-        erc_20 = get_deployed_contract(self.web3, "ERC20MockDecimals.json", Web3.toChecksumAddress(token_address))
-
-        # Set internal state we are approved
-        self.mark_router_approved(token_address, router_address)
-
-        hot_wallet = self.tx_builder.hot_wallet
-
-        if erc_20.functions.allowance(hot_wallet.address, router_address).call() > 0:
-            # already approved in previous execution cycle
-            return []
-        else:
-            # Create infinite approval
-            tx = self.tx_builder.create_transaction(
-                erc_20,
-                "approve",
-                (router_address, 2**256-1),
-                100_000,  # For approve, assume it cannot take more than 100k gas
-            )
-
-            return [tx]
-
-    def trade_on_router_two_way(self,
-            uniswap: UniswapV2Deployment,
+    def create_trade(self,
             target_pair: TradingPairIdentifier,
             reserve_asset: AssetIdentifier,
-            reserve_amount: int,
+            reserve_amount: Decimal,
             max_slippage: float,
             check_balances: False):
         """Prepare the actual swap.
@@ -129,9 +72,6 @@ class BacktestRoutingState(RoutingState):
             Check on-chain balances that the account has enough tokens
             and raise exception if not.
         """
-
-        web3 = self.web3
-        hot_wallet = self.tx_builder.hot_wallet
 
         if reserve_asset == target_pair.quote:
             # Buy with e.g. BUSD
@@ -147,75 +87,14 @@ class BacktestRoutingState(RoutingState):
         if check_balances:
             self.check_has_enough_tokens(quote_token, reserve_amount)
 
-        bound_swap_func = swap_with_slippage_protection(
-            uniswap,
-            recipient_address=hot_wallet.address,
-            base_token=base_token,
-            quote_token=quote_token,
-            amount_in=reserve_amount,
-            max_slippage=max_slippage * 100,  # In BPS
-        )
-        tx = self.tx_builder.sign_transaction(bound_swap_func, self.swap_gas_limit)
+        tx = self.create_simulated_trade(target_pair, max)
         return [tx]
 
-    def trade_on_router_three_way(self,
-            uniswap: UniswapV2Deployment,
-            target_pair: TradingPairIdentifier,
-            intermediary_pair: TradingPairIdentifier,
-            reserve_asset: AssetIdentifier,
-            reserve_amount: int,
-            max_slippage: float,
-            check_balances: False):
-        """Prepare the actual swap for three way trade.
-
-        :param check_balances:
-            Check on-chain balances that the account has enough tokens
-            and raise exception if not.
-        """
-
-        web3 = self.web3
-        hot_wallet = self.tx_builder.hot_wallet
-
-        # Check we can chain two pairs
-        assert intermediary_pair.base == target_pair.quote, f"Could not hop from intermediary {intermediary_pair} -> destination {target_pair}"
-
-        assert target_pair.exchange_address, f"Target pair {target_pair} missing exchange information"
-        assert intermediary_pair.exchange_address, f"Intermediary pair {intermediary_pair} missing exchange information"
-
-        # Check routing happens on the same exchange
-        assert intermediary_pair.exchange_address.lower() == target_pair.exchange_address.lower()
-
-        if reserve_asset == intermediary_pair.quote:
-            # Buy BUSD -> BNB -> Cake
-            base_token = get_token_for_asset(web3, target_pair.base)
-            quote_token = get_token_for_asset(web3, intermediary_pair.quote)
-            intermediary_token = get_token_for_asset(web3, intermediary_pair.base)
-        elif reserve_asset == target_pair.base:
-            # Sell, Cake -> BNB -> BUSD
-            base_token = get_token_for_asset(web3, intermediary_pair.quote)  # BUSD
-            quote_token = get_token_for_asset(web3, target_pair.base)  # Cake
-            intermediary_token = get_token_for_asset(web3, intermediary_pair.base)  # BNB
-        else:
-            raise RuntimeError(f"Cannot trade {target_pair} through {intermediary_pair}")
-
-        if check_balances:
-            self.check_has_enough_tokens(quote_token, reserve_amount)
-
-        bound_swap_func = swap_with_slippage_protection(
-            uniswap,
-            recipient_address=hot_wallet.address,
-            base_token=base_token,
-            quote_token=quote_token,
-            amount_in=reserve_amount,
-            max_slippage=max_slippage * 100,  # In BPS,
-            intermediate_token=intermediary_token,
-        )
-
-        tx = self.tx_builder.sign_transaction(bound_swap_func, self.swap_gas_limit)
-        return [tx]
+    def simulate_trade_execution(self, trade: TradeExecution):
+        """"""
 
 
-class UniswapV2SimpleRoutingModel(RoutingModel):
+class BacktestRoutingModel(RoutingModel):
     """A simple router that does not optimise the trade execution cost.
 
     - Able to trade on multiple exchanges
@@ -271,65 +150,11 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
         assert reserve_token, f"Pair universe does not contain our reserve asset {self.reserve_token_address}"
         return translate_token(reserve_token)
 
-    def make_direct_trade(self,
-                          routing_state: UniswapV2RoutingState,
-                          target_pair: TradingPairIdentifier,
-                          reserve_asset: AssetIdentifier,
-                          reserve_amount: int,
-                          max_slippage: float,
-                          check_balances=False,
-                          ) -> List[BlockchainTransaction]:
-        """Prepare a trade where target pair has out reserve asset as a quote token.
-
-        :return:
-            List of approval transactions (if any needed)
-        """
-        uniswap = routing_state.get_uniswap_for_pair(self.factory_router_map, target_pair)
-        token_address = reserve_asset.address
-        txs = routing_state.ensure_token_approved(token_address, uniswap.router.address)
-        txs += routing_state.trade_on_router_two_way(
-            uniswap,
-            target_pair,
-            reserve_asset,
-            reserve_amount,
-            max_slippage,
-            check_balances,
-            )
-        return txs
-
-    def make_multihop_trade(self,
-                          routing_state: UniswapV2RoutingState,
-                          target_pair: TradingPairIdentifier,
-                          intermediary_pair: TradingPairIdentifier,
-                          reserve_asset: AssetIdentifier,
-                          reserve_amount: int,
-                          max_slippage: float,
-                          check_balances=False,
-                          ) -> List[BlockchainTransaction]:
-        """Prepare a trade where target pair has out reserve asset as a quote token.
-
-        :return:
-            List of approval transactions (if any needed)
-        """
-        uniswap = routing_state.get_uniswap_for_pair(self.factory_router_map, target_pair)
-        token_address = reserve_asset.address
-        txs = routing_state.ensure_token_approved(token_address, uniswap.router.address)
-        txs += routing_state.trade_on_router_three_way(
-            uniswap,
-            target_pair,
-            intermediary_pair,
-            reserve_asset,
-            reserve_amount,
-            max_slippage,
-            check_balances,
-            )
-        return txs
-
     def trade(self,
-              routing_state: UniswapV2RoutingState,
+              routing_state: BacktestRoutingState,
               target_pair: TradingPairIdentifier,
               reserve_asset: AssetIdentifier,
-              reserve_asset_amount: int,  # Raw amount of the reserve asset
+              reserve_asset_amount: Decimal,  # Raw amount of the reserve asset
               max_slippage: float=0.01,
               check_balances=False,
               intermediary_pair: Optional[TradingPairIdentifier] = None,
@@ -363,8 +188,7 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
         # -> we can do one leg trade
         if not intermediary_pair:
             if target_pair.quote == reserve_asset or target_pair.base == reserve_asset:
-                return self.make_direct_trade(
-                    routing_state,
+                return self.routing_state.create_and_complete_trade(
                     target_pair,
                     reserve_asset,
                     reserve_asset_amount,
@@ -376,14 +200,13 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
 
             assert intermediary_pair.pool_address.lower() in self.allowed_intermediary_pairs.values(), f"Does not how to trade a pair. Got intermediary pair {intermediary_pair} that is not allowed, allowed intermediary pairs are {self.allowed_intermediary_pairs}"
 
-            return self.make_multihop_trade(
-                routing_state,
+            return self.routing_state.create_and_complete_trade(
                 target_pair,
-                intermediary_pair,
                 reserve_asset,
                 reserve_asset_amount,
                 max_slippage=max_slippage,
                 check_balances=check_balances,
+                intermediary_pair=intermediary_pair,
             )
 
     def route_pair(self, pair_universe: PandasPairUniverse, trading_pair: TradingPairIdentifier) \
@@ -422,93 +245,8 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
 
         return trading_pair, intermediate_pair
 
-    def route_trade(self, pair_universe: PandasPairUniverse, trade: TradeExecution) -> Tuple[TradingPairIdentifier, Optional[TradingPairIdentifier]]:
-        """Figure out how to map an abstract trade to smart contracts.
-
-        Decide if we can do a direct trade in the pair pool.
-        or if we need to hop through another pool to buy the token we want to buy.
-
-        :return:
-            target pair, intermediary pair tuple
-        """
-        return self.route_pair(pair_universe, trade.pair)
-
-    def execute_trades_internal(self,
-                       pair_universe: PandasPairUniverse,
-                       routing_state: UniswapV2RoutingState,
-                       trades: List[TradeExecution],
-                       check_balances=False):
-        """Split for testability.
-
-        :param check_balances:
-            Check that the wallet has enough reserves to perform the trades
-            before executing them. Because we are selling before buying.
-            sometimes we do no know this until the sell tx has been completed.
-
-        :param max_slippage:
-            The max slipppage tolerated before the trade fails.
-            0.01 is 1%.
-        """
-
-        # Watch out for executing trade twice
-
-        txs: List[BlockchainTransaction] = []
-
-        reserve_asset = self.get_reserve_asset(pair_universe)
-
-        for t in trades:
-            assert len(t.blockchain_transactions) == 0, f"Trade {t} had already blockchain transactions associated with it"
-
-            target_pair, intermediary_pair = self.route_trade(pair_universe, t)
-
-            if intermediary_pair is None:
-                # Two way trade
-                # Decide betwen buying and selling
-                if t.is_buy():
-                   trade_txs = self.trade(
-                        routing_state,
-                        target_pair=target_pair,
-                        reserve_asset=reserve_asset,
-                        reserve_asset_amount=t.get_raw_planned_reserve(),
-                        check_balances=check_balances,
-                    )
-                else:
-                    trade_txs = self.trade(
-                        routing_state,
-                        target_pair=target_pair,
-                        reserve_asset=target_pair.base,
-                        reserve_asset_amount=-t.get_raw_planned_quantity(),
-                        check_balances=check_balances,
-                    )
-            else:
-                # Three-way trade!
-                if t.is_buy():
-                    trade_txs = self.trade(
-                        routing_state,
-                        target_pair=target_pair,
-                        reserve_asset=reserve_asset,
-                        reserve_asset_amount=t.get_raw_planned_reserve(),
-                        check_balances=check_balances,
-                        intermediary_pair=intermediary_pair,
-                    )
-                else:
-                    trade_txs = self.trade(
-                        routing_state,
-                        target_pair=target_pair,
-                        reserve_asset=target_pair.base,
-                        reserve_asset_amount=-t.get_raw_planned_quantity(),
-                        check_balances=check_balances,
-                        intermediary_pair=intermediary_pair,
-                    )
-
-            t.set_blockchain_transactions(trade_txs)
-            txs += trade_txs
-
-        # Now all trades have transactions associated with them.
-        # We can start to execute transactions.
-
     def execute_trades(self,
-                       routing_state: UniswapV2RoutingState,
+                       routing_state: BacktestRoutingState,
                        trades: List[TradeExecution],
                        check_balances=False):
         """Strategy and live execution connection.
@@ -529,79 +267,12 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
             Max slippaeg tolerated per trade. 0.01 is 1%.
 
         """
-        return self.execute_trades_internal(routing_state.pair_universe, routing_state, trades, check_balances)
-
-    def estimate_price(self,
-                       state: RoutingState,
-                       pair: TradingPairIdentifier,
-                       quantity: Decimal,
-                       enter_position=True):
-        """Estimate the price of an asset.
-
-        - Price impact and fees are included
-
-        Used by the position revaluator to come up with the new prices
-        for the assets on every tick.
-        """
-        raise NotImplementedError()
-        #universe = state.universe
-        #assert universe.universe.pairs is not None, "Pairs are required"
-        #pair_universe = universe.universe.pairs
-        #trading_pair, intermediate_pair = self.route_pair(pair_universe)
-        #if enter_position:
+        for t in trades:
+            routing_state.simulate_trade_execution(t)
 
     def create_routing_state(self,
                      universe: TradeExecutorTradingUniverse,
                      execution_details: dict) -> RoutingState:
-        """Create a new routing state for this cycle.
-
-        - Connect routing to web3 and hot wallet
-
-        - Read on-chain data on what gas fee we are going to use
-
-        - Setup transaction builder based on this information
-        """
-
-        assert isinstance(universe, TradingStrategyUniverse)
-        assert universe is not None, "Universe is required"
-        assert universe.universe.pairs is not None, "Pairs are required"
-
-        web3 = execution_details["web3"]
-        hot_wallet = execution_details["hot_wallet"]
-
-        fees = estimate_gas_fees(web3)
-        logger.info("Estimated gas fees for chain %d: %s", web3.eth.chain_id, fees)
-        tx_builder = TransactionBuilder(web3, hot_wallet, fees)
-        routing_state = UniswapV2RoutingState(universe.universe.pairs, tx_builder)
-        return routing_state
-
-
-def route_tokens(
-        trading_pair: TradingPairIdentifier,
-        intermediate_pair: Optional[TradingPairIdentifier],
-)-> Tuple[ChecksumAddress, ChecksumAddress, Optional[ChecksumAddress]]:
-    """Convert trading pair route to physical token addresses.
-    """
-
-    if intermediate_pair is None:
-        return (Web3.toChecksumAddress(trading_pair.base.address),
-            Web3.toChecksumAddress(trading_pair.quote.address),
-            None)
-
-    return (Web3.toChecksumAddress(trading_pair.base.address),
-        Web3.toChecksumAddress(intermediate_pair.quote.address),
-        Web3.toChecksumAddress(trading_pair.quote.address))
-
-
-def get_uniswap_for_pair(web3: Web3, factory_router_map: dict, target_pair: TradingPairIdentifier) -> UniswapV2Deployment:
-    """Get a router for a trading pair."""
-    assert target_pair.exchange_address, f"Exchange address missing for {target_pair}"
-    factory_address = Web3.toChecksumAddress(target_pair.exchange_address)
-    router_address, init_code_hash = factory_router_map[factory_address.lower()]
-
-    return fetch_deployment(
-        web3,
-        factory_address,
-        Web3.toChecksumAddress(router_address),
-        init_code_hash=init_code_hash,
-    )
+        """Create a new routing state for this cycle."""
+        wallet = execution_details["wallet"]
+        return BacktestRoutingState(wallet, universe.pairs)

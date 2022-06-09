@@ -31,7 +31,8 @@ from eth_defi.utils import is_localhost_port_listening
 from tradeexecutor.ethereum.execution import broadcast_and_resolve
 from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2RoutingState, UniswapV2SimpleRoutingModel, OutOfBalance
-from tradeexecutor.ethereum.wallet import sync_reserves, sync_portfolio
+from tradeexecutor.ethereum.wallet import sync_reserves
+from tradeexecutor.state.sync import apply_sync_events
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.state import State
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
@@ -264,7 +265,7 @@ def portfolio(web3, hot_wallet, busd_asset) -> Portfolio:
     portfolio = Portfolio()
     events = sync_reserves(web3, datetime.datetime.utcnow(), hot_wallet.address, [], [busd_asset])
     assert len(events) > 0
-    sync_portfolio(portfolio, events)
+    apply_sync_events(portfolio, events)
     reserve_currency, exchange_rate = portfolio.get_default_reserve_currency()
     assert reserve_currency == busd_asset
     return portfolio

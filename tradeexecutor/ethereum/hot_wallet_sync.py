@@ -4,7 +4,8 @@ from typing import List
 from eth_typing import HexAddress
 from web3 import Web3
 
-from tradeexecutor.ethereum.wallet import sync_reserves, sync_portfolio
+from tradeexecutor.ethereum.wallet import sync_reserves
+from tradeexecutor.state.sync import apply_sync_events
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.identifier import AssetIdentifier
 
@@ -27,6 +28,6 @@ class EthereumHotWalletReserveSyncer:
 
     def __call__(self, portfolio: Portfolio, ts: datetime.datetime, supported_reserves: List[AssetIdentifier]):
         events = sync_reserves(self.web3, ts, self.wallet_address, [], supported_reserves)
-        sync_portfolio(portfolio, events)
+        apply_sync_events(portfolio, events)
         return events
 

@@ -10,7 +10,8 @@ from web3 import EthereumTesterProvider, Web3
 from web3.contract import Contract
 
 from eth_defi.token import create_token
-from tradeexecutor.ethereum.wallet import sync_reserves, sync_portfolio
+from tradeexecutor.ethereum.wallet import sync_reserves
+from tradeexecutor.state.sync import apply_sync_events
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.identifier import AssetIdentifier
 
@@ -112,7 +113,7 @@ def test_update_reserves_no_change(web3, usdc_token, deployer, start_ts, hot_wal
     events = sync_reserves(web3, start_ts, hot_wallet, [], supported_reserves)
     assert len(events) == 1
 
-    sync_portfolio(portfolio, events)
+    apply_sync_events(portfolio, events)
 
     events = sync_reserves(web3, start_ts, hot_wallet, portfolio.reserves.values(), supported_reserves)
     assert len(events) == 0
@@ -128,7 +129,7 @@ def test_update_reserves_twice(web3, usdc_token, deployer, start_ts, hot_wallet:
     events = sync_reserves(web3, start_ts, hot_wallet, [], supported_reserves)
     assert len(events) == 1
 
-    sync_portfolio(portfolio, events)
+    apply_sync_events(portfolio, events)
 
     address = usdc_token.address.lower()
     assert portfolio.reserves[address].quantity == Decimal(500)
@@ -145,6 +146,6 @@ def test_update_reserves_twice(web3, usdc_token, deployer, start_ts, hot_wallet:
     assert evt.new_balance == 700
     assert evt.past_balance == 500
 
-    sync_portfolio(portfolio, events)
+    apply_sync_events(portfolio, events)
 
     assert portfolio.reserves[address].quantity == Decimal(700)

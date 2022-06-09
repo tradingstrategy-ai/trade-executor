@@ -1,16 +1,17 @@
 import datetime
 from typing import Tuple
 
+from tradeexecutor.backtest.backtest_pricing import BacktestPricingModel
 from tradeexecutor.ethereum.uniswap_v2_live_pricing import UniswapV2LivePricing
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.types import USDollarAmount
 from tradeexecutor.strategy.valuation import ValuationModel
 
 
-class BacktestValuation(ValuationModel):
+class BacktestValuationModel(ValuationModel):
     """Re-value assets based on their on-chain backtest dataset price."""
 
-    def __init__(self, pricing_model: BacktestPricing):
+    def __init__(self, pricing_model: BacktestPricingModel):
         self.pricing_model = pricing_model
 
     def __call__(self,
@@ -26,4 +27,4 @@ class BacktestValuation(ValuationModel):
 
 
 def backtest_valuation_factory(pricing_model):
-    return BacktestValuation(pricing_model)
+    return BacktestValuationModel(pricing_model)

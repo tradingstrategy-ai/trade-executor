@@ -8,6 +8,7 @@ import logging
 from web3 import Web3
 
 from eth_defi.hotwallet import HotWallet
+from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel
 from tradeexecutor.ethereum.execution import broadcast_and_resolve
 from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2SimpleRoutingModel, UniswapV2RoutingState
 from tradeexecutor.state.freeze import freeze_position_on_failed_trade

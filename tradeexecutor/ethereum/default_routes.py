@@ -4,9 +4,12 @@ from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2SimpleRoutingMode
 from tradeexecutor.strategy.strategy_module import TradeRouting, ReserveCurrency
 
 
-def create_pancake_routing(reserve_currency: ReserveCurrency) -> UniswapV2SimpleRoutingModel:
+def get_pancake_default_routing_parameters(reserve_currency: ReserveCurrency) -> dict:
+    """Generate routing using PancakeSwap v2 router.
 
-    assert reserve_currency == ReserveCurrency.busd, "Only BUSD supported for this routing module"
+    :param reserve_currency: BUSD accepted
+    """
+    assert reserve_currency == ReserveCurrency.busd, f"Only BUSD supported for this routing module, received {reserve_currency}"
 
     #
     # Routing options
@@ -27,10 +30,19 @@ def create_pancake_routing(reserve_currency: ReserveCurrency) -> UniswapV2Simple
         "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c": "0x58f876857a02d6762e0101bb5c46a8c1ed44dc16",
     }
 
+    return {
+        "factory_router_map": factory_router_map,
+        "allowed_intermediary_pairs": allowed_intermediary_pairs,
+        "reserve_token_address": reserve_token_address,
+    }
+
+
+def create_pancake_routing(reserve_currency: ReserveCurrency) -> UniswapV2SimpleRoutingModel:
+
+    params = get_pancake_default_routing_parameters(reserve_currency)
+
     routing_model = UniswapV2SimpleRoutingModel(
-        factory_router_map,
-        allowed_intermediary_pairs,
-        reserve_token_address=reserve_token_address,
+        **params
     )
 
     return routing_model

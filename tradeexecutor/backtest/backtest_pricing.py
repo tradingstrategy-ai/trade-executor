@@ -17,7 +17,7 @@ from tradingstrategy.universe import Universe
 logger = logging.getLogger(__name__)
 
 
-class BacktestPricing(PricingModel):
+class BacktestPricingModel(PricingModel):
     """Look the price and price impact from the past candle and liquidity data."""
 
     def __init__(self,
@@ -69,13 +69,13 @@ class BacktestPricing(PricingModel):
 def backtest_pricing_factory(
         execution_model: ExecutionModel,
         universe: TradingStrategyUniverse,
-        routing_model: UniswapV2SimpleRoutingModel) -> BacktestPricing:
+        routing_model: UniswapV2SimpleRoutingModel) -> BacktestPricingModel:
 
     assert isinstance(universe, TradingStrategyUniverse)
     assert isinstance(execution_model, BacktestExecutionModel), f"Execution model not compatible with this execution model. Received {execution_model}"
     assert isinstance(routing_model, UniswapV2SimpleRoutingModel), f"This pricing method only works with Uniswap routing model, we received {routing_model}"
 
-    return BacktestPricing(
+    return BacktestPricingModel(
         universe.universe,
         routing_model)
 
