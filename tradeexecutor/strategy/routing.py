@@ -81,22 +81,3 @@ class RoutingModel(abc.ABC):
         :raise CannotExecuteTrade:
             If a trade cannot be executed, e.g. due to an unsupported pair or an exchange,
         """
-
-    @abc.abstractmethod
-    def estimate_price(self,
-                       state: RoutingState,
-                       pair: TradingPairIdentifier,
-                       quantity: Decimal,
-                       enter_position=True):
-        """Estimate the price of an asset.
-
-        - Price impact and fees are included
-
-        Used by the position revaluator to come up with the new prices
-        for the assets on every tick.
-
-        :param enter_position:
-            Estimate the price for entering the position (buy the spot) if true.
-            Otherwise estimate the price for existing the position (sell the spot).
-        """
-

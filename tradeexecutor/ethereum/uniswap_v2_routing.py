@@ -554,25 +554,6 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
         """
         return self.execute_trades_internal(routing_state.pair_universe, routing_state, trades, check_balances)
 
-    def estimate_price(self,
-                       state: RoutingState,
-                       pair: TradingPairIdentifier,
-                       quantity: Decimal,
-                       enter_position=True):
-        """Estimate the price of an asset.
-
-        - Price impact and fees are included
-
-        Used by the position revaluator to come up with the new prices
-        for the assets on every tick.
-        """
-        raise NotImplementedError()
-        #universe = state.universe
-        #assert universe.universe.pairs is not None, "Pairs are required"
-        #pair_universe = universe.universe.pairs
-        #trading_pair, intermediate_pair = self.route_pair(pair_universe)
-        #if enter_position:
-
     def create_routing_state(self,
                      universe: TradeExecutorTradingUniverse,
                      execution_details: dict) -> RoutingState:

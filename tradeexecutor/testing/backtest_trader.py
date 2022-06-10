@@ -35,7 +35,12 @@ class BacktestTrader:
 
     def get_buy_price(self, pair: TradingPairIdentifier, reserve: Decimal) -> float:
         """Get the historical price for our current backtest time."""
-        price = self.pricing_model.get_buy_price(self.ts, reserve)
+        price = self.pricing_model.get_buy_price(self.ts, pair, reserve)
+        return price
+
+    def get_sell_price(self, pair: TradingPairIdentifier, quantity: Decimal) -> float:
+        """Get the historical price for our current backtest time."""
+        price = self.pricing_model.get_sell_price(self.ts, pair, quantity)
         return price
 
     def create(self, pair: TradingPairIdentifier, quantity: Decimal) -> Tuple[TradingPosition, TradeExecution]:
