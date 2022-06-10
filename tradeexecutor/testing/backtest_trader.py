@@ -1,6 +1,6 @@
 import datetime
 from decimal import Decimal
-from typing import Tuple
+from typing import Tuple, Optional
 
 import pandas as pd
 
@@ -29,6 +29,9 @@ class BacktestTrader:
         self.universe = universe
         self.execution_model = execution_model
         self.pricing_model = pricing_model
+        self.nonce = 0
+        self.lp_fees = 0
+        self.native_token_price = 1
 
     def time_travel(self, timestamp: datetime.datetime):
         self.ts = timestamp
@@ -36,14 +39,14 @@ class BacktestTrader:
     def get_buy_price(self, pair: TradingPairIdentifier, reserve: Decimal) -> float:
         """Get the historical price for our current backtest time."""
         price = self.pricing_model.get_buy_price(self.ts, pair, reserve)
-        return price
+        return float(price)  # Convert from numpy.float32
 
     def get_sell_price(self, pair: TradingPairIdentifier, quantity: Decimal) -> float:
         """Get the historical price for our current backtest time."""
         price = self.pricing_model.get_sell_price(self.ts, pair, quantity)
-        return price
+        return float(price)  # Convert from numpy.float32
 
-    def create(self, pair: TradingPairIdentifier, quantity: Decimal) -> Tuple[TradingPosition, TradeExecution]:
+    def create(self, pair: TradingPairIdentifier, quantity: Optional[Decimal], reserve: Optional[Decimal], price: float) -> Tuple[TradingPosition, TradeExecution]:
         """Open a new trade."""
 
         # 1. Plan
@@ -51,26 +54,26 @@ class BacktestTrader:
             ts=self.ts,
             pair=pair,
             quantity=quantity,
-            reserve=None,
+            reserve=reserve,
             assumed_price=price,
             trade_type=TradeType.rebalance,
             reserve_currency=pair.quote,
             reserve_currency_price=1.0)
 
-        self.ts += datetime.timedelta(seconds=1)
         return position, trade
 
-    def create_and_execute(self, pair: TradingPairIdentifier, quantity: Decimal, price: float) -> Tuple[TradingPosition, TradeExecution]:
+    def create_and_execute(self, pair: TradingPairIdentifier, quantity: Optional[Decimal], reserve: Optional[Decimal], price: float) -> Tuple[TradingPosition, TradeExecution]:
 
         assert price > 0
-        assert quantity != 0
+        assert type(price) == float
 
-        price_impact = self.price_impact
+        assert not(quantity and reserve), "Give only quantity (sell) or reserve (buy)"
 
         # 1. Plan
         position, trade = self.create(
             pair=pair,
             quantity=quantity,
+            reserve=reserve,
             price=price)
 
         # 2. Capital allocation
@@ -78,27 +81,22 @@ class BacktestTrader:
         nonce = self.nonce
         self.state.start_execution(self.ts, trade, txid, nonce)
 
-        # 3. broadcast
+        # 3. Simulate tx broadcast
         self.nonce += 1
-        self.ts += datetime.timedelta(seconds=1)
 
         self.state.mark_broadcasted(self.ts, trade)
-        self.ts += datetime.timedelta(seconds=1)
 
-        # 4. executed
-        executed_price = price * price_impact
-        if trade.is_buy():
-            executed_quantity = quantity * Decimal(price_impact)
-            executed_reserve = Decimal(0)
-        else:
-            executed_quantity = quantity
-            executed_reserve = abs(quantity * Decimal(executed_price))
+        # Assume we always get the same execution we planned
+        executed_price = trade.planned_price
+        executed_quantity = trade.planned_quantity
+        executed_reserve = trade.planned_reserve
 
         self.state.mark_trade_success(self.ts, trade, executed_price, executed_quantity, executed_reserve, self.lp_fees, self.native_token_price)
         return position, trade
 
-    def buy(self, pair, quantity, price) -> Tuple[TradingPosition, TradeExecution]:
-        return self.create_and_execute(pair, quantity, price)
+    def buy(self, pair, reserve) -> Tuple[TradingPosition, TradeExecution]:
+        assumed_price = self.get_buy_price(pair, reserve)
+        return self.create_and_execute(pair, quantity=None, reserve=reserve, price=assumed_price)
 
     def prepare_buy(self, pair, quantity, price) -> Tuple[TradingPosition, TradeExecution]:
         return self.create(pair, quantity, price)
@@ -106,10 +104,3 @@ class BacktestTrader:
     def sell(self, pair, quantity, price) -> Tuple[TradingPosition, TradeExecution]:
         return self.create_and_execute(pair, -quantity, price)
 
-    def buy_with_price_data(self, pair, quantity, candle_universe: GroupedCandleUniverse) -> Tuple[TradingPosition, TradeExecution]:
-        price = candle_universe.get_closest_price(pair.internal_id, pd.Timestamp(self.ts))
-        return self.create_and_execute(pair, quantity, float(price))
-
-    def sell_with_price_data(self, pair, quantity, candle_universe: GroupedCandleUniverse) -> Tuple[TradingPosition, TradeExecution]:
-        price = candle_universe.get_closest_price(pair.internal_id, pd.Timestamp(self.ts))
-        return self.create_and_execute(pair, -quantity, float(price))

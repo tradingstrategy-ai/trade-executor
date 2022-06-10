@@ -121,7 +121,7 @@ class State:
         position = self.portfolio.find_position_for_trade(trade)
 
         if trade.is_buy():
-            assert executed_amount > 0
+            assert executed_amount and executed_amount > 0, f"Executed amount was {executed_amount}"
         else:
             assert executed_reserve > 0, f"Executed amount must be negative for sell, got {executed_amount}, {executed_reserve}"
             assert executed_amount < 0

@@ -152,19 +152,25 @@ def test_create_and_execute_backtest_trade(
         logger: logging.Logger,
         state: State,
         universe: TradingStrategyUniverse,
+        pricing_model: BacktestPricingModel,
     ):
     """Manually walk through creation and execution of a single backtest trade."""
 
-    ts = datetime.datetime(2021, 1, 1)
+    ts = datetime.datetime(2021, 6, 1)
     execution_model = BacktestExecutionModel(max_slippage=0.01)
-    trader = BacktestTrader(ts, state, universe, execution_model)
-    wbnb_busd = universe.universe.pairs.get_single()
+    trader = BacktestTrader(ts, state, universe, execution_model, pricing_model)
+    wbnb_busd = translate_trading_pair(universe.universe.pairs.get_single())
 
-    # Create trade for 10 WBNB buy
-    position, trade = trader.create(wbnb_busd, Decimal(10))
+    # Create trade for buying WBNB for 1000 USD
+    position, trade = trader.buy(wbnb_busd, reserve=Decimal(1000))
 
     assert trade.is_buy()
-    assert trade.get_status() == TradeStatus.started
+    assert trade.get_status() == TradeStatus.success
+
+    # We bought around 3 BNB
+    assert position.get_quantity() == pytest.approx(Decimal('2.769774029446430636297428830'))
+
+
 
 
 
