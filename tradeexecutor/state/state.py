@@ -123,8 +123,8 @@ class State:
         if trade.is_buy():
             assert executed_amount and executed_amount > 0, f"Executed amount was {executed_amount}"
         else:
-            assert executed_reserve > 0, f"Executed amount must be negative for sell, got {executed_amount}, {executed_reserve}"
-            assert executed_amount < 0
+            assert executed_reserve > 0, f"Executed reserve must be positive for sell, got amount:{executed_amount}, reserve:{executed_reserve}"
+            assert executed_amount < 0, f"Executed amount must be negative for sell, got amount:{executed_amount}, reserve:{executed_reserve}"
 
         trade.mark_success(executed_at, executed_price, executed_amount, executed_reserve, lp_fees, native_token_price)
 

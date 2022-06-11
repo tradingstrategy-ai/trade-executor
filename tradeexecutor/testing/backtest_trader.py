@@ -83,13 +83,16 @@ class BacktestTrader:
 
         # 3. Simulate tx broadcast
         self.nonce += 1
-
         self.state.mark_broadcasted(self.ts, trade)
 
+        # 4. execution is dummy operation where planned execution becomes actual execution
         # Assume we always get the same execution we planned
         executed_price = trade.planned_price
         executed_quantity = trade.planned_quantity
-        executed_reserve = trade.planned_reserve
+        if trade.is_buy():
+            executed_reserve = reserve
+        else:
+            executed_reserve = -quantity * Decimal(price)
 
         self.state.mark_trade_success(self.ts, trade, executed_price, executed_quantity, executed_reserve, self.lp_fees, self.native_token_price)
         return position, trade
@@ -98,9 +101,7 @@ class BacktestTrader:
         assumed_price = self.get_buy_price(pair, reserve)
         return self.create_and_execute(pair, quantity=None, reserve=reserve, price=assumed_price)
 
-    def prepare_buy(self, pair, quantity, price) -> Tuple[TradingPosition, TradeExecution]:
-        return self.create(pair, quantity, price)
-
-    def sell(self, pair, quantity, price) -> Tuple[TradingPosition, TradeExecution]:
-        return self.create_and_execute(pair, -quantity, price)
+    def sell(self, pair, quantity) -> Tuple[TradingPosition, TradeExecution]:
+        assumed_price = self.get_sell_price(pair, quantity)
+        return self.create_and_execute(pair, quantity=-quantity, reserve=None, price=assumed_price)
 

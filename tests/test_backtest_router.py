@@ -171,6 +171,31 @@ def test_create_and_execute_backtest_trade(
     assert position.get_quantity() == pytest.approx(Decimal('2.769774029446430636297428830'))
 
 
+def test_buy_sell_backtest(
+        logger: logging.Logger,
+        state: State,
+        universe: TradingStrategyUniverse,
+        pricing_model: BacktestPricingModel,
+    ):
+    """Buying and sell using backtest execution."""
+
+    ts = datetime.datetime(2021, 6, 1)
+    execution_model = BacktestExecutionModel(max_slippage=0.01)
+    trader = BacktestTrader(ts, state, universe, execution_model, pricing_model)
+    wbnb_busd = translate_trading_pair(universe.universe.pairs.get_single())
+
+    # Create trade for buying WBNB for 1000 USD
+    position, trade = trader.buy(wbnb_busd, reserve=Decimal(1000))
+
+    assert trade.is_buy()
+    assert trade.get_status() == TradeStatus.success
+
+    position, trade = trader.sell(wbnb_busd, position.get_quantity())
+
+    assert trade.is_sell()
+    assert trade.is_success()
+    assert position.is_closed()
+
 
 
 
