@@ -530,10 +530,10 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
         # Now all trades have transactions associated with them.
         # We can start to execute transactions.
 
-    def execute_trades(self,
-                       routing_state: UniswapV2RoutingState,
-                       trades: List[TradeExecution],
-                       check_balances=False):
+    def setup_trades(self,
+                     routing_state: UniswapV2RoutingState,
+                     trades: List[TradeExecution],
+                     check_balances=False):
         """Strategy and live execution connection.
 
         Turns abstract strategy trades to real blockchain transactions.

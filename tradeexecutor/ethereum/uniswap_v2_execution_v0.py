@@ -144,7 +144,7 @@ class UniswapV2ExecutionModelVersion0(ExecutionModel):
 
         state.start_trades(datetime.datetime.utcnow(), trades)
 
-        routing_model.execute_trades(routing_state, trades, check_balances=check_balances)
+        routing_model.setup_trades(routing_state, trades, check_balances=check_balances)
         broadcast_and_resolve(self.web3, state, trades, stop_on_execution_failure=self.stop_on_execution_failure)
 
         # Clean up failed trades

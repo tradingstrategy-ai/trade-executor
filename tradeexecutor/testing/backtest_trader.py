@@ -6,6 +6,7 @@ import pandas as pd
 
 from tradeexecutor.backtest.backtest_execution import BacktestExecutionModel
 from tradeexecutor.backtest.backtest_pricing import BacktestPricingModel
+from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel, BacktestRoutingState
 from tradeexecutor.state.state import State, TradeType
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.trade import TradeExecution
@@ -15,13 +16,18 @@ from tradingstrategy.candle import GroupedCandleUniverse
 
 
 class BacktestTrader:
-    """Helper class to generate trades for backtesting."""
+    """Helper class to generate trades for backtesting.
+
+    Directly generate trades without going through a strategy.
+    Any trade is executed against given pair, price universe and execution model.
+    """
 
     def __init__(self,
                  start_ts: datetime.datetime,
                  state: State,
                  universe: TradingStrategyUniverse,
                  execution_model: BacktestExecutionModel,
+                 routing_model: BacktestRoutingModel,
                  pricing_model: BacktestPricingModel,
                  ):
         self.state = state
@@ -29,11 +35,17 @@ class BacktestTrader:
         self.universe = universe
         self.execution_model = execution_model
         self.pricing_model = pricing_model
+        self.routing_model = routing_model
         self.nonce = 0
         self.lp_fees = 0
         self.native_token_price = 1
 
+        # Set up routing state with dummy execution details
+        execution_details = execution_model.get_routing_state_details()
+        self.routing_state: BacktestRoutingState = self.routing_model.create_routing_state(universe, execution_details)
+
     def time_travel(self, timestamp: datetime.datetime):
+        """Set the timestamp for the next executions."""
         self.ts = timestamp
 
     def get_buy_price(self, pair: TradingPairIdentifier, reserve: Decimal) -> float:
@@ -76,25 +88,16 @@ class BacktestTrader:
             reserve=reserve,
             price=price)
 
-        # 2. Capital allocation
-        txid = hex(self.nonce)
-        nonce = self.nonce
-        self.state.start_execution(self.ts, trade, txid, nonce)
+        # Run trade start, simulated broadcast, simulated execution using
+        # backtest execution model
+        self.execution_model.execute_trades(
+            self.ts,
+            self.state,
+            [trade],
+            self.routing_model,
+            self.routing_state,
+            check_balances=True)
 
-        # 3. Simulate tx broadcast
-        self.nonce += 1
-        self.state.mark_broadcasted(self.ts, trade)
-
-        # 4. execution is dummy operation where planned execution becomes actual execution
-        # Assume we always get the same execution we planned
-        executed_price = trade.planned_price
-        executed_quantity = trade.planned_quantity
-        if trade.is_buy():
-            executed_reserve = reserve
-        else:
-            executed_reserve = -quantity * Decimal(price)
-
-        self.state.mark_trade_success(self.ts, trade, executed_price, executed_quantity, executed_reserve, self.lp_fees, self.native_token_price)
         return position, trade
 
     def buy(self, pair, reserve) -> Tuple[TradingPosition, TradeExecution]:

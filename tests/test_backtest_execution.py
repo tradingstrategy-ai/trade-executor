@@ -6,6 +6,7 @@ from decimal import Decimal
 
 import pytest
 
+from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.trade import TradeStatus
 from tradeexecutor.strategy.strategy_module import ReserveCurrency
 from tradeexecutor.testing.backtest_trader import BacktestTrader
@@ -78,6 +79,20 @@ def universe(request, persistent_test_client, execution_context) -> TradingStrat
 
 
 @pytest.fixture(scope="module")
+def wbnb(request, universe) -> AssetIdentifier:
+    """WBNB asset."""
+    pair = translate_trading_pair(universe.universe.pairs.get_single())
+    return pair.base
+
+
+@pytest.fixture(scope="module")
+def busd(request, universe) -> AssetIdentifier:
+    """BUSD asset."""
+    pair = translate_trading_pair(universe.universe.pairs.get_single())
+    return pair.quote
+
+
+@pytest.fixture(scope="module")
 def routing_model() -> BacktestRoutingModel:
     routing_parameters = get_pancake_default_routing_parameters(ReserveCurrency.busd)
     routing_model = BacktestRoutingModel(**routing_parameters)
@@ -121,14 +136,16 @@ def state(universe: TradingStrategyUniverse, deposit_syncer: BacktestSyncer) -> 
 def test_get_historical_price(
         logger: logging.Logger,
         state: State,
+        wallet: SimulatedWallet,
         universe: TradingStrategyUniverse,
         pricing_model: BacktestPricingModel,
+        routing_model: BacktestRoutingModel,
     ):
     """Retrieve historical buy and sell price."""
 
     ts = datetime.datetime(2021, 6, 1)
-    execution_model = BacktestExecutionModel(max_slippage=0.01)
-    trader = BacktestTrader(ts, state, universe, execution_model, pricing_model)
+    execution_model = BacktestExecutionModel(wallet, max_slippage=0.01)
+    trader = BacktestTrader(ts, state, universe, execution_model, routing_model, pricing_model)
     wbnb_busd = translate_trading_pair(universe.universe.pairs.get_single())
 
     # Check the candle price range that we have data to get the price
@@ -151,14 +168,20 @@ def test_get_historical_price(
 def test_create_and_execute_backtest_trade(
         logger: logging.Logger,
         state: State,
+        wallet: SimulatedWallet,
         universe: TradingStrategyUniverse,
+        routing_model: BacktestRoutingModel,
         pricing_model: BacktestPricingModel,
+        wbnb: AssetIdentifier,
+        busd: AssetIdentifier,
     ):
     """Manually walk through creation and execution of a single backtest trade."""
 
+    assert wallet.get_balance(busd.address) == 10_000
+
     ts = datetime.datetime(2021, 6, 1)
-    execution_model = BacktestExecutionModel(max_slippage=0.01)
-    trader = BacktestTrader(ts, state, universe, execution_model, pricing_model)
+    execution_model = BacktestExecutionModel(wallet, max_slippage=0.01)
+    trader = BacktestTrader(ts, state, universe, execution_model, routing_model, pricing_model)
     wbnb_busd = translate_trading_pair(universe.universe.pairs.get_single())
 
     # Create trade for buying WBNB for 1000 USD
@@ -166,22 +189,31 @@ def test_create_and_execute_backtest_trade(
 
     assert trade.is_buy()
     assert trade.get_status() == TradeStatus.success
+    assert trade.executed_price == pytest.approx(362.1266631927031)
 
     # We bought around 3 BNB
-    assert position.get_quantity() == pytest.approx(Decimal('2.769774029446430636297428830'))
+    assert position.get_quantity() == pytest.approx(Decimal('2.761464707358091337008375982'))
+
+    # Check our wallet was credited
+    assert wallet.get_balance(busd.address) == 9_000
+    assert wallet.get_balance(wbnb.address) == pytest.approx(Decimal('2.761464707358091337008375982'))
 
 
 def test_buy_sell_backtest(
         logger: logging.Logger,
         state: State,
+        wallet: SimulatedWallet,
         universe: TradingStrategyUniverse,
+        routing_model: BacktestRoutingModel,
         pricing_model: BacktestPricingModel,
+        wbnb: AssetIdentifier,
+        busd: AssetIdentifier,
     ):
     """Buying and sell using backtest execution."""
 
     ts = datetime.datetime(2021, 6, 1)
-    execution_model = BacktestExecutionModel(max_slippage=0.01)
-    trader = BacktestTrader(ts, state, universe, execution_model, pricing_model)
+    execution_model = BacktestExecutionModel(wallet, max_slippage=0.01)
+    trader = BacktestTrader(ts, state, universe, execution_model, routing_model, pricing_model)
     wbnb_busd = translate_trading_pair(universe.universe.pairs.get_single())
 
     # Create trade for buying WBNB for 1000 USD
@@ -189,14 +221,19 @@ def test_buy_sell_backtest(
 
     assert trade.is_buy()
     assert trade.get_status() == TradeStatus.success
+    buy_price = trade.executed_price
 
     position, trade = trader.sell(wbnb_busd, position.get_quantity())
 
     assert trade.is_sell()
     assert trade.is_success()
+    sell_price = trade.executed_price
     assert position.is_closed()
 
+    # Do simulated markets make any sense?
+    assert sell_price < buy_price
 
-
-
+    # Check our wallet was credited
+    assert wallet.get_balance(busd.address) == pytest.approx(Decimal('9999.990999999999889294777233'))
+    assert wallet.get_balance(wbnb.address) == 0
 

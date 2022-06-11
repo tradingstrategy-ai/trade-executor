@@ -90,9 +90,6 @@ class BacktestRoutingState(RoutingState):
         tx = self.create_simulated_trade(target_pair, max)
         return [tx]
 
-    def simulate_trade_execution(self, trade: TradeExecution):
-        """"""
-
 
 class BacktestRoutingModel(RoutingModel):
     """A simple router that does not optimise the trade execution cost.
@@ -245,10 +242,23 @@ class BacktestRoutingModel(RoutingModel):
 
         return trading_pair, intermediate_pair
 
-    def execute_trades(self,
-                       routing_state: BacktestRoutingState,
-                       trades: List[TradeExecution],
-                       check_balances=False):
+    def setup_internal(self, routing_state: RoutingState, trade: TradeExecution):
+        """Simulate trade braodcast and mark it as success."""
+
+        # 2. Capital allocation
+        nonce, tx_hash = routing_state.wallet.fetch_nonce_and_tx_hash()
+
+        trade.blockchain_transactions = [
+            BlockchainTransaction(
+                nonce=nonce,
+                tx_hash=tx_hash,
+            )
+        ]
+
+    def setup_trades(self,
+                     routing_state: BacktestRoutingState,
+                     trades: List[TradeExecution],
+                     check_balances=False):
         """Strategy and live execution connection.
 
         Turns abstract strategy trades to real blockchain transactions.
@@ -262,17 +272,17 @@ class BacktestRoutingModel(RoutingModel):
             before executing them. Because we are selling before buying.
             sometimes we do no know this until the sell tx has been completed.
 
-
         :param max_slippage:
             Max slippaeg tolerated per trade. 0.01 is 1%.
 
         """
         for t in trades:
-            routing_state.simulate_trade_execution(t)
+            self.setup_internal(routing_state, t)
 
     def create_routing_state(self,
-                     universe: TradeExecutorTradingUniverse,
-                     execution_details: dict) -> RoutingState:
+                     universe: TradingStrategyUniverse,
+                     execution_details: dict) -> BacktestRoutingState:
         """Create a new routing state for this cycle."""
+        assert isinstance(universe, TradingStrategyUniverse)
         wallet = execution_details["wallet"]
-        return BacktestRoutingState(wallet, universe.pairs)
+        return BacktestRoutingState(universe.universe.pairs, wallet)

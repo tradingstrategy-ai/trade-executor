@@ -111,7 +111,7 @@ class UniswapV2ExecutionModel(ExecutionModel):
 
         state.start_trades(datetime.datetime.utcnow(), trades, max_slippage=self.max_slippage)
 
-        routing_model.execute_trades(
+        routing_model.setup_trades(
             routing_state,
             trades,
             check_balances=check_balances)
