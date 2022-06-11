@@ -172,3 +172,8 @@ def test_synthetic_data_backtest_run(
 
     assert len(buys) == 107
     assert len(sells) == 107
+
+    # The actual result might vary, but we should slowly leak
+    # portfolio valuation because losses on trading fees
+    assert portfolio.get_current_cash() > 9000
+    assert portfolio.get_current_cash() < 10_500
