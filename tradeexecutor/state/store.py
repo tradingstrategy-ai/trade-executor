@@ -73,3 +73,27 @@ class JSONFileStore(StateStore):
         logger.info("Created new state for %s", self.path)
         return State()
 
+
+class NoneStore(StateStore):
+    """Store that is not persistent.
+
+    Used in unit tests. Seed with initial state.
+    """
+
+    def __init__(self, state: State):
+        self.created = False
+        self.state = state
+
+    def is_empty(self) -> bool:
+        return False
+
+    def load(self) -> State:
+        return self.state
+
+    def sync(self, state: State):
+        """Do not persist anything."""
+        pass
+
+    def create(self) -> State:
+        raise NotImplementedError()
+

@@ -1,4 +1,4 @@
-"""Backtesting router tests.
+"""Backtesting router tests for three way trades.
 """
 import datetime
 import logging
@@ -61,7 +61,7 @@ def universe(request, persistent_test_client, execution_context) -> TradingStrat
     exchange_slug = "pancakeswap-v2"
 
     # Which trading pair we are trading
-    trading_pair = ("WBNB", "BUSD")
+    trading_pair = ("Cake", "WBNB")
 
     # Load all datas we can get for our candle time bucket
     dataset = load_all_data(client, candle_time_bucket, execution_context)
@@ -86,7 +86,7 @@ def wbnb(request, universe) -> AssetIdentifier:
 
 
 @pytest.fixture(scope="module")
-def busd(request, universe) -> AssetIdentifier:
+def cake(request, universe) -> AssetIdentifier:
     """BUSD asset."""
     pair = translate_trading_pair(universe.universe.pairs.get_single())
     return pair.quote

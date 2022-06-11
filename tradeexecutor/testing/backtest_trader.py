@@ -5,7 +5,7 @@ from typing import Tuple, Optional
 import pandas as pd
 
 from tradeexecutor.backtest.backtest_execution import BacktestExecutionModel
-from tradeexecutor.backtest.backtest_pricing import BacktestPricingModel
+from tradeexecutor.backtest.backtest_pricing import BacktestSimplePricingModel
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel, BacktestRoutingState
 from tradeexecutor.state.state import State, TradeType
 from tradeexecutor.state.position import TradingPosition
@@ -28,7 +28,7 @@ class BacktestTrader:
                  universe: TradingStrategyUniverse,
                  execution_model: BacktestExecutionModel,
                  routing_model: BacktestRoutingModel,
-                 pricing_model: BacktestPricingModel,
+                 pricing_model: BacktestSimplePricingModel,
                  ):
         self.state = state
         self.ts = start_ts

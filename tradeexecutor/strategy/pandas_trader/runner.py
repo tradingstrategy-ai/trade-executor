@@ -50,7 +50,6 @@ class PandasTraderRunner(StrategyRunner):
             universe,
             state,
             pricing_model,
-            executor_universe.reserve_assets[0],
         )
 
         # Call the strategy script decide_trades()

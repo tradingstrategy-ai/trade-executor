@@ -4,7 +4,7 @@ import textwrap
 from abc import abstractmethod
 from dataclasses import dataclass
 import logging
-from typing import List, Optional, Callable
+from typing import List, Optional, Callable, Tuple
 
 import pandas as pd
 
@@ -68,6 +68,63 @@ class TradingStrategyUniverse(TradeExecutorTradingUniverse):
         """Filters down the dataset for a single trading pair.
 
         This is ideal for strategies that only want to trade a single pair.
+        """
+
+        # We only trade on Pancakeswap v2
+        exchange_universe = dataset.exchanges
+        exchange = exchange_universe.get_by_chain_and_slug(chain_id, exchange_slug)
+        assert exchange, f"No exchange {exchange_slug} found on chain {chain_id.name}"
+
+        # Create trading pair database
+        pair_universe = PandasPairUniverse.create_single_pair_universe(
+            dataset.pairs,
+            exchange,
+            base_token,
+            quote_token,
+        )
+
+        # Get daily candles as Pandas DataFrame
+        all_candles = dataset.candles
+        filtered_candles = filter_for_pairs(all_candles, pair_universe.df)
+        candle_universe = GroupedCandleUniverse(filtered_candles)
+
+        # Get liquidity candles as Pandas Dataframe
+        all_liquidity = dataset.liquidity
+        filtered_liquidity = filter_for_pairs(all_liquidity, pair_universe.df)
+        liquidity_universe = GroupedLiquidityUniverse(filtered_liquidity)
+
+        pair = pair_universe.get_single()
+
+        # We have only a single pair, so the reserve asset must be its quote token
+        trading_pair_identifier = translate_trading_pair(pair)
+        reserve_assets = [
+            trading_pair_identifier.quote
+        ]
+
+        universe = Universe(
+            time_bucket=dataset.time_bucket,
+            chains={chain_id},
+            pairs=pair_universe,
+            exchanges={exchange},
+            candles=candle_universe,
+            liquidity=liquidity_universe,
+        )
+
+        return TradingStrategyUniverse(universe=universe, reserve_assets=reserve_assets)
+
+    @staticmethod
+    def create_limited_pair_universe(
+        dataset: Dataset,
+        chain_id: ChainId,
+        exchange_slug: str,
+        pairs: List[Tuple[str]]) -> "TradingStrategyUniverse":
+        """Filters down the dataset for couple trading pair.
+
+        This is ideal for strategies that only want to trade few pairs,
+        or a single pair using three way trading.
+
+        :param pairs:
+            List of trading pairs as ticket tuples. E.g. `[ ("WBNB, "BUSD"), ("Cake", "WBNB") ]`
         """
 
         # We only trade on Pancakeswap v2
@@ -334,10 +391,12 @@ def create_pair_universe_from_code(chain_id: ChainId, pairs: List[TradingPairIde
     for idx, p in enumerate(pairs):
         assert p.base.decimals
         assert p.quote.decimals
+        assert p.internal_exchange_id
+        assert p.internal_id
         dex_pair = DEXPair(
-            pair_id=idx,
+            pair_id=p.internal_id,
             chain_id=chain_id,
-            exchange_id=0,
+            exchange_id=p.internal_exchange_id,
             address=p.pool_address,
             exchange_address=p.exchange_address,
             dex_type=PairType.uniswap_v2,

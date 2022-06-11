@@ -17,11 +17,14 @@ from tradingstrategy.universe import Universe
 logger = logging.getLogger(__name__)
 
 
-class BacktestPricingModel(PricingModel):
-    """Look the price and price impact from the past candle and liquidity data."""
+class BacktestSimplePricingModel(PricingModel):
+    """Look the price without any liquidity data or price impact.
+
+    Use naive closing price.
+    """
 
     def __init__(self,
-                 universe: Universe,
+                 universe: TradingStrategyUniverse,
                  routing_model: RoutingModel,
                  candle_timepoint="close",
                  very_small_amount=Decimal("0.10")):
@@ -71,13 +74,13 @@ class BacktestPricingModel(PricingModel):
 def backtest_pricing_factory(
         execution_model: ExecutionModel,
         universe: TradingStrategyUniverse,
-        routing_model: UniswapV2SimpleRoutingModel) -> BacktestPricingModel:
+        routing_model: UniswapV2SimpleRoutingModel) -> BacktestSimplePricingModel:
 
     assert isinstance(universe, TradingStrategyUniverse)
     assert isinstance(execution_model, BacktestExecutionModel), f"Execution model not compatible with this execution model. Received {execution_model}"
     assert isinstance(routing_model, UniswapV2SimpleRoutingModel), f"This pricing method only works with Uniswap routing model, we received {routing_model}"
 
-    return BacktestPricingModel(
+    return BacktestSimplePricingModel(
         universe.universe,
         routing_model)
 

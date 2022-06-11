@@ -160,9 +160,9 @@ class ExecutionLoop:
         self.store.sync(state)
 
         # Store debug trace
-        if self.debug_dump_file is not None:
-            self.debug_dump_state[cycle] = debug_details
+        self.debug_dump_state[cycle] = debug_details
 
+        if self.debug_dump_file is not None:
             # Record and write out the internal debug states after every tick
             with open(self.debug_dump_file, "wb") as out:
                 pickle.dump(self.debug_dump_state, out)
@@ -198,7 +198,7 @@ class ExecutionLoop:
         # Store the current state to disk
         self.store.sync(state)
 
-    def run_backtest(self, state: State):
+    def run_backtest(self, state: State) -> dict:
         """Backtest loop."""
 
         ts = self.backtest_start
@@ -208,6 +208,8 @@ class ExecutionLoop:
         cycle = 1
         universe = None
         while True:
+
+            ts = snap_to_previous_tick(ts, self.cycle_duration)
 
             universe = self.tick(ts, state, cycle, live=False, backtesting_universe=universe)
 
@@ -232,6 +234,8 @@ class ExecutionLoop:
 
             # Add some fuzziness to gacktesting timestamps
             ts = next_tick + datetime.timedelta(minutes=random.randint(0, 4))
+
+        return self.debug_dump_state
 
     def run_live(self, state: State):
         """Run live trading cycle."""
@@ -293,7 +297,9 @@ class ExecutionLoop:
             raise
         logger.info("Scheduler finished - down the live trading loop")
 
-    def run(self):
+        return self.debug_dump_state
+
+    def run(self) -> dict:
         """The main loop of trade executor.
 
         Main entry point to the loop.
@@ -303,6 +309,9 @@ class ExecutionLoop:
         - Loads or creates the initial state
 
         - Sets up strategy runner
+
+        :return:
+            Debug state where each key is the cycle number
         """
 
         if self.backtest_end or self.backtest_start:
@@ -312,7 +321,7 @@ class ExecutionLoop:
 
         self.init_execution_model()
 
-        live_trading = self.backtest_start is not None
+        live_trading = self.backtest_start is None
 
         execution_context = ExecutionContext(
             live_trading=live_trading,

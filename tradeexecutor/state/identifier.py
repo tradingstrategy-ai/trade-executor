@@ -96,6 +96,9 @@ class TradingPairIdentifier:
     #: How this asset is referred in the internal database
     internal_id: Optional[int] = None
 
+    #: What is the internal exchange id of this trading pair.
+    internal_exchange_id: Optional[int] = None
+
     #: Info page URL for this trading pair e.g. with the price charts
     info_url: Optional[str] = None
 

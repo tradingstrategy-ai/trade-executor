@@ -82,7 +82,6 @@ def make_runner_for_strategy_mod(mod) -> StrategyFactory:
     """
 
     mod_info = parse_strategy_module(mod)
-
     mod_info.validate()
 
     assert mod_info.trading_strategy_type == StrategyType.position_manager, "Unsupported strategy tpe"
