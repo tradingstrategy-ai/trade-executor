@@ -166,14 +166,14 @@ def test_get_historical_price(
 
 
 def test_create_and_execute_backtest_trade(
-        logger: logging.Logger,
-        state: State,
-        wallet: SimulatedWallet,
-        universe: TradingStrategyUniverse,
-        routing_model: BacktestRoutingModel,
-        pricing_model: BacktestSimplePricingModel,
-        wbnb: AssetIdentifier,
-        busd: AssetIdentifier,
+    logger: logging.Logger,
+    state: State,
+    wallet: SimulatedWallet,
+    universe: TradingStrategyUniverse,
+    routing_model: BacktestRoutingModel,
+    pricing_model: BacktestSimplePricingModel,
+    wbnb: AssetIdentifier,
+    busd: AssetIdentifier,
     ):
     """Manually walk through creation and execution of a single backtest trade."""
 
@@ -200,14 +200,14 @@ def test_create_and_execute_backtest_trade(
 
 
 def test_buy_sell_backtest(
-        logger: logging.Logger,
-        state: State,
-        wallet: SimulatedWallet,
-        universe: TradingStrategyUniverse,
-        routing_model: BacktestRoutingModel,
-        pricing_model: BacktestSimplePricingModel,
-        wbnb: AssetIdentifier,
-        busd: AssetIdentifier,
+    logger: logging.Logger,
+    state: State,
+    wallet: SimulatedWallet,
+    universe: TradingStrategyUniverse,
+    routing_model: BacktestRoutingModel,
+    pricing_model: BacktestSimplePricingModel,
+    wbnb: AssetIdentifier,
+    busd: AssetIdentifier,
     ):
     """Buying and sell using backtest execution."""
 

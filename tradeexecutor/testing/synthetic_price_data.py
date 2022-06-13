@@ -19,7 +19,10 @@ def generate_ohlcv_candles(
     pair_id=1,
     exchange_id=1,
 ) -> pd.DataFrame:
-    """Generate some sample time series data."""
+    """Generate some sample time series data.
+
+    The output candles are deterministic: the same input parameters result to the same output parameters.
+    """
 
     random_gen = random.Random(random_seed)
     time_delta = bucket.to_timedelta()

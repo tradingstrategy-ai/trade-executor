@@ -52,8 +52,9 @@ class ExecutionLoop:
             reset=False,
             max_cycles: Optional[int]=None,
             debug_dump_file: Optional[Path]=None,
-            backtest_start: Optional[datetime.datetime]=None,
-            backtest_end: Optional[datetime.datetime]=None,
+            backtest_start: Optional[datetime.datetime] =None,
+            backtest_end: Optional[datetime.datetime] = None,
+            backtest_setup: Optional[Callable[[State], None]] = None,
             tick_offset: datetime.timedelta=datetime.timedelta(minutes=0),
             trade_immediately=False,
         ):
@@ -212,6 +213,10 @@ class ExecutionLoop:
             ts = snap_to_previous_tick(ts, self.cycle_duration)
 
             universe = self.tick(ts, state, cycle, live=False, backtesting_universe=universe)
+
+            if cycle == 1 and self.backtest_setup is not None:
+                # The hook to set up backtest initial balance
+                self.backtest_setup(state, universe, self.sync_method)
 
             self.update_position_valuations(ts, state, universe)
 

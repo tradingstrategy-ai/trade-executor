@@ -23,7 +23,7 @@ from tradeexecutor.strategy.execution_model import ExecutionContext
 from tradeexecutor.strategy.factory import make_runner_for_strategy_mod
 from tradeexecutor.strategy.pandas_trader.runner import PandasTraderRunner
 from tradeexecutor.strategy.strategy_module import parse_strategy_module, StrategyModuleInformation
-from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, TradingStrategyUniverseModel
 from tradeexecutor.strategy.universe_model import StaticUniverseModel
 from tradingstrategy.client import Client
 
@@ -33,12 +33,12 @@ class BacktestSetup:
     """Describe backtest setup, ready to run."""
     start_at: datetime.datetime
     end_at: datetime.datetime
-    cycle_duration: CycleDuration
+    cycle_duration: Optional[CycleDuration]
     universe: Optional[TradingStrategyUniverse]
     wallet: SimulatedWallet
     state: State
-    pricing_model: BacktestSimplePricingModel
-    routing_model: BacktestRoutingModel
+    pricing_model: Optional[BacktestSimplePricingModel]
+    routing_model: Optional[BacktestRoutingModel]
     execution_model: BacktestExecutionModel
     sync_method: BacktestSyncer
     strategy_module: StrategyModuleInformation
@@ -60,8 +60,6 @@ class BacktestSetup:
         assert self.universe is not None, "Only static universe models supported for now"
         assert not execution_context.live_trading, f"This can be only used for backtesting strategies. execution context is {execution_context}"
 
-        universe_model = StaticUniverseModel(self.universe)
-
         runner = PandasTraderRunner(
             timed_task_context_manager=timed_task_context_manager,
             execution_model=execution_model,
@@ -72,6 +70,13 @@ class BacktestSetup:
             routing_model=self.routing_model,
             decide_trades=self.strategy_module.decide_trades,
         )
+
+        if self.universe:
+            # Trading universe is set by unit tests
+            universe_model = StaticUniverseModel(self.universe)
+        else:
+            # Trading universe is loaded by the strategy script
+            universe_model = TradingStrategyUniverseModel(client, timed_task_context_manager)
 
         return StrategyExecutionDescription(
             universe_model=universe_model,
@@ -142,8 +147,56 @@ def setup_backtest_for_universe(
     )
 
 
+def setup_backtest(
+        strategy_path: Path,
+        start_at: datetime.datetime,
+        end_at: datetime.datetime,
+        initial_deposit: int,
+        max_slippage=0.01,
+    ):
+    """High-level entry point for running a single backtest.
+
+    The trading universe creation from the strategy is skipped,
+    instead of you can pass your own universe e.g. synthetic universe.
+
+    :param cycle_duration:
+        Override the default strategy cycle duration
+    """
+
+    assert isinstance(strategy_path, Path), f"Got {strategy_path}"
+    assert initial_deposit > 0
+
+    wallet = SimulatedWallet()
+    deposit_syncer = BacktestSyncer(wallet, Decimal(initial_deposit))
+
+    execution_model = BacktestExecutionModel(wallet, max_slippage)
+
+    # Load strategy Python file
+    strategy_mod_exports: dict = runpy.run_path(strategy_path)
+    strategy_module = parse_strategy_module(strategy_mod_exports)
+
+    strategy_module.validate()
+
+    return BacktestSetup(
+        start_at,
+        end_at,
+        cycle_duration=None,
+        wallet=wallet,
+        state=State(),
+        universe=None,
+        pricing_model=None,  # Will be set up later
+        execution_model=execution_model,
+        routing_model=None, # Will be set up later
+        sync_method=deposit_syncer,
+        strategy_module=strategy_module,
+    )
+
+
 def run_backtest(setup: BacktestSetup, client: Optional[Client]=None) -> Tuple[State, dict]:
     """Run a strategy backtest.
+
+    Loads strategy file, construct trading universe is real data
+    downloaded with Trading Strategy client.
 
     :return:
         Tuple(the final state of the backtest, debug dump)
@@ -152,6 +205,7 @@ def run_backtest(setup: BacktestSetup, client: Optional[Client]=None) -> Tuple[S
     # State is pristine and not used yet
     assert len(list(setup.state.portfolio.get_all_trades())) == 0
 
+    # Create empty state for this backtest
     store = NoneStore(setup.state)
 
     def pricing_model_factory(execution_model, universe, routing_model):
@@ -159,6 +213,13 @@ def run_backtest(setup: BacktestSetup, client: Optional[Client]=None) -> Tuple[S
 
     def valuation_model_factory(pricing_model):
         return BacktestValuationModel(setup.pricing_model)
+
+    def backtest_setup(state: State, universe: TradingStrategyUniverse, deposit_syncer: BacktestSyncer):
+        # Create the initial state
+        events = deposit_syncer(state.portfolio, setup.start_at, universe.reserve_assets)
+        assert len(events) == 1
+        token, usd_exchange_rate = state.portfolio.get_default_reserve_currency()
+        assert usd_exchange_rate == 1
 
     main_loop = ExecutionLoop(
         name="backtest",
@@ -177,6 +238,7 @@ def run_backtest(setup: BacktestSetup, client: Optional[Client]=None) -> Tuple[S
         debug_dump_file=None,
         backtest_start=setup.start_at,
         backtest_end=setup.end_at,
+        backtest_setup=backtest_setup,
         tick_offset=datetime.timedelta(seconds=1),
         trade_immediately=True,
     )
