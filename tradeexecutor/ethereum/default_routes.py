@@ -1,5 +1,5 @@
 """Default routing models for Uniswap v2 like exchange."""
-
+from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel
 from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2SimpleRoutingModel
 from tradeexecutor.strategy.strategy_module import TradeRouting, ReserveCurrency
 
@@ -56,4 +56,13 @@ def get_routing_model(routing_type: TradeRouting, reserve_currency: ReserveCurre
 
     raise NotImplementedError("Not yet done")
 
+
+def get_backtest_routing_model(routing_type: TradeRouting, reserve_currency: ReserveCurrency) -> BacktestRoutingModel:
+    """Hardcoded routing model support for backtests."""
+
+    if routing_type == TradeRouting.pancakeswap_basic:
+        params = get_pancake_default_routing_parameters(reserve_currency)
+        return BacktestRoutingModel(**params)
+
+    raise NotImplementedError("Not yet done")
 

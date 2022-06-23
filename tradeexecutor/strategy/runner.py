@@ -194,6 +194,16 @@ class StrategyRunner(abc.ABC):
         pass
 
     def setup_routing(self, universe: TradeExecutorTradingUniverse):
+        """Setups routing state for this cycle.
+
+        :param universe:
+            The currently tradeable universe
+
+        :return:
+            Tuple(routing state, pricing model, valuation model)
+        """
+
+        assert self.routing_model, "Routing model not set"
 
         # Get web3 connection, hot wallet
         routing_state_details = self.execution_model.get_routing_state_details()

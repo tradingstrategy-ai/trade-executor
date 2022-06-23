@@ -14,6 +14,7 @@ from tradeexecutor.backtest.backtest_sync import BacktestSyncer
 from tradeexecutor.backtest.backtest_valuation import BacktestValuationModel
 from tradeexecutor.backtest.simulated_wallet import SimulatedWallet
 from tradeexecutor.cli.loop import ExecutionLoop
+from tradeexecutor.ethereum.default_routes import get_routing_model, get_backtest_routing_model
 from tradeexecutor.state.state import State
 from tradeexecutor.state.store import NoneStore
 from tradeexecutor.strategy.approval import UncheckedApprovalModel, ApprovalModel
@@ -71,6 +72,18 @@ class BacktestSetup:
 
         assert not execution_context.live_trading, f"This can be only used for backtesting strategies. execution context is {execution_context}"
 
+
+        if self.routing_model:
+            # Use passed routing model
+            routing_model = self.routing_model
+        else:
+            # Use routing model from the strategy.
+            # The strategy file chooses one of predefined routing models.
+            trade_routing = self.strategy_module.trade_routing
+            assert trade_routing, "Strategy module did not provide trade_routing"
+            routing_model = get_backtest_routing_model(trade_routing, self.strategy_module.reserve_currency)
+
+
         runner = PandasTraderRunner(
             timed_task_context_manager=timed_task_context_manager,
             execution_model=execution_model,
@@ -78,7 +91,7 @@ class BacktestSetup:
             valuation_model_factory=valuation_model_factory,
             sync_method=sync_method,
             pricing_model_factory=pricing_model_factory,
-            routing_model=self.routing_model,
+            routing_model=routing_model,
             decide_trades=self.strategy_module.decide_trades,
         )
 
@@ -236,9 +249,10 @@ def run_backtest(setup: BacktestSetup, client: Optional[Client]=None) -> Tuple[S
         return BacktestValuationModel(setup.pricing_model)
 
     def backtest_setup(state: State, universe: TradingStrategyUniverse, deposit_syncer: BacktestSyncer):
-        # Create the initial state
+        # Called on the first cycle.
+        # Create the initial state of the execution.
         events = deposit_syncer(state.portfolio, setup.start_at, universe.reserve_assets)
-        assert len(events) == 1
+        assert len(events) == 1, f"Got events {len(events)}"
         token, usd_exchange_rate = state.portfolio.get_default_reserve_currency()
         assert usd_exchange_rate == 1
 
