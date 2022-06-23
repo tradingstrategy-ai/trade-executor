@@ -19,6 +19,8 @@ from pathlib import Path
 import pytest
 from tradeexecutor.backtest.backtest_runner import run_backtest, setup_backtest
 from tradeexecutor.cli.log import setup_pytest_logging
+from tradeexecutor.strategy.cycle import CycleDuration
+from tradingstrategy.timebucket import TimeBucket
 
 
 @pytest.fixture(scope="module")
@@ -33,20 +35,23 @@ def strategy_path() -> Path:
     return Path(os.path.join(os.path.dirname(__file__), "..", "strategies", "ema-crossover-long-only-no-stop-loss.py"))
 
 
-def test_ema_crossover_synthetic_data(
+def test_ema_crossover_real_data(
     strategy_path,
     logger: logging.Logger,
     persistent_test_client,
     ):
-    """Check that EMA crossover strategy does not have syntax bugs or similar."""
+    """Check that EMA crossover strategy against real data."""
 
     client = persistent_test_client
 
+    # Run backtest over 6 months, daily
     setup = setup_backtest(
         strategy_path,
         start_at=datetime.datetime(2021, 6, 1),
         end_at=datetime.datetime(2022, 1, 1),
         initial_deposit=10_000,
+        cycle_duration=CycleDuration.cycle_24h,  # Override to use daily cycles to speed up the test
+        candle_time_frame=TimeBucket.d1,  # Override to use daily data to speed up the test
     )
 
     state, debug_dump = run_backtest(setup, client)

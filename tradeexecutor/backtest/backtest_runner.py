@@ -23,17 +23,29 @@ from tradeexecutor.strategy.execution_model import ExecutionContext
 from tradeexecutor.strategy.factory import make_runner_for_strategy_mod
 from tradeexecutor.strategy.pandas_trader.runner import PandasTraderRunner
 from tradeexecutor.strategy.strategy_module import parse_strategy_module, StrategyModuleInformation
-from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, TradingStrategyUniverseModel
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, TradingStrategyUniverseModel, \
+    DefaultTradingStrategyUniverseModel
 from tradeexecutor.strategy.universe_model import StaticUniverseModel
 from tradingstrategy.client import Client
+from tradingstrategy.timebucket import TimeBucket
 
 
 @dataclass
 class BacktestSetup:
     """Describe backtest setup, ready to run."""
+
+    #: Test start
     start_at: datetime.datetime
+
+    #: Test end
     end_at: datetime.datetime
+
+    #: Override trading_strategy_cycle from strategy module
     cycle_duration: Optional[CycleDuration]
+
+    #: Override trading_strategy_cycle from strategy module
+    candle_time_frame: Optional[TimeBucket]
+
     universe: Optional[TradingStrategyUniverse]
     wallet: SimulatedWallet
     state: State
@@ -57,7 +69,6 @@ class BacktestSetup:
             **kwargs) -> StrategyExecutionDescription:
         """Create a strategy description and runner based on backtest parameters in this setup."""
 
-        assert self.universe is not None, "Only static universe models supported for now"
         assert not execution_context.live_trading, f"This can be only used for backtesting strategies. execution context is {execution_context}"
 
         runner = PandasTraderRunner(
@@ -76,7 +87,11 @@ class BacktestSetup:
             universe_model = StaticUniverseModel(self.universe)
         else:
             # Trading universe is loaded by the strategy script
-            universe_model = TradingStrategyUniverseModel(client, timed_task_context_manager)
+            universe_model = DefaultTradingStrategyUniverseModel(
+                client,
+                execution_context,
+                self.strategy_module.create_trading_universe,
+                candle_time_frame_override=self.candle_time_frame)
 
         return StrategyExecutionDescription(
             universe_model=universe_model,
@@ -153,6 +168,8 @@ def setup_backtest(
         end_at: datetime.datetime,
         initial_deposit: int,
         max_slippage=0.01,
+        cycle_duration: Optional[CycleDuration]=None,
+        candle_time_frame: Optional[TimeBucket]=None,
     ):
     """High-level entry point for running a single backtest.
 
@@ -161,6 +178,9 @@ def setup_backtest(
 
     :param cycle_duration:
         Override the default strategy cycle duration
+
+    :param candle_time_frame:
+        Override the default strategy candle time bucket
     """
 
     assert isinstance(strategy_path, Path), f"Got {strategy_path}"
@@ -180,7 +200,8 @@ def setup_backtest(
     return BacktestSetup(
         start_at,
         end_at,
-        cycle_duration=None,
+        cycle_duration=cycle_duration or strategy_module.trading_strategy_cycle,  # Pick overridden cycle duration if provided
+        candle_time_frame=candle_time_frame,
         wallet=wallet,
         state=State(),
         universe=None,

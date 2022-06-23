@@ -314,17 +314,20 @@ class DefaultTradingStrategyUniverseModel(TradingStrategyUniverseModel):
     def __init__(self,
                  client: Client,
                  execution_context: ExecutionContext,
-                 create_trading_universe: Callable):
+                 create_trading_universe: Callable,
+                 candle_time_frame_override: Optional[TimeBucket] = None,
+                 ):
         assert isinstance(client, Client)
         assert isinstance(execution_context, ExecutionContext), f"Got {execution_context}"
         assert isinstance(create_trading_universe, Callable), f"Got {create_trading_universe}"
         self.client = client
         self.execution_context = execution_context
         self.create_trading_universe = create_trading_universe
+        self.candle_time_frame_override = candle_time_frame_override
 
     def construct_universe(self, ts: datetime.datetime, live: bool) -> TradingStrategyUniverse:
         with self.execution_context.timed_task_context_manager(task_name="create_trading_universe"):
-            universe = self.create_trading_universe(ts, self.client, self.execution_context)
+            universe = self.create_trading_universe(ts, self.client, self.execution_context, candle_time_frame_override=self.candle_time_frame_override)
             assert isinstance(universe, TradingStrategyUniverse), f"Expected TradingStrategyUniverse, got {universe.__class__}"
             universe.validate()
             return universe

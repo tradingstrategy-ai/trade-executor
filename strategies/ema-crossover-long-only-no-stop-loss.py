@@ -6,7 +6,7 @@
 
 """
 import datetime
-from typing import Dict, Tuple, List
+from typing import Dict, Tuple, List, Optional
 
 import pandas as pd
 
@@ -176,7 +176,9 @@ def decide_trades(
 def create_trading_universe(
         ts: datetime.datetime,
         client: Client,
-        execution_context: ExecutionContext) -> TradingStrategyUniverse:
+        execution_context: ExecutionContext,
+        candle_time_frame_override: Optional[TimeBucket]=None,
+) -> TradingStrategyUniverse:
     """Creates the trading universe where the strategy trades.
 
     If `execution_context.live_trading` is true then this function is called for
@@ -198,6 +200,10 @@ def create_trading_universe(
         Information how the strategy is executed. E.g.
         if we are live trading or not.
 
+    :param candle_timeframe_override:
+        Allow the backtest framework override what candle size is used to backtest the strategy
+        without editing the strategy Python source code file.
+
     :return:
         This function must return :py:class:`TradingStrategyUniverse` instance
         filled with the data for exchanges, pairs and candles needed to decide trades.
@@ -206,7 +212,7 @@ def create_trading_universe(
     """
 
     # Load all datas we can get for our candle time bucket
-    dataset = load_all_data(client, candle_time_bucket, execution_context)
+    dataset = load_all_data(client, candle_time_frame_override or candle_time_bucket, execution_context)
 
     # Filter down to the single pair we are interested in
     universe = TradingStrategyUniverse.create_single_pair_universe(

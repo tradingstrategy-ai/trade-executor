@@ -353,7 +353,7 @@ class ExecutionLoop:
         if run_description.cycle_duration:
             self.cycle_duration = run_description.cycle_duration
 
-        assert self.cycle_duration is not None
+        assert self.cycle_duration is not None, "Did not get strategy cycle duration from constructor or strategy run description"
 
         if self.backtest_start:
             # Walk through backtesting range
