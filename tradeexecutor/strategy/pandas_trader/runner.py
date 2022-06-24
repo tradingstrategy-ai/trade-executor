@@ -45,20 +45,13 @@ class PandasTraderRunner(StrategyRunner):
 
         assert len(executor_universe.reserve_assets) == 1
 
-        position_manager = PositionManager(
-            clock,
-            universe,
-            state,
-            pricing_model,
-        )
-
         # Call the strategy script decide_trades()
         # callback
         return self.decide_trades(
             timestamp=pd_timestamp,
             universe=universe,
             state=state,
-            position_manager=position_manager,
+            pricing_model=pricing_model,
             cycle_debug_data=debug_details,
         )
 

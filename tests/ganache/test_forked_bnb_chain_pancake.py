@@ -16,6 +16,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import List
 
+import flaky
 import pytest
 from eth_account import Account
 from eth_typing import HexAddress, HexStr
@@ -242,6 +243,8 @@ def routing_model(asset_busd):
         reserve_token_address=asset_busd.address)
 
 
+# Flaky because Ganache
+@flaky.flaky
 def test_forked_pancake(
         logger: logging.Logger,
         web3: Web3,

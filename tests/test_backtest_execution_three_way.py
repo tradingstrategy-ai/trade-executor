@@ -144,38 +144,6 @@ def state(universe: TradingStrategyUniverse, deposit_syncer: BacktestSyncer) -> 
     return state
 
 
-def test_get_historical_price(
-        logger: logging.Logger,
-        state: State,
-        wallet: SimulatedWallet,
-        universe: TradingStrategyUniverse,
-        pricing_model: BacktestSimplePricingModel,
-        routing_model: BacktestRoutingModel,
-    ):
-    """Retrieve historical buy and sell price."""
-
-    ts = datetime.datetime(2021, 6, 1)
-    execution_model = BacktestExecutionModel(wallet, max_slippage=0.01)
-    trader = BacktestTrader(ts, state, universe, execution_model, routing_model, pricing_model)
-    wbnb_busd = translate_trading_pair(universe.universe.pairs.get_single())
-
-    # Check the candle price range that we have data to get the price
-    price_range = universe.universe.candles.get_candles_by_pair(wbnb_busd.internal_id)
-    assert price_range.iloc[0]["timestamp"] < ts
-
-    # Check the candle price range that we have data to get the price
-    liquidity_range = universe.universe.liquidity.get_samples_by_pair(wbnb_busd.internal_id)
-    assert liquidity_range.iloc[0]["timestamp"] < ts
-
-    # Get the price for buying WBNB for 1000 USD at 2021-1-1
-    buy_price = trader.get_buy_price(wbnb_busd, Decimal(1_000))
-    assert buy_price == pytest.approx(361.04028)
-
-    # Get the price for sellinb 1 WBNB
-    sell_price = trader.get_sell_price(wbnb_busd, Decimal(1))
-    assert sell_price == pytest.approx(361.04028)
-
-
 def test_create_and_execute_backtest_three_way_trade(
         logger: logging.Logger,
         state: State,

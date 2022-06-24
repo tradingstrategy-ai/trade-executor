@@ -8,6 +8,7 @@ from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.visualisation import Visualisation
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
+from tradeexecutor.strategy.pricing_model import PricingModel
 from tradingstrategy.universe import Universe
 
 
@@ -24,8 +25,8 @@ class TradeDecider(typing.Protocol):
         timestamp: pd.Timestamp,
         universe: Universe,
         state: State,
-        position_manager: PositionManager,
-        cycle_debug_data: Dict) -> typing.Tuple[List[TradeExecution], Visualisation]:
+        pricing_model: PricingModel,
+        cycle_debug_data: Dict) -> List[TradeExecution]:
         """
 
         :param ignore:
@@ -43,15 +44,16 @@ class TradeDecider(typing.Protocol):
             The current state of the trade execution.
             All open positions, past trades.
 
-        :param position_manager:
-            Position manager used to generate trades to open and close positions.
+        :param pricing_model:
+            Pricing model can tell the buy/sell price of the particular asset at a particular moment.
 
         :param cycle_debug_data:
             Random debug and diagnostics information
             about the current execution cycle as Python dictionary.
 
         :return:
-            New trades to be executed.
+            New trades to be executed on this cycle.
+            These must be added as the part of the state, usually using :py:class:`tradeexecutor.strategy.pandas_trader.PositionManager`.
 
         """
         pass

@@ -1,14 +1,23 @@
 """Describe strategy modules and their loading."""
 import enum
 from dataclasses import dataclass
-from typing import Callable, Dict, Protocol, List
+from typing import Callable, Dict, Protocol, List, Optional
 import pandas
 
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.cycle import CycleDuration
+from tradeexecutor.strategy.execution_model import ExecutionContext
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
+from tradeexecutor.strategy.pricing_model import PricingModel
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
+from tradingstrategy.client import Client
+from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
+
+
+#: As set for StrategyModuleInformation.trading_strategy_engine_version
+CURRENT_ENGINE_VERSION = "0.1"
 
 
 class StrategyType(enum.Enum):
@@ -54,7 +63,7 @@ class DecideTradesProtocol(Protocol):
             timestamp: pandas.Timestamp,
             universe: Universe,
             state: State,
-            position_manager: PositionManager,
+            price_model: PricingModel,
             cycle_debug_data: Dict) -> List[TradeExecution]:
             """
 
@@ -80,7 +89,7 @@ class DecideTradesProtocol(Protocol):
             The current trade execution state.
             Contains current open positions and all previously executed trades.
 
-        :param position_manager:
+        :param pricing_model:
             Position manager helps to create trade execution instructions to open and close positions.
 
         :param cycle_debug_data:
@@ -93,6 +102,47 @@ class DecideTradesProtocol(Protocol):
         """
 
 
+class CreateTradingUniverseProtocol(Protocol):
+    """A call signature protocol for user's create_trading_universe() functions."""
+
+    def __call__(self,
+            timestamp: pandas.Timestamp,
+            client: Client,
+            execution_context: ExecutionContext,
+            candle_time_frame_override: Optional[TimeBucket]=None) -> TradingStrategyUniverse:
+        """Creates the trading universe where the strategy trades.
+
+        If `execution_context.live_trading` is true then this function is called for
+        every execution cycle. If we are backtesting, then this function is
+        called only once at the start of backtesting and the `decide_trades`
+        need to deal with new and deprecated trading pairs.
+
+        As we are only trading a single pair, load data for the single pair only.
+
+        :param ts:
+            The timestamp of the trading cycle. For live trading,
+            `create_trading_universe` is called on every cycle.
+            For backtesting, it is only called at the start
+
+        :param client:
+            Trading Strategy Python client instance.
+
+        :param execution_context:
+            Information how the strategy is executed. E.g.
+            if we are live trading or not.
+
+        :param candle_timeframe_override:
+            Allow the backtest framework override what candle size is used to backtest the strategy
+            without editing the strategy Python source code file.
+
+        :return:
+            This function must return :py:class:`TradingStrategyUniverse` instance
+            filled with the data for exchanges, pairs and candles needed to decide trades.
+            The trading universe also contains information about the reserve asset,
+            usually stablecoin, we use for the strategy.
+            """
+
+
 @dataclass
 class StrategyModuleInformation:
     """Describe elements that we need to have in a strategy module."""
@@ -101,13 +151,14 @@ class StrategyModuleInformation:
     trading_strategy_cycle: CycleDuration
     trade_routing: TradeRouting
     reserve_currency: ReserveCurrency
-    decide_trades: Callable
+
+    decide_trades: DecideTradesProtocol
 
     #: If `execution_context.live_trading` is true then this function is called for
     #: every execution cycle. If we are backtesting, then this function is
     #: called only once at the start of backtesting and the `decide_trades`
     #: need to deal with new and deprecated trading pairs.
-    create_trading_universe: Callable
+    create_trading_universe: CreateTradingUniverseProtocol
 
     def validate(self):
         """
@@ -148,6 +199,11 @@ class StrategyModuleInformation:
 
 
 def parse_strategy_module(mod) -> StrategyModuleInformation:
+    """Parse a loaded .py module that describes a trading strategy.
+
+    :param mod:
+        Python module
+    """
     return StrategyModuleInformation(
         mod.get("trading_strategy_engine_version"),
         mod.get("trading_strategy_type"),

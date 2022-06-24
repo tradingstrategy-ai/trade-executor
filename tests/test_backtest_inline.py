@@ -1,30 +1,26 @@
-"""Live trading strategy implementation fo ra single pair exponential moving average model.
-
-- Trades a single trading pair - BNB/USD
-
-- Does long positions only, based on exponential moving average indicators
+"""Test backtesting where decide_trades and create_universe functions are passed directly.
 
 """
-import datetime
-from typing import Dict, Tuple, List, Optional
+import logging
+
+import pytest
 
 import pandas as pd
 
-from tradeexecutor.strategy.pricing_model import PricingModel
+from tradeexecutor.backtest.backtest_runner import run_backtest_inline
+from tradeexecutor.cli.log import setup_pytest_logging
+from tradeexecutor.state.visualisation import PlotKind
+from tradeexecutor.strategy.trading_strategy_universe import load_all_data, TradingStrategyUniverse
+from tradeexecutor.strategy.execution_model import ExecutionContext
+from tradingstrategy.client import Client
+import datetime
+
 from tradingstrategy.chain import ChainId
 from tradingstrategy.timebucket import TimeBucket
-from tradingstrategy.universe import Universe
-
-from tradeexecutor.state.state import State
-from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.cycle import CycleDuration
-from tradeexecutor.strategy.execution_model import ExecutionContext
-from tradeexecutor.strategy.factory import StrategyType
-from tradeexecutor.state.visualisation import Visualisation, PlotKind
-from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
-from tradeexecutor.strategy.strategy_module import ReserveCurrency, TradeRouting
-from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, load_all_data
-from tradingstrategy.client import Client
+from tradeexecutor.strategy.strategy_module import StrategyType, TradeRouting, ReserveCurrency
+
+
 
 # Tell what trade execution engine version this strategy needs to use
 trading_strategy_engine_version = "0.1"
@@ -40,13 +36,13 @@ trade_routing = TradeRouting.pancakeswap_basic
 
 # How often the strategy performs the decide_trades cycle.
 # We do it for every 16h.
-trading_strategy_cycle = CycleDuration.cycle_16h
+trading_strategy_cycle = CycleDuration.cycle_24h
 
 # Strategy keeps its cash in BUSD
 reserve_currency = ReserveCurrency.busd
 
 # Time bucket for our candles
-candle_time_bucket = TimeBucket.h4
+candle_time_frame = TimeBucket.d1
 
 # Which chain we are trading
 chain_id = ChainId.bsc
@@ -56,9 +52,6 @@ exchange_slug = "pancakeswap-v2"
 
 # Which trading pair we are trading
 trading_pair = ("WBNB", "BUSD")
-
-# Use 4h candles for trading
-candle_time_frame = TimeBucket.h4
 
 # How much of the cash to put on a single trade
 position_size = 0.10
@@ -74,46 +67,21 @@ slow_ema_candle_count = 39
 fast_ema_candle_count = 15
 
 
+
+from tradeexecutor.state.trade import TradeExecution
+from typing import List, Dict
+from tradeexecutor.strategy.pricing_model import PricingModel
+from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
+from tradeexecutor.state.state import State
+from tradingstrategy.universe import Universe
+
+
 def decide_trades(
         timestamp: pd.Timestamp,
         universe: Universe,
         state: State,
         pricing_model: PricingModel,
         cycle_debug_data: Dict) -> List[TradeExecution]:
-    """The brain function to decide the trades on each trading strategy cycle.
-
-    - Reads incoming execution state (positions, past trades)
-
-    - Reads the current universe (candles)
-
-    - Decides what to do next
-
-    - Outputs strategy thinking for visualisation and debug messages
-
-    :param timestamp:
-        The Pandas timestamp object for this cycle. Matches
-        trading_strategy_cycle division.
-        Always truncated to the zero seconds and minutes, never a real-time clock.
-
-    :param universe:
-        Trading universe that was constructed earlier.
-
-    :param state:
-        The current trade execution state.
-        Contains current open positions and all previously executed trades, plus output
-        for statistics, visualisation and diangnostics of the strategy.
-
-    :param pricing_model:
-        Pricing model can tell the buy/sell price of the particular asset at a particular moment.
-
-    :param cycle_debug_data:
-        Python dictionary for various debug variables you can read or set, specific to this trade cycle.
-        This data is discarded at the end of the trade cycle.
-
-    :return:
-        List of trade instructions in the form of :py:class:`TradeExecution` instances.
-        The trades can be generated using `position_manager` but strategy could also hand craft its trades.
-    """
 
     # The pair we are trading
     pair = universe.pairs.get_single()
@@ -182,42 +150,9 @@ def create_trading_universe(
         ts: datetime.datetime,
         client: Client,
         execution_context: ExecutionContext,
-        candle_time_frame_override: Optional[TimeBucket]=None,
+        candle_time_frame_override=None,
 ) -> TradingStrategyUniverse:
-    """Creates the trading universe where the strategy trades.
-
-    If `execution_context.live_trading` is true then this function is called for
-    every execution cycle. If we are backtesting, then this function is
-    called only once at the start of backtesting and the `decide_trades`
-    need to deal with new and deprecated trading pairs.
-
-    As we are only trading a single pair, load data for the single pair only.
-
-    :param ts:
-        The timestamp of the trading cycle. For live trading,
-        `create_trading_universe` is called on every cycle.
-        For backtesting, it is only called at the start
-
-    :param client:
-        Trading Strategy Python client instance.
-
-    :param execution_context:
-        Information how the strategy is executed. E.g.
-        if we are live trading or not.
-
-    :param candle_timeframe_override:
-        Allow the backtest framework override what candle size is used to backtest the strategy
-        without editing the strategy Python source code file.
-
-    :return:
-        This function must return :py:class:`TradingStrategyUniverse` instance
-        filled with the data for exchanges, pairs and candles needed to decide trades.
-        The trading universe also contains information about the reserve asset,
-        usually stablecoin, we use for the strategy.
-    """
-
-    # Load all datas we can get for our candle time bucket
-    dataset = load_all_data(client, candle_time_frame_override or candle_time_bucket, execution_context)
+    dataset = load_all_data(client, candle_time_frame, execution_context)
 
     # Filter down to the single pair we are interested in
     universe = TradingStrategyUniverse.create_single_pair_universe(
@@ -229,4 +164,33 @@ def create_trading_universe(
     )
 
     return universe
+
+
+@pytest.fixture(scope="module")
+def logger(request):
+    """Setup test logger."""
+    return setup_pytest_logging(request, mute_requests=False)
+
+
+def test_run_inline_backtest(
+        logger: logging.Logger,
+        persistent_test_client: Client,
+    ):
+    """Run the strategy backtest using inline decide_trades function.
+    """
+
+    # Run the test
+    state, debug_dump = run_backtest_inline(
+        start_at=datetime.datetime(2021, 6, 1),
+        end_at=datetime.datetime(2022, 1, 1),
+        client=persistent_test_client,
+        cycle_duration=CycleDuration.cycle_24h,  # Override to use 24h cycles despite what strategy file says
+        decide_trades=decide_trades,
+        create_trading_universe=create_trading_universe,
+        initial_deposit=10_000,
+        reserve_currency=ReserveCurrency.busd,
+        trade_routing=TradeRouting.pancakeswap_basic,
+    )
+
+    assert len(debug_dump) == 214
 

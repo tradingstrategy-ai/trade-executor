@@ -16,6 +16,7 @@ import pickle
 from pathlib import Path
 from unittest import mock
 
+import flaky
 import pytest
 from eth_account import Account
 
@@ -119,6 +120,7 @@ def strategy_path() -> Path:
 
 
 @pytest.mark.skipif(os.environ.get("CI") is not None, reason="This test is too flaky on Github CI. Manual runs only.")
+@flaky.flaky  # Flaky because of Ganache
 def test_ema_crossover(
         logger: logging.Logger,
         strategy_path: Path,

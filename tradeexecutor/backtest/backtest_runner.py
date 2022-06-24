@@ -23,7 +23,9 @@ from tradeexecutor.strategy.description import StrategyExecutionDescription
 from tradeexecutor.strategy.execution_model import ExecutionContext
 from tradeexecutor.strategy.factory import make_runner_for_strategy_mod
 from tradeexecutor.strategy.pandas_trader.runner import PandasTraderRunner
-from tradeexecutor.strategy.strategy_module import parse_strategy_module, StrategyModuleInformation
+from tradeexecutor.strategy.pandas_trader.trade_decision import TradeDecider
+from tradeexecutor.strategy.strategy_module import parse_strategy_module, StrategyModuleInformation, \
+    DecideTradesProtocol, CreateTradingUniverseProtocol, TradeRouting, ReserveCurrency, CURRENT_ENGINE_VERSION
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, TradingStrategyUniverseModel, \
     DefaultTradingStrategyUniverseModel
 from tradeexecutor.strategy.universe_model import StaticUniverseModel
@@ -54,7 +56,14 @@ class BacktestSetup:
     routing_model: Optional[BacktestRoutingModel]
     execution_model: BacktestExecutionModel
     sync_method: BacktestSyncer
-    strategy_module: StrategyModuleInformation
+
+    trading_strategy_engine_version: str
+    trade_routing: TradeRouting
+    reserve_currency: ReserveCurrency
+    decide_trades: DecideTradesProtocol
+    create_trading_universe: Optional[CreateTradingUniverseProtocol]
+
+    # strategy_module: StrategyModuleInformation
 
     def backtest_static_universe_strategy_factory(
             self,
@@ -72,17 +81,15 @@ class BacktestSetup:
 
         assert not execution_context.live_trading, f"This can be only used for backtesting strategies. execution context is {execution_context}"
 
-
         if self.routing_model:
             # Use passed routing model
             routing_model = self.routing_model
         else:
             # Use routing model from the strategy.
             # The strategy file chooses one of predefined routing models.
-            trade_routing = self.strategy_module.trade_routing
+            trade_routing = self.trade_routing
             assert trade_routing, "Strategy module did not provide trade_routing"
-            routing_model = get_backtest_routing_model(trade_routing, self.strategy_module.reserve_currency)
-
+            routing_model = get_backtest_routing_model(trade_routing, self.reserve_currency)
 
         runner = PandasTraderRunner(
             timed_task_context_manager=timed_task_context_manager,
@@ -92,7 +99,7 @@ class BacktestSetup:
             sync_method=sync_method,
             pricing_model_factory=pricing_model_factory,
             routing_model=routing_model,
-            decide_trades=self.strategy_module.decide_trades,
+            decide_trades=self.decide_trades,
         )
 
         if self.universe:
@@ -103,13 +110,13 @@ class BacktestSetup:
             universe_model = DefaultTradingStrategyUniverseModel(
                 client,
                 execution_context,
-                self.strategy_module.create_trading_universe,
+                self.create_trading_universe,
                 candle_time_frame_override=self.candle_time_frame)
 
         return StrategyExecutionDescription(
             universe_model=universe_model,
             runner=runner,
-            trading_strategy_engine_version=self.strategy_module.trading_strategy_engine_version,
+            trading_strategy_engine_version=self.trading_strategy_engine_version,
             cycle_duration=self.cycle_duration,
         )
 
@@ -178,7 +185,11 @@ def setup_backtest_for_universe(
         execution_model=execution_model,
         routing_model=routing_model,
         sync_method=deposit_syncer,
-        strategy_module=strategy_module,
+        decide_trades=strategy_module.decide_trades,
+        create_trading_universe=None,
+        reserve_currency=strategy_module.reserve_currency,
+        trade_routing=strategy_module.trade_routing,
+        trading_strategy_engine_version=strategy_module.trading_strategy_engine_version,
     )
 
 
@@ -229,11 +240,17 @@ def setup_backtest(
         execution_model=execution_model,
         routing_model=None, # Will be set up later
         sync_method=deposit_syncer,
-        strategy_module=strategy_module,
+        decide_trades=strategy_module.decide_trades,
+        create_trading_universe=strategy_module.create_trading_universe,
+        reserve_currency=strategy_module.reserve_currency,
+        trade_routing=strategy_module.trade_routing,
+        trading_strategy_engine_version=strategy_module.trading_strategy_engine_version,
     )
 
 
-def run_backtest(setup: BacktestSetup, client: Optional[Client]=None) -> Tuple[State, dict]:
+def run_backtest(
+        setup: BacktestSetup,
+        client: Optional[Client]=None) -> Tuple[State, dict]:
     """Run a strategy backtest.
 
     Loads strategy file, construct trading universe is real data
@@ -255,13 +272,17 @@ def run_backtest(setup: BacktestSetup, client: Optional[Client]=None) -> Tuple[S
     def valuation_model_factory(pricing_model):
         return BacktestValuationModel(setup.pricing_model)
 
-    def backtest_setup(state: State, universe: TradingStrategyUniverse, deposit_syncer: BacktestSyncer):
-        # Called on the first cycle.
-        # Create the initial state of the execution.
-        events = deposit_syncer(state.portfolio, setup.start_at, universe.reserve_assets)
-        assert len(events) == 1, f"Did not get 1 initial backtest deposit event, got {len(events)} events"
-        token, usd_exchange_rate = state.portfolio.get_default_reserve_currency()
-        assert usd_exchange_rate == 1
+    if not setup.universe:
+        def backtest_setup(state: State, universe: TradingStrategyUniverse, deposit_syncer: BacktestSyncer):
+            # Called on the first cycle. Only if the universe is not predefined.
+            # Create the initial state of the execution.
+            events = deposit_syncer(state.portfolio, setup.start_at, universe.reserve_assets)
+            assert len(events) == 1, f"Did not get 1 initial backtest deposit event, got {len(events)} events"
+            token, usd_exchange_rate = state.portfolio.get_default_reserve_currency()
+            assert usd_exchange_rate == 1
+    else:
+        def backtest_setup(state: State, universe: TradingStrategyUniverse, deposit_syncer: BacktestSyncer):
+            pass
 
     main_loop = ExecutionLoop(
         name="backtest",
@@ -288,3 +309,87 @@ def run_backtest(setup: BacktestSetup, client: Optional[Client]=None) -> Tuple[S
     debug_dump = main_loop.run()
 
     return setup.state, debug_dump
+
+
+def run_backtest_inline(
+    start_at: datetime.datetime,
+    end_at: datetime.datetime,
+    client: Client,
+    decide_trades: DecideTradesProtocol,
+    create_trading_universe: CreateTradingUniverseProtocol,
+    cycle_duration: CycleDuration,
+    initial_deposit: float,
+    reserve_currency: ReserveCurrency,
+    trade_routing: TradeRouting,
+    max_slippage=0.01,
+    candle_time_frame: Optional[TimeBucket]=None,
+) -> Tuple[State, dict]:
+    """Run backtests for given decide_trades and create_trading_universe functions.
+
+    Does not load strategy from a separate .py file.
+    Useful for running strategies directly from notebooks.
+
+    :param start_at:
+        When backtesting starts
+
+    :param end_at:
+        When backtesting ends
+
+    :param client:
+        You need to set up a Trading Strategy client for fetching the data
+
+    :param decide_trades:
+        Trade decider function of your strategy
+
+    :param create_trading_universe:
+        Universe creation function of your strategy
+
+    :param cycle_duration:
+        Strategy cycle duration
+
+    :param candle_time_frame:
+        Candles we use for this strategy
+
+    :param initial_deposit:
+        how much reserve currency we allocate as a capital at the beginning of the backtest
+
+    :param reserve_currency:
+        Reserve currency used for the strategy
+
+    :param trade_routing:
+        Routing model for trades
+
+    :param max_slippage:
+        Max slippage tolerance for trades before execution failure
+
+    :return:
+        tuple (State of a completely executed strategy, debug dump dict)
+    """
+    assert initial_deposit > 0
+
+    wallet = SimulatedWallet()
+    deposit_syncer = BacktestSyncer(wallet, Decimal(initial_deposit))
+
+    execution_model = BacktestExecutionModel(wallet, max_slippage)
+
+    backtest_setup = BacktestSetup(
+        start_at,
+        end_at,
+        cycle_duration=cycle_duration,  # Pick overridden cycle duration if provided
+        candle_time_frame=candle_time_frame,
+        wallet=wallet,
+        state=State(),
+        universe=None,
+        pricing_model=None,  # Will be set up later
+        execution_model=execution_model,
+        routing_model=None, # Will be set up later
+        sync_method=deposit_syncer,
+        decide_trades=decide_trades,
+        create_trading_universe=create_trading_universe,
+        reserve_currency=reserve_currency,
+        trade_routing=trade_routing,
+        trading_strategy_engine_version=CURRENT_ENGINE_VERSION,
+    )
+
+    return run_backtest(backtest_setup, client)
+
