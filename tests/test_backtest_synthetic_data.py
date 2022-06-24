@@ -125,7 +125,7 @@ def test_synthetic_candles(
         strategy_path: Path,
         synthetic_universe: TradingStrategyUniverse,
     ):
-    """Check synthetic candle data looks good."""
+    """Generate synthetic candle data."""
 
     start, end = synthetic_universe.universe.candles.get_timestamp_range()
     assert start == pd.Timestamp('2021-06-01 00:00:00+0000', tz='UTC')

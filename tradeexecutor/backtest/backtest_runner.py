@@ -124,14 +124,20 @@ def setup_backtest_for_universe(
         routing_model: BacktestRoutingModel,
         max_slippage=0.01,
         validate_strategy_module=False,
+        candle_time_frame: Optional[TimeBucket]=None,
     ):
-    """High-level entry point for running a single backtest.
+    """High-level entry point for setting up a single backtest for a predefined universe.
 
     The trading universe creation from the strategy is skipped,
     instead of you can pass your own universe e.g. synthetic universe.
+    This is useful for running backtests against synthetic universes.
 
     :param cycle_duration:
         Override the default strategy cycle duration
+
+    :param candle_time_frame:
+        Override the default strategy candle time bucket
+
     """
 
     assert initial_deposit > 0
@@ -164,6 +170,7 @@ def setup_backtest_for_universe(
         start_at,
         end_at,
         cycle_duration,
+        candle_time_frame=candle_time_frame,
         wallet=wallet,
         state=state,
         universe=universe,
@@ -184,10 +191,10 @@ def setup_backtest(
         cycle_duration: Optional[CycleDuration]=None,
         candle_time_frame: Optional[TimeBucket]=None,
     ):
-    """High-level entry point for running a single backtest.
+    """High-level entry point for setting up a backtest from a strategy module.
 
-    The trading universe creation from the strategy is skipped,
-    instead of you can pass your own universe e.g. synthetic universe.
+    This function is useful for running backtests for strategies in
+    notebooks and tests.
 
     :param cycle_duration:
         Override the default strategy cycle duration
@@ -252,7 +259,7 @@ def run_backtest(setup: BacktestSetup, client: Optional[Client]=None) -> Tuple[S
         # Called on the first cycle.
         # Create the initial state of the execution.
         events = deposit_syncer(state.portfolio, setup.start_at, universe.reserve_assets)
-        assert len(events) == 1, f"Did not get 1 initial backtest deposit event, got{len(events)} events"
+        assert len(events) == 1, f"Did not get 1 initial backtest deposit event, got {len(events)} events"
         token, usd_exchange_rate = state.portfolio.get_default_reserve_currency()
         assert usd_exchange_rate == 1
 

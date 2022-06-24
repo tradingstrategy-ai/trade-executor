@@ -221,7 +221,7 @@ def test_buy_sell_three_way_backtest(
         universe: TradingStrategyUniverse,
         routing_model: BacktestRoutingModel,
         pricing_model: BacktestSimplePricingModel,
-        wbnb: AssetIdentifier,g
+        wbnb: AssetIdentifier,
         busd: AssetIdentifier,
         cake: AssetIdentifier,
     ):
