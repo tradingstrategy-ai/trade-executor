@@ -24,7 +24,7 @@ from tradeexecutor.ethereum.default_routes import get_pancake_default_routing_pa
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.execution_model import ExecutionContext
 from tradeexecutor.strategy.trading_strategy_universe import load_all_data, TradingStrategyUniverse, \
-    translate_trading_pair
+    translate_trading_pair, translate_token
 from tradeexecutor.utils.timer import timed_task
 
 
@@ -61,18 +61,20 @@ def universe(request, persistent_test_client, execution_context) -> TradingStrat
     exchange_slug = "pancakeswap-v2"
 
     # Which trading pair we are trading
-    trading_pair = ("Cake", "WBNB")
+    trading_pairs = [
+        ("WBNB", "BUSD"),
+        ("Cake", "WBNB"),
+    ]
 
     # Load all datas we can get for our candle time bucket
     dataset = load_all_data(client, candle_time_bucket, execution_context)
 
     # Filter down to the single pair we are interested in
-    universe = TradingStrategyUniverse.create_single_pair_universe(
+    universe = TradingStrategyUniverse.create_limited_pair_universe(
         dataset,
         chain_id,
         exchange_slug,
-        trading_pair[0],
-        trading_pair[1],
+        trading_pairs,
     )
 
     return universe
@@ -81,15 +83,22 @@ def universe(request, persistent_test_client, execution_context) -> TradingStrat
 @pytest.fixture(scope="module")
 def wbnb(request, universe) -> AssetIdentifier:
     """WBNB asset."""
-    pair = translate_trading_pair(universe.universe.pairs.get_single())
-    return pair.base
+    token = translate_token(universe.universe.pairs.get_token("0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c"))
+    return token
+
+
+@pytest.fixture(scope="module")
+def busd(request, universe) -> AssetIdentifier:
+    """bUSD asset."""
+    token = translate_token(universe.universe.pairs.get_token("0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56"))
+    return token
 
 
 @pytest.fixture(scope="module")
 def cake(request, universe) -> AssetIdentifier:
-    """BUSD asset."""
-    pair = translate_trading_pair(universe.universe.pairs.get_single())
-    return pair.quote
+    """Cake asset."""
+    token = translate_token(universe.universe.pairs.get_token("0x0E09FaBB73Bd3Ade0a17ECC321fD13a19e81cE82"))
+    return token
 
 
 @pytest.fixture(scope="module")
@@ -124,6 +133,8 @@ def deposit_syncer(wallet) -> BacktestSyncer:
 def state(universe: TradingStrategyUniverse, deposit_syncer: BacktestSyncer) -> State:
     """Start with 10,000 USD cash in the portfolio."""
     state = State()
+    assert len(universe.reserve_assets) == 1
+    assert universe.reserve_assets[0].token_symbol == "BUSD"
     events = deposit_syncer(state.portfolio, datetime.datetime(1970, 1, 1), universe.reserve_assets)
     assert len(events) == 1
     token, usd_exchange_rate = state.portfolio.get_default_reserve_currency()
@@ -165,7 +176,7 @@ def test_get_historical_price(
     assert sell_price == pytest.approx(361.04028)
 
 
-def test_create_and_execute_backtest_trade(
+def test_create_and_execute_backtest_three_way_trade(
         logger: logging.Logger,
         state: State,
         wallet: SimulatedWallet,
@@ -174,6 +185,7 @@ def test_create_and_execute_backtest_trade(
         pricing_model: BacktestSimplePricingModel,
         wbnb: AssetIdentifier,
         busd: AssetIdentifier,
+        cake: AssetIdentifier,
     ):
     """Manually walk through creation and execution of a single backtest trade."""
 
@@ -182,10 +194,13 @@ def test_create_and_execute_backtest_trade(
     ts = datetime.datetime(2021, 6, 1)
     execution_model = BacktestExecutionModel(wallet, max_slippage=0.01)
     trader = BacktestTrader(ts, state, universe, execution_model, routing_model, pricing_model)
-    wbnb_busd = translate_trading_pair(universe.universe.pairs.get_single())
+    cake_wbnb = translate_trading_pair(universe.universe.pairs.get_by_symbols("Cake", "WBNB"))
+
+    assert cake_wbnb.base.token_symbol == "Cake"
+    assert cake_wbnb.quote.token_symbol == "WBNB"
 
     # Create trade for buying WBNB for 1000 USD
-    position, trade = trader.buy(wbnb_busd, reserve=Decimal(1000))
+    position, trade = trader.buy(cake_wbnb, reserve=Decimal(1000))
 
     assert trade.is_buy()
     assert trade.get_status() == TradeStatus.success
@@ -196,34 +211,35 @@ def test_create_and_execute_backtest_trade(
 
     # Check our wallet was credited
     assert wallet.get_balance(busd.address) == 9_000
-    assert wallet.get_balance(wbnb.address) == pytest.approx(Decimal('2.761464707358091337008375982'))
+    assert wallet.get_balance(cake.address) == pytest.approx(Decimal('2.761464707358091337008375982'))
 
 
-def test_buy_sell_backtest(
+def test_buy_sell_three_way_backtest(
         logger: logging.Logger,
         state: State,
         wallet: SimulatedWallet,
         universe: TradingStrategyUniverse,
         routing_model: BacktestRoutingModel,
         pricing_model: BacktestSimplePricingModel,
-        wbnb: AssetIdentifier,
+        wbnb: AssetIdentifier,g
         busd: AssetIdentifier,
+        cake: AssetIdentifier,
     ):
-    """Buying and sell using backtest execution."""
+    """Buying and sell using backtest execution, three way."""
 
     ts = datetime.datetime(2021, 6, 1)
     execution_model = BacktestExecutionModel(wallet, max_slippage=0.01)
     trader = BacktestTrader(ts, state, universe, execution_model, routing_model, pricing_model)
-    wbnb_busd = translate_trading_pair(universe.universe.pairs.get_single())
+    cake_wbnb = translate_trading_pair(universe.universe.pairs.get_by_symbols("Cake", "WBNB"))
 
-    # Create trade for buying WBNB for 1000 USD
-    position, trade = trader.buy(wbnb_busd, reserve=Decimal(1000))
+    # Create trade for buying Cake for 1000 USD thru WBNB
+    position, trade = trader.buy(cake_wbnb, reserve=Decimal(1000))
 
     assert trade.is_buy()
     assert trade.get_status() == TradeStatus.success
     buy_price = trade.executed_price
 
-    position, trade = trader.sell(wbnb_busd, position.get_quantity())
+    position, trade = trader.sell(cake_wbnb, position.get_quantity())
 
     assert trade.is_sell()
     assert trade.is_success()
@@ -235,5 +251,5 @@ def test_buy_sell_backtest(
 
     # Check our wallet was credited
     assert wallet.get_balance(busd.address) == pytest.approx(Decimal('9999.990999999999889294777233'))
-    assert wallet.get_balance(wbnb.address) == 0
+    assert wallet.get_balance(cake.address) == 0
 

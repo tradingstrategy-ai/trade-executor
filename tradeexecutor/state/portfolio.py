@@ -246,7 +246,10 @@ class Portfolio:
         assert trade.is_buy()
 
         reserve = trade.get_planned_reserve()
-        available = self.reserves[trade.reserve_currency.get_identifier()].quantity
+        try:
+            available = self.reserves[trade.reserve_currency.get_identifier()].quantity
+        except KeyError as e:
+            raise RuntimeError(f"Reserve missing for {trade.reserve_currency}") from e
 
         # Sanity check on price calculatins
         assert abs(float(reserve) - trade.get_planned_value()) < 0.01, f"Trade {trade}: Planned value {trade.get_planned_value()}, but wants to allocate reserve currency for {reserve}"

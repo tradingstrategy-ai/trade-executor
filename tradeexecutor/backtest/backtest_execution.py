@@ -42,16 +42,18 @@ class BacktestExecutionModel(ExecutionModel):
         # Check that the trade "executes" against the simulated wallet
         base = trade.pair.base
         quote = trade.pair.quote
+        reserve = trade.reserve_currency
+
         if trade.is_buy():
             executed_reserve = trade.planned_reserve
             executed_quantity = trade.planned_quantity * Decimal(1 - self.lp_fees)
-            self.wallet.update_balance(quote.address, -executed_reserve)
+            self.wallet.update_balance(reserve.address, -executed_reserve)
             self.wallet.update_balance(base.address, executed_quantity)
         else:
             executed_quantity = trade.planned_quantity
             executed_reserve = abs(Decimal(trade.planned_quantity) * Decimal(trade.planned_price) * Decimal(1 + self.lp_fees))
             self.wallet.update_balance(base.address, executed_quantity)
-            self.wallet.update_balance(quote.address, executed_reserve)
+            self.wallet.update_balance(reserve.address, executed_reserve)
 
         assert abs(executed_quantity) > 0
         assert executed_reserve > 0
