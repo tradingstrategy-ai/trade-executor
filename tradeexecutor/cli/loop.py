@@ -151,6 +151,10 @@ class ExecutionLoop:
         # Run cycle checks
         self.runner.pretick_check(ts, universe)
 
+        if cycle == 1 and self.backtest_setup is not None:
+            # The hook to set up backtest initial balance
+            self.backtest_setup(state, universe, self.sync_method)
+
         # Execute the strategy tick and trades
         self.runner.tick(ts, universe, state, debug_details)
 
@@ -213,10 +217,6 @@ class ExecutionLoop:
             ts = snap_to_previous_tick(ts, self.cycle_duration)
 
             universe = self.tick(ts, state, cycle, live=False, backtesting_universe=universe)
-
-            if cycle == 1 and self.backtest_setup is not None:
-                # The hook to set up backtest initial balance
-                self.backtest_setup(state, universe, self.sync_method)
 
             self.update_position_valuations(ts, state, universe)
 

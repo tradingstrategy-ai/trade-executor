@@ -252,7 +252,7 @@ def run_backtest(setup: BacktestSetup, client: Optional[Client]=None) -> Tuple[S
         # Called on the first cycle.
         # Create the initial state of the execution.
         events = deposit_syncer(state.portfolio, setup.start_at, universe.reserve_assets)
-        assert len(events) == 1, f"Got events {len(events)}"
+        assert len(events) == 1, f"Did not get 1 initial backtest deposit event, got{len(events)} events"
         token, usd_exchange_rate = state.portfolio.get_default_reserve_currency()
         assert usd_exchange_rate == 1
 
