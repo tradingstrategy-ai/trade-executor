@@ -172,14 +172,14 @@ def test_create_and_execute_backtest_three_way_trade(
 
     assert trade.is_buy()
     assert trade.get_status() == TradeStatus.success
-    assert trade.executed_price == pytest.approx(362.1266631927031)
+    assert trade.executed_price == pytest.approx(17.872633403139105)
 
     # We bought around 3 BNB
-    assert position.get_quantity() == pytest.approx(Decimal('2.761464707358091337008375982'))
+    assert position.get_quantity() == pytest.approx(Decimal('55.95146375152318001945304859'))
 
     # Check our wallet was credited
     assert wallet.get_balance(busd.address) == 9_000
-    assert wallet.get_balance(cake.address) == pytest.approx(Decimal('2.761464707358091337008375982'))
+    assert wallet.get_balance(cake.address) == pytest.approx(Decimal('55.95146375152318001945304859'))
 
 
 def test_buy_sell_three_way_backtest(

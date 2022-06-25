@@ -70,6 +70,7 @@ class AssetIdentifier:
 
         Convert decimal to fixed point integer.
         """
+        assert isinstance(amount, Decimal), "Input only exact numbers for the conversion, not fuzzy ones like floats"
         assert self.decimals is not None, f"Cannot perform human to raw token amount conversion, because no decimals given: {self}"
         return int(amount * Decimal(10**self.decimals))
 

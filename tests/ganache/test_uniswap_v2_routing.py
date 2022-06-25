@@ -201,6 +201,7 @@ def cake_busd_trading_pair(cake_asset, busd_asset, pancakeswap_v2) -> TradingPai
         busd_asset,
         "0x804678fa97d91B974ec2af3c843270886528a9E6",  #  https://tradingstrategy.ai/trading-view/binance/pancakeswap-v2/cake-busd
         internal_id=1000,  # random number
+        internal_exchange_id=1000,  # random number
         exchange_address=pancakeswap_v2.factory.address,
     )
 
@@ -212,6 +213,7 @@ def bnb_busd_trading_pair(bnb_asset, busd_asset, pancakeswap_v2) -> TradingPairI
         busd_asset,
         "0x58f876857a02d6762e0101bb5c46a8c1ed44dc16",  #  https://tradingstrategy.ai/trading-view/binance/pancakeswap-v2/bnb-busd
         internal_id=1000,  # random number
+        internal_exchange_id=1000,  # random number
         exchange_address=pancakeswap_v2.factory.address,
     )
 
@@ -224,6 +226,7 @@ def cake_bnb_trading_pair(cake_asset, bnb_asset, pancakeswap_v2) -> TradingPairI
         bnb_asset,
         "0x0ed7e52944161450477ee417de9cd3a859b14fd0",  #  https://tradingstrategy.ai/trading-view/binance/pancakeswap-v2/cake-bnb
         internal_id=1000,  # random number
+        internal_exchange_id=1000,  # random number
         exchange_address=pancakeswap_v2.factory.address,
     )
 

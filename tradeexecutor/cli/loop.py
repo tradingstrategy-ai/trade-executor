@@ -11,6 +11,8 @@ from typing import Optional, Callable
 from apscheduler.executors.pool import ThreadPoolExecutor
 from apscheduler.schedulers.blocking import BlockingScheduler
 
+from tqdm.auto import tqdm
+
 from tradeexecutor.state.state import State
 from tradeexecutor.state.store import StateStore
 from tradeexecutor.state.sync import SyncMethod
@@ -68,6 +70,8 @@ class ExecutionLoop:
 
         args = locals().copy()
         args.pop("self")
+
+        # TODO: Spell out individual variables for type hinting support
         self.__dict__.update(args)
 
         self.timed_task_context_manager = timed_task
@@ -212,35 +216,55 @@ class ExecutionLoop:
 
         cycle = 1
         universe = None
-        while True:
 
-            ts = snap_to_previous_tick(ts, self.cycle_duration)
+        range = self.backtest_end - self.backtest_start
 
-            universe = self.tick(ts, state, cycle, live=False, backtesting_universe=universe)
+        ts_format = "%Y-%m-%d"
 
-            self.update_position_valuations(ts, state, universe)
+        friendly_start = self.backtest_start.strftime(ts_format)
+        friendly_end = self.backtest_end.strftime(ts_format)
 
-            # Check for termination in integration testing
-            if self.max_cycles is not None:
-                if cycle >= self.max_cycles:
-                    logger.info("Max backtest cycles reached")
+        seconds = int(range.total_seconds())
+
+        with tqdm(total=seconds) as progress_bar:
+            while True:
+
+                ts = snap_to_previous_tick(ts, self.cycle_duration)
+
+                # Bump progress bar forward and update backtest status
+                progress_bar.update(int(self.cycle_duration.to_timedelta().total_seconds()))
+                friedly_ts = ts.strftime(ts_format)
+                trade_count = len(list(state.portfolio.get_all_trades()))
+                progress_bar.set_description(f"Backtesting {self.name}, {friendly_start}-{friendly_end} at {friedly_ts}, total {trade_count:,} trades")
+
+                # Decide trades and everything for this cycle
+                universe = self.tick(ts, state, cycle, live=False, backtesting_universe=universe)
+
+                # Revalue our portfolio
+                self.update_position_valuations(ts, state, universe)
+
+                # Check for termination in integration testing.
+                # TODO: Get rid of this and only support date ranges to run tests
+                if self.max_cycles is not None:
+                    if cycle >= self.max_cycles:
+                        logger.info("Max backtest cycles reached")
+                        break
+
+                # Advance to the next tick
+                cycle += 1
+
+                # Backtesting
+                next_tick = snap_to_next_tick(ts + datetime.timedelta(seconds=1), self.cycle_duration, self.tick_offset)
+
+                if next_tick >= self.backtest_end:
+                    # Backteting has ended
+                    logger.info("Terminating backtesting. Backtest end %s, current timestamp %s", self.backtest_end, next_tick)
                     break
 
-            # Advance to the next tick
-            cycle += 1
+                # Add some fuzziness to gacktesting timestamps
+                ts = next_tick + datetime.timedelta(minutes=random.randint(0, 4))
 
-            # Backtesting
-            next_tick = snap_to_next_tick(ts + datetime.timedelta(seconds=1), self.cycle_duration, self.tick_offset)
-
-            if next_tick >= self.backtest_end:
-                # Backteting has ended
-                logger.info("Terminating backesting. Backtest end %s, current timestamp %s", self.backtest_end, next_tick)
-                break
-
-            # Add some fuzziness to gacktesting timestamps
-            ts = next_tick + datetime.timedelta(minutes=random.randint(0, 4))
-
-        return self.debug_dump_state
+            return self.debug_dump_state
 
     def run_live(self, state: State):
         """Run live trading cycle."""

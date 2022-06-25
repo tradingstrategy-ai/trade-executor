@@ -401,7 +401,7 @@ def create_pair_universe_from_code(chain_id: ChainId, pairs: List[TradingPairIde
     for idx, p in enumerate(pairs):
         assert p.base.decimals
         assert p.quote.decimals
-        assert p.internal_exchange_id
+        assert p.internal_exchange_id, f"All trading pairs must have internal_exchange_id set, did not have it set {p}"
         assert p.internal_id
         dex_pair = DEXPair(
             pair_id=p.internal_id,

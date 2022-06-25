@@ -59,6 +59,11 @@ class PositionManager:
         # Translate DEXPair object to the trading pair model
         executor_pair = translate_trading_pair(pair)
 
+        # Convert amount of reserve currency to the decimal
+        # so we can have exact numbers from this point forward
+        if type(value) == float:
+            value = Decimal(value)
+
         price = self.pricing_model.get_buy_price(self.timestamp, executor_pair, value)
 
         reserve_asset, reserve_price = self.state.portfolio.get_default_reserve_currency()

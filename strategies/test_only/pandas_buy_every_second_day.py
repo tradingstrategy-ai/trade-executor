@@ -16,6 +16,7 @@ from typing import Dict, List
 
 import pandas as pd
 
+from tradeexecutor.strategy.pricing_model import PricingModel
 from tradingstrategy.universe import Universe
 
 from tradeexecutor.state.state import State
@@ -43,12 +44,16 @@ def decide_trades(
         timestamp: pd.Timestamp,
         universe: Universe,
         state: State,
-        position_manager: PositionManager,
+        pricing_model: PricingModel,
         cycle_debug_data: Dict) -> List[TradeExecution]:
 
     assert timestamp.minute == 0
     assert timestamp.second == 0
     assert timestamp.hour == 0
+
+    # Create a position manager helper class that allows us easily to create
+    # opening/closing trades for different positions
+    position_manager = PositionManager(timestamp, universe, state, pricing_model)
 
     pair = universe.pairs.get_single()
 
