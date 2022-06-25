@@ -212,7 +212,7 @@ def bnb_busd_trading_pair(bnb_asset, busd_asset, pancakeswap_v2) -> TradingPairI
         bnb_asset,
         busd_asset,
         "0x58f876857a02d6762e0101bb5c46a8c1ed44dc16",  #  https://tradingstrategy.ai/trading-view/binance/pancakeswap-v2/bnb-busd
-        internal_id=1000,  # random number
+        internal_id=1001,  # random number
         internal_exchange_id=1000,  # random number
         exchange_address=pancakeswap_v2.factory.address,
     )
@@ -225,7 +225,7 @@ def cake_bnb_trading_pair(cake_asset, bnb_asset, pancakeswap_v2) -> TradingPairI
         cake_asset,
         bnb_asset,
         "0x0ed7e52944161450477ee417de9cd3a859b14fd0",  #  https://tradingstrategy.ai/trading-view/binance/pancakeswap-v2/cake-bnb
-        internal_id=1000,  # random number
+        internal_id=1002,  # random number
         internal_exchange_id=1000,  # random number
         exchange_address=pancakeswap_v2.factory.address,
     )
@@ -792,6 +792,11 @@ def test_stateful_routing_three_legs(
 
     trader = PairUniverseTestTrader(state)
 
+    reserve = pair_universe.get_token(busd_asset.address)
+    if not reserve:
+        all_tokens = pair_universe.get_all_tokens()
+        assert reserve, f"Reserve asset {busd_asset.address} missing in the universe {busd_asset}, we have {all_tokens}"
+
     # Buy Cake via BUSD -> BNB pool for 100 USD
     trades = [
         trader.buy(cake_bnb_trading_pair, Decimal(100))
@@ -801,6 +806,7 @@ def test_stateful_routing_three_legs(
     assert t.is_buy()
     assert t.reserve_currency == busd_asset
     assert t.pair == cake_bnb_trading_pair
+
 
     state.start_trades(datetime.datetime.utcnow(), trades)
     routing_model.execute_trades_internal(pair_universe, routing_state, trades, check_balances=True)
