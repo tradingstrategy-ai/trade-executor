@@ -318,11 +318,12 @@ def run_backtest_inline(
     end_at: datetime.datetime,
     client: Optional[Client],
     decide_trades: DecideTradesProtocol,
-    create_trading_universe: CreateTradingUniverseProtocol,
     cycle_duration: CycleDuration,
     initial_deposit: float,
     reserve_currency: ReserveCurrency,
     trade_routing: Optional[TradeRouting],
+    create_trading_universe: Optional[CreateTradingUniverseProtocol]=None,
+    universe: Optional[TradingStrategyUniverse]=None,
     routing_model: Optional[BacktestRoutingModel]=None,
     max_slippage=0.01,
     candle_time_frame: Optional[TimeBucket]=None,
@@ -346,7 +347,12 @@ def run_backtest_inline(
         Trade decider function of your strategy
 
     :param create_trading_universe:
-        Universe creation function of your strategy
+        Universe creation function of your strategy.
+        You must give either create_trading_universe or universe.
+
+    :param universe:
+        The pregenerated universe for this backtest.
+        You must give either create_trading_universe or universe.
 
     :param cycle_duration:
         Strategy cycle duration
@@ -389,6 +395,13 @@ def run_backtest_inline(
 
     execution_model = BacktestExecutionModel(wallet, max_slippage)
 
+    if universe:
+        assert routing_model
+        pricing_model = BacktestSimplePricingModel(universe, routing_model)
+    else:
+        assert create_trading_universe, "Must give create_trading_universe if no universe given"
+        pricing_model = None
+
     backtest_setup = BacktestSetup(
         start_at,
         end_at,
@@ -396,8 +409,8 @@ def run_backtest_inline(
         candle_time_frame=candle_time_frame,
         wallet=wallet,
         state=State(),
-        universe=None,
-        pricing_model=None,  # Will be set up later
+        universe=universe,
+        pricing_model=pricing_model,  # Will be set up later
         execution_model=execution_model,
         routing_model=routing_model,  # Use given routing model if available
         sync_method=deposit_syncer,

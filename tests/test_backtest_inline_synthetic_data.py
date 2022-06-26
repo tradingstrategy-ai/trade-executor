@@ -183,7 +183,8 @@ def test_run_inline_synthetic_backtest(
         client=None,  # None of downloads needed, because we are using synthetic data
         cycle_duration=CycleDuration.cycle_24h,  # Override to use 24h cycles despite what strategy file says
         decide_trades=decide_trades,
-        create_trading_universe=pregenerated_create_trading_universe(universe),
+        create_trading_universe=None,
+        universe=universe,
         initial_deposit=10_000,
         reserve_currency=ReserveCurrency.busd,
         trade_routing=TradeRouting.routing_model,
@@ -191,4 +192,4 @@ def test_run_inline_synthetic_backtest(
         log_level=logging.WARNING,
     )
 
-    assert len(debug_dump) == 214
+    assert len(debug_dump) == 213
