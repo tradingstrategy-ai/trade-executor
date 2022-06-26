@@ -30,6 +30,9 @@ class PositionManager:
                  state: State,
                  pricing_model: PricingModel,
                  ):
+
+        assert pricing_model, "pricing_model is needed in order to know buy/sell price of new positions"
+
         self.timestamp = timestamp
         self.universe = universe
         self.state = state

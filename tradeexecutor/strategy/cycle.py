@@ -49,6 +49,7 @@ def round_datetime_down(
     :param offset: Add a fixed time offset at the top of rounding
     :return: When to wake up from the sleep next time
     """
+    assert isinstance(ts, datetime.datetime)
     mod = (datetime.datetime.min.replace(tzinfo=ts.tzinfo) - ts) % delta
     if mod == datetime.timedelta(0):
         return ts

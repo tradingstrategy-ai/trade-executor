@@ -82,6 +82,7 @@ def decide_trades(
         state: State,
         pricing_model: PricingModel,
         cycle_debug_data: Dict) -> List[TradeExecution]:
+    """The brain function to decide the trades on each trading strategy cycle."""
 
     # The pair we are trading
     pair = universe.pairs.get_single()
@@ -93,7 +94,7 @@ def decide_trades(
     # We could have candles for multiple trading pairs in a different strategy,
     # but this strategy only operates on single pair candle.
     # We also limit our sample size to N latest candles to speed up calculations.
-    candles: pd.DataFrame = universe.candles.get_single_pair_data(sample_count=batch_size)
+    candles: pd.DataFrame = universe.candles.get_single_pair_data(timestamp)
 
     # We have data for open, high, close, etc.
     # We only operate using candle close values in this strategy.
@@ -108,6 +109,8 @@ def decide_trades(
     #
     slow_ema = close.ewm(span=slow_ema_candle_count).mean().iloc[-1]
     fast_ema = close.ewm(span=fast_ema_candle_count).mean().iloc[-1]
+
+    # print("Slow EMA is", slow_ema)
 
     # Get the last close price from close time series
     # that's Pandas's Series object
@@ -137,11 +140,11 @@ def decide_trades(
             trades += position_manager.close_all()
 
     # Visualize strategy
-    # See available colours here
-    # https://matplotlib.org/stable/gallery/color/named_colors.html
+    # See available Plotly colours here
+    # https://community.plotly.com/t/plotly-colours-list/11730/3?u=miohtama
     visualisation = state.visualisation
-    visualisation.plot_indicator(timestamp, "Slow EMA", PlotKind.technical_indicator_on_price, slow_ema, colour="forestgreen")
-    visualisation.plot_indicator(timestamp, "Fast EMA", PlotKind.technical_indicator_on_price, fast_ema, colour="limegreen")
+    visualisation.plot_indicator(timestamp, "Slow EMA", PlotKind.technical_indicator_on_price, slow_ema, colour="darkblue")
+    visualisation.plot_indicator(timestamp, "Fast EMA", PlotKind.technical_indicator_on_price, fast_ema, colour="mediumpurple")
 
     return trades
 
@@ -172,7 +175,7 @@ def logger(request):
     return setup_pytest_logging(request, mute_requests=False)
 
 
-def test_run_inline_backtest(
+def test_run_inline_real_backtest(
         logger: logging.Logger,
         persistent_test_client: Client,
     ):

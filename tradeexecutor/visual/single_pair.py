@@ -117,7 +117,6 @@ def visualise_trades(
     return fig
 
 
-
 def visualise_single_pair(
         state: State,
         candle_universe: GroupedCandleUniverse,
@@ -171,6 +170,13 @@ def visualise_single_pair(
         showlegend=False
     )
 
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+    fig.add_trace(candlesticks, secondary_y=True)
+
+    fig.update_layout(title="Backtest results", height=800)
+    fig.update_yaxes(title="Price $", secondary_y=True, showgrid=True)
+
+    # Synthetic data may not have volume available
     if "volume" in candles.columns:
         volume_bars = go.Bar(
             x=candles.index,
@@ -180,23 +186,6 @@ def visualise_single_pair(
                 "color": "rgba(128,128,128,0.5)",
             }
         )
-
-    # https://plotly.com/python-api-reference/generated/plotly.graph_objects.Figure.html#plotly.graph_objects.Figure.add_candlestick
-    # fig.add_candlestick(
-    #    x=candles['timestamp'],
-    #    open=candles['open'],
-    #    high=candles['high'],
-    #    low=candles['low'],
-    #    close=candles['close'])
-
-    fig = go.Figure(candlesticks)
-    fig = make_subplots(specs=[[{"secondary_y": True}]])
-    fig.add_trace(candlesticks, secondary_y=True)
-
-    fig.update_layout(title="Backtest results", height=800)
-    fig.update_yaxes(title="Price $", secondary_y=True, showgrid=True)
-
-    if "volume" in candles.columns:
         fig.add_trace(volume_bars, secondary_y=False)
         fig.update_yaxes(title="Volume $", secondary_y=False, showgrid=False)
 

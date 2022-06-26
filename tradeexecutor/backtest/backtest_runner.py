@@ -375,6 +375,9 @@ def run_backtest_inline(
     :return:
         tuple (State of a completely executed strategy, debug dump dict)
     """
+
+    assert isinstance(start_at, datetime.datetime)
+    assert isinstance(end_at, datetime.datetime)
     assert initial_deposit > 0
 
     # Setup our special logging level if not done yet.
