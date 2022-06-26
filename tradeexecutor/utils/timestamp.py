@@ -1,4 +1,5 @@
 """Timestamp helpers"""
+import calendar
 import datetime
 from typing import Union
 
@@ -33,4 +34,7 @@ def convert_and_validate_timestamp_as_int(timestamp: Union[pd.Timestamp, datetim
     as the current JSON encoder cannot directly encode datetime.datetime keys/
     """
     timestamp = convert_and_validate_timestamp(timestamp)
-    return int(timestamp.timestamp())
+
+    # https://stackoverflow.com/a/5499906/315168
+    return int(calendar.timegm(timestamp.utctimetuple()))
+

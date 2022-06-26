@@ -2,6 +2,7 @@
 import datetime
 from decimal import Decimal
 
+import pandas as pd
 import pytest
 
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
@@ -10,7 +11,7 @@ from tradeexecutor.state.state import State
 from tradeexecutor.state.visualisation import PlotKind
 from tradeexecutor.testing.synthetic_price_data import generate_ohlcv_candles
 from tradeexecutor.testing.dummy_trader import DummyTestTrader
-from tradeexecutor.visual.single_pair import visualise_single_pair
+from tradeexecutor.visual.single_pair import visualise_single_pair, export_plot_as_dataframe
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId
 from tradingstrategy.timebucket import TimeBucket
@@ -38,6 +39,14 @@ def weth() -> AssetIdentifier:
 def weth_usdc(mock_exchange_address, usdc, weth) -> TradingPairIdentifier:
     """Mock some assets"""
     return TradingPairIdentifier(weth, usdc, "0x4", mock_exchange_address, internal_id=555)
+
+
+def test_synthetic_candles_timezone(usdc, weth, weth_usdc):
+    """Check synthetic candle data for timezone issues."""
+    start_date = datetime.datetime(2021, 1, 1)
+    end_date = datetime.datetime(2021, 3, 1)
+    candles = generate_ohlcv_candles(TimeBucket.d1, start_date, end_date, pair_id=weth_usdc.internal_id)
+    assert candles.iloc[0]["timestamp"] == pd.Timestamp("2021-01-01 00:00:00")
 
 
 def test_visualise_trades_with_indicator(usdc, weth, weth_usdc):
@@ -99,6 +108,14 @@ def test_visualise_trades_with_indicator(usdc, weth, weth_usdc):
     assert data[1]["name"] == "Test indicator"
     assert data[2]["name"] == "Buys"
     assert data[3]["name"] == "Sells"
+
+    # Check test indicator data
+    # that we have proper timestamps
+    plot = state.visualisation.plots["Test indicator"]
+    df = export_plot_as_dataframe(plot)
+    ts = df.iloc[0]["timestamp"]
+    ts = ts.replace(minute=0, second=0)
+    assert ts == pd.Timestamp("2021-1-1 00:00")
 
     return fig
 

@@ -5,6 +5,7 @@ from typing import Iterable
 
 import plotly.graph_objects as go
 import pandas as pd
+from plotly.subplots import make_subplots
 
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
@@ -49,20 +50,28 @@ def export_plot_as_dataframe(plot: Plot) -> pd.DataFrame:
     """Convert visualisation state to Plotly friendly df."""
     data = []
     for time, value in plot.points.items():
+        time = pd.to_datetime(time, unit='s')
         data.append({
             "timestamp": time,
             "value": value,
         })
-    return pd.DataFrame(data)
+
+    # Convert timestamp to pd.Timestamp column
+    df = pd.DataFrame(data)
+    df = df.set_index(pd.DatetimeIndex(df["timestamp"]))
+    return df
 
 
 def add_technical_indicators(fig: go.Figure, visualisation: Visualisation):
     """Draw technical indicators over candle chart."""
 
     # https://plotly.com/python/graphing-multiple-chart-types/
-    # https://plotly.com/python/graphing-multiple-chart-types/
     for plot_id, plot in visualisation.plots.items():
         df = export_plot_as_dataframe(plot)
+        start_ts = df["timestamp"].min()
+        end_ts = df["timestamp"].max()
+        logger.info(f"Visualisation {plot_id} has data for range {start_ts} - {end_ts}")
+
         fig.add_trace(go.Scatter(
             x=df["timestamp"],
             y=df["value"],
@@ -76,6 +85,7 @@ def visualise_trades(
         fig: go.Figure,
         candles: pd.DataFrame,
         trades_df: pd.DataFrame,):
+    """Plot individual trades over the candlestick chart."""
 
     buys_df = trades_df.loc[trades_df["type"] == "buy"]
     sells_df = trades_df.loc[trades_df["type"] == "sell"]
@@ -113,7 +123,11 @@ def visualise_single_pair(
         candle_universe: GroupedCandleUniverse,
         start_ts=None,
         end_ts=None) -> go.Figure:
-    """Visualise single-pair trade execution."""
+    """Visualise single-pair trade execution.
+
+    :param candle_universe:
+        Price candles we used for the strategy
+    """
 
     assert candle_universe.get_pair_count() == 1, "visualise_single_pair() can be only used for a trading universe with a single pair"
     candles = candle_universe.get_single_pair_data()
@@ -139,19 +153,52 @@ def visualise_single_pair(
     # Crop it to the trading range
     candles = candles.loc[candles["timestamp"].between(start_ts, end_ts)]
 
+    candle_start_ts = candles["timestamp"].min()
+    candle_end_ts = candles["timestamp"].max()
+    logger.info(f"Candles are {candle_start_ts} = {candle_end_ts}")
+
     trades_df = export_trades_as_dataframe(state.portfolio.get_all_trades())
 
     # set up figure with values not high and not low
     # include candlestick with rangeselector
-    fig = go.Figure()
 
-    # https://plotly.com/python-api-reference/generated/plotly.graph_objects.Figure.html#plotly.graph_objects.Figure.add_candlestick
-    fig.add_candlestick(
-        x=candles['timestamp'],
+    candlesticks = go.Candlestick(
+        x=candles.index,
         open=candles['open'],
         high=candles['high'],
         low=candles['low'],
-        close=candles['close'])
+        close=candles['close'],
+        showlegend=False
+    )
+
+    if "volume" in candles.columns:
+        volume_bars = go.Bar(
+            x=candles.index,
+            y=candles['volume'],
+            showlegend=False,
+            marker={
+                "color": "rgba(128,128,128,0.5)",
+            }
+        )
+
+    # https://plotly.com/python-api-reference/generated/plotly.graph_objects.Figure.html#plotly.graph_objects.Figure.add_candlestick
+    # fig.add_candlestick(
+    #    x=candles['timestamp'],
+    #    open=candles['open'],
+    #    high=candles['high'],
+    #    low=candles['low'],
+    #    close=candles['close'])
+
+    fig = go.Figure(candlesticks)
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+    fig.add_trace(candlesticks, secondary_y=True)
+
+    fig.update_layout(title="Backtest results", height=800)
+    fig.update_yaxes(title="Price $", secondary_y=True, showgrid=True)
+
+    if "volume" in candles.columns:
+        fig.add_trace(volume_bars, secondary_y=False)
+        fig.update_yaxes(title="Volume $", secondary_y=False, showgrid=False)
 
     add_technical_indicators(fig, state.visualisation)
 
