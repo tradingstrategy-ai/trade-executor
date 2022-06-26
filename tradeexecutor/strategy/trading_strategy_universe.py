@@ -319,12 +319,12 @@ class DefaultTradingStrategyUniverseModel(TradingStrategyUniverseModel):
     """
 
     def __init__(self,
-                 client: Client,
+                 client: Optional[Client],
                  execution_context: ExecutionContext,
                  create_trading_universe: Callable,
                  candle_time_frame_override: Optional[TimeBucket] = None,
                  ):
-        assert isinstance(client, Client)
+        assert isinstance(client, Client) or client is None
         assert isinstance(execution_context, ExecutionContext), f"Got {execution_context}"
         assert isinstance(create_trading_universe, Callable), f"Got {create_trading_universe}"
         self.client = client

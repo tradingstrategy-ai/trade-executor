@@ -82,12 +82,43 @@ def setup_pytest_logging(request, mute_requests=True) -> logging.Logger:
     return logging.getLogger("test")
 
 
+def setup_notebook_logging(log_level=logging.WARNING) -> logging.Logger:
+    """Setup logger in notebook / backtesting environments."""
+
+    logger = logging.getLogger()
+
+    # Set log format to dislay the logger name to hunt down verbose logging modules
+    fmt = "%(asctime)s %(name)-50s %(levelname)-8s %(message)s"
+
+    # Use colored logging output for console
+    coloredlogs.install(level=log_level, fmt=fmt, logger=logger)
+
+    _setup_custom_log_levels()
+
+    # Disable logging of JSON-RPC requests and reploes
+    logging.getLogger("web3.RequestManager").setLevel(logging.WARNING)
+    logging.getLogger("web3.providers.HTTPProvider").setLevel(logging.WARNING)
+
+    logging.getLogger("requests").setLevel(logging.WARNING)
+    logging.getLogger("urllib3").setLevel(logging.WARNING)
+
+    # ipdb internals
+    logging.getLogger("asyncio").setLevel(logging.WARNING)
+
+    # maplotlib burps a lot on startup
+    logging.getLogger("matplotlib").setLevel(logging.WARNING)
+
+
 def _setup_custom_log_levels():
     """Create a new logging level TRADE that is between INFO and WARNING.
 
     This level is used to log trade execution to Discord etc.
     trader followed stream.
     """
+
+    if hasattr(logging, "TRADE"):
+        # Already setup, don't try twice
+        return
 
     # https://www.programcreek.com/python/?code=dwavesystems%2Fdwave-hybrid%2Fdwave-hybrid-master%2Fhybrid%2F__init__.py
     logging.TRADE = logging.INFO + 1  # Info is 20, Warning is 30

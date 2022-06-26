@@ -58,7 +58,7 @@ def usdc() -> AssetIdentifier:
 @pytest.fixture
 def weth() -> AssetIdentifier:
     """Mock some assets"""
-    return AssetIdentifier(ChainId.ethereum.value, generate_random_ethereum_address(), "WETH", 18, 2)
+        return AssetIdentifier(ChainId.ethereum.value, generate_random_ethereum_address(), "WETH", 18, 2)
 
 
 @pytest.fixture

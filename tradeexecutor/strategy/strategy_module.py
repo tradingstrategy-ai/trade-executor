@@ -33,13 +33,16 @@ class StrategyType(enum.Enum):
 
 
 class TradeRouting(enum.Enum):
-    """Trade routing shortcuts."""
+    """What trade routing should the strategy use."""
 
     #: Two or three legged trades on PancakeSwap
     pancakeswap_basic = "quickswap_basic"
 
     #: Two or three legged trades on Quickswap
     quickswap_basic = "quickswap_basic"
+
+    #: Use user supplied routing model
+    routing_model = "routing_model"
 
 
 class ReserveCurrency(enum.Enum):
@@ -107,7 +110,7 @@ class CreateTradingUniverseProtocol(Protocol):
 
     def __call__(self,
             timestamp: pandas.Timestamp,
-            client: Client,
+            client: Optional[Client],
             execution_context: ExecutionContext,
             candle_time_frame_override: Optional[TimeBucket]=None) -> TradingStrategyUniverse:
         """Creates the trading universe where the strategy trades.
@@ -141,6 +144,17 @@ class CreateTradingUniverseProtocol(Protocol):
             The trading universe also contains information about the reserve asset,
             usually stablecoin, we use for the strategy.
             """
+
+def pregenerated_create_trading_universe(universe: TradingStrategyUniverse) -> CreateTradingUniverseProtocol:
+    """Wrap existing trading universe, so it can be passed around for universe generators."""
+
+    def _inner(timestamp: pandas.Timestamp,
+            client: Optional[Client],
+            execution_context: ExecutionContext,
+            candle_time_frame_override: Optional[TimeBucket]=None):
+        return universe
+
+    return _inner
 
 
 @dataclass

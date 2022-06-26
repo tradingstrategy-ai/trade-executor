@@ -1,4 +1,5 @@
 import datetime
+import logging
 import runpy
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
@@ -13,6 +14,7 @@ from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel
 from tradeexecutor.backtest.backtest_sync import BacktestSyncer
 from tradeexecutor.backtest.backtest_valuation import BacktestValuationModel
 from tradeexecutor.backtest.simulated_wallet import SimulatedWallet
+from tradeexecutor.cli.log import setup_notebook_logging
 from tradeexecutor.cli.loop import ExecutionLoop
 from tradeexecutor.ethereum.default_routes import get_routing_model, get_backtest_routing_model
 from tradeexecutor.state.state import State
@@ -314,15 +316,17 @@ def run_backtest(
 def run_backtest_inline(
     start_at: datetime.datetime,
     end_at: datetime.datetime,
-    client: Client,
+    client: Optional[Client],
     decide_trades: DecideTradesProtocol,
     create_trading_universe: CreateTradingUniverseProtocol,
     cycle_duration: CycleDuration,
     initial_deposit: float,
     reserve_currency: ReserveCurrency,
-    trade_routing: TradeRouting,
+    trade_routing: Optional[TradeRouting],
+    routing_model: Optional[BacktestRoutingModel]=None,
     max_slippage=0.01,
     candle_time_frame: Optional[TimeBucket]=None,
+    log_level=logging.WARNING,
 ) -> Tuple[State, dict]:
     """Run backtests for given decide_trades and create_trading_universe functions.
 
@@ -359,13 +363,23 @@ def run_backtest_inline(
     :param trade_routing:
         Routing model for trades
 
+    :param routing_model:
+        Use a predefined routing model.
+
     :param max_slippage:
         Max slippage tolerance for trades before execution failure
+
+    :param log_level:
+        Python logging level to display log messages during the backtest run.
 
     :return:
         tuple (State of a completely executed strategy, debug dump dict)
     """
     assert initial_deposit > 0
+
+    # Setup our special logging level if not done yet.
+    # (Not done when called from notebook)
+    setup_notebook_logging(log_level)
 
     wallet = SimulatedWallet()
     deposit_syncer = BacktestSyncer(wallet, Decimal(initial_deposit))
@@ -382,7 +396,7 @@ def run_backtest_inline(
         universe=None,
         pricing_model=None,  # Will be set up later
         execution_model=execution_model,
-        routing_model=None, # Will be set up later
+        routing_model=routing_model,  # Use given routing model if available
         sync_method=deposit_syncer,
         decide_trades=decide_trades,
         create_trading_universe=create_trading_universe,
