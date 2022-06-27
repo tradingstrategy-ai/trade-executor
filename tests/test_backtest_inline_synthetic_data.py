@@ -9,6 +9,7 @@ from typing import List, Dict
 import pytest
 
 import pandas as pd
+from pandas_ta.overlap import ema
 
 from tradeexecutor.backtest.backtest_runner import run_backtest_inline
 from tradeexecutor.cli.log import setup_pytest_logging
@@ -63,21 +64,24 @@ def decide_trades(
     # We could have candles for multiple trading pairs in a different strategy,
     # but this strategy only operates on single pair candle.
     # We also limit our sample size to N latest candles to speed up calculations.
-    candles: pd.DataFrame = universe.candles.get_single_pair_data(timestamp)
+    candles: pd.DataFrame = universe.candles.get_single_pair_data(timestamp, sample_count=batch_size)
 
     # We have data for open, high, close, etc.
     # We only operate using candle close values in this strategy.
     close = candles["close"]
 
     # Calculate exponential moving averages based on slow and fast sample numbers.
-    # More information about calculating expotential averages in Pandas:
-    #
-    # - https://www.statology.org/exponential-moving-average-pandas/
-    #
-    # - https://pandas.pydata.org/pandas-docs/stable/reference/api/pandas.DataFrame.ewm.html
-    #
-    slow_ema = close.ewm(span=slow_ema_candle_count).mean().iloc[-1]
-    fast_ema = close.ewm(span=fast_ema_candle_count).mean().iloc[-1]
+    # https://github.com/twopirllc/pandas-ta
+    slow_ema_series = ema(close, length=slow_ema_candle_count)
+    fast_ema_series = ema(close, length=fast_ema_candle_count)
+
+    if slow_ema_series is None or fast_ema_series is None:
+        # Cannot calculate EMA, because
+        # not enough samples in backtesting
+        return []
+
+    slow_ema = slow_ema_series.iloc[-1]
+    fast_ema = fast_ema_series.iloc[-1]
 
     # print("Slow EMA is", slow_ema)
 

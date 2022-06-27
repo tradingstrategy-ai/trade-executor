@@ -134,17 +134,11 @@ def visualise_single_pair(
     first_trade, last_trade = state.portfolio.get_first_and_last_executed_trade()
 
     if not start_ts:
-        if first_trade:
-            start_ts = first_trade.executed_at
-        else:
-            # No trades made, use the first candle timestamp
-            start_ts = candle_universe.get_timestamp_range()[0]
+        # No trades made, use the first candle timestamp
+        start_ts = candle_universe.get_timestamp_range()[0]
 
     if not end_ts:
-        if last_trade:
-            end_ts = last_trade.executed_at
-        else:
-            end_ts = candle_universe.get_timestamp_range()[1]
+        end_ts = candle_universe.get_timestamp_range()[1]
 
     logger.info(f"Visualising single pair strategy for range {start_ts} = {end_ts}")
 
