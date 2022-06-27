@@ -135,6 +135,8 @@ def visualise_benchmark(
     else:
         fig.update_layout(title=f"Portfolio value", height=height)
 
+    fig.update_yaxes(title="Value $", showgrid=False)
+
     fig.update_xaxes(rangeslider={"visible": False})
 
     return fig
