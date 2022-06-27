@@ -1,3 +1,5 @@
+"""Portfolio state management."""
+
 import datetime
 from dataclasses import dataclass, field
 from decimal import Decimal
@@ -15,7 +17,7 @@ from tradeexecutor.state.types import USDollarAmount
 
 
 class NotEnoughMoney(Exception):
-    """We try to allocate reserve for a buy, but do not have enough it."""
+    """We try to allocate reserve for a buy trade, but do not have cash."""
 
 
 
@@ -349,3 +351,17 @@ class Portfolio:
             if t.executed_at and (t.executed_at > last.executed_at):
                 last = t
         return first, last
+
+    def get_initial_deposit(self) -> USDollarAmount:
+        """How much we invested at the beginning of a backtest.
+
+        - Assumes we track the performance against the US dollar
+
+        - Assume there has been only one deposit event
+
+        - This deposit happened at the start of the backtest
+        """
+
+        assert len(self.reserves) == 1
+        reserve = next(iter(self.reserves.values()))
+        return float(reserve.initial_deposit) * reserve.initial_deposit_reserve_token_price

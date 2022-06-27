@@ -10,18 +10,26 @@ Example analysis include:
 
 - Timeline: Analysis of each individual trades made
 
+.. note ::
+
+    A lot of this code has been lifted off from trading-strategy package
+    where it had to deal with different trading frameworks.
+    It could be simplified greatly now.
+
 """
 import datetime
 from dataclasses import dataclass, field
-from typing import List, Dict, Iterable, Optional, Tuple, Callable
+from typing import List, Dict, Iterable, Optional, Tuple, Callable, Set
 
 import numpy as np
 import pandas as pd
 
+from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.position import TradingPosition
+from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradingstrategy.analysis.tradehint import TradeHint, TradeHintType
-from tradingstrategy.exchange import ExchangeUniverse
+from tradingstrategy.exchange import ExchangeUniverse, Exchange
 from tradingstrategy.frameworks.backtrader import convert_backtrader_timestamp
 from tradingstrategy.pair import PandasPairUniverse
 from tradingstrategy.types import PrimaryKey, USDollarAmount
@@ -75,7 +83,7 @@ class SpotTrade:
 
     @property
     def value(self) -> USDollarAmount:
-        return  abs(self.price * self.quantity)
+        return  abs(self.price * float(self.quantity))
 
 
 @dataclass
@@ -198,7 +206,7 @@ class TradePosition:
     def realised_profit(self) -> USDollarAmount:
         """Calculated life-time profit over this position."""
         assert not self.is_open()
-        return -sum([t.quantity * t.price - t.commission for t in self.trades])
+        return -sum([float(t.quantity) * t.price - t.commission for t in self.trades])
 
     @property
     def realised_profit_percent(self) -> float:
@@ -344,6 +352,8 @@ class TradeSummary:
 class TradeAnalysis:
     """Analysis of trades in a portfolio."""
 
+    portfolio: Portfolio
+
     #: How a particular asset traded. Asset id -> Asset history mapping
     asset_histories: Dict[object, AssetTradeHistory] = field(default_factory=dict)
 
@@ -375,8 +385,16 @@ class TradeAnalysis:
                 if position.is_open():
                     yield pair_id, position
 
-    def calculate_summary_statistics(self, initial_cash, uninvested_cash, extra_return=0) -> TradeSummary:
+    def calculate_summary_statistics(self) -> TradeSummary:
         """Calculate some statistics how our trades went."""
+
+        initial_cash = self.portfolio.get_initial_deposit()
+
+        uninvested_cash = self.portfolio.get_current_cash()
+
+        # EthLisbon hack
+        extra_return = 0
+
         won = lost = zero_loss = stop_losses = undecided = 0
         open_value: USDollarAmount = 0
         profit: USDollarAmount = 0
@@ -429,7 +447,7 @@ class TradeAnalysis:
 
 
 def expand_timeline(
-        exchange_universe: ExchangeUniverse,
+        exchanges: Set[Exchange],
         pair_universe: PandasPairUniverse,
         timeline: pd.DataFrame,
         vmin=-0.3,
@@ -446,6 +464,10 @@ def expand_timeline(
     This is because of Pandas issue https://github.com/pandas-dev/pandas/issues/40675 - hidden indexes, columns,
     etc. are not exported.
 
+    :param exchanges: Needed for exchange metadata
+
+    :param pair_universe: Needed for trading pair metadata
+
     :param vmax: Trade success % to have the extreme green color.
 
     :param vmin: The % of lost capital on the trade to have the extreme red color.
@@ -457,13 +479,17 @@ def expand_timeline(
     :return: DataFrame with human readable position win/loss information, having DF indexed by timestamps and a styler function
     """
 
+    exchange_map = {e.exchange_id: e for e in exchanges}
+
     # https://stackoverflow.com/a/52363890/315168
     def expander(row):
         position: TradePosition = row["position"]
         # timestamp = row.name  # ???
         pair_id = position.pair_id
         pair_info = pair_universe.get_pair_by_id(pair_id)
-        exchange = exchange_universe.get_by_id(pair_info.exchange_id)
+        exchange = exchange_map.get(pair_info.exchange_id)
+        if not exchange:
+            raise RuntimeError(f"No exchange for id {pair_info.exchange_id}, pair {pair_info}")
 
         remarks = "SL" if position.is_stop_loss() else ""
 
@@ -519,7 +545,7 @@ def expand_timeline(
     return applied_df, apply_styles
 
 
-def build_trade_analysis(positions: List[TradingPosition]) -> TradeAnalysis:
+def build_trade_analysis(portfolio: Portfolio) -> TradeAnalysis:
     """Build a trade analysis from list of positions.
 
     - Read positions from backtesting or live state
@@ -529,6 +555,8 @@ def build_trade_analysis(positions: List[TradingPosition]) -> TradeAnalysis:
     """
 
     histories = {}
+
+    positions = list(portfolio.get_all_positions())
 
     # Each Backtrader Trade instance presents a position
     # Trade instances contain TradeHistory entries that present change to this position
@@ -552,9 +580,9 @@ def build_trade_analysis(positions: List[TradingPosition]) -> TradeAnalysis:
             price = trade.executed_price
 
             # print("Got event", event, status)
-            assert quantity != 0, f"Got bad quantity for {status}"
+            assert quantity != 0, f"Got bad quantity for {trade}"
             # import ipdb ; ipdb.set_trace()
-            assert price > 0, f"Got invalid trade event {event}, status {status}, order {order}"
+            assert price > 0, f"Got invalid trade {trade}"
 
             spot_trade = SpotTrade(
                 pair_id=pair_id,
@@ -568,4 +596,4 @@ def build_trade_analysis(positions: List[TradingPosition]) -> TradeAnalysis:
             )
             history.add_trade(spot_trade)
 
-    return TradeAnalysis(asset_histories=histories)
+    return TradeAnalysis(portfolio, asset_histories=histories)

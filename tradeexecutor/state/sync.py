@@ -38,6 +38,8 @@ def apply_sync_events(portfolio: Portfolio, new_reserves: List[ReserveUpdateEven
                 last_sync_at=evt.updated_at,
                 reserve_token_price=default_price,
                 last_pricing_at=evt.updated_at,
+                initial_deposit_reserve_token_price=default_price,
+                initial_deposit=evt.new_balance,
             )
             portfolio.reserves[res_pos.get_identifier()] = res_pos
             logger.info("Portfolio reserve created. Asset: %s", evt.asset)

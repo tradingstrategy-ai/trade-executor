@@ -6,12 +6,12 @@ import random
 import datetime
 from typing import List, Dict
 
-import numpy as np
 import pytest
 
 import pandas as pd
 from pandas_ta.overlap import ema
 
+from tradeexecutor.analysis.trade_analyser import build_trade_analysis, expand_timeline
 from tradeexecutor.backtest.backtest_runner import run_backtest_inline
 from tradeexecutor.cli.log import setup_pytest_logging
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
@@ -216,3 +216,60 @@ def test_run_inline_synthetic_backtest(
     )
 
     assert len(debug_dump) == 213
+
+
+def test_analyse_synthetic_trading_portfolio(
+        logger: logging.Logger,
+        universe: TradingStrategyUniverse,
+    ):
+    """Analyse synthetic trading strategy results.
+
+    TODO: Might move this test to its own module.
+    """
+
+    start_at, end_at = universe.universe.candles.get_timestamp_range()
+
+    routing_model = generate_simple_routing_model(universe)
+
+    # Run the test
+    state, debug_dump = run_backtest_inline(
+        start_at=start_at.to_pydatetime(),
+        end_at=end_at.to_pydatetime(),
+        client=None,  # None of downloads needed, because we are using synthetic data
+        cycle_duration=CycleDuration.cycle_24h,  # Override to use 24h cycles despite what strategy file says
+        decide_trades=decide_trades,
+        create_trading_universe=None,
+        universe=universe,
+        initial_deposit=10_000,
+        reserve_currency=ReserveCurrency.busd,
+        trade_routing=TradeRouting.routing_model,
+        routing_model=routing_model,
+        log_level=logging.WARNING,
+    )
+
+    analysis = build_trade_analysis(state.portfolio)
+    summary = analysis.calculate_summary_statistics()
+
+    # Should not cause exception
+    summary.to_dataframe()
+
+    assert summary.initial_cash == 10_000
+    assert summary.won == 4
+    assert summary.lost == 7
+    assert summary.realised_profit == pytest.approx(18.539760716378737)
+    assert summary.open_value == pytest.approx(0)
+
+    timeline = analysis.create_timeline()
+    expanded_timeline, styler = expand_timeline(
+        universe.universe.exchanges,
+        universe.universe.pairs,
+        timeline)
+
+    # Do checks for the first position
+    # 0    1          2021-07-01   8 days                      WETH        USDC         $2,027.23    $27.23    2.72%   0.027230  $1,617.294181   $1,661.333561            2
+
+    row = expanded_timeline.iloc[0]
+
+    assert row["Opened at"] == "2021-07-01"
+    assert row["Trade count"] == 2
+    assert row["Open price USD"] == "$1,617.294181"
