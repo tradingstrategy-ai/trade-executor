@@ -526,8 +526,8 @@ def expand_timeline(
         # Create a Pandas Styler with multiple styling options applied
         # Dynamically color the background of trade outcome coluns # https://pandas.pydata.org/docs/reference/api/pandas.io.formats.style.Styler.background_gradient.html
         styles = df.style\
-            .hide_index()\
-            .hide_columns(hidden_columns)\
+            .hide(axis="index")\
+            .hide(axis="columns", subset=hidden_columns)\
             .background_gradient(
                 axis=0,
                 gmap=applied_df['PnL % raw'],
