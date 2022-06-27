@@ -21,6 +21,7 @@ from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniv
 from tradeexecutor.testing.synthetic_ethereum_data import generate_random_ethereum_address
 from tradeexecutor.testing.synthetic_exchange_data import generate_exchange, generate_simple_routing_model
 from tradeexecutor.testing.synthetic_price_data import generate_ohlcv_candles
+from tradeexecutor.visual.benchmark import visualise_benchmark
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.pricing_model import PricingModel
@@ -273,3 +274,45 @@ def test_analyse_synthetic_trading_portfolio(
     assert row["Opened at"] == "2021-07-01"
     assert row["Trade count"] == 2
     assert row["Open price USD"] == "$1,617.294181"
+
+
+def test_benchmark_synthetic_trading_portfolio(
+        logger: logging.Logger,
+        universe: TradingStrategyUniverse,
+    ):
+    """Build benchmark figures.
+
+    TODO: Might move this test to its own module.
+    """
+
+    start_at, end_at = universe.universe.candles.get_timestamp_range()
+
+    routing_model = generate_simple_routing_model(universe)
+
+    # Run the test
+    state, debug_dump = run_backtest_inline(
+        start_at=start_at.to_pydatetime(),
+        end_at=end_at.to_pydatetime(),
+        client=None,  # None of downloads needed, because we are using synthetic data
+        cycle_duration=CycleDuration.cycle_24h,  # Override to use 24h cycles despite what strategy file says
+        decide_trades=decide_trades,
+        create_trading_universe=None,
+        universe=universe,
+        initial_deposit=10_000,
+        reserve_currency=ReserveCurrency.busd,
+        trade_routing=TradeRouting.routing_model,
+        routing_model=routing_model,
+        log_level=logging.WARNING,
+    )
+
+    # Visualise performance
+    fig = visualise_benchmark(
+        state.name,
+        portfolio_statistics=state.stats.portfolio,
+        all_cash=100_000,
+        buy_and_hold_asset_name="ETH",
+        buy_and_hold_price_series=universe.universe.candles.get_single_pair_data()["close"],
+    )
+
+    # Check that the diagram has 3 plots
+    assert len(fig.data) == 3

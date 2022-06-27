@@ -87,11 +87,13 @@ class ExecutionLoop:
         if self.reset:
             # Create empty state and save it
             state = self.store.create()
+            state.name = self.name
             self.store.sync(state)
         else:
             if self.store.is_empty():
                 # Create empty state and save it
                 state = self.store.create()
+                state.name = self.name
                 self.store.sync(state)
             else:
                 state = self.store.load()

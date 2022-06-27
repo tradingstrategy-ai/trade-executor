@@ -1,4 +1,4 @@
-"""Tools to visualise live trading/backtest outcome."""
+"""Tools to visualise live trading/backtest outcome for strategies trading only one pair."""
 
 import logging
 from typing import Iterable
@@ -16,11 +16,10 @@ from tradingstrategy.candle import GroupedCandleUniverse
 logger = logging.getLogger(__name__)
 
 
-def export_trade_for_dataframe(t: TradeExecution, marker_size=12) -> dict:
+def export_trade_for_dataframe(t: TradeExecution) -> dict:
     """Export data for a Pandas dataframe presentation"""
 
     if t.is_failed():
-        marker = dict(symbol='triangle-down-open')
         label = f"Faild trade"
     else:
         if t.is_sell():
@@ -120,15 +119,31 @@ def visualise_single_pair(
         state: State,
         candle_universe: GroupedCandleUniverse,
         start_ts=None,
-        end_ts=None) -> go.Figure:
+        end_ts=None,
+        height=800) -> go.Figure:
     """Visualise single-pair trade execution.
+
+    :param state:
+        The recorded state of the strategy execution.
+        Either live or backtest.
 
     :param candle_universe:
         Price candles we used for the strategy
+
+    :param height:
+        Chart height in pixels
     """
+
+    logger.info("Visualising %s", state)
 
     assert candle_universe.get_pair_count() == 1, "visualise_single_pair() can be only used for a trading universe with a single pair"
     candles = candle_universe.get_single_pair_data()
+
+    first_trade = next(iter(state.portfolio.get_all_trades()))
+    if first_trade:
+        pair_name = f"{first_trade.pair.base.token_symbol} - {first_trade.pair.quote.token_symbol}"
+    else:
+        pair_name = None
 
     if not start_ts:
         # No trades made, use the first candle timestamp
@@ -163,8 +178,16 @@ def visualise_single_pair(
 
     fig = make_subplots(specs=[[{"secondary_y": False}]])
 
-    fig.update_layout(title="Backtest results", height=800)
-    fig.update_yaxes(title="Price $", secondary_y=False, showgrid=True)
+    if state.name:
+        fig.update_layout(title=f"{state.name} trades", height=height)
+    else:
+        fig.update_layout(title=f"Trades", height=height)
+
+    if pair_name:
+        fig.update_yaxes(title=f"{pair_name} price", secondary_y=False, showgrid=True)
+    else:
+        fig.update_yaxes(title="Price $", secondary_y=False, showgrid=True)
+
     fig.update_xaxes(rangeslider={"visible": False})
 
     # Synthetic data may not have volume available

@@ -11,6 +11,7 @@ from tradeexecutor.state.state import State
 from tradeexecutor.state.visualisation import PlotKind
 from tradeexecutor.testing.synthetic_price_data import generate_ohlcv_candles
 from tradeexecutor.testing.dummy_trader import DummyTestTrader
+from tradeexecutor.visual.benchmark import visualise_benchmark
 from tradeexecutor.visual.single_pair import visualise_single_pair, export_plot_as_dataframe
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId
@@ -51,7 +52,7 @@ def test_synthetic_candles_timezone(usdc, weth, weth_usdc):
 
 def test_visualise_trades_with_indicator(usdc, weth, weth_usdc):
     """Do a single token purchase."""
-    state = State()
+    state = State(name="Visualisation test")
 
     start_date = datetime.datetime(2021, 1, 1)
     end_date = datetime.datetime(2021, 3, 1)
@@ -117,7 +118,7 @@ def test_visualise_trades_with_indicator(usdc, weth, weth_usdc):
     ts = ts.replace(minute=0, second=0)
     assert ts == pd.Timestamp("2021-1-1 00:00")
 
-    return fig
+
 
 
 

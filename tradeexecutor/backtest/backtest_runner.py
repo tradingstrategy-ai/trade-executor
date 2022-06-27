@@ -65,6 +65,9 @@ class BacktestSetup:
     decide_trades: DecideTradesProtocol
     create_trading_universe: Optional[CreateTradingUniverseProtocol]
 
+    #: Name for this backtest
+    name: str = "backtest"
+
     # strategy_module: StrategyModuleInformation
 
     def backtest_static_universe_strategy_factory(
@@ -287,7 +290,7 @@ def run_backtest(
             pass
 
     main_loop = ExecutionLoop(
-        name="backtest",
+        name=setup.name,
         command_queue=Queue(),
         execution_model=setup.execution_model,
         sync_method=setup.sync_method,
@@ -328,11 +331,15 @@ def run_backtest_inline(
     max_slippage=0.01,
     candle_time_frame: Optional[TimeBucket]=None,
     log_level=logging.WARNING,
+    name: str="backtest",
 ) -> Tuple[State, dict]:
     """Run backtests for given decide_trades and create_trading_universe functions.
 
     Does not load strategy from a separate .py file.
     Useful for running strategies directly from notebooks.
+
+    :param name:
+        Name for this backtest. If not set default to "backtest".
 
     :param start_at:
         When backtesting starts
@@ -408,7 +415,7 @@ def run_backtest_inline(
         cycle_duration=cycle_duration,  # Pick overridden cycle duration if provided
         candle_time_frame=candle_time_frame,
         wallet=wallet,
-        state=State(),
+        state=State(name=name),
         universe=universe,
         pricing_model=pricing_model,  # Will be set up later
         execution_model=execution_model,
@@ -419,6 +426,7 @@ def run_backtest_inline(
         reserve_currency=reserve_currency,
         trade_routing=trade_routing,
         trading_strategy_engine_version=CURRENT_ENGINE_VERSION,
+        name=name,
     )
 
     return run_backtest(backtest_setup, client)

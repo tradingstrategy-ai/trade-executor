@@ -26,6 +26,13 @@ from .visualisation import Visualisation
 class State:
     """The current state of the trading strategy execution."""
 
+    #: The name of this strategy.
+    #: Can be unset.
+    #: Set when the state is created.
+    name: Optional[str] = None
+
+    #: Portfolio of this strategy.
+    #: Currently only one portfolio per strategy.
     portfolio: Portfolio = field(default_factory=Portfolio)
 
     #: Portfolio and position performance records over time.
@@ -42,6 +49,9 @@ class State:
     #: Strategy visualisation and debug messages
     #: to show how the strategy is thinking.
     visualisation: Visualisation = field(default_factory=Visualisation)
+
+    def __repr__(self):
+        return f"<State for {self.name}>"
 
     def is_empty(self) -> bool:
         """This state has no open or past trades or reserves."""
