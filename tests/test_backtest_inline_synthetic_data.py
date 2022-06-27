@@ -6,6 +6,7 @@ import random
 import datetime
 from typing import List, Dict
 
+import numpy as np
 import pytest
 
 import pandas as pd
@@ -41,9 +42,9 @@ position_size = 0.10
 
 batch_size = 90
 
-slow_ema_candle_count = 39
+slow_ema_candle_count = 20
 
-fast_ema_candle_count = 15
+fast_ema_candle_count = 5
 
 
 def decide_trades(
@@ -76,14 +77,12 @@ def decide_trades(
     fast_ema_series = ema(close, length=fast_ema_candle_count)
 
     if slow_ema_series is None or fast_ema_series is None:
-        # Cannot calculate EMA, because
-        # not enough samples in backtesting
+        # Cannot calculate EMA, because not enough samples in backtesting.
+        # Return no trades made.
         return []
 
     slow_ema = slow_ema_series.iloc[-1]
     fast_ema = fast_ema_series.iloc[-1]
-
-    # print("Slow EMA is", slow_ema)
 
     # Get the last close price from close time series
     # that's Pandas's Series object
@@ -167,6 +166,26 @@ def universe() -> TradingStrategyUniverse:
     )
 
     return TradingStrategyUniverse(universe=universe, reserve_assets=[usdc])
+
+
+def test_ema_on_universe(universe: TradingStrategyUniverse):
+    """Calculate exponential moving average on single pair candle universe."""
+    start_timestamp = pd.Timestamp("2021-6-1")
+    batch_size = 20
+    candles = universe.universe.candles.get_single_pair_data(start_timestamp, sample_count=batch_size)
+    assert len(candles) == 1
+
+    # Not enough data to calculate EMA - we haave only 1 sample
+    ema_20_series = ema(candles["close"], length=20)
+    assert ema_20_series is None
+
+    end_timestamp = pd.Timestamp("2021-12-31")
+    candles = universe.universe.candles.get_single_pair_data(end_timestamp, sample_count=batch_size)
+    assert len(candles) == batch_size
+
+    ema_20_series = ema(candles["close"], length=20)
+    assert pd.isna(ema_20_series.iloc[-2])
+    assert float(ema_20_series.iloc[-1]) == pytest.approx(1955.019773)
 
 
 def test_run_inline_synthetic_backtest(

@@ -24,10 +24,8 @@ def export_trade_for_dataframe(t: TradeExecution, marker_size=12) -> dict:
         label = f"Faild trade"
     else:
         if t.is_sell():
-            marker = dict(symbol='triangle-down-open')
             label = f"Sell {t.pair.base.token_symbol} @ {t.executed_price}"
         else:
-            marker = dict(symbol='triangle-up-open')
             label = f"Buy {t.pair.base.token_symbol} @ {t.executed_price}"
 
     # See Plotly Scatter usage https://stackoverflow.com/a/61349739/315168
@@ -35,8 +33,8 @@ def export_trade_for_dataframe(t: TradeExecution, marker_size=12) -> dict:
         "timestamp": t.executed_at,
         "success": t.is_success(),
         "type": t.is_buy() and "buy" or "sell",
-        "marker": marker,
         "label": label,
+        "price": t.executed_price,
     }
 
 
@@ -62,7 +60,7 @@ def export_plot_as_dataframe(plot: Plot) -> pd.DataFrame:
     return df
 
 
-def add_technical_indicators(fig: go.Figure, visualisation: Visualisation):
+def visualise_technical_indicators(fig: go.Figure, visualisation: Visualisation):
     """Draw technical indicators over candle chart."""
 
     # https://plotly.com/python/graphing-multiple-chart-types/
@@ -71,13 +69,12 @@ def add_technical_indicators(fig: go.Figure, visualisation: Visualisation):
         start_ts = df["timestamp"].min()
         end_ts = df["timestamp"].max()
         logger.info(f"Visualisation {plot_id} has data for range {start_ts} - {end_ts}")
-
         fig.add_trace(go.Scatter(
             x=df["timestamp"],
             y=df["value"],
             mode="lines",
             name=plot.name,
-            line=dict(color=plot.color),
+            line=dict(color=plot.colour),
         ))
 
 
@@ -94,24 +91,26 @@ def visualise_trades(
     fig.add_trace(
         go.Scatter(
             name="Buys",
-            mode="markers+text",
+            mode="markers",
             x=buys_df["timestamp"],
-            y=candles["high"],
+            y=buys_df["price"],
             text=buys_df["label"],
-            marker={"symbol": "triangle-up-open"}
-        )
+            marker={"symbol": 'triangle-right', "size": 12, "line": {"width": 2, "color": "black"}},
+        ),
+        secondary_y=False,
     )
 
     # Sells
     fig.add_trace(
         go.Scatter(
             name="Sells",
-            mode="markers+text",
+            mode="markers",
             x=sells_df["timestamp"],
             y=candles["high"],
             text=sells_df["label"],
-            marker={"symbol": "triangle-up-open"}
-        )
+            marker={"symbol": 'triangle-right', "size": 12, "line": {"width": 2, "color": "black"}}
+        ),
+        secondary_y=False,
     )
 
     return fig
@@ -130,8 +129,6 @@ def visualise_single_pair(
 
     assert candle_universe.get_pair_count() == 1, "visualise_single_pair() can be only used for a trading universe with a single pair"
     candles = candle_universe.get_single_pair_data()
-
-    first_trade, last_trade = state.portfolio.get_first_and_last_executed_trade()
 
     if not start_ts:
         # No trades made, use the first candle timestamp
@@ -164,11 +161,11 @@ def visualise_single_pair(
         showlegend=False
     )
 
-    fig = make_subplots(specs=[[{"secondary_y": True}]])
-    fig.add_trace(candlesticks, secondary_y=True)
+    fig = make_subplots(specs=[[{"secondary_y": False}]])
 
     fig.update_layout(title="Backtest results", height=800)
-    fig.update_yaxes(title="Price $", secondary_y=True, showgrid=True)
+    fig.update_yaxes(title="Price $", secondary_y=False, showgrid=True)
+    fig.update_xaxes(rangeslider={"visible": False})
 
     # Synthetic data may not have volume available
     if "volume" in candles.columns:
@@ -180,10 +177,12 @@ def visualise_single_pair(
                 "color": "rgba(128,128,128,0.5)",
             }
         )
-        fig.add_trace(volume_bars, secondary_y=False)
-        fig.update_yaxes(title="Volume $", secondary_y=False, showgrid=False)
+        fig.add_trace(volume_bars, secondary_y=True)
+        fig.update_yaxes(title="Volume $", secondary_y=True, showgrid=False)
 
-    add_technical_indicators(fig, state.visualisation)
+    fig.add_trace(candlesticks, secondary_y=False)
+
+    visualise_technical_indicators(fig, state.visualisation)
 
     # Add trade markers if any trades have been made
     if len(trades_df) > 0:

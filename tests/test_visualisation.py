@@ -84,14 +84,14 @@ def test_visualise_trades_with_indicator(usdc, weth, weth_usdc):
     pos, trade = trader.sell_with_price_data(weth_usdc, sell_q_1, candle_universe)
     assert trade.is_sell()
     assert pos.get_quantity() == pytest.approx(Decimal('4.949999999999999955591079015'))
-    state.visualisation.plot_indicator(trader.ts, "Test indicator", PlotKind.technical_indicator_on_price, 1700)
+    state.visualisation.plot_indicator(trader.ts, "Test indicator", PlotKind.technical_indicator_on_price, 1700, colour="aqua")
 
     # Day 2
     # Sell 5 ETH at 1800 USD/ETH
     trader.time_travel(end_date)
     pos, trade = trader.sell_with_price_data(weth_usdc, sell_q_2, candle_universe)
     assert pos.get_quantity() == 0
-    state.visualisation.plot_indicator(trader.ts, "Test indicator", PlotKind.technical_indicator_on_price, 1700)
+    state.visualisation.plot_indicator(trader.ts, "Test indicator", PlotKind.technical_indicator_on_price, 1700, colour="azure")
 
     assert len(list(state.portfolio.get_all_trades())) == 3
     assert len(state.portfolio.open_positions) == 0
