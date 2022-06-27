@@ -106,9 +106,9 @@ def visualise_trades(
             name="Sells",
             mode="markers",
             x=sells_df["timestamp"],
-            y=candles["high"],
+            y=sells_df["price"],
             text=sells_df["label"],
-            marker={"symbol": 'triangle-right', "size": 12, "line": {"width": 2, "color": "black"}}
+            marker={"symbol": 'triangle-left', "size": 12, "line": {"width": 2, "color": "black"}}
         ),
         secondary_y=False,
     )
