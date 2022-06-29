@@ -164,6 +164,8 @@ class Portfolio:
         Trade can be opened by knowing how much you want to buy (quantity) or how much cash you have to buy (reserve).
         """
 
+        assumed_price = float(assumed_price)  # convert from numpy.float32
+
         if quantity is not None:
             assert reserve is None, "Quantity and reserve both cannot be given at the same time"
 

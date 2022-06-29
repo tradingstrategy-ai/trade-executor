@@ -128,8 +128,8 @@ def test_synthetic_candles(
     """Generate synthetic candle data."""
 
     start, end = synthetic_universe.universe.candles.get_timestamp_range()
-    assert start == pd.Timestamp('2021-06-01 00:00:00+0000', tz='UTC')
-    assert end == pd.Timestamp('2021-12-31 00:00:00+0000', tz='UTC')
+    assert start == pd.Timestamp('2021-06-01 00:00:00')
+    assert end == pd.Timestamp('2021-12-31 00:00:00')
 
     candles_for_pair = synthetic_universe.universe.candles.get_candles_by_pair(555)
     start = candles_for_pair.iloc[0]["timestamp"]

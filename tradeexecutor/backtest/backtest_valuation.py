@@ -12,6 +12,7 @@ class BacktestValuationModel(ValuationModel):
     """Re-value assets based on their on-chain backtest dataset price."""
 
     def __init__(self, pricing_model: BacktestSimplePricingModel):
+        assert pricing_model, "pricing_model missing"
         self.pricing_model = pricing_model
 
     def __call__(self,

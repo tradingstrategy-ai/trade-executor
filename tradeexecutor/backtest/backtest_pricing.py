@@ -62,7 +62,7 @@ class BacktestSimplePricingModel(PricingModel):
                        ) -> USDollarAmount:
         # TODO: Include price impact
         pair_id = pair.internal_id
-        return self.universe.universe.candles.get_closest_price(pair_id, ts)
+        return float(self.universe.universe.candles.get_closest_price(pair_id, ts))
 
     def quantize_base_quantity(self, pair: TradingPairIdentifier, quantity: Decimal, rounding=ROUND_DOWN) -> Decimal:
         """Convert any base token quantity to the native token units by its ERC-20 decimals."""

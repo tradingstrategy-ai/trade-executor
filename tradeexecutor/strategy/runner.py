@@ -214,6 +214,8 @@ class StrategyRunner(abc.ABC):
         # Create a pricing model for assets
         pricing_model = self.pricing_model_factory(self.execution_model, universe, self.routing_model)
 
+        assert pricing_model, "pricing_model_factory did not return a value"
+
         # Create a valuation model for positions
         valuation_model = self.valuation_model_factory(pricing_model)
 
@@ -235,6 +237,8 @@ class StrategyRunner(abc.ABC):
         with self.timed_task_context_manager("strategy_tick", clock=clock):
 
             routing_state, pricing_model, valuation_model = self.setup_routing(universe)
+
+            assert pricing_model, "Routing did not provide pricing_model"
 
             # Watch incoming deposits
             with self.timed_task_context_manager("sync_portfolio"):

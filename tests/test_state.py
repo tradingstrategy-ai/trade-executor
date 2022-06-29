@@ -82,7 +82,7 @@ def single_asset_portfolio(start_ts, weth_usdc, weth, usdc) -> Portfolio:
         pair=weth_usdc,
         opened_at = start_ts,
         planned_quantity = Decimal(0.1),
-        planned_price=1670,
+        planned_price=1670.0,
         planned_reserve=Decimal(167),
         reserve_currency = usdc,
         started_at = start_ts,

@@ -272,10 +272,15 @@ def run_backtest(
     store = NoneStore(setup.state)
 
     def pricing_model_factory(execution_model, universe, routing_model):
-        return setup.pricing_model
+        if setup.pricing_model:
+            # Use pricing model given inline
+            return setup.pricing_model
+
+        # Construct a backtest pricing model
+        return BacktestSimplePricingModel(universe, routing_model)
 
     def valuation_model_factory(pricing_model):
-        return BacktestValuationModel(setup.pricing_model)
+        return BacktestValuationModel(pricing_model)
 
     if not setup.universe:
         def backtest_setup(state: State, universe: TradingStrategyUniverse, deposit_syncer: BacktestSyncer):
