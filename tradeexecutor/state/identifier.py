@@ -70,6 +70,7 @@ class AssetIdentifier:
 
         Convert decimal to fixed point integer.
         """
+        assert isinstance(amount, Decimal), "Input only exact numbers for the conversion, not fuzzy ones like floats"
         assert self.decimals is not None, f"Cannot perform human to raw token amount conversion, because no decimals given: {self}"
         return int(amount * Decimal(10**self.decimals))
 
@@ -95,6 +96,9 @@ class TradingPairIdentifier:
 
     #: How this asset is referred in the internal database
     internal_id: Optional[int] = None
+
+    #: What is the internal exchange id of this trading pair.
+    internal_exchange_id: Optional[int] = None
 
     #: Info page URL for this trading pair e.g. with the price charts
     info_url: Optional[str] = None

@@ -240,7 +240,7 @@ def hot_wallet(web3: Web3, busd_token: Contract, hot_wallet_private_key: HexByte
 @pytest.fixture()
 def strategy_path() -> Path:
     """Where do we load our strategy file."""
-    return Path(os.path.join(os.path.dirname(__file__), "../strategies", "frozen_asset.py"))
+    return Path(os.path.join(os.path.dirname(__file__), "../../strategies/test_only", "frozen_asset.py"))
 
 
 @pytest.fixture()
@@ -272,7 +272,7 @@ def pair_universe(web3, exchange_universe: ExchangeUniverse, wbnb_busd_pair, bit
 def universe(web3, exchange_universe: ExchangeUniverse, pair_universe: PandasPairUniverse) -> Universe:
     """Get our trading universe."""
     return Universe(
-        time_frame=TimeBucket.d1,
+        time_bucket=TimeBucket.d1,
         chains=[ChainId(web3.eth.chain_id)],
         exchanges=list(exchange_universe.exchanges.values()),
         pairs=pair_universe,
@@ -293,7 +293,7 @@ def universe_model(universe, supported_reserves) -> StaticUniverseModel:
 @pytest.fixture()
 def strategy_path() -> Path:
     """Where do we load our strategy file."""
-    return Path(os.path.join(os.path.dirname(__file__), "../strategies", "frozen_asset.py"))
+    return Path(os.path.join(os.path.dirname(__file__), "../../strategies/test_only", "frozen_asset.py"))
 
 
 @pytest.fixture()

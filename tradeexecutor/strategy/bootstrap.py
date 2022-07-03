@@ -4,7 +4,7 @@ from pathlib import Path
 import logging
 
 from tradeexecutor.strategy.description import StrategyExecutionDescription
-from tradeexecutor.strategy.factory import StrategyFactory
+from tradeexecutor.strategy.factory import StrategyFactory, make_runner_for_strategy_mod
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +25,11 @@ def import_strategy_file(path: Path) -> StrategyFactory:
 
     strategy_exports = runpy.run_path(path)
 
+    # Strategy v0.1 loading
+    if "trading_strategy_engine_version" in strategy_exports:
+        return make_runner_for_strategy_mod(strategy_exports)
+
+    # Legacy path
     strategy_runner = strategy_exports.get(FACTORY_VAR_NAME)
     if strategy_runner is None:
         raise BadStrategyFile(f"{path} Python module does not declare {FACTORY_VAR_NAME} module variable")

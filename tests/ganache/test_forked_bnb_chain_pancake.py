@@ -16,6 +16,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import List
 
+import flaky
 import pytest
 from eth_account import Account
 from eth_typing import HexAddress, HexStr
@@ -199,7 +200,7 @@ def hot_wallet(web3: Web3, busd_token: Contract, hot_wallet_private_key: HexByte
 @pytest.fixture()
 def strategy_path() -> Path:
     """Where do we load our strategy file."""
-    return Path(os.path.join(os.path.dirname(__file__), "../strategies", "pancakeswap_v2_main_loop.py"))
+    return Path(os.path.join(os.path.dirname(__file__), "../../strategies/test_only", "pancakeswap_v2_main_loop.py"))
 
 
 @pytest.fixture()
@@ -242,6 +243,8 @@ def routing_model(asset_busd):
         reserve_token_address=asset_busd.address)
 
 
+# Flaky because Ganache
+@flaky.flaky
 def test_forked_pancake(
         logger: logging.Logger,
         web3: Web3,

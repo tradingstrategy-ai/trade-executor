@@ -19,14 +19,15 @@ from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, deploy_uniswap_v
 from eth_defi.uniswap_v2.fees import estimate_buy_quantity
 from tradeexecutor.ethereum.execution import get_current_price, get_held_assets
 from tradeexecutor.ethereum.universe import create_pair_universe
-from tradeexecutor.ethereum.wallet import sync_reserves, sync_portfolio
+from tradeexecutor.ethereum.wallet import sync_reserves
+from tradeexecutor.state.sync import apply_sync_events
 from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeStatus
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.testing.ethereumtrader import EthereumTestTrader, execute_trades_simple
-from tradeexecutor.testing.trader import DummyTestTrader
+from tradeexecutor.testing.dummy_trader import DummyTestTrader
 
 
 @pytest.fixture
@@ -194,7 +195,7 @@ def portfolio(web3, hot_wallet, start_ts, supported_reserves) -> Portfolio:
     """
     portfolio = Portfolio()
     events = sync_reserves(web3, start_ts, hot_wallet.address, [], supported_reserves)
-    sync_portfolio(portfolio, events)
+    apply_sync_events(portfolio, events)
     return portfolio
 
 

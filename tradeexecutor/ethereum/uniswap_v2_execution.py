@@ -67,6 +67,9 @@ class UniswapV2ExecutionModel(ExecutionModel):
         """Which chain the live execution is connected to."""
         return self.web3.eth.chain_id
 
+    def is_live_trading(self):
+        return True
+
     def preflight_check(self):
         """Check that we can connect to the web3 node"""
 
@@ -108,7 +111,7 @@ class UniswapV2ExecutionModel(ExecutionModel):
 
         state.start_trades(datetime.datetime.utcnow(), trades, max_slippage=self.max_slippage)
 
-        routing_model.execute_trades(
+        routing_model.setup_trades(
             routing_state,
             trades,
             check_balances=check_balances)

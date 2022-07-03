@@ -63,13 +63,16 @@ class RoutingModel(abc.ABC):
         """
 
     @abc.abstractmethod
-    def execute_trades(self,
-                       state: RoutingState,
-                       trades: List[TradeExecution],
-                       check_balances=False):
-        """Executes the trades decided by a strategy.
+    def setup_trades(self,
+                     state: RoutingState,
+                     trades: List[TradeExecution],
+                     check_balances=False):
+        """Setup the trades decided by a strategy.
 
         - Decides the best way, or a way, to execute a trade
+
+        - Sets up blockchain transactions needed for trades,
+          like approves
 
         - Trade instances are mutated in-place
 
@@ -81,22 +84,3 @@ class RoutingModel(abc.ABC):
         :raise CannotExecuteTrade:
             If a trade cannot be executed, e.g. due to an unsupported pair or an exchange,
         """
-
-    @abc.abstractmethod
-    def estimate_price(self,
-                       state: RoutingState,
-                       pair: TradingPairIdentifier,
-                       quantity: Decimal,
-                       enter_position=True):
-        """Estimate the price of an asset.
-
-        - Price impact and fees are included
-
-        Used by the position revaluator to come up with the new prices
-        for the assets on every tick.
-
-        :param enter_position:
-            Estimate the price for entering the position (buy the spot) if true.
-            Otherwise estimate the price for existing the position (sell the spot).
-        """
-

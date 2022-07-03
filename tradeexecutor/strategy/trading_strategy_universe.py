@@ -4,9 +4,11 @@ import textwrap
 from abc import abstractmethod
 from dataclasses import dataclass
 import logging
-from typing import List, Optional
+from typing import List, Optional, Callable, Tuple
 
 import pandas as pd
+
+from tradeexecutor.strategy.execution_model import ExecutionContext
 from tradingstrategy.token import Token
 
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
@@ -24,10 +26,14 @@ from tradingstrategy.utils.groupeduniverse import filter_for_pairs
 logger = logging.getLogger(__name__)
 
 
+class TradingUniverseIssue(Exception):
+    """Raised in the case trading universe has some bad data etc. issues."""
+
+
 @dataclass
 class Dataset:
     """Contain raw loaded datasets."""
-    time_frame: TimeBucket
+    time_bucket: TimeBucket
     exchanges: ExchangeUniverse
     pairs: pd.DataFrame
     candles: pd.DataFrame
@@ -39,16 +45,34 @@ class TradingStrategyUniverse(TradeExecutorTradingUniverse):
     """A trading executor trading universe that using data from TradingStrategy.ai data feeds."""
     universe: Optional[Universe] = None
 
+    def validate(self):
+        """Check that the created universe looks good.
+
+        :raise TradingUniverseIssue:
+            In the case of detected issues
+        """
+        if len(self.reserve_assets) != 1:
+            raise TradingUniverseIssue(f"Only single reserve asset strategies supported for now, got {self.reserve_assets}")
+
+        for a in self.reserve_assets:
+            if a.decimals == 0:
+                raise TradingUniverseIssue(f"Reserve asset lacks decimals {a}")
+
     @staticmethod
     def create_single_pair_universe(
         dataset: Dataset,
         chain_id: ChainId,
         exchange_slug: str,
         base_token: str,
-        quote_token: str) -> "TradingStrategyUniverse":
+        quote_token: str,
+    ) -> "TradingStrategyUniverse":
         """Filters down the dataset for a single trading pair.
 
         This is ideal for strategies that only want to trade a single pair.
+
+        :param reserve_currency:
+            If set use this as a reserve currency,
+            otherwise use quote_token.
         """
 
         # We only trade on Pancakeswap v2
@@ -83,7 +107,66 @@ class TradingStrategyUniverse(TradeExecutorTradingUniverse):
         ]
 
         universe = Universe(
-            time_frame=dataset.time_frame,
+            time_bucket=dataset.time_bucket,
+            chains={chain_id},
+            pairs=pair_universe,
+            exchanges={exchange},
+            candles=candle_universe,
+            liquidity=liquidity_universe,
+        )
+
+        return TradingStrategyUniverse(universe=universe, reserve_assets=reserve_assets)
+
+    @staticmethod
+    def create_limited_pair_universe(
+        dataset: Dataset,
+        chain_id: ChainId,
+        exchange_slug: str,
+        pairs: List[Tuple[str, str]]) -> "TradingStrategyUniverse":
+        """Filters down the dataset for couple trading pair.
+
+        This is ideal for strategies that only want to trade few pairs,
+        or a single pair using three-way trading on a single exchange.
+
+        The university reserve currency is set to the quote token of the first pair.
+
+        :param pairs:
+            List of trading pairs as ticket tuples. E.g. `[ ("WBNB, "BUSD"), ("Cake", "WBNB") ]`
+
+        """
+
+        # We only trade on Pancakeswap v2
+        exchange_universe = dataset.exchanges
+        exchange = exchange_universe.get_by_chain_and_slug(chain_id, exchange_slug)
+        assert exchange, f"No exchange {exchange_slug} found on chain {chain_id.name}"
+
+        # Create trading pair database
+        pair_universe = PandasPairUniverse.create_limited_pair_universe(
+            dataset.pairs,
+            exchange,
+            pairs,
+        )
+
+        # Get daily candles as Pandas DataFrame
+        all_candles = dataset.candles
+        filtered_candles = filter_for_pairs(all_candles, pair_universe.df)
+        candle_universe = GroupedCandleUniverse(filtered_candles)
+
+        # Get liquidity candles as Pandas Dataframe
+        all_liquidity = dataset.liquidity
+        filtered_liquidity = filter_for_pairs(all_liquidity, pair_universe.df)
+        liquidity_universe = GroupedLiquidityUniverse(filtered_liquidity)
+
+        first_pair = next(iter(pair_universe.pair_map.values()))
+
+        # We have only a single pair, so the reserve asset must be its quote token
+        trading_pair_identifier = translate_trading_pair(first_pair)
+        reserve_assets = [
+            trading_pair_identifier.quote
+        ]
+
+        universe = Universe(
+            time_bucket=dataset.time_bucket,
             chains={chain_id},
             pairs=pair_universe,
             exchanges={exchange},
@@ -125,7 +208,7 @@ class TradingStrategyUniverseModel(UniverseModel):
                 Universe constructed.                    
                 
                 Time periods
-                - Time frame {universe.time_frame.value}
+                - Time frame {universe.time_bucket.value}
                 - Candle data range: {data_start} - {data_end}
                 - Liquidity data range: {liquidity_start} - {liquidity_end}
                 
@@ -146,7 +229,7 @@ class TradingStrategyUniverseModel(UniverseModel):
         :return: None if not dataset for the strategy required
         """
         client = self.client
-        with self.timed_task_context_manager("load_data", time_frame=time_frame.value):
+        with self.timed_task_context_manager("load_data", time_bucket=time_frame.value):
 
             if live:
                 # This will force client to redownload the data
@@ -160,7 +243,7 @@ class TradingStrategyUniverseModel(UniverseModel):
             candles = client.fetch_all_candles(time_frame).to_pandas()
             liquidity = client.fetch_all_liquidity_samples(time_frame).to_pandas()
             return Dataset(
-                time_frame=time_frame,
+                time_bucket=time_frame,
                 exchanges=exchanges,
                 pairs=pairs,
                 candles=candles,
@@ -208,7 +291,7 @@ class TradingStrategyUniverseModel(UniverseModel):
         liquidity_universe = GroupedLiquidityUniverse(dataset.liquidity)
 
         universe = Universe(
-            time_frame=dataset.time_frame,
+            time_bucket=dataset.time_bucket,
             chains=chains,
             pairs=pairs,
             exchanges=exchanges,
@@ -222,6 +305,39 @@ class TradingStrategyUniverseModel(UniverseModel):
     @abstractmethod
     def construct_universe(self, ts: datetime.datetime, live: bool) -> TradingStrategyUniverse:
         pass
+
+
+class DefaultTradingStrategyUniverseModel(TradingStrategyUniverseModel):
+    """Shortcut for simple strategies.
+
+    - Assumes we have a strategy that fits to :py:mod:`tradeexecutor.strategy_module` definiton
+
+    - At the start of the backtests or at each cycle of live trading, call
+      the `create_trading_universe` callback of the strategy
+
+    - Validate the output of the function
+    """
+
+    def __init__(self,
+                 client: Optional[Client],
+                 execution_context: ExecutionContext,
+                 create_trading_universe: Callable,
+                 candle_time_frame_override: Optional[TimeBucket] = None,
+                 ):
+        assert isinstance(client, Client) or client is None
+        assert isinstance(execution_context, ExecutionContext), f"Got {execution_context}"
+        assert isinstance(create_trading_universe, Callable), f"Got {create_trading_universe}"
+        self.client = client
+        self.execution_context = execution_context
+        self.create_trading_universe = create_trading_universe
+        self.candle_time_frame_override = candle_time_frame_override
+
+    def construct_universe(self, ts: datetime.datetime, live: bool) -> TradingStrategyUniverse:
+        with self.execution_context.timed_task_context_manager(task_name="create_trading_universe"):
+            universe = self.create_trading_universe(ts, self.client, self.execution_context, candle_time_frame_override=self.candle_time_frame_override)
+            assert isinstance(universe, TradingStrategyUniverse), f"Expected TradingStrategyUniverse, got {universe.__class__}"
+            universe.validate()
+            return universe
 
 
 def translate_token(token: Token) -> AssetIdentifier:
@@ -285,10 +401,12 @@ def create_pair_universe_from_code(chain_id: ChainId, pairs: List[TradingPairIde
     for idx, p in enumerate(pairs):
         assert p.base.decimals
         assert p.quote.decimals
+        assert p.internal_exchange_id, f"All trading pairs must have internal_exchange_id set, did not have it set {p}"
+        assert p.internal_id
         dex_pair = DEXPair(
-            pair_id=idx,
+            pair_id=p.internal_id,
             chain_id=chain_id,
-            exchange_id=0,
+            exchange_id=p.internal_exchange_id,
             address=p.pool_address,
             exchange_address=p.exchange_address,
             dex_type=PairType.uniswap_v2,
@@ -304,3 +422,31 @@ def create_pair_universe_from_code(chain_id: ChainId, pairs: List[TradingPairIde
         data.append(dex_pair.to_dict())
     df = pd.DataFrame(data)
     return PandasPairUniverse(df)
+
+
+def load_all_data(client: Client, time_frame: TimeBucket, execution_context: ExecutionContext) -> Dataset:
+
+    assert isinstance(client, Client)
+    assert isinstance(time_frame, TimeBucket)
+    assert isinstance(execution_context, ExecutionContext)
+
+    live = execution_context.live_trading
+    with execution_context.timed_task_context_manager("load_data", time_bucket=time_frame.value):
+        if live:
+            # This will force client to redownload the data
+            logger.info("Purging trading data caches")
+            client.clear_caches()
+        else:
+            logger.info("Using cached data if available")
+
+        exchanges = client.fetch_exchange_universe()
+        pairs = client.fetch_pair_universe().to_pandas()
+        candles = client.fetch_all_candles(time_frame).to_pandas()
+        liquidity = client.fetch_all_liquidity_samples(time_frame).to_pandas()
+        return Dataset(
+            time_bucket=time_frame,
+            exchanges=exchanges,
+            pairs=pairs,
+            candles=candles,
+            liquidity=liquidity,
+        )

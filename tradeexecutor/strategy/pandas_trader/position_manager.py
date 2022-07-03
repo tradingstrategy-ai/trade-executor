@@ -4,12 +4,11 @@ import datetime
 from decimal import Decimal
 from typing import List
 
-from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
+from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeType, TradeExecution
 from tradeexecutor.state.types import USDollarAmount
-from tradeexecutor.strategy.pandas_trader.output import StrategyOutput
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradingstrategy.pair import DEXPair
 from tradingstrategy.universe import Universe
@@ -30,15 +29,18 @@ class PositionManager:
                  universe: Universe,
                  state: State,
                  pricing_model: PricingModel,
-                 reserve_currency: AssetIdentifier,
-                 output: StrategyOutput,
                  ):
+
+        assert pricing_model, "pricing_model is needed in order to know buy/sell price of new positions"
+
         self.timestamp = timestamp
         self.universe = universe
         self.state = state
         self.pricing_model = pricing_model
+
+        reserve_currency, reserve_price = state.portfolio.get_default_reserve_currency()
+
         self.reserve_currency = reserve_currency
-        self.output = output
 
     def is_any_open(self) -> bool:
         """Do we have any positions open."""
@@ -60,22 +62,31 @@ class PositionManager:
         # Translate DEXPair object to the trading pair model
         executor_pair = translate_trading_pair(pair)
 
-        price = self.pricing_model.get_buy_price(self.timestamp, executor_pair.internal_id)
-        quantity = Decimal(value) / Decimal(price)
+        # Convert amount of reserve currency to the decimal
+        # so we can have exact numbers from this point forward
+        if type(value) == float:
+            value = Decimal(value)
+
+        price = self.pricing_model.get_buy_price(self.timestamp, executor_pair, value)
+
+        reserve_asset, reserve_price = self.state.portfolio.get_default_reserve_currency()
 
         position, trade, created = self.state.create_trade(
             self.timestamp,
-            executor_pair,
-            quantity,
-            price,
-            TradeType.rebalance,
-            self.reserve_currency,
-            1.0,  # TODO: Harcoded stablecoin USD exchange rate
+            pair=executor_pair,
+            quantity=None,
+            reserve=Decimal(value),
+            assumed_price=price,
+            trade_type=TradeType.rebalance,
+            reserve_currency=self.reserve_currency,
+            reserve_currency_price=reserve_price,
         )
 
         assert created, f"There was conflicting open position for pair: {executor_pair}"
 
-        self.output.debug(f"Opened 1x long on {pair}, position value {value} USD")
+        self.state.visualisation.add_message(
+            self.timestamp,
+            f"Opened 1x long on {pair}, position value {value} USD")
 
         return [trade]
 
@@ -91,21 +102,24 @@ class PositionManager:
 
             pair = position.pair
             value = position.get_value()
-            price = self.pricing_model.get_buy_price(self.timestamp, pair.internal_id)
+            quantity = position.get_quantity()
+            price = self.pricing_model.get_sell_price(self.timestamp, pair, quantity=quantity)
+
+            reserve_asset, reserve_price = self.state.portfolio.get_default_reserve_currency()
 
             position2, trade, created = self.state.create_trade(
                 self.timestamp,
                 pair,
-                -position.get_quantity(),  # Negative quantity = sell all
+                -quantity,  # Negative quantity = sell all
+                None,
                 price,
                 TradeType.rebalance,
-                self.reserve_currency,
-                1.0,  # TODO: Harcoded stablecoin USD exchange rate
+                reserve_asset,
+                reserve_price,  # TODO: Harcoded stablecoin USD exchange rate
             )
 
             assert position == position2, "Somehow messed up the trade"
 
             trades.append(trade)
-            self.output.debug(f"Closed position on {pair}, position currently valued at {value} USD")
 
         return trades

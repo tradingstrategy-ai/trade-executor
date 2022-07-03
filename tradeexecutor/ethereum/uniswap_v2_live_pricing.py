@@ -122,6 +122,8 @@ class UniswapV2LivePricing(PricingModel):
 
         if reserve is None:
             reserve = Decimal(self.very_small_amount)
+        else:
+            assert isinstance(reserve, Decimal), f"Reserve must be decimal, got {reserve.__class__}: {reserve}"
 
         target_pair, intermediate_pair = self.routing_model.route_pair(self.pair_universe, pair)
 

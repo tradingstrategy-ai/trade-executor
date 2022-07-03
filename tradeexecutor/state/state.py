@@ -18,6 +18,7 @@ from .reserve import ReservePosition
 from .statistics import Statistics
 from .trade import TradeExecution, TradeStatus, TradeType
 from .types import USDollarAmount
+from .visualisation import Visualisation
 
 
 @dataclass_json
@@ -25,13 +26,17 @@ from .types import USDollarAmount
 class State:
     """The current state of the trading strategy execution."""
 
+    #: The name of this strategy.
+    #: Can be unset.
+    #: Set when the state is created.
+    name: Optional[str] = None
+
+    #: Portfolio of this strategy.
+    #: Currently only one portfolio per strategy.
     portfolio: Portfolio = field(default_factory=Portfolio)
 
     #: Portfolio and position performance records over time.
     stats: Statistics = field(default_factory=Statistics)
-
-    #: Strategy can store its internal thinking over different signals
-    strategy_thinking: dict = field(default_factory=dict)
 
     #: Assets that the strategy is not allowed to touch,
     #: or have failed to trade in the past, resulting to a frozen position.
@@ -40,6 +45,13 @@ class State:
     #: The main motivation of this list is to avoid assets that caused a freeze in the future.
     #: Key is Ethereum address, lowercased.
     asset_blacklist: Set[str] = field(default_factory=set)
+
+    #: Strategy visualisation and debug messages
+    #: to show how the strategy is thinking.
+    visualisation: Visualisation = field(default_factory=Visualisation)
+
+    def __repr__(self):
+        return f"<State for {self.name}>"
 
     def is_empty(self) -> bool:
         """This state has no open or past trades or reserves."""
@@ -119,10 +131,10 @@ class State:
         position = self.portfolio.find_position_for_trade(trade)
 
         if trade.is_buy():
-            assert executed_amount > 0
+            assert executed_amount and executed_amount > 0, f"Executed amount was {executed_amount}"
         else:
-            assert executed_reserve > 0, f"Executed amount must be negative for sell, got {executed_amount}, {executed_reserve}"
-            assert executed_amount < 0
+            assert executed_reserve > 0, f"Executed reserve must be positive for sell, got amount:{executed_amount}, reserve:{executed_reserve}"
+            assert executed_amount < 0, f"Executed amount must be negative for sell, got amount:{executed_amount}, reserve:{executed_reserve}"
 
         trade.mark_success(executed_at, executed_price, executed_amount, executed_reserve, lp_fees, native_token_price)
 

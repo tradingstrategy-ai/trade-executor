@@ -31,7 +31,8 @@ from eth_defi.utils import is_localhost_port_listening
 from tradeexecutor.ethereum.execution import broadcast_and_resolve
 from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2RoutingState, UniswapV2SimpleRoutingModel, OutOfBalance
-from tradeexecutor.ethereum.wallet import sync_reserves, sync_portfolio
+from tradeexecutor.ethereum.wallet import sync_reserves
+from tradeexecutor.state.sync import apply_sync_events
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.state import State
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
@@ -200,6 +201,7 @@ def cake_busd_trading_pair(cake_asset, busd_asset, pancakeswap_v2) -> TradingPai
         busd_asset,
         "0x804678fa97d91B974ec2af3c843270886528a9E6",  #  https://tradingstrategy.ai/trading-view/binance/pancakeswap-v2/cake-busd
         internal_id=1000,  # random number
+        internal_exchange_id=1000,  # random number
         exchange_address=pancakeswap_v2.factory.address,
     )
 
@@ -210,7 +212,8 @@ def bnb_busd_trading_pair(bnb_asset, busd_asset, pancakeswap_v2) -> TradingPairI
         bnb_asset,
         busd_asset,
         "0x58f876857a02d6762e0101bb5c46a8c1ed44dc16",  #  https://tradingstrategy.ai/trading-view/binance/pancakeswap-v2/bnb-busd
-        internal_id=1000,  # random number
+        internal_id=1001,  # random number
+        internal_exchange_id=1000,  # random number
         exchange_address=pancakeswap_v2.factory.address,
     )
 
@@ -222,7 +225,8 @@ def cake_bnb_trading_pair(cake_asset, bnb_asset, pancakeswap_v2) -> TradingPairI
         cake_asset,
         bnb_asset,
         "0x0ed7e52944161450477ee417de9cd3a859b14fd0",  #  https://tradingstrategy.ai/trading-view/binance/pancakeswap-v2/cake-bnb
-        internal_id=1000,  # random number
+        internal_id=1002,  # random number
+        internal_exchange_id=1000,  # random number
         exchange_address=pancakeswap_v2.factory.address,
     )
 
@@ -264,7 +268,7 @@ def portfolio(web3, hot_wallet, busd_asset) -> Portfolio:
     portfolio = Portfolio()
     events = sync_reserves(web3, datetime.datetime.utcnow(), hot_wallet.address, [], [busd_asset])
     assert len(events) > 0
-    sync_portfolio(portfolio, events)
+    apply_sync_events(portfolio, events)
     reserve_currency, exchange_rate = portfolio.get_default_reserve_currency()
     assert reserve_currency == busd_asset
     return portfolio
@@ -788,6 +792,11 @@ def test_stateful_routing_three_legs(
 
     trader = PairUniverseTestTrader(state)
 
+    reserve = pair_universe.get_token(busd_asset.address)
+    if not reserve:
+        all_tokens = pair_universe.get_all_tokens()
+        assert reserve, f"Reserve asset {busd_asset.address} missing in the universe {busd_asset}, we have {all_tokens}"
+
     # Buy Cake via BUSD -> BNB pool for 100 USD
     trades = [
         trader.buy(cake_bnb_trading_pair, Decimal(100))
@@ -797,6 +806,7 @@ def test_stateful_routing_three_legs(
     assert t.is_buy()
     assert t.reserve_currency == busd_asset
     assert t.pair == cake_bnb_trading_pair
+
 
     state.start_trades(datetime.datetime.utcnow(), trades)
     routing_model.execute_trades_internal(pair_universe, routing_state, trades, check_balances=True)

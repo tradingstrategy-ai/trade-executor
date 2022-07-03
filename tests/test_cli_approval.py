@@ -208,7 +208,7 @@ def pair_universe(web3, exchange_universe: ExchangeUniverse, weth_usdc_pair) -> 
 def universe(web3, exchange_universe: ExchangeUniverse, pair_universe: PandasPairUniverse) -> Universe:
     """Get our trading universe."""
     return Universe(
-        time_frame=TimeBucket.d1,
+        time_bucket=TimeBucket.d1,
         chains=[ChainId(web3.eth.chain_id)],
         exchanges=list(exchange_universe.exchanges.values()),
         pairs=pair_universe,
@@ -220,7 +220,7 @@ def universe(web3, exchange_universe: ExchangeUniverse, pair_universe: PandasPai
 @pytest.fixture()
 def strategy_path() -> Path:
     """Where do we load our strategy file."""
-    return Path(os.path.join(os.path.dirname(__file__), "strategies", "random_eth_usdc.py"))
+    return Path(os.path.join(os.path.dirname(__file__), "../strategies/test_only", "random_eth_usdc.py"))
 
 
 @pytest.fixture()

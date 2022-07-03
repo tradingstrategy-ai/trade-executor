@@ -530,10 +530,10 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
         # Now all trades have transactions associated with them.
         # We can start to execute transactions.
 
-    def execute_trades(self,
-                       routing_state: UniswapV2RoutingState,
-                       trades: List[TradeExecution],
-                       check_balances=False):
+    def setup_trades(self,
+                     routing_state: UniswapV2RoutingState,
+                     trades: List[TradeExecution],
+                     check_balances=False):
         """Strategy and live execution connection.
 
         Turns abstract strategy trades to real blockchain transactions.
@@ -553,25 +553,6 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
 
         """
         return self.execute_trades_internal(routing_state.pair_universe, routing_state, trades, check_balances)
-
-    def estimate_price(self,
-                       state: RoutingState,
-                       pair: TradingPairIdentifier,
-                       quantity: Decimal,
-                       enter_position=True):
-        """Estimate the price of an asset.
-
-        - Price impact and fees are included
-
-        Used by the position revaluator to come up with the new prices
-        for the assets on every tick.
-        """
-        raise NotImplementedError()
-        #universe = state.universe
-        #assert universe.universe.pairs is not None, "Pairs are required"
-        #pair_universe = universe.universe.pairs
-        #trading_pair, intermediate_pair = self.route_pair(pair_universe)
-        #if enter_position:
 
     def create_routing_state(self,
                      universe: TradeExecutorTradingUniverse,

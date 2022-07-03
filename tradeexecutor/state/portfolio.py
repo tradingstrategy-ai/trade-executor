@@ -1,3 +1,5 @@
+"""Portfolio state management."""
+
 import datetime
 from dataclasses import dataclass, field
 from decimal import Decimal
@@ -15,7 +17,7 @@ from tradeexecutor.state.types import USDollarAmount
 
 
 class NotEnoughMoney(Exception):
-    """We try to allocate reserve for a buy, but do not have enough it."""
+    """We try to allocate reserve for a buy trade, but do not have cash."""
 
 
 
@@ -162,6 +164,8 @@ class Portfolio:
         Trade can be opened by knowing how much you want to buy (quantity) or how much cash you have to buy (reserve).
         """
 
+        assumed_price = float(assumed_price)  # convert from numpy.float32
+
         if quantity is not None:
             assert reserve is None, "Quantity and reserve both cannot be given at the same time"
 
@@ -246,7 +250,10 @@ class Portfolio:
         assert trade.is_buy()
 
         reserve = trade.get_planned_reserve()
-        available = self.reserves[trade.reserve_currency.get_identifier()].quantity
+        try:
+            available = self.reserves[trade.reserve_currency.get_identifier()].quantity
+        except KeyError as e:
+            raise RuntimeError(f"Reserve missing for {trade.reserve_currency}") from e
 
         # Sanity check on price calculatins
         assert abs(float(reserve) - trade.get_planned_value()) < 0.01, f"Trade {trade}: Planned value {trade.get_planned_value()}, but wants to allocate reserve currency for {reserve}"
@@ -346,3 +353,17 @@ class Portfolio:
             if t.executed_at and (t.executed_at > last.executed_at):
                 last = t
         return first, last
+
+    def get_initial_deposit(self) -> USDollarAmount:
+        """How much we invested at the beginning of a backtest.
+
+        - Assumes we track the performance against the US dollar
+
+        - Assume there has been only one deposit event
+
+        - This deposit happened at the start of the backtest
+        """
+
+        assert len(self.reserves) == 1
+        reserve = next(iter(self.reserves.values()))
+        return float(reserve.initial_deposit) * reserve.initial_deposit_reserve_token_price

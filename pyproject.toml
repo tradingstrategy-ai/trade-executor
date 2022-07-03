@@ -31,6 +31,7 @@ WebTest = "^3.0.0"
 pyramid-openapi3 = "^0.13"
 python-logging-discord-handler = "^0.1.3"
 APScheduler = "^3.9.1"
+pandas-ta = "^0.3.14-beta.0"
 
 [tool.poetry.dev-dependencies]
 pytest = "^6.2.5"
@@ -45,6 +46,7 @@ build-backend = "poetry.core.masonry.api"
 trade-executor = 'tradeexecutor.cli.main:app'
 
 [tool.pytest.ini_options]
+addopts = "-s --tb=native"
 testpaths = [
     "tests",
 ]

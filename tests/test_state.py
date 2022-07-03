@@ -19,7 +19,7 @@ from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.statistics.core import update_statistics
-from tradeexecutor.testing.trader import DummyTestTrader
+from tradeexecutor.testing.dummy_trader import DummyTestTrader
 from tradingstrategy.chain import ChainId
 from tradingstrategy.types import USDollarAmount
 
@@ -82,7 +82,7 @@ def single_asset_portfolio(start_ts, weth_usdc, weth, usdc) -> Portfolio:
         pair=weth_usdc,
         opened_at = start_ts,
         planned_quantity = Decimal(0.1),
-        planned_price=1670,
+        planned_price=1670.0,
         planned_reserve=Decimal(167),
         reserve_currency = usdc,
         started_at = start_ts,

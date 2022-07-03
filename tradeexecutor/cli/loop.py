@@ -11,16 +11,18 @@ from typing import Optional, Callable
 from apscheduler.executors.pool import ThreadPoolExecutor
 from apscheduler.schedulers.blocking import BlockingScheduler
 
+from tqdm.auto import tqdm
+
 from tradeexecutor.state.state import State
 from tradeexecutor.state.store import StateStore
 from tradeexecutor.state.sync import SyncMethod
 from tradeexecutor.statistics.core import update_statistics
 from tradeexecutor.strategy.approval import ApprovalModel
 from tradeexecutor.strategy.description import StrategyExecutionDescription
-from tradeexecutor.strategy.execution_model import ExecutionModel
+from tradeexecutor.strategy.execution_model import ExecutionModel, ExecutionContext
 from tradeexecutor.strategy.pricing_model import PricingModelFactory
 from tradeexecutor.strategy.runner import StrategyRunner
-from tradeexecutor.strategy.tick import TickSize, snap_to_next_tick, snap_to_previous_tick
+from tradeexecutor.strategy.cycle import CycleDuration, snap_to_next_tick, snap_to_previous_tick
 from tradeexecutor.strategy.universe_model import UniverseModel, TradeExecutorTradingUniverse
 from tradeexecutor.strategy.valuation import ValuationModelFactory
 from tradeexecutor.utils.timer import timed_task
@@ -46,14 +48,15 @@ class ExecutionLoop:
             store: StateStore,
             client: Optional[Client],
             strategy_factory: Callable,
-            tick_size: TickSize,
+            cycle_duration: CycleDuration,
             stats_refresh_frequency: datetime.timedelta,
             max_data_delay: Optional[datetime.timedelta]=None,
             reset=False,
             max_cycles: Optional[int]=None,
             debug_dump_file: Optional[Path]=None,
-            backtest_start: Optional[datetime.datetime]=None,
-            backtest_end: Optional[datetime.datetime]=None,
+            backtest_start: Optional[datetime.datetime] =None,
+            backtest_end: Optional[datetime.datetime] = None,
+            backtest_setup: Optional[Callable[[State], None]] = None,
             tick_offset: datetime.timedelta=datetime.timedelta(minutes=0),
             trade_immediately=False,
         ):
@@ -63,8 +66,12 @@ class ExecutionLoop:
             # https://www.python.org/dev/peps/pep-3102/
             raise TypeError("Only keyword arguments accepted")
 
+        self.cycle_duration = cycle_duration
+
         args = locals().copy()
         args.pop("self")
+
+        # TODO: Spell out individual variables for type hinting support
         self.__dict__.update(args)
 
         self.timed_task_context_manager = timed_task
@@ -80,11 +87,13 @@ class ExecutionLoop:
         if self.reset:
             # Create empty state and save it
             state = self.store.create()
+            state.name = self.name
             self.store.sync(state)
         else:
             if self.store.is_empty():
                 # Create empty state and save it
                 state = self.store.create()
+                state.name = self.name
                 self.store.sync(state)
             else:
                 state = self.store.load()
@@ -118,7 +127,7 @@ class ExecutionLoop:
         assert isinstance(unrounded_timestamp, datetime.datetime)
         assert isinstance(state, State)
 
-        ts = snap_to_previous_tick(unrounded_timestamp, self.tick_size)
+        ts = snap_to_previous_tick(unrounded_timestamp, self.cycle_duration)
 
         # This Python dict collects internal debugging data through this cycle.
         # Any submodule of strategy execution can add internal information here for
@@ -148,6 +157,10 @@ class ExecutionLoop:
         # Run cycle checks
         self.runner.pretick_check(ts, universe)
 
+        if cycle == 1 and self.backtest_setup is not None:
+            # The hook to set up backtest initial balance
+            self.backtest_setup(state, universe, self.sync_method)
+
         # Execute the strategy tick and trades
         self.runner.tick(ts, universe, state, debug_details)
 
@@ -158,9 +171,9 @@ class ExecutionLoop:
         self.store.sync(state)
 
         # Store debug trace
-        if self.debug_dump_file is not None:
-            self.debug_dump_state[cycle] = debug_details
+        self.debug_dump_state[cycle] = debug_details
 
+        if self.debug_dump_file is not None:
             # Record and write out the internal debug states after every tick
             with open(self.debug_dump_file, "wb") as out:
                 pickle.dump(self.debug_dump_state, out)
@@ -196,7 +209,7 @@ class ExecutionLoop:
         # Store the current state to disk
         self.store.sync(state)
 
-    def run_backtest(self, state: State):
+    def run_backtest(self, state: State) -> dict:
         """Backtest loop."""
 
         ts = self.backtest_start
@@ -205,31 +218,55 @@ class ExecutionLoop:
 
         cycle = 1
         universe = None
-        while True:
 
-            universe = self.tick(ts, state, cycle, live=False, backtesting_universe=universe)
+        range = self.backtest_end - self.backtest_start
 
-            self.update_position_valuations(ts, state, universe)
+        ts_format = "%Y-%m-%d"
 
-            # Check for termination in integration testing
-            if self.max_cycles is not None:
-                if cycle >= self.max_cycles:
-                    logger.info("Max backtest cycles reached")
+        friendly_start = self.backtest_start.strftime(ts_format)
+        friendly_end = self.backtest_end.strftime(ts_format)
+
+        seconds = int(range.total_seconds())
+
+        with tqdm(total=seconds) as progress_bar:
+            while True:
+
+                ts = snap_to_previous_tick(ts, self.cycle_duration)
+
+                # Bump progress bar forward and update backtest status
+                progress_bar.update(int(self.cycle_duration.to_timedelta().total_seconds()))
+                friedly_ts = ts.strftime(ts_format)
+                trade_count = len(list(state.portfolio.get_all_trades()))
+                progress_bar.set_description(f"Backtesting {self.name}, {friendly_start}-{friendly_end} at {friedly_ts}, total {trade_count:,} trades")
+
+                # Decide trades and everything for this cycle
+                universe = self.tick(ts, state, cycle, live=False, backtesting_universe=universe)
+
+                # Revalue our portfolio
+                self.update_position_valuations(ts, state, universe)
+
+                # Check for termination in integration testing.
+                # TODO: Get rid of this and only support date ranges to run tests
+                if self.max_cycles is not None:
+                    if cycle >= self.max_cycles:
+                        logger.info("Max backtest cycles reached")
+                        break
+
+                # Advance to the next tick
+                cycle += 1
+
+                # Backtesting
+                next_tick = snap_to_next_tick(ts + datetime.timedelta(seconds=1), self.cycle_duration, self.tick_offset)
+
+                if next_tick >= self.backtest_end:
+                    # Backteting has ended
+                    logger.info("Terminating backtesting. Backtest end %s, current timestamp %s", self.backtest_end, next_tick)
                     break
 
-            # Advance to the next tick
-            cycle += 1
+                # Add some fuzziness to gacktesting timestamps
+                ts = next_tick + datetime.timedelta(minutes=random.randint(0, 4))
 
-            # Backtesting
-            next_tick = snap_to_next_tick(ts + datetime.timedelta(seconds=1), self.tick_size, self.tick_offset)
-
-            if next_tick >= self.backtest_end:
-                # Backteting has ended
-                logger.info("Terminating backesting. Backtest end %s, current timestamp %s", self.backtest_end, next_tick)
-                break
-
-            # Add some fuzziness to gacktesting timestamps
-            ts = next_tick + datetime.timedelta(minutes=random.randint(0, 4))
+            return self.debug_dump_state
 
     def run_live(self, state: State):
         """Run live trading cycle."""
@@ -281,7 +318,7 @@ class ExecutionLoop:
         }
         start_time = datetime.datetime(1970, 1, 1)
         scheduler = BlockingScheduler(executors=executors, timezone=datetime.timezone.utc)
-        scheduler.add_job(live_cycle, 'interval', seconds=self.tick_size.to_timedelta().total_seconds(), start_date=start_time + self.tick_offset)
+        scheduler.add_job(live_cycle, 'interval', seconds=self.cycle_duration.to_timedelta().total_seconds(), start_date=start_time + self.tick_offset)
         scheduler.add_job(live_positions, 'interval', seconds=self.stats_refresh_frequency.total_seconds(), start_date=start_time)
         try:
             scheduler.start()
@@ -291,7 +328,9 @@ class ExecutionLoop:
             raise
         logger.info("Scheduler finished - down the live trading loop")
 
-    def run(self):
+        return self.debug_dump_state
+
+    def run(self) -> dict:
         """The main loop of trade executor.
 
         Main entry point to the loop.
@@ -301,9 +340,10 @@ class ExecutionLoop:
         - Loads or creates the initial state
 
         - Sets up strategy runner
-        """
 
-        assert self.tick_size is not None
+        :return:
+            Debug state where each key is the cycle number
+        """
 
         if self.backtest_end or self.backtest_start:
             assert self.backtest_start and self.backtest_end, f"If backtesting both start and end must be given, we have {self.backtest_start} - {self.backtest_end}"
@@ -312,8 +352,16 @@ class ExecutionLoop:
 
         self.init_execution_model()
 
+        live_trading = self.backtest_start is None
+
+        execution_context = ExecutionContext(
+            live_trading=live_trading,
+            timed_task_context_manager=self.timed_task_context_manager,
+        )
+
         run_description: StrategyExecutionDescription = self.strategy_factory(
             execution_model=self.execution_model,
+            execution_context=execution_context,
             timed_task_context_manager=self.timed_task_context_manager,
             sync_method=self.sync_method,
             valuation_model_factory=self.valuation_model_factory,
@@ -326,6 +374,12 @@ class ExecutionLoop:
         # Deconstruct strategy input
         self.runner: StrategyRunner = run_description.runner
         self.universe_model = run_description.universe_model
+
+        # Load cycle_duration from v0.1 strategies
+        if run_description.cycle_duration:
+            self.cycle_duration = run_description.cycle_duration
+
+        assert self.cycle_duration is not None, "Did not get strategy cycle duration from constructor or strategy run description"
 
         if self.backtest_start:
             # Walk through backtesting range
