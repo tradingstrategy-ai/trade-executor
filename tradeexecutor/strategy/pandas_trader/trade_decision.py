@@ -6,17 +6,18 @@ import pandas as pd
 
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
-from tradeexecutor.state.visualisation import Visualisation
-from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradingstrategy.universe import Universe
 
 
-# For typing.Protocol see https://stackoverflow.com/questions/68472236/type-hint-for-callable-that-takes-kwargs
 class TradeDecider(typing.Protocol):
     """A callable that decides on new trades for every cycle.
 
+    This class provides `callable type hinting <https://stackoverflow.com/questions/68472236/type-hint-for-callable-that-takes-kwargs>`_.
     Called for each cycle and returns new trades to be executed.
+
+    Can be given inline or is a function called `decide_trades`
+    in a strategy module.
     """
 
     # Only accept kwargs as per https://www.python.org/dev/peps/pep-3102/

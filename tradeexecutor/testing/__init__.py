@@ -1,1 +1,1 @@
-"""Unit test utilities"""
+"""Unit testing helpers."""

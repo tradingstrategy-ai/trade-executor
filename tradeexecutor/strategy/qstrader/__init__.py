@@ -1,0 +1,1 @@
+"""QSTrader portfolio construction model based strategy types."""

@@ -1,4 +1,4 @@
-"""A strategy runner that does simple execution of trades based on Pandas calculations."""
+"""A strategy runner that executes Trading Strategy Pandas type strategies."""
 
 import datetime
 from typing import List, Optional

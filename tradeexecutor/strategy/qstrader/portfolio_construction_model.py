@@ -1,3 +1,4 @@
+"""Portfolio construction model translates alpha model to risk managed trades."""
 import datetime
 import logging
 from typing import Optional, Dict, List, Tuple

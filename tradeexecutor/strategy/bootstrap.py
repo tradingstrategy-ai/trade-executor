@@ -1,7 +1,15 @@
-import runpy
+"""Loading Python strategy modules.
+
+.. warning ::
+
+    Deprecated.
+
+See :py:mod:`strategy_module` instead.
+
+"""
+]import runpy
 from contextlib import AbstractContextManager
 from pathlib import Path
-import logging
 
 from tradeexecutor.strategy.description import StrategyExecutionDescription
 from tradeexecutor.strategy.factory import StrategyFactory, make_runner_for_strategy_mod

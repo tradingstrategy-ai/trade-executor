@@ -1,8 +1,8 @@
+"""Generate trades for backtesting."""
+
 import datetime
 from decimal import Decimal
 from typing import Tuple, Optional
-
-import pandas as pd
 
 from tradeexecutor.backtest.backtest_execution import BacktestExecutionModel
 from tradeexecutor.backtest.backtest_pricing import BacktestSimplePricingModel
@@ -12,7 +12,6 @@ from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
-from tradingstrategy.candle import GroupedCandleUniverse
 
 
 class BacktestTrader:

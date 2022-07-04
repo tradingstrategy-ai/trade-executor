@@ -1,3 +1,9 @@
+"""Trading Strategy oracle data integration.
+
+Define trading universe based on data from :py:mod:`tradingstrategy` and
+market data feeds.
+"""
+
 import contextlib
 import datetime
 import textwrap
@@ -341,6 +347,13 @@ class DefaultTradingStrategyUniverseModel(TradingStrategyUniverseModel):
 
 
 def translate_token(token: Token) -> AssetIdentifier:
+    """Translate Trading Strategy token data definition to trade executor.
+
+    Trading Strategy client uses compressed columnar data for pairs and tokens.
+
+    Creates `AssetIdentifier` based on data coming from
+    Trading Strategy :py:class:`tradingstrategy.pair.PandasPairUniverse`.
+    """
     return AssetIdentifier(
         token.chain_id.value,
         token.address,
@@ -350,7 +363,9 @@ def translate_token(token: Token) -> AssetIdentifier:
 
 
 def translate_trading_pair(pair: DEXPair) -> TradingPairIdentifier:
-    """Translate trading pair from Pandas universe to Trade Executor universe.
+    """Translate trading pair from client download to the trade executor.
+
+    Trading Strategy client uses compressed columnar data for pairs and tokens.
 
     Translates a trading pair presentation from Trading Strategy client Pandas format to the trade executor format.
 
@@ -425,6 +440,21 @@ def create_pair_universe_from_code(chain_id: ChainId, pairs: List[TradingPairIde
 
 
 def load_all_data(client: Client, time_frame: TimeBucket, execution_context: ExecutionContext) -> Dataset:
+    """Load all pair, candle and liquidity data for a given time bucket.
+
+    - Backtest data is never reloaded
+
+    - Live trading purges old data fiels and reloads data
+
+    :param client:
+        Trading Strategy client instance
+
+    :param time_frame:
+        Candle time bucket to load
+
+    :param execution_context:
+        Defines if we are live or backtesting
+    """
 
     assert isinstance(client, Client)
     assert isinstance(time_frame, TimeBucket)

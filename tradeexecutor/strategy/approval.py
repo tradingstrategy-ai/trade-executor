@@ -1,3 +1,14 @@
+"""Trade approval models.
+
+Trade execution can have a separate approval step
+
+- :py:class:`UncheckedApprovalModel`: all trades are automatically executed
+
+- :py:class:`tradeexecutor.cli.approval.CLIApprovalModel`:
+  trades need to be approved in a command line text user interface (TUI)
+
+"""
+
 import abc
 import enum
 from typing import List
