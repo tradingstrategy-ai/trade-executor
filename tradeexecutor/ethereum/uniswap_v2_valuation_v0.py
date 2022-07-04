@@ -1,3 +1,10 @@
+"""Protoype model of Uniswap v2 pricing.
+
+.. warning::
+
+    Deprecated. Will be removed.
+"""
+
 import datetime
 from typing import Tuple
 

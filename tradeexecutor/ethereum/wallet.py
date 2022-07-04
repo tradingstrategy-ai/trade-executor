@@ -1,3 +1,5 @@
+"""Deposit and withdraw detection and management."""
+
 import logging
 import dataclasses
 import datetime
