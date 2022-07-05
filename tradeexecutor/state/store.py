@@ -1,3 +1,4 @@
+"""State serialisation to disk and JavaScript clients."""
 import abc
 import enum
 import os
