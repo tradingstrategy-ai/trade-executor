@@ -1,3 +1,12 @@
+"""Type aliases for state data structures.
+
+.. note::
+
+    We are currently supporting Python 3.9.
+    Type alias support won't land until Python 3.10,
+    so work here is much unfinished.
+
+"""
 import datetime
 
 # Wait until NumPy supports Python 3.10 on macOS

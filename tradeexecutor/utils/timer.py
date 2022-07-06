@@ -1,3 +1,8 @@
+"""Function wall clock time tracking.
+
+Provide helpers to understand which parts of the hot code paths take most of the time.
+"""
+
 import contextlib
 import datetime
 import logging

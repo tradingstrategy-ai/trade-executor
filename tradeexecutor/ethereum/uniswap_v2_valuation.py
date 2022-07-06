@@ -1,3 +1,8 @@
+"""Value model based on Uniswap v2 market price.
+
+Value positions based on their "dump" price on Uniswap,
+assuming we get the worst possible single trade execution.
+"""
 import datetime
 from typing import Tuple
 

@@ -1,3 +1,4 @@
+"""Strategy runner for QSTrader based strategies."""
 import datetime
 from io import StringIO
 from typing import List, Optional

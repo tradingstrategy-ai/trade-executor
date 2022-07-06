@@ -1,3 +1,5 @@
+"""Convert portfolio weightings to US dollar sized buy and sell trades."""
+
 import logging
 from decimal import Decimal
 from typing import Dict, Tuple

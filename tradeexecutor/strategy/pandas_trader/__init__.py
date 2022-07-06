@@ -1,0 +1,1 @@
+"""Trading Strategy internal strategy types using Pandas data and decide_trades functino."""

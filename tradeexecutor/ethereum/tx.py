@@ -1,4 +1,4 @@
-"""Transaction helpers."""
+"""EVM transaction construction."""
 import datetime
 import logging
 from typing import List

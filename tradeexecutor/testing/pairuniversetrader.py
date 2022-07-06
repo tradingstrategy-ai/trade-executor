@@ -1,4 +1,4 @@
-"""Ethereum test trading."""
+"""Absract PairUniverse trade generator."""
 
 import datetime
 from decimal import Decimal
@@ -9,7 +9,7 @@ from tradeexecutor.state.identifier import TradingPairIdentifier
 
 
 class PairUniverseTestTrader:
-    """Helper class to create trades for testing..
+    """Helper class to create trades for testing.
 
     Trades are executed by the routing model.
     """

@@ -1,5 +1,14 @@
+"""Strategy execution model.
+
+Currently supported models
+
+- Backtesting via :py:mod:`tradeexecutor.backtest.backtest_execution`
+
+- Live execution against Uniswap v2 via :py:mod:`tradeexecutor.ethereum.uniswap_v2_execution`
+"""
 import abc
 import datetime
+import enum
 from dataclasses import dataclass
 from typing import List, Callable
 
@@ -86,3 +95,29 @@ class ExecutionModel(abc.ABC):
             Check that on-chain accounts have enough balance before creating transaction objects.
             Useful during unit tests to spot issues in trade routing.
         """
+
+
+class TradeExecutionType(enum.Enum):
+    """Default execution options.
+
+    What kind of trade instruction execution model the strategy does.
+
+    Give options for command line parameters and such.
+
+    TODO: Clean up unused options.
+    """
+
+    #: Does not make any trades, just captures and logs them
+    dummy = "dummy"
+
+    #: Server-side normal Ethereum private eky account
+    uniswap_v2_hot_wallet = "uniswap_v2_hot_wallet"
+
+    #: Trading using Enzyme Protocol pool, single oracle mode
+    single_oracle_pooled = "single_oracle_pooled"
+
+    #: Trading using oracle network, oracles form a consensus using a judge smart contract
+    multi_oracle_judged = "multi_oracle_judged"
+
+    #: Simulate execution using backtest data
+    backtest = "backtest"

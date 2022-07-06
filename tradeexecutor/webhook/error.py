@@ -1,3 +1,4 @@
+"""Web server error management."""
 import json
 import logging
 

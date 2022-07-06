@@ -1,3 +1,4 @@
+"""Simple trade generator without execution."""
 import datetime
 from decimal import Decimal
 from typing import Tuple

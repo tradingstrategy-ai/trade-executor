@@ -1,4 +1,4 @@
-"""Management for positions open and closing instructions."""
+"""Positions open and closing management."""
 
 import datetime
 from decimal import Decimal

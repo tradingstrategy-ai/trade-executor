@@ -1,10 +1,17 @@
+"""Tracking of blockchain transactions.
+
+- Creating transactions and signing them from hot wallet
+
+- Broadcasting and tracking transaction mining status
+
+- Resolving succeed or failed transactions to succeed or failed trades
+
+"""
 import datetime
 from dataclasses import dataclass
 from typing import Optional, Any, Dict, Tuple
 
 from dataclasses_json import dataclass_json
-from eth_account._utils.typed_transactions import TypedTransaction
-from hexbytes import HexBytes
 
 from eth_defi.tx import decode_signed_transaction
 from tradeexecutor.state.types import JSONHexAddress, JSONHexBytes

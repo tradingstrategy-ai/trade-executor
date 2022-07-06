@@ -1,4 +1,4 @@
-"""Pyramid web framefork event handlers."""
+"""Pyramid web framework event handlers."""
 
 from pyramid.events import NewResponse, subscriber
 

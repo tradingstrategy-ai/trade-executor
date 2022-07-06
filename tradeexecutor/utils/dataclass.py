@@ -1,4 +1,12 @@
-"""Dataclass helpers."""
+"""Dataclass helpers.
+
+Help
+
+- Describing blockchain data in Python `dataclass`
+
+- Serialise this data with :py:mod:`dataclasses_json`
+"""
+
 from dataclasses_json import DataClassJsonMixin
 
 

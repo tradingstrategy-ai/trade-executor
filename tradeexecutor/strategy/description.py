@@ -1,3 +1,8 @@
+"""Strategy execution description.
+
+Describe core parameters for the strategy execution for the main loop.
+"""
+
 from dataclasses import dataclass
 from typing import Optional
 

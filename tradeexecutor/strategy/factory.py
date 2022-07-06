@@ -1,4 +1,7 @@
-""""Strategy factory is the end point to the loaded strategies."""
+"""Strategy initialisation using factory design pattern.
+
+Bind loaded strategies to the execution environment.
+"""
 
 from typing import Protocol, Optional
 

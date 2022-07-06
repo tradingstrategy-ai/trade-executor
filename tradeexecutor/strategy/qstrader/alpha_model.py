@@ -1,3 +1,4 @@
+"""Alpha model defines which trading pairs are likely to go up."""
 import abc
 from typing import Dict
 

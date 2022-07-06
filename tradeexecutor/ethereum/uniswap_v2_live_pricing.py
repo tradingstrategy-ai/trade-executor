@@ -1,3 +1,8 @@
+"""Uniswap v2 live pricing.
+
+Directly asks Uniswap v2 asset price from Uniswap pair contract
+and JSON-RPC API.
+"""
 import logging
 import datetime
 from decimal import Decimal, ROUND_DOWN

@@ -1,3 +1,5 @@
+"""API function entrypoints."""
+
 import os
 import logging
 import pkg_resources
