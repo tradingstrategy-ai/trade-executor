@@ -2,27 +2,21 @@
 
 # Trade Executor
 
-A trade executor is a Python framework to execute trades. It is designed for live trading and backtesting 
-of algorithmic trading strategies on decentralised markets.
+Trade Executor is a Python framework for algorithmic trading strategy execution. 
 
 ## Features
 
-- Live trading, paper trading and backtesting
-- Maintain the strategy state on disk 
-- Webhooks to tick trading strategy ticks
-- Manual confirmation of trades when needed 
-
-## Supported exchanges, blockchains and strategy types
-
-- All EVM compatible blockchains: Ethereum mainnet, BNB chain, Polygon, Avalanche, etc.
-- All Uniswap v2 compatible exchanges: SushiSwap, PancakeSwap, Trader Joe, QuickSwap, etc.
-- Portfolio rebalancing strategies via [QSTrade](https://github.com/tradingstrategy-ai/qstrader/)
+- [High quality documentation](https://tradingstrategy.ai/docs/)
+- Support [decentralised markets like Uniswap, PancakeSwap](https://tradingstrategy.ai/docs/overview/supported-markets.html) 
+- [Live trading](https://tradingstrategy.ai/docs/running/live-trading.html) and [backtesting](https://tradingstrategy.ai/docs/running/backtesting.html)  
+- [Webhook web server](https://tradingstrategy.ai/docs/running/webhook.html) for web and JavaScript integration
+- Run the strategy execution as [Python application or Docker container](https://tradingstrategy.ai/docs/running/cli.html)
 
 ## More information
 
+- [Read documentation on running and backtesting strategies](https://tradingstrategy.ai/docs/running/index.html)
 - Visit [Trading Strategy website to learn about algorithmic trading on decentralised exchanges](https://tradingstrategy.ai)
 - [Join the Discord for any questions](https://tradingstrategy.ai/community)
-- For technical information see [docs](./docs)
 
 ## License 
 
