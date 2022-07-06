@@ -38,7 +38,7 @@ class QSTraderRunner(StrategyRunner):
         # TODO: Make starter configuration
         self.cash_buffer = cash_buffer
 
-        assert kwargs.get("routing_model"), "Routing model missing"
+        assert kwargs.get("user_supplied_routing_model"), "Routing model missing"
 
     def report_strategy_thinking(self, clock: datetime.datetime, universe: TradingStrategyUniverse, state: State, trades: List[TradeExecution], debug_details: dict):
         """Report alpha model status."""

@@ -25,7 +25,7 @@ class StrategyType(enum.Enum):
 
     #: Pandas + position manager based strategy.
     #: Uses position_manager instance to tell what trades to do.
-    position_manager = "position_manager"
+    managed_positions = "managed_positions"
 
     #: Alpha model based strategy.
     #: Return alpha weightings of assets it wants to buy.
@@ -42,7 +42,7 @@ class TradeRouting(enum.Enum):
     quickswap_basic = "quickswap_basic"
 
     #: Use user supplied routing model
-    routing_model = "routing_model"
+    user_supplied_routing_model = "user_supplied_routing_model"
 
 
 class ReserveCurrency(enum.Enum):

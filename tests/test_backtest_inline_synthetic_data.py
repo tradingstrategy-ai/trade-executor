@@ -211,7 +211,7 @@ def test_run_inline_synthetic_backtest(
         universe=universe,
         initial_deposit=10_000,
         reserve_currency=ReserveCurrency.busd,
-        trade_routing=TradeRouting.routing_model,
+        trade_routing=TradeRouting.user_supplied_routing_model,
         routing_model=routing_model,
         log_level=logging.WARNING,
     )
@@ -243,7 +243,7 @@ def test_analyse_synthetic_trading_portfolio(
         universe=universe,
         initial_deposit=10_000,
         reserve_currency=ReserveCurrency.busd,
-        trade_routing=TradeRouting.routing_model,
+        trade_routing=TradeRouting.user_supplied_routing_model,
         routing_model=routing_model,
         log_level=logging.WARNING,
     )
@@ -300,7 +300,7 @@ def test_benchmark_synthetic_trading_portfolio(
         universe=universe,
         initial_deposit=10_000,
         reserve_currency=ReserveCurrency.busd,
-        trade_routing=TradeRouting.routing_model,
+        trade_routing=TradeRouting.user_supplied_routing_model,
         routing_model=routing_model,
         log_level=logging.WARNING,
     )

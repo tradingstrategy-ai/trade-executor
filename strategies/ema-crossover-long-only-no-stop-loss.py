@@ -31,7 +31,7 @@ trading_strategy_engine_version = "0.1"
 
 # What kind of strategy we are running.
 # This tells we are going to use
-trading_strategy_type = StrategyType.position_manager
+trading_strategy_type = StrategyType.managed_positions
 
 # How our trades are routed.
 # PancakeSwap basic routing supports two way trades with BUSD

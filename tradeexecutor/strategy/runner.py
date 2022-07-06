@@ -33,7 +33,7 @@ class PreflightCheckFailed(Exception):
 class StrategyRunner(abc.ABC):
     """A base class for a strategy live trade executor.
 
-    TODO: Make routing_model non-optional after eliminating legacy code.
+    TODO: Make user_supplied_routing_model non-optional after eliminating legacy code.
     """
 
     def __init__(self,
