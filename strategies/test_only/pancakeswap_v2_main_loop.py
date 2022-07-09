@@ -204,6 +204,10 @@ class MomentumAlphaModel(AlphaModel):
                 # This trading pair is too funny that we do not want to play with it
                 continue
 
+            if (not pair.base_token_symbol) or (not pair.quote_token_symbol):
+                # Questionable pair
+                continue
+
             # We define momentum as how many % the trading pair price gained yesterday
             momentum = (close - open) / open
             momentum = max(0, momentum)

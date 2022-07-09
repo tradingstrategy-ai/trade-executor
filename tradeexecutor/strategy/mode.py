@@ -3,13 +3,24 @@ import enum
 
 
 class ExecutionMode(enum.Enum):
-    """How trade execution is handled."""
+    """Different execution modes the strategy engine can hvae."""
 
-    #: Real thing
-    live_trade = "live_trade"
+    #: We are live trading with real assets
+    real_trading = "real_trading"
 
-    #: Calculate positions with live ticks, but do not execute any trades
-    paper_trade = "paper_trade"
+    #: We are live trading with mock assets
+    #: TODO: This mode is not yet supported
+    paper_trading = "paper_trading"
 
-    #: Calculate positions with past ticks and simulate past trades
-    backtest = "backtest"
+    #: We are backtesting
+    backtesting = "backtesting"
+
+    #: We are loading and caching datasets before a backtesting session can begin.
+    #: We call create_trading_universe() and assume :py:class:`tradingstrategy.client.Client`
+    #: class is set to a such state it can display nice progress bar when loading
+    #: data in a Jupyter notebook.
+    data_preload = "data_preload"
+
+    def is_live_trading(self) -> bool:
+        """Are we trading with real money or paper money real time?"""
+        return self.value in (self.real_trading, self.paper_trading)

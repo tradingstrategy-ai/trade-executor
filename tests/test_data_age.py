@@ -3,7 +3,7 @@ import datetime
 
 import pytest
 
-from tradeexecutor.strategy.universe_model import TradeExecutorTradingUniverse, DataTooOld
+from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse, DataTooOld
 from tradingstrategy.client import Client
 
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverseModel
@@ -13,7 +13,7 @@ from tradingstrategy.timebucket import TimeBucket
 
 class DataAgeTestUniverseModel(TradingStrategyUniverseModel):
 
-    def construct_universe(self, ts: datetime.datetime, live: bool) -> TradeExecutorTradingUniverse:
+    def construct_universe(self, ts: datetime.datetime, live: bool) -> StrategyExecutionUniverse:
         # d1 data is used by other tests and cached
         dataset = self.load_data(TimeBucket.d1, live=False)
         # Pair index takes long time to construct and is not needed for the test

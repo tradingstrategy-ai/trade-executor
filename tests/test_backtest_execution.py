@@ -22,7 +22,8 @@ from tradeexecutor.backtest.simulated_wallet import SimulatedWallet
 from tradeexecutor.cli.log import setup_pytest_logging
 from tradeexecutor.ethereum.default_routes import get_pancake_default_routing_parameters
 from tradeexecutor.state.state import State
-from tradeexecutor.strategy.execution_model import ExecutionContext, ExecutionMode
+from tradeexecutor.strategy.execution_model import ExecutionContext
+from tradeexecutor.strategy.mode import ExecutionMode
 from tradeexecutor.strategy.trading_strategy_universe import load_all_data, TradingStrategyUniverse, \
     translate_trading_pair
 from tradeexecutor.utils.timer import timed_task

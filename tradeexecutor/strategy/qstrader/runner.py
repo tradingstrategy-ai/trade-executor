@@ -23,7 +23,14 @@ logger = logging.getLogger(__name__)
 
 
 class QSTraderRunner(StrategyRunner):
-    """A live trading executor for QSTrade based algorithm."""
+    """A live trading executor for QSTrade based algorithm.
+
+    .. warning::
+
+        This is legacy alpha code and will be deprecated.
+
+
+    """
 
     def __init__(self, *args, alpha_model: AlphaModel, max_data_age: Optional[datetime.timedelta] = None, cash_buffer=0.05, **kwargs):
         """

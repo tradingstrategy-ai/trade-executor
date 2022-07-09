@@ -244,7 +244,7 @@ def routing_model(asset_busd):
 
 
 # Flaky because Ganache
-@flaky.flaky
+@flaky.flaky(max_runs=5)
 def test_forked_pancake(
         logger: logging.Logger,
         web3: Web3,

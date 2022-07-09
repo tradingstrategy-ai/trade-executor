@@ -4,7 +4,8 @@ from typing import Optional
 
 import pandas as pd
 
-from tradeexecutor.strategy.execution_model import ExecutionContext, ExecutionMode
+from tradeexecutor.strategy.execution_model import ExecutionContext
+from tradeexecutor.strategy.mode import ExecutionMode
 from tradeexecutor.strategy.strategy_module import CreateTradingUniverseProtocol
 from tradeexecutor.utils.timer import timed_task
 from tradingstrategy.client import Client
