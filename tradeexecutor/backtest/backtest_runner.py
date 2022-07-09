@@ -22,7 +22,7 @@ from tradeexecutor.state.store import NoneStore
 from tradeexecutor.strategy.approval import UncheckedApprovalModel, ApprovalModel
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.description import StrategyExecutionDescription
-from tradeexecutor.strategy.execution_model import ExecutionContext
+from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.strategy.factory import make_runner_for_strategy_mod
 from tradeexecutor.strategy.pandas_trader.runner import PandasTraderRunner
 from tradeexecutor.strategy.pandas_trader.trade_decision import TradeDecider

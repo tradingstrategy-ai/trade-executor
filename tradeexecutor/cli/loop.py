@@ -19,8 +19,8 @@ from tradeexecutor.state.sync import SyncMethod
 from tradeexecutor.statistics.core import update_statistics
 from tradeexecutor.strategy.approval import ApprovalModel
 from tradeexecutor.strategy.description import StrategyExecutionDescription
-from tradeexecutor.strategy.execution_model import ExecutionModel, ExecutionContext
-from tradeexecutor.strategy.mode import ExecutionMode
+from tradeexecutor.strategy.execution_model import ExecutionModel
+from tradeexecutor.strategy.execution_context import ExecutionMode, ExecutionContext
 from tradeexecutor.strategy.pricing_model import PricingModelFactory
 from tradeexecutor.strategy.runner import StrategyRunner
 from tradeexecutor.strategy.cycle import CycleDuration, snap_to_next_tick, snap_to_previous_tick

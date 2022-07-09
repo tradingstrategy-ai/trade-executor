@@ -15,8 +15,7 @@ from typing import List, Optional, Callable, Tuple
 import pandas as pd
 
 from tradeexecutor.backtest.data_preload import preload_data
-from tradeexecutor.strategy.execution_model import ExecutionContext
-from tradeexecutor.strategy.mode import ExecutionMode
+from tradeexecutor.strategy.execution_context import ExecutionMode, ExecutionContext
 from tradingstrategy.token import Token
 
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
@@ -351,7 +350,6 @@ class DefaultTradingStrategyUniverseModel(TradingStrategyUniverseModel):
 
         - Not triggered in live trading, as universe changes between cycles
         """
-        # Do a nice load with progress bar
         with self.execution_context.timed_task_context_manager(task_name="preload_universe"):
             preload_data(
                 self.client,

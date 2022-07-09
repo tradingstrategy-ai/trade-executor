@@ -1,21 +1,20 @@
 """Backtesting dataset load progress baring."""
 
-from typing import Optional
+from typing import Optional, Callable
 
 import pandas as pd
 
-from tradeexecutor.strategy.execution_model import ExecutionContext
-from tradeexecutor.strategy.mode import ExecutionMode
-from tradeexecutor.strategy.strategy_module import CreateTradingUniverseProtocol
-from tradeexecutor.utils.timer import timed_task
 from tradingstrategy.client import Client
 from tradingstrategy.environment.jupyter import download_with_tqdm_progress_bar
 from tradingstrategy.timebucket import TimeBucket
 
+from tradeexecutor.strategy.execution_context import ExecutionMode, ExecutionContext
+from tradeexecutor.utils.timer import timed_task
+
 
 def preload_data(
         client: Client,
-        create_trading_universe: CreateTradingUniverseProtocol,
+        create_trading_universe: Callable,
         candle_time_frame_override: Optional[TimeBucket]=None,
 ):
     """Show nice progress bar for setting up data fees for backtesting trading universe.

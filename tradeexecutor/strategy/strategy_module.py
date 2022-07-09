@@ -7,8 +7,7 @@ import pandas
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.cycle import CycleDuration
-from tradeexecutor.strategy.execution_model import ExecutionContext
-from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
+from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradingstrategy.client import Client
@@ -144,6 +143,7 @@ class CreateTradingUniverseProtocol(Protocol):
             The trading universe also contains information about the reserve asset,
             usually stablecoin, we use for the strategy.
             """
+
 
 def pregenerated_create_trading_universe(universe: TradingStrategyUniverse) -> CreateTradingUniverseProtocol:
     """Wrap existing trading universe, so it can be passed around for universe generators."""

@@ -12,7 +12,7 @@ from tradeexecutor.backtest.data_preload import preload_data
 from tradeexecutor.cli.log import setup_pytest_logging
 from tradeexecutor.state.visualisation import PlotKind
 from tradeexecutor.strategy.trading_strategy_universe import load_all_data, TradingStrategyUniverse
-from tradeexecutor.strategy.execution_model import ExecutionContext
+from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradingstrategy.client import Client
 import datetime
 

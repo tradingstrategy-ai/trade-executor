@@ -9,43 +9,11 @@ Currently supported models
 import abc
 import datetime
 import enum
-from dataclasses import dataclass
-from typing import List, Callable
+from typing import List
 
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
-from tradeexecutor.strategy.mode import ExecutionMode
 from tradeexecutor.strategy.routing import RoutingModel, RoutingState
-
-
-@dataclass
-class ExecutionContext:
-    """Information about the strategy execution environment.
-
-    This is passed to `create_trading_universe` and couple of other
-    functions and they can determine and take action based
-    the mode of strategy execution.
-    """
-
-    #: What is the current mode of the execution.
-    mode: ExecutionMode
-
-    #: Python context manager for timed tasks.
-    #: Functions can use this context manager to add them to the tracing.
-    #: Used for profiling the strategy code run-time performance.
-    #: See :py:mod:`tradeexecutor.utils.timer`.
-    timed_task_context_manager: Callable
-
-    @property
-    def live_trading(self) -> bool:
-        """Are we doing live trading.
-
-        :return:
-            True if we doing live trading or paper trading.
-             False if we are operating on backtesting data.
-        """
-        return self.mode in (ExecutionMode.real_trading, ExecutionMode.paper_trading)
-
 
 
 class ExecutionModel(abc.ABC):

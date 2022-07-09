@@ -16,7 +16,8 @@ from tradingstrategy.client import Client
 from tradeexecutor.state.sync import SyncMethod
 from tradeexecutor.strategy.approval import ApprovalModel
 from tradeexecutor.strategy.description import StrategyExecutionDescription
-from tradeexecutor.strategy.execution_model import ExecutionModel, ExecutionContext
+from tradeexecutor.strategy.execution_model import ExecutionModel
+from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.strategy.pricing_model import PricingModelFactory
 from tradeexecutor.strategy.routing import RoutingModel
 from tradeexecutor.strategy.valuation import ValuationModelFactory

@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import List, Optional
 
 from tradeexecutor.state.identifier import AssetIdentifier
-from tradeexecutor.strategy.mode import ExecutionMode
+from tradeexecutor.strategy.execution_context import ExecutionMode
 
 
 class DataTooOld(Exception):

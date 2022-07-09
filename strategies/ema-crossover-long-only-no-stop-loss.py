@@ -18,7 +18,7 @@ from tradingstrategy.universe import Universe
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.cycle import CycleDuration
-from tradeexecutor.strategy.execution_model import ExecutionContext
+from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.strategy.factory import StrategyType
 from tradeexecutor.state.visualisation import Visualisation, PlotKind
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
