@@ -8,6 +8,7 @@ import pytest
 import pandas as pd
 
 from tradeexecutor.backtest.backtest_runner import run_backtest_inline
+from tradeexecutor.backtest.data_preload import preload_data
 from tradeexecutor.cli.log import setup_pytest_logging
 from tradeexecutor.state.visualisation import PlotKind
 from tradeexecutor.strategy.trading_strategy_universe import load_all_data, TradingStrategyUniverse
@@ -173,6 +174,20 @@ def create_trading_universe(
 def logger(request):
     """Setup test logger."""
     return setup_pytest_logging(request, mute_requests=False)
+
+
+def test_backtest_data_preload(
+        logger: logging.Logger,
+        persistent_test_client: Client,
+    ):
+    """Run the data preload step before a strategy backtesting begins."""
+
+    client = persistent_test_client
+
+    preload_data(
+        client,
+        create_trading_universe=create_trading_universe,
+    )
 
 
 def test_run_inline_real_backtest(

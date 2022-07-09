@@ -30,7 +30,10 @@ class ExecutionMode(enum.Enum):
     #: We are backtesting
     backtesting = "backtesting"
 
-    #: We are loading and caching datasets before a backtesting session can begin
+    #: We are loading and caching datasets before a backtesting session can begin.
+    #: We call create_trading_universe() and assume :py:class:`tradingstrategy.client.Client`
+    #: class is set to a such state it can display nice progress bar when loading
+    #: data in a Jupyter notebook.
     data_preload = "data_preload"
 
 
