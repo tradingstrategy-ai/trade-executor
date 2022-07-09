@@ -19,7 +19,7 @@ from tradeexecutor.state.sync import SyncMethod
 from tradeexecutor.statistics.core import update_statistics
 from tradeexecutor.strategy.approval import ApprovalModel
 from tradeexecutor.strategy.description import StrategyExecutionDescription
-from tradeexecutor.strategy.execution_model import ExecutionModel, ExecutionContext
+from tradeexecutor.strategy.execution_model import ExecutionModel, ExecutionContext, ExecutionMode
 from tradeexecutor.strategy.pricing_model import PricingModelFactory
 from tradeexecutor.strategy.runner import StrategyRunner
 from tradeexecutor.strategy.cycle import CycleDuration, snap_to_next_tick, snap_to_previous_tick
@@ -353,9 +353,10 @@ class ExecutionLoop:
         self.init_execution_model()
 
         live_trading = self.backtest_start is None
+        mode = ExecutionMode.live_trading if live_trading else ExecutionMode.backtesting
 
         execution_context = ExecutionContext(
-            live_trading=live_trading,
+            mode=mode,
             timed_task_context_manager=self.timed_task_context_manager,
         )
 
