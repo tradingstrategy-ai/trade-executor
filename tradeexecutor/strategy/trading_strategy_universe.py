@@ -236,7 +236,7 @@ class TradingStrategyUniverseModel(UniverseModel):
         :return: None if not dataset for the strategy required
         """
 
-        assert isinstance(mode, ExecutionMode)
+        assert isinstance(mode, ExecutionMode), f"Expected ExecutionMode, got {mode}"
 
         client = self.client
 

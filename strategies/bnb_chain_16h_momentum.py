@@ -23,6 +23,7 @@ from typing import Dict
 import pandas as pd
 
 from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2SimpleRoutingModel
+from tradeexecutor.strategy.execution_context import ExecutionMode
 from tradingstrategy.client import Client
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId
@@ -349,8 +350,8 @@ class OurUniverseModel(TradingStrategyUniverseModel):
 
             return TradingStrategyUniverse(universe=universe, reserve_assets=reserve_assets)
 
-    def construct_universe(self, execution_model: ExecutionModel, live) -> TradingStrategyUniverse:
-        dataset = self.load_data(TimeBucket.h4, live)
+    def construct_universe(self, execution_model: ExecutionModel, mode: ExecutionMode) -> TradingStrategyUniverse:
+        dataset = self.load_data(TimeBucket.h4, mode)
         universe = self.filter_universe(dataset)
         self.log_universe(universe.universe)
         return universe
