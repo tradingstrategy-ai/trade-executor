@@ -23,6 +23,7 @@ from eth_typing import HexAddress, HexStr
 from hexbytes import HexBytes
 
 from eth_defi.utils import is_localhost_port_listening
+from tradeexecutor.strategy.execution_context import ExecutionMode
 from tradingstrategy.client import Client
 from web3 import Web3, HTTPProvider
 from web3.contract import Contract
@@ -290,7 +291,7 @@ def test_forked_pancake(
     ts = datetime.datetime(2021, 12, 7)
 
     # Refresh the trading universe for this cycle
-    universe = universe_constructor.construct_universe(ts, live=False)
+    universe = universe_constructor.construct_universe(ts, ExecutionMode.real_trading)
 
     # Run cycle checks
     runner.pretick_check(ts, universe)
