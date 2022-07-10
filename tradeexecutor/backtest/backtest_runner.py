@@ -22,7 +22,7 @@ from tradeexecutor.state.store import NoneStore
 from tradeexecutor.strategy.approval import UncheckedApprovalModel, ApprovalModel
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.description import StrategyExecutionDescription
-from tradeexecutor.strategy.execution_model import ExecutionContext
+from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.strategy.factory import make_runner_for_strategy_mod
 from tradeexecutor.strategy.pandas_trader.runner import PandasTraderRunner
 from tradeexecutor.strategy.pandas_trader.trade_decision import TradeDecider
@@ -65,8 +65,11 @@ class BacktestSetup:
     decide_trades: DecideTradesProtocol
     create_trading_universe: Optional[CreateTradingUniverseProtocol]
 
+    data_preload: bool = True
+
     #: Name for this backtest
     name: str = "backtest"
+
 
     # strategy_module: StrategyModuleInformation
 
@@ -336,6 +339,7 @@ def run_backtest_inline(
     max_slippage=0.01,
     candle_time_frame: Optional[TimeBucket]=None,
     log_level=logging.WARNING,
+    data_preload=True,
     name: str="backtest",
 ) -> Tuple[State, dict]:
     """Run backtests for given decide_trades and create_trading_universe functions.
@@ -390,6 +394,10 @@ def run_backtest_inline(
     :param log_level:
         Python logging level to display log messages during the backtest run.
 
+    :param data_preload:
+        Before the backtesting begins, load and cache datasets
+        with nice progress bar to the user.
+
     :return:
         tuple (State of a completely executed strategy, debug dump dict)
     """
@@ -432,6 +440,7 @@ def run_backtest_inline(
         trade_routing=trade_routing,
         trading_strategy_engine_version=CURRENT_ENGINE_VERSION,
         name=name,
+        data_preload=data_preload,
     )
 
     return run_backtest(backtest_setup, client)

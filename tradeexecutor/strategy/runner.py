@@ -1,4 +1,7 @@
-"""Define a live strategy execution model."""
+"""Strategy execution core.
+
+Define the runner model for different strategy types.
+"""
 
 import abc
 import datetime
@@ -14,7 +17,7 @@ from tradeexecutor.state.sync import SyncMethod
 from tradeexecutor.strategy.output import output_positions, DISCORD_BREAK_CHAR, output_trades
 from tradeexecutor.strategy.pricing_model import PricingModelFactory, PricingModel
 from tradeexecutor.strategy.routing import RoutingModel
-from tradeexecutor.strategy.universe_model import TradeExecutorTradingUniverse
+from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
 
 from tradeexecutor.state.state import State
 from tradeexecutor.state.position import TradingPosition
@@ -31,9 +34,16 @@ class PreflightCheckFailed(Exception):
 
 
 class StrategyRunner(abc.ABC):
-    """A base class for a strategy live trade executor.
+    """A base class for a strategy executor.
 
-    TODO: Make routing_model non-optional after eliminating legacy code.
+    Each different strategy type needs its own runner.
+    Currently we have
+
+    - :py:class:`tradeexecutor.strategy.pandas_trader.runner.PandasTraderRunner`
+
+    - :py:class:`tradeexecutor.strategy.qstrader.runner.QSTraderRunner`
+
+    TODO: Make user_supplied_routing_model non-optional after eliminating legacy code.
     """
 
     def __init__(self,
@@ -53,7 +63,7 @@ class StrategyRunner(abc.ABC):
         self.routing_model = routing_model
 
     @abc.abstractmethod
-    def pretick_check(self, ts: datetime.datetime, universe: TradeExecutorTradingUniverse):
+    def pretick_check(self, ts: datetime.datetime, universe: StrategyExecutionUniverse):
         """Called when the trade executor instance is started.
 
         :param client: Trading Strategy client to check server versions etc.
@@ -66,7 +76,7 @@ class StrategyRunner(abc.ABC):
         """
         pass
 
-    def sync_portfolio(self, ts: datetime.datetime, universe: TradeExecutorTradingUniverse, state: State, debug_details: dict):
+    def sync_portfolio(self, ts: datetime.datetime, universe: StrategyExecutionUniverse, state: State, debug_details: dict):
         """Adjust portfolio balances based on the external events.
 
         External events include
@@ -75,7 +85,7 @@ class StrategyRunner(abc.ABC):
         - Interest accrued
         - Token rebases
         """
-        assert isinstance(universe, TradeExecutorTradingUniverse), f"Universe was {universe}"
+        assert isinstance(universe, StrategyExecutionUniverse), f"Universe was {universe}"
         reserve_assets = universe.reserve_assets
         assert len(reserve_assets) > 0, "No reserve assets available"
         assert len(reserve_assets) == 1, f"We only support strategies with a single reserve asset, got {self.reserve_assets}"
@@ -95,7 +105,7 @@ class StrategyRunner(abc.ABC):
 
     def on_clock(self,
                  clock: datetime.datetime,
-                 universe: TradeExecutorTradingUniverse,
+                 universe: StrategyExecutionUniverse,
                  pricing_model: PricingModel,
                  state: State,
                  debug_details: dict) -> List[TradeExecution]:
@@ -118,7 +128,7 @@ class StrategyRunner(abc.ABC):
         """
         return []
 
-    def report_after_sync_and_revaluation(self, clock: datetime.datetime, universe: TradeExecutorTradingUniverse, state: State, debug_details: dict):
+    def report_after_sync_and_revaluation(self, clock: datetime.datetime, universe: StrategyExecutionUniverse, state: State, debug_details: dict):
         buf = StringIO()
         portfolio = state.portfolio
         tick = debug_details.get("cycle", 1)
@@ -148,7 +158,7 @@ class StrategyRunner(abc.ABC):
 
         logger.trade(buf.getvalue())
 
-    def report_before_execution(self, clock: datetime.datetime, universe: TradeExecutorTradingUniverse, state: State, trades: List[TradeExecution], debug_details: dict):
+    def report_before_execution(self, clock: datetime.datetime, universe: StrategyExecutionUniverse, state: State, trades: List[TradeExecution], debug_details: dict):
         buf = StringIO()
         print("New trades to be executed", file=buf)
         print("", file=buf)
@@ -157,7 +167,7 @@ class StrategyRunner(abc.ABC):
         output_trades(trades, portfolio, buf)
         logger.trade(buf.getvalue())
 
-    def report_after_execution(self, clock: datetime.datetime, universe: TradeExecutorTradingUniverse, state: State, debug_details: dict):
+    def report_after_execution(self, clock: datetime.datetime, universe: StrategyExecutionUniverse, state: State, debug_details: dict):
         buf = StringIO()
         portfolio = state.portfolio
         
@@ -186,14 +196,14 @@ class StrategyRunner(abc.ABC):
             print(f"    {reserve.quantity:,.2f} {reserve.asset.token_symbol}", file=buf)
         logger.trade(buf.getvalue())
 
-    def report_strategy_thinking(self, clock: datetime.datetime, universe: TradeExecutorTradingUniverse, state: State, trades: List[TradeExecution], debug_details: dict):
+    def report_strategy_thinking(self, clock: datetime.datetime, universe: StrategyExecutionUniverse, state: State, trades: List[TradeExecution], debug_details: dict):
         """Strategy runner subclass can fill in.
 
         By default, no-op. Override in the subclass.
         """
         pass
 
-    def setup_routing(self, universe: TradeExecutorTradingUniverse):
+    def setup_routing(self, universe: StrategyExecutionUniverse):
         """Setups routing state for this cycle.
 
         :param universe:
@@ -223,7 +233,7 @@ class StrategyRunner(abc.ABC):
 
     def tick(self,
              clock: datetime.datetime,
-             universe: TradeExecutorTradingUniverse,
+             universe: StrategyExecutionUniverse,
              state: State,
              debug_details: dict) -> dict:
         """Perform the strategy main tick.
@@ -232,7 +242,7 @@ class StrategyRunner(abc.ABC):
             Mostly useful for integration testing.
         """
 
-        assert isinstance(universe, TradeExecutorTradingUniverse)
+        assert isinstance(universe, StrategyExecutionUniverse)
 
         with self.timed_task_context_manager("strategy_tick", clock=clock):
 

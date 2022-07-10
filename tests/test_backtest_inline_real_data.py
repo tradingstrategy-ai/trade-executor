@@ -8,10 +8,11 @@ import pytest
 import pandas as pd
 
 from tradeexecutor.backtest.backtest_runner import run_backtest_inline
+from tradeexecutor.backtest.data_preload import preload_data
 from tradeexecutor.cli.log import setup_pytest_logging
 from tradeexecutor.state.visualisation import PlotKind
 from tradeexecutor.strategy.trading_strategy_universe import load_all_data, TradingStrategyUniverse
-from tradeexecutor.strategy.execution_model import ExecutionContext
+from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradingstrategy.client import Client
 import datetime
 
@@ -27,7 +28,7 @@ trading_strategy_engine_version = "0.1"
 
 # What kind of strategy we are running.
 # This tells we are going to use
-trading_strategy_type = StrategyType.position_manager
+trading_strategy_type = StrategyType.managed_positions
 
 # How our trades are routed.
 # PancakeSwap basic routing supports two way trades with BUSD
@@ -173,6 +174,20 @@ def create_trading_universe(
 def logger(request):
     """Setup test logger."""
     return setup_pytest_logging(request, mute_requests=False)
+
+
+def test_backtest_data_preload(
+        logger: logging.Logger,
+        persistent_test_client: Client,
+    ):
+    """Run the data preload step before a strategy backtesting begins."""
+
+    client = persistent_test_client
+
+    preload_data(
+        client,
+        create_trading_universe=create_trading_universe,
+    )
 
 
 def test_run_inline_real_backtest(

@@ -7,7 +7,8 @@
 See :py:mod:`strategy_module` instead.
 
 """
-]import runpy
+import logging
+import runpy
 from contextlib import AbstractContextManager
 from pathlib import Path
 

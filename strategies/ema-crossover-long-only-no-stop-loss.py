@@ -18,7 +18,7 @@ from tradingstrategy.universe import Universe
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.cycle import CycleDuration
-from tradeexecutor.strategy.execution_model import ExecutionContext
+from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.strategy.factory import StrategyType
 from tradeexecutor.state.visualisation import Visualisation, PlotKind
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
@@ -31,7 +31,7 @@ trading_strategy_engine_version = "0.1"
 
 # What kind of strategy we are running.
 # This tells we are going to use
-trading_strategy_type = StrategyType.position_manager
+trading_strategy_type = StrategyType.managed_positions
 
 # How our trades are routed.
 # PancakeSwap basic routing supports two way trades with BUSD

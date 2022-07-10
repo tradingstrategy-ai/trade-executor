@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import List, Optional
 
 from tradeexecutor.state.identifier import AssetIdentifier
+from tradeexecutor.strategy.execution_context import ExecutionMode
 
 
 class DataTooOld(Exception):
@@ -12,7 +13,7 @@ class DataTooOld(Exception):
 
 
 @dataclass
-class TradeExecutorTradingUniverse:
+class StrategyExecutionUniverse:
     """Represents whatever data a strategy needs to have in order to make trading decisions.
 
     Any strategy specific subclass will handle candle/liquidity datasets.
@@ -34,18 +35,28 @@ class UniverseModel(abc.ABC):
     by refreshing the trading data from the server.
     """
 
+    def preload_universe(self):
+        """Triggered before backtesting execution.
+
+        - Load all datasets with progress bar display
+
+        - Data is saved in FS cache
+
+        - Not triggered in live trading, as universe changes between cycles
+        """
+
     @abc.abstractmethod
-    def construct_universe(self, ts: datetime.datetime, live: bool) -> TradeExecutorTradingUniverse:
+    def construct_universe(self, ts: datetime.datetime, mode: ExecutionMode) -> StrategyExecutionUniverse:
         """On each strategy tick, refresh/recreate the trading universe for the strategy.
 
         This is called in mainloop before the strategy tick. It needs to download
         any data updates since the last tick.
 
-        :param live:
-            The strategy is executed in live mode. Any cached data should be ignored.
+        :param mode:
+            Are we live trading or backtesting.
         """
 
-    def check_data_age(self, ts: datetime.datetime, universe: TradeExecutorTradingUniverse, best_before_duration: datetime.timedelta):
+    def check_data_age(self, ts: datetime.datetime, universe: StrategyExecutionUniverse, best_before_duration: datetime.timedelta):
         """Check if our data is up-to-date and we do not have issues with feeds.
 
         Ensure we do not try to execute live trades with stale data.
@@ -62,11 +73,11 @@ class StaticUniverseModel(UniverseModel):
     - trade executor is deemed to go down and up again
     """
 
-    def __init__(self, universe: TradeExecutorTradingUniverse):
-        assert isinstance(universe, TradeExecutorTradingUniverse)
+    def __init__(self, universe: StrategyExecutionUniverse):
+        assert isinstance(universe, StrategyExecutionUniverse)
         self.universe = universe
 
-    def construct_universe(self, ts: datetime.datetime, live: bool) -> TradeExecutorTradingUniverse:
+    def construct_universe(self, ts: datetime.datetime, live: bool) -> StrategyExecutionUniverse:
         """Always return the same universe copy - there is no refresh."""
         return self.universe
 

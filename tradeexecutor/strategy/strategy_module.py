@@ -7,8 +7,7 @@ import pandas
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.cycle import CycleDuration
-from tradeexecutor.strategy.execution_model import ExecutionContext
-from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
+from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradingstrategy.client import Client
@@ -25,7 +24,7 @@ class StrategyType(enum.Enum):
 
     #: Pandas + position manager based strategy.
     #: Uses position_manager instance to tell what trades to do.
-    position_manager = "position_manager"
+    managed_positions = "managed_positions"
 
     #: Alpha model based strategy.
     #: Return alpha weightings of assets it wants to buy.
@@ -42,7 +41,7 @@ class TradeRouting(enum.Enum):
     quickswap_basic = "quickswap_basic"
 
     #: Use user supplied routing model
-    routing_model = "routing_model"
+    user_supplied_routing_model = "user_supplied_routing_model"
 
 
 class ReserveCurrency(enum.Enum):
@@ -144,6 +143,7 @@ class CreateTradingUniverseProtocol(Protocol):
             The trading universe also contains information about the reserve asset,
             usually stablecoin, we use for the strategy.
             """
+
 
 def pregenerated_create_trading_universe(universe: TradingStrategyUniverse) -> CreateTradingUniverseProtocol:
     """Wrap existing trading universe, so it can be passed around for universe generators."""

@@ -19,11 +19,12 @@ from tradeexecutor.state.sync import SyncMethod
 from tradeexecutor.statistics.core import update_statistics
 from tradeexecutor.strategy.approval import ApprovalModel
 from tradeexecutor.strategy.description import StrategyExecutionDescription
-from tradeexecutor.strategy.execution_model import ExecutionModel, ExecutionContext
+from tradeexecutor.strategy.execution_model import ExecutionModel
+from tradeexecutor.strategy.execution_context import ExecutionMode, ExecutionContext
 from tradeexecutor.strategy.pricing_model import PricingModelFactory
 from tradeexecutor.strategy.runner import StrategyRunner
 from tradeexecutor.strategy.cycle import CycleDuration, snap_to_next_tick, snap_to_previous_tick
-from tradeexecutor.strategy.universe_model import UniverseModel, TradeExecutorTradingUniverse
+from tradeexecutor.strategy.universe_model import UniverseModel, StrategyExecutionUniverse
 from tradeexecutor.strategy.valuation import ValuationModelFactory
 from tradeexecutor.utils.timer import timed_task
 from tradingstrategy.client import Client
@@ -113,7 +114,7 @@ class ExecutionLoop:
              state: State,
              cycle: int,
              live: bool,
-             backtesting_universe: Optional[TradeExecutorTradingUniverse]=None):
+             backtesting_universe: Optional[StrategyExecutionUniverse]=None):
         """Run one trade execution tick.
 
         :param backtesting_universe:
@@ -143,7 +144,7 @@ class ExecutionLoop:
         if backtesting_universe is None:
 
             # Refresh the trading universe for this cycle
-            universe = self.universe_model.construct_universe(ts, live)
+            universe = self.universe_model.construct_universe(ts, ExecutionMode.real_trading)
 
             # Check if our data is stagnated and we cannot execute the strategy
             if self.max_data_delay is not None:
@@ -182,7 +183,7 @@ class ExecutionLoop:
         # for hourly revaluations
         return universe
 
-    def update_position_valuations(self, clock: datetime.datetime, state: State, universe: TradeExecutorTradingUniverse):
+    def update_position_valuations(self, clock: datetime.datetime, state: State, universe: StrategyExecutionUniverse):
         """Revalue positions and update statistics.
 
         A new statistics entry is calculated for portfolio and all of its positions
@@ -209,6 +210,14 @@ class ExecutionLoop:
         # Store the current state to disk
         self.store.sync(state)
 
+    def warm_up_backtest(self):
+        """Load backtesting trading universe.
+
+        Display progress bars for downlaod.
+        """
+        logger.info("Warming up backesting")
+        self.universe_model.preload_universe()
+
     def run_backtest(self, state: State) -> dict:
         """Backtest loop."""
 
@@ -227,6 +236,8 @@ class ExecutionLoop:
         friendly_end = self.backtest_end.strftime(ts_format)
 
         seconds = int(range.total_seconds())
+
+        self.warm_up_backtest()
 
         with tqdm(total=seconds) as progress_bar:
             while True:
@@ -275,7 +286,7 @@ class ExecutionLoop:
         logger.info("Strategy is executed in live mode, now is %s", ts)
 
         cycle = 1
-        universe: Optional[TradeExecutorTradingUniverse] = None
+        universe: Optional[StrategyExecutionUniverse] = None
 
         # The first trade will be execute immediately, despite the time offset or tick
         if self.trade_immediately:
@@ -353,9 +364,10 @@ class ExecutionLoop:
         self.init_execution_model()
 
         live_trading = self.backtest_start is None
+        mode = ExecutionMode.live_trading if live_trading else ExecutionMode.backtesting
 
         execution_context = ExecutionContext(
-            live_trading=live_trading,
+            mode=mode,
             timed_task_context_manager=self.timed_task_context_manager,
         )
 

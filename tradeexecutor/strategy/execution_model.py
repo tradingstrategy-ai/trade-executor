@@ -9,27 +9,11 @@ Currently supported models
 import abc
 import datetime
 import enum
-from dataclasses import dataclass
-from typing import List, Callable
+from typing import List
 
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.routing import RoutingModel, RoutingState
-
-
-@dataclass
-class ExecutionContext:
-    """Information about the strategy execution environment"""
-
-    #: True if we doing live trading or paper trading.
-    #: False if we are operating on backtesting data.
-    live_trading: bool
-
-    #: Python context manager for timed tasks.
-    #: Used for profiling the strategy code run-time performance.
-    #: See :py:mod:`tradeexecutor.utils.timer`.
-    timed_task_context_manager: Callable
-
 
 
 class ExecutionModel(abc.ABC):

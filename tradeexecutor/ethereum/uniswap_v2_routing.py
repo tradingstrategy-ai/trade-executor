@@ -24,7 +24,7 @@ from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniv
     translate_token
 from tradingstrategy.pair import PandasPairUniverse
 
-from tradeexecutor.strategy.universe_model import TradeExecutorTradingUniverse
+from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
 
 
 logger = logging.getLogger(__name__)
@@ -555,8 +555,8 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
         return self.execute_trades_internal(routing_state.pair_universe, routing_state, trades, check_balances)
 
     def create_routing_state(self,
-                     universe: TradeExecutorTradingUniverse,
-                     execution_details: dict) -> RoutingState:
+                             universe: StrategyExecutionUniverse,
+                             execution_details: dict) -> RoutingState:
         """Create a new routing state for this cycle.
 
         - Connect routing to web3 and hot wallet

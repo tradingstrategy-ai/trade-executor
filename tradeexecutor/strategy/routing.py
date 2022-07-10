@@ -11,7 +11,7 @@ from typing import List
 
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.trade import TradeExecution
-from tradeexecutor.strategy.universe_model import TradeExecutorTradingUniverse
+from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
 
 
 class CannotRouteTrade(Exception):
@@ -40,7 +40,7 @@ class RoutingState(abc.ABC):
     - Discarded at the end of the cycle
     """
 
-    def __init__(self, universe: "tradeexecutor.strategy.universe_model.TradeExecutorTradingUniverse"):
+    def __init__(self, universe: "tradeexecutor.strategy.universe_model.StrategyExecutionUniverse"):
         #: Each routing state is specific to the current trading universe.
         #: The trade routing will change when new pairs are added and old goes away.
         self.universe = universe
@@ -54,8 +54,8 @@ class RoutingModel(abc.ABC):
 
     @abc.abstractmethod
     def create_routing_state(self,
-                     universe: TradeExecutorTradingUniverse,
-                     execution_details: object) -> RoutingState:
+                             universe: StrategyExecutionUniverse,
+                             execution_details: object) -> RoutingState:
         """Create a new routing state for this cycle.
 
         :param execution_details:

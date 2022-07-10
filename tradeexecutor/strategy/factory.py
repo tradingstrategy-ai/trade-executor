@@ -16,7 +16,8 @@ from tradingstrategy.client import Client
 from tradeexecutor.state.sync import SyncMethod
 from tradeexecutor.strategy.approval import ApprovalModel
 from tradeexecutor.strategy.description import StrategyExecutionDescription
-from tradeexecutor.strategy.execution_model import ExecutionModel, ExecutionContext
+from tradeexecutor.strategy.execution_model import ExecutionModel
+from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.strategy.pricing_model import PricingModelFactory
 from tradeexecutor.strategy.routing import RoutingModel
 from tradeexecutor.strategy.valuation import ValuationModelFactory
@@ -87,7 +88,7 @@ def make_runner_for_strategy_mod(mod) -> StrategyFactory:
     mod_info = parse_strategy_module(mod)
     mod_info.validate()
 
-    assert mod_info.trading_strategy_type == StrategyType.position_manager, "Unsupported strategy tpe"
+    assert mod_info.trading_strategy_type == StrategyType.managed_positions, "Unsupported strategy tpe"
 
     def default_strategy_factory(
             *ignore,

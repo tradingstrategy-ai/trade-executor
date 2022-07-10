@@ -14,11 +14,12 @@ from typing import List, Optional, Callable, Tuple
 
 import pandas as pd
 
-from tradeexecutor.strategy.execution_model import ExecutionContext
+from tradeexecutor.backtest.data_preload import preload_data
+from tradeexecutor.strategy.execution_context import ExecutionMode, ExecutionContext
 from tradingstrategy.token import Token
 
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
-from tradeexecutor.strategy.universe_model import TradeExecutorTradingUniverse, UniverseModel, DataTooOld
+from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse, UniverseModel, DataTooOld
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId
 from tradingstrategy.client import Client
@@ -47,7 +48,7 @@ class Dataset:
 
 
 @dataclass
-class TradingStrategyUniverse(TradeExecutorTradingUniverse):
+class TradingStrategyUniverse(StrategyExecutionUniverse):
     """A trading executor trading universe that using data from TradingStrategy.ai data feeds."""
     universe: Optional[Universe] = None
 
@@ -226,7 +227,7 @@ class TradingStrategyUniverseModel(UniverseModel):
                 """))
         return universe
 
-    def load_data(self, time_frame: TimeBucket, live: bool) -> Dataset:
+    def load_data(self, time_frame: TimeBucket, mode: ExecutionMode) -> Dataset:
         """Loads the server-side data using the client.
 
         :param client: Client instance. Note that this cannot be stable across ticks, as e.g. API keys can change. Client is recreated for every tick.
@@ -234,10 +235,14 @@ class TradingStrategyUniverseModel(UniverseModel):
         :param lookback: how long to the past load data e.g. 1 year, 1 month. **Not implemented yet**.
         :return: None if not dataset for the strategy required
         """
+
+        assert isinstance(mode, ExecutionMode), f"Expected ExecutionMode, got {mode}"
+
         client = self.client
+
         with self.timed_task_context_manager("load_data", time_bucket=time_frame.value):
 
-            if live:
+            if mode.is_live_trading():
                 # This will force client to redownload the data
                 logger.info("Purging trading data caches")
                 client.clear_caches()
@@ -338,7 +343,20 @@ class DefaultTradingStrategyUniverseModel(TradingStrategyUniverseModel):
         self.create_trading_universe = create_trading_universe
         self.candle_time_frame_override = candle_time_frame_override
 
-    def construct_universe(self, ts: datetime.datetime, live: bool) -> TradingStrategyUniverse:
+    def preload_universe(self):
+        """Triggered before backtesting execution.
+
+        - Load all datasets with progress bar display.
+
+        - Not triggered in live trading, as universe changes between cycles
+        """
+        with self.execution_context.timed_task_context_manager(task_name="preload_universe"):
+            preload_data(
+                self.client,
+                self.create_trading_universe,
+                candle_time_frame_override=self.candle_time_frame_override)
+
+    def construct_universe(self, ts: datetime.datetime, mode: ExecutionMode) -> TradingStrategyUniverse:
         with self.execution_context.timed_task_context_manager(task_name="create_trading_universe"):
             universe = self.create_trading_universe(ts, self.client, self.execution_context, candle_time_frame_override=self.candle_time_frame_override)
             assert isinstance(universe, TradingStrategyUniverse), f"Expected TradingStrategyUniverse, got {universe.__class__}"

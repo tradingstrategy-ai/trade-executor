@@ -25,7 +25,7 @@ from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniv
     translate_token
 from tradingstrategy.pair import PandasPairUniverse
 
-from tradeexecutor.strategy.universe_model import TradeExecutorTradingUniverse
+from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
 
 
 logger = logging.getLogger(__name__)

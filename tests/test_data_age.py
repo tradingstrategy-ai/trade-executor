@@ -3,7 +3,8 @@ import datetime
 
 import pytest
 
-from tradeexecutor.strategy.universe_model import TradeExecutorTradingUniverse, DataTooOld
+from tradeexecutor.strategy.execution_context import ExecutionMode
+from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse, DataTooOld
 from tradingstrategy.client import Client
 
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverseModel
@@ -13,9 +14,10 @@ from tradingstrategy.timebucket import TimeBucket
 
 class DataAgeTestUniverseModel(TradingStrategyUniverseModel):
 
-    def construct_universe(self, ts: datetime.datetime, live: bool) -> TradeExecutorTradingUniverse:
+    def construct_universe(self, ts: datetime.datetime, mode: ExecutionMode) -> StrategyExecutionUniverse:
+        assert isinstance(mode, ExecutionMode)
         # d1 data is used by other tests and cached
-        dataset = self.load_data(TimeBucket.d1, live=False)
+        dataset = self.load_data(TimeBucket.d1, mode)
         # Pair index takes long time to construct and is not needed for the test
         universe = TradingStrategyUniverseModel.create_from_dataset(dataset, [], [], pairs_index=False)
         return universe
@@ -31,7 +33,7 @@ def test_data_fresh(universe_model: DataAgeTestUniverseModel):
     # d1 data is used by other tests and cached
     best_before_duration = datetime.timedelta(weeks=1000)  # Our unit test is good for next 1000 years
     ts = datetime.datetime.utcnow()
-    universe = universe_model.construct_universe(ts, live=False)
+    universe = universe_model.construct_universe(ts, ExecutionMode.real_trading)
     universe_model.check_data_age(ts, universe, best_before_duration)
 
 
@@ -39,7 +41,7 @@ def test_data_aged(universe_model: DataAgeTestUniverseModel):
     """Aged data raises an exception."""
     ts = datetime.datetime.utcnow()
     best_before_duration = datetime.timedelta(seconds=1)  # We can never have one second old data
-    universe = universe_model.construct_universe(ts, live=False)
+    universe = universe_model.construct_universe(ts, ExecutionMode.backtesting)
     with pytest.raises(DataTooOld):
         universe_model.check_data_age(ts, universe, best_before_duration)
 

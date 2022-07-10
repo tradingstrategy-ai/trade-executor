@@ -60,9 +60,11 @@ def get_routing_model(routing_type: TradeRouting, reserve_currency: ReserveCurre
 def get_backtest_routing_model(routing_type: TradeRouting, reserve_currency: ReserveCurrency) -> BacktestRoutingModel:
     """Hardcoded routing model support for backtests."""
 
+    assert isinstance(routing_type, TradeRouting)
+
     if routing_type == TradeRouting.pancakeswap_basic:
         params = get_pancake_default_routing_parameters(reserve_currency)
         return BacktestRoutingModel(**params)
 
-    raise NotImplementedError("Not yet done")
+    raise NotImplementedError(f"The routing model is not supported: {routing_type.value}")
 

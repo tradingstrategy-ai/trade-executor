@@ -9,7 +9,7 @@ from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.types import USDollarAmount
 from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.strategy.routing import RoutingModel
-from tradeexecutor.strategy.universe_model import TradeExecutorTradingUniverse
+from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
 
 
 class PricingModel(abc.ABC):
@@ -82,5 +82,5 @@ class PricingModel(abc.ABC):
 #: Pricing model depends on the trading universe that may change for each strategy tick,
 #: as new trading pairs appear.
 #: Thus, we need to reconstruct pricing model as the start of the each tick.
-PricingModelFactory = Callable[[ExecutionModel, TradeExecutorTradingUniverse, RoutingModel], PricingModel]
+PricingModelFactory = Callable[[ExecutionModel, StrategyExecutionUniverse, RoutingModel], PricingModel]
 

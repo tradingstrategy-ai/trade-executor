@@ -18,6 +18,7 @@ from tradeexecutor.state.state import State
 from tradeexecutor.state.sync import SyncMethod
 from tradeexecutor.strategy.approval import ApprovalModel
 from tradeexecutor.strategy.description import StrategyExecutionDescription
+from tradeexecutor.strategy.execution_context import ExecutionMode
 from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.strategy.pricing_model import PricingModelFactory
 from tradeexecutor.strategy.qstrader.alpha_model import AlphaModel
@@ -204,6 +205,10 @@ class MomentumAlphaModel(AlphaModel):
                 # This trading pair is too funny that we do not want to play with it
                 continue
 
+            if (not pair.base_token_symbol) or (not pair.quote_token_symbol):
+                # Questionable pair
+                continue
+
             # We define momentum as how many % the trading pair price gained yesterday
             momentum = (close - open) / open
             momentum = max(0, momentum)
@@ -320,8 +325,9 @@ class OurUniverseModel(TradingStrategyUniverseModel):
 
             return TradingStrategyUniverse(universe=universe, reserve_assets=reserve_assets)
 
-    def construct_universe(self, execution_model: ExecutionModel, live) -> TradingStrategyUniverse:
-        dataset = self.load_data(TimeBucket.d1, live)
+    def construct_universe(self, execution_model: ExecutionModel, mode: ExecutionMode) -> TradingStrategyUniverse:
+        assert isinstance(mode, ExecutionMode)
+        dataset = self.load_data(TimeBucket.d1, mode)
         universe = self.filter_universe(dataset)
         self.log_universe(universe.universe)
         return universe
