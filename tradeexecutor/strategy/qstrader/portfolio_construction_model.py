@@ -20,30 +20,11 @@ logger = logging.getLogger(__name__)
 
 
 class PortfolioConstructionModel:
-    """
+    """Portfolio construction model.
+
     Encapsulates the process of generating a target weight vector
     for a universe of assets, based on input from an AlphaModel,
     a RiskModel and a TransactionCostModel.
-
-    The optimisation process itself is delegated to a TargetWeightGenerator
-    instance provided an instantiation.
-
-    Parameters
-    ----------
-    universe : `Universe`
-        The Universe on which to construct a portfolio.
-    order_sizer : `OrderSizeGenerator`
-        Converts target weights into integral positions.
-    optimiser : `PortfolioOptimiser`
-        The optimisation mechanism for generating the target weights,
-    alpha_model : `AlphaModel`, optional
-        The optional alpha/forecasting signal model for Assets in the Universe,
-    risk_model : `RiskModel`, optional
-        The optional risk model for Assets in the Universe.
-    cost_model : `TransactionCostModel`, optional
-        The optional transaction cost model for Assets in the Universe.
-    data_handler : `DataHandler`, optional
-        The optional data handler used within portfolio construction.
     """
 
     def __init__(
