@@ -2,6 +2,8 @@
 
 Define trading universe based on data from :py:mod:`tradingstrategy` and
 market data feeds.
+
+See :ref:`trading universe` for more information.
 """
 
 import contextlib
