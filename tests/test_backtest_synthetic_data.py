@@ -163,7 +163,7 @@ def test_synthetic_data_backtest_run(
         routing_model=routing_model,
     )
 
-    state, debug_dump = run_backtest(setup)
+    state, universe, debug_dump = run_backtest(setup)
 
     assert len(debug_dump) == 214
 

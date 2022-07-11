@@ -142,6 +142,11 @@ class MomentumAlphaModel(AlphaModel):
 
         executor_pair = translate_trading_pair(pair)
 
+        # Skip any trading pair with machine generated tokens
+        # or otherwise partial looking info
+        if not executor_pair.has_complete_info():
+            return False
+
         # Wast this pair blacklisted earlier by the strategy itself
         if not state.is_good_pair(executor_pair):
             return False

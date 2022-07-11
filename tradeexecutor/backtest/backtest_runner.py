@@ -258,14 +258,14 @@ def setup_backtest(
 
 def run_backtest(
         setup: BacktestSetup,
-        client: Optional[Client]=None) -> Tuple[State, dict]:
+        client: Optional[Client]=None) -> Tuple[State, TradingStrategyUniverse, dict]:
     """Run a strategy backtest.
 
     Loads strategy file, construct trading universe is real data
     downloaded with Trading Strategy client.
 
     :return:
-        Tuple(the final state of the backtest, debug dump)
+        Tuple(the final state of the backtest, trading universe, debug dump)
     """
 
     # State is pristine and not used yet
@@ -273,6 +273,9 @@ def run_backtest(
 
     # Create empty state for this backtest
     store = NoneStore(setup.state)
+
+    # Captured in teh callback
+    backtest_universe: TradingStrategyUniverse = None
 
     def pricing_model_factory(execution_model, universe, routing_model):
         if setup.pricing_model:
@@ -289,11 +292,14 @@ def run_backtest(
         def backtest_setup(state: State, universe: TradingStrategyUniverse, deposit_syncer: BacktestSyncer):
             # Called on the first cycle. Only if the universe is not predefined.
             # Create the initial state of the execution.
+            nonlocal backtest_universe
             events = deposit_syncer(state.portfolio, setup.start_at, universe.reserve_assets)
             assert len(events) == 1, f"Did not get 1 initial backtest deposit event, got {len(events)} events"
             token, usd_exchange_rate = state.portfolio.get_default_reserve_currency()
             assert usd_exchange_rate == 1
+            backtest_universe = universe
     else:
+        backtest_universe = setup.universe
         def backtest_setup(state: State, universe: TradingStrategyUniverse, deposit_syncer: BacktestSyncer):
             pass
 
@@ -321,7 +327,7 @@ def run_backtest(
 
     debug_dump = main_loop.run()
 
-    return setup.state, debug_dump
+    return setup.state, backtest_universe, debug_dump
 
 
 def run_backtest_inline(
@@ -341,7 +347,7 @@ def run_backtest_inline(
     log_level=logging.WARNING,
     data_preload=True,
     name: str="backtest",
-) -> Tuple[State, dict]:
+) -> Tuple[State, TradingStrategyUniverse, dict]:
     """Run backtests for given decide_trades and create_trading_universe functions.
 
     Does not load strategy from a separate .py file.
@@ -399,7 +405,7 @@ def run_backtest_inline(
         with nice progress bar to the user.
 
     :return:
-        tuple (State of a completely executed strategy, debug dump dict)
+        tuple (State of a completely executed strategy, trading strategy universe, debug dump dict)
     """
 
     assert isinstance(start_at, datetime.datetime)

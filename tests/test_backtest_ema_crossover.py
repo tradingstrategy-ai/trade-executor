@@ -54,7 +54,7 @@ def test_ema_crossover_real_data(
         candle_time_frame=TimeBucket.d1,  # Override to use daily data to speed up the test
     )
 
-    state, debug_dump = run_backtest(setup, client)
+    state, universe, debug_dump = run_backtest(setup, client)
 
     assert len(debug_dump) == 214
 

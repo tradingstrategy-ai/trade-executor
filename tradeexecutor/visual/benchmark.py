@@ -1,5 +1,6 @@
 """Compare portfolio performance against other strategies."""
-from typing import Optional, List
+import datetime
+from typing import Optional, List, Union
 
 import plotly.graph_objects as go
 import pandas as pd
@@ -90,6 +91,9 @@ def visualise_benchmark(
     buy_and_hold_asset_name: Optional[str]=None,
     buy_and_hold_price_series: Optional[pd.Series]=None,
     height=800,
+    start_at: Optional[Union[pd.Timestamp, datetime.datetime]]=None,
+    end_at: Optional[Union[pd.Timestamp, datetime.datetime]]=None,
+
 ) -> go.Figure:
     """Visualise strategy performance against benchmarks.
 
@@ -110,14 +114,35 @@ def visualise_benchmark(
 
     :param height:
         Chart height in pixels
+
+    :param start_at:
+        When the backtest started
+
+    :param end_at:
+        When the backtest ended
     """
 
     fig = go.Figure()
 
     assert portfolio_statistics
 
-    start_at = pd.Timestamp(portfolio_statistics[0].calculated_at)
-    end_at = pd.Timestamp(portfolio_statistics[-1].calculated_at)
+    if isinstance(start_at, datetime.datetime):
+        start_at = pd.Timestamp(start_at)
+
+    if isinstance(end_at, datetime.datetime):
+        end_at = pd.Timestamp(end_at)
+
+    if start_at is not None:
+        assert isinstance(start_at, pd.Timestamp)
+
+    if end_at is not None:
+        assert isinstance(end_at, pd.Timestamp)
+
+    if not start_at:
+        start_at = pd.Timestamp(portfolio_statistics[0].calculated_at)
+
+    if not end_at:
+        end_at = pd.Timestamp(portfolio_statistics[-1].calculated_at)
 
     scatter = visualise_portfolio_statistics(name, portfolio_statistics)
     fig.add_trace(scatter)
@@ -127,6 +152,10 @@ def visualise_benchmark(
         fig.add_trace(scatter)
 
     if buy_and_hold_price_series is not None:
+
+        # Clamp backtest to the strategy range even if we have more candles
+        buy_and_hold_price_series = buy_and_hold_price_series[start_at:end_at]
+
         scatter = visualise_buy_and_hold(buy_and_hold_asset_name, buy_and_hold_price_series, all_cash)
         fig.add_trace(scatter)
 

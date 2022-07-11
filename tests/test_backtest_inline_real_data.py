@@ -198,7 +198,7 @@ def test_run_inline_real_backtest(
     """
 
     # Run the test
-    state, debug_dump = run_backtest_inline(
+    state, universe, debug_dump = run_backtest_inline(
         start_at=datetime.datetime(2021, 6, 1),
         end_at=datetime.datetime(2022, 1, 1),
         client=persistent_test_client,

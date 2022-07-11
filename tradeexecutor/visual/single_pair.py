@@ -1,7 +1,7 @@
 """Tools to visualise live trading/backtest outcome for strategies trading only one pair."""
-
+import datetime
 import logging
-from typing import Iterable
+from typing import Iterable, Optional, Union
 
 import plotly.graph_objects as go
 import pandas as pd
@@ -118,8 +118,8 @@ def visualise_trades(
 def visualise_single_pair(
         state: State,
         candle_universe: GroupedCandleUniverse,
-        start_ts=None,
-        end_ts=None,
+        start_at: Optional[Union[pd.Timestamp, datetime.datetime]]=None,
+        end_at: Optional[Union[pd.Timestamp, datetime.datetime]]=None,
         height=800) -> go.Figure:
     """Visualise single-pair trade execution.
 
@@ -132,31 +132,53 @@ def visualise_single_pair(
 
     :param height:
         Chart height in pixels
+
+    :param start_at:
+        When the backtest started
+
+    :param end_at:
+        When the backtest ended
     """
 
     logger.info("Visualising %s", state)
 
+    if isinstance(start_at, datetime.datetime):
+        start_at = pd.Timestamp(start_at)
+
+    if isinstance(end_at, datetime.datetime):
+        end_at = pd.Timestamp(end_at)
+
+    if start_at is not None:
+        assert isinstance(start_at, pd.Timestamp)
+
+    if end_at is not None:
+        assert isinstance(end_at, pd.Timestamp)
+
     assert candle_universe.get_pair_count() == 1, "visualise_single_pair() can be only used for a trading universe with a single pair"
     candles = candle_universe.get_single_pair_data()
 
-    first_trade = next(iter(state.portfolio.get_all_trades()))
+    try:
+        first_trade = next(iter(state.portfolio.get_all_trades()))
+    except StopIteration:
+        first_trade = None
+
     if first_trade:
         pair_name = f"{first_trade.pair.base.token_symbol} - {first_trade.pair.quote.token_symbol}"
     else:
         pair_name = None
 
-    if not start_ts:
+    if not start_at:
         # No trades made, use the first candle timestamp
-        start_ts = candle_universe.get_timestamp_range()[0]
+        start_at = candle_universe.get_timestamp_range()[0]
 
-    if not end_ts:
-        end_ts = candle_universe.get_timestamp_range()[1]
+    if not end_at:
+        end_at = candle_universe.get_timestamp_range()[1]
 
-    logger.info(f"Visualising single pair strategy for range {start_ts} = {end_ts}")
+    logger.info(f"Visualising single pair strategy for range {start_at} = {end_at}")
 
     # Candles define our diagram X axis
     # Crop it to the trading range
-    candles = candles.loc[candles["timestamp"].between(start_ts, end_ts)]
+    candles = candles.loc[candles["timestamp"].between(start_at, end_at)]
 
     candle_start_ts = candles["timestamp"].min()
     candle_end_ts = candles["timestamp"].max()

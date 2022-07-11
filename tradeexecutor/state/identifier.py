@@ -30,8 +30,11 @@ class AssetIdentifier:
     #: Always lowercase.
     address: JSONHexAddress
 
+    #: The ticker symbol of this token.
     token_symbol: str
 
+    #: How many tokens this decimals.
+    #: Must be always set and non-negative.
     decimals: int
 
     #: How this asset is referred in the internal database
@@ -115,3 +118,20 @@ class TradingPairIdentifier:
 
     def get_human_description(self) -> str:
         return f"{self.base.token_symbol}-{self.quote.token_symbol}"
+
+    def has_complete_info(self) -> bool:
+        """Check if the pair has good information.
+
+        Both base and quote token must have
+
+        - Symbol
+
+        - Decimals
+
+        This check is mainly useful to filter out crap tokens
+        from the trading decisions.
+        """
+        return (self.base.decimals > 0 and
+                self.base.token_symbol and
+                self.quote.decimals > 0 and
+                self.quote.token_symbol)

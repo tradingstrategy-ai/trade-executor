@@ -201,7 +201,7 @@ def test_run_inline_synthetic_backtest(
     routing_model = generate_simple_routing_model(universe)
 
     # Run the test
-    state, debug_dump = run_backtest_inline(
+    state, universe, debug_dump = run_backtest_inline(
         start_at=start_at.to_pydatetime(),
         end_at=end_at.to_pydatetime(),
         client=None,  # None of downloads needed, because we are using synthetic data
@@ -233,7 +233,7 @@ def test_analyse_synthetic_trading_portfolio(
     routing_model = generate_simple_routing_model(universe)
 
     # Run the test
-    state, debug_dump = run_backtest_inline(
+    state, universe, debug_dump = run_backtest_inline(
         start_at=start_at.to_pydatetime(),
         end_at=end_at.to_pydatetime(),
         client=None,  # None of downloads needed, because we are using synthetic data
@@ -290,7 +290,7 @@ def test_benchmark_synthetic_trading_portfolio(
     routing_model = generate_simple_routing_model(universe)
 
     # Run the test
-    state, debug_dump = run_backtest_inline(
+    state, universe, debug_dump = run_backtest_inline(
         start_at=start_at.to_pydatetime(),
         end_at=end_at.to_pydatetime(),
         client=None,  # None of downloads needed, because we are using synthetic data
