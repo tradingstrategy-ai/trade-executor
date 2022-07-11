@@ -35,7 +35,8 @@ from tradingstrategy.pair import PandasPairUniverse
 from tradingstrategy.types import PrimaryKey, USDollarAmount
 from tradingstrategy.utils.format import format_value, format_price, format_duration_days_hours_mins, \
     format_percent_2_decimals
-from tradingstrategy.utils.summarydataframe import as_dollar, as_integer, create_summary_table, as_percent, as_missing
+from tradingstrategy.utils.summarydataframe import as_dollar, as_integer, create_summary_table, as_percent, as_missing, \
+    as_duration
 
 
 @dataclass
@@ -323,12 +324,18 @@ class TradeSummary:
     uninvested_cash: USDollarAmount
     initial_cash: USDollarAmount
     extra_return: USDollarAmount
+    duration: datetime.timedelta
 
     def to_dataframe(self) -> pd.DataFrame:
         """Creates a human-readable Pandas dataframe table from the object."""
         total_trades = self.won + self.lost
+
+        one_year = datetime.timedelta(days=360)
+
         human_data = {
+            "Trading period length": as_duration(self.duration),
             "Return %": as_percent(self.realised_profit / self.initial_cash),
+            "Annualised return %": as_percent(self.realised_profit / self.initial_cash * one_year / self.duration),
             "Cash at start": as_dollar(self.initial_cash),
             "Value at end": as_dollar(self.open_value + self.uninvested_cash),
             "Trade win percent": as_percent(self.won / total_trades) if total_trades else as_missing(),
@@ -395,6 +402,12 @@ class TradeAnalysis:
         # EthLisbon hack
         extra_return = 0
 
+        duration = datetime.timedelta(0)
+
+        first_trade, last_trade = self.portfolio.get_first_and_last_executed_trade()
+        if first_trade and first_trade != last_trade:
+            duration = last_trade.executed_at - first_trade.executed_at
+
         won = lost = zero_loss = stop_losses = undecided = 0
         open_value: USDollarAmount = 0
         profit: USDollarAmount = 0
@@ -428,6 +441,7 @@ class TradeAnalysis:
             uninvested_cash=uninvested_cash,
             initial_cash=initial_cash,
             extra_return=extra_return,
+            duration=duration,
         )
 
     def create_timeline(self) -> pd.DataFrame:
@@ -558,6 +572,10 @@ def build_trade_analysis(portfolio: Portfolio) -> TradeAnalysis:
 
     positions = list(portfolio.get_all_positions())
 
+    # Sort positions based on their id
+    # because open, closed and frozen positions might be in a mixed order
+    positions = sorted(positions, key=lambda p: p.position_id)
+
     # Each Backtrader Trade instance presents a position
     # Trade instances contain TradeHistory entries that present change to this position
     # with Order instances attached
@@ -568,7 +586,10 @@ def build_trade_analysis(portfolio: Portfolio) -> TradeAnalysis:
         assert type(pair_id) == int
 
         trade: TradeExecution
-        for trade in position.trades.values():
+
+        trades = list(position.trades.values())
+
+        for trade in trades:
 
             history = histories.get(pair_id)
             if not history:
@@ -597,3 +618,4 @@ def build_trade_analysis(portfolio: Portfolio) -> TradeAnalysis:
             history.add_trade(spot_trade)
 
     return TradeAnalysis(portfolio, asset_histories=histories)
+

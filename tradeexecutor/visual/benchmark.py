@@ -152,6 +152,10 @@ def visualise_benchmark(
         fig.add_trace(scatter)
 
     if buy_and_hold_price_series is not None:
+
+        # Clamp backtest to the strategy range even if we have more candles
+        buy_and_hold_price_series = buy_and_hold_price_series[start_at:end_at]
+
         scatter = visualise_buy_and_hold(buy_and_hold_asset_name, buy_and_hold_price_series, all_cash)
         fig.add_trace(scatter)
 
