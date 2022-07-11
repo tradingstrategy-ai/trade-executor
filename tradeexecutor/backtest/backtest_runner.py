@@ -299,6 +299,7 @@ def run_backtest(
             assert usd_exchange_rate == 1
             backtest_universe = universe
     else:
+        backtest_universe = setup.universe
         def backtest_setup(state: State, universe: TradingStrategyUniverse, deposit_syncer: BacktestSyncer):
             pass
 
