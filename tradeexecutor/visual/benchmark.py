@@ -168,4 +168,15 @@ def visualise_benchmark(
 
     fig.update_xaxes(rangeslider={"visible": False})
 
+    # Move legend to the bottom so we have more space for
+    # time axis in narrow notebook views
+    # https://plotly.com/python/legend/
+    fig.update_layout(legend=dict(
+        orientation="h",
+        yanchor="bottom",
+        y=1.02,
+        xanchor="right",
+        x=1
+    ))
+
     return fig
