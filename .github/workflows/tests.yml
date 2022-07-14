@@ -39,7 +39,7 @@ jobs:
 
   build-binder:
     runs-on: ubuntu-latest
-    needs: test
+    needs: automated-test-suite
     # Skip build on master push
     if: github.event_name != 'push' || github.ref != 'refs/heads/master'
     steps:
