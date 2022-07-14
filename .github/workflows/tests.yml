@@ -2,6 +2,7 @@ name: Automated test suite
 on:
   push:
     branches: [ master ]
+    tags: [ v* ]
   pull_request:
     branches: [ master ]
 
@@ -36,3 +37,20 @@ jobs:
         TRADING_STRATEGY_API_KEY: ${{ secrets.TRADING_STRATEGY_API_KEY }}
         BNB_CHAIN_JSON_RPC: ${{ secrets.BNB_CHAIN_JSON_RPC }}
 
+  build-binder-env:
+    runs-on: ubuntu-latest
+    needs: automated-test-suite
+    # Only trigger binder-env build on tag push
+    if: github.event_name == 'push' && contains(github.ref, 'refs/tags/v')
+    steps:
+      - name: Trigger binder-env build
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.PAT }}
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: 'tradingstrategy-ai',
+              repo: 'binder-env',
+              workflow_id: 'binder.yml',
+              ref: 'master'
+            })
