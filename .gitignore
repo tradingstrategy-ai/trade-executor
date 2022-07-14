@@ -4,6 +4,7 @@ docs/build
 .ipynb_checkpoints
 dist
 .vscode
+.python-version
 .pytest_cache
 .cache
 cache
