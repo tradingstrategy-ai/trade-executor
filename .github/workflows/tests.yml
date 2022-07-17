@@ -8,9 +8,7 @@ on:
 
 jobs:
   automated-test-suite:
-
     runs-on: ubuntu-latest
-
     steps:
     - uses: actions/checkout@v2
     - name: Set up Python 3.9
@@ -37,7 +35,8 @@ jobs:
         TRADING_STRATEGY_API_KEY: ${{ secrets.TRADING_STRATEGY_API_KEY }}
         BNB_CHAIN_JSON_RPC: ${{ secrets.BNB_CHAIN_JSON_RPC }}
 
-  build-binder-env:
+  # Trigger workflow_dispatch in other repos (binder-env, docs...)
+  build-other-repos:
     runs-on: ubuntu-latest
     needs: automated-test-suite
     # Only trigger binder-env build on tag push
@@ -52,5 +51,16 @@ jobs:
               owner: 'tradingstrategy-ai',
               repo: 'binder-env',
               workflow_id: 'binder.yml',
+              ref: 'master'
+            })
+      - name: Trigger docs build
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.PAT }}
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: 'tradingstrategy-ai',
+              repo: 'docs',
+              workflow_id: 'rsync-docs.yml',
               ref: 'master'
             })
