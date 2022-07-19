@@ -31,8 +31,9 @@ from tradingstrategy.universe import Universe
 from tradingstrategy.chain import ChainId
 from tradingstrategy.timebucket import TimeBucket
 from tradeexecutor.strategy.cycle import CycleDuration
-from tradeexecutor.strategy.strategy_module import StrategyType, TradeRouting, ReserveCurrency, \
+from tradeexecutor.strategy.strategy_module import StrategyType, ReserveCurrency, \
     pregenerated_create_trading_universe
+from tradeexecutor.strategy.default_routing_options import TradeRouting
 
 # How much of the cash to put on a single trade
 position_size = 0.10

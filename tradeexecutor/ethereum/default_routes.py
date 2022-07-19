@@ -1,7 +1,8 @@
 """Default routing models for Uniswap v2 like exchange."""
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel
 from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2SimpleRoutingModel
-from tradeexecutor.strategy.strategy_module import TradeRouting, ReserveCurrency
+from tradeexecutor.strategy.strategy_module import ReserveCurrency
+from tradeexecutor.strategy.default_routing_options import TradeRouting
 
 
 def get_pancake_default_routing_parameters(reserve_currency: ReserveCurrency) -> dict:

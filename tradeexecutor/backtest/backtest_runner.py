@@ -27,7 +27,8 @@ from tradeexecutor.strategy.factory import make_runner_for_strategy_mod
 from tradeexecutor.strategy.pandas_trader.runner import PandasTraderRunner
 from tradeexecutor.strategy.pandas_trader.trade_decision import TradeDecider
 from tradeexecutor.strategy.strategy_module import parse_strategy_module, StrategyModuleInformation, \
-    DecideTradesProtocol, CreateTradingUniverseProtocol, TradeRouting, ReserveCurrency, CURRENT_ENGINE_VERSION
+    DecideTradesProtocol, CreateTradingUniverseProtocol, ReserveCurrency, CURRENT_ENGINE_VERSION
+from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, TradingStrategyUniverseModel, \
     DefaultTradingStrategyUniverseModel
 from tradeexecutor.strategy.universe_model import StaticUniverseModel

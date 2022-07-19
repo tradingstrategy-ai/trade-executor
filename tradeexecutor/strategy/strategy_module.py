@@ -7,6 +7,7 @@ import pandas
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.cycle import CycleDuration
+from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
@@ -29,19 +30,6 @@ class StrategyType(enum.Enum):
     #: Alpha model based strategy.
     #: Return alpha weightings of assets it wants to buy.
     alpha_model = "alpha_model"
-
-
-class TradeRouting(enum.Enum):
-    """What trade routing should the strategy use."""
-
-    #: Two or three legged trades on PancakeSwap
-    pancakeswap_basic = "quickswap_basic"
-
-    #: Two or three legged trades on Quickswap
-    quickswap_basic = "quickswap_basic"
-
-    #: Use user supplied routing model
-    user_supplied_routing_model = "user_supplied_routing_model"
 
 
 class ReserveCurrency(enum.Enum):

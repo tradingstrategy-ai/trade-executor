@@ -235,7 +235,7 @@ def visualise_single_pair(
 
     # Move legend to the bottom so we have more space for
     # time axis in narrow notebook views
-    # https://plotly.com/python/legend/
+    # https://plotly.com/python/legend/f
     fig.update_layout(legend=dict(
         orientation="h",
         yanchor="bottom",

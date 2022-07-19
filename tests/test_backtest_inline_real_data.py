@@ -19,9 +19,8 @@ import datetime
 from tradingstrategy.chain import ChainId
 from tradingstrategy.timebucket import TimeBucket
 from tradeexecutor.strategy.cycle import CycleDuration
-from tradeexecutor.strategy.strategy_module import StrategyType, TradeRouting, ReserveCurrency
-
-
+from tradeexecutor.strategy.strategy_module import StrategyType, ReserveCurrency
+from tradeexecutor.strategy.default_routing_options import TradeRouting
 
 # Tell what trade execution engine version this strategy needs to use
 trading_strategy_engine_version = "0.1"

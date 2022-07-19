@@ -22,7 +22,8 @@ from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.strategy.factory import StrategyType
 from tradeexecutor.state.visualisation import Visualisation, PlotKind
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
-from tradeexecutor.strategy.strategy_module import ReserveCurrency, TradeRouting
+from tradeexecutor.strategy.strategy_module import ReserveCurrency
+from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, load_all_data
 from tradingstrategy.client import Client
 
