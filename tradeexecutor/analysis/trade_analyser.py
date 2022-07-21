@@ -335,7 +335,7 @@ class TradeSummary:
         human_data = {
             "Trading period length": as_duration(self.duration),
             "Return %": as_percent(self.realised_profit / self.initial_cash),
-            "Annualised return %": as_percent(self.realised_profit / self.initial_cash * one_year / self.duration),
+            "Annualised return %": as_percent(self.realised_profit / self.initial_cash * one_year / self.duration) if self.duration else as_percent(0),
             "Cash at start": as_dollar(self.initial_cash),
             "Value at end": as_dollar(self.open_value + self.uninvested_cash),
             "Trade win percent": as_percent(self.won / total_trades) if total_trades else as_missing(),
@@ -528,9 +528,10 @@ def expand_timeline(
 
     applied_df = timeline.apply(expander, axis='columns', result_type='expand')
 
-    # https://stackoverflow.com/a/52720936/315168
-    applied_df\
-        .sort_values(by=['Id'], ascending=[True], inplace=True)
+    if len(applied_df) > 0:
+        # https://stackoverflow.com/a/52720936/315168
+        applied_df\
+            .sort_values(by=['Id'], ascending=[True], inplace=True)
 
     # Get rid of NaN labels
     # https://stackoverflow.com/a/28390992/315168
@@ -539,16 +540,19 @@ def expand_timeline(
     def apply_styles(df: pd.DataFrame):
         # Create a Pandas Styler with multiple styling options applied
         # Dynamically color the background of trade outcome coluns # https://pandas.pydata.org/docs/reference/api/pandas.io.formats.style.Styler.background_gradient.html
-        styles = df.style\
-            .hide(axis="index")\
-            .hide(axis="columns", subset=hidden_columns)\
-            .background_gradient(
-                axis=0,
-                gmap=applied_df['PnL % raw'],
-                cmap='RdYlGn',
-                vmin=vmin,  # We can only lose 100% of our money on position
-                vmax=vmax)  # 50% profit is 21.5 position. Assume this is the max success color we can hit over
-
+        try:
+            styles = df.style\
+                .hide(axis="index")\
+                .hide(axis="columns", subset=hidden_columns)\
+                .background_gradient(
+                    axis=0,
+                    gmap=applied_df['PnL % raw'],
+                    cmap='RdYlGn',
+                    vmin=vmin,  # We can only lose 100% of our money on position
+                    vmax=vmax)  # 50% profit is 21.5 position. Assume this is the max success color we can hit over
+        except KeyError:
+            # The input df was empty (no trades)
+            styles = df.style
         # Don't let the text inside a cell to wrap
         styles = styles.set_table_styles({
             "Opened at": [{'selector': 'td', 'props': [('white-space', 'nowrap')]}],
