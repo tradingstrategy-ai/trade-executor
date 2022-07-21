@@ -1,13 +1,33 @@
-"""Strategy tick definitions."""
+"""Strategy cycle definitions.
+
+See :ref:`strategy cycle` for more information.
+"""
 import datetime
 import enum
 
 
 class CycleDuration(enum.Enum):
-    """Supported strategy ticks.
+    """Supported strategy cycle duration.
+
+    This enum defines what cycle durations backtesting and live
+    testing engine supports.
+
+    It is also the value you can enter as `trading_strategy_cycle`
+    option for your strategies.
+
+    All cycles are aligned to the wall clock time.
+    E.g. 24h cycle is always run at 00:00.
+
+    See :ref:`strategy cycle` for more information.
     """
+
+    #: Run `decide_trades()` for every 8 hours
     cycle_8h = "8h"
+
+    #: Run `decide_trades()` for every 16 hours
     cycle_16h = "16h"
+
+    #: Run `decide_trades()` for every 24h hours
     cycle_24h = "24h"
 
     def to_timedelta(self) -> datetime.timedelta:
