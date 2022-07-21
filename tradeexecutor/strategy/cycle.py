@@ -7,9 +7,9 @@ import enum
 
 
 class CycleDuration(enum.Enum):
-    """Supported strategy cycle duration.
+    """Strategy cycle duration options.
 
-    This enum defines what cycle durations backtesting and live
+    This enum defines what strategy cycle durations backtesting and live
     testing engine supports.
 
     It is also the value you can enter as `trading_strategy_cycle`
@@ -31,7 +31,7 @@ class CycleDuration(enum.Enum):
     cycle_24h = "24h"
 
     def to_timedelta(self) -> datetime.timedelta:
-        """Get the duration of the tick."""
+        """Get the duration of the strategy cycle as Python timedelta object."""
         return _TICK_DURATIONS[self]
 
 
