@@ -1,7 +1,7 @@
 """Default routing models for Uniswap v2 like exchange."""
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel
 from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2SimpleRoutingModel
-from tradeexecutor.strategy.strategy_module import ReserveCurrency
+from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.default_routing_options import TradeRouting
 
 

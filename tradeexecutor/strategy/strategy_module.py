@@ -1,5 +1,4 @@
 """Describe strategy modules and their loading."""
-import enum
 from dataclasses import dataclass
 from typing import Callable, Dict, Protocol, List, Optional
 import pandas
@@ -10,6 +9,8 @@ from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.strategy.pricing_model import PricingModel
+from tradeexecutor.strategy.reserve_currency import ReserveCurrency
+from tradeexecutor.strategy.strategy_type import StrategyType
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradingstrategy.client import Client
 from tradingstrategy.timebucket import TimeBucket
@@ -18,28 +19,6 @@ from tradingstrategy.universe import Universe
 
 #: As set for StrategyModuleInformation.trading_strategy_engine_version
 CURRENT_ENGINE_VERSION = "0.1"
-
-
-class StrategyType(enum.Enum):
-    """Which kind of strategy types we support."""
-
-    #: Pandas + position manager based strategy.
-    #: Uses position_manager instance to tell what trades to do.
-    managed_positions = "managed_positions"
-
-    #: Alpha model based strategy.
-    #: Return alpha weightings of assets it wants to buy.
-    alpha_model = "alpha_model"
-
-
-class ReserveCurrency(enum.Enum):
-    """Default supported reserve currencies."""
-
-    #: BUSD on BNB Chain
-    busd = "busd"
-
-    #: USDC on Polygon
-    usdc = "usdc"
 
 
 class StrategyModuleNotValid(Exception):

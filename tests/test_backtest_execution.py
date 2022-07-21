@@ -8,7 +8,7 @@ import pytest
 
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.trade import TradeStatus
-from tradeexecutor.strategy.strategy_module import ReserveCurrency
+from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.testing.backtest_trader import BacktestTrader
 from tradingstrategy.chain import ChainId
 from tradingstrategy.timebucket import TimeBucket

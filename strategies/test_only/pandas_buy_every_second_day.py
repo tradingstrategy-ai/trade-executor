@@ -21,10 +21,10 @@ from tradingstrategy.universe import Universe
 
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
-from tradeexecutor.strategy.factory import StrategyType
+from tradeexecutor.strategy.strategy_type import StrategyType
 from tradeexecutor.state.visualisation import PlotKind
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
-from tradeexecutor.strategy.strategy_module import ReserveCurrency
+from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 
 # Tell what trade execution engine version this strategy needs to use
 trading_strategy_engine_version = "0.1"

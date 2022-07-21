@@ -9,7 +9,8 @@ from contextlib import AbstractContextManager
 
 from tradeexecutor.ethereum.default_routes import get_routing_model
 from tradeexecutor.strategy.pandas_trader.runner import PandasTraderRunner
-from tradeexecutor.strategy.strategy_module import StrategyType, parse_strategy_module
+from tradeexecutor.strategy.strategy_module import parse_strategy_module
+from tradeexecutor.strategy.strategy_type import StrategyType
 from tradeexecutor.strategy.trading_strategy_universe import DefaultTradingStrategyUniverseModel
 from tradingstrategy.client import Client
 
