@@ -41,6 +41,7 @@ class ExecutionModel(abc.ABC):
         TODO: API Unfinished
         """
 
+
     @abc.abstractmethod
     def execute_trades(self,
                        ts: datetime.datetime,

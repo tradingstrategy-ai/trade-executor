@@ -90,6 +90,40 @@ class PositionManager:
 
         return [trade]
 
+    def close_position(self, position: TradingPosition, trade_type: TradeType=TradeType.rebalance) -> TradeExecution:
+        """Close a single position.
+
+        :param position:
+            Position to be closed
+
+        :param trade_type:
+            What's the reason to close the position
+        """
+
+        assert position.is_long(), "Only long supported for now"
+
+        pair = position.pair
+        value = position.get_value()
+        quantity = position.get_quantity()
+        price = self.pricing_model.get_sell_price(self.timestamp, pair, quantity=quantity)
+
+        reserve_asset, reserve_price = self.state.portfolio.get_default_reserve_currency()
+
+        position2, trade, created = self.state.create_trade(
+            self.timestamp,
+            pair,
+            -quantity,  # Negative quantity = sell all
+            None,
+            price,
+            trade_type,
+            reserve_asset,
+            reserve_price,  # TODO: Harcoded stablecoin USD exchange rate
+        )
+
+        assert position == position2, "Somehow messed up the trade"
+
+        return trade
+
     def close_all(self) -> List[TradeExecution]:
         """Close all open positions."""
         assert self.is_any_open(), "No positions to close"
@@ -97,29 +131,6 @@ class PositionManager:
         position: TradingPosition
         trades = []
         for position in self.state.portfolio.open_positions.values():
-
-            assert position.is_long(), "Only long supported for now"
-
-            pair = position.pair
-            value = position.get_value()
-            quantity = position.get_quantity()
-            price = self.pricing_model.get_sell_price(self.timestamp, pair, quantity=quantity)
-
-            reserve_asset, reserve_price = self.state.portfolio.get_default_reserve_currency()
-
-            position2, trade, created = self.state.create_trade(
-                self.timestamp,
-                pair,
-                -quantity,  # Negative quantity = sell all
-                None,
-                price,
-                TradeType.rebalance,
-                reserve_asset,
-                reserve_price,  # TODO: Harcoded stablecoin USD exchange rate
-            )
-
-            assert position == position2, "Somehow messed up the trade"
-
-            trades.append(trade)
+            trades.append(self.close_position(position))
 
         return trades

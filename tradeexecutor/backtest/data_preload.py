@@ -4,6 +4,7 @@ from typing import Optional, Callable
 
 import pandas as pd
 
+from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.client import Client
 from tradingstrategy.environment.jupyter import download_with_tqdm_progress_bar
 from tradingstrategy.timebucket import TimeBucket

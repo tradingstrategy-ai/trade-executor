@@ -13,6 +13,7 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 
 from tqdm.auto import tqdm
 
+from tradeexecutor.backtest.data_preload import preload_stop_loss_data
 from tradeexecutor.state.state import State
 from tradeexecutor.state.store import StateStore
 from tradeexecutor.state.sync import SyncMethod
@@ -24,11 +25,13 @@ from tradeexecutor.strategy.execution_context import ExecutionMode, ExecutionCon
 from tradeexecutor.strategy.pricing_model import PricingModelFactory
 from tradeexecutor.strategy.runner import StrategyRunner
 from tradeexecutor.strategy.cycle import CycleDuration, snap_to_next_tick, snap_to_previous_tick
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.strategy.universe_model import UniverseModel, StrategyExecutionUniverse
 from tradeexecutor.strategy.valuation import ValuationModelFactory
 from tradeexecutor.utils.timer import timed_task
+from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.client import Client
-
+from tradingstrategy.timebucket import TimeBucket
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +61,7 @@ class ExecutionLoop:
             backtest_start: Optional[datetime.datetime] =None,
             backtest_end: Optional[datetime.datetime] = None,
             backtest_setup: Optional[Callable[[State], None]] = None,
+            backtest_stop_loss_time_bucket: Optional[TimeBucket] = None,
             tick_offset: datetime.timedelta=datetime.timedelta(minutes=0),
             trade_immediately=False,
         ):
@@ -114,7 +118,7 @@ class ExecutionLoop:
              state: State,
              cycle: int,
              live: bool,
-             backtesting_universe: Optional[StrategyExecutionUniverse]=None):
+             backtesting_universe: Optional[StrategyExecutionUniverse]=None) -> StrategyExecutionUniverse:
         """Run one trade execution tick.
 
         :param backtesting_universe:
@@ -213,10 +217,13 @@ class ExecutionLoop:
     def warm_up_backtest(self):
         """Load backtesting trading universe.
 
-        Display progress bars for downlaod.
+        Display progress bars for data downloads.
         """
         logger.info("Warming up backesting")
         self.universe_model.preload_universe()
+
+    def run_backtest_stop_loss_checks(self):
+        pass
 
     def run_backtest(self, state: State) -> dict:
         """Backtest loop."""
@@ -251,7 +258,7 @@ class ExecutionLoop:
                 progress_bar.set_description(f"Backtesting {self.name}, {friendly_start}-{friendly_end} at {friedly_ts}, total {trade_count:,} trades")
 
                 # Decide trades and everything for this cycle
-                universe = self.tick(ts, state, cycle, live=False, backtesting_universe=universe)
+                universe: TradingStrategyUniverse = self.tick(ts, state, cycle, live=False, backtesting_universe=universe)
 
                 # Revalue our portfolio
                 self.update_position_valuations(ts, state, universe)
@@ -273,6 +280,12 @@ class ExecutionLoop:
                     # Backteting has ended
                     logger.info("Terminating backtesting. Backtest end %s, current timestamp %s", self.backtest_end, next_tick)
                     break
+
+                if universe.backtest_stop_loss_candles:
+                    # Run backtest stop loss checks until the next time
+                    self.run_backtest_stop_loss_cehcks(
+
+                    )
 
                 # Add some fuzziness to gacktesting timestamps
                 ts = next_tick + datetime.timedelta(minutes=random.randint(0, 4))

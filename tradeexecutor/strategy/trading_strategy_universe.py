@@ -42,17 +42,39 @@ class TradingUniverseIssue(Exception):
 @dataclass
 class Dataset:
     """Contain raw loaded datasets."""
+
+    #: Granularity of our OHLCV data
     time_bucket: TimeBucket
+
+    #: All exchanges
     exchanges: ExchangeUniverse
+
+    #: All trading pairs
     pairs: pd.DataFrame
+
+    #: All candles
     candles: pd.DataFrame
+
+    #: All liquidity samples
     liquidity: pd.DataFrame
+
+    #: Granularity of backtesting OHLCV data
+    backtest_stop_loss_time_bucket: Optional[TimeBucket] = None
+
+    #: All candles in stop loss time bucket
+    backtest_stop_loss_candles: Optional[pd.DataFrame] = None
 
 
 @dataclass
 class TradingStrategyUniverse(StrategyExecutionUniverse):
     """A trading executor trading universe that using data from TradingStrategy.ai data feeds."""
+
+    #: Trading universe datasets
     universe: Optional[Universe] = None
+
+    backtest_stop_loss_time_bucket: Optional[TimeBucket] = None
+
+    backtest_stop_loss_candles: Optional[GroupedCandleUniverse] = None
 
     def validate(self):
         """Check that the created universe looks good.
@@ -229,13 +251,24 @@ class TradingStrategyUniverseModel(UniverseModel):
                 """))
         return universe
 
-    def load_data(self, time_frame: TimeBucket, mode: ExecutionMode) -> Dataset:
+    def load_data(self,
+                  time_frame: TimeBucket,
+                  mode: ExecutionMode,
+                  backtest_stop_loss_time_frame: Optional[TimeBucket]=None) -> Dataset:
         """Loads the server-side data using the client.
 
-        :param client: Client instance. Note that this cannot be stable across ticks, as e.g. API keys can change. Client is recreated for every tick.
-        :param live: If True disable all caches
-        :param lookback: how long to the past load data e.g. 1 year, 1 month. **Not implemented yet**.
-        :return: None if not dataset for the strategy required
+        :param client:
+            Client instance. Note that this cannot be stable across ticks, as e.g.
+            API keys can change. Client is recreated for every tick.
+
+        :param mode:
+            Live trading or vacktesting
+
+        :param backtest_stop_loss_time_frame:
+            Load more granular data for backtesting stop loss
+
+        :return:
+            None if not dataset for the strategy required
         """
 
         assert isinstance(mode, ExecutionMode), f"Expected ExecutionMode, got {mode}"
@@ -255,12 +288,20 @@ class TradingStrategyUniverseModel(UniverseModel):
             pairs = client.fetch_pair_universe().to_pandas()
             candles = client.fetch_all_candles(time_frame).to_pandas()
             liquidity = client.fetch_all_liquidity_samples(time_frame).to_pandas()
+
+            if backtest_stop_loss_time_frame:
+                backtest_stop_loss_candles = client.fetch_all_candles(backtest_stop_loss_time_frame).to_pandas()
+            else:
+                backtest_stop_loss_candles = None
+
             return Dataset(
                 time_bucket=time_frame,
+                backtest_stop_loss_time_bucket=backtest_stop_loss_time_frame,
                 exchanges=exchanges,
                 pairs=pairs,
                 candles=candles,
                 liquidity=liquidity,
+                backtest_stop_loss_candles=backtest_stop_loss_candles,
             )
 
     def check_data_age(self, ts: datetime.datetime, universe: TradingStrategyUniverse, best_before_duration: datetime.timedelta):
@@ -303,6 +344,12 @@ class TradingStrategyUniverseModel(UniverseModel):
         logger.debug("Preparing liquidity")
         liquidity_universe = GroupedLiquidityUniverse(dataset.liquidity)
 
+        logger.debug("Preparing backtest stop loss data")
+        if dataset.backtest_stop_loss_candles:
+            backtest_stop_loss_candles = GroupedCandleUniverse(dataset.backtest_stop_loss_candles)
+        else:
+            backtest_stop_loss_candles = None
+
         universe = Universe(
             time_bucket=dataset.time_bucket,
             chains=chains,
@@ -313,7 +360,11 @@ class TradingStrategyUniverseModel(UniverseModel):
         )
 
         logger.debug("Universe created")
-        return TradingStrategyUniverse(universe=universe, reserve_assets=reserve_assets)
+        return TradingStrategyUniverse(
+            universe=universe,
+            reserve_assets=reserve_assets,
+            backtest_stop_loss_candles=backtest_stop_loss_candles,
+            backtest_stop_loss_time_bucket=dataset.backtest_stop_loss_time_bucket)
 
     @abstractmethod
     def construct_universe(self, ts: datetime.datetime, live: bool) -> TradingStrategyUniverse:

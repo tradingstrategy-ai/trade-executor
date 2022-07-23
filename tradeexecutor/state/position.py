@@ -48,14 +48,23 @@ class TradingPosition:
     #: Which reserve currency we are going to receive when we sell the asset
     reserve_currency: AssetIdentifier
 
+    #: List of trades taken for this position.
+    #: trade_id -> Trade map
     trades: Dict[int, TradeExecution] = field(default_factory=dict)
 
+    #: When this position was closed
     closed_at: Optional[datetime.datetime] = None
 
     #: Timestamp when this position was moved to a frozen state
     frozen_at: Optional[datetime.datetime] = None
 
     last_trade_at: Optional[datetime.datetime] = None
+
+    #: Trigger a stop loss if this price is reached
+    stop_loss: Optional[USDollarAmount] = None
+
+    #: Trigger a take profit if this price is reached
+    take_profit: Optional[USDollarAmount] = None
 
     def __post_init__(self):
         assert self.position_id > 0
@@ -114,6 +123,10 @@ class TradingPosition:
             if t.is_success():
                 return True
         return False
+
+    def needs_real_time_price(self) -> bool:
+        """Does this position need to check for stop loss/take profit."""
+        return self.stop_loss is not None or self.take_profit is not None
 
     def get_executed_trades(self) -> Iterable[TradeExecution]:
         for t in self.trades.values():
