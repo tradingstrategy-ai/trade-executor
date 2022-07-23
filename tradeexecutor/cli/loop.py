@@ -13,7 +13,6 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 
 from tqdm.auto import tqdm
 
-from tradeexecutor.backtest.data_preload import preload_stop_loss_data
 from tradeexecutor.state.state import State
 from tradeexecutor.state.store import StateStore
 from tradeexecutor.state.sync import SyncMethod
@@ -24,7 +23,7 @@ from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.strategy.execution_context import ExecutionMode, ExecutionContext
 from tradeexecutor.strategy.pricing_model import PricingModelFactory
 from tradeexecutor.strategy.runner import StrategyRunner
-from tradeexecutor.strategy.cycle import CycleDuration, snap_to_next_tick, snap_to_previous_tick
+from tradeexecutor.strategy.cycle import CycleDuration, snap_to_next_tick, snap_to_previous_tick, round_datetime_up
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.strategy.universe_model import UniverseModel, StrategyExecutionUniverse
 from tradeexecutor.strategy.valuation import ValuationModelFactory
@@ -222,8 +221,43 @@ class ExecutionLoop:
         logger.info("Warming up backesting")
         self.universe_model.preload_universe()
 
-    def run_backtest_stop_loss_checks(self):
-        pass
+    def run_backtest_stop_loss_checks(self,
+            start_ts: datetime.datetime,
+            end_ts: datetime.datetime,
+            state: State,
+            universe: TradingStrategyUniverse):
+        """Generate stop loss price checks.
+
+        Backtests may use finer grade data for stop loss signals,
+        to be more realistic with actual trading.
+
+        Here we use the finer grade data to check the stop losses
+        on a given time period.
+
+        :param start_ts:
+            When to start testing (exclusive).
+            We test for the next available timestamp.
+
+        :param end_ts:
+            When to stop testing (exclusive).
+
+        param universe:
+            Trading universe containing price data for stoploss checks.
+        """
+
+        assert universe.backtest_stop_loss_candles
+
+        # What is the granularity of our price feed
+        # for stop loss checks.
+        tick_size = universe.backtest_stop_loss_time_bucket
+
+        # Hop to the next tick
+        ts = round_datetime_up(start_ts, tick_size.to_timedelta())
+
+        while ts < end_ts:
+            logger.debug("Backtesting stop loss at %s", ts)
+            self.runner.check_position_triggers(ts, state, universe)
+            ts += tick_size.to_timedelta()
 
     def run_backtest(self, state: State) -> dict:
         """Backtest loop."""
@@ -281,10 +315,14 @@ class ExecutionLoop:
                     logger.info("Terminating backtesting. Backtest end %s, current timestamp %s", self.backtest_end, next_tick)
                     break
 
+                # If we have stop loss checks enabled on a separate price feed,
+                # run backtest stop loss checks until the next time
                 if universe.backtest_stop_loss_candles:
-                    # Run backtest stop loss checks until the next time
-                    self.run_backtest_stop_loss_cehcks(
-
+                    self.run_backtest_stop_loss_checks(
+                        ts,
+                        next_tick,
+                        state,
+                        universe,
                     )
 
                 # Add some fuzziness to gacktesting timestamps

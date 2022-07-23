@@ -2,7 +2,7 @@
 
 import datetime
 from decimal import Decimal
-from typing import List
+from typing import List, Optional
 
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.position import TradingPosition
@@ -49,6 +49,8 @@ class PositionManager:
     def open_1x_long(self,
                      pair: DEXPair,
                      value: USDollarAmount,
+                     take_profit: Optional[USDollarAmount]=None,
+                     stop_loss: Optional[USDollarAmount]=None,
                      ) -> List[TradeExecution]:
         """Open a long.
 
@@ -57,6 +59,18 @@ class PositionManager:
         - Open a spot market buy.
 
         - Checks that there is not existing position - cannot increase position
+
+        :param pair:
+            Trading pair where we take the position
+
+        :param value:
+            How large position to open, in US dollar terms
+
+        :param take_profit:
+            If set, set the position take profit to this US dollar price level.
+
+        :param stop_loss:
+            If set, set the position stop loss to this US dollar price level.
         """
 
         # Translate DEXPair object to the trading pair model
@@ -83,6 +97,9 @@ class PositionManager:
         )
 
         assert created, f"There was conflicting open position for pair: {executor_pair}"
+
+        position.take_profit = take_profit
+        position.stop_loss = stop_loss
 
         self.state.visualisation.add_message(
             self.timestamp,

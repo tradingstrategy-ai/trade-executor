@@ -15,8 +15,10 @@ from tradeexecutor.strategy.approval import ApprovalModel
 from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.state.sync import SyncMethod
 from tradeexecutor.strategy.output import output_positions, DISCORD_BREAK_CHAR, output_trades
+from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.strategy.pricing_model import PricingModelFactory, PricingModel
 from tradeexecutor.strategy.routing import RoutingModel
+from tradeexecutor.strategy.stoploss import check_position_triggers
 from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
 
 from tradeexecutor.state.state import State
@@ -99,9 +101,6 @@ class StrategyRunner(abc.ABC):
         """Revalue portfolio based on the data."""
         state.revalue_positions(ts, valuation_method)
         logger.info("After revaluation at %s our equity is %f", ts, state.portfolio.get_total_equity())
-
-    def on_data_signal(self):
-        pass
 
     def on_clock(self,
                  clock: datetime.datetime,
@@ -247,7 +246,6 @@ class StrategyRunner(abc.ABC):
         with self.timed_task_context_manager("strategy_tick", clock=clock):
 
             routing_state, pricing_model, valuation_model = self.setup_routing(universe)
-
             assert pricing_model, "Routing did not provide pricing_model"
 
             # Watch incoming deposits
@@ -299,3 +297,51 @@ class StrategyRunner(abc.ABC):
             self.report_after_execution(clock, universe, state, debug_details)
 
         return debug_details
+
+    def check_position_triggers(self,
+        clock: datetime.datetime,
+        state: State,
+        universe: StrategyExecutionUniverse,
+        ):
+        """Check stop loss/take profit for positions.
+
+        Unlike trade balancing in tick()
+
+        - Stop loss/take profit can occur only to any existing positions.
+          No new positions are opened.
+
+        - Trading Universe cannot change for these triggers,
+          but remains stable between main ticks.
+
+        - check_position_triggers() is much more lightweight and can be called much more frequently,
+          even once per minute
+        """
+
+        with self.timed_task_context_manager("check_position_triggers"):
+
+            routing_state, pricing_model, valuation_model = self.setup_routing(universe)
+            assert pricing_model, "Routing did not provide pricing_model"
+
+            # We use PositionManager.close_position()
+            # to generate trades to close stop loss positions
+            position_manager = PositionManager(
+                clock,
+                universe,
+                state,
+                pricing_model,
+            )
+
+            stop_loss_trades = check_position_triggers(position_manager)
+
+            approved_trades = self.approval_model.confirm_trades(state, stop_loss_trades)
+
+            if approved_trades:
+                logger.info("Executing stop loss trades")
+                self.execution_model.execute_trades(
+                    clock,
+                    state,
+                    approved_trades,
+                    self.routing_model,
+                    routing_state,
+                    check_balances=False)
+

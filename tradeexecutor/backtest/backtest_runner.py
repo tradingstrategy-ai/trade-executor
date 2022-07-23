@@ -333,6 +333,7 @@ def run_backtest(
 
 
 def run_backtest_inline(
+    *ignore,
     start_at: datetime.datetime,
     end_at: datetime.datetime,
     client: Optional[Client],
@@ -409,6 +410,10 @@ def run_backtest_inline(
     :return:
         tuple (State of a completely executed strategy, trading strategy universe, debug dump dict)
     """
+
+    if ignore:
+        # https://www.python.org/dev/peps/pep-3102/
+        raise TypeError("Only keyword arguments accepted")
 
     assert isinstance(start_at, datetime.datetime)
     assert isinstance(end_at, datetime.datetime)

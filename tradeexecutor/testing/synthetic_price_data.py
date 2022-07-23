@@ -55,6 +55,8 @@ def generate_ohlcv_candles(
         open = close
         now += time_delta
 
-    return pd.DataFrame(data)
+    df = pd.DataFrame(data)
+    df.set_index("timestamp", drop=False, inplace=True)
+    return df
 
 
