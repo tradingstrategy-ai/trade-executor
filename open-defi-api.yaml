@@ -1793,29 +1793,29 @@ components:
       properties:
         name:
           type: string
-          example: "Distant Universe Stardust Token"
+          example: "PancakeSwap Token"
         symbol:
           type: string
-          example: "DUST"
+          example: "CAKE"
         token_id:
           description: The token's primary key.
           type: integer
-          example: 27
+          example: 715
         chain_name:
           description: |
             Human-readable name of the blockchain the token lives on.
           type: string
-          example: Ethereum
+          example: Binance
         chain_slug:
           description: URL slug of the blockchain on which the token lives.
           type: string
-          example: ethereum
+          example: bsc
         address:
           type: string
           format: blockchain_address
           description: >
             The address of the smart contract that governs the token.
-          example: "0xbca3c97837a39099ec3082df97e28ce91be14472"
+          example: "0x0e09fabb73bd3ade0a17ecc321fd13a19e81ce82"
         total_supply:
           type: string
           format: decimal
@@ -1826,9 +1826,35 @@ components:
           minimum: 0
           nullable: true
           description: >
-             The number of decimals the token uses - e.g. 8, means to divide the token
+             The number of decimals the token uses - e.g. 8 means to divide the token
              amount by 100_000_000 to get its user representation.
-          example: 8
+          example: 18
+        chainscan_metadata:
+            type: object
+            nullable: false
+            description: >
+                Raw token metadata as fetched from external chainscan API.
+                Can be an empty JSON object if no metadata has been imported yet.
+            example:
+                {
+                  "contractAddress": "0x0e09fabb73bd3ade0a17ecc321fd13a19e81ce82",
+                  "tokenName": "PancakeSwap Token",
+                  "symbol": "Cake",
+                  "divisor": "18",
+                  "website": "https://pancakeswap.finance/",
+                  "email": "PancakeSwap@gmail.com",
+                  "facebook": "",
+                  "twitter": "https://twitter.com/pancakeswap"
+                }
+        chainscan_metadata_last_updated:
+            type: string
+            format: date-time
+            nullable: true
+            description: >
+              The UTC time the token metadata was last updated from a chainscan API.
+              Formatted as ISO 8601 string.
+            example:
+                "2022-07-25T10:03:12.605978"
         liquidity_latest:
           type: number
           format: float
