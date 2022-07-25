@@ -13,6 +13,7 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 
 from tqdm.auto import tqdm
 
+from tradeexecutor.backtest.backtest_pricing import BacktestSimplePricingModel
 from tradeexecutor.state.state import State
 from tradeexecutor.state.store import StateStore
 from tradeexecutor.state.sync import SyncMethod
@@ -254,9 +255,21 @@ class ExecutionLoop:
         # Hop to the next tick
         ts = round_datetime_up(start_ts, tick_size.to_timedelta())
 
+        routing_state, pricing_model, valuation_model = self.runner.setup_routing(universe)
+        assert pricing_model, "Routing did not provide pricing_model"
+
+        stop_loss_pricing_model = BacktestSimplePricingModel(universe.backtest_stop_loss_candles, self.runner.routing_model)
+
+        # Do stop loss checks for every time point between now and next strategy cycle
         while ts < end_ts:
             logger.debug("Backtesting stop loss at %s", ts)
-            self.runner.check_position_triggers(ts, state, universe)
+            self.runner.check_position_triggers(
+                ts,
+                state,
+                universe,
+                stop_loss_pricing_model,
+                routing_state
+            )
             ts += tick_size.to_timedelta()
 
     def run_backtest(self, state: State) -> dict:

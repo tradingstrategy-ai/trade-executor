@@ -229,6 +229,7 @@ def test_synthetic_data_backtest_stop_loss(
 
     # Run the test
     state, universe, debug_dump = run_backtest_inline(
+        name="No stop loss",
         start_at=start_at.to_pydatetime(),
         end_at=end_at.to_pydatetime(),
         client=None,  # None of downloads needed, because we are using synthetic data
@@ -259,6 +260,7 @@ def test_synthetic_data_backtest_stop_loss(
 
     stop_loss_decide_trades = stop_loss_decide_trades_factory(stop_loss_pct=0.95)
     state, universe, debug_dump = run_backtest_inline(
+        name="With 95% stop loss",
         start_at=start_at.to_pydatetime(),
         end_at=end_at.to_pydatetime(),
         client=None,  # None of downloads needed, because we are using synthetic data
@@ -282,11 +284,12 @@ def test_synthetic_data_backtest_stop_loss(
     # Check that all positions had stop loss set
     for p in state.portfolio.get_all_positions():
         assert p.stop_loss, f"Position did not have stop loss: {p}"
-        print(p.stop_loss)
 
-    assert len(list(state.portfolio.get_all_positions())) == 9
-    assert len(list(state.portfolio.get_all_trades())) == 17
+    assert len(list(state.portfolio.get_all_positions())) == 44
+    assert len(list(state.portfolio.get_all_trades())) == 88
 
-
-
-
+    # We should have some stop loss trades and some trades closed for profit
+    stop_loss_trades = [t for t in state.portfolio.get_all_trades() if t.is_stop_loss()]
+    rebalance_trades = [t for t in state.portfolio.get_all_trades() if t.is_rebalance()]
+    assert len(rebalance_trades) == 46
+    assert len(stop_loss_trades) == 42

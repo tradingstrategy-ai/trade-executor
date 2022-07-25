@@ -31,6 +31,8 @@ class PositionManager:
                  pricing_model: PricingModel,
                  ):
 
+        #: TODO: Take valuation model as input
+
         assert pricing_model, "pricing_model is needed in order to know buy/sell price of new positions"
 
         self.timestamp = timestamp
@@ -129,6 +131,8 @@ class PositionManager:
         """
 
         assert position.is_long(), "Only long supported for now"
+        assert position.is_open(), f"Tried to close already closed position {position}"
+        assert position.get_quantity() > 0
 
         pair = position.pair
         value = position.get_value()

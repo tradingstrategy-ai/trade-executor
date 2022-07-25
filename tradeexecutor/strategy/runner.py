@@ -9,7 +9,7 @@ from contextlib import AbstractContextManager
 import logging
 from io import StringIO
 
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from tradeexecutor.strategy.approval import ApprovalModel
 from tradeexecutor.strategy.execution_model import ExecutionModel
@@ -17,8 +17,9 @@ from tradeexecutor.state.sync import SyncMethod
 from tradeexecutor.strategy.output import output_positions, DISCORD_BREAK_CHAR, output_trades
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.strategy.pricing_model import PricingModelFactory, PricingModel
-from tradeexecutor.strategy.routing import RoutingModel
+from tradeexecutor.strategy.routing import RoutingModel, RoutingState
 from tradeexecutor.strategy.stoploss import check_position_triggers
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
 
 from tradeexecutor.state.state import State
@@ -202,7 +203,7 @@ class StrategyRunner(abc.ABC):
         """
         pass
 
-    def setup_routing(self, universe: StrategyExecutionUniverse):
+    def setup_routing(self, universe: StrategyExecutionUniverse) -> Tuple[RoutingState, PricingModel, ValuationModel]:
         """Setups routing state for this cycle.
 
         :param universe:
@@ -302,6 +303,8 @@ class StrategyRunner(abc.ABC):
         clock: datetime.datetime,
         state: State,
         universe: StrategyExecutionUniverse,
+        stop_loss_pricing_model: PricingModel,
+        routing_state: RoutingState,
         ):
         """Check stop loss/take profit for positions.
 
@@ -317,10 +320,10 @@ class StrategyRunner(abc.ABC):
           even once per minute
         """
 
-        with self.timed_task_context_manager("check_position_triggers"):
+        assert isinstance(routing_state, RoutingState)
+        assert isinstance(stop_loss_pricing_model, PricingModel)
 
-            routing_state, pricing_model, valuation_model = self.setup_routing(universe)
-            assert pricing_model, "Routing did not provide pricing_model"
+        with self.timed_task_context_manager("check_position_triggers"):
 
             # We use PositionManager.close_position()
             # to generate trades to close stop loss positions
@@ -328,7 +331,7 @@ class StrategyRunner(abc.ABC):
                 clock,
                 universe,
                 state,
-                pricing_model,
+                stop_loss_pricing_model,
             )
 
             stop_loss_trades = check_position_triggers(position_manager)
@@ -336,7 +339,7 @@ class StrategyRunner(abc.ABC):
             approved_trades = self.approval_model.confirm_trades(state, stop_loss_trades)
 
             if approved_trades:
-                logger.info("Executing stop loss trades")
+                logger.info("Executing %d stop loss/take profit trades at %s", len(approved_trades), clock)
                 self.execution_model.execute_trades(
                     clock,
                     state,

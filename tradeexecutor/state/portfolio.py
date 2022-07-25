@@ -68,6 +68,10 @@ class Portfolio:
         """Get open, closed and frozen, positions."""
         return chain(self.open_positions.values(), self.closed_positions.values(), self.frozen_positions.values())
 
+    def get_open_positions(self) -> Iterable[TradingPosition]:
+        """Get currently open positions."""
+        return self.open_positions.values()
+
     def get_executed_positions(self) -> Iterable[TradingPosition]:
         """Get all positions with already executed trades.
 

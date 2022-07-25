@@ -430,7 +430,7 @@ def run_backtest_inline(
 
     if universe:
         assert routing_model
-        pricing_model = BacktestSimplePricingModel(universe, routing_model)
+        pricing_model = BacktestSimplePricingModel(universe.universe.candles, routing_model)
     else:
         assert create_trading_universe, "Must give create_trading_universe if no universe given"
         pricing_model = None

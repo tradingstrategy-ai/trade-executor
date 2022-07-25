@@ -37,7 +37,7 @@ def check_position_triggers(
     state: State = position_manager.state
     pricing_model: PricingModel = position_manager.pricing_model
 
-    positions = state.portfolio.get_all_positions()
+    positions = state.portfolio.get_open_positions()
 
     trades = []
 

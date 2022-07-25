@@ -12,7 +12,8 @@ from tradeexecutor.state.types import USDollarAmount
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.routing import RoutingModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_trading_pair
-from tradingstrategy.universe import Universe
+from tradingstrategy.candle import GroupedCandleUniverse
+
 
 logger = logging.getLogger(__name__)
 
@@ -24,15 +25,17 @@ class BacktestSimplePricingModel(PricingModel):
     """
 
     def __init__(self,
-                 universe: TradingStrategyUniverse,
+                 candle_universe: GroupedCandleUniverse,
                  routing_model: RoutingModel,
-                 candle_timepoint="close",
+                 candle_timepoint_kind="close",
                  very_small_amount=Decimal("0.10")):
 
-        self.universe = universe
+        assert isinstance(candle_universe, GroupedCandleUniverse), f"Got candles in wrong format: {candle_universe.__class__}"
+
+        self.candle_universe = candle_universe
         self.very_small_amount = very_small_amount
         self.routing_model = routing_model
-        self.candle_timepoint = candle_timepoint
+        self.candle_timepoint_kind = candle_timepoint_kind
 
     def get_pair_for_id(self, internal_id: int) -> TradingPairIdentifier:
         """Look up a trading pair.
@@ -53,7 +56,7 @@ class BacktestSimplePricingModel(PricingModel):
                        ) -> USDollarAmount:
         # TODO: Include price impact
         pair_id = pair.internal_id
-        return self.universe.universe.candles.get_closest_price(pair_id, ts)
+        return self.candle_universe.get_closest_price(pair_id, ts, kind=self.candle_timepoint_kind)
 
     def get_buy_price(self,
                        ts: datetime.datetime,
@@ -62,7 +65,7 @@ class BacktestSimplePricingModel(PricingModel):
                        ) -> USDollarAmount:
         # TODO: Include price impact
         pair_id = pair.internal_id
-        return float(self.universe.universe.candles.get_closest_price(pair_id, ts))
+        return float(self.candle_universe.get_closest_price(pair_id, ts, kind=self.candle_timepoint_kind))
 
     def quantize_base_quantity(self, pair: TradingPairIdentifier, quantity: Decimal, rounding=ROUND_DOWN) -> Decimal:
         """Convert any base token quantity to the native token units by its ERC-20 decimals."""
@@ -81,6 +84,6 @@ def backtest_pricing_factory(
     assert isinstance(routing_model, UniswapV2SimpleRoutingModel), f"This pricing method only works with Uniswap routing model, we received {routing_model}"
 
     return BacktestSimplePricingModel(
-        universe.universe,
+        universe.universe.candles,
         routing_model)
 

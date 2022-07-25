@@ -205,6 +205,18 @@ class TradeExecution:
         """This trade has a txid allocated."""
         return self.get_status() in (TradeStatus.started,)
 
+    def is_rebalance(self):
+        """This trade is part of the normal strategy rebalance."""
+        return self.trade_type == TradeType.rebalance
+
+    def is_stop_loss(self):
+        """This trade is made to close stop loss on a position."""
+        return self.trade_type == TradeType.stop_loss
+
+    def is_take_profit(self):
+        """This trade is made to close take profit on a position."""
+        return self.trade_type == TradeType.take_profit
+
     def is_accounted_for_equity(self):
         """Does this trade contribute towards the trading position equity.
 
