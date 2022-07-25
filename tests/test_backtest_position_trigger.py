@@ -95,7 +95,7 @@ def stop_loss_decide_trades_factory(stop_loss_pct=None):
                     if stop_loss_pct:
                         # Stop loss activated
                         price = last_candle["close"]
-                        trades += position_manager.open_1x_long(pair, cash * 0.1, stop_loss=price * stop_loss_pct)
+                        trades += position_manager.open_1x_long(pair, cash * 0.1, stop_loss_pct=stop_loss_pct)
                     else:
                         # Stop loss inactive
                         trades += position_manager.open_1x_long(pair, cash * 0.1)
@@ -253,7 +253,10 @@ def test_synthetic_data_backtest_stop_loss(
     profitability = summary.realised_profit / summary.initial_cash
     assert profitability > 0
 
-    # Now to do the same run with stop less set to 5%
+    #
+    # Now run the same strategy with stop less set to 5%
+    #
+
     stop_loss_decide_trades = stop_loss_decide_trades_factory(stop_loss_pct=0.95)
     state, universe, debug_dump = run_backtest_inline(
         start_at=start_at.to_pydatetime(),
@@ -275,6 +278,12 @@ def test_synthetic_data_backtest_stop_loss(
 
     # Expect backtesting for 213 days
     assert len(debug_dump) == 213
+
+    # Check that all positions had stop loss set
+    for p in state.portfolio.get_all_positions():
+        assert p.stop_loss, f"Position did not have stop loss: {p}"
+        print(p.stop_loss)
+
     assert len(list(state.portfolio.get_all_positions())) == 9
     assert len(list(state.portfolio.get_all_trades())) == 17
 

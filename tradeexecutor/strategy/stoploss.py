@@ -3,7 +3,7 @@
 Logic for managing position stop loss/take profit signals.
 """
 import datetime
-from typing import List
+from typing import List, Dict
 
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution, TradeType
@@ -25,6 +25,12 @@ def check_position_triggers(
     - Get the real-time price of an assets that are currently hold in the portfolio
 
     - Generate stop loss/take profit signals for trades
+
+    :param position_manager:
+        Encapsulates the current state, universe for closing positions
+
+    :param cycle_debug_data:
+        The debug data of previous cycle
     """
 
     ts: datetime.datetime = position_manager.timestamp

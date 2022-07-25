@@ -49,8 +49,8 @@ class PositionManager:
     def open_1x_long(self,
                      pair: DEXPair,
                      value: USDollarAmount,
-                     take_profit: Optional[USDollarAmount]=None,
-                     stop_loss: Optional[USDollarAmount]=None,
+                     take_profit_pct: Optional[float]=None,
+                     stop_loss_pct: Optional[float]=None,
                      ) -> List[TradeExecution]:
         """Open a long.
 
@@ -66,11 +66,19 @@ class PositionManager:
         :param value:
             How large position to open, in US dollar terms
 
-        :param take_profit:
-            If set, set the position take profit to this US dollar price level.
+        :param take_profit_pct:
+            If set, set the position take profit relative
+            to the current market price.
+            1.0 is the current market price.
+            If asset opening price is $1000, take_profit_pct=1.05
+            will sell the asset when price reaches $1050.
 
-        :param stop_loss:
-            If set, set the position stop loss to this US dollar price level.
+        :param stop_loss_pct:
+            If set, set the position to trigger stop loss relative to
+            the current market price.
+            1.0 is the current market price.
+            If asset opening price is $1000, stop_loss_pct=0.95
+            will sell the asset when price reaches 950.
         """
 
         # Translate DEXPair object to the trading pair model
@@ -98,8 +106,11 @@ class PositionManager:
 
         assert created, f"There was conflicting open position for pair: {executor_pair}"
 
-        position.take_profit = take_profit
-        position.stop_loss = stop_loss
+        if take_profit_pct:
+            position.take_profit = price * take_profit_pct
+
+        if stop_loss_pct:
+            position.stop_loss = price * stop_loss_pct
 
         self.state.visualisation.add_message(
             self.timestamp,
