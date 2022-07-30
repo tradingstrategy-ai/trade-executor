@@ -5,6 +5,8 @@ from pathlib import Path
 
 import pytest
 
+import pandas as pd
+
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.strategy.trading_strategy_universe import create_pair_universe_from_code
 from tradeexecutor.testing.synthetic_ethereum_data import generate_random_ethereum_address
@@ -65,7 +67,6 @@ def test_load_parquet(ohlcv_sample_path):
     )
 
     candle_range = universe.get_candle_availability()
-    import ipdb ; ipdb.set_trace()
 
-
-
+    assert candle_range[0] == pd.Timestamp('2021-12-25 00:00:00')
+    assert candle_range[1] == pd.Timestamp('2022-04-28 12:00:00')
