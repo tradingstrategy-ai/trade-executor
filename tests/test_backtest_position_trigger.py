@@ -293,3 +293,8 @@ def test_synthetic_data_backtest_stop_loss(
     rebalance_trades = [t for t in state.portfolio.get_all_trades() if t.is_rebalance()]
     assert len(rebalance_trades) == 46
     assert len(stop_loss_trades) == 42
+
+    # Check that stop loss positions closed with loss
+    for t in stop_loss_trades:
+        position = state.portfolio.get_position_by_trading_pair()
+
