@@ -105,6 +105,64 @@ def stop_loss_decide_trades_factory(stop_loss_pct=None):
     return stop_loss_decide_trades
 
 
+def take_profit_decide_trades_factory(take_profit_pct=None):
+    """Factory allows easily test the strategy with different tak profit parameters."""
+
+    def stop_loss_decide_trades(
+            timestamp: pd.Timestamp,
+            universe: Universe,
+            state: State,
+            pricing_model: PricingModel,
+            cycle_debug_data: Dict) -> List[TradeExecution]:
+        """Keep triggering position stop losses.
+
+        Trading logic
+
+        - On 2 green candles open a position
+
+        - Use 5% stop loss
+
+        - Close the position if we get 4 green candles
+        """
+
+        candles: pd.DataFrame = universe.candles.get_single_pair_data(timestamp, sample_count=4)
+
+        # The pair we are trading
+        pair = universe.pairs.get_single()
+
+        # How much cash we have in the hand
+        cash = state.portfolio.get_current_cash()
+
+        position_manager = PositionManager(timestamp, universe, state, pricing_model)
+
+        trades = []
+
+        if position_manager.is_any_open():
+            # Close position on 4 green candles thru rebalance (take profit)
+            tail = candles.tail(4)
+            if len(tail) >= 4 and all(is_candle_green(c) for idx, c in tail.iterrows()):
+                trades += position_manager.close_all()
+        else:
+            # Open new position if 2 green daily candles
+            tail = candles.tail(2)
+            if len(tail) >= 2:
+                last_candle = tail.iloc[-1]
+                second_last_candle = tail.iloc[-2]
+                if is_candle_green(last_candle) and is_candle_green(second_last_candle):
+                    if take_profit_pct:
+                        # Stop loss activated
+                        price = last_candle["close"]
+                        trades += position_manager.open_1x_long(pair, cash * 0.1, take_profit_pct=take_profit_pct)
+                    else:
+                        # Stop loss inactive
+                        trades += position_manager.open_1x_long(pair, cash * 0.1)
+
+        return trades
+
+    return stop_loss_decide_trades
+
+
+
 @pytest.fixture(scope="module")
 def logger(request):
     """Setup test logger."""
@@ -218,9 +276,6 @@ def test_synthetic_data_backtest_stop_loss(
         routing_model: BacktestRoutingModel,
     ):
     """Run the strategy that triggers stop losses."""
-
-    # Run the test
-
     start_at, end_at = synthetic_universe.universe.candles.get_timestamp_range()
 
     routing_model = generate_simple_routing_model(synthetic_universe)
@@ -293,3 +348,108 @@ def test_synthetic_data_backtest_stop_loss(
     rebalance_trades = [t for t in state.portfolio.get_all_trades() if t.is_rebalance()]
     assert len(rebalance_trades) == 46
     assert len(stop_loss_trades) == 42
+
+    # Check are stop loss positions unprofitable
+    stop_loss_positions = [p for p in state.portfolio.get_all_positions() if p.is_stop_loss()]
+    for p in stop_loss_positions:
+        assert p.is_loss()
+
+
+def test_synthetic_data_backtest_take_profit(
+        logger: logging.Logger,
+        strategy_path: Path,
+        synthetic_universe: TradingStrategyUniverse,
+        routing_model: BacktestRoutingModel,
+    ):
+    """Run the strategy that triggers take profits.
+
+    Run the same strategy
+
+    - Without take profit
+
+    - With take profit 5%
+
+    And see the results make sense.
+    """
+    start_at, end_at = synthetic_universe.universe.candles.get_timestamp_range()
+
+    routing_model = generate_simple_routing_model(synthetic_universe)
+
+    take_profit_trades = take_profit_decide_trades_factory(take_profit_pct=None)
+
+    # Run the test
+    state, universe, debug_dump = run_backtest_inline(
+        name="No stop loss",
+        start_at=start_at.to_pydatetime(),
+        end_at=end_at.to_pydatetime(),
+        client=None,  # None of downloads needed, because we are using synthetic data
+        cycle_duration=CycleDuration.cycle_24h,  # Override to use 24h cycles despite what strategy file says
+        decide_trades=take_profit_trades,
+        create_trading_universe=None,
+        universe=synthetic_universe,
+        initial_deposit=10_000,
+        reserve_currency=ReserveCurrency.busd,
+        trade_routing=TradeRouting.user_supplied_routing_model,
+        routing_model=routing_model,
+        log_level=logging.WARNING,
+    )
+
+    # Expect backtesting for 213 days
+    assert len(debug_dump) == 213
+    assert len(list(state.portfolio.get_all_positions())) == 9
+    assert len(list(state.portfolio.get_all_trades())) == 17
+
+    analysis = build_trade_analysis(state.portfolio)
+    summary = analysis.calculate_summary_statistics()
+    profitability = summary.realised_profit / summary.initial_cash
+    assert profitability > 0
+
+    #
+    # Now run the same strategy with stop less set to 5%
+    #
+
+    take_profit_trades = take_profit_decide_trades_factory(take_profit_pct=1.05)
+    state, universe, debug_dump = run_backtest_inline(
+        name="With 95% stop loss",
+        start_at=start_at.to_pydatetime(),
+        end_at=end_at.to_pydatetime(),
+        client=None,  # None of downloads needed, because we are using synthetic data
+        cycle_duration=CycleDuration.cycle_24h,  # Override to use 24h cycles despite what strategy file says
+        decide_trades=take_profit_trades,
+        create_trading_universe=None,
+        universe=synthetic_universe,
+        initial_deposit=10_000,
+        reserve_currency=ReserveCurrency.busd,
+        trade_routing=TradeRouting.user_supplied_routing_model,
+        routing_model=routing_model,
+        log_level=logging.WARNING,
+    )
+
+    assert universe.backtest_stop_loss_candles
+    assert universe.backtest_stop_loss_time_bucket
+
+    # Expect backtesting for 213 days
+    assert len(debug_dump) == 213
+
+    # Check that all positions had take profit set
+    for p in state.portfolio.get_all_positions():
+        assert p.take_profit, f"Position did not have take profit: {p}"
+
+    assert len(list(state.portfolio.get_all_positions())) == 46
+    assert len(list(state.portfolio.get_all_trades())) == 92
+
+    # We should have some stop loss trades and some trades closed for profit
+    take_profit_trades = [t for t in state.portfolio.get_all_trades() if t.is_take_profit()]
+    rebalance_trades = [t for t in state.portfolio.get_all_trades() if t.is_rebalance()]
+    assert len(rebalance_trades) == 46
+    assert len(take_profit_trades) == 46
+
+    # Check are stop loss positions unprofitable
+    take_profit_positions = [p for p in state.portfolio.get_all_positions() if p.is_take_profit()]
+    for p in take_profit_positions:
+        assert p.is_profitable()
+
+
+
+
+
