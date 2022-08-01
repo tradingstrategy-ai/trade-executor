@@ -1,6 +1,7 @@
 """Test backtesting where decide_trades and create_universe functions are passed directly.
 
 """
+import os
 import logging
 
 import pytest
@@ -22,6 +23,9 @@ from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.strategy_type import StrategyType
 from tradeexecutor.strategy.default_routing_options import TradeRouting
+
+# https://docs.pytest.org/en/latest/how-to/skipping.html#skip-all-test-functions-of-a-class-or-module
+pytestmark = pytest.mark.skipif(os.environ.get("TRADING_STRATEGY_API_KEY") is None, reason="Set TRADING_STRATEGY_API_KEY environment variable to run this test")
 
 # Tell what trade execution engine version this strategy needs to use
 trading_strategy_engine_version = "0.1"

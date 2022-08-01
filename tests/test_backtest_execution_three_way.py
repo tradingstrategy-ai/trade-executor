@@ -1,5 +1,6 @@
 """Backtesting router tests for three way trades.
 """
+import os
 import datetime
 import logging
 from decimal import Decimal
@@ -26,6 +27,10 @@ from tradeexecutor.strategy.execution_context import ExecutionMode, ExecutionCon
 from tradeexecutor.strategy.trading_strategy_universe import load_all_data, TradingStrategyUniverse, \
     translate_trading_pair, translate_token
 from tradeexecutor.utils.timer import timed_task
+
+
+# https://docs.pytest.org/en/latest/how-to/skipping.html#skip-all-test-functions-of-a-class-or-module
+pytestmark = pytest.mark.skipif(os.environ.get("TRADING_STRATEGY_API_KEY") is None, reason="Set TRADING_STRATEGY_API_KEY environment variable to run this test")
 
 
 @pytest.fixture(scope="module")
