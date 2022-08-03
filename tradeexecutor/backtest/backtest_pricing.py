@@ -30,6 +30,10 @@ class BacktestSimplePricingModel(PricingModel):
                  candle_timepoint_kind="close",
                  very_small_amount=Decimal("0.10")):
 
+        # TODO: Remove later - now to support some old code
+        if isinstance(candle_universe, TradingStrategyUniverse):
+            candle_universe = candle_universe.universe.candles
+
         assert isinstance(candle_universe, GroupedCandleUniverse), f"Got candles in wrong format: {candle_universe.__class__}"
 
         self.candle_universe = candle_universe
