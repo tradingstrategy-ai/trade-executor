@@ -21,6 +21,21 @@ class CycleDuration(enum.Enum):
     See :ref:`strategy cycle` for more information.
     """
 
+    #: Run `decide_trades()` every minute
+    cycle_1m = "1m"
+
+    #: Run `decide_trades()` every 5 minutes
+    cycle_5m = "5m"
+
+    #: Run `decide_trades()` every 15 minutes
+    cycle_15m = "15m"
+
+    #: Run `decide_trades()` every hour
+    cycle_1h = "1h"
+
+    #: Run `decide_trades()` every 4 hours
+    cycle_4h = "4h"
+
     #: Run `decide_trades()` for every 8 hours
     cycle_8h = "8h"
 
@@ -108,9 +123,15 @@ def snap_to_previous_tick(
     delta = tick_size.to_timedelta()
     return round_datetime_down(ts, delta, offset)
 
-
 _TICK_DURATIONS = {
+    CycleDuration.cycle_1m: datetime.timedelta(minutes=1),
+    CycleDuration.cycle_5m: datetime.timedelta(minutes=5),
+    CycleDuration.cycle_15m: datetime.timedelta(minutes=15),
+    CycleDuration.cycle_1h: datetime.timedelta(hours=1),
+    CycleDuration.cycle_4h: datetime.timedelta(hours=4),
     CycleDuration.cycle_8h: datetime.timedelta(hours=8),
     CycleDuration.cycle_16h: datetime.timedelta(hours=16),
     CycleDuration.cycle_24h: datetime.timedelta(hours=24),
 }
+
+assert len(_TICK_DURATIONS) == len(CycleDuration)  # sanity check
