@@ -6,13 +6,16 @@ from typing import List, Tuple
 import logging
 
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel, BacktestRoutingState
-from tradeexecutor.backtest.simulated_wallet import SimulatedWallet
+from tradeexecutor.backtest.simulated_wallet import SimulatedWallet, OutOfSimulatedBalance
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution, TradeStatus
 from tradeexecutor.strategy.execution_model import ExecutionModel
 
 
 logger = logging.getLogger(__name__)
+
+class BacktestExecutionFailed(Exception):
+    """Something went wrong in the backtest simulation."""
 
 
 class BacktestExecutionModel(ExecutionModel):
@@ -44,16 +47,42 @@ class BacktestExecutionModel(ExecutionModel):
         quote = trade.pair.quote
         reserve = trade.reserve_currency
 
+        base_balance = self.wallet.get_balance(base.address)
+        quote_balance = self.wallet.get_balance(quote.address)
+        reserve_balance = self.wallet.get_balance(reserve.address)
+
+        position = state.portfolio.get_existing_open_position_by_trading_pair(trade.pair)
+
         if trade.is_buy():
             executed_reserve = trade.planned_reserve
             executed_quantity = trade.planned_quantity * Decimal(1 - self.lp_fees)
-            self.wallet.update_balance(reserve.address, -executed_reserve)
-            self.wallet.update_balance(base.address, executed_quantity)
         else:
+            assert position and position.is_open(), f"Tried to execute sell on position that is not open: {trade}"
             executed_quantity = trade.planned_quantity
             executed_reserve = abs(Decimal(trade.planned_quantity) * Decimal(trade.planned_price) * Decimal(1 + self.lp_fees))
-            self.wallet.update_balance(base.address, executed_quantity)
-            self.wallet.update_balance(reserve.address, executed_reserve)
+        try:
+            if trade.is_buy():
+                self.wallet.update_balance(reserve.address, -executed_reserve)
+                self.wallet.update_balance(base.address, executed_quantity)
+            else:
+                self.wallet.update_balance(base.address, executed_quantity)
+                self.wallet.update_balance(reserve.address, executed_reserve)
+
+        except OutOfSimulatedBalance as e:
+            # Better error messages to helping out why backtesting failed
+            raise BacktestExecutionFailed(
+                f"Execution of trade {trade} failed.\n"
+                f"Trade type: {trade.trade_type.name}.\n"
+                f"Wallet base balance: {base_balance} {base.token_symbol}.\n"
+                f"Wallet quote balance: {quote_balance} {quote.token_symbol}.\n"
+                f"Wallet reserve balance: {reserve_balance} {reserve.token_symbol}.\n"
+                f"Executed base amount: {executed_quantity} {base.token_symbol}\n"
+                f"Executed reserve amount: {executed_reserve} {reserve.token_symbol}\n"
+                f"Planned base amount: {trade.planned_quantity} {base.token_symbol}\n"
+                f"Planned reserve amount: {trade.planned_reserve} {reserve.token_symbol}\n"
+                f"Position quantity: {position and position.get_quantity() or '-'} {base.token_symbol}\n"
+                f"Out of balance: {e}\n"
+            ) from e
 
         assert abs(executed_quantity) > 0
         assert executed_reserve > 0

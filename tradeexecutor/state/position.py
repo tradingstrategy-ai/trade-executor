@@ -113,6 +113,28 @@ class TradingPosition:
         """Is this position short on the underlying base asset."""
         return not self.is_long()
 
+    def is_stop_loss(self) -> bool:
+        """Was this position ended with stop loss trade"""
+        last_trade = self.get_last_trade()
+        if last_trade:
+            return last_trade.is_stop_loss()
+        return False
+
+    def is_take_profit(self) -> bool:
+        """Was this position ended with take profit trade"""
+        last_trade = self.get_last_trade()
+        if last_trade:
+            return last_trade.is_take_profit()
+        return False
+
+    def is_profitable(self):
+        """This position is currently having non-zero profit."""
+        return self.get_total_profit_usd() > 0
+
+    def is_loss(self):
+        """This position is currently having non-zero losses."""
+        return self.get_total_profit_usd() < 0
+
     def has_executed_trades(self) -> bool:
         """This position represents actual holdings and has executed trades on it.
 
@@ -151,9 +173,16 @@ class TradingPosition:
     def get_live_quantity(self) -> Decimal:
         """Get all tied up token quantity.
 
-        If there are trades being executed, us their estimated amounts.
+        This includes
+
+        - All executed trades
+
+        - All planned trades for this cycle
+
+        This gives you remaining token balance, even if there are some earlier
+        sell orders that have not been executed yet.
         """
-        return sum([t.quantity for t in self.trades.values() if not t.is_failed()])
+        return sum([t.get_position_quantity() for t in self.trades.values() if not t.is_failed()])
 
     def get_current_price(self) -> USDollarAmount:
         """Get the price of the base asset based on the latest valuation."""

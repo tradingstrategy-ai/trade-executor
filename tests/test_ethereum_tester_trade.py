@@ -5,7 +5,6 @@ Make some random trades against Ethereum Tester to see our Ethereum wallet manag
 import logging
 import os
 import datetime
-import secrets
 from decimal import Decimal
 from pathlib import Path
 from typing import List
@@ -13,7 +12,6 @@ from typing import List
 import pytest
 from eth_account import Account
 from eth_typing import HexAddress
-from hexbytes import HexBytes
 from web3 import EthereumTesterProvider, Web3
 from web3.contract import Contract
 
@@ -23,8 +21,8 @@ from eth_defi.token import create_token
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, deploy_trading_pair, deploy_uniswap_v2_like
 from tradeexecutor.ethereum.hot_wallet_sync import EthereumHotWalletReserveSyncer
 from tradeexecutor.ethereum.uniswap_v2_execution_v0 import UniswapV2ExecutionModelVersion0
-from tradeexecutor.ethereum.uniswap_v2_live_pricing import UniswapV2LivePricing, uniswap_v2_live_pricing_factory
-from tradeexecutor.ethereum.uniswap_v2_valuation import UniswapV2PoolRevaluator, uniswap_v2_sell_valuation_factory
+from tradeexecutor.ethereum.uniswap_v2_live_pricing import uniswap_v2_live_pricing_factory
+from tradeexecutor.ethereum.uniswap_v2_valuation import uniswap_v2_sell_valuation_factory
 from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2SimpleRoutingModel
 from tradeexecutor.ethereum.uniswap_v2_valuation_v0 import UniswapV2PoolValuationMethodV0
 from tradeexecutor.ethereum.universe import create_exchange_universe, create_pair_universe
@@ -48,6 +46,10 @@ from tradingstrategy.liquidity import GroupedLiquidityUniverse
 from tradingstrategy.pair import LegacyPairUniverse, PandasPairUniverse
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
+
+
+# https://docs.pytest.org/en/latest/how-to/skipping.html#skip-all-test-functions-of-a-class-or-module
+pytestmark = pytest.mark.skipif(os.environ.get("TRADING_STRATEGY_API_KEY") is None, reason="Set TRADING_STRATEGY_API_KEY environment variable to run this test")
 
 
 #: How much values we allow to drift.

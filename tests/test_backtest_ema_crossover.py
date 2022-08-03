@@ -23,6 +23,10 @@ from tradeexecutor.strategy.cycle import CycleDuration
 from tradingstrategy.timebucket import TimeBucket
 
 
+# https://docs.pytest.org/en/latest/how-to/skipping.html#skip-all-test-functions-of-a-class-or-module
+pytestmark = pytest.mark.skipif(os.environ.get("TRADING_STRATEGY_API_KEY") is None, reason="Set TRADING_STRATEGY_API_KEY environment variable to run this test")
+
+
 @pytest.fixture(scope="module")
 def logger(request):
     """Setup test logger."""

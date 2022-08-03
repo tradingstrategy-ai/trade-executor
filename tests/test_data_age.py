@@ -1,4 +1,5 @@
 """Check we correctly handle fresh and expired data."""
+import os
 import datetime
 
 import pytest
@@ -10,6 +11,10 @@ from tradingstrategy.client import Client
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverseModel
 from tradeexecutor.utils.timer import timed_task
 from tradingstrategy.timebucket import TimeBucket
+
+
+# https://docs.pytest.org/en/latest/how-to/skipping.html#skip-all-test-functions-of-a-class-or-module
+pytestmark = pytest.mark.skipif(os.environ.get("TRADING_STRATEGY_API_KEY") is None, reason="Set TRADING_STRATEGY_API_KEY environment variable to run this test")
 
 
 class DataAgeTestUniverseModel(TradingStrategyUniverseModel):
