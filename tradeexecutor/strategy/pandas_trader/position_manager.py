@@ -3,6 +3,7 @@
 import datetime
 from decimal import Decimal
 from typing import List, Optional
+import logging
 
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.position import TradingPosition
@@ -13,6 +14,9 @@ from tradeexecutor.strategy.pricing_model import PricingModel
 from tradingstrategy.pair import DEXPair
 from tradingstrategy.universe import Universe
 from tradeexecutor.strategy.trading_strategy_universe import translate_trading_pair
+
+
+logger = logging.getLogger(__name__)
 
 
 class PositionManager:
@@ -81,6 +85,12 @@ class PositionManager:
             1.0 is the current market price.
             If asset opening price is $1000, stop_loss_pct=0.95
             will sell the asset when price reaches 950.
+
+        :return:
+            A list of new trades.
+            Opening a position may general several trades for complex DeFi positions,
+            though usually the result contains only a single trade.
+
         """
 
         # Translate DEXPair object to the trading pair model
@@ -120,23 +130,38 @@ class PositionManager:
 
         return [trade]
 
-    def close_position(self, position: TradingPosition, trade_type: TradeType=TradeType.rebalance) -> TradeExecution:
+    def close_position(self, position: TradingPosition, trade_type: TradeType=TradeType.rebalance) -> Optional[TradeExecution]:
         """Close a single position.
+
+        The position may already have piled up selling trades.
+        In this case calling `close_position()` again on the same position
+        does nothing and `None` is returned.
 
         :param position:
             Position to be closed
 
         :param trade_type:
             What's the reason to close the position
+
+        :return:
+            A trade that will close the position fully.
+            If there is nothing left to close, return None.
         """
 
         assert position.is_long(), "Only long supported for now"
         assert position.is_open(), f"Tried to close already closed position {position}"
-        assert position.get_quantity() > 0
+
+        quantity_left = position.get_live_quantity()
+
+        if quantity_left == 0:
+            # We have already generated closing trades for this position
+            # earlier
+            logger.warning("Tried to close position that has enough selling trades to sent it to zero: %s", position)
+            return None
 
         pair = position.pair
         value = position.get_value()
-        quantity = position.get_quantity()
+        quantity = quantity_left
         price = self.pricing_model.get_sell_price(self.timestamp, pair, quantity=quantity)
 
         reserve_asset, reserve_price = self.state.portfolio.get_default_reserve_currency()
@@ -151,18 +176,23 @@ class PositionManager:
             reserve_asset,
             reserve_price,  # TODO: Harcoded stablecoin USD exchange rate
         )
-
         assert position == position2, "Somehow messed up the trade"
 
         return trade
 
     def close_all(self) -> List[TradeExecution]:
-        """Close all open positions."""
+        """Close all open positions.
+
+        :return:
+            List of trades that will close existing positions
+        """
         assert self.is_any_open(), "No positions to close"
 
         position: TradingPosition
         trades = []
         for position in self.state.portfolio.open_positions.values():
-            trades.append(self.close_position(position))
+            trade = self.close_position(position)
+            if trade:
+                trades.append(trade)
 
         return trades

@@ -173,9 +173,16 @@ class TradingPosition:
     def get_live_quantity(self) -> Decimal:
         """Get all tied up token quantity.
 
-        If there are trades being executed, us their estimated amounts.
+        This includes
+
+        - All executed trades
+
+        - All planned trades for this cycle
+
+        This gives you remaining token balance, even if there are some earlier
+        sell orders that have not been executed yet.
         """
-        return sum([t.quantity for t in self.trades.values() if not t.is_failed()])
+        return sum([t.get_position_quantity() for t in self.trades.values() if not t.is_failed()])
 
     def get_current_price(self) -> USDollarAmount:
         """Get the price of the base asset based on the latest valuation."""

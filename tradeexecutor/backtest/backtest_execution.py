@@ -51,10 +51,13 @@ class BacktestExecutionModel(ExecutionModel):
         quote_balance = self.wallet.get_balance(quote.address)
         reserve_balance = self.wallet.get_balance(reserve.address)
 
+        position = state.portfolio.get_existing_open_position_by_trading_pair(trade.pair)
+
         if trade.is_buy():
             executed_reserve = trade.planned_reserve
             executed_quantity = trade.planned_quantity * Decimal(1 - self.lp_fees)
         else:
+            assert position and position.is_open(), f"Tried to execute sell on position that is not open: {trade}"
             executed_quantity = trade.planned_quantity
             executed_reserve = abs(Decimal(trade.planned_quantity) * Decimal(trade.planned_price) * Decimal(1 + self.lp_fees))
         try:
@@ -64,6 +67,7 @@ class BacktestExecutionModel(ExecutionModel):
             else:
                 self.wallet.update_balance(base.address, executed_quantity)
                 self.wallet.update_balance(reserve.address, executed_reserve)
+
         except OutOfSimulatedBalance as e:
             # Better error messages to helping out why backtesting failed
             raise BacktestExecutionFailed(
@@ -72,8 +76,11 @@ class BacktestExecutionModel(ExecutionModel):
                 f"Wallet base balance: {base_balance} {base.token_symbol}.\n"
                 f"Wallet quote balance: {quote_balance} {quote.token_symbol}.\n"
                 f"Wallet reserve balance: {reserve_balance} {reserve.token_symbol}.\n"
-                f"Executed base: {executed_quantity} {base.token_symbol}\n"
-                f"Executed reserve: {executed_reserve} {reserve.token_symbol}\n"
+                f"Executed base amount: {executed_quantity} {base.token_symbol}\n"
+                f"Executed reserve amount: {executed_reserve} {reserve.token_symbol}\n"
+                f"Planned base amount: {trade.planned_quantity} {base.token_symbol}\n"
+                f"Planned reserve amount: {trade.planned_reserve} {reserve.token_symbol}\n"
+                f"Position quantity: {position and position.get_quantity() or '-'} {base.token_symbol}\n"
                 f"Out of balance: {e}\n"
             ) from e
 
