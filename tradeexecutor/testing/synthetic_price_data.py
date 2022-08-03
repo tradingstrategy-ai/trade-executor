@@ -1,9 +1,11 @@
 """Generate synthetic price data."""
 import datetime
 import random
+from pathlib import Path
 
 import pandas as pd
 
+from tradingstrategy.chain import ChainId
 from tradingstrategy.timebucket import TimeBucket
 
 
@@ -59,4 +61,24 @@ def generate_ohlcv_candles(
     df.set_index("timestamp", drop=False, inplace=True)
     return df
 
+def load_ohlcv_parquet_file(path: Path, chain_id: ChainId, exchange_id: int, pair_id: int) -> pd.DataFrame:
+    """Load OHLCV data directly from a parquet file.
+
+    - Assume one file for one pair
+
+    - Columns: timestamp, open, close, high, low, volume
+    """
+
+    assert isinstance(path, Path)
+    assert path.exists()
+    df = pd.read_parquet(path)
+    df.set_index("timestamp", drop=False, inplace=True)
+
+    # Fill data we need for the universe
+    # https://stackoverflow.com/a/69822548/315168
+    df.loc[:, "pair_id"] = pair_id
+    df.loc[:, "exchange_id"] = exchange_id
+    df.loc[:, "chain_id"] = chain_id.value
+
+    return df
 

@@ -221,6 +221,16 @@ class TradingPosition:
         """Get the position value using the latest revaluation pricing."""
         return self.calculate_value_using_price(self.last_token_price, self.last_reserve_price)
 
+    def is_stop_loss_closed(self) -> bool:
+        """Did this position close with stop loss."""
+        last_trade = self.get_last_trade()
+        return last_trade.is_stop_loss()
+
+    def is_take_profit_closed(self) -> bool:
+        """Did this position close with trake profit."""
+        last_trade = self.get_last_trade()
+        return last_trade.is_take_profit()
+
     def open_trade(self,
                    ts: datetime.datetime,
                    trade_id: int,

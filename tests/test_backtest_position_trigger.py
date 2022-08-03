@@ -448,8 +448,3 @@ def test_synthetic_data_backtest_take_profit(
     take_profit_positions = [p for p in state.portfolio.get_all_positions() if p.is_take_profit()]
     for p in take_profit_positions:
         assert p.is_profitable()
-
-
-
-
-
