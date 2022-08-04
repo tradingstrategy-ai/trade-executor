@@ -39,20 +39,9 @@ jobs:
   build-other-repos:
     runs-on: ubuntu-latest
     needs: automated-test-suite
-    # Only trigger binder-env build on tag push
-    if: github.event_name == 'push' && contains(github.ref, 'refs/tags/v')
+    # Only trigger on master branch push
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     steps:
-      - name: Trigger binder-env build
-        uses: actions/github-script@v6
-        with:
-          github-token: ${{ secrets.PAT }}
-          script: |
-            await github.rest.actions.createWorkflowDispatch({
-              owner: 'tradingstrategy-ai',
-              repo: 'binder-env',
-              workflow_id: 'binder.yml',
-              ref: 'master'
-            })
       - name: Trigger docs build
         uses: actions/github-script@v6
         with:
@@ -62,5 +51,27 @@ jobs:
               owner: 'tradingstrategy-ai',
               repo: 'docs',
               workflow_id: 'rsync-docs.yml',
+              ref: 'master'
+            })
+      - name: Trigger jupyter-env build
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.PAT }}
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: 'tradingstrategy-ai',
+              repo: 'jupyter-env',
+              workflow_id: 'docker.yml',
+              ref: 'master'
+            })
+      - name: Trigger binder-env build
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.PAT }}
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: 'tradingstrategy-ai',
+              repo: 'binder-env',
+              workflow_id: 'binder.yml',
               ref: 'master'
             })
