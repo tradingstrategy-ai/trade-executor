@@ -711,8 +711,8 @@ paths:
         Get the candle data for multiple trading pairs in JSONL format.
 
       description: |
-        This is preferred method for getting OHLCV candles if you need
-        them only for few pairs. There is no limit on amount of data that can be fetched
+        This is preferred method for getting OHLCV data if you need
+        full historical data for few pairs only. There is no limit on amount of data that can be fetched
         using this method.
       
         The response is [UTF-8 encoded JSON Lines](https://jsonlines.org/) streamed binary response.
@@ -721,7 +721,7 @@ paths:
         Candles are returned from the earliest to the latest.      
         If no start time is given, start from the genesis.
         
-        **TODO**: Specify the actual per-line JSON format in OpenAPI schema.
+        **TODO**: Specify the actual per-line JSONL format in OpenAPI schema.
 
       tags:
         - Trading pair
