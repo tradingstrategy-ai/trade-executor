@@ -702,6 +702,37 @@ paths:
               schema:
                 $ref: "#/components/schemas/GenericErrorModel"
 
+  '/candles-jsonl':
+    x-pyramid-route-name: web_candles_jsonl
+    get:
+      operationId: web_candles_jsonl
+      summary:
+
+        Get the candle data for multiple trading pairs in JSONL format.
+
+      description: |
+        This is preferred method for getting OHLCV candles if you need
+        them only for few pairs.
+      
+        The response is [UTF-8 encoded JSON Lines](https://jsonlines.org/) binary response.
+      
+        Candles are returned from the earliest to the latest.      
+        If no start time is given, start from the genesis.
+        
+        **TODO**: Specify the actual per-line JSON format in OpenAPI schema.
+
+      tags:
+        - Trading pair
+      responses:
+        "200":
+          description: OK
+          content:
+            application/jsonl+json:
+              schema:
+                # https://stackoverflow.com/a/53339910/315168
+                type: string
+                format: binary
+
   '/xyliquidity':
     x-pyramid-route-name: web_xyliquidity
     get:
