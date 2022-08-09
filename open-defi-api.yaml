@@ -712,10 +712,12 @@ paths:
 
       description: |
         This is preferred method for getting OHLCV candles if you need
-        them only for few pairs.
+        them only for few pairs. There is no limit on amount of data that can be fetched
+        using this method.
       
-        The response is [UTF-8 encoded JSON Lines](https://jsonlines.org/) binary response.
-      
+        The response is [UTF-8 encoded JSON Lines](https://jsonlines.org/) streamed binary response.
+        The size of the response cannot be known ahead of time.
+        
         Candles are returned from the earliest to the latest.      
         If no start time is given, start from the genesis.
         
