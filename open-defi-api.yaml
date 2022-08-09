@@ -720,7 +720,7 @@ paths:
         
         Candles are returned from the earliest to the latest.      
         If no start time is given, start from the genesis.
-        
+          
         **TODO**: Specify the actual per-line JSONL format in OpenAPI schema.
 
       tags:
@@ -734,6 +734,13 @@ paths:
                 # https://stackoverflow.com/a/53339910/315168
                 type: string
                 format: binary
+        "422":
+          description: Something wrong with the input parameters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericErrorModel"
+
 
   '/xyliquidity':
     x-pyramid-route-name: web_xyliquidity
