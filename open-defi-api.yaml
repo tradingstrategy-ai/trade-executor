@@ -712,7 +712,8 @@ paths:
 
       description: |
         This is preferred method for getting OHLCV data if you need
-        full historical data for few pairs only. There is no limit on amount of data that can be fetched
+        full historical data for small number od trading pairs. 
+        There is very high limit on amount of data that can be fetched
         using this method.
       
         The response is [UTF-8 encoded JSON Lines](https://jsonlines.org/) streamed binary response.
@@ -720,6 +721,12 @@ paths:
         
         Candles are returned from the earliest to the latest.      
         If no start time is given, start from the genesis.
+        
+        The server has a byte limit for each response. This is controlled
+        by `max_bytes` parameter. If the response reaches more than 
+        `max_bytes` in length it is terminated with JSON object
+        `{"error": true, "max_bytes_reached": served_bytes}`.
+        The highest value, and response length, you can ask is 100M bytes. 
           
         **TODO**: Specify the actual per-line JSONL format in OpenAPI schema.
         
@@ -804,6 +811,87 @@ paths:
           print(f"ETH-USDC has {len(eth_usdc_candles):,} candles from {first_candle} to {last_candle}")
           print(f"BNB-BUSD has {len(bnb_busd_candles):,} candles")    
         ```
+      parameters:
+        - name: pair_ids
+          in: query
+          description: |
+
+            Trading pair ids.
+
+            Trading pair ids are not stable. Translate your trading pair symbolic tickers by using `/pair-details` endpoint
+            before calling this API.
+            
+            The server has a maximum number of trading pairs it will serve in one request 
+            and will give you an error if you try to ask too many trading pairs once.
+
+          required: false
+          style: form
+          explode: true
+          schema:
+            type: array
+            items:
+              type: integer
+            uniqueItems: true
+
+        - name: time_bucket
+          in: query
+          description: >
+
+              What time bucket to use for the candle size.
+
+          required: true
+          schema:
+            type: string
+            enum: [1m, 5m, 15m, 1h, 4h, 1d, 7d, 30d]
+          example: 1h
+        - name: start
+          in: query
+          description: |
+
+              When the candle fetch period starts.
+
+              Use UNIX UTC timestamp, as ISO 8601 formatted string.
+              [Read more information about the time format](https://docs.python.org/3/library/datetime.html#datetime.datetime.fromisoformat).
+      
+              This range parameter is inclusive.
+            
+              If not given return all historical data starting from the genesis.
+
+          required: false
+          schema:
+            type: string
+            format: iso8601
+          example: "1970-01-01"
+        - name: end
+          in: query
+          description: |
+
+              When the candle fetch period ends.
+
+              Use UNIX UTC timestamp, as ISO 8601 formatted string.
+
+              If not specific this will be resolved to now().
+
+              This range parameter is inclusive.
+
+          required: false
+          schema:
+            type: string
+            format: iso8601
+            minimum: 0
+          example: "2022-01-02"
+
+        - name: max_bytes
+          in: query
+          description: |
+
+             How many bytes to serve before the stream is terminated.
+
+          required: false
+          schema:
+            type: integer
+            maximum: 100000000
+          example: 25000000
 
       tags:
         - Trading pair
@@ -822,7 +910,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/GenericErrorModel"
-
 
   '/xyliquidity':
     x-pyramid-route-name: web_xyliquidity
