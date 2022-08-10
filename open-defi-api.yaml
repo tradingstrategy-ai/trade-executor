@@ -8,7 +8,7 @@ info:
     email: mikko@tradingstrategy.ai
     url: 'https://tradingstrategy.ai'
   x-logo:
-    url: 'https://raw.githubusercontent.com/tradingstrategy-ai/frontend/master/src/lib/assets/logo-horizontal-light.svg'
+    url: 'https://raw.githubusercontent.com/tradingstrategy-ai/frontend/ec73a013cae04fa3f13c579dcc0dd0d80cbc49cc/src/lib/assets/logo-horizontal.svg'
 
   description: |
 
