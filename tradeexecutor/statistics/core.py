@@ -3,6 +3,7 @@
 import datetime
 from dataclasses import dataclass, field
 from typing import Dict, List
+from tradeexecutor.analysis.trade_analyser import build_trade_analysis
 
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.position import TradingPosition
@@ -45,6 +46,7 @@ def calculate_statistics(clock: datetime.datetime, portfolio: Portfolio) -> NewS
     """Calculate statistics for a portfolio."""
 
     first_trade, last_trade = portfolio.get_first_and_last_executed_trade()
+    trade_analysis = build_trade_analysis(portfolio)
 
     pf_stats = PortfolioStatistics(
         calculated_at=clock,
@@ -59,6 +61,8 @@ def calculate_statistics(clock: datetime.datetime, portfolio: Portfolio) -> NewS
         realised_profit_usd=portfolio.get_closed_profit_usd(),
         first_trade_at=first_trade and first_trade.executed_at or None,
         last_trade_at=last_trade and last_trade.executed_at or None,
+        summary=trade_analysis.calculate_summary_statistics(),
+        # summary=None,
     )
 
     stats = NewStatistics(portfolio=pf_stats)
