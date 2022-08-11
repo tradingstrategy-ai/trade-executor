@@ -25,18 +25,14 @@ import numpy as np
 import pandas as pd
 
 from tradeexecutor.state.portfolio import Portfolio
-from tradeexecutor.state.position import TradingPosition
-from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradingstrategy.analysis.tradehint import TradeHint, TradeHintType
-from tradingstrategy.exchange import ExchangeUniverse, Exchange
-from tradingstrategy.frameworks.backtrader import convert_backtrader_timestamp
+from tradingstrategy.exchange import Exchange
 from tradingstrategy.pair import PandasPairUniverse
 from tradingstrategy.types import PrimaryKey, USDollarAmount
 from tradingstrategy.utils.format import format_value, format_price, format_duration_days_hours_mins, \
     format_percent_2_decimals
-from tradingstrategy.utils.summarydataframe import as_dollar, as_integer, create_summary_table, as_percent, as_missing, \
-    as_duration
+from tradingstrategy.utils.summarydataframe import as_dollar, as_integer, create_summary_table, as_percent, as_duration
 
 
 @dataclass
@@ -311,6 +307,12 @@ class AssetTradeHistory:
             self.positions.append(new_position)
 
 
+def get_percentage(number1: float, number2: float, default_value=None) -> Optional[float]:
+    """Get percentage of number1 to number2, return default_value if division by zero
+    """
+    return number1 / number2 if number2 else default_value
+
+
 @dataclass
 class TradeSummary:
     """Some generic statistics over all the trades"""
@@ -319,32 +321,44 @@ class TradeSummary:
     zero_loss: int
     stop_losses: int
     undecided: int
+    total_trades: int = field(init=False)
+    win_percent: float = field(init=False)
+    return_percent: float = field(init=False)
+    annualised_return_percent: float = field(init=False)
+    all_stop_loss_percent: float = field(init=False)
+    lost_stop_loss_percent: float = field(init=False)
     realised_profit: USDollarAmount
     open_value: USDollarAmount
     uninvested_cash: USDollarAmount
+    end_value: USDollarAmount = field(init=False)
     initial_cash: USDollarAmount
     extra_return: USDollarAmount
     duration: datetime.timedelta
 
+    def __post_init__(self):
+        self.total_trades = self.won + self.lost + self.zero_loss
+        self.win_percent = get_percentage(self.won, self.total_trades)
+        self.return_percent = get_percentage(self.realised_profit, self.initial_cash)
+        self.annualised_return_percent = get_percentage(self.return_percent * datetime.timedelta(days=365), self.duration)
+        self.all_stop_loss_percent = get_percentage(self.stop_losses, self.total_trades)
+        self.lost_stop_loss_percent = get_percentage(self.stop_losses, self.lost)
+        self.end_value = self.open_value + self.uninvested_cash
+        
     def to_dataframe(self) -> pd.DataFrame:
         """Creates a human-readable Pandas dataframe table from the object."""
-        total_trades = self.won + self.lost
-
-        one_year = datetime.timedelta(days=360)
-
         human_data = {
             "Trading period length": as_duration(self.duration),
-            "Return %": as_percent(self.realised_profit / self.initial_cash),
-            "Annualised return %": as_percent(self.realised_profit / self.initial_cash * one_year / self.duration) if self.duration else as_percent(0),
+            "Return %": as_percent(self.return_percent),
+            "Annualised return %": as_percent(self.annualised_return_percent),
             "Cash at start": as_dollar(self.initial_cash),
-            "Value at end": as_dollar(self.open_value + self.uninvested_cash),
-            "Trade win percent": as_percent(self.won / total_trades) if total_trades else as_missing(),
-            "Total trades done": as_integer(self.won + self.lost + self.zero_loss),
+            "Value at end": as_dollar(self.end_value),
+            "Trade win percent": as_percent(self.win_percent),
+            "Total trades done": as_integer(self.total_trades),
             "Won trades": as_integer(self.won),
             "Lost trades": as_integer(self.lost),
             "Stop losses triggered": as_integer(self.stop_losses),
-            "Stop loss % of all": as_percent(self.stop_losses / total_trades) if total_trades else as_missing(),
-            "Stop loss % of lost": as_percent(self.stop_losses / self.lost) if self.lost else as_missing(),
+            "Stop loss % of all": as_percent(self.all_stop_loss_percent),
+            "Stop loss % of lost": as_percent(self.lost_stop_loss_percent),
             "Zero profit trades": as_integer(self.zero_loss),
             "Positions open at the end": as_integer(self.undecided),
             "Realised profit and loss": as_dollar(self.realised_profit),
