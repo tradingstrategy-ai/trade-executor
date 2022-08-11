@@ -600,8 +600,11 @@ def load_pair_data_for_single_exchange(
     this function does a much smaller dataset download than
     :py:func:`load_all_data`.
 
+    - This function uses optimised JSONL loading
+      via :py:meth:`~tradingstrategy.client.Client.fetch_candles_by_pair_ids`.
+
     - Backtest data is never reloaded.
-      Furthermore the data is stored in :py:class:`Client`
+      Furthermore, the data is stored in :py:class:`Client`
       disk cache for the subsequent notebook and backtest runs.
 
     - Live trading purges old data fields and reloads data
@@ -677,7 +680,8 @@ def load_pair_data_for_single_exchange(
             progress_bar_description=desc,
         )
 
-        assert not liquidity, "Partial liquidity data loading is not yet supported"
+        if liquidity:
+            raise NotImplemented("Partial liquidity data loading is not yet supported")
 
         return Dataset(
             time_bucket=time_bucket,

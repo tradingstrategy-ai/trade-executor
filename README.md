@@ -18,6 +18,18 @@ Trade Executor is a Python framework for algorithmic trading strategy execution.
 - Visit [Trading Strategy website to learn about algorithmic trading on decentralised exchanges](https://tradingstrategy.ai)
 - [Join the Discord for any questions](https://tradingstrategy.ai/community)
 
+## Community
+
+* [Trading Strategy website](https://tradingstrategy.ai)
+
+* [Blog](https://tradingstrategy.ai/blog)
+
+* [Twitter](https://twitter.com/TradingProtocol)
+
+* [Discord](https://tradingstrategy.ai/community#discord) 
+
+* [Telegram channel](https://t.me/trading_protocol)
+
 ## License 
 
 - AGPL
