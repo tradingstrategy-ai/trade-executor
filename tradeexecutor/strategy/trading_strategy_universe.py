@@ -609,6 +609,35 @@ def load_pair_data_for_single_exchange(
 
     - Live trading purges old data fields and reloads data
 
+    Example:
+
+    .. code-block:: python
+
+        # Time bucket for our candles
+        candle_time_bucket = TimeBucket.d1
+
+        # Which chain we are trading
+        chain_id = ChainId.bsc
+
+        # Which exchange we are trading on.
+        exchange_slug = "pancakeswap-v2"
+
+        # Which trading pair we are trading
+        trading_pairs = {
+            ("WBNB", "BUSD"),
+            ("Cake", "WBNB"),
+        }
+
+        # Load all datas we can get for our candle time bucket
+        dataset = load_pair_data_for_single_exchange(
+            client,
+            execution_context,
+            candle_time_bucket,
+            chain_id,
+            exchange_slug,
+            trading_pairs,
+        )
+
     :param client:
         Trading Strategy client instance
 
