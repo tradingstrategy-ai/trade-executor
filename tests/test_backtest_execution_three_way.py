@@ -25,7 +25,7 @@ from tradeexecutor.ethereum.default_routes import get_pancake_default_routing_pa
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.execution_context import ExecutionMode, ExecutionContext
 from tradeexecutor.strategy.trading_strategy_universe import load_all_data, TradingStrategyUniverse, \
-    translate_trading_pair, translate_token
+    translate_trading_pair, translate_token, load_pair_data_for_single_exchange
 from tradeexecutor.utils.timer import timed_task
 
 
@@ -66,13 +66,22 @@ def universe(request, persistent_test_client, execution_context) -> TradingStrat
     exchange_slug = "pancakeswap-v2"
 
     # Which trading pair we are trading
-    trading_pairs = [
+    trading_pairs = {
         ("WBNB", "BUSD"),
         ("Cake", "WBNB"),
-    ]
+    }
 
     # Load all datas we can get for our candle time bucket
-    dataset = load_all_data(client, candle_time_bucket, execution_context)
+    dataset = load_pair_data_for_single_exchange(
+        client,
+        execution_context,
+        candle_time_bucket,
+        chain_id,
+        exchange_slug,
+        trading_pairs,
+    )
+
+    import ipdb ; ipdb.set_trace()
 
     # Filter down to the single pair we are interested in
     universe = TradingStrategyUniverse.create_limited_pair_universe(
