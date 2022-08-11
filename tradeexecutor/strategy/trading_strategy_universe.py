@@ -164,7 +164,8 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         dataset: Dataset,
         chain_id: ChainId,
         exchange_slug: str,
-        pairs: Set[Tuple[str, str]]) -> "TradingStrategyUniverse":
+        pairs: Set[Tuple[str, str]],
+        reserve_asset_pair_ticker: Optional[Tuple[str, str]] = None) -> "TradingStrategyUniverse":
         """Filters down the dataset for couple trading pair.
 
         This is ideal for strategies that only want to trade few pairs,
@@ -174,6 +175,10 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
 
         :param pairs:
             List of trading pairs as ticket tuples. E.g. `[ ("WBNB, "BUSD"), ("Cake", "WBNB") ]`
+
+        :param reserve_asset_pair_ticker:
+            Choose the quote token of this trading pair as a reserve asset.
+            This must be given if there are several pairs (Python set order is unstable).
 
         """
 
@@ -203,10 +208,22 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             # Liquidity data loading skipped
             liquidity_universe = None
 
-        first_pair = next(iter(pair_universe.pair_map.values()))
-
+        if reserve_asset_pair_ticker:
+            reserve_pair = pair_universe.get_one_pair_from_pandas_universe(
+                exchange.exchange_id,
+                reserve_asset_pair_ticker[0],
+                reserve_asset_pair_ticker[1],
+            )
+        else:
+            assert len(pairs) == 1, "Cannot automatically determine reserve asset if there are multiple trading pairs."
+            first_ticker = next(iter(pairs))
+            reserve_pair = pair_universe.get_one_pair_from_pandas_universe(
+                exchange.exchange_id,
+                first_ticker[0],
+                first_ticker[1],
+            )
         # We have only a single pair, so the reserve asset must be its quote token
-        trading_pair_identifier = translate_trading_pair(first_pair)
+        trading_pair_identifier = translate_trading_pair(reserve_pair)
         reserve_assets = [
             trading_pair_identifier.quote
         ]

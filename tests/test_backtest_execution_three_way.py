@@ -81,15 +81,16 @@ def universe(request, persistent_test_client, execution_context) -> TradingStrat
         trading_pairs,
     )
 
-    import ipdb ; ipdb.set_trace()
-
     # Filter down to the single pair we are interested in
     universe = TradingStrategyUniverse.create_limited_pair_universe(
         dataset,
         chain_id,
         exchange_slug,
         trading_pairs,
+        reserve_asset_pair_ticker=("WBNB", "BUSD")
     )
+
+    assert universe.reserve_assets[0].token_symbol == "BUSD"
 
     return universe
 
@@ -186,14 +187,14 @@ def test_create_and_execute_backtest_three_way_trade(
 
     assert trade.is_buy()
     assert trade.get_status() == TradeStatus.success
-    assert trade.executed_price == pytest.approx(17.872633403139105)
+    assert trade.executed_price == pytest.approx(17.827952938638763)
 
     # We bought around 3 BNB
-    assert position.get_quantity() == pytest.approx(Decimal('55.95146375152318001945304859'))
+    assert position.get_quantity() == pytest.approx(Decimal('56.09168946327463620432882350'))
 
     # Check our wallet was credited
     assert wallet.get_balance(busd.address) == 9_000
-    assert wallet.get_balance(cake.address) == pytest.approx(Decimal('55.95146375152318001945304859'))
+    assert wallet.get_balance(cake.address) == pytest.approx(Decimal('56.09168946327463620432882350'))
 
 
 def test_buy_sell_three_way_backtest(
