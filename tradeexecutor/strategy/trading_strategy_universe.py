@@ -12,9 +12,10 @@ import textwrap
 from abc import abstractmethod
 from dataclasses import dataclass
 import logging
-from typing import List, Optional, Callable, Tuple
+from typing import List, Optional, Callable, Tuple, Set
 
 import pandas as pd
+import pyarrow
 
 from tradeexecutor.backtest.data_preload import preload_data
 from tradeexecutor.strategy.execution_context import ExecutionMode, ExecutionContext
@@ -27,7 +28,7 @@ from tradingstrategy.chain import ChainId
 from tradingstrategy.client import Client
 from tradingstrategy.exchange import ExchangeUniverse
 from tradingstrategy.liquidity import GroupedLiquidityUniverse
-from tradingstrategy.pair import DEXPair, PandasPairUniverse, PairType
+from tradingstrategy.pair import DEXPair, PandasPairUniverse, PairType, resolve_pairs_based_on_ticker
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
 from tradingstrategy.utils.groupeduniverse import filter_for_pairs
@@ -52,17 +53,27 @@ class Dataset:
     #: All trading pairs
     pairs: pd.DataFrame
 
-    #: All candles
-    candles: pd.DataFrame
+    #: Candle data for all pairs
+    candles: Optional[pd.DataFrame] = None
 
     #: All liquidity samples
-    liquidity: pd.DataFrame
+    liquidity: Optional[pd.DataFrame] = None
 
     #: Granularity of backtesting OHLCV data
     backtest_stop_loss_time_bucket: Optional[TimeBucket] = None
 
     #: All candles in stop loss time bucket
     backtest_stop_loss_candles: Optional[pd.DataFrame] = None
+
+    def __post_init__(self):
+        """Check we got good data."""
+        candles = self.candles
+        if candles is not None:
+            assert isinstance(candles, pd.DataFrame), f"Expected DataFrame, got {candles.__class__}"
+
+        liquidity = self.liquidity
+        if liquidity is not None:
+            assert isinstance(liquidity, pd.DataFrame), f"Expected DataFrame, got {liquidity.__class__}"
 
 
 @dataclass
@@ -153,7 +164,8 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         dataset: Dataset,
         chain_id: ChainId,
         exchange_slug: str,
-        pairs: List[Tuple[str, str]]) -> "TradingStrategyUniverse":
+        pairs: Set[Tuple[str, str]],
+        reserve_asset_pair_ticker: Optional[Tuple[str, str]] = None) -> "TradingStrategyUniverse":
         """Filters down the dataset for couple trading pair.
 
         This is ideal for strategies that only want to trade few pairs,
@@ -163,6 +175,10 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
 
         :param pairs:
             List of trading pairs as ticket tuples. E.g. `[ ("WBNB, "BUSD"), ("Cake", "WBNB") ]`
+
+        :param reserve_asset_pair_ticker:
+            Choose the quote token of this trading pair as a reserve asset.
+            This must be given if there are several pairs (Python set order is unstable).
 
         """
 
@@ -184,14 +200,30 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         candle_universe = GroupedCandleUniverse(filtered_candles)
 
         # Get liquidity candles as Pandas Dataframe
-        all_liquidity = dataset.liquidity
-        filtered_liquidity = filter_for_pairs(all_liquidity, pair_universe.df)
-        liquidity_universe = GroupedLiquidityUniverse(filtered_liquidity)
+        if dataset.liquidity:
+            all_liquidity = dataset.liquidity
+            filtered_liquidity = filter_for_pairs(all_liquidity, pair_universe.df)
+            liquidity_universe = GroupedLiquidityUniverse(filtered_liquidity)
+        else:
+            # Liquidity data loading skipped
+            liquidity_universe = None
 
-        first_pair = next(iter(pair_universe.pair_map.values()))
-
+        if reserve_asset_pair_ticker:
+            reserve_pair = pair_universe.get_one_pair_from_pandas_universe(
+                exchange.exchange_id,
+                reserve_asset_pair_ticker[0],
+                reserve_asset_pair_ticker[1],
+            )
+        else:
+            assert len(pairs) == 1, "Cannot automatically determine reserve asset if there are multiple trading pairs."
+            first_ticker = next(iter(pairs))
+            reserve_pair = pair_universe.get_one_pair_from_pandas_universe(
+                exchange.exchange_id,
+                first_ticker[0],
+                first_ticker[1],
+            )
         # We have only a single pair, so the reserve asset must be its quote token
-        trading_pair_identifier = translate_trading_pair(first_pair)
+        trading_pair_identifier = translate_trading_pair(reserve_pair)
         reserve_assets = [
             trading_pair_identifier.quote
         ]
@@ -515,7 +547,7 @@ def load_all_data(client: Client, time_frame: TimeBucket, execution_context: Exe
 
     - Backtest data is never reloaded
 
-    - Live trading purges old data fiels and reloads data
+    - Live trading purges old data fields and reloads data
 
     :param client:
         Trading Strategy client instance
@@ -550,4 +582,111 @@ def load_all_data(client: Client, time_frame: TimeBucket, execution_context: Exe
             pairs=pairs,
             candles=candles,
             liquidity=liquidity,
+        )
+
+
+def load_pair_data_for_single_exchange(
+        client: Client,
+        execution_context: ExecutionContext,
+        time_bucket: TimeBucket,
+        chain_id: ChainId,
+        exchange_slug: str,
+        pair_tickers: Set[Tuple[str, str]],
+        liquidity=False,
+) -> Dataset:
+    """Load pair data for a single decentralised exchange.
+
+    If you are not trading the full trading universe,
+    this function does a much smaller dataset download than
+    :py:func:`load_all_data`.
+
+    - This function uses optimised JSONL loading
+      via :py:meth:`~tradingstrategy.client.Client.fetch_candles_by_pair_ids`.
+
+    - Backtest data is never reloaded.
+      Furthermore, the data is stored in :py:class:`Client`
+      disk cache for the subsequent notebook and backtest runs.
+
+    - Live trading purges old data fields and reloads data
+
+    :param client:
+        Trading Strategy client instance
+
+    :param time_bucket:
+        The candle time frame
+
+    :param chain_id:
+        Which blockchain hosts our exchange
+
+    :param exchange_slug:
+        Which exchange hosts our trading pairs
+
+    :param exchange_slug:
+        Which exchange hosts our trading pairs
+
+    :param pair_tickers:
+        List of trading pair tickers as base token quote token tuples.
+        E.g. `[('WBNB', 'BUSD'), ('Cake', 'BUSD')]`.
+
+    :param liquidity:
+        Set true to load liquidity data as well
+
+    :param execution_context:
+        Defines if we are live or backtesting
+    """
+
+    assert isinstance(client, Client)
+    assert isinstance(time_bucket, TimeBucket)
+    assert isinstance(execution_context, ExecutionContext)
+    assert isinstance(chain_id, ChainId)
+    assert isinstance(exchange_slug, str)
+
+    live = execution_context.live_trading
+    with execution_context.timed_task_context_manager("load_pair_data_for_single_exchange", time_bucket=time_bucket.value):
+        if live:
+            # This will force client to redownload the data
+            logger.info("Purging trading data caches")
+            client.clear_caches()
+        else:
+            logger.info("Using cached data if available")
+
+        exchanges = client.fetch_exchange_universe()
+        pairs_df = client.fetch_pair_universe().to_pandas()
+
+        # Resolve full pd.Series for each pair
+        # we are interested in
+        our_pairs = resolve_pairs_based_on_ticker(
+            pairs_df,
+            chain_id,
+            exchange_slug,
+            pair_tickers
+        )
+
+        assert len(our_pairs) > 0, f"Pair data not found {chain_id.name}, {exchange_slug}, {pair_tickers}"
+
+        assert len(our_pairs) == len(pair_tickers), f"Pair resolution failed. Wanted to have {len(pair_tickers)} pairs, but after pair id resolution ended up with {len(our_pairs)} pairs"
+
+        our_pair_ids = set(our_pairs["pair_id"])
+
+        if len(our_pair_ids) > 1:
+            desc = f"Loading OHLCV data for {exchange_slug}"
+        else:
+            only, _ = pair_tickers
+            desc = f"Loading OHLCV data for {only[0]}-{only[1]}"
+
+        candles = client.fetch_candles_by_pair_ids(
+            our_pair_ids,
+            time_bucket,
+            progress_bar_description=desc,
+        )
+
+        if liquidity:
+            raise NotImplemented("Partial liquidity data loading is not yet supported")
+
+        return Dataset(
+            time_bucket=time_bucket,
+            exchanges=exchanges,
+            pairs=our_pairs,
+            candles=candles,
+            liquidity=None
         )

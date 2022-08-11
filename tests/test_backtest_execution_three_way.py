@@ -25,7 +25,7 @@ from tradeexecutor.ethereum.default_routes import get_pancake_default_routing_pa
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.execution_context import ExecutionMode, ExecutionContext
 from tradeexecutor.strategy.trading_strategy_universe import load_all_data, TradingStrategyUniverse, \
-    translate_trading_pair, translate_token
+    translate_trading_pair, translate_token, load_pair_data_for_single_exchange
 from tradeexecutor.utils.timer import timed_task
 
 
@@ -66,13 +66,20 @@ def universe(request, persistent_test_client, execution_context) -> TradingStrat
     exchange_slug = "pancakeswap-v2"
 
     # Which trading pair we are trading
-    trading_pairs = [
+    trading_pairs = {
         ("WBNB", "BUSD"),
         ("Cake", "WBNB"),
-    ]
+    }
 
     # Load all datas we can get for our candle time bucket
-    dataset = load_all_data(client, candle_time_bucket, execution_context)
+    dataset = load_pair_data_for_single_exchange(
+        client,
+        execution_context,
+        candle_time_bucket,
+        chain_id,
+        exchange_slug,
+        trading_pairs,
+    )
 
     # Filter down to the single pair we are interested in
     universe = TradingStrategyUniverse.create_limited_pair_universe(
@@ -80,7 +87,10 @@ def universe(request, persistent_test_client, execution_context) -> TradingStrat
         chain_id,
         exchange_slug,
         trading_pairs,
+        reserve_asset_pair_ticker=("WBNB", "BUSD")
     )
+
+    assert universe.reserve_assets[0].token_symbol == "BUSD"
 
     return universe
 
@@ -177,14 +187,14 @@ def test_create_and_execute_backtest_three_way_trade(
 
     assert trade.is_buy()
     assert trade.get_status() == TradeStatus.success
-    assert trade.executed_price == pytest.approx(17.872633403139105)
+    assert trade.executed_price == pytest.approx(17.827952938638763)
 
     # We bought around 3 BNB
-    assert position.get_quantity() == pytest.approx(Decimal('55.95146375152318001945304859'))
+    assert position.get_quantity() == pytest.approx(Decimal('56.09168946327463620432882350'))
 
     # Check our wallet was credited
     assert wallet.get_balance(busd.address) == 9_000
-    assert wallet.get_balance(cake.address) == pytest.approx(Decimal('55.95146375152318001945304859'))
+    assert wallet.get_balance(cake.address) == pytest.approx(Decimal('56.09168946327463620432882350'))
 
 
 def test_buy_sell_three_way_backtest(
