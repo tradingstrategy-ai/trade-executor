@@ -99,7 +99,11 @@ def position_manager(state, synthetic_universe, pricing_model):
 
 
 @pytest.fixture
-def position_manager_with_open_position(synthetic_universe: TradingStrategyUniverse, position_manager):
+def position_manager_with_open_position(
+        synthetic_universe: TradingStrategyUniverse,
+        position_manager,
+        pricing_model,
+):
     """Force in one executed position."""
 
     ts = datetime.datetime(2021, 6,12)
@@ -107,7 +111,7 @@ def position_manager_with_open_position(synthetic_universe: TradingStrategyUnive
     eth_usdc = synthetic_universe.get_single_pair()
     state = position_manager.state
 
-    trader = SimulatedTestTrader(state)
+    trader = SimulatedTestTrader(state, pricing_model)
     trade = trader.buy(ts, eth_usdc, Decimal(50))  # 50 USDC worth of ETH
     trader.simulate_execution(state, trade)
 
@@ -127,6 +131,6 @@ def test_get_current_position(position_manager_with_open_position: PositionManag
     pm = position_manager_with_open_position
     pos = pm.get_current_position()
     quantity = pos.get_quantity()
-    assert quantity == 1000
+    assert quantity == Decimal('0.03045760003971992547285959728')
     price = pos.get_current_price()
-    assert price == 1000
+    assert price == 1641.6263899583264
