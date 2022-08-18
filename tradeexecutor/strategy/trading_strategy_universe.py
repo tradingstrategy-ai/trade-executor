@@ -246,6 +246,11 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             return None
         return translate_trading_pair(pair)
 
+    def get_single_pair(self) -> TradingPairIdentifier:
+        """Get the single trading pair in this universe."""
+        pair = self.universe.pairs.get_single()
+        return translate_trading_pair(pair)
+
 
 class TradingStrategyUniverseModel(UniverseModel):
     """A universe constructor that builds the trading universe data using Trading Strategy client.

@@ -16,6 +16,7 @@ class PairUniverseTestTrader:
 
     def __init__(self, state: State):
         self.state = state
+        self.nonce = 1
 
     def buy(self, pair: TradingPairIdentifier, amount_in_usd: Decimal) -> TradeExecution:
         """Buy token (trading pair) for a certain value."""

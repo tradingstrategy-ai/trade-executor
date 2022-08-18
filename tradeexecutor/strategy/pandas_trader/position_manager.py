@@ -19,6 +19,10 @@ from tradeexecutor.strategy.trading_strategy_universe import translate_trading_p
 logger = logging.getLogger(__name__)
 
 
+class NoSingleOpenPositionException(Exception):
+    """Raised if getting the single position is not successful."""
+
+
 class PositionManager:
     """Open/closing of positions.
 
@@ -26,6 +30,59 @@ class PositionManager:
 
     Takes the price feed and current execution state as an input and
     produces the execution instructions to change positions.
+
+    Below are some recipes how to use position manager.
+
+    Position manager is usually instiated at your `decide_trades` function as the following:
+
+    .. code-block:: python
+
+        from typing import List, Dict
+
+        from tradeexecutor.state.visualisation import PlotKind
+        from tradeexecutor.state.trade import TradeExecution
+        from tradeexecutor.strategy.pricing_model import PricingModel
+        from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
+        from tradeexecutor.state.state import State
+        from tradingstrategy.universe import Universe
+
+
+        def decide_trades(
+                timestamp: pd.Timestamp,
+                universe: Universe,
+                state: State,
+                pricing_model: PricingModel,
+                cycle_debug_data: Dict) -> List[TradeExecution]:
+
+
+
+            # Create a position manager helper class that allows us easily to create
+            # opening/closing trades for different positions
+            position_manager = PositionManager(timestamp, universe, state, pricing_model)
+
+
+    How to check if you have an open position using :py:meth:`is_any_open`
+    and then open a new position:
+
+    .. code-block:: python
+
+        # List of any trades we decide on this cycle.
+        # Because the strategy is simple, there can be
+        # only zero (do nothing) or 1 (open or close) trades
+        # decides
+        trades = []
+
+        if not position_manager.is_any_open():
+            buy_amount = cash * position_size
+            trades += position_manager.open_1x_long(pair, buy_amount)
+
+        return trades
+
+    How to check the entry price of your latest position:
+
+
+
+
     """
 
     def __init__(self,
@@ -51,6 +108,23 @@ class PositionManager:
     def is_any_open(self) -> bool:
         """Do we have any positions open."""
         return len(self.state.portfolio.open_positions) > 0
+
+    def get_current_position(self) -> TradingPosition:
+        """Get the current single position.
+
+        :raises NoSingleOpenPositionError:
+            If you do not have a position open or there are multiple positions open.
+        """
+
+        open_positions = self.state.portfolio.open_positions
+
+        if len(open_positions) == 0:
+            raise NoSingleOpenPositionException(f"No positions open at {self.timestamp}")
+
+        if len(open_positions) > 1:
+            raise NoSingleOpenPositionException(f"Multiple positions ({len(open_positions)}) open at {self.timestamp}")
+
+        return next(iter(open_positions.values()))
 
     def open_1x_long(self,
                      pair: DEXPair,
