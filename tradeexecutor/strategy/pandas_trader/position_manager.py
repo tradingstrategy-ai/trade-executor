@@ -78,10 +78,35 @@ class PositionManager:
 
         return trades
 
-    How to check the entry price of your latest position:
+    How to check the entry price and open quantity of your latest position.
+    See also :py:class:`decimal.Decimal` about arbitrary precision decimal numbers
+    in Python.
 
+    .. code-block:: python
 
+        # Will throw an exception if there is no position open
+        current_position = position_manager.get_current_position()
 
+        # Quantity is the open amount in tokens.
+        # This is expressed in Python Decimal class,
+        # because Ethereum token balances are accurate up to 18 decimals
+        # and this kind of accuracy cannot be expressed in floating point numbers.
+        quantity = current_position.get_quantity()
+        assert quantity == Decimal('0.03045760003971992547285959728')
+
+        # The current price is the price of the trading pair
+        # that was recorded on the last price feed sync.
+        # This is a 64-bit floating point, as the current price
+        # is always approximation based on market conditions.
+        price = current_position.get_current_price()
+        assert price == 1641.6263899583264
+
+        # The opening price is the price of the first trade
+        # that was made for this position. This is the actual
+        # executed price of the trade, expressed as floating
+        # point for the convenience.
+        price = current_position.get_opening_price()
+        assert price == 1641.6263899583264
 
     """
 
@@ -118,7 +143,7 @@ class PositionManager:
         :return:
             Currently open trading position
 
-        :raises NoSingleOpenPositionError:
+        :raise NoSingleOpenPositionError:
             If you do not have a position open or there are multiple positions open.
         """
 
