@@ -112,6 +112,12 @@ class PositionManager:
     def get_current_position(self) -> TradingPosition:
         """Get the current single position.
 
+        This is a shortcut function for trading strategies
+        that operate only a single trading pair and a single position.
+
+        :return:
+            Currently open trading position
+
         :raises NoSingleOpenPositionError:
             If you do not have a position open or there are multiple positions open.
         """
