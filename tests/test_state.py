@@ -488,9 +488,9 @@ def test_statistics(usdc, weth_usdc, aave_usdc, start_ts):
     assert summary.win_percent == 0.5
     assert summary.return_percent == pytest.approx(0.049005)
     assert summary.annualised_return_percent == 171713.52
-    
     assert summary.realised_profit == pytest.approx(49.0049999)
     assert summary.uninvested_cash == portfolio_stats.free_cash
+    assert summary.average_net_profit == pytest.approx(24.50249)
 
 
 def test_not_enough_cash(usdc, weth_usdc, start_ts):
@@ -757,7 +757,15 @@ def test_serialize_state(usdc, weth_usdc, start_ts: datetime.datetime):
     patch_dataclasses_json()
 
     state = State()
-    state.update_reserves([ReservePosition(usdc, Decimal(1000), start_ts, 1.0, start_ts)])
+    state.update_reserves([ReservePosition(
+        usdc, 
+        Decimal(1000), 
+        start_ts, 
+        1.0, 
+        start_ts,
+        initial_deposit=Decimal(1000),
+        initial_deposit_reserve_token_price=1.0,
+    )])
     trader = DummyTestTrader(state)
 
     # 1: buy 1
@@ -766,8 +774,11 @@ def test_serialize_state(usdc, weth_usdc, start_ts: datetime.datetime):
     assert position.get_value() == pytest.approx(168.3)
     assert position.last_pricing_at == start_ts
 
+    update_statistics(datetime.datetime.utcnow(), state.stats, state.portfolio)
+
     state.perform_integrity_check()
 
+    # test restore from dump
     dump = state.to_json()
     state2 = State.from_json(dump)
     state2.perform_integrity_check()
@@ -775,8 +786,41 @@ def test_serialize_state(usdc, weth_usdc, start_ts: datetime.datetime):
     # Check we decoded correctly
     portfolio2 = state2.portfolio
     position2 = portfolio2.open_positions[1]
+    summary = state2.stats.get_latest_portfolio_stats().summary
     assert position2.get_value() == pytest.approx(168.3)
     assert position2.last_pricing_at == start_ts
     assert position2.last_pricing_at.tzinfo == None  # Be especially careful with timestamps
+    assert isinstance(summary.duration, datetime.timedelta)
 
 
+def test_state_summary_without_initial_cash(usdc, weth_usdc, start_ts: datetime.datetime):
+    """Backward compat test for reverse without init cash info."""
+    patch_dataclasses_json()
+
+    state = State()
+    state.update_reserves([ReservePosition(
+        usdc, 
+        Decimal(1000), 
+        start_ts, 
+        1.0, 
+        start_ts
+    )])
+    trader = DummyTestTrader(state)
+
+    position, trade = trader.buy(weth_usdc, Decimal(0.1), 1700)
+    assert state.portfolio.get_total_equity() == 998.3
+    assert position.get_value() == pytest.approx(168.3)
+    assert position.last_pricing_at == start_ts
+    trader.sell(weth_usdc, state.portfolio.get_equity_for_pair(weth_usdc), 1800)
+
+    update_statistics(datetime.datetime.utcnow(), state.stats, state.portfolio)
+
+    state.perform_integrity_check()
+    summary = state.stats.get_latest_portfolio_stats().summary
+
+    assert summary.initial_cash is None
+    assert summary.return_percent is None
+    assert summary.annualised_return_percent is None
+    assert summary.total_trades == 1
+    assert summary.end_value == pytest.approx(1006.418)
+    assert summary.average_net_profit == pytest.approx(9.800999)

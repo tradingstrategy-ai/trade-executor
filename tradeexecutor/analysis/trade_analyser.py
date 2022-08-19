@@ -23,9 +23,12 @@ from typing import List, Dict, Iterable, Optional, Tuple, Callable, Set
 
 import numpy as np
 import pandas as pd
+from dataclasses_json import dataclass_json, Exclude, config
 
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.trade import TradeExecution
+from tradeexecutor.utils.format import calculate_percentage
+from tradeexecutor.utils.timestamp import json_encode_timedelta, json_decode_timedelta
 from tradingstrategy.analysis.tradehint import TradeHint, TradeHintType
 from tradingstrategy.exchange import Exchange
 from tradingstrategy.pair import PandasPairUniverse
@@ -307,12 +310,9 @@ class AssetTradeHistory:
             self.positions.append(new_position)
 
 
-def get_percentage(number1: float, number2: float, default_value=None) -> Optional[float]:
-    """Get percentage of number1 to number2, return default_value if division by zero
-    """
-    return number1 / number2 if number2 else default_value
 
 
+@dataclass_json
 @dataclass
 class TradeSummary:
     """Some generic statistics over all the trades"""
@@ -321,27 +321,34 @@ class TradeSummary:
     zero_loss: int
     stop_losses: int
     undecided: int
+    realised_profit: USDollarAmount
+    open_value: USDollarAmount
+    uninvested_cash: USDollarAmount
+    
+    initial_cash: USDollarAmount
+    extra_return: USDollarAmount
+    duration: datetime.timedelta = field(metadata=config(
+        encoder=json_encode_timedelta,
+        decoder=json_decode_timedelta,
+    ))
+
     total_trades: int = field(init=False)
     win_percent: float = field(init=False)
     return_percent: float = field(init=False)
     annualised_return_percent: float = field(init=False)
     all_stop_loss_percent: float = field(init=False)
     lost_stop_loss_percent: float = field(init=False)
-    realised_profit: USDollarAmount
-    open_value: USDollarAmount
-    uninvested_cash: USDollarAmount
+    average_net_profit: USDollarAmount = field(init=False)
     end_value: USDollarAmount = field(init=False)
-    initial_cash: USDollarAmount
-    extra_return: USDollarAmount
-    duration: datetime.timedelta
 
     def __post_init__(self):
         self.total_trades = self.won + self.lost + self.zero_loss
-        self.win_percent = get_percentage(self.won, self.total_trades)
-        self.return_percent = get_percentage(self.realised_profit, self.initial_cash)
-        self.annualised_return_percent = get_percentage(self.return_percent * datetime.timedelta(days=365), self.duration)
-        self.all_stop_loss_percent = get_percentage(self.stop_losses, self.total_trades)
-        self.lost_stop_loss_percent = get_percentage(self.stop_losses, self.lost)
+        self.win_percent = calculate_percentage(self.won, self.total_trades)
+        self.return_percent = calculate_percentage(self.realised_profit, self.initial_cash)
+        self.annualised_return_percent = calculate_percentage(self.return_percent * datetime.timedelta(days=365), self.duration) if self.return_percent else None
+        self.all_stop_loss_percent = calculate_percentage(self.stop_losses, self.total_trades)
+        self.lost_stop_loss_percent = calculate_percentage(self.stop_losses, self.lost)
+        self.average_net_profit = self.realised_profit / self.total_trades if self.total_trades else None
         self.end_value = self.open_value + self.uninvested_cash
         
     def to_dataframe(self) -> pd.DataFrame:
