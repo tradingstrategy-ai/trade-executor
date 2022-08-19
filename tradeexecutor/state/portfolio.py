@@ -358,7 +358,7 @@ class Portfolio:
                 last = t
         return first, last
 
-    def get_initial_deposit(self) -> USDollarAmount:
+    def get_initial_deposit(self) -> Optional[USDollarAmount]:
         """How much we invested at the beginning of a backtest.
 
         - Assumes we track the performance against the US dollar
@@ -370,4 +370,6 @@ class Portfolio:
 
         assert len(self.reserves) == 1
         reserve = next(iter(self.reserves.values()))
-        return float(reserve.initial_deposit) * reserve.initial_deposit_reserve_token_price
+        if reserve.initial_deposit:
+            return float(reserve.initial_deposit) * reserve.initial_deposit_reserve_token_price
+        return None

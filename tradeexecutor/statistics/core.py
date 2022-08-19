@@ -62,7 +62,6 @@ def calculate_statistics(clock: datetime.datetime, portfolio: Portfolio) -> NewS
         first_trade_at=first_trade and first_trade.executed_at or None,
         last_trade_at=last_trade and last_trade.executed_at or None,
         summary=trade_analysis.calculate_summary_statistics(),
-        # summary=None,
     )
 
     stats = NewStatistics(portfolio=pf_stats)
