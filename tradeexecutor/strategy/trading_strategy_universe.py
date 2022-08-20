@@ -136,7 +136,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         candle_universe = GroupedCandleUniverse(filtered_candles)
 
         # Get liquidity candles as Pandas Dataframe
-        if dataset.liquidity:
+        if dataset.liquidity is not None and not dataset.liquidity.empty:
             all_liquidity = dataset.liquidity
             filtered_liquidity = filter_for_pairs(all_liquidity, pair_universe.df)
             liquidity_universe = GroupedLiquidityUniverse(filtered_liquidity)
