@@ -136,9 +136,12 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         candle_universe = GroupedCandleUniverse(filtered_candles)
 
         # Get liquidity candles as Pandas Dataframe
-        all_liquidity = dataset.liquidity
-        filtered_liquidity = filter_for_pairs(all_liquidity, pair_universe.df)
-        liquidity_universe = GroupedLiquidityUniverse(filtered_liquidity)
+        if dataset.liquidity:
+            all_liquidity = dataset.liquidity
+            filtered_liquidity = filter_for_pairs(all_liquidity, pair_universe.df)
+            liquidity_universe = GroupedLiquidityUniverse(filtered_liquidity)
+        else:
+            liquidity_universe = None
 
         pair = pair_universe.get_single()
 
@@ -705,8 +708,8 @@ def load_pair_data_for_single_exchange(
         if len(our_pair_ids) > 1:
             desc = f"Loading OHLCV data for {exchange_slug}"
         else:
-            only, _ = pair_tickers
-            desc = f"Loading OHLCV data for {only[0]}-{only[1]}"
+            pair = pair_tickers[0]
+            desc = f"Loading OHLCV data for {pair[0]}-{pair[1]}"
 
         candles = client.fetch_candles_by_pair_ids(
             our_pair_ids,
