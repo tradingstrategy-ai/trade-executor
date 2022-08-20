@@ -313,8 +313,8 @@ def test_forked_pancake(
     assert trades[0].pair.base.token_symbol == "Cake"
     assert trades[0].executed_quantity > Decimal(100)  # TODO: Depends on daily Cake price - fix when we have a historical trade simulator
     assert trades[1].pair.base.token_symbol == "BTT"
-    assert trades[2].pair.base.token_symbol == "CHR"
-    assert trades[3].pair.base.token_symbol == "CUB"
+    assert trades[2].pair.base.token_symbol == "Static"
+    # assert trades[3].pair.base.token_symbol == "CUB"
 
     # Check on-chain Cake balance matches what we traded from Pancake
     assert cake_token.functions.balanceOf(hot_wallet.address).call() > 0

@@ -163,11 +163,11 @@ def test_get_historical_price(
 
     # Get the price for buying WBNB for 1000 USD at 2021-1-1
     buy_price = trader.get_buy_price(wbnb_busd, Decimal(1_000))
-    assert buy_price == pytest.approx(361.04028)
+    assert buy_price == pytest.approx(361.9442138671875)
 
     # Get the price for sellinb 1 WBNB
     sell_price = trader.get_sell_price(wbnb_busd, Decimal(1))
-    assert sell_price == pytest.approx(361.04028)
+    assert sell_price == pytest.approx(361.9442138671875)
 
 
 def test_create_and_execute_backtest_trade(
@@ -194,14 +194,14 @@ def test_create_and_execute_backtest_trade(
 
     assert trade.is_buy()
     assert trade.get_status() == TradeStatus.success
-    assert trade.executed_price == pytest.approx(362.1266631927031)
+    assert trade.executed_price == pytest.approx(363.03331380861334)
 
     # We bought around 3 BNB
-    assert position.get_quantity() == pytest.approx(Decimal('2.761464707358091337008375982'))
+    assert position.get_quantity() == pytest.approx(Decimal('2.754568140066582411061992325'))
 
     # Check our wallet was credited
     assert wallet.get_balance(busd.address) == 9_000
-    assert wallet.get_balance(wbnb.address) == pytest.approx(Decimal('2.761464707358091337008375982'))
+    assert wallet.get_balance(wbnb.address) == pytest.approx(Decimal('2.754568140066582411061992325g'))
 
 
 def test_buy_sell_backtest(
