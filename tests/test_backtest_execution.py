@@ -201,7 +201,7 @@ def test_create_and_execute_backtest_trade(
 
     # Check our wallet was credited
     assert wallet.get_balance(busd.address) == 9_000
-    assert wallet.get_balance(wbnb.address) == pytest.approx(Decimal('2.754568140066582411061992325g'))
+    assert wallet.get_balance(wbnb.address) == pytest.approx(Decimal('2.754568140066582411061992325'))
 
 
 def test_buy_sell_backtest(
