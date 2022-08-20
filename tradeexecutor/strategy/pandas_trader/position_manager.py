@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 class NoSingleOpenPositionException(Exception):
-    """Raised if getting the single position is not successful."""
+    """Raised if getting the single position of the current portfolio is not successful."""
 
 
 class PositionManager:
