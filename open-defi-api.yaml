@@ -5,6 +5,7 @@ info:
   title: Open DeFi API
 
   contact:
+    email: mikko@tradingstrategy.ai
     url: 'https://tradingstrategy.ai/community'
   x-logo:
     url: 'https://raw.githubusercontent.com/tradingstrategy-ai/frontend/ec73a013cae04fa3f13c579dcc0dd0d80cbc49cc/src/lib/assets/logo-horizontal.svg'
@@ -46,7 +47,7 @@ info:
     This API provides live data. However, these API endpoints have not been designed for large data ignestion.
     For backtesting trading strategies, [download the historical datasets from Trading Strategy website](https://tradingstrategy.ai/trading-view/backtesting).
 
-    ## Data types
+    ## Market data categories
 
     You can find
 
@@ -58,7 +59,7 @@ info:
 
     * OHLC liquidty data for liquidity maps
 
-    # Supported blockchains
+    ## Supported blockchains
 
     Examples of supported blockchains:
 
@@ -72,23 +73,29 @@ info:
 
     Examples of supported exchanges:
 
-    * Uniswap
-
+    * [PancakeSwap](https://tradingstrategy.ai/trading-view/binance/pancakeswap-v2)
+  
+    * [Uniswap](https://tradingstrategy.ai/trading-view/ethereum/uniswap-v2)
+    
     * SushiSwap
 
-    * PancakeSwap
-
     * QuickSwap
+    
+    * Trader Joe
 
-    ## About OpenAPI Specification used
+    ## About OpenAPI specification used
 
     This API specification is written in [OpenAPI v3](https://swagger.io/specification/).
-    
-    # Documentation, support and questions
+
+    ## Documentation, support and questions
     
     * [Trading Strategy documentation](https://tradingstrategy.ai/docs/)
     
-    * [For any questions, use Trading Strategy community Discord chat](https://tradingstrategy.ai/community)
+    * [Ask questions on Trading Strategy Discord server](https://tradingstrategy.ai/community)
+
+externalDocs:
+  description: Trading Strategy documentation
+  url: 'https://tradingstrategy.ai/docs/'
 
 # A list of tags used by the definition with additional metadata.
 # The order of the tags can be used to reflect on their order by the parsing tools.
