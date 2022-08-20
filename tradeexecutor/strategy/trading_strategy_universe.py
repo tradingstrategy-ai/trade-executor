@@ -457,14 +457,25 @@ class DefaultTradingStrategyUniverseModel(TradingStrategyUniverseModel):
             return universe
 
 
-def translate_token(token: Token) -> AssetIdentifier:
+def translate_token(token: Token, require_decimals=True) -> AssetIdentifier:
     """Translate Trading Strategy token data definition to trade executor.
 
     Trading Strategy client uses compressed columnar data for pairs and tokens.
 
     Creates `AssetIdentifier` based on data coming from
     Trading Strategy :py:class:`tradingstrategy.pair.PandasPairUniverse`.
+
+    :param require_decimals:
+        Most tokens / trading pairs are non-functional without decimals information.
+        Assume decimals is in place. If not then raise AssertionError.
+        This check allows some early error catching on bad data.
+
     """
+
+    if require_decimals:
+        assert token.decimals, f"Bad token: {token}"
+        assert token.decimals > 0, f"Bad token: {token}"
+
     return AssetIdentifier(
         token.chain_id.value,
         token.address,

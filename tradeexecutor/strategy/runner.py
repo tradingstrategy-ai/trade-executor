@@ -92,6 +92,8 @@ class StrategyRunner(abc.ABC):
         reserve_assets = universe.reserve_assets
         assert len(reserve_assets) > 0, "No reserve assets available"
         assert len(reserve_assets) == 1, f"We only support strategies with a single reserve asset, got {self.reserve_assets}"
+        token = reserve_assets[0]
+        assert token.decimals and token.decimals > 0, f"Reserve asset lacked decimals"
         reserve_update_events = self.sync_method(state.portfolio, ts, reserve_assets)
         assert type(reserve_update_events) == list
         debug_details["reserve_update_events"] = reserve_update_events

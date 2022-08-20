@@ -27,6 +27,12 @@ class StrategyExecutionUniverse:
     #: Usually return the list of a BUSD/USDC/similar stablecoin.
     reserve_assets: List[AssetIdentifier]
 
+    def __post_init__(self):
+        # Check that reserve assets look good
+        for asset in self.reserve_assets:
+            assert asset.token_symbol, f"Missing token symbol {asset}"
+            assert asset.decimals, f"Missing token decimals {asset}"
+
 
 class UniverseModel(abc.ABC):
     """Create and manage trade universe.
