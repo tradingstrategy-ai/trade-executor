@@ -236,7 +236,7 @@ class TradePosition:
     def add_trade(self, t: SpotTrade):
         if self.trades:
             last_trade = self.trades[-1]
-            assert t.timestamp > last_trade.timestamp, f"Tried to do trades in wrong order. Last: {last_trade}, got {t}"
+            assert t.timestamp >= last_trade.timestamp, f"Tried to do trades in wrong order. Last: {last_trade}, got {t}"
         self.trades.append(t)
 
     def can_trade_close_position(self, t: SpotTrade):
