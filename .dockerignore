@@ -3,5 +3,6 @@
 **/.vscode
 **/.github
 **/.pytest_cache
-
+**/.cache
+**/cache
 
