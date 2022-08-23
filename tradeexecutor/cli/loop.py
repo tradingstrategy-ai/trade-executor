@@ -428,7 +428,7 @@ class ExecutionLoop:
         self.init_execution_model()
 
         live_trading = self.backtest_start is None
-        mode = ExecutionMode.live_trading if live_trading else ExecutionMode.backtesting
+        mode = ExecutionMode.real_trading if live_trading else ExecutionMode.backtesting
 
         execution_context = ExecutionContext(
             mode=mode,
