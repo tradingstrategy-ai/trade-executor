@@ -407,7 +407,7 @@ class TradingStrategyUniverseModel(UniverseModel):
             backtest_stop_loss_time_bucket=dataset.backtest_stop_loss_time_bucket)
 
     @abstractmethod
-    def construct_universe(self, ts: datetime.datetime, live: bool) -> TradingStrategyUniverse:
+    def construct_universe(self, ts: datetime.datetime, mode: ExecutionMode) -> TradingStrategyUniverse:
         pass
 
 

@@ -30,6 +30,7 @@ from tradeexecutor.state.store import JSONFileStore, StateStore
 from tradeexecutor.strategy.approval import ApprovalType, UncheckedApprovalModel, ApprovalModel
 from tradeexecutor.strategy.bootstrap import import_strategy_file
 from tradeexecutor.strategy.dummy import DummyExecutionModel
+from tradeexecutor.strategy.execution_context import ExecutionMode
 from tradeexecutor.strategy.execution_model import TradeExecutionType
 from tradeexecutor.cli.log import setup_logging, setup_discord_logging
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverseModel
@@ -310,7 +311,7 @@ def check_universe(
 
     ts = datetime.datetime.utcnow()
     logger.info("Performing universe data check for timestamp %s", ts)
-    universe = universe_model.construct_universe(ts, live=True)
+    universe = universe_model.construct_universe(ts, ExecutionMode.data_preload)
 
     universe_model.check_data_age(ts, universe, max_data_delay)
 
