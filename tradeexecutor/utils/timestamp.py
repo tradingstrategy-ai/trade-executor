@@ -38,3 +38,18 @@ def convert_and_validate_timestamp_as_int(timestamp: Union[pd.Timestamp, datetim
     # https://stackoverflow.com/a/5499906/315168
     return int(calendar.timegm(timestamp.utctimetuple()))
 
+
+def json_encode_timedelta(obj: datetime.timedelta) -> dict: 
+    return {
+        "__type__" : "timedelta",
+        "days" : obj.days,
+        "seconds" : obj.seconds,
+        "microseconds" : obj.microseconds,
+    }
+
+
+def json_decode_timedelta(obj: dict) -> datetime.timedelta:
+    type_ = obj.pop("__type__")
+    
+    return datetime.timedelta(**obj)
+    

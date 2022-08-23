@@ -15,6 +15,8 @@ from dataclasses_json import dataclass_json
 
 from tradingstrategy.types import USDollarAmount
 
+from tradeexecutor.analysis.trade_analyser import TradeSummary
+
 
 @dataclass_json
 @dataclass
@@ -81,6 +83,8 @@ class PortfolioStatistics:
 
     first_trade_at: datetime.datetime
     last_trade_at: datetime.datetime
+
+    summary: TradeSummary
 
     realised_profit_usd: USDollarAmount = 0
 
