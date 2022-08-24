@@ -63,7 +63,6 @@ export STRATEGY_FILE="strategies/${EXECUTOR_ID}.py"
 
 export JSON_RPC=$JSON_RPC_POLYGON
 export GAS_PRICE_METHOD="london"
-export STATE_FILE="$EXECUTOR_ID.json"
 export EXECUTION_TYPE="uniswap_v2_hot_wallet"
 export APPROVAL_TYPE="unchecked"
 export CACHE_PATH="cache/${EXECUTOR_ID}"
@@ -83,7 +82,5 @@ export STATE_FILE=state/$EXECUTOR_ID.state.json
 OUTPUT=~/$EXECUTOR_ID.env
 
 poetry run python scripts/prepare-env.py $OUTPUT
-
 echo "Created $OUTPUT"
-
 head $OUTPUT

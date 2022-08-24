@@ -45,7 +45,6 @@ export STRATEGY_FILE="strategies/${EXECUTOR_ID}.py"
 export CACHE_PATH=cache/${EXECUTOR_ID}
 export JSON_RPC=$JSON_RPC_BINANCE
 export GAS_PRICE_METHOD="legacy"
-export STATE_FILE="$EXECUTOR_ID.json"
 export EXECUTION_TYPE="uniswap_v2_hot_wallet"
 export APPROVAL_TYPE="unchecked"
 export TICK_OFFSET_MINUTES="10"
@@ -57,10 +56,10 @@ export MAX_DATA_DELAY_MINUTES=720
 export HTTP_PORT=3456
 export HTTP_HOST=0.0.0.0
 
+# Passed as Docker volume mount point
+export STATE_FILE=state/$EXECUTOR_ID.state.json
 
 OUTPUT=~/$EXECUTOR_ID.env
 poetry run python scripts/prepare-env.py $OUTPUT
-
 echo "Created $OUTPUT"
-
 head $OUTPUT
