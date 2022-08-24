@@ -32,7 +32,7 @@ from tradeexecutor.strategy.bootstrap import import_strategy_file
 from tradeexecutor.strategy.dummy import DummyExecutionModel
 from tradeexecutor.strategy.execution_context import ExecutionMode
 from tradeexecutor.strategy.execution_model import TradeExecutionType
-from tradeexecutor.cli.log import setup_logging, setup_discord_logging
+from tradeexecutor.cli.log import setup_logging, setup_discord_logging, setup_logstash_logging
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverseModel
 from tradeexecutor.utils.timer import timed_task
 from tradeexecutor.utils.url import redact_url_password
@@ -168,6 +168,7 @@ def start(
     stats_refresh_minutes: int = typer.Option(60, envvar="STATS_REFRESH_MINUTES", help="How often we refresh position statistics. Default to once in an hour."),
     max_data_delay_minutes: int = typer.Option(None, envvar="MAX_DATA_DELAY_MINUTES", help="If our data feed is delayed more than this minutes, abort the execution"),
     discord_webhook_url: Optional[str] = typer.Option(None, envvar="DISCORD_WEBHOOK_URL", help="Discord webhook URL for notifications"),
+    logstash_server: Optional[str] = typer.Option(None, envvar="LOGSTASH_SERVER", help="LogStash server hostname where to send logs"),
     trade_immediately: bool = typer.Option(False, "--trade-immediately", envvar="TRADE_IMMEDIATELY", help="Perform the first rebalance immediately, do not wait for the next trading universe refresh"),
     port_mortem_debugging: bool = typer.Option(False, "--post-mortem-debugging", envvar="POST_MORTEM_DEBUGGING", help="Launch ipdb debugger on a main loop crash to debug the exception"),
     clear_caches: bool = typer.Option(False, "--clear-caches", envvar="CLEAR_CACHES", help="Purge any dataset download caches before starting"),
@@ -182,6 +183,13 @@ def start(
             name,
             webhook_url=discord_webhook_url,
             avatar_url=icon_url)
+
+    if logstash_server:
+        setup_logstash_logging(
+            logstash_server,
+            name,
+            quiet=False,
+        )
 
     monkey_patch()
 
@@ -293,6 +301,8 @@ def check_universe(
     assert max_data_delay_minutes, "MAX_DATA_DELAY_MINUTES missing"
 
     client = Client.create_live_client(trading_strategy_api_key, cache_path=cache_path)
+
+    client.clear_caches()
 
     max_data_delay = datetime.timedelta(minutes=max_data_delay_minutes)
 

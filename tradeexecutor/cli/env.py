@@ -1,4 +1,4 @@
-"""Environment variable managment."""
+"""Environment variable management."""
 from dataclasses import dataclass
 from typing import List
 

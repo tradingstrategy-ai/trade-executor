@@ -5,10 +5,10 @@ We have a custom level `logging.TRADE` that we use to log trade execution to Dis
 
 import logging
 from logging import Logger
-from typing import Optional
+from typing import Optional, List
 
 import coloredlogs
-
+import logstash
 
 from discord_logging.handler import DiscordHandler
 
@@ -146,3 +146,55 @@ def setup_discord_logging(name: str, webhook_url: str, avatar_url: Optional[str]
     discord_handler.setFormatter(discord_format)
     discord_handler.setLevel(logging.TRADE)
     logging.getLogger().addHandler(discord_handler)
+
+
+def setup_logstash_logging(
+        logstash_server: str,
+        application_name: str,
+        extra_tags: Optional[List[str]] = None,
+        quiet=True,
+        level=logging.INFO,
+        port=5959,
+):
+    """Setup Logstash logger.
+
+    Connects via UDP.
+
+    :param logstash_server:
+        Host name / IP address of a logstash server
+
+    :param port:
+        Logstash receiving UDP port
+
+    :param application_name:
+        Added as application tag.
+
+        You can look up this application by filtering for `application`
+        in Logstash.
+
+    :param extra_tags:
+        List of extra tags added on on Logstash messages.
+
+    :param quiet:
+        Do we note if we have connected to the server
+
+    :return:
+        Logstash logger
+    """
+
+    logger = logging.getLogger()
+
+    extra_tags = extra_tags or []
+
+    tags = ["python"] + extra_tags
+    if not quiet:
+        logger.info("Logging to Logstash server %s, application name is %s, tags are %s",
+                    logstash_server,
+                    application_name, tags)
+    # Include our application name in the logs
+    assert application_name, "Cannot use Logstash without application_name set"
+    extra_fields = {"application": application_name}
+    handler = logstash.UDPLogstashHandler(logstash_server, port, version=1, tags=tags, extra_fields=extra_fields)
+    handler.setLevel(level)
+    logger.addHandler(handler)
+    return logger

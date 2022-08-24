@@ -319,10 +319,10 @@ class TradingStrategyUniverseModel(UniverseModel):
 
             if mode.is_live_trading():
                 # This will force client to redownload the data
-                logger.info("Purging trading data caches")
+                logger.info("Execution mode %s, purging trading data caches", mode)
                 client.clear_caches()
             else:
-                logger.info("Using cached data if available")
+                logger.info("Execution mode %s, not live trading, Using cached data if available", mode)
 
             exchanges = client.fetch_exchange_universe()
             pairs = client.fetch_pair_universe().to_pandas()

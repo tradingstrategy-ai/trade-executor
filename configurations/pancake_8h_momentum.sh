@@ -59,5 +59,8 @@ export HTTP_HOST=0.0.0.0
 
 
 OUTPUT=~/$EXECUTOR_ID.env
-poetry run python scripts/prepare-env.py > $OUTPUT
+poetry run python scripts/prepare-env.py $OUTPUT
+
 echo "Created $OUTPUT"
+
+head $OUTPUT

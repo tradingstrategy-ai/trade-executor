@@ -82,6 +82,8 @@ export STATE_FILE=state/$EXECUTOR_ID.state.json
 
 OUTPUT=~/$EXECUTOR_ID.env
 
-poetry run python scripts/prepare-env.py > $OUTPUT
+poetry run python scripts/prepare-env.py $OUTPUT
 
 echo "Created $OUTPUT"
+
+head $OUTPUT
