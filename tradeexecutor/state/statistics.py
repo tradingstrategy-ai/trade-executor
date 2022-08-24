@@ -84,9 +84,9 @@ class PortfolioStatistics:
     first_trade_at: datetime.datetime
     last_trade_at: datetime.datetime
 
-    summary: TradeSummary
-
     realised_profit_usd: USDollarAmount = 0
+
+    summary: Optional[TradeSummary] = None
 
 
 @dataclass_json
