@@ -30,7 +30,7 @@ class ExecutionMode(enum.Enum):
 
     def is_live_trading(self) -> bool:
         """Are we trading with real money or paper money real time?"""
-        return self.value in (self.real_trading, self.paper_trading)
+        return self in (self.real_trading, self.paper_trading)
 
 
 @dataclass
