@@ -52,6 +52,8 @@ def check_good_id(id: str):
     :raise AssertionError:
         If the user gives us non-id like id
     """
+
+    assert id, f"EXECUTOR_ID must be given so that executor instances can be identified"
     assert " " not in id, f"Bad EXECUTOR_ID: {id}"
 
 

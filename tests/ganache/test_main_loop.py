@@ -199,6 +199,7 @@ def test_main_loop(
 
     # Set up the configuration for the live trader
     environment = {
+        "EXECUTOR_ID": "test_main_loop.py",
         "NAME": "test_main_loop.py",
         "STRATEGY_FILE": strategy_path.as_posix(),
         "PRIVATE_KEY": hot_wallet.account.privateKey.hex(),

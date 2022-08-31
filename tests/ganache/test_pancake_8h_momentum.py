@@ -220,6 +220,7 @@ def test_pancake_4h_candles(
     # Set up the configuration for the backtesting,
     # run the loop 6 cycles using Ganache + live BNB Chain fork
     environment = {
+        "EXECUTOR_ID": "pancake_8h_momentum_tick.py",
         "NAME": "pytest: pancake_8h_momentum_tick.py",
         "STRATEGY_FILE": strategy_path.as_posix(),
         "PRIVATE_KEY": hot_wallet.account.privateKey.hex(),
