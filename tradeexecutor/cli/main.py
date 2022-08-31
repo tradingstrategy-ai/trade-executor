@@ -200,7 +200,7 @@ def start(
     if logstash_server:
         setup_logstash_logging(
             logstash_server,
-            id,
+            f"executor-{id}",  # Always prefix logged with executor id
             quiet=False,
         )
 
