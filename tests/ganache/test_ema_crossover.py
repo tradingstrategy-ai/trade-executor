@@ -142,6 +142,7 @@ def test_ema_crossover(
     # Set up the configuration for the backtesting,
     # run the loop 6 cycles using Ganache + live BNB Chain fork
     environment = {
+        "EXECUTOR_ID": "test_ema",
         "NAME": "test_ema",
         "STRATEGY_FILE": strategy_path.as_posix(),
         "PRIVATE_KEY": hot_wallet.account.privateKey.hex(),

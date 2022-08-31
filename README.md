@@ -9,7 +9,7 @@ Trade Executor is a Python framework for algorithmic trading strategy execution.
 - [High quality documentation](https://tradingstrategy.ai/docs/)
 - Support [decentralised markets like Uniswap, PancakeSwap](https://tradingstrategy.ai/docs/overview/supported-markets.html) 
 - [Live trading](https://tradingstrategy.ai/docs/running/live-trading.html) and [backtesting](https://tradingstrategy.ai/docs/running/backtesting.html)  
-- [Webhook web server](https://tradingstrategy.ai/docs/running/webhook.html) for web and JavaScript integration
+- [Webhook web serverPlain](https://tradingstrategy.ai/docs/running/webhook.html) for web and JavaScript integration
 - Run the strategy execution as [Python application or Docker container](https://tradingstrategy.ai/docs/running/cli.html)
 
 ## More information

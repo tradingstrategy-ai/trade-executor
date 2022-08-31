@@ -140,6 +140,7 @@ def test_quickswap_momentum(
     # Set up the configuration for the backtesting,
     # run the loop 6 cycles using Ganache + live BNB Chain fork
     environment = {
+        "EXECUTOR_ID": "test_bnb_chain_16h_momentum",
         "NAME": "test_bnb_chain_16h_momentum",
         "STRATEGY_FILE": strategy_path.as_posix(),
         "PRIVATE_KEY": hot_wallet.account.privateKey.hex(),

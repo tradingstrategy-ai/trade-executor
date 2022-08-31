@@ -21,12 +21,12 @@ def web_home(request: Request):
     url = request.application_url
     version = pkg_resources.get_distribution('trade-executor').version
     # https://angrybirds.fandom.com/wiki/The_Flock
-    return Response(f'Chuck the Trade Executor server, version {version}, our URL is {url}\nFor more information see https://tradingstrategy.ai', content_type="text/plain")
+    return Response(f'Chuck the Trade Executor serverPlain, version {version}, our URL is {url}\nFor more information see https://tradingstrategy.ai', content_type="text/plain")
 
 
 @view_config(route_name='web_ping', renderer='json', permission='view')
 def web_ping(request: Request):
-    """Unauthenticated endpoint to check the server is up."""
+    """Unauthenticated endpoint to check the serverPlain is up."""
     return {"ping": "pong"}
 
 
@@ -60,7 +60,7 @@ def web_state(request: Request):
     fname = store.path
 
     if not os.path.exists(fname):
-        logger.warning("Someone is eager to access the server. IP:%s, user agent:%s", request.client_addr, request.user_agent)
+        logger.warning("Someone is eager to access the serverPlain. IP:%s, user agent:%s", request.client_addr, request.user_agent)
         return exception_response(404, detail="Status file not yet created")
 
     assert 'wsgi.file_wrapper' in request.environ, "We need wsgi.file_wrapper or we will be too slow"
