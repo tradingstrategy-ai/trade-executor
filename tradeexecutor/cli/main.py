@@ -47,6 +47,14 @@ version = pkg_resources.get_distribution('trade-executor').version
 logger: Optional[logging.Logger] = None
 
 
+def check_good_id(id: str):
+    """
+    :raise AssertionError:
+        If the user gives us non-id like id
+    """
+    assert " " not in id, f"Bad EXECUTOR_ID: {id}"
+
+
 def create_trade_execution_model(
         execution_type: TradeExecutionType,
         json_rpc: str,
@@ -137,7 +145,8 @@ def monkey_patch():
 # Typer documentation https://typer.tiangolo.com/
 @app.command()
 def start(
-    name: Optional[str] = typer.Option("Unnamed Trade Executor", envvar="NAME", help="Executor name used in logging and notifications"),
+    id: str = typer.Option(None, envvar="EXECUTOR_ID", help="Executor id used when programmatically referring to this instance"),
+    name: Optional[str] = typer.Option("Unnamed Trade Executor", envvar="NAME", help="Executor name used in the web interface and notifications"),
     short_description: Optional[str] = typer.Option(None, envvar="SHORT_DESCRIPTION", help="Short description for metadata"),
     long_description: Optional[str] = typer.Option(None, envvar="LONG_DESCRIPTION", help="Long description for metadata"),
     icon_url: Optional[str] = typer.Option(None, envvar="ICON_URL", help="Strategy icon for web rendering and Discord avatar"),
@@ -176,6 +185,8 @@ def start(
     """Launch Trade Executor instance."""
     global logger
 
+    check_good_id(id)
+
     logger = setup_logging()
 
     if discord_webhook_url:
@@ -187,7 +198,7 @@ def start(
     if logstash_server:
         setup_logstash_logging(
             logstash_server,
-            name,
+            id,
             quiet=False,
         )
 

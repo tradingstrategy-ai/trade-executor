@@ -8,7 +8,7 @@ Set up environment:
 
 ```shell
 
-# We use production server to get datasets needed in tests
+# We use production serverPlain to get datasets needed in tests
 export TRADING_STRATEGY_API_KEY="" 
 
 # We use BNB chain mainnet forking for some tests
