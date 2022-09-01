@@ -6,5 +6,7 @@ dist
 .vscode
 .pytest_cache
 .cache
-cache
 .python-version
+
+cache
+state/*.json

@@ -620,6 +620,10 @@ def build_trade_analysis(portfolio: Portfolio) -> TradeAnalysis:
             if not history:
                 history = histories[pair_id] = AssetTradeHistory()
 
+            # filter out failed trade
+            if trade.executed_at is None:
+                continue
+
             # Internally negative quantities are for sells
             quantity = trade.executed_quantity
             timestamp = pd.Timestamp(trade.executed_at)
