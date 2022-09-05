@@ -317,7 +317,7 @@ class TradingStrategyUniverseModel(UniverseModel):
 
         with self.timed_task_context_manager("load_data", time_bucket=time_frame.value):
 
-            if mode.is_live_trading():
+            if mode.is_fresh_data_always_needed():
                 # This will force client to redownload the data
                 logger.info("Execution mode %s, purging trading data caches", mode)
                 client.clear_caches()

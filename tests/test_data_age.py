@@ -38,7 +38,7 @@ def test_data_fresh(universe_model: DataAgeTestUniverseModel):
     # d1 data is used by other tests and cached
     best_before_duration = datetime.timedelta(weeks=1000)  # Our unit test is good for next 1000 years
     ts = datetime.datetime.utcnow()
-    universe = universe_model.construct_universe(ts, ExecutionMode.real_trading)
+    universe = universe_model.construct_universe(ts, ExecutionMode.unit_testing_trading)
     universe_model.check_data_age(ts, universe, best_before_duration)
 
 

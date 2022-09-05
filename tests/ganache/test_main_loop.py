@@ -222,6 +222,7 @@ def test_main_loop(
         "MAX_CYCLES": "1",
         "DISCORD_WEBHOOK_URL": "",
         "TICK_SIZE": "24h",
+        "UNIT_TESTING": "true",
     }
 
     # https://typer.tiangolo.com/tutorial/testing/

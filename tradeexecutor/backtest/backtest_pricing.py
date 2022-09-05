@@ -1,5 +1,6 @@
 import logging
 import datetime
+import warnings
 from decimal import Decimal, ROUND_DOWN
 from typing import Optional
 
@@ -41,13 +42,17 @@ class BacktestSimplePricingModel(PricingModel):
         self.routing_model = routing_model
         self.candle_timepoint_kind = candle_timepoint_kind
 
-    def get_pair_for_id(self, internal_id: int) -> TradingPairIdentifier:
+    def get_pair_for_id(self, internal_id: int) -> Optional[TradingPairIdentifier]:
         """Look up a trading pair.
 
         Useful if a strategy is only dealing with pair integer ids.
         """
+        warnings.warn("Do not use internal ids as they are not stable ids."
+                      "Instead use chain id + address tuples")
+
         pair = self.universe.pairs.get_pair_by_id(internal_id)
-        assert pair, f"No pair for id {internal_id}"
+        if not pair:
+            return None
         return translate_trading_pair(pair)
 
     def check_supported_quote_token(self, pair: TradingPairIdentifier):

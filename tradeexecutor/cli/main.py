@@ -7,6 +7,7 @@ from typing import Optional
 import pkg_resources
 
 import typer
+from eth.vm.execution_context import ExecutionContext
 
 from web3.middleware import geth_poa_middleware
 from web3 import Web3, HTTPProvider
@@ -183,6 +184,7 @@ def start(
     trade_immediately: bool = typer.Option(False, "--trade-immediately", envvar="TRADE_IMMEDIATELY", help="Perform the first rebalance immediately, do not wait for the next trading universe refresh"),
     port_mortem_debugging: bool = typer.Option(False, "--post-mortem-debugging", envvar="POST_MORTEM_DEBUGGING", help="Launch ipdb debugger on a main loop crash to debug the exception"),
     clear_caches: bool = typer.Option(False, "--clear-caches", envvar="CLEAR_CACHES", help="Purge any dataset download caches before starting"),
+    unit_testing: bool = typer.Option(False, "--unit-testing", envvar="UNIT_TESTING", help="The trade executor is called under the unit testing mode. No caches are purged."),
     ):
     """Launch Trade Executor instance."""
     global logger
@@ -255,11 +257,29 @@ def start(
 
     logger.trade("Trade Executor version %s starting strategy %s", version, name)
 
+    if backtest_start:
+        execution_context = ExecutionContext(
+            mode=ExecutionMode.backtesting,
+            timed_task_context_manager=timed_task,
+        )
+    else:
+        if unit_testing:
+            execution_context = ExecutionContext(
+                mode=ExecutionMode.unit_testing_trading,
+                timed_task_context_manager=timed_task,
+            )
+        else:
+            execution_context = ExecutionContext(
+                mode=ExecutionMode.real_trading,
+                timed_task_context_manager=timed_task,
+            )
+
     try:
         loop = ExecutionLoop(
             name=name,
             command_queue=command_queue,
             execution_model=execution_model,
+            execution_context=execution_context,
             sync_method=sync_method,
             approval_model=approval_model,
             pricing_model_factory=pricing_model_factory,

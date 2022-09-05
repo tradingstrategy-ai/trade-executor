@@ -160,6 +160,7 @@ def test_ema_crossover(
         "BACKTEST_END": "2021-12-09",
         "TICK_OFFSET_MINUTES": "10",
         "CONFIRMATION_BLOCK_COUNT": "8",
+        "UNIT_TESTING": "true",
     }
 
     # Don't use CliRunner.invoke() here,

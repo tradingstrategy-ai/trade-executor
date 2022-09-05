@@ -183,9 +183,13 @@ class PortfolioConstructionModel:
                 pandas_pair = self.universe.pairs.get_pair_by_id(asset)
                 executor_pair = translate_trading_pair(pandas_pair)
 
+                # For some reason, the price of the asset has disappeared.
+                # Do not spend too much time on this, because this code is going
+                # to disappear as well.
                 price = target_prices.get(asset)
                 if price is None:
-                    raise RuntimeError(f"Price missing for asset {asset} - prices are {target_prices}")
+                    logger.warning(f"Price missing for asset {asset} - prices are {target_prices}")
+                    continue
 
                 position, trade, created = self.state.create_trade(
                     dt,
@@ -274,7 +278,8 @@ class PortfolioConstructionModel:
         # Get prices for existing assets so we have some idea how much they sell for
         for asset_id, asset_data in current_portfolio.items():
             pair = self.pricing_model.get_pair_for_id(asset_id)
-            target_prices[asset_id] = self.pricing_model.get_buy_price(dt, pair, None)
+            if pair:
+                target_prices[asset_id] = self.pricing_model.get_buy_price(dt, pair, None)
 
         # Expose internal states to unit tests
         debug_details["positions_at_start_of_construction"] = current_portfolio.copy()  # current_portfolio is mutated later

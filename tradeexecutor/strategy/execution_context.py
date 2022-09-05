@@ -28,8 +28,22 @@ class ExecutionMode(enum.Enum):
     #: data in a Jupyter notebook.
     data_preload = "data_preload"
 
+    #: We are operating on real datasets like :py:data:`real_trading`
+    #: but we do not want to purge caches.
+    #:
+    #: This mode is specially used to test some live trading features.
+    #:
+    unit_testing_trading = "unit_testing_trading"
+
     def is_live_trading(self) -> bool:
         """Are we trading with real money or paper money real time?"""
+        return self in (self.real_trading, self.paper_trading, self.unit_testing_trading)
+
+    def is_fresh_data_always_needed(self):
+        """Should we purge caches for each trade cycle.
+
+        This will force the redownload of data on each cycle.
+        """
         return self in (self.real_trading, self.paper_trading)
 
 
