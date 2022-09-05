@@ -4,7 +4,10 @@
 #
 # Usage:
 #
-#   scripts/generic/update-and-restart-executor.sh quickswap-momentum
+#   source ~/secrets.env
+#   scripts/update-and-restart-executor.sh quickswap-momentum
+#
+# What this does
 #
 # - Find the latest release tag from ghcr.io registry
 # - Pull the latest released image
@@ -19,7 +22,7 @@ EXECUTOR_NAME=$1
 
 echo "Updating and restarting $EXECUTOR_NAME"
 
-if [ -z "$GITHUB_TOKEN"] ; then
+if [ -z "$GITHUB_TOKEN" ] ; then
     echo "GITHUB_TOKEN env variable must be available to use ghcr.io"
     exit 1
 fi
@@ -29,14 +32,14 @@ docker login ghcr.io -u miohtama -p $GITHUB_TOKEN
 export TRADE_EXECUTOR_VERSION=`poetry run get-latest-release`
 
 if [[ "${TRADE_EXECUTOR_VERSION:0:1}" == "v" ]]; then
-  echo "Trade executor version is now $TRADE_EXECUTOR_VERSION"
+  echo "Using the latest version is $TRADE_EXECUTOR_VERSION"
 else
   echo "Version corrupted: $TRADE_EXECUTOR_VERSION"
   echo "Make sure you run from poetry shell. Type 'poetry shell' to active, then 'source ~/secrets.env'"
   exit 1
 fi
 
-if command docker-compose /dev/null ; then
+if command -v docker-compose /dev/null ; then
   docker-compose stop $EXECUTOR_NAME
   docker-compose up -d --force-recreate $EXECUTOR_NAME
 else
@@ -52,3 +55,4 @@ sleep 5
 
 echo "All ok - check that uptime is zero and the container is running"
 docker ps|grep $EXECUTOR_NAME
+echo "Trade executor version is now $TRADE_EXECUTOR_VERSION"
