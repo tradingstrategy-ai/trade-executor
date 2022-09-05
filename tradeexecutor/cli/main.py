@@ -7,7 +7,6 @@ from typing import Optional
 import pkg_resources
 
 import typer
-from eth.vm.execution_context import ExecutionContext
 
 from web3.middleware import geth_poa_middleware
 from web3 import Web3, HTTPProvider
@@ -31,7 +30,7 @@ from tradeexecutor.state.store import JSONFileStore, StateStore
 from tradeexecutor.strategy.approval import ApprovalType, UncheckedApprovalModel, ApprovalModel
 from tradeexecutor.strategy.bootstrap import import_strategy_file
 from tradeexecutor.strategy.dummy import DummyExecutionModel
-from tradeexecutor.strategy.execution_context import ExecutionMode
+from tradeexecutor.strategy.execution_context import ExecutionMode, ExecutionContext
 from tradeexecutor.strategy.execution_model import TradeExecutionType
 from tradeexecutor.cli.log import setup_logging, setup_discord_logging, setup_logstash_logging
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverseModel

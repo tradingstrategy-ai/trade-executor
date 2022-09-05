@@ -151,7 +151,7 @@ class ExecutionLoop:
         if backtesting_universe is None:
 
             # Refresh the trading universe for this cycle
-            universe = self.universe_model.construct_universe(ts, ExecutionMode.real_trading)
+            universe = self.universe_model.construct_universe(ts, self.execution_context.mode)
 
             # Check if our data is stagnated and we cannot execute the strategy
             if self.max_data_delay is not None:
