@@ -66,13 +66,17 @@ class UniswapV2LivePricing(PricingModel):
         self.very_small_amount = very_small_amount
         self.routing_model = routing_model
 
-    def get_pair_for_id(self, internal_id: int) -> TradingPairIdentifier:
+    def get_pair_for_id(self, internal_id: int) -> Optional[TradingPairIdentifier]:
         """Look up a trading pair.
 
         Useful if a strategy is only dealing with pair integer ids.
+
+        :return:
+            None if the price data is not available
         """
         pair = self.pair_universe.get_pair_by_id(internal_id)
-        assert pair, f"No pair for id {internal_id}"
+        if not pair:
+            return None
         return translate_trading_pair(pair)
 
     def check_supported_quote_token(self, pair: TradingPairIdentifier):

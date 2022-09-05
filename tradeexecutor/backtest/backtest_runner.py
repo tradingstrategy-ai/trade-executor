@@ -22,7 +22,7 @@ from tradeexecutor.state.store import NoneStore
 from tradeexecutor.strategy.approval import UncheckedApprovalModel, ApprovalModel
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.description import StrategyExecutionDescription
-from tradeexecutor.strategy.execution_context import ExecutionContext
+from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
 from tradeexecutor.strategy.factory import make_runner_for_strategy_mod
 from tradeexecutor.strategy.pandas_trader.runner import PandasTraderRunner
 from tradeexecutor.strategy.pandas_trader.trade_decision import TradeDecider
@@ -33,6 +33,7 @@ from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, TradingStrategyUniverseModel, \
     DefaultTradingStrategyUniverseModel
 from tradeexecutor.strategy.universe_model import StaticUniverseModel
+from tradeexecutor.utils.timer import timed_task
 from tradingstrategy.client import Client
 from tradingstrategy.timebucket import TimeBucket
 
@@ -305,10 +306,16 @@ def run_backtest(
         def backtest_setup(state: State, universe: TradingStrategyUniverse, deposit_syncer: BacktestSyncer):
             pass
 
+    execution_context = ExecutionContext(
+        mode=ExecutionMode.backtesting,
+        timed_task_context_manager=timed_task,
+    )
+
     main_loop = ExecutionLoop(
         name=setup.name,
         command_queue=Queue(),
         execution_model=setup.execution_model,
+        execution_context=execution_context,
         sync_method=setup.sync_method,
         approval_model=UncheckedApprovalModel(),
         pricing_model_factory=pricing_model_factory,

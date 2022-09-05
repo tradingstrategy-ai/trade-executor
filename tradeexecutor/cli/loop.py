@@ -45,6 +45,7 @@ class ExecutionLoop:
             name: str,
             command_queue: Queue,
             execution_model: ExecutionModel,
+            execution_context: ExecutionContext,
             sync_method: SyncMethod,
             approval_model: ApprovalModel,
             pricing_model_factory: PricingModelFactory,
@@ -76,10 +77,12 @@ class ExecutionLoop:
         args = locals().copy()
         args.pop("self")
 
+        assert "execution_context" in args, "execution_context required"
+
         # TODO: Spell out individual variables for type hinting support
         self.__dict__.update(args)
 
-        self.timed_task_context_manager = timed_task
+        self.timed_task_context_manager = self.execution_context.timed_task_context_manager
 
         self.runner: Optional[StrategyRunner] = None
         self.universe_model: Optional[UniverseModel] = None
@@ -148,7 +151,7 @@ class ExecutionLoop:
         if backtesting_universe is None:
 
             # Refresh the trading universe for this cycle
-            universe = self.universe_model.construct_universe(ts, ExecutionMode.real_trading)
+            universe = self.universe_model.construct_universe(ts, self.execution_context.mode)
 
             # Check if our data is stagnated and we cannot execute the strategy
             if self.max_data_delay is not None:
@@ -427,17 +430,9 @@ class ExecutionLoop:
 
         self.init_execution_model()
 
-        live_trading = self.backtest_start is None
-        mode = ExecutionMode.real_trading if live_trading else ExecutionMode.backtesting
-
-        execution_context = ExecutionContext(
-            mode=mode,
-            timed_task_context_manager=self.timed_task_context_manager,
-        )
-
         run_description: StrategyExecutionDescription = self.strategy_factory(
             execution_model=self.execution_model,
-            execution_context=execution_context,
+            execution_context=self.execution_context,
             timed_task_context_manager=self.timed_task_context_manager,
             sync_method=self.sync_method,
             valuation_model_factory=self.valuation_model_factory,

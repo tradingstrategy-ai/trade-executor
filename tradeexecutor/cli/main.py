@@ -30,7 +30,7 @@ from tradeexecutor.state.store import JSONFileStore, StateStore
 from tradeexecutor.strategy.approval import ApprovalType, UncheckedApprovalModel, ApprovalModel
 from tradeexecutor.strategy.bootstrap import import_strategy_file
 from tradeexecutor.strategy.dummy import DummyExecutionModel
-from tradeexecutor.strategy.execution_context import ExecutionMode
+from tradeexecutor.strategy.execution_context import ExecutionMode, ExecutionContext
 from tradeexecutor.strategy.execution_model import TradeExecutionType
 from tradeexecutor.cli.log import setup_logging, setup_discord_logging, setup_logstash_logging
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverseModel
@@ -183,6 +183,7 @@ def start(
     trade_immediately: bool = typer.Option(False, "--trade-immediately", envvar="TRADE_IMMEDIATELY", help="Perform the first rebalance immediately, do not wait for the next trading universe refresh"),
     port_mortem_debugging: bool = typer.Option(False, "--post-mortem-debugging", envvar="POST_MORTEM_DEBUGGING", help="Launch ipdb debugger on a main loop crash to debug the exception"),
     clear_caches: bool = typer.Option(False, "--clear-caches", envvar="CLEAR_CACHES", help="Purge any dataset download caches before starting"),
+    unit_testing: bool = typer.Option(False, "--unit-testing", envvar="UNIT_TESTING", help="The trade executor is called under the unit testing mode. No caches are purged."),
     ):
     """Launch Trade Executor instance."""
     global logger
@@ -255,11 +256,29 @@ def start(
 
     logger.trade("Trade Executor version %s starting strategy %s", version, name)
 
+    if backtest_start:
+        execution_context = ExecutionContext(
+            mode=ExecutionMode.backtesting,
+            timed_task_context_manager=timed_task,
+        )
+    else:
+        if unit_testing:
+            execution_context = ExecutionContext(
+                mode=ExecutionMode.unit_testing_trading,
+                timed_task_context_manager=timed_task,
+            )
+        else:
+            execution_context = ExecutionContext(
+                mode=ExecutionMode.real_trading,
+                timed_task_context_manager=timed_task,
+            )
+
     try:
         loop = ExecutionLoop(
             name=name,
             command_queue=command_queue,
             execution_model=execution_model,
+            execution_context=execution_context,
             sync_method=sync_method,
             approval_model=approval_model,
             pricing_model_factory=pricing_model_factory,

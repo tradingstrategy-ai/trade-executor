@@ -242,6 +242,7 @@ def test_pancake_4h_candles(
         "TICK_OFFSET_MINUTES": "10",
         "TICK_SIZE": "8h",
         "CONFIRMATION_BLOCK_COUNT": "8",
+        "UNIT_TESTING": "true",
     }
 
     # Points to the private test trash channel on Discord

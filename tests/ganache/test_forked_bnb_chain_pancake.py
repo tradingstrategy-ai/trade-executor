@@ -291,7 +291,7 @@ def test_forked_pancake(
     ts = datetime.datetime(2021, 12, 7)
 
     # Refresh the trading universe for this cycle
-    universe = universe_constructor.construct_universe(ts, ExecutionMode.real_trading)
+    universe = universe_constructor.construct_universe(ts, ExecutionMode.unit_testing_trading)
 
     # Run cycle checks
     runner.pretick_check(ts, universe)
