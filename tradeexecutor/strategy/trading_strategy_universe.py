@@ -12,13 +12,14 @@ import textwrap
 from abc import abstractmethod
 from dataclasses import dataclass
 import logging
-from typing import List, Optional, Callable, Tuple, Set
+from typing import List, Optional, Callable, Tuple, Set, Dict, Iterable
 
 import pandas as pd
 import pyarrow
 
 from tradeexecutor.backtest.data_preload import preload_data
 from tradeexecutor.strategy.execution_context import ExecutionMode, ExecutionContext
+from tradingstrategy.frameworks.qstrader import prepare_candles_for_qstrader
 from tradingstrategy.token import Token
 
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
@@ -26,9 +27,10 @@ from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse, Uni
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId
 from tradingstrategy.client import Client
-from tradingstrategy.exchange import ExchangeUniverse
+from tradingstrategy.exchange import ExchangeUniverse, Exchange
 from tradingstrategy.liquidity import GroupedLiquidityUniverse
-from tradingstrategy.pair import DEXPair, PandasPairUniverse, PairType, resolve_pairs_based_on_ticker
+from tradingstrategy.pair import DEXPair, PandasPairUniverse, PairType, resolve_pairs_based_on_ticker, \
+    filter_for_exchanges, filter_for_quote_tokens, StablecoinFilteringMode, filter_for_stablecoins
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
 from tradingstrategy.utils.groupeduniverse import filter_for_pairs
@@ -176,6 +178,9 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
 
         The university reserve currency is set to the quote token of the first pair.
 
+        :param dataset:
+            Datasets downloaded from the server
+
         :param pairs:
             List of trading pairs as ticket tuples. E.g. `[ ("WBNB, "BUSD"), ("Cake", "WBNB") ]`
 
@@ -254,6 +259,105 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         pair = self.universe.pairs.get_single()
         return translate_trading_pair(pair)
 
+    @staticmethod
+    def create_multipair_universe(
+        dataset: Dataset,
+        chain_ids: Iterable[ChainId],
+        exchange_slugs: Iterable[str],
+        quote_tokens: Iterable[str],
+        reserve_token: str,
+        factory_router_map: Dict[str, tuple],
+    ) -> "TradingStrategyUniverse":
+        """Create a trading universe where pairs match a filter conditions.
+
+        These universe may contain thousands of trading pairs.
+        This is for strategies that trade across multiple pairs,
+        like momentum strategies.
+
+        :param dataset:
+            Datasets downloaded from the oracle
+
+        :param chain_ids:
+            Allowed blockchains
+
+        :param exchange_slugs:
+            Allowed exchanges
+
+        :param quote_tokens:
+            Allowed quote tokens as smart contract addresses
+
+        :param reserve_token:
+            The token addresses that are used as reserve assets.
+
+        :param factory_router_map:
+            Ensure we have a router address for every exchange we are going to use.
+            TODO: In the future this information is not needed.
+
+        """
+
+        assert type(chain_ids) == list or type(chain_ids) == set
+        assert type(exchange_slugs) == list or type(exchange_slugs) == set
+        assert type(quote_tokens) == list or type(quote_tokens) == set
+        assert type(reserve_token) == str
+        assert reserve_token.startswith("0x")
+
+        for t in quote_tokens:
+            assert t.startswith("0x")
+
+        # Normalise input parameters
+        chain_ids = set(chain_ids)
+        exchange_slugs = set(exchange_slugs)
+        quote_tokens = set(q.lower() for q in quote_tokens)
+        factory_router_map = {k.lower(): v for k, v in factory_router_map.items()}
+
+        x: Exchange
+        avail_exchanges = dataset.exchanges.exchanges
+        our_exchanges = {x for x in avail_exchanges.values() if (x.chain_id in chain_ids) and (x.exchange_slug in exchange_slugs)}
+
+        # Check we got all exchanges in the dataset
+        for x in our_exchanges:
+            assert x.address.lower() in factory_router_map, f"Could not find router for a exchange {x.exchange_slug}, factory {x.address}, router map is: {factory_router_map}"
+
+        # Choose all trading pairs that are on our supported exchanges and
+        # with our supported quote tokens
+        pairs_df = filter_for_exchanges(dataset.pairs, list(our_exchanges))
+        pairs_df = filter_for_quote_tokens(pairs_df, quote_tokens)
+
+        # Remove stablecoin -> stablecoin pairs, because
+        # trading between stable does not make sense for our strategies
+        pairs_df = filter_for_stablecoins(pairs_df, StablecoinFilteringMode.only_volatile_pairs)
+
+        # Create trading pair database
+        pairs = PandasPairUniverse(pairs_df)
+
+        # We do a bit detour here as we need to address the assets by their trading pairs first
+        reserve_token_info = pairs.get_token(reserve_token)
+        assert reserve_token_info, f"Reserve token {reserve_token} missing the trading pairset"
+        reserve_assets = [
+            translate_token(reserve_token_info)
+        ]
+
+        # Get daily candles as Pandas DataFrame
+        all_candles = dataset.candles
+        filtered_candles = filter_for_pairs(all_candles, pairs_df)
+        candle_universe = GroupedCandleUniverse(filtered_candles)
+
+        # Get liquidity candles as Pandas Dataframe
+        all_liquidity = dataset.liquidity
+        filtered_liquidity = filter_for_pairs(all_liquidity, pairs_df)
+        liquidity_universe = GroupedLiquidityUniverse(filtered_liquidity)
+
+        universe = Universe(
+            time_bucket=dataset.time_bucket,
+            chains=chain_ids,
+            pairs=pairs,
+            exchanges=our_exchanges,
+            candles=candle_universe,
+            liquidity=liquidity_universe,
+        )
+
+        return TradingStrategyUniverse(universe=universe, reserve_assets=reserve_assets)
+
 
 class TradingStrategyUniverseModel(UniverseModel):
     """A universe constructor that builds the trading universe data using Trading Strategy client.
@@ -319,7 +423,6 @@ class TradingStrategyUniverseModel(UniverseModel):
 
             if mode.is_fresh_data_always_needed():
                 # This will force client to redownload the data
-                assert False, "Please not here"
                 logger.info("Execution mode %s, purging trading data caches", mode)
                 client.clear_caches()
             else:

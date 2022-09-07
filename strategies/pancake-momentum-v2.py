@@ -1,10 +1,95 @@
-"""Live trading strategy implementation fo ra single pair exponential moving average model.
+"""PancakeSwap v2 momentum strategy build on the top of the new trading framework.
 
-- Trades a single trading pair - BNB/USD
+- Trades BNB and stablecoin pairs
 
-- Does long positions only, based on exponential moving average indicators
+- PancakeSwap https://tradingstrategy.ai/trading-view/binance/pancakeswap-v2
 
+- Contains tradeable checks and does not touch tokens with transfer fees as a risk mitigation  
 """
+
+import datetime
+import logging
+import os
+from collections import Counter, defaultdict
+from contextlib import AbstractContextManager
+from typing import Dict
+
+import pandas as pd
+
+from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2SimpleRoutingModel
+from tradeexecutor.strategy.execution_context import ExecutionMode
+from tradingstrategy.client import Client
+from tradingstrategy.candle import GroupedCandleUniverse
+from tradingstrategy.chain import ChainId
+from tradingstrategy.frameworks.qstrader import prepare_candles_for_qstrader
+from tradingstrategy.liquidity import GroupedLiquidityUniverse, LiquidityDataUnavailable
+from tradingstrategy.pair import filter_for_exchanges, PandasPairUniverse, DEXPair, filter_for_quote_tokens, \
+    StablecoinFilteringMode, filter_for_stablecoins
+from tradingstrategy.timebucket import TimeBucket
+from tradingstrategy.utils.groupeduniverse import filter_for_pairs
+from tradingstrategy.universe import Universe
+
+from tradeexecutor.ethereum.uniswap_v2_execution_v0 import UniswapV2ExecutionModelVersion0
+from tradeexecutor.state.state import State
+from tradeexecutor.state.sync import SyncMethod
+from tradeexecutor.strategy.approval import ApprovalModel
+from tradeexecutor.strategy.description import StrategyExecutionDescription
+from tradeexecutor.strategy.execution_model import ExecutionModel
+from tradeexecutor.strategy.pricing_model import PricingModelFactory
+from tradeexecutor.strategy.qstrader.alpha_model import AlphaModel
+from tradeexecutor.strategy.qstrader.runner import QSTraderRunner
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverseModel, \
+    TradingStrategyUniverse, translate_trading_pair, Dataset, translate_token
+from tradeexecutor.strategy.valuation import ValuationModelFactory
+from tradeexecutor.utils.price import is_legit_price_value
+
+# Create a Python logger to help pinpointing issues during development
+logger = logging.getLogger("bnb_chain_16h_momentum")
+
+# Use daily candles to run the algorithm
+candle_time_frame = TimeBucket.h4
+
+# We are making a decision based on 16 hours (4 candles)
+lookback = pd.Timedelta(hours=16)
+
+# The liquidity threshold for a token to be considered
+# risk free enough to be purchased
+min_liquidity_threshold = 750_000
+
+# We need to present at least 2% of liquidity of any trading pair we enter
+portfolio_base_liquidity_threshold = 0.02
+
+# Keep 6 positions open at once
+# TODO: env var MAX_POSITIONS hack because Ganache is so unstable
+max_assets_per_portfolio = int(os.environ.get("MAX_POSITIONS", 6))
+
+# How many % of all value we hold in cash all the time,
+# so that we do not risk our trading capital
+cash_buffer = 0.80
+
+# Trade only against these tokens
+allowed_quote_tokens = {
+    "WBNB": "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c".lower(),
+    "BUSD": "0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56".lower(),
+ }
+
+# Keep everything internally in BUSD
+reserve_token_address = "0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56".lower()
+
+# Allowed exchanges as factory -> router pairs,
+# by their smart contract addresses
+factory_router_map = {
+    # PancakeSwap
+    "0xcA143Ce32Fe78f1f7019d7d551a6402fC5350c73": ("0x10ED43C718714eb63d5aA57B78B54704E256024E", "0x00fb7f630766e6a796048ea87d01acd3068e8ff67d078148a3fa3f4a84f69bd5")
+}
+
+# For three way trades, which pools we can use
+allowed_intermediary_pairs = {
+    # Route WBNB through BUSD:WBNB pool,
+    "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c": "0x58f876857a02d6762e0101bb5c46a8c1ed44dc16",
+}
+
+
 import datetime
 from typing import Dict, List, Optional
 
@@ -185,40 +270,13 @@ def create_trading_universe(
         execution_context: ExecutionContext,
         candle_time_frame_override: Optional[TimeBucket]=None,
 ) -> TradingStrategyUniverse:
-    """Creates the trading universe where the strategy trades.
-
-    If `execution_context.live_trading` is true then this function is called for
-    every execution cycle. If we are backtesting, then this function is
-    called only once at the start of backtesting and the `decide_trades`
-    need to deal with new and deprecated trading pairs.
-
-    As we are only trading a single pair, load data for the single pair only.
-
-    :param ts:
-        The timestamp of the trading cycle. For live trading,
-        `create_trading_universe` is called on every cycle.
-        For backtesting, it is only called at the start
-
-    :param client:
-        Trading Strategy Python client instance.
-
-    :param execution_context:
-        Information how the strategy is executed. E.g.
-        if we are live trading or not.
-
-    :param candle_timeframe_override:
-        Allow the backtest framework override what candle size is used to backtest the strategy
-        without editing the strategy Python source code file.
-
-    :return:
-        This function must return :py:class:`TradingStrategyUniverse` instance
-        filled with the data for exchanges, pairs and candles needed to decide trades.
-        The trading universe also contains information about the reserve asset,
-        usually stablecoin, we use for the strategy.
-    """
+    """Creates the trading universe where the strategy trades."""
 
     # Load all datas we can get for our candle time bucket
-    dataset = load_all_data(client, candle_time_frame_override or candle_time_bucket, execution_context)
+    dataset = load_all_data(
+        client,
+        candle_time_frame_override or candle_time_bucket,
+        execution_context)
 
     # Filter down to the single pair we are interested in
     universe = TradingStrategyUniverse.create_single_pair_universe(
@@ -230,4 +288,3 @@ def create_trading_universe(
     )
 
     return universe
-
