@@ -35,7 +35,7 @@ def generate_simple_routing_model(universe: TradingStrategyUniverse) -> Backtest
     exchange = next(iter(universe.universe.exchanges))
 
     pair: DEXPair
-    for pair in universe.universe.pairs.pair_map.values():
+    for pair in universe.universe.pairs.iterate_pairs():
         assert pair.exchange_id == exchange.exchange_id, f"Pair had exchange_id {pair.exchange_id}, expected {exchange.exchange_id}"
         assert pair.quote_token_symbol == reserve_asset.token_symbol
         assert pair.quote_token_address == reserve_asset.address
