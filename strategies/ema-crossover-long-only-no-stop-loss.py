@@ -6,7 +6,7 @@
 
 """
 import datetime
-from typing import Dict, Tuple, List, Optional
+from typing import Dict, List, Optional
 
 import pandas as pd
 
