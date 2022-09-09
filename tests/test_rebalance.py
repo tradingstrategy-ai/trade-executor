@@ -18,7 +18,8 @@ from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.statistics.core import update_statistics
-from tradeexecutor.strategy.pandas_trader.rebalance import get_existing_portfolio_weights
+from tradeexecutor.strategy.pandas_trader.rebalance import get_existing_portfolio_weights, rebalance_portfolio, \
+    get_weight_diffs, clip_to_normalised
 from tradeexecutor.testing.dummy_trader import DummyTestTrader
 from tradingstrategy.chain import ChainId
 from tradingstrategy.types import USDollarAmount
@@ -126,7 +127,7 @@ def test_get_portfolio_weights(
     single_asset_portfolio: Portfolio,
     weth_usdc: TradingPairIdentifier,
 ):
-    """"Create new empty trade executor state."""
+    """"Get weights of exising portfolio."""
 
     portfolio = single_asset_portfolio
 
@@ -135,4 +136,62 @@ def test_get_portfolio_weights(
         weth_usdc.internal_id: 1.0
     }
 
+
+def test_weight_diffs(
+    single_asset_portfolio: Portfolio,
+    weth_usdc: TradingPairIdentifier,
+    aave_usdc: TradingPairIdentifier,
+):
+    """"Create weight diffs between exising and new portfolio."""
+
+    portfolio = single_asset_portfolio
+
+    new_weights = {
+        aave_usdc.internal_id: 1
+    }
+
+    diffs = get_weight_diffs(portfolio, new_weights)
+
+    assert diffs == {
+        aave_usdc.internal_id: 1,
+        weth_usdc.internal_id: -1
+    }
+
+
+def test_weight_diffs_partial(
+    single_asset_portfolio: Portfolio,
+    weth_usdc: TradingPairIdentifier,
+    aave_usdc: TradingPairIdentifier,
+):
+    """"Create 50%/50% portfolio."""
+
+    portfolio = single_asset_portfolio
+
+    new_weights = {
+        aave_usdc.internal_id: 0.5,
+        weth_usdc.internal_id: 0.5,
+    }
+
+    diffs = get_weight_diffs(portfolio, new_weights)
+
+    assert diffs == {
+        aave_usdc.internal_id: 0.5,
+        weth_usdc.internal_id: -0.5
+    }
+
+
+def test_clip():
+    """"Make sure normalised weights are summed precise 1."""
+
+    weights = {
+        0: 0.8,
+        1: 0.21,
+    }
+
+    clipped = clip_to_normalised(weights)
+
+    assert clipped == {
+        0: 0.79,
+        1: 0.21,
+    }
 

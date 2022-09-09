@@ -5,7 +5,7 @@ from decimal import Decimal
 from typing import List, Optional
 import logging
 
-from tradeexecutor.state.identifier import AssetIdentifier
+from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeType, TradeExecution
@@ -301,3 +301,14 @@ class PositionManager:
                 trades.append(trade)
 
         return trades
+
+    def get_trading_pair(self, pair_id: int) -> TradingPairIdentifier:
+        """Get a trading pair identifier by its internal id.
+
+        Note that internal integer ids are not stable over
+        multiple trade cycles and might be reset.
+        Always use (chain id, smart contract) for persistent
+        pair identifier.
+        """
+        dex_pair = self.universe.pairs.get_pair_by_id(pair_id)
+        return translate_trading_pair(dex_pair)
