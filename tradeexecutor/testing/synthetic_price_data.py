@@ -65,7 +65,7 @@ def generate_ohlcv_candles(
     return df
 
 
-def generate_fixed_price_data(
+def generate_fixed_price_candles(
     bucket: TimeBucket,
     start: datetime.datetime,
     end: datetime.datetime,

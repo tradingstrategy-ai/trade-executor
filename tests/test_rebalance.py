@@ -9,36 +9,30 @@
 import datetime
 import random
 from decimal import Decimal
-from typing import Tuple
 
 import pytest
 from hexbytes import HexBytes
 
 from tradeexecutor.backtest.backtest_pricing import BacktestSimplePricingModel
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel
-from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
 from tradeexecutor.state.state import State, TradeType
-from tradeexecutor.state.portfolio import NotEnoughMoney
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.position import TradingPosition
-from tradeexecutor.state.trade import TradeExecution, TradeStatus
+from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
-from tradeexecutor.statistics.core import update_statistics
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.strategy.pandas_trader.rebalance import get_existing_portfolio_weights, rebalance_portfolio, \
     get_weight_diffs, clip_to_normalised, BadWeightsException
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, create_pair_universe_from_code
-from tradeexecutor.testing.dummy_trader import DummyTestTrader
 from tradeexecutor.testing.synthetic_ethereum_data import generate_random_ethereum_address
 from tradeexecutor.testing.synthetic_exchange_data import generate_exchange, generate_simple_routing_model
-from tradeexecutor.testing.synthetic_price_data import generate_ohlcv_candles, generate_fixed_price_data
+from tradeexecutor.testing.synthetic_price_data import generate_fixed_price_candles
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId
 from tradingstrategy.exchange import Exchange
 from tradingstrategy.timebucket import TimeBucket
-from tradingstrategy.types import USDollarAmount
 from tradingstrategy.universe import Universe
 
 
@@ -133,7 +127,7 @@ def universe(
         aave_usdc: 100.0,
     }
 
-    candles = generate_fixed_price_data(
+    candles = generate_fixed_price_candles(
         time_bucket,
         start_at,
         end_at,
