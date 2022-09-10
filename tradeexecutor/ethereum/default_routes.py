@@ -70,7 +70,11 @@ def get_backtest_routing_model(routing_type: TradeRouting, reserve_currency: Res
 
     if routing_type == TradeRouting.pancakeswap_basic:
         params = get_pancake_default_routing_parameters(reserve_currency)
-        return BacktestRoutingModel(**params)
+        return BacktestRoutingModel(
+            params["factory_router_map"],
+            params["allowed_intermediary_pairs"],
+            params["reserve_token_address"],
+        )
 
     raise NotImplementedError(f"The routing model is not supported: {routing_type.value}")
 

@@ -99,8 +99,12 @@ def busd(request, universe) -> AssetIdentifier:
 
 @pytest.fixture(scope="module")
 def routing_model() -> BacktestRoutingModel:
-    routing_parameters = get_pancake_default_routing_parameters(ReserveCurrency.busd)
-    routing_model = BacktestRoutingModel(**routing_parameters)
+    params = get_pancake_default_routing_parameters(ReserveCurrency.busd)
+    routing_model = BacktestRoutingModel(
+        params["factory_router_map"],
+        params["allowed_intermediary_pairs"],
+        params["reserve_token_address"],
+    )
     return routing_model
 
 
