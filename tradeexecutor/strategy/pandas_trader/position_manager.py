@@ -238,11 +238,11 @@ class PositionManager:
 
         return [trade]
 
-    def adjust_holdings(self,
-                pair: TradingPairIdentifier,
-                dollar_amount_delta: USDollarAmount,
-                weight: float,
-                ) -> List[TradeExecution]:
+    def adjust_position(self,
+                        pair: TradingPairIdentifier,
+                        dollar_amount_delta: USDollarAmount,
+                        weight: float,
+                        ) -> List[TradeExecution]:
         """Adjust holdings for a certain position.
 
         Used to rebalance positions.
@@ -272,7 +272,7 @@ class PositionManager:
             position level.
         """
         assert dollar_amount_delta != 0
-        assert weight >= 0, f"Target weight cannot be negative: {weight}"
+        assert 0 >= weight <= 1, f"Target weight cannot be negative: {weight}"
 
         price = self.pricing_model.get_buy_price(self.timestamp, pair, dollar_amount_delta)
 

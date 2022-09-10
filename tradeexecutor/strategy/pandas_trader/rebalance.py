@@ -146,7 +146,7 @@ def rebalance_portfolio(
         if abs(dollar_diff) < min_trade_threshold:
             logger.info("Not doing anything, value %f below trade threshold %f", value, min_trade_threshold)
         else:
-            position_rebalance_trades = position_manager.adjust_holdings(pair, dollar_diff, weight)
+            position_rebalance_trades = position_manager.adjust_position(pair, dollar_diff, weight)
             assert len(position_rebalance_trades) == 1, "Assuming always on trade for rebalacne"
             logger.info("Adjusting holdings for %s: %s", pair, position_rebalance_trades[0])
             trades += position_rebalance_trades
