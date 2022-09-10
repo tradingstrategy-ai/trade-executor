@@ -28,7 +28,7 @@ from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifie
 from tradeexecutor.statistics.core import update_statistics
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.strategy.pandas_trader.rebalance import get_existing_portfolio_weights, rebalance_portfolio, \
-    get_weight_diffs, clip_to_normalised
+    get_weight_diffs, clip_to_normalised, BadWeightsException
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, create_pair_universe_from_code
 from tradeexecutor.testing.dummy_trader import DummyTestTrader
 from tradeexecutor.testing.synthetic_ethereum_data import generate_random_ethereum_address
@@ -359,3 +359,104 @@ def test_rebalance_trades_flip_position(
     assert t.is_planned()
     assert t.planned_price == 100
     assert t.get_planned_value() ==  157.7
+
+
+def test_rebalance_trades_flip_position_partial(
+    single_asset_portfolio: Portfolio,
+    universe,
+    pricing_model,
+    weth_usdc: TradingPairIdentifier,
+    aave_usdc: TradingPairIdentifier,
+    start_ts,
+):
+    """"Create trades for a portfolio to go to 70% ETH to 30% AAVE."""
+
+    portfolio = single_asset_portfolio
+
+    state = State(portfolio=portfolio)
+
+    # Check we have WETH-USDC open
+    position = state.portfolio.get_position_by_trading_pair(weth_usdc)
+    assert position.get_quantity() > 0
+    weth_quantity = position.get_quantity()
+
+    # Create the PositionManager that
+    # will create buy/sell trades based on our
+    # trading universe and mock price feeds
+    position_manager = PositionManager(
+        start_ts + datetime.timedelta(days=1),  # Trade on t plus 1 day
+        universe,
+        state,
+        pricing_model,
+    )
+
+    # Go all in to AAVE
+    new_weights = {
+        aave_usdc.internal_id: 0.3,
+        weth_usdc.internal_id: 0.7,
+    }
+
+    trades = rebalance_portfolio(
+        position_manager,
+        new_weights,
+        portfolio.get_open_position_equity(),
+    )
+
+    assert len(trades) == 2, f"Got trades: {trades}"
+
+    # Sells go first,
+    # with 167 worth of sales
+    t = trades[0]
+    assert t.is_sell()
+    assert t.is_planned()
+    assert t.pair == weth_usdc
+    assert t.planned_price == 1660
+    # Sell 30%
+    assert t.planned_quantity == pytest.approx(-(weth_quantity * Decimal(0.3)))
+    assert t.get_planned_value() == 47.31
+
+    # Buy comes next,
+    # with approx the same value
+    t = trades[1]
+    assert t.is_buy()
+    assert t.is_planned()
+    assert t.planned_price == 100
+    assert t.get_planned_value() == pytest.approx(47.31)
+
+
+def test_rebalance_bad_weights(
+    single_asset_portfolio: Portfolio,
+    universe,
+    pricing_model,
+    weth_usdc: TradingPairIdentifier,
+    aave_usdc: TradingPairIdentifier,
+    start_ts,
+):
+    """"Rebalance cannot be done if the sum of weights is not 1."""
+
+    portfolio = single_asset_portfolio
+
+    state = State(portfolio=portfolio)
+
+    # Create the PositionManager that
+    # will create buy/sell trades based on our
+    # trading universe and mock price feeds
+    position_manager = PositionManager(
+        start_ts + datetime.timedelta(days=1),  # Trade on t plus 1 day
+        universe,
+        state,
+        pricing_model,
+    )
+
+    # Go all in to AAVE
+    new_weights = {
+        aave_usdc.internal_id: 1.5,
+        weth_usdc.internal_id: 1.5,
+    }
+
+    with pytest.raises(BadWeightsException):
+        rebalance_portfolio(
+            position_manager,
+            new_weights,
+            portfolio.get_open_position_equity(),
+        )
