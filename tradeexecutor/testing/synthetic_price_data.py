@@ -76,6 +76,7 @@ def generate_fixed_price_data(
     Creates fake fixed price data where prices are stable over a period of time.
     """
 
+    data = []
     for pair, price in pair_price_map.items():
         time_delta = bucket.to_timedelta()
 
@@ -85,8 +86,6 @@ def generate_fixed_price_data(
         low = price
 
         now = start
-
-        data = []
 
         while now < end:
             data.append({

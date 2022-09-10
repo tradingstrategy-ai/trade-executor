@@ -144,6 +144,9 @@ def universe(
         time_bucket
     )
 
+    assert len(candle_universe.get_samples_by_pair(1)) > 0
+    assert len(candle_universe.get_samples_by_pair(2)) > 0
+
     universe = Universe(
         time_bucket=time_bucket,
         chains={mock_chain_id},
@@ -181,7 +184,7 @@ def single_asset_portfolio(start_ts, weth_usdc, weth, usdc) -> Portfolio:
         pair=weth_usdc,
         opened_at = start_ts,
         planned_quantity = Decimal(0.1),
-        planned_price=1670.0,
+        planned_price = 1670.0,
         planned_reserve=Decimal(167),
         reserve_currency = usdc,
         started_at = start_ts,
