@@ -241,13 +241,18 @@ class PositionManager:
     def adjust_holdings(self,
                 pair: TradingPairIdentifier,
                 dollar_amount_delta: USDollarAmount,
+                weight: float,
                 ) -> List[TradeExecution]:
         """Adjust holdings for a certain position.
 
         Used to rebalance positions.
 
         A new position is opened if no existing position is open.
-        If everything is sold, the old position is closed.
+        If everything is sold, the old position is closed
+
+        If the rebalance is sell (`dollar_amount_delta` is negative),
+        then calculate the quantity of the asset to sell based
+        on the latest available market price on the position.
 
         This method is called by :py:func:`~tradeexecutor.strategy.pandas_trades.rebalance.rebalance_portfolio`.
 
@@ -257,26 +262,61 @@ class PositionManager:
         :param dollar_amount_delta:
             How much we want to increase/decrease the position
 
+        :param weight:
+            What is the weight of the asset in the new target portfolio 0....1.
+            Currently only used to detect condition "sell all" instead of
+            trying to match quantity/price conversion.
+
         :return:
             List of trades to be executed to get to the desired
             position level.
         """
         assert dollar_amount_delta != 0
+        assert weight >= 0, f"Target weight cannot be negative: {weight}"
 
         price = self.pricing_model.get_buy_price(self.timestamp, pair, dollar_amount_delta)
 
         reserve_asset, reserve_price = self.state.portfolio.get_default_reserve_currency()
 
-        position, trade, created = self.state.create_trade(
-            self.timestamp,
-            pair=pair,
-            quantity=None,
-            reserve=Decimal(dollar_amount_delta),
-            assumed_price=price,
-            trade_type=TradeType.rebalance,
-            reserve_currency=self.reserve_currency,
-            reserve_currency_price=reserve_price,
-        )
+        if dollar_amount_delta > 0:
+            # Buy
+            position, trade, created = self.state.create_trade(
+                self.timestamp,
+                pair=pair,
+                quantity=None,
+                reserve=Decimal(dollar_amount_delta),
+                assumed_price=price,
+                trade_type=TradeType.rebalance,
+                reserve_currency=self.reserve_currency,
+                reserve_currency_price=reserve_price,
+            )
+        else:
+            # Sell
+            # Convert dollar amount to quantity of the last known price
+            position = self.state.portfolio.get_position_by_trading_pair(pair)
+            assert position is not None, f"Assumed {pair} has open position because of attempt sell at {dollar_amount_delta} USD adjust"
+
+            assumed_price = position.get_current_price()
+
+            if weight != 0:
+                quantity_delta = Decimal(dollar_amount_delta / assumed_price)
+                assert quantity_delta < 0
+            else:
+                # Sell the whole position, using precise accounting
+                # amount to avoid collecting dust holdings
+                quantity_delta = -position.get_quantity()
+
+            position, trade, created = self.state.create_trade(
+                self.timestamp,
+                pair=pair,
+                quantity=quantity_delta,
+                reserve=None,
+                assumed_price=assumed_price,
+                trade_type=TradeType.rebalance,
+                reserve_currency=self.reserve_currency,
+                reserve_currency_price=reserve_price,
+            )
+
         return [trade]
 
     def close_position(self, position: TradingPosition, trade_type: TradeType=TradeType.rebalance) -> Optional[TradeExecution]:

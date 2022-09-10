@@ -221,6 +221,7 @@ def single_asset_portfolio(start_ts, weth_usdc, weth, usdc) -> Portfolio:
 
     p.open_positions = {1: position}
     p.next_trade_id = 2
+    p.next_position_id = 2
     return p
 
 
@@ -313,6 +314,11 @@ def test_rebalance_trades_flip_position(
 
     state = State(portfolio=portfolio)
 
+    # Check we have WETH-USDC open
+    position = state.portfolio.get_position_by_trading_pair(weth_usdc)
+    assert position.get_quantity() > 0
+    weth_quantity = position.get_quantity()
+
     # Create the PositionManager that
     # will create buy/sell trades based on our
     # trading universe and mock price feeds
@@ -336,3 +342,20 @@ def test_rebalance_trades_flip_position(
 
     assert len(trades) == 2, f"Got trades: {trades}"
 
+    # Sells go first,
+    # with 167 worth of sales
+    t = trades[0]
+    assert t.is_sell()
+    assert t.is_planned()
+    assert t.pair == weth_usdc
+    assert t.planned_price == 1660
+    assert t.planned_quantity == -weth_quantity
+    assert t.get_planned_value() == 157.7
+
+    # Buy comes next,
+    # with approx the same value
+    t = trades[1]
+    assert t.is_buy()
+    assert t.is_planned()
+    assert t.planned_price == 100
+    assert t.get_planned_value() ==  157.7
