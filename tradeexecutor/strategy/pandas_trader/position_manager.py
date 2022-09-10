@@ -2,7 +2,7 @@
 
 import datetime
 from decimal import Decimal
-from typing import List, Optional
+from typing import List, Optional, Union
 import logging
 
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
@@ -158,7 +158,7 @@ class PositionManager:
         return next(iter(open_positions.values()))
 
     def open_1x_long(self,
-                     pair: DEXPair,
+                     pair: Union[DEXPair, TradingPairIdentifier],
                      value: USDollarAmount,
                      take_profit_pct: Optional[float]=None,
                      stop_loss_pct: Optional[float]=None,
@@ -199,7 +199,10 @@ class PositionManager:
         """
 
         # Translate DEXPair object to the trading pair model
-        executor_pair = translate_trading_pair(pair)
+        if isinstance(pair, DEXPair):
+            executor_pair = translate_trading_pair(pair)
+        else:
+            executor_pair = pair
 
         # Convert amount of reserve currency to the decimal
         # so we can have exact numbers from this point forward
@@ -233,6 +236,47 @@ class PositionManager:
             self.timestamp,
             f"Opened 1x long on {pair}, position value {value} USD")
 
+        return [trade]
+
+    def adjust_holdings(self,
+                pair: TradingPairIdentifier,
+                dollar_amount_delta: USDollarAmount,
+                ) -> List[TradeExecution]:
+        """Adjust holdings for a certain position.
+
+        Used to rebalance positions.
+
+        A new position is opened if no existing position is open.
+        If everything is sold, the old position is closed.
+
+        This method is called by :py:func:`~tradeexecutor.strategy.pandas_trades.rebalance.rebalance_portfolio`.
+
+        :param pair:
+            Trading pair which position we adjust
+
+        :param dollar_amount_delta:
+            How much we want to increase/decrease the position
+
+        :return:
+            List of trades to be executed to get to the desired
+            position level.
+        """
+        assert dollar_amount_delta != 0
+
+        price = self.pricing_model.get_buy_price(self.timestamp, pair, dollar_amount_delta)
+
+        reserve_asset, reserve_price = self.state.portfolio.get_default_reserve_currency()
+
+        position, trade, created = self.state.create_trade(
+            self.timestamp,
+            pair=pair,
+            quantity=None,
+            reserve=Decimal(dollar_amount_delta),
+            assumed_price=price,
+            trade_type=TradeType.rebalance,
+            reserve_currency=self.reserve_currency,
+            reserve_currency_price=reserve_price,
+        )
         return [trade]
 
     def close_position(self, position: TradingPosition, trade_type: TradeType=TradeType.rebalance) -> Optional[TradeExecution]:
@@ -309,6 +353,9 @@ class PositionManager:
         multiple trade cycles and might be reset.
         Always use (chain id, smart contract) for persistent
         pair identifier.
+
+        :return:
+            Trading pair information
         """
-        dex_pair = self.universe.pairs.get_pair_by_id(pair_id)
+        dex_pair = self.universe.universe.pairs.get_pair_by_id(pair_id)
         return translate_trading_pair(dex_pair)

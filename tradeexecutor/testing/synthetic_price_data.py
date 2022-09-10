@@ -2,11 +2,14 @@
 import datetime
 import random
 from pathlib import Path
+from typing import Dict
 
 import pandas as pd
 
+from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradingstrategy.chain import ChainId
 from tradingstrategy.timebucket import TimeBucket
+from tradingstrategy.types import USDollarAmount
 
 
 def generate_ohlcv_candles(
@@ -60,6 +63,54 @@ def generate_ohlcv_candles(
     df = pd.DataFrame(data)
     df.set_index("timestamp", drop=False, inplace=True)
     return df
+
+
+def generate_fixed_price_data(
+    bucket: TimeBucket,
+    start: datetime.datetime,
+    end: datetime.datetime,
+    pair_price_map: Dict[TradingPairIdentifier, USDollarAmount],
+) -> pd.DataFrame:
+    """Generate flat prices for several assets.
+
+    Creates fake fixed price data where prices are stable over a period of time.
+    """
+
+    for pair, price in pair_price_map.items():
+        time_delta = bucket.to_timedelta()
+
+        open = price
+        close = price
+        high = price
+        low = price
+
+        now = start
+
+        data = []
+
+        while now < end:
+            data.append({
+                "pair_id": pair.internal_id,
+                "timestamp": now,
+                "open": open,
+                "close": close,
+                "high": high,
+                "low": low,
+                "buy_volume": 0,
+                "sell_volume": 0,
+                "buys": 0,
+                "sells": 0,
+                "start_block": int(now.timestamp()),
+                "end_block": int(now.timestamp()),
+            })
+
+            open = close
+            now += time_delta
+
+    df = pd.DataFrame(data)
+    df.set_index("timestamp", drop=False, inplace=True)
+    return df
+
 
 def load_ohlcv_parquet_file(path: Path, chain_id: ChainId, exchange_id: int, pair_id: int) -> pd.DataFrame:
     """Load OHLCV data directly from a parquet file.

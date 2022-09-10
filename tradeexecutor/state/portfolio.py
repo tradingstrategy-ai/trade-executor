@@ -139,6 +139,7 @@ class Portfolio:
 
         The position must have already executed trades (cannot be planned position(.
         """
+        assert isinstance(pair, TradingPairIdentifier), f"Got {pair}"
         for p in self.open_positions.values():
             if p.has_executed_trades():
                 if p.pair.pool_address == pair.pool_address:

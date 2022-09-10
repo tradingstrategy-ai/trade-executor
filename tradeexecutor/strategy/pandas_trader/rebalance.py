@@ -2,11 +2,15 @@
 
 Based on the new alpha model weights, rebalance the existing portfolio.
 """
+import logging
 from typing import List, Dict
 
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
+
+
+logger = logging.getLogger(__name__)
 
 
 class BadWeightsException(Exception):
@@ -55,15 +59,13 @@ def get_existing_portfolio_weights(portfolio: Portfolio) -> Dict[int, float]:
 
 
 def get_weight_diffs(
-        portfolio: Portfolio,
+        existing_weights: Dict[int, float],
         new_weights: Dict[int, float],
 ) -> Dict[int, float]:
     """Get the weight diffs.
 
     The diffs include one entry for each token in existing or new portfolio.
     """
-
-    existing_weights = get_existing_portfolio_weights(portfolio)
 
     # Check that both inputs are sane
     check_normalised_weights(new_weights)
@@ -85,7 +87,7 @@ def get_weight_diffs(
 
 def rebalance_portfolio(
         position_manager: PositionManager,
-        weights: Dict[int, float],
+        new_weights: Dict[int, float],
         portfolio_total_value: float,
         min_trade_threshold=10.0,
 ) -> List[TradeExecution]:
@@ -116,17 +118,43 @@ def rebalance_portfolio(
         USD amount don't make a trade.
 
     :return:
-        List of trades we need to execute to reach the target portfolio
+        List of trades we need to execute to reach the target portfolio.
+        The sells are sorted always before buys.
     """
 
     portfolio = position_manager.state.portfolio
+    assert isinstance(portfolio, Portfolio)
+
     existing_weights = get_existing_portfolio_weights(portfolio)
-    diffs = get_weight_diffs(existing_weights)
+    diffs = get_weight_diffs(existing_weights, new_weights)
     dollar_values = {pair_id: weight * portfolio_total_value for pair_id, weight in diffs.items()}
 
     # Generate trades
-    trades = []
+    trades: List[TradeExecution] = []
 
-    for pair_id, value in dollar_values:
-        pair = position_manager.get
-        existing_position = portfolio.get_existing_open_position_by_trading_pair()
+    for pair_id, value in dollar_values.items():
+        pair = position_manager.get_trading_pair(pair_id)
+        existing_position = portfolio.get_existing_open_position_by_trading_pair(pair)
+        if existing_position:
+            dollar_diff = value - existing_position.get_value()
+        else:
+            dollar_diff = value
+
+        logger.info("Rebalancing %s, old weight: %f, new weight: %f, diff: %f USD",
+                    pair,
+                    existing_weights.get(pair_id, 0),
+                    new_weights.get(pair_id, 0),
+                    dollar_diff)
+
+        if abs(dollar_diff) < min_trade_threshold:
+            logger.info("Not doing anything, value %f below trade threshold %f", value, min_trade_threshold)
+        else:
+            position_rebalance_trades = position_manager.adjust_holdings(pair, dollar_diff)
+            assert len(position_rebalance_trades) == 1, "Assuming always on trade for rebalacne"
+            logger.info("Adjusting holdings for %s: %s", pair, position_rebalance_trades[0])
+            trades += position_rebalance_trades
+
+    trades.sort(key=lambda t: t.get_execution_sort_position())
+
+    # Return all rebalance trades
+    return trades
