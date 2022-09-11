@@ -109,6 +109,14 @@ class TradingPairIdentifier:
     def __repr__(self):
         return f"<Pair {self.base.token_symbol}-{self.quote.token_symbol} at {self.pool_address} on exchange {self.exchange_address}>"
 
+    def __hash__(self):
+        assert self.internal_id, "Internal id needed to be hashable"
+        return self.internal_id
+
+    def __eq__(self, other):
+        assert isinstance(other, TradingPairIdentifier), f"Got {other}"
+        return self.base == other.base and self.quote == other.quote
+
     def get_identifier(self) -> str:
         """We use the smart contract pool address to uniquely identify trading positions.
 

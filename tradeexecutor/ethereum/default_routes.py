@@ -8,6 +8,10 @@ from tradeexecutor.strategy.default_routing_options import TradeRouting
 def get_pancake_default_routing_parameters(reserve_currency: ReserveCurrency) -> dict:
     """Generate routing using PancakeSwap v2 router.
 
+    - Trade WBNB and BUSD pairs
+
+    TODO: Polish the interface of this function when we have more strategies
+
     :param reserve_currency: BUSD accepted
     """
     assert reserve_currency == ReserveCurrency.busd, f"Only BUSD supported for this routing module, received {reserve_currency}"
@@ -35,6 +39,7 @@ def get_pancake_default_routing_parameters(reserve_currency: ReserveCurrency) ->
         "factory_router_map": factory_router_map,
         "allowed_intermediary_pairs": allowed_intermediary_pairs,
         "reserve_token_address": reserve_token_address,
+        "quote_token_addresses": {"0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c", "0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56"}
     }
 
 
@@ -65,7 +70,11 @@ def get_backtest_routing_model(routing_type: TradeRouting, reserve_currency: Res
 
     if routing_type == TradeRouting.pancakeswap_basic:
         params = get_pancake_default_routing_parameters(reserve_currency)
-        return BacktestRoutingModel(**params)
+        return BacktestRoutingModel(
+            params["factory_router_map"],
+            params["allowed_intermediary_pairs"],
+            params["reserve_token_address"],
+        )
 
     raise NotImplementedError(f"The routing model is not supported: {routing_type.value}")
 

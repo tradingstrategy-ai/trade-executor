@@ -1,5 +1,8 @@
 """Trading Universe creation tests."""
+import os
+
 import pandas as pd
+import pytest
 
 from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
 from tradeexecutor.strategy.trading_strategy_universe import load_all_data, \
@@ -7,6 +10,10 @@ from tradeexecutor.strategy.trading_strategy_universe import load_all_data, \
 from tradeexecutor.utils.timer import timed_task
 from tradingstrategy.chain import ChainId
 from tradingstrategy.timebucket import TimeBucket
+
+
+# https://docs.pytest.org/en/latest/how-to/skipping.html#skip-all-test-functions-of-a-class-or-module
+pytestmark = pytest.mark.skipif(os.environ.get("TRADING_STRATEGY_API_KEY") is None, reason="Set TRADING_STRATEGY_API_KEY environment variable to run this test")
 
 
 def test_create_multipair_universe(persistent_test_client):
