@@ -272,7 +272,8 @@ class PositionManager:
             position level.
         """
         assert dollar_amount_delta != 0
-        assert 0 >= weight <= 1, f"Target weight cannot be negative: {weight}"
+        assert weight <= 1, f"Target weight cannot be over one: {weight}"
+        assert weight >= 0, f"Target weight cannot be negative: {weight}"
 
         price = self.pricing_model.get_buy_price(self.timestamp, pair, dollar_amount_delta)
 
@@ -349,7 +350,6 @@ class PositionManager:
             return None
 
         pair = position.pair
-        value = position.get_value()
         quantity = quantity_left
         price = self.pricing_model.get_sell_price(self.timestamp, pair, quantity=quantity)
 
