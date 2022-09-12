@@ -6,6 +6,7 @@ from typing import List, Optional, Union
 import logging
 
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
+from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeType, TradeExecution
@@ -156,6 +157,10 @@ class PositionManager:
             raise NoSingleOpenPositionException(f"Multiple positions ({len(open_positions)}) open at {self.timestamp}")
 
         return next(iter(open_positions.values()))
+
+    def get_current_portfolio(self) -> Portfolio:
+        """Return the active portfolio of the strategy."""
+        return self.state.portfolio
 
     def open_1x_long(self,
                      pair: Union[DEXPair, TradingPairIdentifier],
@@ -397,5 +402,5 @@ class PositionManager:
         :return:
             Trading pair information
         """
-        dex_pair = self.universe.universe.pairs.get_pair_by_id(pair_id)
+        dex_pair = self.universe.pairs.get_pair_by_id(pair_id)
         return translate_trading_pair(dex_pair)

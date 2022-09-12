@@ -6,11 +6,13 @@ of multiple tokens based on their past behavior.
 
 import datetime
 import enum
-from typing import Dict, List, Optional, Counter
+from collections import Counter
+from typing import Dict, List, Optional
 
 import pandas as pd
 
 from tradeexecutor.ethereum.default_routes import get_pancake_default_routing_parameters
+from tradeexecutor.strategy.pandas_trader.rebalance import weight_by_1_slash_n, rebalance_portfolio, normalise_weights
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.utils.price import is_legit_price_value
 from tradingstrategy.chain import ChainId
@@ -63,14 +65,22 @@ exchange_slug = "pancakeswap-v2"
 # Use 4h candles for trading
 candle_time_frame = TimeBucket.h4
 
-# How much of the cash to put on a single trade
-position_size = 0.10
+# How much of portfolio's total value is allocated
+# to positions (rest is kept in cash)
+value_allocated_to_positions = 0.50
+
+# How many assets we fit to our portfolio once
+max_assets_in_portfolio = 5
 
 # How far back we look the momentum.
 momentum_lookback_period = pd.Timedelta(hours=32)
 
 # What is the liquidity risk we are willing to accept (USD)
 risk_min_liquidity_threshold = 100_000
+
+# If the trade would shift the position value less
+# than this USD, then don't do an unnecessary trade
+min_position_update_threshold = 5.0
 
 
 class RiskAssessment(enum.Enum):
@@ -83,7 +93,11 @@ class RiskAssessment(enum.Enum):
     bad_price_units = "risk_bad_price_units"
 
 
-def assess_risk(self, state: State, pair: DEXPair, price: float, liquidity: float) -> RiskAssessment:
+def assess_risk(
+        state: State,
+        pair: DEXPair,
+        price: float,
+        liquidity: float) -> RiskAssessment:
     """Do the risk check for the trading pair if it accepted to our alpha model.
 
     - There needs to be enough liquidity
@@ -153,14 +167,12 @@ def decide_trades(
         pricing_model: PricingModel,
         cycle_debug_data: Dict) -> List[TradeExecution]:
 
-    # The pair we are trading
-    pair = universe.pairs.get_single()
-
-    # How much cash we have in the hand
-    cash = state.portfolio.get_current_cash()
+    # Create a position manager helper class that allows us easily to create
+    # opening/closing trades for different positions
+    position_manager = PositionManager(timestamp, universe, state, pricing_model)
 
     # pair id -> how much alpha it has
-    alpha_signals = Counter[int, float]
+    alpha_signals = Counter()
 
     # The time range end is the current candle
     # The time range start is 2 * 4 hours back, and turn the range
@@ -175,12 +187,12 @@ def decide_trades(
 
     # Track number of problematic trading pairs
     # for this trade cycle
-    issue_tracker = Counter[str, int] = {
+    issue_tracker = Counter({
         "lacks_open_and_close_in_momentum_window": 0,
         "liquidity_information_missing": 0,
         "non_positive_momentum": 0,
         "accepted_alpha_candidates": 0,
-    }
+    })
 
     # Expose pair specific debug data to the
     # research
@@ -234,7 +246,11 @@ def decide_trades(
             issue_tracker["non_positive_momentum"] += 1
             continue
 
-        risk = assess_risk(state, pair, close, available_liquidity_for_pair)
+        risk = assess_risk(
+            state,
+            pair,
+            close,
+            available_liquidity_for_pair)
 
         if risk == RiskAssessment.accepted_risk:
             # Do candle check only after we know the pair is "good" liquidity wise
@@ -260,7 +276,21 @@ def decide_trades(
             "candle_count": candle_count,
         }
 
+    alpha_signals = alpha_signals.most_common(max_assets_in_portfolio)
 
+    weights = normalise_weights(weight_by_1_slash_n(alpha_signals))
+
+    portfolio = position_manager.get_current_portfolio()
+    portfolio_target_value = portfolio.get_total_equity() * value_allocated_to_positions
+
+    # Shift portfolio from current positions to target positions
+    # determined by the alpha signals (momentum)
+    trades = rebalance_portfolio(
+        position_manager,
+        weights,
+        portfolio_target_value,
+        min_position_update_threshold
+    )
 
     return trades
 
@@ -288,7 +318,7 @@ def create_trading_universe(
         dataset,
         [chain_id],
         [exchange_slug],
-        quote_tokens=routing_parameters["quote_tokens_addresses"],
+        quote_tokens=routing_parameters["quote_token_addresses"],
         reserve_token=routing_parameters["reserve_token_address"],
         factory_router_map=routing_parameters["factory_router_map"],
     )
