@@ -208,8 +208,8 @@ def setup_backtest(
         end_at: datetime.datetime,
         initial_deposit: int,
         max_slippage=0.01,
-        cycle_duration: Optional[CycleDuration]=None,
-        candle_time_frame: Optional[TimeBucket]=None,
+        cycle_duration: Optional[CycleDuration] = None,
+        candle_time_frame: Optional[TimeBucket] = None,
     ):
     """High-level entry point for setting up a backtest from a strategy module.
 
