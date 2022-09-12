@@ -39,7 +39,9 @@ def test_pancake_momentum_v2(
 
     client = persistent_test_client
 
-    module_overwrites = {
+    # Override the the default strategy settings to speed up
+    # the tests
+    module_overrides = {
         "momentum_lookback_period": pd.Timedelta(days=7),
         "candle_time_bucket": TimeBucket.d7,
         "trading_strategy_cycle": CycleDuration.cycle_7d,
@@ -51,7 +53,7 @@ def test_pancake_momentum_v2(
         start_at=datetime.datetime(2021, 6, 1),
         end_at=datetime.datetime(2021, 7, 1),
         initial_deposit=10_000,
-        module_overwrites=module_overwrites,
+        module_overrides=module_overrides,
     )
 
     state, universe, debug_dump = run_backtest(setup, client)
