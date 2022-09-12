@@ -42,6 +42,9 @@ class BacktestSimplePricingModel(PricingModel):
         self.routing_model = routing_model
         self.candle_timepoint_kind = candle_timepoint_kind
 
+    def get_price_lookup_window(self):
+        """"""
+
     def get_pair_for_id(self, internal_id: int) -> Optional[TradingPairIdentifier]:
         """Look up a trading pair.
 
@@ -65,7 +68,10 @@ class BacktestSimplePricingModel(PricingModel):
                        ) -> USDollarAmount:
         # TODO: Include price impact
         pair_id = pair.internal_id
-        return self.candle_universe.get_closest_price(pair_id, ts, kind=self.candle_timepoint_kind)
+        return self.candle_universe.get_closest_price(
+            pair_id,
+            ts,
+            kind=self.candle_timepoint_kind)
 
     def get_buy_price(self,
                        ts: datetime.datetime,

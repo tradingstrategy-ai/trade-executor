@@ -128,6 +128,10 @@ def pregenerated_create_trading_universe(universe: TradingStrategyUniverse) -> C
 class StrategyModuleInformation:
     """Describe elements that we need to have in a strategy module."""
     trading_strategy_engine_version: str
+
+    # A name for the strategy if given
+    trading_strategy_name: Optional[str]
+
     trading_strategy_type: StrategyType
     trading_strategy_cycle: CycleDuration
     trade_routing: TradeRouting
@@ -178,6 +182,10 @@ class StrategyModuleInformation:
         if not isinstance(self.create_trading_universe, Callable):
             raise StrategyModuleNotValid(f"create_trading_universe function missing/invalid")
 
+        if self.trading_strategy_name:
+            if not type(self.trading_strategy_engine_version) == str:
+                raise StrategyModuleNotValid(f"trading_strategy_name is not string")
+
 
 def parse_strategy_module(mod) -> StrategyModuleInformation:
     """Parse a loaded .py module that describes a trading strategy.
@@ -187,6 +195,7 @@ def parse_strategy_module(mod) -> StrategyModuleInformation:
     """
     return StrategyModuleInformation(
         mod.get("trading_strategy_engine_version"),
+        mod.get("trading_strategy_name"),
         mod.get("trading_strategy_type"),
         mod.get("trading_strategy_cycle"),
         mod.get("trade_routing"),

@@ -45,6 +45,9 @@ class CycleDuration(enum.Enum):
     #: Run `decide_trades()` for every 24h hours
     cycle_24h = "24h"
 
+    #: Run `decide_trades()` for every 7 days hours
+    cycle_7d = "7d"
+
     def to_timedelta(self) -> datetime.timedelta:
         """Get the duration of the strategy cycle as Python timedelta object."""
         return _TICK_DURATIONS[self]
@@ -132,6 +135,7 @@ _TICK_DURATIONS = {
     CycleDuration.cycle_8h: datetime.timedelta(hours=8),
     CycleDuration.cycle_16h: datetime.timedelta(hours=16),
     CycleDuration.cycle_24h: datetime.timedelta(hours=24),
+    CycleDuration.cycle_7d: datetime.timedelta(days=7),
 }
 
 assert len(_TICK_DURATIONS) == len(CycleDuration)  # sanity check

@@ -297,7 +297,6 @@ class ExecutionLoop:
 
         self.warm_up_backtest()
 
-        # https://stackoverflow.com/a/57490441/315168
         with tqdm(total=days, unit="day", unit_scale=True) as progress_bar:
 
             while True:

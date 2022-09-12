@@ -33,6 +33,7 @@ from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, TradingStrategyUniverseModel, \
     DefaultTradingStrategyUniverseModel
 from tradeexecutor.strategy.universe_model import StaticUniverseModel
+from tradeexecutor.utils.python_module_loader import import_python_source_file, extract_module_members
 from tradeexecutor.utils.timer import timed_task
 from tradingstrategy.client import Client
 from tradingstrategy.timebucket import TimeBucket
@@ -212,6 +213,7 @@ def setup_backtest(
         max_slippage=0.01,
         cycle_duration: Optional[CycleDuration] = None,
         candle_time_frame: Optional[TimeBucket] = None,
+        module_overwrites: Optional[dict] = None,
     ):
     """High-level entry point for setting up a backtest from a strategy module.
 
@@ -223,6 +225,11 @@ def setup_backtest(
 
     :param candle_time_frame:
         Override the default strategy candle time bucket
+
+    :param module_overwrites:
+        Overwrite any parameters set as strategy module Python variable,
+        e.g. time bucket. Used for unit testes to speed up backtest
+        runs.
     """
 
     assert isinstance(strategy_path, Path), f"Got {strategy_path}"
@@ -234,14 +241,23 @@ def setup_backtest(
     execution_model = BacktestExecutionModel(wallet, max_slippage)
 
     # Load strategy Python file
-    strategy_mod_exports: dict = runpy.run_path(strategy_path)
-    strategy_module = parse_strategy_module(strategy_mod_exports)
+    strategy_module = import_python_source_file(strategy_path)
 
-    strategy_module.validate()
+    # Update the Python file with test patches
+    if module_overwrites:
+        for key, value in module_overwrites.items():
+            assert hasattr(strategy_module, key), f"Module lacked {key} to be overwritten"
+            setattr(strategy_module, key, value)
+
+    strategy_mod_exports = extract_module_members(strategy_module)
+    strategy_module_data = parse_strategy_module(strategy_mod_exports)
+
+    strategy_module_data.validate()
 
     return BacktestSetup(
         start_at,
         end_at,
+        name=strategy_module.trading_strategy_name,
         cycle_duration=cycle_duration or strategy_module.trading_strategy_cycle,  # Pick overridden cycle duration if provided
         candle_time_frame=candle_time_frame,
         wallet=wallet,

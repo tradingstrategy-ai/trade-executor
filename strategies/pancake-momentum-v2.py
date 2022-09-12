@@ -34,6 +34,9 @@ from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniv
     translate_trading_pair
 from tradingstrategy.client import Client
 
+
+trading_strategy_name = "PancakeSwap momentum v2"
+
 # Tell what trade execution engine version this strategy needs to use
 trading_strategy_engine_version = "0.1"
 
