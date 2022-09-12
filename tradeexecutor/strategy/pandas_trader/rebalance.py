@@ -41,6 +41,11 @@ def clip_to_normalised(weights: Dict[int, float]) -> Dict[int, float]:
     """If the sum of the weights are not exactly 1, then decrease the largest member to make the same sum 1 precise.
 
     """
+
+    # Empty weights
+    if not weights:
+        return weights
+
     total = sum(weights.values())
     diff = total - 1
     largest = max(weights.items(), key=lambda x: x[1])
