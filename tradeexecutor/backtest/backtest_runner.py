@@ -213,7 +213,7 @@ def setup_backtest(
         max_slippage=0.01,
         cycle_duration: Optional[CycleDuration] = None,
         candle_time_frame: Optional[TimeBucket] = None,
-        module_overwrites: Optional[dict] = None,
+        module_overrides: Optional[dict] = None,
     ):
     """High-level entry point for setting up a backtest from a strategy module.
 
@@ -244,8 +244,8 @@ def setup_backtest(
     strategy_module = import_python_source_file(strategy_path)
 
     # Update the Python file with test patches
-    if module_overwrites:
-        for key, value in module_overwrites.items():
+    if module_overrides:
+        for key, value in module_overrides.items():
             assert hasattr(strategy_module, key), f"Module lacked {key} to be overwritten"
             setattr(strategy_module, key, value)
 
