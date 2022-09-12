@@ -4,6 +4,7 @@ import logging
 import datetime
 import pickle
 import random
+from decimal import Decimal
 from pathlib import Path
 from queue import Queue
 from typing import Optional, Callable
@@ -292,23 +293,41 @@ class ExecutionLoop:
         friendly_start = self.backtest_start.strftime(ts_format)
         friendly_end = self.backtest_end.strftime(ts_format)
 
-        seconds = int(range.total_seconds())
+        days = int(range.total_seconds()) / (24*3600)
 
         self.warm_up_backtest()
 
-        with tqdm(total=seconds) as progress_bar:
+        # https://stackoverflow.com/a/57490441/315168
+        with tqdm(total=days, unit="day", unit_scale=True) as progress_bar:
+
             while True:
 
                 ts = snap_to_previous_tick(ts, self.cycle_duration)
 
                 # Bump progress bar forward and update backtest status
-                progress_bar.update(int(self.cycle_duration.to_timedelta().total_seconds()))
+                days_passed = self.cycle_duration.to_timedelta().total_seconds() / (24*3600)
+                progress_bar.update(days_passed)
+
                 friedly_ts = ts.strftime(ts_format)
-                trade_count = len(list(state.portfolio.get_all_trades()))
-                progress_bar.set_description(f"Backtesting {self.name}, {friendly_start}-{friendly_end} at {friedly_ts}, total {trade_count:,} trades")
+
+                progress_bar.set_description(f"Backtesting {self.name}, {friendly_start}-{friendly_end} at {friedly_ts}")
 
                 # Decide trades and everything for this cycle
-                universe: TradingStrategyUniverse = self.tick(ts, state, cycle, live=False, backtesting_universe=universe)
+                universe: TradingStrategyUniverse = self.tick(
+                    ts,
+                    state,
+                    cycle,
+                    live=False,
+                    backtesting_universe=universe)
+
+                # extra stats on the progress bar
+                postfix = {}
+                postfix["trade count"] = len(list(state.portfolio.get_all_trades()))
+                pair_count = universe.universe.pairs.get_count()
+                if pair_count > 1:
+                    postfix["pairs"] = pair_count
+
+                progress_bar.set_postfix(**postfix)
 
                 # Revalue our portfolio
                 self.update_position_valuations(ts, state, universe)
