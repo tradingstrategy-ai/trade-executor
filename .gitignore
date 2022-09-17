@@ -9,4 +9,5 @@ dist
 .python-version
 
 cache
-state/*.json
+state/*.json/
+.idea
