@@ -2,7 +2,10 @@
 
 ## Prerequisites
 
+- Python 3.10
+- Node 16 (prefer through NVM)
 - Install with `poetry`
+- Get [Trading Strategy API KEY](https://tradingstrategy.ai/trading-view/api)
 
 Set up environment:
 
@@ -13,6 +16,12 @@ export TRADING_STRATEGY_API_KEY=""
 
 # We use BNB chain mainnet forking for some tests
 export BNB_CHAIN_JSON_RPC="https://bsc-dataseed.binance.org/"
+```
+
+Set up Ganache:
+
+```shell
+npm install -g ganache
 ```
 
 ## Running
