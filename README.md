@@ -2,7 +2,9 @@
 
 # Trade Executor
 
-Trade Executor is a Python framework for algorithmic trading strategy execution. 
+Trade Executor is a Python framework for executing algorithmic trading strategies on decentralised exchanges. 
+
+**Note**: This is early alpha software. Please pop in to the Discord for any questions. 
 
 ## Features
 
