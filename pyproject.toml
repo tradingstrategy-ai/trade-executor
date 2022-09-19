@@ -30,6 +30,10 @@ waitress = "^2.0.0"
 requests = "^2.27.1"
 web3 = "^5.26.0"
 
+# 3.20.2 broke on Mac
+# See https://github.com/protocolbuffers/protobuf/issues/10571
+protobuf = "3.20.1"
+
 # This is moved to optional dependencies as we want to get rid of this
 trading-strategy-qstrader = {version="^0.5",  optional = true}
 # 3.0.29 contains a breaking schange for inp.send_text()
