@@ -33,6 +33,7 @@ from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifie
 
 from tradeexecutor.strategy.bootstrap import import_strategy_file
 from tradeexecutor.strategy.description import StrategyExecutionDescription
+from tradeexecutor.strategy.qstrader import HAS_QSTRADER
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.strategy.universe_model import StaticUniverseModel
 from tradeexecutor.cli.log import setup_pytest_logging
@@ -44,6 +45,9 @@ from tradingstrategy.liquidity import GroupedLiquidityUniverse
 from tradingstrategy.pair import PandasPairUniverse
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
+
+
+pytestmark = pytest.mark.skipif(HAS_QSTRADER is False, reason="Install with optional qstrader dependency to run these tests")
 
 
 @pytest.fixture(scope="module")

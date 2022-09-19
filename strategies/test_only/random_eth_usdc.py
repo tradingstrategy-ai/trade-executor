@@ -12,9 +12,15 @@ from tradeexecutor.state.sync import SyncMethod
 from tradeexecutor.strategy.approval import ApprovalModel
 from tradeexecutor.strategy.description import StrategyExecutionDescription
 from tradeexecutor.strategy.pricing_model import PricingModelFactory
-from tradeexecutor.strategy.qstrader.alpha_model import AlphaModel
 
-from tradeexecutor.strategy.qstrader.runner import QSTraderRunner
+try:
+    import qstrader
+    from tradeexecutor.strategy.qstrader.runner import QSTraderRunner
+    from tradeexecutor.strategy.qstrader.alpha_model import AlphaModel
+    HAS_QS_TRADER = True
+except ImportError:
+    HAS_QS_TRADER = False
+
 from tradeexecutor.strategy.routing import RoutingModel
 from tradeexecutor.strategy.universe_model import StaticUniverseModel
 from tradingstrategy.timebucket import TimeBucket
@@ -22,7 +28,7 @@ from tradingstrategy.universe import Universe
 
 
 # Cannot use Python __name__ here because the module is dynamically loaded
-from tradeexecutor.strategy.valuation import ValuationModel, ValuationModelFactory
+from tradeexecutor.strategy.valuation import ValuationModelFactory
 
 logger = logging.getLogger("uniswap_simulatead_example")
 

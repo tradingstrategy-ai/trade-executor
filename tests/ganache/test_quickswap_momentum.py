@@ -34,12 +34,11 @@ from eth_defi.ganache import fork_network
 from eth_defi.hotwallet import HotWallet
 from tradeexecutor.cli.main import app
 
-
 from tradeexecutor.cli.log import setup_pytest_logging
-
+from tradeexecutor.strategy.qstrader import HAS_QSTRADER
 
 # https://docs.pytest.org/en/latest/how-to/skipping.html#skip-all-test-functions-of-a-class-or-module
-pytestmark = pytest.mark.skipif(os.environ.get("POLYGON_JSON_RPC") is None, reason="Set POLYGON_JSON_RPC environment variable to run this test")
+pytestmark = pytest.mark.skipif(os.environ.get("POLYGON_JSON_RPC") is None or not HAS_QSTRADER, reason="Set POLYGON_JSON_RPC environment variable to run this test")
 
 
 @pytest.fixture(scope="module")
