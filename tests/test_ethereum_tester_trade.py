@@ -34,6 +34,7 @@ from tradeexecutor.strategy.approval import UncheckedApprovalModel
 
 from tradeexecutor.strategy.bootstrap import import_strategy_file
 from tradeexecutor.strategy.description import StrategyExecutionDescription
+from tradeexecutor.strategy.qstrader import HAS_QSTRADER
 from tradeexecutor.strategy.runner import StrategyRunner
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.strategy.universe_model import StaticUniverseModel
@@ -49,7 +50,7 @@ from tradingstrategy.universe import Universe
 
 
 # https://docs.pytest.org/en/latest/how-to/skipping.html#skip-all-test-functions-of-a-class-or-module
-pytestmark = pytest.mark.skipif(os.environ.get("TRADING_STRATEGY_API_KEY") is None, reason="Set TRADING_STRATEGY_API_KEY environment variable to run this test")
+pytestmark = pytest.mark.skipif(os.environ.get("TRADING_STRATEGY_API_KEY") is None or not HAS_QSTRADER, reason="Set TRADING_STRATEGY_API_KEY environment variable to run this test")
 
 
 #: How much values we allow to drift.

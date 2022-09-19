@@ -29,10 +29,10 @@ from tradeexecutor.cli.main import app
 from tradeexecutor.state.identifier import AssetIdentifier
 
 from tradeexecutor.cli.log import setup_pytest_logging
-
+from tradeexecutor.strategy.qstrader import HAS_QSTRADER
 
 # https://docs.pytest.org/en/latest/how-to/skipping.html#skip-all-test-functions-of-a-class-or-module
-pytestmark = pytest.mark.skipif(os.environ.get("BNB_CHAIN_JSON_RPC") is None, reason="Set BNB_CHAIN_JSON_RPC environment variable to Binance Smart Chain node to run this test")
+pytestmark = pytest.mark.skipif(os.environ.get("BNB_CHAIN_JSON_RPC") is None or not HAS_QSTRADER, reason="Set BNB_CHAIN_JSON_RPC environment variable to Binance Smart Chain node to run this test")
 
 
 @pytest.fixture(scope="module")

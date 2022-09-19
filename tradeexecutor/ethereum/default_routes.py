@@ -48,7 +48,9 @@ def create_pancake_routing(reserve_currency: ReserveCurrency) -> UniswapV2Simple
     params = get_pancake_default_routing_parameters(reserve_currency)
 
     routing_model = UniswapV2SimpleRoutingModel(
-        **params
+        params["factory_router_map"],
+        params["allowed_intermediary_pairs"],
+        params["reserve_token_address"],
     )
 
     return routing_model
