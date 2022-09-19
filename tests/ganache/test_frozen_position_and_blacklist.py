@@ -28,6 +28,7 @@ from hexbytes import HexBytes
 from eth_defi.utils import is_localhost_port_listening
 from tradeexecutor.ethereum.uniswap_v2_valuation_v0 import UniswapV2PoolValuationMethodV0
 from tradeexecutor.ethereum.universe import create_exchange_universe, create_pair_universe
+from tradeexecutor.strategy.qstrader import HAS_QSTRADER
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, TradingStrategyUniverseModel
 from tradeexecutor.strategy.universe_model import StaticUniverseModel
 from tradingstrategy.candle import GroupedCandleUniverse
@@ -64,7 +65,7 @@ from tradeexecutor.cli.log import setup_pytest_logging
 from tradeexecutor.utils.timer import timed_task
 
 
-pytestmark = pytest.mark.skipif(os.environ.get("BNB_CHAIN_JSON_RPC") is None, reason="Set BNB_CHAIN_JSON_RPC environment variable to Binance Smart Chain node to run this test")
+pytestmark = pytest.mark.skipif(os.environ.get("BNB_CHAIN_JSON_RPC") is None or not HAS_QSTRADER, reason="Set BNB_CHAIN_JSON_RPC environment variable to Binance Smart Chain node to run this test")
 
 
 @pytest.fixture(scope="module")

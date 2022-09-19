@@ -15,11 +15,9 @@ import logging
 from typing import List, Optional, Callable, Tuple, Set, Dict, Iterable
 
 import pandas as pd
-import pyarrow
 
 from tradeexecutor.backtest.data_preload import preload_data
 from tradeexecutor.strategy.execution_context import ExecutionMode, ExecutionContext
-from tradingstrategy.frameworks.qstrader import prepare_candles_for_qstrader
 from tradingstrategy.token import Token
 
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
@@ -34,6 +32,7 @@ from tradingstrategy.pair import DEXPair, PandasPairUniverse, PairType, resolve_
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
 from tradingstrategy.utils.groupeduniverse import filter_for_pairs
+
 
 logger = logging.getLogger(__name__)
 

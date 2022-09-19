@@ -24,6 +24,12 @@ Set up Ganache:
 npm install -g ganache
 ```
 
+Make sure you install with the optional QSTrader dependency:
+
+```
+poetry install -E qstrader
+```
+
 ## Running
 
 To run the tests:
