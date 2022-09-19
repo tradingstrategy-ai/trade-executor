@@ -2025,24 +2025,19 @@ description = "Algorithmic trading and quantitative financial analysis framework
 category = "main"
 optional = false
 python-versions = ">=3.10,<4"
-develop = true
 
 [package.dependencies]
-dataclasses-json = "^0.5.4"
-jsonlines = "^3.1.0"
-pandas = "^1.3.5"
-plotly = "^5.1.0"
-pyarrow = "^7.0.0"
-requests = "^2.28.1"
-tqdm = "^4.61.2"
+dataclasses-json = ">=0.5.4,<0.6.0"
+jsonlines = ">=3.1.0,<4.0.0"
+pandas = ">=1.3.5,<2.0.0"
+plotly = ">=5.1.0,<6.0.0"
+pyarrow = ">=7.0.0,<8.0.0"
+requests = ">=2.28.1,<3.0.0"
+tqdm = ">=4.61.2,<5.0.0"
 
 [package.extras]
 backtrader = ["trading-strategy-backtrader (>=0.1,<0.2)"]
 qstrader = ["scipy (>=1.6.1,<2.0.0)", "trading-strategy-qstrader (>=0.5.0,<0.6.0)"]
-
-[package.source]
-type = "directory"
-url = "deps/trading-strategy"
 
 [[package]]
 name = "trading-strategy-qstrader"
@@ -2263,24 +2258,19 @@ version = "0.11"
 description = "Web3-Ethereum-DeFi is a library for smart contracts, DeFi trading (Uniswap, PancakeSwap), Ethereum JSON-RPC, EVM transactions and automated test suites."
 category = "main"
 optional = false
-python-versions = "^3.9"
-develop = true
+python-versions = ">=3.9,<4.0"
 
 [package.dependencies]
-eth-bloom = "^1.0.4"
-futureproof = "^0.3.1"
-nbsphinx = {version = "^0.8.9", extras = ["docs"]}
-psutil = "^5.9.0"
-ujson = "^5.2.0"
-web3 = {version = "^5.28.0", extras = ["tester"]}
+eth-bloom = ">=1.0.4,<2.0.0"
+futureproof = ">=0.3.1,<0.4.0"
+nbsphinx = {version = ">=0.8.9,<0.9.0", extras = ["docs"]}
+psutil = ">=5.9.0,<6.0.0"
+ujson = ">=5.2.0,<6.0.0"
+web3 = {version = ">=5.28.0,<6.0.0", extras = ["tester"]}
 
 [package.extras]
 data = ["gql[requests] (>=3.3.0,<4.0.0)", "jupyter (>=1.0.0,<2.0.0)", "matplotlib (>=3.5.2,<4.0.0)", "pandas (>=1.4.2,<2.0.0)", "plotly (>=5.8.2,<6.0.0)", "tqdm (>=4.64.0,<5.0.0)"]
 docs = ["Sphinx (>=4.4.0,<5.0.0)", "furo (>=2022.6.4.1,<2023.0.0.0)", "sphinx-autodoc-typehints[docs] (>=1.16.0,<2.0.0)", "sphinx-rtd-theme (>=1.0.0,<2.0.0)", "sphinx-sitemap (>=2.2.0,<3.0.0)"]
-
-[package.source]
-type = "directory"
-url = "deps/web3-ethereum-defi"
 
 [[package]]
 name = "webencodings"
@@ -2390,7 +2380,7 @@ qstrader = ["trading-strategy-qstrader"]
 [metadata]
 lock-version = "1.1"
 python-versions = ">=3.10,<3.11"
-content-hash = "b0bfe95054689ea8be7ea5b5bfeffe46664426089bd64b5f3662bea644f3c016"
+content-hash = "f6f574637b64fa58e974de3b5f9eea451722c3819ea0865d8614c3c13e2faa1d"
 
 [metadata.files]
 aiohttp = [
@@ -4149,7 +4139,10 @@ tqdm = [
     {file = "tqdm-4.64.1-py2.py3-none-any.whl", hash = "sha256:6fee160d6ffcd1b1c68c65f14c829c22832bc401726335ce92c52d395944a6a1"},
     {file = "tqdm-4.64.1.tar.gz", hash = "sha256:5f4f682a004951c1b450bc753c710e9280c5746ce6ffedee253ddbcbf54cf1e4"},
 ]
-trading-strategy = []
+trading-strategy = [
+    {file = "trading-strategy-0.8.1.tar.gz", hash = "sha256:5f06348a6c451c5e45c82f1bdd2248b2adaceea66fcdca28e69478ec05f5f085"},
+    {file = "trading_strategy-0.8.1-py3-none-any.whl", hash = "sha256:e6a684d914aeb2fe533286fb329195ffa0521a093621ca4d6a30f70cc5631d3c"},
+]
 trading-strategy-qstrader = [
     {file = "trading-strategy-qstrader-0.5.tar.gz", hash = "sha256:c294b56f84bdc31e79842b5db5f6c8a5603c947725b9650d95655d95ade3ed04"},
     {file = "trading_strategy_qstrader-0.5-py3-none-any.whl", hash = "sha256:9be233a73d6f519719d518bceac59ad2f3b1839d1cb3657d67572afe7001c06b"},
@@ -4277,7 +4270,10 @@ web3 = [
     {file = "web3-5.30.0-py3-none-any.whl", hash = "sha256:664fbb668522874a8bb15ec06c605f1e0c754bbc0d7a040ee47536c648b46af0"},
     {file = "web3-5.30.0.tar.gz", hash = "sha256:e141d90408fd9fe5156e2ef22884a160bef8bfd55e6cecd51181af3162ea84dd"},
 ]
-web3-ethereum-defi = []
+web3-ethereum-defi = [
+    {file = "web3-ethereum-defi-0.11.tar.gz", hash = "sha256:9b66900b846a01f1a64fb99b0b39c7bbd408d0985973a6488e947999eb69d41b"},
+    {file = "web3_ethereum_defi-0.11-py3-none-any.whl", hash = "sha256:af521f60ff20b99f6f411eaa0918798a803427c7bfb917b6b42827d90d591937"},
+]
 webencodings = [
     {file = "webencodings-0.5.1-py2.py3-none-any.whl", hash = "sha256:a0af1213f3c2226497a97e2b3aa01a7e4bee4f403f95be16fc9acd2947514a78"},
     {file = "webencodings-0.5.1.tar.gz", hash = "sha256:b36a1c245f2d304965eb4e0a82848379241dc04b865afcc4aab16748587e1923"},
