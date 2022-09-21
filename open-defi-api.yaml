@@ -692,6 +692,14 @@ paths:
             format: iso8601
             minimum: 0
           example: 2022-01-02
+        - name: exchange_slug
+          in: query
+          description: |
+            Exchange path slug e.g, `pancakeswap-v2`
+          required: false
+          schema:
+            type: string
+          example: pancakeswap-v2
 
       tags:
         - Trading pair
@@ -994,6 +1002,14 @@ paths:
             format: iso8601
             minimum: 0
           example: 2022-01-02
+        - name: exchange_slug
+          in: query
+          description: |
+            Exchange path slug e.g, `pancakeswap-v2`
+          required: false
+          schema:
+            type: string
+          example: pancakeswap-v2
 
       tags:
         - Trading pair
