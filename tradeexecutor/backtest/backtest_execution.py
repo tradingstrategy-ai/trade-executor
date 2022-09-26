@@ -131,12 +131,15 @@ class BacktestExecutionModel(ExecutionModel):
             trades,
             check_balances=check_balances)
 
-        # Check for stop loss / take profit
-        special_trades = any([t for t in trades if t.is_stop_loss() or t.is_take_profit()])
-        if special_trades:
-            # Check that we have stop loss data available
-            # for backtesting
-            assert self.is_stop_loss_supported(), "Trade was marked with stop loss/take profit even though this trading universe does not support it"
+        # Check that backtest does not try to execute stop loss / take profit
+        # trades when data is not available
+        for t in trades:
+            position = state.portfolio.open_positions.get(t.position_id)
+            if position and position.:
+                if position.has_automatic_close():
+                    # Check that we have stop loss data available
+                    # for backtesting
+                    assert self.is_stop_loss_supported(), "Trade was marked with stop loss/take profit even though this trading universe does not support it"
 
         for trade in trades:
 
