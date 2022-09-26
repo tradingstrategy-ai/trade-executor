@@ -198,7 +198,10 @@ def visualise_single_pair(
         showlegend=False
     )
 
-    fig = make_subplots(specs=[[{"secondary_y": False}]])
+    # Synthetic data may not have volume available
+    should_create_volume_subplot: bool = "volume" in candles.columns
+
+    fig = make_subplots(specs=[[{"secondary_y": should_create_volume_subplot}]])
 
     if state.name:
         fig.update_layout(title=f"{state.name} trades", height=height)
@@ -212,8 +215,7 @@ def visualise_single_pair(
 
     fig.update_xaxes(rangeslider={"visible": False})
 
-    # Synthetic data may not have volume available
-    if "volume" in candles.columns:
+    if should_create_volume_subplot:
         volume_bars = go.Bar(
             x=candles.index,
             y=candles['volume'],
