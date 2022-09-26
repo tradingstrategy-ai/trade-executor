@@ -96,7 +96,8 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         but real time pricing comes directly from the exchange using real-time
         side channels.
         """
-        return self.backtest_stop_loss_candles is not None
+        return (self.backtest_stop_loss_candles is not None) and \
+               (self.backtest_stop_loss_time_bucket is not None)
 
     def validate(self):
         """Check that the created universe looks good.
