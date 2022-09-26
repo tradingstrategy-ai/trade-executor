@@ -94,7 +94,6 @@ def stop_loss_decide_trades_factory(stop_loss_pct=None):
                 if is_candle_green(last_candle) and is_candle_green(second_last_candle):
                     if stop_loss_pct:
                         # Stop loss activated
-                        price = last_candle["close"]
                         trades += position_manager.open_1x_long(pair, cash * 0.1, stop_loss_pct=stop_loss_pct)
                     else:
                         # Stop loss inactive
@@ -276,6 +275,9 @@ def test_synthetic_data_backtest_stop_loss(
         routing_model: BacktestRoutingModel,
     ):
     """Run the strategy that triggers stop losses."""
+
+    assert synthetic_universe.has_stop_loss_data()
+
     start_at, end_at = synthetic_universe.universe.candles.get_timestamp_range()
 
     routing_model = generate_simple_routing_model(synthetic_universe)

@@ -433,7 +433,11 @@ def run_backtest_inline(
     wallet = SimulatedWallet()
     deposit_syncer = BacktestSyncer(wallet, Decimal(initial_deposit))
 
-    execution_model = BacktestExecutionModel(wallet, max_slippage)
+    execution_model = BacktestExecutionModel(
+        wallet,
+        max_slippage,
+        stop_loss_data_available=universe.has_stop_loss_data(),
+    )
 
     if universe:
         assert routing_model

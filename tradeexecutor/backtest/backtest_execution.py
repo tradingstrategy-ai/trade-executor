@@ -21,13 +21,22 @@ class BacktestExecutionFailed(Exception):
 class BacktestExecutionModel(ExecutionModel):
     """Simulate trades against historical data."""
 
-    def __init__(self, wallet: SimulatedWallet, max_slippage: float, lp_fees: float=0.0030):
+    def __init__(self,
+                 wallet: SimulatedWallet,
+                 max_slippage: float,
+                 lp_fees: float=0.0030,
+                 stop_loss_data_available=False,
+                 ):
         self.wallet = wallet
         self.max_slippage = max_slippage
         self.lp_fees = lp_fees
+        self.stop_loss_data_available = stop_loss_data_available
 
     def is_live_trading(self):
         return False
+
+    def is_stop_loss_supported(self):
+        return self.stop_loss_data_available
 
     def preflight_check(self):
         pass
@@ -36,7 +45,15 @@ class BacktestExecutionModel(ExecutionModel):
         """Set up the wallet"""
         logger.info("Initialising backtest execution model")
 
-    def simulate_trade(self, ts: datetime.datetime, state: State, trade: TradeExecution) -> Tuple[Decimal, Decimal]:
+    def simulate_trade(self,
+                       ts: datetime.datetime,
+                       state: State, trade:
+            TradeExecution) -> Tuple[Decimal, Decimal]:
+        """Set backtesting trade state from planned to executed.
+        
+        Currently, always executes trades "perfectly" i.e. no different slipppage
+        that was planned, etc.
+        """
 
         assert trade.get_status() == TradeStatus.started
 
@@ -114,6 +131,13 @@ class BacktestExecutionModel(ExecutionModel):
             trades,
             check_balances=check_balances)
 
+        # Check for stop loss / take profit
+        special_trades = any([t for t in trades if t.is_stop_loss() or t.is_take_profit()])
+        if special_trades:
+            # Check that we have stop loss data available
+            # for backtesting
+            assert self.is_stop_loss_supported(), "Trade was marked with stop loss/take profit even though this trading universe does not support it"
+
         for trade in trades:
 
             # 3. Simulate tx broadcast
@@ -123,7 +147,14 @@ class BacktestExecutionModel(ExecutionModel):
             # Assume we always get the same execution we planned
             executed_price = float(abs(executed_reserve / executed_quantity))
 
-            state.mark_trade_success(ts, trade, executed_price, executed_quantity, executed_reserve, lp_fees=0, native_token_price=1)
+            state.mark_trade_success(
+                ts,
+                trade,
+                executed_price,
+                executed_quantity,
+                executed_reserve,
+                lp_fees=0,
+                native_token_price=1)
 
     def get_routing_state_details(self) -> dict:
         return {"wallet": self.wallet}
