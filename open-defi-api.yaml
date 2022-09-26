@@ -692,14 +692,13 @@ paths:
             format: iso8601
             minimum: 0
           example: 2022-01-02
-        - name: exchange_slug
+        - name: exchange_type
           in: query
-          description: |
-            Exchange path slug e.g, `pancakeswap-v2`
+          description: Exchange type enum - see https://tradingstrategy.ai/docs/programming/api/client/help/tradingstrategy.exchange.ExchangeType.html
           required: false
           schema:
             type: string
-          example: pancakeswap-v2
+          example: uni_v2
 
       tags:
         - Trading pair
@@ -908,6 +907,14 @@ paths:
             maximum: 100000000
           example: 25000000
 
+        - name: exchange_type
+          in: query
+          description: Exchange type enum - see https://tradingstrategy.ai/docs/programming/api/client/help/tradingstrategy.exchange.ExchangeType.html
+          required: false
+          schema:
+            type: string
+          example: uni_v2
+
       tags:
         - Trading pair
       responses:
@@ -1002,14 +1009,13 @@ paths:
             format: iso8601
             minimum: 0
           example: 2022-01-02
-        - name: exchange_slug
+        - name: exchange_type
           in: query
-          description: |
-            Exchange path slug e.g, `pancakeswap-v2`
+          description: Exchange type enum - see https://tradingstrategy.ai/docs/programming/api/client/help/tradingstrategy.exchange.ExchangeType.html
           required: false
           schema:
             type: string
-          example: pancakeswap-v2
+          example: uni_v2
 
       tags:
         - Trading pair
@@ -1290,7 +1296,7 @@ components:
           minLength: 4
           example: 0x0
         exchange_type:
-          description: Exchange type enum - see https://tradingstrategy.ai/docs/programming/api/exchange.html#tradingstrategy.exchange.ExchangeType
+          description: Exchange type enum - see https://tradingstrategy.ai/docs/programming/api/client/help/tradingstrategy.exchange.ExchangeType.html
           type: string
           minLength: 4
           example: uni_v2
