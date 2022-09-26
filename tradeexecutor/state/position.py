@@ -89,7 +89,7 @@ class TradingPosition:
 
     def has_automatic_close(self) -> bool:
         """This position has stop loss/take profit set."""
-        return self.stop_loss is not None and self.take_profit is not None
+        return (self.stop_loss is not None) or (self.take_profit is not None)
 
     def get_first_trade(self) -> TradeExecution:
         """Get the first trade for this position.

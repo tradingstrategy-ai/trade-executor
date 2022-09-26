@@ -32,6 +32,7 @@ from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.default_routing_options import TradeRouting
+from tradeexecutor.strategy.execution_model import AutoClosingOrderUnsupported
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
@@ -450,3 +451,39 @@ def test_synthetic_data_backtest_take_profit(
     take_profit_positions = [p for p in state.portfolio.get_all_positions() if p.is_take_profit()]
     for p in take_profit_positions:
         assert p.is_profitable()
+
+
+def test_synthetic_data_backtest_stop_loss_data_missing(
+        logger: logging.Logger,
+        strategy_path: Path,
+        synthetic_universe: TradingStrategyUniverse,
+        routing_model: BacktestRoutingModel,
+    ):
+    """Stop loss backtesting fails when no data is available."""
+
+    synthetic_universe.backtest_stop_loss_candles = None
+
+    assert not synthetic_universe.has_stop_loss_data()
+
+    start_at, end_at = synthetic_universe.universe.candles.get_timestamp_range()
+
+    routing_model = generate_simple_routing_model(synthetic_universe)
+
+    stop_loss_decide_trades = stop_loss_decide_trades_factory(stop_loss_pct=0.95)
+
+    # Run the test
+    with pytest.raises(AutoClosingOrderUnsupported):
+        state, universe, debug_dump = run_backtest_inline(
+            name="No stop loss",
+            start_at=start_at.to_pydatetime(),
+            end_at=end_at.to_pydatetime(),
+            client=None,  # None of downloads needed, because we are using synthetic data
+            cycle_duration=CycleDuration.cycle_24h,  # Override to use 24h cycles despite what strategy file says
+            decide_trades=stop_loss_decide_trades,
+            create_trading_universe=None,
+            universe=synthetic_universe,
+            initial_deposit=10_000,
+            reserve_currency=ReserveCurrency.busd,
+            trade_routing=TradeRouting.user_supplied_routing_model,
+            routing_model=routing_model,
+        )

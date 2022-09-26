@@ -9,8 +9,7 @@ from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel, Backte
 from tradeexecutor.backtest.simulated_wallet import SimulatedWallet, OutOfSimulatedBalance
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution, TradeStatus
-from tradeexecutor.strategy.execution_model import ExecutionModel
-
+from tradeexecutor.strategy.execution_model import ExecutionModel, AutoClosingOrderUnsupported
 
 logger = logging.getLogger(__name__)
 
@@ -135,11 +134,11 @@ class BacktestExecutionModel(ExecutionModel):
         # trades when data is not available
         for t in trades:
             position = state.portfolio.open_positions.get(t.position_id)
-            if position and position.:
-                if position.has_automatic_close():
-                    # Check that we have stop loss data available
-                    # for backtesting
-                    assert self.is_stop_loss_supported(), "Trade was marked with stop loss/take profit even though this trading universe does not support it"
+            if position and position.has_automatic_close():
+                # Check that we have stop loss data available
+                # for backtesting
+                if not self.is_stop_loss_supported():
+                    raise AutoClosingOrderUnsupported("Trade was marked with stop loss/take profit even though backtesting trading universe does have price feed for stop loss checks available.")
 
         for trade in trades:
 
