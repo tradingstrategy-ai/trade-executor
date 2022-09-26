@@ -27,10 +27,10 @@ import pandas as pd
 from dataclasses_json import dataclass_json, Exclude, config
 
 from tradeexecutor.state.portfolio import Portfolio
-from tradeexecutor.state.trade import TradeExecution
+from tradeexecutor.state.trade import TradeExecution, TradeType
 from tradeexecutor.utils.format import calculate_percentage
 from tradeexecutor.utils.timestamp import json_encode_timedelta, json_decode_timedelta
-from tradingstrategy.analysis.tradehint import TradeHint, TradeHintType
+
 from tradingstrategy.exchange import Exchange
 from tradingstrategy.pair import PandasPairUniverse
 from tradingstrategy.types import PrimaryKey, USDollarAmount
@@ -69,7 +69,7 @@ class SpotTrade:
     slippage: USDollarAmount
 
     #: Any hints applied for this trade why it was performed
-    hint: Optional[TradeHint] = None
+    trade_type: Optional[TradeType] = None
 
     #: Internal state dump of the algorithm when this trade was made.
     #: This is mostly useful when doing the trade analysis try to understand
@@ -230,9 +230,15 @@ class TradePosition:
     def is_stop_loss(self) -> bool:
         """Was stop loss triggered for this position"""
         for t in self.trades:
-            if t.hint:
-                if t.hint.type == TradeHintType.stop_loss_triggered:
-                    return True
+            if t.trade_type == TradeType.stop_loss:
+                return True
+        return False
+
+    def is_take_profit(self) -> bool:
+        """Was trake profit triggered for this position"""
+        for t in self.trades:
+            if t.trade_type == TradeType.take_profit:
+                return True
         return False
 
     def add_trade(self, t: SpotTrade):
@@ -616,7 +622,12 @@ def expand_timeline(
         if not exchange:
             raise RuntimeError(f"No exchange for id {pair_info.exchange_id}, pair {pair_info}")
 
-        remarks = "SL" if position.is_stop_loss() else ""
+        if position.is_stop_loss():
+            remarks = "SL"
+        elif position.is_take_profit():
+            remarks = "TP"
+        else:
+            remarks = ""
 
         r = {
             # "timestamp": timestamp,
@@ -716,7 +727,7 @@ def build_trade_analysis(portfolio: Portfolio) -> TradeAnalysis:
                 quantity=quantity,
                 commission=0,
                 slippage=0,  # TODO
-                # hint=hint,
+                trade_type=trade.trade_type,
             )
             history.add_trade(spot_trade)
 
