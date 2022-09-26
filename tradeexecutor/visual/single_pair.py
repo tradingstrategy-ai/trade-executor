@@ -7,6 +7,7 @@ import plotly.graph_objects as go
 import pandas as pd
 from plotly.subplots import make_subplots
 
+from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.visualisation import Visualisation, Plot
@@ -16,30 +17,43 @@ from tradingstrategy.candle import GroupedCandleUniverse
 logger = logging.getLogger(__name__)
 
 
-def export_trade_for_dataframe(t: TradeExecution) -> dict:
+def export_trade_for_dataframe(p: Portfolio, t: TradeExecution) -> dict:
     """Export data for a Pandas dataframe presentation"""
 
+    position = p.get_position_by_id(t.position_id)
+
     if t.is_failed():
-        label = f"Faild trade"
+        label = f"Failed trade"
+        type = "failed"
     else:
         if t.is_sell():
-            label = f"Sell {t.pair.base.token_symbol} @ {t.executed_price}"
+            if t.is_stop_loss():
+                label = f"Stop loss {t.pair.base.token_symbol} @ {t.executed_price}. Stop loss trigger was at {position.stop_loss}."
+                type = "stop-loss"
+            else:
+                label = f"Sell {t.pair.base.token_symbol} @ {t.executed_price}"
+                type = "sell"
         else:
-            label = f"Buy {t.pair.base.token_symbol} @ {t.executed_price}"
+            if t.is_take_profit():
+                type = "take-profit"
+                label = f"Take profit {t.pair.base.token_symbol} @ {t.executed_price}. Take profit trigger was at {position.take_profit}."
+            else:
+                type = "buy"
+                label = f"Buy {t.pair.base.token_symbol} @ {t.executed_price}"
 
     # See Plotly Scatter usage https://stackoverflow.com/a/61349739/315168
     return {
         "timestamp": t.executed_at,
         "success": t.is_success(),
-        "type": t.is_buy() and "buy" or "sell",
+        "type": type,
         "label": label,
         "price": t.executed_price,
     }
 
 
-def export_trades_as_dataframe(trades: Iterable[TradeExecution]) -> pd.DataFrame:
+def export_trades_as_dataframe(portfolio: Portfolio) -> pd.DataFrame:
     """Convert executed trades to a dataframe, so it is easier to work with them in Plotly."""
-    data = [export_trade_for_dataframe(t) for t in trades]
+    data = [export_trade_for_dataframe(portfolio, t) for t in portfolio.get_all_trades()]
     return pd.DataFrame(data)
 
 
@@ -83,8 +97,21 @@ def visualise_trades(
         trades_df: pd.DataFrame,):
     """Plot individual trades over the candlestick chart."""
 
-    buys_df = trades_df.loc[trades_df["type"] == "buy"]
-    sells_df = trades_df.loc[trades_df["type"] == "sell"]
+
+    # If we have used stop loss, do different categories
+    advanced_trade_types = ("stop-loss", "take-profit")
+    advanced_trades = any(trades_df.loc[trades_df["type"].isin(advanced_trade_types)])
+
+    if advanced_trades:
+        buys_df = trades_df.loc[trades_df["type"] == "buy"]
+        sells_df = trades_df.loc[trades_df["type"] == "sell"]
+        stop_loss_df = trades_df.loc[trades_df["type"] == "stop-loss"]
+        take_profit_df = trades_df.loc[trades_df["type"] == "take-profit"]
+    else:
+        buys_df = trades_df.loc[trades_df["type"] == "buy"]
+        sells_df = trades_df.loc[trades_df["type"] == "sell"]
+        stop_loss_df = None
+        take_profit_df = None
 
     # Buys
     fig.add_trace(
@@ -111,6 +138,32 @@ def visualise_trades(
         ),
         secondary_y=False,
     )
+
+    if stop_loss_df is not None:
+        fig.add_trace(
+            go.Scatter(
+                name="Stop loss",
+                mode="markers",
+                x=stop_loss_df["timestamp"],
+                y=stop_loss_df["price"],
+                text=stop_loss_df["label"],
+                marker={"symbol": 'triangle-left', "size": 12, "line": {"width": 2, "color": "black"}}
+            ),
+            secondary_y=False,
+        )
+
+    if take_profit_df is not None:
+        fig.add_trace(
+            go.Scatter(
+                name="Take profit",
+                mode="markers",
+                x=take_profit_df["timestamp"],
+                y=take_profit_df["price"],
+                text=take_profit_df["label"],
+                marker={"symbol": 'triangle-left', "size": 12, "line": {"width": 2, "color": "black"}}
+            ),
+            secondary_y=False,
+        )
 
     return fig
 
@@ -184,7 +237,7 @@ def visualise_single_pair(
     candle_end_ts = candles["timestamp"].max()
     logger.info(f"Candles are {candle_start_ts} = {candle_end_ts}")
 
-    trades_df = export_trades_as_dataframe(state.portfolio.get_all_trades())
+    trades_df = export_trades_as_dataframe(state.portfolio)
 
     # set up figure with values not high and not low
     # include candlestick with rangeselector
