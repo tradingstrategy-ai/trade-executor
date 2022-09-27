@@ -88,6 +88,17 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
 
     backtest_stop_loss_candles: Optional[GroupedCandleUniverse] = None
 
+    def has_stop_loss_data(self) -> bool:
+        """Do we have data available to determine trade stop losses.
+
+        Note that this applies for backtesting only - when
+        doing production trade execution, stop loss data is not part of the universe
+        but real time pricing comes directly from the exchange using real-time
+        side channels.
+        """
+        return (self.backtest_stop_loss_candles is not None) and \
+               (self.backtest_stop_loss_time_bucket is not None)
+
     def validate(self):
         """Check that the created universe looks good.
 

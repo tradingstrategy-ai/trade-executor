@@ -11,7 +11,7 @@ import pytest
 import pandas as pd
 from pandas_ta.overlap import ema
 
-from tradeexecutor.analysis.trade_analyser import build_trade_analysis, expand_timeline
+from tradeexecutor.analysis.trade_analyser import build_trade_analysis, expand_timeline, TimelineRowStylingMode
 from tradeexecutor.backtest.backtest_runner import run_backtest_inline
 from tradeexecutor.cli.log import setup_pytest_logging
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
@@ -263,10 +263,24 @@ def test_analyse_synthetic_trading_portfolio(
     assert summary.open_value == pytest.approx(0)
 
     timeline = analysis.create_timeline()
-    expanded_timeline, styler = expand_timeline(
+
+    # Test expand timeline both colouring modes
+    df, apply_styles = expand_timeline(
         universe.universe.exchanges,
         universe.universe.pairs,
-        timeline)
+        timeline,
+        row_styling_mode=TimelineRowStylingMode.gradient,
+    )
+    # https://github.com/pandas-dev/pandas/issues/19358#issuecomment-359733504
+    apply_styles(df).render()
+
+    expanded_timeline, apply_styles = expand_timeline(
+        universe.universe.exchanges,
+        universe.universe.pairs,
+        timeline,
+        row_styling_mode=TimelineRowStylingMode.simple,
+    )
+    apply_styles(df).render()
 
     # Do checks for the first position
     # 0    1          2021-07-01   8 days                      WETH        USDC         $2,027.23    $27.23    2.72%   0.027230  $1,617.294181   $1,661.333561            2

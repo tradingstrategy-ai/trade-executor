@@ -64,6 +64,30 @@ class Portfolio:
         """This portfolio has no open or past trades or any reserves."""
         return len(self.open_positions) == 0 and len(self.reserves) == 0 and len(self.closed_positions) == 0
 
+    def get_position_by_id(self, position_id: int) -> TradingPosition:
+        """Get any position open/closed/frozen by id.
+
+        :param position_id:
+            Internal running counter id for the position inside
+            this portfolio.
+
+        :return:
+            Always returns or fails with py:class:`AssertionError`.
+        """
+        p1 = self.open_positions.get(position_id)
+        p2 = self.closed_positions.get(position_id)
+        if p2:
+            # Sanity check we do not have the same position in multiple tables
+            assert not p1
+        p3 = self.frozen_positions.get(position_id)
+        if p3:
+            # Sanity check we do not have the same position in multiple tables
+            assert not (p1 or p2)
+
+        assert p1 or p2 or p3
+
+        return p1 or p2 or p3
+
     def get_all_positions(self) -> Iterable[TradingPosition]:
         """Get open, closed and frozen, positions."""
         return chain(self.open_positions.values(), self.closed_positions.values(), self.frozen_positions.values())

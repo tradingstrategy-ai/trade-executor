@@ -16,6 +16,14 @@ from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.routing import RoutingModel, RoutingState
 
 
+class AutoClosingOrderUnsupported(Exception):
+    """Raised when trade execution does not support stop loss/take profit.
+
+    Stop loss handling requires special support from the trade execution engine.
+    See :py:meth:`ExecutionModel.is_stop_loss_supported` for more details.
+    """
+
+
 class ExecutionModel(abc.ABC):
     """Define how trades are executed.
 
@@ -41,6 +49,15 @@ class ExecutionModel(abc.ABC):
         TODO: API Unfinished
         """
 
+    @abc.abstractmethod
+    def is_stop_loss_supported(self) -> bool:
+        """Do we support stop-loss/take profit functionality with this execution model?
+
+        - For backtesting we need to have data stream for candles used to calculate stop loss
+
+        - For production execution, we need to have special oracle data streams
+          for checking real-time stop loss
+        """
 
     @abc.abstractmethod
     def execute_trades(self,

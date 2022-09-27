@@ -18,6 +18,7 @@ Example analysis include:
 
 """
 import datetime
+import enum
 from dataclasses import dataclass, field
 from typing import List, Dict, Iterable, Optional, Tuple, Callable, Set
 
@@ -26,16 +27,17 @@ import pandas as pd
 from dataclasses_json import dataclass_json, Exclude, config
 
 from tradeexecutor.state.portfolio import Portfolio
-from tradeexecutor.state.trade import TradeExecution
+from tradeexecutor.state.trade import TradeExecution, TradeType
 from tradeexecutor.utils.format import calculate_percentage
 from tradeexecutor.utils.timestamp import json_encode_timedelta, json_decode_timedelta
-from tradingstrategy.analysis.tradehint import TradeHint, TradeHintType
+
 from tradingstrategy.exchange import Exchange
 from tradingstrategy.pair import PandasPairUniverse
 from tradingstrategy.types import PrimaryKey, USDollarAmount
 from tradingstrategy.utils.format import format_value, format_price, format_duration_days_hours_mins, \
     format_percent_2_decimals
 from tradingstrategy.utils.summarydataframe import as_dollar, as_integer, create_summary_table, as_percent, as_duration
+
 
 
 @dataclass
@@ -67,7 +69,7 @@ class SpotTrade:
     slippage: USDollarAmount
 
     #: Any hints applied for this trade why it was performed
-    hint: Optional[TradeHint] = None
+    trade_type: Optional[TradeType] = None
 
     #: Internal state dump of the algorithm when this trade was made.
     #: This is mostly useful when doing the trade analysis try to understand
@@ -228,9 +230,15 @@ class TradePosition:
     def is_stop_loss(self) -> bool:
         """Was stop loss triggered for this position"""
         for t in self.trades:
-            if t.hint:
-                if t.hint.type == TradeHintType.stop_loss_triggered:
-                    return True
+            if t.trade_type == TradeType.stop_loss:
+                return True
+        return False
+
+    def is_take_profit(self) -> bool:
+        """Was trake profit triggered for this position"""
+        for t in self.trades:
+            if t.trade_type == TradeType.take_profit:
+                return True
         return False
 
     def add_trade(self, t: SpotTrade):
@@ -481,6 +489,92 @@ class TradeAnalysis:
         return df
 
 
+class TimelineRowStylingMode(enum.Enum):
+
+    #: Style using Pandas background_gradient
+    gradient = "gradient"
+
+    #: Simple
+    #: Profit = green, loss = red
+    simple = "simple"
+
+
+class TimelineStyler:
+    """Style the expanded trades timeline table.
+
+    Give HTML hints for DataFrame how it should be rendered
+    in the notebook output.
+    """
+
+    def __init__(self,
+                 row_styling: TimelineRowStylingMode,
+                 hidden_columns: List[str],
+                 vmin: float,
+                 vmax: float,
+                 ):
+        self.row_styling = row_styling
+        self.hidden_columns = hidden_columns
+        self.vmin = vmin
+        self.vmax = vmax
+
+    def colour_timelime_row_simple(self, row: pd.Series) -> pd.Series:
+        """Set colour for each timeline row based on its profit.
+
+        - +/- 5% colouring
+
+        - More information: https://stackoverflow.com/a/49745352/315168
+
+        - CSS colours: https://htmlcolorcodes.com/color-names/
+        """
+
+        pnl_raw = row["PnL % raw"]
+
+        if pnl_raw < -0.05:
+            return pd.Series('background-color: Salmon', row.index)
+        elif pnl_raw < 0:
+            return pd.Series('background-color: LightSalmon', row.index)
+        elif pnl_raw > 0.05:
+            return pd.Series('background-color: LawnGreen', row.index)
+        else:
+            return pd.Series('background-color: PaleGreen', row.index)
+
+    def __call__(self, df: pd.DataFrame):
+        """Applies styles on a dataframe
+
+        :param df:
+            Dataframe as returned by :py:func`expand_timeline`.
+        """
+        # Create a Pandas Styler with multiple styling options applied
+        try:
+            styles = df.style\
+                .hide(axis="index")\
+                .hide(axis="columns", subset=self.hidden_columns)
+        except KeyError:
+            # The input df was empty (no trades)
+            styles = df.style
+
+        # Don't let the text inside a cell to wrap
+        styles = styles.set_table_styles({
+            "Opened at": [{'selector': 'td', 'props': [('white-space', 'nowrap')]}],
+            "Exchange": [{'selector': 'td', 'props': [('white-space', 'nowrap')]}],
+        })
+
+        if self.row_styling == TimelineRowStylingMode.gradient:
+            # Dynamically color the background of trade outcome coluns # https://pandas.pydata.org/docs/reference/api/pandas.io.formats.style.Styler.background_gradient.html
+            # TODO: This gradient styling is confusing
+            # get rid of it long term
+            styles = styles.background_gradient(
+                axis=0,
+                gmap=df['PnL % raw'],
+                cmap='RdYlGn',
+                vmin=self.vmin,  # We can only lose 100% of our money on position
+                vmax=self.vmax)  # 50% profit is 21.5 position. Assume this is the max success color we can hit over
+        else:
+            styles = styles.apply(self.colour_timelime_row_simple, axis=1)
+
+        return styles
+
+
 def expand_timeline(
         exchanges: Set[Exchange],
         pair_universe: PandasPairUniverse,
@@ -488,7 +582,9 @@ def expand_timeline(
         vmin=-0.3,
         vmax=0.2,
         timestamp_format="%Y-%m-%d",
-        hidden_columns=["Id", "PnL % raw"]) -> Tuple[pd.DataFrame, Callable]:
+        hidden_columns=["Id", "PnL % raw"],
+        row_styling_mode=TimelineRowStylingMode.simple,
+) -> Tuple[pd.DataFrame, TimelineStyler]:
     """Expand trade history timeline to human readable table.
 
     This will the outputting much easier in Python Notebooks.
@@ -511,7 +607,7 @@ def expand_timeline(
 
     :param hidden_columns: Hide columns in the output table
 
-    :return: DataFrame with human readable position win/loss information, having DF indexed by timestamps and a styler function
+    :return: DataFrame with human=readable position win/loss information, having DF indexed by timestamps and a styler function
     """
 
     exchange_map = {e.exchange_id: e for e in exchanges}
@@ -526,7 +622,12 @@ def expand_timeline(
         if not exchange:
             raise RuntimeError(f"No exchange for id {pair_info.exchange_id}, pair {pair_info}")
 
-        remarks = "SL" if position.is_stop_loss() else ""
+        if position.is_stop_loss():
+            remarks = "SL"
+        elif position.is_take_profit():
+            remarks = "TP"
+        else:
+            remarks = ""
 
         r = {
             # "timestamp": timestamp,
@@ -558,30 +659,14 @@ def expand_timeline(
     # https://stackoverflow.com/a/28390992/315168
     applied_df.fillna('', inplace=True)
 
-    def apply_styles(df: pd.DataFrame):
-        # Create a Pandas Styler with multiple styling options applied
-        # Dynamically color the background of trade outcome coluns # https://pandas.pydata.org/docs/reference/api/pandas.io.formats.style.Styler.background_gradient.html
-        try:
-            styles = df.style\
-                .hide(axis="index")\
-                .hide(axis="columns", subset=hidden_columns)\
-                .background_gradient(
-                    axis=0,
-                    gmap=applied_df['PnL % raw'],
-                    cmap='RdYlGn',
-                    vmin=vmin,  # We can only lose 100% of our money on position
-                    vmax=vmax)  # 50% profit is 21.5 position. Assume this is the max success color we can hit over
-        except KeyError:
-            # The input df was empty (no trades)
-            styles = df.style
-        # Don't let the text inside a cell to wrap
-        styles = styles.set_table_styles({
-            "Opened at": [{'selector': 'td', 'props': [('white-space', 'nowrap')]}],
-            "Exchange": [{'selector': 'td', 'props': [('white-space', 'nowrap')]}],
-        })
-        return styles
+    styling = TimelineStyler(
+        row_styling=row_styling_mode,
+        hidden_columns=hidden_columns,
+        vmin=vmin,
+        vmax=vmax,
+    )
 
-    return applied_df, apply_styles
+    return applied_df, styling
 
 
 def build_trade_analysis(portfolio: Portfolio) -> TradeAnalysis:
@@ -642,7 +727,7 @@ def build_trade_analysis(portfolio: Portfolio) -> TradeAnalysis:
                 quantity=quantity,
                 commission=0,
                 slippage=0,  # TODO
-                # hint=hint,
+                trade_type=trade.trade_type,
             )
             history.add_trade(spot_trade)
 
