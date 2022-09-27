@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="VcsDirectoryMappings">
+    <mapping directory="$PROJECT_DIR$" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/deps/trading-strategy" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/deps/trading-strategy/tradingstrategy/chains" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/deps/web3-ethereum-defi" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/deps/web3-ethereum-defi/contracts/sushiswap" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/deps/web3-ethereum-defi/contracts/uniswap-v3-core" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/deps/web3-ethereum-defi/contracts/uniswap-v3-periphery" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/spec" vcs="Git" />
+  </component>
+</project>
