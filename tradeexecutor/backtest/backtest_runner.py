@@ -433,10 +433,12 @@ def run_backtest_inline(
     wallet = SimulatedWallet()
     deposit_syncer = BacktestSyncer(wallet, Decimal(initial_deposit))
 
+    stop_loss_data_available = universe.has_stop_loss_data() if universe else False
+
     execution_model = BacktestExecutionModel(
         wallet,
         max_slippage,
-        stop_loss_data_available=universe.has_stop_loss_data(),
+        stop_loss_data_available=stop_loss_data_available,
     )
 
     if universe:
