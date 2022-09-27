@@ -8,3 +8,6 @@ dist
 .cache
 cache
 .python-version
+
+# PyCharm
+.idea
