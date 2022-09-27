@@ -100,7 +100,7 @@ def visualise_trades(
 
     # If we have used stop loss, do different categories
     advanced_trade_types = ("stop-loss", "take-profit")
-    advanced_trades = any(trades_df.loc[trades_df["type"].isin(advanced_trade_types)])
+    advanced_trades = len(trades_df.loc[trades_df["type"].isin(advanced_trade_types)]) > 0
 
     if advanced_trades:
         buys_df = trades_df.loc[trades_df["type"] == "buy"]
