@@ -8,6 +8,8 @@ import enum
 from dataclasses import dataclass
 from typing import Callable
 
+from tradeexecutor.utils.timer import timed_task
+
 
 class ExecutionMode(enum.Enum):
     """Different execution modes the strategy engine can hvae."""
@@ -60,10 +62,14 @@ class ExecutionContext:
     mode: ExecutionMode
 
     #: Python context manager for timed tasks.
+    #:
     #: Functions can use this context manager to add them to the tracing.
     #: Used for profiling the strategy code run-time performance.
-    #: See :py:mod:`tradeexecutor.utils.timer`.
-    timed_task_context_manager: Callable
+    #:
+    #: Set default to :py:func:`tradeexecutor.utils.timer.timed_task`.
+    #: which logs task duration using logging.INFO level.
+    #:
+    timed_task_context_manager: Callable = timed_task
 
     @property
     def live_trading(self) -> bool:

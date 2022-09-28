@@ -172,7 +172,21 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             liquidity=liquidity_universe,
         )
 
-        return TradingStrategyUniverse(universe=universe, reserve_assets=reserve_assets)
+        if dataset.backtest_stop_loss_candles is not None:
+            stop_loss_candle_universe = GroupedCandleUniverse(
+                dataset.backtest_stop_loss_candles,
+                time_bucket=dataset.backtest_stop_loss_time_bucket)
+        else:
+            stop_loss_candle_universe = None
+
+        # TODO: Not sure if we need to be smarter about stop loss candle
+        # data handling here
+        return TradingStrategyUniverse(
+            universe=universe,
+            reserve_assets=reserve_assets,
+            backtest_stop_loss_time_bucket=dataset.backtest_stop_loss_time_bucket,
+            backtest_stop_loss_candles=stop_loss_candle_universe,
+        )
 
     @staticmethod
     def create_limited_pair_universe(
@@ -255,13 +269,20 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             liquidity=liquidity_universe,
         )
 
+        if dataset.backtest_stop_loss_candles is not None:
+            stop_loss_candle_universe = GroupedCandleUniverse(
+                dataset.backtest_stop_loss_candles,
+                time_bucket=dataset.backtest_stop_loss_time_bucket)
+        else:
+            stop_loss_candle_universe = None
+
         # TODO: Not sure if we need to be smarter about stop loss candle
         # data handling here
         return TradingStrategyUniverse(
             universe=universe,
             reserve_assets=reserve_assets,
             backtest_stop_loss_time_bucket=dataset.backtest_stop_loss_time_bucket,
-            backtest_stop_loss_candles=dataset.backtest_stop_loss_candles,
+            backtest_stop_loss_candles=stop_loss_candle_universe,
         )
 
     def get_pair_by_address(self, address: str) -> Optional[TradingPairIdentifier]:
