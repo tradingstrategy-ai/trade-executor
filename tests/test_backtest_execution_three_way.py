@@ -96,6 +96,56 @@ def universe(request, persistent_test_client, execution_context) -> TradingStrat
 
 
 @pytest.fixture(scope="module")
+def stop_loss_universe(request, persistent_test_client, execution_context) -> TradingStrategyUniverse:
+    """Backtesting data universe w/stop loss data.
+
+    This contains only data for WBNB-BUSD pair on PancakeSwap v2 since 2021-01-01.
+    """
+
+    client = persistent_test_client
+
+    # Time bucket for our candles
+    candle_time_bucket = TimeBucket.d1
+
+    stop_loss_time_bucket = TimeBucket.h4
+
+    # Which chain we are trading
+    chain_id = ChainId.bsc
+
+    # Which exchange we are trading on.
+    exchange_slug = "pancakeswap-v2"
+
+    # Which trading pair we are trading
+    trading_pairs = {
+        ("WBNB", "BUSD"),
+        ("Cake", "WBNB"),
+    }
+
+    # Load all datas we can get for our candle time bucket
+    dataset = load_pair_data_for_single_exchange(
+        client,
+        execution_context,
+        candle_time_bucket,
+        chain_id,
+        exchange_slug,
+        trading_pairs,
+        stop_loss_time_bucket=stop_loss_time_bucket,
+    )
+
+    # Filter down to the single pair we are interested in
+    universe = TradingStrategyUniverse.create_limited_pair_universe(
+        dataset,
+        chain_id,
+        exchange_slug,
+        trading_pairs,
+        reserve_asset_pair_ticker=("WBNB", "BUSD")
+    )
+
+    assert universe.has_stop_loss_data()
+    return universe
+
+
+@pytest.fixture(scope="module")
 def wbnb(request, universe) -> AssetIdentifier:
     """WBNB asset."""
     token = translate_token(universe.universe.pairs.get_token("0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c"))
@@ -239,4 +289,10 @@ def test_buy_sell_three_way_backtest(
     # Check our wallet was credited
     assert wallet.get_balance(busd.address) == pytest.approx(Decimal('9999.990999999999889294777233'))
     assert wallet.get_balance(cake.address) == 0
+
+
+def test_load_backtesting_data_with_stop_loss(stop_loss_universe: TradingStrategyUniverse):
+    """We load backtesting data with stop loss."""
+    assert stop_loss_universe.has_stop_loss_data()
+    assert stop_loss_universe.backtest_stop_loss_time_bucket == TimeBucket.h4
 

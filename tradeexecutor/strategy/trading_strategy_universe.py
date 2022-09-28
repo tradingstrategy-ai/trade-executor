@@ -255,7 +255,14 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             liquidity=liquidity_universe,
         )
 
-        return TradingStrategyUniverse(universe=universe, reserve_assets=reserve_assets)
+        # TODO: Not sure if we need to be smarter about stop loss candle
+        # data handling here
+        return TradingStrategyUniverse(
+            universe=universe,
+            reserve_assets=reserve_assets,
+            backtest_stop_loss_time_bucket=dataset.backtest_stop_loss_time_bucket,
+            backtest_stop_loss_candles=dataset.backtest_stop_loss_candles,
+        )
 
     def get_pair_by_address(self, address: str) -> Optional[TradingPairIdentifier]:
         """Get a trading pair data by a smart contract address."""
@@ -726,6 +733,7 @@ def load_pair_data_for_single_exchange(
         exchange_slug: str,
         pair_tickers: Set[Tuple[str, str]],
         liquidity=False,
+        stop_loss_time_bucket: Optional[TimeBucket]=None,
 ) -> Dataset:
     """Load pair data for a single decentralised exchange.
 
@@ -793,6 +801,10 @@ def load_pair_data_for_single_exchange(
     :param liquidity:
         Set true to load liquidity data as well
 
+    :param stop_loss_time_bucket:
+        If set load stop loss trigger
+        data using this candle granularity.
+
     :param execution_context:
         Defines if we are live or backtesting
     """
@@ -842,6 +854,16 @@ def load_pair_data_for_single_exchange(
             progress_bar_description=desc,
         )
 
+        if stop_loss_time_bucket:
+            stop_loss_desc = f"Loading granular price data for stop loss/take profit for {exchange_slug}"
+            stop_loss_candles = client.fetch_candles_by_pair_ids(
+                our_pair_ids,
+                time_bucket,
+                progress_bar_description=stop_loss_desc,
+            )
+        else:
+            stop_loss_candles = None
+
         if liquidity:
             raise NotImplemented("Partial liquidity data loading is not yet supported")
 
@@ -850,5 +872,7 @@ def load_pair_data_for_single_exchange(
             exchanges=exchanges,
             pairs=our_pairs,
             candles=candles,
-            liquidity=None
+            liquidity=None,
+            backtest_stop_loss_time_bucket=stop_loss_time_bucket,
+            backtest_stop_loss_candles=stop_loss_candles,
         )
