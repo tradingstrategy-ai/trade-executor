@@ -442,7 +442,10 @@ def run_backtest_inline(
     )
 
     if universe:
-        assert routing_model
+        if not routing_model:
+            assert trade_routing, "You just give either routing_mode or trade_routing"
+            assert reserve_currency, "Reserve current must be given to generate routing model"
+            routing_model = get_backtest_routing_model(trade_routing, reserve_currency)
         pricing_model = BacktestSimplePricingModel(universe.universe.candles, routing_model)
     else:
         assert create_trading_universe, "Must give create_trading_universe if no universe given"

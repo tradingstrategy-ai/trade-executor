@@ -249,7 +249,7 @@ class ExecutionLoop:
             Trading universe containing price data for stoploss checks.
         """
 
-        assert universe.backtest_stop_loss_candles
+        assert universe.backtest_stop_loss_candles is not None
 
         # What is the granularity of our price feed
         # for stop loss checks.
@@ -333,7 +333,7 @@ class ExecutionLoop:
 
                 # If we have stop loss checks enabled on a separate price feed,
                 # run backtest stop loss checks until the next time
-                if universe.backtest_stop_loss_candles:
+                if universe.backtest_stop_loss_candles is not None:
                     self.run_backtest_stop_loss_checks(
                         ts,
                         next_tick,
