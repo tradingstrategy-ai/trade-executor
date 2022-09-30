@@ -8,7 +8,7 @@ from eth_defi.uniswap_v2.deployment import UniswapV2Deployment
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradingstrategy.chain import ChainId
 from tradingstrategy.exchange import ExchangeUniverse, Exchange, ExchangeType
-from tradingstrategy.pair import DEXPair, PandasPairUniverse, PairType
+from tradingstrategy.pair import DEXPair, PandasPairUniverse
 
 
 def create_pair_universe(web3: Web3, exchange: Exchange, pairs: List[TradingPairIdentifier]) -> PandasPairUniverse:
@@ -31,7 +31,7 @@ def create_pair_universe(web3: Web3, exchange: Exchange, pairs: List[TradingPair
             exchange_id=exchange.exchange_id if exchange else 1,
             exchange_address=p.exchange_address if exchange else None,
             address=p.pool_address,
-            dex_type=PairType.uniswap_v2,
+            dex_type=ExchangeType.uniswap_v2,
             base_token_symbol=p.base.token_symbol,
             quote_token_symbol=p.quote.token_symbol,
             token0_symbol=p.base.token_symbol,
