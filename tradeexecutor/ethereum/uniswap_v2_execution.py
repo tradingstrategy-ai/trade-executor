@@ -67,8 +67,12 @@ class UniswapV2ExecutionModel(ExecutionModel):
         """Which chain the live execution is connected to."""
         return self.web3.eth.chain_id
 
-    def is_live_trading(self):
+    def is_live_trading(self) -> bool:
         return True
+
+    def is_stop_loss_supported(self) -> bool:
+        # TODO: fix this when we want to use stop loss in real strategy
+        return False
 
     def preflight_check(self):
         """Check that we can connect to the web3 node"""
