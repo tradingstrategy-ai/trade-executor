@@ -20,7 +20,7 @@ WORKDIR /usr/src/trade-executor
 COPY . .
 
 RUN poetry config virtualenvs.create false \
-    && poetry install --no-dev --no-interaction --no-ansi
+    && poetry install --no-dev --no-interaction --no-ansi -E qstrader
 
 # Webhook port 3456
 EXPOSE 3456
