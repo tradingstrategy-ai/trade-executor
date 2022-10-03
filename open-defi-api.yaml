@@ -1250,23 +1250,33 @@ paths:
         "200":
           description: JSON dict of impressive numbers
 
-  '/chart-activity':
-    x-pyramid-route-name: web_chart_activity
+  '/activity':
+    x-pyramid-route-name: web_activity
     post:
-      operationId: web_chart_activity
-      summary: Record new user interaction with a frontend chart.
+      operationId: web_activity
+      summary: Record new user activity or interction with the system.
       tags:
         - Telemetry
       parameters:
-        - name: unique_id
+        - name: user_id
           in: query
           description: |
-            A unique identifier for distinguishing chart interactions.
+            A unique user identifier for distinguishing individual interaction occurences.
           required: true
           schema:
             type: string
+          example: "Zm9vIGJhcg=="
 
-        - name: X-Forwarded-For
+        - name: type
+          in: query
+          description: |
+            The type of the user activity such as "chart".
+          required: true
+          schema:
+            type: string
+          example: "chart"
+
+        - name: CF-Connecting-IP
           in: header
           description: |
             IP address of the user who interacted with a chart.
@@ -1288,9 +1298,9 @@ paths:
 
       responses: # list of responses
         "200":
-          description: OK
+          description: 'A static "success" JSON object: {"status": "OK"}'
           content:
-            text/plain:
+            application/json:
               schema:
                 type: string
         "422":
