@@ -151,7 +151,11 @@ class DecideTradesProtocol(Protocol):
 
 
 class CreateTradingUniverseProtocol(Protocol):
-    """A call signature protocol for user's create_trading_universe() functions."""
+    """A call signature protocol for user's create_trading_universe() functions.
+
+    This describes the `create_trading_universe` function in trading strategies
+    using Python's `callback protocol <https://peps.python.org/pep-0544/#callback-protocols>`_ feature.
+    """
 
     def __call__(self,
             timestamp: pandas.Timestamp,
