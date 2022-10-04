@@ -26,49 +26,128 @@ class StrategyModuleNotValid(Exception):
 
 
 class DecideTradesProtocol(Protocol):
-    """A call signature protocol for user's decide_trades() functions."""
+    """A call signature protocol for user's decide_trades() functions.
+
+    This describes the `decide_trades` function parameters
+    using Python's `callback protocol <https://peps.python.org/pep-0544/#callback-protocols>`_ feature.
+    """
 
     def __call__(self,
             timestamp: pandas.Timestamp,
             universe: Universe,
             state: State,
-            price_model: PricingModel,
+            pricing_model: PricingModel,
             cycle_debug_data: Dict) -> List[TradeExecution]:
+            """The brain function to decide the trades on each trading strategy cycle.
+
+            - Reads incoming execution state (positions, past trades),
+              usually by creating a :py:class:`~tradingstrategy.strategy.pandas_trades.position_manager.PositionManager`.
+
+            - Reads the price and volume status of the current trading universe, or OHLCV candles
+
+            - Decides what to do next, by calling `PositionManager` to tell what new trading positions open
+              or close
+
+            - Outputs strategy thinking for visualisation and debug messages
+
+            Example decide_trades function:
+
+            .. code-block:: python
+
+                def decide_trades(
+                    timestamp: pd.Timestamp,
+                    universe: Universe,
+                    state: State,
+                    pricing_model: PricingModel,
+                    cycle_debug_data: Dict) -> List[TradeExecution]:
+
+                    # The pair we are trading
+                    pair = universe.pairs.get_single()
+
+                    # How much cash we have in the hand
+                    cash = state.portfolio.get_current_cash()
+
+                    # Get OHLCV candles for our trading pair as Pandas Dataframe.
+                    # We could have candles for multiple trading pairs in a different strategy,
+                    # but this strategy only operates on single pair candle.
+                    # We also limit our sample size to N latest candles to speed up calculations.
+                    candles: pd.DataFrame = universe.candles.get_single_pair_data(timestamp, sample_count=batch_size)
+
+                    # We have data for open, high, close, etc.
+                    # We only operate using candle close values in this strategy.
+                    close = candles["close"]
+
+                    # Calculate exponential moving averages based on slow and fast sample numbers.
+                    slow_ema_series = ema(close, length=slow_ema_candle_count)
+                    fast_ema_series = ema(close, length=fast_ema_candle_count)
+
+                    if slow_ema_series is None or fast_ema_series is None:
+                        # Cannot calculate EMA, because
+                        # not enough samples in backtesting
+                        return []
+
+                    slow_ema = slow_ema_series.iloc[-1]
+                    fast_ema = fast_ema_series.iloc[-1]
+
+                    # Get the last close price from close time series
+                    # that's Pandas's Series object
+                    # https://pandas.pydata.org/docs/reference/api/pandas.Series.iat.html
+                    current_price = close.iloc[-1]
+
+                    # List of any trades we decide on this cycle.
+                    # Because the strategy is simple, there can be
+                    # only zero (do nothing) or 1 (open or close) trades
+                    # decides
+                    trades = []
+
+                    # Create a position manager helper class that allows us easily to create
+                    # opening/closing trades for different positions
+                    position_manager = PositionManager(timestamp, universe, state, pricing_model)
+
+                    if current_price >= slow_ema:
+                        # Entry condition:
+                        # Close price is higher than the slow EMA
+                        if not position_manager.is_any_open():
+                            buy_amount = cash * position_size
+                            trades += position_manager.open_1x_long(pair, buy_amount)
+                    elif fast_ema >= slow_ema:
+                        # Exit condition:
+                        # Fast EMA crosses slow EMA
+                        if position_manager.is_any_open():
+                            trades += position_manager.close_all()
+
+                    # Visualize strategy
+                    # See available Plotly colours here
+                    # https://community.plotly.com/t/plotly-colours-list/11730/3?u=miohtama
+                    visualisation = state.visualisation
+                    visualisation.plot_indicator(timestamp, "Slow EMA", PlotKind.technical_indicator_on_price, slow_ema, colour="darkblue")
+                    visualisation.plot_indicator(timestamp, "Fast EMA", PlotKind.technical_indicator_on_price, fast_ema, colour="#003300")
+
+                    return trades
+
+            :param timestamp:
+                The Pandas timestamp object for this cycle. Matches
+                trading_strategy_cycle division.
+                Always truncated to the zero seconds and minutes, never a real-time clock.
+
+            :param universe:
+                Trading universe that was constructed earlier.
+
+            :param state:
+                The current trade execution state.
+                Contains current open positions and all previously executed trades.
+
+            :param pricing_model:
+                Position manager helps to create trade execution instructions to open and close positions.
+
+            :param cycle_debug_data:
+                Python dictionary for various debug variables you can read or set, specific to this trade cycle.
+                This data is discarded at the end of the trade cycle.
+
+            :return:
+                List of trade instructions in the form of :py:class:`TradeExecution` instances.
+                The trades can be generated using `position_manager` but strategy could also handcraft its trades.
             """
-
-        The brain function to decide the trades on each trading strategy cycle.
-
-        - Reads incoming execution state (positions, past trades)
-
-        - Reads the current universe (candles)
-
-        - Decides what to do next
-
-        - Outputs strategy thinking for visualisation and debug messages
-
-        :param timestamp:
-            The Pandas timestamp object for this cycle. Matches
-            trading_strategy_cycle division.
-            Always truncated to the zero seconds and minutes, never a real-time clock.
-
-        :param universe:
-            Trading universe that was constructed earlier.
-
-        :param state:
-            The current trade execution state.
-            Contains current open positions and all previously executed trades.
-
-        :param pricing_model:
-            Position manager helps to create trade execution instructions to open and close positions.
-
-        :param cycle_debug_data:
-            Python dictionary for various debug variables you can read or set, specific to this trade cycle.
-            This data is discarded at the end of the trade cycle.
-
-        :return:
-            List of trade instructions in the form of :py:class:`TradeExecution` instances.
-            The trades can be generated using `position_manager` but strategy could also handcraft its trades.
-        """
 
 
 class CreateTradingUniverseProtocol(Protocol):
