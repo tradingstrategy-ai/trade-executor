@@ -25,9 +25,9 @@ from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse, Uni
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId
 from tradingstrategy.client import Client
-from tradingstrategy.exchange import ExchangeUniverse, Exchange
+from tradingstrategy.exchange import ExchangeUniverse, Exchange, ExchangeType
 from tradingstrategy.liquidity import GroupedLiquidityUniverse
-from tradingstrategy.pair import DEXPair, PandasPairUniverse, PairType, resolve_pairs_based_on_ticker, \
+from tradingstrategy.pair import DEXPair, PandasPairUniverse, resolve_pairs_based_on_ticker, \
     filter_for_exchanges, filter_for_quote_tokens, StablecoinFilteringMode, filter_for_stablecoins
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
@@ -688,7 +688,7 @@ def create_pair_universe_from_code(chain_id: ChainId, pairs: List[TradingPairIde
             exchange_id=p.internal_exchange_id,
             address=p.pool_address,
             exchange_address=p.exchange_address,
-            dex_type=PairType.uniswap_v2,
+            dex_type=ExchangeType.uniswap_v2,
             base_token_symbol=p.base.token_symbol,
             quote_token_symbol=p.quote.token_symbol,
             token0_symbol=p.base.token_symbol,
