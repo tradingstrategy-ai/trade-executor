@@ -110,6 +110,10 @@ tags:
     description: Data about trading pair
   - name: Trading signal
     description: Data about trading signals
+  - name: Telemetry
+    description: |
+      Storing events of interest pertaining to the TradingStrategy ecosystem,
+      such as user iteractions with the charts on the website.
 
 servers:
   - url: 'https://tradingstrategy.ai/api/'
@@ -1246,6 +1250,65 @@ paths:
         "200":
           description: JSON dict of impressive numbers
 
+  '/activity':
+    x-pyramid-route-name: web_activity
+    post:
+      operationId: web_activity
+      summary: Record new user activity or interction with the system.
+      tags:
+        - Telemetry
+      parameters:
+        - name: user_id
+          in: query
+          description: |
+            A unique user identifier for distinguishing individual interaction occurences.
+          required: true
+          schema:
+            type: string
+          example: "Zm9vIGJhcg=="
+
+        - name: type
+          in: query
+          description: |
+            The type of the user activity such as "chart".
+          required: true
+          schema:
+            type: string
+          example: "chart"
+
+        - name: CF-Connecting-IP
+          in: header
+          description: |
+            IP address of the user who interacted with a chart.
+          required: false
+          schema:
+            type: string
+          example: "123.45.67.89"
+
+        - name: CF-IPCountry
+          in: header
+          description: |
+            A two-character ISO country code of the user's country.
+          required: false
+          schema:
+            type: string
+            minLength: 2
+            maxLength: 2
+          example: "UK"
+
+      responses: # list of responses
+        "200":
+          description: 'A static "success" JSON object: {"status": "OK"}'
+          content:
+            application/json:
+              schema:
+                type: string
+        "422":
+          description: Unexpected error - usually bad query input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericErrorModel"
 
 
 # An object to hold reusable parts that can be used across the definition
