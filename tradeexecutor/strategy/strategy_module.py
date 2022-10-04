@@ -30,6 +30,83 @@ class DecideTradesProtocol(Protocol):
 
     This describes the `decide_trades` function parameters
     using Python's `callback protocol <https://peps.python.org/pep-0544/#callback-protocols>`_ feature.
+
+    See also :ref:`strategy examples`.
+
+    Example decide_trades function:
+
+    .. code-block:: python
+
+        def decide_trades(
+            timestamp: pd.Timestamp,
+            universe: Universe,
+            state: State,
+            pricing_model: PricingModel,
+            cycle_debug_data: Dict) -> List[TradeExecution]:
+
+            # The pair we are trading
+            pair = universe.pairs.get_single()
+
+            # How much cash we have in the hand
+            cash = state.portfolio.get_current_cash()
+
+            # Get OHLCV candles for our trading pair as Pandas Dataframe.
+            # We could have candles for multiple trading pairs in a different strategy,
+            # but this strategy only operates on single pair candle.
+            # We also limit our sample size to N latest candles to speed up calculations.
+            candles: pd.DataFrame = universe.candles.get_single_pair_data(timestamp, sample_count=batch_size)
+
+            # We have data for open, high, close, etc.
+            # We only operate using candle close values in this strategy.
+            close = candles["close"]
+
+            # Calculate exponential moving averages based on slow and fast sample numbers.
+            slow_ema_series = ema(close, length=slow_ema_candle_count)
+            fast_ema_series = ema(close, length=fast_ema_candle_count)
+
+            if slow_ema_series is None or fast_ema_series is None:
+                # Cannot calculate EMA, because
+                # not enough samples in backtesting
+                return []
+
+            slow_ema = slow_ema_series.iloc[-1]
+            fast_ema = fast_ema_series.iloc[-1]
+
+            # Get the last close price from close time series
+            # that's Pandas's Series object
+            # https://pandas.pydata.org/docs/reference/api/pandas.Series.iat.html
+            current_price = close.iloc[-1]
+
+            # List of any trades we decide on this cycle.
+            # Because the strategy is simple, there can be
+            # only zero (do nothing) or 1 (open or close) trades
+            # decides
+            trades = []
+
+            # Create a position manager helper class that allows us easily to create
+            # opening/closing trades for different positions
+            position_manager = PositionManager(timestamp, universe, state, pricing_model)
+
+            if current_price >= slow_ema:
+                # Entry condition:
+                # Close price is higher than the slow EMA
+                if not position_manager.is_any_open():
+                    buy_amount = cash * position_size
+                    trades += position_manager.open_1x_long(pair, buy_amount)
+            elif fast_ema >= slow_ema:
+                # Exit condition:
+                # Fast EMA crosses slow EMA
+                if position_manager.is_any_open():
+                    trades += position_manager.close_all()
+
+            # Visualize strategy
+            # See available Plotly colours here
+            # https://community.plotly.com/t/plotly-colours-list/11730/3?u=miohtama
+            visualisation = state.visualisation
+            visualisation.plot_indicator(timestamp, "Slow EMA", PlotKind.technical_indicator_on_price, slow_ema, colour="darkblue")
+            visualisation.plot_indicator(timestamp, "Fast EMA", PlotKind.technical_indicator_on_price, fast_ema, colour="#003300")
+
+            return trades
     """
 
     def __call__(self,
@@ -50,80 +127,7 @@ class DecideTradesProtocol(Protocol):
 
             - Outputs strategy thinking for visualisation and debug messages
 
-            Example decide_trades function:
-
-            .. code-block:: python
-
-                def decide_trades(
-                    timestamp: pd.Timestamp,
-                    universe: Universe,
-                    state: State,
-                    pricing_model: PricingModel,
-                    cycle_debug_data: Dict) -> List[TradeExecution]:
-
-                    # The pair we are trading
-                    pair = universe.pairs.get_single()
-
-                    # How much cash we have in the hand
-                    cash = state.portfolio.get_current_cash()
-
-                    # Get OHLCV candles for our trading pair as Pandas Dataframe.
-                    # We could have candles for multiple trading pairs in a different strategy,
-                    # but this strategy only operates on single pair candle.
-                    # We also limit our sample size to N latest candles to speed up calculations.
-                    candles: pd.DataFrame = universe.candles.get_single_pair_data(timestamp, sample_count=batch_size)
-
-                    # We have data for open, high, close, etc.
-                    # We only operate using candle close values in this strategy.
-                    close = candles["close"]
-
-                    # Calculate exponential moving averages based on slow and fast sample numbers.
-                    slow_ema_series = ema(close, length=slow_ema_candle_count)
-                    fast_ema_series = ema(close, length=fast_ema_candle_count)
-
-                    if slow_ema_series is None or fast_ema_series is None:
-                        # Cannot calculate EMA, because
-                        # not enough samples in backtesting
-                        return []
-
-                    slow_ema = slow_ema_series.iloc[-1]
-                    fast_ema = fast_ema_series.iloc[-1]
-
-                    # Get the last close price from close time series
-                    # that's Pandas's Series object
-                    # https://pandas.pydata.org/docs/reference/api/pandas.Series.iat.html
-                    current_price = close.iloc[-1]
-
-                    # List of any trades we decide on this cycle.
-                    # Because the strategy is simple, there can be
-                    # only zero (do nothing) or 1 (open or close) trades
-                    # decides
-                    trades = []
-
-                    # Create a position manager helper class that allows us easily to create
-                    # opening/closing trades for different positions
-                    position_manager = PositionManager(timestamp, universe, state, pricing_model)
-
-                    if current_price >= slow_ema:
-                        # Entry condition:
-                        # Close price is higher than the slow EMA
-                        if not position_manager.is_any_open():
-                            buy_amount = cash * position_size
-                            trades += position_manager.open_1x_long(pair, buy_amount)
-                    elif fast_ema >= slow_ema:
-                        # Exit condition:
-                        # Fast EMA crosses slow EMA
-                        if position_manager.is_any_open():
-                            trades += position_manager.close_all()
-
-                    # Visualize strategy
-                    # See available Plotly colours here
-                    # https://community.plotly.com/t/plotly-colours-list/11730/3?u=miohtama
-                    visualisation = state.visualisation
-                    visualisation.plot_indicator(timestamp, "Slow EMA", PlotKind.technical_indicator_on_price, slow_ema, colour="darkblue")
-                    visualisation.plot_indicator(timestamp, "Fast EMA", PlotKind.technical_indicator_on_price, fast_ema, colour="#003300")
-
-                    return trades
+            See also :ref:`strategy examples`
 
             :param timestamp:
                 The Pandas timestamp object for this cycle. Matches
@@ -155,6 +159,41 @@ class CreateTradingUniverseProtocol(Protocol):
 
     This describes the `create_trading_universe` function in trading strategies
     using Python's `callback protocol <https://peps.python.org/pep-0544/#callback-protocols>`_ feature.
+
+    See also :ref:`strategy examples`.
+
+    Example `create_trading_universe` function:
+
+    .. code-block:: python
+
+        def create_trading_universe(
+                ts: datetime.datetime,
+                client: Client,
+                execution_context: ExecutionContext,
+                candle_time_frame_override: Optional[TimeBucket]=None,
+        ) -> TradingStrategyUniverse:
+
+            # Load all datas we can get for our candle time bucket
+            dataset = load_pair_data_for_single_exchange(
+                client,
+                execution_context,
+                candle_time_bucket,
+                chain_id,
+                exchange_slug,
+                [trading_pair_ticker],
+                stop_loss_time_bucket=stop_loss_time_bucket,
+                )
+
+            # Filter down to the single pair we are interested in
+            universe = TradingStrategyUniverse.create_single_pair_universe(
+                dataset,
+                chain_id,
+                exchange_slug,
+                trading_pair_ticker[0],
+                trading_pair_ticker[1],
+            )
+
+            return universe
     """
 
     def __call__(self,
@@ -163,6 +202,8 @@ class CreateTradingUniverseProtocol(Protocol):
             execution_context: ExecutionContext,
             candle_time_frame_override: Optional[TimeBucket]=None) -> TradingStrategyUniverse:
         """Creates the trading universe where the strategy trades.
+
+        See also :ref:`strategy examples`
 
         If `execution_context.live_trading` is true then this function is called for
         every execution cycle. If we are backtesting, then this function is
