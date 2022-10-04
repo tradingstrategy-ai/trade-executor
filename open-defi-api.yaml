@@ -243,7 +243,7 @@ paths:
         - name: address
           in: query
           description: |
-            Get all DEX venues by token contract address.
+            Get all DEX venues of a token by token contract address.
 
           required: false
           schema:
