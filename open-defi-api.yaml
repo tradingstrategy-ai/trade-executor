@@ -243,6 +243,16 @@ paths:
           required: false
           schema:
             type: string
+
+        - name: address
+          in: query
+          description: |
+            Get all DEX venues of a token by token contract address.
+
+          required: false
+          schema:
+            type: string
+
         - name: sort
           in: query
           description: |
