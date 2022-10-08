@@ -80,6 +80,9 @@ class UniswapV2ExecutionModelVersion0(ExecutionModel):
     def is_live_trading(self):
         return True
 
+    def is_stop_loss_supported(self) -> bool:
+        return False
+
     def preflight_check(self):
         """Check that we can connect to the web3 node"""
 

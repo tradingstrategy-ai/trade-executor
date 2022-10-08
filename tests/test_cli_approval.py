@@ -295,11 +295,11 @@ def test_cli_approve_trades(
     debug_details = {}
     if recorded_input:
         # See hints at https://github.com/MarcoMernberger/mgenomicsremotemail/blob/ac5fbeaf02ae80b0c573c6361c9279c540b933e4/tests/tmp.py#L27
-        inp = create_pipe_input()
-        keys = " \t\r"  # Toggle checkbox with space, tab to ok, press enter
-        inp.send_text(keys)
-        with create_app_session(input=inp, output=DummyOutput()):
-            runner.tick(datetime.datetime(2020, 1, 1), executor_universe, state, debug_details)
+        with create_pipe_input() as inp:
+            keys = " \t\r"  # Toggle checkbox with space, tab to ok, press enter
+            inp.send_text(keys)
+            with create_app_session(input=inp, output=DummyOutput()):
+                runner.tick(datetime.datetime(2020, 1, 1), executor_universe, state, debug_details)
     else:
         runner.tick(datetime.datetime(2020, 1, 1), executor_universe, state, debug_details)
 
@@ -349,11 +349,11 @@ def test_cli_disapprove_trades(
     debug_details = {}
     if recorded_input:
         # See hints at https://github.com/MarcoMernberger/mgenomicsremotemail/blob/ac5fbeaf02ae80b0c573c6361c9279c540b933e4/tests/tmp.py#L27
-        inp = create_pipe_input()
-        keys = "\t\r"  # Skip checkbox with tab, press enter
-        inp.send_text(keys)
-        with create_app_session(input=inp, output=DummyOutput()):
-            runner.tick(datetime.datetime(2020, 1, 1), executor_universe, state, debug_details)
+        with create_pipe_input() as inp:
+            keys = "\t\r"  # Skip checkbox with tab, press enter
+            inp.send_text(keys)
+            with create_app_session(input=inp, output=DummyOutput()):
+                runner.tick(datetime.datetime(2020, 1, 1), executor_universe, state, debug_details)
     else:
         runner.tick(datetime.datetime(2020, 1, 1), executor_universe, state, debug_details)
 
