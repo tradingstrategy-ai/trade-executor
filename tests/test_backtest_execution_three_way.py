@@ -3,6 +3,7 @@
 import os
 import datetime
 import logging
+import math
 from decimal import Decimal
 
 import pytest
@@ -296,3 +297,7 @@ def test_load_backtesting_data_with_stop_loss(stop_loss_universe: TradingStrateg
     assert stop_loss_universe.has_stop_loss_data()
     assert stop_loss_universe.backtest_stop_loss_time_bucket == TimeBucket.h4
 
+    # there should be ~6 times 4h candles than 1d candles in the same period
+    backtest_candle_count = len(stop_loss_universe.universe.candles.df)
+    stop_loss_candle_count = len(stop_loss_universe.backtest_stop_loss_candles.df)
+    assert math.ceil(stop_loss_candle_count / backtest_candle_count) == 6

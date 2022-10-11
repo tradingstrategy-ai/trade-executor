@@ -336,6 +336,9 @@ def test_synthetic_data_backtest_stop_loss(
     assert universe.backtest_stop_loss_candles
     assert universe.backtest_stop_loss_time_bucket
 
+    assert len(universe.universe.candles.df) == 214
+    assert len(universe.backtest_stop_loss_candles.df) == 5136
+
     # Expect backtesting for 213 days
     assert len(debug_dump) == 213
 

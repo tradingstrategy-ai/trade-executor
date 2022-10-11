@@ -879,7 +879,7 @@ def load_pair_data_for_single_exchange(
             stop_loss_desc = f"Loading granular price data for stop loss/take profit for {exchange_slug}"
             stop_loss_candles = client.fetch_candles_by_pair_ids(
                 our_pair_ids,
-                time_bucket,
+                stop_loss_time_bucket,
                 progress_bar_description=stop_loss_desc,
             )
         else:
