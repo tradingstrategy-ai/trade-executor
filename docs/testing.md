@@ -27,7 +27,7 @@ npm install -g ganache
 Make sure you install with the optional QSTrader dependency:
 
 ```
-poetry install -E qstrader
+poetry install -E qstrader -E web-server -E execution
 ```
 
 ## Running
