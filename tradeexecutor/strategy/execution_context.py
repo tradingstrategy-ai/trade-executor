@@ -37,16 +37,28 @@ class ExecutionMode(enum.Enum):
     #:
     unit_testing_trading = "unit_testing_trading"
 
+    #: Simulated trading: Blockchain we are connected is not real.
+    #:
+    #: We are trading against a simulated step-by-step blockchain
+    #: like EthereumTester. This allows us to control
+    #: block production, but otherwise behave as
+    #: live trading.
+    #:
+    #: In this mode, we are also not using any dataset loading features,
+    #: but the trading universe and price feeds are typed in the test code.
+    #:
+    simulated_trading = "simulated_trading"
+
     def is_live_trading(self) -> bool:
-        """Are we trading with real money or paper money real time?"""
-        return self in (self.real_trading, self.paper_trading, self.unit_testing_trading)
+        """Are we trading  real time?"""
+        return self in (self.real_trading, self.paper_trading, self.unit_testing_trading, self.simulated_trading)
 
     def is_fresh_data_always_needed(self):
         """Should we purge caches for each trade cycle.
 
         This will force the redownload of data on each cycle.
         """
-        return self in (self.real_trading, self.paper_trading)
+        return self in (self.real_trading, self.paper_trading, self.simulated_trading)
 
 
 @dataclass
@@ -79,4 +91,4 @@ class ExecutionContext:
             True if we doing live trading or paper trading.
              False if we are operating on backtesting data.
         """
-        return self.mode in (ExecutionMode.real_trading, ExecutionMode.paper_trading)
+        return self.mode in (ExecutionMode.real_trading, ExecutionMode.paper_trading, ExecutionMode.simulated_trading)

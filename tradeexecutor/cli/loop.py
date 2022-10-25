@@ -6,7 +6,7 @@ import pickle
 import random
 from pathlib import Path
 from queue import Queue
-from typing import Optional, Callable
+from typing import Optional, Callable, Protocol
 
 from apscheduler.executors.pool import ThreadPoolExecutor
 from apscheduler.schedulers.blocking import BlockingScheduler
@@ -22,6 +22,7 @@ from tradeexecutor.strategy.approval import ApprovalModel
 from tradeexecutor.strategy.description import StrategyExecutionDescription
 from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.strategy.execution_context import ExecutionMode, ExecutionContext
+from tradeexecutor.strategy.factory import StrategyFactory
 from tradeexecutor.strategy.pricing_model import PricingModelFactory
 from tradeexecutor.strategy.runner import StrategyRunner
 from tradeexecutor.strategy.cycle import CycleDuration, snap_to_next_tick, snap_to_previous_tick, round_datetime_up
@@ -52,7 +53,7 @@ class ExecutionLoop:
             valuation_model_factory: ValuationModelFactory,
             store: StateStore,
             client: Optional[Client],
-            strategy_factory: Callable,
+            strategy_factory: StrategyFactory,
             cycle_duration: CycleDuration,
             stats_refresh_frequency: datetime.timedelta,
             max_data_delay: Optional[datetime.timedelta]=None,

@@ -1,25 +1,43 @@
-"""Stop loss using live uniswap price feed."""
+"""Stop loss using live uniswap price feed.
+
+"""
 import datetime
 import secrets
 from decimal import Decimal
+from typing import List
 
 import pytest
+import pandas as pd
+from eth_account.signers.local import LocalAccount
+
 from eth_defi.uniswap_v2.swap import swap_with_slippage_protection
 from eth_typing import HexAddress
 from hexbytes import HexBytes
+from tradingstrategy.candle import GroupedCandleUniverse
+from tradingstrategy.chain import ChainId
+from tradingstrategy.liquidity import GroupedLiquidityUniverse
+from tradingstrategy.timebucket import TimeBucket
+from tradingstrategy.universe import Universe
 from web3 import EthereumTesterProvider, Web3
 from web3.contract import Contract
 from eth_defi.token import create_token
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, deploy_trading_pair, deploy_uniswap_v2_like
+
+from tradeexecutor.cli.loop import ExecutionLoop
 from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2SimpleRoutingModel
-from tradeexecutor.strategy.trading_strategy_universe import translate_trading_pair
+from tradeexecutor.state.state import State
+from tradeexecutor.state.trade import TradeExecution
+from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
+from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
+from tradeexecutor.strategy.pricing_model import PricingModel
+from tradeexecutor.strategy.trading_strategy_universe import translate_trading_pair, TradingStrategyUniverse
 from tradingstrategy.exchange import ExchangeUniverse
 from tradingstrategy.pair import PandasPairUniverse
 
 from tradeexecutor.ethereum.uniswap_v2_live_pricing import UniswapV2LivePricing
 from tradeexecutor.ethereum.universe import create_exchange_universe, create_pair_universe
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
-
+from tradeexecutor.testing.simulated_execution_loop import set_up_simulated_execution_loop_uniswap_v2
 
 #: How much values we allow to drift.
 #: A hack fix receiving different decimal values on Github CI than on a local
@@ -173,6 +191,12 @@ def aave_weth_pair(uniswap_v2, aave_weth_uniswap_trading_pair, asset_aave, asset
 
 
 @pytest.fixture()
+def exchange_universe(web3, uniswap_v2: UniswapV2Deployment) -> ExchangeUniverse:
+    """We trade on one Uniswap v2 deployment on tester."""
+    return create_exchange_universe(web3, [uniswap_v2])
+
+
+@pytest.fixture()
 def pair_universe(web3, exchange_universe: ExchangeUniverse, weth_usdc_pair, aave_weth_pair) -> PandasPairUniverse:
     exchange = next(iter(exchange_universe.exchanges.values()))  # Get the first exchange from the universe
     return create_pair_universe(web3, exchange, [weth_usdc_pair, aave_weth_pair])
@@ -199,7 +223,7 @@ def routing_model(uniswap_v2, asset_usdc, asset_weth, weth_usdc_pair) -> Uniswap
 
 
 @pytest.fixture()
-def trader(web3, deployer, usdc_token) -> HexAddress:
+def trader(web3, deployer, usdc_token) -> LocalAccount:
     """Trader account.
 
     - Start with piles of ETH
@@ -220,27 +244,108 @@ def trader(web3, deployer, usdc_token) -> HexAddress:
     return trader
 
 
+def decide_trades(
+        timestamp: pd.Timestamp,
+        universe: Universe,
+        state: State,
+        pricing_model: PricingModel,
+        cycle_debug_data: dict) -> List[TradeExecution]:
+    """Opens new buy and hold position for $1000 if no position is open."""
+
+    # The pair we are trading
+    pair = universe.pairs.get_single()
+
+    # Open for 1,000 USD
+    position_size = 1000_00
+
+    # List of any trades we decide on this cycle.
+    # Because the strategy is simple, there can be
+    # only zero (do nothing) or 1 (open or close) trades
+    # decides
+    trades = []
+
+    # Create a position manager helper class that allows us easily to create
+    # opening/closing trades for different positions
+    position_manager = PositionManager(timestamp, universe, state, pricing_model)
+
+    if not position_manager.is_any_open():
+        buy_amount = position_size
+        trades += position_manager.open_1x_long(pair, buy_amount)
+
+
+@pytest.fixture()
+def core_universe(web3,
+             exchange_universe: ExchangeUniverse,
+             pair_universe: PandasPairUniverse) -> Universe:
+    """Create a trading universe that contains our mock pair."""
+    return Universe(
+        time_bucket=TimeBucket.d1,
+        chains=[ChainId(web3.eth.chain_id)],
+        exchanges=list(exchange_universe.exchanges.values()),
+        pairs=pair_universe,
+        candles=GroupedCandleUniverse.create_empty(),
+        liquidity=GroupedLiquidityUniverse.create_empty(),
+    )
+
+
+@pytest.fixture()
+def trading_strategy_universe(core_universe: Universe, asset_usdc) -> TradingStrategyUniverse:
+    """Universe that also contains data about our reserve assets."""
+    return TradingStrategyUniverse(universe=core_universe, reserve_assets=[asset_usdc])
+
+
+
 def test_live_stop_loss(
         web3: Web3,
         deployer: HexAddress,
-        exchange_universe,
-        pair_universe: PandasPairUniverse,
+        trader: LocalAccount,
+        trading_strategy_universe: TradingStrategyUniverse,
         routing_model: UniswapV2SimpleRoutingModel,
         uniswap_v2: UniswapV2Deployment,
         usdc_token: Contract,
         weth_token: Contract,
 
 ):
-    """Two-leg buy trade."""
-    pricing_method = UniswapV2LivePricing(web3, pair_universe, routing_model)
+    """Live Uniswap v2 stop loss trigger.
 
-    exchange = next(iter(exchange_universe.exchanges.values()))  # Get the first exchange from the universe
+    - Trade ETH/USDC pool
+
+    - Set up an in-memory blockchain with Uni v2 instance we can manipulate
+
+    - Sets up a buy and hold strategy with 10% stop loss trigger
+
+    - Start the strategy, check that the trading account is funded
+
+    - Advance to cycle 1 and make sure the long position on ETH is opened
+
+    - Cause an external price shock
+
+    - Check that the stop loss trigger was correctly executed and we sold ETH for loss
+    """
+
+    # Sanity check for the trading universe
+    # that we start with 1700 USD/ETH price
+    pair_universe = trading_strategy_universe.universe.pairs
+    exchanges = trading_strategy_universe.universe.exchanges
+    pricing_method = UniswapV2LivePricing(web3, pair_universe, routing_model)
+    exchange = exchanges[0] # Get the first exchange from the universe
     weth_usdc = pair_universe.get_one_pair_from_pandas_universe(exchange.exchange_id, "WETH", "USDC")
     pair = translate_trading_pair(weth_usdc)
-
-    # Get price for "infinite" small trade amount
     price = pricing_method.get_buy_price(datetime.datetime.utcnow(), pair, None)
     assert price == pytest.approx(1705.12, rel=APPROX_REL)
+
+    # Set up an execution loop we can step through
+    state = State()
+    loop = set_up_simulated_execution_loop_uniswap_v2(
+        web3=web3,
+        decide_trades=decide_trades,
+        universe=trading_strategy_universe,
+        state=state,
+        wallet_account=trader,
+        routing_model=routing_model,
+    )
+
+    assert isinstance(loop, ExecutionLoop)
 
     # Sell to change the price more than 10%.
     # The pool is 1000 ETH / 1.7M USDC.
