@@ -56,8 +56,8 @@ class ExecutionLoop:
             client: Optional[Client],
             strategy_factory: Optional[StrategyFactory],
             cycle_duration: CycleDuration,
-            stats_refresh_frequency: datetime.timedelta,
-            position_trigger_check_frequency: datetime.timedelta,
+            stats_refresh_frequency: Optional[datetime.timedelta],
+            position_trigger_check_frequency: Optional[datetime.timedelta],
             max_data_delay: Optional[datetime.timedelta]=None,
             reset=False,
             max_cycles: Optional[int]=None,
@@ -471,14 +471,14 @@ class ExecutionLoop:
         scheduler = BlockingScheduler(executors=executors, timezone=datetime.timezone.utc)
         scheduler.add_job(live_cycle, 'interval', seconds=self.cycle_duration.to_timedelta().total_seconds(), start_date=start_time + self.tick_offset)
 
-        if self.stats_refresh_frequency != datetime.timedelta(0):
+        if self.stats_refresh_frequency not in (datetime.timedelta(0), None):
             scheduler.add_job(
                 live_positions,
                 'interval',
                 seconds=self.stats_refresh_frequency.total_seconds(),
                 start_date=start_time)
 
-        if self.position_trigger_check_frequency != datetime.timedelta(0):
+        if self.position_trigger_check_frequency not in (datetime.timedelta(0), None):
             scheduler.add_job(
                 live_trigger_checks,
                 'interval',
