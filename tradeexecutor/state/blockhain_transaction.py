@@ -64,6 +64,11 @@ class BlockchainTransaction:
 
     #: Raw Ethereum transaction dict.
     #: Output from web3 buildTransaction()
+    #:
+    #: Example:
+    #:
+    #: `{'value': 0, 'maxFeePerGas': 1844540158, 'maxPriorityFeePerGas': 1000000000, 'chainId': 61, 'from': '0x6B49598B34B9c7FbF7C57306d0b0578676D55ffA', 'gas': 100000, 'to': '0xF2E246BB76DF876Cef8b38ae84130F4F55De395b', 'data': '0x095ea7b30000000000000000000000006d411e0a54382ed43f02410ce1c7a7c122afa6e1ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff', 'nonce': 0}`
+    #:
     details: Optional[Dict] = None
 
     #: Raw bytes of the signed transaction
@@ -160,3 +165,14 @@ class BlockchainTransaction:
         self.realised_gas_units_consumed = realised_gas_units_consumed
         self.status = status
         self.revert_reason = revert_reason
+
+    def get_planned_gas_price(self) -> int:
+        """How much wei per gas unit we planned to spend on this transactions.
+
+        Gets `maxFeePerGas` for EVM transction.
+
+        :return:
+            0 if unknown
+        """
+        assert self.details, "Details not set, cannot know the gas price"
+        return self.details.get("maxFeePerGas", 0)

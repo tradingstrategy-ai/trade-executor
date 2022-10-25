@@ -376,5 +376,9 @@ class TradeExecution:
         assert not self.blockchain_transactions
         self.blockchain_transactions = txs
 
+    def get_planned_max_gas_price(self) -> int:
+        """Get the maximum gas fee set to all transactions in this trade."""
+        return max([t.get_planned_gas_price() for t in self.blockchain_transactions])
+
 
 
