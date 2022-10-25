@@ -30,7 +30,6 @@ jobs:
           virtualenvs-in-project: true
           installer-parallel: true
       - name: Install dependencies
-        if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
         run: poetry install --no-interaction
       - name: Run test scripts
-        run: poetry run pytest --tb=native -k test_optional_dependencies
+        run: poetry run pytest tests/test_optional_dependencies.py
