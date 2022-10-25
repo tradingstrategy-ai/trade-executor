@@ -3,12 +3,9 @@
 """
 import datetime
 import queue
-from contextlib import AbstractContextManager
-from typing import Optional
 
 from eth_account.signers.local import LocalAccount
 from eth_defi.hotwallet import HotWallet
-from tradingstrategy.client import Client
 from web3 import Web3
 
 from tradeexecutor.cli.loop import ExecutionLoop
@@ -19,18 +16,12 @@ from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2SimpleRoutingMode
 from tradeexecutor.ethereum.uniswap_v2_valuation import UniswapV2PoolRevaluator
 from tradeexecutor.state.state import State
 from tradeexecutor.state.store import NoneStore
-from tradeexecutor.state.sync import SyncMethod
-from tradeexecutor.strategy.approval import UncheckedApprovalModel, ApprovalModel
+from tradeexecutor.strategy.approval import UncheckedApprovalModel
 from tradeexecutor.strategy.cycle import CycleDuration
-from tradeexecutor.strategy.description import StrategyExecutionDescription
 from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
-from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.strategy.pandas_trader.runner import PandasTraderRunner
-from tradeexecutor.strategy.pricing_model import PricingModelFactory
-from tradeexecutor.strategy.routing import RoutingModel
-from tradeexecutor.strategy.strategy_module import DecideTradesProtocol, CURRENT_ENGINE_VERSION
+from tradeexecutor.strategy.strategy_module import DecideTradesProtocol
 from tradeexecutor.strategy.universe_model import StaticUniverseModel, StrategyExecutionUniverse
-from tradeexecutor.strategy.valuation import ValuationModelFactory
 from tradeexecutor.utils.timer import timed_task
 
 
@@ -53,6 +44,10 @@ def set_up_simulated_execution_loop_uniswap_v2(
     Currently hardcoded for Uniswap v2 exchanges only.
 
     See `test_uniswap_live_stop_loss.py` for an example.
+
+    :return:
+        Execution loop you can manually poke forward tick by tick,
+        block by block.
     """
 
     if ignore:
@@ -118,7 +113,8 @@ def set_up_simulated_execution_loop_uniswap_v2(
         cycle_duration=cycle_duration,
         client=None,
         approval_model=UncheckedApprovalModel(),
-        stats_refresh_frequency=datetime.timedelta(days=0),
+        stats_refresh_frequency=datetime.timedelta(0),
+        position_trigger_check_frequency=datetime.timedelta(0),
     )
 
     loop.init_simulation(

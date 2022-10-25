@@ -25,11 +25,9 @@ from eth_defi.token import create_token
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, deploy_trading_pair, deploy_uniswap_v2_like
 
 from tradeexecutor.cli.log import setup_custom_log_levels
-from tradeexecutor.cli.loop import ExecutionLoop
 from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2SimpleRoutingModel
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
-from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.trading_strategy_universe import translate_trading_pair, TradingStrategyUniverse
@@ -247,26 +245,50 @@ def decide_trades(
         pricing_model: PricingModel,
         cycle_debug_data: dict) -> List[TradeExecution]:
     """Opens new buy and hold position for $1000 if no position is open."""
-
-    # The pair we are trading
+    
     pair = universe.pairs.get_single()
 
     # Open for 1,000 USD
     position_size = 1000.00
 
-    # List of any trades we decide on this cycle.
-    # Because the strategy is simple, there can be
-    # only zero (do nothing) or 1 (open or close) trades
-    # decides
     trades = []
 
-    # Create a position manager helper class that allows us easily to create
-    # opening/closing trades for different positions
     position_manager = PositionManager(timestamp, universe, state, pricing_model)
 
     if not position_manager.is_any_open():
         buy_amount = position_size
-        trades += position_manager.open_1x_long(pair, buy_amount)
+        trades += position_manager.open_1x_long(
+            pair,
+            buy_amount,
+            stop_loss_pct=0.95,  # Use 5% stop loss
+        )
+
+    return trades
+
+
+def decide_trades_no_stop_loss(
+        timestamp: pd.Timestamp,
+        universe: Universe,
+        state: State,
+        pricing_model: PricingModel,
+        cycle_debug_data: dict) -> List[TradeExecution]:
+    """Stop loss free trading logic."""
+
+    pair = universe.pairs.get_single()
+
+    # Open for 1,000 USD
+    position_size = 1000.00
+
+    trades = []
+
+    position_manager = PositionManager(timestamp, universe, state, pricing_model)
+
+    if not position_manager.is_any_open():
+        buy_amount = position_size
+        trades += position_manager.open_1x_long(
+            pair,
+            buy_amount,
+        )
 
     return trades
 
@@ -384,4 +406,85 @@ def test_live_stop_loss(
     price = pricing_method.get_buy_price(datetime.datetime.utcnow(), pair, None)
     assert price == pytest.approx(1009.6430522606291 , rel=APPROX_REL)
 
+    ts = get_latest_block_timestamp(web3)
 
+    # Trigger stop loss
+    trades = loop.check_position_triggers(
+        ts,
+        state,
+        trading_strategy_universe,
+    )
+
+    # Check state data looks sane
+    assert len(trades) == 1, "No stop loss triggerd"
+    t = trades[0]
+    assert t.is_stop_loss()
+    assert len(state.portfolio.closed_positions) == 1
+    assert len(state.portfolio.open_positions) == 0
+    assert state.portfolio.closed_positions[1].is_stop_loss()
+
+    # We are ~500 USD on loss after stop loss trigger
+    assert state.portfolio.reserves[usdc_token.address.lower()].quantity == pytest.approx(Decimal('8588.500854'))
+
+
+
+def test_live_stop_loss_missing(
+        logging,
+        web3: Web3,
+        deployer: HexAddress,
+        trader: LocalAccount,
+        trading_strategy_universe: TradingStrategyUniverse,
+        routing_model: UniswapV2SimpleRoutingModel,
+        uniswap_v2: UniswapV2Deployment,
+        usdc_token: Contract,
+        weth_token: Contract,
+
+):
+    """Stop loss code does not crash/trigger if stop losses for trades are not set.
+    """
+
+    # Set up an execution loop we can step through
+    state = State()
+    loop = set_up_simulated_execution_loop_uniswap_v2(
+        web3=web3,
+        decide_trades=decide_trades_no_stop_loss,
+        universe=trading_strategy_universe,
+        state=state,
+        wallet_account=trader,
+        routing_model=routing_model,
+    )
+
+    ts = get_latest_block_timestamp(web3)
+
+    loop.tick(
+        ts,
+        state,
+        cycle=1,
+        live=True,
+    )
+
+    # Sell ETH on the pool to change the price more than 10%.
+    # The pool is 1000 ETH / 1.7M USDC.
+    # Deployer dumps 300 ETH to cause a massive price impact.
+    weth_token.functions.approve(uniswap_v2.router.address, 1000 * 10**18).transact({"from": deployer})
+    prepared_swap_call = swap_with_slippage_protection(
+        uniswap_v2_deployment=uniswap_v2,
+        recipient_address=deployer,
+        base_token=usdc_token,
+        quote_token=weth_token,
+        amount_in=300 * 10**18,
+        max_slippage=10_000,
+    )
+    prepared_swap_call.transact({"from": deployer})
+
+    ts = get_latest_block_timestamp(web3)
+
+    # Trigger stop loss
+    trades = loop.check_position_triggers(
+        ts,
+        state,
+        trading_strategy_universe,
+    )
+
+    # Check state data looks sane
+    assert len(trades) == 0, "No stop loss triggerd"

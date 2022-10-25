@@ -307,7 +307,7 @@ class StrategyRunner(abc.ABC):
         universe: StrategyExecutionUniverse,
         stop_loss_pricing_model: PricingModel,
         routing_state: RoutingState,
-        ):
+        ) -> List[TradeExecution]:
         """Check stop loss/take profit for positions.
 
         Unlike trade balancing in tick()
@@ -320,6 +320,9 @@ class StrategyRunner(abc.ABC):
 
         - check_position_triggers() is much more lightweight and can be called much more frequently,
           even once per minute
+
+        :return:
+            List of generated stop loss trades
         """
 
         assert isinstance(routing_state, RoutingState)
@@ -349,4 +352,6 @@ class StrategyRunner(abc.ABC):
                     self.routing_model,
                     routing_state,
                     check_balances=False)
+
+            return approved_trades
 

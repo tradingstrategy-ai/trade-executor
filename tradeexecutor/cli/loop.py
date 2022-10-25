@@ -6,7 +6,7 @@ import pickle
 import random
 from pathlib import Path
 from queue import Queue
-from typing import Optional, Callable, Protocol
+from typing import Optional, Callable, Protocol, List
 
 from apscheduler.executors.pool import ThreadPoolExecutor
 from apscheduler.schedulers.blocking import BlockingScheduler
@@ -17,6 +17,7 @@ from tradeexecutor.backtest.backtest_pricing import BacktestSimplePricingModel
 from tradeexecutor.state.state import State
 from tradeexecutor.state.store import StateStore
 from tradeexecutor.state.sync import SyncMethod
+from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.statistics.core import update_statistics
 from tradeexecutor.strategy.approval import ApprovalModel
 from tradeexecutor.strategy.description import StrategyExecutionDescription
@@ -56,6 +57,7 @@ class ExecutionLoop:
             strategy_factory: Optional[StrategyFactory],
             cycle_duration: CycleDuration,
             stats_refresh_frequency: datetime.timedelta,
+            position_trigger_check_frequency: datetime.timedelta,
             max_data_delay: Optional[datetime.timedelta]=None,
             reset=False,
             max_cycles: Optional[int]=None,
@@ -230,6 +232,46 @@ class ExecutionLoop:
         # Store the current state to disk
         self.store.sync(state)
 
+    def check_position_triggers(self,
+                          ts: datetime.datetime,
+                          state: State,
+                          universe: TradingStrategyUniverse) -> List[TradeExecution]:
+        """Run stop loss price checks.
+
+        Used for live stop loss check; backtesting
+        uses optimised :py:meth:`run_backtest_stop_loss_checks`.
+
+        :param ts:
+            Timestamp of this check cycle
+
+        param universe:
+            Trading universe containing price data for stoploss checks.
+
+        :return:
+            List of generated trigger trades
+        """
+
+        logger.info("Starting stop loss checks at %s", ts)
+
+        routing_state, pricing_model, valuation_method = self.runner.setup_routing(universe)
+
+        # Do stop loss checks for every time point between now and next strategy cycle
+        trades = self.runner.check_position_triggers(
+            ts,
+            state,
+            universe,
+            pricing_model,
+            routing_state
+        )
+
+        # Check that state is good before writing it to the disk
+        state.perform_integrity_check()
+
+        # Store the current state to disk
+        self.store.sync(state)
+
+        return trades
+
     def warm_up_backtest(self):
         """Load backtesting trading universe.
 
@@ -403,6 +445,24 @@ class ExecutionLoop:
                 scheduler.shutdown(wait=False)
                 raise
 
+        def live_trigger_checks():
+            nonlocal universe
+
+            # We cannot update valuations until we know
+            # trading pair universe, because to know the valuation of the position
+            # we need to know the route how to sell the token of the position
+            if universe is None:
+                logger.info("Universe not yet downloaded")
+                return
+
+            try:
+                ts = datetime.datetime.now()
+                self.check_position_triggers(ts, state, universe)
+            except Exception as e:
+                logger.exception(e)
+                scheduler.shutdown(wait=False)
+                raise
+
         # Set up live trading tasks using APScheduler
         executors = {
             'default': ThreadPoolExecutor(1),
@@ -410,7 +470,21 @@ class ExecutionLoop:
         start_time = datetime.datetime(1970, 1, 1)
         scheduler = BlockingScheduler(executors=executors, timezone=datetime.timezone.utc)
         scheduler.add_job(live_cycle, 'interval', seconds=self.cycle_duration.to_timedelta().total_seconds(), start_date=start_time + self.tick_offset)
-        scheduler.add_job(live_positions, 'interval', seconds=self.stats_refresh_frequency.total_seconds(), start_date=start_time)
+
+        if self.stats_refresh_frequency != datetime.timedelta(0):
+            scheduler.add_job(
+                live_positions,
+                'interval',
+                seconds=self.stats_refresh_frequency.total_seconds(),
+                start_date=start_time)
+
+        if self.position_trigger_check_frequency != datetime.timedelta(0):
+            scheduler.add_job(
+                live_trigger_checks,
+                'interval',
+                seconds=self.position_trigger_check_frequency.total_seconds(),
+                start_date=start_time)
+
         try:
             scheduler.start()
         except KeyboardInterrupt:
