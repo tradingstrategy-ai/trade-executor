@@ -27,11 +27,6 @@ notebook = "^6.4.12"
 ipywidgets = "^8.0.2"
 pandas-ta = "^0.3.14-beta.0"
 
-# 3.20.2 broke on Mac
-# See https://github.com/protocolbuffers/protobuf/issues/10571
-# for discussion if still fails
-protobuf = "^3.20.3"
-
 #
 # Execution deps
 #
