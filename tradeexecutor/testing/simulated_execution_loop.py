@@ -1,10 +1,14 @@
 """Set up execution loop that connects to an Ethereum testing backend.
 
 """
+import datetime
+import queue
 from contextlib import AbstractContextManager
+from typing import Optional
 
 from eth_account.signers.local import LocalAccount
 from eth_defi.hotwallet import HotWallet
+from tradingstrategy.client import Client
 from web3 import Web3
 
 from tradeexecutor.cli.loop import ExecutionLoop
@@ -23,9 +27,11 @@ from tradeexecutor.strategy.execution_context import ExecutionContext, Execution
 from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.strategy.pandas_trader.runner import PandasTraderRunner
 from tradeexecutor.strategy.pricing_model import PricingModelFactory
+from tradeexecutor.strategy.routing import RoutingModel
 from tradeexecutor.strategy.strategy_module import DecideTradesProtocol, CURRENT_ENGINE_VERSION
 from tradeexecutor.strategy.universe_model import StaticUniverseModel, StrategyExecutionUniverse
 from tradeexecutor.strategy.valuation import ValuationModelFactory
+from tradeexecutor.utils.timer import timed_task
 
 
 def set_up_simulated_execution_loop_uniswap_v2(
@@ -54,6 +60,7 @@ def set_up_simulated_execution_loop_uniswap_v2(
         raise TypeError("Only keyword arguments accepted")
 
     assert isinstance(wallet_account, LocalAccount)
+    assert isinstance(routing_model, UniswapV2SimpleRoutingModel)
 
     execution_context = ExecutionContext(
         mode=ExecutionMode.simulated_trading,
@@ -78,54 +85,45 @@ def set_up_simulated_execution_loop_uniswap_v2(
 
     # Pricing model factory for single Uni v2 exchange
     def pricing_model_factory(execution_model, universe, routing_model):
-        return UniswapV2LivePricing(universe, routing_model)
+        return UniswapV2LivePricing(
+            web3,
+            universe.universe.pairs,
+            routing_model)
 
     # Valuation model factory for single Uni v2 exchange
     def valuation_model_factory(pricing_model):
         return UniswapV2PoolRevaluator(pricing_model)
 
-    # The main factory that sets up a strategy runner for our config
-    def strategy_factory(
-            *ignore,
-            execution_model: ExecutionModel,
-            sync_method: SyncMethod,
-            pricing_model_factory: PricingModelFactory,
-            valuation_model_factory: ValuationModelFactory,
-            client: Optional[Client],
-            timed_task_context_manager: AbstractContextManager,
-            approval_model: ApprovalModel,
-            routing_model: Optional[RoutingModel] = None,
-    ):
-        runner = PandasTraderRunner(
-            timed_task_context_manager=timed_task_context_manager,
-            execution_model=execution_model,
-            approval_model=approval_model,
-            valuation_model_factory=valuation_model_factory,
-            sync_method=sync_method,
-            pricing_model_factory=pricing_model_factory,
-            routing_model=routing_model,
-            decide_trades=decide_trades,
-        )
-
-        description = StrategyExecutionDescription(
-            runner=runner,
-            universe_model=universe_model,
-            trading_strategy_engine_version=CURRENT_ENGINE_VERSION,
-            cycle_duration=cycle_duration,
-        )
-        return description
+    runner = PandasTraderRunner(
+        timed_task_context_manager=timed_task,
+        execution_model=execution_model,
+        approval_model=UncheckedApprovalModel(),
+        valuation_model_factory=valuation_model_factory,
+        sync_method=hot_wallet_sync,
+        pricing_model_factory=pricing_model_factory,
+        routing_model=routing_model,
+        decide_trades=decide_trades,
+    )
 
     loop = ExecutionLoop(
+        name="simulated_execution",
+        command_queue=queue.Queue(),
         execution_context=execution_context,
         execution_model=execution_model,
         sync_method=hot_wallet_sync,
         pricing_model_factory=pricing_model_factory,
         valuation_model_factory=valuation_model_factory,
-        strategy_factory=strategy_factory,
+        strategy_factory=None,
         store=store,
         cycle_duration=cycle_duration,
         client=None,
         approval_model=UncheckedApprovalModel(),
+        stats_refresh_frequency=datetime.timedelta(days=0),
+    )
+
+    loop.init_simulation(
+        universe_model,
+        runner,
     )
 
     return loop

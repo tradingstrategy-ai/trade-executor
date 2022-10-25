@@ -8,6 +8,7 @@ from typing import List
 
 import pytest
 import pandas as pd
+from eth_account import Account
 from eth_account.signers.local import LocalAccount
 
 from eth_defi.uniswap_v2.swap import swap_with_slippage_protection
@@ -23,6 +24,7 @@ from web3.contract import Contract
 from eth_defi.token import create_token
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, deploy_trading_pair, deploy_uniswap_v2_like
 
+from tradeexecutor.cli.log import setup_custom_log_levels
 from tradeexecutor.cli.loop import ExecutionLoop
 from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2SimpleRoutingModel
 from tradeexecutor.state.state import State
@@ -38,12 +40,18 @@ from tradeexecutor.ethereum.uniswap_v2_live_pricing import UniswapV2LivePricing
 from tradeexecutor.ethereum.universe import create_exchange_universe, create_pair_universe
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.testing.simulated_execution_loop import set_up_simulated_execution_loop_uniswap_v2
+from tradeexecutor.utils.blockchain import get_latest_block_timestamp
 
 #: How much values we allow to drift.
 #: A hack fix receiving different decimal values on Github CI than on a local
 APPROX_REL = 0.01
 APPROX_REL_DECIMAL = Decimal("0.1")
 
+
+@pytest.fixture
+def logging():
+    """Initialise custom hooks for Python logging system."""
+    setup_custom_log_levels()
 
 
 @pytest.fixture
@@ -126,41 +134,31 @@ def asset_weth(weth_token, chain_id) -> AssetIdentifier:
 
 
 @pytest.fixture
-def asset_aave(aave_token, chain_id) -> AssetIdentifier:
-    """Mock some assets"""
-    return AssetIdentifier(chain_id, aave_token.address, aave_token.functions.symbol().call(), aave_token.functions.decimals().call())
-
-
-@pytest.fixture
 def weth_usdc_uniswap_trading_pair(web3, deployer, uniswap_v2, weth_token, usdc_token) -> HexAddress:
-    """AAVE-USDC pool with 1.7M liquidity."""
-    pair_address = deploy_trading_pair(
-        web3,
-        deployer,
-        uniswap_v2,
-        weth_token,
-        usdc_token,
-        1000 * 10**18,  # 1000 ETH liquidity
-        1_700_000 * 10**6,  # 1.7M USDC liquidity
-    )
-    return pair_address
+    """ETH-USDC pool with 1.7M liquidity."""
 
+    # Uniswap is strict about the pair order
+    if int(weth_token.address, 16) < int(usdc_token.address, 16):
+        pair_address = deploy_trading_pair(
+            web3,
+            deployer,
+            uniswap_v2,
+            weth_token,
+            usdc_token,
+            1000 * 10**18,  # 1000 ETH liquidity
+            1_700_000 * 10**6,  # 1.7M USDC liquidity
+        )
+    else:
+        pair_address = deploy_trading_pair(
+            web3,
+            deployer,
+            uniswap_v2,
+            usdc_token,
+            weth_token,
+            1_700_000 * 10 ** 6,  # 1.7M USDC liquidity
+            1000 * 10**18,  # 1000 ETH liquidity
+        )
 
-@pytest.fixture
-def aave_weth_uniswap_trading_pair(web3, deployer, uniswap_v2, aave_token, weth_token) -> HexAddress:
-    """AAVE-ETH pool.
-
-    Price is 1:5 AAVE:ETH
-    """
-    pair_address = deploy_trading_pair(
-        web3,
-        deployer,
-        uniswap_v2,
-        weth_token,
-        aave_token,
-        1000 * 10**18,  # 1000 ETH liquidity
-        5000 * 10**18,  # 5000 AAVE liquidity
-    )
     return pair_address
 
 
@@ -180,16 +178,6 @@ def weth_usdc_pair(uniswap_v2, weth_usdc_uniswap_trading_pair, asset_usdc, asset
     )
 
 
-@pytest.fixture
-def aave_weth_pair(uniswap_v2, aave_weth_uniswap_trading_pair, asset_aave, asset_weth) -> TradingPairIdentifier:
-    return TradingPairIdentifier(
-        asset_aave,
-        asset_weth,
-        aave_weth_uniswap_trading_pair,
-        uniswap_v2.factory.address,
-    )
-
-
 @pytest.fixture()
 def exchange_universe(web3, uniswap_v2: UniswapV2Deployment) -> ExchangeUniverse:
     """We trade on one Uniswap v2 deployment on tester."""
@@ -197,9 +185,9 @@ def exchange_universe(web3, uniswap_v2: UniswapV2Deployment) -> ExchangeUniverse
 
 
 @pytest.fixture()
-def pair_universe(web3, exchange_universe: ExchangeUniverse, weth_usdc_pair, aave_weth_pair) -> PandasPairUniverse:
+def pair_universe(web3, exchange_universe: ExchangeUniverse, weth_usdc_pair) -> PandasPairUniverse:
     exchange = next(iter(exchange_universe.exchanges.values()))  # Get the first exchange from the universe
-    return create_pair_universe(web3, exchange, [weth_usdc_pair, aave_weth_pair])
+    return create_pair_universe(web3, exchange, [weth_usdc_pair])
 
 
 @pytest.fixture()
@@ -232,12 +220,18 @@ def trader(web3, deployer, usdc_token) -> LocalAccount:
 
     Trades against deployer
     """
-    trader = web3.eth.accounts[1]
+    trader = Account.create()
 
-    assert web3.eth.get_balance(trader) > 0
+    # Give 1 ETH gas money to the trader
+    web3.eth.send_transaction({
+        "from": deployer,
+        "to": trader.address,
+        "value": 1 * 10 ** 18
+    })
 
+    # Give 9000 USD trading money
     usdc_token.functions.transfer(
-        trader,
+        trader.address,
         9_000 * 10**6,
     )
 
@@ -272,6 +266,8 @@ def decide_trades(
         buy_amount = position_size
         trades += position_manager.open_1x_long(pair, buy_amount)
 
+    return trades
+
 
 @pytest.fixture()
 def core_universe(web3,
@@ -296,6 +292,7 @@ def trading_strategy_universe(core_universe: Universe, asset_usdc) -> TradingStr
 
 
 def test_live_stop_loss(
+        logging,
         web3: Web3,
         deployer: HexAddress,
         trader: LocalAccount,
@@ -309,6 +306,9 @@ def test_live_stop_loss(
     """Live Uniswap v2 stop loss trigger.
 
     - Trade ETH/USDC pool
+
+    - Two accounts: deployer and trader. Deployer holds 1.7M worth of ETH in the tool. Trader starts with 9000 USDC
+      trade balance.
 
     - Set up an in-memory blockchain with Uni v2 instance we can manipulate
 
@@ -324,7 +324,7 @@ def test_live_stop_loss(
     """
 
     # Sanity check for the trading universe
-    # that we start with 1700 USD/ETH price
+    # that we start with 1705 USD/ETH price
     pair_universe = trading_strategy_universe.universe.pairs
     exchanges = trading_strategy_universe.universe.exchanges
     pricing_method = UniswapV2LivePricing(web3, pair_universe, routing_model)
@@ -345,11 +345,20 @@ def test_live_stop_loss(
         routing_model=routing_model,
     )
 
-    assert isinstance(loop, ExecutionLoop)
+    loop.init_execution_model()
 
-    # Sell to change the price more than 10%.
+    ts = get_latest_block_timestamp(web3)
+
+    loop.tick(
+        ts,
+        state,
+        cycle=1,
+        live=True,
+    )
+
+    # Sell ETH on the pool to change the price more than 10%.
     # The pool is 1000 ETH / 1.7M USDC.
-    # Dump 300 ETH
+    # Deployer dumps 300 ETH to cause a massive price impact.
     weth_token.functions.approve(uniswap_v2.router.address, 1000 * 10**18).transact({"from": deployer})
     prepared_swap_call = swap_with_slippage_protection(
         uniswap_v2_deployment=uniswap_v2,

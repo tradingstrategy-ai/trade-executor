@@ -53,7 +53,7 @@ class ExecutionLoop:
             valuation_model_factory: ValuationModelFactory,
             store: StateStore,
             client: Optional[Client],
-            strategy_factory: StrategyFactory,
+            strategy_factory: Optional[StrategyFactory],
             cycle_duration: CycleDuration,
             stats_refresh_frequency: datetime.timedelta,
             max_data_delay: Optional[datetime.timedelta]=None,
@@ -66,7 +66,7 @@ class ExecutionLoop:
             backtest_stop_loss_time_bucket: Optional[TimeBucket] = None,
             tick_offset: datetime.timedelta=datetime.timedelta(minutes=0),
             trade_immediately=False,
-        ):
+    ):
         """See main.py for details."""
 
         if ignore:
@@ -116,6 +116,18 @@ class ExecutionLoop:
         self.execution_model.initialize()
         self.execution_model.preflight_check()
         logger.trade("Preflight checks ok")
+
+    def init_simulation(
+            self,
+            universe_model: UniverseModel,
+            runner: StrategyRunner,
+        ):
+        """Set up running on a simulated blockchain.
+
+        """
+        self.init_execution_model()
+        self.universe_model = universe_model
+        self.runner = runner
 
     def tick(self,
              unrounded_timestamp: datetime.datetime,
@@ -227,10 +239,10 @@ class ExecutionLoop:
         self.universe_model.preload_universe()
 
     def run_backtest_stop_loss_checks(self,
-            start_ts: datetime.datetime,
-            end_ts: datetime.datetime,
-            state: State,
-            universe: TradingStrategyUniverse):
+                                      start_ts: datetime.datetime,
+                                      end_ts: datetime.datetime,
+                                      state: State,
+                                      universe: TradingStrategyUniverse):
         """Generate stop loss price checks.
 
         Backtests may use finer grade data for stop loss signals,
@@ -402,7 +414,7 @@ class ExecutionLoop:
         try:
             scheduler.start()
         except KeyboardInterrupt:
-                # https://github.com/agronholm/apscheduler/issues/338
+            # https://github.com/agronholm/apscheduler/issues/338
             scheduler.shutdown(wait=False)
             raise
         logger.info("Scheduler finished - down the live trading loop")
@@ -458,3 +470,4 @@ class ExecutionLoop:
             return self.run_backtest(state)
         else:
             return self.run_live(state)
+

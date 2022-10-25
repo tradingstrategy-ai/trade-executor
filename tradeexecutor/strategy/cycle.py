@@ -106,11 +106,17 @@ def snap_to_next_tick(
         offset: datetime.timedelta = datetime.timedelta(minutes=0)) -> datetime.datetime:
     """Calculate when the trading logic should wake up from the sleep next time.
 
+    If cycle duration is unknown do nothing.
+
     :param ts: Current timestamp
     :param tick_size: How big leaps we are taking
     :param offset: How many minutes of offset we assume to ensure we have candle data generated after the timestamp
     :return: When to wake up from the sleep next time
     """
+
+    if tick_size == CycleDuration.cycle_unknown:
+        return ts
+
     delta = tick_size.to_timedelta()
     return round_datetime_up(ts, delta, offset)
 
@@ -123,13 +129,20 @@ def snap_to_previous_tick(
 
     If `ts` matches the tick, do nothing.
 
+    If cycle duration is unknown do nothing.
+
     :param ts: Current timestamp
     :param tick_size: How big leaps we are taking
     :param offset: How many minutes of offset we assume to ensure we have candle data generated after the timestamp
     :return: What tick are we living in
     """
+
+    if tick_size == CycleDuration.cycle_unknown:
+        return ts
+
     delta = tick_size.to_timedelta()
     return round_datetime_down(ts, delta, offset)
+
 
 _TICK_DURATIONS = {
     CycleDuration.cycle_1m: datetime.timedelta(minutes=1),
