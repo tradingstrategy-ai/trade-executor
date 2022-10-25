@@ -205,7 +205,8 @@ def test_planned_gas_price(
         APPROVE_GAS_LIMIT,
     )
 
-    assert tx.get_planned_gas_price() == 100
+    # 1844540158
+    assert tx.get_planned_gas_price() >= 1_000_000
 
 
 

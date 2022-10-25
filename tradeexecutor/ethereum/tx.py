@@ -70,8 +70,6 @@ class TransactionBuilder:
         signed_tx = self.hot_wallet.sign_transaction_with_new_nonce(tx)
         signed_bytes = signed_tx.rawTransaction.hex()
 
-        import ipdb ; ipdb.set_trace()
-
         return BlockchainTransaction(
             chain_id=self.chain_id,
             from_address=self.hot_wallet.address,
