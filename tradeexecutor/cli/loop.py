@@ -11,7 +11,7 @@ from typing import Optional, Callable, Protocol, List
 from apscheduler.executors.pool import ThreadPoolExecutor
 from apscheduler.schedulers.blocking import BlockingScheduler
 
-from tqdm.auto import tqdm
+from tqdm_loggable.auto import tqdm
 
 from tradeexecutor.backtest.backtest_pricing import BacktestSimplePricingModel
 from tradeexecutor.state.state import State
@@ -30,10 +30,9 @@ from tradeexecutor.strategy.cycle import CycleDuration, snap_to_next_tick, snap_
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.strategy.universe_model import UniverseModel, StrategyExecutionUniverse
 from tradeexecutor.strategy.valuation import ValuationModelFactory
-from tradeexecutor.utils.timer import timed_task
-from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.client import Client
 from tradingstrategy.timebucket import TimeBucket
+
 
 logger = logging.getLogger(__name__)
 

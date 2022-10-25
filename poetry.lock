@@ -2121,6 +2121,17 @@ slack = ["slack-sdk"]
 telegram = ["requests"]
 
 [[package]]
+name = "tqdm-loggable"
+version = "0.1.0"
+description = "Logger friendly progress messages for TQDM progress bars"
+category = "main"
+optional = false
+python-versions = ">=3.8,<4.0"
+
+[package.dependencies]
+tqdm = ">=4.64.1,<5.0.0"
+
+[[package]]
 name = "trading-strategy"
 version = "0.8.2"
 description = "Algorithmic trading and quantitative financial analysis framework for decentralised exchanges and blockchains"
@@ -2505,7 +2516,7 @@ web-server = ["pyramid", "WebTest", "pyramid-openapi3", "waitress"]
 [metadata]
 lock-version = "1.1"
 python-versions = ">=3.10,<3.11"
-content-hash = "1cd1e59ed6e743cff426ed3b6484d7a9688d947d954dc0c87147e5fb692fe09d"
+content-hash = "18c3f86f220c51acf888014df4458486a17bc1dd79f4c58222eb423880e69ffb"
 
 [metadata.files]
 aiohttp = [
@@ -4272,6 +4283,10 @@ tornado = [
 tqdm = [
     {file = "tqdm-4.64.1-py2.py3-none-any.whl", hash = "sha256:6fee160d6ffcd1b1c68c65f14c829c22832bc401726335ce92c52d395944a6a1"},
     {file = "tqdm-4.64.1.tar.gz", hash = "sha256:5f4f682a004951c1b450bc753c710e9280c5746ce6ffedee253ddbcbf54cf1e4"},
+]
+tqdm-loggable = [
+    {file = "tqdm-loggable-0.1.0.tar.gz", hash = "sha256:f5ef49bdefcfe87f2bad0287f05a52b3966da459588b542b85d28fa389cf0531"},
+    {file = "tqdm_loggable-0.1.0-py3-none-any.whl", hash = "sha256:7e021e911e22a8df4cf5b4835757a91efd083337a55bd5a908afa786b8e35ce5"},
 ]
 trading-strategy = [
     {file = "trading-strategy-0.8.2.tar.gz", hash = "sha256:adb4c08188662cb872f48ed103baa8366c764eef299ef047934610b13aab4868"},
