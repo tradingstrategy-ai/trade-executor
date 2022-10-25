@@ -182,6 +182,31 @@ def test_build_erc20_approve(
     assert receipt.status == 1  # Success
 
 
+def test_planned_gas_price(
+        web3,
+        hot_wallet,
+        uniswap_v2,
+        usdc_token,
+    ):
+    """We can read planned gas price back from the transaction."""
+
+    fees = estimate_gas_fees(web3)
+
+    tx_builder = TransactionBuilder(
+        web3,
+        hot_wallet,
+        fees,
+    )
+
+    tx = tx_builder.create_transaction(
+        usdc_token,
+        "approve",
+        (uniswap_v2.router.address, 2**256-1),
+        APPROVE_GAS_LIMIT,
+    )
+
+    # 1844540158
+    assert tx.get_planned_gas_price() >= 1_000_000
 
 
 

@@ -79,6 +79,7 @@ class TransactionBuilder:
             signed_bytes=signed_bytes,
             tx_hash=signed_tx.hash.hex(),
             nonce=signed_tx.nonce,
+            details=tx,
         )
 
     def create_transaction(
