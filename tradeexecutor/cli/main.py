@@ -251,7 +251,7 @@ def start(
         max_data_delay = None
 
     stats_refresh_frequency = datetime.timedelta(minutes=stats_refresh_minutes)
-    position_trigger_check_frequency = datetime.timedelta(minutes=position_trigger_check_frequency)
+    position_trigger_check_frequency = datetime.timedelta(minutes=position_trigger_check_minutes)
 
     logger.info("Loading strategy file %s", strategy_file)
     strategy_factory = import_strategy_file(strategy_file)

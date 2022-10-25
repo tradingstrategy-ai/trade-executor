@@ -325,6 +325,7 @@ def run_backtest(
         strategy_factory=setup.backtest_static_universe_strategy_factory,
         cycle_duration=setup.cycle_duration,
         stats_refresh_frequency=None,
+        position_trigger_check_frequency=None,
         max_data_delay=None,
         debug_dump_file=None,
         backtest_start=setup.start_at,
