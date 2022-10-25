@@ -32,8 +32,8 @@ jobs:
       - name: Install Ganache
         run: npm install -g ganache
       - name: Install dependencies
-        if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
-        run: poetry install --no-interaction
+        # if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
+        run: poetry install --no-interaction -E web-server -E execution
       - name: Run test scripts
         run: poetry run pytest --tb=native
         env:

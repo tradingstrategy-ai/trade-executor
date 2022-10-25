@@ -9,5 +9,5 @@ poetry install
 If you want to install with the legacy QSTrader support
 
 ```shell
-poertry install -E qstrader
+poertry install -E qstrader -E web-server -E execution
 ```
