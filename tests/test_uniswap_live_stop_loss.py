@@ -345,8 +345,6 @@ def test_live_stop_loss(
         routing_model=routing_model,
     )
 
-    loop.init_execution_model()
-
     ts = get_latest_block_timestamp(web3)
 
     loop.tick(
