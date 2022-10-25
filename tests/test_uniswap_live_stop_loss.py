@@ -233,7 +233,9 @@ def trader(web3, deployer, usdc_token) -> LocalAccount:
     usdc_token.functions.transfer(
         trader.address,
         9_000 * 10**6,
-    )
+    ).transact({
+        "from": deployer,
+    })
 
     return trader
 
@@ -250,7 +252,7 @@ def decide_trades(
     pair = universe.pairs.get_single()
 
     # Open for 1,000 USD
-    position_size = 1000_00
+    position_size = 1000.00
 
     # List of any trades we decide on this cycle.
     # Because the strategy is simple, there can be
@@ -354,6 +356,16 @@ def test_live_stop_loss(
         live=True,
     )
 
+    loop.update_position_valuations(
+        ts,
+        state,
+        trading_strategy_universe,
+    )
+
+    # After the first tick, we should have synced our reserves and opened the first position
+    assert state.portfolio.reserves[usdc_token.address.lower()].quantity == 8000
+    assert state.portfolio.open_positions[1].get_value() == pytest.approx(994.0125000000002)
+
     # Sell ETH on the pool to change the price more than 10%.
     # The pool is 1000 ETH / 1.7M USDC.
     # Deployer dumps 300 ETH to cause a massive price impact.
@@ -366,10 +378,10 @@ def test_live_stop_loss(
         amount_in=300 * 10**18,
         max_slippage=10_000,
     )
+    prepared_swap_call.transact({"from": deployer})
 
-    tx_hash = prepared_swap_call.transact({"from": deployer})
-    assert tx_hash
-
-    # Price is down $700
+    # ETH price is down $1700 -> $1000
     price = pricing_method.get_buy_price(datetime.datetime.utcnow(), pair, None)
     assert price == pytest.approx(1009.6430522606291 , rel=APPROX_REL)
+
+
