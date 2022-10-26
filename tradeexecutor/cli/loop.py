@@ -38,7 +38,16 @@ logger = logging.getLogger(__name__)
 
 
 class ExecutionLoop:
-    """Live or backtesting trade execution loop."""
+    """Live or backtesting trade execution loop.
+
+    This is the main loop of any strategy execution.
+
+    - Run scheduled tasks for different areas (trade cycle, position revaluation, stop loss triggers)
+
+    - Call :py:class:`ExecutionModel` to perform ticking through the strategy
+
+    - Manage the persistent state of the strategy
+    """
 
     def __init__(
             self,
@@ -57,11 +66,11 @@ class ExecutionLoop:
             cycle_duration: CycleDuration,
             stats_refresh_frequency: Optional[datetime.timedelta],
             position_trigger_check_frequency: Optional[datetime.timedelta],
-            max_data_delay: Optional[datetime.timedelta]=None,
+            max_data_delay: Optional[datetime.timedelta] = None,
             reset=False,
-            max_cycles: Optional[int]=None,
-            debug_dump_file: Optional[Path]=None,
-            backtest_start: Optional[datetime.datetime] =None,
+            max_cycles: Optional[int] = None,
+            debug_dump_file: Optional[Path] = None,
+            backtest_start: Optional[datetime.datetime] = None,
             backtest_end: Optional[datetime.datetime] = None,
             backtest_setup: Optional[Callable[[State], None]] = None,
             backtest_stop_loss_time_bucket: Optional[TimeBucket] = None,
@@ -114,6 +123,10 @@ class ExecutionLoop:
         return state
 
     def init_execution_model(self):
+        """Initialise the execution.
+
+        Perform preflight checks e.g. to see if our trading accounts look sane.
+        """
         self.execution_model.initialize()
         self.execution_model.preflight_check()
         logger.trade("Preflight checks ok")
@@ -125,7 +138,11 @@ class ExecutionLoop:
         ):
         """Set up running on a simulated blockchain.
 
+        Used with :py:mod:`tradeexecutor.testing.simulated_execution_loop`
+        to allow fine granularity manipulation of in-memory blockchain
+        to simulate trigger conditions in testing.
         """
+        assert self.execution_context.mode == ExecutionMode.simulated_trading
         self.init_execution_model()
         self.universe_model = universe_model
         self.runner = runner
