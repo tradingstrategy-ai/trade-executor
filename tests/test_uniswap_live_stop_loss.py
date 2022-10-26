@@ -416,7 +416,7 @@ def test_live_stop_loss(
     )
 
     # Check state data looks sane
-    assert len(trades) == 1, "No stop loss triggerd"
+    assert len(trades) == 1, "No stop loss triggered"
     t = trades[0]
     assert t.is_stop_loss()
     assert len(state.portfolio.closed_positions) == 1
@@ -487,4 +487,4 @@ def test_live_stop_loss_missing(
     )
 
     # Check state data looks sane
-    assert len(trades) == 0, "No stop loss triggerd"
+    assert len(trades) == 0, "Stop loss unexpectedly triggered"
