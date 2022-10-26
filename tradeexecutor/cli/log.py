@@ -16,7 +16,7 @@ from discord_logging.handler import DiscordHandler
 def setup_logging(log_level=logging.INFO) -> Logger:
     """Setup root logger and quiet some levels."""
 
-    _setup_custom_log_levels()
+    setup_custom_log_levels()
 
     logger = logging.getLogger()
 
@@ -61,7 +61,7 @@ def setup_pytest_logging(request, mute_requests=True) -> logging.Logger:
         pytest.fixtures.SubRequest instance
     """
 
-    _setup_custom_log_levels()
+    setup_custom_log_levels()
 
     # Disable logging of JSON-RPC requests and reploes
     logging.getLogger("web3.RequestManager").setLevel(logging.WARNING)
@@ -93,7 +93,7 @@ def setup_notebook_logging(log_level=logging.WARNING) -> logging.Logger:
     # Use colored logging output for console
     coloredlogs.install(level=log_level, fmt=fmt, logger=logger)
 
-    _setup_custom_log_levels()
+    setup_custom_log_levels()
 
     # Disable logging of JSON-RPC requests and reploes
     logging.getLogger("web3.RequestManager").setLevel(logging.WARNING)
@@ -109,7 +109,7 @@ def setup_notebook_logging(log_level=logging.WARNING) -> logging.Logger:
     logging.getLogger("matplotlib").setLevel(logging.WARNING)
 
 
-def _setup_custom_log_levels():
+def setup_custom_log_levels():
     """Create a new logging level TRADE that is between INFO and WARNING.
 
     This level is used to log trade execution to Discord etc.

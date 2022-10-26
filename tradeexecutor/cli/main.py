@@ -176,7 +176,8 @@ def start(
     backtest_end: Optional[datetime.datetime] = typer.Option(None, envvar="BACKTEST_END", help="End timestamp of backesting"),
     tick_size: CycleDuration = typer.Option(None, envvar="TICK_SIZE", help="How large tick use to execute the strategy"),
     tick_offset_minutes: int = typer.Option(0, envvar="TICK_OFFSET_MINUTES", help="How many minutes we wait after the tick before executing the tick step"),
-    stats_refresh_minutes: int = typer.Option(60, envvar="STATS_REFRESH_MINUTES", help="How often we refresh position statistics. Default to once in an hour."),
+    stats_refresh_minutes: int = typer.Option(60.0, envvar="STATS_REFRESH_MINUTES", help="How often we refresh position statistics. Default to once in an hour."),
+    position_trigger_check_minutes: int = typer.Option(3.0, envvar="POSITION_TRIGGER_CHECK_MINUTES", help="How often we check for take profit/stop loss triggers. Default to once in 3 minutes. Set 0 to disable."),
     max_data_delay_minutes: int = typer.Option(None, envvar="MAX_DATA_DELAY_MINUTES", help="If our data feed is delayed more than this minutes, abort the execution"),
     discord_webhook_url: Optional[str] = typer.Option(None, envvar="DISCORD_WEBHOOK_URL", help="Discord webhook URL for notifications"),
     logstash_server: Optional[str] = typer.Option(None, envvar="LOGSTASH_SERVER", help="LogStash server hostname where to send logs"),
@@ -250,6 +251,7 @@ def start(
         max_data_delay = None
 
     stats_refresh_frequency = datetime.timedelta(minutes=stats_refresh_minutes)
+    position_trigger_check_frequency = datetime.timedelta(minutes=position_trigger_check_minutes)
 
     logger.info("Loading strategy file %s", strategy_file)
     strategy_factory = import_strategy_file(strategy_file)
@@ -296,6 +298,7 @@ def start(
             max_data_delay=max_data_delay,
             trade_immediately=trade_immediately,
             stats_refresh_frequency=stats_refresh_frequency,
+            position_trigger_check_frequency=position_trigger_check_frequency,
         )
         loop.run()
     except KeyboardInterrupt as e:

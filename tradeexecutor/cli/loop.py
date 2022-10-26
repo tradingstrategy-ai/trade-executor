@@ -6,38 +6,48 @@ import pickle
 import random
 from pathlib import Path
 from queue import Queue
-from typing import Optional, Callable
+from typing import Optional, Callable, Protocol, List
 
 from apscheduler.executors.pool import ThreadPoolExecutor
 from apscheduler.schedulers.blocking import BlockingScheduler
 
-from tqdm.auto import tqdm
+from tqdm_loggable.auto import tqdm
 
 from tradeexecutor.backtest.backtest_pricing import BacktestSimplePricingModel
 from tradeexecutor.state.state import State
 from tradeexecutor.state.store import StateStore
 from tradeexecutor.state.sync import SyncMethod
+from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.statistics.core import update_statistics
 from tradeexecutor.strategy.approval import ApprovalModel
 from tradeexecutor.strategy.description import StrategyExecutionDescription
 from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.strategy.execution_context import ExecutionMode, ExecutionContext
+from tradeexecutor.strategy.factory import StrategyFactory
 from tradeexecutor.strategy.pricing_model import PricingModelFactory
 from tradeexecutor.strategy.runner import StrategyRunner
 from tradeexecutor.strategy.cycle import CycleDuration, snap_to_next_tick, snap_to_previous_tick, round_datetime_up
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.strategy.universe_model import UniverseModel, StrategyExecutionUniverse
 from tradeexecutor.strategy.valuation import ValuationModelFactory
-from tradeexecutor.utils.timer import timed_task
-from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.client import Client
 from tradingstrategy.timebucket import TimeBucket
+
 
 logger = logging.getLogger(__name__)
 
 
 class ExecutionLoop:
-    """Live or backtesting trade execution loop."""
+    """Live or backtesting trade execution loop.
+
+    This is the main loop of any strategy execution.
+
+    - Run scheduled tasks for different areas (trade cycle, position revaluation, stop loss triggers)
+
+    - Call :py:class:`ExecutionModel` to perform ticking through the strategy
+
+    - Manage the persistent state of the strategy
+    """
 
     def __init__(
             self,
@@ -52,20 +62,21 @@ class ExecutionLoop:
             valuation_model_factory: ValuationModelFactory,
             store: StateStore,
             client: Optional[Client],
-            strategy_factory: Callable,
+            strategy_factory: Optional[StrategyFactory],
             cycle_duration: CycleDuration,
-            stats_refresh_frequency: datetime.timedelta,
-            max_data_delay: Optional[datetime.timedelta]=None,
+            stats_refresh_frequency: Optional[datetime.timedelta],
+            position_trigger_check_frequency: Optional[datetime.timedelta],
+            max_data_delay: Optional[datetime.timedelta] = None,
             reset=False,
-            max_cycles: Optional[int]=None,
-            debug_dump_file: Optional[Path]=None,
-            backtest_start: Optional[datetime.datetime] =None,
+            max_cycles: Optional[int] = None,
+            debug_dump_file: Optional[Path] = None,
+            backtest_start: Optional[datetime.datetime] = None,
             backtest_end: Optional[datetime.datetime] = None,
             backtest_setup: Optional[Callable[[State], None]] = None,
             backtest_stop_loss_time_bucket: Optional[TimeBucket] = None,
             tick_offset: datetime.timedelta=datetime.timedelta(minutes=0),
             trade_immediately=False,
-        ):
+    ):
         """See main.py for details."""
 
         if ignore:
@@ -112,9 +123,29 @@ class ExecutionLoop:
         return state
 
     def init_execution_model(self):
+        """Initialise the execution.
+
+        Perform preflight checks e.g. to see if our trading accounts look sane.
+        """
         self.execution_model.initialize()
         self.execution_model.preflight_check()
         logger.trade("Preflight checks ok")
+
+    def init_simulation(
+            self,
+            universe_model: UniverseModel,
+            runner: StrategyRunner,
+        ):
+        """Set up running on a simulated blockchain.
+
+        Used with :py:mod:`tradeexecutor.testing.simulated_execution_loop`
+        to allow fine granularity manipulation of in-memory blockchain
+        to simulate trigger conditions in testing.
+        """
+        assert self.execution_context.mode == ExecutionMode.simulated_trading
+        self.init_execution_model()
+        self.universe_model = universe_model
+        self.runner = runner
 
     def tick(self,
              unrounded_timestamp: datetime.datetime,
@@ -217,6 +248,46 @@ class ExecutionLoop:
         # Store the current state to disk
         self.store.sync(state)
 
+    def check_position_triggers(self,
+                          ts: datetime.datetime,
+                          state: State,
+                          universe: TradingStrategyUniverse) -> List[TradeExecution]:
+        """Run stop loss price checks.
+
+        Used for live stop loss check; backtesting
+        uses optimised :py:meth:`run_backtest_stop_loss_checks`.
+
+        :param ts:
+            Timestamp of this check cycle
+
+        param universe:
+            Trading universe containing price data for stoploss checks.
+
+        :return:
+            List of generated trigger trades
+        """
+
+        logger.info("Starting stop loss checks at %s", ts)
+
+        routing_state, pricing_model, valuation_method = self.runner.setup_routing(universe)
+
+        # Do stop loss checks for every time point between now and next strategy cycle
+        trades = self.runner.check_position_triggers(
+            ts,
+            state,
+            universe,
+            pricing_model,
+            routing_state
+        )
+
+        # Check that state is good before writing it to the disk
+        state.perform_integrity_check()
+
+        # Store the current state to disk
+        self.store.sync(state)
+
+        return trades
+
     def warm_up_backtest(self):
         """Load backtesting trading universe.
 
@@ -226,10 +297,10 @@ class ExecutionLoop:
         self.universe_model.preload_universe()
 
     def run_backtest_stop_loss_checks(self,
-            start_ts: datetime.datetime,
-            end_ts: datetime.datetime,
-            state: State,
-            universe: TradingStrategyUniverse):
+                                      start_ts: datetime.datetime,
+                                      end_ts: datetime.datetime,
+                                      state: State,
+                                      universe: TradingStrategyUniverse):
         """Generate stop loss price checks.
 
         Backtests may use finer grade data for stop loss signals,
@@ -390,6 +461,24 @@ class ExecutionLoop:
                 scheduler.shutdown(wait=False)
                 raise
 
+        def live_trigger_checks():
+            nonlocal universe
+
+            # We cannot update valuations until we know
+            # trading pair universe, because to know the valuation of the position
+            # we need to know the route how to sell the token of the position
+            if universe is None:
+                logger.info("Universe not yet downloaded")
+                return
+
+            try:
+                ts = datetime.datetime.now()
+                self.check_position_triggers(ts, state, universe)
+            except Exception as e:
+                logger.exception(e)
+                scheduler.shutdown(wait=False)
+                raise
+
         # Set up live trading tasks using APScheduler
         executors = {
             'default': ThreadPoolExecutor(1),
@@ -397,11 +486,25 @@ class ExecutionLoop:
         start_time = datetime.datetime(1970, 1, 1)
         scheduler = BlockingScheduler(executors=executors, timezone=datetime.timezone.utc)
         scheduler.add_job(live_cycle, 'interval', seconds=self.cycle_duration.to_timedelta().total_seconds(), start_date=start_time + self.tick_offset)
-        scheduler.add_job(live_positions, 'interval', seconds=self.stats_refresh_frequency.total_seconds(), start_date=start_time)
+
+        if self.stats_refresh_frequency not in (datetime.timedelta(0), None):
+            scheduler.add_job(
+                live_positions,
+                'interval',
+                seconds=self.stats_refresh_frequency.total_seconds(),
+                start_date=start_time)
+
+        if self.position_trigger_check_frequency not in (datetime.timedelta(0), None):
+            scheduler.add_job(
+                live_trigger_checks,
+                'interval',
+                seconds=self.position_trigger_check_frequency.total_seconds(),
+                start_date=start_time)
+
         try:
             scheduler.start()
         except KeyboardInterrupt:
-                # https://github.com/agronholm/apscheduler/issues/338
+            # https://github.com/agronholm/apscheduler/issues/338
             scheduler.shutdown(wait=False)
             raise
         logger.info("Scheduler finished - down the live trading loop")
@@ -457,3 +560,4 @@ class ExecutionLoop:
             return self.run_backtest(state)
         else:
             return self.run_live(state)
+
