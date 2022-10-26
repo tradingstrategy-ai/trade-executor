@@ -39,7 +39,6 @@ from tradingstrategy.utils.format import format_value, format_price, format_dura
 from tradingstrategy.utils.summarydataframe import as_dollar, as_integer, create_summary_table, as_percent, as_duration
 
 
-
 @dataclass
 class SpotTrade:
     """Track spot trades to construct position performance.
@@ -85,7 +84,7 @@ class SpotTrade:
 
     @property
     def value(self) -> USDollarAmount:
-        return  abs(self.price * float(self.quantity))
+        return abs(self.price * float(self.quantity))
 
 
 @dataclass
@@ -318,8 +317,6 @@ class AssetTradeHistory:
             self.positions.append(new_position)
 
 
-
-
 @dataclass_json
 @dataclass
 class TradeSummary:
@@ -332,10 +329,23 @@ class TradeSummary:
     realised_profit: USDollarAmount
     open_value: USDollarAmount
     uninvested_cash: USDollarAmount
-    
+
     initial_cash: USDollarAmount
     extra_return: USDollarAmount
     duration: datetime.timedelta = field(metadata=config(
+        encoder=json_encode_timedelta,
+        decoder=json_decode_timedelta,
+    ))
+
+    average_winning_trade_profit_pc: float
+    average_losing_trade_loss_pc: float
+    biggest_winning_trade_pc: float
+    biggest_losing_trade_pc: float
+    average_duration_of_winning_trades: datetime.timedelta = field(metadata=config(
+        encoder=json_encode_timedelta,
+        decoder=json_decode_timedelta,
+    ))
+    average_duration_of_losing_trades: datetime.timedelta = field(metadata=config(
         encoder=json_encode_timedelta,
         decoder=json_decode_timedelta,
     ))
@@ -353,12 +363,13 @@ class TradeSummary:
         self.total_trades = self.won + self.lost + self.zero_loss
         self.win_percent = calculate_percentage(self.won, self.total_trades)
         self.return_percent = calculate_percentage(self.realised_profit, self.initial_cash)
-        self.annualised_return_percent = calculate_percentage(self.return_percent * datetime.timedelta(days=365), self.duration) if self.return_percent else None
+        self.annualised_return_percent = calculate_percentage(self.return_percent * datetime.timedelta(days=365),
+                                                              self.duration) if self.return_percent else None
         self.all_stop_loss_percent = calculate_percentage(self.stop_losses, self.total_trades)
         self.lost_stop_loss_percent = calculate_percentage(self.stop_losses, self.lost)
         self.average_net_profit = self.realised_profit / self.total_trades if self.total_trades else None
         self.end_value = self.open_value + self.uninvested_cash
-        
+
     def to_dataframe(self) -> pd.DataFrame:
         """Creates a human-readable Pandas dataframe table from the object."""
         human_data = {
@@ -380,6 +391,12 @@ class TradeSummary:
             "Portfolio unrealised value": as_dollar(self.open_value),
             "Extra returns on lending pool interest": as_dollar(self.extra_return),
             "Cash left at the end": as_dollar(self.uninvested_cash),
+            "average winning trade profit %": as_percent(self.average_winning_trade_profit_pc),
+            "average losing trade loss %": as_percent(self.average_losing_trade_loss_pc),
+            "biggest winning trade %": as_percent(self.biggest_winning_trade_pc),
+            "biggest losing trade %": as_percent(self.biggest_losing_trade_pc),
+            "average duration of winning trades": as_duration(self.average_duration_of_winning_trades),
+            "average duration of losing trades": as_duration(self.average_duration_of_losing_trades)
         }
         return create_summary_table(human_data)
 
@@ -406,6 +423,7 @@ class TradeAnalysis:
                 closed = history.get_last_closed_at()
                 if closed:
                     yield closed
+
         return max(all_closes())
 
     def get_all_positions(self) -> Iterable[Tuple[PrimaryKey, TradePosition]]:
@@ -433,6 +451,11 @@ class TradeAnalysis:
 
         duration = datetime.timedelta(0)
 
+        average_winning_trade = []
+        average_losing_trade = []
+        average_winning_trade_duration = []
+        average_losing_trade_duration = []
+
         first_trade, last_trade = self.portfolio.get_first_and_last_executed_trade()
         if first_trade and first_trade != last_trade:
             duration = last_trade.executed_at - first_trade.executed_at
@@ -451,13 +474,33 @@ class TradeAnalysis:
 
             if position.is_win():
                 won += 1
+                average_winning_trade.append(position.realised_profit_percent)
+                average_winning_trade_duration.append(position.duration)
+
             elif position.is_lose():
                 lost += 1
+                average_losing_trade.append(position.realised_profit_percent)
+                average_losing_trade_duration.append(position.duration)
+
             else:
                 # Any profit exactly balances out loss in slippage and commission
                 zero_loss += 1
 
             profit += position.realised_profit
+
+        average_winning_trade_profit_pc = np.mean(average_winning_trade)
+        average_losing_trade_loss_pc = np.mean(average_losing_trade)
+        if average_winning_trade:
+            biggest_winning_trade_pc = max(average_winning_trade)
+        else:
+            biggest_winning_trade_pc = np.nan
+        if average_losing_trade:
+            biggest_losing_trade_pc = min(average_losing_trade)
+        else:
+            biggest_losing_trade_pc = np.nan
+
+        average_duration_of_winning_trades = np.mean(average_winning_trade_duration)
+        average_duration_of_losing_trades = np.mean(average_losing_trade_duration)
 
         return TradeSummary(
             won=won,
@@ -471,6 +514,12 @@ class TradeAnalysis:
             initial_cash=initial_cash,
             extra_return=extra_return,
             duration=duration,
+            average_winning_trade_profit_pc=average_winning_trade_profit_pc,
+            average_losing_trade_loss_pc=average_losing_trade_loss_pc,
+            biggest_winning_trade_pc=biggest_winning_trade_pc,
+            biggest_losing_trade_pc=biggest_losing_trade_pc,
+            average_duration_of_winning_trades = average_duration_of_winning_trades,
+            average_duration_of_losing_trades = average_duration_of_losing_trades,
         )
 
     def create_timeline(self) -> pd.DataFrame:
@@ -490,7 +539,6 @@ class TradeAnalysis:
 
 
 class TimelineRowStylingMode(enum.Enum):
-
     #: Style using Pandas background_gradient
     gradient = "gradient"
 
@@ -546,8 +594,8 @@ class TimelineStyler:
         """
         # Create a Pandas Styler with multiple styling options applied
         try:
-            styles = df.style\
-                .hide(axis="index")\
+            styles = df.style \
+                .hide(axis="index") \
                 .hide(axis="columns", subset=self.hidden_columns)
         except KeyError:
             # The input df was empty (no trades)
@@ -652,7 +700,7 @@ def expand_timeline(
 
     if len(applied_df) > 0:
         # https://stackoverflow.com/a/52720936/315168
-        applied_df\
+        applied_df \
             .sort_values(by=['Id'], ascending=[True], inplace=True)
 
     # Get rid of NaN labels
@@ -732,4 +780,3 @@ def build_trade_analysis(portfolio: Portfolio) -> TradeAnalysis:
             history.add_trade(spot_trade)
 
     return TradeAnalysis(portfolio, asset_histories=histories)
-
