@@ -391,12 +391,12 @@ class TradeSummary:
             "Portfolio unrealised value": as_dollar(self.open_value),
             "Extra returns on lending pool interest": as_dollar(self.extra_return),
             "Cash left at the end": as_dollar(self.uninvested_cash),
-            "average winning trade profit %": as_percent(self.average_winning_trade_profit_pc),
-            "average losing trade loss %": as_percent(self.average_losing_trade_loss_pc),
-            "biggest winning trade %": as_percent(self.biggest_winning_trade_pc),
-            "biggest losing trade %": as_percent(self.biggest_losing_trade_pc),
-            "average duration of winning trades": as_duration(self.average_duration_of_winning_trades),
-            "average duration of losing trades": as_duration(self.average_duration_of_losing_trades)
+            "Average winning trade profit %": as_percent(self.average_winning_trade_profit_pc),
+            "Average losing trade loss %": as_percent(self.average_losing_trade_loss_pc),
+            "Biggest winning trade %": as_percent(self.biggest_winning_trade_pc),
+            "Biggest losing trade %": as_percent(self.biggest_losing_trade_pc),
+            "Average duration of winning trades": as_duration(self.average_duration_of_winning_trades),
+            "Average duration of losing trades": as_duration(self.average_duration_of_losing_trades)
         }
         return create_summary_table(human_data)
 
@@ -451,10 +451,14 @@ class TradeAnalysis:
 
         duration = datetime.timedelta(0)
 
-        average_winning_trade = []
-        average_losing_trade = []
-        average_winning_trade_duration = []
-        average_losing_trade_duration = []
+        winning_trades = []
+        losing_trades = []
+        winning_trades_duration = []
+        losing_trades_duration = []
+        biggest_winning_trade_pc = None
+        biggest_losing_trade_pc = None
+        average_duration_of_losing_trades = datetime.timedelta(0)
+        average_duration_of_winning_trades = datetime.timedelta(0)
 
         first_trade, last_trade = self.portfolio.get_first_and_last_executed_trade()
         if first_trade and first_trade != last_trade:
@@ -474,13 +478,14 @@ class TradeAnalysis:
 
             if position.is_win():
                 won += 1
-                average_winning_trade.append(position.realised_profit_percent)
-                average_winning_trade_duration.append(position.duration)
+                winning_trades.append(position.realised_profit_percent)
+                winning_trades_duration.append(position.duration)
+
 
             elif position.is_lose():
                 lost += 1
-                average_losing_trade.append(position.realised_profit_percent)
-                average_losing_trade_duration.append(position.duration)
+                losing_trades.append(position.realised_profit_percent)
+                losing_trades_duration.append(position.duration)
 
             else:
                 # Any profit exactly balances out loss in slippage and commission
@@ -488,19 +493,19 @@ class TradeAnalysis:
 
             profit += position.realised_profit
 
-        average_winning_trade_profit_pc = np.mean(average_winning_trade)
-        average_losing_trade_loss_pc = np.mean(average_losing_trade)
-        if average_winning_trade:
-            biggest_winning_trade_pc = max(average_winning_trade)
-        else:
-            biggest_winning_trade_pc = np.nan
-        if average_losing_trade:
-            biggest_losing_trade_pc = min(average_losing_trade)
-        else:
-            biggest_losing_trade_pc = np.nan
+        average_winning_trade_profit_pc = np.mean(winning_trades)
+        average_losing_trade_loss_pc = np.mean(losing_trades)
+        if winning_trades:
+            biggest_winning_trade_pc = max(winning_trades)
 
-        average_duration_of_winning_trades = np.mean(average_winning_trade_duration)
-        average_duration_of_losing_trades = np.mean(average_losing_trade_duration)
+        if losing_trades:
+            biggest_losing_trade_pc = min(losing_trades)
+
+        if winning_trades_duration:
+            average_duration_of_winning_trades = np.mean(winning_trades_duration)
+
+        if losing_trades_duration:
+            average_duration_of_losing_trades = np.mean(losing_trades_duration)
 
         return TradeSummary(
             won=won,
@@ -518,8 +523,8 @@ class TradeAnalysis:
             average_losing_trade_loss_pc=average_losing_trade_loss_pc,
             biggest_winning_trade_pc=biggest_winning_trade_pc,
             biggest_losing_trade_pc=biggest_losing_trade_pc,
-            average_duration_of_winning_trades = average_duration_of_winning_trades,
-            average_duration_of_losing_trades = average_duration_of_losing_trades,
+            average_duration_of_winning_trades=average_duration_of_winning_trades,
+            average_duration_of_losing_trades=average_duration_of_losing_trades,
         )
 
     def create_timeline(self) -> pd.DataFrame:
