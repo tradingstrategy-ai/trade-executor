@@ -64,6 +64,7 @@ trading-strategy-qstrader = {version="^0.5",  optional = true}
 # Note: in the future execution may exist without a web server,
 # e.g. in-browser  bots.
 #
+jupyter = "^1.0.0"
 [tool.poetry.extras]
 
 # Legacy strats
