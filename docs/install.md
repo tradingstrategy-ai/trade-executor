@@ -2,12 +2,17 @@
 
 ```shell
 git clone git@github.com:tradingstrategy-ai/trade-executor.git
+cd trade-executor
 git submodule update --init --recursive
-poetry install
 ```
 
-If you want to install with the legacy QSTrader support
+If you want to install with the legacy QSTrader support or if you are using a remote developement server:
 
 ```shell
-poertry install -E qstrader -E web-server -E execution
+poetry install -E qstrader -E web-server -E execution
+```
+otherwise, just use:
+
+```shell
+poetry install 
 ```
