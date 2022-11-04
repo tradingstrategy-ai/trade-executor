@@ -122,7 +122,6 @@ def visualise_benchmark(
         When the backtest ended
     """
 
-
     fig = go.Figure()
 
     assert portfolio_statistics
