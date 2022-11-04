@@ -38,7 +38,7 @@ try:
     from tradingstrategy.client import Client
     from tradingstrategy.timebucket import TimeBucket
 except ImportError:
-    raise ImportError('use "poetry install -E execution" to install dependencies in trade-executor instead of "poetry install"')
+    raise ImportError('a possible solution may be to use "poetry install -E execution" to install dependencies in trade-executor instead of "poetry install"')
 
 @dataclass
 class BacktestSetup:
