@@ -8,35 +8,37 @@ from pathlib import Path
 from queue import Queue
 from typing import Optional, Callable, Tuple
 
-from tradeexecutor.backtest.backtest_execution import BacktestExecutionModel
-from tradeexecutor.backtest.backtest_pricing import BacktestSimplePricingModel
-from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel
-from tradeexecutor.backtest.backtest_sync import BacktestSyncer
-from tradeexecutor.backtest.backtest_valuation import BacktestValuationModel
-from tradeexecutor.backtest.simulated_wallet import SimulatedWallet
-from tradeexecutor.cli.log import setup_notebook_logging
-from tradeexecutor.cli.loop import ExecutionLoop
-from tradeexecutor.ethereum.default_routes import get_routing_model, get_backtest_routing_model
-from tradeexecutor.state.state import State
-from tradeexecutor.state.store import NoneStore
-from tradeexecutor.strategy.approval import UncheckedApprovalModel, ApprovalModel
-from tradeexecutor.strategy.cycle import CycleDuration
-from tradeexecutor.strategy.description import StrategyExecutionDescription
-from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
-from tradeexecutor.strategy.factory import make_runner_for_strategy_mod
-from tradeexecutor.strategy.pandas_trader.runner import PandasTraderRunner
-from tradeexecutor.strategy.pandas_trader.trade_decision import TradeDecider
-from tradeexecutor.strategy.strategy_module import parse_strategy_module, StrategyModuleInformation, \
-    DecideTradesProtocol, CreateTradingUniverseProtocol, CURRENT_ENGINE_VERSION
-from tradeexecutor.strategy.reserve_currency import ReserveCurrency
-from tradeexecutor.strategy.default_routing_options import TradeRouting
-from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, TradingStrategyUniverseModel, \
-    DefaultTradingStrategyUniverseModel
-from tradeexecutor.strategy.universe_model import StaticUniverseModel
-from tradeexecutor.utils.timer import timed_task
-from tradingstrategy.client import Client
-from tradingstrategy.timebucket import TimeBucket
-
+try: 
+    from tradeexecutor.backtest.backtest_execution import BacktestExecutionModel
+    from tradeexecutor.backtest.backtest_pricing import BacktestSimplePricingModel
+    from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel
+    from tradeexecutor.backtest.backtest_sync import BacktestSyncer
+    from tradeexecutor.backtest.backtest_valuation import BacktestValuationModel
+    from tradeexecutor.backtest.simulated_wallet import SimulatedWallet
+    from tradeexecutor.cli.log import setup_notebook_logging
+    from tradeexecutor.cli.loop import ExecutionLoop
+    from tradeexecutor.ethereum.default_routes import get_routing_model, get_backtest_routing_model
+    from tradeexecutor.state.state import State
+    from tradeexecutor.state.store import NoneStore
+    from tradeexecutor.strategy.approval import UncheckedApprovalModel, ApprovalModel
+    from tradeexecutor.strategy.cycle import CycleDuration
+    from tradeexecutor.strategy.description import StrategyExecutionDescription
+    from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
+    from tradeexecutor.strategy.factory import make_runner_for_strategy_mod
+    from tradeexecutor.strategy.pandas_trader.runner import PandasTraderRunner
+    from tradeexecutor.strategy.pandas_trader.trade_decision import TradeDecider
+    from tradeexecutor.strategy.strategy_module import parse_strategy_module, StrategyModuleInformation, \
+        DecideTradesProtocol, CreateTradingUniverseProtocol, CURRENT_ENGINE_VERSION
+    from tradeexecutor.strategy.reserve_currency import ReserveCurrency
+    from tradeexecutor.strategy.default_routing_options import TradeRouting
+    from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, TradingStrategyUniverseModel, \
+        DefaultTradingStrategyUniverseModel
+    from tradeexecutor.strategy.universe_model import StaticUniverseModel
+    from tradeexecutor.utils.timer import timed_task
+    from tradingstrategy.client import Client
+    from tradingstrategy.timebucket import TimeBucket
+except ImportError:
+    raise ImportError('use "poetry install -E execution" to install dependencies in trade-executor instead of "poetry install"')
 
 @dataclass
 class BacktestSetup:
