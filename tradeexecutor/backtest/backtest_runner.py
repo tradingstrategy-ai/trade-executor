@@ -37,6 +37,7 @@ from tradeexecutor.utils.timer import timed_task
 from tradingstrategy.client import Client
 from tradingstrategy.timebucket import TimeBucket
 
+
 @dataclass
 class BacktestSetup:
     """Describe backtest setup, ready to run."""
