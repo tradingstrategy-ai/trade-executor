@@ -397,5 +397,5 @@ class PositionManager:
         :return:
             Trading pair information
         """
-        dex_pair = self.universe.universe.pairs.get_pair_by_id(pair_id)
+        dex_pair = self.universe.pairs.get_pair_by_id(pair_id)
         return translate_trading_pair(dex_pair)
