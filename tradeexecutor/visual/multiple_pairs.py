@@ -202,8 +202,10 @@ def visualise_multiple_pairs(
     pair_ids = universe.universe.pairs.get_all_pair_ids()
     pairs = [universe.universe.pairs.get_pair_by_id(x) for x in pair_ids]
     identifiers = [translate_trading_pair(pair) for pair in pairs]
-    candle_universe = GroupedCandleUniverse(universe.universe.candles)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    )
-    #candle_universe = GroupedCandleUniverse(universe.universe.candles.get_candles_by_pair(id))
+    candle_universe = universe.universe.candles                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 
+
+    # TODO: assert that data exists for same time ranges of all pairs, but actually do this when trading, not after when visualising
+    # candle_universe = GroupedCandleUniverse(universe.universe.candles.get_candles_by_pair(id))
 
     logger.info("Visualising %s", state)
 
@@ -223,19 +225,18 @@ def visualise_multiple_pairs(
 
     for i in range(len(pair_ids)):
         candles = candle_universe.get_samples_by_pair(pair_ids[i])
-        candle_universe_single = GroupedCandleUniverse(filter_for_single_pair(candle_universe, pairs[i]))
+        #candle_universe_single = GroupedCandleUniverse(filter_for_single_pair(candles, pairs[i]))
+        candle_universe_single = GroupedCandleUniverse(candles)
         identifier = identifiers[i]
+
 
         try:
             first_trade = next(iter(state.portfolio.get_all_trades_by_trading_pair(identifier)))
         except StopIteration:
             first_trade = None
 
-        if first_trade:
-            pair_name = f"{first_trade.pair.base.token_symbol} - {first_trade.pair.quote.token_symbol}"
-        else:
-            pair_name = None
-
+        pair_name = f"{identifier.base.token_symbol} - {identifier.quote.token_symbol}"
+        
         if not start_at:
             # No trades made, use the first candle timestamp
             start_at = candle_universe_single.get_timestamp_range()[0]
