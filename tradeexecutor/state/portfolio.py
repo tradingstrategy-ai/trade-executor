@@ -392,10 +392,11 @@ class Portfolio:
                 first = t
             if last is None:
                 last = t
-            if t.executed_at and (t.executed_at < first.executed_at):
+            if t.executed_at and first.executed_at and (t.executed_at < first.executed_at):
                 first = t
-            if t.executed_at and (t.executed_at > last.executed_at):
+            if t.executed_at and last.executed_at and (t.executed_at > last.executed_at):
                 last = t
+
         return first, last
 
     def get_initial_deposit(self) -> Optional[USDollarAmount]:
