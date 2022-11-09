@@ -91,6 +91,13 @@ class Portfolio:
     def get_all_positions(self) -> Iterable[TradingPosition]:
         """Get open, closed and frozen, positions."""
         return chain(self.open_positions.values(), self.closed_positions.values(), self.frozen_positions.values())
+    
+    def get_all_positions_by_pair(self, pair: TradingPairIdentifier) -> Iterable[TradingPosition]:
+        """Get open, closed and frozen, positions for a certain pair."""
+        assert isinstance(pair, TradingPairIdentifier)
+        pos: TradingPosition
+
+        return [pos for pos in self.get_all_positions.values() if pos.pair.get_identifier() == pair.get_identifier()]
 
     def get_open_positions(self) -> Iterable[TradingPosition]:
         """Get currently open positions."""
@@ -366,6 +373,14 @@ class Portfolio:
         for pos in self.get_all_positions():
             for t in pos.trades.values():
                 yield t
+    
+    def get_all_trades_by_trading_pair(self, pair: TradingPairIdentifier) -> Iterable[TradeExecution]:
+        """Iterate through all trades for a certain trading pair: completed, failed and in progress"""
+        for pos in self.get_all_positions():
+            if pos.pair.get_identifier() == pair.get_identifier():
+                for t in pos.trades.values():
+                    yield t
+        
 
     def get_first_and_last_executed_trade(self) -> Tuple[Optional[TradeExecution], Optional[TradeExecution]]:
         """Get first and last trades overall."""
