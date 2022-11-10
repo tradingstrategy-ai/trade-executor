@@ -242,13 +242,18 @@ def visualise_single_pair(
     # set up figure with values not high and not low
     # include candlestick with rangeselector
 
+    percentage_changes = (candles['open'] - candles['close'])/candles['open']
+    text = ["Change: " + f"{percentage_changes[i]:.2f}%" for i in range(len(percentage_changes))]
+
     candlesticks = go.Candlestick(
+        name='candles',
         x=candles.index,
         open=candles['open'],
         high=candles['high'],
         low=candles['low'],
         close=candles['close'],
-        showlegend=False
+        showlegend=False,
+        text=text
     )
 
     # Synthetic data may not have volume available
@@ -275,7 +280,8 @@ def visualise_single_pair(
             showlegend=False,
             marker={
                 "color": "rgba(128,128,128,0.5)",
-            }
+            },
+            name='Volume'
         )
         fig.add_trace(volume_bars, secondary_y=True)
         fig.update_yaxes(title="Volume $", secondary_y=True, showgrid=False)
@@ -291,13 +297,15 @@ def visualise_single_pair(
     # Move legend to the bottom so we have more space for
     # time axis in narrow notebook views
     # https://plotly.com/python/legend/f
-    fig.update_layout(legend=dict(
-        orientation="h",
-        yanchor="bottom",
-        y=1.02,
-        xanchor="right",
-        x=1
-    ))
+    fig.update_layout(
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
+        )
+    )
 
     return fig
 
