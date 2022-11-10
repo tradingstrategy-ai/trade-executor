@@ -134,6 +134,13 @@ class PositionManager:
         """Do we have any positions open."""
         return len(self.state.portfolio.open_positions) > 0
 
+    def is_any_open_by_pair(self, pair: TradingPairIdentifier) -> bool:
+        """Do we have any positions open."""
+        for p in self.state.portfolio.open_positions.values():
+            if p.pair.pool_address.lower() == pair.pool_address.lower():
+                return True
+        return False
+
     def get_current_position(self) -> TradingPosition:
         """Get the current single position.
 
