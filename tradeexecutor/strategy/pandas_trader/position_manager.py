@@ -135,7 +135,11 @@ class PositionManager:
         return len(self.state.portfolio.open_positions) > 0
 
     def is_any_open_by_pair(self, pair: TradingPairIdentifier) -> bool:
-        """Do we have any positions open."""
+        """Do we have any positions open for a particular trading pair.
+
+            :param pair: 
+            Trading pair
+        """
         for p in self.state.portfolio.open_positions.values():
             if p.pair.pool_address.lower() == pair.pool_address.lower():
                 return True
@@ -391,6 +395,27 @@ class PositionManager:
             if trade:
                 trades.append(trade)
 
+        return trades
+
+    def close_all_by_pair(self, pair: TradingPairIdentifier):
+        """Close all open positions for a certain pair. 
+
+        :param pair:
+            Pair for which trades will be closed
+
+        :return:
+            List of trades that will close existing positions for a certain pair
+        """
+
+        assert self.is_any_open_by_pair(pair), "No positions to close for pair"
+
+        position: TradingPosition
+        trades = []
+        for position in self.state.portfolio.open_positions.values():
+            if position.pair.pool_address.lower() == pair.pool_address.lower():
+                trade = self.close_position(position)
+                if trade:
+                    trades.append(trade)
         return trades
 
     def get_trading_pair(self, pair_id: int) -> TradingPairIdentifier:
