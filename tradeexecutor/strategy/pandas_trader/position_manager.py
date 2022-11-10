@@ -397,7 +397,7 @@ class PositionManager:
 
         return trades
 
-    def close_all_by_pair(self, pair: TradingPairIdentifier):
+    def close_all_by_pair(self, pair: TradingPairIdentifier) -> List[TradeExecution]:
         """Close all open positions for a certain pair. 
 
         :param pair:
