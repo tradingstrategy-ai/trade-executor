@@ -97,7 +97,7 @@ class Portfolio:
         assert isinstance(pair, TradingPairIdentifier)
         pos: TradingPosition
 
-        return [pos for pos in self.get_all_positions.values() if pos.pair.get_identifier() == pair.get_identifier()]
+        return [pos for pos in self.get_all_positions() if pos.pair.get_identifier() == pair.get_identifier()]
 
     def get_open_positions(self) -> Iterable[TradingPosition]:
         """Get currently open positions."""
