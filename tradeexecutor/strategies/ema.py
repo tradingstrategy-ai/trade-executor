@@ -30,7 +30,7 @@ from tradeexecutor.visual.single_pair import visualise_single_pair
 # give it trade_routing, trading_strategy_cycle, candle_time_bucket, chain_id, exchange, pair, slow_ema_count, fast_ema_count, start_at, end_at, initial_deposit, position_size, batch_size 
 
 @dataclass
-class ema_strategy:
+class Ema_strategy:
     trading_strategy_engine_version: str
     trading_strategy_type: StrategyType
     trade_routing: TradeRouting
