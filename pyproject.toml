@@ -23,10 +23,13 @@ web3 = "^5.26.0"
 web3-ethereum-defi = "^0.11.1"
 trading-strategy = "^0.8.1"
 matplotlib = "^3.6.0"
-notebook = "^6.4.12"
-ipywidgets = "^8.0.2"
+jupyterlab = "^3.5.0"
 pandas-ta = "^0.3.14-beta.0"
-tqdm-loggable = "^0.1.0"
+tqdm-loggable = "^0.1.1"
+
+# tqdm progress bar doesn't show up in VScode Jupyter with ipywidgets>=8
+# https://github.com/microsoft/vscode-jupyter/issues/11014
+ipywidgets = ">=7.0,<8.0"
 
 #
 # Execution deps
