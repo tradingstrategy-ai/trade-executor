@@ -102,6 +102,9 @@ class TradeExecution:
     #: when our routing model supports this.
     reserve_currency: AssetIdentifier
 
+    #: Has this particular trade been clicked on a list on a list of trades
+    is_clicked: bool = False
+
     #: How much slippage we could initially tolerate,
     #: 0.01 is 1% slippage.
     planned_max_slippage: Optional[float] = None

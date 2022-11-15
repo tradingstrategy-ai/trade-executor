@@ -48,6 +48,7 @@ def export_trade_for_dataframe(p: Portfolio, t: TradeExecution) -> dict:
         "type": type,
         "label": label,
         "price": t.executed_price,
+        "is_clicked": t.is_clicked
     }
 
 
@@ -113,6 +114,20 @@ def visualise_trades(
         stop_loss_df = None
         take_profit_df = None
 
+    # if clicked, increase size of triangle
+    def get_size(row):
+        if(row["is_clicked"] == False):
+            return 12
+        else:
+            return 24
+
+    buy_sizes = buys_df.apply (lambda row: get_size(row), axis=1)
+    sell_sizes = sells_df.apply (lambda row: get_size(row), axis=1)
+    if(stop_loss_df):
+        stop_loss_sizes = stop_loss_df.apply(lambda row: get_size(row), axis=1)
+    if(take_profit_df):
+        take_profit_sizes = take_profit_df.apply(lambda row: get_size(row), axis=1)
+
     # Buys
     fig.add_trace(
         go.Scatter(
@@ -121,7 +136,7 @@ def visualise_trades(
             x=buys_df["timestamp"],
             y=buys_df["price"],
             text=buys_df["label"],
-            marker={"symbol": 'triangle-right', "size": 12, "line": {"width": 2, "color": "black"}},
+            marker={"symbol": 'triangle-right', "size": buy_sizes, "line": {"width": 2, "color": "black"}},
         ),
         secondary_y=False,
     )
@@ -134,7 +149,7 @@ def visualise_trades(
             x=sells_df["timestamp"],
             y=sells_df["price"],
             text=sells_df["label"],
-            marker={"symbol": 'triangle-left', "size": 12, "line": {"width": 2, "color": "black"}}
+            marker={"symbol": 'triangle-left', "size": sell_sizes, "line": {"width": 2, "color": "black"}}
         ),
         secondary_y=False,
     )
@@ -147,7 +162,7 @@ def visualise_trades(
                 x=stop_loss_df["timestamp"],
                 y=stop_loss_df["price"],
                 text=stop_loss_df["label"],
-                marker={"symbol": 'triangle-left', "size": 12, "line": {"width": 2, "color": "black"}}
+                marker={"symbol": 'triangle-left', "size": stop_loss_sizes, "line": {"width": 2, "color": "black"}}
             ),
             secondary_y=False,
         )
@@ -160,7 +175,7 @@ def visualise_trades(
                 x=take_profit_df["timestamp"],
                 y=take_profit_df["price"],
                 text=take_profit_df["label"],
-                marker={"symbol": 'triangle-left', "size": 12, "line": {"width": 2, "color": "black"}}
+                marker={"symbol": 'triangle-left', "size": take_profit_sizes, "line": {"width": 2, "color": "black"}}
             ),
             secondary_y=False,
         )
