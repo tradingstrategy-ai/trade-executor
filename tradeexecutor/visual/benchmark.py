@@ -90,7 +90,7 @@ def visualise_benchmark(
     all_cash: Optional[float]=None,
     buy_and_hold_asset_name: Optional[str]=None,
     buy_and_hold_price_series: Optional[pd.Series]=None,
-    height=2400,
+    height=1200,
     start_at: Optional[Union[pd.Timestamp, datetime.datetime]]=None,
     end_at: Optional[Union[pd.Timestamp, datetime.datetime]]=None,
 

@@ -93,17 +93,6 @@ jobs:
               workflow_id: 'rsync-docs.yml',
               ref: 'master'
             })
-      - name: Trigger jupyter-env build
-        uses: actions/github-script@v6
-        with:
-          github-token: ${{ secrets.PAT }}
-          script: |
-            await github.rest.actions.createWorkflowDispatch({
-              owner: 'tradingstrategy-ai',
-              repo: 'jupyter-env',
-              workflow_id: 'docker.yml',
-              ref: 'master'
-            })
       - name: Trigger binder-env build
         uses: actions/github-script@v6
         with:
