@@ -19,7 +19,7 @@ from typing import List, Dict, Optional, Any, Union
 import pandas as pd
 
 from dataclasses_json import dataclass_json
-
+from .identifier import TradingPairIdentifier
 from tradeexecutor.utils.timestamp import convert_and_validate_timestamp, convert_and_validate_timestamp_as_int
 
 
@@ -37,6 +37,8 @@ class Plot:
     name: str
 
     kind: PlotKind
+
+    pair: TradingPairIdentifier
 
     #: One of Plotly colour names
     #: https://community.plotly.com/t/plotly-colours-list/11730/2
@@ -76,7 +78,20 @@ class Visualisation:
     messages: Dict[int, List[str]] = field(default_factory=dict)
 
     # Extra line outputs.
-    plots: Dict[str, Plot] = field(default_factory=dict)
+    plots: list[tuple[TradingPairIdentifier, Dict[str, Plot]]] = field(default_factory=list)
+
+    def get_plots_for_pair(self, pair: TradingPairIdentifier) -> Dict[str, Plot]:
+        for _pair in self.plots:
+            if(pair.pool_address.lower() == _pair[0].pool_address.lower()):
+                return _pair[1]
+        return {}
+    
+    def set_plots_for_pair(self, pair: TradingPairIdentifier, name: str, value: Plot) -> None:
+        for _pair in self.plots:
+            if(pair.pool_address.lower() == _pair[0].pool_address.lower()):
+                _pair[1][name] = value
+                return
+        self.plots.append((pair, {name:value}))
 
     def add_message(self,
                     timestamp: datetime.datetime,
@@ -102,6 +117,7 @@ class Visualisation:
              name: str,
              kind: PlotKind,
              value: float,
+             pair: TradingPairIdentifier,
              colour: Optional[str] = None):
         """Add a value to the output data and diagram.
         
@@ -122,13 +138,16 @@ class Visualisation:
         :param colour:
             Optional colour
         """
-        plot = self.plots.get(name, Plot(name=name, kind=kind))
 
-        plot.add_point(timestamp, value)
+        _plots = self.get_plots_for_pair(pair)
+
+        plot = _plots.get(name, Plot(name=name, kind=kind, pair=pair))
+
+        plot.add_point(timestamp=timestamp, value=value)
 
         plot.kind = kind
 
         if colour:
             plot.colour = colour
 
-        self.plots[name] = plot
+        self.set_plots_for_pair(pair, name, plot)

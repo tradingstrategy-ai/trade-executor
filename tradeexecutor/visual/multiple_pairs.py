@@ -79,11 +79,13 @@ def export_plot_as_dataframe(plot: Plot) -> pd.DataFrame:
     return df
 
 
-def visualise_technical_indicators(fig: go.Figure, visualisation: Visualisation):
+def visualise_technical_indicators(fig: go.Figure, visualisation: Visualisation, pair: TradingPairIdentifier):
     """Draw technical indicators over candle chart."""
 
     # https://plotly.com/python/graphing-multiple-chart-types/
-    for plot_id, plot in visualisation.plots.items():
+    plots = visualisation.get_plots_for_pair(pair)
+
+    for plot_id, plot in plots.items():
         df = export_plot_as_dataframe(plot)
         start_ts = df["timestamp"].min()
         end_ts = df["timestamp"].max()
@@ -299,7 +301,7 @@ def visualise_multiple_pairs(
 
         fig.add_trace(candlesticks, secondary_y=False)
 
-        visualise_technical_indicators(fig, state.visualisation)
+        visualise_technical_indicators(fig, state.visualisation, identifier)
 
         # Add trade markers if any trades have been made
         if len(trades_df) > 0:
