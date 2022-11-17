@@ -13,7 +13,6 @@ from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.visualisation import Visualisation, Plot
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_trading_pair
-from tradingstrategy.utils.groupeduniverse import filter_for_single_pair
 from tradeexecutor.state.identifier import TradingPairIdentifier
 
 logger = logging.getLogger(__name__)
