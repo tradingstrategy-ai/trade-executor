@@ -112,7 +112,10 @@ def make_runner_for_strategy_mod(mod) -> StrategyFactory:
             execution_context,
             mod_info.create_trading_universe)
 
-        routing_model = get_routing_model(mod_info.trade_routing, mod_info.reserve_currency)
+        routing_model = get_routing_model(
+            execution_context,
+            mod_info.trade_routing,
+            mod_info.reserve_currency)
 
         runner = PandasTraderRunner(
             timed_task_context_manager=timed_task_context_manager,
