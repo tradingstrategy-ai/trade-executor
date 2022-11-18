@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 
+
 def freeze_position_on_failed_trade(ts: datetime.datetime, state: State, trades: List[TradeExecution]) -> Tuple[List[TradeExecution], List[TradeExecution]]:
     """Move positions of failed sell trades to freeze list.
 
