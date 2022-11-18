@@ -11,3 +11,6 @@ dist
 cache
 state/*.json/
 .idea
+
+# Default file created if trade-executon command is run locally
+strategy-state.json

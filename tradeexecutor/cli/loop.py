@@ -294,6 +294,10 @@ class ExecutionLoop:
         Display progress bars for data downloads.
         """
         logger.info("Warming up backesting")
+
+        if not self.client:
+            raise RuntimeError("Trading Strategy client instance is not available - needed to run backtests. Make sure trading_strategy_api_key is set.")
+
         self.universe_model.preload_universe()
 
     def run_backtest_stop_loss_checks(self,
@@ -348,6 +352,9 @@ class ExecutionLoop:
 
     def run_backtest(self, state: State) -> dict:
         """Backtest loop."""
+
+        if self.backtest_end or self.backtest_start:
+            assert self.backtest_start and self.backtest_end, f"If backtesting both start and end must be given, we have {self.backtest_start} - {self.backtest_end}"
 
         ts = self.backtest_start
 
@@ -525,9 +532,6 @@ class ExecutionLoop:
         :return:
             Debug state where each key is the cycle number
         """
-
-        if self.backtest_end or self.backtest_start:
-            assert self.backtest_start and self.backtest_end, f"If backtesting both start and end must be given, we have {self.backtest_start} - {self.backtest_end}"
 
         state = self.init_state()
 

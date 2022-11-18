@@ -1,6 +1,7 @@
 """Command-line entry point for the daemon build on the top of Typer."""
 import datetime
 import logging
+from decimal import Decimal
 from pathlib import Path
 from queue import Queue
 from typing import Optional
@@ -16,6 +17,11 @@ from eth_defi.gas import GasPriceMethod, node_default_gas_price_strategy
 from eth_defi.token import fetch_erc20_details
 from eth_defi.hotwallet import HotWallet
 
+from tradeexecutor.backtest.backtest_execution import BacktestExecutionModel
+from tradeexecutor.backtest.backtest_pricing import backtest_pricing_factory
+from tradeexecutor.backtest.backtest_sync import BacktestSyncer
+from tradeexecutor.backtest.backtest_valuation import backtest_valuation_factory
+from tradeexecutor.backtest.simulated_wallet import SimulatedWallet
 from tradeexecutor.state.metadata import Metadata
 from tradeexecutor.strategy.description import StrategyExecutionDescription
 from tradeexecutor.strategy.cycle import CycleDuration
@@ -66,6 +72,7 @@ def create_trade_execution_model(
         confirmation_block_count: int,
         max_slippage: float,
 ):
+    """Set up the execution mode for the command line client."""
 
     if not gas_price_method:
         raise RuntimeError("GAS_PRICE_METHOD missing")
@@ -87,6 +94,14 @@ def create_trade_execution_model(
             max_slippage=max_slippage)
         valuation_model_factory = uniswap_v2_sell_valuation_factory
         pricing_model_factory = uniswap_v2_live_pricing_factory
+        return execution_model, sync_method, valuation_model_factory, pricing_model_factory
+    elif execution_type == TradeExecutionType.backtest:
+        logger.warning("TODO: Command line backtests are always executed with initial deposit of $10,000")
+        wallet = SimulatedWallet()
+        execution_model = BacktestExecutionModel(wallet, max_slippage=0.01)
+        sync_method = BacktestSyncer(wallet, Decimal(10_000))
+        pricing_model_factory = backtest_pricing_factory
+        valuation_model_factory = backtest_valuation_factory
         return execution_model, sync_method, valuation_model_factory, pricing_model_factory
     else:
         raise NotImplementedError()
@@ -160,12 +175,12 @@ def start(
     http_username: str = typer.Option("webhook", envvar="HTTP_USERNAME"),
     http_password: str = typer.Option(None, envvar="HTTP_PASSWORD"),
     json_rpc: str = typer.Option(None, envvar="JSON_RPC", help="Ethereum JSON-RPC node URL we connect to for execution"),
-    gas_price_method: Optional[GasPriceMethod] = typer.Option(None, envvar="GAS_PRICE_METHOD", help="How to set the gas price for Ethereum transactions"),
+    gas_price_method: Optional[GasPriceMethod] = typer.Option("legacy", envvar="GAS_PRICE_METHOD", help="How to set the gas price for Ethereum transactions. After the Berlin hardfork Ethereum mainnet introduced base + tip cost gas model."),
     confirmation_timeout: int = typer.Option(900, envvar="CONFIRMATION_TIMEOUT", help="How many seconds to wait for transaction batches to confirm"),
     confirmation_block_count: int = typer.Option(8, envvar="CONFIRMATION_BLOCK_COUNT", help="How many blocks we wait before we consider transaction receipt a final"),
     execution_type: TradeExecutionType = typer.Option(..., envvar="EXECUTION_TYPE"),
     max_slippage: float = typer.Option(0.0025, envvar="MAX_SLIPPAGE", help="Max slippage allowed per trade before failing. The default is 0.0025 is 0.25%."),
-    approval_type: ApprovalType = typer.Option(..., envvar="APPROVAL_TYPE"),
+    approval_type: ApprovalType = typer.Option("unchecked", envvar="APPROVAL_TYPE", help="Set a manual approval flow for trades"),
     state_file: Optional[Path] = typer.Option("strategy-state.json", envvar="STATE_FILE"),
     trading_strategy_api_key: str = typer.Option(None, envvar="TRADING_STRATEGY_API_KEY", help="Trading Strategy API key"),
     cache_path: Optional[Path] = typer.Option(None, envvar="CACHE_PATH", help="Where to store downloaded datasets"),
@@ -259,6 +274,7 @@ def start(
     logger.trade("Trade Executor version %s starting strategy %s", version, name)
 
     if backtest_start:
+        # Running as a backtest
         execution_context = ExecutionContext(
             mode=ExecutionMode.backtesting,
             timed_task_context_manager=timed_task,
