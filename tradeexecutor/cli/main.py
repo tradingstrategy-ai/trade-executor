@@ -98,7 +98,7 @@ def create_trade_execution_model(
     elif execution_type == TradeExecutionType.backtest:
         logger.warning("TODO: Command line backtests are always executed with initial deposit of $10,000")
         wallet = SimulatedWallet()
-        execution_model = BacktestExecutionModel(wallet, max_slippage=0.01)
+        execution_model = BacktestExecutionModel(wallet, max_slippage=0.01, stop_loss_data_available=True)
         sync_method = BacktestSyncer(wallet, Decimal(10_000))
         pricing_model_factory = backtest_pricing_factory
         valuation_model_factory = backtest_valuation_factory

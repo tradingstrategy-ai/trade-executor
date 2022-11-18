@@ -256,7 +256,6 @@ class StrategyModuleInformation:
     trading_strategy_cycle: CycleDuration
     trade_routing: TradeRouting
     reserve_currency: ReserveCurrency
-
     decide_trades: DecideTradesProtocol
 
     #: If `execution_context.live_trading` is true then this function is called for
@@ -301,6 +300,9 @@ class StrategyModuleInformation:
 
         if not isinstance(self.create_trading_universe, Callable):
             raise StrategyModuleNotValid(f"create_trading_universe function missing/invalid")
+
+        if self.trade_routing is None:
+            raise StrategyModuleNotValid(f"trade_routing missing on the strategy")
 
 
 def parse_strategy_module(mod) -> StrategyModuleInformation:

@@ -5,6 +5,7 @@ from decimal import Decimal, ROUND_DOWN
 from typing import Optional
 
 from tradeexecutor.backtest.backtest_execution import BacktestExecutionModel
+from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel
 from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2SimpleRoutingModel
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.strategy.execution_model import ExecutionModel
@@ -90,7 +91,7 @@ def backtest_pricing_factory(
 
     assert isinstance(universe, TradingStrategyUniverse)
     assert isinstance(execution_model, BacktestExecutionModel), f"Execution model not compatible with this execution model. Received {execution_model}"
-    assert isinstance(routing_model, UniswapV2SimpleRoutingModel), f"This pricing method only works with Uniswap routing model, we received {routing_model}"
+    assert isinstance(routing_model, (BacktestRoutingModel, UniswapV2SimpleRoutingModel)), f"This pricing method only works with Uniswap routing model, we received {routing_model}"
 
     return BacktestSimplePricingModel(
         universe.universe.candles,

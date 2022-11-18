@@ -22,6 +22,7 @@ To backtest locally:
 
 import datetime
 import pandas as pd
+from pandas_ta import ema
 
 from tradingstrategy.chain import ChainId
 from tradingstrategy.timebucket import TimeBucket
