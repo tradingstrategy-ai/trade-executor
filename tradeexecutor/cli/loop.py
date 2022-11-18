@@ -102,8 +102,15 @@ class ExecutionLoop:
         self.debug_dump_state = {}
 
     def init_state(self) -> State:
-        """Initialize the state for this run."""
-        if self.reset:
+        """Initialize the state for this run.
+
+        - If we are doing live trading, load the last saved state
+
+        - In backtesting the state is always reset.
+          We do not support resumes for crashed backetsting.
+
+        """
+        if self.reset or (self.execution_context.mode == ExecutionMode.backtesting):
             # Create empty state and save it
             state = self.store.create()
             state.name = self.name
@@ -383,7 +390,8 @@ class ExecutionLoop:
                 progress_bar.update(int(self.cycle_duration.to_timedelta().total_seconds()))
                 friedly_ts = ts.strftime(ts_format)
                 trade_count = len(list(state.portfolio.get_all_trades()))
-                progress_bar.set_description(f"Backtesting {self.name}, {friendly_start}-{friendly_end} at {friedly_ts}, total {trade_count:,} trades")
+                cycle_name = self.cycle_duration.value
+                progress_bar.set_description(f"Backtesting {self.name}, {friendly_start}-{friendly_end} at {friedly_ts} ({cycle_name}), total {trade_count:,} trades")
 
                 # Decide trades and everything for this cycle
                 universe: TradingStrategyUniverse = self.tick(ts, state, cycle, live=False, backtesting_universe=universe)
