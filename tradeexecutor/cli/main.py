@@ -163,6 +163,7 @@ def monkey_patch():
 @app.command()
 def start(
     id: str = typer.Option(None, envvar="EXECUTOR_ID", help="Executor id used when programmatically referring to this instance"),
+    log_level: str = typer.Option(None, envvar="LOG_LEVEL", help="The Python default logging level. The defaults are 'info' is live execution, 'warning' if backtesting."),
     name: Optional[str] = typer.Option("Unnamed Trade Executor", envvar="NAME", help="Executor name used in the web interface and notifications"),
     short_description: Optional[str] = typer.Option(None, envvar="SHORT_DESCRIPTION", help="Short description for metadata"),
     long_description: Optional[str] = typer.Option(None, envvar="LONG_DESCRIPTION", help="Long description for metadata"),
@@ -206,7 +207,15 @@ def start(
 
     check_good_id(id)
 
-    logger = setup_logging()
+    if log_level:
+        log_level = log_level.upper()
+    else:
+        if execution_type == TradeExecutionType.backtest:
+            log_level = logging.WARNING
+        else:
+            log_level = logging.INFO
+
+    logger = setup_logging(log_level)
 
     if discord_webhook_url:
         setup_discord_logging(

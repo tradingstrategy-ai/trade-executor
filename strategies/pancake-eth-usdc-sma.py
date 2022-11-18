@@ -16,7 +16,7 @@ To backtest locally:
         --trading-strategy-api-key=$TRADING_STRATEGY_API_KEY \
         --backtest-start=2021-06-01 \
         --backtest-end=2022-09-01 \
-        --tick-size=1h
+        --tick-size=24h
 
 """
 
