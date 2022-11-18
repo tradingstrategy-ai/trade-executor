@@ -261,7 +261,10 @@ class TradePosition:
         cur_size = 0
         max_size = 0
         for t in self.trades:
-            cur_size += t.value
+            if(t.is_buy):
+                cur_size += t.value
+            else:
+                cur_size -= t.value
             max_size = max(cur_size, max_size)
         return max_size
 
