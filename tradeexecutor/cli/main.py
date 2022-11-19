@@ -267,6 +267,12 @@ def start(
             client.clear_caches()
     else:
         client = None
+
+    # Currently, all actions require us to have a valid API key
+    # might change in the future
+    if not client:
+        raise RuntimeError("Trading Strategy client instance is not available - needed to run backtests. Make sure trading_strategy_api_key is set.")
+
     tick_offset = datetime.timedelta(minutes=tick_offset_minutes)
 
     if max_data_delay_minutes:

@@ -346,8 +346,9 @@ class TradeSummary:
 
     average_winning_trade_profit_pc: float
     average_losing_trade_loss_pc: float
-    biggest_winning_trade_pc: float
-    biggest_losing_trade_pc: float
+    biggest_winning_trade_pc: Optional[float]
+    biggest_losing_trade_pc: Optional[float]
+
     average_duration_of_winning_trades: datetime.timedelta = field(metadata=config(
         encoder=json_encode_timedelta,
         decoder=json_decode_timedelta,

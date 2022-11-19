@@ -96,5 +96,4 @@ class NoneStore(StateStore):
         pass
 
     def create(self) -> State:
-        raise NotImplementedError()
-
+        return State()

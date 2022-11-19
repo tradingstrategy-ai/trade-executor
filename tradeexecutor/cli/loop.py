@@ -302,9 +302,6 @@ class ExecutionLoop:
         """
         logger.info("Warming up backesting")
 
-        if not self.client:
-            raise RuntimeError("Trading Strategy client instance is not available - needed to run backtests. Make sure trading_strategy_api_key is set.")
-
         self.universe_model.preload_universe()
 
     def run_backtest_stop_loss_checks(self,
