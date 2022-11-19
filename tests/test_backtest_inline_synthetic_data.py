@@ -272,7 +272,7 @@ def test_analyse_synthetic_trading_portfolio(
         row_styling_mode=TimelineRowStylingMode.gradient,
     )
     # https://github.com/pandas-dev/pandas/issues/19358#issuecomment-359733504
-    apply_styles(df).render()
+    apply_styles(df).to_html()
 
     expanded_timeline, apply_styles = expand_timeline(
         universe.universe.exchanges,
@@ -280,16 +280,22 @@ def test_analyse_synthetic_trading_portfolio(
         timeline,
         row_styling_mode=TimelineRowStylingMode.simple,
     )
-    apply_styles(df).render()
+    apply_styles(df).to_html()
+
 
     # Do checks for the first position
     # 0    1          2021-07-01   8 days                      WETH        USDC         $2,027.23    $27.23    2.72%   0.027230  $1,617.294181   $1,661.333561            2
-
     row = expanded_timeline.iloc[0]
-
     assert row["Opened at"] == "2021-07-01"
     assert row["Trade count"] == 2
     assert row["Open price USD"] == "$1,617.294181"
+    assert row["Position max size"] == "$1,027.23"
+
+    # 1    3          2021-07-10  26 days                      WETH        USDC         $1,002.72  $-137.39  -13.70%  -0.137013  $1,710.929622   $1,476.509241            2
+    row2 = expanded_timeline.iloc[1]
+    assert row2["Opened at"] == "2021-07-10"
+    assert row2["Close price USD"] == "$1,476.509241"
+    assert row2["Position max size"] == "$1,002.72"
 
 
 def test_benchmark_synthetic_trading_portfolio(
