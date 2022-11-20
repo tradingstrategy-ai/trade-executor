@@ -19,6 +19,7 @@ Example analysis include:
 """
 import datetime
 import enum
+import logging
 from dataclasses import dataclass, field
 from typing import List, Dict, Iterable, Optional, Tuple, Callable, Set
 
@@ -37,6 +38,8 @@ from tradingstrategy.types import PrimaryKey, USDollarAmount
 from tradingstrategy.utils.format import format_value, format_price, format_duration_days_hours_mins, \
     format_percent_2_decimals
 from tradingstrategy.utils.summarydataframe import as_dollar, as_integer, create_summary_table, as_percent, as_duration
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -259,8 +262,12 @@ class TradePosition:
         """Get the largest size of this position over the time"""
         cur_size = 0
         max_size = 0
+
+        if len(self.trades) > 2:
+            logger.warning("Position has %d trades so this method might produce wrong result")
+
         for t in self.trades:
-            cur_size += t.value
+            cur_size = t.value
             max_size = max(cur_size, max_size)
         return max_size
 
