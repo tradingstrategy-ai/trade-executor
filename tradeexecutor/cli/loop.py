@@ -105,7 +105,7 @@ class ExecutionLoop:
 
         # Hook in any overrides for strategy cycles
         self.universe_options = UniverseOptions(
-            candle_time_bucket_override=self.cycle_duration.to_timebucket(),
+            candle_time_bucket_override=self.cycle_duration.to_timebucket() if self.cycle_duration else None,
             stop_loss_time_bucket_override=self.stop_loss_check_frequency,
         )
 

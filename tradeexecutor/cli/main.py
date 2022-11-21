@@ -249,11 +249,14 @@ def start(
 
     approval_model = create_approval_model(approval_type)
 
-    if execution_type != TradeExecutionType.backtest:
+    if state_file:
         store = create_state_store(state_file)
     else:
         # Backtests never have persistent state
-        store = NoneStore(State())
+        if execution_type == TradeExecutionType.backtest:
+            store = NoneStore(State())
+        else:
+            raise RuntimeError("Does not know how to set up a state file for this run")
 
     metadata = create_metadata(name, short_description, long_description, icon_url)
 

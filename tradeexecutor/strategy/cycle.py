@@ -4,6 +4,7 @@ See :ref:`strategy cycle` for more information.
 """
 import datetime
 import enum
+from typing import Optional
 
 from tradingstrategy.timebucket import TimeBucket
 
@@ -59,11 +60,14 @@ class CycleDuration(enum.Enum):
         """Get the duration of the strategy cycle as Python timedelta object."""
         return _TICK_DURATIONS[self]
 
-    def to_timebucket(self) -> TimeBucket:
+    def to_timebucket(self) -> Optional[TimeBucket]:
         """Convert to trading-strategy client format.
 
-        TODO: Try to avoid tightly coupling and leaking trading-strategy client here."""
-        return TimeBucket(self.value)
+        TODO: Try to avoid tightly coupling and leaking trading-strategy client here.
+
+        Unlike TimeBucket, CycleDuration may have "unknown" value that is presented by None
+        """
+        return TimeBucket(self.value) if self  != CycleDuration.cycle_unknown else None
 
 
 def round_datetime_up(
