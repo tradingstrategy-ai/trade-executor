@@ -304,7 +304,7 @@ class StrategyRunner(abc.ABC):
             self.report_before_execution(clock, universe, state, approved_trades, debug_details)
 
             # Physically execute the trades
-            with self.timed_task_context_manager("execute_trades"):
+            with self.timed_task_context_manager("execute_trades", trade_count=len(approved_trades)):
 
                 # Unit tests can turn this flag to make it easier to see why trades fail
                 check_balances = debug_details.get("check_balances", False)

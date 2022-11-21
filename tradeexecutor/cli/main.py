@@ -1,6 +1,7 @@
 """Command-line entry point for the daemon build on the top of Typer."""
 import datetime
 import logging
+import os.path
 from decimal import Decimal
 from pathlib import Path
 from queue import Queue
@@ -23,6 +24,7 @@ from tradeexecutor.backtest.backtest_pricing import backtest_pricing_factory
 from tradeexecutor.backtest.backtest_sync import BacktestSyncer
 from tradeexecutor.backtest.backtest_valuation import backtest_valuation_factory
 from tradeexecutor.backtest.simulated_wallet import SimulatedWallet
+from tradeexecutor.cli.result import display_backtesting_results
 from tradeexecutor.state.metadata import Metadata
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.description import StrategyExecutionDescription
@@ -166,7 +168,7 @@ def monkey_patch():
 def start(
     id: str = typer.Option(None, envvar="EXECUTOR_ID", help="Executor id used when programmatically referring to this instance"),
     log_level: str = typer.Option(None, envvar="LOG_LEVEL", help="The Python default logging level. The defaults are 'info' is live execution, 'warning' if backtesting."),
-    name: Optional[str] = typer.Option("Unnamed Trade Executor", envvar="NAME", help="Executor name used in the web interface and notifications"),
+    name: Optional[str] = typer.Option(None, envvar="NAME", help="Executor name used in the web interface and notifications"),
     short_description: Optional[str] = typer.Option(None, envvar="SHORT_DESCRIPTION", help="Short description for metadata"),
     long_description: Optional[str] = typer.Option(None, envvar="LONG_DESCRIPTION", help="Long description for metadata"),
     icon_url: Optional[str] = typer.Option(None, envvar="ICON_URL", help="Strategy icon for web rendering and Discord avatar"),
@@ -184,7 +186,7 @@ def start(
     execution_type: TradeExecutionType = typer.Option(..., envvar="EXECUTION_TYPE"),
     max_slippage: float = typer.Option(0.0025, envvar="MAX_SLIPPAGE", help="Max slippage allowed per trade before failing. The default is 0.0025 is 0.25%."),
     approval_type: ApprovalType = typer.Option("unchecked", envvar="APPROVAL_TYPE", help="Set a manual approval flow for trades"),
-    state_file: Optional[Path] = typer.Option("strategy-state.json", envvar="STATE_FILE"),
+    state_file: Optional[Path] = typer.Option(None, envvar="STATE_FILE"),
     trading_strategy_api_key: str = typer.Option(None, envvar="TRADING_STRATEGY_API_KEY", help="Trading Strategy API key"),
     cache_path: Optional[Path] = typer.Option(None, envvar="CACHE_PATH", help="Where to store downloaded datasets"),
     reset_state: bool = typer.Option(False, envvar="RESET_STATE"),
@@ -209,6 +211,13 @@ def start(
     global logger
 
     check_good_id(id)
+
+    # We always need a name
+    if not name:
+        if strategy_file:
+            name = os.path.basename(strategy_file)
+        else:
+            name = "Unnamed backtest"
 
     if log_level:
         log_level = log_level.upper()
@@ -235,6 +244,10 @@ def start(
 
     monkey_patch()
 
+    if not state_file:
+        if execution_type != TradeExecutionType.backtest:
+            raise RuntimeError("You need to give --state-file for live trading")
+
     confirmation_timeout = datetime.timedelta(seconds=confirmation_timeout)
 
     execution_model, sync_method, valuation_model_factory, pricing_model_factory = create_trade_execution_model(
@@ -254,6 +267,7 @@ def start(
     else:
         # Backtests never have persistent state
         if execution_type == TradeExecutionType.backtest:
+            logger.info("This backtest run won't create a state file")
             store = NoneStore(State())
         else:
             raise RuntimeError("Does not know how to set up a state file for this run")
@@ -343,6 +357,11 @@ def start(
             position_trigger_check_frequency=position_trigger_check_frequency,
         )
         loop.run()
+
+        # Display summary stats for terminal backtest runs
+        if execution_type == TradeExecutionType.backtest:
+            display_backtesting_results(store.state)
+
     except KeyboardInterrupt as e:
         # CTRL+C shutdown
         logger.trade("Trade Executor %s shut down by CTRL+C requested: %s", name, e)

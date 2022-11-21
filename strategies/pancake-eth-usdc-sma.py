@@ -291,6 +291,7 @@ def create_trading_universe(
         CHAIN_ID,
         EXCHANGE_SLUG,
         [TRADING_PAIR],
+        universe_options,
         stop_loss_time_bucket=STOP_LOSS_TIME_BUCKET,
     )
 
