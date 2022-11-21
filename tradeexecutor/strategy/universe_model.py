@@ -52,6 +52,8 @@ class UniverseOptions:
     .. code-block:: shell
 
         universe_options = UniverseOptions()
+
+    See
     """
 
     candle_time_bucket_override: Optional[TimeBucket] = None
