@@ -23,6 +23,7 @@ from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.strategy_type import StrategyType
 from tradeexecutor.strategy.default_routing_options import TradeRouting
+from tradeexecutor.strategy.universe_model import UniverseOptions
 
 # https://docs.pytest.org/en/latest/how-to/skipping.html#skip-all-test-functions-of-a-class-or-module
 pytestmark = pytest.mark.skipif(os.environ.get("TRADING_STRATEGY_API_KEY") is None, reason="Set TRADING_STRATEGY_API_KEY environment variable to run this test")
@@ -158,9 +159,9 @@ def create_trading_universe(
         ts: datetime.datetime,
         client: Client,
         execution_context: ExecutionContext,
-        candle_time_frame_override=None,
+        universe_options: UniverseOptions,
 ) -> TradingStrategyUniverse:
-    dataset = load_all_data(client, candle_time_frame, execution_context)
+    dataset = load_all_data(client, candle_time_frame, execution_context, universe_options)
 
     # Filter down to the single pair we are interested in
     universe = TradingStrategyUniverse.create_single_pair_universe(
@@ -191,6 +192,7 @@ def test_backtest_data_preload(
     preload_data(
         client,
         create_trading_universe=create_trading_universe,
+        universe_options=UniverseOptions(),
     )
 
 

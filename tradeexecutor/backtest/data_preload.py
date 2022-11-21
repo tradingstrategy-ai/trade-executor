@@ -4,19 +4,18 @@ from typing import Optional, Callable
 
 import pandas as pd
 
-from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.client import Client
 from tradingstrategy.environment.jupyter import download_with_tqdm_progress_bar
-from tradingstrategy.timebucket import TimeBucket
 
 from tradeexecutor.strategy.execution_context import ExecutionMode, ExecutionContext
+from tradeexecutor.strategy.universe_model import UniverseOptions
 from tradeexecutor.utils.timer import timed_task
 
 
 def preload_data(
         client: Client,
         create_trading_universe: Callable,
-        candle_time_frame_override: Optional[TimeBucket]=None,
+        universe_options: UniverseOptions,
 ):
     """Show nice progress bar for setting up data fees for backtesting trading universe.
 
@@ -39,6 +38,6 @@ def preload_data(
         pd.Timestamp.now(),
         client,
         execution_context,
-        candle_time_frame_override=candle_time_frame_override,
+        universe_options=universe_options,
     )
 

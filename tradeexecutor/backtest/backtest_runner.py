@@ -32,7 +32,7 @@ from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, TradingStrategyUniverseModel, \
     DefaultTradingStrategyUniverseModel
-from tradeexecutor.strategy.universe_model import StaticUniverseModel
+from tradeexecutor.strategy.universe_model import StaticUniverseModel, UniverseOptions
 from tradeexecutor.utils.timer import timed_task
 from tradingstrategy.client import Client
 from tradingstrategy.timebucket import TimeBucket
@@ -49,11 +49,10 @@ class BacktestSetup:
     end_at: datetime.datetime
 
     #: Override trading_strategy_cycle from strategy module
-    cycle_duration: Optional[CycleDuration]
+    universe_options: UniverseOptions
 
     #: Override trading_strategy_cycle from strategy module
-    candle_time_frame: Optional[TimeBucket]
-
+    cycle_duration: Optional[CycleDuration]
     universe: Optional[TradingStrategyUniverse]
     wallet: SimulatedWallet
     state: State
@@ -72,7 +71,6 @@ class BacktestSetup:
 
     #: Name for this backtest
     name: str = "backtest"
-
 
     # strategy_module: StrategyModuleInformation
 
@@ -121,8 +119,7 @@ class BacktestSetup:
             universe_model = DefaultTradingStrategyUniverseModel(
                 client,
                 execution_context,
-                self.create_trading_universe,
-                candle_time_frame_override=self.candle_time_frame)
+                self.create_trading_universe)
 
         return StrategyExecutionDescription(
             universe_model=universe_model,
@@ -184,11 +181,13 @@ def setup_backtest_for_universe(
         # Allow partial strategies to be used in unit testing
         strategy_module.validate()
 
+    universe_options = UniverseOptions(candle_time_bucket_override=candle_time_frame)
+
     return BacktestSetup(
-        start_at,
-        end_at,
-        cycle_duration,
-        candle_time_frame=candle_time_frame,
+        start_at=start_at,
+        end_at=end_at,
+        cycle_duration=cycle_duration,
+        universe_options=universe_options,
         wallet=wallet,
         state=state,
         universe=universe,
@@ -239,11 +238,13 @@ def setup_backtest(
 
     strategy_module.validate()
 
+    universe_options = UniverseOptions(candle_time_bucket_override=candle_time_frame)
+
     return BacktestSetup(
         start_at,
         end_at,
         cycle_duration=cycle_duration or strategy_module.trading_strategy_cycle,  # Pick overridden cycle duration if provided
-        candle_time_frame=candle_time_frame,
+        universe_options=universe_options,
         wallet=wallet,
         state=State(),
         universe=None,
@@ -452,11 +453,15 @@ def run_backtest_inline(
         assert create_trading_universe, "Must give create_trading_universe if no universe given"
         pricing_model = None
 
+    universe_options = UniverseOptions(
+        candle_time_bucket_override=candle_time_frame,
+    )
+
     backtest_setup = BacktestSetup(
         start_at,
         end_at,
         cycle_duration=cycle_duration,  # Pick overridden cycle duration if provided
-        candle_time_frame=candle_time_frame,
+        universe_options=universe_options,
         wallet=wallet,
         state=State(name=name),
         universe=universe,

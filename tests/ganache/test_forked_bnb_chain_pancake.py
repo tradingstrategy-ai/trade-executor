@@ -47,7 +47,7 @@ from tradeexecutor.strategy.description import StrategyExecutionDescription
 from tradeexecutor.strategy.qstrader import HAS_QSTRADER
 from tradeexecutor.strategy.runner import StrategyRunner
 from tradeexecutor.cli.log import setup_pytest_logging
-
+from tradeexecutor.strategy.universe_model import UniverseOptions
 
 # https://docs.pytest.org/en/latest/how-to/skipping.html#skip-all-test-functions-of-a-class-or-module
 from tradeexecutor.utils.timer import timed_task
@@ -292,7 +292,7 @@ def test_forked_pancake(
     ts = datetime.datetime(2021, 12, 7)
 
     # Refresh the trading universe for this cycle
-    universe = universe_constructor.construct_universe(ts, ExecutionMode.unit_testing_trading)
+    universe = universe_constructor.construct_universe(ts, ExecutionMode.unit_testing_trading, UniverseOptions())
 
     # Run cycle checks
     runner.pretick_check(ts, universe)

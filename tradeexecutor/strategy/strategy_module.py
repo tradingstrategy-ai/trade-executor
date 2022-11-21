@@ -16,6 +16,7 @@ from tradingstrategy.client import Client
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
 
+from tradeexecutor.strategy.universe_model import UniverseOptions
 
 #: As set for StrategyModuleInformation.trading_strategy_engine_version
 CURRENT_ENGINE_VERSION = "0.1"
@@ -200,7 +201,7 @@ class CreateTradingUniverseProtocol(Protocol):
             timestamp: pandas.Timestamp,
             client: Optional[Client],
             execution_context: ExecutionContext,
-            candle_time_frame_override: Optional[TimeBucket]=None) -> TradingStrategyUniverse:
+            universe_options: UniverseOptions) -> TradingStrategyUniverse:
         """Creates the trading universe where the strategy trades.
 
         See also :ref:`strategy examples`
@@ -224,7 +225,7 @@ class CreateTradingUniverseProtocol(Protocol):
             Information how the strategy is executed. E.g.
             if we are live trading or not.
 
-        :param candle_timeframe_override:
+        :param options:
             Allow the backtest framework override what candle size is used to backtest the strategy
             without editing the strategy Python source code file.
 

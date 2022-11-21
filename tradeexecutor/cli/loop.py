@@ -29,7 +29,7 @@ from tradeexecutor.strategy.pricing_model import PricingModelFactory
 from tradeexecutor.strategy.runner import StrategyRunner
 from tradeexecutor.strategy.cycle import CycleDuration, snap_to_next_tick, snap_to_previous_tick, round_datetime_up
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
-from tradeexecutor.strategy.universe_model import UniverseModel, StrategyExecutionUniverse
+from tradeexecutor.strategy.universe_model import UniverseModel, StrategyExecutionUniverse, UniverseOptions
 from tradeexecutor.strategy.valuation import ValuationModelFactory
 from tradingstrategy.client import Client
 from tradingstrategy.timebucket import TimeBucket
@@ -85,6 +85,7 @@ class ExecutionLoop:
             raise TypeError("Only keyword arguments accepted")
 
         self.cycle_duration = cycle_duration
+        self.stop_loss_check_frequency = stop_loss_check_frequency
 
         args = locals().copy()
         args.pop("self")
@@ -101,6 +102,12 @@ class ExecutionLoop:
 
         # cycle -> dump mappings
         self.debug_dump_state = {}
+
+        # Hook in any overrides for strategy cycles
+        self.universe_options = UniverseOptions(
+            candle_time_bucket_override=self.cycle_duration.to_timebucket(),
+            stop_loss_time_bucket_override=self.stop_loss_check_frequency,
+        )
 
     def init_state(self) -> State:
         """Initialize the state for this run.
@@ -194,8 +201,16 @@ class ExecutionLoop:
 
         if backtesting_universe is None:
 
+            # We are running backtesting and the universe is not yet loaded.
+            # Unlike live trading, we do not need to reconstruct the universe between
+            # trade cycles.
+
             # Refresh the trading universe for this cycle
-            universe = self.universe_model.construct_universe(ts, self.execution_context.mode)
+            universe = self.universe_model.construct_universe(
+                ts,
+                self.execution_context.mode,
+                self.universe_options,
+            )
 
             # Check if our data is stagnated and we cannot execute the strategy
             if self.max_data_delay is not None:
@@ -308,7 +323,7 @@ class ExecutionLoop:
         """
         logger.info("Warming up backesting")
 
-        self.universe_model.preload_universe()
+        self.universe_model.preload_universe(self.universe_options)
 
     def run_backtest_stop_loss_checks(self,
                                       start_ts: datetime.datetime,
@@ -339,6 +354,8 @@ class ExecutionLoop:
         # What is the granularity of our price feed
         # for stop loss checks.
         tick_size = universe.backtest_stop_loss_time_bucket
+
+        logger.info("run_backtest_stop_loss_checks with frequency of %s", tick_size.value)
 
         assert tick_size.to_pandas_timedelta() > pd.Timedelta(0), f"Cannot do stop loss checks, because no stop loss cycle duration was given"
 

@@ -7,6 +7,7 @@ import pytest
 from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
 from tradeexecutor.strategy.trading_strategy_universe import load_all_data, \
     TradingStrategyUniverse
+from tradeexecutor.strategy.universe_model import UniverseOptions
 from tradeexecutor.utils.timer import timed_task
 from tradingstrategy.chain import ChainId
 from tradingstrategy.timebucket import TimeBucket
@@ -30,7 +31,9 @@ def test_create_multipair_universe(persistent_test_client):
     dataset = load_all_data(
         client,
         candle_time_bucket,
-        execution_context)
+        execution_context,
+        UniverseOptions(),
+    )
 
     factory_router_map = {
         # PancakeSwap

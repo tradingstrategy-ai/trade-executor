@@ -9,7 +9,7 @@ To "speedrun" backtest locally to see if the code does not have implementation i
 
     # Run the backtest of this module using local trade-executor command
     # Tick size and stop loss check frequencies are less from what the strategy
-    # is expected (1h -> 24h). We call decide_trades less often,
+    # is expected (1h -> 1d). We call decide_trades less often,
     # allowing us to complete the test faster, albeit with incorrect
     # results.
     trade-executor start \
@@ -31,7 +31,7 @@ To backtest locally. This might take a long time depending on your CPU speed:
     # Set your API key
     export TRADING_STRATEGY_API_KEY=...
 
-
+r
     # Run the backtest of this module using local trade-executor command
     # Tick size must match what the strategy is expecting
     trade-executor start \
@@ -65,6 +65,8 @@ from typing import Optional, List, Dict
 from tradeexecutor.strategy.trading_strategy_universe import load_pair_data_for_single_exchange, TradingStrategyUniverse
 from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradingstrategy.client import Client
+
+from tradeexecutor.strategy.universe_model import UniverseOptions
 
 # Tell what trade execution engine version this strategy needs to use
 # NOTE: this setting has currently no effect
@@ -279,8 +281,9 @@ def create_trading_universe(
         ts: datetime.datetime,
         client: Client,
         execution_context: ExecutionContext,
-        candle_time_frame_override: Optional[TimeBucket]=None,
+        universe_options: UniverseOptions,
 ) -> TradingStrategyUniverse:
+
     dataset = load_pair_data_for_single_exchange(
         client,
         execution_context,
