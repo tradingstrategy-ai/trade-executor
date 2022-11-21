@@ -81,8 +81,8 @@ class PortfolioStatistics:
 
     unrealised_profit_usd: USDollarAmount
 
-    first_trade_at: datetime.datetime
-    last_trade_at: datetime.datetime
+    first_trade_at: Optional[datetime.datetime] = None
+    last_trade_at: Optional[datetime.datetime] = None
 
     realised_profit_usd: USDollarAmount = 0
 
