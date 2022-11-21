@@ -7,11 +7,14 @@ import logging
 from logging import Logger
 from typing import Optional, List
 
-import coloredlogs
-import logstash
-
-from discord_logging.handler import DiscordHandler
-
+try:
+    import coloredlogs
+    import logstash
+    from discord_logging.handler import DiscordHandler
+except ImportError:
+    # Not available for Pyodide build, see
+    # test_optional_dependencies.py
+    pass
 
 def setup_logging(log_level=logging.INFO) -> Logger:
     """Setup root logger and quiet some levels."""
