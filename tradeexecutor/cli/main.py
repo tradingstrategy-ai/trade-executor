@@ -8,6 +8,7 @@ from typing import Optional
 import pkg_resources
 
 import typer
+from tradingstrategy.timebucket import TimeBucket
 
 from web3.middleware import geth_poa_middleware
 from web3 import Web3, HTTPProvider
@@ -23,6 +24,7 @@ from tradeexecutor.backtest.backtest_sync import BacktestSyncer
 from tradeexecutor.backtest.backtest_valuation import backtest_valuation_factory
 from tradeexecutor.backtest.simulated_wallet import SimulatedWallet
 from tradeexecutor.state.metadata import Metadata
+from tradeexecutor.state.state import State
 from tradeexecutor.strategy.description import StrategyExecutionDescription
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.cli.approval import CLIApprovalModel
@@ -32,7 +34,7 @@ from tradeexecutor.ethereum.uniswap_v2_execution import UniswapV2ExecutionModel
 from tradeexecutor.ethereum.uniswap_v2_valuation import uniswap_v2_sell_valuation_factory
 from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
 from tradeexecutor.ethereum.uniswap_v2_live_pricing import uniswap_v2_live_pricing_factory
-from tradeexecutor.state.store import JSONFileStore, StateStore
+from tradeexecutor.state.store import JSONFileStore, StateStore, NoneStore
 from tradeexecutor.strategy.approval import ApprovalType, UncheckedApprovalModel, ApprovalModel
 from tradeexecutor.strategy.bootstrap import import_strategy_file
 from tradeexecutor.strategy.dummy import DummyExecutionModel
@@ -185,13 +187,14 @@ def start(
     state_file: Optional[Path] = typer.Option("strategy-state.json", envvar="STATE_FILE"),
     trading_strategy_api_key: str = typer.Option(None, envvar="TRADING_STRATEGY_API_KEY", help="Trading Strategy API key"),
     cache_path: Optional[Path] = typer.Option(None, envvar="CACHE_PATH", help="Where to store downloaded datasets"),
-    reset_state: bool = typer.Option(False, "--reset-state", envvar="RESET_STATE"),
+    reset_state: bool = typer.Option(False, envvar="RESET_STATE"),
     max_cycles: int = typer.Option(None, envvar="MAX_CYCLES", help="Max main loop cycles run in an automated testing mode"),
     debug_dump_file: Optional[Path] = typer.Option(None, envvar="DEBUG_DUMP_FILE", help="Write Python Pickle dump of all internal debugging states of the strategy run to this file"),
     backtest_start: Optional[datetime.datetime] = typer.Option(None, envvar="BACKTEST_START", help="Start timestamp of backesting"),
     backtest_end: Optional[datetime.datetime] = typer.Option(None, envvar="BACKTEST_END", help="End timestamp of backesting"),
-    tick_size: CycleDuration = typer.Option(None, envvar="TICK_SIZE", help="How large tick use to execute the strategy"),
-    tick_offset_minutes: int = typer.Option(0, envvar="TICK_OFFSET_MINUTES", help="How many minutes we wait after the tick before executing the tick step"),
+    stop_loss_check_frequency: Optional[TimeBucket] = typer.Option(None, envvar="STOP_LOSS_CYCLE_DURATION", help="Override live/backtest stop loss check frequency. If not given read from the strategy module."),
+    cycle_duration: CycleDuration = typer.Option(None, envvar="CYCLE_DURATION", help="How long strategy tick cycles use to execute the strategy. While strategy modules offer their own cycle duration value, you can override it here to 'speedrun' backtests."),
+    cycle_offset_minutes: int = typer.Option(0, envvar="CYCLE_OFFSET_MINUTES", help="How many minutes we wait after the tick before executing the tick step"),
     stats_refresh_minutes: int = typer.Option(60.0, envvar="STATS_REFRESH_MINUTES", help="How often we refresh position statistics. Default to once in an hour."),
     position_trigger_check_minutes: int = typer.Option(3.0, envvar="POSITION_TRIGGER_CHECK_MINUTES", help="How often we check for take profit/stop loss triggers. Default to once in 3 minutes. Set 0 to disable."),
     max_data_delay_minutes: int = typer.Option(None, envvar="MAX_DATA_DELAY_MINUTES", help="If our data feed is delayed more than this minutes, abort the execution"),
@@ -246,7 +249,11 @@ def start(
 
     approval_model = create_approval_model(approval_type)
 
-    store = create_state_store(state_file)
+    if execution_type != TradeExecutionType.backtest:
+        store = create_state_store(state_file)
+    else:
+        # Backtests never have persistent state
+        store = NoneStore(State())
 
     metadata = create_metadata(name, short_description, long_description, icon_url)
 
@@ -273,7 +280,7 @@ def start(
     if not client:
         raise RuntimeError("Trading Strategy client instance is not available - needed to run backtests. Make sure trading_strategy_api_key is set.")
 
-    tick_offset = datetime.timedelta(minutes=tick_offset_minutes)
+    tick_offset = datetime.timedelta(minutes=cycle_offset_minutes)
 
     if max_data_delay_minutes:
         max_data_delay = datetime.timedelta(minutes=max_data_delay_minutes)
@@ -324,7 +331,8 @@ def start(
             debug_dump_file=debug_dump_file,
             backtest_start=backtest_start,
             backtest_end=backtest_end,
-            cycle_duration=tick_size,
+            stop_loss_check_frequency=stop_loss_check_frequency,
+            cycle_duration=cycle_duration,
             tick_offset=tick_offset,
             max_data_delay=max_data_delay,
             trade_immediately=trade_immediately,

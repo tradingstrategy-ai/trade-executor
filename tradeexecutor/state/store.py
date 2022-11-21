@@ -98,3 +98,4 @@ class NoneStore(StateStore):
     def create(self) -> State:
         raise NotImplementedError("This should not be called for NoneStore.\n"
                                   "Backtest have explicit state set for them at the start that should not be cleared.")
+

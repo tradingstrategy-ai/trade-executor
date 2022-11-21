@@ -291,7 +291,7 @@ def test_synthetic_data_backtest_stop_loss(
         start_at=start_at.to_pydatetime(),
         end_at=end_at.to_pydatetime(),
         client=None,  # None of downloads needed, because we are using synthetic data
-        cycle_duration=CycleDuration.cycle_24h,  # Override to use 24h cycles despite what strategy file says
+        cycle_duration=CycleDuration.cycle_1d,  # Override to use 24h cycles despite what strategy file says
         decide_trades=stop_loss_decide_trades,
         create_trading_universe=None,
         universe=synthetic_universe,
@@ -322,7 +322,7 @@ def test_synthetic_data_backtest_stop_loss(
         start_at=start_at.to_pydatetime(),
         end_at=end_at.to_pydatetime(),
         client=None,  # None of downloads needed, because we are using synthetic data
-        cycle_duration=CycleDuration.cycle_24h,  # Override to use 24h cycles despite what strategy file says
+        cycle_duration=CycleDuration.cycle_1d,  # Override to use 24h cycles despite what strategy file says
         decide_trades=stop_loss_decide_trades,
         create_trading_universe=None,
         universe=synthetic_universe,
@@ -389,7 +389,7 @@ def test_synthetic_data_backtest_take_profit(
         start_at=start_at.to_pydatetime(),
         end_at=end_at.to_pydatetime(),
         client=None,  # None of downloads needed, because we are using synthetic data
-        cycle_duration=CycleDuration.cycle_24h,  # Override to use 24h cycles despite what strategy file says
+        cycle_duration=CycleDuration.cycle_1d,  # Override to use 24h cycles despite what strategy file says
         decide_trades=take_profit_trades,
         create_trading_universe=None,
         universe=synthetic_universe,
@@ -420,7 +420,7 @@ def test_synthetic_data_backtest_take_profit(
         start_at=start_at.to_pydatetime(),
         end_at=end_at.to_pydatetime(),
         client=None,  # None of downloads needed, because we are using synthetic data
-        cycle_duration=CycleDuration.cycle_24h,  # Override to use 24h cycles despite what strategy file says
+        cycle_duration=CycleDuration.cycle_1d,  # Override to use 24h cycles despite what strategy file says
         decide_trades=take_profit_trades,
         create_trading_universe=None,
         universe=synthetic_universe,
@@ -481,7 +481,7 @@ def test_synthetic_data_backtest_stop_loss_data_missing(
             start_at=start_at.to_pydatetime(),
             end_at=end_at.to_pydatetime(),
             client=None,  # None of downloads needed, because we are using synthetic data
-            cycle_duration=CycleDuration.cycle_24h,  # Override to use 24h cycles despite what strategy file says
+            cycle_duration=CycleDuration.cycle_1d,  # Override to use 24h cycles despite what strategy file says
             decide_trades=stop_loss_decide_trades,
             create_trading_universe=None,
             universe=synthetic_universe,

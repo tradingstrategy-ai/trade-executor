@@ -1,11 +1,36 @@
 """Pancake EMA example strategy.
 
-To backtest locally:
+To "speedrun" backtest locally to see if the code does not have implementation issues:
 
 .. code-block:: shell
 
     # Set your API key
     export TRADING_STRATEGY_API_KEY=...
+
+    # Run the backtest of this module using local trade-executor command
+    # Tick size and stop loss check frequencies are less from what the strategy
+    # is expected (1h -> 24h). We call decide_trades less often,
+    # allowing us to complete the test faster, albeit with incorrect
+    # results.
+    trade-executor start \
+        --strategy-file=strategies/pancake-eth-usdc-sma.py \
+        --id=pancake-eth-usdc-sma \
+        --execution-type=backtest \
+        --trading-strategy-api-key=$TRADING_STRATEGY_API_KEY \
+        --cycle-duration=1d \
+        --stop-loss-check-frequency=1d \
+        --backtest-start=2021-06-01 \
+        --backtest-end=2022-09-01 \
+        --log-level=info
+
+
+To backtest locally. This might take a long time depending on your CPU speed:
+
+.. code-block:: shell
+
+    # Set your API key
+    export TRADING_STRATEGY_API_KEY=...
+
 
     # Run the backtest of this module using local trade-executor command
     # Tick size must match what the strategy is expecting
@@ -16,7 +41,7 @@ To backtest locally:
         --trading-strategy-api-key=$TRADING_STRATEGY_API_KEY \
         --backtest-start=2021-06-01 \
         --backtest-end=2022-09-01 \
-        --tick-size=24h
+        --log-level=info
 
 """
 

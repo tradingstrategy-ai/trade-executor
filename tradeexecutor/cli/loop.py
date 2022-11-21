@@ -8,6 +8,7 @@ from pathlib import Path
 from queue import Queue
 from typing import Optional, Callable, Protocol, List
 
+import pandas as pd
 from apscheduler.executors.pool import ThreadPoolExecutor
 from apscheduler.schedulers.blocking import BlockingScheduler
 
@@ -73,7 +74,7 @@ class ExecutionLoop:
             backtest_start: Optional[datetime.datetime] = None,
             backtest_end: Optional[datetime.datetime] = None,
             backtest_setup: Optional[Callable[[State], None]] = None,
-            backtest_stop_loss_time_bucket: Optional[TimeBucket] = None,
+            stop_loss_check_frequency: Optional[TimeBucket] = None,
             tick_offset: datetime.timedelta=datetime.timedelta(minutes=0),
             trade_immediately=False,
     ):
@@ -184,7 +185,12 @@ class ExecutionLoop:
             "timestamp": ts,
         }
 
-        logger.trade("Performing strategy tick #%d for timestamp %s, unrounded time is %s, live trading is %s", cycle, ts, unrounded_timestamp, live)
+        logger.trade("Performing strategy tick #%d for timestamp %s, cycle length is %s, unrounded time is %s, live trading is %s",
+                     cycle,
+                     ts,
+                     self.cycle_duration.value,
+                     unrounded_timestamp,
+                     live)
 
         if backtesting_universe is None:
 
@@ -334,6 +340,8 @@ class ExecutionLoop:
         # for stop loss checks.
         tick_size = universe.backtest_stop_loss_time_bucket
 
+        assert tick_size.to_pandas_timedelta() > pd.Timedelta(0), f"Cannot do stop loss checks, because no stop loss cycle duration was given"
+
         # Hop to the next tick
         ts = round_datetime_up(start_ts, tick_size.to_timedelta())
 
@@ -362,7 +370,7 @@ class ExecutionLoop:
 
         ts = self.backtest_start
 
-        logger.info("Strategy is executed in backtesting mode, starting at %s", ts)
+        logger.info("Strategy is executed in backtesting mode, starting at %s, cycle duration is %s", ts, self.cycle_duration.value)
 
         cycle = 1
         universe = None
@@ -557,8 +565,9 @@ class ExecutionLoop:
         self.runner: StrategyRunner = run_description.runner
         self.universe_model = run_description.universe_model
 
-        # Load cycle_duration from v0.1 strategies
-        if run_description.cycle_duration:
+        # Load cycle_duration from v0.1 strategies,
+        # if not given from the command line to override backtesting data
+        if run_description.cycle_duration and not self.cycle_duration:
             self.cycle_duration = run_description.cycle_duration
 
         assert self.cycle_duration is not None, "Did not get strategy cycle duration from constructor or strategy run description"

@@ -207,7 +207,7 @@ def test_run_inline_synthetic_backtest(
         start_at=start_at.to_pydatetime(),
         end_at=end_at.to_pydatetime(),
         client=None,  # None of downloads needed, because we are using synthetic data
-        cycle_duration=CycleDuration.cycle_24h,  # Override to use 24h cycles despite what strategy file says
+        cycle_duration=CycleDuration.cycle_1d,  # Override to use 24h cycles despite what strategy file says
         decide_trades=decide_trades,
         create_trading_universe=None,
         universe=universe,
@@ -239,7 +239,7 @@ def test_analyse_synthetic_trading_portfolio(
         start_at=start_at.to_pydatetime(),
         end_at=end_at.to_pydatetime(),
         client=None,  # None of downloads needed, because we are using synthetic data
-        cycle_duration=CycleDuration.cycle_24h,  # Override to use 24h cycles despite what strategy file says
+        cycle_duration=CycleDuration.cycle_1d,  # Override to use 24h cycles despite what strategy file says
         decide_trades=decide_trades,
         create_trading_universe=None,
         universe=universe,
@@ -317,7 +317,7 @@ def test_benchmark_synthetic_trading_portfolio(
         start_at=start_at.to_pydatetime(),
         end_at=end_at.to_pydatetime(),
         client=None,  # None of downloads needed, because we are using synthetic data
-        cycle_duration=CycleDuration.cycle_24h,  # Override to use 24h cycles despite what strategy file says
+        cycle_duration=CycleDuration.cycle_1d,  # Override to use 24h cycles despite what strategy file says
         decide_trades=decide_trades,
         create_trading_universe=None,
         universe=universe,

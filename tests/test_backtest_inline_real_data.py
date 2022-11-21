@@ -41,7 +41,7 @@ trade_routing = TradeRouting.pancakeswap_basic
 
 # How often the strategy performs the decide_trades cycle.
 # We do it for every 16h.
-trading_strategy_cycle = CycleDuration.cycle_24h
+trading_strategy_cycle = CycleDuration.cycle_1d
 
 # Strategy keeps its cash in BUSD
 reserve_currency = ReserveCurrency.busd
@@ -206,7 +206,7 @@ def test_run_inline_real_backtest(
         start_at=datetime.datetime(2021, 6, 1),
         end_at=datetime.datetime(2022, 1, 1),
         client=persistent_test_client,
-        cycle_duration=CycleDuration.cycle_24h,  # Override to use 24h cycles despite what strategy file says
+        cycle_duration=CycleDuration.cycle_1d,  # Override to use 24h cycles despite what strategy file says
         decide_trades=decide_trades,
         create_trading_universe=create_trading_universe,
         initial_deposit=10_000,

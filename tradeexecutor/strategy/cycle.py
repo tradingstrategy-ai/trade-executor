@@ -43,7 +43,7 @@ class CycleDuration(enum.Enum):
     cycle_16h = "16h"
 
     #: Run `decide_trades()` for every 24h hours
-    cycle_24h = "24h"
+    cycle_1d = "1d"
 
     #: Don't really know or care about the trade cycle duration.
     #:
@@ -152,7 +152,7 @@ _TICK_DURATIONS = {
     CycleDuration.cycle_4h: datetime.timedelta(hours=4),
     CycleDuration.cycle_8h: datetime.timedelta(hours=8),
     CycleDuration.cycle_16h: datetime.timedelta(hours=16),
-    CycleDuration.cycle_24h: datetime.timedelta(hours=24),
+    CycleDuration.cycle_1d: datetime.timedelta(hours=24),
     CycleDuration.cycle_unknown: datetime.timedelta(days=0),
 }
 
