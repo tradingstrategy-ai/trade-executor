@@ -110,13 +110,13 @@ class ExecutionLoop:
           We do not support resumes for crashed backetsting.
 
         """
-        if self.reset or (self.execution_context.mode == ExecutionMode.backtesting):
+        if self.reset:
             # Create empty state and save it
             state = self.store.create()
             state.name = self.name
             self.store.sync(state)
         else:
-            if self.store.is_empty():
+            if self.store.is_pristine():
                 # Create empty state and save it
                 state = self.store.create()
                 state.name = self.name
@@ -539,7 +539,6 @@ class ExecutionLoop:
         """
 
         state = self.init_state()
-
         self.init_execution_model()
 
         run_description: StrategyExecutionDescription = self.strategy_factory(

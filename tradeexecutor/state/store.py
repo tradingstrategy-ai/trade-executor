@@ -25,7 +25,7 @@ class StateStore(abc.ABC):
     """Backend to manage the trade exeuction persistent state."""
 
     @abc.abstractmethod
-    def is_empty(self) -> bool:
+    def is_pristine(self) -> bool:
         """State has not been written yet."""
 
     @abc.abstractmethod
@@ -51,7 +51,7 @@ class JSONFileStore(StateStore):
     def __init__(self, path: Path):
         self.path = path
 
-    def is_empty(self) -> bool:
+    def is_pristine(self) -> bool:
         return not self.path.exists()
 
     def load(self) -> State:
@@ -85,7 +85,7 @@ class NoneStore(StateStore):
         self.created = False
         self.state = state
 
-    def is_empty(self) -> bool:
+    def is_pristine(self) -> bool:
         return False
 
     def load(self) -> State:
@@ -96,4 +96,5 @@ class NoneStore(StateStore):
         pass
 
     def create(self) -> State:
-        return State()
+        raise NotImplementedError("This should not be called for NoneStore.\n"
+                                  "Backtest have explicit state set for them at the start that should not be cleared.")

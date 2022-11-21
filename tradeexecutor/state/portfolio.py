@@ -393,7 +393,8 @@ class Portfolio:
         - This deposit happened at the start of the backtest
         """
 
-        assert len(self.reserves) == 1
+        assert len(self.reserves) == 1, f"Reserve assets are not defined for this state, cannot get initial deposit\n" \
+                                        f"State is {self}"
         reserve = next(iter(self.reserves.values()))
         if reserve.initial_deposit:
             return float(reserve.initial_deposit) * reserve.initial_deposit_reserve_token_price
