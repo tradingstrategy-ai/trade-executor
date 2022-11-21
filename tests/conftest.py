@@ -3,6 +3,8 @@ import os
 import pytest
 from tradingstrategy.client import Client
 
+from tradeexecutor.cli.log import setup_pytest_logging
+
 
 @pytest.fixture(scope="session")
 def strategy_folder():
@@ -23,3 +25,16 @@ def persistent_test_client(persistent_test_cache_path) -> Client:
     """
     c = Client.create_test_client(persistent_test_cache_path)
     return c
+
+
+@pytest.fixture()
+def logger():
+    """Get rid of pyramid_openapi warnings in test output.
+
+    .. code-block::
+
+        WARNING  pyramid_openapi3 settings not found. Did you forget to call config.pyramid_openapi3_spec?
+
+    Only seem to affect multitest runs.
+    """
+    setup_pytest_logging()

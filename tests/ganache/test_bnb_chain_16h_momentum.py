@@ -144,7 +144,7 @@ def test_bnb_chain_16h_momentum(
         "EXECUTOR_ID": "test_bnb_chain_16h_momentum",
         "NAME": "test_bnb_chain_16h_momentum",
         "STRATEGY_FILE": strategy_path.as_posix(),
-        "PRIVATE_KEY": hot_wallet.account.privateKey.hex(),
+        "PRIVATE_KEY": hot_wallet.account.key.hex(),
         "HTTP_ENABLED": "false",
         "JSON_RPC": ganache_bnb_chain_fork,
         "GAS_PRICE_METHOD": "legacy",

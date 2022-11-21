@@ -96,7 +96,7 @@ def create_trade_execution_model(
         pricing_model_factory = uniswap_v2_live_pricing_factory
         return execution_model, sync_method, valuation_model_factory, pricing_model_factory
     elif execution_type == TradeExecutionType.backtest:
-        logger.warning("TODO: Command line backtests are always executed with initial deposit of $10,000")
+        logger.info("TODO: Command line backtests are always executed with initial deposit of $10,000")
         wallet = SimulatedWallet()
         execution_model = BacktestExecutionModel(wallet, max_slippage=0.01, stop_loss_data_available=True)
         sync_method = BacktestSyncer(wallet, Decimal(10_000))

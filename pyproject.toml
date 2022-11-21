@@ -106,3 +106,14 @@ addopts = "-s --tb=native"
 testpaths = [
     "tests",
 ]
+
+filterwarnings = [
+    # python_openapi complaint
+    "ignore:::.*.jsonschema",
+    # DeprecationWarning: Subclassing validator classes is not intended to be part of their public API. A future version will make doing so an error, as the behavior of subclasses isn't guaranteed to stay the same between releases of jsonschema. Instead, prefer composition of validators, wrapping them in an object owned entirely by the downstream library.
+    "ignore:::.*.validators",
+    "ignore::DeprecationWarning:openapi_spec_validator.*:",
+    #  DeprecationWarning: abi.decode_single() is deprecated and will be removed in version 4.0.0 in favor of abi.decode()
+    "ignore::DeprecationWarning:eth_abi.*:",
+    "ignore:::.*.codec",
+]

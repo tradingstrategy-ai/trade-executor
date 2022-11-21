@@ -79,7 +79,7 @@ def translate_to_naive_swap(
     # https://web3py.readthedocs.io/en/stable/web3.eth.account.html#sign-a-contract-transaction
     tx = deployment.router.functions.swapExactTokensForTokens(
         *args,
-    ).buildTransaction({
+    ).build_transaction({
         'chainId': web3.eth.chain_id,
         'gas': 350_000,  # Estimate max 350k gas per swap
         'from': hot_wallet.address,
@@ -184,7 +184,7 @@ def approve_tokens(
         tx = token.functions.approve(
             deployment.router.address,
             amount,
-        ).buildTransaction({
+        ).build_transaction({
             'chainId': web3.eth.chain_id,
             'gas': 100_000,  # Estimate max 100k per approval
             'from': hot_wallet.address,
@@ -230,7 +230,7 @@ def approve_infinity(
         tx = token.functions.approve(
             deployment.router.address,
             amount,
-        ).buildTransaction({
+        ).build_transaction({
             'chainId': web3.eth.chain_id,
             'gas': 100_000,  # Estimate max 100k per approval
             'from': hot_wallet.address,

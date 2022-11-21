@@ -59,7 +59,7 @@ class TransactionBuilder:
         :param gas_limit: Max gas per this transaction
         """
 
-        tx = args_bound_func.buildTransaction({
+        tx = args_bound_func.build_transaction({
             "chainId": self.chain_id,
             "from": self.hot_wallet.address,
             "gas": gas_limit,
@@ -99,7 +99,7 @@ class TransactionBuilder:
         # tx = token.functions.approve(
         #     deployment.router.address,
         #     amount,
-        # ).buildTransaction({
+        # ).build_transaction({
         #     'chainId': web3.eth.chain_id,
         #     'gas': 100_000,  # Estimate max 100k per approval
         #     'from': hot_wallet.address,

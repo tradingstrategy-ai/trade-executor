@@ -501,8 +501,16 @@ class TradeAnalysis:
 
             profit += position.realised_profit
 
-        average_winning_trade_profit_pc = np.mean(winning_trades)
-        average_losing_trade_loss_pc = np.mean(losing_trades)
+        if len(winning_trades) > 0:
+            average_winning_trade_profit_pc = np.mean(winning_trades)
+        else:
+            average_winning_trade_profit_pc = 0
+
+        if len(losing_trades) > 0:
+            average_losing_trade_loss_pc = np.mean(losing_trades)
+        else:
+            average_losing_trade_loss_pc = 0
+
         if winning_trades:
             biggest_winning_trade_pc = max(winning_trades)
 

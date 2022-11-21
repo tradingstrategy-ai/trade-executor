@@ -3,6 +3,7 @@
 """
 import datetime
 import secrets
+import warnings
 from decimal import Decimal
 from typing import List
 
@@ -45,11 +46,6 @@ from tradeexecutor.utils.blockchain import get_latest_block_timestamp
 APPROX_REL = 0.01
 APPROX_REL_DECIMAL = Decimal("0.1")
 
-
-@pytest.fixture
-def logging():
-    """Initialise custom hooks for Python logging system."""
-    setup_custom_log_levels()
 
 
 @pytest.fixture
@@ -316,7 +312,7 @@ def trading_strategy_universe(core_universe: Universe, asset_usdc) -> TradingStr
 
 
 def test_live_stop_loss(
-        logging,
+        logger,
         web3: Web3,
         deployer: HexAddress,
         trader: LocalAccount,
@@ -429,7 +425,7 @@ def test_live_stop_loss(
 
 
 def test_live_stop_loss_missing(
-        logging,
+        logger,
         web3: Web3,
         deployer: HexAddress,
         trader: LocalAccount,

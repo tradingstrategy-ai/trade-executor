@@ -269,8 +269,10 @@ def test_analyse_synthetic_trading_portfolio(
         universe.universe.exchanges,
         universe.universe.pairs,
         timeline,
-        row_styling_mode=TimelineRowStylingMode.gradient,
+        row_styling_mode=TimelineRowStylingMode.simple,
     )
+
+    # Check HTML output does not crash
     # https://github.com/pandas-dev/pandas/issues/19358#issuecomment-359733504
     apply_styles(df).to_html()
 
@@ -281,8 +283,7 @@ def test_analyse_synthetic_trading_portfolio(
         row_styling_mode=TimelineRowStylingMode.simple,
     )
     apply_styles(df).to_html()
-
-
+=
     # Do checks for the first position
     # 0    1          2021-07-01   8 days                      WETH        USDC         $2,027.23    $27.23    2.72%   0.027230  $1,617.294181   $1,661.333561            2
     row = expanded_timeline.iloc[0]

@@ -52,13 +52,16 @@ def setup_logging(log_level=logging.INFO) -> Logger:
     return logger
 
 
-def setup_pytest_logging(request, mute_requests=True) -> logging.Logger:
+def setup_pytest_logging(request=None, mute_requests=True) -> logging.Logger:
     """Setup logger in pytest environment.
 
     Quiets out unnecessary logging subsystems.
 
-    @param request:
+    :param request:
         pytest.fixtures.SubRequest instance
+
+    :return:
+        Test logger - though please use module specific logger
     """
 
     setup_custom_log_levels()
