@@ -166,7 +166,7 @@ def monkey_patch():
 # Typer documentation https://typer.tiangolo.com/
 @app.command()
 def start(
-    id: str = typer.Option(None, envvar="EXECUTOR_ID", help="Executor id used when programmatically referring to this instance"),
+    id: str = typer.Option(None, envvar="EXECUTOR_ID", help="Executor id used when programmatically referring to this instance. If not given, take the base of --strategy-file."),
     log_level: str = typer.Option(None, envvar="LOG_LEVEL", help="The Python default logging level. The defaults are 'info' is live execution, 'warning' if backtesting."),
     name: Optional[str] = typer.Option(None, envvar="NAME", help="Executor name used in the web interface and notifications"),
     short_description: Optional[str] = typer.Option(None, envvar="SHORT_DESCRIPTION", help="Short description for metadata"),
@@ -209,6 +209,12 @@ def start(
     ):
     """Launch Trade Executor instance."""
     global logger
+
+    # Guess id from the strategy file
+    if not id:
+        if strategy_file:
+            name = os.path.basename(strategy_file)
+            id = Path(strategy_file).stem
 
     check_good_id(id)
 

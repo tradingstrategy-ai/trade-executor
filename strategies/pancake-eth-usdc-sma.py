@@ -14,34 +14,29 @@ To "speedrun" backtest locally to see if the code does not have implementation i
     # results.
     trade-executor start \
         --strategy-file=strategies/pancake-eth-usdc-sma.py \
-        --id=pancake-eth-usdc-sma \
         --execution-type=backtest \
         --trading-strategy-api-key=$TRADING_STRATEGY_API_KEY \
         --cycle-duration=1d \
         --stop-loss-check-frequency=1d \
         --backtest-start=2021-06-01 \
-        --backtest-end=2022-09-01 \
-        --log-level=info
+        --backtest-end=2022-09-01
 
 
-To backtest locally. This might take a long time depending on your CPU speed:
+You can also do the full backtest run locally. This might take a long time depending on your CPU speed:
 
 .. code-block:: shell
 
     # Set your API key
     export TRADING_STRATEGY_API_KEY=...
 
-r
     # Run the backtest of this module using local trade-executor command
     # Tick size must match what the strategy is expecting
     trade-executor start \
         --strategy-file=strategies/pancake-eth-usdc-sma.py \
-        --id=pancake-eth-usdc-sma \
         --execution-type=backtest \
         --trading-strategy-api-key=$TRADING_STRATEGY_API_KEY \
         --backtest-start=2021-06-01 \
-        --backtest-end=2022-09-01 \
-        --log-level=info
+        --backtest-end=2022-09-01
 
 """
 

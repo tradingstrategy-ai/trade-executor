@@ -53,7 +53,7 @@ class UniverseOptions:
 
         universe_options = UniverseOptions()
 
-    See
+    See :ref:`command-line-backtest` how these options are used.
     """
 
     candle_time_bucket_override: Optional[TimeBucket] = None
