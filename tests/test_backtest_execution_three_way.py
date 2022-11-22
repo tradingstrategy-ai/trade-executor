@@ -11,6 +11,7 @@ import pytest
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.trade import TradeStatus
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
+from tradeexecutor.strategy.universe_model import UniverseOptions
 from tradeexecutor.testing.backtest_trader import BacktestTrader
 from tradingstrategy.chain import ChainId
 from tradingstrategy.timebucket import TimeBucket
@@ -80,6 +81,7 @@ def universe(request, persistent_test_client, execution_context) -> TradingStrat
         chain_id,
         exchange_slug,
         trading_pairs,
+        UniverseOptions()
     )
 
     # Filter down to the single pair we are interested in
@@ -130,6 +132,7 @@ def stop_loss_universe(request, persistent_test_client, execution_context) -> Tr
         chain_id,
         exchange_slug,
         trading_pairs,
+        UniverseOptions(),
         stop_loss_time_bucket=stop_loss_time_bucket,
     )
 

@@ -5,6 +5,8 @@ Logic for managing position stop loss/take profit signals.
 import datetime
 from typing import List, Dict
 
+from tradingstrategy.candle import CandleSampleUnavailable
+
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution, TradeType
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
@@ -48,15 +50,24 @@ def check_position_triggers(
             continue
 
         assert p.is_long(), "Stop loss supported only for long positions"
-        price = pricing_model.get_sell_price(ts, p.pair, p.get_quantity())
 
-        if p.take_profit:
-            if price >= p.take_profit:
-                trades.append(position_manager.close_position(p, TradeType.take_profit))
+        try:
+            price = pricing_model.get_sell_price(ts, p.pair, p.get_quantity())
+        except CandleSampleUnavailable:
+            # Backtest does not have price available for this timestamp,
+            # because there has not been any trades.
+            # Because there has not been any trades, we assume price has not moved
+            # and any position trigger does not need to be executed.
+            price = None
 
-        if p.stop_loss:
-            if price <= p.stop_loss:
-                trades.append(position_manager.close_position(p, TradeType.stop_loss))
+        if price is not None:
+            if p.take_profit:
+                if price >= p.take_profit:
+                    trades.append(position_manager.close_position(p, TradeType.take_profit))
+
+            if p.stop_loss:
+                if price <= p.stop_loss:
+                    trades.append(position_manager.close_position(p, TradeType.stop_loss))
 
     return trades
 

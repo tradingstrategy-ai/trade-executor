@@ -12,8 +12,15 @@ import runpy
 from contextlib import AbstractContextManager
 from pathlib import Path
 
+from tradingstrategy.client import Client
+
+from tradeexecutor.state.sync import SyncMethod
+from tradeexecutor.strategy.approval import ApprovalModel
 from tradeexecutor.strategy.description import StrategyExecutionDescription
 from tradeexecutor.strategy.factory import StrategyFactory, make_runner_for_strategy_mod
+from tradeexecutor.strategy.pandas_trader.runner import PandasTraderRunner
+from tradeexecutor.strategy.pricing_model import PricingModelFactory
+from tradeexecutor.strategy.valuation import ValuationModelFactory
 
 logger = logging.getLogger(__name__)
 
@@ -27,15 +34,25 @@ class BadStrategyFile(Exception):
 
 
 def import_strategy_file(path: Path) -> StrategyFactory:
-    """Loads a strategy module and returns its factor function."""
+    """Loads a strategy module and returns its factor function.
+
+    All exports will be lowercased for further processing,
+    so we do not care if constant variables are written in upper or lowercase.
+    """
     logger.info("Importing strategy %s", path)
 
     assert isinstance(path, Path)
 
     strategy_exports = runpy.run_path(path)
 
+    strategy_exports = {k.lower(): v  for k, v in strategy_exports.items()}
+
+    version = strategy_exports.get("trading_strategy_engine_version")
+
+    logger.info("Loading strategy module %s, engine version %s", path, version)
+
     # Strategy v0.1 loading
-    if "trading_strategy_engine_version" in strategy_exports:
+    if version:
         return make_runner_for_strategy_mod(strategy_exports)
 
     # Legacy path

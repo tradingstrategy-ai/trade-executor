@@ -1,8 +1,11 @@
 """Default routing models for Uniswap v2 like exchange."""
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel
 from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2SimpleRoutingModel
+from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
+from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.default_routing_options import TradeRouting
+from tradeexecutor.strategy.routing import RoutingModel
 
 
 def get_pancake_default_routing_parameters(reserve_currency: ReserveCurrency) -> dict:
@@ -56,14 +59,6 @@ def create_pancake_routing(reserve_currency: ReserveCurrency) -> UniswapV2Simple
     return routing_model
 
 
-def get_routing_model(routing_type: TradeRouting, reserve_currency: ReserveCurrency) -> UniswapV2SimpleRoutingModel:
-    """Hardcoded routing model support."""
-
-    if routing_type == TradeRouting.pancakeswap_basic:
-        return create_pancake_routing(reserve_currency)
-
-    raise NotImplementedError("Not yet done")
-
 
 def get_backtest_routing_model(routing_type: TradeRouting, reserve_currency: ReserveCurrency) -> BacktestRoutingModel:
     """Hardcoded routing model support for backtests."""
@@ -80,3 +75,27 @@ def get_backtest_routing_model(routing_type: TradeRouting, reserve_currency: Res
 
     raise NotImplementedError(f"The routing model is not supported: {routing_type.value}")
 
+
+def get_routing_model(
+        execution_context: ExecutionContext,
+        routing_type: TradeRouting,
+        reserve_currency: ReserveCurrency) -> RoutingModel:
+    """Create trade routing model for the strategy.
+
+    :param execution_model:
+        Either backtest or live
+
+    :param routing_type:
+        One of the default routing options, as definedin backtest notebook or strategy module
+
+    :param reserve_currency:
+        One of the default reserve currency options, as definedin backtest notebook or strategy module
+    """
+
+    if execution_context.mode == ExecutionMode.backtesting:
+        return get_backtest_routing_model(routing_type, reserve_currency)
+
+    if routing_type == TradeRouting.pancakeswap_basic:
+        return create_pancake_routing(reserve_currency)
+
+    raise NotImplementedError("Not yet done - update get_routing_model to support this default routing option")

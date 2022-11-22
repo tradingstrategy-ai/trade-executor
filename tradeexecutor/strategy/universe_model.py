@@ -4,6 +4,8 @@ import datetime
 from dataclasses import dataclass
 from typing import List, Optional
 
+from tradingstrategy.timebucket import TimeBucket
+
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.strategy.execution_context import ExecutionMode
 
@@ -34,6 +36,31 @@ class StrategyExecutionUniverse:
             assert asset.decimals, f"Missing token decimals {asset}"
 
 
+@dataclass
+class UniverseOptions:
+    """Options that we can pass for the trading strategy universe creation.
+
+    These can be given on the command line, or from the parent
+    execution context. It allows to override parameters
+    given in the strategy file easily without need to edit the file.
+
+    The most common use case is to speed up backtesting by
+    decreasing the stop loss check frequency.
+
+    The default options do not override anything:
+
+    .. code-block:: shell
+
+        universe_options = UniverseOptions()
+
+    See :ref:`command-line-backtest` how these options are used.
+    """
+
+    candle_time_bucket_override: Optional[TimeBucket] = None
+
+    stop_loss_time_bucket_override: Optional[TimeBucket] = None
+
+
 class UniverseModel(abc.ABC):
     """Create and manage trade universe.
 
@@ -41,7 +68,7 @@ class UniverseModel(abc.ABC):
     by refreshing the trading data from the server.
     """
 
-    def preload_universe(self):
+    def preload_universe(self, universe_options: UniverseOptions):
         """Triggered before backtesting execution.
 
         - Load all datasets with progress bar display
@@ -49,10 +76,16 @@ class UniverseModel(abc.ABC):
         - Data is saved in FS cache
 
         - Not triggered in live trading, as universe changes between cycles
+
+        :param universe_options:
+            Options to override universe loading parameters from the strategy file
         """
 
     @abc.abstractmethod
-    def construct_universe(self, ts: datetime.datetime, mode: ExecutionMode) -> StrategyExecutionUniverse:
+    def construct_universe(self,
+                           ts: datetime.datetime,
+                           mode: ExecutionMode,
+                           universe_options: UniverseOptions) -> StrategyExecutionUniverse:
         """On each strategy tick, refresh/recreate the trading universe for the strategy.
 
         This is called in mainloop before the strategy tick. It needs to download
@@ -60,6 +93,11 @@ class UniverseModel(abc.ABC):
 
         :param mode:
             Are we live trading or backtesting.
+
+        :param universe_options:
+            Override any parameters for universe data.
+            Most useful for making stop loss data checks less frequent,
+            speeding up the backtesting.
         """
 
     def check_data_age(self, ts: datetime.datetime, universe: StrategyExecutionUniverse, best_before_duration: datetime.timedelta):
@@ -83,7 +121,7 @@ class StaticUniverseModel(UniverseModel):
         assert isinstance(universe, StrategyExecutionUniverse)
         self.universe = universe
 
-    def construct_universe(self, ts: datetime.datetime, live: bool) -> StrategyExecutionUniverse:
+    def construct_universe(self, ts: datetime.datetime, live: bool, universe_options: UniverseOptions) -> StrategyExecutionUniverse:
         """Always return the same universe copy - there is no refresh."""
         return self.universe
 

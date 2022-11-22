@@ -12,6 +12,7 @@ from io import StringIO
 from typing import List, Optional, Tuple
 
 from tradeexecutor.strategy.approval import ApprovalModel
+from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.state.sync import SyncMethod
 from tradeexecutor.strategy.output import output_positions, DISCORD_BREAK_CHAR, output_trades
@@ -237,8 +238,27 @@ class StrategyRunner(abc.ABC):
              clock: datetime.datetime,
              universe: StrategyExecutionUniverse,
              state: State,
-             debug_details: dict) -> dict:
-        """Perform the strategy main tick.
+             debug_details: dict,
+             cycle_duration: Optional[CycleDuration]=None,
+        ) -> dict:
+        """Execute the core functions of a strategy.
+
+        :param clock:
+            Current timestamp of the execution cycle
+
+        :param universe:
+            Loaded trading data
+
+        :param state:
+            The current state of the strategy (open position, past trades, visualisation)
+
+        :param debug_details:
+            Internal bunch of data used in unit testing
+
+        :param cycle_duration:
+            The currenct cycle duration (time between ticks).
+            This may be specific in a strategy module, but also overridden for testing.
+            This is used only for logging purposes.
 
         :return: Debug details dictionary where different subsystems can write their diagnostics information what is happening during the dict.
             Mostly useful for integration testing.
@@ -246,7 +266,8 @@ class StrategyRunner(abc.ABC):
 
         assert isinstance(universe, StrategyExecutionUniverse)
 
-        with self.timed_task_context_manager("strategy_tick", clock=clock):
+        friendly_cycle_duration = cycle_duration.value if cycle_duration else "-"
+        with self.timed_task_context_manager("strategy_tick", clock=clock, cycle_duration=friendly_cycle_duration):
 
             routing_state, pricing_model, valuation_model = self.setup_routing(universe)
             assert pricing_model, "Routing did not provide pricing_model"
@@ -283,7 +304,7 @@ class StrategyRunner(abc.ABC):
             self.report_before_execution(clock, universe, state, approved_trades, debug_details)
 
             # Physically execute the trades
-            with self.timed_task_context_manager("execute_trades"):
+            with self.timed_task_context_manager("execute_trades", trade_count=len(approved_trades)):
 
                 # Unit tests can turn this flag to make it easier to see why trades fail
                 check_balances = debug_details.get("check_balances", False)

@@ -346,8 +346,9 @@ class TradeSummary:
 
     average_winning_trade_profit_pc: float
     average_losing_trade_loss_pc: float
-    biggest_winning_trade_pc: float
-    biggest_losing_trade_pc: float
+    biggest_winning_trade_pc: Optional[float]
+    biggest_losing_trade_pc: Optional[float]
+
     average_duration_of_winning_trades: datetime.timedelta = field(metadata=config(
         encoder=json_encode_timedelta,
         decoder=json_decode_timedelta,
@@ -500,8 +501,16 @@ class TradeAnalysis:
 
             profit += position.realised_profit
 
-        average_winning_trade_profit_pc = np.mean(winning_trades)
-        average_losing_trade_loss_pc = np.mean(losing_trades)
+        if len(winning_trades) > 0:
+            average_winning_trade_profit_pc = np.mean(winning_trades)
+        else:
+            average_winning_trade_profit_pc = 0
+
+        if len(losing_trades) > 0:
+            average_losing_trade_loss_pc = np.mean(losing_trades)
+        else:
+            average_losing_trade_loss_pc = 0
+
         if winning_trades:
             biggest_winning_trade_pc = max(winning_trades)
 

@@ -27,6 +27,8 @@ from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, load_all_data
 from tradingstrategy.client import Client
 
+from tradeexecutor.strategy.universe_model import UniverseOptions
+
 # Tell what trade execution engine version this strategy needs to use
 trading_strategy_engine_version = "0.1"
 
@@ -183,7 +185,7 @@ def create_trading_universe(
         ts: datetime.datetime,
         client: Client,
         execution_context: ExecutionContext,
-        candle_time_frame_override: Optional[TimeBucket]=None,
+        universe_options: UniverseOptions,
 ) -> TradingStrategyUniverse:
     """Creates the trading universe where the strategy trades.
 
@@ -206,9 +208,8 @@ def create_trading_universe(
         Information how the strategy is executed. E.g.
         if we are live trading or not.
 
-    :param candle_timeframe_override:
-        Allow the backtest framework override what candle size is used to backtest the strategy
-        without editing the strategy Python source code file.
+    :param universe_options:
+        TODO
 
     :return:
         This function must return :py:class:`TradingStrategyUniverse` instance
@@ -218,7 +219,7 @@ def create_trading_universe(
     """
 
     # Load all datas we can get for our candle time bucket
-    dataset = load_all_data(client, candle_time_frame_override or candle_time_bucket, execution_context)
+    dataset = load_all_data(client, candle_time_bucket, execution_context, universe_options)
 
     # Filter down to the single pair we are interested in
     universe = TradingStrategyUniverse.create_single_pair_universe(

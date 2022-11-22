@@ -9,7 +9,7 @@ from tradeexecutor.state.store import JSONFileStore
 from tradeexecutor.webhook.server import create_webhook_server
 
 
-def test_auth_ok():
+def test_auth_ok(logger):
     """Username and password allow to access the webhook"""
     queue = Queue()
     server = create_webhook_server("127.0.0.1", 5000, "test", "test", queue, JSONFileStore(None), Metadata.create_dummy())
@@ -22,7 +22,7 @@ def test_auth_ok():
         server.shutdown()
 
 
-def test_auth_failed():
+def test_auth_failed(logger):
     """Wrong password denies the access to the webhook"""
     queue = Queue()
     server = create_webhook_server("127.0.0.1", 5000, "test", "test", queue, JSONFileStore(None), Metadata.create_dummy())

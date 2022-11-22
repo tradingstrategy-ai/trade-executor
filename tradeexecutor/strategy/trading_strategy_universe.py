@@ -21,7 +21,7 @@ from tradeexecutor.strategy.execution_context import ExecutionMode, ExecutionCon
 from tradingstrategy.token import Token
 
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
-from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse, UniverseModel, DataTooOld
+from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse, UniverseModel, DataTooOld, UniverseOptions
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId
 from tradingstrategy.client import Client
@@ -549,7 +549,10 @@ class TradingStrategyUniverseModel(UniverseModel):
             backtest_stop_loss_time_bucket=dataset.backtest_stop_loss_time_bucket)
 
     @abstractmethod
-    def construct_universe(self, ts: datetime.datetime, mode: ExecutionMode) -> TradingStrategyUniverse:
+    def construct_universe(self,
+                           ts: datetime.datetime,
+                           mode: ExecutionMode,
+                           options: UniverseOptions) -> TradingStrategyUniverse:
         pass
 
 
@@ -567,18 +570,26 @@ class DefaultTradingStrategyUniverseModel(TradingStrategyUniverseModel):
     def __init__(self,
                  client: Optional[Client],
                  execution_context: ExecutionContext,
-                 create_trading_universe: Callable,
-                 candle_time_frame_override: Optional[TimeBucket] = None,
-                 ):
+                 create_trading_universe: Callable):
+        """
+
+        :param candle_time_frame_override:
+            Use this candle time bucket instead one given in the strategy file.
+            Allows to "speedrun" strategies.
+
+        :param stop_loss_time_frame_override:
+            Use this stop loss frequency instead one given in the strategy file.
+            Allows to "speedrun" strategies.
+
+        """
         assert isinstance(client, Client) or client is None
         assert isinstance(execution_context, ExecutionContext), f"Got {execution_context}"
         assert isinstance(create_trading_universe, Callable), f"Got {create_trading_universe}"
         self.client = client
         self.execution_context = execution_context
         self.create_trading_universe = create_trading_universe
-        self.candle_time_frame_override = candle_time_frame_override
 
-    def preload_universe(self):
+    def preload_universe(self, universe_options: UniverseOptions):
         """Triggered before backtesting execution.
 
         - Load all datasets with progress bar display.
@@ -589,11 +600,18 @@ class DefaultTradingStrategyUniverseModel(TradingStrategyUniverseModel):
             preload_data(
                 self.client,
                 self.create_trading_universe,
-                candle_time_frame_override=self.candle_time_frame_override)
+                universe_options=universe_options)
 
-    def construct_universe(self, ts: datetime.datetime, mode: ExecutionMode) -> TradingStrategyUniverse:
+    def construct_universe(self,
+                           ts: datetime.datetime,
+                           mode: ExecutionMode,
+                           options: UniverseOptions) -> TradingStrategyUniverse:
         with self.execution_context.timed_task_context_manager(task_name="create_trading_universe"):
-            universe = self.create_trading_universe(ts, self.client, self.execution_context, candle_time_frame_override=self.candle_time_frame_override)
+            universe = self.create_trading_universe(
+                ts,
+                self.client,
+                self.execution_context,
+                options)
             assert isinstance(universe, TradingStrategyUniverse), f"Expected TradingStrategyUniverse, got {universe.__class__}"
             universe.validate()
             return universe
@@ -703,7 +721,12 @@ def create_pair_universe_from_code(chain_id: ChainId, pairs: List[TradingPairIde
     return PandasPairUniverse(df)
 
 
-def load_all_data(client: Client, time_frame: TimeBucket, execution_context: ExecutionContext) -> Dataset:
+def load_all_data(
+        client: Client,
+        time_frame: TimeBucket,
+        execution_context: ExecutionContext,
+        universe_options: UniverseOptions,
+) -> Dataset:
     """Load all pair, candle and liquidity data for a given time bucket.
 
     - Backtest data is never reloaded
@@ -723,6 +746,11 @@ def load_all_data(client: Client, time_frame: TimeBucket, execution_context: Exe
     assert isinstance(client, Client)
     assert isinstance(time_frame, TimeBucket)
     assert isinstance(execution_context, ExecutionContext)
+
+    # Apply overrides
+    time_frame = universe_options.candle_time_bucket_override or time_frame
+
+    assert universe_options.stop_loss_time_bucket_override is None, "Not supported yet"
 
     live = execution_context.live_trading
     with execution_context.timed_task_context_manager("load_data", time_bucket=time_frame.value):
@@ -753,6 +781,7 @@ def load_pair_data_for_single_exchange(
         chain_id: ChainId,
         exchange_slug: str,
         pair_tickers: Set[Tuple[str, str]],
+        universe_options: UniverseOptions,
         liquidity=False,
         stop_loss_time_bucket: Optional[TimeBucket]=None,
 ) -> Dataset:
@@ -828,6 +857,11 @@ def load_pair_data_for_single_exchange(
 
     :param execution_context:
         Defines if we are live or backtesting
+
+    :param universe_options:
+        Override values given the strategy file.
+        Used in testing the framework.
+
     """
 
     assert isinstance(client, Client)
@@ -835,6 +869,11 @@ def load_pair_data_for_single_exchange(
     assert isinstance(execution_context, ExecutionContext)
     assert isinstance(chain_id, ChainId)
     assert isinstance(exchange_slug, str)
+    assert isinstance(universe_options, UniverseOptions)
+
+    # Apply overrides
+    stop_loss_time_bucket = universe_options.stop_loss_time_bucket_override or stop_loss_time_bucket
+    time_bucket = universe_options.candle_time_bucket_override or time_bucket
 
     live = execution_context.live_trading
     with execution_context.timed_task_context_manager("load_pair_data_for_single_exchange", time_bucket=time_bucket.value):

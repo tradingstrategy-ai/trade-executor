@@ -207,7 +207,7 @@ def test_run_inline_synthetic_backtest(
         start_at=start_at.to_pydatetime(),
         end_at=end_at.to_pydatetime(),
         client=None,  # None of downloads needed, because we are using synthetic data
-        cycle_duration=CycleDuration.cycle_24h,  # Override to use 24h cycles despite what strategy file says
+        cycle_duration=CycleDuration.cycle_1d,  # Override to use 24h cycles despite what strategy file says
         decide_trades=decide_trades,
         create_trading_universe=None,
         universe=universe,
@@ -239,7 +239,7 @@ def test_analyse_synthetic_trading_portfolio(
         start_at=start_at.to_pydatetime(),
         end_at=end_at.to_pydatetime(),
         client=None,  # None of downloads needed, because we are using synthetic data
-        cycle_duration=CycleDuration.cycle_24h,  # Override to use 24h cycles despite what strategy file says
+        cycle_duration=CycleDuration.cycle_1d,  # Override to use 24h cycles despite what strategy file says
         decide_trades=decide_trades,
         create_trading_universe=None,
         universe=universe,
@@ -269,8 +269,10 @@ def test_analyse_synthetic_trading_portfolio(
         universe.universe.exchanges,
         universe.universe.pairs,
         timeline,
-        row_styling_mode=TimelineRowStylingMode.gradient,
+        row_styling_mode=TimelineRowStylingMode.simple,
     )
+
+    # Check HTML output does not crash
     # https://github.com/pandas-dev/pandas/issues/19358#issuecomment-359733504
     apply_styles(df).to_html()
 
@@ -281,7 +283,6 @@ def test_analyse_synthetic_trading_portfolio(
         row_styling_mode=TimelineRowStylingMode.simple,
     )
     apply_styles(df).to_html()
-
 
     # Do checks for the first position
     # 0    1          2021-07-01   8 days                      WETH        USDC         $2,027.23    $27.23    2.72%   0.027230  $1,617.294181   $1,661.333561            2
@@ -316,7 +317,7 @@ def test_benchmark_synthetic_trading_portfolio(
         start_at=start_at.to_pydatetime(),
         end_at=end_at.to_pydatetime(),
         client=None,  # None of downloads needed, because we are using synthetic data
-        cycle_duration=CycleDuration.cycle_24h,  # Override to use 24h cycles despite what strategy file says
+        cycle_duration=CycleDuration.cycle_1d,  # Override to use 24h cycles despite what strategy file says
         decide_trades=decide_trades,
         create_trading_universe=None,
         universe=universe,

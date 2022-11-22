@@ -10,6 +10,7 @@ import pytest
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.trade import TradeStatus
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
+from tradeexecutor.strategy.universe_model import UniverseOptions
 from tradeexecutor.testing.backtest_trader import BacktestTrader
 from tradingstrategy.chain import ChainId
 from tradingstrategy.timebucket import TimeBucket
@@ -69,7 +70,7 @@ def universe(request, persistent_test_client, execution_context) -> TradingStrat
     trading_pair = ("WBNB", "BUSD")
 
     # Load all datas we can get for our candle time bucket
-    dataset = load_all_data(client, candle_time_bucket, execution_context)
+    dataset = load_all_data(client, candle_time_bucket, execution_context, UniverseOptions())
 
     # Filter down to the single pair we are interested in
     universe = TradingStrategyUniverse.create_single_pair_universe(

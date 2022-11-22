@@ -19,7 +19,10 @@ class BacktestSyncer:
         self.initial_deposit_processed_at = None
 
     def __call__(self, portfolio: Portfolio, ts: datetime.datetime, supported_reserves: List[AssetIdentifier]) -> List[ReserveUpdateEvent]:
-        """No new deposits are accepted during the backtest run."""
+        """Process the backtest initial deposit.
+
+        The backtest wallet is credited once at the start.
+        """
 
         if not self.initial_deposit_processed_at:
             self.initial_deposit_processed_at = ts

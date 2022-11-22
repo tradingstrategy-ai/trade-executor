@@ -4,7 +4,10 @@ import warnings
 from decimal import Decimal, ROUND_DOWN
 from typing import Optional
 
+import pandas as pd
+
 from tradeexecutor.backtest.backtest_execution import BacktestExecutionModel
+from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel
 from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2SimpleRoutingModel
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.strategy.execution_model import ExecutionModel
@@ -20,18 +23,51 @@ logger = logging.getLogger(__name__)
 
 
 class BacktestSimplePricingModel(PricingModel):
-    """Look the price without any liquidity data or price impact.
+    """Look up the historical prices.
 
-    Use naive closing price.
+    - Candle close price is used
+
+    - This is a simple model and does not use liquidity data
+      for the price impact estimation
+
+    - We provide `data_delay_tolerance` to deal with potential
+      gaps in price data
     """
 
     def __init__(self,
                  candle_universe: GroupedCandleUniverse,
                  routing_model: RoutingModel,
+                 data_delay_tolerance=pd.Timedelta("2d"),
                  candle_timepoint_kind="close",
                  very_small_amount=Decimal("0.10")):
+        """
 
-        # TODO: Remove later - now to support some old code
+        :param candle_universe:
+            Candles where our backtesing date comes from
+
+        :param routing_model:
+            How do we route trades between different pairs
+            TODO: Now ignored
+
+        :param data_delay_tolerance:
+            How long time gaps we allow in the backtesting data
+            before aborting the backtesting with an exception.
+            This is an safety check for bad data.
+
+            Sometimes there cannot be trades for days
+            if the blockchain has been halted,
+            and thus no price data available.
+
+        :param candle_timepoint_kind:
+            Do we use opening or closing price in backtesting
+
+        :param very_small_amount:
+            What kind o a test amount we do use for a trade
+            when we do not know the actual size of the trade.
+
+        """
+
+        # TODO: Remove later - now to support some old code111
         if isinstance(candle_universe, TradingStrategyUniverse):
             candle_universe = candle_universe.universe.candles
 
@@ -41,6 +77,7 @@ class BacktestSimplePricingModel(PricingModel):
         self.very_small_amount = very_small_amount
         self.routing_model = routing_model
         self.candle_timepoint_kind = candle_timepoint_kind
+        self.data_delay_tolerance = data_delay_tolerance
 
     def get_pair_for_id(self, internal_id: int) -> Optional[TradingPairIdentifier]:
         """Look up a trading pair.
@@ -90,7 +127,7 @@ def backtest_pricing_factory(
 
     assert isinstance(universe, TradingStrategyUniverse)
     assert isinstance(execution_model, BacktestExecutionModel), f"Execution model not compatible with this execution model. Received {execution_model}"
-    assert isinstance(routing_model, UniswapV2SimpleRoutingModel), f"This pricing method only works with Uniswap routing model, we received {routing_model}"
+    assert isinstance(routing_model, (BacktestRoutingModel, UniswapV2SimpleRoutingModel)), f"This pricing method only works with Uniswap routing model, we received {routing_model}"
 
     return BacktestSimplePricingModel(
         universe.universe.candles,

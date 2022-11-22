@@ -8,6 +8,7 @@ from pathlib import Path
 from queue import Queue
 from typing import Optional, Callable, Protocol, List
 
+import pandas as pd
 from apscheduler.executors.pool import ThreadPoolExecutor
 from apscheduler.schedulers.blocking import BlockingScheduler
 
@@ -28,7 +29,7 @@ from tradeexecutor.strategy.pricing_model import PricingModelFactory
 from tradeexecutor.strategy.runner import StrategyRunner
 from tradeexecutor.strategy.cycle import CycleDuration, snap_to_next_tick, snap_to_previous_tick, round_datetime_up
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
-from tradeexecutor.strategy.universe_model import UniverseModel, StrategyExecutionUniverse
+from tradeexecutor.strategy.universe_model import UniverseModel, StrategyExecutionUniverse, UniverseOptions
 from tradeexecutor.strategy.valuation import ValuationModelFactory
 from tradingstrategy.client import Client
 from tradingstrategy.timebucket import TimeBucket
@@ -73,7 +74,7 @@ class ExecutionLoop:
             backtest_start: Optional[datetime.datetime] = None,
             backtest_end: Optional[datetime.datetime] = None,
             backtest_setup: Optional[Callable[[State], None]] = None,
-            backtest_stop_loss_time_bucket: Optional[TimeBucket] = None,
+            stop_loss_check_frequency: Optional[TimeBucket] = None,
             tick_offset: datetime.timedelta=datetime.timedelta(minutes=0),
             trade_immediately=False,
     ):
@@ -84,6 +85,7 @@ class ExecutionLoop:
             raise TypeError("Only keyword arguments accepted")
 
         self.cycle_duration = cycle_duration
+        self.stop_loss_check_frequency = stop_loss_check_frequency
 
         args = locals().copy()
         args.pop("self")
@@ -101,15 +103,28 @@ class ExecutionLoop:
         # cycle -> dump mappings
         self.debug_dump_state = {}
 
+        # Hook in any overrides for strategy cycles
+        self.universe_options = UniverseOptions(
+            candle_time_bucket_override=self.cycle_duration.to_timebucket() if self.cycle_duration else None,
+            stop_loss_time_bucket_override=self.stop_loss_check_frequency,
+        )
+
     def init_state(self) -> State:
-        """Initialize the state for this run."""
+        """Initialize the state for this run.
+
+        - If we are doing live trading, load the last saved state
+
+        - In backtesting the state is always reset.
+          We do not support resumes for crashed backetsting.
+
+        """
         if self.reset:
             # Create empty state and save it
             state = self.store.create()
             state.name = self.name
             self.store.sync(state)
         else:
-            if self.store.is_empty():
+            if self.store.is_pristine():
                 # Create empty state and save it
                 state = self.store.create()
                 state.name = self.name
@@ -177,12 +192,25 @@ class ExecutionLoop:
             "timestamp": ts,
         }
 
-        logger.trade("Performing strategy tick #%d for timestamp %s, unrounded time is %s, live trading is %s", cycle, ts, unrounded_timestamp, live)
+        logger.trade("Performing strategy tick #%d for timestamp %s, cycle length is %s, unrounded time is %s, live trading is %s",
+                     cycle,
+                     ts,
+                     self.cycle_duration.value,
+                     unrounded_timestamp,
+                     live)
 
         if backtesting_universe is None:
 
+            # We are running backtesting and the universe is not yet loaded.
+            # Unlike live trading, we do not need to reconstruct the universe between
+            # trade cycles.
+
             # Refresh the trading universe for this cycle
-            universe = self.universe_model.construct_universe(ts, self.execution_context.mode)
+            universe = self.universe_model.construct_universe(
+                ts,
+                self.execution_context.mode,
+                self.universe_options,
+            )
 
             # Check if our data is stagnated and we cannot execute the strategy
             if self.max_data_delay is not None:
@@ -294,7 +322,8 @@ class ExecutionLoop:
         Display progress bars for data downloads.
         """
         logger.info("Warming up backesting")
-        self.universe_model.preload_universe()
+
+        self.universe_model.preload_universe(self.universe_options)
 
     def run_backtest_stop_loss_checks(self,
                                       start_ts: datetime.datetime,
@@ -326,6 +355,10 @@ class ExecutionLoop:
         # for stop loss checks.
         tick_size = universe.backtest_stop_loss_time_bucket
 
+        logger.info("run_backtest_stop_loss_checks with frequency of %s", tick_size.value)
+
+        assert tick_size.to_pandas_timedelta() > pd.Timedelta(0), f"Cannot do stop loss checks, because no stop loss cycle duration was given"
+
         # Hop to the next tick
         ts = round_datetime_up(start_ts, tick_size.to_timedelta())
 
@@ -349,9 +382,12 @@ class ExecutionLoop:
     def run_backtest(self, state: State) -> dict:
         """Backtest loop."""
 
+        if self.backtest_end or self.backtest_start:
+            assert self.backtest_start and self.backtest_end, f"If backtesting both start and end must be given, we have {self.backtest_start} - {self.backtest_end}"
+
         ts = self.backtest_start
 
-        logger.info("Strategy is executed in backtesting mode, starting at %s", ts)
+        logger.info("Strategy is executed in backtesting mode, starting at %s, cycle duration is %s", ts, self.cycle_duration.value)
 
         cycle = 1
         universe = None
@@ -376,7 +412,8 @@ class ExecutionLoop:
                 progress_bar.update(int(self.cycle_duration.to_timedelta().total_seconds()))
                 friedly_ts = ts.strftime(ts_format)
                 trade_count = len(list(state.portfolio.get_all_trades()))
-                progress_bar.set_description(f"Backtesting {self.name}, {friendly_start}-{friendly_end} at {friedly_ts}, total {trade_count:,} trades")
+                cycle_name = self.cycle_duration.value
+                progress_bar.set_description(f"Backtesting {self.name}, {friendly_start}-{friendly_end} at {friedly_ts} ({cycle_name}), total {trade_count:,} trades")
 
                 # Decide trades and everything for this cycle
                 universe: TradingStrategyUniverse = self.tick(ts, state, cycle, live=False, backtesting_universe=universe)
@@ -526,11 +563,7 @@ class ExecutionLoop:
             Debug state where each key is the cycle number
         """
 
-        if self.backtest_end or self.backtest_start:
-            assert self.backtest_start and self.backtest_end, f"If backtesting both start and end must be given, we have {self.backtest_start} - {self.backtest_end}"
-
         state = self.init_state()
-
         self.init_execution_model()
 
         run_description: StrategyExecutionDescription = self.strategy_factory(
@@ -549,8 +582,9 @@ class ExecutionLoop:
         self.runner: StrategyRunner = run_description.runner
         self.universe_model = run_description.universe_model
 
-        # Load cycle_duration from v0.1 strategies
-        if run_description.cycle_duration:
+        # Load cycle_duration from v0.1 strategies,
+        # if not given from the command line to override backtesting data
+        if run_description.cycle_duration and not self.cycle_duration:
             self.cycle_duration = run_description.cycle_duration
 
         assert self.cycle_duration is not None, "Did not get strategy cycle duration from constructor or strategy run description"

@@ -1,12 +1,15 @@
 """Command-line entry point for the daemon build on the top of Typer."""
 import datetime
 import logging
+import os.path
+from decimal import Decimal
 from pathlib import Path
 from queue import Queue
 from typing import Optional
 import pkg_resources
 
 import typer
+from tradingstrategy.timebucket import TimeBucket
 
 from web3.middleware import geth_poa_middleware
 from web3 import Web3, HTTPProvider
@@ -16,7 +19,14 @@ from eth_defi.gas import GasPriceMethod, node_default_gas_price_strategy
 from eth_defi.token import fetch_erc20_details
 from eth_defi.hotwallet import HotWallet
 
+from tradeexecutor.backtest.backtest_execution import BacktestExecutionModel
+from tradeexecutor.backtest.backtest_pricing import backtest_pricing_factory
+from tradeexecutor.backtest.backtest_sync import BacktestSyncer
+from tradeexecutor.backtest.backtest_valuation import backtest_valuation_factory
+from tradeexecutor.backtest.simulated_wallet import SimulatedWallet
+from tradeexecutor.cli.result import display_backtesting_results
 from tradeexecutor.state.metadata import Metadata
+from tradeexecutor.state.state import State
 from tradeexecutor.strategy.description import StrategyExecutionDescription
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.cli.approval import CLIApprovalModel
@@ -26,7 +36,7 @@ from tradeexecutor.ethereum.uniswap_v2_execution import UniswapV2ExecutionModel
 from tradeexecutor.ethereum.uniswap_v2_valuation import uniswap_v2_sell_valuation_factory
 from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
 from tradeexecutor.ethereum.uniswap_v2_live_pricing import uniswap_v2_live_pricing_factory
-from tradeexecutor.state.store import JSONFileStore, StateStore
+from tradeexecutor.state.store import JSONFileStore, StateStore, NoneStore
 from tradeexecutor.strategy.approval import ApprovalType, UncheckedApprovalModel, ApprovalModel
 from tradeexecutor.strategy.bootstrap import import_strategy_file
 from tradeexecutor.strategy.dummy import DummyExecutionModel
@@ -66,6 +76,7 @@ def create_trade_execution_model(
         confirmation_block_count: int,
         max_slippage: float,
 ):
+    """Set up the execution mode for the command line client."""
 
     if not gas_price_method:
         raise RuntimeError("GAS_PRICE_METHOD missing")
@@ -87,6 +98,14 @@ def create_trade_execution_model(
             max_slippage=max_slippage)
         valuation_model_factory = uniswap_v2_sell_valuation_factory
         pricing_model_factory = uniswap_v2_live_pricing_factory
+        return execution_model, sync_method, valuation_model_factory, pricing_model_factory
+    elif execution_type == TradeExecutionType.backtest:
+        logger.info("TODO: Command line backtests are always executed with initial deposit of $10,000")
+        wallet = SimulatedWallet()
+        execution_model = BacktestExecutionModel(wallet, max_slippage=0.01, stop_loss_data_available=True)
+        sync_method = BacktestSyncer(wallet, Decimal(10_000))
+        pricing_model_factory = backtest_pricing_factory
+        valuation_model_factory = backtest_valuation_factory
         return execution_model, sync_method, valuation_model_factory, pricing_model_factory
     else:
         raise NotImplementedError()
@@ -147,8 +166,9 @@ def monkey_patch():
 # Typer documentation https://typer.tiangolo.com/
 @app.command()
 def start(
-    id: str = typer.Option(None, envvar="EXECUTOR_ID", help="Executor id used when programmatically referring to this instance"),
-    name: Optional[str] = typer.Option("Unnamed Trade Executor", envvar="NAME", help="Executor name used in the web interface and notifications"),
+    id: str = typer.Option(None, envvar="EXECUTOR_ID", help="Executor id used when programmatically referring to this instance. If not given, take the base of --strategy-file."),
+    log_level: str = typer.Option(None, envvar="LOG_LEVEL", help="The Python default logging level. The defaults are 'info' is live execution, 'warning' if backtesting."),
+    name: Optional[str] = typer.Option(None, envvar="NAME", help="Executor name used in the web interface and notifications"),
     short_description: Optional[str] = typer.Option(None, envvar="SHORT_DESCRIPTION", help="Short description for metadata"),
     long_description: Optional[str] = typer.Option(None, envvar="LONG_DESCRIPTION", help="Long description for metadata"),
     icon_url: Optional[str] = typer.Option(None, envvar="ICON_URL", help="Strategy icon for web rendering and Discord avatar"),
@@ -160,22 +180,23 @@ def start(
     http_username: str = typer.Option("webhook", envvar="HTTP_USERNAME"),
     http_password: str = typer.Option(None, envvar="HTTP_PASSWORD"),
     json_rpc: str = typer.Option(None, envvar="JSON_RPC", help="Ethereum JSON-RPC node URL we connect to for execution"),
-    gas_price_method: Optional[GasPriceMethod] = typer.Option(None, envvar="GAS_PRICE_METHOD", help="How to set the gas price for Ethereum transactions"),
+    gas_price_method: Optional[GasPriceMethod] = typer.Option("legacy", envvar="GAS_PRICE_METHOD", help="How to set the gas price for Ethereum transactions. After the Berlin hardfork Ethereum mainnet introduced base + tip cost gas model."),
     confirmation_timeout: int = typer.Option(900, envvar="CONFIRMATION_TIMEOUT", help="How many seconds to wait for transaction batches to confirm"),
     confirmation_block_count: int = typer.Option(8, envvar="CONFIRMATION_BLOCK_COUNT", help="How many blocks we wait before we consider transaction receipt a final"),
     execution_type: TradeExecutionType = typer.Option(..., envvar="EXECUTION_TYPE"),
     max_slippage: float = typer.Option(0.0025, envvar="MAX_SLIPPAGE", help="Max slippage allowed per trade before failing. The default is 0.0025 is 0.25%."),
-    approval_type: ApprovalType = typer.Option(..., envvar="APPROVAL_TYPE"),
-    state_file: Optional[Path] = typer.Option("strategy-state.json", envvar="STATE_FILE"),
+    approval_type: ApprovalType = typer.Option("unchecked", envvar="APPROVAL_TYPE", help="Set a manual approval flow for trades"),
+    state_file: Optional[Path] = typer.Option(None, envvar="STATE_FILE"),
     trading_strategy_api_key: str = typer.Option(None, envvar="TRADING_STRATEGY_API_KEY", help="Trading Strategy API key"),
     cache_path: Optional[Path] = typer.Option(None, envvar="CACHE_PATH", help="Where to store downloaded datasets"),
-    reset_state: bool = typer.Option(False, "--reset-state", envvar="RESET_STATE"),
+    reset_state: bool = typer.Option(False, envvar="RESET_STATE"),
     max_cycles: int = typer.Option(None, envvar="MAX_CYCLES", help="Max main loop cycles run in an automated testing mode"),
     debug_dump_file: Optional[Path] = typer.Option(None, envvar="DEBUG_DUMP_FILE", help="Write Python Pickle dump of all internal debugging states of the strategy run to this file"),
     backtest_start: Optional[datetime.datetime] = typer.Option(None, envvar="BACKTEST_START", help="Start timestamp of backesting"),
     backtest_end: Optional[datetime.datetime] = typer.Option(None, envvar="BACKTEST_END", help="End timestamp of backesting"),
-    tick_size: CycleDuration = typer.Option(None, envvar="TICK_SIZE", help="How large tick use to execute the strategy"),
-    tick_offset_minutes: int = typer.Option(0, envvar="TICK_OFFSET_MINUTES", help="How many minutes we wait after the tick before executing the tick step"),
+    stop_loss_check_frequency: Optional[TimeBucket] = typer.Option(None, envvar="STOP_LOSS_CYCLE_DURATION", help="Override live/backtest stop loss check frequency. If not given read from the strategy module."),
+    cycle_duration: CycleDuration = typer.Option(None, envvar="CYCLE_DURATION", help="How long strategy tick cycles use to execute the strategy. While strategy modules offer their own cycle duration value, you can override it here to 'speedrun' backtests."),
+    cycle_offset_minutes: int = typer.Option(0, envvar="CYCLE_OFFSET_MINUTES", help="How many minutes we wait after the tick before executing the tick step"),
     stats_refresh_minutes: int = typer.Option(60.0, envvar="STATS_REFRESH_MINUTES", help="How often we refresh position statistics. Default to once in an hour."),
     position_trigger_check_minutes: int = typer.Option(3.0, envvar="POSITION_TRIGGER_CHECK_MINUTES", help="How often we check for take profit/stop loss triggers. Default to once in 3 minutes. Set 0 to disable."),
     max_data_delay_minutes: int = typer.Option(None, envvar="MAX_DATA_DELAY_MINUTES", help="If our data feed is delayed more than this minutes, abort the execution"),
@@ -189,9 +210,30 @@ def start(
     """Launch Trade Executor instance."""
     global logger
 
+    # Guess id from the strategy file
+    if not id:
+        if strategy_file:
+            name = os.path.basename(strategy_file)
+            id = Path(strategy_file).stem
+
     check_good_id(id)
 
-    logger = setup_logging()
+    # We always need a name
+    if not name:
+        if strategy_file:
+            name = os.path.basename(strategy_file)
+        else:
+            name = "Unnamed backtest"
+
+    if log_level:
+        log_level = log_level.upper()
+    else:
+        if execution_type == TradeExecutionType.backtest:
+            log_level = logging.WARNING
+        else:
+            log_level = logging.INFO
+
+    logger = setup_logging(log_level)
 
     if discord_webhook_url:
         setup_discord_logging(
@@ -208,6 +250,10 @@ def start(
 
     monkey_patch()
 
+    if not state_file:
+        if execution_type != TradeExecutionType.backtest:
+            raise RuntimeError("You need to give --state-file for live trading")
+
     confirmation_timeout = datetime.timedelta(seconds=confirmation_timeout)
 
     execution_model, sync_method, valuation_model_factory, pricing_model_factory = create_trade_execution_model(
@@ -222,7 +268,15 @@ def start(
 
     approval_model = create_approval_model(approval_type)
 
-    store = create_state_store(state_file)
+    if state_file:
+        store = create_state_store(state_file)
+    else:
+        # Backtests never have persistent state
+        if execution_type == TradeExecutionType.backtest:
+            logger.info("This backtest run won't create a state file")
+            store = NoneStore(State())
+        else:
+            raise RuntimeError("Does not know how to set up a state file for this run")
 
     metadata = create_metadata(name, short_description, long_description, icon_url)
 
@@ -243,7 +297,13 @@ def start(
             client.clear_caches()
     else:
         client = None
-    tick_offset = datetime.timedelta(minutes=tick_offset_minutes)
+
+    # Currently, all actions require us to have a valid API key
+    # might change in the future
+    if not client:
+        raise RuntimeError("Trading Strategy client instance is not available - needed to run backtests. Make sure trading_strategy_api_key is set.")
+
+    tick_offset = datetime.timedelta(minutes=cycle_offset_minutes)
 
     if max_data_delay_minutes:
         max_data_delay = datetime.timedelta(minutes=max_data_delay_minutes)
@@ -259,6 +319,7 @@ def start(
     logger.trade("Trade Executor version %s starting strategy %s", version, name)
 
     if backtest_start:
+        # Running as a backtest
         execution_context = ExecutionContext(
             mode=ExecutionMode.backtesting,
             timed_task_context_manager=timed_task,
@@ -293,7 +354,8 @@ def start(
             debug_dump_file=debug_dump_file,
             backtest_start=backtest_start,
             backtest_end=backtest_end,
-            cycle_duration=tick_size,
+            stop_loss_check_frequency=stop_loss_check_frequency,
+            cycle_duration=cycle_duration,
             tick_offset=tick_offset,
             max_data_delay=max_data_delay,
             trade_immediately=trade_immediately,
@@ -301,6 +363,11 @@ def start(
             position_trigger_check_frequency=position_trigger_check_frequency,
         )
         loop.run()
+
+        # Display summary stats for terminal backtest runs
+        if execution_type == TradeExecutionType.backtest:
+            display_backtesting_results(store.state)
+
     except KeyboardInterrupt as e:
         # CTRL+C shutdown
         logger.trade("Trade Executor %s shut down by CTRL+C requested: %s", name, e)

@@ -54,7 +54,7 @@ def test_ema_crossover_real_data(
         start_at=datetime.datetime(2021, 6, 1),
         end_at=datetime.datetime(2022, 1, 1),
         initial_deposit=10_000,
-        cycle_duration=CycleDuration.cycle_24h,  # Override to use daily cycles to speed up the test
+        cycle_duration=CycleDuration.cycle_1d,  # Override to use daily cycles to speed up the test
         candle_time_frame=TimeBucket.d1,  # Override to use daily data to speed up the test
     )
 
