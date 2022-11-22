@@ -8,7 +8,7 @@ from tradeexecutor.analysis.trade_analyser import build_trade_analysis
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.statistics import Statistics, PortfolioStatistics, PositionStatistics, FinalPositionStatistics
-
+from tradeexecutor.strategy.execution_context import ExecutionMode
 
 @dataclass
 class NewStatistics:
@@ -42,27 +42,36 @@ def calculate_closed_position_statistics(clock: datetime.datetime, position: Tra
     return stats
 
 
-def calculate_statistics(clock: datetime.datetime, portfolio: Portfolio) -> NewStatistics:
+def calculate_statistics(clock: datetime.datetime, portfolio: Portfolio, execution_mode: ExecutionMode) -> NewStatistics:
     """Calculate statistics for a portfolio."""
 
     first_trade, last_trade = portfolio.get_first_and_last_executed_trade()
-    trade_analysis = build_trade_analysis(portfolio)
+    
+    # comprehensenhive statistics after each trade are not needed for backtesting
+    if(execution_mode != ExecutionMode.backtesting):
+        
+        trade_analysis = build_trade_analysis(portfolio)
 
-    pf_stats = PortfolioStatistics(
-        calculated_at=clock,
-        total_equity=portfolio.get_total_equity(),
-        free_cash=float(portfolio.get_current_cash()),
-        open_position_count=len(portfolio.open_positions),
-        open_position_equity=portfolio.get_open_position_equity(),
-        frozen_position_equity=portfolio.get_frozen_position_equity(),
-        frozen_position_count=len(portfolio.frozen_positions),
-        closed_position_count=len(portfolio.closed_positions),
-        unrealised_profit_usd=portfolio.get_unrealised_profit_usd(),
-        realised_profit_usd=portfolio.get_closed_profit_usd(),
-        first_trade_at=first_trade and first_trade.executed_at or None,
-        last_trade_at=last_trade and last_trade.executed_at or None,
-        summary=trade_analysis.calculate_summary_statistics(),
-    )
+        pf_stats = PortfolioStatistics(
+            calculated_at=clock,
+            total_equity=portfolio.get_total_equity(),
+            free_cash=float(portfolio.get_current_cash()),
+            open_position_count=len(portfolio.open_positions),
+            open_position_equity=portfolio.get_open_position_equity(),
+            frozen_position_equity=portfolio.get_frozen_position_equity(),
+            frozen_position_count=len(portfolio.frozen_positions),
+            closed_position_count=len(portfolio.closed_positions),
+            unrealised_profit_usd=portfolio.get_unrealised_profit_usd(),
+            realised_profit_usd=portfolio.get_closed_profit_usd(),
+            first_trade_at=first_trade and first_trade.executed_at or None,
+            last_trade_at=last_trade and last_trade.executed_at or None,
+            summary=trade_analysis.calculate_summary_statistics(),
+        )
+    else:
+        pf_stats = PortfolioStatistics(
+            calculated_at=clock,
+            total_equity=portfolio.get_total_equity(),
+        )
 
     stats = NewStatistics(portfolio=pf_stats)
 
@@ -75,10 +84,10 @@ def calculate_statistics(clock: datetime.datetime, portfolio: Portfolio) -> NewS
     return stats
 
 
-def update_statistics(clock: datetime.datetime, stats: Statistics, portfolio: Portfolio):
+def update_statistics(clock: datetime.datetime, stats: Statistics, portfolio: Portfolio, execution_mode: ExecutionMode):
     """Update statistics in a portfolio with a new cycle."""
 
-    new_stats = calculate_statistics(clock, portfolio)
+    new_stats = calculate_statistics(clock, portfolio, execution_mode)
     stats.portfolio.append(new_stats.portfolio)
     for position_id, position_stats in new_stats.positions.items():
         stats.add_positions_stats(position_id, position_stats)

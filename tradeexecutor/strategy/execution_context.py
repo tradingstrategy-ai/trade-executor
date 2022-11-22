@@ -22,6 +22,8 @@ class ExecutionMode(enum.Enum):
     paper_trading = "paper_trading"
 
     #: We are backtesting
+    #: When backtesting mode is selected, we can skip most of the statistical calculations that would otherwise be calculated during live-trade. 
+    #: This offers great performance benefits for backtesting. 
     backtesting = "backtesting"
 
     #: We are loading and caching datasets before a backtesting session can begin.

@@ -249,7 +249,7 @@ class ExecutionLoop:
         # for hourly revaluations
         return universe
 
-    def update_position_valuations(self, clock: datetime.datetime, state: State, universe: StrategyExecutionUniverse):
+    def update_position_valuations(self, clock: datetime.datetime, state: State, universe: StrategyExecutionUniverse, execution_mode: ExecutionMode):
         """Revalue positions and update statistics.
 
         A new statistics entry is calculated for portfolio and all of its positions
@@ -268,7 +268,7 @@ class ExecutionLoop:
 
         with self.timed_task_context_manager("update_statistics"):
             logger.info("Updating position statistics")
-            update_statistics(clock, state.stats, state.portfolio)
+            update_statistics(clock, state.stats, state.portfolio, execution_mode)
 
         # Check that state is good before writing it to the disk
         state.perform_integrity_check()
@@ -419,7 +419,7 @@ class ExecutionLoop:
                 universe: TradingStrategyUniverse = self.tick(ts, state, cycle, live=False, backtesting_universe=universe)
 
                 # Revalue our portfolio
-                self.update_position_valuations(ts, state, universe)
+                self.update_position_valuations(ts, state, universe, self.execution_context.mode)
 
                 # Check for termination in integration testing.
                 # TODO: Get rid of this and only support date ranges to run tests
