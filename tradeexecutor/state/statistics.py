@@ -75,13 +75,13 @@ class PortfolioStatistics:
     calculated_at: datetime.datetime
     total_equity: USDollarAmount
     
-    free_cash: Optional[USDollarAmount]
-    open_position_count: Optional[int]
-    open_position_equity: Optional[USDollarAmount]
-    frozen_position_count: Optional[int]
-    frozen_position_equity: Optional[USDollarAmount]
-    closed_position_count: Optional[int]
-    unrealised_profit_usd: Optional[USDollarAmount]
+    free_cash: Optional[USDollarAmount] = None
+    open_position_count: Optional[int] = None
+    open_position_equity: Optional[USDollarAmount] = None
+    frozen_position_count: Optional[int] = None
+    frozen_position_equity: Optional[USDollarAmount] = None
+    closed_position_count: Optional[int] = None
+    unrealised_profit_usd: Optional[USDollarAmount] = None
 
     first_trade_at: Optional[datetime.datetime] = None
     last_trade_at: Optional[datetime.datetime] = None
