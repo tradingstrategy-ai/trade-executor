@@ -74,7 +74,7 @@ def write_config(out: TextIO, config):
     print("#", file=out)
 
     for k, v in config.items():
-        print(f'{k}="{v}"', file=out)
+        print(f'{k}={v}', file=out)
     print("", file=out)
 
 
