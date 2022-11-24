@@ -230,7 +230,7 @@ def start(
     # Unsorted options
     max_slippage: float = typer.Option(0.0025, envvar="MAX_SLIPPAGE", help="Max slippage allowed per trade before failing. The default is 0.0025 is 0.25%."),
     approval_type: ApprovalType = typer.Option("unchecked", envvar="APPROVAL_TYPE", help="Set a manual approval flow for trades"),
-    state_file: Optional[Path] = typer.Option(None, envvar="STATE_FILE"),
+    state_file: Optional[Path] = typer.Option(None, envvar="STATE_FILE", help="JSON file where we serialise the execution state. If not given defaults to state/{executor-id}.json"),
     trading_strategy_api_key: str = typer.Option(None, envvar="TRADING_STRATEGY_API_KEY", help="Trading Strategy API key"),
     cache_path: Optional[Path] = typer.Option(None, envvar="CACHE_PATH", help="Where to store downloaded datasets"),
     reset_state: bool = typer.Option(False, envvar="RESET_STATE"),
@@ -296,7 +296,7 @@ def start(
 
     if not state_file:
         if execution_type != TradeExecutionType.backtest:
-            raise RuntimeError("You need to give --state-file for live trading")
+            state_file = f"state/{id}.json"
 
     confirmation_timeout = datetime.timedelta(seconds=confirmation_timeout)
 

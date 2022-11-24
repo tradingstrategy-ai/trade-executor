@@ -3,7 +3,7 @@
 #
 # See https://stackoverflow.com/a/71786211/315168 for the recipe
 #
-FROM python:3.10.4
+FROM python:3.10.8
 
 ENV PYTHONDONTWRITEBYTECODE 1 \
     PYTHONUNBUFFERED 1
@@ -20,7 +20,7 @@ WORKDIR /usr/src/trade-executor
 COPY . .
 
 RUN poetry config virtualenvs.create false \
-    && poetry install --no-dev --no-interaction --no-ansi -E qstrader
+    && poetry install --no-dev --no-interaction --no-ansi -E qstrader -E web-server -E execution
 
 # Webhook port 3456
 EXPOSE 3456
