@@ -54,6 +54,11 @@ def check_required_live_trading_vars(env, required_list):
         else:
             assert s in env, f"You need to pass environment variable {s} for this script in .env file or as environment variable. Also remember to source the secrets file before running. Got: {env_output}"
 
+    # Docker cannot read newlines from .env
+    # https://github.com/moby/moby/issues/12997
+    for key, value in env.items():
+        assert "\n" not in value, f"Detected new line in {key}"
+
 
 def merge_secrets(public: dict, secret: dict) -> dict:
     return secret | public

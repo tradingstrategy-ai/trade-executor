@@ -9,7 +9,6 @@ from typing import Optional
 from importlib.metadata import version
 
 import typer
-from dotenv import load_dotenv
 from tradingstrategy.timebucket import TimeBucket
 
 from web3 import Web3
@@ -598,3 +597,8 @@ def check_wallet(
 
     web3config.close()
 
+
+@app.command()
+def hello():
+    """Check that the application loads without doing anything."""
+    print("Hello blockchain")

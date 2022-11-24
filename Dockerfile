@@ -19,12 +19,14 @@ WORKDIR /usr/src/trade-executor
 # package source code
 COPY . .
 
-RUN poetry config virtualenvs.create false \
-    && poetry install --no-dev --no-interaction --no-ansi -E qstrader -E web-server -E execution
+RUN poetry config virtualenvs.create false
+RUN poetry install --no-dev --no-interaction --no-ansi -E qstrader -E web-server -E execution
 
 # Webhook port 3456
 EXPOSE 3456
 
-CMD ["poetry", "run", "trade-executor", "start"]
+# Use --quiet to supress Skipping virtualenv creation, as specified in config file.
+# https://stackoverflow.com/questions/69588652/what-does-skipping-virtualenv-creation-as-specified-in-config-file-mean
+CMD ["poetry", "run", "--quiet", "trade-executor"]
 
 ENTRYPOINT ["scripts/docker-entrypoint.sh"]

@@ -3,4 +3,4 @@
 # Start trade-executor under docker compose
 #
 
-poetry run trade-executor "$@"
+poetry --quiet run trade-executor "$@"
