@@ -6,6 +6,8 @@ Describe core parameters for the strategy execution for the main loop.
 from dataclasses import dataclass
 from typing import Optional
 
+from tradingstrategy.chain import ChainId
+
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.universe_model import UniverseModel
 from tradeexecutor.strategy.runner import StrategyRunner
@@ -37,4 +39,11 @@ class StrategyExecutionDescription:
     # TODO: Deprecate?
     #: What candles this strategy uses: 1d, 1h, etc.
     time_bucket: Optional[TimeBucket] = None
+
+    #: Blockchain id for this strategy.
+    #:
+    #: Necessary for single chain strategies to know
+    #: on which chain we operate.
+    #:
+    chain_id: Optional[ChainId] = None
 

@@ -18,3 +18,12 @@ def redact_url_password(url: str) -> str:
     else:
         replaced = parsed._replace(netloc="{}:{}@{}".format(parsed.username, "???", parsed.hostname))
         return replaced.geturl()
+
+
+def get_url_domain(url: str) -> str:
+    """Redact URL so that only domain is displayed.
+
+    Some services e.g. infura use path as an API key.
+    """
+    parsed = urlparse(url)
+    return parsed.hostname

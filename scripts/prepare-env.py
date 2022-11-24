@@ -18,7 +18,7 @@ out = open(sys.argv[1], "wt")
 assert sys.version_info >= (3, 9), f"Watch out for old system Python, got version {sys.version_info}"
 
 #: Read environment variables we use directly from Typer
-vars = get_available_e  nv_vars()
+vars = get_available_env_vars()
 
 # print("Strategy execution settings are:", ", ".join(vars))
 
