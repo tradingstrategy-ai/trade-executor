@@ -26,7 +26,7 @@ RUN poetry install --no-dev --no-interaction --no-ansi -E qstrader -E web-server
 EXPOSE 3456
 
 # Use --quiet to supress Skipping virtualenv creation, as specified in config file.
-# https://stackoverflow.com/questions/69588652/what-does-skipping-virtualenv-creation-as-specified-in-config-file-mean
+# https://stackoverflow.com/questions/74564601/poetry-echos-skipping-virtualenv-creation-as-specified-in-config-file-when-r
 CMD ["poetry", "run", "--quiet", "trade-executor"]
 
 ENTRYPOINT ["scripts/docker-entrypoint.sh"]

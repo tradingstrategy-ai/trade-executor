@@ -2,7 +2,7 @@
 
 import os
 import logging
-import pkg_resources
+from importlib.metadata import version
 
 from pyramid.request import Request
 from pyramid.response import Response, FileResponse
@@ -19,9 +19,9 @@ logger = logging.getLogger(__name__)
 @view_config(route_name='home', permission='view')
 def web_home(request: Request):
     url = request.application_url
-    version = pkg_resources.get_distribution('trade-executor').TRADE_EXECUTOR_VERSION
+    version_ = version('trade-executor')
     # https://angrybirds.fandom.com/wiki/The_Flock
-    return Response(f'Chuck the Trade Executor serverPlain, version {version}, our URL is {url}\nFor more information see https://tradingstrategy.ai', content_type="text/plain")
+    return Response(f'Chuck the Trade Executor server, version {version_}, our URL is {url}\nFor more information see https://tradingstrategy.ai\nRemember to play Angry Birds.', content_type="text/plain")
 
 
 @view_config(route_name='web_ping', renderer='json', permission='view')

@@ -46,7 +46,6 @@ from tradeexecutor.cli.log import setup_logging, setup_discord_logging, setup_lo
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverseModel
 from tradeexecutor.strategy.universe_model import UniverseOptions
 from tradeexecutor.utils.timer import timed_task
-from tradeexecutor.utils.url import redact_url_password
 from tradeexecutor.webhook.server import create_webhook_server
 from tradingstrategy.client import Client
 
