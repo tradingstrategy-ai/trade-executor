@@ -6,7 +6,7 @@ from decimal import Decimal
 from pathlib import Path
 from queue import Queue
 from typing import Optional
-import pkg_resources
+from importlib.metadata import version
 
 import typer
 from tradingstrategy.timebucket import TimeBucket
@@ -52,7 +52,9 @@ from tradingstrategy.client import Client
 
 app = typer.Typer()
 
-version = pkg_resources.get_distribution('trade-executor').version
+
+TRADE_EXECUTOR_VERSION = version('trade-executor')
+
 
 logger: Optional[logging.Logger] = None
 
@@ -67,11 +69,42 @@ def check_good_id(id: str):
     assert " " not in id, f"Bad EXECUTOR_ID: {id}"
 
 
+def create_web3(
+    json_rpc_binance,
+    json_rpc_polygon,
+    json_rpc_avalanche,
+    json_rpc_ethereum,
+    gas_price_method,
+) -> Optional[Web3]:
+    """Create Web3 connection to the live node we are executing against.
+
+    :return web3:
+        Connect to any passed JSON RPC URL
+
+    """
+
+    all_rpcs = [json_rpc_ethereum,
+                json_rpc_avalanche,
+                json_rpc_polygon,
+                json_rpc_binance]
+
+    if not any(all_rpcs):
+        return None
+
+    assert sum(all_rpcs) == 1, "Currently we support "
+
+    assert gas_price_method, "JSON-RPC node specific, but gas price method not specified"
+
+    json_rpc = any(all_rpcs)
+
+    web3 = create_web3(json_rpc, gas_price_method)
+    return web3
+
+
 def create_trade_execution_model(
         execution_type: TradeExecutionType,
-        json_rpc: str,
         private_key: str,
-        gas_price_method: Optional[GasPriceMethod],
+        web3: Web3,
         confirmation_timeout: datetime.timedelta,
         confirmation_block_count: int,
         max_slippage: float,
@@ -84,9 +117,7 @@ def create_trade_execution_model(
     if execution_type == TradeExecutionType.dummy:
         return DummyExecutionModel()
     elif execution_type == TradeExecutionType.uniswap_v2_hot_wallet:
-        assert private_key, "Private key is needed"
-        assert json_rpc, "JSON-RPC endpoint is needed"
-        web3 = create_web3(json_rpc, gas_price_method)
+        assert private_key, "Private key is needed for live trading"
 
         hot_wallet = HotWallet.from_private_key(private_key)
         sync_method = EthereumHotWalletReserveSyncer(web3, hot_wallet.address)
@@ -166,24 +197,37 @@ def monkey_patch():
 # Typer documentation https://typer.tiangolo.com/
 @app.command()
 def start(
+
+    # Strategy assets
     id: str = typer.Option(None, envvar="EXECUTOR_ID", help="Executor id used when programmatically referring to this instance. If not given, take the base of --strategy-file."),
     log_level: str = typer.Option(None, envvar="LOG_LEVEL", help="The Python default logging level. The defaults are 'info' is live execution, 'warning' if backtesting."),
     name: Optional[str] = typer.Option(None, envvar="NAME", help="Executor name used in the web interface and notifications"),
     short_description: Optional[str] = typer.Option(None, envvar="SHORT_DESCRIPTION", help="Short description for metadata"),
     long_description: Optional[str] = typer.Option(None, envvar="LONG_DESCRIPTION", help="Long description for metadata"),
     icon_url: Optional[str] = typer.Option(None, envvar="ICON_URL", help="Strategy icon for web rendering and Discord avatar"),
-    private_key: Optional[str] = typer.Option(None, envvar="PRIVATE_KEY", help="Ethereum private key to be used as a hot wallet/broadcast wallet"),
     strategy_file: Path = typer.Option(..., envvar="STRATEGY_FILE", help="Python strategy file to run"),
+
+    # Live trading or backtest
+    execution_type: TradeExecutionType = typer.Option(..., envvar="EXECUTION_TYPE"),
+
+    # Webhook server options
     http_enabled: bool = typer.Option(False, envvar="HTTP_ENABLED", help="Enable Webhook server"),
     http_port: int = typer.Option(19000, envvar="HTTP_PORT"),
-    http_host: str = typer.Option("127.0.0.1", envvar="HTTP_HOST"),
+    http_host: str = typer.Option("0.0.0.0", envvar="HTTP_HOST"),
     http_username: str = typer.Option("webhook", envvar="HTTP_USERNAME"),
     http_password: str = typer.Option(None, envvar="HTTP_PASSWORD"),
-    json_rpc: str = typer.Option(None, envvar="JSON_RPC", help="Ethereum JSON-RPC node URL we connect to for execution"),
+
+    # Web3 connection options
+    json_rpc_binance: str = typer.Option(None, envvar="JSON_RPC_BINANCE", help="BNB Chain JSON-RPC node URL we connect to"),
+    json_rpc_polygon: str = typer.Option(None, envvar="JSON_RPC_POLYGON", help="Polygon JSON-RPC node URL we connect to"),
+    json_rpc_ethereum: str = typer.Option(None, envvar="JSON_RPC_ETHEREUM", help="Ethereum JSON-RPC node URL we connect to"),
+    json_rpc_avalanche: str = typer.Option(None, envvar="JSON_RPC_AVALANCHE", help="Avalanche C-chain JSON-RPC node URL we connect to"),
     gas_price_method: Optional[GasPriceMethod] = typer.Option("legacy", envvar="GAS_PRICE_METHOD", help="How to set the gas price for Ethereum transactions. After the Berlin hardfork Ethereum mainnet introduced base + tip cost gas model."),
     confirmation_timeout: int = typer.Option(900, envvar="CONFIRMATION_TIMEOUT", help="How many seconds to wait for transaction batches to confirm"),
     confirmation_block_count: int = typer.Option(8, envvar="CONFIRMATION_BLOCK_COUNT", help="How many blocks we wait before we consider transaction receipt a final"),
-    execution_type: TradeExecutionType = typer.Option(..., envvar="EXECUTION_TYPE"),
+    private_key: Optional[str] = typer.Option(None, envvar="PRIVATE_KEY", help="Ethereum private key to be used as a hot wallet/broadcast wallet"),
+
+    # Unsorted options
     max_slippage: float = typer.Option(0.0025, envvar="MAX_SLIPPAGE", help="Max slippage allowed per trade before failing. The default is 0.0025 is 0.25%."),
     approval_type: ApprovalType = typer.Option("unchecked", envvar="APPROVAL_TYPE", help="Set a manual approval flow for trades"),
     state_file: Optional[Path] = typer.Option(None, envvar="STATE_FILE"),
@@ -199,7 +243,7 @@ def start(
     cycle_offset_minutes: int = typer.Option(0, envvar="CYCLE_OFFSET_MINUTES", help="How many minutes we wait after the tick before executing the tick step"),
     stats_refresh_minutes: int = typer.Option(60.0, envvar="STATS_REFRESH_MINUTES", help="How often we refresh position statistics. Default to once in an hour."),
     position_trigger_check_minutes: int = typer.Option(3.0, envvar="POSITION_TRIGGER_CHECK_MINUTES", help="How often we check for take profit/stop loss triggers. Default to once in 3 minutes. Set 0 to disable."),
-    max_data_delay_minutes: int = typer.Option(None, envvar="MAX_DATA_DELAY_MINUTES", help="If our data feed is delayed more than this minutes, abort the execution"),
+    max_data_delay_minutes: int = typer.Option(3*60, envvar="MAX_DATA_DELAY_MINUTES", help="If our data feed is delayed more than this minutes, abort the execution. Defaukts to 3 hours."),
     discord_webhook_url: Optional[str] = typer.Option(None, envvar="DISCORD_WEBHOOK_URL", help="Discord webhook URL for notifications"),
     logstash_server: Optional[str] = typer.Option(None, envvar="LOGSTASH_SERVER", help="LogStash server hostname where to send logs"),
     trade_immediately: bool = typer.Option(False, "--trade-immediately", envvar="TRADE_IMMEDIATELY", help="Perform the first rebalance immediately, do not wait for the next trading universe refresh"),
@@ -256,9 +300,22 @@ def start(
 
     confirmation_timeout = datetime.timedelta(seconds=confirmation_timeout)
 
+    if execution_type == TradeExecutionType.uniswap_v2_hot_wallet:
+        web3 = create_web3(
+            json_rpc_binance,
+            json_rpc_polygon,
+            json_rpc_avalanche,
+            json_rpc_ethereum,
+        )
+
+        if not web3:
+            raise RuntimeError("Live trading requires that you pass JSON-RPC connection to one of the networks")
+    else:
+        web3 = None
+
     execution_model, sync_method, valuation_model_factory, pricing_model_factory = create_trade_execution_model(
         execution_type,
-        json_rpc,
+        web3,
         private_key,
         gas_price_method,
         confirmation_timeout,
@@ -316,7 +373,7 @@ def start(
     logger.info("Loading strategy file %s", strategy_file)
     strategy_factory = import_strategy_file(strategy_file)
 
-    logger.trade("Trade Executor version %s starting strategy %s", version, name)
+    logger.trade("Trade Executor version %s starting strategy %s", TRADE_EXECUTOR_VERSION, name)
 
     if backtest_start:
         # Running as a backtest

@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 @view_config(route_name='home', permission='view')
 def web_home(request: Request):
     url = request.application_url
-    version = pkg_resources.get_distribution('trade-executor').version
+    version = pkg_resources.get_distribution('trade-executor').TRADE_EXECUTOR_VERSION
     # https://angrybirds.fandom.com/wiki/The_Flock
     return Response(f'Chuck the Trade Executor serverPlain, version {version}, our URL is {url}\nFor more information see https://tradingstrategy.ai', content_type="text/plain")
 
