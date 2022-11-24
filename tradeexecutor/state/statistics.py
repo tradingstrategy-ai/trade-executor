@@ -68,10 +68,12 @@ class FinalPositionStatistics:
 @dataclass_json
 @dataclass
 class PortfolioStatistics:
-    #: Real-time clock when these stats were calculated
-    #: If backtesting, only calculated_at and total_equity are necessary for later visualisations and metrics
-    #: If livetrading, then all attributes should be specified so that for displaying updated metrics after each trade 
+    '''
+    If backtesting, only calculated_at and total_equity are necessary for later visualisations and metrics
+    If livetrading, then all attributes should be specified so that for displaying updated metrics after each trade 
+    '''
 
+    #: Real-time clock when these stats were calculated
     calculated_at: datetime.datetime
     total_equity: USDollarAmount
     
