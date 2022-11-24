@@ -25,7 +25,7 @@ There is a mapping of 1 strategy : 1 container : 1 domain : 1 internal TCP/IP po
 
 # Building
 
-Builds the Docker image and tags it as `latest`:
+Build the Docker image from the local source code and tags it as `latest` for your local usage:
 
 ```shell
 docker build -t trading-strategy/trade-executor:latest . 

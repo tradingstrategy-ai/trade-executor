@@ -1,4 +1,6 @@
-# Executor configurations
+# Executor configurations (legacy)
+
+**These are legacy configuration files. See [../env/]
 
 This folder contains configuration scripts for different trading strategy executions
 

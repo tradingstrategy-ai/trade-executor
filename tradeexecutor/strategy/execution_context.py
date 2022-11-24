@@ -51,6 +51,12 @@ class ExecutionMode(enum.Enum):
     #:
     simulated_trading = "simulated_trading"
 
+    #: Prefilight checks
+    #:
+    #: In this execution mode, we are invoked from the command line
+    #: to check that all of our files and connections are intact.
+    preflight_check = "preflight_check"
+
     def is_live_trading(self) -> bool:
         """Are we trading  real time?"""
         return self in (self.real_trading, self.paper_trading, self.unit_testing_trading, self.simulated_trading)
