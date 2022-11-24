@@ -91,6 +91,8 @@ def make_runner_for_strategy_mod(mod) -> StrategyFactory:
 
     assert mod_info.trading_strategy_type == StrategyType.managed_positions, "Unsupported strategy tpe"
 
+    assert mod_info, "chain_id blockchain information missing from the strategy module"
+
     def default_strategy_factory(
             *ignore,
             execution_model: ExecutionModel,
@@ -133,6 +135,7 @@ def make_runner_for_strategy_mod(mod) -> StrategyFactory:
             runner=runner,
             trading_strategy_engine_version=mod_info.trading_strategy_engine_version,
             cycle_duration=mod_info.trading_strategy_cycle,
+            chain_id=mod_info.chain_id,
         )
 
     return default_strategy_factory

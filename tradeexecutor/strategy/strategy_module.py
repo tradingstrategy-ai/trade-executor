@@ -2,6 +2,7 @@
 from dataclasses import dataclass
 from typing import Callable, Dict, Protocol, List, Optional
 import pandas
+from tradingstrategy.chain import ChainId
 
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
@@ -265,6 +266,11 @@ class StrategyModuleInformation:
     #: need to deal with new and deprecated trading pairs.
     create_trading_universe: CreateTradingUniverseProtocol
 
+    #: Blockchain id on which this strategy operates
+    #:
+    #: Valid for single chain strategies only
+    chain_id: Optional[ChainId] = None
+
     def validate(self):
         """
 
@@ -305,6 +311,9 @@ class StrategyModuleInformation:
         if self.trade_routing is None:
             raise StrategyModuleNotValid(f"trade_routing missing on the strategy")
 
+        if self.chain_id:
+            assert isinstance(self.chain_id, ChainId), f"Expected ChainId, got {self.chain_id}"
+
 
 def parse_strategy_module(mod) -> StrategyModuleInformation:
     """Parse a loaded .py module that describes a trading strategy.
@@ -320,4 +329,5 @@ def parse_strategy_module(mod) -> StrategyModuleInformation:
         mod.get("reserve_currency"),
         mod.get("decide_trades"),
         mod.get("create_trading_universe"),
+        mod.get("chain_id"),
     )

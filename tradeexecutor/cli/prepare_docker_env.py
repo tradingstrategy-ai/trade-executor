@@ -1,4 +1,13 @@
-"""Prepare a Docker .env file for a strategy."""
+"""Prepare a Docker .env file for a strategy.
+
+To run this script standalone::
+
+.. code-block:: shell
+
+    source ~/secrets.env
+    prepare-docker-env < env/pancake-eth-usd-sma.env > ~/pancake-eth-usd-sma-final.env
+
+"""
 
 import os
 import sys
@@ -10,18 +19,18 @@ import typer
 from tradeexecutor.cli.env import get_available_env_vars
 
 
+#: List of minimal options needed to launch a live trading strategy
 REQUIRED_LIVE_TRADING_ENV = [
 
     # Secret options needed
     "PRIVATE_KEY",
     "TRADING_STRATEGY_API_KEY",
-    "DISCORD_WEBHOOK_URL",
+    # "DISCORD_WEBHOOK_URL",
     ("JSON_RPC_BINANCE", "JSON_RPC_POLYGON", "JSON_RPC_ETHEREUM", "JSON_RPC_AVALANCHE"),
 
     # Public options needed
     "NAME",
     "HTTP_ENABLED",
-    "HTTP_PORT",
     "STRATEGY_FILE",
     "GAS_PRICE_METHOD",
     "EXECUTION_TYPE"
@@ -31,6 +40,9 @@ REQUIRED_LIVE_TRADING_ENV = [
 def check_required_live_trading_vars(env, required_list):
     """Check that we have required"""
 
+    # Show what we got in the case we need to debug
+    env_output = ", ".join(env.keys())
+
     for s in required_list:
 
         if type(s) == tuple:
@@ -38,13 +50,13 @@ def check_required_live_trading_vars(env, required_list):
                 if s2 in env.keys():
                     break
             else:
-                assert False, f"You need to pass one of environment variable {s} for this script in .env file or as environment variable"
+                assert False, f"You need to pass one of environment variable {s} for this script in .env file or as environment variable. Also remember to source the secrets file before running. Got: {env_output}"
         else:
-            assert s in env, f"You need to pass environment variable {s} for this script in .env file or as environment variable"
+            assert s in env, f"You need to pass environment variable {s} for this script in .env file or as environment variable. Also remember to source the secrets file before running. Got: {env_output}"
 
 
 def merge_secrets(public: dict, secret: dict) -> dict:
-    return public | secret
+    return secret | public
 
 
 def filter_config(config: dict) -> dict:
