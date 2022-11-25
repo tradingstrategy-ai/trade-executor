@@ -26,7 +26,7 @@ Trade Executor is a Python framework for executing algorithmic trading strategie
 git clone git@github.com:tradingstrategy-ai/trade-executor.git
 cd trade-executor
 git submodule update --init --recursive
-poetry install -E qstrader -E web-server -E execution
+poetry install -E web-server -E execution
 ```
 
 ## Development
