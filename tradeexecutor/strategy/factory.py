@@ -7,18 +7,12 @@ from typing import Protocol, Optional
 
 from contextlib import AbstractContextManager
 
-from tradeexecutor.ethereum.default_routes import get_routing_model
-from tradeexecutor.strategy.pandas_trader.runner import PandasTraderRunner
-from tradeexecutor.strategy.strategy_module import parse_strategy_module, StrategyModuleInformation
-from tradeexecutor.strategy.strategy_type import StrategyType
-from tradeexecutor.strategy.trading_strategy_universe import DefaultTradingStrategyUniverseModel
 from tradingstrategy.client import Client
 
 from tradeexecutor.state.sync import SyncMethod
 from tradeexecutor.strategy.approval import ApprovalModel
 from tradeexecutor.strategy.description import StrategyExecutionDescription
 from tradeexecutor.strategy.execution_model import ExecutionModel
-from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.strategy.pricing_model import PricingModelFactory
 from tradeexecutor.strategy.routing import RoutingModel
 from tradeexecutor.strategy.valuation import ValuationModelFactory
@@ -72,71 +66,5 @@ class StrategyFactory(Protocol):
         :param kwargs:
         :return:
         """
-
-
-def make_factory_from_strategy_mod(mod: StrategyModuleInformation) -> StrategyFactory:
-    """Initialises the strategy script file and hooks it to the executor.
-
-    Assumes the module has two functions
-
-    - `decide_trade`
-
-    - `create_trading_universe`
-
-    Hook this up the strategy execution system.
-    """
-
-    mod_info = mod
-
-    assert mod_info.trading_strategy_type == StrategyType.managed_positions, "Unsupported strategy tpe"
-
-    assert mod_info, "chain_id blockchain information missing from the strategy module"
-
-    def default_strategy_factory(
-            *ignore,
-            execution_model: ExecutionModel,
-            execution_context: ExecutionContext,
-            sync_method: SyncMethod,
-            pricing_model_factory: PricingModelFactory,
-            valuation_model_factory: ValuationModelFactory,
-            client: Client,
-            timed_task_context_manager: AbstractContextManager,
-            approval_model: ApprovalModel,
-            **kwargs) -> StrategyExecutionDescription:
-
-        if ignore:
-            # https://www.python.org/dev/peps/pep-3102/
-            raise TypeError("Only keyword arguments accepted")
-
-        universe_model = DefaultTradingStrategyUniverseModel(
-            client,
-            execution_context,
-            mod_info.create_trading_universe)
-
-        routing_model = get_routing_model(
-            execution_context,
-            mod_info.trade_routing,
-            mod_info.reserve_currency)
-
-        runner = PandasTraderRunner(
-            timed_task_context_manager=timed_task_context_manager,
-            execution_model=execution_model,
-            approval_model=approval_model,
-            valuation_model_factory=valuation_model_factory,
-            sync_method=sync_method,
-            pricing_model_factory=pricing_model_factory,
-            routing_model=routing_model,
-            decide_trades=mod_info.decide_trades,
-        )
-
-        return StrategyExecutionDescription(
-            universe_model=universe_model,
-            runner=runner,
-            trading_strategy_engine_version=mod_info.trading_strategy_engine_version,
-            cycle_duration=mod_info.trading_strategy_cycle,
-            chain_id=mod_info.chain_id,
-        )
-
-    return default_strategy_factory
 
 

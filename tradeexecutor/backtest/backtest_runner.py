@@ -23,14 +23,12 @@ from tradeexecutor.strategy.approval import UncheckedApprovalModel, ApprovalMode
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.description import StrategyExecutionDescription
 from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
-from tradeexecutor.strategy.factory import make_factory_from_strategy_mod
 from tradeexecutor.strategy.pandas_trader.runner import PandasTraderRunner
-from tradeexecutor.strategy.pandas_trader.trade_decision import TradeDecider
-from tradeexecutor.strategy.strategy_module import parse_strategy_module, StrategyModuleInformation, \
+from tradeexecutor.strategy.strategy_module import parse_strategy_module,  \
     DecideTradesProtocol, CreateTradingUniverseProtocol, CURRENT_ENGINE_VERSION
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.default_routing_options import TradeRouting
-from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, TradingStrategyUniverseModel, \
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse,  \
     DefaultTradingStrategyUniverseModel
 from tradeexecutor.strategy.universe_model import StaticUniverseModel, UniverseOptions
 from tradeexecutor.utils.timer import timed_task

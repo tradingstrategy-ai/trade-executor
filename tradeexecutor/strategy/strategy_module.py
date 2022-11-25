@@ -12,6 +12,7 @@ from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.execution_context import ExecutionContext
+from tradeexecutor.strategy.factory import StrategyFactory
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.strategy_type import StrategyType
@@ -348,13 +349,13 @@ def parse_strategy_module(python_module_exports: dict) -> StrategyModuleInformat
 def read_strategy_module(path: Path) -> Union[StrategyModuleInformation, StrategyFactory]:
     """Loads a strategy module and returns its factor function.
 
-    All exports will be lowercased for further processing,
-    so we do not care if constant variables are written in upper or lowercase.
+    Reads .py file, checks it is a valid strategy module
+    and then returns :py:class`StrategyModuleInformation` describing
+    the strategy.
 
     :return:
         StrategyModuleInformation instance. For legacy strategies
-        (used for unit test coverage only), we return a factory
-        if strategy module does not have good version information.
+        (used for unit test coverage only), we return a factory.
 
     """
     logger.info("Reading strategy %s", path)
@@ -366,8 +367,9 @@ def read_strategy_module(path: Path) -> Union[StrategyModuleInformation, Strateg
     version = strategy_exports.get("trading_strategy_engine_version")
 
     if version is None:
-        # Legacy path
-        # TODO: Remove when all unit tests have been migrated to new strategy files
+        # Legacy path.
+        # Legacy strategy modules lack version information.
+        # TODO: Remove when all unit tests have been migrated to new strategy files.
         strategy_runner = strategy_exports.get("strategy_factory")
         if strategy_runner is None:
             raise StrategyModuleNotValid(f"{path} Python module does not declare strategy_factory module variable")
