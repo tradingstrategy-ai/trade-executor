@@ -318,7 +318,7 @@ class StrategyModuleInformation:
             raise StrategyModuleNotValid(f"trade_routing missing on the strategy")
 
         if self.chain_id:
-            assert isinstance(self.chain_id, ChainId), f"Expected ChainId, got {self.chain_id}"
+            assert isinstance(self.chain_id, ChainId), f"Strategy module chain_in varaible expected ChainId instance, got {self.chain_id}"
 
 
 def parse_strategy_module(python_module_exports: dict) -> StrategyModuleInformation:

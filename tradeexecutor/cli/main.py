@@ -43,6 +43,7 @@ from tradeexecutor.strategy.dummy import DummyExecutionModel
 from tradeexecutor.strategy.execution_context import ExecutionMode, ExecutionContext
 from tradeexecutor.strategy.execution_model import TradeExecutionType
 from tradeexecutor.cli.log import setup_logging, setup_discord_logging, setup_logstash_logging
+from tradeexecutor.strategy.strategy_module import read_strategy_module
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverseModel
 from tradeexecutor.strategy.universe_model import UniverseOptions
 from tradeexecutor.utils.timer import timed_task
@@ -320,15 +321,12 @@ def start(
         web3config = None
 
     # TODO: This strategy file is reloaded again in ExecutionLoop.run()
+    # We do an extra hop here, because we need to know chain_id associated with the strategy,
     # because there is an inversion of control issue for passing web3 connection around.
-    # Clean this up in the future versions, by changing the order of initializion.
-    logger.info("Loading strategy file %s", strategy_file)
-    strategy_factory = import_strategy_file(strategy_file)
-
-    web3config.set_default_chain(run_description.chain_id)
+    # Clean this up in the future versions, by changing the order of initialzation.
+    mod = read_strategy_module(strategy_file)
+    web3config.set_default_chain(mod.chain_id)
     web3config.check_default_chain_id()
-    web3 = web3config.get_default()
-
 
     execution_model, sync_method, valuation_model_factory, pricing_model_factory = create_trade_execution_model(
         execution_type,
