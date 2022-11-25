@@ -325,8 +325,10 @@ def start(
     # because there is an inversion of control issue for passing web3 connection around.
     # Clean this up in the future versions, by changing the order of initialzation.
     mod = read_strategy_module(strategy_file)
-    web3config.set_default_chain(mod.chain_id)
-    web3config.check_default_chain_id()
+
+    if web3config is not None:
+        web3config.set_default_chain(mod.chain_id)
+        web3config.check_default_chain_id()
 
     execution_model, sync_method, valuation_model_factory, pricing_model_factory = create_trade_execution_model(
         execution_type,

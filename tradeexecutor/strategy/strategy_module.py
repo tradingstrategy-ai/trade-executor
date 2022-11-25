@@ -335,11 +335,6 @@ def parse_strategy_module(python_module_exports: dict) -> StrategyModuleInformat
         Python module
 
     """
-
-    # For user convenience, make everything case-insentitive,
-    # assume lowercase from no on
-    python_module_exports = {k.lower(): v for k, v in python_module_exports.items()}
-
     return StrategyModuleInformation(
         python_module_exports.get("trading_strategy_engine_version"),
         python_module_exports.get("trading_strategy_type"),
@@ -370,6 +365,10 @@ def read_strategy_module(path: Path) -> Union[StrategyModuleInformation, Strateg
 
     strategy_exports = runpy.run_path(path)
 
+    # For user convenience, make everything case-insentitive,
+    # assume lowercase from no on
+    strategy_exports = {k.lower(): v for k, v in strategy_exports.items()}
+
     version = strategy_exports.get("trading_strategy_engine_version")
 
     if version is None:
@@ -378,7 +377,7 @@ def read_strategy_module(path: Path) -> Union[StrategyModuleInformation, Strateg
         # TODO: Remove when all unit tests have been migrated to new strategy files.
         strategy_runner = strategy_exports.get("strategy_factory")
         if strategy_runner is None:
-            raise StrategyModuleNotValid(f"{path} Python module does not declare strategy_factory module variable")
+            raise StrategyModuleNotValid(f"{path} Python module does not declare trading_strategy_engine_version or strategy_factory variables")
 
         return strategy_runner
 
