@@ -152,6 +152,27 @@ def create_state_store(state_file: Path) -> StateStore:
     return store
 
 
+def prepare_cache(executor_id: str, cache_path: Optional[Path]) -> Path:
+    """Fail early if the cache path is not writable.
+
+    Otherwise Docker might spit misleading "Device or resource busy" message.
+    """
+
+    assert executor_id
+
+    if not cache_path:
+        cache_path = Path("cache").joinpath(executor_id)
+
+    logger.info("Dataset cache is %s", cache_path)
+
+    os.makedirs(cache_path, exist_ok=True)
+
+    with open(cache_path.joinpath("cache.pid"), "wt") as out:
+        print(os.getpid(), file=out)
+
+    return cache_path
+
+
 def create_metadata(name, short_description, long_description, icon_url) -> Metadata:
     """Create metadata object from the configuration variables."""
     return Metadata(
@@ -161,28 +182,6 @@ def create_metadata(name, short_description, long_description, icon_url) -> Meta
         icon_url,
         datetime.datetime.utcnow(),
     )
-
-
-def prepare_cache(executor_id: str, cache_path: Path) -> Path:
-    """Prepares the cache path.
-
-    If no cache path is given, prepare one based on
-    the default "cache" and then executor id.
-
-    Aborts early if the write fails.
-    """
-
-    assert executor_id
-
-    if not cache_path:
-        cache_path = os.path.join("cache", executor_id)
-        os.makedirs(cache_path, exist_ok=True)
-
-    # Make sure cache is writable by dumping our PID there
-    with open(os.path.join(cache_path, f"{executor_id}.pid"), "wt") as out:
-        print(os.getpid(), file=out)
-
-    return Path(cache_path)
 
 
 def prepare_executor_id(id: Optional[str], strategy_file: Path) -> str:
@@ -228,10 +227,10 @@ def start(
 
     # Webhook server options
     http_enabled: bool = typer.Option(False, envvar="HTTP_ENABLED", help="Enable Webhook server"),
-    http_port: int = typer.Option(3456, envvar="HTTP_PORT"),
-    http_host: str = typer.Option("0.0.0.0", envvar="HTTP_HOST"),
-    http_username: str = typer.Option("webhook", envvar="HTTP_USERNAME"),
-    http_password: str = typer.Option(None, envvar="HTTP_PASSWORD"),
+    http_port: int = typer.Option(3456, envvar="HTTP_PORT", help="Which HTTP port to listen. The default is 3456, the default port of Pyramid web server."),
+    http_host: str = typer.Option("0.0.0.0", envvar="HTTP_HOST", help="The IP address to bind for the web server. By default listen to all IP addresses available in the run-time environment."),
+    http_username: str = typer.Option("webhook", envvar="HTTP_USERNAME", help="Username for HTTP Basic Auth protection of webhooks"),
+    http_password: str = typer.Option(None, envvar="HTTP_PASSWORD", help="Password for HTTP Basic Auth protection of webhooks"),
 
     # Web3 connection options
     json_rpc_binance: str = typer.Option(None, envvar="JSON_RPC_BINANCE", help="BNB Chain JSON-RPC node URL we connect to"),
@@ -275,7 +274,7 @@ def start(
 
     # Unsorted options
     state_file: Optional[Path] = typer.Option(None, envvar="STATE_FILE", help="JSON file where we serialise the execution state. If not given defaults to state/{executor-id}.json"),
-    cache_path: Optional[Path] = typer.Option("cache/", envvar="CACHE_PATH", help="Where to store downloaded datasets"),
+    cache_path: Optional[Path] = typer.Option(None, envvar="CACHE_PATH", help="Where to store downloaded datasets. This must be specific to each executor so that there are no write conflicts if multiple executors run on the same server. If not given default to cache/{executor-id}"),
     ):
     """Launch Trade Executor instance."""
     global logger
@@ -318,6 +317,8 @@ def start(
     if not state_file:
         if execution_type != TradeExecutionType.backtest:
             state_file = f"state/{id}.json"
+
+    cache_path = prepare_cache(id, cache_path)
 
     confirmation_timeout = datetime.timedelta(seconds=confirmation_timeout)
 
