@@ -3,7 +3,7 @@ import logging
 import runpy
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Dict, Protocol, List, Optional
+from typing import Callable, Dict, Protocol, List, Optional, Union
 import pandas
 from tradingstrategy.chain import ChainId
 
@@ -345,11 +345,17 @@ def parse_strategy_module(python_module_exports: dict) -> StrategyModuleInformat
     )
 
 
-def read_strategy_module(path: Path) -> StrategyModuleInformation:
+def read_strategy_module(path: Path) -> Union[StrategyModuleInformation, StrategyFactory]:
     """Loads a strategy module and returns its factor function.
 
     All exports will be lowercased for further processing,
     so we do not care if constant variables are written in upper or lowercase.
+
+    :return:
+        StrategyModuleInformation instance. For legacy strategies
+        (used for unit test coverage only), we return a factory
+        if strategy module does not have good version information.
+
     """
     logger.info("Reading strategy %s", path)
 
@@ -358,6 +364,15 @@ def read_strategy_module(path: Path) -> StrategyModuleInformation:
     strategy_exports = runpy.run_path(path)
 
     version = strategy_exports.get("trading_strategy_engine_version")
+
+    if version is None:
+        # Legacy path
+        # TODO: Remove when all unit tests have been migrated to new strategy files
+        strategy_runner = strategy_exports.get("strategy_factory")
+        if strategy_runner is None:
+            raise StrategyModuleNotValid(f"{path} Python module does not declare strategy_factory module variable")
+
+        return strategy_runner
 
     logger.info("Strategy module %s, engine version %s", path, version)
 

@@ -20,18 +20,11 @@ from tradeexecutor.strategy.description import StrategyExecutionDescription
 from tradeexecutor.strategy.factory import StrategyFactory, make_factory_from_strategy_mod
 from tradeexecutor.strategy.pandas_trader.runner import PandasTraderRunner
 from tradeexecutor.strategy.pricing_model import PricingModelFactory
-from tradeexecutor.strategy.strategy_module import read_strategy_module
+from tradeexecutor.strategy.strategy_module import read_strategy_module, StrategyModuleInformation
 from tradeexecutor.strategy.valuation import ValuationModelFactory
 
 logger = logging.getLogger(__name__)
 
-
-#: What is our Python entry point for strategies
-FACTORY_VAR_NAME = "strategy_factory"
-
-
-class BadStrategyFile(Exception):
-    pass
 
 
 def import_strategy_file(path: Path) -> StrategyFactory:
@@ -42,8 +35,13 @@ def import_strategy_file(path: Path) -> StrategyFactory:
     """
     logger.info("Importing strategy %s", path)
     assert isinstance(path, Path)
-    mod = read_strategy_module(path)
-    return make_factory_from_strategy_mod(mod)
+    mod_or_factory = read_strategy_module(path)
+
+    if not isinstance(mod_or_factory, StrategyModuleInformation):
+        # Legacy path, see read_strategy_module() comments
+        return mod_or_factory
+
+    return make_factory_from_strategy_mod(mod_or_factory)
 
 
 def bootstrap_strategy(
