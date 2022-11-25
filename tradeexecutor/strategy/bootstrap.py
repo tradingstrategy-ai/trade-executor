@@ -8,29 +8,26 @@ See :py:mod:`strategy_module` instead.
 
 """
 import logging
-import runpy
 from contextlib import AbstractContextManager
 from pathlib import Path
 
 from tradingstrategy.client import Client
 
+from tradeexecutor.ethereum.default_routes import get_routing_model
 from tradeexecutor.state.sync import SyncMethod
 from tradeexecutor.strategy.approval import ApprovalModel
 from tradeexecutor.strategy.description import StrategyExecutionDescription
-from tradeexecutor.strategy.factory import StrategyFactory, make_runner_for_strategy_mod
+from tradeexecutor.strategy.execution_context import ExecutionContext
+from tradeexecutor.strategy.execution_model import ExecutionModel
+from tradeexecutor.strategy.factory import StrategyFactory
 from tradeexecutor.strategy.pandas_trader.runner import PandasTraderRunner
 from tradeexecutor.strategy.pricing_model import PricingModelFactory
+from tradeexecutor.strategy.strategy_module import read_strategy_module, StrategyModuleInformation
+from tradeexecutor.strategy.strategy_type import StrategyType
+from tradeexecutor.strategy.trading_strategy_universe import DefaultTradingStrategyUniverseModel
 from tradeexecutor.strategy.valuation import ValuationModelFactory
 
 logger = logging.getLogger(__name__)
-
-
-#: What is our Python entry point for strategies
-FACTORY_VAR_NAME = "strategy_factory"
-
-
-class BadStrategyFile(Exception):
-    pass
 
 
 def import_strategy_file(path: Path) -> StrategyFactory:
@@ -40,27 +37,14 @@ def import_strategy_file(path: Path) -> StrategyFactory:
     so we do not care if constant variables are written in upper or lowercase.
     """
     logger.info("Importing strategy %s", path)
-
     assert isinstance(path, Path)
+    mod_or_factory = read_strategy_module(path)
 
-    strategy_exports = runpy.run_path(path)
+    if not isinstance(mod_or_factory, StrategyModuleInformation):
+        # Legacy path, see read_strategy_module() comments
+        return mod_or_factory
 
-    strategy_exports = {k.lower(): v  for k, v in strategy_exports.items()}
-
-    version = strategy_exports.get("trading_strategy_engine_version")
-
-    logger.info("Loading strategy module %s, engine version %s", path, version)
-
-    # Strategy v0.1 loading
-    if version:
-        return make_runner_for_strategy_mod(strategy_exports)
-
-    # Legacy path
-    strategy_runner = strategy_exports.get(FACTORY_VAR_NAME)
-    if strategy_runner is None:
-        raise BadStrategyFile(f"{path} Python module does not declare {FACTORY_VAR_NAME} module variable")
-
-    return strategy_runner
+    return make_factory_from_strategy_mod(mod_or_factory)
 
 
 def bootstrap_strategy(
@@ -84,4 +68,71 @@ def bootstrap_strategy(
     description = factory(
         timed_task_context_manager=timed_task_context_manager, **kwargs)
     return description
+
+
+def make_factory_from_strategy_mod(mod: StrategyModuleInformation) -> StrategyFactory:
+    """Initialises the strategy script file and hooks it to the executor.
+
+    Assumes the module has two functions
+
+    - `decide_trade`
+
+    - `create_trading_universe`
+
+    Hook this up the strategy execution system.
+    """
+
+    mod_info = mod
+
+    assert mod_info.trading_strategy_type == StrategyType.managed_positions, "Unsupported strategy tpe"
+
+    assert mod_info, "chain_id blockchain information missing from the strategy module"
+
+    def default_strategy_factory(
+            *ignore,
+            execution_model: ExecutionModel,
+            execution_context: ExecutionContext,
+            sync_method: SyncMethod,
+            pricing_model_factory: PricingModelFactory,
+            valuation_model_factory: ValuationModelFactory,
+            client: Client,
+            timed_task_context_manager: AbstractContextManager,
+            approval_model: ApprovalModel,
+            **kwargs) -> StrategyExecutionDescription:
+
+        if ignore:
+            # https://www.python.org/dev/peps/pep-3102/
+            raise TypeError("Only keyword arguments accepted")
+
+        universe_model = DefaultTradingStrategyUniverseModel(
+            client,
+            execution_context,
+            mod_info.create_trading_universe)
+
+        routing_model = get_routing_model(
+            execution_context,
+            mod_info.trade_routing,
+            mod_info.reserve_currency)
+
+        runner = PandasTraderRunner(
+            timed_task_context_manager=timed_task_context_manager,
+            execution_model=execution_model,
+            approval_model=approval_model,
+            valuation_model_factory=valuation_model_factory,
+            sync_method=sync_method,
+            pricing_model_factory=pricing_model_factory,
+            routing_model=routing_model,
+            decide_trades=mod_info.decide_trades,
+        )
+
+        return StrategyExecutionDescription(
+            universe_model=universe_model,
+            runner=runner,
+            trading_strategy_engine_version=mod_info.trading_strategy_engine_version,
+            cycle_duration=mod_info.trading_strategy_cycle,
+            chain_id=mod_info.chain_id,
+        )
+
+    return default_strategy_factory
+
 

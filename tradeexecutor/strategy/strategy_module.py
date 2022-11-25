@@ -1,6 +1,9 @@
 """Describe strategy modules and their loading."""
+import logging
+import runpy
 from dataclasses import dataclass
-from typing import Callable, Dict, Protocol, List, Optional
+from pathlib import Path
+from typing import Callable, Dict, Protocol, List, Optional, Union
 import pandas
 from tradingstrategy.chain import ChainId
 
@@ -9,6 +12,7 @@ from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.execution_context import ExecutionContext
+from tradeexecutor.strategy.factory import StrategyFactory
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.strategy_type import StrategyType
@@ -21,6 +25,9 @@ from tradeexecutor.strategy.universe_model import UniverseOptions
 
 #: As set for StrategyModuleInformation.trading_strategy_engine_version
 CURRENT_ENGINE_VERSION = "0.1"
+
+
+logger = logging.getLogger()
 
 
 class StrategyModuleNotValid(Exception):
@@ -312,22 +319,66 @@ class StrategyModuleInformation:
             raise StrategyModuleNotValid(f"trade_routing missing on the strategy")
 
         if self.chain_id:
-            assert isinstance(self.chain_id, ChainId), f"Expected ChainId, got {self.chain_id}"
+            assert isinstance(self.chain_id, ChainId), f"Strategy module chain_in varaible expected ChainId instance, got {self.chain_id}"
 
 
-def parse_strategy_module(mod) -> StrategyModuleInformation:
+def parse_strategy_module(python_module_exports: dict) -> StrategyModuleInformation:
     """Parse a loaded .py module that describes a trading strategy.
 
-    :param mod:
+    :param python_module_exports:
         Python module
+
     """
+
+    # For user convenience, make everything case-insentitive,
+    # assume lowercase from no on
+    python_module_exports = {k.lower(): v for k, v in python_module_exports.items()}
+
     return StrategyModuleInformation(
-        mod.get("trading_strategy_engine_version"),
-        mod.get("trading_strategy_type"),
-        mod.get("trading_strategy_cycle"),
-        mod.get("trade_routing"),
-        mod.get("reserve_currency"),
-        mod.get("decide_trades"),
-        mod.get("create_trading_universe"),
-        mod.get("chain_id"),
+        python_module_exports.get("trading_strategy_engine_version"),
+        python_module_exports.get("trading_strategy_type"),
+        python_module_exports.get("trading_strategy_cycle"),
+        python_module_exports.get("trade_routing"),
+        python_module_exports.get("reserve_currency"),
+        python_module_exports.get("decide_trades"),
+        python_module_exports.get("create_trading_universe"),
+        python_module_exports.get("chain_id"),
     )
+
+
+def read_strategy_module(path: Path) -> Union[StrategyModuleInformation, StrategyFactory]:
+    """Loads a strategy module and returns its factor function.
+
+    Reads .py file, checks it is a valid strategy module
+    and then returns :py:class`StrategyModuleInformation` describing
+    the strategy.
+
+    :return:
+        StrategyModuleInformation instance. For legacy strategies
+        (used for unit test coverage only), we return a factory.
+
+    """
+    logger.info("Reading strategy %s", path)
+
+    assert isinstance(path, Path)
+
+    strategy_exports = runpy.run_path(path)
+
+    version = strategy_exports.get("trading_strategy_engine_version")
+
+    if version is None:
+        # Legacy path.
+        # Legacy strategy modules lack version information.
+        # TODO: Remove when all unit tests have been migrated to new strategy files.
+        strategy_runner = strategy_exports.get("strategy_factory")
+        if strategy_runner is None:
+            raise StrategyModuleNotValid(f"{path} Python module does not declare strategy_factory module variable")
+
+        return strategy_runner
+
+    logger.info("Strategy module %s, engine version %s", path, version)
+
+    mod_info = parse_strategy_module(strategy_exports)
+    mod_info.validate()
+
+    return mod_info
