@@ -5,6 +5,8 @@ TODO: Clean txid and nonce references properly.
 import datetime
 from decimal import Decimal
 from typing import Tuple
+import numpy as np
+import pandas as pd
 
 import pytest
 from hexbytes import HexBytes
@@ -18,6 +20,7 @@ from tradeexecutor.state.trade import TradeExecution, TradeStatus
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
+from tradeexecutor.state.validator import validate_nested_state_dict, BadStateData
 from tradeexecutor.statistics.core import update_statistics
 from tradeexecutor.testing.dummy_trader import DummyTestTrader
 from tradingstrategy.chain import ChainId
@@ -826,3 +829,37 @@ def test_state_summary_without_initial_cash(usdc, weth_usdc, start_ts: datetime.
     assert summary.total_trades == 1
     assert summary.end_value == pytest.approx(1006.418)
     assert summary.average_net_profit == pytest.approx(9.800999)
+
+
+
+def test_validate_state():
+    """Catch common errors in setting bad state data."""
+
+    ok = {"foo": datetime.datetime(1970, 1, 1)}
+    validate_nested_state_dict(ok)
+
+
+    ok = {"foo": Decimal(1)}
+    validate_nested_state_dict(ok)
+
+    ok = {"foo": 1}
+    validate_nested_state_dict(ok)
+
+    ok = {"foo": None}
+    validate_nested_state_dict(ok)
+
+    ok = {"foo": "1"}
+    validate_nested_state_dict(ok)
+
+    with pytest.raises(BadStateData):
+        bad = {"foo": np.float32(1)}
+        validate_nested_state_dict(bad)
+
+    with pytest.raises(BadStateData):
+        bad = {"foo": {"bar": np.float32(1)}}
+        validate_nested_state_dict(bad)
+
+    with pytest.raises(BadStateData):
+        bad = {"foo": {"bar": pd.Timestamp("1970-1-1")}}
+        validate_nested_state_dict(bad)
+

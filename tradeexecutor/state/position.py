@@ -6,6 +6,8 @@ from decimal import Decimal
 
 from typing import Dict, Optional, List, Iterable
 
+import numpy as np
+import pandas as pd
 from dataclasses_json import dataclass_json
 
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
@@ -74,6 +76,11 @@ class TradingPosition:
         # on some obscure cases when we load the state from the disk
         assert self.last_token_price >= 0
         assert self.last_reserve_price >= 0
+
+        # Do some extra checks to avoid Pandas types in serialisation
+        assert isinstance(self.opened_at, datetime.datetime)
+        assert not isinstance(self.opened_at, pd.Timestamp)
+        assert not isinstance(self.last_token_price, np.float32)
 
     def is_open(self) -> bool:
         """This is an open trading position."""
@@ -399,6 +406,14 @@ class TradingPosition:
             return None
         return t.blockchain_transactions[-1].tx_hash
 
+    def set_revaluation_data(self, last_pricing_at: datetime.datetime, last_token_price: float):
+        assert isinstance(last_pricing_at, datetime.datetime)
+        assert not isinstance(last_pricing_at, pd.Timestamp)
+        assert isinstance(last_token_price, float)
+        assert not isinstance(last_pricing_at, np.float32)
+        assert last_pricing_at.tzinfo is None
+        self.last_pricing_at = last_pricing_at
+        self.last_token_price = last_token_price
 
 class PositionType(enum.Enum):
     token_hold = "token_hold"

@@ -20,6 +20,7 @@ from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.strategy.pricing_model import PricingModel
 
 
+
 class ValuationModel(Protocol):
     """Revalue a current position.
 

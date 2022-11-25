@@ -438,7 +438,7 @@ def start(
         loop.run()
 
         # Display summary stats for terminal backtest runs
-        if execution_type == TradeExecutionType.backtest:
+        if execution_type == TradeExecutionType.backtest and isinstance(store, NoneStore):
             display_backtesting_results(store.state)
 
     except KeyboardInterrupt as e:

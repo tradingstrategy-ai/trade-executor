@@ -5,6 +5,8 @@ from decimal import Decimal
 from typing import List, Optional, Union
 import logging
 
+import pandas as pd
+
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
@@ -111,7 +113,7 @@ class PositionManager:
     """
 
     def __init__(self,
-                 timestamp: datetime.datetime,
+                 timestamp: Union[datetime.datetime, pd.Timestamp],
                  universe: Universe,
                  state: State,
                  pricing_model: PricingModel,
@@ -120,6 +122,9 @@ class PositionManager:
         #: TODO: Take valuation model as input
 
         assert pricing_model, "pricing_model is needed in order to know buy/sell price of new positions"
+
+        if isinstance(timestamp, pd.Timestamp):
+            timestamp = timestamp.to_pydatetime()
 
         self.timestamp = timestamp
         self.universe = universe
