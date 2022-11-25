@@ -252,7 +252,13 @@ def pregenerated_create_trading_universe(universe: TradingStrategyUniverse) -> C
 
 @dataclass
 class StrategyModuleInformation:
-    """Describe elements that we need to have in a strategy module."""
+    """Describe elements that we need to have in a strategy module.
+
+    The class variables are the same name as found in the Python strategy module.
+    They can be uppercase or lowercase - all strategy module variables
+    are exported as lowercase.
+
+    """
     trading_strategy_engine_version: str
     trading_strategy_type: StrategyType
     trading_strategy_cycle: CycleDuration
@@ -272,7 +278,7 @@ class StrategyModuleInformation:
     chain_id: Optional[ChainId] = None
 
     def validate(self):
-        """
+        """Check that the user inputted variable names look good.
 
         :raise StrategyModuleNotValid:
             If we could not load/parse strategy module for some reason
