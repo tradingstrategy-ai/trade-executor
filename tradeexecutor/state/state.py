@@ -9,6 +9,7 @@ import datetime
 from decimal import Decimal
 from typing import List, Callable, Tuple, Set, Optional
 
+import pandas as pd
 from dataclasses_json import dataclass_json
 
 from .identifier import AssetIdentifier, TradingPairIdentifier
@@ -84,6 +85,9 @@ class State:
 
         :return: Tuple position, trade, was a new position created
         """
+
+        assert isinstance(ts, datetime.datetime)
+        assert not isinstance(ts, pd.Timestamp)
 
         if quantity is not None:
             assert reserve is None, "Quantity and reserve both cannot be given at the same time"

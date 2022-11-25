@@ -28,7 +28,7 @@ class BacktestValuationModel(ValuationModel):
         assert position.is_long(), "Short not supported"
         quantity = position.get_quantity()
         price = self.pricing_model.get_sell_price(ts, pair, quantity)
-        return ts, price
+        return ts, float(price)
 
 
 def backtest_valuation_factory(pricing_model):

@@ -98,20 +98,29 @@ class BacktestSimplePricingModel(PricingModel):
     def get_sell_price(self,
                        ts: datetime.datetime,
                        pair: TradingPairIdentifier,
-                       quantity: Optional[Decimal],
-                       ) -> USDollarAmount:
+                       quantity: Optional[Decimal]) -> USDollarAmount:
         # TODO: Include price impact
         pair_id = pair.internal_id
-        return self.candle_universe.get_closest_price(pair_id, ts, kind=self.candle_timepoint_kind)
+        price, delay = self.candle_universe.get_price_with_tolerance(
+            pair_id,
+            ts,
+            tolerance=self.data_delay_tolerance,
+            kind=self.candle_timepoint_kind)
+        return float(price)
 
     def get_buy_price(self,
                        ts: datetime.datetime,
                        pair: TradingPairIdentifier,
-                       reserve: Optional[Decimal],
-                       ) -> USDollarAmount:
+                       reserve: Optional[Decimal]) -> USDollarAmount:
         # TODO: Include price impact
         pair_id = pair.internal_id
-        return float(self.candle_universe.get_closest_price(pair_id, ts, kind=self.candle_timepoint_kind))
+        price, delay = self.candle_universe.get_price_with_tolerance(
+            pair_id,
+            ts,
+            tolerance=self.data_delay_tolerance,
+            kind=self.candle_timepoint_kind,
+        )
+        return float(price)
 
     def quantize_base_quantity(self, pair: TradingPairIdentifier, quantity: Decimal, rounding=ROUND_DOWN) -> Decimal:
         """Convert any base token quantity to the native token units by its ERC-20 decimals."""

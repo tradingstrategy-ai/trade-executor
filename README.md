@@ -20,6 +20,19 @@ Trade Executor is a Python framework for executing algorithmic trading strategie
 - Visit [Trading Strategy website to learn about algorithmic trading on decentralised exchanges](https://tradingstrategy.ai)
 - [Join the Discord for any questions](https://tradingstrategy.ai/community)
 
+## Installation
+
+```shell
+git clone git@github.com:tradingstrategy-ai/trade-executor.git
+cd trade-executor
+git submodule update --init --recursive
+poetry install -E web-server -E execution
+```
+
+## Architecture overview
+
+![Archiecture overview](docs/deployment-overview.drawio.svg)
+
 ## Development
 
 See [docs](./docs).

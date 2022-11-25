@@ -204,7 +204,7 @@ def test_main_loop(
         "STRATEGY_FILE": strategy_path.as_posix(),
         "PRIVATE_KEY": hot_wallet.account.key.hex(),
         "HTTP_ENABLED": "false",
-        "JSON_RPC": ganache_bnb_chain_fork,
+        "JSON_RPC_BINANCE": ganache_bnb_chain_fork,
         "UNISWAP_V2_FACTORY_ADDRESS": pancakeswap_v2.factory.address,
         "UNISWAP_V2_ROUTER_ADDRESS": pancakeswap_v2.router.address,
         "UNISWAP_V2_INIT_CODE_HASH": pancakeswap_v2.init_code_hash,
@@ -221,7 +221,7 @@ def test_main_loop(
         "BACKTEST_END": "2022-01-07",
         "MAX_CYCLES": "1",
         "DISCORD_WEBHOOK_URL": "",
-        "TICK_SIZE": "24h",
+        "CYCLE_DURATION": "24h",
         "UNIT_TESTING": "true",
     }
 

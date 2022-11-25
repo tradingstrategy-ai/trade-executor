@@ -20,6 +20,9 @@ class NotEnoughMoney(Exception):
     """We try to allocate reserve for a buy trade, but do not have cash."""
 
 
+class InvalidValuationOutput(Exception):
+    """Valuation model did not generate proper price value."""
+
 
 @dataclass_json
 @dataclass
@@ -331,20 +334,21 @@ class Portfolio:
 
         Reserves are not revalued.
 
-        :param revalue_frozen: Revalue frozen positions as well
+        :param revalue_frozen:
+            Revalue frozen positions as well
         """
-        for p in self.open_positions.values():
-            ts, price = valuation_method(ts, p)
-            assert ts.tzinfo is None
-            p.last_pricing_at = ts
-            p.last_token_price = price
 
-        if revalue_frozen:
-            for p in self.frozen_positions.values():
+        try:
+            for p in self.open_positions.values():
                 ts, price = valuation_method(ts, p)
-                assert ts.tzinfo is None
-                p.last_pricing_at = ts
-                p.last_token_price = price
+                p.set_revaluation_data(ts, price)
+
+            if revalue_frozen:
+                for p in self.frozen_positions.values():
+                    ts, price = valuation_method(ts, p)
+                    p.set_revaluation_data(ts, price)
+        except Exception as e:
+            raise InvalidValuationOutput(f"Valuation model failed to output proper price: {valuation_method}") from e
 
     def get_default_reserve_currency(self) -> Tuple[AssetIdentifier, USDollarAmount]:
         """Gets the default reserve currency associated with this state.

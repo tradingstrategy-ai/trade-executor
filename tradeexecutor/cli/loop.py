@@ -6,7 +6,7 @@ import pickle
 import random
 from pathlib import Path
 from queue import Queue
-from typing import Optional, Callable, Protocol, List
+from typing import Optional, Callable, List
 
 import pandas as pd
 from apscheduler.executors.pool import ThreadPoolExecutor
@@ -74,6 +74,8 @@ class ExecutionLoop:
             backtest_start: Optional[datetime.datetime] = None,
             backtest_end: Optional[datetime.datetime] = None,
             backtest_setup: Optional[Callable[[State], None]] = None,
+            backtest_candle_time_frame_override: Optional[TimeBucket] = None,
+            backtest_stop_loss_time_frame_override: Optional[TimeBucket] = None,
             stop_loss_check_frequency: Optional[TimeBucket] = None,
             tick_offset: datetime.timedelta=datetime.timedelta(minutes=0),
             trade_immediately=False,
@@ -105,9 +107,16 @@ class ExecutionLoop:
 
         # Hook in any overrides for strategy cycles
         self.universe_options = UniverseOptions(
-            candle_time_bucket_override=self.cycle_duration.to_timebucket() if self.cycle_duration else None,
-            stop_loss_time_bucket_override=self.stop_loss_check_frequency,
+            candle_time_bucket_override=self.backtest_candle_time_frame_override,
+            stop_loss_time_bucket_override=self.backtest_stop_loss_time_frame_override,
         )
+
+    def is_live_trading_unit_test(self) -> bool:
+        """Are we attempting to test live trading functionality in unit tests.
+
+        See `test_cli_commands.py`
+        """
+        return self.max_cycles == 0
 
     def init_state(self) -> State:
         """Initialize the state for this run.
@@ -143,8 +152,9 @@ class ExecutionLoop:
         Perform preflight checks e.g. to see if our trading accounts look sane.
         """
         self.execution_model.initialize()
-        self.execution_model.preflight_check()
-        logger.trade("Preflight checks ok")
+        if not self.is_live_trading_unit_test():
+            self.execution_model.preflight_check()
+            logger.trade("Preflight checks ok")
 
     def init_simulation(
             self,
@@ -164,11 +174,27 @@ class ExecutionLoop:
 
     def tick(self,
              unrounded_timestamp: datetime.datetime,
+             cycle_duration: CycleDuration,
              state: State,
              cycle: int,
              live: bool,
              backtesting_universe: Optional[StrategyExecutionUniverse]=None) -> StrategyExecutionUniverse:
         """Run one trade execution tick.
+
+        :parma unrounded_timestamp:
+            The approximately time when this ticket was triggered.
+            Alawys after the tick timestamp.
+            Will be rounded to the nearest cycle duration timestamps.
+
+        :param state:
+            The current state of the strategy
+
+        :param cycle:
+            The number ofthis cycle
+
+        :param cycle_duration:
+            Cycle duration for this cycle. Either from the strategy module,
+            or a backtest override.
 
         :param backtesting_universe:
             If passed, use this universe instead of trying to download
@@ -180,8 +206,9 @@ class ExecutionLoop:
 
         assert isinstance(unrounded_timestamp, datetime.datetime)
         assert isinstance(state, State)
+        assert isinstance(cycle_duration, CycleDuration)
 
-        ts = snap_to_previous_tick(unrounded_timestamp, self.cycle_duration)
+        ts = snap_to_previous_tick(unrounded_timestamp, cycle_duration)
 
         # This Python dict collects internal debugging data through this cycle.
         # Any submodule of strategy execution can add internal information here for
@@ -195,7 +222,7 @@ class ExecutionLoop:
         logger.trade("Performing strategy tick #%d for timestamp %s, cycle length is %s, unrounded time is %s, live trading is %s",
                      cycle,
                      ts,
-                     self.cycle_duration.value,
+                     cycle_duration.value,
                      unrounded_timestamp,
                      live)
 
@@ -403,20 +430,33 @@ class ExecutionLoop:
 
         self.warm_up_backtest()
 
+        # Allow backtest step to be overwritten from the command line
+        if self.universe_options.candle_time_bucket_override:
+            backtest_step = CycleDuration.from_timebucket(self.universe_options.candle_time_bucket_override)
+        else:
+            backtest_step = self.cycle_duration
+
+        cycle_name = backtest_step.value
+
         with tqdm(total=seconds) as progress_bar:
             while True:
 
                 ts = snap_to_previous_tick(ts, self.cycle_duration)
 
                 # Bump progress bar forward and update backtest status
-                progress_bar.update(int(self.cycle_duration.to_timedelta().total_seconds()))
+                progress_bar.update(int(backtest_step.to_timedelta().total_seconds()))
                 friedly_ts = ts.strftime(ts_format)
                 trade_count = len(list(state.portfolio.get_all_trades()))
-                cycle_name = self.cycle_duration.value
                 progress_bar.set_description(f"Backtesting {self.name}, {friendly_start}-{friendly_end} at {friedly_ts} ({cycle_name}), total {trade_count:,} trades")
 
                 # Decide trades and everything for this cycle
-                universe: TradingStrategyUniverse = self.tick(ts, state, cycle, live=False, backtesting_universe=universe)
+                universe: TradingStrategyUniverse = self.tick(
+                    ts,
+                    backtest_step,
+                    state,
+                    cycle,
+                    live=False,
+                    backtesting_universe=universe)
 
                 # Revalue our portfolio
                 self.update_position_valuations(ts, state, universe, self.execution_context.mode)
@@ -432,7 +472,7 @@ class ExecutionLoop:
                 cycle += 1
 
                 # Backtesting
-                next_tick = snap_to_next_tick(ts + datetime.timedelta(seconds=1), self.cycle_duration, self.tick_offset)
+                next_tick = snap_to_next_tick(ts + datetime.timedelta(seconds=1), backtest_step, self.tick_offset)
 
                 if next_tick >= self.backtest_end:
                     # Backteting has ended
@@ -460,13 +500,19 @@ class ExecutionLoop:
         ts = datetime.datetime.utcnow()
         logger.info("Strategy is executed in live mode, now is %s", ts)
 
+        if self.is_live_trading_unit_test():
+            # Test app initialisation.
+            # Do not start any background threads.
+            logger.info("Unit test live trading checkup test detected - aborting.")
+            return self.debug_dump_state
+
         cycle = 1
         universe: Optional[StrategyExecutionUniverse] = None
 
         # The first trade will be execute immediately, despite the time offset or tick
         if self.trade_immediately:
             ts = datetime.datetime.now()
-            self.tick(ts, state, cycle, live=True)
+            self.tick(ts, self.cycle_duration, state, cycle, live=True)
 
         def live_cycle():
             nonlocal cycle
@@ -474,7 +520,7 @@ class ExecutionLoop:
             try:
                 cycle += 1
                 ts = datetime.datetime.now()
-                universe = self.tick(ts, state, cycle, live=True)
+                universe = self.tick(ts, self.cycle_duration, state, cycle, live=True)
             except Exception as e:
                 logger.exception(e)
                 scheduler.shutdown(wait=False)
