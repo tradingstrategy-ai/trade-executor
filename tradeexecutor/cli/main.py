@@ -324,7 +324,6 @@ def start(
         execution_type,
         web3config,
         private_key,
-        gas_price_method,
         confirmation_timeout,
         confirmation_block_count,
         max_slippage,
