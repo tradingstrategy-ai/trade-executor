@@ -3,7 +3,7 @@
 #
 # This is to make the installation more manageable with Pyodide.
 #
-name: Client side test suite
+name: Web browser and Pyodide test suite
 on:
   push:
     branches: [ master ]
