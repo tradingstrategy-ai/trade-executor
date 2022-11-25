@@ -174,6 +174,7 @@ class ExecutionLoop:
 
     def tick(self,
              unrounded_timestamp: datetime.datetime,
+             cycle_duration: CycleDuration,
              state: State,
              cycle: int,
              live: bool,
@@ -190,8 +191,9 @@ class ExecutionLoop:
 
         assert isinstance(unrounded_timestamp, datetime.datetime)
         assert isinstance(state, State)
+        assert isinstance(cycle_duration, CycleDuration)
 
-        ts = snap_to_previous_tick(unrounded_timestamp, self.cycle_duration)
+        ts = snap_to_previous_tick(unrounded_timestamp, cycle_duration)
 
         # This Python dict collects internal debugging data through this cycle.
         # Any submodule of strategy execution can add internal information here for
@@ -205,7 +207,7 @@ class ExecutionLoop:
         logger.trade("Performing strategy tick #%d for timestamp %s, cycle length is %s, unrounded time is %s, live trading is %s",
                      cycle,
                      ts,
-                     self.cycle_duration.value,
+                     cycle_duration.value,
                      unrounded_timestamp,
                      live)
 
@@ -433,7 +435,13 @@ class ExecutionLoop:
                 progress_bar.set_description(f"Backtesting {self.name}, {friendly_start}-{friendly_end} at {friedly_ts} ({cycle_name}), total {trade_count:,} trades")
 
                 # Decide trades and everything for this cycle
-                universe: TradingStrategyUniverse = self.tick(ts, state, cycle, live=False, backtesting_universe=universe)
+                universe: TradingStrategyUniverse = self.tick(
+                    ts,
+                    backtest_step,
+                    state,
+                    cycle,
+                    live=False,
+                    backtesting_universe=universe)
 
                 # Revalue our portfolio
                 self.update_position_valuations(ts, state, universe)
@@ -489,7 +497,7 @@ class ExecutionLoop:
         # The first trade will be execute immediately, despite the time offset or tick
         if self.trade_immediately:
             ts = datetime.datetime.now()
-            self.tick(ts, state, cycle, live=True)
+            self.tick(ts, self.cycle_duration, state, cycle, live=True)
 
         def live_cycle():
             nonlocal cycle
@@ -497,7 +505,7 @@ class ExecutionLoop:
             try:
                 cycle += 1
                 ts = datetime.datetime.now()
-                universe = self.tick(ts, state, cycle, live=True)
+                universe = self.tick(ts, self.cycle_duration, state, cycle, live=True)
             except Exception as e:
                 logger.exception(e)
                 scheduler.shutdown(wait=False)
