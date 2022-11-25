@@ -369,6 +369,7 @@ def test_live_stop_loss(
 
     loop.tick(
         ts,
+        loop.cycle_duration,
         state,
         cycle=1,
         live=True,
@@ -454,6 +455,7 @@ def test_live_stop_loss_missing(
 
     loop.tick(
         ts,
+        loop.cycle_duration,
         state,
         cycle=1,
         live=True,

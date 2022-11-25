@@ -181,6 +181,21 @@ class ExecutionLoop:
              backtesting_universe: Optional[StrategyExecutionUniverse]=None) -> StrategyExecutionUniverse:
         """Run one trade execution tick.
 
+        :parma unrounded_timestamp:
+            The approximately time when this ticket was triggered.
+            Alawys after the tick timestamp.
+            Will be rounded to the nearest cycle duration timestamps.
+
+        :param state:
+            The current state of the strategy
+
+        :param cycle:
+            The number ofthis cycle
+
+        :param cycle_duration:
+            Cycle duration for this cycle. Either from the strategy module,
+            or a backtest override.
+
         :param backtesting_universe:
             If passed, use this universe instead of trying to download
             and filter new one. This is shortcut for backtesting
