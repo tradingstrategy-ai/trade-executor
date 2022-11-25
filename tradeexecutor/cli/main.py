@@ -60,8 +60,15 @@ TRADE_EXECUTOR_VERSION = version('trade-executor')
 logger: Optional[logging.Logger] = None
 
 
-def check_good_id(id: str):
-    """
+def validate_executor_id(id: str):
+    """Check that given executor id is good.
+
+    No spaces.
+
+    - Will be used in filenames
+
+    - Will be used in URLs
+
     :raise AssertionError:
         If the user gives us non-id like id
     """
@@ -198,7 +205,7 @@ def prepare_executor_id(id: Optional[str], strategy_file: Path) -> str:
         else:
             raise RuntimeError("EXECUTOR_ID or STRATEGY_FILE must be given")
 
-    check_good_id(id)
+    validate_executor_id(id)
 
     return id
 
@@ -552,6 +559,9 @@ def check_wallet(
     trading_strategy_api_key: str = typer.Option(None, envvar="TRADING_STRATEGY_API_KEY", help="Trading Strategy API key"),
     cache_path: Optional[Path] = typer.Option("cache/", envvar="CACHE_PATH", help="Where to store downloaded datasets"),
 
+    # Get minimum gas balance from the env
+    minimum_gas_balance: Optional[float] = typer.Option(0.1, envvar="MINUMUM_GAS_BALANCE", help="What is the minimum balance of gas token you need to have in your wallet. If the balance falls below this, abort by crashing and do not attempt to create transactions. Expressed in the native token e.g. ETH."),
+
     # Web3 connection options
     json_rpc_binance: str = typer.Option(None, envvar="JSON_RPC_BINANCE", help="BNB Chain JSON-RPC node URL we connect to"),
     json_rpc_polygon: str = typer.Option(None, envvar="JSON_RPC_POLYGON", help="Polygon JSON-RPC node URL we connect to"),
@@ -627,11 +637,16 @@ def check_wallet(
     logger.info(f"Latest block is {web3.eth.block_number:,}")
 
     logger.info("Hot wallet is %s", hot_wallet.address)
-    logger.info("We have %f gas money left", web3.eth.get_balance(hot_wallet.address) / 10**18)
+    gas_balance = web3.eth.get_balance(hot_wallet.address) / 10**18
+    logger.info("We have %f gas money left", gas_balance)
     balances = fetch_erc20_balances_by_token_list(web3, hot_wallet.address, tokens)
     for address, balance in balances.items():
         details = fetch_erc20_details(web3, address)
         logger.info("Balance of %s: %s %s", details.name, details.convert_to_decimals(balance), details.symbol)
+
+    if minimum_gas_balance > 0:
+        if gas_balance < minimum_gas_balance:
+            raise RuntimeError(f"We do not have enough native token for gas fees. {gas_balance} is below our minimum requirement {minimum_gas_balance}.")
 
     web3config.close()
 

@@ -66,7 +66,8 @@ def test_cli_check_wallet(
         "CACHE_PATH": unit_test_cache_path,
         "JSON_RPC_BINANCE": os.environ.get("BNB_CHAIN_JSON_RPC"),
         # Random empty wallet
-        "PRIVATE_KEY": "0x111e53aed5e777996f26b4bdb89300bbc05b84743f32028c41be7193c0fe0b83"
+        "PRIVATE_KEY": "0x111e53aed5e777996f26b4bdb89300bbc05b84743f32028c41be7193c0fe0b83",
+        "MINUMUM_GAS_BALANCE": "0",
     }
 
     runner = CliRunner()
