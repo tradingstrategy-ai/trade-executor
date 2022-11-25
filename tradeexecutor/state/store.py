@@ -6,6 +6,7 @@ import shutil
 import tempfile
 from pathlib import Path
 import logging
+from typing import Union
 
 from tradeexecutor.state.state import State
 
@@ -48,8 +49,9 @@ class JSONFileStore(StateStore):
     - Read by webhook when asked over the API
     """
 
-    def __init__(self, path: Path):
-        assert isinstance(path, Path)
+    def __init__(self, path: Union[Path, str]):
+        if not isinstance(path, Path):
+            path = Path(path)
         self.path = path
 
     def is_pristine(self) -> bool:
