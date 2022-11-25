@@ -191,6 +191,9 @@ class PortfolioConstructionModel:
                     logger.warning(f"Price missing for asset {asset} - prices are {target_prices}")
                     continue
 
+                if isinstance(dt, pd.Timestamp):
+                    dt = dt.to_pydatetime()
+
                 position, trade, created = self.state.create_trade(
                     dt,
                     executor_pair,

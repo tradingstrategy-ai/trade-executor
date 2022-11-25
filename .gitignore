@@ -9,7 +9,7 @@ dist
 .python-version
 
 cache
-state/*.json/
+state/*.json
 .idea
 
 # Default file created if trade-executon command is run locally

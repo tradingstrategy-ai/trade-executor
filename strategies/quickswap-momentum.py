@@ -34,6 +34,7 @@ from tradeexecutor.strategy.qstrader.alpha_model import AlphaModel
 from tradeexecutor.strategy.qstrader.runner import QSTraderRunner
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverseModel, \
     TradingStrategyUniverse, translate_trading_pair, Dataset, translate_token
+from tradeexecutor.strategy.universe_model import UniverseOptions
 from tradeexecutor.strategy.valuation import ValuationModelFactory
 from tradeexecutor.utils.price import is_legit_price_value
 
@@ -341,7 +342,7 @@ class OurUniverseModel(TradingStrategyUniverseModel):
 
             return TradingStrategyUniverse(universe=universe, reserve_assets=reserve_assets)
 
-    def construct_universe(self, execution_model: ExecutionModel, live) -> TradingStrategyUniverse:
+    def construct_universe(self, execution_model: ExecutionModel, live, options: UniverseOptions) -> TradingStrategyUniverse:
         dataset = self.load_data(TimeBucket.h4, live)
         universe = self.filter_universe(dataset)
         self.log_universe(universe.universe)

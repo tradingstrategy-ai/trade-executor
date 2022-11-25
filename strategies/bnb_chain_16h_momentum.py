@@ -60,7 +60,7 @@ lookback = pd.Timedelta(hours=16)
 
 # The liquidity threshold for a token to be considered
 # risk free enough to be purchased
-min_liquidity_threshold = 750_000
+min_liquidity_threshold = 10_750_000
 
 # We need to present at least 2% of liquidity of any trading pair we enter
 portfolio_base_liquidity_threshold = 0.02
@@ -355,7 +355,7 @@ class OurUniverseModel(TradingStrategyUniverseModel):
 
             return TradingStrategyUniverse(universe=universe, reserve_assets=reserve_assets)
 
-    def construct_universe(self, execution_model: ExecutionModel, mode: ExecutionMode) -> TradingStrategyUniverse:
+    def construct_universe(self, execution_model: ExecutionModel, mode: ExecutionMode, universe_options) -> TradingStrategyUniverse:
         dataset = self.load_data(TimeBucket.h4, mode)
         universe = self.filter_universe(dataset)
         self.log_universe(universe.universe)

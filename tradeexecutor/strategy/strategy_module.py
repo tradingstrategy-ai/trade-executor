@@ -363,7 +363,7 @@ def read_strategy_module(path: Path) -> Union[StrategyModuleInformation, Strateg
 
     assert isinstance(path, Path)
 
-    strategy_exports = runpy.run_path(path)
+    strategy_exports = runpy.run_path(path.as_posix())
 
     # For user convenience, make everything case-insentitive,
     # assume lowercase from no on

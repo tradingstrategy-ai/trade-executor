@@ -225,7 +225,7 @@ def test_pancake_4h_candles(
         "STRATEGY_FILE": strategy_path.as_posix(),
         "PRIVATE_KEY": hot_wallet.account.key.hex(),
         "HTTP_ENABLED": "false",
-        "JSON_RPC": ganache_bnb_chain_fork,
+        "JSON_RPC_BINANCE": ganache_bnb_chain_fork,
         "GAS_PRICE_METHOD": "legacy",
         "UNISWAP_V2_FACTORY_ADDRESS": pancakeswap_v2.factory.address,
         "UNISWAP_V2_ROUTER_ADDRESS": pancakeswap_v2.router.address,
@@ -240,7 +240,7 @@ def test_pancake_4h_candles(
         "BACKTEST_START": "2021-12-07",
         "BACKTEST_END": "2021-12-09",
         "TICK_OFFSET_MINUTES": "10",
-        "TICK_SIZE": "8h",
+        "CYCLE_DURATION": "8h",
         "CONFIRMATION_BLOCK_COUNT": "8",
         "UNIT_TESTING": "true",
     }

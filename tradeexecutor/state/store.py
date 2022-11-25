@@ -1,14 +1,19 @@
 """State serialisation to disk and JavaScript clients."""
 import abc
 import enum
+import json
 import os
 import shutil
 import tempfile
 from pathlib import Path
 import logging
+from pprint import pprint
+from typing import Union, Optional
+
+from dataclasses_json.core import _ExtendedEncoder
 
 from tradeexecutor.state.state import State
-
+from tradeexecutor.state.validator import validate_nested_state_dict
 
 logger = logging.getLogger(__name__)
 
@@ -45,10 +50,14 @@ class JSONFileStore(StateStore):
     """Store the state of the executor as a JSON file.
 
     - Read by strategy on a startup
+
     - Read by webhook when asked over the API
     """
 
-    def __init__(self, path: Path):
+    def __init__(self, path: Union[Path, str]):
+        assert path
+        if not isinstance(path, Path):
+            path = Path(path)
         self.path = path
 
     def is_pristine(self) -> bool:
@@ -64,7 +73,22 @@ class JSONFileStore(StateStore):
         dirname, basename = os.path.split(self.path)
         temp = tempfile.NamedTemporaryFile(mode='wt', delete=False, dir=dirname)
         with open(temp.name, "wt") as out:
-            txt = state.to_json()
+
+            # Insert special validation logic here to have
+            # friendly error messages for the JSON serialisation errors
+            data = state.to_dict(encode_json=False)
+            validate_nested_state_dict(data)
+
+            try:
+                txt = json.dumps(data, cls=_ExtendedEncoder)
+            except TypeError as e:
+                # add some helpful debug info.
+                # The usual cause of state serialisation failure is having
+                # non-JSON objects in the state
+                logger.error("State serialisation failed: %s", e)
+                pprint(state.to_dict())
+                raise
+
             out.write(txt)
             logger.info("Saved state to %s, total %d chars", self.path, len(txt))
         temp.close()
@@ -81,8 +105,12 @@ class NoneStore(StateStore):
     Used in unit tests. Seed with initial state.
     """
 
-    def __init__(self, state: State):
+    def __init__(self, state: Optional[State]=None):
         self.created = False
+
+        if not state:
+            state = State()
+
         self.state = state
 
     def is_pristine(self) -> bool:
