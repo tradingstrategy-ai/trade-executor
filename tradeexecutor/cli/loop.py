@@ -6,7 +6,7 @@ import pickle
 import random
 from pathlib import Path
 from queue import Queue
-from typing import Optional, Callable, Protocol, List
+from typing import Optional, Callable, List
 
 import pandas as pd
 from apscheduler.executors.pool import ThreadPoolExecutor
