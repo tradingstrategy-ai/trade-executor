@@ -1,5 +1,8 @@
 """Describe strategy modules and their loading."""
+import logging
+import runpy
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Callable, Dict, Protocol, List, Optional
 import pandas
 from tradingstrategy.chain import ChainId
@@ -21,6 +24,9 @@ from tradeexecutor.strategy.universe_model import UniverseOptions
 
 #: As set for StrategyModuleInformation.trading_strategy_engine_version
 CURRENT_ENGINE_VERSION = "0.1"
+
+
+logger = logging.getLogger()
 
 
 class StrategyModuleNotValid(Exception):
@@ -315,19 +321,47 @@ class StrategyModuleInformation:
             assert isinstance(self.chain_id, ChainId), f"Expected ChainId, got {self.chain_id}"
 
 
-def parse_strategy_module(mod) -> StrategyModuleInformation:
+def parse_strategy_module(python_module_exports: dict) -> StrategyModuleInformation:
     """Parse a loaded .py module that describes a trading strategy.
 
-    :param mod:
+    :param python_module_exports:
         Python module
+
     """
+
+    # For user convenience, make everything case-insentitive,
+    # assume lowercase from no on
+    python_module_exports = {k.lower(): v for k, v in python_module_exports.items()}
+
     return StrategyModuleInformation(
-        mod.get("trading_strategy_engine_version"),
-        mod.get("trading_strategy_type"),
-        mod.get("trading_strategy_cycle"),
-        mod.get("trade_routing"),
-        mod.get("reserve_currency"),
-        mod.get("decide_trades"),
-        mod.get("create_trading_universe"),
-        mod.get("chain_id"),
+        python_module_exports.get("trading_strategy_engine_version"),
+        python_module_exports.get("trading_strategy_type"),
+        python_module_exports.get("trading_strategy_cycle"),
+        python_module_exports.get("trade_routing"),
+        python_module_exports.get("reserve_currency"),
+        python_module_exports.get("decide_trades"),
+        python_module_exports.get("create_trading_universe"),
+        python_module_exports.get("chain_id"),
     )
+
+
+def read_strategy_module(path: Path) -> StrategyModuleInformation:
+    """Loads a strategy module and returns its factor function.
+
+    All exports will be lowercased for further processing,
+    so we do not care if constant variables are written in upper or lowercase.
+    """
+    logger.info("Reading strategy %s", path)
+
+    assert isinstance(path, Path)
+
+    strategy_exports = runpy.run_path(path)
+
+    version = strategy_exports.get("trading_strategy_engine_version")
+
+    logger.info("Strategy module %s, engine version %s", path, version)
+
+    mod_info = parse_strategy_module(strategy_exports)
+    mod_info.validate()
+
+    return mod_info

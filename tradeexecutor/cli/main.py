@@ -105,7 +105,6 @@ def create_trade_execution_model(
 ):
     """Set up the execution mode for the command line client."""
 
-
     if execution_type == TradeExecutionType.dummy:
         return DummyExecutionModel()
     elif execution_type == TradeExecutionType.uniswap_v2_hot_wallet:
@@ -319,6 +318,17 @@ def start(
             raise RuntimeError("Live trading requires that you pass JSON-RPC connection to one of the networks")
     else:
         web3config = None
+
+    # TODO: This strategy file is reloaded again in ExecutionLoop.run()
+    # because there is an inversion of control issue for passing web3 connection around.
+    # Clean this up in the future versions, by changing the order of initializion.
+    logger.info("Loading strategy file %s", strategy_file)
+    strategy_factory = import_strategy_file(strategy_file)
+
+    web3config.set_default_chain(run_description.chain_id)
+    web3config.check_default_chain_id()
+    web3 = web3config.get_default()
+
 
     execution_model, sync_method, valuation_model_factory, pricing_model_factory = create_trade_execution_model(
         execution_type,

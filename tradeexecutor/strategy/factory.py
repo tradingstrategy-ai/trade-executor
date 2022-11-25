@@ -9,7 +9,7 @@ from contextlib import AbstractContextManager
 
 from tradeexecutor.ethereum.default_routes import get_routing_model
 from tradeexecutor.strategy.pandas_trader.runner import PandasTraderRunner
-from tradeexecutor.strategy.strategy_module import parse_strategy_module
+from tradeexecutor.strategy.strategy_module import parse_strategy_module, StrategyModuleInformation
 from tradeexecutor.strategy.strategy_type import StrategyType
 from tradeexecutor.strategy.trading_strategy_universe import DefaultTradingStrategyUniverseModel
 from tradingstrategy.client import Client
@@ -74,7 +74,7 @@ class StrategyFactory(Protocol):
         """
 
 
-def make_runner_for_strategy_mod(mod) -> StrategyFactory:
+def make_factory_from_strategy_mod(mod: StrategyModuleInformation) -> StrategyFactory:
     """Initialises the strategy script file and hooks it to the executor.
 
     Assumes the module has two functions
@@ -86,8 +86,7 @@ def make_runner_for_strategy_mod(mod) -> StrategyFactory:
     Hook this up the strategy execution system.
     """
 
-    mod_info = parse_strategy_module(mod)
-    mod_info.validate()
+    mod_info = mod
 
     assert mod_info.trading_strategy_type == StrategyType.managed_positions, "Unsupported strategy tpe"
 
@@ -139,3 +138,5 @@ def make_runner_for_strategy_mod(mod) -> StrategyFactory:
         )
 
     return default_strategy_factory
+
+

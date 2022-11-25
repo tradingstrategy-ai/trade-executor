@@ -17,9 +17,10 @@ from tradingstrategy.client import Client
 from tradeexecutor.state.sync import SyncMethod
 from tradeexecutor.strategy.approval import ApprovalModel
 from tradeexecutor.strategy.description import StrategyExecutionDescription
-from tradeexecutor.strategy.factory import StrategyFactory, make_runner_for_strategy_mod
+from tradeexecutor.strategy.factory import StrategyFactory, make_factory_from_strategy_mod
 from tradeexecutor.strategy.pandas_trader.runner import PandasTraderRunner
 from tradeexecutor.strategy.pricing_model import PricingModelFactory
+from tradeexecutor.strategy.strategy_module import read_strategy_module
 from tradeexecutor.strategy.valuation import ValuationModelFactory
 
 logger = logging.getLogger(__name__)
@@ -40,27 +41,9 @@ def import_strategy_file(path: Path) -> StrategyFactory:
     so we do not care if constant variables are written in upper or lowercase.
     """
     logger.info("Importing strategy %s", path)
-
     assert isinstance(path, Path)
-
-    strategy_exports = runpy.run_path(path)
-
-    strategy_exports = {k.lower(): v  for k, v in strategy_exports.items()}
-
-    version = strategy_exports.get("trading_strategy_engine_version")
-
-    logger.info("Loading strategy module %s, engine version %s", path, version)
-
-    # Strategy v0.1 loading
-    if version:
-        return make_runner_for_strategy_mod(strategy_exports)
-
-    # Legacy path
-    strategy_runner = strategy_exports.get(FACTORY_VAR_NAME)
-    if strategy_runner is None:
-        raise BadStrategyFile(f"{path} Python module does not declare {FACTORY_VAR_NAME} module variable")
-
-    return strategy_runner
+    mod = read_strategy_module(path)
+    return make_factory_from_strategy_mod(mod)
 
 
 def bootstrap_strategy(

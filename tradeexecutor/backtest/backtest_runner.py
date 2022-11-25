@@ -23,7 +23,7 @@ from tradeexecutor.strategy.approval import UncheckedApprovalModel, ApprovalMode
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.description import StrategyExecutionDescription
 from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
-from tradeexecutor.strategy.factory import make_runner_for_strategy_mod
+from tradeexecutor.strategy.factory import make_factory_from_strategy_mod
 from tradeexecutor.strategy.pandas_trader.runner import PandasTraderRunner
 from tradeexecutor.strategy.pandas_trader.trade_decision import TradeDecider
 from tradeexecutor.strategy.strategy_module import parse_strategy_module, StrategyModuleInformation, \
