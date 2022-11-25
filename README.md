@@ -29,6 +29,10 @@ git submodule update --init --recursive
 poetry install -E web-server -E execution
 ```
 
+## Architecture overview
+
+![Archiecture overview](docs/deployment-overview.drawio.svg)
+
 ## Development
 
 See [docs](./docs).
