@@ -15,7 +15,6 @@ def strategy_path():
     return os.path.join(os.path.dirname(__file__), "../strategies", "pancake-eth-usd-sma.py")
 
 
-
 @pytest.fixture(scope="session")
 def unit_test_cache_path():
     """Where unit tests  cache files.
