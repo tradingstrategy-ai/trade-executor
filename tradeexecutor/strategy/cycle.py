@@ -69,6 +69,11 @@ class CycleDuration(enum.Enum):
         """
         return TimeBucket(self.value) if self  != CycleDuration.cycle_unknown else None
 
+    @staticmethod
+    def from_timebucket(bucket: TimeBucket) -> Optional["CycleDuration"]:
+        """Convert from OHLCV time frame."""
+        return CycleDuration(bucket.value)
+
 
 def round_datetime_up(
         ts: datetime.datetime,

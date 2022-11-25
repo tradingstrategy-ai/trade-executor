@@ -413,16 +413,23 @@ class ExecutionLoop:
 
         self.warm_up_backtest()
 
+        # Allow backtest step to be overwritten from the command line
+        if self.universe_options.candle_time_bucket_override:
+            backtest_step = CycleDuration.from_timebucket(self.universe_options.candle_time_bucket_override)
+        else:
+            backtest_step = self.cycle_duration
+
+        cycle_name = backtest_step.value
+
         with tqdm(total=seconds) as progress_bar:
             while True:
 
                 ts = snap_to_previous_tick(ts, self.cycle_duration)
 
                 # Bump progress bar forward and update backtest status
-                progress_bar.update(int(self.cycle_duration.to_timedelta().total_seconds()))
+                progress_bar.update(int(backtest_step.to_timedelta().total_seconds()))
                 friedly_ts = ts.strftime(ts_format)
                 trade_count = len(list(state.portfolio.get_all_trades()))
-                cycle_name = self.cycle_duration.value
                 progress_bar.set_description(f"Backtesting {self.name}, {friendly_start}-{friendly_end} at {friedly_ts} ({cycle_name}), total {trade_count:,} trades")
 
                 # Decide trades and everything for this cycle
@@ -442,7 +449,7 @@ class ExecutionLoop:
                 cycle += 1
 
                 # Backtesting
-                next_tick = snap_to_next_tick(ts + datetime.timedelta(seconds=1), self.cycle_duration, self.tick_offset)
+                next_tick = snap_to_next_tick(ts + datetime.timedelta(seconds=1), backtest_step, self.tick_offset)
 
                 if next_tick >= self.backtest_end:
                     # Backteting has ended
