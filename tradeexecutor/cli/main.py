@@ -342,7 +342,7 @@ def start(
     approval_model = create_approval_model(approval_type)
 
     if state_file:
-        store = create_state_store(state_file)
+        store = create_state_store(Path(state_file))
     else:
         # Backtests never have persistent state
         if execution_type == TradeExecutionType.backtest:

@@ -49,6 +49,7 @@ class JSONFileStore(StateStore):
     """
 
     def __init__(self, path: Path):
+        assert isinstance(path, Path)
         self.path = path
 
     def is_pristine(self) -> bool:

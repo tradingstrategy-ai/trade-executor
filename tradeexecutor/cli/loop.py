@@ -109,6 +109,13 @@ class ExecutionLoop:
             stop_loss_time_bucket_override=self.stop_loss_check_frequency,
         )
 
+    def is_live_trading_unit_test(self) -> bool:
+        """Are we attempting to test live trading functionality in unit tests.
+
+        See `test_cli_commands.py`
+        """
+        return self.max_cycles == 0
+
     def init_state(self) -> State:
         """Initialize the state for this run.
 
@@ -143,8 +150,9 @@ class ExecutionLoop:
         Perform preflight checks e.g. to see if our trading accounts look sane.
         """
         self.execution_model.initialize()
-        self.execution_model.preflight_check()
-        logger.trade("Preflight checks ok")
+        if not self.is_live_trading_unit_test():
+            self.execution_model.preflight_check()
+            logger.trade("Preflight checks ok")
 
     def init_simulation(
             self,
@@ -459,6 +467,12 @@ class ExecutionLoop:
 
         ts = datetime.datetime.utcnow()
         logger.info("Strategy is executed in live mode, now is %s", ts)
+
+        if self.is_live_trading_unit_test():
+            # Test app initialisation.
+            # Do not start any background threads.
+            logger.info("Unit test live trading checkup test detected - aborting.")
+            return self.debug_dump_state
 
         cycle = 1
         universe: Optional[StrategyExecutionUniverse] = None
