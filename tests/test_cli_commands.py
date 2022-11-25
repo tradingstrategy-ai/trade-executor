@@ -94,8 +94,8 @@ def test_cli_backtest(
         "TRADING_STRATEGY_API_KEY": os.environ["TRADING_STRATEGY_API_KEY"],
         "STRATEGY_FILE": strategy_path,
         "CACHE_PATH": unit_test_cache_path,
-        "CYCLE_DURATION": "1d",
-        "STOP_LOSS_CHECK_FREQUENCY": "1d",
+        "BACKTEST_CANDLE_TIME_FRAME_OVERRIDE": "1d",
+        "BACKTEST_STOP_LOSS_TIME_FRAME_OVERRIDE": "1d",
         "BACKTEST_START": "2021-06-01",
         "BACKTEST_END": "2022-07-01",
         "EXECUTION_TYPE": "backtest"

@@ -20,6 +20,7 @@ class BadStateData(Exception):
     """Having something we do not support in the state."""
 
 
+#: Types we know we can safely pass to JSON serialisation
 ALLOWED_VALUE_TYPES = (
     dict,
     list,
@@ -37,9 +38,11 @@ ALLOWED_VALUE_TYPES = (
 #: magic.
 BAD_VALUE_TYPES = (
     np.float32,
+    np.float64,
     pd.Timedelta,
     pd.Timestamp,
 )
+
 
 def validate_state_value(name: str | int, val: Any):
     if not isinstance(val, ALLOWED_VALUE_TYPES):
@@ -50,7 +53,7 @@ def validate_state_value(name: str | int, val: Any):
 
 
 def walk(name, val):
-    """Raise hierarchial exceptions to locate the bad key-value pair in nested data."""
+    """Raise hierarchical exceptions to locate the bad key-value pair in nested data."""
     try:
         if isinstance(val, dict):
             for k, v in val.items():

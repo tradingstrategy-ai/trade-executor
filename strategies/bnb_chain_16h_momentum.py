@@ -60,7 +60,7 @@ lookback = pd.Timedelta(hours=16)
 
 # The liquidity threshold for a token to be considered
 # risk free enough to be purchased
-min_liquidity_threshold = 750_000
+min_liquidity_threshold = 10_750_000
 
 # We need to present at least 2% of liquidity of any trading pair we enter
 portfolio_base_liquidity_threshold = 0.02

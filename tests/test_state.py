@@ -664,7 +664,7 @@ def test_unrealised_profit_calculation(usdc, weth_usdc, start_ts: datetime.datet
             self.price = price
 
         def __call__(self, ts, pair: TradingPairIdentifier):
-            return ts, self.price
+            return ts, float(self.price)
 
     # Revalue ETH to 1500 USD
     state.revalue_positions(start_ts, EthValuator(1500))

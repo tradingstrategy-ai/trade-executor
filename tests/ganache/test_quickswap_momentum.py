@@ -156,7 +156,7 @@ def test_quickswap_momentum(
         "BACKTEST_START": "2021-12-07",
         "BACKTEST_END": "2021-12-09",
         "TICK_OFFSET_MINUTES": "10",
-        "TICK_SIZE": "16h",
+        "CYCLE_DURATION": "16h",
         "CONFIRMATION_BLOCK_COUNT": "8",
         "MAX_POSITIONS": "2",
         "UNIT_TESTING": "true",

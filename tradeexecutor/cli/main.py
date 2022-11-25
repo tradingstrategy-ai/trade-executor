@@ -9,6 +9,7 @@ from typing import Optional
 from importlib.metadata import version
 
 import typer
+from tradingstrategy.chain import ChainId
 from tradingstrategy.timebucket import TimeBucket
 
 from web3 import Web3
@@ -43,7 +44,7 @@ from tradeexecutor.strategy.dummy import DummyExecutionModel
 from tradeexecutor.strategy.execution_context import ExecutionMode, ExecutionContext
 from tradeexecutor.strategy.execution_model import TradeExecutionType
 from tradeexecutor.cli.log import setup_logging, setup_discord_logging, setup_logstash_logging
-from tradeexecutor.strategy.strategy_module import read_strategy_module
+from tradeexecutor.strategy.strategy_module import read_strategy_module, StrategyModuleInformation
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverseModel
 from tradeexecutor.strategy.universe_model import UniverseOptions
 from tradeexecutor.utils.timer import timed_task
@@ -249,8 +250,10 @@ def start(
     debug_dump_file: Optional[Path] = typer.Option(None, envvar="DEBUG_DUMP_FILE", help="Write Python Pickle dump of all internal debugging states of the strategy run to this file"),
     backtest_start: Optional[datetime.datetime] = typer.Option(None, envvar="BACKTEST_START", help="Start timestamp of backesting"),
     backtest_end: Optional[datetime.datetime] = typer.Option(None, envvar="BACKTEST_END", help="End timestamp of backesting"),
+    backtest_candle_time_frame_override: Optional[TimeBucket] = typer.Option(None, envvar="BACKTEST_CANDLE_TIME_FRAME_OVERRIDE", help="Force backtests to use different candle time frame"),
+    backtest_stop_loss_time_frame_override: Optional[TimeBucket] = typer.Option(None, envvar="BACKTEST_STOP_LOSS_TIME_FRAME_OVERRIDE", help="Force backtests to use different candle time frame for stop losses"),
     stop_loss_check_frequency: Optional[TimeBucket] = typer.Option(None, envvar="STOP_LOSS_CYCLE_DURATION", help="Override live/backtest stop loss check frequency. If not given read from the strategy module."),
-    cycle_duration: CycleDuration = typer.Option(None, envvar="CYCLE_DURATION", help="How long strategy tick cycles use to execute the strategy. While strategy modules offer their own cycle duration value, you can override it here to 'speedrun' backtests."),
+    cycle_duration: CycleDuration = typer.Option(None, envvar="CYCLE_DURATION", help="How long strategy tick cycles use to execute the strategy. While strategy modules offer their own cycle duration value, you can override it here."),
     cycle_offset_minutes: int = typer.Option(0, envvar="CYCLE_OFFSET_MINUTES", help="How many minutes we wait after the tick before executing the tick step"),
     stats_refresh_minutes: int = typer.Option(60.0, envvar="STATS_REFRESH_MINUTES", help="How often we refresh position statistics. Default to once in an hour."),
     position_trigger_check_minutes: int = typer.Option(3.0, envvar="POSITION_TRIGGER_CHECK_MINUTES", help="How often we check for take profit/stop loss triggers. Default to once in 3 minutes. Set 0 to disable."),
@@ -327,8 +330,16 @@ def start(
     mod = read_strategy_module(strategy_file)
 
     if web3config is not None:
-        web3config.set_default_chain(mod.chain_id)
-        web3config.check_default_chain_id()
+
+        if isinstance(mod, StrategyModuleInformation):
+            # This path is not enabled for legacy strategy modules
+            web3config.set_default_chain(mod.chain_id)
+            web3config.check_default_chain_id()
+        else:
+            # Legacy unit testing path.
+            # All chain_ids are 56 (BNB Chain)
+            logger.warning("Legacy strategy module: makes assumption of BNB Chain")
+            web3config.set_default_chain(ChainId.bsc)
 
     execution_model, sync_method, valuation_model_factory, pricing_model_factory = create_trade_execution_model(
         execution_type,
@@ -427,6 +438,8 @@ def start(
             debug_dump_file=debug_dump_file,
             backtest_start=backtest_start,
             backtest_end=backtest_end,
+            backtest_stop_loss_time_frame_override=backtest_stop_loss_time_frame_override,
+            backtest_candle_time_frame_override=backtest_candle_time_frame_override,
             stop_loss_check_frequency=stop_loss_check_frequency,
             cycle_duration=cycle_duration,
             tick_offset=tick_offset,
