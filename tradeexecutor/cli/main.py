@@ -228,7 +228,7 @@ def start(
 
     # Webhook server options
     http_enabled: bool = typer.Option(False, envvar="HTTP_ENABLED", help="Enable Webhook server"),
-    http_port: int = typer.Option(19000, envvar="HTTP_PORT"),
+    http_port: int = typer.Option(3456, envvar="HTTP_PORT"),
     http_host: str = typer.Option("0.0.0.0", envvar="HTTP_HOST"),
     http_username: str = typer.Option("webhook", envvar="HTTP_USERNAME"),
     http_password: str = typer.Option(None, envvar="HTTP_PASSWORD"),
