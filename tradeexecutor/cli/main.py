@@ -322,8 +322,8 @@ def start(
 
     execution_model, sync_method, valuation_model_factory, pricing_model_factory = create_trade_execution_model(
         execution_type,
-        web3config,
         private_key,
+        web3config,
         confirmation_timeout,
         confirmation_block_count,
         max_slippage,
