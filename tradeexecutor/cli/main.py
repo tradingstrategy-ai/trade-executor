@@ -664,7 +664,7 @@ def check_wallet(
 
     for address, balance in balances.items():
         details = fetch_erc20_details(web3, address)
-        logger.info("  Balance of %s: %s %s", details.name, details.convert_to_decimals(balance), details.symbol)
+        logger.info("  Balance of %s (%s): %s %s", details.name, details.address, details.convert_to_decimals(balance), details.symbol)
 
     # Check that the routing looks sane
     # E.g. there is no mismatch between strategy reserve token, wallet and pair universe
