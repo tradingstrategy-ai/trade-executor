@@ -76,19 +76,18 @@ def create_pancake_routing(routing_type: TradeRouting, reserve_currency: Reserve
 
 
 def get_backtest_routing_model(routing_type: TradeRouting, reserve_currency: ReserveCurrency) -> BacktestRoutingModel:
-    """Hardcoded routing model support for backtests."""
+    """Get routing options for backtests.
 
-    assert isinstance(routing_type, TradeRouting)
+    At the moment, just create a real router and copy parameters from there.
+    """
 
-    if routing_type == TradeRouting.pancakeswap_busd:
-        params = get_pancake_default_routing_parameters(reserve_currency)
-        return BacktestRoutingModel(
-            params["factory_router_map"],
-            params["allowed_intermediary_pairs"],
-            params["reserve_token_address"],
-        )
+    real_routing_model = create_pancake_routing(routing_type, reserve_currency)
 
-    raise NotImplementedError(f"The routing model is not supported: {routing_type.value}")
+    return BacktestRoutingModel(
+        real_routing_model.factory_router_map,
+        real_routing_model.allowed_intermediary_pairs,
+        real_routing_model.reserve_token_address,
+    )
 
 
 def get_routing_model(
