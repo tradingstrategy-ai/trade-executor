@@ -656,7 +656,8 @@ def check_wallet(
     logger.info("Balance details")
     logger.info("  Hot wallet is %s", hot_wallet.address)
     gas_balance = web3.eth.get_balance(hot_wallet.address) / 10**18
-    logger.info("  We have %f gas money left", gas_balance)
+    logger.info("  We have %f tokens for gas left", gas_balance)
+    logger.info("  The gas error limit is %f tokens", minimum_gas_balance)
     balances = fetch_erc20_balances_by_token_list(web3, hot_wallet.address, tokens)
 
     for asset in reserve_assets:
