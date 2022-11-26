@@ -592,7 +592,7 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
             logger.info("  Factory %s uses router %s", factory, router[0])
 
         reserve = self.get_reserve_asset(pair_universe)
-        logger.info("  Routed reserve asset is", reserve)
+        logger.info("  Routed reserve asset is %s", reserve)
 
 
 def route_tokens(

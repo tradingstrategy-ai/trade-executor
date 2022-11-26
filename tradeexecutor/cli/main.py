@@ -682,7 +682,7 @@ def check_wallet(
     execution_model.preflight_check()
 
     # Check our routes
-    routing_model.perform_preflight_checks_and_logging(routing_state)
+    routing_model.perform_preflight_checks_and_logging(routing_state, universe.universe.pairs)
 
     web3config.close()
 
