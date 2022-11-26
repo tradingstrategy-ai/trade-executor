@@ -579,7 +579,9 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
         routing_state = UniswapV2RoutingState(universe.universe.pairs, tx_builder)
         return routing_state
 
-    def perform_preflight_checks_and_logging(self, routing_state: UniswapV2RoutingState):
+    def perform_preflight_checks_and_logging(self,
+        routing_state: UniswapV2RoutingState,
+        pair_universe: PandasPairUniverse):
         """"Checks the integrity of the routing.
 
         - Called from check-wallet to see our routing and balances are good
@@ -588,6 +590,9 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
         logger.info("Routing details")
         for factory, router in self.factory_router_map.items():
             logger.info("  Factory %s uses router %s", factory, router[0])
+
+        reserve = self.get_reserve_asset(pair_universe)
+        logger.info("  Routed reserve asset is", reserve)
 
 
 def route_tokens(
