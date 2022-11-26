@@ -38,7 +38,7 @@ trading_strategy_type = StrategyType.managed_positions
 # How our trades are routed.
 # PancakeSwap basic routing supports two way trades with BUSD
 # and three way trades with BUSD-BNB hop.
-trade_routing = TradeRouting.pancakeswap_basic
+trade_routing = TradeRouting.pancakeswap_busd
 
 # How often the strategy performs the decide_trades cycle.
 # We do it for every 16h.
@@ -213,7 +213,7 @@ def test_run_inline_real_backtest(
         create_trading_universe=create_trading_universe,
         initial_deposit=10_000,
         reserve_currency=ReserveCurrency.busd,
-        trade_routing=TradeRouting.pancakeswap_basic,
+        trade_routing=TradeRouting.pancakeswap_busd,
     )
 
     assert len(debug_dump) == 214

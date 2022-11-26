@@ -81,15 +81,9 @@ class UniswapV2ExecutionModel(ExecutionModel):
         assert self.web3.eth.block_number > 1
 
         # Check we have money for gas fees
-        balance = self.hot_wallet.get_native_currency_balance(self.web3)
-        assert balance > self.min_balance_threshold, f"At least {self.min_balance_threshold} native currency need, our wallet {self.hot_wallet.address} has {balance:.8f}"
-
-        # Check Uniswap v2 instance is valid.
-        # Different factories (Sushi, Pancake) share few common public accessors we can call here.
-        # try:
-        #    self.uniswap.factory.functions.allPairsLength().call()
-        # except Exception as e:
-        #    raise AssertionError(f"Uniswap does not function at chain {self.chain_id}, factory address {self.uniswap.factory.address}") from e
+        if self.min_balance_threshold > 0:
+            balance = self.hot_wallet.get_native_currency_balance(self.web3)
+            assert balance > self.min_balance_threshold, f"At least {self.min_balance_threshold} native currency need, our wallet {self.hot_wallet.address} has {balance:.8f}"
 
     def initialize(self):
         """Set up the wallet"""

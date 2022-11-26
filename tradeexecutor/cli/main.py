@@ -5,7 +5,7 @@ import os.path
 from decimal import Decimal
 from pathlib import Path
 from queue import Queue
-from typing import Optional
+from typing import Optional, Callable, Tuple
 from importlib.metadata import version
 
 import typer
@@ -39,14 +39,15 @@ from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
 from tradeexecutor.ethereum.uniswap_v2_live_pricing import uniswap_v2_live_pricing_factory
 from tradeexecutor.state.store import JSONFileStore, StateStore, NoneStore
 from tradeexecutor.strategy.approval import ApprovalType, UncheckedApprovalModel, ApprovalModel
-from tradeexecutor.strategy.bootstrap import import_strategy_file
+from tradeexecutor.strategy.bootstrap import import_strategy_file, make_factory_from_strategy_mod
 from tradeexecutor.strategy.dummy import DummyExecutionModel
 from tradeexecutor.strategy.execution_context import ExecutionMode, ExecutionContext
-from tradeexecutor.strategy.execution_model import TradeExecutionType
+from tradeexecutor.strategy.execution_model import TradeExecutionType, ExecutionModel
 from tradeexecutor.cli.log import setup_logging, setup_discord_logging, setup_logstash_logging
 from tradeexecutor.strategy.strategy_module import read_strategy_module, StrategyModuleInformation
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverseModel
 from tradeexecutor.strategy.universe_model import UniverseOptions
+from tradeexecutor.utils.fullname import get_object_full_name
 from tradeexecutor.utils.timer import timed_task
 from tradeexecutor.webhook.server import create_webhook_server
 from tradingstrategy.client import Client
@@ -582,8 +583,7 @@ def check_wallet(
 
     logger = setup_logging()
 
-    logger.info("Loading strategy file %s", strategy_file)
-    strategy_factory = import_strategy_file(strategy_file)
+    mod = read_strategy_module(strategy_file)
 
     cache_path = prepare_cache(id, cache_path)
 
@@ -594,18 +594,44 @@ def check_wallet(
         timed_task_context_manager=timed_task
     )
 
-    run_description: StrategyExecutionDescription = strategy_factory(
-        execution_context=execution_context,
-        execution_model=None,
-        sync_method=None,
-        valuation_model_factory=None,
-        pricing_model_factory=None,
-        approval_model=None,
-        client=client,
-        timed_task_context_manager=timed_task,
+    web3config = create_web3_config(
+        json_rpc_binance,
+        json_rpc_polygon,
+        json_rpc_avalanche,
+        json_rpc_ethereum,
+        GasPriceMethod.london,
+    )
+
+    assert web3config, "No RPC endpoints given. A working JSON-RPC connection is needed for check-wallet"
+
+    # Check that we are connected to the chain strategy assumes
+    web3config.set_default_chain(mod.chain_id)
+    web3config.check_default_chain_id()
+
+    execution_model, sync_method, valuation_model_factory, pricing_model_factory = create_trade_execution_model(
+        execution_type=TradeExecutionType.uniswap_v2_hot_wallet,
+        private_key=private_key,
+        web3config=web3config,
+        confirmation_timeout=60,
+        confirmation_block_count=6,
+        max_slippage=0.01,
+        min_balance_threshold=minimum_gas_balance,
     )
 
     hot_wallet = HotWallet.from_private_key(private_key)
+
+    # Set up the strategy engine
+    factory = make_factory_from_strategy_mod(mod)
+    run_description: StrategyExecutionDescription = factory(
+        execution_model=execution_model,
+        execution_context=execution_context,
+        timed_task_context_manager=execution_context.timed_task_context_manager,
+        sync_method=sync_method,
+        valuation_model_factory=valuation_model_factory,
+        pricing_model_factory=pricing_model_factory,
+        approval_model=UncheckedApprovalModel(),
+        client=client,
+    )
 
     # We construct the trading universe to know what's our reserve asset
     universe_model: TradingStrategyUniverseModel = run_description.universe_model
@@ -615,38 +641,48 @@ def check_wallet(
         ExecutionMode.preflight_check,
         UniverseOptions())
 
+    # Get all tokens from the universe
     reserve_assets = universe.reserve_assets
-
-    web3config = create_web3_config(
-        json_rpc_binance,
-        json_rpc_polygon,
-        json_rpc_avalanche,
-        json_rpc_ethereum,
-        None,
-    )
-
-    web3config.set_default_chain(run_description.chain_id)
-    web3config.check_default_chain_id()
     web3 = web3config.get_default()
-
-    logger.info("Reserve assets are: %s", reserve_assets)
     tokens = [Web3.toChecksumAddress(a.address) for a in reserve_assets]
 
-    logger.info("Checking JSON-RPC connection")
+    logger.info("RPC details")
 
-    logger.info(f"Latest block is {web3.eth.block_number:,}")
+    # Check the chain is online
+    logger.info(f"  Chain id is {web3.eth.chain_id:,}")
+    logger.info(f"  Latest block is {web3.eth.block_number:,}")
 
-    logger.info("Hot wallet is %s", hot_wallet.address)
+    # Check balances
+    logger.info("Balance details")
+    logger.info("  Hot wallet is %s", hot_wallet.address)
     gas_balance = web3.eth.get_balance(hot_wallet.address) / 10**18
-    logger.info("We have %f gas money left", gas_balance)
+    logger.info("  We have %f gas money left", gas_balance)
     balances = fetch_erc20_balances_by_token_list(web3, hot_wallet.address, tokens)
+
+    for asset in reserve_assets:
+        logger.info("Reserve asset: %s", asset.token_symbol)
+
     for address, balance in balances.items():
         details = fetch_erc20_details(web3, address)
-        logger.info("Balance of %s: %s %s", details.name, details.convert_to_decimals(balance), details.symbol)
+        logger.info("  Balance of %s: %s %s", details.name, details.convert_to_decimals(balance), details.symbol)
 
-    if minimum_gas_balance > 0:
-        if gas_balance < minimum_gas_balance:
-            raise RuntimeError(f"We do not have enough native token for gas fees. {gas_balance} is below our minimum requirement {minimum_gas_balance}.")
+    # Check that the routing looks sane
+    # E.g. there is no mismatch between strategy reserve token, wallet and pair universe
+    runner = run_description.runner
+    routing_state, pricing_model, valuation_method = runner.setup_routing(universe)
+    routing_model = runner.routing_model
+
+    logger.info("Execution details")
+    logger.info("  Execution model is %s", get_object_full_name(execution_model))
+    logger.info("  Routing model is %s", get_object_full_name(routing_model))
+    logger.info("  Token pricing model is %s", get_object_full_name(pricing_model))
+    logger.info("  Position valuation model is %s", get_object_full_name(valuation_method))
+
+    # Check we have enough gas
+    execution_model.preflight_check()
+
+    # Check our routes
+    routing_model.perform_preflight_checks_and_logging(routing_state, universe.universe.pairs)
 
     web3config.close()
 

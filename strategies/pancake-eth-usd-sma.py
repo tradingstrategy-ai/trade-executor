@@ -75,14 +75,13 @@ TRADING_STRATEGY_TYPE = StrategyType.managed_positions
 # How our trades are routed.
 # PancakeSwap basic routing supports two way trades with BUSD
 # and three way trades with BUSD-BNB hop.
-TRADE_ROUTING = TradeRouting.pancakeswap_basic
-
+TRADE_ROUTING = TradeRouting.pancakeswap_usdc
 # How often the strategy performs the decide_trades cycle.
 # We do it for every 4h.
 TRADING_STRATEGY_CYCLE = CycleDuration.cycle_1h
 
 # Strategy keeps its cash in USDC
-RESERVE_CURRENCY = ReserveCurrency.busd
+RESERVE_CURRENCY = ReserveCurrency.usdc
 
 # Time bucket for our candles
 CANDLE_TIME_BUCKET = TimeBucket.h1

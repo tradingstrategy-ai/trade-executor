@@ -22,12 +22,22 @@ class TradeRouting(enum.Enum):
     #: Two or three-legged trades on PancakeSwap.
     #: - Open positions with BUSD quote token.
     #: - Open positions with WBNB quote token.
-    pancakeswap_basic = "quickswap_basic"
+    pancakeswap_busd = "pancakeswap_busd"
+
+    #: Two or three-legged trades on PancakeSwap.
+    #: - Open positions with USDC quote token.
+    #: - Open positions with WBNB quote token.
+    pancakeswap_usdc = "pancakeswap_usdc"
 
     #: Two or three legged trades on Quickswap
     #: - Open positions with USDC quote token.
     #: - Open positions with WMATIC quote token.
-    quickswap_basic = "quickswap_basic"
+    quickswap_usdc = "quickswap_usdc"
 
     #: Use user supplied routing model
+    #:
+    #: The routing table is constructed by the developer in the
+    #: Python code.
+    #:
+    #: Mostly useful for unit testing.
     user_supplied_routing_model = "user_supplied_routing_model"
