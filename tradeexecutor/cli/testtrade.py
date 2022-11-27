@@ -79,6 +79,9 @@ def make_test_trade(
 
     )
 
+    # The message left on the test positions and trades
+    notes = "A test trade created with perform-test-trade command line command"
+
     # Open the test position only if there isn't position already open
     # on the previous run
     position = state.portfolio.get_position_by_trading_pair(pair)
@@ -88,6 +91,7 @@ def make_test_trade(
         trades = position_manager.open_1x_long(
             pair,
             float(amount),
+            notes=notes,
         )
 
         trade = trades[0]
@@ -107,9 +111,22 @@ def make_test_trade(
         position = state.portfolio.get_position_by_id(position_id)
 
     logger.info("Position %s open. Now closing the position.", position)
-    trade = position_manager.close_position(position)
 
+    # Recreate the position manager for the new timestamp,
+    # as time has passed
     ts = datetime.datetime.utcnow()
+    position_manager = PositionManager(
+        ts,
+        universe,
+        state,
+        pricing_model,
+    )
+
+    trade = position_manager.close_position(
+        position,
+        notes=notes,
+    )
+
     execution_model.execute_trades(
             ts,
             state,

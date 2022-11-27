@@ -329,7 +329,11 @@ class PositionManager:
 
         return [trade]
 
-    def close_position(self, position: TradingPosition, trade_type: TradeType=TradeType.rebalance) -> Optional[TradeExecution]:
+    def close_position(self,
+                       position: TradingPosition,
+                       trade_type: TradeType=TradeType.rebalance,
+                       notes: Optional[str] = None,
+                       ) -> Optional[TradeExecution]:
         """Close a single position.
 
         The position may already have piled up selling trades.
@@ -341,6 +345,9 @@ class PositionManager:
 
         :param trade_type:
             What's the reason to close the position
+
+        :param notes:
+            Human readable notes for this trade
 
         :return:
             A trade that will close the position fully.
@@ -373,6 +380,7 @@ class PositionManager:
             trade_type,
             reserve_asset,
             reserve_price,  # TODO: Harcoded stablecoin USD exchange rate
+            notes=notes,
         )
         assert position == position2, "Somehow messed up the trade"
 
