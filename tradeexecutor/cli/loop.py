@@ -19,6 +19,7 @@ from tradeexecutor.state.state import State
 from tradeexecutor.state.store import StateStore
 from tradeexecutor.state.sync import SyncMethod
 from tradeexecutor.state.trade import TradeExecution
+from tradeexecutor.state.validator import validate_state_serialisation
 from tradeexecutor.statistics.core import update_statistics
 from tradeexecutor.strategy.approval import ApprovalModel
 from tradeexecutor.strategy.description import StrategyExecutionDescription
@@ -491,6 +492,11 @@ class ExecutionLoop:
 
                 # Add some fuzziness to gacktesting timestamps
                 ts = next_tick + datetime.timedelta(minutes=random.randint(0, 4))
+
+            # Validate the backtest state at the end.
+            # We want to avoid situation where we have stored
+            # non-serialisable types in the state
+            validate_state_serialisation(state)
 
             return self.debug_dump_state
 
