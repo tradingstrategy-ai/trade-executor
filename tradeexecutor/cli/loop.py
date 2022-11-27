@@ -12,7 +12,12 @@ import pandas as pd
 from apscheduler.executors.pool import ThreadPoolExecutor
 from apscheduler.schedulers.blocking import BlockingScheduler
 
-from tqdm_loggable.auto import tqdm
+try:
+    from tqdm_loggable.auto import tqdm
+except ImportError:
+    # tqdm_loggable is only available at the live execution,
+    # but fallback to normal TQDM auto mode
+    from tqdm.auto import tqdm
 
 from tradeexecutor.backtest.backtest_pricing import BacktestSimplePricingModel
 from tradeexecutor.state.state import State

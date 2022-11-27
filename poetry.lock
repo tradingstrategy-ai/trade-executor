@@ -2613,7 +2613,7 @@ web-server = ["pyramid", "WebTest", "pyramid-openapi3", "waitress"]
 [metadata]
 lock-version = "1.1"
 python-versions = ">=3.10,<3.11"
-content-hash = "920fdf0a9c0d0ba15f6d40ade34ce4a1e369001831fac92018db1fcb723e3cd9"
+content-hash = "658db337fde9a4c7c263b666150c8225efae71ca465663683c483b215c96c3bf"
 
 [metadata.files]
 aiohttp = [
