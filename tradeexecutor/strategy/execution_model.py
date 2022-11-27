@@ -39,7 +39,11 @@ class ExecutionModel(abc.ABC):
 
     @abc.abstractmethod
     def initialize(self):
-        """Read any on-chain, etc., data to get synced.
+        """Set up the execution model ready to make trades.
+
+        Read any on-chain, etc., data to get synced.
+
+        - Read EVM nonce for the hot wallet from the chain
         """
 
     @abc.abstractmethod

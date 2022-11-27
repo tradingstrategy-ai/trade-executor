@@ -1,3 +1,5 @@
+"""Handling of stablecoin deposits as strategy reserves."""
+
 import datetime
 from typing import List
 
@@ -20,6 +22,11 @@ class EthereumHotWalletReserveSyncer:
     - Rebases
 
     - Interest payments
+
+    .. note ::
+
+        Private key nonce sync is handled by
+        :py:func:`tradeexecutor.ethereum.UniswapV2ExecutionModel.uniswap_v2_execution.initialize`.
     """
 
     def __init__(self, web3: Web3, wallet_address: HexAddress):

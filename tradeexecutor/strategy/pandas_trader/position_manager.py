@@ -167,6 +167,7 @@ class PositionManager:
                      value: USDollarAmount,
                      take_profit_pct: Optional[float]=None,
                      stop_loss_pct: Optional[float]=None,
+                     notes: Optional[str]=None,
                      ) -> List[TradeExecution]:
         """Open a long.
 
@@ -195,6 +196,9 @@ class PositionManager:
             1.0 is the current market price.
             If asset opening price is $1000, stop_loss_pct=0.95
             will sell the asset when price reaches 950.
+
+        :param notes:
+            Human readable notes for this trade
 
         :return:
             A list of new trades.
@@ -325,7 +329,11 @@ class PositionManager:
 
         return [trade]
 
-    def close_position(self, position: TradingPosition, trade_type: TradeType=TradeType.rebalance) -> Optional[TradeExecution]:
+    def close_position(self,
+                       position: TradingPosition,
+                       trade_type: TradeType=TradeType.rebalance,
+                       notes: Optional[str] = None,
+                       ) -> Optional[TradeExecution]:
         """Close a single position.
 
         The position may already have piled up selling trades.
@@ -337,6 +345,9 @@ class PositionManager:
 
         :param trade_type:
             What's the reason to close the position
+
+        :param notes:
+            Human readable notes for this trade
 
         :return:
             A trade that will close the position fully.
@@ -369,6 +380,7 @@ class PositionManager:
             trade_type,
             reserve_asset,
             reserve_price,  # TODO: Harcoded stablecoin USD exchange rate
+            notes=notes,
         )
         assert position == position2, "Somehow messed up the trade"
 

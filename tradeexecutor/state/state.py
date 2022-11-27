@@ -71,7 +71,9 @@ class State:
                      assumed_price: USDollarAmount,
                      trade_type: TradeType,
                      reserve_currency: AssetIdentifier,
-                     reserve_currency_price: USDollarAmount) -> Tuple[TradingPosition, TradeExecution, bool]:
+                     reserve_currency_price: USDollarAmount,
+                     notes: Optional[str] = None,
+                     ) -> Tuple[TradingPosition, TradeExecution, bool]:
         """Creates a request for a new trade.
 
         If there is no open position, marks a position open.
