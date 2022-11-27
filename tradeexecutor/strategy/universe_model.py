@@ -35,6 +35,15 @@ class StrategyExecutionUniverse:
             assert asset.token_symbol, f"Missing token symbol {asset}"
             assert asset.decimals, f"Missing token decimals {asset}"
 
+    def get_reserve_asset(self) -> AssetIdentifier:
+        """Get the default reserve asset.
+
+        :raise AssertionError:
+            If we have multiple reserve assets (unsupported)
+        """
+        assert len(self.reserve_assets) == 1
+        return self.reserve_assets[0]
+
 
 @dataclass
 class UniverseOptions:

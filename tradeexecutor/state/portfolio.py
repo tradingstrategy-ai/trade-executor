@@ -135,7 +135,12 @@ class Portfolio:
             result[p.pair.internal_id] = p.get_quantity()
         return result
 
-    def open_new_position(self, ts: datetime.datetime, pair: TradingPairIdentifier, assumed_price: USDollarAmount, reserve_currency: AssetIdentifier, reserve_currency_price: USDollarAmount) -> TradingPosition:
+    def open_new_position(self,
+                          ts: datetime.datetime,
+                          pair: TradingPairIdentifier,
+                          assumed_price: USDollarAmount,
+                          reserve_currency: AssetIdentifier,
+                          reserve_currency_price: USDollarAmount) -> TradingPosition:
         p = TradingPosition(
             position_id=self.next_position_id,
             opened_at=ts,
