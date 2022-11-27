@@ -46,10 +46,10 @@ BAD_VALUE_TYPES = (
 
 def validate_state_value(name: str | int, val: Any):
     if not isinstance(val, ALLOWED_VALUE_TYPES):
-        raise BadStateData(f"Bad value {name}: {val} ({type(val)}")
+        raise BadStateData(f"{name}: {val} ({type(val)} - value type is not in supported serialisable types")
 
     if isinstance(val, BAD_VALUE_TYPES):
-        raise BadStateData(f"Bad value {name}: {val} ({type(val)}")
+        raise BadStateData(f"{name}: {val} ({type(val)} - blacklisted value type")
 
 
 def walk(name, val):
@@ -64,7 +64,7 @@ def walk(name, val):
         else:
             validate_state_value(name, val)
     except BadStateData as e:
-        raise BadStateData(f"Key {name} contained bad value") from e
+        raise BadStateData(f"'{name}' key has errors") from e
 
 
 def validate_nested_state_dict(d: dict | list | object):
