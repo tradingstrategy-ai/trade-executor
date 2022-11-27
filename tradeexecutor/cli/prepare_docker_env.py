@@ -28,11 +28,10 @@ REQUIRED_LIVE_TRADING_ENV = [
     # "DISCORD_WEBHOOK_URL",
     ("JSON_RPC_BINANCE", "JSON_RPC_POLYGON", "JSON_RPC_ETHEREUM", "JSON_RPC_AVALANCHE"),
 
-    # Public options needed
+    # Public options required
     "NAME",
     "HTTP_ENABLED",
     "STRATEGY_FILE",
-    "GAS_PRICE_METHOD",
     "EXECUTION_TYPE"
 ]
 
