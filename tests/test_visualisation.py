@@ -8,6 +8,7 @@ import pytest
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.state import State
+from tradeexecutor.state.validator import validate_state_serialisation
 from tradeexecutor.state.visualisation import PlotKind
 from tradeexecutor.testing.synthetic_price_data import generate_ohlcv_candles
 from tradeexecutor.testing.dummy_trader import DummyTestTrader
@@ -93,6 +94,8 @@ def test_visualise_trades_with_indicator(usdc, weth, weth_usdc):
     pos, trade = trader.sell_with_price_data(weth_usdc, sell_q_2, candle_universe)
     assert pos.get_quantity() == 0
     state.visualisation.plot_indicator(trader.ts, "Test indicator", PlotKind.technical_indicator_on_price, 1700, colour="azure")
+
+    validate_state_serialisation(state)
 
     assert len(list(state.portfolio.get_all_trades())) == 3
     assert len(state.portfolio.open_positions) == 0
