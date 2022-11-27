@@ -368,6 +368,7 @@ class TradeSummary:
     end_value: USDollarAmount = field(init=False)
 
     def __post_init__(self):
+
         self.total_trades = self.won + self.lost + self.zero_loss
         self.win_percent = calculate_percentage(self.won, self.total_trades)
         self.return_percent = calculate_percentage(self.realised_profit, self.initial_cash)
@@ -502,12 +503,12 @@ class TradeAnalysis:
             profit += position.realised_profit
 
         if len(winning_trades) > 0:
-            average_winning_trade_profit_pc = np.mean(winning_trades)
+            average_winning_trade_profit_pc = float(np.mean(winning_trades))
         else:
             average_winning_trade_profit_pc = 0
 
         if len(losing_trades) > 0:
-            average_losing_trade_loss_pc = np.mean(losing_trades)
+            average_losing_trade_loss_pc = float(np.mean(losing_trades))
         else:
             average_losing_trade_loss_pc = 0
 
@@ -518,10 +519,10 @@ class TradeAnalysis:
             biggest_losing_trade_pc = min(losing_trades)
 
         if winning_trades_duration:
-            average_duration_of_winning_trades = np.mean(winning_trades_duration)
+            average_duration_of_winning_trades = np.mean(winning_trades_duration).to_pytimedelta()
 
         if losing_trades_duration:
-            average_duration_of_losing_trades = np.mean(losing_trades_duration)
+            average_duration_of_losing_trades = np.mean(losing_trades_duration).to_pytimedelta()
 
         return TradeSummary(
             won=won,

@@ -72,7 +72,7 @@ def walk(name: str | int, val: dict | list | object):
         else:
             validate_state_value(name, val)
     except BadStateData as e:
-        raise BadStateData(f"'{name}' key has errors") from e
+        raise BadStateData(f"'{name}' ({val.__class__}) key has errors") from e
 
 
 def validate_nested_state_dict(d: dict | list | object):
