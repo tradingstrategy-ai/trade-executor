@@ -1,4 +1,4 @@
-"""Timestamp helpers"""
+"""Timestamp  and timedelta helpers"""
 import calendar
 import datetime
 from typing import Union

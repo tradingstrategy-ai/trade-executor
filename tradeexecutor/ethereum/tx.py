@@ -65,6 +65,8 @@ class TransactionBuilder:
             "gas": gas_limit,
         })
 
+        logger.info("Signing transactions using gas gee method %s for %s", self.gas_fees, tx)
+
         apply_gas(tx, self.gas_fees)
 
         signed_tx = self.hot_wallet.sign_transaction_with_new_nonce(tx)
