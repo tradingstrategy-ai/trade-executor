@@ -9,8 +9,13 @@ from queue import Queue
 from typing import Optional, Callable, List
 
 import pandas as pd
-from apscheduler.executors.pool import ThreadPoolExecutor
-from apscheduler.schedulers.blocking import BlockingScheduler
+
+try:
+    from apscheduler.executors.pool import ThreadPoolExecutor
+    from apscheduler.schedulers.blocking import BlockingScheduler
+except ImportError:
+    # apscheduler is only required in live trading
+    pass
 
 try:
     from tqdm_loggable.auto import tqdm
