@@ -195,7 +195,9 @@ class Portfolio:
                      assumed_price: USDollarAmount,
                      trade_type: TradeType,
                      reserve_currency: AssetIdentifier,
-                     reserve_currency_price: USDollarAmount) -> Tuple[TradingPosition, TradeExecution, bool]:
+                     reserve_currency_price: USDollarAmount,
+                     notes: Optional[str] = None,
+                     ) -> Tuple[TradingPosition, TradeExecution, bool]:
         """Create a trade.
 
         Trade can be opened by knowing how much you want to buy (quantity) or how much cash you have to buy (reserve).
@@ -222,6 +224,10 @@ class Portfolio:
             trade_type,
             reserve_currency,
             reserve_currency_price)
+
+        # Udpate notes
+        trade.notes = notes
+        position.notes = notes
 
         # Check we accidentally do not reuse trade id somehow
 

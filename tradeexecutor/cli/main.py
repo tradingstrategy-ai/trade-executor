@@ -84,7 +84,7 @@ def create_web3_config(
     json_rpc_polygon,
     json_rpc_avalanche,
     json_rpc_ethereum,
-    gas_price_method: Optional[GasPriceMethod],
+    gas_price_method: Optional[GasPriceMethod]=None,
 ) -> Optional[Web3Config]:
     """Create Web3 connection to the live node we are executing against.
 
@@ -92,10 +92,6 @@ def create_web3_config(
         Connect to any passed JSON RPC URL
 
     """
-
-    if not gas_price_method:
-        gas_price_method = GasPriceMethod.london
-
     web3config = Web3Config.setup_from_environment(
         gas_price_method,
         json_rpc_ethereum=json_rpc_ethereum,
@@ -217,6 +213,11 @@ def monkey_patch():
     patch_dataclasses_json()
 
 
+# Run this during the module loading so that it is
+# applied to all subcommands
+monkey_patch()
+
+
 # Typer documentation https://typer.tiangolo.com/
 @app.command()
 def start(
@@ -246,7 +247,7 @@ def start(
     json_rpc_polygon: str = typer.Option(None, envvar="JSON_RPC_POLYGON", help="Polygon JSON-RPC node URL we connect to"),
     json_rpc_ethereum: str = typer.Option(None, envvar="JSON_RPC_ETHEREUM", help="Ethereum JSON-RPC node URL we connect to"),
     json_rpc_avalanche: str = typer.Option(None, envvar="JSON_RPC_AVALANCHE", help="Avalanche C-chain JSON-RPC node URL we connect to"),
-    gas_price_method: Optional[GasPriceMethod] = typer.Option("legacy", envvar="GAS_PRICE_METHOD", help="How to set the gas price for Ethereum transactions. After the Berlin hardfork Ethereum mainnet introduced base + tip cost gas model."),
+    gas_price_method: Optional[GasPriceMethod] = typer.Option(None, envvar="GAS_PRICE_METHOD", help="How to set the gas price for Ethereum transactions. After the Berlin hardfork Ethereum mainnet introduced base + tip cost gas model. Leave out to autodetect."),
     confirmation_timeout: int = typer.Option(900, envvar="CONFIRMATION_TIMEOUT", help="How many seconds to wait for transaction batches to confirm"),
     confirmation_block_count: int = typer.Option(8, envvar="CONFIRMATION_BLOCK_COUNT", help="How many blocks we wait before we consider transaction receipt a final"),
     private_key: Optional[str] = typer.Option(None, envvar="PRIVATE_KEY", help="Ethereum private key to be used as a hot wallet/broadcast wallet"),
@@ -320,8 +321,6 @@ def start(
             f"executor-{id}",  # Always prefix logged with executor id
             quiet=False,
         )
-
-    monkey_patch()
 
     if not state_file:
         if execution_type != TradeExecutionType.backtest:
@@ -736,11 +735,11 @@ def perform_test_trade(
     )
 
     web3config = create_web3_config(
-        json_rpc_binance,
-        json_rpc_polygon,
-        json_rpc_avalanche,
-        json_rpc_ethereum,
-        GasPriceMethod.london,
+        json_rpc_binance=json_rpc_binance,
+        json_rpc_polygon=json_rpc_polygon,
+        json_rpc_avalanche=json_rpc_avalanche,
+        json_rpc_ethereum=json_rpc_ethereum,
+        gas_price_method=None,
     )
 
     assert web3config, "No RPC endpoints given. A working JSON-RPC connection is needed for check-wallet"
@@ -793,13 +792,18 @@ def perform_test_trade(
     runner = run_description.runner
     routing_state, pricing_model, valuation_method = runner.setup_routing(universe)
 
-
     make_test_trade(
         execution_model,
         pricing_model,
+        sync_method,
         state,
         universe,
+        runner.routing_model,
+        routing_state,
     )
+
+    # Store the test trade data in the strategy history
+    store.sync(state)
 
 
 

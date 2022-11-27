@@ -167,6 +167,7 @@ class PositionManager:
                      value: USDollarAmount,
                      take_profit_pct: Optional[float]=None,
                      stop_loss_pct: Optional[float]=None,
+                     notes: Optional[str]=None,
                      ) -> List[TradeExecution]:
         """Open a long.
 
@@ -195,6 +196,9 @@ class PositionManager:
             1.0 is the current market price.
             If asset opening price is $1000, stop_loss_pct=0.95
             will sell the asset when price reaches 950.
+
+        :param notes:
+            Human readable notes for this trade
 
         :return:
             A list of new trades.
