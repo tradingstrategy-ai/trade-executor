@@ -332,11 +332,11 @@ def start(
 
     if execution_type == TradeExecutionType.uniswap_v2_hot_wallet:
         web3config = create_web3_config(
-            json_rpc_binance,
-            json_rpc_polygon,
-            json_rpc_avalanche,
-            json_rpc_ethereum,
-            gas_price_method,
+            json_rpc_binance=json_rpc_binance,
+            json_rpc_polygon=json_rpc_polygon,
+            json_rpc_avalanche=json_rpc_avalanche,
+            json_rpc_ethereum=json_rpc_ethereum,
+            gas_price_method=None,
         )
 
         if not web3config.has_any_connection():
@@ -739,7 +739,7 @@ def perform_test_trade(
         json_rpc_polygon=json_rpc_polygon,
         json_rpc_avalanche=json_rpc_avalanche,
         json_rpc_ethereum=json_rpc_ethereum,
-        gas_price_method=gas_price_method,
+        gas_price_method=None,
     )
 
     assert web3config, "No RPC endpoints given. A working JSON-RPC connection is needed for check-wallet"
