@@ -57,6 +57,7 @@ def test_metadata(logger, server_url):
     assert data["name"] == "Foobar"
     assert data["short_description"] == "Short desc"
     assert data["icon_url"] == None
+    assert data["executor_running"] == True
 
 
 def test_cors(logger, server_url):
