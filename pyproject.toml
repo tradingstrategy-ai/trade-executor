@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "trade-executor"
-version = "0.1.1"
+version = "0.2"
 description = "Trading strategy execution and backtesting"
 authors = ["Mikko Ohtamaa <mikko@tradingstrategy.ai>"]
 homepage = "https://tradingstrategy.ai"
