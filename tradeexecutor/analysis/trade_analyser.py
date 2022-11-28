@@ -26,6 +26,7 @@ from typing import List, Dict, Iterable, Optional, Tuple, Callable, Set
 import numpy as np
 import pandas as pd
 from dataclasses_json import dataclass_json, Exclude, config
+from statistics import median
 
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.trade import TradeExecution, TradeType
@@ -367,6 +368,18 @@ class TradeSummary:
     average_net_profit: USDollarAmount = field(init=False)
     end_value: USDollarAmount = field(init=False)
 
+    # used if raw_timeline is provided as argument to calculate_summary_statistics
+    average_trade: Optional[float] = None
+    median_trade: Optional[float] = None
+    biggest_win: Optional[float] = None
+    biggest_loss: Optional[float] = None
+    max_pos_cons: Optional[int] = None
+    max_neg_cons: Optional[int] = None
+    max_pullback: Optional[float] = None
+    max_capital_at_risk_sl: Optional[float] = None
+    max_realised_loss: Optional[float] = None
+    avg_realised_risk: Optional[float] = None
+
     def __post_init__(self):
 
         self.total_trades = self.won + self.lost + self.zero_loss
@@ -381,32 +394,78 @@ class TradeSummary:
 
     def to_dataframe(self) -> pd.DataFrame:
         """Creates a human-readable Pandas dataframe table from the object."""
-        human_data = {
-            "Trading period length": as_duration(self.duration),
-            "Return %": as_percent(self.return_percent),
-            "Annualised return %": as_percent(self.annualised_return_percent),
-            "Cash at start": as_dollar(self.initial_cash),
-            "Value at end": as_dollar(self.end_value),
-            "Trade win percent": as_percent(self.win_percent),
-            "Total trades done": as_integer(self.total_trades),
-            "Won trades": as_integer(self.won),
-            "Lost trades": as_integer(self.lost),
-            "Stop losses triggered": as_integer(self.stop_losses),
-            "Stop loss % of all": as_percent(self.all_stop_loss_percent),
-            "Stop loss % of lost": as_percent(self.lost_stop_loss_percent),
-            "Zero profit trades": as_integer(self.zero_loss),
-            "Positions open at the end": as_integer(self.undecided),
-            "Realised profit and loss": as_dollar(self.realised_profit),
-            "Portfolio unrealised value": as_dollar(self.open_value),
-            "Extra returns on lending pool interest": as_dollar(self.extra_return),
-            "Cash left at the end": as_dollar(self.uninvested_cash),
-            "Average winning trade profit %": as_percent(self.average_winning_trade_profit_pc),
-            "Average losing trade loss %": as_percent(self.average_losing_trade_loss_pc),
-            "Biggest winning trade %": as_percent(self.biggest_winning_trade_pc),
-            "Biggest losing trade %": as_percent(self.biggest_losing_trade_pc),
-            "Average duration of winning trades": as_duration(self.average_duration_of_winning_trades),
-            "Average duration of losing trades": as_duration(self.average_duration_of_losing_trades)
-        }
+
+        extra_params = [
+            self.average_trade, self.median_trade, self.biggest_win, self.biggest_loss, 
+            self.max_pos_cons, self.max_neg_cons, self.max_pullback, self.max_capital_at_risk_sl, 
+            self.max_realised_loss, self.avg_realised_risk
+        ]
+
+        if None in extra_params:
+            human_data = {
+                "Trading period length": as_duration(self.duration),
+                "Return %": as_percent(self.return_percent),
+                "Annualised return %": as_percent(self.annualised_return_percent),
+                "Cash at start": as_dollar(self.initial_cash),
+                "Value at end": as_dollar(self.end_value),
+                "Trade win percent": as_percent(self.win_percent),
+                "Total trades done": as_integer(self.total_trades),
+                "Won trades": as_integer(self.won),
+                "Lost trades": as_integer(self.lost),
+                "Stop losses triggered": as_integer(self.stop_losses),
+                "Stop loss % of all": as_percent(self.all_stop_loss_percent),
+                "Stop loss % of lost": as_percent(self.lost_stop_loss_percent),
+                "Zero profit trades": as_integer(self.zero_loss),
+                "Positions open at the end": as_integer(self.undecided),
+                "Realised profit and loss": as_dollar(self.realised_profit),
+                "Portfolio unrealised value": as_dollar(self.open_value),
+                "Extra returns on lending pool interest": as_dollar(self.extra_return),
+                "Cash left at the end": as_dollar(self.uninvested_cash),
+                "Average winning trade profit %": as_percent(self.average_winning_trade_profit_pc),
+                "Average losing trade loss %": as_percent(self.average_losing_trade_loss_pc),
+                "Biggest winning trade %": as_percent(self.biggest_winning_trade_pc),
+                "Biggest losing trade %": as_percent(self.biggest_losing_trade_pc),
+                "Average duration of winning trades": as_duration(self.average_duration_of_winning_trades),
+                "Average duration of losing trades": as_duration(self.average_duration_of_losing_trades),
+            }
+        else:
+            human_data = {
+                "Trading period length": as_duration(self.duration),
+                "Return %": as_percent(self.return_percent),
+                "Annualised return %": as_percent(self.annualised_return_percent),
+                "Cash at start": as_dollar(self.initial_cash),
+                "Value at end": as_dollar(self.end_value),
+                "Trade win percent": as_percent(self.win_percent),
+                "Total trades done": as_integer(self.total_trades),
+                "Won trades": as_integer(self.won),
+                "Lost trades": as_integer(self.lost),
+                "Stop losses triggered": as_integer(self.stop_losses),
+                "Stop loss % of all": as_percent(self.all_stop_loss_percent),
+                "Stop loss % of lost": as_percent(self.lost_stop_loss_percent),
+                "Zero profit trades": as_integer(self.zero_loss),
+                "Positions open at the end": as_integer(self.undecided),
+                "Realised profit and loss": as_dollar(self.realised_profit),
+                "Portfolio unrealised value": as_dollar(self.open_value),
+                "Extra returns on lending pool interest": as_dollar(self.extra_return),
+                "Cash left at the end": as_dollar(self.uninvested_cash),
+                "Average winning trade profit %": as_percent(self.average_winning_trade_profit_pc),
+                "Average losing trade loss %": as_percent(self.average_losing_trade_loss_pc),
+                "Biggest winning trade %": as_percent(self.biggest_winning_trade_pc),
+                "Biggest losing trade %": as_percent(self.biggest_losing_trade_pc),
+                "Average duration of winning trades": as_duration(self.average_duration_of_winning_trades),
+                "Average duration of losing trades": as_duration(self.average_duration_of_losing_trades),
+                
+                "Average trade": as_percent(self.average_trade),
+                "Median trade": as_percent(self.median_trade),
+                "Biggest win": as_percent(self.biggest_win),
+                "Biggest loss": as_percent(self.biggest_loss),
+                "Consecutive wins": as_integer(self.max_pos_cons),
+                "Consective losses": as_integer(self.max_neg_cons),
+                "Max capital at risk at SL": as_percent(self.max_capital_at_risk_sl),
+                "Biggest realised risk": as_percent(self.max_realised_loss),
+                "Avg realised risk": as_percent(self.avg_realised_risk),
+                "Max pullback of total capital": as_percent(self.max_pullback)
+            }
         return create_summary_table(human_data)
 
 
@@ -447,9 +506,19 @@ class TradeAnalysis:
             for position in history.positions:
                 if position.is_open():
                     yield pair_id, position
+    
+    def calculate_summary_statistics(self, raw_timeline: Optional[pd.DataFrame] = None, stop_loss_pct: Optional[float] = None) -> TradeSummary:
+        """Calculate some statistics how our trades went.
+            raw_timeline and stop_loss_pct need only be provided if user wants complete list of summary statistics,
+            otherwise, the user will receive a shortened list of stats.
 
-    def calculate_summary_statistics(self, timeline: Optional[pd.DataFrame] = None) -> TradeSummary:
-        """Calculate some statistics how our trades went."""
+            :param raw_timeline:
+            Created from the expand_timeline_raw() method, it only returns raw data instead of formatted strings
+            which allows easy statistical calculations for when summary stats depend on timeline.
+            
+            :param stop_loss_pct:
+            stop loss percentage
+        """
 
         initial_cash = self.portfolio.get_initial_deposit()
 
@@ -524,28 +593,85 @@ class TradeAnalysis:
         if losing_trades_duration:
             average_duration_of_losing_trades = np.mean(losing_trades_duration).to_pytimedelta()
 
-        if timeline is not None:
-            pass
+        # If timeline is not provided, then don't calculate full statistics        
+        if raw_timeline is None:
+            return TradeSummary(
+                won=won,
+                lost=lost,
+                zero_loss=zero_loss,
+                stop_losses=stop_losses,
+                undecided=undecided,
+                realised_profit=profit + extra_return,
+                open_value=open_value,
+                uninvested_cash=uninvested_cash,
+                initial_cash=initial_cash,
+                extra_return=extra_return,
+                duration=duration,
+                average_winning_trade_profit_pc=average_winning_trade_profit_pc,
+                average_losing_trade_loss_pc=average_losing_trade_loss_pc,
+                biggest_winning_trade_pc=biggest_winning_trade_pc,
+                biggest_losing_trade_pc=biggest_losing_trade_pc,
+                average_duration_of_winning_trades=average_duration_of_winning_trades,
+                average_duration_of_losing_trades=average_duration_of_losing_trades,
+            )
+        else:
+            if stop_loss_pct is None:
+                raise ValueError("Missing argument: if raw_timeline is provided, then stop loss must also be provided")
 
-        return TradeSummary(
-            won=won,
-            lost=lost,
-            zero_loss=zero_loss,
-            stop_losses=stop_losses,
-            undecided=undecided,
-            realised_profit=profit + extra_return,
-            open_value=open_value,
-            uninvested_cash=uninvested_cash,
-            initial_cash=initial_cash,
-            extra_return=extra_return,
-            duration=duration,
-            average_winning_trade_profit_pc=average_winning_trade_profit_pc,
-            average_losing_trade_loss_pc=average_losing_trade_loss_pc,
-            biggest_winning_trade_pc=biggest_winning_trade_pc,
-            biggest_losing_trade_pc=biggest_losing_trade_pc,
-            average_duration_of_winning_trades=average_duration_of_winning_trades,
-            average_duration_of_losing_trades=average_duration_of_losing_trades,
-        )
+            all_trades = raw_timeline['pnl_pct_raw']
+            average_trade = self.avg(all_trades)
+
+            median_trade = median(all_trades)
+
+            biggest_win = max(all_trades)
+            biggest_loss = min(all_trades)
+
+            max_cons = self.get_max_consective(all_trades)
+            max_pos_cons = max_cons['max_pos_cons']
+            max_neg_cons = max_cons['max_neg_cons']
+            max_pullback = max_cons['max_pullback']
+
+            # Max capital at risk at SL (don't confuse stop_losses and _stop_losses)
+            _stop_losses = raw_timeline.loc[raw_timeline['Remarks'] == 'SL']
+            max_capital_at_risk_sl = max(((1-stop_loss_pct)*_stop_losses['position_max_size'])/_stop_losses['opening_capital'])
+
+            # Biggest realized loss
+            losses = raw_timeline.loc[raw_timeline['pnl_usd'] < 0]
+            realised_losses = losses['pnl_usd']/losses['opening_capital']
+            max_realised_loss = min(realised_losses)
+
+            # average realised risk
+            avg_realised_risk = self.avg(realised_losses)
+
+            return TradeSummary(
+                won=won,
+                lost=lost,
+                zero_loss=zero_loss,
+                stop_losses=stop_losses,
+                undecided=undecided,
+                realised_profit=profit + extra_return,
+                open_value=open_value,
+                uninvested_cash=uninvested_cash,
+                initial_cash=initial_cash,
+                extra_return=extra_return,
+                duration=duration,
+                average_winning_trade_profit_pc=average_winning_trade_profit_pc,
+                average_losing_trade_loss_pc=average_losing_trade_loss_pc,
+                biggest_winning_trade_pc=biggest_winning_trade_pc,
+                biggest_losing_trade_pc=biggest_losing_trade_pc,
+                average_duration_of_winning_trades=average_duration_of_winning_trades,
+                average_duration_of_losing_trades=average_duration_of_losing_trades,
+                average_trade=average_trade,
+                median_trade=median_trade,
+                biggest_win=biggest_win,
+                biggest_loss=biggest_loss,
+                max_pos_cons=max_pos_cons,
+                max_neg_cons=max_neg_cons,
+                max_pullback=max_pullback,
+                max_capital_at_risk_sl=max_capital_at_risk_sl,
+                max_realised_loss=max_realised_loss,
+                avg_realised_risk=avg_realised_risk,
+            )
 
     def create_timeline(self) -> pd.DataFrame:
         """Create a timeline feed how we traded over a course of time.
@@ -561,6 +687,40 @@ class TradeAnalysis:
 
         df = pd.DataFrame(gen_events(), columns=["position_id", "position"])
         return df
+
+    # may be used in calculate_summary_statistics
+    @staticmethod
+    def get_max_consective(lst: list[float]):
+        max_pos_cons = 0
+        max_neg_cons = 0
+        max_pullback = 0
+        pos_cons = 0
+        neg_cons = 0
+        pullback = 0
+        
+        counter = 0
+        for item in lst:
+                if(item > 0):
+                        neg_cons = 0
+                        pullback = 0
+                        pos_cons += 1
+                else:
+                        pos_cons = 0
+                        neg_cons += 1
+                        pullback += item
+                if(neg_cons > max_neg_cons):
+                        max_neg_cons = neg_cons
+                if(pos_cons > max_neg_cons):
+                        max_pos_cons = pos_cons
+                if(pullback < max_pullback):
+                        # pull back is in the negative direction
+                        max_pullback = pullback
+                counter += 1
+        return {'max_pos_cons':max_pos_cons, 'max_neg_cons':max_neg_cons, 'max_pullback':max_pullback}
+    
+    @staticmethod
+    def avg(lst: list[int]):
+        return sum(lst) / len(lst)
 
 class TimelineRowStylingMode(enum.Enum):
     #: Style using Pandas background_gradient
