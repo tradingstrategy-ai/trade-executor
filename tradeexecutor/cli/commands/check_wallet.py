@@ -8,16 +8,18 @@ import typer
 from web3 import Web3
 
 from eth_defi.balances import fetch_erc20_balances_by_token_list
+from eth_defi.gas import GasPriceMethod
 from eth_defi.hotwallet import HotWallet
 from eth_defi.token import fetch_erc20_details
 from tradingstrategy.client import Client
 from .app import app
-from ..init import prepare_executor_id, prepare_cache, create_web3_config
+from ..init import prepare_executor_id, prepare_cache, create_web3_config, create_trade_execution_model
 from ..log import setup_logging
 from ...strategy.approval import UncheckedApprovalModel
 from ...strategy.bootstrap import make_factory_from_strategy_mod
 from ...strategy.description import StrategyExecutionDescription
 from ...strategy.execution_context import ExecutionContext, ExecutionMode
+from ...strategy.execution_model import TradeExecutionType
 from ...strategy.strategy_module import read_strategy_module
 from ...strategy.trading_strategy_universe import TradingStrategyUniverseModel
 from ...strategy.universe_model import UniverseOptions
@@ -69,11 +71,11 @@ def check_wallet(
     )
 
     web3config = create_web3_config(
-        json_rpc_binance,
-        json_rpc_polygon,
-        json_rpc_avalanche,
-        json_rpc_ethereum,
-        GasPriceMethod.london,
+        gas_price_method=None,
+        json_rpc_binance=json_rpc_binance,
+        json_rpc_polygon=json_rpc_polygon,
+        json_rpc_avalanche=json_rpc_avalanche,
+        json_rpc_ethereum=json_rpc_ethereum,
     )
 
     assert web3config, "No RPC endpoints given. A working JSON-RPC connection is needed for check-wallet"

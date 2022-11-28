@@ -210,7 +210,14 @@ def start(
 
     # Create our webhook server
     if http_enabled:
-        server = create_webhook_server(http_host, http_port, http_username, http_password, command_queue, store, metadata)
+        server = create_webhook_server(
+            http_host,
+            http_port,
+            http_username,
+            http_password,
+            command_queue,
+            store,
+            metadata)
     else:
         logger.info("Web server disabled")
         server = None

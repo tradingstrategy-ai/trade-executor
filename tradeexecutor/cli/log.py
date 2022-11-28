@@ -16,6 +16,7 @@ except ImportError:
     # test_optional_dependencies.py
     pass
 
+
 def setup_logging(log_level=logging.INFO) -> Logger:
     """Setup root logger and quiet some levels."""
 

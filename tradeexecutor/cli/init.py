@@ -17,6 +17,8 @@ from tradeexecutor.backtest.simulated_wallet import SimulatedWallet
 from tradeexecutor.cli.approval import CLIApprovalModel
 from tradeexecutor.ethereum.hot_wallet_sync import EthereumHotWalletReserveSyncer
 from tradeexecutor.ethereum.uniswap_v2_execution import UniswapV2ExecutionModel
+from tradeexecutor.ethereum.uniswap_v2_live_pricing import uniswap_v2_live_pricing_factory
+from tradeexecutor.ethereum.uniswap_v2_valuation import uniswap_v2_sell_valuation_factory
 from tradeexecutor.ethereum.web3config import Web3Config
 from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
 from tradeexecutor.state.metadata import Metadata

@@ -32,7 +32,7 @@ def make_test_trade(
     our trade routing works.
     """
 
-    ts = datetime.datetime.utcnow()\
+    ts = datetime.datetime.utcnow()
 
     # Sync nonce for the hot wallet
     execution_model.initialize()
