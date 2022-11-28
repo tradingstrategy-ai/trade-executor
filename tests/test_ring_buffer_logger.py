@@ -1,20 +1,26 @@
+"""Test in-memory logging solution."""
+
+import json
 import logging
+from pprint import pprint
 
 from tradeexecutor.cli.log import setup_custom_log_levels
 from tradeexecutor.utils.ring_buffer_logging_handler import RingBufferHandler
 
 
 def test_ring_buffer_logger():
-
+    """Test our in-house in-memory logging solution."""
     setup_custom_log_levels()
 
     logger = logging.getLogger(__name__)
-    handler = RingBufferHandler()
-    logger.addHandler()
+    handler = RingBufferHandler(level=logging.DEBUG)
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
 
     try:
         raise RuntimeError("Abort")
     except Exception as e:
+        # Records msg=Abort
         logger.exception(e)
 
     logger.warning("warning")
@@ -22,5 +28,20 @@ def test_ring_buffer_logger():
     logger.debug("debug")
     logger.trade("trade")
     logger.info("Info level message")
+    logger.info("Foo %d, bar %d", 1, 2)
 
     data = handler.export()
+
+    # Check we get the correct order
+    pprint(data)
+    assert data[-1]["level"] == "info"
+    assert data[-1]["message"] == "Foo 1, bar 2"
+
+    assert data[0]["level"] == "error"
+    assert data[0]["message"] == "RuntimeError('Abort')"
+
+    # Check that we can serialise JSON
+    json.dumps(data)
+
+    logger.removeHandler(handler)
+

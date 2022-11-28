@@ -66,7 +66,7 @@ def setup_logging(log_level=logging.INFO, in_memory_buffer=False) -> Logger:
     logging.getLogger("ddtrace").setLevel(logging.INFO)
 
     if in_memory_buffer:
-        ring_buffer_handler  = RingBufferHandler()
+        ring_buffer_handler  = RingBufferHandler(logging.INFO)
         logger.addHandler(ring_buffer_handler)
 
     return logger

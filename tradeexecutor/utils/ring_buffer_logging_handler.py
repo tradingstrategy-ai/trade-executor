@@ -5,20 +5,30 @@ Allows any process to fetch the latest logs from the process itself.
 
 from collections import deque
 from logging import Handler, LogRecord, NOTSET
-from typing import Deque, List, TypedDict
+from typing import Deque, List, TypedDict, Optional
+
+from tblib import Traceback
 
 
 class ExportedRecord(TypedDict):
-    """One exported entry in the ring buffer logs."""
+    """One exported entry in the ring buffer logs.
+
+    TODO: Add traceback support
+    """
 
     #: UTC unix timestamp when this was recordded
     timestamp: float
 
-    #: Symbolic log level
+    #: Symbolic log level, lowercase
     level: str
 
     #: Log message, formatted
     message: str
+
+    exception_type: Optional[str] = None
+
+    #: Log message, formatted
+    traceback_data: Optional[dict] = None
 
     @staticmethod
     def get_symbolic_log_level(log_level: int) -> str:
@@ -28,10 +38,23 @@ class ExportedRecord(TypedDict):
     @staticmethod
     def export(record: LogRecord) -> "ExportedRecord":
         """Export single log record as dict."""
+
+        # Massage data a bit
+        if record.exc_info:
+            et, ev, tb = record.exc_info
+            traceback_data = Traceback(tb).to_dict()
+            exception_type = str(et)
+            message = repr(record.msg)  # This is exception message in Python developer format
+        else:
+            exception_type = traceback_data = None
+            message = record.getMessage()  # Expand log args
+
         return {
             "timestamp": record.created,
-            "level": record.levelname,
-            "message": record.getMessage(),
+            "level": record.levelname.lower(),
+            "message": message,
+            "exception_type": exception_type,
+            "traceback_data": traceback_data,
         }
 
 
