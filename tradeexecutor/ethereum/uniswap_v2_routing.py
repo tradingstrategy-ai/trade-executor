@@ -6,6 +6,7 @@ from decimal import Decimal
 from typing import Dict, Set, List, Optional, Tuple
 
 from eth_typing import HexAddress, ChecksumAddress
+from tradingstrategy.chain import ChainId
 from web3 import Web3
 from web3.contract import Contract
 
@@ -251,6 +252,7 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
                  factory_router_map: Dict[str, Tuple[str, Optional[str]]],
                  allowed_intermediary_pairs: Dict[str, str],
                  reserve_token_address: str,
+                 chain_id: Optional[ChainId] = None,
                  ):
         """
         :param factory_router_map:
@@ -269,6 +271,9 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
             This set is the list of pair smart contract addresses that
             are allowed to be used as a hop.
 
+        :parma chain_id:
+            Store the chain id for which these routes were generated for.
+
         :param reserve_token_address:
             Token address of our reserve currency.
             Relevent for buy/sell routing.
@@ -286,6 +291,7 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
         self.factory_router_map = {k.lower(): v for k, v in factory_router_map.items()}
         self.allowed_intermediary_pairs = {k.lower(): v.lower() for k, v in allowed_intermediary_pairs.items()}
         self.reserve_token_address = reserve_token_address
+        self.chain_id = chain_id
 
     def get_reserve_asset(self, pair_universe: PandasPairUniverse) -> AssetIdentifier:
         """Translate our reserve token address tok an asset description."""
