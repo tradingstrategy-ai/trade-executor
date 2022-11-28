@@ -25,10 +25,10 @@ class ExportedRecord(TypedDict):
     #: Log message, formatted
     message: str
 
-    exception_type: Optional[str] = None
+    exception_type: Optional[str]
 
     #: Log message, formatted
-    traceback_data: Optional[dict] = None
+    traceback_data: Optional[dict]
 
     @staticmethod
     def get_symbolic_log_level(log_level: int) -> str:

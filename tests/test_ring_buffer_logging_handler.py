@@ -20,7 +20,6 @@ def test_ring_buffer_logger():
     try:
         raise RuntimeError("Big Bada Boom")
     except Exception as e:
-        # Records msg=Abort
         logger.exception(e)
 
     logger.warning("warning")
