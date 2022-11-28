@@ -20,7 +20,7 @@ except ImportError:
 
 
 #: Stored here as a global so that we can later call RingBufferHandler.export()
-ring_buffer_handler: Optional[RingBufferHandler] = None
+_ring_buffer_handler: Optional[RingBufferHandler] = None
 
 
 def setup_logging(log_level=logging.INFO, in_memory_buffer=False) -> Logger:
@@ -29,9 +29,6 @@ def setup_logging(log_level=logging.INFO, in_memory_buffer=False) -> Logger:
     :param in_memory_buffer:
         Setup in-memory log buffer used to fetch log messages to the frontend.
     """
-
-    global ring_buffer_handler
-
     setup_custom_log_levels()
 
     logger = logging.getLogger()
@@ -66,10 +63,19 @@ def setup_logging(log_level=logging.INFO, in_memory_buffer=False) -> Logger:
     logging.getLogger("ddtrace").setLevel(logging.INFO)
 
     if in_memory_buffer:
-        ring_buffer_handler  = RingBufferHandler(logging.INFO)
-        logger.addHandler(ring_buffer_handler)
+        setup_in_memory_logging(logger)
 
     return logger
+
+
+def setup_in_memory_logging(logger):
+    global _ring_buffer_handler
+    _ring_buffer_handler = RingBufferHandler(logging.INFO)
+    logger.addHandler(_ring_buffer_handler)
+
+
+def get_ring_buffer_handler() -> RingBufferHandler:
+    return _ring_buffer_handler
 
 
 def setup_pytest_logging(request=None, mute_requests=True) -> logging.Logger:
