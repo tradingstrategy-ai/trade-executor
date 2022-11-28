@@ -8,7 +8,6 @@ from pathlib import Path
 import pytest
 import requests
 from hexbytes import HexBytes
-from urllib3.exceptions import MaxRetryError
 
 
 @pytest.fixture()
@@ -31,7 +30,12 @@ def test_main_loop_crash(
     strategy_path,
     hot_wallet_private_key
 ):
-    """Check that we can capture main loop crashes correctly."""
+    """Check that we can capture main loop crashes correctly.
+
+    - Webhook server tells main loop is alive
+
+    - Webhook server tells the  main loop has crashed
+    """
 
     port = 5001  # Randomly picked
     server = f"http://localhost:{port}"
@@ -143,7 +147,3 @@ def test_main_loop_crash(
             output += pipes[1].decode("utf-8")
             print(f"trade-executor exited {proc.returncode}, output:")
             print(output)
-
-
-
-
