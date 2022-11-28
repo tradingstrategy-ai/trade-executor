@@ -1,0 +1,58 @@
+"""A Python logger that keeps logs in a ring buffer in-memory.
+
+Allows any process to fetch the latest logs from the process itself.
+"""
+
+from collections import deque
+from logging import Handler, LogRecord
+from typing import Deque, List, TypedDict
+
+
+class ExportedRecord(TypedDict):
+    """One exported entry in the ring buffer logs."""
+
+    #: UTC unix timestamp when this was recordded
+    timestamp: float
+
+    #: Symbolic log level
+    level: str
+
+    #: Log message, formatted
+    message: str
+
+    @staticmethod
+    def get_symbolic_log_level(log_level: int) -> str:
+        level = LogRecord(log_level)
+        return level.name
+
+    @staticmethod
+    def export(record: LogRecord) -> "ExportedRecord":
+        """Export single log record as dict."""
+
+        return {
+            "timestamp": record.created,
+            "level": record.levelname,
+            "message": record.getMessage(),
+        }
+
+
+class RingBufferLogger(Handler):
+    """Keep N log entries in the memory."""
+
+    def __init__(self, buffer_size: int=2_000):
+        """By default, store 2000 log messates."""
+        # https://stackoverflow.com/a/4151368/315168
+        self.buffer: Deque[LogRecord] = deque([], maxlen=buffer_size)
+
+    def emit(self, record: LogRecord):
+        self.buffer.append(record)
+
+    def export(self) -> List[ExportedRecord]:
+        """Export all log entries in a format suitable for JSON serialisation.
+
+        :return:
+            Log records sorted by timestamp, for oldest to newest
+        """
+        records = [ExportedRecord.export(r) for r in self.buffer]
+        records.sort(key=lambda r: r["timestamp"])
+        return records

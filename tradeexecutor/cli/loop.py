@@ -92,7 +92,7 @@ class ExecutionLoop:
             stop_loss_check_frequency: Optional[TimeBucket] = None,
             tick_offset: datetime.timedelta=datetime.timedelta(minutes=0),
             trade_immediately=False,
-            execution_state: ExecutionState,
+            execution_state: Optional[ExecutionState]=None,
     ):
         """See main.py for details."""
 

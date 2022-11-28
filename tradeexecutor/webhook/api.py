@@ -45,6 +45,14 @@ def web_metadata(request: Request):
     Executor metadata.
     """
     metadata: Metadata = request.registry["metadata"]
+    execution_state: ExecutionState = request.registry["execution_state"]
+
+    # Retrofitted with the running flag,
+    # not really a nice API design.
+    # Do not mutate a global state in place/
+    metadata = Metadata(**metadata.to_dict())
+    metadata.executor_running = execution_state.executor_running
+
     r = Response(content_type="application/json")
     r.body = metadata.to_json().encode("utf-8")
     return r

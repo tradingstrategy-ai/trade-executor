@@ -155,6 +155,7 @@ def create_metadata(name, short_description, long_description, icon_url) -> Meta
         long_description,
         icon_url,
         datetime.datetime.utcnow(),
+        executor_running=True,
     )
 
 
