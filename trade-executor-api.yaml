@@ -105,6 +105,9 @@ paths:
 
         Return the strategy and executor metadata, needed
         to render the strategy on a website.
+        
+        See  [Metadata class](https://tradingstrategy.ai/docs/programming/api/execution/help/tradeexecutor.state.metadata.Metadata.html)
+        for the returned data.
 
       responses:
         '200':
