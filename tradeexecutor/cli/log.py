@@ -7,6 +7,8 @@ import logging
 from logging import Logger
 from typing import Optional, List
 
+from tradeexecutor.utils.ring_buffer_logging_handler import RingBufferHandler
+
 try:
     import coloredlogs
     import logstash
@@ -17,8 +19,18 @@ except ImportError:
     pass
 
 
-def setup_logging(log_level=logging.INFO) -> Logger:
-    """Setup root logger and quiet some levels."""
+#: Stored here as a global so that we can later call RingBufferHandler.export()
+ring_buffer_handler: Optional[RingBufferHandler] = None
+
+
+def setup_logging(log_level=logging.INFO, in_memory_buffer=False) -> Logger:
+    """Setup root logger and quiet some levels.
+
+    :param in_memory_buffer:
+        Setup in-memory log buffer used to fetch log messages to the frontend.
+    """
+
+    global ring_buffer_handler
 
     setup_custom_log_levels()
 
@@ -52,6 +64,10 @@ def setup_logging(log_level=logging.INFO) -> Logger:
     # Datadog tracer agent
     # https://ddtrace.readthedocs.io/en/stable/basic_usage.html
     logging.getLogger("ddtrace").setLevel(logging.INFO)
+
+    if in_memory_buffer:
+        ring_buffer_handler  = RingBufferHandler(logging.INFO)
+        logger.addHandler(ring_buffer_handler)
 
     return logger
 

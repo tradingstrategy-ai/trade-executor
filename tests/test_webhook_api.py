@@ -9,11 +9,8 @@ from tradeexecutor.state.metadata import Metadata
 from tradeexecutor.state.state import State
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.store import JSONFileStore
+from tradeexecutor.strategy.execution_state import ExecutionState
 from tradeexecutor.webhook.server import create_webhook_server
-
-
-
-
 
 
 @pytest.fixture()
@@ -29,8 +26,8 @@ def store() -> JSONFileStore:
 @pytest.fixture()
 def server_url(store):
     queue = Queue()
-    metadata = Metadata("Foobar", "Short desc", "Long desc", None, datetime.datetime.utcnow())
-    server = create_webhook_server("127.0.0.1", 5000, "test", "test", queue, store, metadata)
+    metadata = Metadata("Foobar", "Short desc", "Long desc", None, datetime.datetime.utcnow(), True)
+    server = create_webhook_server("127.0.0.1", 5000, "test", "test", queue, store, metadata, ExecutionState())
     server_url = "http://test:test@127.0.0.1:5000"
     yield server_url
     server.shutdown()
@@ -60,6 +57,7 @@ def test_metadata(logger, server_url):
     assert data["name"] == "Foobar"
     assert data["short_description"] == "Short desc"
     assert data["icon_url"] == None
+    assert data["executor_running"] == True
 
 
 def test_cors(logger, server_url):

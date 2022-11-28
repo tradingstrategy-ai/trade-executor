@@ -10,3 +10,5 @@ def test_serialise_exception():
 
     assert exception_data["exception_message"] == "Boom"
     assert "tb_frame" in exception_data
+
+

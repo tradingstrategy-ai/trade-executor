@@ -10,6 +10,8 @@ from typing import Optional, Callable, List
 
 import pandas as pd
 
+from tradeexecutor.strategy.execution_state import ExecutionState
+
 try:
     from apscheduler.executors.pool import ThreadPoolExecutor
     from apscheduler.schedulers.blocking import BlockingScheduler
@@ -90,6 +92,7 @@ class ExecutionLoop:
             stop_loss_check_frequency: Optional[TimeBucket] = None,
             tick_offset: datetime.timedelta=datetime.timedelta(minutes=0),
             trade_immediately=False,
+            execution_state: Optional[ExecutionState]=None,
     ):
         """See main.py for details."""
 

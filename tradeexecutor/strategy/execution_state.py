@@ -2,11 +2,24 @@
 import datetime
 import sys
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Optional, TypedDict
 
+import dataclasses_json
+from dataclasses_json import dataclass_json
 from tblib import Traceback
 
 
+class ExceptionData(TypedDict):
+    """Serialise exception data using tblib.
+
+    TODO: Figure out what can go here, because tblib does not provide typing.
+    """
+    exception_message: str
+    tb_next: Optional[dict]
+    tb_lineno: int
+
+
+@dataclass_json
 @dataclass
 class ExecutionState:
     """Execution state
@@ -29,14 +42,13 @@ class ExecutionState:
     #: The last completed trading cycle
     completed_cycle: Optional[int] = None
 
-    #: If the exception has crashed, serialise the exception information.
+    #: If the exception has crashed, serialise the exception information here.
     #:
-    #: This is serialised using :py:mod:`tblib`, as native
-    exception: Optional[dict] = None
-
+    #: See :py:meth:`serialise_exception`
+    exception: Optional[ExceptionData] = None
 
     @staticmethod
-    def serialise_exception() -> dict:
+    def serialise_exception() -> ExceptionData:
         """Serialised the latest raised Python exception.
 
         Uses :py:mod:`tblib` to convert the Python traceback
@@ -51,4 +63,12 @@ class ExecutionState:
 
         return data
 
+    def set_fail(self):
+        """Set the trade-executor main loop to a failed state."""
+        self.exception = self.serialise_exception()
+        self.last_refreshed_at = datetime.datetime.utcnow()
+        self.executor_running = False
 
+    def update_complete_cycle(self, cycle: int):
+        self.last_refreshed_at = datetime.datetime.utcnow()
+        self.completed_cycle = cycle
