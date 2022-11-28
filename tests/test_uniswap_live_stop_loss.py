@@ -32,6 +32,7 @@ from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.trading_strategy_universe import translate_trading_pair, TradingStrategyUniverse
+from tradeexecutor.strategy.execution_context import ExecutionMode
 from tradingstrategy.exchange import ExchangeUniverse
 from tradingstrategy.pair import PandasPairUniverse
 
@@ -40,6 +41,7 @@ from tradeexecutor.ethereum.universe import create_exchange_universe, create_pai
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.testing.simulated_execution_loop import set_up_simulated_execution_loop_uniswap_v2
 from tradeexecutor.utils.blockchain import get_latest_block_timestamp
+
 
 #: How much values we allow to drift.
 #: A hack fix receiving different decimal values on Github CI than on a local
@@ -379,6 +381,7 @@ def test_live_stop_loss(
         ts,
         state,
         trading_strategy_universe,
+        ExecutionMode.real_trading
     )
 
     # After the first tick, we should have synced our reserves and opened the first position
