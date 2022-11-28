@@ -448,7 +448,7 @@ class TradeAnalysis:
                 if position.is_open():
                     yield pair_id, position
 
-    def calculate_summary_statistics(self) -> TradeSummary:
+    def calculate_summary_statistics(self, timeline: Optional[pd.DataFrame] = None) -> TradeSummary:
         """Calculate some statistics how our trades went."""
 
         initial_cash = self.portfolio.get_initial_deposit()
@@ -524,6 +524,9 @@ class TradeAnalysis:
         if losing_trades_duration:
             average_duration_of_losing_trades = np.mean(losing_trades_duration).to_pytimedelta()
 
+        if timeline is not None:
+            pass
+
         return TradeSummary(
             won=won,
             lost=lost,
@@ -558,7 +561,6 @@ class TradeAnalysis:
 
         df = pd.DataFrame(gen_events(), columns=["position_id", "position"])
         return df
-
 
 class TimelineRowStylingMode(enum.Enum):
     #: Style using Pandas background_gradient
@@ -644,6 +646,74 @@ class TimelineStyler:
 
         return styles
 
+def expand_timeline_raw(
+        exchanges: Set[Exchange],
+        pair_universe: PandasPairUniverse,
+        timeline: pd.DataFrame,
+        timestamp_format="%Y-%m-%d",
+) -> pd.DataFrame:
+    """Similar to expand_timeline, but only returns raw data instead of formatted strings
+    which allows easy statistical calculations for when summary stats depend on timeline.
+    Does not incorporate any styles or return a styling callable function
+    
+    :param exchanges: Needed for exchange metadata
+
+    :param pair_universe: Needed for trading pair metadata
+
+    :param timestamp_format: How to format Opened at column, as passed to `strftime()`
+
+    :return: DataFrame with human=readable position win/loss information, having DF indexed by timestamps
+    """
+    exchange_map = {e.exchange_id: e for e in exchanges}
+
+    # https://stackoverflow.com/a/52363890/315168
+    def expander(row):
+        position: TradePosition = row["position"]
+        # timestamp = row.name  # ???
+        pair_id = position.pair_id
+        pair_info = pair_universe.get_pair_by_id(pair_id)
+        exchange = exchange_map.get(pair_info.exchange_id)
+        if not exchange:
+            raise RuntimeError(f"No exchange for id {pair_info.exchange_id}, pair {pair_info}")
+
+        if position.is_stop_loss():
+            remarks = "SL"
+        elif position.is_take_profit():
+            remarks = "TP"
+        else:
+            remarks = ""
+
+        r = {
+            # "timestamp": timestamp,
+            "Id": position.position_id,
+            "Remarks": remarks,
+            "Opened at": position.opened_at.strftime(timestamp_format),
+            "Duration": format_duration_days_hours_mins(position.duration) if position.duration else np.nan,
+            "Exchange": exchange.name,
+            "Base asset": pair_info.base_token_symbol,
+            "Quote asset": pair_info.quote_token_symbol,
+            "position_max_size": position.get_max_size(),
+            "pnl_usd": position.realised_profit if position.is_closed() else np.nan,
+            "pnl_pct_raw": position.realised_profit_percent if position.is_closed() else 0,
+            "open_price_usd": position.open_price,
+            "close_price_usd": position.close_price if position.is_closed() else np.nan,
+            "trade_count": position.get_trade_count(),
+        }
+        return r
+
+    applied_df = timeline.apply(expander, axis='columns', result_type='expand')
+
+    if len(applied_df) > 0:
+        # https://stackoverflow.com/a/52720936/315168
+        applied_df \
+            .sort_values(by=['Id'], ascending=[True], inplace=True)
+
+    # Get rid of NaN labels
+    # https://stackoverflow.com/a/28390992/315168
+    applied_df.fillna('', inplace=True)
+
+    return applied_df
+    
 
 def expand_timeline(
         exchanges: Set[Exchange],
