@@ -68,24 +68,27 @@ class FinalPositionStatistics:
 @dataclass_json
 @dataclass
 class PortfolioStatistics:
+    '''
+    If backtesting, only calculated_at and total_equity are necessary for later visualisations and metrics
+    If livetrading, then all attributes should be specified so that for displaying updated metrics after each trade 
+    '''
+
     #: Real-time clock when these stats were calculated
     calculated_at: datetime.datetime
     total_equity: USDollarAmount
-    free_cash: USDollarAmount
-
-    open_position_count: int
-    open_position_equity: USDollarAmount
-    frozen_position_count: int
-    frozen_position_equity: USDollarAmount
-    closed_position_count: int
-
-    unrealised_profit_usd: USDollarAmount
+    
+    free_cash: Optional[USDollarAmount] = None
+    open_position_count: Optional[int] = None
+    open_position_equity: Optional[USDollarAmount] = None
+    frozen_position_count: Optional[int] = None
+    frozen_position_equity: Optional[USDollarAmount] = None
+    closed_position_count: Optional[int] = None
+    unrealised_profit_usd: Optional[USDollarAmount] = None
 
     first_trade_at: Optional[datetime.datetime] = None
     last_trade_at: Optional[datetime.datetime] = None
 
-    realised_profit_usd: USDollarAmount = 0
-
+    realised_profit_usd: Optional[USDollarAmount] = 0
     summary: Optional[TradeSummary] = None
 
 
