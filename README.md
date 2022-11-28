@@ -6,6 +6,11 @@ Trade Executor is a Python framework for executing algorithmic trading strategie
 
 **Note**: This is early alpha software. Please pop in to the Discord for any questions. 
 
+## Getting started
+
+- [See Running code examples](https://tradingstrategy.ai/docs/programming/code-examples/running.html)
+  in Trading Strategy documentation
+
 ## Features
 
 - [High quality documentation](https://tradingstrategy.ai/docs/)
