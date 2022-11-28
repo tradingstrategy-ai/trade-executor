@@ -43,7 +43,7 @@ TRADING_STRATEGY_CYCLE = CycleDuration.cycle_1d
 RESERVE_CURRENCY = ReserveCurrency.usdc
 
 # Time bucket for our candles
-CANDLE_TIME_BUCKET = TimeBucket.d30
+CANDLE_TIME_BUCKET = TimeBucket.d1
 
 # Which chain we are trading
 CHAIN_ID = ChainId.bsc

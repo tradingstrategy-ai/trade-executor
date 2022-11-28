@@ -103,10 +103,9 @@ def test_main_loop_crash(
         deadline = time.time() + 30
         got_right_exception = False
         while time.time() < deadline:
-            print("x")
             try:
                 resp = requests.get(f"{server}/status", timeout=0.1)
-            except ConnectionError:
+            except requests.exceptions.ConnectionError:
                 break
 
             assert resp.status_code == 200, f"Got server reply: {resp.content}"
@@ -115,6 +114,10 @@ def test_main_loop_crash(
 
             exception = data.get("exception")
             if exception is not None:
+                # Execution loop has crashed, webhook is serving exception status
+                assert data["executor_running"] == False
+                assert data["exception"]["exception_message"] == "Boom"
+                got_right_exception = True
                 break
 
             time.sleep(0.5)

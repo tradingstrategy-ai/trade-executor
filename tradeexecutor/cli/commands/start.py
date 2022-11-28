@@ -274,9 +274,9 @@ def start(
                 timed_task_context_manager=timed_task,
             )
 
-    # If we die within 5 seconds of the launch,
-    # also temrinate the webhook server immediately
-    start_up_deadline = time.time() + 5
+    # If we die within few seconds of the launch,
+    # also terminate the webhook server immediately
+    start_up_deadline = time.time() + 3
 
     try:
         loop = ExecutionLoop(
@@ -318,6 +318,8 @@ def start(
         logger.trade("Trade Executor %s shut down by CTRL+C requested: %s", name, e)
     except Exception as e:
 
+        logger.error("trade-executor execution loop crashed")
+
         # Unwind the traceback and notify the webserver about the failure
         execution_state.set_fail()
 
@@ -325,12 +327,17 @@ def start(
         if port_mortem_debugging:
             import ipdb
             ipdb.post_mortem()
+
         logger.exception(e)
 
-        if server is None or (time.time() < start_up_deadline):
+        if server is None and time.time() < start_up_deadline:
             # Only terminate the process if the webhook server is not running,
             # otherwise the user can read the crash status from /status endpoint
             raise
+        else:
+            # Execution is dead.
+            # Sleep forever, let the webhook still serve the requests.
+            time.sleep(3600*24*365)
     finally:
         if server:
             server.close()
