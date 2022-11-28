@@ -145,6 +145,34 @@ paths:
               schema:
                 type: object
 
+  '/status':
+    x-pyramid-route-name: web_status
+    get:
+      operationId: web_status
+      summary: |
+        
+        Return the status of the trade execution loop: is it alive or has it crashed with an exception.
+        
+        See ExecutionState class for the returned data.
+
+      responses:
+        "200":
+          description: | 
+            Return the trade execution loop status. 
+          
+            This returns the serialized ExecutionState object. 
+
+          content:
+            application/json:
+              schema:
+                type: object
+        "422":
+          description: Unexpected error - usually an internal error
+          content:
+            application/json:
+              schema:
+                type: object
+
   '/notify':
     x-pyramid-route-name: web_notify
     post:
