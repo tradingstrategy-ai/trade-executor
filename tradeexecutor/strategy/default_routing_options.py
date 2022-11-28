@@ -34,6 +34,11 @@ class TradeRouting(enum.Enum):
     #: - Open positions with WMATIC quote token.
     quickswap_usdc = "quickswap_usdc"
 
+    #: Two or three legged trades on Uniswap v2 on Ethereum mainnet
+    #: - Open positions with USDC quote token.
+    #: - Open positions with WETH quote token.
+    uniswap_v2_usdc = "uniswap_v2_usdc"
+
     #: Use user supplied routing model
     #:
     #: The routing table is constructed by the developer in the

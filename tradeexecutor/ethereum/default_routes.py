@@ -1,7 +1,12 @@
 """Default routing models for Uniswap v2 like exchange.
 
+Describe which smart contract addresses are used to make a trade.
 Map factory addresses, router addresses and quote token addresses.
 """
+from typing import TypedDict, List
+
+from tradingstrategy.chain import ChainId
+
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel
 from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2SimpleRoutingModel
 from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
@@ -10,7 +15,31 @@ from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.routing import RoutingModel
 
 
-def get_pancake_default_routing_parameters(reserve_currency: ReserveCurrency) -> dict:
+class RoutingData(TypedDict):
+    """Describe raw smart contract order routing data."""
+
+    chain_id: ChainId
+
+    #: Factory contract address -> Tuple (default router address, init code hash)
+    factory_router_map: tuple
+
+    #: Token address -> pair address
+    allowed_intermediary_pairs: dict
+
+    #: Token address for the reserve currency
+    reserve_token_address: str
+
+    #: Supported quote token addresses
+    #:
+    #: E.g. (WBNB, BUSD), (WBNB, USDC)
+    quote_token_addresses: List[str]
+
+
+class MismatchReserveCurrency(Exception):
+    """Routing table did not except this asset as a reserve currency and cannot route."""
+
+
+def get_pancake_default_routing_parameters(reserve_currency: ReserveCurrency) -> RoutingData:
     """Generate routing using PancakeSwap v2 router.
 
     TODO: Polish the interface of this function when we have more strategies
@@ -46,6 +75,7 @@ def get_pancake_default_routing_parameters(reserve_currency: ReserveCurrency) ->
     }
 
     return {
+        "chain_id": ChainId.bsc,
         "factory_router_map": factory_router_map,
         "allowed_intermediary_pairs": allowed_intermediary_pairs,
         "reserve_token_address": reserve_token_address,
@@ -53,22 +83,70 @@ def get_pancake_default_routing_parameters(reserve_currency: ReserveCurrency) ->
     }
 
 
-def create_pancake_routing(routing_type: TradeRouting, reserve_currency: ReserveCurrency) -> UniswapV2SimpleRoutingModel:
+def get_uniswap_v2_default_routing_parameters(reserve_currency: ReserveCurrency) -> RoutingData:
+    """Generate routing using Uniswap v2 router.
+
+    TODO: Polish the interface of this function when we have more strategies
+    """
+
+    if reserve_currency == ReserveCurrency.usdc:
+        # https://tradingstrategy.ai/trading-view/binance/tokens/0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d
+        reserve_token_address = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48".lower()
+
+        # For three way trades, which pools we can use
+        allowed_intermediary_pairs = {
+            # Route WETH through USDC:WETH pool,
+            # https://tradingstrategy.ai/trading-view/ethereum/uniswap-v2/eth-usdc
+            "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+        }
+    else:
+        raise NotImplementedError()
+
+    # Allowed exchanges as factory -> router pairs,
+    # by their smart contract addresses
+    # https://docs.uniswap.org/protocol/V2/reference/smart-contracts/factory
+    # https://github.com/Uniswap/v2-core/issues/102
+    factory_router_map = {
+        "0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f": ("0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D", "96e8ac4277198ff8b6f785478aa9a39f403cb768dd02cbee326c3e7da348845f")
+    }
+
+    return {
+        "chain_id": ChainId.ethereum,
+        "factory_router_map": factory_router_map,
+        "allowed_intermediary_pairs": allowed_intermediary_pairs,
+        "reserve_token_address": reserve_token_address,
+        # USDC, WETH
+        "quote_token_addresses": {"0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"}
+    }
+
+
+def create_uniswap_v2_compatible_routing(routing_type: TradeRouting, reserve_currency: ReserveCurrency) -> UniswapV2SimpleRoutingModel:
     """Set up pancake routing"""
 
     if routing_type == TradeRouting.pancakeswap_busd:
-        assert reserve_currency == ReserveCurrency.busd, f"Got {routing_type} with {reserve_currency}"
+        if reserve_currency != ReserveCurrency.busd:
+            raise MismatchReserveCurrency(f"Got {routing_type} with {reserve_currency}")
     elif routing_type == TradeRouting.pancakeswap_usdc:
-        assert reserve_currency == ReserveCurrency.usdc, f"Got {routing_type} with {reserve_currency}"
+        if reserve_currency != ReserveCurrency.usdc:
+            raise MismatchReserveCurrency(f"Got {routing_type} with {reserve_currency}")
+    elif routing_type == TradeRouting.uniswap_v2_usdc:
+        if reserve_currency != ReserveCurrency.usdc:
+            raise MismatchReserveCurrency(f"Got {routing_type} with {reserve_currency}")
     else:
         raise NotImplementedError(f"Unknown routing type")
 
-    params = get_pancake_default_routing_parameters(reserve_currency)
+    if routing_type in (TradeRouting.pancakeswap_busd, TradeRouting.pancakeswap_usdc):
+        params = get_pancake_default_routing_parameters(reserve_currency)
+    elif routing_type in (TradeRouting.uniswap_v2_usdc,):
+        params = get_uniswap_v2_default_routing_parameters(reserve_currency)
+    else:
+        raise NotImplementedError()
 
     routing_model = UniswapV2SimpleRoutingModel(
         params["factory_router_map"],
         params["allowed_intermediary_pairs"],
         params["reserve_token_address"],
+        params["chain_id"],
     )
 
     return routing_model
@@ -81,7 +159,7 @@ def get_backtest_routing_model(routing_type: TradeRouting, reserve_currency: Res
     At the moment, just create a real router and copy parameters from there.
     """
 
-    real_routing_model = create_pancake_routing(routing_type, reserve_currency)
+    real_routing_model = create_uniswap_v2_compatible_routing(routing_type, reserve_currency)
 
     return BacktestRoutingModel(
         real_routing_model.factory_router_map,
@@ -108,8 +186,5 @@ def get_routing_model(
 
     if execution_context.mode == ExecutionMode.backtesting:
         return get_backtest_routing_model(routing_type, reserve_currency)
-
-    if routing_type in (TradeRouting.pancakeswap_busd, TradeRouting.pancakeswap_usdc):
-        return create_pancake_routing(routing_type, reserve_currency)
-
-    raise NotImplementedError("Not yet done - update get_routing_model to support this default routing option")
+    else:
+        return create_uniswap_v2_compatible_routing(routing_type, reserve_currency)
