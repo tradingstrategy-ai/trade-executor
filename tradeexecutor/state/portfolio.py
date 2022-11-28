@@ -135,7 +135,12 @@ class Portfolio:
             result[p.pair.internal_id] = p.get_quantity()
         return result
 
-    def open_new_position(self, ts: datetime.datetime, pair: TradingPairIdentifier, assumed_price: USDollarAmount, reserve_currency: AssetIdentifier, reserve_currency_price: USDollarAmount) -> TradingPosition:
+    def open_new_position(self,
+                          ts: datetime.datetime,
+                          pair: TradingPairIdentifier,
+                          assumed_price: USDollarAmount,
+                          reserve_currency: AssetIdentifier,
+                          reserve_currency_price: USDollarAmount) -> TradingPosition:
         p = TradingPosition(
             position_id=self.next_position_id,
             opened_at=ts,
@@ -190,7 +195,9 @@ class Portfolio:
                      assumed_price: USDollarAmount,
                      trade_type: TradeType,
                      reserve_currency: AssetIdentifier,
-                     reserve_currency_price: USDollarAmount) -> Tuple[TradingPosition, TradeExecution, bool]:
+                     reserve_currency_price: USDollarAmount,
+                     notes: Optional[str] = None,
+                     ) -> Tuple[TradingPosition, TradeExecution, bool]:
         """Create a trade.
 
         Trade can be opened by knowing how much you want to buy (quantity) or how much cash you have to buy (reserve).
@@ -217,6 +224,10 @@ class Portfolio:
             trade_type,
             reserve_currency,
             reserve_currency_price)
+
+        # Udpate notes
+        trade.notes = notes
+        position.notes = notes
 
         # Check we accidentally do not reuse trade id somehow
 

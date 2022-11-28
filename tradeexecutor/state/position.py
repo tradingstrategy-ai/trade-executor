@@ -68,6 +68,18 @@ class TradingPosition:
     #: Trigger a take profit if this price is reached
     take_profit: Optional[USDollarAmount] = None
 
+    #: Human readable notes about this trade
+    #:
+    #: Used to mark test trades from command line.
+    #: Special case; not worth to display unless the field is filled in.
+    notes: Optional[str] = None
+
+    def __repr__(self):
+        if self.is_open():
+            return f"<Open position #{self.position_id} {self.pair} ${self.get_value()}>"
+        else:
+            return f"<Closed position #{self.position_id} {self.pair} ${self.get_first_trade().get_value()}>"
+
     def __post_init__(self):
         assert self.position_id > 0
         assert self.last_pricing_at is not None
@@ -229,7 +241,10 @@ class TradingPosition:
         return float(token_quantity) * token_price + float(reserve_quantity) * reserve_price
 
     def get_value(self) -> USDollarAmount:
-        """Get the position value using the latest revaluation pricing."""
+        """Get the position value using the latest revaluation pricing.
+
+        If the position is closed, the value should be zero.
+        """
         return self.calculate_value_using_price(self.last_token_price, self.last_reserve_price)
 
     def is_stop_loss_closed(self) -> bool:

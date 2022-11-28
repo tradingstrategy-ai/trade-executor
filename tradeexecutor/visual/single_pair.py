@@ -242,7 +242,7 @@ def visualise_single_pair(
     # set up figure with values not high and not low
     # include candlestick with rangeselector
 
-    percentage_changes = (candles['open'] - candles['close'])/candles['open']
+    percentage_changes = ((candles['close'] - candles['open'])/candles['open'])*100
     text = ["Change: " + f"{percentage_changes[i]:.2f}%" for i in range(len(percentage_changes))]
 
     candlesticks = go.Candlestick(

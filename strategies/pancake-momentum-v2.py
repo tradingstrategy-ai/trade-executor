@@ -42,7 +42,7 @@ trading_strategy_type = StrategyType.alpha_model
 # How our trades are routed.
 # PancakeSwap basic routing supports two way trades with BUSD
 # and three way trades with BUSD-BNB hop.
-trade_routing = TradeRouting.pancakeswap_basic
+trade_routing = TradeRouting.pancakeswap_busd
 
 # How often the strategy performs the decide_trades cycle.
 # We do it for every 16h.

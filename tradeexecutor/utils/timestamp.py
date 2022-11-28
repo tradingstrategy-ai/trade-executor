@@ -1,4 +1,4 @@
-"""Timestamp helpers"""
+"""Timestamp  and timedelta helpers"""
 import calendar
 import datetime
 from typing import Union
@@ -39,17 +39,12 @@ def convert_and_validate_timestamp_as_int(timestamp: Union[pd.Timestamp, datetim
     return int(calendar.timegm(timestamp.utctimetuple()))
 
 
-def json_encode_timedelta(obj: datetime.timedelta) -> dict: 
-    return {
-        "__type__" : "timedelta",
-        "days" : obj.days,
-        "seconds" : obj.seconds,
-        "microseconds" : obj.microseconds,
-    }
+def json_encode_timedelta(val: datetime.timedelta) -> float:
+    """Encode timestamp objects as number of seconds passed"""
+    return val.total_seconds()
 
 
-def json_decode_timedelta(obj: dict) -> datetime.timedelta:
-    type_ = obj.pop("__type__")
-    
-    return datetime.timedelta(**obj)
+def json_decode_timedelta(val: float) -> datetime.timedelta:
+    """Decode timestamp objects as number of seconds passed"""
+    return datetime.timedelta(seconds=val)
     

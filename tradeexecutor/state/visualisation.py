@@ -33,6 +33,11 @@ class PlotKind(enum.Enum):
 @dataclass_json
 @dataclass
 class Plot:
+    """Descibe singe plot on a strategy.
+
+    Plot is usually displayed as an overlay line over the price chart.
+    E.g. simple moving average over price candles.
+    """
 
     name: str
 
@@ -54,6 +59,7 @@ class Plot:
                   value: float,
                   ):
         assert isinstance(timestamp, datetime.datetime)
+        assert isinstance(value, float), f"Got {value} ({value.__class__})"
         timestamp = convert_and_validate_timestamp_as_int(timestamp)
         self.points[timestamp] = value
 
@@ -122,6 +128,16 @@ class Visualisation:
         :param colour:
             Optional colour
         """
+
+        assert type(name) == str, f"Got name"
+
+        # Convert numpy.float32 and numpy.float64 to serializable float instances,
+        # e.g. prices
+        try:
+            value = float(value)
+        except TypeError as e:
+            raise RuntimeError(f"Could not convert value {value} {value.__class__} to float") from e
+
         plot = self.plots.get(name, Plot(name=name, kind=kind))
 
         plot.add_point(timestamp, value)

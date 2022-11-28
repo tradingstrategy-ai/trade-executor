@@ -84,3 +84,9 @@ class RoutingModel(abc.ABC):
         :raise CannotExecuteTrade:
             If a trade cannot be executed, e.g. due to an unsupported pair or an exchange,
         """
+
+    def perform_preflight_checks_and_logging(self, state: RoutingState):
+        """"Checks the integrity of the routing.
+
+        - Called from check-wallet to see our routing and balances are good
+        """

@@ -148,6 +148,12 @@ class TradeExecution:
     #: done for the hot wallet anymore.
     blockchain_transactions: List[BlockchainTransaction] = field(default_factory=list)
 
+    #: Human readable notes about this trade
+    #:
+    #: Used to mark test trades from command line.
+    #: Special case; not worth to display unless the field is filled in.
+    notes: Optional[str] = None
+
     def __repr__(self):
         if self.is_buy():
             return f"<Buy #{self.trade_id} {self.planned_quantity} {self.pair.base.token_symbol} at {self.planned_price}>"

@@ -13,6 +13,7 @@ import datetime
 import os
 from decimal import Decimal
 
+import flaky
 import pytest
 from eth_account import Account
 
@@ -281,6 +282,8 @@ def state(portfolio) -> State:
     return state
 
 
+# Flaky because Ganache hangs
+@flaky.flaky()
 def test_simple_routing_one_leg(
         web3,
         hot_wallet,
@@ -763,6 +766,8 @@ def test_three_leg_buy_sell_twice(
     assert len(txs_2) == 2
 
 
+# Flaky becaues Ganache hangs
+@flaky.flaky()
 def test_stateful_routing_three_legs(
         web3,
         pair_universe,

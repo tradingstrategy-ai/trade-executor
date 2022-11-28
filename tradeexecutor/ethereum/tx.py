@@ -59,6 +59,8 @@ class TransactionBuilder:
         :param gas_limit: Max gas per this transaction
         """
 
+        logger.info("Signing transactions using gas gee method %s for %s", self.gas_fees, args_bound_func)
+
         tx = args_bound_func.build_transaction({
             "chainId": self.chain_id,
             "from": self.hot_wallet.address,

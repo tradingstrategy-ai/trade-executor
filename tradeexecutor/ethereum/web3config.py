@@ -48,13 +48,36 @@ class Web3Config:
 
         :param gas_price_method:
             How do we estimate gas for a transaction
+            If not given autodetect the method.
         """
-
-        assert gas_price_method
 
         web3 = Web3(HTTPProvider(url))
 
+        # Read numeric chain id from JSON-RPC
         chain_id = web3.eth.chain_id
+
+        if gas_price_method is None:
+            if chain_id == ChainId.ethereum.value:
+                # Ethereum supports maxBaseFee method
+
+                gas_price_method = GasPriceMethod.london
+            else:
+                # Other nodes have the legacy method
+                #
+                #   File "/Users/moo/Library/Caches/pypoetry/virtualenvs/trade-executor-8Oz1GdY1-py3.10/lib/python3.10/site-packages/web3/contract.py", line 1672, in build_transaction_for_function
+                #     prepared_transaction = fill_transaction_defaults(web3, prepared_transaction)
+                #   File "cytoolz/functoolz.pyx", line 249, in cytoolz.functoolz.curry.__call__
+                #   File "/Users/moo/Library/Caches/pypoetry/virtualenvs/trade-executor-8Oz1GdY1-py3.10/lib/python3.10/site-packages/web3/_utils/transactions.py", line 114, in fill_transaction_defaults
+                #     default_val = default_getter(web3, transaction)
+                #   File "/Users/moo/Library/Caches/pypoetry/virtualenvs/trade-executor-8Oz1GdY1-py3.10/lib/python3.10/site-packages/web3/_utils/transactions.py", line 64, in <lambda>
+                #     web3.eth.max_priority_fee + (2 * web3.eth.get_block('latest')['baseFeePerGas'])
+                #   File "/Users/moo/Library/Caches/pypoetry/virtualenvs/trade-executor-8Oz1GdY1-py3.10/lib/python3.10/site-packages/web3/datastructures.py", line 51, in __getitem__
+                #     return self.__dict__[key]  # type: ignore
+                # KeyError: 'baseFeePerGas'
+
+                gas_price_method = GasPriceMethod.legacy
+
+        assert isinstance(gas_price_method, GasPriceMethod)
 
         logger.info("Connected to chain id: %d, using gas price method %s", chain_id, gas_price_method.name)
 
@@ -94,7 +117,10 @@ class Web3Config:
         Assumes exactly 1 node connection available.
         """
         assert self.default_chain_id
-        return self.connections[self.default_chain_id]
+        try:
+            return self.connections[self.default_chain_id]
+        except KeyError:
+            raise RuntimeError(f"We haev {self.default_chain_id.name} configured as the default blockchain, but we do not have a connection for it in the connection pool. Did you pass right RPC configuration?")
 
     def check_default_chain_id(self):
         """Check that we are connected to the correct chain.

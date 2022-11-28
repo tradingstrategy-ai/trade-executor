@@ -5,7 +5,7 @@ import os.path
 from decimal import Decimal
 from pathlib import Path
 from queue import Queue
-from typing import Optional
+from typing import Optional, Callable, Tuple
 from importlib.metadata import version
 
 import typer
@@ -25,6 +25,7 @@ from tradeexecutor.backtest.backtest_sync import BacktestSyncer
 from tradeexecutor.backtest.backtest_valuation import backtest_valuation_factory
 from tradeexecutor.backtest.simulated_wallet import SimulatedWallet
 from tradeexecutor.cli.result import display_backtesting_results
+from tradeexecutor.cli.testtrade import make_test_trade
 from tradeexecutor.ethereum.web3config import Web3Config
 from tradeexecutor.state.metadata import Metadata
 from tradeexecutor.state.state import State
@@ -39,14 +40,15 @@ from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
 from tradeexecutor.ethereum.uniswap_v2_live_pricing import uniswap_v2_live_pricing_factory
 from tradeexecutor.state.store import JSONFileStore, StateStore, NoneStore
 from tradeexecutor.strategy.approval import ApprovalType, UncheckedApprovalModel, ApprovalModel
-from tradeexecutor.strategy.bootstrap import import_strategy_file
+from tradeexecutor.strategy.bootstrap import import_strategy_file, make_factory_from_strategy_mod
 from tradeexecutor.strategy.dummy import DummyExecutionModel
 from tradeexecutor.strategy.execution_context import ExecutionMode, ExecutionContext
-from tradeexecutor.strategy.execution_model import TradeExecutionType
+from tradeexecutor.strategy.execution_model import TradeExecutionType, ExecutionModel
 from tradeexecutor.cli.log import setup_logging, setup_discord_logging, setup_logstash_logging
 from tradeexecutor.strategy.strategy_module import read_strategy_module, StrategyModuleInformation
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverseModel
 from tradeexecutor.strategy.universe_model import UniverseOptions
+from tradeexecutor.utils.fullname import get_object_full_name
 from tradeexecutor.utils.timer import timed_task
 from tradeexecutor.webhook.server import create_webhook_server
 from tradingstrategy.client import Client
@@ -82,7 +84,7 @@ def create_web3_config(
     json_rpc_polygon,
     json_rpc_avalanche,
     json_rpc_ethereum,
-    gas_price_method: Optional[GasPriceMethod],
+    gas_price_method: Optional[GasPriceMethod]=None,
 ) -> Optional[Web3Config]:
     """Create Web3 connection to the live node we are executing against.
 
@@ -90,10 +92,6 @@ def create_web3_config(
         Connect to any passed JSON RPC URL
 
     """
-
-    if not gas_price_method:
-        gas_price_method = GasPriceMethod.london
-
     web3config = Web3Config.setup_from_environment(
         gas_price_method,
         json_rpc_ethereum=json_rpc_ethereum,
@@ -215,6 +213,11 @@ def monkey_patch():
     patch_dataclasses_json()
 
 
+# Run this during the module loading so that it is
+# applied to all subcommands
+monkey_patch()
+
+
 # Typer documentation https://typer.tiangolo.com/
 @app.command()
 def start(
@@ -244,7 +247,7 @@ def start(
     json_rpc_polygon: str = typer.Option(None, envvar="JSON_RPC_POLYGON", help="Polygon JSON-RPC node URL we connect to"),
     json_rpc_ethereum: str = typer.Option(None, envvar="JSON_RPC_ETHEREUM", help="Ethereum JSON-RPC node URL we connect to"),
     json_rpc_avalanche: str = typer.Option(None, envvar="JSON_RPC_AVALANCHE", help="Avalanche C-chain JSON-RPC node URL we connect to"),
-    gas_price_method: Optional[GasPriceMethod] = typer.Option("legacy", envvar="GAS_PRICE_METHOD", help="How to set the gas price for Ethereum transactions. After the Berlin hardfork Ethereum mainnet introduced base + tip cost gas model."),
+    gas_price_method: Optional[GasPriceMethod] = typer.Option(None, envvar="GAS_PRICE_METHOD", help="How to set the gas price for Ethereum transactions. After the Berlin hardfork Ethereum mainnet introduced base + tip cost gas model. Leave out to autodetect."),
     confirmation_timeout: int = typer.Option(900, envvar="CONFIRMATION_TIMEOUT", help="How many seconds to wait for transaction batches to confirm"),
     confirmation_block_count: int = typer.Option(8, envvar="CONFIRMATION_BLOCK_COUNT", help="How many blocks we wait before we consider transaction receipt a final"),
     private_key: Optional[str] = typer.Option(None, envvar="PRIVATE_KEY", help="Ethereum private key to be used as a hot wallet/broadcast wallet"),
@@ -272,7 +275,7 @@ def start(
     max_slippage: float = typer.Option(0.0025, envvar="MAX_SLIPPAGE", help="Max slippage allowed per trade before failing. The default is 0.0025 is 0.25%."),
     approval_type: ApprovalType = typer.Option("unchecked", envvar="APPROVAL_TYPE", help="Set a manual approval flow for trades"),
     stop_loss_check_frequency: Optional[TimeBucket] = typer.Option(None, envvar="STOP_LOSS_CYCLE_DURATION", help="Override live/backtest stop loss check frequency. If not given read from the strategy module."),
-    cycle_offset_minutes: int = typer.Option(0, envvar="CYCLE_OFFSET_MINUTES", help="How many minutes we wait after the tick before executing the tick step"),
+    cycle_offset_minutes: int = typer.Option(8, envvar="CYCLE_OFFSET_MINUTES", help="How many minutes we wait after the tick before executing the tick step"),
     stats_refresh_minutes: int = typer.Option(60.0, envvar="STATS_REFRESH_MINUTES", help="How often we refresh position statistics. Default to once in an hour."),
     cycle_duration: CycleDuration = typer.Option(None, envvar="CYCLE_DURATION", help="How long strategy tick cycles use to execute the strategy. While strategy modules offer their own cycle duration value, you can override it here."),
     position_trigger_check_minutes: int = typer.Option(3.0, envvar="POSITION_TRIGGER_CHECK_MINUTES", help="How often we check for take profit/stop loss triggers. Default to once in 3 minutes. Set 0 to disable."),
@@ -318,8 +321,6 @@ def start(
             f"executor-{id}",  # Always prefix logged with executor id
             quiet=False,
         )
-
-    monkey_patch()
 
     if not state_file:
         if execution_type != TradeExecutionType.backtest:
@@ -582,8 +583,7 @@ def check_wallet(
 
     logger = setup_logging()
 
-    logger.info("Loading strategy file %s", strategy_file)
-    strategy_factory = import_strategy_file(strategy_file)
+    mod = read_strategy_module(strategy_file)
 
     cache_path = prepare_cache(id, cache_path)
 
@@ -594,18 +594,44 @@ def check_wallet(
         timed_task_context_manager=timed_task
     )
 
-    run_description: StrategyExecutionDescription = strategy_factory(
-        execution_context=execution_context,
-        execution_model=None,
-        sync_method=None,
-        valuation_model_factory=None,
-        pricing_model_factory=None,
-        approval_model=None,
-        client=client,
-        timed_task_context_manager=timed_task,
+    web3config = create_web3_config(
+        json_rpc_binance,
+        json_rpc_polygon,
+        json_rpc_avalanche,
+        json_rpc_ethereum,
+        GasPriceMethod.london,
+    )
+
+    assert web3config, "No RPC endpoints given. A working JSON-RPC connection is needed for check-wallet"
+
+    # Check that we are connected to the chain strategy assumes
+    web3config.set_default_chain(mod.chain_id)
+    web3config.check_default_chain_id()
+
+    execution_model, sync_method, valuation_model_factory, pricing_model_factory = create_trade_execution_model(
+        execution_type=TradeExecutionType.uniswap_v2_hot_wallet,
+        private_key=private_key,
+        web3config=web3config,
+        confirmation_timeout=60,
+        confirmation_block_count=6,
+        max_slippage=0.01,
+        min_balance_threshold=minimum_gas_balance,
     )
 
     hot_wallet = HotWallet.from_private_key(private_key)
+
+    # Set up the strategy engine
+    factory = make_factory_from_strategy_mod(mod)
+    run_description: StrategyExecutionDescription = factory(
+        execution_model=execution_model,
+        execution_context=execution_context,
+        timed_task_context_manager=execution_context.timed_task_context_manager,
+        sync_method=sync_method,
+        valuation_model_factory=valuation_model_factory,
+        pricing_model_factory=pricing_model_factory,
+        approval_model=UncheckedApprovalModel(),
+        client=client,
+    )
 
     # We construct the trading universe to know what's our reserve asset
     universe_model: TradingStrategyUniverseModel = run_description.universe_model
@@ -615,38 +641,49 @@ def check_wallet(
         ExecutionMode.preflight_check,
         UniverseOptions())
 
+    # Get all tokens from the universe
     reserve_assets = universe.reserve_assets
-
-    web3config = create_web3_config(
-        json_rpc_binance,
-        json_rpc_polygon,
-        json_rpc_avalanche,
-        json_rpc_ethereum,
-        None,
-    )
-
-    web3config.set_default_chain(run_description.chain_id)
-    web3config.check_default_chain_id()
     web3 = web3config.get_default()
-
-    logger.info("Reserve assets are: %s", reserve_assets)
     tokens = [Web3.toChecksumAddress(a.address) for a in reserve_assets]
 
-    logger.info("Checking JSON-RPC connection")
+    logger.info("RPC details")
 
-    logger.info(f"Latest block is {web3.eth.block_number:,}")
+    # Check the chain is online
+    logger.info(f"  Chain id is {web3.eth.chain_id:,}")
+    logger.info(f"  Latest block is {web3.eth.block_number:,}")
 
-    logger.info("Hot wallet is %s", hot_wallet.address)
+    # Check balances
+    logger.info("Balance details")
+    logger.info("  Hot wallet is %s", hot_wallet.address)
     gas_balance = web3.eth.get_balance(hot_wallet.address) / 10**18
-    logger.info("We have %f gas money left", gas_balance)
+    logger.info("  We have %f tokens for gas left", gas_balance)
+    logger.info("  The gas error limit is %f tokens", minimum_gas_balance)
     balances = fetch_erc20_balances_by_token_list(web3, hot_wallet.address, tokens)
+
+    for asset in reserve_assets:
+        logger.info("Reserve asset: %s", asset.token_symbol)
+
     for address, balance in balances.items():
         details = fetch_erc20_details(web3, address)
-        logger.info("Balance of %s: %s %s", details.name, details.convert_to_decimals(balance), details.symbol)
+        logger.info("  Balance of %s (%s): %s %s", details.name, details.address, details.convert_to_decimals(balance), details.symbol)
 
-    if minimum_gas_balance > 0:
-        if gas_balance < minimum_gas_balance:
-            raise RuntimeError(f"We do not have enough native token for gas fees. {gas_balance} is below our minimum requirement {minimum_gas_balance}.")
+    # Check that the routing looks sane
+    # E.g. there is no mismatch between strategy reserve token, wallet and pair universe
+    runner = run_description.runner
+    routing_state, pricing_model, valuation_method = runner.setup_routing(universe)
+    routing_model = runner.routing_model
+
+    logger.info("Execution details")
+    logger.info("  Execution model is %s", get_object_full_name(execution_model))
+    logger.info("  Routing model is %s", get_object_full_name(routing_model))
+    logger.info("  Token pricing model is %s", get_object_full_name(pricing_model))
+    logger.info("  Position valuation model is %s", get_object_full_name(valuation_method))
+
+    # Check we have enough gas
+    execution_model.preflight_check()
+
+    # Check our routes
+    routing_model.perform_preflight_checks_and_logging(routing_state, universe.universe.pairs)
 
     web3config.close()
 
@@ -655,3 +692,119 @@ def check_wallet(
 def hello():
     """Check that the application loads without doing anything."""
     print("Hello blockchain")
+
+
+@app.command()
+def perform_test_trade(
+    id: str = typer.Option(None, envvar="EXECUTOR_ID", help="Executor id used when programmatically referring to this instance. If not given, take the base of --strategy-file."),
+
+    strategy_file: Path = typer.Option(..., envvar="STRATEGY_FILE"),
+    private_key: str = typer.Option(None, envvar="PRIVATE_KEY"),
+    trading_strategy_api_key: str = typer.Option(None, envvar="TRADING_STRATEGY_API_KEY", help="Trading Strategy API key"),
+    state_file: Optional[Path] = typer.Option(None, envvar="STATE_FILE", help="JSON file where we serialise the execution state. If not given defaults to state/{executor-id}.json"),
+    cache_path: Optional[Path] = typer.Option("cache/", envvar="CACHE_PATH", help="Where to store downloaded datasets"),
+
+    # Web3 connection options
+    json_rpc_binance: str = typer.Option(None, envvar="JSON_RPC_BINANCE", help="BNB Chain JSON-RPC node URL we connect to"),
+    json_rpc_polygon: str = typer.Option(None, envvar="JSON_RPC_POLYGON", help="Polygon JSON-RPC node URL we connect to"),
+    json_rpc_ethereum: str = typer.Option(None, envvar="JSON_RPC_ETHEREUM", help="Ethereum JSON-RPC node URL we connect to"),
+    json_rpc_avalanche: str = typer.Option(None, envvar="JSON_RPC_AVALANCHE", help="Avalanche C-chain JSON-RPC node URL we connect to"),
+):
+    """Perform a small test swap.
+
+    Tests that the private wallet and the exchange can trade by making 1 USD trade using
+    the routing configuration from the strategy.
+
+    The trade will be recorded on the state as a position.
+    """
+    global logger
+
+    id = prepare_executor_id(id, strategy_file)
+
+    logger = setup_logging(log_level=logging.INFO)
+
+    mod = read_strategy_module(strategy_file)
+
+    cache_path = prepare_cache(id, cache_path)
+
+    client = Client.create_live_client(trading_strategy_api_key, cache_path=cache_path)
+
+    execution_context = ExecutionContext(
+        mode=ExecutionMode.preflight_check,
+        timed_task_context_manager=timed_task
+    )
+
+    web3config = create_web3_config(
+        json_rpc_binance=json_rpc_binance,
+        json_rpc_polygon=json_rpc_polygon,
+        json_rpc_avalanche=json_rpc_avalanche,
+        json_rpc_ethereum=json_rpc_ethereum,
+        gas_price_method=None,
+    )
+
+    assert web3config, "No RPC endpoints given. A working JSON-RPC connection is needed for check-wallet"
+
+    # Check that we are connected to the chain strategy assumes
+    web3config.set_default_chain(mod.chain_id)
+    web3config.check_default_chain_id()
+
+    execution_model, sync_method, valuation_model_factory, pricing_model_factory = create_trade_execution_model(
+        execution_type=TradeExecutionType.uniswap_v2_hot_wallet,
+        private_key=private_key,
+        web3config=web3config,
+        confirmation_timeout=60,
+        confirmation_block_count=6,
+        max_slippage=2.50,
+        min_balance_threshold=0,
+    )
+
+    if not state_file:
+        state_file = f"state/{id}.json"
+
+    store = create_state_store(Path(state_file))
+
+    if store.is_pristine():
+        state = store.create()
+    else:
+        state = store.load()
+
+    # Set up the strategy engine
+    factory = make_factory_from_strategy_mod(mod)
+    run_description: StrategyExecutionDescription = factory(
+        execution_model=execution_model,
+        execution_context=execution_context,
+        timed_task_context_manager=execution_context.timed_task_context_manager,
+        sync_method=sync_method,
+        valuation_model_factory=valuation_model_factory,
+        pricing_model_factory=pricing_model_factory,
+        approval_model=UncheckedApprovalModel(),
+        client=client,
+    )
+
+    # We construct the trading universe to know what's our reserve asset
+    universe_model: TradingStrategyUniverseModel = run_description.universe_model
+    ts = datetime.datetime.utcnow()
+    universe = universe_model.construct_universe(
+        ts,
+        ExecutionMode.preflight_check,
+        UniverseOptions())
+
+    runner = run_description.runner
+    routing_state, pricing_model, valuation_method = runner.setup_routing(universe)
+
+    make_test_trade(
+        execution_model,
+        pricing_model,
+        sync_method,
+        state,
+        universe,
+        runner.routing_model,
+        routing_state,
+    )
+
+    # Store the test trade data in the strategy history
+    store.sync(state)
+
+
+
+

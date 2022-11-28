@@ -96,8 +96,11 @@ def setup_notebook_logging(log_level=logging.WARNING) -> logging.Logger:
     # Set log format to dislay the logger name to hunt down verbose logging modules
     fmt = "%(asctime)s %(name)-50s %(levelname)-8s %(message)s"
 
+    # TODO: coloredlogs disabled for notebook -
+    # see https://stackoverflow.com/a/68930736/315168
+    # how to add native HTML log output
     # Use colored logging output for console
-    coloredlogs.install(level=log_level, fmt=fmt, logger=logger)
+    # coloredlogs.install(level=log_level, fmt=fmt, logger=logger)
 
     setup_custom_log_levels()
 
@@ -113,6 +116,8 @@ def setup_notebook_logging(log_level=logging.WARNING) -> logging.Logger:
 
     # maplotlib burps a lot on startup
     logging.getLogger("matplotlib").setLevel(logging.WARNING)
+
+    return logger
 
 
 def setup_custom_log_levels():
