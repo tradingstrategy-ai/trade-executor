@@ -7,7 +7,7 @@ import logging
 from logging import Logger
 from typing import Optional, List
 
-from tradeexecutor.utils.ring_buffer_logging_handler import RingBufferLogger
+from tradeexecutor.utils.ring_buffer_logging_handler import RingBufferHandler
 
 try:
     import coloredlogs
@@ -19,12 +19,18 @@ except ImportError:
     pass
 
 
+#: Stored here as a global so that we can later call RingBufferHandler.export()
+ring_buffer_handler: Optional[RingBufferHandler] = None
+
+
 def setup_logging(log_level=logging.INFO, in_memory_buffer=False) -> Logger:
     """Setup root logger and quiet some levels.
 
     :param in_memory_buffer:
         Setup in-memory log buffer used to fetch log messages to the frontend.
     """
+
+    global ring_buffer_handler
 
     setup_custom_log_levels()
 
@@ -60,8 +66,8 @@ def setup_logging(log_level=logging.INFO, in_memory_buffer=False) -> Logger:
     logging.getLogger("ddtrace").setLevel(logging.INFO)
 
     if in_memory_buffer:
-        handler = RingBufferLogger()
-        logger.addHandler(handler)
+        ring_buffer_handler  = RingBufferHandler()
+        logger.addHandler(ring_buffer_handler)
 
     return logger
 

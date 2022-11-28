@@ -4,7 +4,7 @@ Allows any process to fetch the latest logs from the process itself.
 """
 
 from collections import deque
-from logging import Handler, LogRecord
+from logging import Handler, LogRecord, NOTSET
 from typing import Deque, List, TypedDict
 
 
@@ -28,7 +28,6 @@ class ExportedRecord(TypedDict):
     @staticmethod
     def export(record: LogRecord) -> "ExportedRecord":
         """Export single log record as dict."""
-
         return {
             "timestamp": record.created,
             "level": record.levelname,
@@ -36,12 +35,15 @@ class ExportedRecord(TypedDict):
         }
 
 
-class RingBufferLogger(Handler):
+class RingBufferHandler(Handler):
     """Keep N log entries in the memory."""
 
-    def __init__(self, buffer_size: int=2_000):
+    def __init__(self, level=NOTSET, buffer_size: int=2_000):
         """By default, store 2000 log messates."""
         # https://stackoverflow.com/a/4151368/315168
+        
+        super(RingBufferHandler, self).__init__(level)
+        
         self.buffer: Deque[LogRecord] = deque([], maxlen=buffer_size)
 
     def emit(self, record: LogRecord):

@@ -125,7 +125,7 @@ def start(
         else:
             log_level = logging.INFO
 
-    logger = setup_logging(log_level)
+    logger = setup_logging(log_level, in_memory_buffer=True)
 
     if discord_webhook_url:
         setup_discord_logging(
