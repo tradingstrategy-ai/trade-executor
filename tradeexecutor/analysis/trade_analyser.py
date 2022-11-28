@@ -650,6 +650,7 @@ def expand_timeline_raw(
         exchanges: Set[Exchange],
         pair_universe: PandasPairUniverse,
         timeline: pd.DataFrame,
+        initial_capital: float,
         timestamp_format="%Y-%m-%d",
 ) -> pd.DataFrame:
     """Similar to expand_timeline, but only returns raw data instead of formatted strings
@@ -665,6 +666,10 @@ def expand_timeline_raw(
     :return: DataFrame with human=readable position win/loss information, having DF indexed by timestamps
     """
     exchange_map = {e.exchange_id: e for e in exchanges}
+
+    # variable to represent total capital (position + cash) at the open of each position
+    global opening_capital
+    opening_capital = initial_capital
 
     # https://stackoverflow.com/a/52363890/315168
     def expander(row):
@@ -683,6 +688,11 @@ def expand_timeline_raw(
         else:
             remarks = ""
 
+        pnl_usd = position.realised_profit if position.is_closed() else np.nan
+
+        global opening_capital
+        from decimal import Decimal
+
         r = {
             # "timestamp": timestamp,
             "Id": position.position_id,
@@ -693,12 +703,15 @@ def expand_timeline_raw(
             "Base asset": pair_info.base_token_symbol,
             "Quote asset": pair_info.quote_token_symbol,
             "position_max_size": position.get_max_size(),
-            "pnl_usd": position.realised_profit if position.is_closed() else np.nan,
+            "pnl_usd": pnl_usd,
+            "opening_capital": opening_capital,
             "pnl_pct_raw": position.realised_profit_percent if position.is_closed() else 0,
             "open_price_usd": position.open_price,
             "close_price_usd": position.close_price if position.is_closed() else np.nan,
             "trade_count": position.get_trade_count(),
         }
+
+        opening_capital = opening_capital + pnl_usd
         return r
 
     applied_df = timeline.apply(expander, axis='columns', result_type='expand')
