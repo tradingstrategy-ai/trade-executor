@@ -6,9 +6,9 @@ info:
 
   contact:
     email: mikko@tradingstrategy.ai
-    url: 'https://tradingstrategy.ai'
+    url: 'https://tradingstrategy.ai/community'
   x-logo:
-    url: 'https://raw.githubusercontent.com/tradingstrategy-ai/frontend/master/src/lib/assets/logo-two-lines.svg'
+    url: 'https://raw.githubusercontent.com/tradingstrategy-ai/frontend/ec73a013cae04fa3f13c579dcc0dd0d80cbc49cc/src/lib/assets/logo-horizontal.svg'
 
   description: |
 
@@ -47,7 +47,7 @@ info:
     This API provides live data. However, these API endpoints have not been designed for large data ignestion.
     For backtesting trading strategies, [download the historical datasets from Trading Strategy website](https://tradingstrategy.ai/trading-view/backtesting).
 
-    ## Data types
+    ## Market data categories
 
     You can find
 
@@ -59,7 +59,7 @@ info:
 
     * OHLC liquidty data for liquidity maps
 
-    # Supported blockchains
+    ## Supported blockchains
 
     Examples of supported blockchains:
 
@@ -73,18 +73,25 @@ info:
 
     Examples of supported exchanges:
 
-    * Uniswap
-
+    * [PancakeSwap](https://tradingstrategy.ai/trading-view/binance/pancakeswap-v2)
+  
+    * [Uniswap](https://tradingstrategy.ai/trading-view/ethereum/uniswap-v2)
+    
     * SushiSwap
 
-    * PancakeSwap
-
     * QuickSwap
+    
+    * Trader Joe
 
-    ## About OpenAPI Specification used
+    ## About OpenAPI specification used
 
     This API specification is written in [OpenAPI v3](https://swagger.io/specification/).
 
+    ## Documentation, support and questions
+    
+    * [Trading Strategy documentation](https://tradingstrategy.ai/docs/)
+    
+    * [Ask questions on Trading Strategy Discord server](https://tradingstrategy.ai/community)
 
 externalDocs:
   description: Trading Strategy documentation
@@ -103,6 +110,10 @@ tags:
     description: Data about trading pair
   - name: Trading signal
     description: Data about trading signals
+  - name: Telemetry
+    description: |
+      Storing events of interest pertaining to the TradingStrategy ecosystem,
+      such as user iteractions with the charts on the website.
 
 servers:
   - url: 'https://tradingstrategy.ai/api/'
@@ -171,6 +182,45 @@ paths:
               schema:
                 $ref: "#/components/schemas/GenericErrorModel"
 
+  '/health-check':
+    x-pyramid-route-name: web_chain_health_check
+    get:
+      operationId: web_chain_health_check
+      summary: |
+        The blockchain data health check.
+        
+        Returns various diagnostics informtion on the chain indexing status.
+        
+        This is a slow endpoint and may take minutes to respond.
+        It is only intended to be used in monitoring.
+      tags:
+        - Blockchain
+      parameters:
+        - name: chain_slug
+          in: query
+          description: |
+            Blockchain slug, e.g, `ethereum` for Ethereum mainnet
+          required: true
+          schema:
+            type: string
+          example: ethereum
+
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                  type: object
+        '404':
+          description: chain not found
+        "422":
+          description: Unexpected error - usually bad query input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericErrorModel"
+
   '/exchanges':
     x-pyramid-route-name: web_exchanges
     get:
@@ -193,6 +243,16 @@ paths:
           required: false
           schema:
             type: string
+
+        - name: address
+          in: query
+          description: |
+            Get all DEX venues of a token by token contract address.
+
+          required: false
+          schema:
+            type: string
+
         - name: sort
           in: query
           description: |
@@ -402,7 +462,9 @@ paths:
 
         `/pairs?chain_slugs=ethereum&exchange-slugs=uniswap-v2`
 
-        The results are always paginated.
+        - Can return paginated JSON results for the frontend.
+        
+        - Can return Microsoft XLSX export of the data. In this case, always get the first 3000 entries.  
 
         ## Parameter seralisation
 
@@ -499,7 +561,7 @@ paths:
             default: pair_id
             minimum: 1
             maximum: 100
-            enum: [pair_id, volume, volume_30d, price_change_24h, liquidity]
+            enum: [pair_id, volume, volume_30d, price_change_24h, liquidity, liquidity_change_abs_24h, liquidity_change_relative_24h]
         - name: direction
           in: query
           description: |
@@ -511,15 +573,44 @@ paths:
             type: string
             enum: [asc, desc]
             default: asc
+        - name: filter
+          in: query
+          description: |
+            Filter the results based on liquidity.
+            
+            This allows exclude noisy micro cap trading pairs.
+            
+             * `unfiltered` - Returns everything within [the tracking rules](https://tradingstrategy.ai/docs/programming/tracking.html).
+             * `min_liquidity_100k` - pairs with the current liquidity $100k  
+             * `min_liquidity_1M` - pairs with the current liquidity $1M
+          required: false
+          schema:
+            type: string
+            enum: [unfiltered, min_liquidity_100k, min_liquidity_1M]
+            default: min_liquidity_1M
         - name: filter_junk
           in: query
           description: |
+             Get rid of token symbol duplicates.
+            
              If there are multiple token pairs with matching symbols in the result,
              choose one with the highest volume and hide the others.
           required: false
           schema:
             type: boolean
             default: true
+        - name: format
+          in: query
+          description: |
+            Output format of the data.
+            
+             * `json` - return JSON data to be rendered in web frontend.  
+             * `excel` - always limited to top 3000 results. Returns a downloadable file.
+          required: false
+          schema:
+            type: string
+            enum: [json, excel]
+            default: json
       tags:
         - Trading pair
       responses:
@@ -615,6 +706,13 @@ paths:
             format: iso8601
             minimum: 0
           example: 2022-01-02
+        - name: exchange_type
+          in: query
+          description: Exchange type enum - see https://tradingstrategy.ai/docs/programming/api/client/help/tradingstrategy.exchange.ExchangeType.html
+          required: false
+          schema:
+            type: string
+          example: uni_v2
 
       tags:
         - Trading pair
@@ -627,6 +725,223 @@ paths:
                 $ref: '#/components/schemas/CandleList'
         "422":
           description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericErrorModel"
+
+  '/candles-jsonl':
+    x-pyramid-route-name: web_candles_jsonl
+    get:
+      operationId: web_candles_jsonl
+      summary:
+
+        Get the candle data for multiple trading pairs in JSONL format.
+
+      description: |
+        This is preferred method for getting OHLCV data if you need
+        full historical data for small number od trading pairs. 
+        There is very high limit on amount of data that can be fetched
+        using this method.
+      
+        The response is [UTF-8 encoded JSON Lines](https://jsonlines.org/) streamed binary response.
+        The size of the response cannot be known ahead of time.
+        
+        Candles are returned from the earliest to the latest.      
+        If no start time is given, start from the genesis.
+        
+        The server has a byte limit for each response. This is controlled
+        by `max_bytes` parameter. If the response reaches more than 
+        `max_bytes` in length it is terminated with JSON object
+        `{"error": true, "max_bytes_reached": served_bytes}`.
+        The highest value, and response length, you can ask is 100M bytes. 
+          
+        **TODO**: Specify the actual per-line JSONL format in OpenAPI schema.
+        
+        An example code how to stream and decode JSONL OHLCV candles in Python: 
+        
+        ```
+          """A sample script to download JSONL candle data.
+          
+          Request all historical data for
+          
+          - 15m candles
+          
+          - ETH/USDC
+          
+          - BNB/BUSD
+          
+          The download JSONL binary size is 28 Mbytes
+          """
+          
+          import datetime
+          from collections import defaultdict
+          from io import StringIO
+          
+          import requests
+          import jsonlines
+          
+          api_url = "https://tradingstrategy.ai/api"
+          
+          bnb_busd_params = {
+              "chain_slug": "binance",
+              "exchange_slug": "pancakeswap-v2",
+              "pair_slug": "bnb-busd",
+          }
+          
+          resp = requests.get(f"{api_url}/pair-details", bnb_busd_params)
+          assert resp.status_code == 200, f"Got {resp.text}"
+          
+          bnb_busd = resp.json()
+          
+          print("Pair #1", bnb_busd["summary"]["pair_name"], bnb_busd["summary"]["pair_id"])
+          
+          eth_usdc_params = {
+              "chain_slug": "ethereum",
+              "exchange_slug": "uniswap-v2",
+              "pair_slug": "eth-usdc",
+          }
+          
+          resp = requests.get(f"{api_url}/pair-details", eth_usdc_params)
+          assert resp.status_code == 200, f"Got {resp.text}"
+          
+          eth_usdc = resp.json()
+          
+          print("Pair #2", eth_usdc["summary"]["pair_name"], eth_usdc["summary"]["pair_id"])
+          
+          id_list = (eth_usdc["summary"]["pair_id"], bnb_busd["summary"]["pair_id"])
+          
+          params = {
+              "pair_ids": ",".join(str(i) for i in id_list),
+              "time_bucket": "15m",
+          }
+          
+          # Iterate the resulting response
+          # using jsonlines reader.
+          # We start to decode incoming data on the first arrived byte
+          # and keep decoding while streaming the response.
+          # https://stackoverflow.com/a/60846477/315168
+          print("Loading OHLCV data")
+          resp = requests.get(f"{api_url}/candles-jsonl", params=params, stream=True)
+          reader = jsonlines.Reader(resp.raw)
+          
+          print("Iterating response")
+          candle_data = defaultdict(list)
+          for item in reader:
+              pair_id = item["p"]
+              candle_data[pair_id].append(item)
+          
+          eth_usdc_candles = candle_data[eth_usdc["summary"]["pair_id"]]
+          first_candle = datetime.datetime.utcfromtimestamp(eth_usdc_candles[0]["ts"])
+          last_candle = datetime.datetime.utcfromtimestamp(eth_usdc_candles[-1]["ts"])
+          bnb_busd_candles = candle_data[bnb_busd["summary"]["pair_id"]]
+          
+          print(f"ETH-USDC has {len(eth_usdc_candles):,} candles from {first_candle} to {last_candle}")
+          print(f"BNB-BUSD has {len(bnb_busd_candles):,} candles")    
+        ```
+      parameters:
+        - name: pair_ids
+          in: query
+          description: |
+
+            Trading pair ids.
+
+            Trading pair ids are not stable. Translate your trading pair symbolic tickers by using `/pair-details` endpoint
+            before calling this API.
+            
+            The server has a maximum number of trading pairs it will serve in one request 
+            and will give you an error if you try to ask too many trading pairs once.
+
+          required: false
+          style: form
+          explode: true
+          schema:
+            type: array
+            items:
+              type: integer
+            uniqueItems: true
+
+        - name: time_bucket
+          in: query
+          description: >
+
+              What time bucket to use for the candle size.
+
+          required: true
+          schema:
+            type: string
+            enum: [1m, 5m, 15m, 1h, 4h, 1d, 7d, 30d]
+          example: 1h
+        - name: start
+          in: query
+          description: |
+
+              When the candle fetch period starts.
+
+              Use UNIX UTC timestamp, as ISO 8601 formatted string.
+              [Read more information about the time format](https://docs.python.org/3/library/datetime.html#datetime.datetime.fromisoformat).
+      
+              This range parameter is inclusive.
+            
+              If not given return all historical data starting from the genesis.
+
+          required: false
+          schema:
+            type: string
+            format: iso8601
+          example: "1970-01-01"
+        - name: end
+          in: query
+          description: |
+
+              When the candle fetch period ends.
+
+              Use UNIX UTC timestamp, as ISO 8601 formatted string.
+
+              If not specific this will be resolved to now().
+
+              This range parameter is inclusive.
+
+          required: false
+          schema:
+            type: string
+            format: iso8601
+            minimum: 0
+          example: "2022-01-02"
+
+        - name: max_bytes
+          in: query
+          description: |
+
+             How many bytes to serve before the stream is terminated.
+
+          required: false
+          schema:
+            type: integer
+            maximum: 100000000
+          example: 25000000
+
+        - name: exchange_type
+          in: query
+          description: Exchange type enum - see https://tradingstrategy.ai/docs/programming/api/client/help/tradingstrategy.exchange.ExchangeType.html
+          required: false
+          schema:
+            type: string
+          example: uni_v2
+
+      tags:
+        - Trading pair
+      responses:
+        "200":
+          description: OK
+          content:
+            application/jsonl+json:
+              schema:
+                # https://stackoverflow.com/a/53339910/315168
+                type: string
+                format: binary
+        "422":
+          description: Something wrong with the input parameters
           content:
             application/json:
               schema:
@@ -708,6 +1023,13 @@ paths:
             format: iso8601
             minimum: 0
           example: 2022-01-02
+        - name: exchange_type
+          in: query
+          description: Exchange type enum - see https://tradingstrategy.ai/docs/programming/api/client/help/tradingstrategy.exchange.ExchangeType.html
+          required: false
+          schema:
+            type: string
+          example: uni_v2
 
       tags:
         - Trading pair
@@ -799,10 +1121,18 @@ paths:
             The default sorting by `token_id` only makes sense for machine-to-machine
             actions. The recommended sort method is to sort by descending volume (i.e.
             most interesting tokens first).
+
+            > **NOTE:** If sort property is specified, tokens that have that property
+            > set to NULL are excluded from the results.
+
           required: false
           schema:
             type: string
-            enum: [token_id, volume_24h, liquidity_latest]
+            enum: [
+              token_id, volume_24h, liquidity_latest, liquidity_change_7d,
+              liquidity_change_30d, liquidity_change_360d, liquidity_all_time_high,
+              liquidity_all_time_low
+            ]
             default: token_id
         - name: direction
           in: query
@@ -824,7 +1154,7 @@ paths:
                 description: List of token summmaries.
                 type: array
                 items:
-                  $ref: '#/components/schemas/TokenOnChainInfo'
+                  $ref: '#/components/schemas/PaginatedTokenOnChainInfo'
         '404':
           description: No tokens found.
         "422":
@@ -887,6 +1217,19 @@ paths:
         Return top up and down 100 price changes for 24h.
 
         The results are split for all trading pairs and trading pairs with $1M min liquidity.
+
+      parameters:
+        - name: summary
+          in: query
+          description: | 
+          
+            If set, return only the top 5 entries to reduce the download size.
+
+          required: false
+          schema:
+            type: boolean
+            default: false
+
       tags:
         - Trading signal
       responses:
@@ -916,6 +1259,67 @@ paths:
       responses:
         "200":
           description: JSON dict of impressive numbers
+
+  '/activity':
+    x-pyramid-route-name: web_activity
+    post:
+      operationId: web_activity
+      summary: Record new user activity or interction with the system.
+      tags:
+        - Telemetry
+      parameters:
+        - name: user_id
+          in: query
+          description: |
+            A unique user identifier for distinguishing individual interaction occurences.
+          required: true
+          schema:
+            type: string
+          example: "Zm9vIGJhcg=="
+
+        - name: type
+          in: query
+          description: |
+            The type of the user activity such as "chart".
+          required: true
+          schema:
+            type: string
+          example: "chart"
+
+        - name: CF-Connecting-IP
+          in: header
+          description: |
+            IP address of the user who interacted with a chart.
+          required: false
+          schema:
+            type: string
+          example: "123.45.67.89"
+
+        - name: CF-IPCountry
+          in: header
+          description: |
+            A two-character ISO country code of the user's country.
+          required: false
+          schema:
+            type: string
+            minLength: 2
+            maxLength: 2
+          example: "UK"
+
+      responses: # list of responses
+        "200":
+          description: 'A static "success" JSON object: {"status": "OK"}'
+          content:
+            application/json:
+              schema:
+                type: string
+        "422":
+          description: Unexpected error - usually bad query input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericErrorModel"
+
 
 # An object to hold reusable parts that can be used across the definition
 components:
@@ -965,7 +1369,7 @@ components:
           minLength: 4
           example: 0x0
         exchange_type:
-          description: Exchange type enum - see https://tradingstrategy.ai/docs/programming/api/exchange.html#tradingstrategy.exchange.ExchangeType
+          description: Exchange type enum - see https://tradingstrategy.ai/docs/programming/api/client/help/tradingstrategy.exchange.ExchangeType.html
           type: string
           minLength: 4
           example: uni_v2
@@ -1207,6 +1611,12 @@ components:
 
           type: number
           example: 0.05
+        usd_liquidity_change_24h:
+          description: |
+              The US dollar value how much liquidity has changed for the last 24h.
+
+          type: number
+          example: 120000
         liquidity_type:
           description: What of liquidity measurement is used
           type: string
@@ -1630,6 +2040,45 @@ components:
             (optional)
           type: string
           format: url
+        buy_tax:
+          description: |
+            Measured buy tax for this token.
+            
+            The tax percent as 0...1 (100%) floating point.
+
+            Values > 1 are error codes meaning the token tax measurement has failed
+            and token is most likely out of liquidity, broken or a honeypot.
+            
+            Missing data or null values indicate the has not been measured yet.
+
+          type: number
+          format: float
+        transfer_tax:
+          description: |
+            Measured transfer tax for this token.
+            
+            The tax percent as 0...1 (100%) floating point.
+
+            Values > 1 are error codes meaning the token tax measurement has failed
+            and token is most likely out of liquidity, broken or a honeypot.
+            
+            Missing data or null values indicate the has not been measured yet.
+
+          type: number
+          format: float
+        sell_tax:
+          description: |
+            Measured selll tax for this token.
+            
+            The tax percent as 0...1 (100%) floating point.
+
+            Values > 1 are error codes meaning the token tax measurement has failed
+            and token is most likely out of liquidity, broken or a honeypot.
+            
+            Missing data or null values indicate the has not been measured yet.
+
+          type: number
+          format: float
 
     PairFullInfo:
       description: |
@@ -1655,29 +2104,29 @@ components:
       properties:
         name:
           type: string
-          example: "Distant Universe Stardust Token"
+          example: "PancakeSwap Token"
         symbol:
           type: string
-          example: "DUST"
+          example: "CAKE"
         token_id:
           description: The token's primary key.
           type: integer
-          example: 27
+          example: 715
         chain_name:
           description: |
             Human-readable name of the blockchain the token lives on.
           type: string
-          example: Ethereum
+          example: Binance
         chain_slug:
           description: URL slug of the blockchain on which the token lives.
           type: string
-          example: ethereum
+          example: bsc
         address:
           type: string
           format: blockchain_address
           description: >
             The address of the smart contract that governs the token.
-          example: "0xbca3c97837a39099ec3082df97e28ce91be14472"
+          example: "0x0e09fabb73bd3ade0a17ecc321fd13a19e81ce82"
         total_supply:
           type: string
           format: decimal
@@ -1688,9 +2137,35 @@ components:
           minimum: 0
           nullable: true
           description: >
-             The number of decimals the token uses - e.g. 8, means to divide the token
+             The number of decimals the token uses - e.g. 8 means to divide the token
              amount by 100_000_000 to get its user representation.
-          example: 8
+          example: 18
+        chainscan_metadata:
+            type: object
+            nullable: false
+            description: >
+                Raw token metadata as fetched from external chainscan API.
+                Can be an empty JSON object if no metadata has been imported yet.
+            example:
+                {
+                  "contractAddress": "0x0e09fabb73bd3ade0a17ecc321fd13a19e81ce82",
+                  "tokenName": "PancakeSwap Token",
+                  "symbol": "Cake",
+                  "divisor": "18",
+                  "website": "https://pancakeswap.finance/",
+                  "email": "PancakeSwap@gmail.com",
+                  "facebook": "",
+                  "twitter": "https://twitter.com/pancakeswap"
+                }
+        chainscan_metadata_last_updated:
+            type: string
+            format: date-time
+            nullable: true
+            description: >
+              The UTC time the token metadata was last updated from a chainscan API.
+              Formatted as ISO 8601 string.
+            example:
+                "2022-07-25T10:03:12.605978"
         liquidity_latest:
           type: number
           format: float
@@ -1698,6 +2173,47 @@ components:
           nullable: true
           description: >
              The latest available token suply in USD.
+        liquidity_change_7d:
+          type: number
+          format: float
+          minimum: 0.0
+          nullable: true
+          description: >
+             The relative liquidity change (%) in the last seven days.
+             If historical data does not span back long enough to compute it,
+             no value is returned.
+        liquidity_change_30d:
+          type: number
+          format: float
+          minimum: 0.0
+          nullable: true
+          description: >
+             The relative liquidity change (%) in the last thirty days.
+             If historical data does not span back long enough to compute it,
+             no value is returned.
+        liquidity_change_360d:
+          type: number
+          format: float
+          minimum: 0.0
+          nullable: true
+          description: >
+             The relative liquidity change (%) in the last 360 days.
+             If historical data does not span back long enough to compute it,
+             no value is returned.
+        liquidity_all_time_high:
+          type: number
+          format: float
+          minimum: 0.0
+          nullable: true
+          description: >
+             The highest 15-minute liquidity in USD of all times.
+        liquidity_all_time_low:
+          type: number
+          format: float
+          minimum: 0.0
+          nullable: true
+          description: >
+             The lowest 15-minute liquidity in USD of all times.
         volume_24h:
           type: number
           format: float
@@ -1705,6 +2221,25 @@ components:
           nullable: true
           description: >
              The total token trade volume in USD in the last 24 hours.
+
+    PaginatedTokenOnChainInfo:
+      description: >
+          Iterate through a list of TokenOnChainInfo responses.
+
+      properties:
+        total:
+          description: Total results entries
+          type: integer
+          example: 100
+        pages:
+          description: Total result pages
+          type: integer
+          example: 10
+        results:
+          description: One page of tokens info
+          type: array
+          items:
+            $ref: '#/components/schemas/TokenOnChainInfo'
 
     TopMomentum:
       description: >

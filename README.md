@@ -9,9 +9,9 @@ This repository contains OpenAPI 3 specifications for two APIs
 * Open DeFi API for reading DEX data
 * Trade Executor API for managing automated trading strategies
 
-## Open DeFi  API
+## Open DeFi API
 
-Open DeFi API provides server and browser accessible endpoints for decentralised exchange and blockchain live data. This data is useful for market data websites, real-time candel stick charts, chat bots, trading bots and similar.
+Open DeFi API is a real-tie APId for server and browser accessible endpoints for decentralised exchange and blockchains. This data is useful for market data websites, real-time candel stick charts, chat bots, trading bots and similar.
 
 [Open the Swagger API explorer](https://tradingstrategy.ai/api/explorer/).
 
@@ -26,6 +26,8 @@ The data covers
 * OHLCV candles
 
 * Available liquidity
+
+**Rate limit**: 200 API requests / minute
 
 ## Trade Executor API
 
