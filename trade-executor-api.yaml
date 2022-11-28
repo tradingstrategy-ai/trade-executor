@@ -176,6 +176,32 @@ paths:
               schema:
                 type: object
 
+  '/logs':
+    x-pyramid-route-name: web_logs
+    get:
+      operationId: web_logs
+      summary: |
+        
+        Return the latest logs of the trade executor.
+
+      responses:
+        "200":
+          description: | 
+            Return the log messages as a list of JSON objects. 
+          
+            See `ring_buffer_logging_handler.py` for the format. 
+
+          content:
+            application/json:
+              schema:
+                type: object
+        "422":
+          description: Unexpected error - usually an internal error
+          content:
+            application/json:
+              schema:
+                type: object
+
   '/notify':
     x-pyramid-route-name: web_notify
     post:
