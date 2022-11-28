@@ -739,7 +739,7 @@ def perform_test_trade(
         json_rpc_polygon=json_rpc_polygon,
         json_rpc_avalanche=json_rpc_avalanche,
         json_rpc_ethereum=json_rpc_ethereum,
-        gas_price_method=None,
+        gas_price_method=gas_price_method,
     )
 
     assert web3config, "No RPC endpoints given. A working JSON-RPC connection is needed for check-wallet"
