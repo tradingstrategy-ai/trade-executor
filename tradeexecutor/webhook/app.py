@@ -22,6 +22,7 @@ from . import api
 from .error import exception_view
 from ..state.metadata import Metadata
 from ..state.store import JSONFileStore
+from ..strategy.execution_state import ExecutionState
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +72,14 @@ def init_web_api(config: Configurator):
     config.scan(package='tradeexecutor.webhook.events')
 
 
-def create_pyramid_app(username, password, command_queue: Queue, store: JSONFileStore, metadata: Metadata, production=False) -> Router:
+def create_pyramid_app(
+        username,
+        password,
+        command_queue: Queue,
+        store: JSONFileStore,
+        metadata: Metadata,
+        execution_state: ExecutionState,
+        production=False) -> Router:
     """Create WSGI app for Trading Strategy backend."""
 
     settings = {
@@ -108,8 +116,10 @@ def create_pyramid_app(username, password, command_queue: Queue, store: JSONFile
         init_web_api(config)
 
         # Expose the state store to the webhook
+        # by sharing the global objects across threads
         config.registry["store"] = store
         config.registry["metadata"] = metadata
+        config.registry["execution_state"] = execution_state
 
         config.add_exception_view(exception_view)
 

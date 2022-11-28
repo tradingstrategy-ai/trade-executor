@@ -3,6 +3,7 @@
 import datetime
 import logging
 import os
+import time
 from decimal import Decimal
 from pathlib import Path
 from queue import Queue
@@ -27,6 +28,7 @@ from ...strategy.bootstrap import import_strategy_file
 from ...strategy.cycle import CycleDuration
 from ...strategy.execution_context import ExecutionContext, ExecutionMode
 from ...strategy.execution_model import TradeExecutionType
+from ...strategy.execution_state import ExecutionState
 from ...strategy.strategy_module import read_strategy_module, StrategyModuleInformation
 from ...utils.timer import timed_task
 from ...webhook.server import create_webhook_server
@@ -208,6 +210,8 @@ def start(
     # Start the queue that relays info from the web server to the strategy executor
     command_queue = Queue()
 
+    execution_state = ExecutionState()
+
     # Create our webhook server
     if http_enabled:
         server = create_webhook_server(
@@ -217,7 +221,9 @@ def start(
             http_password,
             command_queue,
             store,
-            metadata)
+            metadata,
+            execution_state,
+        )
     else:
         logger.info("Web server disabled")
         server = None
@@ -268,6 +274,10 @@ def start(
                 timed_task_context_manager=timed_task,
             )
 
+    # If we die within 5 seconds of the launch,
+    # also temrinate the webhook server immediately
+    start_up_deadline = time.time() + 5
+
     try:
         loop = ExecutionLoop(
             name=name,
@@ -295,6 +305,7 @@ def start(
             trade_immediately=trade_immediately,
             stats_refresh_frequency=stats_refresh_frequency,
             position_trigger_check_frequency=position_trigger_check_frequency,
+            execution_state=execution_state,
         )
         loop.run()
 
@@ -306,12 +317,20 @@ def start(
         # CTRL+C shutdown
         logger.trade("Trade Executor %s shut down by CTRL+C requested: %s", name, e)
     except Exception as e:
+
+        # Unwind the traceback and notify the webserver about the failure
+        execution_state.set_fail()
+
         # Debug exceptions in production
         if port_mortem_debugging:
             import ipdb
             ipdb.post_mortem()
         logger.exception(e)
-        raise
+
+        if server is None or (time.time() < start_up_deadline):
+            # Only terminate the process if the webhook server is not running,
+            # otherwise the user can read the crash status from /status endpoint
+            raise
     finally:
         if server:
             server.close()
