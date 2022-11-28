@@ -18,7 +18,7 @@ def test_ring_buffer_logger():
     logger.setLevel(logging.INFO)
 
     try:
-        raise RuntimeError("Abort")
+        raise RuntimeError("Big Bada Boom")
     except Exception as e:
         # Records msg=Abort
         logger.exception(e)
@@ -26,7 +26,7 @@ def test_ring_buffer_logger():
     logger.warning("warning")
     logger.error("error")
     logger.debug("debug")
-    logger.trade("trade")
+    logger.trade("trade")  # Check for custom log level support
     logger.info("Info level message")
     logger.info("Foo %d, bar %d", 1, 2)
 
@@ -38,10 +38,9 @@ def test_ring_buffer_logger():
     assert data[-1]["message"] == "Foo 1, bar 2"
 
     assert data[0]["level"] == "error"
-    assert data[0]["message"] == "RuntimeError('Abort')"
+    assert data[0]["message"] == "RuntimeError('Big Bada Boom')"
 
     # Check that we can serialise JSON
     json.dumps(data)
 
     logger.removeHandler(handler)
-
