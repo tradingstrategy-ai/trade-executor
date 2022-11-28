@@ -66,6 +66,7 @@ trading-strategy-qstrader = {version="^0.5",  optional = true}
 # e.g. in-browser  bots.
 #
 tqdm = "^4.64.1"
+tblib = "^1.7.0"
 [tool.poetry.extras]
 
 # Legacy strats

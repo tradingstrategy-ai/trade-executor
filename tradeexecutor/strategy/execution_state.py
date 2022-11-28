@@ -1,7 +1,10 @@
 """Execution state communicates the current trade execution loop state to the webhook."""
 import datetime
+import sys
 from dataclasses import dataclass, field
 from typing import Optional
+
+from tblib import Traceback
 
 
 @dataclass
@@ -28,8 +31,24 @@ class ExecutionState:
 
     #: If the exception has crashed, serialise the exception information.
     #:
-    #:
+    #: This is serialised using :py:mod:`tblib`, as native
     exception: Optional[dict] = None
 
+
+    @staticmethod
+    def serialise_exception() -> dict:
+        """Serialised the latest raised Python exception.
+
+        Uses :py:mod:`tblib` to convert the Python traceback
+        to something that is serialisable.
+        """
+        et, ev, tb = sys.exc_info()
+        tb = Traceback(tb)
+        data = tb.to_dict()
+
+        # tblib loses the actual formatted exception message
+        data["exception_message"] = str(ev)
+
+        return data
 
 
