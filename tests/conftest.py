@@ -1,4 +1,5 @@
 import os
+from logging import Logger
 
 import pytest
 from tradingstrategy.client import Client
@@ -28,7 +29,7 @@ def persistent_test_client(persistent_test_cache_path) -> Client:
 
 
 @pytest.fixture()
-def logger():
+def logger() -> Logger:
     """Get rid of pyramid_openapi warnings in test output.
 
     .. code-block::
@@ -37,4 +38,4 @@ def logger():
 
     Only seem to affect multitest runs.
     """
-    setup_pytest_logging()
+    return setup_pytest_logging()

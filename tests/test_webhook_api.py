@@ -5,6 +5,7 @@ from queue import Queue
 import pytest
 import requests
 
+from tradeexecutor.cli.log import setup_in_memory_logging, get_ring_buffer_handler
 from tradeexecutor.state.metadata import Metadata
 from tradeexecutor.state.state import State
 from tradeexecutor.state.portfolio import Portfolio
@@ -79,3 +80,20 @@ def test_state(logger, server_url):
 
     assert state.portfolio.next_trade_id == 1
     assert state.portfolio.next_position_id == 1
+
+
+def test_logs(logger, server_url):
+    """Download logs."""
+
+    setup_in_memory_logging(logger)
+    ring_buffer_handler = get_ring_buffer_handler()
+    assert ring_buffer_handler is not None
+
+    logger.error("Test message")
+
+    # Create a state.
+    resp = requests.get(f"{server_url}/logs")
+    assert resp.status_code == 200
+
+    log_message_list = resp.json()
+    assert len(log_message_list) > 0

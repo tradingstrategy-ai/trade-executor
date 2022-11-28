@@ -8,6 +8,7 @@ from pyramid.request import Request
 from pyramid.response import Response, FileResponse
 from pyramid.view import view_config
 
+from tradeexecutor.cli.log import get_ring_buffer_handler
 from tradeexecutor.state.metadata import Metadata
 from tradeexecutor.state.store import JSONFileStore
 from tradeexecutor.strategy.execution_state import ExecutionState
@@ -100,3 +101,17 @@ def web_status(request: Request):
     r = Response(content_type="application/json")
     r.body = execution_state.to_json().encode("utf-8")
     return r
+
+
+@view_config(route_name='web_logs', renderer='json', permission='view')
+def web_logs(request: Request):
+    """/logs endpoint.
+
+    Return if the trade-executor is still alive or the exception that crashed it.
+
+    See :py:class:`tradeexecutor.strategy.execution_state.ExecutionState` for the return dta.
+    """
+    ring_buffer_handler = get_ring_buffer_handler()
+    assert ring_buffer_handler is not None, "In-memory logging not initialised"
+    logs = ring_buffer_handler.export()
+    return logs
