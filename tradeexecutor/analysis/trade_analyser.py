@@ -507,7 +507,7 @@ class TradeAnalysis:
                 if position.is_open():
                     yield pair_id, position
     
-    def calculate_summary_statistics(self, raw_timeline: Optional[pd.DataFrame] = None, stop_loss_pct: Optional[float] = None) -> TradeSummary:
+    def calculate_summary_statistics(self, *, raw_timeline: Optional[pd.DataFrame] = None, stop_loss_pct: Optional[float] = None) -> TradeSummary:
         """Calculate some statistics how our trades went.
             raw_timeline and stop_loss_pct need only be provided if user wants complete list of summary statistics,
             otherwise, the user will receive a shortened list of stats.
