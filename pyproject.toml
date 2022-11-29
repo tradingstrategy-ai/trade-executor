@@ -25,7 +25,7 @@ trading-strategy = "0.8.5"
 matplotlib = "^3.6.0"
 jupyterlab = "^3.5.0"
 pandas-ta = "^0.3.14-beta.0"
-tqdm-loggable = "^0.1.1"
+tqdm-loggable = "^0.1.2"
 
 # tqdm progress bar doesn't show up in VScode Jupyter with ipywidgets>=8
 # https://github.com/microsoft/vscode-jupyter/issues/11014
