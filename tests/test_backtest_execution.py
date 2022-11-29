@@ -22,7 +22,7 @@ from tradeexecutor.backtest.backtest_sync import BacktestSyncer
 from tradeexecutor.backtest.backtest_valuation import BacktestValuationModel
 from tradeexecutor.backtest.simulated_wallet import SimulatedWallet
 from tradeexecutor.cli.log import setup_pytest_logging
-from tradeexecutor.ethereum.default_routes import get_pancake_default_routing_parameters
+from tradeexecutor.ethereum.routing_data import get_pancake_default_routing_parameters
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.execution_context import ExecutionMode, ExecutionContext
 from tradeexecutor.strategy.trading_strategy_universe import load_all_data, TradingStrategyUniverse, \

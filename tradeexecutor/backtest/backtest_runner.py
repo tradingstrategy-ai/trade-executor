@@ -16,7 +16,7 @@ from tradeexecutor.backtest.backtest_valuation import BacktestValuationModel
 from tradeexecutor.backtest.simulated_wallet import SimulatedWallet
 from tradeexecutor.cli.log import setup_notebook_logging
 from tradeexecutor.cli.loop import ExecutionLoop
-from tradeexecutor.ethereum.default_routes import get_routing_model, get_backtest_routing_model
+from tradeexecutor.ethereum.routing_data import get_routing_model, get_backtest_routing_model
 from tradeexecutor.state.state import State
 from tradeexecutor.state.store import NoneStore
 from tradeexecutor.strategy.approval import UncheckedApprovalModel, ApprovalModel

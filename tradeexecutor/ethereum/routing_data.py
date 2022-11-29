@@ -2,6 +2,14 @@
 
 Describe which smart contract addresses are used to make a trade.
 Map factory addresses, router addresses and quote token addresses.
+
+- This takes one of the default routing options and gives the routing model for it
+
+- The routing model consists of smart contract addresses needed to trade
+
+See also :py:class:`tradeexecutor.strategy.default_routing_options.TradeRouting`
+that gives the users the choices for the trade routing options in their strategy module.
+
 """
 from typing import TypedDict, List
 
@@ -121,7 +129,12 @@ def get_uniswap_v2_default_routing_parameters(reserve_currency: ReserveCurrency)
 
 
 def create_uniswap_v2_compatible_routing(routing_type: TradeRouting, reserve_currency: ReserveCurrency) -> UniswapV2SimpleRoutingModel:
-    """Set up pancake routing"""
+    """Set up Uniswap v2 compatible routing.
+
+    - This takes one of the default routing options and gives the routing model for it
+
+    - The routing model consists of smart contract addresses needed to trade
+    """
 
     if routing_type == TradeRouting.pancakeswap_busd:
         if reserve_currency != ReserveCurrency.busd:

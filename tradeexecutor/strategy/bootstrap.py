@@ -13,7 +13,7 @@ from pathlib import Path
 
 from tradingstrategy.client import Client
 
-from tradeexecutor.ethereum.default_routes import get_routing_model
+from tradeexecutor.ethereum.routing_data import get_routing_model
 from tradeexecutor.state.sync import SyncMethod
 from tradeexecutor.strategy.approval import ApprovalModel
 from tradeexecutor.strategy.description import StrategyExecutionDescription
