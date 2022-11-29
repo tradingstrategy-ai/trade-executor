@@ -173,7 +173,10 @@ def visualise_single_pair(
         candle_universe: GroupedCandleUniverse,
         start_at: Optional[Union[pd.Timestamp, datetime.datetime]]=None,
         end_at: Optional[Union[pd.Timestamp, datetime.datetime]]=None,
-        height=800) -> go.Figure:
+        height=800,
+        draw_axes=True,
+        draw_title=True,
+) -> go.Figure:
     """Visualise single-pair trade execution.
 
     :param state:
@@ -261,17 +264,19 @@ def visualise_single_pair(
 
     fig = make_subplots(specs=[[{"secondary_y": should_create_volume_subplot}]])
 
-    if state.name:
-        fig.update_layout(title=f"{state.name} trades", height=height)
-    else:
-        fig.update_layout(title=f"Trades", height=height)
+    if draw_title:
+        if state.name:
+            fig.update_layout(title=f"{state.name} trades", height=height)
+        else:
+            fig.update_layout(title=f"Trades", height=height)
 
-    if pair_name:
-        fig.update_yaxes(title=f"{pair_name} price", secondary_y=False, showgrid=True)
-    else:
-        fig.update_yaxes(title="Price $", secondary_y=False, showgrid=True)
+    if draw_axes:
+        if pair_name:
+            fig.update_yaxes(title=f"{pair_name} price", secondary_y=False, showgrid=True)
+        else:
+            fig.update_yaxes(title="Price $", secondary_y=False, showgrid=True)
 
-    fig.update_xaxes(rangeslider={"visible": False})
+        fig.update_xaxes(rangeslider={"visible": False})
 
     if should_create_volume_subplot:
         volume_bars = go.Bar(

@@ -33,6 +33,8 @@ def draw_single_pair_strategy_state(
         start_at=target_pair_candles.iloc[0]["timestamp"],
         end_at=target_pair_candles.iloc[-1]["timestamp"],
         height=height,
+        draw_title=False,
+        draw_axes=False,
     )
 
     return figure
