@@ -11,7 +11,7 @@ from pyramid.view import view_config
 from tradeexecutor.cli.log import get_ring_buffer_handler
 from tradeexecutor.state.metadata import Metadata
 from tradeexecutor.state.store import JSONFileStore
-from tradeexecutor.strategy.execution_state import ExecutionState
+from tradeexecutor.strategy.run_state import RunState
 from tradeexecutor.webhook.error import exception_response
 
 
@@ -46,7 +46,7 @@ def web_metadata(request: Request):
     Executor metadata.
     """
     metadata: Metadata = request.registry["metadata"]
-    execution_state: ExecutionState = request.registry["execution_state"]
+    execution_state: RunState = request.registry["execution_state"]
 
     # Retrofitted with the running flag,
     # not really a nice API design.
@@ -97,7 +97,7 @@ def web_status(request: Request):
 
     See :py:class:`tradeexecutor.strategy.execution_state.ExecutionState` for the return dta.
     """
-    execution_state: ExecutionState = request.registry["execution_state"]
+    execution_state: RunState = request.registry["execution_state"]
 
     results = {
         "last_refreshed_at": execution_state.last_refreshed_at.timestamp(),
@@ -129,7 +129,7 @@ def web_source(request: Request):
 
     Return the source code of the strategy as plain text.
     """
-    execution_state: ExecutionState = request.registry["execution_state"]
+    execution_state: RunState = request.registry["execution_state"]
     r = Response(content_type="text/plain")
     r.text = execution_state.source_code or ""
     return r

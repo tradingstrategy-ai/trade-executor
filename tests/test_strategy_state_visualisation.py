@@ -35,7 +35,7 @@ from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.visual.strategy_state import draw_single_pair_strategy_state
-from tradeexecutor.visual.png import render_plotly_figure_as_image_file
+from tradeexecutor.visual.image_output import render_plotly_figure_as_image_file
 
 
 def decide_trades(

@@ -28,7 +28,7 @@ from ...strategy.bootstrap import import_strategy_file
 from ...strategy.cycle import CycleDuration
 from ...strategy.execution_context import ExecutionContext, ExecutionMode
 from ...strategy.execution_model import TradeExecutionType
-from ...strategy.execution_state import ExecutionState
+from ...strategy.run_state import RunState
 from ...strategy.strategy_module import read_strategy_module, StrategyModuleInformation
 from ...utils.timer import timed_task
 from ...webhook.server import create_webhook_server
@@ -216,7 +216,7 @@ def start(
     # Start the queue that relays info from the web server to the strategy executor
     command_queue = Queue()
 
-    execution_state = ExecutionState()
+    execution_state = RunState()
 
     # Create our webhook server
     if http_enabled:

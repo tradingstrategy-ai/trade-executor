@@ -27,16 +27,28 @@ class LatestStateVisualisation:
     #: When the execution state was updated last time
     last_refreshed_at: datetime.datetime = field(default_factory=datetime.datetime.utcnow)
 
-    #: 512 x 512 image
-    small_image_data: Optional[bytes] = None
+    #: 512 x 512 image PNG
+    small_image: Optional[bytes] = None
 
-    #: 1920 x 1920 image
-    large_image_data: Optional[bytes] = None
+    #: 1920 x 1920 image SVG
+    large_image: Optional[bytes] = None
+
+    def update_image_data(self,
+                          small_image,
+                          large_image):
+        self.small_image = small_image
+        self.large_image = large_image
+        self.last_refreshed_at = datetime.datetime.utcnow()
 
 
 @dataclass
-class ExecutionState:
-    """Execution state
+class RunState:
+    """Run state.
+
+    The status of a single trade-executor launch.
+
+    - Anything here is not persistent, but only kept in memory
+      while trade-executor is running
 
     A singleton instance communicates the state between
     the trade executor main loop and the webhook.

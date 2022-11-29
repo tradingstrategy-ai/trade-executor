@@ -6,8 +6,6 @@ import logging
 
 import pandas as pd
 
-from tradeexecutor.state.visualisation import Visualisation
-from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.strategy.pandas_trader.trade_decision import TradeDecider
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
@@ -15,9 +13,14 @@ from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniv
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.runner import StrategyRunner, PreflightCheckFailed
-
+from tradeexecutor.visual.image_output import render_plotly_figure_as_image_file
+from tradeexecutor.visual.strategy_state import draw_single_pair_strategy_state
 
 logger = logging.getLogger(__name__)
+
+
+
+
 
 
 class PandasTraderRunner(StrategyRunner):
@@ -76,3 +79,36 @@ class PandasTraderRunner(StrategyRunner):
             if self.max_data_age is not None:
                 if now_ - end > self.max_data_age:
                     raise PreflightCheckFailed(f"We do not have up-to-date data for candles. Last candles are at {end}")
+
+    def report_strategy_thinking(self,
+                                 clock: datetime.datetime,
+                                 universe: TradingStrategyUniverse,
+                                 state: State,
+                                 trades: List[TradeExecution],
+                                 debug_details: dict):
+        """Strategy admin helpers to understand a live running strategy.
+
+        - Post latest variables
+
+        - Draw the single pair strategy visualisation.
+        """
+
+        if universe.is_single_pair_universe():
+            # Single pair thinking
+
+            pass
+
+
+            # Post strategy thinking image to Discord
+            small_figure = draw_single_pair_strategy_state(state, universe, height=512)
+            small_image = render_plotly_figure_as_image_file(small_figure, width=512, height=512, format="png")
+
+            if self.execution_state:
+
+                # Draw the inline plot and expose them tot he web serber
+                large_figure = draw_single_pair_strategy_state(state, universe, height=1920)
+                large_image = render_plotly_figure_as_image_file(large_figure, width=1920, height=1920, format="svg")
+
+                self.execution_state.visualisation.update_image_data(small_image, large_image)
+
+

@@ -10,7 +10,7 @@ from webtest.http import StopableWSGIServer
 from .app import create_pyramid_app
 from ..state.metadata import Metadata
 from ..state.store import JSONFileStore
-from ..strategy.execution_state import ExecutionState
+from ..strategy.run_state import RunState
 
 logger =  logging.getLogger(__name__)
 
@@ -50,7 +50,7 @@ def create_webhook_server(
         queue: Queue,
         store: JSONFileStore,
         metadata: Metadata,
-        execution_state: ExecutionState,
+        execution_state: RunState,
 ) -> WebhookServer:
     """Starts the webhook web  server in a separate thread.
 

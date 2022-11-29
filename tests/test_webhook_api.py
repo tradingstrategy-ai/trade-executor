@@ -10,7 +10,7 @@ from tradeexecutor.state.metadata import Metadata
 from tradeexecutor.state.state import State
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.store import JSONFileStore
-from tradeexecutor.strategy.execution_state import ExecutionState
+from tradeexecutor.strategy.run_state import RunState
 from tradeexecutor.webhook.server import create_webhook_server
 
 
@@ -26,7 +26,7 @@ def store() -> JSONFileStore:
 
 @pytest.fixture()
 def server_url(store):
-    execution_state = ExecutionState()
+    execution_state = RunState()
     execution_state.source_code = "Foobar"
 
     queue = Queue()

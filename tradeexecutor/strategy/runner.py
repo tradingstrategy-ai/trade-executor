@@ -15,6 +15,7 @@ from tradeexecutor.strategy.approval import ApprovalModel
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.state.sync import SyncMethod
+from tradeexecutor.strategy.run_state import RunState
 from tradeexecutor.strategy.output import output_positions, DISCORD_BREAK_CHAR, output_trades
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.strategy.pricing_model import PricingModelFactory, PricingModel
@@ -57,7 +58,9 @@ class StrategyRunner(abc.ABC):
                  valuation_model_factory: ValuationModelFactory,
                  sync_method: SyncMethod,
                  pricing_model_factory: PricingModelFactory,
-                 routing_model: Optional[RoutingModel]=None):
+                 routing_model: Optional[RoutingModel] = None,
+                 execuion_state: Optional[RunState] = None
+                 ):
         self.timed_task_context_manager = timed_task_context_manager
         self.execution_model = execution_model
         self.approval_model = approval_model
@@ -65,6 +68,7 @@ class StrategyRunner(abc.ABC):
         self.sync_method = sync_method
         self.pricing_model_factory = pricing_model_factory
         self.routing_model = routing_model
+        self.execution_state =execuion_state
 
     @abc.abstractmethod
     def pretick_check(self, ts: datetime.datetime, universe: StrategyExecutionUniverse):
@@ -199,12 +203,18 @@ class StrategyRunner(abc.ABC):
             print(f"    {reserve.quantity:,.2f} {reserve.asset.token_symbol}", file=buf)
         logger.trade(buf.getvalue())
 
-    def report_strategy_thinking(self, clock: datetime.datetime, universe: StrategyExecutionUniverse, state: State, trades: List[TradeExecution], debug_details: dict):
+    def report_strategy_thinking(self,
+                                 clock: datetime.datetime,
+                                 universe: StrategyExecutionUniverse,
+                                 state: State,
+                                 trades: List[TradeExecution],
+                                 debug_details: dict):
         """Strategy runner subclass can fill in.
 
         By default, no-op. Override in the subclass.
+
+        Called before trades are executed.
         """
-        pass
 
     def setup_routing(self, universe: StrategyExecutionUniverse) -> Tuple[RoutingState, PricingModel, ValuationModel]:
         """Setups routing state for this cycle.

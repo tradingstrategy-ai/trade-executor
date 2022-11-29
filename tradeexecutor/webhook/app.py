@@ -22,7 +22,7 @@ from . import api
 from .error import exception_view
 from ..state.metadata import Metadata
 from ..state.store import JSONFileStore
-from ..strategy.execution_state import ExecutionState
+from ..strategy.run_state import RunState
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +78,7 @@ def create_pyramid_app(
         command_queue: Queue,
         store: JSONFileStore,
         metadata: Metadata,
-        execution_state: ExecutionState,
+        execution_state: RunState,
         production=False) -> Router:
     """Create WSGI app for Trading Strategy backend."""
 
