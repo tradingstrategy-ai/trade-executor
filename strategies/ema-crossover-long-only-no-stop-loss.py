@@ -219,7 +219,11 @@ def create_trading_universe(
     """
 
     # Load all datas we can get for our candle time bucket
-    dataset = load_all_data(client, candle_time_bucket, execution_context, universe_options)
+    dataset = load_all_data(
+        client,
+        candle_time_bucket,
+        execution_context,
+        universe_options)
 
     # Filter down to the single pair we are interested in
     universe = TradingStrategyUniverse.create_single_pair_universe(

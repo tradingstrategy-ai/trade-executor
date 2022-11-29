@@ -68,6 +68,7 @@ def test_cli_check_wallet(
         # Random empty wallet
         "PRIVATE_KEY": "0x111e53aed5e777996f26b4bdb89300bbc05b84743f32028c41be7193c0fe0b83",
         "MINUMUM_GAS_BALANCE": "0",
+        "UNIT_TESTING": "true",
     }
 
     runner = CliRunner()
@@ -98,7 +99,8 @@ def test_cli_backtest(
         "BACKTEST_STOP_LOSS_TIME_FRAME_OVERRIDE": "1d",
         "BACKTEST_START": "2021-06-01",
         "BACKTEST_END": "2022-07-01",
-        "EXECUTION_TYPE": "backtest"
+        "EXECUTION_TYPE": "backtest",
+        "UNIT_TESTING": "true",
     }
 
     runner = CliRunner()
@@ -148,6 +150,8 @@ def test_cli_live_trading(
 
         # Make the applicaction terminate after the setup
         "MAX_CYCLES": "0",
+
+        "UNIT_TESTING": "true",
     }
 
     runner = CliRunner()

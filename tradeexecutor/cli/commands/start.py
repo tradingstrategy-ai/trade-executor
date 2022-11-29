@@ -144,6 +144,12 @@ def start(
         if execution_type != TradeExecutionType.backtest:
             state_file = f"state/{id}.json"
 
+    # Avoid polluting user caches during test runs,
+    # so we use different default
+    if not cache_path:
+        if unit_testing:
+            cache_path = "/tmp/trading-strategy-tests"
+
     cache_path = prepare_cache(id, cache_path)
 
     confirmation_timeout = datetime.timedelta(seconds=confirmation_timeout)
