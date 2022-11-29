@@ -26,9 +26,12 @@ def store() -> JSONFileStore:
 
 @pytest.fixture()
 def server_url(store):
+    execution_state = ExecutionState()
+    execution_state.source_code = "Foobar"
+
     queue = Queue()
     metadata = Metadata("Foobar", "Short desc", "Long desc", None, datetime.datetime.utcnow(), True)
-    server = create_webhook_server("127.0.0.1", 5000, "test", "test", queue, store, metadata, ExecutionState())
+    server = create_webhook_server("127.0.0.1", 5000, "test", "test", queue, store, metadata, execution_state)
     server_url = "http://test:test@127.0.0.1:5000"
     yield server_url
     server.shutdown()
@@ -97,3 +100,10 @@ def test_logs(logger, server_url):
 
     log_message_list = resp.json()
     assert len(log_message_list) > 0
+
+
+def test_source(logger, server_url):
+    """Download sourec code."""
+    resp = requests.get(f"{server_url}/source")
+    assert resp.status_code == 200
+    assert resp.text == "Foobar"

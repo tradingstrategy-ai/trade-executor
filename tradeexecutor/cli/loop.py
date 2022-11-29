@@ -643,6 +643,10 @@ class ExecutionLoop:
             routing_model=None,  # Assume strategy factory produces its own routing model
         )
 
+        # Expose source code to webhook
+        if self.execution_state:
+            self.execution_state.source_code = run_description.source_code
+
         # Deconstruct strategy input
         self.runner: StrategyRunner = run_description.runner
         self.universe_model = run_description.universe_model

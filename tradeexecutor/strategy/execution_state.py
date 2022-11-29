@@ -47,6 +47,12 @@ class ExecutionState:
     #: See :py:meth:`serialise_exception`
     exception: Optional[ExceptionData] = None
 
+    #: The strategy source code.
+    #:
+    #: TODO: Move this to somewhere else long term.
+    #: Use /source API endpoint to get this.
+    source_code: Optional[str] = None
+
     @staticmethod
     def serialise_exception() -> ExceptionData:
         """Serialised the latest raised Python exception.

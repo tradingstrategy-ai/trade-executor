@@ -115,3 +115,15 @@ def web_logs(request: Request):
     assert ring_buffer_handler is not None, "In-memory logging not initialised"
     logs = ring_buffer_handler.export()
     return logs
+
+
+@view_config(route_name='web_source', permission='view')
+def web_source(request: Request):
+    """/source endpoint.
+
+    Return the source code of the strategy as plain text.
+    """
+    execution_state: ExecutionState = request.registry["execution_state"]
+    r = Response(content_type="text/plain")
+    r.text = execution_state.source_code or ""
+    return r
