@@ -131,7 +131,6 @@ def make_factory_from_strategy_mod(mod: StrategyModuleInformation) -> StrategyFa
             trading_strategy_engine_version=mod_info.trading_strategy_engine_version,
             cycle_duration=mod_info.trading_strategy_cycle,
             chain_id=mod_info.chain_id,
-            strategy_module=mod_info,
             source_code=mod_info.source_code,
         )
 

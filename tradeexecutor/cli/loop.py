@@ -426,6 +426,8 @@ class ExecutionLoop:
         if self.backtest_end or self.backtest_start:
             assert self.backtest_start and self.backtest_end, f"If backtesting both start and end must be given, we have {self.backtest_start} - {self.backtest_end}"
 
+        assert self.backtest_start < self.backtest_end
+
         ts = self.backtest_start
 
         logger.info("Strategy is executed in backtesting mode, starting at %s, cycle duration is %s", ts, self.cycle_duration.value)
@@ -452,16 +454,18 @@ class ExecutionLoop:
 
         cycle_name = backtest_step.value
 
+        assert backtest_step != CycleDuration.cycle_unknown
+
         with tqdm(total=seconds) as progress_bar:
             while True:
 
-                ts = snap_to_previous_tick(ts, self.cycle_duration)
+                ts = snap_to_previous_tick(ts, backtest_step)
 
                 # Bump progress bar forward and update backtest status
                 progress_bar.update(int(backtest_step.to_timedelta().total_seconds()))
                 friedly_ts = ts.strftime(ts_format)
                 trade_count = len(list(state.portfolio.get_all_trades()))
-                progress_bar.set_description(f"Backtesting {self.name}, {friendly_start}-{friendly_end} at {friedly_ts} ({cycle_name}), total {trade_count:,} trades")
+                progress_bar.set_description(f"Backtesting {self.name}, {friendly_start} - {friendly_end} at {friedly_ts} ({cycle_name}), total {trade_count:,} trades, {cycle:,} cycles")
 
                 # Decide trades and everything for this cycle
                 universe: TradingStrategyUniverse = self.tick(
@@ -504,6 +508,7 @@ class ExecutionLoop:
                     )
 
                 # Add some fuzziness to gacktesting timestamps
+                # TODO: Make this configurable - sub 1h strategies do not work
                 ts = next_tick + datetime.timedelta(minutes=random.randint(0, 4))
 
             # Validate the backtest state at the end.

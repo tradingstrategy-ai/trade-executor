@@ -775,6 +775,7 @@ def load_all_data(
         pairs = client.fetch_pair_universe().to_pandas()
         candles = client.fetch_all_candles(time_frame).to_pandas()
         liquidity = client.fetch_all_liquidity_samples(time_frame).to_pandas()
+
         return Dataset(
             time_bucket=time_frame,
             exchanges=exchanges,
