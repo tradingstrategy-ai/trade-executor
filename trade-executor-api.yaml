@@ -241,6 +241,50 @@ paths:
               schema:
                 type: object
 
+
+  '/visualisation':
+    x-pyramid-route-name: web_visualisation
+    get:
+      operationId: web_visualisation
+      summary: |
+        
+        Get the strategy visualisation.
+
+      parameters:
+        - name: type
+          in: query
+          description: |
+            
+            Visualisation options:
+            
+             * `small` - 512 x 512 PNG
+            
+             * `large` - 1920 x 1920 SVG
+
+          required: false
+          schema:
+            type: string
+            enum: [small, large]
+            default: small
+
+      responses:
+        "200":
+          description: | 
+            Return the source code of the strategy. 
+          
+            Returns an empty string if the source code is not public. 
+
+          content:
+            text/plain:
+              schema:
+                type: string
+
+        "422":
+          description: Unexpected error - usually an internal error
+          content:
+            application/json:
+              schema:
+                type: object
 components:
   securitySchemes:
     basicAuth:
