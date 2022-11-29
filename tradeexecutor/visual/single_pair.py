@@ -111,6 +111,10 @@ def export_plot_as_dataframe(
             "value": value,
         })
 
+    # set_index fails if the frame is empty
+    if len(data) == 0:
+        return pd.DataFrame()
+
     # Convert timestamp to pd.Timestamp column
     df = pd.DataFrame(data)
     df = df.set_index(pd.DatetimeIndex(df["timestamp"]))
@@ -135,16 +139,17 @@ def visualise_technical_indicators(
     # https://plotly.com/python/graphing-multiple-chart-types/
     for plot_id, plot in visualisation.plots.items():
         df = export_plot_as_dataframe(plot, start_at, end_at)
-        start_ts = df["timestamp"].min()
-        end_ts = df["timestamp"].max()
-        logger.info(f"Visualisation {plot_id} has data for range {start_ts} - {end_ts}")
-        fig.add_trace(go.Scatter(
-            x=df["timestamp"],
-            y=df["value"],
-            mode="lines",
-            name=plot.name,
-            line=dict(color=plot.colour),
-        ))
+        if len(df) > 0:
+            start_ts = df["timestamp"].min()
+            end_ts = df["timestamp"].max()
+            logger.info(f"Visualisation {plot_id} has data for range {start_ts} - {end_ts}")
+            fig.add_trace(go.Scatter(
+                x=df["timestamp"],
+                y=df["value"],
+                mode="lines",
+                name=plot.name,
+                line=dict(color=plot.colour),
+            ))
 
 
 def visualise_trades(

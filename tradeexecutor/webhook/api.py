@@ -46,7 +46,7 @@ def web_metadata(request: Request):
     Executor metadata.
     """
     metadata: Metadata = request.registry["metadata"]
-    execution_state: RunState = request.registry["execution_state"]
+    execution_state: RunState = request.registry["run_state"]
 
     # Retrofitted with the running flag,
     # not really a nice API design.
@@ -97,7 +97,7 @@ def web_status(request: Request):
 
     See :py:class:`tradeexecutor.strategy.execution_state.ExecutionState` for the return dta.
     """
-    execution_state: RunState = request.registry["execution_state"]
+    execution_state: RunState = request.registry["run_state"]
 
     results = {
         "last_refreshed_at": execution_state.last_refreshed_at.timestamp(),
@@ -129,7 +129,40 @@ def web_source(request: Request):
 
     Return the source code of the strategy as plain text.
     """
-    execution_state: RunState = request.registry["execution_state"]
+    execution_state: RunState = request.registry["run_state"]
     r = Response(content_type="text/plain")
     r.text = execution_state.source_code or ""
     return r
+
+
+@view_config(route_name='web_visualisation', permission='view')
+def web_visulisation(request: Request):
+    """/visualisation endpoint.
+
+    Return strategy images.
+    """
+    execution_state: RunState = request.registry["run_state"]
+
+    type = request.params.get("type", "small")
+
+    if type == "small":
+        data = execution_state.visualisation.small_image
+
+        if not data:
+            raise RuntimeError("Image data not available")
+
+        r = Response(content_type="image/png")
+        r.body = data
+        return r
+    elif type =="large":
+        data = execution_state.visualisation.small_image
+
+        if not data:
+            raise RuntimeError("Image data not available")
+
+        r = Response(content_type="image/svg+xml")
+        r.body = data
+        return r
+    else:
+        raise NotImplementedError()
+

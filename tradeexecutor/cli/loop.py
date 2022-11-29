@@ -270,7 +270,12 @@ class ExecutionLoop:
             self.backtest_setup(state, universe, self.sync_method)
 
         # Execute the strategy tick and trades
-        self.runner.tick(ts, universe, state, debug_details)
+        self.runner.tick(
+            ts,
+            universe,
+            state,
+            debug_details,
+        )
 
         # Check that state is good before writing it to the disk
         state.perform_integrity_check()

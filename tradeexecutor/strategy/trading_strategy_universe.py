@@ -88,6 +88,15 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
 
     backtest_stop_loss_candles: Optional[GroupedCandleUniverse] = None
 
+    def is_empty(self) -> bool:
+        """This is an empty universe
+
+        - without trading pairs
+
+        - ...or without candles
+        """
+        return self.universe.pairs.get_count() == 0 or len(self.universe.candles.df) == 0
+
     def is_single_pair_universe(self) -> bool:
         """Is this trading universe made for a single pair trading.
 

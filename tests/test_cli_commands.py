@@ -37,6 +37,7 @@ def test_cli_check_universe(
         "TRADING_STRATEGY_API_KEY": os.environ["TRADING_STRATEGY_API_KEY"],
         "STRATEGY_FILE": strategy_path,
         "CACHE_PATH": unit_test_cache_path,
+        "LOG_LEVEL": "disabled",
     }
 
     runner = CliRunner()
@@ -69,6 +70,7 @@ def test_cli_check_wallet(
         "PRIVATE_KEY": "0x111e53aed5e777996f26b4bdb89300bbc05b84743f32028c41be7193c0fe0b83",
         "MINUMUM_GAS_BALANCE": "0",
         "UNIT_TESTING": "true",
+        "LOG_LEVEL": "disabled",
     }
 
     runner = CliRunner()
@@ -101,6 +103,7 @@ def test_cli_backtest(
         "BACKTEST_END": "2022-07-01",
         "EXECUTION_TYPE": "backtest",
         "UNIT_TESTING": "true",
+        "LOG_LEVEL": "disabled",
     }
 
     runner = CliRunner()
@@ -152,6 +155,7 @@ def test_cli_live_trading(
         "MAX_CYCLES": "0",
 
         "UNIT_TESTING": "true",
+        "LOG_LEVEL": "disabled",
     }
 
     runner = CliRunner()

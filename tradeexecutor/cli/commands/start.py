@@ -42,7 +42,7 @@ def start(
 
     # Strategy assets
     id: str = typer.Option(None, envvar="EXECUTOR_ID", help="Executor id used when programmatically referring to this instance. If not given, take the base of --strategy-file."),
-    log_level: str = typer.Option(None, envvar="LOG_LEVEL", help="The Python default logging level. The defaults are 'info' is live execution, 'warning' if backtesting."),
+    log_level: str = typer.Option(None, envvar="LOG_LEVEL", help="The Python default logging level. The defaults are 'info' is live execution, 'warning' if backtesting. Set 'disabled' in testing."),
     name: Optional[str] = typer.Option(None, envvar="NAME", help="Executor name used in the web interface and notifications"),
     short_description: Optional[str] = typer.Option(None, envvar="SHORT_DESCRIPTION", help="Short description for metadata"),
     long_description: Optional[str] = typer.Option(None, envvar="LONG_DESCRIPTION", help="Long description for metadata"),
@@ -117,9 +117,7 @@ def start(
         else:
             name = "Unnamed backtest"
 
-    if log_level:
-        log_level = log_level.upper()
-    else:
+    if not log_level:
         if execution_type == TradeExecutionType.backtest:
             log_level = logging.WARNING
         else:

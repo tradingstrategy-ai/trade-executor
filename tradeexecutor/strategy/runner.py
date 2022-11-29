@@ -13,6 +13,7 @@ from typing import List, Optional, Tuple
 
 from tradeexecutor.strategy.approval import ApprovalModel
 from tradeexecutor.strategy.cycle import CycleDuration
+from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.state.sync import SyncMethod
 from tradeexecutor.strategy.run_state import RunState
@@ -58,9 +59,13 @@ class StrategyRunner(abc.ABC):
                  valuation_model_factory: ValuationModelFactory,
                  sync_method: SyncMethod,
                  pricing_model_factory: PricingModelFactory,
+                 execution_context: ExecutionContext,
                  routing_model: Optional[RoutingModel] = None,
-                 execuion_state: Optional[RunState] = None
+                 execution_state: Optional[RunState] = None,
                  ):
+
+        assert isinstance(execution_context, ExecutionContext)
+
         self.timed_task_context_manager = timed_task_context_manager
         self.execution_model = execution_model
         self.approval_model = approval_model
@@ -68,7 +73,8 @@ class StrategyRunner(abc.ABC):
         self.sync_method = sync_method
         self.pricing_model_factory = pricing_model_factory
         self.routing_model = routing_model
-        self.execution_state =execuion_state
+        self.execution_state = execution_state
+        self.execution_context = execution_context
 
     @abc.abstractmethod
     def pretick_check(self, ts: datetime.datetime, universe: StrategyExecutionUniverse):
@@ -83,6 +89,15 @@ class StrategyRunner(abc.ABC):
         :raise PreflightCheckFailed: In the case we cannot go live
         """
         pass
+
+    def is_progress_report_needed(self) -> bool:
+        """Do we log the strategy steps to logger?
+
+        - Disabled for backtesting to speed up
+
+        - Can be enabled by hacking this function if backtesting needs debugging
+        """
+        return self.execution_context.mode.is_live_trading() or self.execution_context.mode.is_unit_testing()
 
     def sync_portfolio(self, ts: datetime.datetime, universe: StrategyExecutionUniverse, state: State, debug_details: dict):
         """Adjust portfolio balances based on the external events.
@@ -208,7 +223,7 @@ class StrategyRunner(abc.ABC):
                                  universe: StrategyExecutionUniverse,
                                  state: State,
                                  trades: List[TradeExecution],
-                                 debug_details: dict):
+                                 debug_details: dict) -> object:
         """Strategy runner subclass can fill in.
 
         By default, no-op. Override in the subclass.
@@ -249,7 +264,7 @@ class StrategyRunner(abc.ABC):
              universe: StrategyExecutionUniverse,
              state: State,
              debug_details: dict,
-             cycle_duration: Optional[CycleDuration]=None,
+             cycle_duration: Optional[CycleDuration] = None,
         ) -> dict:
         """Execute the core functions of a strategy.
 
@@ -269,6 +284,9 @@ class StrategyRunner(abc.ABC):
             The currenct cycle duration (time between ticks).
             This may be specific in a strategy module, but also overridden for testing.
             This is used only for logging purposes.
+
+        :param execution_context:
+            Live or backtesting
 
         :return: Debug details dictionary where different subsystems can write their diagnostics information what is happening during the dict.
             Mostly useful for integration testing.
@@ -291,7 +309,8 @@ class StrategyRunner(abc.ABC):
                 self.revalue_portfolio(clock, state, valuation_model)
 
             # Log output
-            self.report_after_sync_and_revaluation(clock, universe, state, debug_details)
+            if self.is_progress_report_needed():
+                self.report_after_sync_and_revaluation(clock, universe, state, debug_details)
 
             # Run the strategy cycle
             with self.timed_task_context_manager("decide_trades"):
@@ -301,7 +320,10 @@ class StrategyRunner(abc.ABC):
                 logger.info("We have %d trades", len(rebalance_trades))
 
             # Log output
-            self.report_strategy_thinking(clock, universe, state, rebalance_trades, debug_details)
+            if self.is_progress_report_needed():
+                self.report_strategy_thinking(
+                    clock,
+                    universe, state, rebalance_trades, debug_details)
 
             # Ask user confirmation for any trades
             with self.timed_task_context_manager("confirm_trades"):
@@ -311,7 +333,8 @@ class StrategyRunner(abc.ABC):
                 debug_details["approved_trades"] = approved_trades
 
             # Log output
-            self.report_before_execution(clock, universe, state, approved_trades, debug_details)
+            if self.is_progress_report_needed():
+                self.report_before_execution(clock, universe, state, approved_trades, debug_details)
 
             # Physically execute the trades
             with self.timed_task_context_manager("execute_trades", trade_count=len(approved_trades)):
@@ -328,7 +351,8 @@ class StrategyRunner(abc.ABC):
                     check_balances=check_balances)
 
             # Log output
-            self.report_after_execution(clock, universe, state, debug_details)
+            if self.is_progress_report_needed():
+                self.report_after_execution(clock, universe, state, debug_details)
 
         return debug_details
 

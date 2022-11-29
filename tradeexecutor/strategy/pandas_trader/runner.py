@@ -94,6 +94,10 @@ class PandasTraderRunner(StrategyRunner):
 
         visualisation = state.visualisation
 
+        if universe.is_empty():
+            # TODO: Not sure how we end up here
+            return
+
         if universe.is_single_pair_universe():
             # Single pair thinking
 
@@ -125,14 +129,10 @@ class PandasTraderRunner(StrategyRunner):
 
             # Draw indicators
             for name, plot in visualisation.plots.items():
-                value = plot.
+                value = plot.get_last_value()
                 print(f"  {name}: {value}", file=buf)
 
             logger.trade(buf.getvalue())
 
         else:
             raise NotImplementedError("Reporting of strategy thinking of multipair universes not supported yet")
-
-
-
-

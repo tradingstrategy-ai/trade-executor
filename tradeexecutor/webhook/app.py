@@ -78,7 +78,7 @@ def create_pyramid_app(
         command_queue: Queue,
         store: JSONFileStore,
         metadata: Metadata,
-        execution_state: RunState,
+        run_state: RunState,
         production=False) -> Router:
     """Create WSGI app for Trading Strategy backend."""
 
@@ -119,7 +119,7 @@ def create_pyramid_app(
         # by sharing the global objects across threads
         config.registry["store"] = store
         config.registry["metadata"] = metadata
-        config.registry["execution_state"] = execution_state
+        config.registry["run_state"] = run_state
 
         config.add_exception_view(exception_view)
 

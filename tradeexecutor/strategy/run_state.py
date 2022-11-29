@@ -89,7 +89,7 @@ class RunState:
 
     #: The strategy visualisation images
     #:
-    visualisation: Optional[LatestStateVisualisation] = None
+    visualisation: Optional[LatestStateVisualisation] = field(default_factory=LatestStateVisualisation)
 
     @staticmethod
     def serialise_exception() -> ExceptionData:

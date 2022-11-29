@@ -162,6 +162,7 @@ def test_ema_crossover(
         "TICK_OFFSET_MINUTES": "10",
         "CONFIRMATION_BLOCK_COUNT": "8",
         "UNIT_TESTING": "true",
+        "DISCORD_WEBHOOK_URL": "",  # Always disable
     }
 
     # Don't use CliRunner.invoke() here,
