@@ -151,7 +151,6 @@ def test_bnb_chain_16h_momentum(
         "STATE_FILE": state_file,
         "RESET_STATE": "true",
         "EXECUTION_TYPE": "uniswap_v2_hot_wallet",
-        "APPROVAL_TYPE": "unchecked",
         "TRADING_STRATEGY_API_KEY": os.environ["TRADING_STRATEGY_API_KEY"],
         "DEBUG_DUMP_FILE": debug_dump_file,
         "BACKTEST_START": "2021-12-07",
@@ -162,6 +161,7 @@ def test_bnb_chain_16h_momentum(
         "MAX_POSITIONS": "2",
         "UNIT_TESTING": "true",
         "BACKTEST_CANDLE_TIME_FRAME_OVERRIDE": "1d",
+        "LOG_LEVEL": "disabled",
     }
 
     # Don't use CliRunner.invoke() here,
