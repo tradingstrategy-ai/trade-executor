@@ -330,6 +330,7 @@ def run_backtest(
         backtest_start=setup.start_at,
         backtest_end=setup.end_at,
         backtest_setup=backtest_setup,
+        backtest_candle_time_frame_override=setup.universe_options.candle_time_bucket_override,
         tick_offset=datetime.timedelta(seconds=1),
         trade_immediately=True,
     )

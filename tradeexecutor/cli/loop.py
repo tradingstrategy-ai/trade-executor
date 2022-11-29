@@ -362,7 +362,7 @@ class ExecutionLoop:
 
         Display progress bars for data downloads.
         """
-        logger.info("Warming up backesting")
+        logger.info("Warming up backesting, universe options are %s", self.universe_options)
 
         self.universe_model.preload_universe(self.universe_options)
 
