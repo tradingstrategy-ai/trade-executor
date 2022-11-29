@@ -35,7 +35,8 @@ git submodule update --init --recursive
 # Extra dependencies
 # - execution: infrastructure to run live strategies
 # - web-server: support webhook server of live strategy executors
-poetry install -E web-server -E execution
+# - qstrader: still needed to run legacy unit tests
+poetry install -E web-server -E execution -E qstrader
 ```
 
 ## Architecture overview

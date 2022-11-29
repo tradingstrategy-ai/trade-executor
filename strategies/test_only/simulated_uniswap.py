@@ -13,6 +13,7 @@ from tradeexecutor.state.state import State
 from tradeexecutor.state.sync import SyncMethod
 from tradeexecutor.strategy.approval import ApprovalModel
 from tradeexecutor.strategy.description import StrategyExecutionDescription
+from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
 from tradeexecutor.strategy.pricing_model import PricingModelFactory
 from tradeexecutor.strategy.qstrader.alpha_model import AlphaModel
 from tradeexecutor.strategy.qstrader.runner import QSTraderRunner
@@ -104,6 +105,8 @@ def strategy_factory(
     # Use static universe passed from the tests
     assert isinstance(universe_model, StaticUniverseModel)
 
+    execution_context = kwargs.get("execution_context", ExecutionContext(ExecutionMode.unit_testing_trading))
+
     runner = QSTraderRunner(
         alpha_model=SomeTestBuysAlphaModel(),
         timed_task_context_manager=timed_task_context_manager,
@@ -114,6 +117,7 @@ def strategy_factory(
         pricing_model_factory=pricing_model_factory,
         cash_buffer=cash_buffer,
         routing_model=routing_model,
+        execution_context=execution_context,
     )
 
     return StrategyExecutionDescription(

@@ -23,7 +23,7 @@ from typing import Dict
 import pandas as pd
 
 from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2SimpleRoutingModel
-from tradeexecutor.strategy.execution_context import ExecutionMode
+from tradeexecutor.strategy.execution_context import ExecutionMode, ExecutionContext
 from tradingstrategy.client import Client
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId
@@ -53,10 +53,10 @@ from tradeexecutor.utils.price import is_legit_price_value
 logger = logging.getLogger("bnb_chain_16h_momentum")
 
 # Use daily candles to run the algorithm
-candle_time_frame = TimeBucket.h4
+candle_time_frame = TimeBucket.d1
 
 # We are making a decision based on 16 hours (4 candles)
-lookback = pd.Timedelta(hours=16)
+lookback = pd.Timedelta(days=4)
 
 # The liquidity threshold for a token to be considered
 # risk free enough to be purchased
@@ -356,7 +356,7 @@ class OurUniverseModel(TradingStrategyUniverseModel):
             return TradingStrategyUniverse(universe=universe, reserve_assets=reserve_assets)
 
     def construct_universe(self, execution_model: ExecutionModel, mode: ExecutionMode, universe_options) -> TradingStrategyUniverse:
-        dataset = self.load_data(TimeBucket.h4, mode)
+        dataset = self.load_data(candle_time_frame, mode)
         universe = self.filter_universe(dataset)
         self.log_universe(universe.universe)
         return universe
@@ -379,6 +379,8 @@ def strategy_factory(
 
     universe_model = OurUniverseModel(client, timed_task_context_manager)
 
+    execution_context = kwargs.get("execution_context", ExecutionContext(ExecutionMode.unit_testing_trading))
+
     runner = QSTraderRunner(
         alpha_model=MomentumAlphaModel(),
         timed_task_context_manager=timed_task_context_manager,
@@ -388,6 +390,7 @@ def strategy_factory(
         sync_method=sync_method,
         pricing_model_factory=pricing_model_factory,
         cash_buffer=cash_buffer,
+        execution_context=execution_context,
         routing_model=UniswapV2SimpleRoutingModel(
             factory_router_map,
             allowed_intermediary_pairs,

@@ -146,7 +146,7 @@ def start(
     # so we use different default
     if not cache_path:
         if unit_testing:
-            cache_path = "/tmp/trading-strategy-tests"
+            cache_path = Path("/tmp/trading-strategy-tests")
 
     cache_path = prepare_cache(id, cache_path)
 

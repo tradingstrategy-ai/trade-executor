@@ -6,6 +6,7 @@ from typing import Dict, Any
 import pandas as pd
 
 from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2SimpleRoutingModel
+from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
 from tradeexecutor.strategy.trading_strategy_universe import translate_trading_pair
 
 from tradingstrategy.timebucket import TimeBucket
@@ -99,10 +100,13 @@ def strategy_factory(
     # Use static universe passed from the tests
     assert isinstance(universe_model, StaticUniverseModel)
 
+    execution_context = kwargs.get("execution_context", ExecutionContext(ExecutionMode.unit_testing_trading))
+
     runner = QSTraderRunner(
         alpha_model=BadAlpha(),
         timed_task_context_manager=timed_task_context_manager,
         execution_model=execution_model,
+        execution_context=execution_context,
         approval_model=approval_model,
         valuation_model_factory=valuation_model_factory,
         sync_method=sync_method,
