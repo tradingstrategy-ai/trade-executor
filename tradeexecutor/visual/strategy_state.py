@@ -11,6 +11,8 @@ from tradeexecutor.state.state import State
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.visual.single_pair import visualise_single_pair
 
+import plotly.graph_objects as go
+
 
 def draw_single_pair_strategy_state(
         state: State,
@@ -18,7 +20,7 @@ def draw_single_pair_strategy_state(
         width=512,
         height=512,
         candle_count=32,
-):
+) -> go.Figure:
     """Draw a mini price chart image."""
 
     assert universe.is_single_pair_universe(), "This visualisation can be done only for single pair trading"
@@ -33,3 +35,4 @@ def draw_single_pair_strategy_state(
         height=height,
     )
 
+    return figure

@@ -19,7 +19,21 @@ class ExceptionData(TypedDict):
     tb_lineno: int
 
 
-@dataclass_json
+
+@dataclass
+class LatestStateVisualisation:
+    """The last visualisation of the strategy state."""
+
+    #: When the execution state was updated last time
+    last_refreshed_at: datetime.datetime = field(default_factory=datetime.datetime.utcnow)
+
+    #: 512 x 512 image
+    small_image_data: Optional[bytes] = None
+
+    #: 1920 x 1920 image
+    large_image_data: Optional[bytes] = None
+
+
 @dataclass
 class ExecutionState:
     """Execution state
@@ -29,6 +43,14 @@ class ExecutionState:
 
     The webhook can display the exception that caused
     the trade executor crash.
+
+    Partially returned by different endpoints in API
+
+    - /status
+
+    - /source
+
+    - /visualisation
     """
 
     #: When the execution state was updated last time
@@ -53,6 +75,10 @@ class ExecutionState:
     #: Use /source API endpoint to get this.
     source_code: Optional[str] = None
 
+    #: The strategy visualisation images
+    #:
+    visualisation: Optional[LatestStateVisualisation] = None
+
     @staticmethod
     def serialise_exception() -> ExceptionData:
         """Serialised the latest raised Python exception.
@@ -66,7 +92,6 @@ class ExecutionState:
 
         # tblib loses the actual formatted exception message
         data["exception_message"] = str(ev)
-
         return data
 
     def set_fail(self):
