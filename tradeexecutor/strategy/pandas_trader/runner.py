@@ -1,11 +1,13 @@
 """A strategy runner that executes Trading Strategy Pandas type strategies."""
 
 import datetime
+from io import StringIO
 from typing import List, Optional
 import logging
 
 import pandas as pd
 
+from tradeexecutor.cli.discord import post_logging_discord_image
 from tradeexecutor.strategy.pandas_trader.trade_decision import TradeDecider
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
@@ -16,11 +18,8 @@ from tradeexecutor.strategy.runner import StrategyRunner, PreflightCheckFailed
 from tradeexecutor.visual.image_output import render_plotly_figure_as_image_file
 from tradeexecutor.visual.strategy_state import draw_single_pair_strategy_state
 
+
 logger = logging.getLogger(__name__)
-
-
-
-
 
 
 class PandasTraderRunner(StrategyRunner):
@@ -93,15 +92,16 @@ class PandasTraderRunner(StrategyRunner):
         - Draw the single pair strategy visualisation.
         """
 
+        visualisation = state.visualisation
+
         if universe.is_single_pair_universe():
             # Single pair thinking
-
-            pass
-
 
             # Post strategy thinking image to Discord
             small_figure = draw_single_pair_strategy_state(state, universe, height=512)
             small_image = render_plotly_figure_as_image_file(small_figure, width=512, height=512, format="png")
+
+            post_logging_discord_image(small_image)
 
             if self.execution_state:
 
@@ -110,5 +110,29 @@ class PandasTraderRunner(StrategyRunner):
                 large_image = render_plotly_figure_as_image_file(large_figure, width=1920, height=1920, format="svg")
 
                 self.execution_state.visualisation.update_image_data(small_image, large_image)
+
+            # Log state
+            buf = StringIO()
+
+            pair = universe.get_single_pair()
+            candles = universe.universe.candles.get_candles_by_pair(pair.internal_id)
+            last_candle = candles.iloc[-1]
+
+            print("Strategy thinking", file=buf)
+            print("", file=buf)
+            print(f"  Last candle at: {last_candle['timestamp']}", file=buf)
+            print(f"  Price open:{last_candle['open']} close:{last_candle['close']} {pair.base.token_symbol} / {pair.quote.token_symbol}", file=buf)
+
+            # Draw indicators
+            for name, plot in visualisation.plots.items():
+                value = plot.
+                print(f"  {name}: {value}", file=buf)
+
+            logger.trade(buf.getvalue())
+
+        else:
+            raise NotImplementedError("Reporting of strategy thinking of multipair universes not supported yet")
+
+
 
 
