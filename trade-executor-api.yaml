@@ -214,6 +214,33 @@ paths:
         "200":
           description: OK
 
+  '/source':
+    x-pyramid-route-name: web_source
+    get:
+      operationId: web_source
+      summary: |
+        
+        Get the source code of the strategy
+
+      responses:
+        "200":
+          description: | 
+            Return the source code of the strategy. 
+          
+            Returns an empty string if the source code is not public. 
+
+          content:
+            text/plain:
+              schema:
+                type: string
+
+        "422":
+          description: Unexpected error - usually an internal error
+          content:
+            application/json:
+              schema:
+                type: object
+
 components:
   securitySchemes:
     basicAuth:
