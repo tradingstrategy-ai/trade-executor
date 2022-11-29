@@ -88,6 +88,18 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
 
     backtest_stop_loss_candles: Optional[GroupedCandleUniverse] = None
 
+    def is_single_pair_universe(self) -> bool:
+        """Is this trading universe made for a single pair trading.
+
+        Note that even a single pair universe may contain two trading pairs,
+        if we need intermediate routing pairs. E.g. AAVE -> BNB -> BUSD/
+        """
+
+        # TODO: Make a stupid assumption here
+        # as our strategies currently have 1 or 2 pairs for single pair trading.
+        # Convert this to a proper flag later.
+        return self.universe.pairs.get_count() <= 2
+
     def has_stop_loss_data(self) -> bool:
         """Do we have data available to determine trade stop losses.
 

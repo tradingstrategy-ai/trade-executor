@@ -8,8 +8,28 @@
 
 """
 from tradeexecutor.state.state import State
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
+from tradeexecutor.visual.single_pair import visualise_single_pair
 
 
-def draw_strategy_state_inline_image(state: State):
-    pass
+def draw_single_pair_strategy_state(
+        state: State,
+        universe: TradingStrategyUniverse,
+        width=512,
+        height=512,
+        candle_count=32,
+):
+    """Draw a mini price chart image."""
+
+    assert universe.is_single_pair_universe(), "This visualisation can be done only for single pair trading"
+
+    target_pair_candles = universe.universe.candles.get_single_pair_data(sample_count=candle_count)
+
+    figure = visualise_single_pair(
+        state,
+        universe.universe.candles,
+        start_at=target_pair_candles.iloc[0]["timestamp"],
+        end_at=target_pair_candles.iloc[-1]["timestamp"],
+        height=height,
+    )
 
