@@ -7,6 +7,20 @@ Map factory addresses, router addresses and quote token addresses.
 
 - The routing model consists of smart contract addresses needed to trade
 
+- Parameters needed for basic routing for an Uniswap v2 compatible exchange:
+
+    - Factory smart contract address
+
+    - Router smart contract address
+
+    - Pair contract "init code hash"
+
+    - Wrapped token address
+
+    - Stablecoin addresses
+
+    - Wrapped token/stablecoin pool address
+
 See also :py:class:`tradeexecutor.strategy.default_routing_options.TradeRouting`
 that gives the users the choices for the trade routing options in their strategy module.
 
@@ -35,9 +49,19 @@ class RoutingData(TypedDict):
     allowed_intermediary_pairs: dict
 
     #: Token address for the reserve currency
+    #:
+    #: E.g. BUSD, USDC address.
+    #: Is given as :py:class:`tradeexecutor.strategy.reserve_currency.ReserveCurrency`
+    #: and mapped to an address.
+    #:
     reserve_token_address: str
 
     #: Supported quote token addresses
+    #:
+    #: Besides reserve currency, we can route three leg trades
+    #: through high liquidity pools.
+    #: E.g. if we buy XXX/BNB pair we route it through BNB/BUSD
+    #: and WBNB would appear here as a supported quote token.
     #:
     #: E.g. (WBNB, BUSD), (WBNB, USDC)
     quote_token_addresses: List[str]
