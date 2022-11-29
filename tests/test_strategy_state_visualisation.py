@@ -198,7 +198,7 @@ def test_visualise_strategy_state(
     # Test the image on a local screen
     # using a web brower
     if os.environ.get("SHOW_IMAGE"):
-        # https://stackoverflow.com/questions/1413540/showing-an-image-from-console-in-python
+        # https://stackoverflow.com/a/74619515/315168
         path = Path("/tmp/test-image.png")
         with open(path, "wb") as out:
             out.write(png_data)

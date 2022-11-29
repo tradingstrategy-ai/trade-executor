@@ -29,12 +29,12 @@ def draw_single_pair_strategy_state(
 
     figure = visualise_single_pair(
         state,
-        universe.universe.candles,
+        target_pair_candles,
         start_at=target_pair_candles.iloc[0]["timestamp"],
         end_at=target_pair_candles.iloc[-1]["timestamp"],
         height=height,
-        draw_title=False,
-        draw_axes=False,
+        title=False,
+        axes=False,
     )
 
     return figure
