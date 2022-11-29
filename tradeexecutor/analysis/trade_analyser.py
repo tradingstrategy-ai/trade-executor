@@ -626,7 +626,7 @@ class TradeAnalysis:
             biggest_win = max(all_trades)
             biggest_loss = min(all_trades)
 
-            max_cons = self.get_max_consective(all_trades)
+            max_cons = self.get_max_consective(raw_timeline)
             max_pos_cons = max_cons['max_pos_cons']
             max_neg_cons = max_cons['max_neg_cons']
             max_pullback = max_cons['max_pullback']
@@ -690,16 +690,17 @@ class TradeAnalysis:
 
     # may be used in calculate_summary_statistics
     @staticmethod
-    def get_max_consective(lst: list[float]):
+    def get_max_consective(raw_timeline: pd.DataFrame):
+        lst = raw_timeline['pnl_pct_raw'] 
+
         max_pos_cons = 0
         max_neg_cons = 0
-        max_pullback = 0
+        max_pullback_pct = 0
         pos_cons = 0
         neg_cons = 0
         pullback = 0
         
-        counter = 0
-        for item in lst:
+        for count, item in enumerate(lst):
                 if(item > 0):
                         neg_cons = 0
                         pullback = 0
@@ -707,16 +708,17 @@ class TradeAnalysis:
                 else:
                         pos_cons = 0
                         neg_cons += 1
-                        pullback += item
+                        pullback += raw_timeline['pnl_usd'].iloc[count]
                 if(neg_cons > max_neg_cons):
                         max_neg_cons = neg_cons
                 if(pos_cons > max_neg_cons):
                         max_pos_cons = pos_cons
-                if(pullback < max_pullback):
+
+                pullback_pct = pullback/(raw_timeline['opening_capital'].iloc[count] + raw_timeline['pnl_usd'].iloc[count])
+                if(pullback_pct < max_pullback_pct):
                         # pull back is in the negative direction
-                        max_pullback = pullback
-                counter += 1
-        return {'max_pos_cons':max_pos_cons, 'max_neg_cons':max_neg_cons, 'max_pullback':max_pullback}
+                        max_pullback_pct = pullback_pct
+        return {'max_pos_cons':max_pos_cons, 'max_neg_cons':max_neg_cons, 'max_pullback':max_pullback_pct}
     
     @staticmethod
     def avg(lst: list[int]):
