@@ -371,8 +371,6 @@ class TradeSummary:
     # used if raw_timeline is provided as argument to calculate_summary_statistics
     average_trade: Optional[float] = None
     median_trade: Optional[float] = None
-    biggest_win: Optional[float] = None
-    biggest_loss: Optional[float] = None
     max_pos_cons: Optional[int] = None
     max_neg_cons: Optional[int] = None
     max_pullback: Optional[float] = None
@@ -396,8 +394,8 @@ class TradeSummary:
         """Creates a human-readable Pandas dataframe table from the object."""
 
         extra_params = [
-            self.average_trade, self.median_trade, self.biggest_win, self.biggest_loss, 
-            self.max_pos_cons, self.max_neg_cons, self.max_pullback, self.max_capital_at_risk_sl, 
+            self.average_trade, self.median_trade, self.max_pos_cons, 
+            self.max_neg_cons, self.max_pullback, self.max_capital_at_risk_sl, 
             self.max_realised_loss, self.avg_realised_risk
         ]
 
@@ -457,8 +455,6 @@ class TradeSummary:
                 
                 "Average trade": as_percent(self.average_trade),
                 "Median trade": as_percent(self.median_trade),
-                "Biggest win": as_percent(self.biggest_win),
-                "Biggest loss": as_percent(self.biggest_loss),
                 "Consecutive wins": as_integer(self.max_pos_cons),
                 "Consective losses": as_integer(self.max_neg_cons),
                 "Max capital at risk at SL": as_percent(self.max_capital_at_risk_sl),
@@ -623,9 +619,6 @@ class TradeAnalysis:
 
             median_trade = median(all_trades)
 
-            biggest_win = max(all_trades)
-            biggest_loss = min(all_trades)
-
             max_cons = self.get_max_consective(raw_timeline)
             max_pos_cons = max_cons['max_pos_cons']
             max_neg_cons = max_cons['max_neg_cons']
@@ -663,8 +656,6 @@ class TradeAnalysis:
                 average_duration_of_losing_trades=average_duration_of_losing_trades,
                 average_trade=average_trade,
                 median_trade=median_trade,
-                biggest_win=biggest_win,
-                biggest_loss=biggest_loss,
                 max_pos_cons=max_pos_cons,
                 max_neg_cons=max_neg_cons,
                 max_pullback=max_pullback,
