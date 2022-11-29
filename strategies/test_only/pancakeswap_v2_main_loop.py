@@ -18,7 +18,7 @@ from tradeexecutor.state.state import State
 from tradeexecutor.state.sync import SyncMethod
 from tradeexecutor.strategy.approval import ApprovalModel
 from tradeexecutor.strategy.description import StrategyExecutionDescription
-from tradeexecutor.strategy.execution_context import ExecutionMode
+from tradeexecutor.strategy.execution_context import ExecutionMode, ExecutionContext
 from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.strategy.pricing_model import PricingModelFactory
 from tradeexecutor.strategy.qstrader.alpha_model import AlphaModel
@@ -59,11 +59,11 @@ initial_cash = 10_000
 # Prefiltering to limit the pair set to speed up computations
 # How many USD all time buy volume the pair must have had
 # to be included in the backtesting
-prefilter_min_buy_volume = 5_000_000
+prefilter_min_buy_volume = 10_000_000
 
 # The liquidity threshold for a token to be considered
 # risk free enough to be purchased
-min_liquidity_threshold = 750_000
+min_liquidity_threshold = 5_750_000
 
 # Any trading pair we enter must have
 # at least portflio total market value * portfolio_base_liquidity_threshold liquidity available
@@ -72,7 +72,7 @@ portfolio_base_liquidity_threshold = 0.66
 # How many tokens we can hold in our portfolio
 # If there are more new tokens coming to market per day,
 # we just ignore those with less liquidity
-max_assets_per_portfolio = 4
+max_assets_per_portfolio = 2
 
 # How many % of all value we hold in cash all the time,
 # so that we can sustain hits
@@ -371,6 +371,7 @@ def strategy_factory(
         pricing_model_factory=pricing_model_factory,
         cash_buffer=cash_buffer,
         routing_model=routing_model,
+        execution_context=ExecutionContext(ExecutionMode.unit_testing_trading),
     )
 
     return StrategyExecutionDescription(

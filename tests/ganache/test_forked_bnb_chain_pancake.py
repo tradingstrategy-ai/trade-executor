@@ -23,7 +23,7 @@ from eth_typing import HexAddress, HexStr
 from hexbytes import HexBytes
 
 from eth_defi.utils import is_localhost_port_listening
-from tradeexecutor.strategy.execution_context import ExecutionMode
+from tradeexecutor.strategy.execution_context import ExecutionMode, ExecutionContext
 from tradingstrategy.client import Client
 from web3 import Web3, HTTPProvider
 from web3.contract import Contract
@@ -270,6 +270,8 @@ def test_forked_pancake(
     sync_method = EthereumHotWalletReserveSyncer(web3, hot_wallet.address)
     valuation_model_factory = uniswap_v2_sell_valuation_factory
 
+    execution_context = ExecutionContext(ExecutionMode.unit_testing_trading)
+
     run_description: StrategyExecutionDescription = strategy_factory(
         execution_model=execution_model,
         timed_task_context_manager=timed_task,
@@ -279,6 +281,7 @@ def test_forked_pancake(
         approval_model=approval_model,
         client=persistent_test_client,
         routing_model=routing_model,
+        execution_context=execution_context,
     )
 
     # Deconstruct strategy input
