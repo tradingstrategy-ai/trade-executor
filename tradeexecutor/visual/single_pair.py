@@ -87,8 +87,8 @@ def export_trades_as_dataframe(
 
 def export_plot_as_dataframe(
         plot: Plot,
-        start_at: Optional[pd.Timestamp],
-        end_at: Optional[pd.Timestamp],
+        start_at: Optional[pd.Timestamp]=None,
+        end_at: Optional[pd.Timestamp]=None,
 ) -> pd.DataFrame:
     """Convert visualisation state to Plotly friendly df.
 
@@ -120,8 +120,8 @@ def export_plot_as_dataframe(
 def visualise_technical_indicators(
         fig: go.Figure,
         visualisation: Visualisation,
-        start_at: Optional[pd.Timestamp],
-        end_at: Optional[pd.Timestamp],
+        start_at: Optional[pd.Timestamp] = None,
+        end_at: Optional[pd.Timestamp] = None,
 ):
     """Draw technical indicators over candle chart.
 
@@ -227,8 +227,8 @@ def visualise_trades(
 def visualise_single_pair(
         state: State,
         candle_universe: GroupedCandleUniverse | pd.DataFrame,
-        start_at: Optional[Union[pd.Timestamp, datetime.datetime]]=None,
-        end_at: Optional[Union[pd.Timestamp, datetime.datetime]]=None,
+        start_at: Optional[Union[pd.Timestamp, datetime.datetime]] = None,
+        end_at: Optional[Union[pd.Timestamp, datetime.datetime]] = None,
         height=800,
         axes=True,
         title=True,
@@ -388,5 +388,3 @@ def visualise_single_pair(
     )
 
     return fig
-
-
