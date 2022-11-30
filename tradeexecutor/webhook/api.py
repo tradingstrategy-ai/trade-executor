@@ -11,6 +11,7 @@ from pyramid.view import view_config
 from tradeexecutor.cli.log import get_ring_buffer_handler
 from tradeexecutor.state.metadata import Metadata
 from tradeexecutor.state.store import JSONFileStore
+from tradeexecutor.state.summary import StrategySummary
 from tradeexecutor.strategy.run_state import RunState
 from tradeexecutor.webhook.error import exception_response
 
@@ -51,8 +52,8 @@ def web_metadata(request: Request):
     # Retrofitted with the running flag,
     # not really a nice API design.
     # Do not mutate a global state in place/
-    metadata = Metadata(**metadata.to_dict())
-    metadata.executor_running = execution_state.executor_running
+    summary = StrategySummary(**metadata.to_dict())
+    summary.executor_running = execution_state.executor_running
 
     r = Response(content_type="application/json")
     r.body = metadata.to_json().encode("utf-8")
