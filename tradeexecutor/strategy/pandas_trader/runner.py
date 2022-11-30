@@ -124,7 +124,8 @@ class PandasTraderRunner(StrategyRunner):
 
             print("Strategy thinking", file=buf)
             print("", file=buf)
-            print(f"  Last candle at: {last_candle['timestamp']}", file=buf)
+            print(f"  Now: {datetime.datetime.utcnow()} UTC", file=buf)
+            print(f"  Last candle at: {last_candle['timestamp']} UTC", file=buf)
             print(f"  Price open:{last_candle['open']} close:{last_candle['close']} {pair.base.token_symbol} / {pair.quote.token_symbol}", file=buf)
 
             # Draw indicators

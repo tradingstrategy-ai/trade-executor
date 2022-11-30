@@ -68,8 +68,8 @@ class Plot:
     def get_last_value(self) -> float:
         """Assume points is an ordered dict."""
         # https://stackoverflow.com/a/63059166/315168
-        value = next(reversed(self.points.keys()))
-        return value
+        key = next(reversed(self.points.keys()))
+        return self.points[key]
 
 
 @dataclass_json
