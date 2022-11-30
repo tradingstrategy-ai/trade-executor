@@ -72,7 +72,7 @@ class MismatchReserveCurrency(Exception):
 
 
 def get_pancake_default_routing_parameters(reserve_currency: ReserveCurrency) -> RoutingData:
-    """Generate routing using PancakeSwap v2 router.
+    """Generate routing using PancakeSwap v2 router. For the Binance Smart Chain.
 
     TODO: Polish the interface of this function when we have more strategies
     """
@@ -114,6 +114,91 @@ def get_pancake_default_routing_parameters(reserve_currency: ReserveCurrency) ->
         "quote_token_addresses": {"0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c", "0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56"}
     }
 
+def get_quickswap_default_routing_parameters(reserve_currency: ReserveCurrency) -> RoutingData:
+    """Generate routing using Trader Joe router. For Polygon chain.
+
+    TODO: Polish the interface of this function when we have more strategies
+    """
+    if reserve_currency == ReserveCurrency.busd:
+        reserve_token_address = "".lower()
+
+        # For three way trades, which pools we can use
+        allowed_intermediary_pairs = {
+            # Route WBNB through BUSD:WBNB pool,
+            "": "",
+        }
+
+    elif reserve_currency == ReserveCurrency.usdc:
+        # https://tradingstrategy.ai/trading-view/binance/tokens/0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d
+        reserve_token_address = "".lower()
+
+        # For three way trades, which pools we can use
+        allowed_intermediary_pairs = {
+            # Route WBNB through USDC:WBNB pool,
+            # https://tradingstrategy.ai/trading-view/binance/pancakeswap-v2/bnb-usdc
+            "": "",
+        }
+    else:
+        raise NotImplementedError()
+
+    # Allowed exchanges as factory -> router pairs,
+    # by their smart contract addresses
+    # init_code_hash: https://polygonscan.com/address/0xa5E0829CaCEd8fFDD4De3c43696c57F7D7A678ff#code#L297
+    factory_router_map = {
+        "0x5757371414417b8C6CAad45bAeF941aBc7d3Ab32": ("0xa5E0829CaCEd8fFDD4De3c43696c57F7D7A678ff", "96e8ac4277198ff8b6f785478aa9a39f403cb768dd02cbee326c3e7da348845f")
+    }
+
+    return {
+        "chain_id": ChainId.polygon,
+        "factory_router_map": factory_router_map,
+        "allowed_intermediary_pairs": allowed_intermediary_pairs,
+        "reserve_token_address": reserve_token_address,
+        "quote_token_addresses": {"", ""}
+    }
+
+def get_trader_joe_default_routing_parameters(reserve_currency: ReserveCurrency) -> RoutingData:
+    """Generate routing using Trader Joe router. For the Avalanche C-chain.
+
+    TODO: Polish the interface of this function when we have more strategies
+    """
+
+    if reserve_currency == ReserveCurrency.busd:
+        reserve_token_address = "".lower()
+
+        # For three way trades, which pools we can use
+        allowed_intermediary_pairs = {
+            # Route WBNB through BUSD:WBNB pool,
+            "": "",
+        }
+
+    elif reserve_currency == ReserveCurrency.usdc:
+        # https://tradingstrategy.ai/trading-view/binance/tokens/0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d
+        reserve_token_address = "".lower()
+
+        # For three way trades, which pools we can use
+        allowed_intermediary_pairs = {
+            # Route WBNB through USDC:WBNB pool,
+            # https://tradingstrategy.ai/trading-view/binance/pancakeswap-v2/bnb-usdc
+            "": "",
+        }
+    else:
+        raise NotImplementedError()
+
+    # Allowed exchanges as factory -> router pairs,
+    # by their smart contract addresses
+    # init_code_hash: https://snowtrace.io/address/0x60aE616a2155Ee3d9A68541Ba4544862310933d4#code#L174 
+    factory_router_map = {
+        "0x9Ad6C38BE94206cA50bb0d90783181662f0Cfa10": ("0x60aE616a2155Ee3d9A68541Ba4544862310933d4", "0bbca9af0511ad1a1da383135cf3a8d2ac620e549ef9f6ae3a4c33c2fed0af91")
+    }
+
+    return {
+        "chain_id": ChainId.avalanche,
+        "factory_router_map": factory_router_map,
+        "allowed_intermediary_pairs": allowed_intermediary_pairs,
+        "reserve_token_address": reserve_token_address,
+        "quote_token_addresses": {"0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c", "0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56"}
+    }
+    
 
 def get_uniswap_v2_default_routing_parameters(reserve_currency: ReserveCurrency) -> RoutingData:
     """Generate routing using Uniswap v2 router.
