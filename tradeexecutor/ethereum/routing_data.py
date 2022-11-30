@@ -178,7 +178,9 @@ def get_quickswap_default_routing_parameters(reserve_currency: ReserveCurrency) 
         "factory_router_map": factory_router_map,
         "allowed_intermediary_pairs": allowed_intermediary_pairs,
         "reserve_token_address": reserve_token_address,
-        "quote_token_addresses": {"", ""}
+        "quote_token_addresses": {
+            "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174", "0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270"
+        }
     }
 
 def get_trader_joe_default_routing_parameters(reserve_currency: ReserveCurrency) -> RoutingData:
@@ -222,7 +224,10 @@ def get_trader_joe_default_routing_parameters(reserve_currency: ReserveCurrency)
         "factory_router_map": factory_router_map,
         "allowed_intermediary_pairs": allowed_intermediary_pairs,
         "reserve_token_address": reserve_token_address,
-        "quote_token_addresses": {"", ""}
+        "quote_token_addresses": {
+            "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e", "0x9702230a8ea53601f5cd2dc00fdbc13d4df4a8c7" 
+            "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7"
+        }
     }
     
 
