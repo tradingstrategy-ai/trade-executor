@@ -39,6 +39,9 @@ class TradeRouting(enum.Enum):
     #: - Open positions with WBNB quote token.
     pancakeswap_usdc = "pancakeswap_usdc"
 
+    #: Two or three legged trades on Pancake on BSC
+    pandcakeswap_usdt = "pancakeswap_usdt"
+
     #: Two or three legged trades on Quickswap on Polygon
     #:
     #: - Open positions with USDC quote token.

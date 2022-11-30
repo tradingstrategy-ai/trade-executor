@@ -96,6 +96,16 @@ def get_pancake_default_routing_parameters(reserve_currency: ReserveCurrency) ->
             # https://tradingstrategy.ai/trading-view/binance/pancakeswap-v2/bnb-usdc
             "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c": "0xd99c7f6c65857ac913a8f880a4cb84032ab2fc5b",
         }
+    elif reserve_currency == ReserveCurrency.usdt:
+        # https://tradingstrategy.ai/trading-view/polygon/tokens/0xc2132d05d31c914a87c6611c10748aeb04b58e8f
+        reserve_token_address = "".lower()
+
+        # For three way trades, which pools we can use
+        allowed_intermediary_pairs = {
+            # Route WBNB through USDT:WBNB pool,
+            # https://tradingstrategy.ai/trading-view/binance/pancakeswap-v2/bnb-usdt
+            "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c": "0x55d398326f99059ff775485246999027b3197955",
+        }
     else:
         raise NotImplementedError()
 
