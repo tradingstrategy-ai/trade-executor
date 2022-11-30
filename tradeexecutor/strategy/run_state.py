@@ -63,10 +63,15 @@ class RunState:
     - /source
 
     - /visualisation
+
+    - /summary
     """
 
     #: When the execution state was updated last time
     last_refreshed_at: datetime.datetime = field(default_factory=datetime.datetime.utcnow)
+
+    #: When the executor was started
+    started_at: datetime.datetime = field(default_factory=datetime.datetime.utcnow)
 
     #: Is the main loop alive
     #:
@@ -107,7 +112,11 @@ class RunState:
         return data
 
     def set_fail(self):
-        """Set the trade-executor main loop to a failed state."""
+        """Set the trade-executor main loop to a failed state.
+
+        Reads the latest exception from Python stack and
+        generates as exceptino data for it so webhook can export it.
+        """
         self.exception = self.serialise_exception()
         self.last_refreshed_at = datetime.datetime.utcnow()
         self.executor_running = False

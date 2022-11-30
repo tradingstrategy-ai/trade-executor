@@ -54,11 +54,11 @@ def web_metadata(request: Request):
     # not really a nice API design.
     # Do not mutate a global state in place/
     summary = StrategySummary(
-        name=metadata["name"],
-        short_description=metadata["short_description"],
-        long_description=metadata["long_description"],
-        icon_url=metadata["icon_url"],
-        started_at=time.mktime(metadata["started_at"]),
+        name=metadata.name,
+        short_description=metadata.short_description,
+        long_description=metadata.long_description,
+        icon_url=metadata.icon_url,
+        started_at=time.mktime(metadata.started_at.timetuple()),
         executor_running=execution_state.executor_running,
     )
 

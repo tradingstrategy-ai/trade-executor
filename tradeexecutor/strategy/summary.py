@@ -1,9 +1,6 @@
 """Strategy status summary."""
-import datetime
 from dataclasses import dataclass
 from typing import Optional
-
-from dataclasses_json import dataclass_json
 
 @dataclass
 class StrategySummary:
@@ -31,7 +28,9 @@ class StrategySummary:
     #: For <img src>
     icon_url: Optional[str]
 
-    #: When the instance was started last time, UTC
+    #: When the instance was started last time
+    #:
+    #: Unix timestamp, as UTC
     started_at: float
 
     #: Is the executor main loop running or crashed.
