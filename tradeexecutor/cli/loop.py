@@ -9,6 +9,7 @@ from queue import Queue
 from typing import Optional, Callable, List
 
 import pandas as pd
+from apscheduler.events import EVENT_JOB_ERROR
 
 from tradeexecutor.statistics.summary import calculate_summary_statistics
 from tradeexecutor.strategy.run_state import RunState
@@ -619,7 +620,11 @@ class ExecutionLoop:
         }
         start_time = datetime.datetime(1970, 1, 1)
         scheduler = BlockingScheduler(executors=executors, timezone=datetime.timezone.utc)
-        scheduler.add_job(live_cycle, 'interval', seconds=self.cycle_duration.to_timedelta().total_seconds(), start_date=start_time + self.tick_offset)
+        scheduler.add_job(
+            live_cycle,
+            'interval',
+            seconds=self.cycle_duration.to_timedelta().total_seconds(),
+            start_date=start_time + self.tick_offset)
 
         if self.stats_refresh_frequency not in (datetime.timedelta(0), None):
             scheduler.add_job(
@@ -635,12 +640,24 @@ class ExecutionLoop:
                 seconds=self.position_trigger_check_frequency.total_seconds(),
                 start_date=start_time)
 
+        def listen_error(event):
+            if event.exception:
+                logger.info("Scheduled task received exception. event: %s, execption: %s", event, event.exception)
+            else:
+                logger.error("Should not happen")
+
+        scheduler.add_listener(listen_error, EVENT_JOB_ERROR)
+
         try:
             scheduler.start()
         except KeyboardInterrupt:
             # https://github.com/agronholm/apscheduler/issues/338
             scheduler.shutdown(wait=False)
             raise
+        except Exception as e:
+            logger.error("Scheduler raised an exception %s", e)
+            raise
+
         logger.info("Scheduler finished - down the live trading loop")
 
         return self.debug_dump_state

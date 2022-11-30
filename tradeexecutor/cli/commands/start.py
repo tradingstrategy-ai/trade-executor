@@ -344,4 +344,5 @@ def start(
             time.sleep(3600*24*365)
     finally:
         if server:
+            logger.info("Closing the web server")
             server.close()
