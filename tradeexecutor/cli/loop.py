@@ -537,6 +537,9 @@ class ExecutionLoop:
 
         cycle = 1
         universe: Optional[StrategyExecutionUniverse] = None
+        execution_context = self.execution_context
+
+        assert execution_context, "ExecutionContext missing"
 
         # The first trade will be execute immediately, despite the time offset or tick
         if self.trade_immediately:
@@ -567,7 +570,7 @@ class ExecutionLoop:
 
             try:
                 ts = datetime.datetime.now()
-                self.update_position_valuations(ts, state, universe, self.execution_context.mode)
+                self.update_position_valuations(ts, state, universe, execution_context.mode)
             except Exception as e:
                 logger.exception(e)
                 scheduler.shutdown(wait=False)
