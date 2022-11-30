@@ -83,6 +83,7 @@ def get_pancake_default_routing_parameters(reserve_currency: ReserveCurrency) ->
         # For three way trades, which pools we can use
         allowed_intermediary_pairs = {
             # Route WBNB through BUSD:WBNB pool,
+            # https://tradingstrategy.ai/trading-view/binance/pancakeswap-v2/bnb-busd
             "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c": "0x58f876857a02d6762e0101bb5c46a8c1ed44dc16",
         }
 
@@ -98,13 +99,13 @@ def get_pancake_default_routing_parameters(reserve_currency: ReserveCurrency) ->
         }
     elif reserve_currency == ReserveCurrency.usdt:
         # https://tradingstrategy.ai/trading-view/polygon/tokens/0xc2132d05d31c914a87c6611c10748aeb04b58e8f
-        reserve_token_address = "".lower()
+        reserve_token_address = "0x55d398326f99059ff775485246999027b3197955".lower()
 
         # For three way trades, which pools we can use
         allowed_intermediary_pairs = {
             # Route WBNB through USDT:WBNB pool,
             # https://tradingstrategy.ai/trading-view/binance/pancakeswap-v2/bnb-usdt
-            "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c": "0x55d398326f99059ff775485246999027b3197955",
+            "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c": "0x16b9a82891338f9ba80e2d6970fdda79d1eb0dae",
         }
     else:
         raise NotImplementedError()
@@ -137,7 +138,7 @@ def get_quickswap_default_routing_parameters(reserve_currency: ReserveCurrency) 
         allowed_intermediary_pairs = {
             # Route WMATIC through USDC:WMATIC pool,
             # https://tradingstrategy.ai/trading-view/polygon/quickswap/matic-usdc
-            "0x2791bca1f2de4661ed88a30c99a7a9449aa84174": "0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270",
+            "0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270": "0x6e7a5fafcec6bb1e78bae2a1f0b612012bf14827",
         }
     elif reserve_currency == ReserveCurrency.usdt:
         # https://tradingstrategy.ai/trading-view/polygon/tokens/0xc2132d05d31c914a87c6611c10748aeb04b58e8f
@@ -147,7 +148,7 @@ def get_quickswap_default_routing_parameters(reserve_currency: ReserveCurrency) 
         allowed_intermediary_pairs = {
             # Route WMATIC through USDT:WMATIC pool,
             # https://tradingstrategy.ai/trading-view/polygon/quickswap/matic-usdt
-            "0xc2132d05d31c914a87c6611c10748aeb04b58e8f": "0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270",
+            "0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270": "0x604229c960e5cacf2aaeac8be68ac07ba9df81c3",
         }
     elif reserve_currency == ReserveCurrency.dai:
         # https://tradingstrategy.ai/trading-view/polygon/tokens/0x8f3cf7ad23cd3cadbd9735aff958023239c6a063
@@ -157,7 +158,7 @@ def get_quickswap_default_routing_parameters(reserve_currency: ReserveCurrency) 
         allowed_intermediary_pairs = {
             # Route USDC through DAI:UDSC pool,
             # https://tradingstrategy.ai/trading-view/polygon/quickswap/dai-usdc
-            "0x8f3cf7ad23cd3cadbd9735aff958023239c6a063":"0x2791bca1f2de4661ed88a30c99a7a9449aa84174"
+            "0x2791bca1f2de4661ed88a30c99a7a9449aa84174":"0x2791bca1f2de4661ed88a30c99a7a9449aa84174"
         }
     else:    
         raise NotImplementedError()
@@ -166,7 +167,7 @@ def get_quickswap_default_routing_parameters(reserve_currency: ReserveCurrency) 
     # by their smart contract addresses
     # init_code_hash: https://polygonscan.com/address/0xa5E0829CaCEd8fFDD4De3c43696c57F7D7A678ff#code#L297
     factory_router_map = {
-        "0x5757371414417b8C6CAad45bAeF941aBc7d3Ab32": ("0xa5E0829CaCEd8fFDD4De3c43696c57F7D7A678ff", "96e8ac4277198ff8b6f785478aa9a39f403cb768dd02cbee326c3e7da348845f")
+        "0x5757371414417b8C6CAad45bAeF941aBc7d3Ab32": ("0xa5E0829CaCEd8fFDD4De3c43696c57F7D7A678ff", "0x96e8ac4277198ff8b6f785478aa9a39f403cb768dd02cbee326c3e7da348845f")
     }
 
     return {
@@ -191,17 +192,17 @@ def get_trader_joe_default_routing_parameters(reserve_currency: ReserveCurrency)
         allowed_intermediary_pairs = {
             # Route WAVAX through USDC:WAVAX pool,
             # https://tradingstrategy.ai/trading-view/avalanche/trader-joe/wavax-usdc
-            "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7": "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
+            "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7": "0xf4003f4efbe8691b60249e6afbd307abe7758adb",
         }
     elif reserve_currency == ReserveCurrency.usdt:
-        # https://tradingstrategy.ai/trading-view/polygon/tokens/0xc2132d05d31c914a87c6611c10748aeb04b58e8f
+        # 
         reserve_token_address = "0x9702230a8ea53601f5cd2dc00fdbc13d4df4a8c7".lower()
 
         # For three way trades, which pools we can use
         allowed_intermediary_pairs = {
             # Route WAVAX through USDT:WAVAX pool,
             # https://tradingstrategy.ai/trading-view/avalanche/trader-joe/usdt-wavax
-            "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7": "0x9702230a8ea53601f5cd2dc00fdbc13d4df4a8c7",
+            "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7": "0xbb4646a764358ee93c2a9c4a147d5aded527ab73",
         }
     else:
         raise NotImplementedError()
@@ -210,7 +211,7 @@ def get_trader_joe_default_routing_parameters(reserve_currency: ReserveCurrency)
     # by their smart contract addresses
     # init_code_hash: https://snowtrace.io/address/0x60aE616a2155Ee3d9A68541Ba4544862310933d4#code#L174 
     factory_router_map = {
-        "0x9Ad6C38BE94206cA50bb0d90783181662f0Cfa10": ("0x60aE616a2155Ee3d9A68541Ba4544862310933d4", "0bbca9af0511ad1a1da383135cf3a8d2ac620e549ef9f6ae3a4c33c2fed0af91")
+        "0x9Ad6C38BE94206cA50bb0d90783181662f0Cfa10": ("0x60aE616a2155Ee3d9A68541Ba4544862310933d4", "0x0bbca9af0511ad1a1da383135cf3a8d2ac620e549ef9f6ae3a4c33c2fed0af91")
     }
 
     return {
