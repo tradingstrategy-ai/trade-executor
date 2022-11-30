@@ -10,7 +10,7 @@ from typing import Optional, Callable, List
 
 import pandas as pd
 
-from tradeexecutor.strategy.execution_state import ExecutionState
+from tradeexecutor.strategy.run_state import RunState
 
 try:
     from apscheduler.executors.pool import ThreadPoolExecutor
@@ -92,7 +92,7 @@ class ExecutionLoop:
             stop_loss_check_frequency: Optional[TimeBucket] = None,
             tick_offset: datetime.timedelta=datetime.timedelta(minutes=0),
             trade_immediately=False,
-            execution_state: Optional[ExecutionState]=None,
+            execution_state: Optional[RunState]=None,
     ):
         """See main.py for details."""
 
@@ -270,7 +270,12 @@ class ExecutionLoop:
             self.backtest_setup(state, universe, self.sync_method)
 
         # Execute the strategy tick and trades
-        self.runner.tick(ts, universe, state, debug_details)
+        self.runner.tick(
+            ts,
+            universe,
+            state,
+            debug_details,
+        )
 
         # Check that state is good before writing it to the disk
         state.perform_integrity_check()

@@ -98,6 +98,7 @@ def set_up_simulated_execution_loop_uniswap_v2(
         pricing_model_factory=pricing_model_factory,
         routing_model=routing_model,
         decide_trades=decide_trades,
+        execution_context=execution_context,
     )
 
     loop = ExecutionLoop(

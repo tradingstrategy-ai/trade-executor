@@ -51,21 +51,69 @@ def export_trade_for_dataframe(p: Portfolio, t: TradeExecution) -> dict:
     }
 
 
-def export_trades_as_dataframe(portfolio: Portfolio) -> pd.DataFrame:
-    """Convert executed trades to a dataframe, so it is easier to work with them in Plotly."""
-    data = [export_trade_for_dataframe(portfolio, t) for t in portfolio.get_all_trades()]
+def export_trades_as_dataframe(
+        portfolio: Portfolio,
+        start: Optional[pd.Timestamp]=None,
+        end: Optional[pd.Timestamp]=None,
+) -> pd.DataFrame:
+    """Convert executed trades to a dataframe, so it is easier to work with them in Plotly.
+
+    :param start_at:
+        Crop range
+
+    :param end_at:
+        Crop range
+    """
+
+    if start:
+        assert isinstance(start, pd.Timestamp)
+
+    if end:
+        assert isinstance(end, pd.Timestamp)
+        assert start
+
+    data = []
+
+    for t in portfolio.get_all_trades():
+
+        # Crop
+        if start or end:
+            if t.started_at < start or t.started_at > end:
+                continue
+
+        data.append(export_trade_for_dataframe(portfolio, t))
     return pd.DataFrame(data)
 
 
-def export_plot_as_dataframe(plot: Plot) -> pd.DataFrame:
-    """Convert visualisation state to Plotly friendly df."""
+def export_plot_as_dataframe(
+        plot: Plot,
+        start_at: Optional[pd.Timestamp]=None,
+        end_at: Optional[pd.Timestamp]=None,
+) -> pd.DataFrame:
+    """Convert visualisation state to Plotly friendly df.
+
+    :param start_at:
+        Crop range
+
+    :param end_at:
+        Crop range
+    """
     data = []
     for time, value in plot.points.items():
         time = pd.to_datetime(time, unit='s')
+
+        if start_at or end_at:
+            if time < start_at or time > end_at:
+                continue
+
         data.append({
             "timestamp": time,
             "value": value,
         })
+
+    # set_index fails if the frame is empty
+    if len(data) == 0:
+        return pd.DataFrame()
 
     # Convert timestamp to pd.Timestamp column
     df = pd.DataFrame(data)
@@ -73,22 +121,35 @@ def export_plot_as_dataframe(plot: Plot) -> pd.DataFrame:
     return df
 
 
-def visualise_technical_indicators(fig: go.Figure, visualisation: Visualisation):
-    """Draw technical indicators over candle chart."""
+def visualise_technical_indicators(
+        fig: go.Figure,
+        visualisation: Visualisation,
+        start_at: Optional[pd.Timestamp] = None,
+        end_at: Optional[pd.Timestamp] = None,
+):
+    """Draw technical indicators over candle chart.
+
+    :param start_at:
+        Crop range
+
+    :param end_at:
+        Crop range
+    """
 
     # https://plotly.com/python/graphing-multiple-chart-types/
     for plot_id, plot in visualisation.plots.items():
-        df = export_plot_as_dataframe(plot)
-        start_ts = df["timestamp"].min()
-        end_ts = df["timestamp"].max()
-        logger.info(f"Visualisation {plot_id} has data for range {start_ts} - {end_ts}")
-        fig.add_trace(go.Scatter(
-            x=df["timestamp"],
-            y=df["value"],
-            mode="lines",
-            name=plot.name,
-            line=dict(color=plot.colour),
-        ))
+        df = export_plot_as_dataframe(plot, start_at, end_at)
+        if len(df) > 0:
+            start_ts = df["timestamp"].min()
+            end_ts = df["timestamp"].max()
+            logger.info(f"Visualisation {plot_id} has data for range {start_ts} - {end_ts}")
+            fig.add_trace(go.Scatter(
+                x=df["timestamp"],
+                y=df["value"],
+                mode="lines",
+                name=plot.name,
+                line=dict(color=plot.colour),
+            ))
 
 
 def visualise_trades(
@@ -170,10 +231,13 @@ def visualise_trades(
 
 def visualise_single_pair(
         state: State,
-        candle_universe: GroupedCandleUniverse,
-        start_at: Optional[Union[pd.Timestamp, datetime.datetime]]=None,
-        end_at: Optional[Union[pd.Timestamp, datetime.datetime]]=None,
-        height=800) -> go.Figure:
+        candle_universe: GroupedCandleUniverse | pd.DataFrame,
+        start_at: Optional[Union[pd.Timestamp, datetime.datetime]] = None,
+        end_at: Optional[Union[pd.Timestamp, datetime.datetime]] = None,
+        height=800,
+        axes=True,
+        title=True,
+) -> go.Figure:
     """Visualise single-pair trade execution.
 
     :param state:
@@ -187,10 +251,16 @@ def visualise_single_pair(
         Chart height in pixels
 
     :param start_at:
-        When the backtest started
+        When the backtest started or when we crop the content
 
     :param end_at:
-        When the backtest ended
+        When the backtest ended or when we crop the content
+
+    :param axes:
+        Draw axes labels
+
+    :param title:
+        Draw title labels
     """
 
     logger.info("Visualising %s", state)
@@ -207,8 +277,12 @@ def visualise_single_pair(
     if end_at is not None:
         assert isinstance(end_at, pd.Timestamp)
 
-    assert candle_universe.get_pair_count() == 1, "visualise_single_pair() can be only used for a trading universe with a single pair"
-    candles = candle_universe.get_single_pair_data()
+    if isinstance(candle_universe, GroupedCandleUniverse):
+        assert candle_universe.get_pair_count() == 1, "visualise_single_pair() can be only used for a trading universe with a single pair"
+        candles = candle_universe.get_single_pair_data()
+    else:
+        # Raw dataframe
+        candles = candle_universe
 
     try:
         first_trade = next(iter(state.portfolio.get_all_trades()))
@@ -227,7 +301,7 @@ def visualise_single_pair(
     if not end_at:
         end_at = candle_universe.get_timestamp_range()[1]
 
-    logger.info(f"Visualising single pair strategy for range {start_at} = {end_at}")
+    logger.info(f"Visualising single pair strategy for range {start_at} - {end_at}")
 
     # Candles define our diagram X axis
     # Crop it to the trading range
@@ -237,12 +311,16 @@ def visualise_single_pair(
     candle_end_ts = candles["timestamp"].max()
     logger.info(f"Candles are {candle_start_ts} = {candle_end_ts}")
 
-    trades_df = export_trades_as_dataframe(state.portfolio)
+    trades_df = export_trades_as_dataframe(
+        state.portfolio,
+        start_at,
+        end_at,
+    )
 
     # set up figure with values not high and not low
     # include candlestick with rangeselector
 
-    percentage_changes = ((candles['close'] - candles['open'])/candles['open'])*100
+    percentage_changes = ((candles['close'] - candles['open'])/candles['open']) * 100
     text = ["Change: " + f"{percentage_changes[i]:.2f}%" for i in range(len(percentage_changes))]
 
     candlesticks = go.Candlestick(
@@ -261,15 +339,17 @@ def visualise_single_pair(
 
     fig = make_subplots(specs=[[{"secondary_y": should_create_volume_subplot}]])
 
-    if state.name:
-        fig.update_layout(title=f"{state.name} trades", height=height)
-    else:
-        fig.update_layout(title=f"Trades", height=height)
+    if title:
+        if state.name:
+            fig.update_layout(title=f"{state.name} trades", height=height)
+        else:
+            fig.update_layout(title=f"Trades", height=height)
 
-    if pair_name:
-        fig.update_yaxes(title=f"{pair_name} price", secondary_y=False, showgrid=True)
-    else:
-        fig.update_yaxes(title="Price $", secondary_y=False, showgrid=True)
+    if axes:
+        if pair_name:
+            fig.update_yaxes(title=f"{pair_name} price", secondary_y=False, showgrid=True)
+        else:
+            fig.update_yaxes(title="Price $", secondary_y=False, showgrid=True)
 
     fig.update_xaxes(rangeslider={"visible": False})
 
@@ -288,7 +368,12 @@ def visualise_single_pair(
 
     fig.add_trace(candlesticks, secondary_y=False)
 
-    visualise_technical_indicators(fig, state.visualisation)
+    visualise_technical_indicators(
+        fig,
+        state.visualisation,
+        start_at,
+        end_at,
+    )
 
     # Add trade markers if any trades have been made
     if len(trades_df) > 0:
@@ -308,5 +393,3 @@ def visualise_single_pair(
     )
 
     return fig
-
-

@@ -23,12 +23,20 @@ except ImportError:
 _ring_buffer_handler: Optional[RingBufferHandler] = None
 
 
-def setup_logging(log_level=logging.INFO, in_memory_buffer=False) -> Logger:
+def setup_logging(log_level: str | int=logging.INFO, in_memory_buffer=False) -> Logger:
     """Setup root logger and quiet some levels.
 
     :param in_memory_buffer:
         Setup in-memory log buffer used to fetch log messages to the frontend.
     """
+
+    if log_level == "disabled":
+        # Special unit test marker, don't mess with loggers
+        return logging.getLogger()
+
+    if isinstance(log_level, str):
+        log_level = log_level.upper()
+
     setup_custom_log_levels()
 
     logger = logging.getLogger()

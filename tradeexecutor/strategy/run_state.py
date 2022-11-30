@@ -19,20 +19,59 @@ class ExceptionData(TypedDict):
     tb_lineno: int
 
 
-@dataclass_json
+
 @dataclass
-class ExecutionState:
-    """Execution state
+class LatestStateVisualisation:
+    """The last visualisation of the strategy state."""
+
+    #: When the execution state was updated last time
+    last_refreshed_at: datetime.datetime = field(default_factory=datetime.datetime.utcnow)
+
+    #: 512 x 512 image PNG
+    small_image: Optional[bytes] = None
+
+    #: 1920 x 1920 image SVG
+    large_image: Optional[bytes] = None
+
+    def update_image_data(self,
+                          small_image,
+                          large_image):
+        self.small_image = small_image
+        self.large_image = large_image
+        self.last_refreshed_at = datetime.datetime.utcnow()
+
+
+@dataclass
+class RunState:
+    """Run state.
+
+    The status of a single trade-executor launch.
+
+    - Anything here is not persistent, but only kept in memory
+      while trade-executor is running
 
     A singleton instance communicates the state between
     the trade executor main loop and the webhook.
 
     The webhook can display the exception that caused
     the trade executor crash.
+
+    Partially returned by different endpoints in API
+
+    - /status
+
+    - /source
+
+    - /visualisation
+
+    - /summary
     """
 
     #: When the execution state was updated last time
     last_refreshed_at: datetime.datetime = field(default_factory=datetime.datetime.utcnow)
+
+    #: When the executor was started
+    started_at: datetime.datetime = field(default_factory=datetime.datetime.utcnow)
 
     #: Is the main loop alive
     #:
@@ -53,6 +92,10 @@ class ExecutionState:
     #: Use /source API endpoint to get this.
     source_code: Optional[str] = None
 
+    #: The strategy visualisation images
+    #:
+    visualisation: Optional[LatestStateVisualisation] = field(default_factory=LatestStateVisualisation)
+
     @staticmethod
     def serialise_exception() -> ExceptionData:
         """Serialised the latest raised Python exception.
@@ -66,11 +109,14 @@ class ExecutionState:
 
         # tblib loses the actual formatted exception message
         data["exception_message"] = str(ev)
-
         return data
 
     def set_fail(self):
-        """Set the trade-executor main loop to a failed state."""
+        """Set the trade-executor main loop to a failed state.
+
+        Reads the latest exception from Python stack and
+        generates as exceptino data for it so webhook can export it.
+        """
         self.exception = self.serialise_exception()
         self.last_refreshed_at = datetime.datetime.utcnow()
         self.executor_running = False

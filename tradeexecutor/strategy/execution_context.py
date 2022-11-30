@@ -68,6 +68,10 @@ class ExecutionMode(enum.Enum):
         """
         return self in (self.real_trading, self.paper_trading, self.simulated_trading)
 
+    def is_unit_testing(self) -> bool:
+        """Are we executing unit tests."""
+        return self in (self.unit_testing_trading,)
+
 
 @dataclass
 class   ExecutionContext:

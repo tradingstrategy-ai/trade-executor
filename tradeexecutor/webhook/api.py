@@ -1,7 +1,8 @@
 """API function entrypoints."""
-
+import dataclasses
 import os
 import logging
+import time
 from importlib.metadata import version
 
 from pyramid.request import Request
@@ -11,7 +12,8 @@ from pyramid.view import view_config
 from tradeexecutor.cli.log import get_ring_buffer_handler
 from tradeexecutor.state.metadata import Metadata
 from tradeexecutor.state.store import JSONFileStore
-from tradeexecutor.strategy.execution_state import ExecutionState
+from tradeexecutor.strategy.summary import StrategySummary
+from tradeexecutor.strategy.run_state import RunState
 from tradeexecutor.webhook.error import exception_response
 
 
@@ -39,24 +41,28 @@ def web_ping(request: Request):
     return {"ping": "pong"}
 
 
-@view_config(route_name='web_metadata', permission='view')
+@view_config(route_name='web_metadata', renderer='json', permission='view')
 def web_metadata(request: Request):
     """/metadata endpoint
 
     Executor metadata.
     """
     metadata: Metadata = request.registry["metadata"]
-    execution_state: ExecutionState = request.registry["execution_state"]
+    execution_state: RunState = request.registry["run_state"]
 
     # Retrofitted with the running flag,
     # not really a nice API design.
     # Do not mutate a global state in place/
-    metadata = Metadata(**metadata.to_dict())
-    metadata.executor_running = execution_state.executor_running
+    summary = StrategySummary(
+        name=metadata.name,
+        short_description=metadata.short_description,
+        long_description=metadata.long_description,
+        icon_url=metadata.icon_url,
+        started_at=time.mktime(metadata.started_at.timetuple()),
+        executor_running=execution_state.executor_running,
+    )
 
-    r = Response(content_type="application/json")
-    r.body = metadata.to_json().encode("utf-8")
-    return r
+    return dataclasses.asdict(summary)
 
 
 @view_config(route_name='web_notify', renderer='json', permission='view')
@@ -97,10 +103,16 @@ def web_status(request: Request):
 
     See :py:class:`tradeexecutor.strategy.execution_state.ExecutionState` for the return dta.
     """
-    execution_state: ExecutionState = request.registry["execution_state"]
-    r = Response(content_type="application/json")
-    r.body = execution_state.to_json().encode("utf-8")
-    return r
+    execution_state: RunState = request.registry["run_state"]
+
+    results = {
+        "last_refreshed_at": execution_state.last_refreshed_at.timestamp(),
+        "executor_running": execution_state.executor_running,
+        "completed_cycle": execution_state.completed_cycle,
+        "exception": execution_state.exception,
+
+    }
+    return results
 
 
 @view_config(route_name='web_logs', renderer='json', permission='view')
@@ -123,7 +135,40 @@ def web_source(request: Request):
 
     Return the source code of the strategy as plain text.
     """
-    execution_state: ExecutionState = request.registry["execution_state"]
+    execution_state: RunState = request.registry["run_state"]
     r = Response(content_type="text/plain")
     r.text = execution_state.source_code or ""
     return r
+
+
+@view_config(route_name='web_visualisation', permission='view')
+def web_visulisation(request: Request):
+    """/visualisation endpoint.
+
+    Return strategy images.
+    """
+    execution_state: RunState = request.registry["run_state"]
+
+    type = request.params.get("type", "small")
+
+    if type == "small":
+        data = execution_state.visualisation.small_image
+
+        if not data:
+            raise RuntimeError("Image data not available")
+
+        r = Response(content_type="image/png")
+        r.body = data
+        return r
+    elif type =="large":
+        data = execution_state.visualisation.small_image
+
+        if not data:
+            raise RuntimeError("Image data not available")
+
+        r = Response(content_type="image/svg+xml")
+        r.body = data
+        return r
+    else:
+        raise NotImplementedError()
+

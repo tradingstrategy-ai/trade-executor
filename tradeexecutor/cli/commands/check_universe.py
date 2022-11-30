@@ -25,6 +25,7 @@ def check_universe(
     trading_strategy_api_key: str = typer.Option(None, envvar="TRADING_STRATEGY_API_KEY", help="Trading Strategy API key"),
     cache_path: Optional[Path] = typer.Option(None, envvar="CACHE_PATH", help="Where to store downloaded datasets"),
     max_data_delay_minutes: int = typer.Option(24*60, envvar="MAX_DATA_DELAY_MINUTES", help="How fresh the OHCLV data for our strategy must be before failing"),
+    log_level: str = typer.Option(None, envvar="LOG_LEVEL", help="The Python default logging level. The defaults are 'info' is live execution, 'warning' if backtesting. Set 'disabled' in testing."),
 ):
     """Checks that the trading universe is helthy for a given strategy."""
 
@@ -32,7 +33,7 @@ def check_universe(
 
     id = prepare_executor_id(id, strategy_file)
 
-    logger = setup_logging()
+    logger = setup_logging(log_level)
 
     logger.info("Loading strategy file %s", strategy_file)
 

@@ -54,7 +54,8 @@ def test_main_loop_crash(
         "MINUMUM_GAS_BALANCE": "0",
         "TRADE_IMMEDIATELY": "true",
         "JSON_RPC_BINANCE": os.environ["BNB_CHAIN_JSON_RPC"],
-        "PATH": os.environ["PATH"]
+        "PATH": os.environ["PATH"],
+        "MAX_DATA_DELAY_MINUTES": str(7*24*60),
     }
 
     proc = subprocess.Popen(

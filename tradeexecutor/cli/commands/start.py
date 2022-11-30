@@ -28,7 +28,7 @@ from ...strategy.bootstrap import import_strategy_file
 from ...strategy.cycle import CycleDuration
 from ...strategy.execution_context import ExecutionContext, ExecutionMode
 from ...strategy.execution_model import TradeExecutionType
-from ...strategy.execution_state import ExecutionState
+from ...strategy.run_state import RunState
 from ...strategy.strategy_module import read_strategy_module, StrategyModuleInformation
 from ...utils.timer import timed_task
 from ...webhook.server import create_webhook_server
@@ -42,7 +42,7 @@ def start(
 
     # Strategy assets
     id: str = typer.Option(None, envvar="EXECUTOR_ID", help="Executor id used when programmatically referring to this instance. If not given, take the base of --strategy-file."),
-    log_level: str = typer.Option(None, envvar="LOG_LEVEL", help="The Python default logging level. The defaults are 'info' is live execution, 'warning' if backtesting."),
+    log_level: str = typer.Option(None, envvar="LOG_LEVEL", help="The Python default logging level. The defaults are 'info' is live execution, 'warning' if backtesting. Set 'disabled' in testing."),
     name: Optional[str] = typer.Option(None, envvar="NAME", help="Executor name used in the web interface and notifications"),
     short_description: Optional[str] = typer.Option(None, envvar="SHORT_DESCRIPTION", help="Short description for metadata"),
     long_description: Optional[str] = typer.Option(None, envvar="LONG_DESCRIPTION", help="Long description for metadata"),
@@ -117,9 +117,7 @@ def start(
         else:
             name = "Unnamed backtest"
 
-    if log_level:
-        log_level = log_level.upper()
-    else:
+    if not log_level:
         if execution_type == TradeExecutionType.backtest:
             log_level = logging.WARNING
         else:
@@ -148,7 +146,7 @@ def start(
     # so we use different default
     if not cache_path:
         if unit_testing:
-            cache_path = "/tmp/trading-strategy-tests"
+            cache_path = Path("/tmp/trading-strategy-tests")
 
     cache_path = prepare_cache(id, cache_path)
 
@@ -216,7 +214,7 @@ def start(
     # Start the queue that relays info from the web server to the strategy executor
     command_queue = Queue()
 
-    execution_state = ExecutionState()
+    execution_state = RunState()
 
     # Create our webhook server
     if http_enabled:

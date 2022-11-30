@@ -44,6 +44,8 @@ def check_wallet(
     json_rpc_polygon: str = typer.Option(None, envvar="JSON_RPC_POLYGON", help="Polygon JSON-RPC node URL we connect to"),
     json_rpc_ethereum: str = typer.Option(None, envvar="JSON_RPC_ETHEREUM", help="Ethereum JSON-RPC node URL we connect to"),
     json_rpc_avalanche: str = typer.Option(None, envvar="JSON_RPC_AVALANCHE", help="Avalanche C-chain JSON-RPC node URL we connect to"),
+
+    log_level: str = typer.Option(None, envvar="LOG_LEVEL", help="The Python default logging level. The defaults are 'info' is live execution, 'warning' if backtesting. Set 'disabled' in testing."),
 ):
     """Print out the token balances of the hot wallet.
 
@@ -57,7 +59,7 @@ def check_wallet(
 
     id = prepare_executor_id(id, strategy_file)
 
-    logger = setup_logging()
+    logger = setup_logging(log_level)
 
     mod = read_strategy_module(strategy_file)
 
