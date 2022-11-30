@@ -189,10 +189,11 @@ def get_trader_joe_default_routing_parameters(reserve_currency: ReserveCurrency)
 
         # For three way trades, which pools we can use
         allowed_intermediary_pairs = {
-            # Route WBNB through USDC:WBNB pool,
-            # https://tradingstrategy.ai/trading-view/binance/pancakeswap-v2/bnb-usdc
-            "": "",
+            # Route WAVAX through USDC:WAVAX pool,
+            # https://tradingstrategy.ai/trading-view/avalanche/trader-joe/wavax-usdc
+            "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7": "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
         }
+    
     else:
         raise NotImplementedError()
 
