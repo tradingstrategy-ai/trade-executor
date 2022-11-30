@@ -121,11 +121,12 @@ class PandasTraderRunner(StrategyRunner):
             pair = universe.get_single_pair()
             candles = universe.universe.candles.get_candles_by_pair(pair.internal_id)
             last_candle = candles.iloc[-1]
+            lag = pd.Timestamp.utcnow() - last_candle["timestamp"]
 
             print("Strategy thinking", file=buf)
             print("", file=buf)
             print(f"  Now: {datetime.datetime.utcnow()} UTC", file=buf)
-            print(f"  Last candle at: {last_candle['timestamp']} UTC", file=buf)
+            print(f"  Last candle at: {last_candle['timestamp']} UTC, market data and action lag: {lag}", file=buf)
             print(f"  Price open:{last_candle['open']} close:{last_candle['close']} {pair.base.token_symbol} / {pair.quote.token_symbol}", file=buf)
 
             # Draw indicators
