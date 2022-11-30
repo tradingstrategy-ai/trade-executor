@@ -39,12 +39,19 @@ class TradeRouting(enum.Enum):
     #: - Open positions with WBNB quote token.
     pancakeswap_usdc = "pancakeswap_usdc"
 
-    #: Two or three legged trades on Quickswap
+    #: Two or three legged trades on Quickswap on Polygon
     #:
     #: - Open positions with USDC quote token.
     #:
     #: - Open positions with WMATIC quote token.
     quickswap_usdc = "quickswap_usdc"
+
+    #: Two or three legged trades on Trader Joe on Avalanche
+    #:
+    #: - Open positions with USDC quote token.
+    #:
+    #: - Open positions with AVAX quote token.
+    trader_joe_usdc = "trader_joe_usdc"
 
     #: Two or three legged trades on Uniswap v2 on Ethereum mainnet
     #:
