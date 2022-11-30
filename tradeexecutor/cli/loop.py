@@ -10,6 +10,7 @@ from typing import Optional, Callable, List
 
 import pandas as pd
 
+from tradeexecutor.statistics.summary import calculate_summary_statistics
 from tradeexecutor.strategy.run_state import RunState
 
 try:
@@ -322,6 +323,17 @@ class ExecutionLoop:
         # Store the current state to disk
         self.store.sync(state)
 
+    def update_summary_statistics(
+            self,
+            state: State,
+    ):
+        """Update the summary card statistics for this strategy."""
+        stats = calculate_summary_statistics(
+            state,
+            self.execution_context.mode,
+        )
+        self.execution_state.summary_statistics = stats
+
     def check_position_triggers(self,
                           ts: datetime.datetime,
                           state: State,
@@ -541,6 +553,9 @@ class ExecutionLoop:
 
         assert execution_context, "ExecutionContext missing"
 
+        # Store summary statistics in memory before doing anything else
+        self.update_summary_statistics(state)
+
         # The first trade will be execute immediately, despite the time offset or tick
         if self.trade_immediately:
             ts = datetime.datetime.now()
@@ -553,6 +568,7 @@ class ExecutionLoop:
                 cycle += 1
                 ts = datetime.datetime.now()
                 universe = self.tick(ts, self.cycle_duration, state, cycle, live=True)
+                self.update_summary_statistics(state)
             except Exception as e:
                 logger.exception(e)
                 scheduler.shutdown(wait=False)
@@ -570,7 +586,10 @@ class ExecutionLoop:
 
             try:
                 ts = datetime.datetime.now()
+
                 self.update_position_valuations(ts, state, universe, execution_context.mode)
+
+                self.update_summary_statistics(state)
             except Exception as e:
                 logger.exception(e)
                 scheduler.shutdown(wait=False)
