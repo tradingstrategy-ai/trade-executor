@@ -17,7 +17,9 @@ from tradeexecutor.cli.log import setup_pytest_logging
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.state.state import State
 from tradeexecutor.state.statistics import Statistics, calculate_naive_profitability
+from tradeexecutor.statistics.summary import calculate_summary_statistics
 from tradeexecutor.strategy.cycle import CycleDuration
+from tradeexecutor.strategy.execution_context import ExecutionMode
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, create_pair_universe_from_code
 from tradeexecutor.testing.synthetic_ethereum_data import generate_random_ethereum_address
 from tradeexecutor.testing.synthetic_exchange_data import generate_exchange, generate_simple_routing_model
@@ -196,4 +198,45 @@ def test_calculate_profitability_overflow_time_window(state: State):
 
     assert time_window == pd.Timedelta('213 days 00:00:00')
     assert profitability_10_years == pytest.approx(-0.0036666493001204234)
+
+
+def test_calculate_profitability_empty():
+    """Calculate strategy profitability but we have no data yet.
+
+    """
+    s = pd.Series([], index=pd.DatetimeIndex([]))
+
+    profitability_90_days, time_window = calculate_naive_profitability(s, look_back=pd.Timedelta(days=90))
+
+    assert time_window is None
+    assert profitability_90_days is None
+
+
+def test_calculate_all_summary_statistics(state: State):
+    """Calculate all summary statistics.
+
+    """
+
+    # Set "last 90 days" to the end of backtest data
+    now_ = pd.Timestamp(datetime.datetime(2021, 12, 31, 0, 0))
+
+    summary = calculate_summary_statistics(
+        state,
+        ExecutionMode.unit_testing_trading,
+        now_=now_,
+    )
+
+    assert summary.calculated_at
+    assert summary.enough_data
+    assert summary.first_trade_at == datetime.datetime(2021, 6, 1, 0, 0)
+    assert summary.last_trade_at == datetime.datetime(2021, 12, 31, 0, 0)
+    assert summary.profitability_90_days == pytest.approx(-0.003181862051407544)
+    assert summary.current_value == pytest.approx(9960.344506946696)
+
+    datapoints = summary.performance_chart_90_days
+    assert len(datapoints) == 91
+
+    assert datapoints[0] == (datetime.datetime(2021, 10, 2, 0, 0), 0.0)
+    assert datapoints[-1] == (datetime.datetime(2021, 12, 31, 0, 0), -0.003181862051407544)
+
 

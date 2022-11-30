@@ -1,7 +1,7 @@
 """Strategy status summary."""
 import datetime
-from dataclasses import dataclass
-from typing import Optional, List
+from dataclasses import dataclass, field
+from typing import Optional, List, Tuple
 
 from dataclasses_json import dataclass_json
 
@@ -12,6 +12,10 @@ from tradeexecutor.state.types import USDollarAmount
 @dataclass
 class StrategySummaryStatistics:
     """Performance statistics displayed on the tile cards."""
+
+    #: When these stats where calculated
+    #:
+    calculated_at: datetime.datetime = field(default_factory=datetime.datetime.utcnow)
 
     #: When this strategy truly started.
     #:
@@ -41,11 +45,13 @@ class StrategySummaryStatistics:
     #: otherwise we can say so sar.
     profitability_90_days: Optional[float] = None
 
-    #: Data for the performance chart used in the summary card
+    #: Data for the performance chart used in the summary card.
+    #:
+    #: Contains (timepoint, performance %) tuples.
     #:
     #: Relative performance -1 ... 1 (100%) up and
     #: 0 is no gains/no losses
-    performance_90_days: Optional[List[float]] = None
+    performance_chart_90_days: Optional[List[Tuple[datetime.datetime, float]]] = None
 
 
 

@@ -137,7 +137,11 @@ class Statistics:
         stat_list.append(p_stats)
         self.positions[position_id] = stat_list
 
-    def get_portfolio_statistics_dataframe(self, attr_name: str) -> pd.Series:
+    def get_portfolio_statistics_dataframe(
+            self,
+            attr_name: str,
+            resampling_time: str="D",
+            resampling_method: str="max") -> pd.Series:
         """Get any of position statistcs value as a columnar data.
 
         Example:
@@ -151,21 +155,31 @@ class Statistics:
             Which variable we are interested in.
             E.g. `total_equity`.
 
+        :param resampling_time:
+            See http://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#resampling
+
+        :param resamping_method:
+            See http://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#resampling
+
         :return:
             DataFrame for the value with time as index.
         """
 
-        return pd.Series(
+        s = pd.Series(
             [getattr(ps, attr_name) for ps in self.portfolio],
             index=[ps.calculated_at for ps in self.portfolio],
         )
+
+        # Convert data to daily if we have to
+        assert resampling_method == "max", f"Unsupported resamping method {resampling_method}"
+        return s.resample(resampling_time).max()
 
 
 def calculate_naive_profitability(
         total_equity_series: pd.Series,
         look_back: Optional[pd.Timedelta] = None,
         start_at: Optional[pd.Timestamp] = None,
-        end_at: Optional[pd.Timestamp] = None) -> Tuple[float, pd.Timedelta]:
+        end_at: Optional[pd.Timestamp] = None) -> Tuple[Optional[float], Optional[pd.Timedelta]]:
     """Calculate the profitability as value at end - value at start.
 
     This formula ignores any deposits and withdraws from the strategy.
@@ -176,8 +190,12 @@ def calculate_naive_profitability(
         As received from get_portfolio_statistics_dataframe()
 
     :return:
-        tuple (Profitability as %, duration of the sample period)
+        Tuple (Profitability as %, duration of the sample period).
+        (None, None) if we cannot calculate anything yet.
     """
+
+    if len(total_equity_series) == 0:
+        return None, None
 
     if look_back:
         assert not(start_at or end_at), "Give either look_back or range"
