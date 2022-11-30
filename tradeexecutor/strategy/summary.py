@@ -47,12 +47,15 @@ class StrategySummaryStatistics:
 
     #: Data for the performance chart used in the summary card.
     #:
-    #: Contains (timepoint, performance %) tuples.
+    #: Contains (UNIX time, performance %) tuples.
     #:
     #: Relative performance -1 ... 1 (100%) up and
-    #: 0 is no gains/no losses
+    #: 0 is no gains/no losses.
+    #:
+    #: One point per day.
+    #: Note that we might have 90 or 91 points because date ranges
+    #: are inclusive.
     performance_chart_90_days: Optional[List[Tuple[datetime.datetime, float]]] = None
-
 
 
 @dataclass_json
