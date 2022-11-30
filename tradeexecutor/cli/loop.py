@@ -649,6 +649,7 @@ class ExecutionLoop:
         scheduler.add_listener(listen_error, EVENT_JOB_ERROR)
 
         try:
+            # https://github.com/agronholm/apscheduler/discussions/683
             scheduler.start()
         except KeyboardInterrupt:
             # https://github.com/agronholm/apscheduler/issues/338

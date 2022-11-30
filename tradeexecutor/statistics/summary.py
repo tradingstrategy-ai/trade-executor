@@ -60,8 +60,8 @@ def calculate_summary_statistics(
         profitability_90_days, time_window = calculate_naive_profitability(total_equity_time_series, look_back=time_window)
         enough_data = total_equity_time_series.index[0] <= start_at
 
-        start_idx = total_equity_time_series.index.get_loc(start_at, method="nearest")
-        start_val = total_equity_time_series.iloc[start_idx]
+        start_idx = total_equity_time_series.index.get_indexer([start_at], method="nearest")
+        start_val = float(total_equity_time_series.iloc[start_idx])
         index: pd.Timestamp
 
         last_90_days_ts = total_equity_time_series.loc[start_at:]
