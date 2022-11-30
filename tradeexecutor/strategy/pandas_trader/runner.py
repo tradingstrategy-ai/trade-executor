@@ -121,7 +121,7 @@ class PandasTraderRunner(StrategyRunner):
             pair = universe.get_single_pair()
             candles = universe.universe.candles.get_candles_by_pair(pair.internal_id)
             last_candle = candles.iloc[-1]
-            lag = pd.Timestamp.utcnow() - last_candle["timestamp"]
+            lag = pd.Timestamp.utcnow().tz_localize(None) - last_candle["timestamp"]
 
             print("Strategy thinking", file=buf)
             print("", file=buf)
