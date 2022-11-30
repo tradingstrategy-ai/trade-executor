@@ -567,7 +567,7 @@ class ExecutionLoop:
 
             try:
                 ts = datetime.datetime.now()
-                self.update_position_valuations(ts, state, universe)
+                self.update_position_valuations(ts, state, universe, self.execution_context.mode)
             except Exception as e:
                 logger.exception(e)
                 scheduler.shutdown(wait=False)
