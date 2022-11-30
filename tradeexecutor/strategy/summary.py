@@ -1,12 +1,10 @@
-"""Strategy summary."""
+"""Strategy status summary."""
 import datetime
 from dataclasses import dataclass
 from typing import Optional
 
 from dataclasses_json import dataclass_json
 
-
-@dataclass_json
 @dataclass
 class StrategySummary:
     """Strategy summary.
@@ -15,6 +13,10 @@ class StrategySummary:
 
     - Contains mixture of static metadata, trade executor crash status,
       latest strategy performance stats and visualisation
+
+    - Is not stored as the part of the strategy state
+
+    - See /summary API endpoint where it is constructed before returning to the client
     """
 
     #: Strategy name
@@ -30,7 +32,7 @@ class StrategySummary:
     icon_url: Optional[str]
 
     #: When the instance was started last time, UTC
-    started_at: datetime.datetime
+    started_at: float
 
     #: Is the executor main loop running or crashed.
     #:

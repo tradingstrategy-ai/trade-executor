@@ -1,7 +1,8 @@
 """API function entrypoints."""
-
+import dataclasses
 import os
 import logging
+import time
 from importlib.metadata import version
 
 from pyramid.request import Request
@@ -11,7 +12,7 @@ from pyramid.view import view_config
 from tradeexecutor.cli.log import get_ring_buffer_handler
 from tradeexecutor.state.metadata import Metadata
 from tradeexecutor.state.store import JSONFileStore
-from tradeexecutor.state.summary import StrategySummary
+from tradeexecutor.strategy.summary import StrategySummary
 from tradeexecutor.strategy.run_state import RunState
 from tradeexecutor.webhook.error import exception_response
 
@@ -40,7 +41,7 @@ def web_ping(request: Request):
     return {"ping": "pong"}
 
 
-@view_config(route_name='web_metadata', permission='view')
+@view_config(route_name='web_metadata', renderer='json', permission='view')
 def web_metadata(request: Request):
     """/metadata endpoint
 
@@ -52,12 +53,16 @@ def web_metadata(request: Request):
     # Retrofitted with the running flag,
     # not really a nice API design.
     # Do not mutate a global state in place/
-    summary = StrategySummary(**metadata.to_dict())
-    summary.executor_running = execution_state.executor_running
+    summary = StrategySummary(
+        name=metadata["name"],
+        short_description=metadata["short_description"],
+        long_description=metadata["long_description"],
+        icon_url=metadata["icon_url"],
+        started_at=time.mktime(metadata["started_at"]),
+        executor_running=execution_state.executor_running,
+    )
 
-    r = Response(content_type="application/json")
-    r.body = metadata.to_json().encode("utf-8")
-    return r
+    return dataclasses.asdict(summary)
 
 
 @view_config(route_name='web_notify', renderer='json', permission='view')
