@@ -1,7 +1,55 @@
 """Strategy status summary."""
+import datetime
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, List
 
+from dataclasses_json import dataclass_json
+
+from tradeexecutor.state.types import USDollarAmount
+
+
+@dataclass_json
+@dataclass
+class StrategySummaryStatistics:
+    """Performance statistics displayed on the tile cards."""
+
+    #: When this strategy truly started.
+    #:
+    #: We mark the time of the first trade when the strategy
+    #: started to perform.
+    first_trade_at: Optional[datetime.datetime] = None
+
+    #: When was the last time this strategy made a trade
+    #:
+    last_trade_at: Optional[datetime.datetime] = None
+
+    #: Has the strategy been running 90 days so that the annualised profitability
+    #: can be correctly calcualted.
+    #:
+    enough_data: Optional[bool] = None
+
+    #: Total equity of this strategy.
+    #:
+    #: Also known as Total Value locked (TVL) in DeFi.
+    #: It's cash + open hold positions
+    current_value: Optional[USDollarAmount] = None
+
+    #: Profitability of last 90 days
+    #:
+    #:
+    #: If :py:attr:`enough_data` is set we can display this annualised,
+    #: otherwise we can say so sar.
+    profitability_90_days: Optional[float] = None
+
+    #: Data for the performance chart used in the summary card
+    #:
+    #: Relative performance -1 ... 1 (100%) up and
+    #: 0 is no gains/no losses
+    performance_90_days: Optional[List[float]] = None
+
+
+
+@dataclass_json
 @dataclass
 class StrategySummary:
     """Strategy summary.
@@ -41,7 +89,4 @@ class StrategySummary:
     #: queries faster. See also :py:class:`tradeexecutor.state.executor_state.ExecutorState`.
     executor_running: bool
 
-    #: Profitability of last 90 days
-    #:
-    profitability_90_days: Optional[float] = None
 

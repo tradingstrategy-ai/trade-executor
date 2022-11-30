@@ -9,8 +9,9 @@ purely there for profit and loss calculations.
 import datetime
 from collections import defaultdict
 from dataclasses import field, dataclass
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
+import pandas as pd
 from dataclasses_json import dataclass_json
 
 from tradingstrategy.types import USDollarAmount
@@ -135,3 +136,57 @@ class Statistics:
         stat_list = self.positions.get(position_id, [])
         stat_list.append(p_stats)
         self.positions[position_id] = stat_list
+
+    def get_portfolio_statistics_dataframe(self, attr_name: str) -> pd.Series:
+        """Get any of position statistcs value as a columnar data.
+
+        Example:
+
+        .. code-block:: python
+
+            # Create time series of portfolio "total_equity" over its lifetime
+            s = stats.get_portfolio_statistics_dataframe("total_equity")
+
+        :param attr_name:
+            Which variable we are interested in.
+            E.g. `total_equity`.
+
+        :return:
+            DataFrame for the value with time as index.
+        """
+
+        return pd.Series(
+            [getattr(ps, attr_name) for ps in self.portfolio],
+            index=[ps.calculated_at for ps in self.portfolio],
+        )
+
+
+def calculate_naive_profitability(
+        total_equity_series: pd.Series,
+        look_back: Optional[pd.Timedelta] = None,
+        start_at: Optional[pd.Timestamp] = None,
+        end_at: Optional[pd.Timestamp] = None) -> Tuple[float, pd.Timedelta]:
+    """Calculate the profitability as value at end - value at start.
+
+    This formula ignores any deposits and withdraws from the strategy.
+
+    TODO: This needs to include gas fee costs
+
+    :param total_equity:
+        As received from get_portfolio_statistics_dataframe()
+
+    :return:
+        tuple (Profitability as %, duration of the sample period)
+    """
+
+    if look_back:
+        assert not(start_at or end_at), "Give either look_back or range"
+
+        end_at = total_equity_series.index[-1]
+        start_at = end_at - look_back
+
+    # https://stackoverflow.com/a/42266376/315168
+    start_val = total_equity_series.index.get_loc(start_at, method="nearest")
+    end_val = total_equity_series.index.get_loc(end_at, method="nearest")
+
+    return (end_val - start_val) / (start_val), end_at - start_at
