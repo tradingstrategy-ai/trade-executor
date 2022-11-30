@@ -125,11 +125,31 @@ def get_quickswap_default_routing_parameters(reserve_currency: ReserveCurrency) 
 
         # For three way trades, which pools we can use
         allowed_intermediary_pairs = {
-            # Route WBNB through USDC:WBNB pool,
-            # https://tradingstrategy.ai/trading-view/binance/pancakeswap-v2/bnb-usdc
-            "": "",
+            # Route WMATIC through USDC:WMATIC pool,
+            # https://tradingstrategy.ai/trading-view/polygon/quickswap/matic-usdc
+            "0x2791bca1f2de4661ed88a30c99a7a9449aa84174": "0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270",
         }
-    else:
+    elif reserve_currency == ReserveCurrency.usdt:
+        # https://tradingstrategy.ai/trading-view/polygon/tokens/0xc2132d05d31c914a87c6611c10748aeb04b58e8f
+        reserve_token_address = "0xc2132d05d31c914a87c6611c10748aeb04b58e8f".lower()
+
+        # For three way trades, which pools we can use
+        allowed_intermediary_pairs = {
+            # Route WMATIC through USDT:WMATIC pool,
+            # https://tradingstrategy.ai/trading-view/polygon/quickswap/matic-usdt
+            "0xc2132d05d31c914a87c6611c10748aeb04b58e8f": "0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270",
+        }
+    elif reserve_currency == ReserveCurrency.dai:
+        # https://tradingstrategy.ai/trading-view/polygon/tokens/0x8f3cf7ad23cd3cadbd9735aff958023239c6a063
+        reserve_token_address = "0x8f3cf7ad23cd3cadbd9735aff958023239c6a063".lower()
+
+        # For three way trades, which pools we can use
+        allowed_intermediary_pairs = {
+            # Route USDC through DAI:UDSC pool,
+            # https://tradingstrategy.ai/trading-view/polygon/quickswap/dai-usdc
+            "0x8f3cf7ad23cd3cadbd9735aff958023239c6a063":"0x2791bca1f2de4661ed88a30c99a7a9449aa84174"
+        }
+    else:    
         raise NotImplementedError()
 
     # Allowed exchanges as factory -> router pairs,

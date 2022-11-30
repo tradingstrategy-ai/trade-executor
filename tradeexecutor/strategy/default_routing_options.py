@@ -46,12 +46,17 @@ class TradeRouting(enum.Enum):
     #: - Open positions with WMATIC quote token.
     quickswap_usdc = "quickswap_usdc"
 
+    #: Two or three legged trades on Quickswap on Polygon
+    quickswap_usdt = "quickswap_usdt"
+
+    #: Two or three legged trades on Quickswap on Polygon
+    quickswap_dai = "quickswap_dai"
+
     #: Two or three legged trades on Trader Joe on Avalanche
-    #:
-    #: - Open positions with USDC quote token.
-    #:
-    #: - Open positions with AVAX quote token.
     trader_joe_usdc = "trader_joe_usdc"
+
+    #: Two or three legged trades on Trader Joe on Avalanche
+    trader_joe_usdt = "trader_joe_usdt"
 
     #: Two or three legged trades on Uniswap v2 on Ethereum mainnet
     #:
