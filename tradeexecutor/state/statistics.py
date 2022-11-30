@@ -185,8 +185,15 @@ def calculate_naive_profitability(
         end_at = total_equity_series.index[-1]
         start_at = end_at - look_back
 
+        # We cannot look back data we do not have
+        start_at = max(total_equity_series.index[0], start_at)
+
+
     # https://stackoverflow.com/a/42266376/315168
-    start_val = total_equity_series.index.get_loc(start_at, method="nearest")
-    end_val = total_equity_series.index.get_loc(end_at, method="nearest")
+    start_val_idx = total_equity_series.index.get_loc(start_at, method="nearest")
+    end_val_idx = total_equity_series.index.get_loc(end_at, method="nearest")
+
+    start_val = total_equity_series.iloc[start_val_idx]
+    end_val = total_equity_series.iloc[end_val_idx]
 
     return (end_val - start_val) / (start_val), end_at - start_at

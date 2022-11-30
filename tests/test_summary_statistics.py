@@ -113,12 +113,12 @@ def synthetic_universe(mock_chain_id, mock_exchange, weth_usdc) -> TradingStrate
     return TradingStrategyUniverse(universe=universe, reserve_assets=[weth_usdc.quote])
 
 
-@pytest.fixture()
+@pytest.fixture(scope="module")
 def routing_model(synthetic_universe) -> BacktestRoutingModel:
     return generate_simple_routing_model(synthetic_universe)
 
 
-@pytest.fixture()
+@pytest.fixture(scope="module")
 def state(
         logger: logging.Logger,
         strategy_path: Path,
@@ -170,8 +170,8 @@ def test_get_statistics_as_dataframe(state: State):
     assert len(s) == 214
 
 
-def test_calculate_profitability(state: State):
-    """Calculate strategy profitability"""
+def test_calculate_profitability_90_days(state: State):
+    """Calculate strategy profitability for last 90 days"""
 
     stats: Statistics = state.stats
 
@@ -179,5 +179,21 @@ def test_calculate_profitability(state: State):
     s = stats.get_portfolio_statistics_dataframe("total_equity")
     profitability_90_days, time_window = calculate_naive_profitability(s, look_back=pd.Timedelta(days=90))
 
-    import ipdb ; ipdb.set_trace()
-    assert profitability_90_days == 1
+    # Calculate last 90 days
+    assert profitability_90_days == pytest.approx(-0.003181862051407544)
+    assert time_window == pd.Timedelta(days=90)
+
+
+def test_calculate_profitability_overflow_time_window(state: State):
+    """Calculate strategy profitability but do not have enough data.
+
+    """
+    stats: Statistics = state.stats
+    s = stats.get_portfolio_statistics_dataframe("total_equity")
+
+    # Attempt to calculate last 10 years
+    profitability_10_years, time_window = calculate_naive_profitability(s, look_back=pd.Timedelta(days=10*365))
+
+    assert time_window == pd.Timedelta('213 days 00:00:00')
+    assert profitability_10_years == pytest.approx(-0.0036666493001204234)
+
