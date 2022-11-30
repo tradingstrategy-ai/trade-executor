@@ -9,7 +9,7 @@ from tradeexecutor.state.types import USDollarAmount
 
 
 @dataclass_json
-@dataclass
+@dataclass(frozen=True)
 class StrategySummaryStatistics:
     """Performance statistics displayed on the tile cards."""
 
@@ -56,7 +56,7 @@ class StrategySummaryStatistics:
 
 
 @dataclass_json
-@dataclass
+@dataclass(frozen=True)
 class StrategySummary:
     """Strategy summary.
 
@@ -65,7 +65,8 @@ class StrategySummary:
     - Contains mixture of static metadata, trade executor crash status,
       latest strategy performance stats and visualisation
 
-    - Is not stored as the part of the strategy state
+    - Is not stored as the part of the strategy state.
+      In the case of a restart, summary statistics are calculated again.
 
     - See /summary API endpoint where it is constructed before returning to the client
     """
@@ -94,5 +95,10 @@ class StrategySummary:
     #: Not really a part of metadata, but added here to make frontend
     #: queries faster. See also :py:class:`tradeexecutor.state.executor_state.ExecutorState`.
     executor_running: bool
+
+    #: Strategy statistics for summary tiles
+    #:
+    #: Helps rendering the web tiles.
+    summary_statistics: StrategySummaryStatistics = field(default_factory=StrategySummaryStatistics)
 
 

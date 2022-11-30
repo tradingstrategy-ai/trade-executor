@@ -37,16 +37,17 @@ def calculate_summary_statistics(
 
     portfolio = state.portfolio
 
+    # We can alway get the current value even if there are no trades
+    current_value = portfolio.get_total_equity()
+
     first_trade, last_trade = portfolio.get_first_and_last_executed_trade()
     if first_trade is None:
         # No trades
         # Cannot calculate anything
-        return StrategySummaryStatistics()
+        return StrategySummaryStatistics(current_value=current_value)
 
     first_trade_at = first_trade.executed_at
     last_trade_at = last_trade.executed_at
-
-    current_value = portfolio.get_total_equity()
 
     if not now_:
         now_ = pd.Timestamp.utcnow().tz_localize(None)

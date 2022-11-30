@@ -8,6 +8,8 @@ import dataclasses_json
 from dataclasses_json import dataclass_json
 from tblib import Traceback
 
+from tradeexecutor.strategy.summary import StrategySummaryStatistics
+
 
 class ExceptionData(TypedDict):
     """Serialise exception data using tblib.
@@ -95,6 +97,11 @@ class RunState:
     #: The strategy visualisation images
     #:
     visualisation: Optional[LatestStateVisualisation] = field(default_factory=LatestStateVisualisation)
+
+    #: Store calculated summary statistics here
+    #:
+    #:
+    summary_statistics: StrategySummaryStatistics = field(default_factory=StrategySummaryStatistics)
 
     #: Measure the lag of strategy thinking and the candle data feed.
     #:
