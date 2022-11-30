@@ -193,7 +193,16 @@ def get_trader_joe_default_routing_parameters(reserve_currency: ReserveCurrency)
             # https://tradingstrategy.ai/trading-view/avalanche/trader-joe/wavax-usdc
             "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7": "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
         }
-    
+    elif reserve_currency == ReserveCurrency.usdt:
+        # https://tradingstrategy.ai/trading-view/polygon/tokens/0xc2132d05d31c914a87c6611c10748aeb04b58e8f
+        reserve_token_address = "0x9702230a8ea53601f5cd2dc00fdbc13d4df4a8c7".lower()
+
+        # For three way trades, which pools we can use
+        allowed_intermediary_pairs = {
+            # Route WAVAX through USDT:WAVAX pool,
+            # https://tradingstrategy.ai/trading-view/avalanche/trader-joe/usdt-wavax
+            "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7": "0x9702230a8ea53601f5cd2dc00fdbc13d4df4a8c7",
+        }
     else:
         raise NotImplementedError()
 
