@@ -122,7 +122,10 @@ def get_pancake_default_routing_parameters(reserve_currency: ReserveCurrency) ->
         "factory_router_map": factory_router_map,
         "allowed_intermediary_pairs": allowed_intermediary_pairs,
         "reserve_token_address": reserve_token_address,
-        "quote_token_addresses": {"0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c", "0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56"}
+        "quote_token_addresses": {
+            "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c", "0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56", 
+            "0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d", "0x55d398326f99059ff775485246999027b3197955"
+        }
     }
 
 def get_quickswap_default_routing_parameters(reserve_currency: ReserveCurrency) -> RoutingData:
