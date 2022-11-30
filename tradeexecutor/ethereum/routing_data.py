@@ -78,6 +78,7 @@ def get_pancake_default_routing_parameters(reserve_currency: ReserveCurrency) ->
     """
 
     if reserve_currency == ReserveCurrency.busd:
+        # https://tradingstrategy.ai/trading-view/binance/tokens/0xe9e7cea3dedca5984780bafc599bd69add087d56
         reserve_token_address = "0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56".lower()
 
         # For three way trades, which pools we can use
@@ -98,7 +99,7 @@ def get_pancake_default_routing_parameters(reserve_currency: ReserveCurrency) ->
             "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c": "0xd99c7f6c65857ac913a8f880a4cb84032ab2fc5b",
         }
     elif reserve_currency == ReserveCurrency.usdt:
-        # https://tradingstrategy.ai/trading-view/polygon/tokens/0xc2132d05d31c914a87c6611c10748aeb04b58e8f
+        # https://tradingstrategy.ai/trading-view/binance/tokens/0x55d398326f99059ff775485246999027b3197955
         reserve_token_address = "0x55d398326f99059ff775485246999027b3197955".lower()
 
         # For three way trades, which pools we can use
@@ -113,6 +114,7 @@ def get_pancake_default_routing_parameters(reserve_currency: ReserveCurrency) ->
 
     # Allowed exchanges as factory -> router pairs,
     # by their smart contract addresses
+    # init_code_hash: https://bscscan.com/address/0x10ED43C718714eb63d5aA57B78B54704E256024E#code#L298
     factory_router_map = {
         "0xcA143Ce32Fe78f1f7019d7d551a6402fC5350c73": ("0x10ED43C718714eb63d5aA57B78B54704E256024E", "0x00fb7f630766e6a796048ea87d01acd3068e8ff67d078148a3fa3f4a84f69bd5")
     }
@@ -161,7 +163,7 @@ def get_quickswap_default_routing_parameters(reserve_currency: ReserveCurrency) 
         allowed_intermediary_pairs = {
             # Route USDC through DAI:UDSC pool,
             # https://tradingstrategy.ai/trading-view/polygon/quickswap/dai-usdc
-            "0x2791bca1f2de4661ed88a30c99a7a9449aa84174":"0x2791bca1f2de4661ed88a30c99a7a9449aa84174"
+            "0x2791bca1f2de4661ed88a30c99a7a9449aa84174":"0xf04adbf75cdfc5ed26eea4bbbb991db002036bdd"
         }
     else:    
         raise NotImplementedError()
