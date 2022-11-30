@@ -119,18 +119,9 @@ def get_quickswap_default_routing_parameters(reserve_currency: ReserveCurrency) 
 
     TODO: Polish the interface of this function when we have more strategies
     """
-    if reserve_currency == ReserveCurrency.busd:
-        reserve_token_address = "".lower()
-
-        # For three way trades, which pools we can use
-        allowed_intermediary_pairs = {
-            # Route WBNB through BUSD:WBNB pool,
-            "": "",
-        }
-
-    elif reserve_currency == ReserveCurrency.usdc:
-        # https://tradingstrategy.ai/trading-view/binance/tokens/0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d
-        reserve_token_address = "".lower()
+    if reserve_currency == ReserveCurrency.usdc:
+        # https://tradingstrategy.ai/trading-view/polygon/tokens/0x2791bca1f2de4661ed88a30c99a7a9449aa84174
+        reserve_token_address = "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174".lower()
 
         # For three way trades, which pools we can use
         allowed_intermediary_pairs = {
@@ -162,16 +153,7 @@ def get_trader_joe_default_routing_parameters(reserve_currency: ReserveCurrency)
     TODO: Polish the interface of this function when we have more strategies
     """
 
-    if reserve_currency == ReserveCurrency.busd:
-        reserve_token_address = "".lower()
-
-        # For three way trades, which pools we can use
-        allowed_intermediary_pairs = {
-            # Route WBNB through BUSD:WBNB pool,
-            "": "",
-        }
-
-    elif reserve_currency == ReserveCurrency.usdc:
+    if reserve_currency == ReserveCurrency.usdc:
         # https://tradingstrategy.ai/trading-view/binance/tokens/0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d
         reserve_token_address = "".lower()
 
