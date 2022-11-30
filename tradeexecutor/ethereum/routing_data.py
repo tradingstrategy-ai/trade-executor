@@ -285,7 +285,10 @@ def get_uniswap_v2_default_routing_parameters(reserve_currency: ReserveCurrency)
         "allowed_intermediary_pairs": allowed_intermediary_pairs,
         "reserve_token_address": reserve_token_address,
         # USDC, WETH
-        "quote_token_addresses": {"0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"}
+        "quote_token_addresses": {
+            "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+            "0xdac17f958d2ee523a2206206994597c13d831ec7"
+        }
     }
 
 
