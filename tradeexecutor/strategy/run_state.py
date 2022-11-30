@@ -96,6 +96,22 @@ class RunState:
     #:
     visualisation: Optional[LatestStateVisualisation] = field(default_factory=LatestStateVisualisation)
 
+    #: Measure the lag of strategy thinking and the candle data feed.
+    #:
+    #: What's the lag of candle creation time and when the data is processed.
+    #:
+    #: Regarding the candle data timestamps
+    #:
+    #: - The last candle should be the "real time candle" that is unfinished and started at the last minute XX:00
+    #:
+    #: - The candle before the last candle should be last "fully completed candle" that finished at XX:00 and no more new trades come to this candle
+    #:
+    #: - TimescaleDB should give us real-time data, but how much internal lag we have before a new swap hits to our
+    #:   database and is rolled up the TimescaleDB hypertable is a subject to measurement,
+    #:   to give an idea how close to fee of lag strategies can operate
+    #:
+    market_data_feed_lag: Optional[datetime.timedelta] = None
+
     @staticmethod
     def serialise_exception() -> ExceptionData:
         """Serialised the latest raised Python exception.
