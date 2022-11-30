@@ -195,7 +195,7 @@ def get_trader_joe_default_routing_parameters(reserve_currency: ReserveCurrency)
             "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7": "0xf4003f4efbe8691b60249e6afbd307abe7758adb",
         }
     elif reserve_currency == ReserveCurrency.usdt:
-        # 
+        # https://tradingstrategy.ai/trading-view/avalanche/tokens/0x9702230a8ea53601f5cd2dc00fdbc13d4df4a8c7
         reserve_token_address = "0x9702230a8ea53601f5cd2dc00fdbc13d4df4a8c7".lower()
 
         # For three way trades, which pools we can use
@@ -230,7 +230,7 @@ def get_uniswap_v2_default_routing_parameters(reserve_currency: ReserveCurrency)
     """
 
     if reserve_currency == ReserveCurrency.usdc:
-        # https://tradingstrategy.ai/trading-view/binance/tokens/0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d
+        # https://tradingstrategy.ai/trading-view/ethereum/tokens/0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48
         reserve_token_address = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48".lower()
 
         # For three way trades, which pools we can use
@@ -239,6 +239,26 @@ def get_uniswap_v2_default_routing_parameters(reserve_currency: ReserveCurrency)
             # https://tradingstrategy.ai/trading-view/ethereum/uniswap-v2/eth-usdc
             "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
         }
+    elif reserve_currency == ReserveCurrency.usdt:
+        # https://tradingstrategy.ai/trading-view/ethereum/tokens/0xdac17f958d2ee523a2206206994597c13d831ec7
+        reserve_token_address = "0xdac17f958d2ee523a2206206994597c13d831ec7".lower()
+
+        # For three way trades, which pools we can use
+        allowed_intermediary_pairs = {
+            # Route WETH through USDT:WETH pool,
+            # https://tradingstrategy.ai/trading-view/ethereum/uniswap-v2/eth-usdt
+            "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2": "0x0d4a11d5eeaac28ec3f61d100daf4d40471f1852",
+        }
+    elif reserve_currency == ReserveCurrency.dai:
+        # https://tradingstrategy.ai/trading-view/ethereum/tokens/0x6b175474e89094c44da98b954eedeac495271d0f
+        reserve_token_address = "0x6b175474e89094c44da98b954eedeac495271d0f".lower()
+
+        # For three way trades, which pools we can use
+        allowed_intermediary_pairs = {
+            # Route WETH through DAI:WETH pool,
+            # https://tradingstrategy.ai/trading-view/ethereum/uniswap-v2/eth-dai
+            "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2":"0xa478c2975ab1ea89e8196811f51a7b7ade33eb11"
+        }   
     else:
         raise NotImplementedError()
 
@@ -246,6 +266,7 @@ def get_uniswap_v2_default_routing_parameters(reserve_currency: ReserveCurrency)
     # by their smart contract addresses
     # https://docs.uniswap.org/protocol/V2/reference/smart-contracts/factory
     # https://github.com/Uniswap/v2-core/issues/102
+    # init_code_hash: https://etherscan.io/address/0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D#code#L700
     factory_router_map = {
         "0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f": ("0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D", "96e8ac4277198ff8b6f785478aa9a39f403cb768dd02cbee326c3e7da348845f")
     }
