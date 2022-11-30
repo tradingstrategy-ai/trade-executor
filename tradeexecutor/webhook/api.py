@@ -63,7 +63,9 @@ def web_metadata(request: Request):
         summary_statistics=execution_state.summary_statistics,
     )
 
-    return dataclasses.asdict(summary)
+    r = Response(content_type="application/json")
+    r.text = summary.to_json()
+    return r
 
 
 @view_config(route_name='web_notify', renderer='json', permission='view')
