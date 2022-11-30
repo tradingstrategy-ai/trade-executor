@@ -154,8 +154,8 @@ def get_trader_joe_default_routing_parameters(reserve_currency: ReserveCurrency)
     """
 
     if reserve_currency == ReserveCurrency.usdc:
-        # https://tradingstrategy.ai/trading-view/binance/tokens/0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d
-        reserve_token_address = "".lower()
+        # https://tradingstrategy.ai/trading-view/avalanche/tokens/0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e
+        reserve_token_address = "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e".lower()
 
         # For three way trades, which pools we can use
         allowed_intermediary_pairs = {
@@ -178,7 +178,7 @@ def get_trader_joe_default_routing_parameters(reserve_currency: ReserveCurrency)
         "factory_router_map": factory_router_map,
         "allowed_intermediary_pairs": allowed_intermediary_pairs,
         "reserve_token_address": reserve_token_address,
-        "quote_token_addresses": {"0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c", "0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56"}
+        "quote_token_addresses": {"", ""}
     }
     
 
