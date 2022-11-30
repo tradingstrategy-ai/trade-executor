@@ -40,7 +40,7 @@ class TradeRouting(enum.Enum):
     pancakeswap_usdc = "pancakeswap_usdc"
 
     #: Two or three legged trades on Pancake on BSC
-    pandcakeswap_usdt = "pancakeswap_usdt"
+    pancakeswap_usdt = "pancakeswap_usdt"
 
     #: Two or three legged trades on Quickswap on Polygon
     #:
@@ -67,6 +67,12 @@ class TradeRouting(enum.Enum):
     #:
     #: - Open positions with WETH quote token.
     uniswap_v2_usdc = "uniswap_v2_usdc"
+
+    #: Two or three legged trades on Uniswap V2 on Ethereum
+    uniswap_v2_usdt = "uniswap_v2_usdt"
+
+    #: Two or three legged trades on Uniswap V2 on Ethereum
+    uniswap_v2_dai = "uniswap_v2_dai"
 
     #: Use user supplied routing model
     #:
