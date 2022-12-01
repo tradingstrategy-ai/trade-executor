@@ -116,3 +116,21 @@ def test_visulisation_small(logger, server_url):
     resp = requests.get(f"{server_url}/visualisation", {"type": "small"})
     assert resp.status_code == 200
     assert resp.content == b"1"
+
+
+def test_run_state(logger, server_url):
+    """Test run-time state."""
+
+    resp = requests.get(f"{server_url}/status")
+    assert resp.status_code == 200
+
+    # Check some random RunState variables
+    data = resp.json()
+    assert "started_at" in data
+    assert "crashed_at" in data
+    assert "cycles" in data
+
+    # Not exported
+    assert data["source_code"] is None
+    assert data["visualisation"]["large_image"] is None
+    assert data["visualisation"]["small_image"] is None
