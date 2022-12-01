@@ -94,7 +94,7 @@ class ExecutionLoop:
             stop_loss_check_frequency: Optional[TimeBucket] = None,
             tick_offset: datetime.timedelta=datetime.timedelta(minutes=0),
             trade_immediately=False,
-            execution_state: Optional[RunState]=None,
+            run_state: Optional[RunState]=None,
     ):
         """See main.py for details."""
 
@@ -333,7 +333,7 @@ class ExecutionLoop:
             state,
             self.execution_context.mode,
         )
-        self.execution_state.summary_statistics = stats
+        self.run_state.summary_statistics = stats
 
     def check_position_triggers(self,
                           ts: datetime.datetime,
@@ -551,6 +551,7 @@ class ExecutionLoop:
         cycle = 1
         universe: Optional[StrategyExecutionUniverse] = None
         execution_context = self.execution_context
+        run_state: RunState = self.run_state
 
         assert execution_context, "ExecutionContext missing"
 
@@ -575,6 +576,10 @@ class ExecutionLoop:
                 scheduler.shutdown(wait=False)
                 raise
 
+            run_state.completed_cycle = cycle
+            run_state.cycles += 1
+            run_state.bumb_refreshed()
+
         def live_positions():
             nonlocal universe
 
@@ -596,6 +601,9 @@ class ExecutionLoop:
                 scheduler.shutdown(wait=False)
                 raise
 
+            run_state.position_revaluations += 1
+            run_state.bumb_refreshed()
+
         def live_trigger_checks():
             nonlocal universe
 
@@ -613,6 +621,9 @@ class ExecutionLoop:
                 logger.exception(e)
                 scheduler.shutdown(wait=False)
                 raise
+
+            run_state.position_trigger_checks += 1
+            run_state.bumb_refreshed()
 
         # Set up live trading tasks using APScheduler
         executors = {
@@ -694,8 +705,8 @@ class ExecutionLoop:
         )
 
         # Expose source code to webhook
-        if self.execution_state:
-            self.execution_state.source_code = run_description.source_code
+        if self.run_state:
+            self.run_state.source_code = run_description.source_code
 
         # Deconstruct strategy input
         self.runner: StrategyRunner = run_description.runner
