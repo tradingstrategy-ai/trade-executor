@@ -32,6 +32,15 @@ class State:
     #: Same as when the strategy was launched
     created_at: datetime.datetime = field(default_factory=datetime.datetime.utcnow)
 
+    #: The next cycle.
+    #:
+    #: How many strategy thinking and execution
+    #: cycles we have completed successfully.
+    #:
+    #: Starts with 1 (no cycles completed)
+    #:
+    cycle: int = 1
+
     #: The name of this strategy.
     #: Can be unset.
     #: Set when the state is created.
