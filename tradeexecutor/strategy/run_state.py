@@ -83,6 +83,15 @@ class RunState:
     #: The last completed trading cycle
     completed_cycle: Optional[int] = None
 
+    #: How many cycles we have completed since launch
+    cycles: int = 0
+
+    #: How many position trigger checks we have completed since the last
+    position_trigger_checks: int = 0
+
+    #: How many position revaluations we have completed since the launch
+    position_revaluations: int = 0
+
     #: If the exception has crashed, serialise the exception information here.
     #:
     #: See :py:meth:`serialise_exception`
@@ -145,5 +154,7 @@ class RunState:
         self.executor_running = False
 
     def update_complete_cycle(self, cycle: int):
-        self.last_refreshed_at = datetime.datetime.utcnow()
         self.completed_cycle = cycle
+
+    def bumb_refreshed(self):
+        self.last_refreshed_at = datetime.datetime.utcnow()

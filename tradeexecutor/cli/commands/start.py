@@ -309,7 +309,7 @@ def start(
             trade_immediately=trade_immediately,
             stats_refresh_frequency=stats_refresh_frequency,
             position_trigger_check_frequency=position_trigger_check_frequency,
-            execution_state=execution_state,
+            run_state=execution_state,
         )
         loop.run()
 
