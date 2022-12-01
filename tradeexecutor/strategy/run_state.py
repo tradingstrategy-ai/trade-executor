@@ -21,7 +21,7 @@ class ExceptionData(TypedDict):
     tb_lineno: int
 
 
-
+@dataclass_json
 @dataclass
 class LatestStateVisualisation:
     """The last visualisation of the strategy state."""
@@ -43,6 +43,7 @@ class LatestStateVisualisation:
         self.last_refreshed_at = datetime.datetime.utcnow()
 
 
+@dataclass_json
 @dataclass
 class RunState:
     """Run state.
@@ -164,3 +165,14 @@ class RunState:
 
     def bumb_refreshed(self):
         self.last_refreshed_at = datetime.datetime.utcnow()
+
+    def make_exportable_copy(self) -> "RunState":
+        """Make a JSON serializable copy.
+
+        Special fields like source code and images are not exported.
+        """
+        data = self.to_dict()
+        del data["source_code"]
+        del data["visualisation"]
+        return RunState(**data)
+

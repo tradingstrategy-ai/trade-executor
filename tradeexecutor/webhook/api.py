@@ -109,7 +109,7 @@ def web_status(request: Request):
     run_state: RunState = request.registry["run_state"]
 
     r = Response(content_type="application/json")
-    r.text = run_state.to_json()
+    r.text = run_state.make_exportable_copy().to_json()
     return r
 
 
