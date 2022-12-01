@@ -5,6 +5,7 @@ import subprocess
 import time
 from pathlib import Path
 
+import flaky
 import pytest
 import requests
 from hexbytes import HexBytes
@@ -25,6 +26,7 @@ def hot_wallet_private_key() -> HexBytes:
     return HexBytes(secrets.token_bytes(32))
 
 
+@flaky.flaky()
 @pytest.mark.skipif(os.environ.get("BNB_CHAIN_JSON_RPC") is None, reason="Set BNB_CHAIN_JSON_RPC environment variable to Binance Smart Chain node to run this test")
 def test_main_loop_crash(
     strategy_path,
@@ -37,7 +39,7 @@ def test_main_loop_crash(
     - Webhook server tells the  main loop has crashed
     """
 
-    port = 5001  # Randomly picked
+    port = 5001 + random.randint(1, 1000)  # Randomly picked
     server = f"http://localhost:{port}"
 
     # Set up the configuration for the live trader
