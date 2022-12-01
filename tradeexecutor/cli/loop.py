@@ -450,7 +450,7 @@ class ExecutionLoop:
 
         logger.info("Strategy is executed in backtesting mode, starting at %s, cycle duration is %s", ts, self.cycle_duration.value)
 
-        cycle = 1
+        cycle = state.cycle
         universe = None
 
         range = self.backtest_end - self.backtest_start
@@ -506,6 +506,7 @@ class ExecutionLoop:
 
                 # Advance to the next tick
                 cycle += 1
+                state.cycle = cycle
 
                 # Backtesting
                 next_tick = snap_to_next_tick(ts + datetime.timedelta(seconds=1), backtest_step, self.tick_offset)
@@ -548,7 +549,7 @@ class ExecutionLoop:
             logger.info("Unit test live trading checkup test detected - aborting.")
             return self.debug_dump_state
 
-        cycle = 1
+        cycle = state.cycle
         universe: Optional[StrategyExecutionUniverse] = None
         execution_context = self.execution_context
         run_state: RunState = self.run_state
@@ -568,6 +569,7 @@ class ExecutionLoop:
             nonlocal universe
             try:
                 cycle += 1
+                state.cycle = cycle
                 ts = datetime.datetime.now()
                 universe = self.tick(ts, self.cycle_duration, state, cycle, live=True)
                 self.update_summary_statistics(state)
