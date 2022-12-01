@@ -57,7 +57,7 @@ def test_route_trader_joe_usdc(execution_context):
     assert routing.chain_id == ChainId.avalanche
 
 def test_route_trader_joe_usdt(execution_context):
-    """Test Trader Joe USDC routing."""
+    """Test Trader Joe USDT routing."""
     routing = get_routing_model(execution_context, TradeRouting.trader_joe_usdt, ReserveCurrency.usdt)
     assert isinstance(routing, UniswapV2SimpleRoutingModel)
     assert routing.chain_id == ChainId.avalanche
