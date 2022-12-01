@@ -348,10 +348,10 @@ def create_uniswap_v2_compatible_routing(routing_type: TradeRouting, reserve_cur
         params = get_pancake_default_routing_parameters(reserve_currency)
     elif routing_type in (TradeRouting.quickswap_usdc, TradeRouting.quickswap_usdt, TradeRouting.quickswap_dai):
         # quickswap on polygon
-        params = get_uniswap_v2_default_routing_parameters(reserve_currency)
+        params = get_quickswap_default_routing_parameters(reserve_currency)
     elif routing_type in (TradeRouting.trader_joe_usdc, TradeRouting.trader_joe_usdt):
         # trader joe on avalanche
-        params = get_uniswap_v2_default_routing_parameters(reserve_currency)
+        params = get_trader_joe_default_routing_parameters(reserve_currency)
     elif routing_type in (TradeRouting.uniswap_v2_usdc, TradeRouting.uniswap_v2_usdt, TradeRouting.uniswap_v2_dai):
         # uniswap v2 on eth
         params = get_uniswap_v2_default_routing_parameters(reserve_currency)
