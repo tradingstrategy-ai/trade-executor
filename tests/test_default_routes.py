@@ -91,7 +91,7 @@ def test_route_mismatch_reserve_currency_quickswap(execution_context):
         get_routing_model(execution_context, TradeRouting.quickswap_usdc, ReserveCurrency.usdt)
 
 def test_route_mismatch_reserve_currency_trader_joe(execution_context):
-    """Test Trader Joe BUSD routing."""
+    """Test Trader Joe USDC routing."""
     with pytest.raises(MismatchReserveCurrency):
         get_routing_model(execution_context, TradeRouting.trader_joe_usdc, ReserveCurrency.usdt)
 
