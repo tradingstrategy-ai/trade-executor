@@ -17,5 +17,11 @@ class ReserveCurrency(enum.Enum):
     #: Strategy holds its reserves as BUSD on BNB Chain
     busd = "busd"
 
-    #: Strategy holds its reserves USDC on Polygon blockchian
+    #: Strategy holds its reserves USDC (multi-chain)
     usdc = "usdc"
+
+    #: Strategy holds its reserves as USDT (multi-chain)
+    usdt = "usdt"
+
+    #: Strategy holds its reserves as DAI (multi-chain)
+    dai = "dai"
