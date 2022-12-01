@@ -80,8 +80,20 @@ def test_route_ethereum_dai(execution_context):
     assert isinstance(routing, UniswapV2SimpleRoutingModel)
     assert routing.chain_id == ChainId.ethereum
 
-def test_route_mismatch_reserve_currency(execution_context):
+def test_route_mismatch_reserve_currency_pancake(execution_context):
     """Test Pancake BUSD routing."""
     with pytest.raises(MismatchReserveCurrency):
         get_routing_model(execution_context, TradeRouting.pancakeswap_busd, ReserveCurrency.usdc)
+
+def test_route_mismatch_reserve_currency_quickswap(execution_context):
+    """Test Quickswap USDC routing."""
+    with pytest.raises(MismatchReserveCurrency):
+        get_routing_model(execution_context, TradeRouting.quickswap_usdc, ReserveCurrency.usdt)
+
+def test_route_mismatch_reserve_currency_trader_joe(execution_context):
+    """Test Trader Joe BUSD routing."""
+    with pytest.raises(MismatchReserveCurrency):
+        get_routing_model(execution_context, TradeRouting.trader_joe_usdc, ReserveCurrency.usdt)
+
+
 
