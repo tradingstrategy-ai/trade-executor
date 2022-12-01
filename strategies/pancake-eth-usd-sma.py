@@ -310,6 +310,8 @@ def create_trading_universe(
         TRADING_PAIR[1],
     )
 
+    logger.warning("Universe created, we have %d pairs")
+
     return universe
 
 

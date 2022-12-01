@@ -88,6 +88,9 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
 
     backtest_stop_loss_candles: Optional[GroupedCandleUniverse] = None
 
+    def get_pair_count(self) -> int:
+        return self.universe.pairs.get_count()
+
     def is_empty(self) -> bool:
         """This is an empty universe
 
