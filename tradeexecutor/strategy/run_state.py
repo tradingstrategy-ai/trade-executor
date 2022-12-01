@@ -21,7 +21,7 @@ class ExceptionData(TypedDict):
     tb_lineno: int
 
 
-
+@dataclass_json
 @dataclass
 class LatestStateVisualisation:
     """The last visualisation of the strategy state."""
@@ -43,6 +43,7 @@ class LatestStateVisualisation:
         self.last_refreshed_at = datetime.datetime.utcnow()
 
 
+@dataclass_json
 @dataclass
 class RunState:
     """Run state.
@@ -91,6 +92,12 @@ class RunState:
 
     #: How many position revaluations we have completed since the launch
     position_revaluations: int = 0
+
+    #: When the executor crashed
+    #:
+    #: Trade execution main loop was halted by
+    #: a Python exception.
+    crashed_at: Optional[datetime.datetime] = None
 
     #: If the exception has crashed, serialise the exception information here.
     #:
@@ -150,7 +157,7 @@ class RunState:
         generates as exceptino data for it so webhook can export it.
         """
         self.exception = self.serialise_exception()
-        self.last_refreshed_at = datetime.datetime.utcnow()
+        self.last_refreshed_at = self.crashed_at = datetime.datetime.utcnow()
         self.executor_running = False
 
     def update_complete_cycle(self, cycle: int):
@@ -158,3 +165,14 @@ class RunState:
 
     def bumb_refreshed(self):
         self.last_refreshed_at = datetime.datetime.utcnow()
+
+    def make_exportable_copy(self) -> "RunState":
+        """Make a JSON serializable copy.
+
+        Special fields like source code and images are not exported.
+        """
+        data = self.to_dict()
+        del data["source_code"]
+        del data["visualisation"]
+        return RunState(**data)
+
