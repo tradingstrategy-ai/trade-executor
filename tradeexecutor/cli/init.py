@@ -26,7 +26,7 @@ from tradeexecutor.state.store import JSONFileStore, StateStore
 from tradeexecutor.strategy.approval import UncheckedApprovalModel, ApprovalType, ApprovalModel
 from tradeexecutor.strategy.dummy import DummyExecutionModel
 from tradeexecutor.strategy.execution_model import TradeExecutionType
-
+from tradingstrategy.chain import ChainId
 
 logger = logging.getLogger(__name__)
 
@@ -99,6 +99,13 @@ def create_trade_execution_model(
         )
         valuation_model_factory = uniswap_v2_sell_valuation_factory
         pricing_model_factory = uniswap_v2_live_pricing_factory
+
+        # TODO: Temporary fix to prevent connections elsewhere
+        # Make sure this never happens even though it should not happen
+        if ChainId.bsc in web3config.connections or ChainId.polygon in web3config.connections or ChainId.avalanche in web3config.connections:
+            if web3config.gas_price_method == GasPriceMethod.london:
+                raise RuntimeError(f"Should not happen: {web3config.gas_price_method}")
+
         return execution_model, sync_method, valuation_model_factory, pricing_model_factory
     elif execution_type == TradeExecutionType.backtest:
         logger.info("TODO: Command line backtests are always executed with initial deposit of $10,000")
