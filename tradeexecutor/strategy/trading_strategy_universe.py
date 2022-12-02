@@ -91,7 +91,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
     def __post_init__(self):
          if self.universe is not None:
             for exchange in self.universe.exchanges:
-                assert exchange.chain_id in self.universe.chains
+                assert exchange.chain_id in self.universe.chains, f"The blockchain for {exchange.exchange_slug} is {exchange.chain_slug}. This doesn't match the user specified CHAIN_ID(s)."
 
     def get_pair_count(self) -> int:
         return self.universe.pairs.get_count()
