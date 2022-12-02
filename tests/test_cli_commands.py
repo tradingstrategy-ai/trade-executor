@@ -30,6 +30,7 @@ def unit_test_cache_path():
 def test_cli_check_universe(
         strategy_path: str,
         unit_test_cache_path: str,
+        logger,
     ):
     """check-universe command works"""
 
@@ -56,6 +57,7 @@ def test_cli_check_universe(
 
 @pytest.mark.skipif(os.environ.get("BNB_CHAIN_JSON_RPC") is None, reason="Set BNB_CHAIN_JSON_RPC environment variable to Binance Smart Chain node to run this test")
 def test_cli_check_wallet(
+        logger,
         strategy_path: str,
         unit_test_cache_path: str,
     ):
@@ -88,6 +90,7 @@ def test_cli_check_wallet(
 
 
 def test_cli_backtest(
+        logger,
         strategy_path: str,
         unit_test_cache_path: str,
     ):
@@ -122,6 +125,7 @@ def test_cli_backtest(
 
 @pytest.mark.skipif(os.environ.get("BNB_CHAIN_JSON_RPC") is None, reason="Set BNB_CHAIN_JSON_RPC environment variable to Binance Smart Chain node to run this test")
 def test_cli_live_trading(
+        logger,
         strategy_path: str,
         unit_test_cache_path: str,
     ):
