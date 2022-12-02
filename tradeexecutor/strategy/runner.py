@@ -182,11 +182,15 @@ class StrategyRunner(abc.ABC):
 
     def report_before_execution(self, clock: datetime.datetime, universe: StrategyExecutionUniverse, state: State, trades: List[TradeExecution], debug_details: dict):
         buf = StringIO()
-        print("New trades to be executed", file=buf)
-        print("", file=buf)
-        position: TradingPosition
-        portfolio = state.portfolio
-        output_trades(trades, portfolio, buf)
+
+        if len(trades) > 0:
+            print("New trades to be executed", file=buf)
+            print("", file=buf)
+            position: TradingPosition
+            portfolio = state.portfolio
+            output_trades(trades, portfolio, buf)
+        else:
+            print("No new trades", file=buf)
         logger.trade(buf.getvalue())
 
     def report_after_execution(self, clock: datetime.datetime, universe: StrategyExecutionUniverse, state: State, debug_details: dict):
@@ -323,7 +327,15 @@ class StrategyRunner(abc.ABC):
             if self.is_progress_report_needed():
                 self.report_strategy_thinking(
                     clock,
-                    universe, state, rebalance_trades, debug_details)
+                    universe,
+                    state,
+                    rebalance_trades,
+                    debug_details)
+
+            # Shortcut quit here if no trades are needed
+            if len(rebalance_trades) == 0:
+                logger.trade("No trades new trades decided")
+                return debug_details
 
             # Ask user confirmation for any trades
             with self.timed_task_context_manager("confirm_trades"):

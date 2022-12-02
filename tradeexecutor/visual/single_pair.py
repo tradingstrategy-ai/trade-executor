@@ -75,9 +75,14 @@ def export_trades_as_dataframe(
     data = []
 
     for t in portfolio.get_all_trades():
-
         # Crop
         if start or end:
+
+            if not t.started_at:
+                # Hotfix to some invalid data?
+                logger.warning("Trade lacks start date: %s", t)
+                continue
+
             if t.started_at < start or t.started_at > end:
                 continue
 

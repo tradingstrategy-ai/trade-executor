@@ -106,16 +106,11 @@ def web_status(request: Request):
 
     See :py:class:`tradeexecutor.strategy.execution_state.ExecutionState` for the return dta.
     """
-    execution_state: RunState = request.registry["run_state"]
+    run_state: RunState = request.registry["run_state"]
 
-    results = {
-        "last_refreshed_at": execution_state.last_refreshed_at.timestamp(),
-        "executor_running": execution_state.executor_running,
-        "completed_cycle": execution_state.completed_cycle,
-        "exception": execution_state.exception,
-
-    }
-    return results
+    r = Response(content_type="application/json")
+    r.text = run_state.make_exportable_copy().to_json()
+    return r
 
 
 @view_config(route_name='web_logs', renderer='json', permission='view')
