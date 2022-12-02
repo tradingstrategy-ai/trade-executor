@@ -88,6 +88,11 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
 
     backtest_stop_loss_candles: Optional[GroupedCandleUniverse] = None
 
+    def __post_init__(self):
+         if self.universe is not None:
+            for exchange in self.universe.exchanges:
+                assert exchange.chain_id in self.universe.chains
+
     def get_pair_count(self) -> int:
         return self.universe.pairs.get_count()
 
