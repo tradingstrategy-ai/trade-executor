@@ -153,7 +153,6 @@ def test_cli_live_trading(
         # Random empty wallet
         "PRIVATE_KEY": "0x111e53aed5e777996f26b4bdb89300bbc05b84743f32028c41be7193c0fe0b83",
         "HTTP_ENABLED": "true",
-        "GAS_PRICE_METHOD": "london",
 
         # Make the applicaction terminate after the setup
         "MAX_CYCLES": "0",

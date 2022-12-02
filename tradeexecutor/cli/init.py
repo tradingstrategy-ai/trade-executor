@@ -104,7 +104,7 @@ def create_trade_execution_model(
         # Make sure this never happens even though it should not happen
         if ChainId.bsc in web3config.connections or ChainId.polygon in web3config.connections or ChainId.avalanche in web3config.connections:
             if web3config.gas_price_method == GasPriceMethod.london:
-                raise RuntimeError("Should not happen")
+                raise RuntimeError(f"Should not happen: {web3config.gas_price_method}")
 
         return execution_model, sync_method, valuation_model_factory, pricing_model_factory
     elif execution_type == TradeExecutionType.backtest:
