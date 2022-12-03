@@ -10,6 +10,7 @@ from plotly.subplots import make_subplots
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.visualisation import Visualisation, Plot
+from tradeexecutor.visual.ohlcv import visualise_ohclv
 from tradingstrategy.candle import GroupedCandleUniverse
 
 
@@ -115,12 +116,19 @@ def visualise_trades(
     return fig
 
 
+def prepare_figure(fig: go.Figure):
+    pass
+
+
+
 def visualise_single_pair(
         state: State,
         candle_universe: GroupedCandleUniverse,
         start_at: Optional[Union[pd.Timestamp, datetime.datetime]]=None,
         end_at: Optional[Union[pd.Timestamp, datetime.datetime]]=None,
-        height=800) -> go.Figure:
+        height=800,
+        theme="plotly_white",
+) -> go.Figure:
     """Visualise single-pair trade execution.
 
     :param state:
@@ -138,6 +146,11 @@ def visualise_single_pair(
 
     :param end_at:
         When the backtest ended
+
+    :param theme:
+        Plotly colour scheme for the chart.
+
+        `See Plotly color scheme list here <https://plotly.com/python/templates/>`__.
     """
 
     logger.info("Visualising %s", state)
@@ -189,62 +202,19 @@ def visualise_single_pair(
     # set up figure with values not high and not low
     # include candlestick with rangeselector
 
-    candlesticks = go.Candlestick(
-        x=candles.index,
-        open=candles['open'],
-        high=candles['high'],
-        low=candles['low'],
-        close=candles['close'],
-        showlegend=False
+    fig = visualise_ohclv(
+        candles,
+        f"{state.name or ''} trades",
+        pair_name,
+        height,
+        theme
     )
-
-    # Synthetic data may not have volume available
-    should_create_volume_subplot: bool = "volume" in candles.columns
-
-    fig = make_subplots(specs=[[{"secondary_y": should_create_volume_subplot}]])
-
-    if state.name:
-        fig.update_layout(title=f"{state.name} trades", height=height)
-    else:
-        fig.update_layout(title=f"Trades", height=height)
-
-    if pair_name:
-        fig.update_yaxes(title=f"{pair_name} price", secondary_y=False, showgrid=True)
-    else:
-        fig.update_yaxes(title="Price $", secondary_y=False, showgrid=True)
-
-    fig.update_xaxes(rangeslider={"visible": False})
-
-    if should_create_volume_subplot:
-        volume_bars = go.Bar(
-            x=candles.index,
-            y=candles['volume'],
-            showlegend=False,
-            marker={
-                "color": "rgba(128,128,128,0.5)",
-            }
-        )
-        fig.add_trace(volume_bars, secondary_y=True)
-        fig.update_yaxes(title="Volume $", secondary_y=True, showgrid=False)
-
-    fig.add_trace(candlesticks, secondary_y=False)
 
     visualise_technical_indicators(fig, state.visualisation)
 
     # Add trade markers if any trades have been made
     if len(trades_df) > 0:
         visualise_trades(fig, candles, trades_df)
-
-    # Move legend to the bottom so we have more space for
-    # time axis in narrow notebook views
-    # https://plotly.com/python/legend/f
-    fig.update_layout(legend=dict(
-        orientation="h",
-        yanchor="bottom",
-        y=1.02,
-        xanchor="right",
-        x=1
-    ))
 
     return fig
 
