@@ -267,6 +267,23 @@ paths:
             enum: [small, large]
             default: small
 
+      parameters:
+        - name: theme
+          in: query
+          description: |
+            
+            Color scheme options:
+            
+             * `light` - black on white charts
+            
+             * `dark` - white on black charts
+
+          required: false
+          schema:
+            type: string
+            enum: [light, dark]
+            default: dark
+
       responses:
         "200":
           description: | 
@@ -280,7 +297,14 @@ paths:
                 type: string
 
         "422":
-          description: Unexpected error - usually an internal error
+          description: |
+          
+            Unexpected error - usually an internal error
+            
+            Maybe also returned when image data is not yet avaible.
+            It is generated when the trade executor successfully completes
+            its first strategy execution cycle.
+
           content:
             application/json:
               schema:
