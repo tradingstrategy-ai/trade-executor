@@ -1,18 +1,17 @@
 """Tools to visualise live trading/backtest outcome for strategies trading only one pair."""
 import datetime
 import logging
-from typing import Iterable, Optional, Union
+from typing import Optional, Union
 
 import plotly.graph_objects as go
 import pandas as pd
-from plotly.subplots import make_subplots
 
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.visualisation import Visualisation, Plot
 from tradingstrategy.candle import GroupedCandleUniverse
-
+from tradingstrategy.charting.candle_chart import visualise_ohlcv
 
 logger = logging.getLogger(__name__)
 
@@ -242,6 +241,7 @@ def visualise_single_pair(
         height=800,
         axes=True,
         title=True,
+        theme="plotly_white",
 ) -> go.Figure:
     """Visualise single-pair trade execution.
 
@@ -266,6 +266,9 @@ def visualise_single_pair(
 
     :param title:
         Draw title labels
+
+    :param theme:
+        Plotly colour scheme to use
     """
 
     logger.info("Visualising %s", state)
@@ -322,56 +325,23 @@ def visualise_single_pair(
         end_at,
     )
 
-    # set up figure with values not high and not low
-    # include candlestick with rangeselector
-
-    percentage_changes = ((candles['close'] - candles['open'])/candles['open']) * 100
-    text = ["Change: " + f"{percentage_changes[i]:.2f}%" for i in range(len(percentage_changes))]
-
-    candlesticks = go.Candlestick(
-        name='candles',
-        x=candles.index,
-        open=candles['open'],
-        high=candles['high'],
-        low=candles['low'],
-        close=candles['close'],
-        showlegend=False,
-        text=text
-    )
-
-    # Synthetic data may not have volume available
-    should_create_volume_subplot: bool = "volume" in candles.columns
-
-    fig = make_subplots(specs=[[{"secondary_y": should_create_volume_subplot}]])
-
     if title:
-        if state.name:
-            fig.update_layout(title=f"{state.name} trades", height=height)
-        else:
-            fig.update_layout(title=f"Trades", height=height)
+        title_text = state.name
+    else:
+        title_text = None
 
     if axes:
-        if pair_name:
-            fig.update_yaxes(title=f"{pair_name} price", secondary_y=False, showgrid=True)
-        else:
-            fig.update_yaxes(title="Price $", secondary_y=False, showgrid=True)
+        axes_text = pair_name
+    else:
+        axes_text = None
 
-    fig.update_xaxes(rangeslider={"visible": False})
-
-    if should_create_volume_subplot:
-        volume_bars = go.Bar(
-            x=candles.index,
-            y=candles['volume'],
-            showlegend=False,
-            marker={
-                "color": "rgba(128,128,128,0.5)",
-            },
-            name='Volume'
-        )
-        fig.add_trace(volume_bars, secondary_y=True)
-        fig.update_yaxes(title="Volume $", secondary_y=True, showgrid=False)
-
-    fig.add_trace(candlesticks, secondary_y=False)
+    fig = visualise_ohlcv(
+        candles,
+        height=height,
+        theme=theme,
+        chart_name=title_text,
+        y_axis_name=axes_text,
+    )
 
     visualise_technical_indicators(
         fig,
