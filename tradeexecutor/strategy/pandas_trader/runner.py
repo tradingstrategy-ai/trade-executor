@@ -112,6 +112,8 @@ class PandasTraderRunner(StrategyRunner):
 
             if self.execution_state:
 
+                logger.info("Updating strategy thinking image dta")
+
                 # Draw the inline plot and expose them tot he web serber
                 large_figure = draw_single_pair_strategy_state(state, universe, height=1920)
                 large_image = render_plotly_figure_as_image_file(large_figure, width=1920, height=1920, format="svg")
@@ -125,6 +127,8 @@ class PandasTraderRunner(StrategyRunner):
                     small_image_dark,
                     large_image_dark,
                 )
+            else:
+                logger.info("Coudl not update strategy thinking image data, self.execution_state not available")
 
             # Log state
             buf = StringIO()
