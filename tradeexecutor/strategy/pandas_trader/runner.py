@@ -105,6 +105,9 @@ class PandasTraderRunner(StrategyRunner):
             small_figure = draw_single_pair_strategy_state(state, universe, height=512)
             small_image = render_plotly_figure_as_image_file(small_figure, width=512, height=512, format="png")
 
+            small_figure.update_layout(template="plotly_dark")
+            small_image_dark = render_plotly_figure_as_image_file(small_figure, width=512, height=512, format="png")
+
             post_logging_discord_image(small_image)
 
             if self.execution_state:
@@ -113,7 +116,15 @@ class PandasTraderRunner(StrategyRunner):
                 large_figure = draw_single_pair_strategy_state(state, universe, height=1920)
                 large_image = render_plotly_figure_as_image_file(large_figure, width=1920, height=1920, format="svg")
 
-                self.execution_state.visualisation.update_image_data(small_image, large_image)
+                large_figure.update_layout(template="plotly_dark")
+                large_image_dark = render_plotly_figure_as_image_file(small_figure, width=512, height=512, format="png")
+
+                self.execution_state.visualisation.update_image_data(
+                    small_image,
+                    large_image,
+                    small_image_dark,
+                    large_image_dark,
+                )
 
             # Log state
             buf = StringIO()

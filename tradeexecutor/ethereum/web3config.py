@@ -57,7 +57,7 @@ class Web3Config:
         chain_id = web3.eth.chain_id
 
         if gas_price_method is None:
-            if chain_id == ChainId.ethereum.value:
+            if chain_id in (ChainId.ethereum.value, ChainId.ganache.value):
                 # Ethereum supports maxBaseFee method
 
                 gas_price_method = GasPriceMethod.london
