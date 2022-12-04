@@ -150,6 +150,8 @@ def web_visulisation(request: Request):
     type = request.params.get("type", "small")
     theme = request.params.get("theme", "light")
 
+    logger.info("Reading visualisation image, last updated %s", execution_state.visualisation.last_refreshed_at)
+
     if type == "small":
 
         if theme == "light":
