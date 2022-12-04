@@ -112,7 +112,7 @@ class PandasTraderRunner(StrategyRunner):
 
             if self.execution_state:
 
-                logger.info("Updating strategy thinking image dta")
+                logger.info("Updating strategy thinking image data")
 
                 # Draw the inline plot and expose them tot he web serber
                 large_figure = draw_single_pair_strategy_state(state, universe, height=1920)
