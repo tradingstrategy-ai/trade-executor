@@ -233,6 +233,9 @@ def test_uniswap_two_leg_buy_price_with_price_impact(
     price = pricing_method.get_buy_price(datetime.datetime.utcnow(), pair, Decimal(50_000))
     assert price == pytest.approx(1755.1153460381142, rel=APPROX_REL)
 
+    mid_price = pricing_method.get_mid_price(datetime.datetime.utcnow(), pair)
+    assert price > mid_price
+
 
 def test_uniswap_two_leg_sell_price_no_price_impact(
         web3: Web3,
@@ -249,6 +252,9 @@ def test_uniswap_two_leg_sell_price_no_price_impact(
     # Get price for "infinite" small trade amount
     price = pricing_method.get_sell_price(datetime.datetime.utcnow(), pair, None)
     assert price == pytest.approx(1705.12, rel=APPROX_REL)
+
+    mid_price = pricing_method.get_mid_price(datetime.datetime.utcnow(), pair)
+    assert price < mid_price
 
 
 def test_uniswap_two_leg_sell_price_with_price_impact(
@@ -340,3 +346,5 @@ def test_uniswap_three_leg_sell_price_with_price_impact(
     # Get price for 500 AAVE
     price = pricing_method.get_buy_price(datetime.datetime.utcnow(), pair, Decimal(500))
     assert price == pytest.approx(342.2495177609056, rel=APPROX_REL)
+
+

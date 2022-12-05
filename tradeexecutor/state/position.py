@@ -169,7 +169,7 @@ class TradingPosition:
                 return True
         return False
 
-    def needs_real_time_price(self) -> bool:
+    def has_trigger_conditions(self) -> bool:
         """Does this position need to check for stop loss/take profit."""
         return self.stop_loss is not None or self.take_profit is not None
 
