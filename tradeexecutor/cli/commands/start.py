@@ -21,6 +21,7 @@ from ..init import prepare_executor_id, prepare_cache, create_web3_config, creat
 from ..log import setup_logging, setup_discord_logging, setup_logstash_logging
 from ..loop import ExecutionLoop
 from ..result import display_backtesting_results
+from ..version_info import VersionInfo
 from ...state.state import State
 from ...state.store import NoneStore
 from ...strategy.approval import ApprovalType
@@ -219,7 +220,8 @@ def start(
     # Start the queue that relays info from the web server to the strategy executor
     command_queue = Queue()
 
-    execution_state = RunState()
+    run_state = RunState()
+    run_state.version_info = VersionInfo.read_docker_version()
 
     # Create our webhook server
     if http_enabled:
@@ -231,7 +233,7 @@ def start(
             command_queue,
             store,
             metadata,
-            execution_state,
+            run_state,
         )
     else:
         logger.info("Web server disabled")
@@ -314,7 +316,7 @@ def start(
             trade_immediately=trade_immediately,
             stats_refresh_frequency=stats_refresh_frequency,
             position_trigger_check_frequency=position_trigger_check_frequency,
-            run_state=execution_state,
+            run_state=run_state,
         )
         loop.run()
 
@@ -330,7 +332,7 @@ def start(
         logger.error("trade-executor execution loop crashed")
 
         # Unwind the traceback and notify the webserver about the failure
-        execution_state.set_fail()
+        run_state.set_fail()
 
         # Debug exceptions in production
         if port_mortem_debugging:

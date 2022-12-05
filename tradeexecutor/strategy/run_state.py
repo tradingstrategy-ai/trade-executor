@@ -8,6 +8,7 @@ import dataclasses_json
 from dataclasses_json import dataclass_json
 from tblib import Traceback
 
+from tradeexecutor.cli.version_info import VersionInfo
 from tradeexecutor.strategy.summary import StrategySummaryStatistics
 
 
@@ -145,6 +146,10 @@ class RunState:
     #:   to give an idea how close to fee of lag strategies can operate
     #:
     market_data_feed_lag: Optional[datetime.timedelta] = None
+
+    #: Docker image version information
+    #:
+    version_info: VersionInfo = field(default_factory=VersionInfo)
 
     @staticmethod
     def serialise_exception() -> ExceptionData:
