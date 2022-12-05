@@ -83,7 +83,7 @@ jobs:
           build-args: |
             GIT_VERSION_TAG=$RELEASE_VERSION
             GIT_COMMIT_MESSAGE=${{ github.event.head_commit.message }}
-            GIT_VERSION_HASH=${{ github.head_ref }}.${{ github.sha }}
+            GIT_VERSION_HASH=${{ github.sha }}
             
 
   # Trigger workflow_dispatch in other repos (binder-env, docs...)
