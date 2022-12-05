@@ -192,3 +192,15 @@ def test_cli_live_trading(
         for line in result.stdout.split('\n'):
             print(line)
         raise AssertionError("runner launch failed")
+
+
+def test_cli_version(
+        logger,
+        strategy_path: str,
+        unit_test_cache_path: str,
+    ):
+    """version command works"""
+
+    runner = CliRunner()
+    result = runner.invoke(app, "version")
+    assert result.exit_code == 0
