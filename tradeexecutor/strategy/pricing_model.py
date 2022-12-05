@@ -74,6 +74,16 @@ class PricingModel(abc.ABC):
         """
 
     @abc.abstractmethod
+    def get_mid_price(self,
+                      ts: datetime.datetime,
+                      pair: TradingPairIdentifier) -> USDollarAmount:
+        """Get the mid-price for an asset.
+
+        Mid price is an non-trddeable price between the best ask
+        and the best pid.
+        """
+
+    @abc.abstractmethod
     def quantize_base_quantity(self, pair: TradingPairIdentifier, quantity: Decimal, rounding=ROUND_DOWN) -> Decimal:
         """Convert any base token quantity to the native token units by its ERC-20 decimals."""
 

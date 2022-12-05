@@ -158,6 +158,17 @@ class UniswapV2LivePricing(PricingModel):
         token_received = target_pair.base.convert_to_decimal(token_raw_received)
         return float(reserve / token_received)
 
+    def get_mid_price(self,
+                      ts: datetime.datetime,
+                      pair: TradingPairIdentifier) -> USDollarAmount:
+        """Get the mid price by the candle."""
+
+        # TODO: Use native Uniswap router functions to get the mid price
+        # Here we are using a hack
+        bp = self.get_buy_price(ts, pair, self.very_small_amount)
+        sp = self.get_sell_price(ts, pair, self.very_small_amount)
+        return (bp + sp) / 2
+
     def quantize_base_quantity(self, pair: TradingPairIdentifier, quantity: Decimal, rounding=ROUND_DOWN) -> Decimal:
         """Convert any base token quantity to the native token units by its ERC-20 decimals."""
         assert isinstance(pair, TradingPairIdentifier)

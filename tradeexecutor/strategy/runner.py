@@ -21,7 +21,7 @@ from tradeexecutor.strategy.output import output_positions, DISCORD_BREAK_CHAR, 
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.strategy.pricing_model import PricingModelFactory, PricingModel
 from tradeexecutor.strategy.routing import RoutingModel, RoutingState
-from tradeexecutor.strategy.stoploss import check_position_triggers
+from tradeexecutor.strategy.stop_loss import check_position_triggers
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
 

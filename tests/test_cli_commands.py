@@ -9,6 +9,9 @@ from typer.testing import CliRunner
 from tradeexecutor.cli.main import app
 
 
+pytestmark = pytest.mark.skipif(os.environ.get("TRADING_STRATEGY_API_KEY") is None, reason="Set TRADING_STRATEGY_API_KEY environment variable to run this test module")
+
+
 @pytest.fixture(scope="session")
 def strategy_path():
     """We use pancake-eth-usd-sma.py as the strategy module input for these tests."""
