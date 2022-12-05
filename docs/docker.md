@@ -1,5 +1,7 @@
 # Running with Docker
 
+**Note**: [See the docuemtation for up-to-date documentation how to run live trade execution instances](https://tradingstrategy.ai/docs/running/strategy-deployment.html).
+
 The trade executor is packaged as a Docker container.
 Multiple strategy executors can use the same container image. 
 The container is run by a docker-compose.
@@ -23,6 +25,27 @@ There is a mapping of 1 strategy : 1 container : 1 domain : 1 internal TCP/IP po
 - Local `/state` and `/cache` are mapped to `/usr/src/trade-executor` - note that these folders are **shared across instances**
   and trade executor application code must deal with having specific state files for each strategy
 
+
+# Running
+
+You need to first login to Github Container Registry.
+
+* [Check the latest released version from Github](https://github.com/tradingstrategy-ai/trade-executor/pkgs/container/trade-executor)
+
+* You can start `trade-executor` binary as:
+
+```shell
+export TRADE_EXECUTOR_VERSION=v50
+docker run ghcr.io/tradingstrategy-ai/trade-executor:$TRADE_EXECUTOR_VERSION --help
+```
+
+You can start a shell within the container as:
+
+```shell
+docker run -ti --entrypoint /bin/bash ghcr.io/tradingstrategy-ai/trade-executor:$TRADE_EXECUTOR_VERSION 
+```
+
+
 # Building
 
 Build the Docker image from the local source code and tags it as `latest` for your local usage:
@@ -32,14 +55,6 @@ docker build -t trading-strategy/trade-executor:latest .
 ```
 
 This image is referred in `docker-container.yml`.
-
-# Running
-
-You can start `trade-executor` binary as:
-
-```shell
-docker run -ti trading-strategy/trade-executor --help
-```
 
 # Configuring and launching strategy executors
 
