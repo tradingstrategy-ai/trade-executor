@@ -9,7 +9,10 @@ from dataclasses_json import dataclass_json
 @dataclass_json
 @dataclass
 class VersionInfo:
-    """Reflect the version information embedded in the Docker image during CI build"""
+    """Reflect the version information embedded in the Docker image during CI build.
+
+    See `Dockerimage` and `.githyb/workflows/tests.yml` for details.
+    """
 
     #: v50
     tag: Optional[str] = None
