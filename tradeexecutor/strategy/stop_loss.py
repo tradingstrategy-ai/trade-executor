@@ -98,6 +98,8 @@ def check_position_triggers(
             # and any position trigger does not need to be executed.
             continue
 
+        trigger_type = trigger_price = None
+
         if p.take_profit:
             if mid_price >= p.take_profit:
                 trigger_type = TradeType.take_profit
@@ -109,13 +111,15 @@ def check_position_triggers(
                 trigger_price = p.stop_loss
                 trades.append(position_manager.close_position(p, TradeType.stop_loss))
 
-        report_position_triggered(
-            p,
-            trigger_type,
-            trigger_price,
-            mid_price,
-            expected_sell_price,
-        )
+        if trigger_type:
+            # We got triggered
+            report_position_triggered(
+                p,
+                trigger_type,
+                trigger_price,
+                mid_price,
+                expected_sell_price,
+            )
 
     return trades
 
