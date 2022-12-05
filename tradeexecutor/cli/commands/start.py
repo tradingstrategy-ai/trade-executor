@@ -187,6 +187,11 @@ def start(
     if minimum_gas_balance:
         minimum_gas_balance = Decimal(minimum_gas_balance)
 
+    if unit_testing:
+        # Do not let Ganache to wait for too long
+        # because likely Ganache has simply crashed on background
+        confirmation_timeout = 30
+
     execution_model, sync_method, valuation_model_factory, pricing_model_factory = create_trade_execution_model(
         execution_type,
         private_key,

@@ -53,6 +53,14 @@ from tradingstrategy.timebucket import TimeBucket
 logger = logging.getLogger(__name__)
 
 
+class LiveSchedulingTaskFailed(Exception):
+    """Main loop dies uncleanly.
+
+    Any of live trading looop scheduled tasks can die with an exception.
+    Raise this and wrap the underlying exception if we need to crash the trading loop.
+    """
+
+
 class ExecutionLoop:
     """Live or backtesting trade execution loop.
 
@@ -538,7 +546,11 @@ class ExecutionLoop:
             return self.debug_dump_state
 
     def run_live(self, state: State):
-        """Run live trading cycle."""
+        """Run live trading cycle.
+
+        :raise LiveSchedulingTaskFailed:
+            If any of live trading concurrent tasks crashes with an exception
+        """
 
         ts = datetime.datetime.utcnow()
         logger.info("Strategy is executed in live mode, now is %s", ts)
@@ -553,6 +565,7 @@ class ExecutionLoop:
         universe: Optional[StrategyExecutionUniverse] = None
         execution_context = self.execution_context
         run_state: RunState = self.run_state
+        crash_exception: Optional[Exception] = None
 
         assert execution_context, "ExecutionContext missing"
 
@@ -564,6 +577,13 @@ class ExecutionLoop:
             ts = datetime.datetime.now()
             self.tick(ts, self.cycle_duration, state, cycle, live=True)
 
+        def die(exc: Exception):
+            # Shutdown the scheduler and mark an clean exit
+            nonlocal crash_exception
+            logger.exception(e)
+            scheduler.shutdown(wait=False)
+            crash_exception = exc
+
         def live_cycle():
             nonlocal cycle
             nonlocal universe
@@ -574,9 +594,7 @@ class ExecutionLoop:
                 universe = self.tick(ts, self.cycle_duration, state, cycle, live=True)
                 self.update_summary_statistics(state)
             except Exception as e:
-                logger.exception(e)
-                scheduler.shutdown(wait=False)
-                raise
+                die(e)
 
             run_state.completed_cycle = cycle
             run_state.cycles += 1
@@ -599,9 +617,7 @@ class ExecutionLoop:
 
                 self.update_summary_statistics(state)
             except Exception as e:
-                logger.exception(e)
-                scheduler.shutdown(wait=False)
-                raise
+                die(e)
 
             run_state.position_revaluations += 1
             run_state.bumb_refreshed()
@@ -620,9 +636,7 @@ class ExecutionLoop:
                 ts = datetime.datetime.now()
                 self.check_position_triggers(ts, state, universe)
             except Exception as e:
-                logger.exception(e)
-                scheduler.shutdown(wait=False)
-                raise
+                die(e)
 
             run_state.position_trigger_checks += 1
             run_state.bumb_refreshed()
@@ -673,6 +687,9 @@ class ExecutionLoop:
             raise
 
         logger.info("Scheduler finished - down the live trading loop")
+
+        if crash_exception:
+            raise LiveSchedulingTaskFailed("trade-executor closed because one of the scheduled tasks failed") from crash_exception
 
         return self.debug_dump_state
 

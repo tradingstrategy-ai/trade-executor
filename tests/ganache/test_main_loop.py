@@ -213,7 +213,6 @@ def test_main_loop(
         "RESET_STATE": "true",
         "EXECUTION_TYPE": "uniswap_v2_hot_wallet",
         "APPROVAL_TYPE": "unchecked",
-        "GAS_PRICE_METHOD": "london",
         "TRADING_STRATEGY_API_KEY": os.environ["TRADING_STRATEGY_API_KEY"],
         "DEBUG_DUMP_FILE": debug_dump_file,
         "BACKTEST_START": "2021-12-07",

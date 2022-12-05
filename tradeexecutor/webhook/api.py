@@ -148,9 +148,16 @@ def web_visulisation(request: Request):
     execution_state: RunState = request.registry["run_state"]
 
     type = request.params.get("type", "small")
+    theme = request.params.get("theme", "light")
+
+    logger.info("Reading visualisation image, last updated %s", execution_state.visualisation.last_refreshed_at)
 
     if type == "small":
-        data = execution_state.visualisation.small_image
+
+        if theme == "light":
+            data = execution_state.visualisation.small_image
+        else:
+            data = execution_state.visualisation.small_image_dark
 
         if not data:
             raise RuntimeError("Image data not available")
@@ -159,7 +166,11 @@ def web_visulisation(request: Request):
         r.body = data
         return r
     elif type =="large":
-        data = execution_state.visualisation.small_image
+
+        if theme == "light":
+            data = execution_state.visualisation.large_image
+        else:
+            data = execution_state.visualisation.large_image_dark
 
         if not data:
             raise RuntimeError("Image data not available")

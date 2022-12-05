@@ -62,10 +62,14 @@ class TradingPosition:
 
     last_trade_at: Optional[datetime.datetime] = None
 
-    #: Trigger a stop loss if this price is reached
+    #: Trigger a stop loss if this price is reached,
+    #:
+    #: We use mid-price as the trigger price.
     stop_loss: Optional[USDollarAmount] = None
 
     #: Trigger a take profit if this price is reached
+    #:
+    #: We use mid-price as the trigger price.
     take_profit: Optional[USDollarAmount] = None
 
     #: Human readable notes about this trade
@@ -169,7 +173,7 @@ class TradingPosition:
                 return True
         return False
 
-    def needs_real_time_price(self) -> bool:
+    def has_trigger_conditions(self) -> bool:
         """Does this position need to check for stop loss/take profit."""
         return self.stop_loss is not None or self.take_profit is not None
 

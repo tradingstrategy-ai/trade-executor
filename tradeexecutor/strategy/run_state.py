@@ -32,14 +32,25 @@ class LatestStateVisualisation:
     #: 512 x 512 image PNG
     small_image: Optional[bytes] = None
 
+    #: Dark theme version
+    small_image_dark: Optional[bytes] = None
+
     #: 1920 x 1920 image SVG
     large_image: Optional[bytes] = None
 
+    #: Dark theme version
+    large_image_dark: Optional[bytes] = None
+
     def update_image_data(self,
                           small_image,
-                          large_image):
+                          large_image,
+                          small_image_dark,
+                          large_image_dark,
+                          ):
         self.small_image = small_image
+        self.small_image_dark = small_image_dark
         self.large_image = large_image
+        self.large_image_dark = large_image_dark
         self.last_refreshed_at = datetime.datetime.utcnow()
 
 
