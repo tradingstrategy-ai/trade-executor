@@ -32,6 +32,8 @@ def server_url(store):
     execution_state.visualisation.large_image = b"2"
     execution_state.visualisation.small_image_dark = b"3"
     execution_state.visualisation.large_image_dark = b"4"
+    execution_state.version.tag = "v1"
+    execution_state.version.commit_message = "Foobar"
 
     queue = Queue()
     metadata = Metadata("Foobar", "Short desc", "Long desc", None, datetime.datetime.utcnow(), True)
@@ -143,3 +145,8 @@ def test_run_state(logger, server_url):
     assert data["source_code"] is None
     assert data["visualisation"]["large_image"] is None
     assert data["visualisation"]["small_image"] is None
+
+    # Version info is there
+    assert data["version"]["tag"] == "v1"
+    assert data["version"]["commit_message"] == "Foobar"
+

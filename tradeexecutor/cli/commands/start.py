@@ -221,7 +221,7 @@ def start(
     command_queue = Queue()
 
     run_state = RunState()
-    run_state.version_info = VersionInfo.read_docker_version()
+    run_state.version = VersionInfo.read_docker_version()
 
     # Create our webhook server
     if http_enabled:

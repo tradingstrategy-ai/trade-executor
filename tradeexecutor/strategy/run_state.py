@@ -149,7 +149,7 @@ class RunState:
 
     #: Docker image version information
     #:
-    version_info: VersionInfo = field(default_factory=VersionInfo)
+    version: VersionInfo = field(default_factory=VersionInfo)
 
     @staticmethod
     def serialise_exception() -> ExceptionData:
