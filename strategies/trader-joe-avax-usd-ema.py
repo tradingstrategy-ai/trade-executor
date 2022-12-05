@@ -69,40 +69,6 @@ def decide_trades(
         state: State,
         pricing_model: PricingModel,
         cycle_debug_data: Dict) -> List[TradeExecution]:
-    """The brain function to decide the trades on each trading strategy cycle.
-
-    - Reads incoming execution state (positions, past trades)
-
-    - Reads the current universe (candles)
-
-    - Decides what trades to do next, if any, at current timestamp.
-
-    - Outputs strategy thinking for visualisation and debug messages
-
-    :param timestamp:
-        The Pandas timestamp object for this cycle. Matches
-        TRADING_STRATEGY_CYCLE division.
-        Always truncated to the zero seconds and minutes, never a real-time clock.
-
-    :param universe:
-        Trading universe that was constructed earlier.
-
-    :param state:
-        The current trade execution state.
-        Contains current open positions and all previously executed trades, plus output
-        for statistics, visualisation and diangnostics of the strategy.
-
-    :param pricing_model:
-        Pricing model can tell the buy/sell price of the particular asset at a particular moment.
-
-    :param cycle_debug_data:
-        Python dictionary for various debug variables you can read or set, specific to this trade cycle.
-        This data is discarded at the end of the trade cycle.
-
-    :return:
-        List of trade instructions in the form of :py:class:`TradeExecution` instances.
-        The trades can be generated using `position_manager` but strategy could also hand craft its trades.
-    """
 
     pair = universe.pairs.get_single()
 
