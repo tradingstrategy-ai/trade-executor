@@ -9,6 +9,8 @@ from dataclasses_json import dataclass_json
 @dataclass_json
 @dataclass
 class VersionInfo:
+    """Reflect the version information embedded in the Docker image during CI build"""
+
     #: v50
     tag: Optional[str] = None
 
@@ -23,7 +25,7 @@ class VersionInfo:
         """See Dockerfile"""
         if os.path.exists(name):
              with open(name, "rt") as inp:
-                return inp.read(name)
+                return inp.read()
         return None
 
     @staticmethod
