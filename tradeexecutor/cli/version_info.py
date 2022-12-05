@@ -1,4 +1,7 @@
-"""Read Docker version info."""
+"""Read Docker version info.
+
+Based on this idea: https://stackoverflow.com/a/74694676/315168
+"""
 import os
 from dataclasses import dataclass
 from typing import Optional
@@ -28,7 +31,7 @@ class VersionInfo:
         """See Dockerfile"""
         if os.path.exists(name):
              with open(name, "rt") as inp:
-                return inp.read()
+                return inp.read().strip()
         return None
 
     @staticmethod
