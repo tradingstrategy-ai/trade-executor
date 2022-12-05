@@ -61,7 +61,7 @@ class StrategyRunner(abc.ABC):
                  pricing_model_factory: PricingModelFactory,
                  execution_context: ExecutionContext,
                  routing_model: Optional[RoutingModel] = None,
-                 execution_state: Optional[RunState] = None,
+                 run_state: Optional[RunState] = None,
                  ):
 
         assert isinstance(execution_context, ExecutionContext)
@@ -73,7 +73,7 @@ class StrategyRunner(abc.ABC):
         self.sync_method = sync_method
         self.pricing_model_factory = pricing_model_factory
         self.routing_model = routing_model
-        self.execution_state = execution_state
+        self.run_state = run_state
         self.execution_context = execution_context
 
     @abc.abstractmethod

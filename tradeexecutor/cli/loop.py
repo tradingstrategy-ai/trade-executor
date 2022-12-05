@@ -720,7 +720,8 @@ class ExecutionLoop:
             pricing_model_factory=self.pricing_model_factory,
             approval_model=self.approval_model,
             client=self.client,
-            routing_model=None,  # Assume strategy factory produces its own routing model
+            routing_model = None,  # Assume strategy factory produces its own routing model
+            run_state=self.run_state,
         )
 
         # Expose source code to webhook

@@ -13,6 +13,7 @@ from ..log import setup_logging
 from ...strategy.bootstrap import import_strategy_file
 from ...strategy.description import StrategyExecutionDescription
 from ...strategy.execution_context import ExecutionContext, ExecutionMode
+from ...strategy.run_state import RunState
 from ...strategy.trading_strategy_universe import TradingStrategyUniverseModel
 from ...strategy.universe_model import UniverseOptions
 from ...utils.timer import timed_task
@@ -62,6 +63,7 @@ def check_universe(
         pricing_model_factory=None,
         approval_model=None,
         client=client,
+        run_state=RunState(),
     )
 
     # Deconstruct strategy input

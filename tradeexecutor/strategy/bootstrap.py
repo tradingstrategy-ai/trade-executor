@@ -102,6 +102,9 @@ def make_factory_from_strategy_mod(mod: StrategyModuleInformation) -> StrategyFa
             run_state: RunState,
             **kwargs) -> StrategyExecutionDescription:
 
+        # Migration assert
+        assert run_state, "run_state needs to be passed for new strategies"
+
         if ignore:
             # https://www.python.org/dev/peps/pep-3102/
             raise TypeError("Only keyword arguments accepted")
