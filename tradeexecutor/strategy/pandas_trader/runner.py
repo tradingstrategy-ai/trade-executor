@@ -96,6 +96,7 @@ class PandasTraderRunner(StrategyRunner):
 
         if universe.is_empty():
             # TODO: Not sure how we end up here
+            logger.info("Strategy universe is empty - nothing to report")
             return
 
         if universe.is_single_pair_universe():
@@ -110,7 +111,7 @@ class PandasTraderRunner(StrategyRunner):
 
             post_logging_discord_image(small_image)
 
-            if self.execution_state:
+            if self.run_state:
 
                 logger.info("Updating strategy thinking image data")
 
@@ -121,7 +122,7 @@ class PandasTraderRunner(StrategyRunner):
                 large_figure.update_layout(template="plotly_dark")
                 large_image_dark = render_plotly_figure_as_image_file(small_figure, width=512, height=512, format="png")
 
-                self.execution_state.visualisation.update_image_data(
+                self.run_state.visualisation.update_image_data(
                     small_image,
                     large_image,
                     small_image_dark,

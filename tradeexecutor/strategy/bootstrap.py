@@ -22,6 +22,7 @@ from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.strategy.factory import StrategyFactory
 from tradeexecutor.strategy.pandas_trader.runner import PandasTraderRunner
 from tradeexecutor.strategy.pricing_model import PricingModelFactory
+from tradeexecutor.strategy.run_state import RunState
 from tradeexecutor.strategy.strategy_module import read_strategy_module, StrategyModuleInformation
 from tradeexecutor.strategy.strategy_type import StrategyType
 from tradeexecutor.strategy.trading_strategy_universe import DefaultTradingStrategyUniverseModel
@@ -98,6 +99,7 @@ def make_factory_from_strategy_mod(mod: StrategyModuleInformation) -> StrategyFa
             client: Client,
             timed_task_context_manager: AbstractContextManager,
             approval_model: ApprovalModel,
+            run_state: RunState,
             **kwargs) -> StrategyExecutionDescription:
 
         if ignore:
@@ -124,6 +126,7 @@ def make_factory_from_strategy_mod(mod: StrategyModuleInformation) -> StrategyFa
             routing_model=routing_model,
             decide_trades=mod_info.decide_trades,
             execution_context=execution_context,
+            run_state=run_state,
         )
 
         return StrategyExecutionDescription(
