@@ -81,7 +81,7 @@ jobs:
           # https://stackoverflow.com/questions/67051284/how-to-set-a-dockerfile-arg-in-github-actions
           # https://stackoverflow.com/a/63619526/315168
           build-args: |
-            GIT_VERSION_TAG=$${{ env.RELEASE_VERSION }}
+            GIT_VERSION_TAG=${{ env.RELEASE_VERSION }}
             GIT_COMMIT_MESSAGE=${{ github.event.head_commit.message }}
             GIT_VERSION_HASH=${{ github.sha }}
             
