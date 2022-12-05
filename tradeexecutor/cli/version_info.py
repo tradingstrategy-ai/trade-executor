@@ -37,5 +37,5 @@ class VersionInfo:
         return VersionInfo(
             tag=VersionInfo.read_version_file("GIT_VERSION_TAG.txt"),
             commit_message=VersionInfo.read_version_file("GIT_COMMIT_MESSAGE.txt"),
-            commit_hash=VersionInfo.read_version_file("$GIT_VERSION_HASH.txt"),
+            commit_hash=VersionInfo.read_version_file("GIT_VERSION_HASH.txt"),
         )
