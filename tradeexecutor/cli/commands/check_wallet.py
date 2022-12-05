@@ -20,6 +20,7 @@ from ...strategy.bootstrap import make_factory_from_strategy_mod
 from ...strategy.description import StrategyExecutionDescription
 from ...strategy.execution_context import ExecutionContext, ExecutionMode
 from ...strategy.execution_model import TradeExecutionType
+from ...strategy.run_state import RunState
 from ...strategy.strategy_module import read_strategy_module
 from ...strategy.trading_strategy_universe import TradingStrategyUniverseModel
 from ...strategy.universe_model import UniverseOptions
@@ -109,6 +110,7 @@ def check_wallet(
         pricing_model_factory=pricing_model_factory,
         approval_model=UncheckedApprovalModel(),
         client=client,
+        run_state=RunState(),
     )
 
     # We construct the trading universe to know what's our reserve asset
