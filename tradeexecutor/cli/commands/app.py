@@ -1,12 +1,16 @@
 """Define Typer app root."""
 
 import typer
-
+import shutil
 from importlib.metadata import version
 
 from tradeexecutor.cli.init import monkey_patch
 
-app = typer.Typer()
+
+# https://github.com/tiangolo/typer/issues/511#issuecomment-1331692007
+app = typer.Typer(context_settings={
+    "max_content_width": shutil.get_terminal_size().columns
+})
 
 
 TRADE_EXECUTOR_VERSION = version('trade-executor')
