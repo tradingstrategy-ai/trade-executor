@@ -28,6 +28,7 @@ from ...utils.timer import timed_task
 @app.command()
 def perform_test_trade(
     id: str = typer.Option(None, envvar="EXECUTOR_ID", help="Executor id used when programmatically referring to this instance. If not given, take the base of --strategy-file."),
+    log_level: str = typer.Option(None, envvar="LOG_LEVEL", help="The Python default logging level. The defaults are 'info' is live execution, 'warning' if backtesting. Set 'disabled' in testing."),
 
     strategy_file: Path = typer.Option(..., envvar="STRATEGY_FILE"),
     private_key: str = typer.Option(None, envvar="PRIVATE_KEY"),
@@ -52,7 +53,7 @@ def perform_test_trade(
 
     id = prepare_executor_id(id, strategy_file)
 
-    logger = setup_logging(log_level=logging.INFO)
+    logger = setup_logging(log_level=log_level)
 
     mod = read_strategy_module(strategy_file)
 
