@@ -1,6 +1,7 @@
 """perform-test-trade command"""
 
 import datetime
+import logging
 from pathlib import Path
 from typing import Optional
 
