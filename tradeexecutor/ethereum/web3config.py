@@ -5,6 +5,7 @@ from dataclasses import field, dataclass
 from typing import Dict, Optional
 
 from eth_defi.gas import GasPriceMethod, node_default_gas_price_strategy
+from eth_defi.middleware import http_retry_request_with_sleep_middleware
 from tradingstrategy.chain import ChainId
 from web3 import Web3, HTTPProvider
 from web3.middleware import geth_poa_middleware
@@ -90,6 +91,8 @@ class Web3Config:
         if chain_id in (ChainId.bsc.value, ChainId.polygon.value, ChainId.avalanche.value):
             logger.info("Using proof-of-authority web3 middleware for chain %d", chain_id)
             web3.middleware_onion.inject(geth_poa_middleware, layer=0)
+
+        web3.middleware_onion.inject(http_retry_request_with_sleep_middleware, layer=0)
 
         return web3
 
