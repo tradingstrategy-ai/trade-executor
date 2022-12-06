@@ -69,7 +69,10 @@ class FinalPositionStatistics:
 @dataclass_json
 @dataclass
 class PortfolioStatistics:
-    '''
+    '''Portfolio statistics for each timepoint.
+
+    Updated with regular ticks for a live strategy.
+
     If backtesting, only calculated_at and total_equity are necessary for later visualisations and metrics
     If livetrading, then all attributes should be specified so that for displaying updated metrics after each trade 
     '''

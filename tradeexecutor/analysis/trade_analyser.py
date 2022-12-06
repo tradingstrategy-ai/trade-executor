@@ -325,7 +325,7 @@ class AssetTradeHistory:
 
 
 @dataclass_json
-@dataclass
+@dataclass(frozen=True)
 class TradeSummary:
     """Some generic statistics over all the trades"""
     won: int
