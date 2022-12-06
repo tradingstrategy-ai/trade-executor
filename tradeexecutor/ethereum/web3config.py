@@ -59,7 +59,8 @@ class Web3Config:
 
         if gas_price_method is None:
             if chain_id in (ChainId.ethereum.value, ChainId.ganache.value, ChainId.avalanche.value):
-                # Ethereum supports maxBaseFee method
+                # Ethereum supports maxBaseFee method (Berlin hard fork)
+                # Same for Avalanche C-chain https://twitter.com/avalancheavax/status/1389763933448323073
 
                 gas_price_method = GasPriceMethod.london
             else:
