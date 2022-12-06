@@ -676,7 +676,7 @@ class ExecutionLoop:
         scheduler.add_listener(listen_error, EVENT_JOB_ERROR)
 
         # Display version information on the trade log
-        version_info = self.run_state.version_info
+        version_info = self.run_state.version
         logger.trade(str(version_info))
 
         try:
