@@ -87,8 +87,8 @@ class Web3Config:
             web3.eth.set_gas_price_strategy(node_default_gas_price_strategy)
 
         # Set POA middleware if needed
-        if chain_id in (ChainId.bsc.value, ChainId.polygon.value):
-            logger.info("Using proof-of-authority web3 middleware")
+        if chain_id in (ChainId.bsc.value, ChainId.polygon.value, ChainId.avalanche.value):
+            logger.info("Using proof-of-authority web3 middleware for chain %d", chain_id)
             web3.middleware_onion.inject(geth_poa_middleware, layer=0)
 
         return web3
