@@ -160,17 +160,23 @@ class StrategyRunner(abc.ABC):
         print(f"Life-time positions: {portfolio.next_position_id - 1}, trades: {portfolio.next_trade_id - 1}", file=buf)
         print(DISCORD_BREAK_CHAR, file=buf)
 
-        print(f"Currently open positions:", file=buf)
-        print("", file=buf)
-        output_positions(portfolio.open_positions.values(), buf)
+        if len(portfolio.open_positions) > 0:
+            print(f"Currently open positions:", file=buf)
+            print("", file=buf)
+            output_positions(portfolio.open_positions.values(), buf)
 
-        print(DISCORD_BREAK_CHAR, file=buf)
+            print(DISCORD_BREAK_CHAR, file=buf)
+        else:
+            logger.info("No open positions")
 
-        print(f"Frozen positions (${portfolio.get_frozen_position_equity():,.2f}):", file=buf)
-        print("", file=buf)
-        output_positions(portfolio.frozen_positions.values(), buf)
+        if portfolio.get_frozen_position_equity() > 0:
+            print(f"Frozen positions (${portfolio.get_frozen_position_equity():,.2f}):", file=buf)
+            print("", file=buf)
+            output_positions(portfolio.frozen_positions.values(), buf)
 
-        print(DISCORD_BREAK_CHAR, file=buf)
+            print(DISCORD_BREAK_CHAR, file=buf)
+        else:
+            logger.info("No frozen positions")
 
         print("Reserves:", file=buf)
         print("", file=buf)
@@ -203,17 +209,24 @@ class StrategyRunner(abc.ABC):
 
         print(DISCORD_BREAK_CHAR, file=buf)
 
-        print(f"Opened/open positions:", file=buf)
-        print("", file=buf)
-        output_positions(portfolio.open_positions.values(), buf)
+        if len(portfolio.open_positions) > 0:
+            print(f"Opened/open positions:", file=buf)
+            print("", file=buf)
+            output_positions(portfolio.open_positions.values(), buf)
 
-        print(DISCORD_BREAK_CHAR, file=buf)
+            print(DISCORD_BREAK_CHAR, file=buf)
+        else:
+            logger.info("No positions opened")
+
 
         closed_positions = list(portfolio.get_positions_closed_at(clock))
-        print(f"Closed positions:", file=buf)
-        output_positions(closed_positions, buf)
+        if len(closed_positions) > 0:
+            print(f"Closed positions:", file=buf)
+            output_positions(closed_positions, buf)
 
-        print(DISCORD_BREAK_CHAR, file=buf)
+            print(DISCORD_BREAK_CHAR, file=buf)
+        else:
+            logger.info("No closed positions")
 
         print("Reserves:", file=buf)
         print("", file=buf)

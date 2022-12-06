@@ -242,7 +242,7 @@ def decide_trades(
         # We buy if we just crossed over the slow EMA or if this is a very first
         # trading cycle and the price is already above the slow EMA.
 
-        logger.trade("No positions open, check for new trades")
+        logger.info("No positions open, check for new trades")
 
         if (
                 slow_ema_crossunder
@@ -251,13 +251,13 @@ def decide_trades(
             buy_amount = cash * POSITION_SIZE
             new_trades = position_manager.open_1x_long(pair, buy_amount, stop_loss_pct=STOP_LOSS_PCT)
             trades.extend(new_trades)
-            logger.trade("New trade decided")
+            logger.info("New trade decided")
         else:
-            logger.trade("Did not decide a new trade")
+            logger.info("Did not decide a new trade")
 
     else:
 
-        logger.trade("Checking for close")
+        logger.info("Checking for close")
 
         # We have an open position, decide if SELL in this cycle.
         # We do that if we fall below any of the two moving averages.
@@ -314,7 +314,7 @@ def create_trading_universe(
         TRADING_PAIR[1],
     )
 
-    logger.trade("Universe created, we have %d pairs", universe.get_pair_count())
+    # logger.trade("Universe created, we have %d pairs", universe.get_pair_count())
 
     return universe
 
