@@ -115,12 +115,13 @@ class PandasTraderRunner(StrategyRunner):
 
                 logger.info("Updating strategy thinking image data")
 
-                # Draw the inline plot and expose them tot he web serber
-                large_figure = draw_single_pair_strategy_state(state, universe, height=1920)
-                large_image = render_plotly_figure_as_image_file(large_figure, width=1920, height=1920, format="svg")
+                # Draw the inline plot and expose them tot he web server
+                # TODO: SVGs here are not very readable, have them as a stop gap solution
+                large_figure = draw_single_pair_strategy_state(state, universe, height=1024)
+                large_image = render_plotly_figure_as_image_file(large_figure, width=1024, height=1024, format="svg")
 
                 large_figure.update_layout(template="plotly_dark")
-                large_image_dark = render_plotly_figure_as_image_file(small_figure, width=512, height=512, format="png")
+                large_image_dark = render_plotly_figure_as_image_file(large_figure, width=1024, height=1024, format="svg")
 
                 self.run_state.visualisation.update_image_data(
                     small_image,
