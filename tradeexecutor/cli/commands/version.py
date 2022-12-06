@@ -1,10 +1,12 @@
+"""version CLi command."""
+
 from tradeexecutor.cli.commands.app import app
 from tradeexecutor.cli.version_info import VersionInfo
 
 
 @app.command()
 def version():
-    """Check that the application loads without doing anything."""
+    """Print out the version information"""
     version_info = VersionInfo.read_docker_version()
     print(f"Version: {version_info.tag}")
     print(f"Commit hash: {version_info.commit_hash}")
