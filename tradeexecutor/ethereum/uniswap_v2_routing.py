@@ -67,6 +67,9 @@ class UniswapV2RoutingState(RoutingState):
         self.approved_routes = defaultdict(set)
         self.swap_gas_limit = swap_gas_limit
 
+    def __repr__(self):
+        return f"<UniswapV2RoutingState Tx builder: {self.tx_builder} web3: {self.web3}>"
+
     def is_route_approved(self, router_address: str):
         return router_address in self.approved_routes
 
@@ -582,6 +585,9 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
         hot_wallet = execution_details["hot_wallet"]
 
         fees = estimate_gas_fees(web3)
+
+        logger.info("Gas fee estimations for chain %d: %s", web3.eth.chain_id, fees)
+
         logger.info("Estimated gas fees for chain %d: %s", web3.eth.chain_id, fees)
         tx_builder = TransactionBuilder(web3, hot_wallet, fees)
         routing_state = UniswapV2RoutingState(universe.universe.pairs, tx_builder)

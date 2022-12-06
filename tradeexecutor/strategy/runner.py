@@ -274,6 +274,12 @@ class StrategyRunner(abc.ABC):
         # Create a valuation model for positions
         valuation_model = self.valuation_model_factory(pricing_model)
 
+        logger.debug("setup_routing(): routing_state: %s, pricing_model: %s, valuation_model: %s",
+                     routing_state,
+                     pricing_model,
+                     valuation_model
+                     )
+
         return routing_state, pricing_model, valuation_model
 
     def tick(self,
