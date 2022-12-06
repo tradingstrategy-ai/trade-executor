@@ -332,8 +332,10 @@ def visualise_single_pair(
 
     if axes:
         axes_text = pair_name
+        volume_text = "Volume USD"
     else:
         axes_text = None
+        volume_text = None
 
     fig = visualise_ohlcv(
         candles,
@@ -341,6 +343,7 @@ def visualise_single_pair(
         theme=theme,
         chart_name=title_text,
         y_axis_name=axes_text,
+        volume_axis_name=volume_text,
     )
 
     visualise_technical_indicators(
