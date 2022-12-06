@@ -15,6 +15,8 @@ from eth_defi.gas import estimate_gas_fees
 from eth_defi.token import fetch_erc20_details
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, fetch_deployment
 from eth_defi.uniswap_v2.swap import swap_with_slippage_protection
+from web3.exceptions import ContractLogicError
+
 from tradeexecutor.ethereum.execution import get_token_for_asset
 from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
@@ -624,9 +626,12 @@ def get_uniswap_for_pair(web3: Web3, factory_router_map: dict, target_pair: Trad
     factory_address = Web3.toChecksumAddress(target_pair.exchange_address)
     router_address, init_code_hash = factory_router_map[factory_address.lower()]
 
-    return fetch_deployment(
-        web3,
-        factory_address,
-        Web3.toChecksumAddress(router_address),
-        init_code_hash=init_code_hash,
-    )
+    try:
+        return fetch_deployment(
+            web3,
+            factory_address,
+            Web3.toChecksumAddress(router_address),
+            init_code_hash=init_code_hash,
+        )
+    except ContractLogicError as e:
+        raise RuntimeError(f"Could not fetch deployment data for router address {router_address} (factory {factory_address}) - data is likely wrong") from e
