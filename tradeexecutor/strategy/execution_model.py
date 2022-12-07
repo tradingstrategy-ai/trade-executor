@@ -102,7 +102,6 @@ class ExecutionModel(abc.ABC):
             Useful during unit tests to spot issues in trade routing.
         """
 
-
     @abc.abstractmethod
     def repair_unconfirmed_trades(self, state: State) -> List[TradeExecution]:
         """Repair unconfirmed trades.
