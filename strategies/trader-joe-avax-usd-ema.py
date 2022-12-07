@@ -61,8 +61,6 @@ STOP_LOSS_PCT = 0.993
 STOP_LOSS_TIME_BUCKET = TimeBucket.m15
 
 
-logger = logging.getLogger(__name__)
-
 def decide_trades(
         timestamp: pd.Timestamp,
         universe: Universe,
@@ -84,13 +82,11 @@ def decide_trades(
     if slow_ema_series is None or fast_ema_series is None:
         # Cannot calculate EMA, because
         # not enough samples in backtesting
-        logger.warning("slow_ema_series or fast_ema_series None")
         return []
 
     if len(slow_ema_series) < 2 or len(fast_ema_series) < 2:
         # We need at least two data points to determine if EMA crossover (or crossunder)
         # occurred at current timestamp.
-        logger.warning("series too short")
         return []
 
     slow_ema_latest = slow_ema_series.iloc[-1]
@@ -120,8 +116,6 @@ def decide_trades(
         # We buy if we just crossed over the slow EMA or if this is a very first
         # trading cycle and the price is already above the slow EMA.
 
-        logger.trade("Starting a new trade")
-
         if (
                 slow_ema_crossunder
                 or price_latest < slow_ema_latest and timestamp == START_AT
@@ -130,8 +124,6 @@ def decide_trades(
             new_trades = position_manager.open_1x_long(pair, buy_amount, stop_loss_pct=STOP_LOSS_PCT)
             trades.extend(new_trades)
     else:
-
-        logger.trade("Checking for close")
 
         # We have an open position, decide if SELL in this cycle.
         # We do that if we fall below any of the two moving averages.
@@ -177,7 +169,5 @@ def create_trading_universe(
         TRADING_PAIR[0],
         TRADING_PAIR[1],
     )
-
-    logger.warning("Universe created, we have %d pairs")
 
     return universe
