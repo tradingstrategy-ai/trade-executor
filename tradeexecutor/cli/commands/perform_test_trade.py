@@ -84,7 +84,7 @@ def perform_test_trade(
         execution_type=TradeExecutionType.uniswap_v2_hot_wallet,
         private_key=private_key,
         web3config=web3config,
-        confirmation_timeout=60,
+        confirmation_timeout=datetime.timedelta(seconds=60),
         confirmation_block_count=6,
         max_slippage=2.50,
         min_balance_threshold=0,
