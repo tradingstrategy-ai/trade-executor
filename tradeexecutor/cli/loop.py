@@ -580,7 +580,7 @@ class ExecutionLoop:
         def die(exc: Exception):
             # Shutdown the scheduler and mark an clean exit
             nonlocal crash_exception
-            logger.exception(e)
+            logger.exception(exc)
             scheduler.shutdown(wait=False)
             crash_exception = exc
 

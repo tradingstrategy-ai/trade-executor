@@ -4,6 +4,7 @@ Logic for managing position stop loss/take profit signals.
 """
 import datetime
 import logging
+from decimal import Decimal
 from io import StringIO
 from typing import List, Dict
 
@@ -87,6 +88,11 @@ def check_position_triggers(
         assert p.is_long(), "Stop loss supported only for long positions"
 
         size = p.get_quantity()
+
+        # TODO: Tracking down math bug
+        if not isinstance(size, Decimal):
+            logger.warning("Got bad size %s: %s", size, size.__class__)
+            size = Decimal(size)
 
         try:
             mid_price = pricing_model.get_mid_price(ts, p.pair)

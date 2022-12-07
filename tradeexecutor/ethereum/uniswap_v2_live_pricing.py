@@ -66,6 +66,8 @@ class UniswapV2LivePricing(PricingModel):
         self.very_small_amount = very_small_amount
         self.routing_model = routing_model
 
+        assert isinstance(self.very_small_amount, Decimal)
+
     def get_pair_for_id(self, internal_id: int) -> Optional[TradingPairIdentifier]:
         """Look up a trading pair.
 
@@ -91,6 +93,8 @@ class UniswapV2LivePricing(PricingModel):
 
         if quantity is None:
             quantity = Decimal(self.very_small_amount)
+
+        assert isinstance(quantity, Decimal)
 
         target_pair, intermediate_pair = self.routing_model.route_pair(self.pair_universe, pair)
 
