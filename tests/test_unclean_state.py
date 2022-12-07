@@ -15,7 +15,9 @@ from tradingstrategy.chain import ChainId
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.state.portfolio import Portfolio
+from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.reserve import ReservePosition
+from tradeexecutor.state.state import State, UncleanState
 from tradeexecutor.state.trade import TradeType, TradeExecution
 
 
@@ -64,10 +66,10 @@ def start_ts(usdc, weth) -> datetime.datetime:
 def test_broadcasted_trade(start_ts, weth_usdc, weth, usdc):
     """Clean check fails if we have broadcasted, but not confirmed trades."""
 
-    p = Portfolio()
+    portfolio = Portfolio()
 
     reserve = ReservePosition(usdc, Decimal(500), start_ts, 1.0, start_ts)
-    p.reserves[reserve.get_identifier()] = reserve
+    portfolio.reserves[reserve.get_identifier()] = reserve
 
     trade = TradeExecution(
         trade_id = 1,
@@ -96,7 +98,7 @@ def test_broadcasted_trade(start_ts, weth_usdc, weth, usdc):
 
     assert not trade.is_success()
     assert not trade.is_success()
-    assert trade.is_success()
+    assert trade.is_unfinished()
 
     position = TradingPosition(
         position_id=1,
@@ -109,4 +111,9 @@ def test_broadcasted_trade(start_ts, weth_usdc, weth, usdc):
         trades={1: trade},
     )
 
-    p.open_positions = {1: position}
+    portfolio.open_positions = {1: position}
+
+    state = State(portfolio=portfolio)
+
+    with pytest.raises(UncleanState):
+        state.check_if_clean()

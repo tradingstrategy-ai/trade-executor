@@ -265,9 +265,9 @@ class State:
             In the case we detect unclean stuff
         """
 
-        for position_id, p in self.portfolio.open_positions.values():
+        for p in self.portfolio.open_positions.values():
             t: TradeExecution
-            for t in p.trades:
+            for t in p.trades.values():
                 if t.is_unfinished():
                     raise UncleanState(f"Position {p}, trade {t} is unfinished")
 
