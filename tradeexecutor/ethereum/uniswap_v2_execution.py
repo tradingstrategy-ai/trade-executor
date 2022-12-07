@@ -110,6 +110,8 @@ class UniswapV2ExecutionModel(ExecutionModel):
 
         state.start_trades(datetime.datetime.utcnow(), trades, max_slippage=self.max_slippage)
 
+        assert self.confirmation_block_count > 0, f"confirmation_block_count set to {self.confirmation_block_count} "
+
         routing_model.setup_trades(
             routing_state,
             trades,
@@ -120,6 +122,7 @@ class UniswapV2ExecutionModel(ExecutionModel):
             state,
             trades,
             confirmation_timeout=self.confirmation_timeout,
+            confirmation_block_count=self.confirmation_block_count,
         )
 
         # Clean up failed trades
@@ -145,6 +148,9 @@ class UniswapV2ExecutionModel(ExecutionModel):
         assert self.confirmation_timeout > datetime.timedelta(0), \
             "Make sure you have a good tx confirmation timeout setting before attempting a repair"
 
+        assert self.confirmation_block_count > 0, \
+            "Make sure you have a good confirmation_block_count setting before attempting a repair"
+
         for p in state.portfolio.open_positions.values():
             t: TradeExecution
             for t in p.trades.values():
@@ -157,6 +163,7 @@ class UniswapV2ExecutionModel(ExecutionModel):
                         self.web3,
                         [t],
                         max_timeout=self.confirmation_timeout,
+                        confirmation_block_count=self.confirmation_block_count,
                     )
 
                     assert len(receipt_data) > 0, f"Got bad receipts: {receipt_data}"
