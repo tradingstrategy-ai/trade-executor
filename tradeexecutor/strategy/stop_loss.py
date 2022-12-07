@@ -89,6 +89,10 @@ def check_position_triggers(
 
         size = p.get_quantity()
 
+        if size == 0:
+            logger.warning("Encountered position without token quantity: %s", p)
+            continue
+
         # TODO: Tracking down math bug
         if not isinstance(size, Decimal):
             logger.warning("Got bad size %s: %s", size, size.__class__)

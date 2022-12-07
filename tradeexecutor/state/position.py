@@ -195,7 +195,8 @@ class TradingPosition:
 
         Does not account for trades that are currently being executd.
         """
-        return sum([t.get_position_quantity() for t in self.trades.values() if t.is_success()])
+        s = sum([t.get_position_quantity() for t in self.trades.values() if t.is_success()])
+        return Decimal(s)  # Make zero to decimal
 
     def get_live_quantity(self) -> Decimal:
         """Get all tied up token quantity.
