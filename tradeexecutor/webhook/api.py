@@ -179,5 +179,5 @@ def web_visulisation(request: Request):
         r.body = data
         return r
     else:
-        raise NotImplementedError()
+        return exception_response(404, detail=f"Unknown type {type}")
 
