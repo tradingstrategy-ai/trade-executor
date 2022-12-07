@@ -161,3 +161,5 @@ class BacktestExecutionModel(ExecutionModel):
     def get_routing_state_details(self) -> dict:
         return {"wallet": self.wallet}
 
+    def repair_unconfirmed_trades(self, state: State) -> List[TradeExecution]:
+        raise NotImplementedError()

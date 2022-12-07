@@ -27,9 +27,9 @@ def web_home(request: Request):
     The homepage displays plain text version banner.
     """
     url = request.application_url
-    version_ = version('trade-executor')
+    run_state: RunState = request.registry["run_state"]
     # https://angrybirds.fandom.com/wiki/The_Flock
-    return Response(f'Chuck the Trade Executor server, version {version_}, our URL is {url}\nFor more information see https://tradingstrategy.ai\nRemember to play Angry Birds.', content_type="text/plain")
+    return Response(f'Chuck the Trade Executor, running strategy {run_state.executor_id}, version {run_state.version.tag}, our URL is {url}\nFor more information see https://tradingstrategy.ai\nRemember to play Angry Birds.', content_type="text/plain")
 
 
 @view_config(route_name='web_ping', renderer='json', permission='view')

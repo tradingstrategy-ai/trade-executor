@@ -222,6 +222,7 @@ def start(
 
     run_state = RunState()
     run_state.version = VersionInfo.read_docker_version()
+    run_state.executor_id = id
 
     # Create our webhook server
     if http_enabled:
