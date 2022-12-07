@@ -85,7 +85,7 @@ def perform_test_trade(
         private_key=private_key,
         web3config=web3config,
         confirmation_timeout=datetime.timedelta(seconds=60),
-        confirmation_block_count=6,
+        confirmation_block_count=2,
         max_slippage=2.50,
         min_balance_threshold=0,
     )
