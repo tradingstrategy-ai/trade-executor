@@ -223,12 +223,16 @@ class TradeExecution:
         """This trade is made to close take profit on a position."""
         return self.trade_type == TradeType.take_profit
 
-    def is_accounted_for_equity(self):
+    def is_accounted_for_equity(self) -> bool:
         """Does this trade contribute towards the trading position equity.
 
         Failed trades are reverted. Only their fees account.
         """
         return self.get_status() in (TradeStatus.started, TradeStatus.broadcasted, TradeStatus.success)
+
+    def is_unfinished(self) -> bool:
+        """We could not confirm this trade back from the blockchain after broadcasting."""
+        return self.get_status() in (TradeStatus.broadcasted,)
 
     def get_status(self) -> TradeStatus:
         if self.failed_at:

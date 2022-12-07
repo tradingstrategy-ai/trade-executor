@@ -22,6 +22,11 @@ from .types import USDollarAmount
 from .visualisation import Visualisation
 
 
+
+class UncleanState(Exception):
+    """State containst trades that need manual intervention."""
+
+
 @dataclass_json
 @dataclass
 class State:
@@ -238,3 +243,32 @@ class State:
 
             t.started_at = ts
             t.planned_max_slippage = max_slippage
+
+    def check_if_clean(self):
+        """Check that the state data is intact.
+
+        Check for the issues that could be caused e.g. trade-executor unclean shutdown
+        or a blockchain node crash.
+
+        One of a typical issue would be
+
+        - A trade that failed to execute
+
+        - A trade that was broadcasted, but we did not get a confirmation back in time,
+          causing the trade executor to crash
+
+        Call this when you restart a trade execution to ensure
+        the old state is intact. For any unfinished trades,
+        run a repair command or manually repair the database.
+
+        :raise UncleanState:
+            In the case we detect unclean stuff
+        """
+
+        for position_id, p in self.portfolio.open_positions.values():
+            t: TradeExecution
+            for t in p.trades:
+                if t.is_unfinished():
+                    raise UncleanState(f"Position {p}, trade {t} is unfinished")
+
+
