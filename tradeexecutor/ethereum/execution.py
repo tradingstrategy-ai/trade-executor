@@ -473,7 +473,10 @@ def broadcast_and_resolve(
     - Based on the transaction result, update the state of the trade if it was success or not
 
     :confirmation_timeout:
-        Max time to wait for a confirmation
+        Max time to wait for a confirmation.
+
+        We can use zero or negative values to simulate unconfirmed trades.
+        See `test_broadcast_failed_and_repair_state`.
 
     :param stop_on_execution_failure:
         If any of the transactions fail, then raise an exception.
@@ -483,15 +486,19 @@ def broadcast_and_resolve(
     assert isinstance(confirmation_timeout, datetime.timedelta)
 
     broadcasted = broadcast(web3, datetime.datetime.utcnow(), trades)
-    receipts = wait_trades_to_complete(
-        web3,
-        trades,
-        max_timeout=confirmation_timeout,
-    )
-    resolve_trades(
-        web3,
-        datetime.datetime.now(),
-        state,
-        broadcasted,
-        receipts,
-        stop_on_execution_failure=stop_on_execution_failure)
+
+    if confirmation_timeout > datetime.timedelta(0):
+
+        receipts = wait_trades_to_complete(
+            web3,
+            trades,
+            max_timeout=confirmation_timeout,
+        )
+
+        resolve_trades(
+            web3,
+            datetime.datetime.now(),
+            state,
+            broadcasted,
+            receipts,
+            stop_on_execution_failure=stop_on_execution_failure)

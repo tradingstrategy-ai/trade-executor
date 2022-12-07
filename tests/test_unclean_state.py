@@ -71,6 +71,8 @@ def test_broadcasted_trade(start_ts, weth_usdc, weth, usdc):
     reserve = ReservePosition(usdc, Decimal(500), start_ts, 1.0, start_ts)
     portfolio.reserves[reserve.get_identifier()] = reserve
 
+    # Create a trade that was broadcasted,
+    # but not confirmed
     trade = TradeExecution(
         trade_id = 1,
         position_id =1,

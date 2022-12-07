@@ -3,9 +3,9 @@
 """
 import datetime
 import secrets
-import warnings
 from decimal import Decimal
 from typing import List
+from unittest.mock import patch
 
 import pytest
 import pandas as pd
@@ -25,9 +25,9 @@ from web3.contract import Contract
 from eth_defi.token import create_token
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, deploy_trading_pair, deploy_uniswap_v2_like
 
-from tradeexecutor.cli.log import setup_custom_log_levels
+from tradeexecutor.ethereum.uniswap_v2_execution import UniswapV2ExecutionModel
 from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2SimpleRoutingModel
-from tradeexecutor.state.state import State
+from tradeexecutor.state.state import State, UncleanState
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.strategy.pricing_model import PricingModel
@@ -489,3 +489,61 @@ def test_live_stop_loss_missing(
 
     # Check state data looks sane
     assert len(trades) == 0, "Stop loss unexpectedly triggered"
+
+
+
+def test_broadcast_failed_and_repair_state(
+        logger,
+        web3: Web3,
+        deployer: HexAddress,
+        trader: LocalAccount,
+        trading_strategy_universe: TradingStrategyUniverse,
+        routing_model: UniswapV2SimpleRoutingModel,
+        uniswap_v2: UniswapV2Deployment,
+        usdc_token: Contract,
+        weth_token: Contract,
+
+):
+    """Check that we can recover from the situation where the transaction broadcast has failed.
+
+    TODO: This test case should be moved to its own test module,
+    but is here because a lot of shared fixtures.
+    """
+
+    # Set up an execution loop we can step through
+    state = State()
+    loop = set_up_simulated_execution_loop_uniswap_v2(
+        web3=web3,
+        decide_trades=decide_trades_no_stop_loss,
+        universe=trading_strategy_universe,
+        state=state,
+        wallet_account=trader,
+        routing_model=routing_model,
+    )
+
+    ts = get_latest_block_timestamp(web3)
+
+    # Make transaction confirmation step to skip,
+    execution_model = loop.execution_model
+    assert isinstance(execution_model, UniswapV2ExecutionModel)
+
+    # Set confirmation timeout to negative
+    # to signal we are testing broadcast problems
+    execution_model.confirmation_timeout = datetime.timedelta(seconds=-1)
+
+    loop.tick(
+        ts,
+        loop.cycle_duration,
+        state,
+        cycle=1,
+        live=True,
+    )
+
+    # We are stuck with broadcasted but not confirmed trades
+    with pytest.raises(UncleanState):
+        state.check_if_clean()
+
+    t = state.portfolio.open_positions[1].trades[1]
+    assert t.is_unfinished()
+
+

@@ -555,6 +555,9 @@ class ExecutionLoop:
         ts = datetime.datetime.utcnow()
         logger.info("Strategy is executed in live mode, now is %s", ts)
 
+        # Do not allow starting a strategy that has unclean state
+        state.check_if_clean()
+
         if self.is_live_trading_unit_test():
             # Test app initialisation.
             # Do not start any background threads.
