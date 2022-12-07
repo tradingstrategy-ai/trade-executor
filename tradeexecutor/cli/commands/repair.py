@@ -133,6 +133,12 @@ def repair(
     except UncleanState:
         pass
 
+    print("Issues detected in the strategy to state.")
+    print("Make sure trade executor is stopped before attempting to repair.")
+    confirm = input(f"Attempt to repair: {id}: {state_file}? [y/n]")
+    if confirm.lower() != "y":
+        return
+
     repaired = runner.repair_state(state)
 
     store.sync(state)
