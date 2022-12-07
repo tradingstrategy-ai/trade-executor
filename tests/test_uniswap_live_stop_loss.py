@@ -560,7 +560,3 @@ def test_broadcast_failed_and_repair_state(
     assert t.is_success()
 
     state.check_if_clean()
-
-
-
-

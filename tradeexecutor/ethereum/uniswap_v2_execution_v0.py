@@ -222,3 +222,6 @@ class UniswapV2ExecutionModelVersion0(ExecutionModel):
             "web3": self.web3,
             "hot_wallet": self.hot_wallet,
         }
+
+    def repair_unconfirmed_trades(self, state: State) -> List[TradeExecution]:
+        raise NotImplementedError()
