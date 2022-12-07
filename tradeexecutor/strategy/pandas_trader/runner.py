@@ -104,7 +104,7 @@ class PandasTraderRunner(StrategyRunner):
 
             # Post strategy thinking image to Discord
             small_figure = draw_single_pair_strategy_state(state, universe, height=512)
-            small_image = render_plotly_figure_as_image_file(small_figure, width=512, height=512, format="png")
+            small_image = render_plotly_figure_as_image_file(small_figure, width=768, height=512, format="png")
 
             small_figure.update_layout(template="plotly_dark")
             small_image_dark = render_plotly_figure_as_image_file(small_figure, width=512, height=512, format="png")
