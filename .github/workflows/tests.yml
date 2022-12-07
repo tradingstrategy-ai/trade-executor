@@ -43,9 +43,9 @@ jobs:
 
   build:
     runs-on: ubuntu-latest
-    needs: automated-test-suite
-    # Skip build on master push
-    if: github.event_name != 'push' || github.ref != 'refs/heads/master'
+    # needs: automated-test-suite
+    # Only build on tag push
+    if: github.event_name == 'push' && contains(github.ref, 'refs/tags/v')
     env:
       REGISTRY: ghcr.io
     steps:
@@ -89,7 +89,7 @@ jobs:
   # Trigger workflow_dispatch in other repos (binder-env, docs...)
   build-other-repos:
     runs-on: ubuntu-latest
-    needs: automated-test-suite
+    # needs: automated-test-suite
     # Only trigger on master branch push
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     steps:
