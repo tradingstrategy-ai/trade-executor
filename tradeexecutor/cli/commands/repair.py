@@ -15,7 +15,6 @@ from .app import app
 from ..init import prepare_executor_id, prepare_cache, create_web3_config, create_state_store, \
     create_trade_execution_model
 from ..log import setup_logging
-from ..testtrade import make_test_trade
 from ...state.state import UncleanState
 from ...strategy.approval import UncheckedApprovalModel
 from ...strategy.bootstrap import make_factory_from_strategy_mod
@@ -134,7 +133,8 @@ def repair(
     except UncleanState:
         pass
 
-    runner.repair_state(state)
+    repaired = runner.repair_state(state)
 
     store.sync(state)
 
+    print(f"Repaired {len(repaired)} trades")

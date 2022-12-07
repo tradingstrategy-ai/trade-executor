@@ -82,6 +82,9 @@ class RunState:
     - /summary
     """
 
+    #: Reflect executor id back to the web interface, etc.
+    executor_id: Optional[str] = None
+
     #: When the execution state was updated last time
     last_refreshed_at: datetime.datetime = field(default_factory=datetime.datetime.utcnow)
 
