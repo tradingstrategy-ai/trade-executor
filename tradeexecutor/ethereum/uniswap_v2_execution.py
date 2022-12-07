@@ -53,6 +53,7 @@ class UniswapV2ExecutionModel(ExecutionModel):
         :param max_slippage:
             Max slippage tolerance per trade. 0.01 is 1%.
         """
+        assert isinstance(confirmation_timeout, datetime.timedelta), f"Got {confirmation_timeout} {confirmation_timeout.__class__}"
         self.web3 = web3
         self.hot_wallet = hot_wallet
         self.stop_on_execution_failure = stop_on_execution_failure
@@ -114,7 +115,12 @@ class UniswapV2ExecutionModel(ExecutionModel):
             trades,
             check_balances=check_balances)
 
-        broadcast_and_resolve(self.web3, state, trades)
+        broadcast_and_resolve(
+            self.web3,
+            state,
+            trades,
+            confirmation_timeout=self.confirmation_timeout,
+        )
 
         # Clean up failed trades
         freeze_position_on_failed_trade(ts, state, trades)

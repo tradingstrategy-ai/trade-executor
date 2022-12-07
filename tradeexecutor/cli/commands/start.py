@@ -191,7 +191,7 @@ def start(
     if unit_testing:
         # Do not let Ganache to wait for too long
         # because likely Ganache has simply crashed on background
-        confirmation_timeout = 30
+        confirmation_timeout = datetime.timedelta(seconds=30)
 
     execution_model, sync_method, valuation_model_factory, pricing_model_factory = create_trade_execution_model(
         execution_type,

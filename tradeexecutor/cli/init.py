@@ -82,6 +82,8 @@ def create_trade_execution_model(
 ):
     """Set up the execution mode for the command line client."""
 
+    assert isinstance(confirmation_timeout, datetime.timedelta), f"Got {confirmation_timeout}"
+
     if execution_type == TradeExecutionType.dummy:
         return DummyExecutionModel()
     elif execution_type == TradeExecutionType.uniswap_v2_hot_wallet:

@@ -309,7 +309,7 @@ def wait_trades_to_complete(
 
     :return: Map of transaction hashes -> receipt
     """
-    logger.info("Waiting %d trades to confirm", len(trades))
+    logger.info("Waiting %d trades to confirm, confirm block count %d, timeout %s", len(trades), confirmation_block_count, max_timeout)
     assert isinstance(confirmation_block_count, int)
     tx_hashes = []
     for t in trades:
@@ -461,7 +461,8 @@ def broadcast_and_resolve(
         web3: Web3,
         state: State,
         trades: List[TradeExecution],
-        stop_on_execution_failure=False
+        confirmation_timeout: datetime.timedelta = datetime.timedelta(minutes=1),
+        stop_on_execution_failure=False,
 ):
     """Do the live trade execution.
 
@@ -471,12 +472,22 @@ def broadcast_and_resolve(
 
     - Based on the transaction result, update the state of the trade if it was success or not
 
+    :confirmation_timeout:
+        Max time to wait for a confirmation
+
     :param stop_on_execution_failure:
         If any of the transactions fail, then raise an exception.
         Set for unit test.
     """
+
+    assert isinstance(confirmation_timeout, datetime.timedelta)
+
     broadcasted = broadcast(web3, datetime.datetime.utcnow(), trades)
-    receipts = wait_trades_to_complete(web3, trades)
+    receipts = wait_trades_to_complete(
+        web3,
+        trades,
+        max_timeout=confirmation_timeout,
+    )
     resolve_trades(
         web3,
         datetime.datetime.now(),
