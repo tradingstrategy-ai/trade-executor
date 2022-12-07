@@ -441,3 +441,20 @@ class StrategyRunner(abc.ABC):
 
             return approved_trades
 
+
+    def repair_state(self, state: State) -> List[TradeExecution]:
+        """Repair unclean state issues.
+
+        Currently supports
+
+        - Fixing unfinished trades
+
+        :return:
+            List of fixed trades
+        """
+
+        logger.info("Reparing the state")
+
+        repaired = []
+        repaired += self.execution_model.repair_unconfirmed_trades(state)
+        return repaired

@@ -154,6 +154,12 @@ class TradeExecution:
     #: Special case; not worth to display unless the field is filled in.
     notes: Optional[str] = None
 
+    #: Trade was manually repaird
+    #:
+    #: E.g. failed broadcast issue was fixed.
+    #: Marked when the repair command is called.
+    repaired_at: Optional[datetime.datetime] = None
+
     def __repr__(self):
         if self.is_buy():
             return f"<Buy #{self.trade_id} {self.planned_quantity} {self.pair.base.token_symbol} at {self.planned_price}, {self.get_status().name}>"

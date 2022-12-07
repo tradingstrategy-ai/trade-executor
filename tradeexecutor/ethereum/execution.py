@@ -266,7 +266,8 @@ def broadcast(
         ts: datetime.datetime,
         instructions: List[TradeExecution],
         confirmation_block_count: int=0,
-        ganache_sleep=0.5) -> Dict[HexBytes, Tuple[TradeExecution, BlockchainTransaction]]:
+        ganache_sleep=0.5,
+) -> Dict[HexBytes, Tuple[TradeExecution, BlockchainTransaction]]:
     """Broadcast multiple transations and manage the trade executor state for them.
 
     :return: Map of transaction hashes to watch
@@ -344,6 +345,12 @@ def resolve_trades(
     Read on-chain Uniswap swap data from the transaction receipt and record how it went.
 
     Mutates the trade objects in-place.
+
+    :param tx_map:
+        tx hash -> (trade, transaction) mapping
+
+    :param receipts:
+        tx hash -> receipt object mapping
 
     :param stop_on_execution_failure:
         Raise an exception if any of the trades failed

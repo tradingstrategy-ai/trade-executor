@@ -8,11 +8,11 @@ import logging
 from web3 import Web3
 
 from eth_defi.hotwallet import HotWallet
-from tradeexecutor.ethereum.execution import broadcast_and_resolve
+from tradeexecutor.ethereum.execution import broadcast_and_resolve, wait_trades_to_complete, resolve_trades
 from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2SimpleRoutingModel, UniswapV2RoutingState
 from tradeexecutor.state.freeze import freeze_position_on_failed_trade
 from tradeexecutor.state.state import State
-from tradeexecutor.state.trade import TradeExecution
+from tradeexecutor.state.trade import TradeExecution, TradeStatus
 from tradeexecutor.strategy.execution_model import ExecutionModel
 
 
@@ -130,4 +130,52 @@ class UniswapV2ExecutionModel(ExecutionModel):
             "web3": self.web3,
             "hot_wallet": self.hot_wallet,
         }
+
+    def repair_unconfirmed_trades(self, state: State) -> List[TradeExecution]:
+        """Repair unconfirmed trades.
+
+        Repair trades that failed to properly broadcast or confirm due to
+        blockchain node issues.
+        """
+
+        repaired = []
+
+        logger.info("Reparing the failed trade confirmation")
+
+        assert self.confirmation_timeout > datetime.timedelta(0), \
+            "Make sure you have a good tx confirmation timeout setting before attempting a repair"
+
+        for p in state.portfolio.open_positions.values():
+            t: TradeExecution
+            for t in p.trades.values():
+                if t.is_unfinished():
+                    logger.info("Found unconfirmed trade: %s", t)
+
+                    assert t.get_status() == TradeStatus.broadcasted
+
+                    receipt_data = wait_trades_to_complete(
+                        self.web3,
+                        [t],
+                        max_timeout=self.confirmation_timeout,
+                    )
+
+                    assert len(receipt_data) > 0, f"Got bad receipts: {receipt_data}"
+
+                    tx_data = {}
+
+                    # Build a tx hash -> (trade, tx) map
+                    for tx in t.blockchain_transactions:
+                        tx_data[tx.tx_hash] = (t, tx)
+
+                    resolve_trades(
+                        self.web3,
+                        datetime.datetime.now(),
+                        state,
+                        tx_data,
+                        receipt_data,
+                        stop_on_execution_failure=True)
+
+                    repaired.append(t)
+
+        return repaired
 

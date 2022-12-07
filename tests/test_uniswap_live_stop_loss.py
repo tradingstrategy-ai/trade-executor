@@ -539,11 +539,28 @@ def test_broadcast_failed_and_repair_state(
         live=True,
     )
 
+    # Reset confirmation timeout to the normal value
+    execution_model.confirmation_timeout = datetime.timedelta(seconds=30)
+
     # We are stuck with broadcasted but not confirmed trades
     with pytest.raises(UncleanState):
         state.check_if_clean()
 
     t = state.portfolio.open_positions[1].trades[1]
     assert t.is_unfinished()
+
+    # Attempt repair
+    trades = loop.runner.repair_state(state)
+
+    # We repaired one trade
+    assert len(trades)== 1
+
+    # State is clean now
+    t = state.portfolio.open_positions[1].trades[1]
+    assert t.is_success()
+
+    state.check_if_clean()
+
+
 
 
