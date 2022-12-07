@@ -124,7 +124,7 @@ class Web3Config:
         try:
             return self.connections[self.default_chain_id]
         except KeyError:
-            raise RuntimeError(f"We haev {self.default_chain_id.name} configured as the default blockchain, but we do not have a connection for it in the connection pool. Did you pass right RPC configuration?")
+            raise RuntimeError(f"We have {self.default_chain_id.name} configured as the default blockchain, but we do not have a connection for it in the connection pool. Did you pass right RPC configuration?")
 
     def check_default_chain_id(self):
         """Check that we are connected to the correct chain.

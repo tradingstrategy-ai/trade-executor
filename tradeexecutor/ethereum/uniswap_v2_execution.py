@@ -110,7 +110,9 @@ class UniswapV2ExecutionModel(ExecutionModel):
 
         state.start_trades(datetime.datetime.utcnow(), trades, max_slippage=self.max_slippage)
 
-        assert self.confirmation_block_count > 0, f"confirmation_block_count set to {self.confirmation_block_count} "
+        # 61 is Ethereum Tester
+        if self.web3.eth.chain_id != 61:
+            assert self.confirmation_block_count > 0, f"confirmation_block_count set to {self.confirmation_block_count} "
 
         routing_model.setup_trades(
             routing_state,
@@ -148,8 +150,10 @@ class UniswapV2ExecutionModel(ExecutionModel):
         assert self.confirmation_timeout > datetime.timedelta(0), \
             "Make sure you have a good tx confirmation timeout setting before attempting a repair"
 
-        assert self.confirmation_block_count > 0, \
-            "Make sure you have a good confirmation_block_count setting before attempting a repair"
+        # Check if we are on a live chain, not Ethereum Tester
+        if self.web3.eth.chain_id != 61:
+            assert self.confirmation_block_count > 0, \
+                "Make sure you have a good confirmation_block_count setting before attempting a repair"
 
         for p in state.portfolio.open_positions.values():
             t: TradeExecution

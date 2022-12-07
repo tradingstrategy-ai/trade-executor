@@ -469,7 +469,7 @@ def broadcast_and_resolve(
         state: State,
         trades: List[TradeExecution],
         confirmation_timeout: datetime.timedelta = datetime.timedelta(minutes=1),
-        confirmation_block_count: int=1,
+        confirmation_block_count: int=0,
         stop_on_execution_failure=False,
 ):
     """Do the live trade execution.
