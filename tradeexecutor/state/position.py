@@ -240,6 +240,10 @@ class TradingPosition:
         """Get all trades that have been successfully executed and contribute to this position"""
         return [t for t in self.trades.values() if t.is_success()]
 
+    def get_failed_trades(self) -> List[TradeExecution]:
+        """Get all trades that have failed in the execution."""
+        return [t for t in self.trades.values() if t.is_failed()]
+
     def calculate_value_using_price(self, token_price: USDollarAmount, reserve_price: USDollarAmount) -> USDollarAmount:
         token_quantity = sum([t.get_equity_for_position() for t in self.trades.values() if t.is_accounted_for_equity()])
         reserve_quantity = sum([t.get_equity_for_reserve() for t in self.trades.values() if t.is_accounted_for_equity()])
