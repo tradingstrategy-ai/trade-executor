@@ -240,6 +240,14 @@ class TradeExecution:
         """We could not confirm this trade back from the blockchain after broadcasting."""
         return self.get_status() in (TradeStatus.broadcasted,)
 
+    def is_repaired(self) -> bool:
+        """The automatic execution failed and this was later repaired.
+
+        A manual repair command was issued and it manaeged to correctly repair this trade
+        and underlying transactions.
+        """
+        return self.repaired_at is not None
+
     def get_status(self) -> TradeStatus:
         if self.failed_at:
             return TradeStatus.failed

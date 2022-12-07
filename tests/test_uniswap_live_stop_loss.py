@@ -491,7 +491,6 @@ def test_live_stop_loss_missing(
     assert len(trades) == 0, "Stop loss unexpectedly triggered"
 
 
-
 def test_broadcast_failed_and_repair_state(
         logger,
         web3: Web3,
@@ -558,5 +557,6 @@ def test_broadcast_failed_and_repair_state(
     # State is clean now
     t = state.portfolio.open_positions[1].trades[1]
     assert t.is_success()
+    assert t.is_repaired()
 
     state.check_if_clean()

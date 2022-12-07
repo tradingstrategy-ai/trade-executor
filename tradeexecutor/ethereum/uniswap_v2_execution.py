@@ -175,6 +175,12 @@ class UniswapV2ExecutionModel(ExecutionModel):
                         receipt_data,
                         stop_on_execution_failure=True)
 
+                    t.repaired_at = datetime.datetime.utcnow()
+                    if not t.notes:
+                        # Add human readable note,
+                        # but don't override any other notes
+                        t.notes = "Failed broadcast repaired"
+
                     repaired.append(t)
 
         return repaired
