@@ -469,6 +469,7 @@ def broadcast_and_resolve(
         state: State,
         trades: List[TradeExecution],
         confirmation_timeout: datetime.timedelta = datetime.timedelta(minutes=1),
+        confirmation_block_count: int=0,
         stop_on_execution_failure=False,
 ):
     """Do the live trade execution.
@@ -478,6 +479,9 @@ def broadcast_and_resolve(
     - Wait transactions to be mined
 
     - Based on the transaction result, update the state of the trade if it was success or not
+
+    :param confirmation_block_count:
+        How many blocks to wait until marking transaction as confirmed
 
     :confirmation_timeout:
         Max time to wait for a confirmation.
@@ -500,6 +504,7 @@ def broadcast_and_resolve(
             web3,
             trades,
             max_timeout=confirmation_timeout,
+            confirmation_block_count=confirmation_block_count,
         )
 
         resolve_trades(
