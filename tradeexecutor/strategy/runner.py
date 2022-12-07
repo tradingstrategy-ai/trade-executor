@@ -353,7 +353,7 @@ class StrategyRunner(abc.ABC):
 
             # Shortcut quit here if no trades are needed
             if len(rebalance_trades) == 0:
-                logger.trade("No trades new trades decided")
+                logger.trade("No action taken: strategy decided not to open or close any positions")
                 return debug_details
 
             # Ask user confirmation for any trades
