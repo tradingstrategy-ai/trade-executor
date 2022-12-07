@@ -325,7 +325,7 @@ class AssetTradeHistory:
 
 
 @dataclass_json
-@dataclass(frozen=True)
+@dataclass(slots=True)
 class TradeSummary:
     """Some generic statistics over all the trades"""
     won: int
@@ -362,7 +362,7 @@ class TradeSummary:
     win_percent: float = field(init=False)
     return_percent: float = field(init=False)
     annualised_return_percent: float = field(init=False)
-    all_stop_loss_percent: float = field(init=False)
+    all_stop_loss_percent: float = field(init=False)s
     lost_stop_loss_percent: float = field(init=False)
     average_net_profit: USDollarAmount = field(init=False)
     end_value: USDollarAmount = field(init=False)
