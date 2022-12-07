@@ -265,7 +265,7 @@ def start(
     logger.info("Loading strategy file %s", strategy_file)
     strategy_factory = import_strategy_file(strategy_file)
 
-    logger.trade("Trade Executor version %s starting strategy %s", TRADE_EXECUTOR_VERSION, name)
+    logger.trade("%s: trade Executor starting", name)
 
     if backtest_start:
         # Running as a backtest

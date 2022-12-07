@@ -2,7 +2,6 @@
 
 import typer
 import shutil
-from importlib.metadata import version
 
 from tradeexecutor.cli.init import monkey_patch
 
@@ -13,7 +12,12 @@ app = typer.Typer(context_settings={
 })
 
 
-TRADE_EXECUTOR_VERSION = version('trade-executor')
+#: We do not use Python package versions, but Docker image files to track the deployed version
+#:
+#: See `version_info.py` for more information.
+#: The variable is just left here as a place holder if we ever
+#: move to package versioning again.
+TRADE_EXECUTOR_VERSION = NotImplemented
 
 # Run this during the module loading so that it is
 # applied to all subcommands
