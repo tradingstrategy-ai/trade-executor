@@ -178,7 +178,7 @@ class ExecutionLoop:
         self.execution_model.initialize()
         if not self.is_live_trading_unit_test():
             self.execution_model.preflight_check()
-            logger.trade("Preflight checks ok")
+            logger.info("Preflight checks ok")
 
     def init_simulation(
             self,
