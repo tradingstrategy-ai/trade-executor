@@ -186,7 +186,7 @@ def visualise_trades(
             x=buys_df["timestamp"],
             y=buys_df["price"],
             text=buys_df["label"],
-            marker={"symbol": 'triangle-right', "size": 12, "line": {"width": 2, "color": "black"}},
+            marker={"symbol": 'circle', "size": 10, "line": {"width": 2, "color": "black"}},
         ),
         secondary_y=False,
     )
@@ -199,7 +199,7 @@ def visualise_trades(
             x=sells_df["timestamp"],
             y=sells_df["price"],
             text=sells_df["label"],
-            marker={"symbol": 'triangle-left', "size": 12, "line": {"width": 2, "color": "black"}}
+            marker={"symbol": 'circle', "size": 10, "line": {"width": 2, "color": "black"}}
         ),
         secondary_y=False,
     )
