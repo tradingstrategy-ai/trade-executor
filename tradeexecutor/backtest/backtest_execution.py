@@ -123,7 +123,7 @@ class BacktestExecutionModel(ExecutionModel):
         assert isinstance(routing_model, BacktestRoutingModel)
         assert isinstance(routing_state, BacktestRoutingState)
 
-        state.start_trades(datetime.datetime.utcnow(), trades, max_slippage=0)
+        state.start_trades(ts, trades, max_slippage=0)
 
         routing_model.setup_trades(
             routing_state,
