@@ -179,5 +179,6 @@ def web_visulisation(request: Request):
         r.body = data
         return r
     else:
-        return exception_response(404, detail=f"Unknown type {type}")
+        # Use 501 Not implemented error code
+        return exception_response(501, detail=f"Not implemented. Unknown type {type}")
 
