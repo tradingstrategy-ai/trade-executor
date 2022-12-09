@@ -81,7 +81,12 @@ class Web3Config:
 
         assert isinstance(gas_price_method, GasPriceMethod)
 
-        logger.info("Connected to chain id: %d, using gas price method %s", chain_id, gas_price_method.name)
+        chain_id_obj = ChainId(chain_id)
+
+        logger.trade("Connected to chain: %s, node provider: %s, gas pricing method: %s",
+                     chain_id_obj.name,
+                     get_url_domain(url),
+                     gas_price_method.name)
 
         # London is the default method
         if gas_price_method == GasPriceMethod.legacy:

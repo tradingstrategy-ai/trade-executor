@@ -136,18 +136,18 @@ def test_get_current_position(position_manager_with_open_position: PositionManag
     # because Ethereum token balances are accurate up to 18 decimals
     # and this kind of accuracy cannot be expressed in floating point numbers.
     quantity = current_position.get_quantity()
-    assert quantity == Decimal('0.03045760003971992547285959728')
+    assert quantity == Decimal('0.03033456189136483055782720622')
 
     # The current price is the price of the trading pair
     # that was recorded on the last price feed sync.
     # This is a 64-bit floating point, as the current price
     # is always approximation based on market conditions.
     price = current_position.get_current_price()
-    assert price == 1641.6263899583264
+    assert price == 1648.28488966024
 
     # The opening price is the price of the first trade
     # that was made for this position. This is the actual
     # executed price of the trade, expressed as floating
     # point for the convenience.
     price = current_position.get_opening_price()
-    assert price == 1641.6263899583264
+    assert price == 1648.28488966024

@@ -346,14 +346,14 @@ def test_synthetic_data_backtest_stop_loss(
     for p in state.portfolio.get_all_positions():
         assert p.stop_loss, f"Position did not have stop loss: {p}"
 
-    assert len(list(state.portfolio.get_all_positions())) == 44
-    assert len(list(state.portfolio.get_all_trades())) == 88
+    assert len(list(state.portfolio.get_all_positions())) == 41
+    assert len(list(state.portfolio.get_all_trades())) == 81
 
     # We should have some stop loss trades and some trades closed for profit
     stop_loss_trades = [t for t in state.portfolio.get_all_trades() if t.is_stop_loss()]
     rebalance_trades = [t for t in state.portfolio.get_all_trades() if t.is_rebalance()]
-    assert len(rebalance_trades) == 46
-    assert len(stop_loss_trades) == 42
+    assert len(rebalance_trades) == 43
+    assert len(stop_loss_trades) == 38
 
     # Check are stop loss positions unprofitable
     stop_loss_positions = [p for p in state.portfolio.get_all_positions() if p.is_stop_loss()]
@@ -442,13 +442,13 @@ def test_synthetic_data_backtest_take_profit(
         assert p.take_profit, f"Position did not have take profit: {p}"
 
     assert len(list(state.portfolio.get_all_positions())) == 46
-    assert len(list(state.portfolio.get_all_trades())) == 92
+    assert len(list(state.portfolio.get_all_trades())) == 91
 
     # We should have some stop loss trades and some trades closed for profit
     take_profit_trades = [t for t in state.portfolio.get_all_trades() if t.is_take_profit()]
     rebalance_trades = [t for t in state.portfolio.get_all_trades() if t.is_rebalance()]
     assert len(rebalance_trades) == 46
-    assert len(take_profit_trades) == 46
+    assert len(take_profit_trades) == 45
 
     # Check are stop loss positions unprofitable
     take_profit_positions = [p for p in state.portfolio.get_all_positions() if p.is_take_profit()]
