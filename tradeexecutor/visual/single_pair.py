@@ -304,7 +304,13 @@ def visualise_positions_with_duration_and_slippage(
     # https://stackoverflow.com/a/58128982/315168
     annotations: List[Annotation] = []
 
-    trade_markers = {
+    buys = {
+        "x": [],
+        "y": [],
+        "text": [],
+    }
+
+    sells = {
         "x": [],
         "y": [],
         "text": [],
@@ -367,13 +373,17 @@ def visualise_positions_with_duration_and_slippage(
                 yref="y",
                 line={
                     "color": colour,
-                    "width": 4,
+                    "width": 1,
                 }
             )
 
+            if t.is_buy():
+                trade_markers = buys
+            else:
+                trade_markers = sells
+
             trade_markers["x"].append(t.executed_at)
             trade_markers["y"].append(t.executed_price)
-
             trade_markers["text"].append(str(t))
 
             # Plotly does not render arrows if they are
@@ -411,14 +421,26 @@ def visualise_positions_with_duration_and_slippage(
             # )
 
     # Add "arrowheads" to trade lines
+
     fig.add_trace(
         go.Scatter(
-            x=trade_markers["x"],
-            y=trade_markers["y"],
-            text=trade_markers["text"],
+            x=buys["x"],
+            y=buys["y"],
+            text=buys["text"],
             showlegend=False,
             mode='markers',
-            marker={"color": "black", "size": 6, "symbol": "diamond", "line": {"width": 2, "color": "black"}},
+            marker={"symbol": "arrow-right", "color": "black", "size": 12, "line": {"width": 0}},
+        )
+    )
+
+    fig.add_trace(
+        go.Scatter(
+            x=sells["x"],
+            y=sells["y"],
+            text=sells["text"],
+            showlegend=False,
+            mode='markers',
+            marker={"symbol": "arrow-left", "color": "black", "size": 12, "line": {"width": 0}},
         )
     )
 
