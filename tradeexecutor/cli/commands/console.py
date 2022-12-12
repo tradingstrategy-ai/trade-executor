@@ -167,6 +167,10 @@ def console(
     else:
         state = store.load()
 
+    logger.info("State details")
+    logger.info("  Number of positions: %s", len(list(state.portfolio.get_all_positions())))
+    logger.info("  Number of trades: %s", len(list(state.portfolio.get_all_trades())))
+
     runner = run_description.runner
     routing_state, pricing_model, valuation_method = runner.setup_routing(universe)
 
