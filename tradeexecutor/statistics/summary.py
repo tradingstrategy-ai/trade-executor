@@ -18,6 +18,15 @@ def calculate_summary_statistics(
 ) -> StrategySummaryStatistics:
     """Preprocess the strategy statistics for the summary card.
 
+    To test out in the :ref:`console`:
+
+    .. code-block:: python
+
+        from tradeexecutor.statistics.summary import calculate_summary_statistics
+        from tradeexecutor.strategy.execution_context import ExecutionMode
+
+        calculate_summary_statistics(state, ExecutionMode.preflight_check)
+
     :param state:
         Strategy state from which we calculate the summary
 

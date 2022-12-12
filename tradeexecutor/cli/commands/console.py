@@ -10,7 +10,10 @@ from IPython import embed
 import pandas as pd
 
 from eth_defi.hotwallet import HotWallet
+from tradingstrategy.chain import ChainId
 from tradingstrategy.client import Client
+from tradingstrategy.timebucket import TimeBucket
+
 from .app import app
 from ..init import prepare_executor_id, prepare_cache, create_web3_config, create_trade_execution_model, \
     create_state_store
@@ -185,10 +188,13 @@ def console(
         "routing_state": routing_state,
         "pricing_model": pricing_model,
         "valuation_method": valuation_method,
-        "datetime": datetime,
         "pd": pd,
         "cache_path": cache_path,
+        "datetime": datetime,
         "Decimal": Decimal,
+        "ExecutionMode": ExecutionMode,
+        "ChainId": ChainId,
+        "TimeBucket": TimeBucket,
     }
 
     if not unit_testing:
