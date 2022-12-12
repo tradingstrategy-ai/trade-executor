@@ -168,9 +168,10 @@ class Statistics:
             DataFrame for the value with time as index.
         """
 
+        # https://stackoverflow.com/questions/40815238/convert-dataframe-index-to-datetime
         s = pd.Series(
             [getattr(ps, attr_name) for ps in self.portfolio],
-            index=[ps.calculated_at for ps in self.portfolio],
+            index=pd.DatetimeIndex([ps.calculated_at for ps in self.portfolio]),
         )
 
         # Convert data to daily if we have to
