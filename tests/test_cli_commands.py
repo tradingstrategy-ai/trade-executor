@@ -204,3 +204,35 @@ def test_cli_version(
     runner = CliRunner()
     result = runner.invoke(app, "version")
     assert result.exit_code == 0
+
+
+@pytest.mark.skipif(os.environ.get("BNB_CHAIN_JSON_RPC") is None, reason="Set BNB_CHAIN_JSON_RPC environment variable to Binance Smart Chain node to run this test")
+def test_cli_console(
+        logger,
+        strategy_path: str,
+        unit_test_cache_path: str,
+    ):
+    """console command works"""
+
+    environment = {
+        "TRADING_STRATEGY_API_KEY": os.environ["TRADING_STRATEGY_API_KEY"],
+        "STRATEGY_FILE": strategy_path,
+        "CACHE_PATH": unit_test_cache_path,
+        "JSON_RPC_BINANCE": os.environ.get("BNB_CHAIN_JSON_RPC"),
+        "PRIVATE_KEY": "0x111e53aed5e777996f26b4bdb89300bbc05b84743f32028c41be7193c0fe0b83",
+        "UNIT_TESTING": "true",
+        "LOG_LEVEL": "disabled",
+    }
+
+    runner = CliRunner()
+    result = runner.invoke(app, "console", env=environment)
+
+    if result.exception:
+        raise result.exception
+
+    # Dump any stdout to see why the command failed
+    if result.exit_code != 0:
+        print("runner failed")
+        for line in result.stdout.split('\n'):
+            print(line)
+        raise AssertionError("runner launch failed")

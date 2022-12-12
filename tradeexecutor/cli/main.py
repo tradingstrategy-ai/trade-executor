@@ -1,5 +1,5 @@
 """Command-line entry point for the daemon build on the top of Typer."""
-
+from .commands import console
 from .commands.app import app
 from .commands.check_universe import check_universe
 from .commands.check_wallet import check_wallet
@@ -12,7 +12,7 @@ from .commands.repair import repair
 
 # Dummy export commands even though they are already registered
 # to make the linter happy
-__all__ = [app, check_wallet, check_universe, hello, start, perform_test_trade, version, repair]
+__all__ = [app, check_wallet, check_universe, hello, start, perform_test_trade, version, repair, console]
 
 
 
