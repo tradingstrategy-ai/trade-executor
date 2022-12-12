@@ -64,7 +64,7 @@ def web_metadata(request: Request):
     )
 
     r = Response(content_type="application/json")
-    r.text = summary.to_json()
+    r.text = summary.to_json(allow_nan=False)
     return r
 
 
