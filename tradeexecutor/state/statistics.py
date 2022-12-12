@@ -9,6 +9,7 @@ purely there for profit and loss calculations.
 import datetime
 from collections import defaultdict
 from dataclasses import field, dataclass
+from math import isnan
 from typing import Dict, List, Optional, Tuple
 
 import pandas as pd
@@ -23,6 +24,12 @@ from tradeexecutor.analysis.trade_analyser import TradeSummary
 @dataclass_json
 @dataclass
 class PositionStatistics:
+    """Time-series of statistics calculated for each open position.
+
+    Position statistics are recalculated at the same time positions are revalued.
+    The time-series of these statistics are stored as a part of the state,
+    allowing one to plot the position performance over time.
+    """
 
     #: Real-time clock when these stats were calculated
     calculated_at: datetime.datetime
@@ -48,6 +55,7 @@ class PositionStatistics:
     def __post_init__(self):
         assert isinstance(self.calculated_at, datetime.datetime)
         assert isinstance(self.last_valuation_at, datetime.datetime)
+        assert not isnan(self.profitability)
 
 
 @dataclass_json
