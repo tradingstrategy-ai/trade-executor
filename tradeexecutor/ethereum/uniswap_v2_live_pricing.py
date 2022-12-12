@@ -65,6 +65,7 @@ class UniswapV2LivePricing(PricingModel):
         self.pair_universe = pair_universe
         self.very_small_amount = very_small_amount
         self.routing_model = routing_model
+        self.trading_fee = routing_model.trading_fee
 
         assert isinstance(self.very_small_amount, Decimal)
 
@@ -110,7 +111,8 @@ class UniswapV2LivePricing(PricingModel):
             base_addr,
             quote_addr,
             quantity_raw,
-            intermediate_token_address=intermediate_addr
+            intermediate_token_address=intermediate_addr,
+            fee=self.trading_fee
         )
 
         if intermediate_pair is not None:

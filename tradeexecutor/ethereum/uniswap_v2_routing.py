@@ -257,6 +257,7 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
                  factory_router_map: Dict[str, Tuple[str, Optional[str]]],
                  allowed_intermediary_pairs: Dict[str, str],
                  reserve_token_address: str,
+                 trading_fee: int,
                  chain_id: Optional[ChainId] = None,
                  ):
         """
@@ -276,7 +277,10 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
             This set is the list of pair smart contract addresses that
             are allowed to be used as a hop.
 
-        :parma chain_id:
+        :param trading_fee:
+            Trading fee express as int in bps. E.g. 30 => 0.3%
+
+        :param chain_id:
             Store the chain id for which these routes were generated for.
 
         :param reserve_token_address:
