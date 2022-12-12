@@ -1,17 +1,15 @@
 """console command."""
 import datetime
+from decimal import Decimal
 from pathlib import Path
 from typing import Optional
 
 import typer
-from web3 import Web3
 
 from IPython import embed
 import pandas as pd
 
-from eth_defi.balances import fetch_erc20_balances_by_token_list
 from eth_defi.hotwallet import HotWallet
-from eth_defi.token import fetch_erc20_details
 from tradingstrategy.client import Client
 from .app import app
 from ..init import prepare_executor_id, prepare_cache, create_web3_config, create_trade_execution_model, \
@@ -26,7 +24,6 @@ from ...strategy.run_state import RunState
 from ...strategy.strategy_module import read_strategy_module
 from ...strategy.trading_strategy_universe import TradingStrategyUniverseModel
 from ...strategy.universe_model import UniverseOptions
-from ...utils.fullname import get_object_full_name
 from ...utils.timer import timed_task
 
 
@@ -47,7 +44,7 @@ def launch_console(bindings: dict):
 
 
 @app.command()
-def check_wallet(
+def console(
     id: str = typer.Option(None, envvar="EXECUTOR_ID", help="Executor id used when programmatically referring to this instance. If not given, take the base of --strategy-file."),
 
     # State
@@ -68,11 +65,15 @@ def check_wallet(
     json_rpc_avalanche: str = typer.Option(None, envvar="JSON_RPC_AVALANCHE", help="Avalanche C-chain JSON-RPC node URL we connect to"),
 
     log_level: str = typer.Option(None, envvar="LOG_LEVEL", help="The Python default logging level. The defaults are 'info' is live execution, 'warning' if backtesting. Set 'disabled' in testing."),
+
+    unit_testing: bool = typer.Option(False, "--unit-testing", envvar="UNIT_TESTING", help="The trade executor is called under the unit testing mode. No caches are purged."),
 ):
     """Open interactive IPython console.
 
     Open an interactive Python prompt where you can inspect and debug the current trade
     executor state.
+
+    Strategy, state and execution state are loaded to the memory for debugging.
     """
 
     global logger
@@ -169,7 +170,8 @@ def check_wallet(
     runner = run_description.runner
     routing_state, pricing_model, valuation_method = runner.setup_routing(universe)
 
-    # Set up the strategy engine
+    # Set up the default objects
+    # availalbe in the interactive session
     bindings = {
         "web3": web3,
         "client": client,
@@ -181,7 +183,9 @@ def check_wallet(
         "valuation_method": valuation_method,
         "datetime": datetime,
         "pd": pd,
-        "cache_path": cache_path
+        "cache_path": cache_path,
+        "Decimal": Decimal,
     }
 
-    launch_console(bindings)
+    if not unit_testing:
+        launch_console(bindings)
