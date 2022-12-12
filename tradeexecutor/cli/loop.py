@@ -153,13 +153,13 @@ class ExecutionLoop:
         """
         if self.reset:
             # Create empty state and save it
-            state = self.store.create()
+            state = self.store.create(self.name)
             state.name = self.name
             self.store.sync(state)
         else:
             if self.store.is_pristine():
                 # Create empty state and save it
-                state = self.store.create()
+                state = self.store.create(self.name)
                 state.name = self.name
                 self.store.sync(state)
             else:
