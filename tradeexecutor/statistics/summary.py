@@ -81,7 +81,7 @@ def calculate_summary_statistics(
             val = (value - start_val) / start_val
             # Don't let NaNs slip through
             if not isnan(val):
-                performance_chart_90_days.append((index, value))
+                performance_chart_90_days.append((ts, value))
     else:
         profitability_90_days = None
         enough_data = False
