@@ -78,10 +78,10 @@ def calculate_summary_statistics(
         performance_chart_90_days = []
         for index, value in last_90_days_ts.items():
             ts = index.to_pydatetime()
-            val = (value - start_val) / start_val
+            profitability_per_day = (value - start_val) / start_val
             # Don't let NaNs slip through
-            if not isnan(val):
-                performance_chart_90_days.append((ts, value))
+            if not isnan(profitability_per_day):
+                performance_chart_90_days.append((ts, profitability_per_day))
     else:
         profitability_90_days = None
         enough_data = False
