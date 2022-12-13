@@ -457,7 +457,7 @@ class TradeAnalysis:
                 if position.is_open():
                     yield pair_id, position
 
-    def calculate_summary_statistics(self, time_bucket: Optional[TimeBucket]) -> TradeSummary:
+    def calculate_summary_statistics(self, time_bucket: Optional[TimeBucket] = None) -> TradeSummary:
         """Calculate some statistics how our trades went."""
 
         initial_cash = self.portfolio.get_initial_deposit()
@@ -528,7 +528,7 @@ class TradeAnalysis:
 
         if winning_trades_duration:
             if(time_bucket is not None):
-                assert isinstance(time_bucket, TimeBucket, "the time bucket argument provided is not of type TimeBucket")
+                assert isinstance(time_bucket, TimeBucket)
                 average_duration_of_winning_trades = np.mean(winning_trades_duration)/time_bucket.to_timedelta()
                 is_time_bucket = True
             else:
@@ -537,7 +537,7 @@ class TradeAnalysis:
 
         if losing_trades_duration:
             if(time_bucket is not None):
-                assert isinstance(time_bucket, TimeBucket, "the time bucket argument provided is not of type TimeBucket")
+                assert isinstance(time_bucket, TimeBucket)
                 average_duration_of_losing_trades = np.mean(losing_trades_duration)/time_bucket.to_timedelta()
                 is_time_bucket = True
             else:
