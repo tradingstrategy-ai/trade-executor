@@ -235,7 +235,7 @@ def test_calculate_all_summary_statistics(state: State):
 
     datapoints = summary.performance_chart_90_days
     assert len(datapoints) == 91
-()
+
     assert datapoints[0] == (datetime.datetime(2021, 10, 2, 0, 0), 0.0)
     assert datapoints[-1] == (datetime.datetime(2021, 12, 31, 0, 0), 0.007274625902692977 )
 
