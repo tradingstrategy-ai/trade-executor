@@ -358,6 +358,7 @@ class TradeSummary:
         encoder=json_encode_timedelta,
         decoder=json_decode_timedelta,
     ))
+    is_time_bucket: bool = False
 
     total_trades: int = field(init=False)
     win_percent: float = field(init=False)
@@ -381,6 +382,13 @@ class TradeSummary:
         self.end_value = self.open_value + self.uninvested_cash
 
     def to_dataframe(self) -> pd.DataFrame:
+        if(self.is_time_bucket == True):
+            avg_duration_winning = as_bars(self.average_duration_of_winning_trades)
+            avg_duration_losing = as_bars(self.average_duration_of_losing_trades)
+        else:
+            avg_duration_winning = as_duration(self.average_duration_of_winning_trades)
+            avg_duration_losing = as_duration(self.average_duration_of_losing_trades)
+
         """Creates a human-readable Pandas dataframe table from the object."""
         human_data = {
             "Trading period length": as_duration(self.duration),
@@ -405,8 +413,8 @@ class TradeSummary:
             "Average losing trade loss %": as_percent(self.average_losing_trade_loss_pc),
             "Biggest winning trade %": as_percent(self.biggest_winning_trade_pc),
             "Biggest losing trade %": as_percent(self.biggest_losing_trade_pc),
-            "Average duration of winning trades": as_bars(self.average_duration_of_winning_trades),
-            "Average duration of losing trades": as_bars(self.average_duration_of_losing_trades)
+            "Average duration of winning trades": avg_duration_winning,
+            "Average duration of losing trades": avg_duration_losing
         }
         return create_summary_table(human_data)
 
@@ -449,7 +457,7 @@ class TradeAnalysis:
                 if position.is_open():
                     yield pair_id, position
 
-    def calculate_summary_statistics(self, time_bucket: TimeBucket) -> TradeSummary:
+    def calculate_summary_statistics(self, time_bucket: Optional[TimeBucket]) -> TradeSummary:
         """Calculate some statistics how our trades went."""
 
         initial_cash = self.portfolio.get_initial_deposit()
@@ -519,10 +527,22 @@ class TradeAnalysis:
             biggest_losing_trade_pc = min(losing_trades)
 
         if winning_trades_duration:
-            average_duration_of_winning_trades = np.mean(winning_trades_duration)/time_bucket.to_timedelta()
+            if(time_bucket is not None):
+                assert isinstance(time_bucket, TimeBucket, "the time bucket argument provided is not of type TimeBucket")
+                average_duration_of_winning_trades = np.mean(winning_trades_duration)/time_bucket.to_timedelta()
+                is_time_bucket = True
+            else:
+                average_duration_of_winning_trades = np.mean(winning_trades_duration)
+                is_time_bucket = False
 
         if losing_trades_duration:
-            average_duration_of_losing_trades = np.mean(losing_trades_duration)/time_bucket.to_timedelta()
+            if(time_bucket is not None):
+                assert isinstance(time_bucket, TimeBucket, "the time bucket argument provided is not of type TimeBucket")
+                average_duration_of_losing_trades = np.mean(losing_trades_duration)/time_bucket.to_timedelta()
+                is_time_bucket = True
+            else:
+                average_duration_of_losing_trades = np.mean(losing_trades_duration)
+                is_time_bucket = False
 
         return TradeSummary(
             won=won,
@@ -542,6 +562,7 @@ class TradeAnalysis:
             biggest_losing_trade_pc=biggest_losing_trade_pc,
             average_duration_of_winning_trades=average_duration_of_winning_trades,
             average_duration_of_losing_trades=average_duration_of_losing_trades,
+            is_time_bucket=is_time_bucket
         )
 
     def create_timeline(self) -> pd.DataFrame:
