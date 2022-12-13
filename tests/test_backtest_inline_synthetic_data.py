@@ -175,7 +175,7 @@ def test_ema_on_universe(universe: TradingStrategyUniverse):
     """Calculate exponential moving average on single pair candle universe."""
     start_timestamp = pd.Timestamp("2021-6-1")
     batch_size = 20
-    candles = universe.universe.candles.get_single_pair_data(start_timestamp, sample_count=batch_size)
+    candles = universe.universe.candles.get_single_pair_data(start_timestamp, sample_count=batch_size, allow_current=True)
     assert len(candles) == 1
 
     # Not enough data to calculate EMA - we haave only 1 sample
@@ -183,7 +183,7 @@ def test_ema_on_universe(universe: TradingStrategyUniverse):
     assert ema_20_series is None
 
     end_timestamp = pd.Timestamp("2021-12-31")
-    candles = universe.universe.candles.get_single_pair_data(end_timestamp, sample_count=batch_size)
+    candles = universe.universe.candles.get_single_pair_data(end_timestamp, sample_count=batch_size, allow_current=True)
     assert len(candles) == batch_size
 
     ema_20_series = ema(candles["close"], length=20)
@@ -287,14 +287,14 @@ def test_analyse_synthetic_trading_portfolio(
     # Do checks for the first position
     # 0    1          2021-07-01   8 days                      WETH        USDC         $2,027.23    $27.23    2.72%   0.027230  $1,617.294181   $1,661.333561            2
     row = expanded_timeline.iloc[0]
-    assert row["Opened at"] == "2021-07-01"
+    assert row["Opened at"] == "2021-07-02"
     assert row["Trade count"] == 2
     assert row["Open price USD"] == "$1,617.294181"
     assert row["Position max size"] == "$1,027.23"
 
     # 1    3          2021-07-10  26 days                      WETH        USDC         $1,002.72  $-137.39  -13.70%  -0.137013  $1,710.929622   $1,476.509241            2
     row2 = expanded_timeline.iloc[1]
-    assert row2["Opened at"] == "2021-07-10"
+    assert row2["Opened at"] == "2021-07-11"
     assert row2["Close price USD"] == "$1,476.509241"
     assert row2["Position max size"] == "$1,002.72"
 

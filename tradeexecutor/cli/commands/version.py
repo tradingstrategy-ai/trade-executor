@@ -1,3 +1,4 @@
+
 """version CLi command."""
 
 from tradeexecutor.cli.commands.app import app

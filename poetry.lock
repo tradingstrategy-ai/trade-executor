@@ -2245,7 +2245,7 @@ tqdm = ">=4.64.1,<5.0.0"
 
 [[package]]
 name = "trading-strategy"
-version = "0.8.8"
+version = "0.9.0"
 description = "DEX trading and blockchain quantitative finance data for Python"
 category = "main"
 optional = false
@@ -2632,7 +2632,7 @@ web-server = ["pyramid", "WebTest", "pyramid-openapi3", "waitress"]
 [metadata]
 lock-version = "1.1"
 python-versions = ">=3.10,<3.11"
-content-hash = "1a37bfad42c3fe0b57f83599cad47db35887a93c56c0991b4af306c4193ecf7f"
+content-hash = "e802c2b3dd6599d761db4a255b5418cd9416912c6983836e299b32cd9830c4ed"
 
 [metadata.files]
 aiohttp = [
@@ -4417,8 +4417,8 @@ tqdm-loggable = [
     {file = "tqdm_loggable-0.1.2.tar.gz", hash = "sha256:74e880c06883e6533924de1848a00cb541cdd9e1fefb79a8adb1dec734376559"},
 ]
 trading-strategy = [
-    {file = "trading_strategy-0.8.8-py3-none-any.whl", hash = "sha256:1765f530c10dcf3f4a700d347bc9d47b3814573df978ed1b5eed4ff754feccbf"},
-    {file = "trading_strategy-0.8.8.tar.gz", hash = "sha256:2e2d310f05ee8db0058b7a43af60f9a8bfb28cf7b28202fff50a794b055da508"},
+    {file = "trading_strategy-0.9.0-py3-none-any.whl", hash = "sha256:e4ab3a4c3d3785db3ea6542f70dd0d4d6f7d1adeae85ebc05506bc6d1d040296"},
+    {file = "trading_strategy-0.9.0.tar.gz", hash = "sha256:376adeafe37ce84a9721935c0ed3afd5298774a24b56e043d33520ef5171a2dd"},
 ]
 trading-strategy-qstrader = [
     {file = "trading-strategy-qstrader-0.5.tar.gz", hash = "sha256:c294b56f84bdc31e79842b5db5f6c8a5603c947725b9650d95655d95ade3ed04"},

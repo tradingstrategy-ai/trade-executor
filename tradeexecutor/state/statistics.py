@@ -9,10 +9,12 @@ purely there for profit and loss calculations.
 import datetime
 from collections import defaultdict
 from dataclasses import field, dataclass
+from math import isnan
 from typing import Dict, List, Optional, Tuple
 
 import pandas as pd
 from dataclasses_json import dataclass_json
+from pandas import DatetimeIndex
 
 from tradingstrategy.types import USDollarAmount
 
@@ -22,6 +24,12 @@ from tradeexecutor.analysis.trade_analyser import TradeSummary
 @dataclass_json
 @dataclass
 class PositionStatistics:
+    """Time-series of statistics calculated for each open position.
+
+    Position statistics are recalculated at the same time positions are revalued.
+    The time-series of these statistics are stored as a part of the state,
+    allowing one to plot the position performance over time.
+    """
 
     #: Real-time clock when these stats were calculated
     calculated_at: datetime.datetime
@@ -42,6 +50,12 @@ class PositionStatistics:
 
     #: The current position size dollars
     value: USDollarAmount
+
+
+    def __post_init__(self):
+        assert isinstance(self.calculated_at, datetime.datetime)
+        assert isinstance(self.last_valuation_at, datetime.datetime)
+        assert not isnan(self.profitability)
 
 
 @dataclass_json
@@ -147,6 +161,8 @@ class Statistics:
             resampling_method: str="max") -> pd.Series:
         """Get any of position statistcs value as a columnar data.
 
+        Get the daily performance of the portfolio.
+
         Example:
 
         .. code-block:: python
@@ -168,9 +184,11 @@ class Statistics:
             DataFrame for the value with time as index.
         """
 
+        assert len(self.portfolio) > 0, f"Statistics did not have any calculations for positions: {self.portfolio}"
+
         s = pd.Series(
             [getattr(ps, attr_name) for ps in self.portfolio],
-            index=[ps.calculated_at for ps in self.portfolio],
+            index=DatetimeIndex([ps.calculated_at for ps in self.portfolio]),
         )
 
         # Convert data to daily if we have to

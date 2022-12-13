@@ -64,7 +64,7 @@ def web_metadata(request: Request):
     )
 
     r = Response(content_type="application/json")
-    r.text = summary.to_json()
+    r.text = summary.to_json(allow_nan=False)
     return r
 
 
@@ -179,5 +179,6 @@ def web_visulisation(request: Request):
         r.body = data
         return r
     else:
-        return exception_response(404, detail=f"Unknown type {type}")
+        # Use 501 Not implemented error code
+        return exception_response(501, detail=f"Not implemented. Unknown type {type}")
 
