@@ -38,7 +38,7 @@ from tradingstrategy.pair import PandasPairUniverse
 from tradingstrategy.types import PrimaryKey, USDollarAmount
 from tradingstrategy.utils.format import format_value, format_price, format_duration_days_hours_mins, \
     format_percent_2_decimals
-from tradingstrategy.utils.summarydataframe import as_dollar, as_integer, create_summary_table, as_percent, as_duration, as_num_candles
+from tradingstrategy.utils.summarydataframe import as_dollar, as_integer, create_summary_table, as_percent, as_duration, as_bars
 
 logger = logging.getLogger(__name__)
 
@@ -405,8 +405,8 @@ class TradeSummary:
             "Average losing trade loss %": as_percent(self.average_losing_trade_loss_pc),
             "Biggest winning trade %": as_percent(self.biggest_winning_trade_pc),
             "Biggest losing trade %": as_percent(self.biggest_losing_trade_pc),
-            "Average duration of winning trades": as_num_candles(self.average_duration_of_winning_trades),
-            "Average duration of losing trades": as_num_candles(self.average_duration_of_losing_trades)
+            "Average duration of winning trades": as_bars(self.average_duration_of_winning_trades),
+            "Average duration of losing trades": as_bars(self.average_duration_of_losing_trades)
         }
         return create_summary_table(human_data)
 
