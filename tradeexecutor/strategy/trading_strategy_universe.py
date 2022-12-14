@@ -876,9 +876,6 @@ def load_pair_data_for_single_exchange(
     :param exchange_slug:
         Which exchange hosts our trading pairs
 
-    :param exchange_slug:
-        Which exchange hosts our trading pairs
-
     :param pair_tickers:
         List of trading pair tickers as base token quote token tuples.
         E.g. `[('WBNB', 'BUSD'), ('Cake', 'BUSD')]`.
