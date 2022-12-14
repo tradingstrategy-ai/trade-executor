@@ -233,6 +233,76 @@ def get_trader_joe_default_routing_parameters(reserve_currency: ReserveCurrency)
     }
     
 
+def get_uniswap_v3_default_routing_parameters(reserve_currency: ReserveCurrency) -> RoutingData:
+    """Generate routing using Uniswap V3 router"""
+
+    if reserve_currency == ReserveCurrency.usdc:
+        # https://tradingstrategy.ai/trading-view/ethereum/tokens/0xdac17f958d2ee523a2206206994597c13d831ec7
+        reserve_token_address = "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48".lower()
+
+        allowed_intermediary_pairs = {
+            # Route WETH through USDC:WETH fee 0.05% pool,
+            # https://tradingstrategy.ai/trading-view/ethereum/uniswap-v3/eth-usdc-fee-5
+            "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2":"0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640",
+
+            # Route USDT through USDC:USDT fee 0.01% pool,
+            # https://tradingstrategy.ai/trading-view/ethereum/uniswap-v3/usdt-usdc-fee-1
+            "0xdac17f958d2ee523a2206206994597c13d831ec7":"0x3416cf6c708da44db2624d63ea0aaef7113527c6"
+        }
+    elif reserve_currency == ReserveCurrency.usdt:
+        # https://tradingstrategy.ai/trading-view/ethereum/tokens/0xdac17f958d2ee523a2206206994597c13d831ec7
+        reserve_token_address = "0xdac17f958d2ee523a2206206994597c13d831ec7"
+
+        allowed_intermediary_pairs = {
+            # Route WETH through USDT:ETH fee 0.05% pool
+            # https://tradingstrategy.ai/trading-view/ethereum/uniswap-v3/eth-usdt-fee-5
+            "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2":"0x11b815efb8f581194ae79006d24e0d814b7697f6",
+
+            # Route USDC through USDT:USDC fee 0.01% pool
+            # https://tradingstrategy.ai/trading-view/ethereum/uniswap-v3/usdt-usdc-fee-1
+            "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48":"0x3416cf6c708da44db2624d63ea0aaef7113527c6"
+
+        }
+    elif reserve_currency == ReserveCurrency.dai:
+        # https://tradingstrategy.ai/trading-view/ethereum/tokens/0x6b175474e89094c44da98b954eedeac495271d0f
+        reserve_token_address = "0x6b175474e89094c44da98b954eedeac495271d0f"
+
+        allowed_intermediary_pairs = {
+            # Route WETH through DAI:ETH fee 0.05% pool
+            # https://tradingstrategy.ai/trading-view/ethereum/uniswap-v3/eth-dai-fee-5
+            "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2":"0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+
+            # Route USDC through DAI:USDC 0.01% pool
+            # https://tradingstrategy.ai/trading-view/ethereum/uniswap-v3/dai-usdc-fee-1
+            "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48":"0x5777d92f208679db4b9778590fa3cab3ac9e2168"
+        }
+    elif reserve_currency == ReserveCurrency.busd:
+        # https://tradingstrategy.ai/trading-view/ethereum/tokens/0x4fabb145d64652a948d72533023f6e7a623c7c53
+        reserve_token_address = "0x4fabb145d64652a948d72533023f6e7a623c7c53"
+
+        allowed_intermediary_pairs = {
+            # Route USDC through BUSD:USDC fee 0.01% pool
+            # https://tradingstrategy.ai/trading-view/ethereum/uniswap-v3/busd-usdc-fee-1
+            "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48":"0x5e35c4eba72470ee1177dcb14dddf4d9e6d915f4",
+
+            # Route USDT through BUSD:USDT fee 0.05% pool
+            # https://tradingstrategy.ai/trading-view/ethereum/uniswap-v3/busd-usdt-fee-5
+            "0xdac17f958d2ee523a2206206994597c13d831ec7":"0xd5ad5ec825cac700d7deafe3102dc2b6da6d195d",
+
+            # Route DAI through BUSD:DAI fee 0.01% pool
+            # https://tradingstrategy.ai/trading-view/ethereum/uniswap-v3/busd-dai-fee-1
+            "0x6b175474e89094c44da98b954eedeac495271d0f":"0xd1000344c3a00846462b4624bb452621cf2ce001"
+        }
+    else:
+        raise NotImplementedError()
+
+    # Allowed exchanges as factory -> router pairs,
+    # by their smart contract addresses
+    # init_code_hash: https://etherscan.io/address/0xe592427a0aece92de3edee1f18e0157c05861564#code#F12#L6
+    factory_router_map = {
+        "0x1F98431c8aD98523631AE4a59f267346ea31F984": ("0xE592427A0AEce92De3Edee1F18E0157C05861564", "0xe34f199b19b2b4f47f68442619d555527d244f78a3297ea89325f843f87b8b54")
+    }
+
 def get_uniswap_v2_default_routing_parameters(reserve_currency: ReserveCurrency) -> RoutingData:
     """Generate routing using Uniswap v2 router.
 
@@ -292,7 +362,6 @@ def get_uniswap_v2_default_routing_parameters(reserve_currency: ReserveCurrency)
             "0xdac17f958d2ee523a2206206994597c13d831ec7"
         }
     }
-
 
 def create_uniswap_v2_compatible_routing(routing_type: TradeRouting, reserve_currency: ReserveCurrency) -> UniswapV2SimpleRoutingModel:
     """Set up Uniswap v2 compatible routing.
