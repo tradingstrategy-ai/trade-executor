@@ -65,7 +65,12 @@ class UniswapV2LivePricing(PricingModel):
         self.pair_universe = pair_universe
         self.very_small_amount = very_small_amount
         self.routing_model = routing_model
-        self.trading_fee = routing_model.trading_fee
+
+        # web3-ethereum-defi trading fee default is 30 bps
+        if(hasattr(routing_model, 'trading_fee')):
+            self.trading_fee = routing_model.trading_fee
+        else:
+            self.trading_fee = 30 
 
         assert isinstance(self.very_small_amount, Decimal)
 

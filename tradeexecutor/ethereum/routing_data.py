@@ -367,8 +367,8 @@ def create_uniswap_v2_compatible_routing(routing_type: TradeRouting, reserve_cur
         params["factory_router_map"],
         params["allowed_intermediary_pairs"],
         params["reserve_token_address"],
-        params["trading_fee"],
         params["chain_id"],
+        params["trading_fee"]
     )
 
     return routing_model
