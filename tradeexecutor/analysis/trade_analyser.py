@@ -358,7 +358,7 @@ class TradeSummary:
         encoder=json_encode_timedelta,
         decoder=json_decode_timedelta,
     ))
-    is_time_bucket: bool = False
+    time_bucket: Optional[TimeBucket] = None
 
     total_trades: int = field(init=False)
     win_percent: float = field(init=False)
@@ -382,7 +382,7 @@ class TradeSummary:
         self.end_value = self.open_value + self.uninvested_cash
 
     def to_dataframe(self) -> pd.DataFrame:
-        if(self.is_time_bucket == True):
+        if(self.time_bucket is not None):
             avg_duration_winning = as_bars(self.average_duration_of_winning_trades)
             avg_duration_losing = as_bars(self.average_duration_of_losing_trades)
         else:
@@ -530,19 +530,15 @@ class TradeAnalysis:
             if(time_bucket is not None):
                 assert isinstance(time_bucket, TimeBucket)
                 average_duration_of_winning_trades = np.mean(winning_trades_duration)/time_bucket.to_timedelta()
-                is_time_bucket = True
             else:
                 average_duration_of_winning_trades = np.mean(winning_trades_duration)
-                is_time_bucket = False
 
         if losing_trades_duration:
             if(time_bucket is not None):
                 assert isinstance(time_bucket, TimeBucket)
                 average_duration_of_losing_trades = np.mean(losing_trades_duration)/time_bucket.to_timedelta()
-                is_time_bucket = True
             else:
                 average_duration_of_losing_trades = np.mean(losing_trades_duration)
-                is_time_bucket = False
 
         return TradeSummary(
             won=won,
@@ -562,7 +558,7 @@ class TradeAnalysis:
             biggest_losing_trade_pc=biggest_losing_trade_pc,
             average_duration_of_winning_trades=average_duration_of_winning_trades,
             average_duration_of_losing_trades=average_duration_of_losing_trades,
-            is_time_bucket=is_time_bucket
+            time_bucket=time_bucket
         )
 
     def create_timeline(self) -> pd.DataFrame:
