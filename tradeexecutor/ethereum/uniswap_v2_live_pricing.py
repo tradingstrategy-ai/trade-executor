@@ -66,6 +66,12 @@ class UniswapV2LivePricing(PricingModel):
         self.very_small_amount = very_small_amount
         self.routing_model = routing_model
 
+        # web3-ethereum-defi trading fee default is 30 bps
+        if(hasattr(routing_model, 'trading_fee')):
+            self.trading_fee = routing_model.trading_fee
+        else:
+            self.trading_fee = 30 
+
         assert isinstance(self.very_small_amount, Decimal)
 
     def get_pair_for_id(self, internal_id: int) -> Optional[TradingPairIdentifier]:
@@ -110,7 +116,8 @@ class UniswapV2LivePricing(PricingModel):
             base_addr,
             quote_addr,
             quantity_raw,
-            intermediate_token_address=intermediate_addr
+            intermediate_token_address=intermediate_addr,
+            fee=self.trading_fee
         )
 
         if intermediate_pair is not None:
