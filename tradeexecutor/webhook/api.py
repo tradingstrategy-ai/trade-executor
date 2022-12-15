@@ -160,7 +160,7 @@ def web_visulisation(request: Request):
             data = execution_state.visualisation.small_image_dark
 
         if not data:
-            raise RuntimeError("Image data not available")
+            return exception_response(501, detail=f"Image data not available. It will be generated on the first strategy cycle.")
 
         r = Response(content_type="image/png")
         r.body = data
@@ -173,7 +173,7 @@ def web_visulisation(request: Request):
             data = execution_state.visualisation.large_image_dark
 
         if not data:
-            raise RuntimeError("Image data not available")
+            return exception_response(501, detail=f"Image data not available. It will be generated on the first strategy cycle.")
 
         r = Response(content_type="image/svg+xml")
         r.body = data
