@@ -139,156 +139,165 @@ def start(
             quiet=False,
         )
 
-    if not state_file:
-        if execution_type != TradeExecutionType.backtest:
-            state_file = f"state/{id}.json"
+    try:
 
-    # Avoid polluting user caches during test runs,
-    # so we use different default
-    if not cache_path:
-        if unit_testing:
-            cache_path = Path("/tmp/trading-strategy-tests")
+        if not state_file:
+            if execution_type != TradeExecutionType.backtest:
+                state_file = f"state/{id}.json"
 
-    cache_path = prepare_cache(id, cache_path)
+        # Avoid polluting user caches during test runs,
+        # so we use different default
+        if not cache_path:
+            if unit_testing:
+                cache_path = Path("/tmp/trading-strategy-tests")
 
-    confirmation_timeout = datetime.timedelta(seconds=confirmation_timeout)
+        cache_path = prepare_cache(id, cache_path)
 
-    if execution_type == TradeExecutionType.uniswap_v2_hot_wallet:
-        web3config = create_web3_config(
-            json_rpc_binance=json_rpc_binance,
-            json_rpc_polygon=json_rpc_polygon,
-            json_rpc_avalanche=json_rpc_avalanche,
-            json_rpc_ethereum=json_rpc_ethereum,
-            gas_price_method=gas_price_method,
-        )
+        confirmation_timeout = datetime.timedelta(seconds=confirmation_timeout)
 
-        if not web3config.has_any_connection():
-            raise RuntimeError("Live trading requires that you pass JSON-RPC connection to one of the networks")
-    else:
-        web3config = None
+        if execution_type == TradeExecutionType.uniswap_v2_hot_wallet:
+            web3config = create_web3_config(
+                json_rpc_binance=json_rpc_binance,
+                json_rpc_polygon=json_rpc_polygon,
+                json_rpc_avalanche=json_rpc_avalanche,
+                json_rpc_ethereum=json_rpc_ethereum,
+                gas_price_method=gas_price_method,
+            )
 
-    # TODO: This strategy file is reloaded again in ExecutionLoop.run()
-    # We do an extra hop here, because we need to know chain_id associated with the strategy,
-    # because there is an inversion of control issue for passing web3 connection around.
-    # Clean this up in the future versions, by changing the order of initialzation.
-    mod = read_strategy_module(strategy_file)
-
-    if web3config is not None:
-
-        if isinstance(mod, StrategyModuleInformation):
-            # This path is not enabled for legacy strategy modules
-            web3config.set_default_chain(mod.chain_id)
-            web3config.check_default_chain_id()
+            if not web3config.has_any_connection():
+                raise RuntimeError("Live trading requires that you pass JSON-RPC connection to one of the networks")
         else:
-            # Legacy unit testing path.
-            # All chain_ids are 56 (BNB Chain)
-            logger.warning("Legacy strategy module: makes assumption of BNB Chain")
-            web3config.set_default_chain(ChainId.bsc)
+            web3config = None
 
-    if minimum_gas_balance:
-        minimum_gas_balance = Decimal(minimum_gas_balance)
+        # TODO: This strategy file is reloaded again in ExecutionLoop.run()
+        # We do an extra hop here, because we need to know chain_id associated with the strategy,
+        # because there is an inversion of control issue for passing web3 connection around.
+        # Clean this up in the future versions, by changing the order of initialzation.
+        mod = read_strategy_module(strategy_file)
 
-    if unit_testing:
-        # Do not let Ganache to wait for too long
-        # because likely Ganache has simply crashed on background
-        confirmation_timeout = datetime.timedelta(seconds=30)
+        if web3config is not None:
 
-    execution_model, sync_method, valuation_model_factory, pricing_model_factory = create_trade_execution_model(
-        execution_type,
-        private_key,
-        web3config,
-        confirmation_timeout,
-        confirmation_block_count,
-        max_slippage,
-        minimum_gas_balance,
-    )
+            if isinstance(mod, StrategyModuleInformation):
+                # This path is not enabled for legacy strategy modules
+                web3config.set_default_chain(mod.chain_id)
+                web3config.check_default_chain_id()
+            else:
+                # Legacy unit testing path.
+                # All chain_ids are 56 (BNB Chain)
+                logger.warning("Legacy strategy module: makes assumption of BNB Chain")
+                web3config.set_default_chain(ChainId.bsc)
 
-    approval_model = create_approval_model(approval_type)
+        if minimum_gas_balance:
+            minimum_gas_balance = Decimal(minimum_gas_balance)
 
-    if state_file:
-        store = create_state_store(Path(state_file))
-    else:
-        # Backtests never have persistent state
-        if execution_type == TradeExecutionType.backtest:
-            logger.info("This backtest run won't create a state file")
-            store = NoneStore(State())
-        else:
-            raise RuntimeError("Does not know how to set up a state file for this run")
-
-    metadata = create_metadata(name, short_description, long_description, icon_url)
-
-    # Start the queue that relays info from the web server to the strategy executor
-    command_queue = Queue()
-
-    run_state = RunState()
-    run_state.version = VersionInfo.read_docker_version()
-    run_state.executor_id = id
-
-    # Create our webhook server
-    if http_enabled:
-        server = create_webhook_server(
-            http_host,
-            http_port,
-            http_username,
-            http_password,
-            command_queue,
-            store,
-            metadata,
-            run_state,
-        )
-    else:
-        logger.info("Web server disabled")
-        server = None
-
-    # Create our data client
-    if trading_strategy_api_key:
-        client = Client.create_live_client(trading_strategy_api_key, cache_path=cache_path)
-        if clear_caches:
-            client.clear_caches()
-    else:
-        client = None
-
-    # Currently, all actions require us to have a valid API key
-    # might change in the future
-    if not client:
-        raise RuntimeError("Trading Strategy client instance is not available - needed to run backtests. Make sure trading_strategy_api_key is set.")
-
-    tick_offset = datetime.timedelta(minutes=cycle_offset_minutes)
-
-    if max_data_delay_minutes:
-        max_data_delay = datetime.timedelta(minutes=max_data_delay_minutes)
-    else:
-        max_data_delay = None
-
-    stats_refresh_frequency = datetime.timedelta(minutes=stats_refresh_minutes)
-    position_trigger_check_frequency = datetime.timedelta(minutes=position_trigger_check_minutes)
-
-    logger.info("Loading strategy file %s", strategy_file)
-    strategy_factory = import_strategy_file(strategy_file)
-
-    logger.trade("%s: trade Executor starting", name)
-
-    if backtest_start:
-        # Running as a backtest
-        execution_context = ExecutionContext(
-            mode=ExecutionMode.backtesting,
-            timed_task_context_manager=timed_task,
-        )
-    else:
         if unit_testing:
+            # Do not let Ganache to wait for too long
+            # because likely Ganache has simply crashed on background
+            confirmation_timeout = datetime.timedelta(seconds=30)
+
+        execution_model, sync_method, valuation_model_factory, pricing_model_factory = create_trade_execution_model(
+            execution_type,
+            private_key,
+            web3config,
+            confirmation_timeout,
+            confirmation_block_count,
+            max_slippage,
+            minimum_gas_balance,
+        )
+
+        approval_model = create_approval_model(approval_type)
+
+        if state_file:
+            store = create_state_store(Path(state_file))
+        else:
+            # Backtests never have persistent state
+            if execution_type == TradeExecutionType.backtest:
+                logger.info("This backtest run won't create a state file")
+                store = NoneStore(State())
+            else:
+                raise RuntimeError("Does not know how to set up a state file for this run")
+
+        metadata = create_metadata(name, short_description, long_description, icon_url)
+
+        # Start the queue that relays info from the web server to the strategy executor
+        command_queue = Queue()
+
+        run_state = RunState()
+        run_state.version = VersionInfo.read_docker_version()
+        run_state.executor_id = id
+
+        # Create our webhook server
+        if http_enabled:
+            server = create_webhook_server(
+                http_host,
+                http_port,
+                http_username,
+                http_password,
+                command_queue,
+                store,
+                metadata,
+                run_state,
+            )
+        else:
+            logger.info("Web server disabled")
+            server = None
+
+        # Create our data client
+        if trading_strategy_api_key:
+            client = Client.create_live_client(trading_strategy_api_key, cache_path=cache_path)
+            if clear_caches:
+                client.clear_caches()
+        else:
+            client = None
+
+        # Currently, all actions require us to have a valid API key
+        # might change in the future
+        if not client:
+            raise RuntimeError("Trading Strategy client instance is not available - needed to run backtests. Make sure trading_strategy_api_key is set.")
+
+        tick_offset = datetime.timedelta(minutes=cycle_offset_minutes)
+
+        if max_data_delay_minutes:
+            max_data_delay = datetime.timedelta(minutes=max_data_delay_minutes)
+        else:
+            max_data_delay = None
+
+        stats_refresh_frequency = datetime.timedelta(minutes=stats_refresh_minutes)
+        position_trigger_check_frequency = datetime.timedelta(minutes=position_trigger_check_minutes)
+
+        logger.info("Loading strategy file %s", strategy_file)
+        strategy_factory = import_strategy_file(strategy_file)
+
+        logger.trade("%s: trade Executor starting", name)
+
+        if backtest_start:
+            # Running as a backtest
             execution_context = ExecutionContext(
-                mode=ExecutionMode.unit_testing_trading,
+                mode=ExecutionMode.backtesting,
                 timed_task_context_manager=timed_task,
             )
         else:
-            execution_context = ExecutionContext(
-                mode=ExecutionMode.real_trading,
-                timed_task_context_manager=timed_task,
-            )
+            if unit_testing:
+                execution_context = ExecutionContext(
+                    mode=ExecutionMode.unit_testing_trading,
+                    timed_task_context_manager=timed_task,
+                )
+            else:
+                execution_context = ExecutionContext(
+                    mode=ExecutionMode.real_trading,
+                    timed_task_context_manager=timed_task,
+                )
 
-    # If we die within few seconds of the launch,
-    # also terminate the webhook server immediately
-    start_up_deadline = time.time() + 3
+        # If we die within few seconds of the launch,
+        # also terminate the webhook server immediately
+        start_up_deadline = time.time() + 3
+
+    except Exception as e:
+        # Logging is set up is in this point, so we can log this exception that
+        # caused the start up to fail
+        logger.critical("Startup failed: %s", e)
+        logger.exception(e)
+        raise
 
     try:
         loop = ExecutionLoop(

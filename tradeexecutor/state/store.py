@@ -42,8 +42,15 @@ class StateStore(abc.ABC):
         """Save the state to the storage."""
 
     @abc.abstractmethod
-    def create(self) -> State:
-        """Create a new state storage."""
+    def create(self, name: str) -> State:
+        """Create a new state storage.
+
+        :param name:
+            Name of the strategy this State belongs to
+        """
+        state = State()
+        state.name = name
+        return state
 
 
 class JSONFileStore(StateStore):
@@ -94,9 +101,9 @@ class JSONFileStore(StateStore):
         temp.close()
         shutil.move(temp.name, self.path)
 
-    def create(self) -> State:
+    def create(self, name: str) -> State:
         logger.info("Created new state for %s", self.path)
-        return State()
+        return super().create(name)
 
 
 class NoneStore(StateStore):

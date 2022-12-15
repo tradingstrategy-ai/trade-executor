@@ -153,13 +153,13 @@ class ExecutionLoop:
         """
         if self.reset:
             # Create empty state and save it
-            state = self.store.create()
+            state = self.store.create(self.name)
             state.name = self.name
             self.store.sync(state)
         else:
             if self.store.is_pristine():
                 # Create empty state and save it
-                state = self.store.create()
+                state = self.store.create(self.name)
                 state.name = self.name
                 self.store.sync(state)
             else:
@@ -595,7 +595,16 @@ class ExecutionLoop:
                 state.cycle = cycle
                 ts = datetime.datetime.now()
                 universe = self.tick(ts, self.cycle_duration, state, cycle, live=True)
-                self.update_summary_statistics(state)
+
+                try:
+                    self.update_summary_statistics(state)
+                except Exception as e:
+                    # Failing to do the performance statistics is not fatal,
+                    # because this does not contain any state changing events
+                    logger.warning("update_summary_statistics() failed in the live cycle: %s", e)
+                    logger.exception(e)
+                    pass
+
             except Exception as e:
                 die(e)
 

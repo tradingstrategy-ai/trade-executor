@@ -3,6 +3,7 @@ import datetime
 from typing import Optional
 
 import pandas as pd
+from numpy import isnan
 
 from tradeexecutor.state.state import State
 from tradeexecutor.state.statistics import calculate_naive_profitability
@@ -17,6 +18,15 @@ def calculate_summary_statistics(
         now_: Optional[pd.Timestamp] = None
 ) -> StrategySummaryStatistics:
     """Preprocess the strategy statistics for the summary card.
+
+    To test out in the :ref:`console`:
+
+    .. code-block:: python
+
+        from tradeexecutor.statistics.summary import calculate_summary_statistics
+        from tradeexecutor.strategy.execution_context import ExecutionMode
+
+        calculate_summary_statistics(state, ExecutionMode.preflight_check)
 
     :param state:
         Strategy state from which we calculate the summary
@@ -65,7 +75,13 @@ def calculate_summary_statistics(
         index: pd.Timestamp
 
         last_90_days_ts = total_equity_time_series.loc[start_at:]
-        performance_chart_90_days = [(index.to_pydatetime(), (value - start_val) / start_val) for index, value in last_90_days_ts.items()]
+        performance_chart_90_days = []
+        for index, value in last_90_days_ts.items():
+            ts = index.to_pydatetime()
+            profitability_per_day = (value - start_val) / start_val
+            # Don't let NaNs slip through
+            if not isnan(profitability_per_day):
+                performance_chart_90_days.append((ts, profitability_per_day))
     else:
         profitability_90_days = None
         enough_data = False

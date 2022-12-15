@@ -57,6 +57,12 @@ class ExecutionMode(enum.Enum):
     #: to check that all of our files and connections are intact.
     preflight_check = "preflight_check"
 
+    #: One off diagnostic and scripts
+    #:
+    #: Used in the interactive :ref:`console.
+    #: and debugging scripts.
+    one_off = "one_off"
+
     def is_live_trading(self) -> bool:
         """Are we trading  real time?"""
         return self in (self.real_trading, self.paper_trading, self.unit_testing_trading, self.simulated_trading)
