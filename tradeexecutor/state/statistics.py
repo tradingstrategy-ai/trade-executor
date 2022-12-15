@@ -186,6 +186,7 @@ class Statistics:
 
         assert len(self.portfolio) > 0, f"Statistics did not have any calculations for positions: {self.portfolio}"
 
+        # https://stackoverflow.com/questions/40815238/convert-dataframe-index-to-datetime
         s = pd.Series(
             [getattr(ps, attr_name) for ps in self.portfolio],
             index=DatetimeIndex([ps.calculated_at for ps in self.portfolio]),
