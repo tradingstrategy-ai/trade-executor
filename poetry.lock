@@ -2376,7 +2376,7 @@ tqdm = ">=4.64.1,<5.0.0"
 
 [[package]]
 name = "trading-strategy"
-version = "0.9.0"
+version = "0.9.1"
 description = "DEX trading and blockchain quantitative finance data for Python"
 category = "main"
 optional = false
@@ -2394,6 +2394,7 @@ tqdm-loggable = ">=0.1.2,<0.2.0"
 
 [package.extras]
 backtrader = ["trading-strategy-backtrader (>=0.1,<0.2)"]
+direct-feed = ["web3-ethereum-defi[direct-feed] (==0.11.3)"]
 qstrader = ["scipy (>=1.6.1,<2.0.0)", "trading-strategy-qstrader (>=0.5.0,<0.6.0)"]
 
 [[package]]
@@ -2625,8 +2626,8 @@ tester = ["eth-tester[py-evm] (==v0.6.0-beta.7)", "py-geth (>=3.9.1,<4)"]
 
 [[package]]
 name = "web3-ethereum-defi"
-version = "0.11.2"
-description = "Web3-Ethereum-DeFi is a library for smart contracts, DeFi trading (Uniswap, PancakeSwap), Ethereum JSON-RPC, EVM transactions and automated test suites."
+version = "0.11.3"
+description = "DeFi integration library for smart contracts, DeFi trading (Uniswap, PancakeSwap), Ethereum JSON-RPC, EVM transactions and automated test suites."
 category = "main"
 optional = false
 python-versions = ">=3.9,<4.0"
@@ -2784,7 +2785,7 @@ web-server = ["pyramid", "WebTest", "pyramid-openapi3", "waitress"]
 [metadata]
 lock-version = "1.1"
 python-versions = ">=3.10,<3.11"
-content-hash = "e802c2b3dd6599d761db4a255b5418cd9416912c6983836e299b32cd9830c4ed"
+content-hash = "3e7bf043094712f2b2102dc6e8aa1e1977fa48f0e0e12b689a85c396972ff942"
 
 [metadata.files]
 aiohttp = [
@@ -4625,8 +4626,8 @@ tqdm-loggable = [
     {file = "tqdm_loggable-0.1.2.tar.gz", hash = "sha256:74e880c06883e6533924de1848a00cb541cdd9e1fefb79a8adb1dec734376559"},
 ]
 trading-strategy = [
-    {file = "trading_strategy-0.9.0-py3-none-any.whl", hash = "sha256:e4ab3a4c3d3785db3ea6542f70dd0d4d6f7d1adeae85ebc05506bc6d1d040296"},
-    {file = "trading_strategy-0.9.0.tar.gz", hash = "sha256:376adeafe37ce84a9721935c0ed3afd5298774a24b56e043d33520ef5171a2dd"},
+    {file = "trading_strategy-0.9.1-py3-none-any.whl", hash = "sha256:0e7db0b486233d230ad22d1e5b6adba1a90649daf6035c23c454d9dde9e1497e"},
+    {file = "trading_strategy-0.9.1.tar.gz", hash = "sha256:a31d87f1ca0743fe3053337a3d40f9b748cb6d842f050b57f255e30d52a536c0"},
 ]
 trading-strategy-qstrader = [
     {file = "trading-strategy-qstrader-0.5.tar.gz", hash = "sha256:c294b56f84bdc31e79842b5db5f6c8a5603c947725b9650d95655d95ade3ed04"},
@@ -4760,8 +4761,8 @@ web3 = [
     {file = "web3-5.31.3.tar.gz", hash = "sha256:4b2d420647c81856e3cf398996cd3cc80c719dc3a10881884c5c3b1467e4f850"},
 ]
 web3-ethereum-defi = [
-    {file = "web3_ethereum_defi-0.11.2-py3-none-any.whl", hash = "sha256:b97b1abfea4d316ab4fe9075ca92feea33a650083a596e4904111ffca517b8ee"},
-    {file = "web3_ethereum_defi-0.11.2.tar.gz", hash = "sha256:004f02326449b30c431a020af466fc9beb847e8a01b64b669860b3710c720ad2"},
+    {file = "web3_ethereum_defi-0.11.3-py3-none-any.whl", hash = "sha256:a564208dce9e1c81ba5b4c9503759830b59b82fc21e962ad9dcf69207af7802d"},
+    {file = "web3_ethereum_defi-0.11.3.tar.gz", hash = "sha256:bc7066f6cf20cae99d7fe002d630a27f36abe4ea7076984353c0a2b392157c68"},
 ]
 webcolors = [
     {file = "webcolors-1.12-py3-none-any.whl", hash = "sha256:d98743d81d498a2d3eaf165196e65481f0d2ea85281463d856b1e51b09f62dce"},
