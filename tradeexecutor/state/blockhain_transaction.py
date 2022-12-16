@@ -176,3 +176,14 @@ class BlockchainTransaction:
         """
         assert self.details, "Details not set, cannot know the gas price"
         return self.details.get("maxFeePerGas", 0)
+
+    def get_gas_limit(self) -> int:
+        """Get the gas limit of the transaction.
+
+        Gets `gas` for EVM transction.
+
+        :return:
+            0 if unknown
+        """
+        assert self.details, "Details not set, cannot know the gas price"
+        return self.details.get("gas", 0)
