@@ -501,7 +501,7 @@ class TradeAnalysis:
         if(raw_timeline is not None):
             assert isinstance(raw_timeline, pd.DataFrame), "Not a valid timeline, use expand_timeline_raw() method to create it"
         if(stop_loss_pct is not None):
-            assert stop_loss_pct > 0 and stop_loss_pct < 1, "Not a valid stop loss percentage, must be between 0 and 1"
+            assert stop_loss_pct >= 0 and stop_loss_pct < 1, "Not a valid stop loss percentage, must be between 0 and 1"
         if(time_bucket is not None):
             assert isinstance(time_bucket, TimeBucket), "Not a valid time bucket"
 
