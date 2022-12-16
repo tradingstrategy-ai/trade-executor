@@ -644,9 +644,9 @@ class TradeAnalysis:
             max_neg_cons = max_cons['max_neg_cons']
             max_pullback = max_cons['max_pullback']
 
-            # Max capital at risk at SL (don't confuse stop_losses and _stop_losses)
-            _stop_losses = raw_timeline.loc[raw_timeline['Remarks'] == 'SL']
-            max_capital_at_risk_sl = max(((1-stop_loss_pct)*_stop_losses['position_max_size'])/_stop_losses['opening_capital'])
+            # Max capital at risk at SL (don't confuse stop_losses and stop_loss_rows)
+            stop_loss_rows = raw_timeline.loc[raw_timeline['Remarks'] == 'SL']
+            max_capital_at_risk_sl = max(((1-stop_loss_pct)*stop_loss_rows['position_max_size'])/stop_loss_rows['opening_capital'])
 
             # Biggest realized loss
             losses = raw_timeline.loc[raw_timeline['pnl_usd'] < 0]
