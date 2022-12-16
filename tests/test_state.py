@@ -831,13 +831,11 @@ def test_state_summary_without_initial_cash(usdc, weth_usdc, start_ts: datetime.
     assert summary.average_net_profit == pytest.approx(9.800999)
 
 
-
 def test_validate_state():
     """Catch common errors in setting bad state data."""
 
     ok = {"foo": datetime.datetime(1970, 1, 1)}
     validate_nested_state_dict(ok)
-
 
     ok = {"foo": Decimal(1)}
     validate_nested_state_dict(ok)
@@ -862,4 +860,3 @@ def test_validate_state():
     with pytest.raises(BadStateData):
         bad = {"foo": {"bar": pd.Timestamp("1970-1-1")}}
         validate_nested_state_dict(bad)
-

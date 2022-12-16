@@ -66,6 +66,14 @@ class UniswapV2LivePricing(PricingModel):
         self.very_small_amount = very_small_amount
         self.routing_model = routing_model
 
+        # web3-ethereum-defi trading fee default is 30 bps
+        if(hasattr(routing_model, 'trading_fee')):
+            self.trading_fee = routing_model.trading_fee
+        else:
+            self.trading_fee = 30 
+
+        assert isinstance(self.very_small_amount, Decimal)
+
     def get_pair_for_id(self, internal_id: int) -> Optional[TradingPairIdentifier]:
         """Look up a trading pair.
 
@@ -92,6 +100,8 @@ class UniswapV2LivePricing(PricingModel):
         if quantity is None:
             quantity = Decimal(self.very_small_amount)
 
+        assert isinstance(quantity, Decimal)
+
         target_pair, intermediate_pair = self.routing_model.route_pair(self.pair_universe, pair)
 
         base_addr, quote_addr, intermediate_addr = route_tokens(target_pair, intermediate_pair)
@@ -106,7 +116,8 @@ class UniswapV2LivePricing(PricingModel):
             base_addr,
             quote_addr,
             quantity_raw,
-            intermediate_token_address=intermediate_addr
+            intermediate_token_address=intermediate_addr,
+            fee=self.trading_fee
         )
 
         if intermediate_pair is not None:
@@ -157,6 +168,17 @@ class UniswapV2LivePricing(PricingModel):
         )
         token_received = target_pair.base.convert_to_decimal(token_raw_received)
         return float(reserve / token_received)
+
+    def get_mid_price(self,
+                      ts: datetime.datetime,
+                      pair: TradingPairIdentifier) -> USDollarAmount:
+        """Get the mid price by the candle."""
+
+        # TODO: Use native Uniswap router functions to get the mid price
+        # Here we are using a hack
+        bp = self.get_buy_price(ts, pair, self.very_small_amount)
+        sp = self.get_sell_price(ts, pair, self.very_small_amount)
+        return (bp + sp) / 2
 
     def quantize_base_quantity(self, pair: TradingPairIdentifier, quantity: Decimal, rounding=ROUND_DOWN) -> Decimal:
         """Convert any base token quantity to the native token units by its ERC-20 decimals."""

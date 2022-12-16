@@ -266,7 +266,8 @@ def broadcast(
         ts: datetime.datetime,
         instructions: List[TradeExecution],
         confirmation_block_count: int=0,
-        ganache_sleep=0.5) -> Dict[HexBytes, Tuple[TradeExecution, BlockchainTransaction]]:
+        ganache_sleep=0.5,
+) -> Dict[HexBytes, Tuple[TradeExecution, BlockchainTransaction]]:
     """Broadcast multiple transations and manage the trade executor state for them.
 
     :return: Map of transaction hashes to watch
@@ -309,7 +310,7 @@ def wait_trades_to_complete(
 
     :return: Map of transaction hashes -> receipt
     """
-    logger.info("Waiting %d trades to confirm", len(trades))
+    logger.info("Waiting %d trades to confirm, confirm block count %d, timeout %s", len(trades), confirmation_block_count, max_timeout)
     assert isinstance(confirmation_block_count, int)
     tx_hashes = []
     for t in trades:
@@ -344,6 +345,12 @@ def resolve_trades(
     Read on-chain Uniswap swap data from the transaction receipt and record how it went.
 
     Mutates the trade objects in-place.
+
+    :param tx_map:
+        tx hash -> (trade, transaction) mapping
+
+    :param receipts:
+        tx hash -> receipt object mapping
 
     :param stop_on_execution_failure:
         Raise an exception if any of the trades failed
@@ -461,7 +468,9 @@ def broadcast_and_resolve(
         web3: Web3,
         state: State,
         trades: List[TradeExecution],
-        stop_on_execution_failure=False
+        confirmation_timeout: datetime.timedelta = datetime.timedelta(minutes=1),
+        confirmation_block_count: int=0,
+        stop_on_execution_failure=False,
 ):
     """Do the live trade execution.
 
@@ -471,16 +480,37 @@ def broadcast_and_resolve(
 
     - Based on the transaction result, update the state of the trade if it was success or not
 
+    :param confirmation_block_count:
+        How many blocks to wait until marking transaction as confirmed
+
+    :confirmation_timeout:
+        Max time to wait for a confirmation.
+
+        We can use zero or negative values to simulate unconfirmed trades.
+        See `test_broadcast_failed_and_repair_state`.
+
     :param stop_on_execution_failure:
         If any of the transactions fail, then raise an exception.
         Set for unit test.
     """
+
+    assert isinstance(confirmation_timeout, datetime.timedelta)
+
     broadcasted = broadcast(web3, datetime.datetime.utcnow(), trades)
-    receipts = wait_trades_to_complete(web3, trades)
-    resolve_trades(
-        web3,
-        datetime.datetime.now(),
-        state,
-        broadcasted,
-        receipts,
-        stop_on_execution_failure=stop_on_execution_failure)
+
+    if confirmation_timeout > datetime.timedelta(0):
+
+        receipts = wait_trades_to_complete(
+            web3,
+            trades,
+            max_timeout=confirmation_timeout,
+            confirmation_block_count=confirmation_block_count,
+        )
+
+        resolve_trades(
+            web3,
+            datetime.datetime.now(),
+            state,
+            broadcasted,
+            receipts,
+            stop_on_execution_failure=stop_on_execution_failure)

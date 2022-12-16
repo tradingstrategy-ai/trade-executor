@@ -16,7 +16,7 @@ from tradeexecutor.backtest.backtest_valuation import BacktestValuationModel
 from tradeexecutor.backtest.simulated_wallet import SimulatedWallet
 from tradeexecutor.cli.log import setup_notebook_logging
 from tradeexecutor.cli.loop import ExecutionLoop
-from tradeexecutor.ethereum.default_routes import get_routing_model, get_backtest_routing_model
+from tradeexecutor.ethereum.routing_data import get_routing_model, get_backtest_routing_model
 from tradeexecutor.state.state import State
 from tradeexecutor.state.store import NoneStore
 from tradeexecutor.strategy.approval import UncheckedApprovalModel, ApprovalModel
@@ -107,6 +107,7 @@ class BacktestSetup:
             pricing_model_factory=pricing_model_factory,
             routing_model=routing_model,
             decide_trades=self.decide_trades,
+            execution_context=execution_context,
         )
 
         if self.universe:
@@ -330,6 +331,7 @@ def run_backtest(
         backtest_start=setup.start_at,
         backtest_end=setup.end_at,
         backtest_setup=backtest_setup,
+        backtest_candle_time_frame_override=setup.universe_options.candle_time_bucket_override,
         tick_offset=datetime.timedelta(seconds=1),
         trade_immediately=True,
     )

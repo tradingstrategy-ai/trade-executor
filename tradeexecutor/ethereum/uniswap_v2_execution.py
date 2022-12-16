@@ -8,11 +8,11 @@ import logging
 from web3 import Web3
 
 from eth_defi.hotwallet import HotWallet
-from tradeexecutor.ethereum.execution import broadcast_and_resolve
+from tradeexecutor.ethereum.execution import broadcast_and_resolve, wait_trades_to_complete, resolve_trades
 from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2SimpleRoutingModel, UniswapV2RoutingState
 from tradeexecutor.state.freeze import freeze_position_on_failed_trade
 from tradeexecutor.state.state import State
-from tradeexecutor.state.trade import TradeExecution
+from tradeexecutor.state.trade import TradeExecution, TradeStatus
 from tradeexecutor.strategy.execution_model import ExecutionModel
 
 
@@ -53,6 +53,7 @@ class UniswapV2ExecutionModel(ExecutionModel):
         :param max_slippage:
             Max slippage tolerance per trade. 0.01 is 1%.
         """
+        assert isinstance(confirmation_timeout, datetime.timedelta), f"Got {confirmation_timeout} {confirmation_timeout.__class__}"
         self.web3 = web3
         self.hot_wallet = hot_wallet
         self.stop_on_execution_failure = stop_on_execution_failure
@@ -109,12 +110,22 @@ class UniswapV2ExecutionModel(ExecutionModel):
 
         state.start_trades(datetime.datetime.utcnow(), trades, max_slippage=self.max_slippage)
 
+        # 61 is Ethereum Tester
+        if self.web3.eth.chain_id != 61:
+            assert self.confirmation_block_count > 0, f"confirmation_block_count set to {self.confirmation_block_count} "
+
         routing_model.setup_trades(
             routing_state,
             trades,
             check_balances=check_balances)
 
-        broadcast_and_resolve(self.web3, state, trades)
+        broadcast_and_resolve(
+            self.web3,
+            state,
+            trades,
+            confirmation_timeout=self.confirmation_timeout,
+            confirmation_block_count=self.confirmation_block_count,
+        )
 
         # Clean up failed trades
         freeze_position_on_failed_trade(ts, state, trades)
@@ -124,4 +135,64 @@ class UniswapV2ExecutionModel(ExecutionModel):
             "web3": self.web3,
             "hot_wallet": self.hot_wallet,
         }
+
+    def repair_unconfirmed_trades(self, state: State) -> List[TradeExecution]:
+        """Repair unconfirmed trades.
+
+        Repair trades that failed to properly broadcast or confirm due to
+        blockchain node issues.
+        """
+
+        repaired = []
+
+        logger.info("Reparing the failed trade confirmation")
+
+        assert self.confirmation_timeout > datetime.timedelta(0), \
+            "Make sure you have a good tx confirmation timeout setting before attempting a repair"
+
+        # Check if we are on a live chain, not Ethereum Tester
+        if self.web3.eth.chain_id != 61:
+            assert self.confirmation_block_count > 0, \
+                "Make sure you have a good confirmation_block_count setting before attempting a repair"
+
+        for p in state.portfolio.open_positions.values():
+            t: TradeExecution
+            for t in p.trades.values():
+                if t.is_unfinished():
+                    logger.info("Found unconfirmed trade: %s", t)
+
+                    assert t.get_status() == TradeStatus.broadcasted
+
+                    receipt_data = wait_trades_to_complete(
+                        self.web3,
+                        [t],
+                        max_timeout=self.confirmation_timeout,
+                        confirmation_block_count=self.confirmation_block_count,
+                    )
+
+                    assert len(receipt_data) > 0, f"Got bad receipts: {receipt_data}"
+
+                    tx_data = {}
+
+                    # Build a tx hash -> (trade, tx) map
+                    for tx in t.blockchain_transactions:
+                        tx_data[tx.tx_hash] = (t, tx)
+
+                    resolve_trades(
+                        self.web3,
+                        datetime.datetime.now(),
+                        state,
+                        tx_data,
+                        receipt_data,
+                        stop_on_execution_failure=True)
+
+                    t.repaired_at = datetime.datetime.utcnow()
+                    if not t.notes:
+                        # Add human readable note,
+                        # but don't override any other notes
+                        t.notes = "Failed broadcast repaired"
+
+                    repaired.append(t)
+
+        return repaired
 

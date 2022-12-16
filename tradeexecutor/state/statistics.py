@@ -9,9 +9,12 @@ purely there for profit and loss calculations.
 import datetime
 from collections import defaultdict
 from dataclasses import field, dataclass
-from typing import Dict, List, Optional
+from math import isnan
+from typing import Dict, List, Optional, Tuple
 
+import pandas as pd
 from dataclasses_json import dataclass_json
+from pandas import DatetimeIndex
 
 from tradingstrategy.types import USDollarAmount
 
@@ -21,6 +24,12 @@ from tradeexecutor.analysis.trade_analyser import TradeSummary
 @dataclass_json
 @dataclass
 class PositionStatistics:
+    """Time-series of statistics calculated for each open position.
+
+    Position statistics are recalculated at the same time positions are revalued.
+    The time-series of these statistics are stored as a part of the state,
+    allowing one to plot the position performance over time.
+    """
 
     #: Real-time clock when these stats were calculated
     calculated_at: datetime.datetime
@@ -41,6 +50,12 @@ class PositionStatistics:
 
     #: The current position size dollars
     value: USDollarAmount
+
+
+    def __post_init__(self):
+        assert isinstance(self.calculated_at, datetime.datetime)
+        assert isinstance(self.last_valuation_at, datetime.datetime)
+        assert not isnan(self.profitability)
 
 
 @dataclass_json
@@ -68,7 +83,10 @@ class FinalPositionStatistics:
 @dataclass_json
 @dataclass
 class PortfolioStatistics:
-    '''
+    '''Portfolio statistics for each timepoint.
+
+    Updated with regular ticks for a live strategy.
+
     If backtesting, only calculated_at and total_equity are necessary for later visualisations and metrics
     If livetrading, then all attributes should be specified so that for displaying updated metrics after each trade 
     '''
@@ -135,3 +153,87 @@ class Statistics:
         stat_list = self.positions.get(position_id, [])
         stat_list.append(p_stats)
         self.positions[position_id] = stat_list
+
+    def get_portfolio_statistics_dataframe(
+            self,
+            attr_name: str,
+            resampling_time: str="D",
+            resampling_method: str="max") -> pd.Series:
+        """Get any of position statistcs value as a columnar data.
+
+        Get the daily performance of the portfolio.
+
+        Example:
+
+        .. code-block:: python
+
+            # Create time series of portfolio "total_equity" over its lifetime
+            s = stats.get_portfolio_statistics_dataframe("total_equity")
+
+        :param attr_name:
+            Which variable we are interested in.
+            E.g. `total_equity`.
+
+        :param resampling_time:
+            See http://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#resampling
+
+        :param resamping_method:
+            See http://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#resampling
+
+        :return:
+            DataFrame for the value with time as index.
+        """
+
+        assert len(self.portfolio) > 0, f"Statistics did not have any calculations for positions: {self.portfolio}"
+
+        # https://stackoverflow.com/questions/40815238/convert-dataframe-index-to-datetime
+        s = pd.Series(
+            [getattr(ps, attr_name) for ps in self.portfolio],
+            index=DatetimeIndex([ps.calculated_at for ps in self.portfolio]),
+        )
+
+        # Convert data to daily if we have to
+        assert resampling_method == "max", f"Unsupported resamping method {resampling_method}"
+        return s.resample(resampling_time).max()
+
+
+def calculate_naive_profitability(
+        total_equity_series: pd.Series,
+        look_back: Optional[pd.Timedelta] = None,
+        start_at: Optional[pd.Timestamp] = None,
+        end_at: Optional[pd.Timestamp] = None) -> Tuple[Optional[float], Optional[pd.Timedelta]]:
+    """Calculate the profitability as value at end - value at start.
+
+    This formula ignores any deposits and withdraws from the strategy.
+
+    TODO: This needs to include gas fee costs
+
+    :param total_equity:
+        As received from get_portfolio_statistics_dataframe()
+
+    :return:
+        Tuple (Profitability as %, duration of the sample period).
+        (None, None) if we cannot calculate anything yet.
+    """
+
+    if len(total_equity_series) == 0:
+        return None, None
+
+    if look_back:
+        assert not(start_at or end_at), "Give either look_back or range"
+
+        end_at = total_equity_series.index[-1]
+        start_at = end_at - look_back
+
+        # We cannot look back data we do not have
+        start_at = max(total_equity_series.index[0], start_at)
+
+
+    # https://stackoverflow.com/a/42266376/315168
+    start_val_idx = total_equity_series.index.get_indexer([start_at], method="nearest")
+    end_val_idx = total_equity_series.index.get_indexer([end_at], method="nearest")
+
+    start_val = float(total_equity_series.iloc[start_val_idx])
+    end_val = float(total_equity_series.iloc[end_val_idx])
+
+    return (end_val - start_val) / (start_val), end_at - start_at

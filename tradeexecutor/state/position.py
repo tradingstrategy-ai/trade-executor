@@ -62,10 +62,14 @@ class TradingPosition:
 
     last_trade_at: Optional[datetime.datetime] = None
 
-    #: Trigger a stop loss if this price is reached
+    #: Trigger a stop loss if this price is reached,
+    #:
+    #: We use mid-price as the trigger price.
     stop_loss: Optional[USDollarAmount] = None
 
     #: Trigger a take profit if this price is reached
+    #:
+    #: We use mid-price as the trigger price.
     take_profit: Optional[USDollarAmount] = None
 
     #: Human readable notes about this trade
@@ -169,7 +173,7 @@ class TradingPosition:
                 return True
         return False
 
-    def needs_real_time_price(self) -> bool:
+    def has_trigger_conditions(self) -> bool:
         """Does this position need to check for stop loss/take profit."""
         return self.stop_loss is not None or self.take_profit is not None
 
@@ -191,7 +195,8 @@ class TradingPosition:
 
         Does not account for trades that are currently being executd.
         """
-        return sum([t.get_position_quantity() for t in self.trades.values() if t.is_success()])
+        s = sum([t.get_position_quantity() for t in self.trades.values() if t.is_success()])
+        return Decimal(s)  # Make zero to decimal
 
     def get_live_quantity(self) -> Decimal:
         """Get all tied up token quantity.
@@ -234,6 +239,10 @@ class TradingPosition:
     def get_successful_trades(self) -> List[TradeExecution]:
         """Get all trades that have been successfully executed and contribute to this position"""
         return [t for t in self.trades.values() if t.is_success()]
+
+    def get_failed_trades(self) -> List[TradeExecution]:
+        """Get all trades that have failed in the execution."""
+        return [t for t in self.trades.values() if t.is_failed()]
 
     def calculate_value_using_price(self, token_price: USDollarAmount, reserve_price: USDollarAmount) -> USDollarAmount:
         token_quantity = sum([t.get_equity_for_position() for t in self.trades.values() if t.is_accounted_for_equity()])

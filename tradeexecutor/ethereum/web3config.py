@@ -5,6 +5,7 @@ from dataclasses import field, dataclass
 from typing import Dict, Optional
 
 from eth_defi.gas import GasPriceMethod, node_default_gas_price_strategy
+from eth_defi.middleware import http_retry_request_with_sleep_middleware
 from tradingstrategy.chain import ChainId
 from web3 import Web3, HTTPProvider
 from web3.middleware import geth_poa_middleware
@@ -57,8 +58,9 @@ class Web3Config:
         chain_id = web3.eth.chain_id
 
         if gas_price_method is None:
-            if chain_id == ChainId.ethereum.value:
-                # Ethereum supports maxBaseFee method
+            if chain_id in (ChainId.ethereum.value, ChainId.ganache.value, ChainId.avalanche.value, ChainId.polygon.value):
+                # Ethereum supports maxBaseFee method (London hard fork)
+                # Same for Avalanche C-chain https://twitter.com/avalancheavax/status/1389763933448323073
 
                 gas_price_method = GasPriceMethod.london
             else:
@@ -79,7 +81,12 @@ class Web3Config:
 
         assert isinstance(gas_price_method, GasPriceMethod)
 
-        logger.info("Connected to chain id: %d, using gas price method %s", chain_id, gas_price_method.name)
+        chain_id_obj = ChainId(chain_id)
+
+        logger.trade("Connected to chain: %s, node provider: %s, gas pricing method: %s",
+                     chain_id_obj.name,
+                     get_url_domain(url),
+                     gas_price_method.name)
 
         # London is the default method
         if gas_price_method == GasPriceMethod.legacy:
@@ -87,9 +94,11 @@ class Web3Config:
             web3.eth.set_gas_price_strategy(node_default_gas_price_strategy)
 
         # Set POA middleware if needed
-        if chain_id in (ChainId.bsc.value, ChainId.polygon.value):
-            logger.info("Using proof-of-authority web3 middleware")
+        if chain_id in (ChainId.bsc.value, ChainId.polygon.value, ChainId.avalanche.value):
+            logger.info("Using proof-of-authority web3 middleware for chain %d", chain_id)
             web3.middleware_onion.inject(geth_poa_middleware, layer=0)
+
+        web3.middleware_onion.inject(http_retry_request_with_sleep_middleware, layer=0)
 
         return web3
 
@@ -120,7 +129,7 @@ class Web3Config:
         try:
             return self.connections[self.default_chain_id]
         except KeyError:
-            raise RuntimeError(f"We haev {self.default_chain_id.name} configured as the default blockchain, but we do not have a connection for it in the connection pool. Did you pass right RPC configuration?")
+            raise RuntimeError(f"We have {self.default_chain_id.name} configured as the default blockchain, but we do not have a connection for it in the connection pool. Did you pass right RPC configuration?")
 
     def check_default_chain_id(self):
         """Check that we are connected to the correct chain.

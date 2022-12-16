@@ -252,7 +252,16 @@ class Portfolio:
         return sum([p.get_value() for p in self.open_positions.values()])
 
     def get_total_equity(self) -> USDollarAmount:
-        """Get the value of the portfolio based on the latest pricing."""
+        """Get the value of the portfolio based on the latest pricing.
+
+        This is
+
+        - Value of the positions
+
+        plus
+
+        - Cash in the hand
+        """
         return self.get_open_position_equity() + self.get_current_cash()
 
     def get_unrealised_profit_usd(self) -> USDollarAmount:

@@ -10,7 +10,7 @@ from typing import Dict, List, Optional, Counter
 
 import pandas as pd
 
-from tradeexecutor.ethereum.default_routes import get_pancake_default_routing_parameters
+from tradeexecutor.ethereum.routing_data import get_pancake_default_routing_parameters
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.utils.price import is_legit_price_value
 from tradingstrategy.chain import ChainId

@@ -57,6 +57,12 @@ class ExecutionMode(enum.Enum):
     #: to check that all of our files and connections are intact.
     preflight_check = "preflight_check"
 
+    #: One off diagnostic and scripts
+    #:
+    #: Used in the interactive :ref:`console.
+    #: and debugging scripts.
+    one_off = "one_off"
+
     def is_live_trading(self) -> bool:
         """Are we trading  real time?"""
         return self in (self.real_trading, self.paper_trading, self.unit_testing_trading, self.simulated_trading)
@@ -68,9 +74,13 @@ class ExecutionMode(enum.Enum):
         """
         return self in (self.real_trading, self.paper_trading, self.simulated_trading)
 
+    def is_unit_testing(self) -> bool:
+        """Are we executing unit tests."""
+        return self in (self.unit_testing_trading,)
+
 
 @dataclass
-class ExecutionContext:
+class   ExecutionContext:
     """Information about the strategy execution environment.
 
     This is passed to `create_trading_universe` and couple of other

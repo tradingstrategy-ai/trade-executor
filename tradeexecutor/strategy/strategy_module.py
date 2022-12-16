@@ -266,6 +266,13 @@ class StrategyModuleInformation:
     are exported as lowercase.
 
     """
+
+    #: The source code of the strategy
+    #:
+    #: Can be set `None` for strategies that are not public.
+    #:
+    source_code: Optional[str]
+
     trading_strategy_engine_version: str
     trading_strategy_type: StrategyType
     trading_strategy_cycle: CycleDuration
@@ -328,7 +335,7 @@ class StrategyModuleInformation:
             assert isinstance(self.chain_id, ChainId), f"Strategy module chain_in varaible expected ChainId instance, got {self.chain_id}"
 
 
-def parse_strategy_module(python_module_exports: dict) -> StrategyModuleInformation:
+def parse_strategy_module(python_module_exports: dict, source_code: Optional[str]=None) -> StrategyModuleInformation:
     """Parse a loaded .py module that describes a trading strategy.
 
     :param python_module_exports:
@@ -336,6 +343,7 @@ def parse_strategy_module(python_module_exports: dict) -> StrategyModuleInformat
 
     """
     return StrategyModuleInformation(
+        source_code,
         python_module_exports.get("trading_strategy_engine_version"),
         python_module_exports.get("trading_strategy_type"),
         python_module_exports.get("trading_strategy_cycle"),
@@ -365,6 +373,9 @@ def read_strategy_module(path: Path) -> Union[StrategyModuleInformation, Strateg
 
     strategy_exports = runpy.run_path(path.as_posix())
 
+    with open(path.as_posix(), "rt") as inp:
+        source_code = inp.read()
+
     # For user convenience, make everything case-insentitive,
     # assume lowercase from no on
     strategy_exports = {k.lower(): v for k, v in strategy_exports.items()}
@@ -383,7 +394,7 @@ def read_strategy_module(path: Path) -> Union[StrategyModuleInformation, Strateg
 
     logger.info("Strategy module %s, engine version %s", path, version)
 
-    mod_info = parse_strategy_module(strategy_exports)
+    mod_info = parse_strategy_module(strategy_exports, source_code)
     mod_info.validate()
 
     return mod_info

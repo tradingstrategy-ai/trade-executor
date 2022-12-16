@@ -6,6 +6,7 @@ from decimal import Decimal
 from typing import Dict, Set, List, Optional, Tuple
 
 from eth_typing import HexAddress, ChecksumAddress
+from tradingstrategy.chain import ChainId
 from web3 import Web3
 from web3.contract import Contract
 
@@ -14,6 +15,8 @@ from eth_defi.gas import estimate_gas_fees
 from eth_defi.token import fetch_erc20_details
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, fetch_deployment
 from eth_defi.uniswap_v2.swap import swap_with_slippage_protection
+from web3.exceptions import ContractLogicError
+
 from tradeexecutor.ethereum.execution import get_token_for_asset
 from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
@@ -63,6 +66,9 @@ class UniswapV2RoutingState(RoutingState):
         # router -> erc-20 mappings
         self.approved_routes = defaultdict(set)
         self.swap_gas_limit = swap_gas_limit
+
+    def __repr__(self):
+        return f"<UniswapV2RoutingState Tx builder: {self.tx_builder} web3: {self.web3}>"
 
     def is_route_approved(self, router_address: str):
         return router_address in self.approved_routes
@@ -251,6 +257,8 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
                  factory_router_map: Dict[str, Tuple[str, Optional[str]]],
                  allowed_intermediary_pairs: Dict[str, str],
                  reserve_token_address: str,
+                 chain_id: Optional[ChainId] = None,
+                 trading_fee: Optional[int] = None
                  ):
         """
         :param factory_router_map:
@@ -269,6 +277,12 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
             This set is the list of pair smart contract addresses that
             are allowed to be used as a hop.
 
+        :param trading_fee:
+            Trading fee express as int in bps. E.g. 30 => 0.3%
+
+        :param chain_id:
+            Store the chain id for which these routes were generated for.
+
         :param reserve_token_address:
             Token address of our reserve currency.
             Relevent for buy/sell routing.
@@ -286,6 +300,7 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
         self.factory_router_map = {k.lower(): v for k, v in factory_router_map.items()}
         self.allowed_intermediary_pairs = {k.lower(): v.lower() for k, v in allowed_intermediary_pairs.items()}
         self.reserve_token_address = reserve_token_address
+        self.chain_id = chain_id
 
     def get_reserve_asset(self, pair_universe: PandasPairUniverse) -> AssetIdentifier:
         """Translate our reserve token address tok an asset description."""
@@ -574,6 +589,9 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
         hot_wallet = execution_details["hot_wallet"]
 
         fees = estimate_gas_fees(web3)
+
+        logger.info("Gas fee estimations for chain %d: %s", web3.eth.chain_id, fees)
+
         logger.info("Estimated gas fees for chain %d: %s", web3.eth.chain_id, fees)
         tx_builder = TransactionBuilder(web3, hot_wallet, fees)
         routing_state = UniswapV2RoutingState(universe.universe.pairs, tx_builder)
@@ -618,9 +636,12 @@ def get_uniswap_for_pair(web3: Web3, factory_router_map: dict, target_pair: Trad
     factory_address = Web3.toChecksumAddress(target_pair.exchange_address)
     router_address, init_code_hash = factory_router_map[factory_address.lower()]
 
-    return fetch_deployment(
-        web3,
-        factory_address,
-        Web3.toChecksumAddress(router_address),
-        init_code_hash=init_code_hash,
-    )
+    try:
+        return fetch_deployment(
+            web3,
+            factory_address,
+            Web3.toChecksumAddress(router_address),
+            init_code_hash=init_code_hash,
+        )
+    except ContractLogicError as e:
+        raise RuntimeError(f"Could not fetch deployment data for router address {router_address} (factory {factory_address}) - data is likely wrong") from e

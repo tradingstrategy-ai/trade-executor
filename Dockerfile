@@ -5,6 +5,11 @@
 #
 FROM python:3.10.8
 
+# Passed from Github Actions
+ARG GIT_VERSION_TAG=unspecified
+ARG GIT_COMMIT_MESSAGE=unspecified
+ARG GIT_VERSION_HASH=unspecified
+
 ENV PYTHONDONTWRITEBYTECODE 1 \
     PYTHONUNBUFFERED 1
 
@@ -15,6 +20,10 @@ RUN apt-get update \
 ENV PATH="/root/.local/bin:$PATH"
 
 WORKDIR /usr/src/trade-executor
+
+RUN echo $GIT_VERSION_TAG > GIT_VERSION_TAG.txt
+RUN echo $GIT_COMMIT_MESSAGE > GIT_COMMIT_MESSAGE.txt
+RUN echo $GIT_VERSION_HASH > GIT_VERSION_HASH.txt
 
 # package source code
 COPY . .

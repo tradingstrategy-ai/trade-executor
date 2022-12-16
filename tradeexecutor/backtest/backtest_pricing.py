@@ -25,7 +25,8 @@ logger = logging.getLogger(__name__)
 class BacktestSimplePricingModel(PricingModel):
     """Look up the historical prices.
 
-    - Candle close price is used
+    - Open price of the price candle at the timestamp,
+      or closest earlier timestamp is used
 
     - This is a simple model and does not use liquidity data
       for the price impact estimation
@@ -38,7 +39,7 @@ class BacktestSimplePricingModel(PricingModel):
                  candle_universe: GroupedCandleUniverse,
                  routing_model: RoutingModel,
                  data_delay_tolerance=pd.Timedelta("2d"),
-                 candle_timepoint_kind="close",
+                 candle_timepoint_kind="open",
                  very_small_amount=Decimal("0.10")):
         """
 
@@ -113,6 +114,19 @@ class BacktestSimplePricingModel(PricingModel):
                        pair: TradingPairIdentifier,
                        reserve: Optional[Decimal]) -> USDollarAmount:
         # TODO: Include price impact
+        pair_id = pair.internal_id
+        price, delay = self.candle_universe.get_price_with_tolerance(
+            pair_id,
+            ts,
+            tolerance=self.data_delay_tolerance,
+            kind=self.candle_timepoint_kind,
+        )
+        return float(price)
+
+    def get_mid_price(self,
+                      ts: datetime.datetime,
+                      pair: TradingPairIdentifier) -> USDollarAmount:
+        """Get the mid price by the candle."""
         pair_id = pair.internal_id
         price, delay = self.candle_universe.get_price_with_tolerance(
             pair_id,

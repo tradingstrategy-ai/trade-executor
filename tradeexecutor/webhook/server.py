@@ -10,6 +10,7 @@ from webtest.http import StopableWSGIServer
 from .app import create_pyramid_app
 from ..state.metadata import Metadata
 from ..state.store import JSONFileStore
+from ..strategy.run_state import RunState
 
 logger =  logging.getLogger(__name__)
 
@@ -48,19 +49,15 @@ def create_webhook_server(
         password: str,
         queue: Queue,
         store: JSONFileStore,
-        metadata: Metadata) -> WebhookServer:
+        metadata: Metadata,
+        execution_state: RunState,
+) -> WebhookServer:
     """Starts the webhook web  server in a separate thread.
 
     :param queue: The command queue for commands posted in the webhook that offers async execution.
     """
 
-    #assert username, "Username must be given"
-    #assert password, "Password must be given"
-
-    if (not username) and (not password):
-        logger.warning("Web server started without username and password")
-
-    app = create_pyramid_app(username, password, queue, store, metadata, production=False)
+    app = create_pyramid_app(username, password, queue, store, metadata, execution_state, production=False)
     server = WebhookServer.create(app, host=host, port=port, clear_untrusted_proxy_headers=True)
     logger.info("Webhook server will spawn at %s:%d, using username %s", host, port, username)
     # Wait until the server has started

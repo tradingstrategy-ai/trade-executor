@@ -39,8 +39,10 @@ class Plot:
     E.g. simple moving average over price candles.
     """
 
+    #: Name of this plot
     name: str
 
+    #: What kind of a plot we are drawing
     kind: PlotKind
 
     #: One of Plotly colour names
@@ -63,6 +65,12 @@ class Plot:
         timestamp = convert_and_validate_timestamp_as_int(timestamp)
         self.points[timestamp] = value
 
+    def get_last_value(self) -> float:
+        """Assume points is an ordered dict."""
+        # https://stackoverflow.com/a/63059166/315168
+        key = next(reversed(self.points.keys()))
+        return self.points[key]
+
 
 @dataclass_json
 @dataclass
@@ -81,7 +89,10 @@ class Visualisation:
     #: we use UNIX timestamp here to keep our state easily serialisable.
     messages: Dict[int, List[str]] = field(default_factory=dict)
 
-    # Extra line outputs.
+    # Extra technical indicator outputs.
+    #:
+    #: Name -> Plot value mappings
+    #:
     plots: Dict[str, Plot] = field(default_factory=dict)
 
     def add_message(self,

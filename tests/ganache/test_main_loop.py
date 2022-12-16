@@ -213,15 +213,13 @@ def test_main_loop(
         "RESET_STATE": "true",
         "EXECUTION_TYPE": "uniswap_v2_hot_wallet",
         "APPROVAL_TYPE": "unchecked",
-        "CACHE_PATH": "/tmp/main_loop_tests",
-        "GAS_PRICE_METHOD": "london",
         "TRADING_STRATEGY_API_KEY": os.environ["TRADING_STRATEGY_API_KEY"],
         "DEBUG_DUMP_FILE": debug_dump_file,
         "BACKTEST_START": "2021-12-07",
         "BACKTEST_END": "2022-01-07",
         "MAX_CYCLES": "1",
         "DISCORD_WEBHOOK_URL": "",
-        "CYCLE_DURATION": "24h",
+        "CYCLE_DURATION": "1d",
         "UNIT_TESTING": "true",
     }
 
@@ -254,5 +252,5 @@ def test_main_loop(
         assert len(debug_dump) == 1
 
         cycle_1 = debug_dump[1]
-        assert len(cycle_1["approved_trades"]) == 4
+        assert len(cycle_1["approved_trades"]) == 2
 

@@ -22,7 +22,7 @@ from tradeexecutor.backtest.backtest_sync import BacktestSyncer
 from tradeexecutor.backtest.backtest_valuation import BacktestValuationModel
 from tradeexecutor.backtest.simulated_wallet import SimulatedWallet
 from tradeexecutor.cli.log import setup_pytest_logging
-from tradeexecutor.ethereum.default_routes import get_pancake_default_routing_parameters
+from tradeexecutor.ethereum.routing_data import get_pancake_default_routing_parameters
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.execution_context import ExecutionMode, ExecutionContext
 from tradeexecutor.strategy.trading_strategy_universe import load_all_data, TradingStrategyUniverse, \
@@ -168,11 +168,11 @@ def test_get_historical_price(
 
     # Get the price for buying WBNB for 1000 USD at 2021-1-1
     buy_price = trader.get_buy_price(wbnb_busd, Decimal(1_000))
-    assert buy_price == pytest.approx(361.9442138671875)
+    assert buy_price == pytest.approx(354.3096008300781)
 
     # Get the price for sellinb 1 WBNB
     sell_price = trader.get_sell_price(wbnb_busd, Decimal(1))
-    assert sell_price == pytest.approx(361.9442138671875)
+    assert sell_price == pytest.approx(354.3096008300781)
 
 
 def test_create_and_execute_backtest_trade(
@@ -199,14 +199,14 @@ def test_create_and_execute_backtest_trade(
 
     assert trade.is_buy()
     assert trade.get_status() == TradeStatus.success
-    assert trade.executed_price == pytest.approx(363.03331380861334)
+    assert trade.executed_price == pytest.approx(355.375728014120)
 
     # We bought around 3 BNB
-    assert position.get_quantity() == pytest.approx(Decimal('2.754568140066582411061992325'))
+    assert position.get_quantity() == pytest.approx(Decimal('2.813923183747276159258725343'))
 
     # Check our wallet was credited
     assert wallet.get_balance(busd.address) == 9_000
-    assert wallet.get_balance(wbnb.address) == pytest.approx(Decimal('2.754568140066582411061992325'))
+    assert wallet.get_balance(wbnb.address) == Decimal('2.813923183747276159258725343')
 
 
 def test_buy_sell_backtest(

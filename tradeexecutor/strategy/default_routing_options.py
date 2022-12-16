@@ -16,23 +16,91 @@ import enum
 class TradeRouting(enum.Enum):
     """What trade routing should the strategy use.
 
-    These values can be given to `trade_routing` variable in a strategy.
+    - These values can be given to `trade_routing` variable in a strategy.
+
+    - Thus option hides the complexity of the actual routing logic
+      form an average developer.
+
+    See also :py:mod:`tradeexecutor.ethereum.routing_data`
+    for actual routing data implementation.
     """
 
     #: Two or three-legged trades on PancakeSwap.
+    #:
     #: - Open positions with BUSD quote token.
+    #:
     #: - Open positions with WBNB quote token.
     pancakeswap_busd = "pancakeswap_busd"
 
     #: Two or three-legged trades on PancakeSwap.
+    #:
     #: - Open positions with USDC quote token.
+    #:
     #: - Open positions with WBNB quote token.
     pancakeswap_usdc = "pancakeswap_usdc"
 
-    #: Two or three legged trades on Quickswap
+    #: Two or three legged trades on Pancake on BSC
+        #:
+    #: - Open positions with USDT quote token.
+    #:
+    #: - Open positions with WBNB quote token.
+    pancakeswap_usdt = "pancakeswap_usdt"
+
+    #: Two or three legged trades on Quickswap on Polygon
+    #:
     #: - Open positions with USDC quote token.
+    #:
     #: - Open positions with WMATIC quote token.
     quickswap_usdc = "quickswap_usdc"
+
+    #: Two or three legged trades on Quickswap on Polygon
+    #:
+    #: - Open positions with USDT quote token.
+    #:
+    #: - Open positions with WMATIC quote token.
+    quickswap_usdt = "quickswap_usdt"
+
+    #: Two or three legged trades on Quickswap on Polygon
+    #:
+    #: - Open positions with DAI quote token.
+    #:
+    #: - Open positions with USDC quote token.
+    quickswap_dai = "quickswap_dai"
+
+    #: Two or three legged trades on Trader Joe on Avalanche
+    #:
+    #: - Open positions with USDC quote token.
+    #:
+    #: - Open positions with WAVAX quote token.
+    trader_joe_usdc = "trader_joe_usdc"
+
+    #: Two or three legged trades on Trader Joe on Avalanche
+    #:
+    #: - Open positions with USDT quote token.
+    #:
+    #: - Open positions with WAVAX quote token.
+    trader_joe_usdt = "trader_joe_usdt"
+
+    #: Two or three legged trades on Uniswap v2 on Ethereum mainnet
+    #:
+    #: - Open positions with USDC quote token.
+    #:
+    #: - Open positions with WETH quote token.
+    uniswap_v2_usdc = "uniswap_v2_usdc"
+
+    #: Two or three legged trades on Uniswap V2 on Ethereum
+    #:
+    #: - Open positions with USDT quote token.
+    #:
+    #: - Open positions with WETH quote token.
+    uniswap_v2_usdt = "uniswap_v2_usdt"
+
+    #: Two or three legged trades on Uniswap V2 on Ethereum
+    #:
+    #: - Open positions with DAI quote token.
+    #:
+    #: - Open positions with WETH quote token.
+    uniswap_v2_dai = "uniswap_v2_dai"
 
     #: Use user supplied routing model
     #:

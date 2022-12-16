@@ -34,6 +34,7 @@ from tradeexecutor.strategy.approval import UncheckedApprovalModel
 
 from tradeexecutor.strategy.bootstrap import import_strategy_file
 from tradeexecutor.strategy.description import StrategyExecutionDescription
+from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
 from tradeexecutor.strategy.qstrader import HAS_QSTRADER
 from tradeexecutor.strategy.runner import StrategyRunner
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
@@ -324,6 +325,8 @@ def runner(
     execution_model = UniswapV2ExecutionModelVersion0(uniswap_v2, hot_wallet, confirmation_block_count=0)
     sync_method = EthereumHotWalletReserveSyncer(web3, hot_wallet.address)
 
+    execution_context = ExecutionContext(ExecutionMode.unit_testing_trading)
+
     run_description: StrategyExecutionDescription = strategy_factory(
         execution_model=execution_model,
         timed_task_context_manager=timed_task,
@@ -335,6 +338,7 @@ def runner(
         client=persistent_test_client,
         universe_model=universe_model,
         cash_buffer=0.05,
+        execution_context=execution_context,
     )
 
     # Deconstruct strategy input

@@ -76,6 +76,7 @@ def set_up_simulated_execution_loop_uniswap_v2(
         web3,
         hot_wallet,
         max_slippage=1.00,
+        confirmation_block_count=0,  # Must be zero for the test chain
     )
 
     # Pricing model factory for single Uni v2 exchange
@@ -98,6 +99,7 @@ def set_up_simulated_execution_loop_uniswap_v2(
         pricing_model_factory=pricing_model_factory,
         routing_model=routing_model,
         decide_trades=decide_trades,
+        execution_context=execution_context,
     )
 
     loop = ExecutionLoop(

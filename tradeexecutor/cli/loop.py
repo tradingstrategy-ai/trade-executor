@@ -9,6 +9,10 @@ from queue import Queue
 from typing import Optional, Callable, List
 
 import pandas as pd
+from apscheduler.events import EVENT_JOB_ERROR
+
+from tradeexecutor.statistics.summary import calculate_summary_statistics
+from tradeexecutor.strategy.run_state import RunState
 
 try:
     from apscheduler.executors.pool import ThreadPoolExecutor
@@ -47,6 +51,14 @@ from tradingstrategy.timebucket import TimeBucket
 
 
 logger = logging.getLogger(__name__)
+
+
+class LiveSchedulingTaskFailed(Exception):
+    """Main loop dies uncleanly.
+
+    Any of live trading looop scheduled tasks can die with an exception.
+    Raise this and wrap the underlying exception if we need to crash the trading loop.
+    """
 
 
 class ExecutionLoop:
@@ -90,6 +102,7 @@ class ExecutionLoop:
             stop_loss_check_frequency: Optional[TimeBucket] = None,
             tick_offset: datetime.timedelta=datetime.timedelta(minutes=0),
             trade_immediately=False,
+            run_state: Optional[RunState]=None,
     ):
         """See main.py for details."""
 
@@ -140,13 +153,13 @@ class ExecutionLoop:
         """
         if self.reset:
             # Create empty state and save it
-            state = self.store.create()
+            state = self.store.create(self.name)
             state.name = self.name
             self.store.sync(state)
         else:
             if self.store.is_pristine():
                 # Create empty state and save it
-                state = self.store.create()
+                state = self.store.create(self.name)
                 state.name = self.name
                 self.store.sync(state)
             else:
@@ -165,7 +178,7 @@ class ExecutionLoop:
         self.execution_model.initialize()
         if not self.is_live_trading_unit_test():
             self.execution_model.preflight_check()
-            logger.trade("Preflight checks ok")
+            logger.info("Preflight checks ok")
 
     def init_simulation(
             self,
@@ -267,7 +280,12 @@ class ExecutionLoop:
             self.backtest_setup(state, universe, self.sync_method)
 
         # Execute the strategy tick and trades
-        self.runner.tick(ts, universe, state, debug_details)
+        self.runner.tick(
+            ts,
+            universe,
+            state,
+            debug_details,
+        )
 
         # Check that state is good before writing it to the disk
         state.perform_integrity_check()
@@ -314,6 +332,17 @@ class ExecutionLoop:
         # Store the current state to disk
         self.store.sync(state)
 
+    def update_summary_statistics(
+            self,
+            state: State,
+    ):
+        """Update the summary card statistics for this strategy."""
+        stats = calculate_summary_statistics(
+            state,
+            self.execution_context.mode,
+        )
+        self.run_state.summary_statistics = stats
+
     def check_position_triggers(self,
                           ts: datetime.datetime,
                           state: State,
@@ -359,7 +388,7 @@ class ExecutionLoop:
 
         Display progress bars for data downloads.
         """
-        logger.info("Warming up backesting")
+        logger.info("Warming up backesting, universe options are %s", self.universe_options)
 
         self.universe_model.preload_universe(self.universe_options)
 
@@ -423,11 +452,13 @@ class ExecutionLoop:
         if self.backtest_end or self.backtest_start:
             assert self.backtest_start and self.backtest_end, f"If backtesting both start and end must be given, we have {self.backtest_start} - {self.backtest_end}"
 
+        assert self.backtest_start < self.backtest_end
+
         ts = self.backtest_start
 
         logger.info("Strategy is executed in backtesting mode, starting at %s, cycle duration is %s", ts, self.cycle_duration.value)
 
-        cycle = 1
+        cycle = state.cycle
         universe = None
 
         range = self.backtest_end - self.backtest_start
@@ -449,16 +480,18 @@ class ExecutionLoop:
 
         cycle_name = backtest_step.value
 
+        assert backtest_step != CycleDuration.cycle_unknown
+
         with tqdm(total=seconds) as progress_bar:
             while True:
 
-                ts = snap_to_previous_tick(ts, self.cycle_duration)
+                ts = snap_to_previous_tick(ts, backtest_step)
 
                 # Bump progress bar forward and update backtest status
                 progress_bar.update(int(backtest_step.to_timedelta().total_seconds()))
                 friedly_ts = ts.strftime(ts_format)
                 trade_count = len(list(state.portfolio.get_all_trades()))
-                progress_bar.set_description(f"Backtesting {self.name}, {friendly_start}-{friendly_end} at {friedly_ts} ({cycle_name}), total {trade_count:,} trades")
+                progress_bar.set_description(f"Backtesting {self.name}, {friendly_start} - {friendly_end} at {friedly_ts} ({cycle_name}), total {trade_count:,} trades, {cycle:,} cycles")
 
                 # Decide trades and everything for this cycle
                 universe: TradingStrategyUniverse = self.tick(
@@ -481,6 +514,7 @@ class ExecutionLoop:
 
                 # Advance to the next tick
                 cycle += 1
+                state.cycle = cycle
 
                 # Backtesting
                 next_tick = snap_to_next_tick(ts + datetime.timedelta(seconds=1), backtest_step, self.tick_offset)
@@ -501,6 +535,7 @@ class ExecutionLoop:
                     )
 
                 # Add some fuzziness to gacktesting timestamps
+                # TODO: Make this configurable - sub 1h strategies do not work
                 ts = next_tick + datetime.timedelta(minutes=random.randint(0, 4))
 
             # Validate the backtest state at the end.
@@ -511,10 +546,17 @@ class ExecutionLoop:
             return self.debug_dump_state
 
     def run_live(self, state: State):
-        """Run live trading cycle."""
+        """Run live trading cycle.
+
+        :raise LiveSchedulingTaskFailed:
+            If any of live trading concurrent tasks crashes with an exception
+        """
 
         ts = datetime.datetime.utcnow()
         logger.info("Strategy is executed in live mode, now is %s", ts)
+
+        # Do not allow starting a strategy that has unclean state
+        state.check_if_clean()
 
         if self.is_live_trading_unit_test():
             # Test app initialisation.
@@ -522,25 +564,53 @@ class ExecutionLoop:
             logger.info("Unit test live trading checkup test detected - aborting.")
             return self.debug_dump_state
 
-        cycle = 1
+        cycle = state.cycle
         universe: Optional[StrategyExecutionUniverse] = None
+        execution_context = self.execution_context
+        run_state: RunState = self.run_state
+        crash_exception: Optional[Exception] = None
+
+        assert execution_context, "ExecutionContext missing"
+
+        # Store summary statistics in memory before doing anything else
+        self.update_summary_statistics(state)
 
         # The first trade will be execute immediately, despite the time offset or tick
         if self.trade_immediately:
             ts = datetime.datetime.now()
             self.tick(ts, self.cycle_duration, state, cycle, live=True)
 
+        def die(exc: Exception):
+            # Shutdown the scheduler and mark an clean exit
+            nonlocal crash_exception
+            logger.exception(exc)
+            scheduler.shutdown(wait=False)
+            crash_exception = exc
+
         def live_cycle():
             nonlocal cycle
             nonlocal universe
             try:
                 cycle += 1
+                state.cycle = cycle
                 ts = datetime.datetime.now()
                 universe = self.tick(ts, self.cycle_duration, state, cycle, live=True)
+
+                try:
+                    self.update_summary_statistics(state)
+                except Exception as e:
+                    # Failing to do the performance statistics is not fatal,
+                    # because this does not contain any state changing events
+                    logger.warning("update_summary_statistics() failed in the live cycle: %s", e)
+                    logger.exception(e)
+                    pass
+
             except Exception as e:
-                logger.exception(e)
-                scheduler.shutdown(wait=False)
-                raise
+                die(e)
+
+            run_state.completed_cycle = cycle
+            run_state.cycles += 1
+            run_state.bumb_refreshed()
 
         def live_positions():
             nonlocal universe
@@ -554,11 +624,15 @@ class ExecutionLoop:
 
             try:
                 ts = datetime.datetime.now()
-                self.update_position_valuations(ts, state, universe)
+
+                self.update_position_valuations(ts, state, universe, execution_context.mode)
+
+                self.update_summary_statistics(state)
             except Exception as e:
-                logger.exception(e)
-                scheduler.shutdown(wait=False)
-                raise
+                die(e)
+
+            run_state.position_revaluations += 1
+            run_state.bumb_refreshed()
 
         def live_trigger_checks():
             nonlocal universe
@@ -574,9 +648,10 @@ class ExecutionLoop:
                 ts = datetime.datetime.now()
                 self.check_position_triggers(ts, state, universe)
             except Exception as e:
-                logger.exception(e)
-                scheduler.shutdown(wait=False)
-                raise
+                die(e)
+
+            run_state.position_trigger_checks += 1
+            run_state.bumb_refreshed()
 
         # Set up live trading tasks using APScheduler
         executors = {
@@ -584,7 +659,11 @@ class ExecutionLoop:
         }
         start_time = datetime.datetime(1970, 1, 1)
         scheduler = BlockingScheduler(executors=executors, timezone=datetime.timezone.utc)
-        scheduler.add_job(live_cycle, 'interval', seconds=self.cycle_duration.to_timedelta().total_seconds(), start_date=start_time + self.tick_offset)
+        scheduler.add_job(
+            live_cycle,
+            'interval',
+            seconds=self.cycle_duration.to_timedelta().total_seconds(),
+            start_date=start_time + self.tick_offset)
 
         if self.stats_refresh_frequency not in (datetime.timedelta(0), None):
             scheduler.add_job(
@@ -600,13 +679,33 @@ class ExecutionLoop:
                 seconds=self.position_trigger_check_frequency.total_seconds(),
                 start_date=start_time)
 
+        def listen_error(event):
+            if event.exception:
+                logger.info("Scheduled task received exception. event: %s, execption: %s", event, event.exception)
+            else:
+                logger.error("Should not happen")
+
+        scheduler.add_listener(listen_error, EVENT_JOB_ERROR)
+
+        # Display version information on the trade log
+        version_info = self.run_state.version
+        logger.trade(str(version_info))
+
         try:
+            # https://github.com/agronholm/apscheduler/discussions/683
             scheduler.start()
         except KeyboardInterrupt:
             # https://github.com/agronholm/apscheduler/issues/338
             scheduler.shutdown(wait=False)
             raise
+        except Exception as e:
+            logger.error("Scheduler raised an exception %s", e)
+            raise
+
         logger.info("Scheduler finished - down the live trading loop")
+
+        if crash_exception:
+            raise LiveSchedulingTaskFailed("trade-executor closed because one of the scheduled tasks failed") from crash_exception
 
         return self.debug_dump_state
 
@@ -637,8 +736,13 @@ class ExecutionLoop:
             pricing_model_factory=self.pricing_model_factory,
             approval_model=self.approval_model,
             client=self.client,
-            routing_model=None,  # Assume strategy factory produces its own routing model
+            routing_model = None,  # Assume strategy factory produces its own routing model
+            run_state=self.run_state,
         )
+
+        # Expose source code to webhook
+        if self.run_state:
+            self.run_state.source_code = run_description.source_code
 
         # Deconstruct strategy input
         self.runner: StrategyRunner = run_description.runner

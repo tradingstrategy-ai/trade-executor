@@ -13,7 +13,7 @@ from pathlib import Path
 
 from tradingstrategy.client import Client
 
-from tradeexecutor.ethereum.default_routes import get_routing_model
+from tradeexecutor.ethereum.routing_data import get_routing_model
 from tradeexecutor.state.sync import SyncMethod
 from tradeexecutor.strategy.approval import ApprovalModel
 from tradeexecutor.strategy.description import StrategyExecutionDescription
@@ -22,6 +22,7 @@ from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.strategy.factory import StrategyFactory
 from tradeexecutor.strategy.pandas_trader.runner import PandasTraderRunner
 from tradeexecutor.strategy.pricing_model import PricingModelFactory
+from tradeexecutor.strategy.run_state import RunState
 from tradeexecutor.strategy.strategy_module import read_strategy_module, StrategyModuleInformation
 from tradeexecutor.strategy.strategy_type import StrategyType
 from tradeexecutor.strategy.trading_strategy_universe import DefaultTradingStrategyUniverseModel
@@ -98,7 +99,11 @@ def make_factory_from_strategy_mod(mod: StrategyModuleInformation) -> StrategyFa
             client: Client,
             timed_task_context_manager: AbstractContextManager,
             approval_model: ApprovalModel,
+            run_state: RunState,
             **kwargs) -> StrategyExecutionDescription:
+
+        # Migration assert
+        assert run_state, "run_state needs to be passed for new strategies"
 
         if ignore:
             # https://www.python.org/dev/peps/pep-3102/
@@ -123,6 +128,8 @@ def make_factory_from_strategy_mod(mod: StrategyModuleInformation) -> StrategyFa
             pricing_model_factory=pricing_model_factory,
             routing_model=routing_model,
             decide_trades=mod_info.decide_trades,
+            execution_context=execution_context,
+            run_state=run_state,
         )
 
         return StrategyExecutionDescription(
@@ -131,6 +138,7 @@ def make_factory_from_strategy_mod(mod: StrategyModuleInformation) -> StrategyFa
             trading_strategy_engine_version=mod_info.trading_strategy_engine_version,
             cycle_duration=mod_info.trading_strategy_cycle,
             chain_id=mod_info.chain_id,
+            source_code=mod_info.source_code,
         )
 
     return default_strategy_factory

@@ -9,6 +9,9 @@ from typer.testing import CliRunner
 from tradeexecutor.cli.main import app
 
 
+pytestmark = pytest.mark.skipif(os.environ.get("TRADING_STRATEGY_API_KEY") is None, reason="Set TRADING_STRATEGY_API_KEY environment variable to run this test module")
+
+
 @pytest.fixture(scope="session")
 def strategy_path():
     """We use pancake-eth-usd-sma.py as the strategy module input for these tests."""
@@ -30,6 +33,7 @@ def unit_test_cache_path():
 def test_cli_check_universe(
         strategy_path: str,
         unit_test_cache_path: str,
+        logger,
     ):
     """check-universe command works"""
 
@@ -37,6 +41,7 @@ def test_cli_check_universe(
         "TRADING_STRATEGY_API_KEY": os.environ["TRADING_STRATEGY_API_KEY"],
         "STRATEGY_FILE": strategy_path,
         "CACHE_PATH": unit_test_cache_path,
+        "LOG_LEVEL": "disabled",
     }
 
     runner = CliRunner()
@@ -55,6 +60,7 @@ def test_cli_check_universe(
 
 @pytest.mark.skipif(os.environ.get("BNB_CHAIN_JSON_RPC") is None, reason="Set BNB_CHAIN_JSON_RPC environment variable to Binance Smart Chain node to run this test")
 def test_cli_check_wallet(
+        logger,
         strategy_path: str,
         unit_test_cache_path: str,
     ):
@@ -68,6 +74,8 @@ def test_cli_check_wallet(
         # Random empty wallet
         "PRIVATE_KEY": "0x111e53aed5e777996f26b4bdb89300bbc05b84743f32028c41be7193c0fe0b83",
         "MINUMUM_GAS_BALANCE": "0",
+        "UNIT_TESTING": "true",
+        "LOG_LEVEL": "disabled",
     }
 
     runner = CliRunner()
@@ -85,6 +93,7 @@ def test_cli_check_wallet(
 
 
 def test_cli_backtest(
+        logger,
         strategy_path: str,
         unit_test_cache_path: str,
     ):
@@ -98,7 +107,9 @@ def test_cli_backtest(
         "BACKTEST_STOP_LOSS_TIME_FRAME_OVERRIDE": "1d",
         "BACKTEST_START": "2021-06-01",
         "BACKTEST_END": "2022-07-01",
-        "EXECUTION_TYPE": "backtest"
+        "EXECUTION_TYPE": "backtest",
+        "UNIT_TESTING": "true",
+        "LOG_LEVEL": "disabled",
     }
 
     runner = CliRunner()
@@ -117,6 +128,7 @@ def test_cli_backtest(
 
 @pytest.mark.skipif(os.environ.get("BNB_CHAIN_JSON_RPC") is None, reason="Set BNB_CHAIN_JSON_RPC environment variable to Binance Smart Chain node to run this test")
 def test_cli_live_trading(
+        logger,
         strategy_path: str,
         unit_test_cache_path: str,
     ):
@@ -144,10 +156,12 @@ def test_cli_live_trading(
         # Random empty wallet
         "PRIVATE_KEY": "0x111e53aed5e777996f26b4bdb89300bbc05b84743f32028c41be7193c0fe0b83",
         "HTTP_ENABLED": "true",
-        "GAS_PRICE_METHOD": "london",
 
         # Make the applicaction terminate after the setup
         "MAX_CYCLES": "0",
+
+        "UNIT_TESTING": "true",
+        "LOG_LEVEL": "disabled",
     }
 
     runner = CliRunner()
@@ -168,6 +182,50 @@ def test_cli_live_trading(
         #    poll_fun(timeout, map)
         #  File "/Users/moo/Library/Caches/pypoetry/virtualenvs/trade-executor-8Oz1GdY1-py3.10/lib/python3.10/site-packages/waitress/wasyncore.py", line 172, in poll
         pass
+
+    if result.exception:
+        raise result.exception
+
+    # Dump any stdout to see why the command failed
+    if result.exit_code != 0:
+        print("runner failed")
+        for line in result.stdout.split('\n'):
+            print(line)
+        raise AssertionError("runner launch failed")
+
+
+def test_cli_version(
+        logger,
+        strategy_path: str,
+        unit_test_cache_path: str,
+    ):
+    """version command works"""
+
+    runner = CliRunner()
+    result = runner.invoke(app, "version")
+    assert result.exit_code == 0
+
+
+@pytest.mark.skipif(os.environ.get("BNB_CHAIN_JSON_RPC") is None, reason="Set BNB_CHAIN_JSON_RPC environment variable to Binance Smart Chain node to run this test")
+def test_cli_console(
+        logger,
+        strategy_path: str,
+        unit_test_cache_path: str,
+    ):
+    """console command works"""
+
+    environment = {
+        "TRADING_STRATEGY_API_KEY": os.environ["TRADING_STRATEGY_API_KEY"],
+        "STRATEGY_FILE": strategy_path,
+        "CACHE_PATH": unit_test_cache_path,
+        "JSON_RPC_BINANCE": os.environ.get("BNB_CHAIN_JSON_RPC"),
+        "PRIVATE_KEY": "0x111e53aed5e777996f26b4bdb89300bbc05b84743f32028c41be7193c0fe0b83",
+        "UNIT_TESTING": "true",
+        "LOG_LEVEL": "disabled",
+    }
+
+    runner = CliRunner()
+    result = runner.invoke(app, "console", env=environment)
 
     if result.exception:
         raise result.exception

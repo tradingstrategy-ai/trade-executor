@@ -1,13 +1,13 @@
 """A strategy runner that executes Trading Strategy Pandas type strategies."""
 
 import datetime
+from io import StringIO
 from typing import List, Optional
 import logging
 
 import pandas as pd
 
-from tradeexecutor.state.visualisation import Visualisation
-from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
+from tradeexecutor.cli.discord import post_logging_discord_image
 from tradeexecutor.strategy.pandas_trader.trade_decision import TradeDecider
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
@@ -15,6 +15,8 @@ from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniv
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.runner import StrategyRunner, PreflightCheckFailed
+from tradeexecutor.visual.image_output import render_plotly_figure_as_image_file
+from tradeexecutor.visual.strategy_state import draw_single_pair_strategy_state
 
 
 logger = logging.getLogger(__name__)
@@ -76,3 +78,80 @@ class PandasTraderRunner(StrategyRunner):
             if self.max_data_age is not None:
                 if now_ - end > self.max_data_age:
                     raise PreflightCheckFailed(f"We do not have up-to-date data for candles. Last candles are at {end}")
+
+    def report_strategy_thinking(self,
+                                 clock: datetime.datetime,
+                                 universe: TradingStrategyUniverse,
+                                 state: State,
+                                 trades: List[TradeExecution],
+                                 debug_details: dict):
+        """Strategy admin helpers to understand a live running strategy.
+
+        - Post latest variables
+
+        - Draw the single pair strategy visualisation.
+        """
+
+        visualisation = state.visualisation
+
+        if universe.is_empty():
+            # TODO: Not sure how we end up here
+            logger.info("Strategy universe is empty - nothing to report")
+            return
+
+        if universe.is_single_pair_universe():
+            # Single pair thinking
+
+            # Post strategy thinking image to Discord
+            small_figure = draw_single_pair_strategy_state(state, universe, height=512)
+            small_image = render_plotly_figure_as_image_file(small_figure, width=768, height=512, format="png")
+
+            small_figure.update_layout(template="plotly_dark")
+            small_image_dark = render_plotly_figure_as_image_file(small_figure, width=512, height=512, format="png")
+
+            post_logging_discord_image(small_image)
+
+            if self.run_state:
+
+                logger.info("Updating strategy thinking image data")
+
+                # Draw the inline plot and expose them tot he web server
+                # TODO: SVGs here are not very readable, have them as a stop gap solution
+                large_figure = draw_single_pair_strategy_state(state, universe, height=1024)
+                large_image = render_plotly_figure_as_image_file(large_figure, width=1024, height=1024, format="svg")
+
+                large_figure.update_layout(template="plotly_dark")
+                large_image_dark = render_plotly_figure_as_image_file(large_figure, width=1024, height=1024, format="svg")
+
+                self.run_state.visualisation.update_image_data(
+                    small_image,
+                    large_image,
+                    small_image_dark,
+                    large_image_dark,
+                )
+            else:
+                logger.info("Coudl not update strategy thinking image data, self.execution_state not available")
+
+            # Log state
+            buf = StringIO()
+
+            pair = universe.get_single_pair()
+            candles = universe.universe.candles.get_candles_by_pair(pair.internal_id)
+            last_candle = candles.iloc[-1]
+            lag = pd.Timestamp.utcnow().tz_localize(None) - last_candle["timestamp"]
+
+            print("Strategy thinking", file=buf)
+            print("", file=buf)
+            print(f"  Now: {datetime.datetime.utcnow()} UTC", file=buf)
+            print(f"  Last candle at: {last_candle['timestamp']} UTC, market data and action lag: {lag}", file=buf)
+            print(f"  Price open:{last_candle['open']} close:{last_candle['close']} {pair.base.token_symbol} / {pair.quote.token_symbol}", file=buf)
+
+            # Draw indicators
+            for name, plot in visualisation.plots.items():
+                value = plot.get_last_value()
+                print(f"  {name}: {value}", file=buf)
+
+            logger.trade(buf.getvalue())
+
+        else:
+            raise NotImplementedError("Reporting of strategy thinking of multipair universes not supported yet")

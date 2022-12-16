@@ -158,9 +158,12 @@ def test_ema_crossover(
         "DEBUG_DUMP_FILE": debug_dump_file,
         "BACKTEST_START": "2021-12-07",
         "BACKTEST_END": "2021-12-09",
+        "BACKTEST_CANDLE_TIME_FRAME_OVERRIDE": "1d",  # Speed up testing / reduce download data
         "TICK_OFFSET_MINUTES": "10",
         "CONFIRMATION_BLOCK_COUNT": "8",
         "UNIT_TESTING": "true",
+        "DISCORD_WEBHOOK_URL": "",  # Always disable,
+        "LOG_LEVEL": "disabled",
     }
 
     # Don't use CliRunner.invoke() here,
@@ -171,7 +174,7 @@ def test_ema_crossover(
     # We should have three cycles worth of debug data
     with open(debug_dump_file, "rb") as inp:
         debug_dump = pickle.load(inp)
-        assert len(debug_dump) == 3
+        assert len(debug_dump) == 2
 
     # See we can load the state after all this testing.
     # Mainly stresses on serialization/deserialization issues.

@@ -47,3 +47,10 @@ class StrategyExecutionDescription:
     #:
     chain_id: Optional[ChainId] = None
 
+    #: Source code of the strategy.
+    #:
+    #: Only applicable for strategies that were read as a strategy module,
+    #: not applicable to backtesting notebooks.
+    source_code: Optional[str] = None
+
+
