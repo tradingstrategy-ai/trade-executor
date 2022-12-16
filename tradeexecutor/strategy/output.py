@@ -58,7 +58,7 @@ def format_position(position: TradingPosition, up_symbol="ðŸŒ²", down_symbol="ðŸ
         link = ""
 
     lines =[
-        f"{symbol} #{position.position_id} {position.pair.get_human_description()} size:${position.get_value():,.2f}, profit:{position.get_total_profit_usd():.2f}% ({position.get_total_profit_usd():,.4f} USD)"
+        f"{symbol} #{position.position_id} {position.pair.get_human_description()} size:${position.get_value():,.2f}, profit:{position.get_total_profit_percent():.2f}% ({position.get_total_profit_usd():,.4f} USD)"
     ]
 
     if position.has_executed_trades():
