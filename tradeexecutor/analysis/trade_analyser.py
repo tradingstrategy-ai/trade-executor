@@ -613,6 +613,7 @@ class TradeAnalysis:
                 #raise ValueError("Missing argument: if raw_timeline is provided, then stop loss must also be provided")
                 max_capital_at_risk_sl = max(((1-stop_loss_pct)*stop_loss_rows['position_max_size'])/stop_loss_rows['opening_capital'])
 
+
             # Biggest realized loss
             losses = raw_timeline.loc[raw_timeline['pnl_usd'] < 0]
             realised_losses = losses['pnl_usd']/losses['opening_capital']
