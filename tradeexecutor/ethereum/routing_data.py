@@ -383,61 +383,18 @@ def create_uniswap_v2_compatible_routing(routing_type: TradeRouting, reserve_cur
     - The routing model consists of smart contract addresses needed to trade
     """
     
-    # pancakeswap on bsc
-    if routing_type == TradeRouting.pancakeswap_busd:
+    if routing_type in (TradeRouting.pancakeswap_busd, TradeRouting.uniswap_v3_busd):
         if reserve_currency != ReserveCurrency.busd:
             raise MismatchReserveCurrency(f"Got {routing_type} with {reserve_currency}")
-    elif routing_type == TradeRouting.pancakeswap_usdc:
+    elif routing_type in (TradeRouting.pancakeswap_usdc, TradeRouting.quickswap_usdc, TradeRouting.trader_joe_usdc, TradeRouting.uniswap_v2_usdc, TradeRouting.uniswap_v3_usdc):
         if reserve_currency != ReserveCurrency.usdc:
             raise MismatchReserveCurrency(f"Got {routing_type} with {reserve_currency}")
-    elif routing_type == TradeRouting.pancakeswap_usdt:
+    elif routing_type == (TradeRouting.pancakeswap_usdt, TradeRouting.quickswap_usdt, TradeRouting.trader_joe_usdt, TradeRouting.uniswap_v2_usdt, TradeRouting.uniswap_v3_usdt):
         if reserve_currency != ReserveCurrency.usdt:
             raise MismatchReserveCurrency(f"Got {routing_type} with {reserve_currency}")
-    
-    # quickswap on polygon
-    elif routing_type == TradeRouting.quickswap_usdc:
-        if reserve_currency != ReserveCurrency.usdc:
-            raise MismatchReserveCurrency(f"Got {routing_type} with {reserve_currency}")
-    elif routing_type == TradeRouting.quickswap_usdt:
-        if reserve_currency != ReserveCurrency.usdt:
-            raise MismatchReserveCurrency(f"Got {routing_type} with {reserve_currency}")
-    elif routing_type == TradeRouting.quickswap_dai:
+    elif routing_type == (TradeRouting.quickswap_dai, TradeRouting.uniswap_v2_dai, TradeRouting.uniswap_v3_dai):
         if reserve_currency != ReserveCurrency.dai:
             raise MismatchReserveCurrency(f"Got {routing_type} with {reserve_currency}")
-    
-    # trader joe on avalanche
-    elif routing_type == TradeRouting.trader_joe_usdc:
-        if reserve_currency != ReserveCurrency.usdc:
-            raise MismatchReserveCurrency(f"Got {routing_type} with {reserve_currency}")
-    elif routing_type == TradeRouting.trader_joe_usdt:
-        if reserve_currency != ReserveCurrency.usdt:
-            raise MismatchReserveCurrency(f"Got {routing_type} with {reserve_currency}")
-    
-    # uniswap v2 on ethereum
-    elif routing_type == TradeRouting.uniswap_v2_usdc:
-        if reserve_currency != ReserveCurrency.usdc:
-            raise MismatchReserveCurrency(f"Got {routing_type} with {reserve_currency}")
-    elif routing_type == TradeRouting.uniswap_v2_usdt:
-        if reserve_currency != ReserveCurrency.usdt:
-            raise MismatchReserveCurrency(f"Got {routing_type} with {reserve_currency}")
-    elif routing_type == TradeRouting.uniswap_v2_dai:
-        if reserve_currency != ReserveCurrency.dai:
-            raise MismatchReserveCurrency(f"Got {routing_type} with {reserve_currency}")
-    
-    # uniswap v3 on ethereum
-    elif routing_type == TradeRouting.uniswap_v3_usdc:
-        if reserve_currency != ReserveCurrency.usdc:
-            raise MismatchReserveCurrency(f"Got {routing_type} with {reserve_currency}")
-    elif routing_type == TradeRouting.uniswap_v3_usdt:
-        if reserve_currency != ReserveCurrency.usdt:
-            raise MismatchReserveCurrency(f"Got {routing_type} with {reserve_currency}")
-    elif routing_type == TradeRouting.uniswap_v3_dai:
-        if reserve_currency != ReserveCurrency.dai:
-            raise MismatchReserveCurrency(f"Got {routing_type} with {reserve_currency}")
-    elif routing_type == TradeRouting.uniswap_v3_busd:
-        if reserve_currency != ReserveCurrency.busd:
-            raise MismatchReserveCurrency(f"Got {routing_type} with {reserve_currency}")
-
     else:
         raise NotImplementedError(f"Unknown routing type")
 
