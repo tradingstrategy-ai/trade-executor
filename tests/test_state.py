@@ -704,6 +704,38 @@ def test_unrealised_profit_calculation(usdc, weth_usdc, start_ts: datetime.datet
     assert position.get_total_profit_percent() == pytest.approx(0.04716981132075467)
 
 
+def test_position_risk_calculation(usdc, weth_usdc, start_ts: datetime.datetime):
+    """Calculate risk for an individual position."""
+
+    state = State()
+    state.update_reserves([ReservePosition(usdc, Decimal(10000), start_ts, 1.0, start_ts)])
+    trader = DummyTestTrader(state, lp_fees=0, price_impact=1)
+
+    assert state.portfolio.get_total_equity() == 10000.0
+
+    # Do 2 buys, see open value does not change
+    position, trade = trader.buy(weth_usdc, Decimal("1.0"), 1700.0)
+    assert position.get_value_at_open() == 1700
+    position.stop_loss = 1400  # Manually set stop loss for testing
+
+    # Close the position, see open value does not change
+    position, trade = trader.sell(weth_usdc, Decimal("1.0"), 1850.0)
+    assert position.is_closed()
+    assert position.get_value_at_open() == 1700
+
+    assert position.portfolio_value_at_open == 10_000
+    assert position.get_value_at_open() == 1700
+
+    # Calculate the risk we took with the position
+    assert position.get_capital_tied_at_open_pct() == 0.17
+
+    risked_capital = position.get_loss_risk_at_open()
+    assert risked_capital == 300
+
+    # With stop loss, the risked capital is much lower
+    assert position.get_loss_risk_at_open_pct() == 0.03
+
+
 def test_single_buy_failed(usdc, weth, weth_usdc, start_ts):
     """A single token purchase tx fails."""
     state = State()
