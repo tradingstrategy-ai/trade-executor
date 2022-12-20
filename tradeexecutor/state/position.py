@@ -26,7 +26,9 @@ class TradingPosition:
     #: Trading pair this position is trading
     pair: TradingPairIdentifier
 
-    # type: PositionType
+    #: When this position was opened
+    #:
+    #: Strategy tick time.
     opened_at: datetime.datetime
 
     #: When was the last time this position was (re)valued
@@ -60,7 +62,14 @@ class TradingPosition:
     #: Timestamp when this position was moved to a frozen state
     frozen_at: Optional[datetime.datetime] = None
 
+    #: When this position had a trade last time
     last_trade_at: Optional[datetime.datetime] = None
+
+    #: Record the portfolio value when the position was opened.
+    #:
+    #: This can be later used to analyse the risk of the
+    #: trades. ("Max value at the risk")
+    portfolio_value_at_open: Optional[USDollarAmount] = None
 
     #: Trigger a stop loss if this price is reached,
     #:
@@ -438,6 +447,26 @@ class TradingPosition:
         assert last_pricing_at.tzinfo is None
         self.last_pricing_at = last_pricing_at
         self.last_token_price = last_token_price
+
+    def get_value_at_open(self) -> USDollarAmount:
+        """How much the position had value tied after its open.
+
+        Calculate the value after the first trade.
+        """
+        assert len(self.trades) > 0, "No trades available"
+        return self.get_first_trade().get_executed_value()
+
+    def get_capital_at_risk_at_open_pct(self) -> float:
+        """Calculate how much portfolio capital was risk when this position was opened.
+
+        This is based on the opening values
+
+        :return:
+            Percent of the portfolio value
+        """
+        assert self.portfolio_value_at_open, "Portfolio value at position open was not recorded"
+        return self.get_value_at_open() / self.portfolio_value_at_open
+
 
 class PositionType(enum.Enum):
     token_hold = "token_hold"
