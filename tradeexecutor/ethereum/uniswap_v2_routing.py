@@ -301,6 +301,7 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
         self.allowed_intermediary_pairs = {k.lower(): v.lower() for k, v in allowed_intermediary_pairs.items()}
         self.reserve_token_address = reserve_token_address
         self.chain_id = chain_id
+        self.trading_fee = trading_fee
 
     def get_reserve_asset(self, pair_universe: PandasPairUniverse) -> AssetIdentifier:
         """Translate our reserve token address tok an asset description."""
