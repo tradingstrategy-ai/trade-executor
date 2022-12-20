@@ -716,12 +716,10 @@ def test_position_risk_calculation(usdc, weth_usdc, start_ts: datetime.datetime)
     # Do 2 buys, see open value does not change
     position, trade = trader.buy(weth_usdc, Decimal("1.0"), 1700.0)
     assert position.get_value_at_open() == 1700
-
-    position, trade = trader.buy(weth_usdc, Decimal("0.5"), 1900.0)
-    assert position.get_value_at_open() == 1700
+    position.stop_loss = 1400  # Manually set stop loss for testing
 
     # Close the position, see open value does not change
-    position, trade = trader.sell(weth_usdc, Decimal("1.5"), 1850.0)
+    position, trade = trader.sell(weth_usdc, Decimal("1.0"), 1850.0)
     assert position.is_closed()
     assert position.get_value_at_open() == 1700
 
@@ -729,7 +727,13 @@ def test_position_risk_calculation(usdc, weth_usdc, start_ts: datetime.datetime)
     assert position.get_value_at_open() == 1700
 
     # Calculate the risk we took with the position
-    assert position.get_capital_at_risk_at_open_pct() == 0.17
+    assert position.get_capital_tied_at_open_pct() == 0.17
+
+    risked_capital = position.get_loss_risk_at_open()
+    assert risked_capital == 300
+
+    # With stop loss, the risked capital is much lower
+    assert position.get_loss_risk_at_open_pct() == 0.03
 
 
 def test_single_buy_failed(usdc, weth, weth_usdc, start_ts):
