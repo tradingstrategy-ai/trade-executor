@@ -141,6 +141,19 @@ class Portfolio:
                           assumed_price: USDollarAmount,
                           reserve_currency: AssetIdentifier,
                           reserve_currency_price: USDollarAmount) -> TradingPosition:
+        """Opens a new trading position.
+
+        - Marks the position opened.
+
+        - Does not add any trades yet
+
+        - Marks the current value of the portfolio at the trade opening time,
+          as we need to use this for the risk calculations
+
+        """
+
+        portfolio_value = self.get_total_equity()
+
         p = TradingPosition(
             position_id=self.next_position_id,
             opened_at=ts,
@@ -149,6 +162,7 @@ class Portfolio:
             last_token_price=assumed_price,
             last_reserve_price=reserve_currency_price,
             reserve_currency=reserve_currency,
+            portfolio_value_at_open=portfolio_value,
 
         )
         self.open_positions[p.position_id] = p
@@ -423,3 +437,4 @@ class Portfolio:
         if reserve.initial_deposit:
             return float(reserve.initial_deposit) * reserve.initial_deposit_reserve_token_price
         return None
+

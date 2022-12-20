@@ -26,7 +26,9 @@ class TradingPosition:
     #: Trading pair this position is trading
     pair: TradingPairIdentifier
 
-    # type: PositionType
+    #: When this position was opened
+    #:
+    #: Strategy tick time.
     opened_at: datetime.datetime
 
     #: When was the last time this position was (re)valued
@@ -60,7 +62,14 @@ class TradingPosition:
     #: Timestamp when this position was moved to a frozen state
     frozen_at: Optional[datetime.datetime] = None
 
+    #: When this position had a trade last time
     last_trade_at: Optional[datetime.datetime] = None
+
+    #: Record the portfolio value when the position was opened.
+    #:
+    #: This can be later used to analyse the risk of the
+    #: trades. ("Max value at the risk")
+    portfolio_value_at_open: Optional[USDollarAmount] = None
 
     #: Trigger a stop loss if this price is reached,
     #:
@@ -356,6 +365,24 @@ class TradingPosition:
         q = float(self.get_sell_quantity())
         return self.get_total_sold_usd() / q
 
+    def get_price_at_open(self) -> USDollarAmount:
+        """Get the price of the position at open.
+
+        Include only the first trade that opened the position.
+        Calculate based on the executed price.
+        """
+        first_trade =self.get_first_trade()
+        return first_trade.executed_price
+
+    def get_quantity_at_open(self) -> Decimal:
+        """Get the quanaity of the asset the position at open.
+
+        Include only the first trade that opened the position.
+        Calculate based on the executed price.
+        """
+        first_trade =self.get_first_trade()
+        return first_trade.get_position_quantity()
+
     def get_average_price(self) -> Optional[USDollarAmount]:
         """The average price paid for all assets on the long or short side.
 
@@ -438,6 +465,63 @@ class TradingPosition:
         assert last_pricing_at.tzinfo is None
         self.last_pricing_at = last_pricing_at
         self.last_token_price = last_token_price
+
+    def get_value_at_open(self) -> USDollarAmount:
+        """How much the position had value tied after its open.
+
+        Calculate the value after the first trade.
+        """
+        assert len(self.trades) > 0, "No trades available"
+        return self.get_first_trade().get_executed_value()
+
+    def get_capital_tied_at_open_pct(self) -> float:
+        """Calculate how much portfolio capital was risk when this position was opened.
+
+        - This is based on the opening values,
+          any position adjustment after open is ignored
+
+        - Assume capital is tied to the position and we can never release it.
+
+        - Assume no stop loss is used, or it cannto be trigged
+
+        See also :py:meth:`get_loss_risk_at_open_pct`.
+
+        :return:
+            Percent of the portfolio value
+        """
+        assert self.portfolio_value_at_open, "Portfolio value at position open was not recorded"
+        return self.get_value_at_open() / self.portfolio_value_at_open
+
+    def get_loss_risk_at_open(self) -> USDollarAmount:
+        """What is the maximum risk of this position.
+
+        The maximum risk is the amount of portfolio we can lose at one position.
+        It is calculated as `position stop loss / position total size`.
+        We assume stop losses always trigged perfectly and we do not lose
+        (too much) on the stop loss trigger.
+
+        :return:
+            Dollar value of the risked capital
+        """
+        assert self.is_long(), "Only long positions supported"
+        assert self.stop_loss, f"Stop loss price must be set to calculate the maximum risk"
+        # Calculate how much value we can lose
+        price_diff = ( self.get_price_at_open() - self.stop_loss)
+        risked_value = price_diff * float(self.get_quantity_at_open())
+        return risked_value
+
+    def get_loss_risk_at_open_pct(self) -> float:
+        """What is the maximum risk of this position.
+
+        Risk relative to the portfolio size.
+
+        See also :py:meth:`get_loss_risk_at_open_pct`.
+
+        :return:
+            Percent of total portfolio value
+        """
+        return self.get_loss_risk_at_open() / self.portfolio_value_at_open
+
 
 class PositionType(enum.Enum):
     token_hold = "token_hold"
