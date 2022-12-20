@@ -382,7 +382,7 @@ def create_uniswap_v2_compatible_routing(routing_type: TradeRouting, reserve_cur
 
     - The routing model consists of smart contract addresses needed to trade
     """
-
+    
     # pancakeswap on bsc
     if routing_type == TradeRouting.pancakeswap_busd:
         if reserve_currency != ReserveCurrency.busd:
@@ -404,7 +404,7 @@ def create_uniswap_v2_compatible_routing(routing_type: TradeRouting, reserve_cur
     elif routing_type == TradeRouting.quickswap_dai:
         if reserve_currency != ReserveCurrency.dai:
             raise MismatchReserveCurrency(f"Got {routing_type} with {reserve_currency}")
-   
+    
     # trader joe on avalanche
     elif routing_type == TradeRouting.trader_joe_usdc:
         if reserve_currency != ReserveCurrency.usdc:
@@ -437,8 +437,7 @@ def create_uniswap_v2_compatible_routing(routing_type: TradeRouting, reserve_cur
     elif routing_type == TradeRouting.uniswap_v3_busd:
         if reserve_currency != ReserveCurrency.busd:
             raise MismatchReserveCurrency(f"Got {routing_type} with {reserve_currency}")
-    
-    # else
+
     else:
         raise NotImplementedError(f"Unknown routing type")
 
@@ -458,7 +457,6 @@ def create_uniswap_v2_compatible_routing(routing_type: TradeRouting, reserve_cur
         # uniswap v3 on eth
         params = get_uniswap_v3_default_routing_parameters(reserve_currency)
     else:
-        # else
         raise NotImplementedError()
 
     routing_model = UniswapV2SimpleRoutingModel(
