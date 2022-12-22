@@ -17,6 +17,7 @@ from typing import List, Optional, Callable, Tuple, Set, Dict, Iterable
 import pandas as pd
 
 from tradeexecutor.backtest.data_preload import preload_data
+from tradeexecutor.strategy.dataset import Dataset
 from tradeexecutor.strategy.execution_context import ExecutionMode, ExecutionContext
 from tradingstrategy.token import Token
 
@@ -25,7 +26,7 @@ from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse, Uni
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId
 from tradingstrategy.client import Client
-from tradingstrategy.exchange import ExchangeUniverse, Exchange, ExchangeType
+from tradingstrategy.exchange import Exchange, ExchangeType
 from tradingstrategy.liquidity import GroupedLiquidityUniverse
 from tradingstrategy.pair import DEXPair, PandasPairUniverse, resolve_pairs_based_on_ticker, \
     filter_for_exchanges, filter_for_quote_tokens, StablecoinFilteringMode, filter_for_stablecoins
@@ -39,42 +40,6 @@ logger = logging.getLogger(__name__)
 
 class TradingUniverseIssue(Exception):
     """Raised in the case trading universe has some bad data etc. issues."""
-
-
-@dataclass
-class Dataset:
-    """Contain raw loaded datasets."""
-
-    #: Granularity of our OHLCV data
-    time_bucket: TimeBucket
-
-    #: All exchanges
-    exchanges: ExchangeUniverse
-
-    #: All trading pairs
-    pairs: pd.DataFrame
-
-    #: Candle data for all pairs
-    candles: Optional[pd.DataFrame] = None
-
-    #: All liquidity samples
-    liquidity: Optional[pd.DataFrame] = None
-
-    #: Granularity of backtesting OHLCV data
-    backtest_stop_loss_time_bucket: Optional[TimeBucket] = None
-
-    #: All candles in stop loss time bucket
-    backtest_stop_loss_candles: Optional[pd.DataFrame] = None
-
-    def __post_init__(self):
-        """Check we got good data."""
-        candles = self.candles
-        if candles is not None:
-            assert isinstance(candles, pd.DataFrame), f"Expected DataFrame, got {candles.__class__}"
-
-        liquidity = self.liquidity
-        if liquidity is not None:
-            assert isinstance(liquidity, pd.DataFrame), f"Expected DataFrame, got {liquidity.__class__}"
 
 
 @dataclass
