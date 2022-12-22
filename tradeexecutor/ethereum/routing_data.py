@@ -31,6 +31,7 @@ from tradingstrategy.chain import ChainId
 
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel
 from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2SimpleRoutingModel
+from tradeexecutor.ethereum.uniswap_v3_routing import UniswapV3SimpleRoutingModel
 from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.default_routing_options import TradeRouting
@@ -128,7 +129,7 @@ def get_pancake_default_routing_parameters(reserve_currency: ReserveCurrency) ->
             "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c", "0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56", 
             "0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d", "0x55d398326f99059ff775485246999027b3197955"
         },
-        "trading_fee": 25
+        "fee": 25
     }
 
 def get_quickswap_default_routing_parameters(reserve_currency: ReserveCurrency) -> RoutingData:
@@ -184,7 +185,7 @@ def get_quickswap_default_routing_parameters(reserve_currency: ReserveCurrency) 
         "quote_token_addresses": {
             "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174", "0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270"
         },
-        "trading_fee": 30
+        "fee": 30
     }
 
 def get_trader_joe_default_routing_parameters(reserve_currency: ReserveCurrency) -> RoutingData:
@@ -232,7 +233,7 @@ def get_trader_joe_default_routing_parameters(reserve_currency: ReserveCurrency)
             "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e", "0x9702230a8ea53601f5cd2dc00fdbc13d4df4a8c7" 
             "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7"
         },
-        "trading_fee": 30
+        "fee": 30
     }
     
 
@@ -376,8 +377,25 @@ def get_uniswap_v2_default_routing_parameters(reserve_currency: ReserveCurrency)
             "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
             "0xdac17f958d2ee523a2206206994597c13d831ec7"
         },
-        "trading_fee": 30
+        "fee": 30
     }
+
+def create_uniswap_v3_compatible_routing(routing_type: TradeRouting, reserve_currency: ReserveCurrency) -> UniswapV3SimpleRoutingModel:
+    # uniswap v3 on eth
+    if routing_type in (TradeRouting.uniswap_v3_usdc, TradeRouting.uniswap_v3_usdt, TradeRouting.uniswap_v3_dai, TradeRouting.uniswap_v3_busd):
+        params = get_uniswap_v3_default_routing_parameters(reserve_currency)
+    else:
+        raise NotImplementedError()
+    
+    routing_model = UniswapV3SimpleRoutingModel(
+        params["factory_router_map"],
+        params["allowed_intermediary_pairs"],
+        params["reserve_token_address"],
+        params["chain_id"],
+        params["fee"]
+    )
+
+    return routing_model
 
 def create_uniswap_v2_compatible_routing(routing_type: TradeRouting, reserve_currency: ReserveCurrency) -> UniswapV2SimpleRoutingModel:
     """Set up Uniswap v2 compatible routing.
@@ -414,9 +432,6 @@ def create_uniswap_v2_compatible_routing(routing_type: TradeRouting, reserve_cur
     elif routing_type in (TradeRouting.uniswap_v2_usdc, TradeRouting.uniswap_v2_usdt, TradeRouting.uniswap_v2_dai):
         # uniswap v2 on eth
         params = get_uniswap_v2_default_routing_parameters(reserve_currency)
-    elif routing_type in (TradeRouting.uniswap_v3_usdc, TradeRouting.uniswap_v3_usdt, TradeRouting.uniswap_v3_dai, TradeRouting.uniswap_v3_busd):
-        # uniswap v3 on eth
-        params = get_uniswap_v3_default_routing_parameters(reserve_currency)
     else:
         raise NotImplementedError()
 
@@ -425,7 +440,7 @@ def create_uniswap_v2_compatible_routing(routing_type: TradeRouting, reserve_cur
         params["allowed_intermediary_pairs"],
         params["reserve_token_address"],
         params["chain_id"],
-        params["trading_fee"]
+        params["fee"]
     )
 
     return routing_model
