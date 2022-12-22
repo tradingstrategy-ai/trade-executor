@@ -66,10 +66,9 @@ class UniswapV2LivePricing(PricingModel):
         self.very_small_amount = very_small_amount
         self.routing_model = routing_model
 
+        self.fee = routing_model.fee
         # web3-ethereum-defi trading fee default is 30 bps
-        if(hasattr(routing_model, 'trading_fee')):
-            self.trading_fee = routing_model.trading_fee
-        else:
+        if(self.fee is None):
             logger.warning("No trading fee provided, web3-ethereum-defi defaults to trading fee of 30 bps")
 
         assert isinstance(self.very_small_amount, Decimal)
@@ -111,14 +110,14 @@ class UniswapV2LivePricing(PricingModel):
         # In three token trades, be careful to use the correct reserve token
         quantity_raw = target_pair.base.convert_to_raw_amount(quantity)
 
-        if(self.trading_fee is not None):
+        if(self.fee is not None):
             received_raw = estimate_sell_received_amount_raw(
                 uniswap,
                 base_addr,
                 quote_addr,
                 quantity_raw,
                 intermediate_token_address=intermediate_addr,
-                fee=self.trading_fee
+                fee=self.fee
             )
         else:
             received_raw = estimate_sell_received_amount_raw(
