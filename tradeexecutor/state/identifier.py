@@ -106,6 +106,10 @@ class TradingPairIdentifier:
     #: Info page URL for this trading pair e.g. with the price charts
     info_url: Optional[str] = None
 
+    #: Trading fee for the pool. Of special importance for uniswap v3 where different pools can have different fees
+    #: Expressed as an int in bps (basis points)
+    fee: Optional[int] = None 
+
     def __repr__(self):
         return f"<Pair {self.base.token_symbol}-{self.quote.token_symbol} at {self.pool_address} on exchange {self.exchange_address}>"
 
