@@ -243,98 +243,6 @@ class UniswapV2RoutingState(RoutingState):
         tx = self.tx_builder.sign_transaction(bound_swap_func, self.swap_gas_limit)
         return [tx]
 
-class UniswapV3SimpleRoutingModel(RoutingModel):
-    """A simple router that does not optimise the trade execution cost. Designed for uniswap-v3 forks.
-
-    - Able to trade on multiple exchanges
-
-    - Able to three-way trades through predefined intermediary hops,
-    either on the exchange itself or some outside exchange
-    """
-
-    def __init__(self,
-                 factory_router_map: Dict[str, Tuple[str, Optional[str]]],
-                 allowed_intermediary_pairs: Dict[str, str],
-                 reserve_token_address: str,
-                 chain_id: Optional[ChainId] = None,
-                 trading_fee: Optional[int] = None # TODO how to deal with trading fee? 
-                 ):
-        """
-        :param factory_router_map:
-            Defines router smart contracts to be used with each DEX.
-            Each Uniswap v2 is uniquely identified by its factory contract.
-            Addresses always lowercase.
-
-        :param allowed_intermediary_pairs:
-
-            Quote token address -> pair smart contract address mapping.
-
-            Because we hold our reserves only in one currecy e.g. BUSD
-            and we want to trade e.g. Cake/BNB pairs, we need to whitelist
-            BNB as an allowed intermediary token.
-            This makes it possible to do BUSD -> BNB -> Cake trade.
-            This set is the list of pair smart contract addresses that
-            are allowed to be used as a hop.
-
-        :param trading_fee:
-            Trading fee express as int in bps. E.g. 30 => 0.3%
-
-        :param chain_id:
-            Store the chain id for which these routes were generated for.
-
-        :param reserve_token_address:
-            Token address of our reserve currency.
-            Relevent for buy/sell routing.
-            Lowercase.
-        """
-
-        assert type(factory_router_map) == dict
-        assert type(allowed_intermediary_pairs) == dict
-        assert type(reserve_token_address) == str
-
-        assert reserve_token_address.lower() == reserve_token_address
-
-        # Convert all key addresses to lowercase to
-        # avoid mix up with Ethereum address checksums
-        self.factory_router_map = {k.lower(): v for k, v in factory_router_map.items()}
-        self.allowed_intermediary_pairs = {k.lower(): v.lower() for k, v in allowed_intermediary_pairs.items()}
-        self.reserve_token_address = reserve_token_address
-        self.chain_id = chain_id
-        self.trading_fee = trading_fee # TODO how to deal with trading fee
-
-        def get_reserve_asset(self, pair_universe: PandasPairUniverse) -> AssetIdentifier:
-            """Translate our reserve token address tok an asset description."""
-            assert pair_universe is not None, "Pair universe missing"
-            reserve_token = pair_universe.get_token(self.reserve_token_address)
-            assert reserve_token, f"Pair universe does not contain our reserve asset {self.reserve_token_address}"
-            return translate_token(reserve_token)
-
-        def make_direct_trade(self,
-                          routing_state: UniswapV2RoutingState,
-                          target_pair: TradingPairIdentifier,
-                          reserve_asset: AssetIdentifier,
-                          reserve_amount: int,
-                          max_slippage: float,
-                          check_balances=False,
-                          ) -> List[BlockchainTransaction]:
-            """Prepare a trade where target pair has out reserve asset as a quote token.
-
-            :return:
-                List of approval transactions (if any needed)
-            """
-            uniswap = routing_state.get_uniswap_for_pair(self.factory_router_map, target_pair)
-            token_address = reserve_asset.address
-            txs = routing_state.ensure_token_approved(token_address, uniswap.router.address)
-            txs += routing_state.trade_on_router_two_way(
-                uniswap,
-                target_pair,
-                reserve_asset,
-                reserve_amount,
-                max_slippage,
-                check_balances,
-                )
-            return txs
-
 class UniswapV2SimpleRoutingModel(RoutingModel):
     """A simple router that does not optimise the trade execution cost. Designed for uniswap-v2 forks.
 
@@ -349,7 +257,7 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
                  allowed_intermediary_pairs: Dict[str, str],
                  reserve_token_address: str,
                  chain_id: Optional[ChainId] = None,
-                 trading_fee: Optional[int] = None
+                 fee: Optional[int] = None
                  ):
         """
         :param factory_router_map:
@@ -368,8 +276,8 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
             This set is the list of pair smart contract addresses that
             are allowed to be used as a hop.
 
-        :param trading_fee:
-            Trading fee express as int in bps. E.g. 30 => 0.3%
+        :param fee:
+            Trading fee expressed as int in bps. E.g. 30 => 0.3%
 
         :param chain_id:
             Store the chain id for which these routes were generated for.
@@ -392,7 +300,7 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
         self.allowed_intermediary_pairs = {k.lower(): v.lower() for k, v in allowed_intermediary_pairs.items()}
         self.reserve_token_address = reserve_token_address
         self.chain_id = chain_id
-        self.trading_fee = trading_fee
+        self.fee = fee
 
     def get_reserve_asset(self, pair_universe: PandasPairUniverse) -> AssetIdentifier:
         """Translate our reserve token address tok an asset description."""
