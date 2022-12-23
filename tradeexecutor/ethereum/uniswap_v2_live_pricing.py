@@ -67,7 +67,6 @@ class UniswapV2LivePricing(PricingModel):
         self.routing_model = routing_model
 
         self.fee = routing_model.fee
-        # web3-ethereum-defi trading fee default is 30 bps
         if(self.fee is None):
             logger.warning("No trading fee provided, web3-ethereum-defi defaults to trading fee of 30 bps")
 
