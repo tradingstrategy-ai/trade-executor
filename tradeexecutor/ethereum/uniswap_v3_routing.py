@@ -70,7 +70,7 @@ class UniswapV3RoutingState(RoutingState):
         self.swap_gas_limit = swap_gas_limit
 
     def __repr__(self):
-        return f"<UniswapV2RoutingState Tx builder: {self.tx_builder} web3: {self.web3}>"
+        return f"<UniswapV3RoutingState Tx builder: {self.tx_builder} web3: {self.web3}>"
 
     def is_route_approved(self, router_address: str):
         return router_address in self.approved_routes
@@ -209,7 +209,7 @@ class UniswapV3RoutingState(RoutingState):
         # sign
         signed_tx = hot_wallet.sign_transaction(tx)
 
-        return [tx]
+        return [signed_tx]
 
     def trade_on_router_three_way(self,
             uniswap: UniswapV3Deployment,
