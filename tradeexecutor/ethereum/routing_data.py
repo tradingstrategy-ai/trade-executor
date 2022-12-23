@@ -380,31 +380,26 @@ def get_uniswap_v2_default_routing_parameters(reserve_currency: ReserveCurrency)
         "fee": 30
     }
 
-def create_uniswap_v3_compatible_routing(routing_type: TradeRouting, reserve_currency: ReserveCurrency) -> UniswapV3SimpleRoutingModel:
-    # uniswap v3 on eth
-    if routing_type in (TradeRouting.uniswap_v3_usdc, TradeRouting.uniswap_v3_usdt, TradeRouting.uniswap_v3_dai, TradeRouting.uniswap_v3_busd):
-        params = get_uniswap_v3_default_routing_parameters(reserve_currency)
-    else:
-        raise NotImplementedError()
-    
-    routing_model = UniswapV3SimpleRoutingModel(
-        params["factory_router_map"],
-        params["allowed_intermediary_pairs"],
-        params["reserve_token_address"],
-        params["chain_id"],
-        params["fee"]
+def get_uniswap_v3_compatible_routing_types():
+    # TODO find a way to get without hardcoding
+    return (
+        TradeRouting.uniswap_v3_usdc, 
+        TradeRouting.uniswap_v3_busd, 
+        TradeRouting.uniswap_v3_dai, 
+        TradeRouting.uniswap_v3_usdt
     )
 
-    return routing_model
+def get_uniswap_v2_compatible_routing_types():
+    return (
+        TradeRouting.pancakeswap_busd, TradeRouting.pancakeswap_usdc, TradeRouting.pancakeswap_usdt, 
+        TradeRouting.uniswap_v2_usdc, TradeRouting.uniswap_v2_usdt, TradeRouting.uniswap_v2_dai,
+        TradeRouting.quickswap_usdc, TradeRouting.quickswap_usdt, TradeRouting.quickswap_dai,  
+        TradeRouting.trader_joe_usdt, TradeRouting.trader_joe_usdc
+    )
 
-def create_uniswap_v2_compatible_routing(routing_type: TradeRouting, reserve_currency: ReserveCurrency) -> UniswapV2SimpleRoutingModel:
-    """Set up Uniswap v2 compatible routing.
+def check_reserve_currency(routing_type: TradeRouting, reserve_currency: ReserveCurrency):
+    """Assert that reserve currency matches routing type"""
 
-    - This takes one of the default routing options and gives the routing model for it
-
-    - The routing model consists of smart contract addresses needed to trade
-    """
-    
     if routing_type in (TradeRouting.pancakeswap_busd, TradeRouting.uniswap_v3_busd):
         if reserve_currency != ReserveCurrency.busd:
             raise MismatchReserveCurrency(f"Got {routing_type} with {reserve_currency}")
@@ -420,40 +415,13 @@ def create_uniswap_v2_compatible_routing(routing_type: TradeRouting, reserve_cur
     else:
         raise NotImplementedError(f"Unknown routing type")
 
-    if routing_type in (TradeRouting.pancakeswap_busd, TradeRouting.pancakeswap_usdc, TradeRouting.pancakeswap_usdt):
-        # pancake on bsc
-        params = get_pancake_default_routing_parameters(reserve_currency)
-    elif routing_type in (TradeRouting.quickswap_usdc, TradeRouting.quickswap_usdt, TradeRouting.quickswap_dai):
-        # quickswap on polygon
-        params = get_quickswap_default_routing_parameters(reserve_currency)
-    elif routing_type in (TradeRouting.trader_joe_usdc, TradeRouting.trader_joe_usdt):
-        # trader joe on avalanche
-        params = get_trader_joe_default_routing_parameters(reserve_currency)
-    elif routing_type in (TradeRouting.uniswap_v2_usdc, TradeRouting.uniswap_v2_usdt, TradeRouting.uniswap_v2_dai):
-        # uniswap v2 on eth
-        params = get_uniswap_v2_default_routing_parameters(reserve_currency)
-    else:
-        raise NotImplementedError()
-
-    routing_model = UniswapV2SimpleRoutingModel(
-        params["factory_router_map"],
-        params["allowed_intermediary_pairs"],
-        params["reserve_token_address"],
-        params["chain_id"],
-        params["fee"]
-    )
-
-    return routing_model
-
-
-
 def get_backtest_routing_model(routing_type: TradeRouting, reserve_currency: ReserveCurrency) -> BacktestRoutingModel:
     """Get routing options for backtests.
 
     At the moment, just create a real router and copy parameters from there.
     """
 
-    real_routing_model = create_uniswap_v2_compatible_routing(routing_type, reserve_currency)
+    real_routing_model = create_compatible_routing(routing_type, reserve_currency)
 
     return BacktestRoutingModel(
         real_routing_model.factory_router_map,
@@ -461,6 +429,71 @@ def get_backtest_routing_model(routing_type: TradeRouting, reserve_currency: Res
         real_routing_model.reserve_token_address,
     )
 
+def create_compatible_routing(routing_type: TradeRouting, reserve_currency: ReserveCurrency):
+    """Create compatible routing. 
+    
+    At the moment, can either be uniswap-v2 compatible or uniswap-v3 compatible.
+
+    - This takes one of the default routing options and gives the routing model for it
+
+    - The routing model consists of smart contract addresses needed to trade, the chainid, and trading fee
+    """
+
+    def create_uniswap_v2_compatible_routing(routing_type: TradeRouting, reserve_currency: ReserveCurrency) -> UniswapV2SimpleRoutingModel:
+        """Set up Uniswap v2 compatible routing.
+        """
+
+        if routing_type in (TradeRouting.pancakeswap_busd, TradeRouting.pancakeswap_usdc, TradeRouting.pancakeswap_usdt):
+            # pancake on bsc
+            params = get_pancake_default_routing_parameters(reserve_currency)
+        elif routing_type in (TradeRouting.quickswap_usdc, TradeRouting.quickswap_usdt, TradeRouting.quickswap_dai):
+            # quickswap on polygon
+            params = get_quickswap_default_routing_parameters(reserve_currency)
+        elif routing_type in (TradeRouting.trader_joe_usdc, TradeRouting.trader_joe_usdt):
+            # trader joe on avalanche
+            params = get_trader_joe_default_routing_parameters(reserve_currency)
+        elif routing_type in (TradeRouting.uniswap_v2_usdc, TradeRouting.uniswap_v2_usdt, TradeRouting.uniswap_v2_dai):
+            # uniswap v2 on eth
+            params = get_uniswap_v2_default_routing_parameters(reserve_currency)
+        else:
+            raise NotImplementedError()
+
+        routing_model = UniswapV2SimpleRoutingModel(
+            params["factory_router_map"],
+            params["allowed_intermediary_pairs"],
+            params["reserve_token_address"],
+            params["chain_id"],
+            params["fee"]
+        )
+
+        return routing_model
+    
+    def create_uniswap_v3_compatible_routing(routing_type: TradeRouting, reserve_currency: ReserveCurrency) -> UniswapV3SimpleRoutingModel:
+        """Set up Uniswap v3 compatible routing.
+        """
+
+        if routing_type in (TradeRouting.uniswap_v3_usdc, TradeRouting.uniswap_v3_usdt, TradeRouting.uniswap_v3_dai, TradeRouting.uniswap_v3_busd):
+            params = get_uniswap_v3_default_routing_parameters(reserve_currency)
+        else:
+            raise NotImplementedError()
+        
+        # Trading fee is derived dynamically for each trading pair
+        routing_model = UniswapV3SimpleRoutingModel(
+            params["factory_router_map"],
+            params["allowed_intermediary_pairs"],
+            params["reserve_token_address"],
+            params["chain_id"]
+        )
+
+        return routing_model
+
+    # assert reserve currency matches routing_type
+    check_reserve_currency(routing_type, reserve_currency)
+
+    if(routing_type in get_uniswap_v2_compatible_routing_types()):
+        return create_uniswap_v2_compatible_routing(routing_type, reserve_currency)
+    elif(routing_type in get_uniswap_v3_compatible_routing_types()):
+        return create_uniswap_v3_compatible_routing(routing_type, reserve_currency)
 
 def get_routing_model(
         execution_context: ExecutionContext,
@@ -481,4 +514,4 @@ def get_routing_model(
     if execution_context.mode == ExecutionMode.backtesting:
         return get_backtest_routing_model(routing_type, reserve_currency)
     else:
-        return create_uniswap_v2_compatible_routing(routing_type, reserve_currency)
+        return create_compatible_routing(routing_type, reserve_currency)
