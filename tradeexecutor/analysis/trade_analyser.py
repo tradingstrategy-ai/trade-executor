@@ -482,7 +482,7 @@ class TradeAnalysis:
                 if position.is_open():
                     yield pair_id, position
 
-    def calculate_summary_statistics(self, *, raw_timeline: Optional[pd.DataFrame] = None, stop_loss_pct: Optional[float] = None, time_bucket: Optional[TimeBucket] = None) -> TradeSummary:
+    def calculate_summary_statistics(self, *ignore, raw_timeline: Optional[pd.DataFrame] = None, time_bucket: Optional[TimeBucket] = None) -> TradeSummary:
         """Calculate some statistics how our trades went.
             raw_timeline and stop_loss_pct need only be provided if user wants complete list of summary statistics,
             otherwise, the user will receive a shortened list of stats.
@@ -498,10 +498,12 @@ class TradeAnalysis:
             time bucket to display average duration as 'number of bars' instead of 'number of days'. 
         """
 
+        if ignore:
+            # https://www.python.org/dev/peps/pep-3102/
+            raise TypeError("Only keyword arguments accepted")
+
         if(raw_timeline is not None):
             assert isinstance(raw_timeline, pd.DataFrame), "Not a valid timeline, use expand_timeline_raw() method to create it"
-        if(stop_loss_pct is not None):
-            assert stop_loss_pct >= 0 and stop_loss_pct < 1, "Not a valid stop loss percentage, must be between 0 and 1"
         if(time_bucket is not None):
             assert isinstance(time_bucket, TimeBucket), "Not a valid time bucket"
 
