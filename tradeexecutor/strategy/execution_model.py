@@ -127,7 +127,7 @@ class TradeExecutionType(enum.Enum):
     #: Does not make any trades, just captures and logs them
     dummy = "dummy"
 
-    #: Server-side normal Ethereum private eky account
+    #: Server-side normal Ethereum private key account
     uniswap_v2_hot_wallet = "uniswap_v2_hot_wallet"
 
     #: Trading using Enzyme Protocol pool, single oracle mode
