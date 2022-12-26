@@ -16,9 +16,15 @@ from tradeexecutor.backtest.backtest_valuation import backtest_valuation_factory
 from tradeexecutor.backtest.simulated_wallet import SimulatedWallet
 from tradeexecutor.cli.approval import CLIApprovalModel
 from tradeexecutor.ethereum.hot_wallet_sync import EthereumHotWalletReserveSyncer
+
 from tradeexecutor.ethereum.uniswap_v2_execution import UniswapV2ExecutionModel
 from tradeexecutor.ethereum.uniswap_v2_live_pricing import uniswap_v2_live_pricing_factory
 from tradeexecutor.ethereum.uniswap_v2_valuation import uniswap_v2_sell_valuation_factory
+
+from tradeexecutor.ethereum.uniswap_v3_execution import UniswapV3ExecutionModel
+from tradeexecutor.ethereum.uniswap_v3_live_pricing import uniswap_v3_live_pricing_factory
+from tradeexecutor.ethereum.uniswap_v3_valuation import uniswap_v3_sell_valuation_factory
+
 from tradeexecutor.ethereum.web3config import Web3Config
 from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
 from tradeexecutor.state.metadata import Metadata
@@ -101,6 +107,55 @@ def create_trade_execution_model(
         )
         valuation_model_factory = uniswap_v2_sell_valuation_factory
         pricing_model_factory = uniswap_v2_live_pricing_factory
+
+        # TODO: Temporary fix to prevent connections elsewhere
+        # Make sure this never happens even though it should not happen
+        if ChainId.bsc in web3config.connections or ChainId.polygon in web3config.connections or ChainId.avalanche in web3config.connections:
+            if web3config.gas_price_method == GasPriceMethod.london:
+                raise RuntimeError(f"Should not happen: {web3config.gas_price_method}")
+
+        return execution_model, sync_method, valuation_model_factory, pricing_model_factory
+    elif execution_type == TradeExecutionType.backtest:
+        logger.info("TODO: Command line backtests are always executed with initial deposit of $10,000")
+        wallet = SimulatedWallet()
+        execution_model = BacktestExecutionModel(wallet, max_slippage=0.01, stop_loss_data_available=True)
+        sync_method = BacktestSyncer(wallet, Decimal(10_000))
+        pricing_model_factory = backtest_pricing_factory
+        valuation_model_factory = backtest_valuation_factory
+        return execution_model, sync_method, valuation_model_factory, pricing_model_factory
+    else:
+        raise NotImplementedError()
+    
+def create_trade_execution_model_uniswap_v3_compatible(
+        execution_type: TradeExecutionType,
+        private_key: str,
+        web3config: Web3Config,
+        confirmation_timeout: datetime.timedelta,
+        confirmation_block_count: int,
+        max_slippage: float,
+        min_balance_threshold: Optional[Decimal],
+):
+    """Set up the execution mode for the command line client."""
+
+    assert isinstance(confirmation_timeout, datetime.timedelta), f"Got {confirmation_timeout}"
+
+    if execution_type == TradeExecutionType.dummy:
+        return DummyExecutionModel()
+    elif execution_type == TradeExecutionType.uniswap_v2_hot_wallet:
+        assert private_key, "Private key is needed for live trading"
+        web3 = web3config.get_default()
+        hot_wallet = HotWallet.from_private_key(private_key)
+        sync_method = EthereumHotWalletReserveSyncer(web3, hot_wallet.address)
+        execution_model = UniswapV3ExecutionModel(
+            web3,
+            hot_wallet,
+            confirmation_timeout=confirmation_timeout,
+            confirmation_block_count=confirmation_block_count,
+            max_slippage=max_slippage,
+            min_balance_threshold=min_balance_threshold,
+        )
+        valuation_model_factory = uniswap_v3_sell_valuation_factory
+        pricing_model_factory = uniswap_v3_live_pricing_factory
 
         # TODO: Temporary fix to prevent connections elsewhere
         # Make sure this never happens even though it should not happen
