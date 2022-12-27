@@ -166,13 +166,23 @@ class UniswapV2LivePricing(PricingModel):
             reserve_raw = target_pair.quote.convert_to_raw_amount(reserve)
             self.check_supported_quote_token(pair)
 
-        token_raw_received = estimate_buy_received_amount_raw(
-            uniswap,
-            base_addr,
-            quote_addr,
-            reserve_raw,
-            intermediate_token_address=intermediate_addr
-        )
+        if self.fee is not None:
+            token_raw_received = estimate_buy_received_amount_raw(
+                uniswap,
+                base_addr,
+                quote_addr,
+                reserve_raw,
+                intermediate_token_address=intermediate_addr,
+                fee=self.fee
+            )
+        else:
+            token_raw_received = estimate_buy_received_amount_raw(
+                uniswap,
+                base_addr,
+                quote_addr,
+                reserve_raw,
+                intermediate_token_address=intermediate_addr
+            )
         token_received = target_pair.base.convert_to_decimal(token_raw_received)
         return float(reserve / token_received)
 
