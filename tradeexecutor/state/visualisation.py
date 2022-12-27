@@ -61,7 +61,7 @@ class Plot:
                   value: float,
                   ):
         assert isinstance(timestamp, datetime.datetime)
-        assert isinstance(value, float), f"Got {value} ({value.__class__})"
+        assert isinstance(value, (float, type(None))), f"Got {value} ({value.__class__})"
         timestamp = convert_and_validate_timestamp_as_int(timestamp)
         self.points[timestamp] = value
 
@@ -120,6 +120,7 @@ class Visualisation:
              kind: PlotKind,
              value: float,
              colour: Optional[str] = None):
+        # sourcery skip: remove-unnecessary-cast
         """Add a value to the output data and diagram.
         
         Plots are stored by their name.
@@ -140,14 +141,15 @@ class Visualisation:
             Optional colour
         """
 
-        assert type(name) == str, f"Got name"
+        assert type(name) == str, "Got name"
 
         # Convert numpy.float32 and numpy.float64 to serializable float instances,
         # e.g. prices
-        try:
-            value = float(value)
-        except TypeError as e:
-            raise RuntimeError(f"Could not convert value {value} {value.__class__} to float") from e
+        if value is not None:
+            try:
+                value = float(value)
+            except TypeError as e:
+                raise RuntimeError(f"Could not convert value {value} {value.__class__} to float") from e
 
         plot = self.plots.get(name, Plot(name=name, kind=kind))
 
