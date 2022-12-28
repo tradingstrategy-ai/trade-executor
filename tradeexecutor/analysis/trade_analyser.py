@@ -592,6 +592,7 @@ class TradeAnalysis:
         average_losing_trade_loss_pc = get_avg_profit_pct(losing_trades)
 
         max_realised_loss = min(realised_losses)
+        avg_realised_risk = avg(realised_losses)
 
         avg_capital_tied_at_open_pc = avg(capital_tied_at_open_pc)
         
