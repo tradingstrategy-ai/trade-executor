@@ -20,7 +20,7 @@ python = ">=3.10,<3.11"
 # trading-strategy = {path = "deps/trading-strategy", develop = true}
 requests = "^2.27.1"
 web3 = "^5.26.0"
-web3-ethereum-defi = {git = "https://github.com/tradingstrategy-ai/web3-ethereum-defi.git", rev = "648f3301d5f9cdb81272c4e3f561e2c227b9f91a"}
+web3-ethereum-defi = {git = "https://github.com/tradingstrategy-ai/web3-ethereum-defi.git", branch="uni_v3", extras = ["data"]}
 trading-strategy = {git = "https://github.com/tradingstrategy-ai/trading-strategy", rev="c2b3cea698c9adb1b0f2d884549b1fdcbe6f8da9"}
 matplotlib = "^3.6.0"
 jupyterlab = "^3.5.0"
