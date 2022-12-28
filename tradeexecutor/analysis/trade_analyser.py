@@ -482,7 +482,7 @@ class TradeAnalysis:
                 if position.is_open():
                     yield pair_id, position
 
-    def calculate_summary_statistics(self, *, raw_timeline: Optional[pd.DataFrame] = None, stop_loss_pct: Optional[float] = None, time_bucket: Optional[TimeBucket] = None) -> TradeSummary:
+    def calculate_summary_statistics(self, *, time_bucket: Optional[TimeBucket] = None) -> TradeSummary:
         """Calculate some statistics how our trades went.
             raw_timeline and stop_loss_pct need only be provided if user wants complete list of summary statistics,
             otherwise, the user will receive a shortened list of stats.
@@ -497,14 +497,19 @@ class TradeAnalysis:
             :param time_bucket:
             time bucket to display average duration as 'number of bars' instead of 'number of days'. 
         """
-
-        if(raw_timeline is not None):
-            assert isinstance(raw_timeline, pd.DataFrame), "Not a valid timeline, use expand_timeline_raw() method to create it"
-        if(stop_loss_pct is not None):
-            assert stop_loss_pct >= 0 and stop_loss_pct < 1, "Not a valid stop loss percentage, must be between 0 and 1"
+        
         if(time_bucket is not None):
             assert isinstance(time_bucket, TimeBucket), "Not a valid time bucket"
 
+        def get_avg_profit_pct(trades: List | None):
+            return float(np.mean(trades)) if trades else 0
+
+        def get_avg_trade_duration(duration_list: List | None, time_bucket: TimeBucket | None):
+            if duration_list:
+                if isinstance(time_bucket, TimeBucket):
+                    return np.mean(duration_list)/time_bucket.to_timedelta()
+                else:
+                    return np.mean(duration_list)
 
         initial_cash = self.portfolio.get_initial_deposit()
 
@@ -519,6 +524,8 @@ class TradeAnalysis:
         losing_trades = []
         winning_trades_duration = []
         losing_trades_duration = []
+        capital_tied_at_open = []
+        loss_risk_at_open = []
         biggest_winning_trade_pc = None
         biggest_losing_trade_pc = None
         average_duration_of_losing_trades = datetime.timedelta(0)
@@ -531,7 +538,9 @@ class TradeAnalysis:
         won = lost = zero_loss = stop_losses = undecided = 0
         open_value: USDollarAmount = 0
         profit: USDollarAmount = 0
+
         for pair_id, position in self.get_all_positions():
+
             if position.is_open():
                 open_value += position.open_value
                 undecided += 1
@@ -554,17 +563,16 @@ class TradeAnalysis:
                 # Any profit exactly balances out loss in slippage and commission
                 zero_loss += 1
 
+            capital_tied_at_open = position.get_
+
             profit += position.realised_profit
+        
+        all_trades = winning_trades + losing_trades + [0 for i in range(zero_loss)]
+        average_trade = avg(all_trades)
+        median_trade = median(all_trades)
 
-        if len(winning_trades) > 0:
-            average_winning_trade_profit_pc = float(np.mean(winning_trades))
-        else:
-            average_winning_trade_profit_pc = 0
-
-        if len(losing_trades) > 0:
-            average_losing_trade_loss_pc = float(np.mean(losing_trades))
-        else:
-            average_losing_trade_loss_pc = 0
+        average_winning_trade_profit_pc = get_avg_profit_pct(winning_trades)  
+        average_losing_trade_loss_pc = get_avg_profit_pct(losing_trades)
 
         if winning_trades:
             biggest_winning_trade_pc = max(winning_trades)
@@ -572,55 +580,12 @@ class TradeAnalysis:
         if losing_trades:
             biggest_losing_trade_pc = min(losing_trades)
 
-        if winning_trades_duration:
-            if(time_bucket is not None):
-                assert isinstance(time_bucket, TimeBucket)
-                average_duration_of_winning_trades = np.mean(winning_trades_duration)/time_bucket.to_timedelta()
-            else:
-                average_duration_of_winning_trades = np.mean(winning_trades_duration)
+        average_duration_of_winning_trades = get_avg_trade_duration(winning_trades_duration, time_bucket)
+        average_duration_of_losing_trades = get_avg_trade_duration(losing_trades_duration, time_bucket)
 
-        if losing_trades_duration:
-            if(time_bucket is not None):
-                assert isinstance(time_bucket, TimeBucket)
-                average_duration_of_losing_trades = np.mean(losing_trades_duration)/time_bucket.to_timedelta()
-            else:
-                average_duration_of_losing_trades = np.mean(losing_trades_duration)
-
-        average_trade=None
-        median_trade=None
-        max_pos_cons=None
-        max_neg_cons=None
-        max_pullback=None
-        max_capital_at_risk_sl=None
-        max_realised_loss=None
-        avg_realised_risk=None
-        
-        # If timeline is not provided, then don't calculate full statistics        
-        if raw_timeline is not None:
-            all_trades = raw_timeline['pnl_pct_raw']
-            average_trade = self.avg(all_trades)
-
-            median_trade = median(all_trades)
-
-            max_cons = self.get_max_consective(raw_timeline)
-            max_pos_cons = max_cons['max_pos_cons']
-            max_neg_cons = max_cons['max_neg_cons']
-            max_pullback = max_cons['max_pullback']
-
-            # Max capital at risk at SL (don't confuse stop_losses and stop_loss_rows)
-            stop_loss_rows = raw_timeline.loc[raw_timeline['Remarks'] == 'SL']
-            if (stop_loss_pct is not None) and (len(stop_loss_rows) > 0):
-                #raise ValueError("Missing argument: if raw_timeline is provided, then stop loss must also be provided")
-                max_capital_at_risk_sl = max(((1-stop_loss_pct)*stop_loss_rows['position_max_size'])/stop_loss_rows['opening_capital'])
-
-
-            # Biggest realized loss
-            losses = raw_timeline.loc[raw_timeline['pnl_usd'] < 0]
-            realised_losses = losses['pnl_usd']/losses['opening_capital']
-            max_realised_loss = min(realised_losses)
-
-            # average realised risk
-            avg_realised_risk = self.avg(realised_losses)
+        average_trade, median_trade, max_pos_cons, \
+        max_neg_cons, max_neg_cons, max_pullback, \
+        max_realised_loss, avg_realised_risk = self.get_timeline_stats().values()
 
         return TradeSummary(
             won=won,
@@ -666,41 +631,38 @@ class TradeAnalysis:
         df = pd.DataFrame(gen_events(), columns=["position_id", "position"])
         return df
 
-    # may be used in calculate_summary_statistics
-    @staticmethod
-    def get_max_consective(raw_timeline: pd.DataFrame):
-        lst = raw_timeline['pnl_pct_raw'] 
+    def get_timeline_stats(self):
+        """create ordered timeline of trades for stats that need it"""
+        timeline = self.create_timeline()
+        raw_timeline = expand_timeline_raw_simple(timeline)
 
-        max_pos_cons = 0
-        max_neg_cons = 0
-        max_pullback_pct = 0
-        pos_cons = 0
-        neg_cons = 0
-        pullback = 0
-        
-        for count, item in enumerate(lst):
-                if(item > 0):
-                        neg_cons = 0
-                        pullback = 0
-                        pos_cons += 1
-                else:
-                        pos_cons = 0
-                        neg_cons += 1
-                        pullback += raw_timeline['pnl_usd'].iloc[count]
-                if(neg_cons > max_neg_cons):
-                        max_neg_cons = neg_cons
-                if(pos_cons > max_neg_cons):
-                        max_pos_cons = pos_cons
+        max_cons = get_max_consective(raw_timeline)
+        max_pos_cons = max_cons['max_pos_cons']
+        max_neg_cons = max_cons['max_neg_cons']
+        max_pullback = max_cons['max_pullback']
 
-                pullback_pct = pullback/(raw_timeline['opening_capital'].iloc[count] + raw_timeline['pnl_usd'].iloc[count])
-                if(pullback_pct < max_pullback_pct):
-                        # pull back is in the negative direction
-                        max_pullback_pct = pullback_pct
-        return {'max_pos_cons':max_pos_cons, 'max_neg_cons':max_neg_cons, 'max_pullback':max_pullback_pct}
-    
-    @staticmethod
-    def avg(lst: list[int]):
-        return sum(lst) / len(lst)
+        # Max capital at risk at SL (don't confuse stop_losses and stop_loss_rows)
+        # max_capital_at_risk_sl = None
+        # stop_loss_rows = raw_timeline.loc[raw_timeline['Remarks'] == 'SL']
+        # if (stop_loss_pct is not None) and stop_loss_rows:
+        #     #raise ValueError("Missing argument: if raw_timeline is provided, then stop loss must also be provided")
+        #     max_capital_at_risk_sl = max(((1-stop_loss_pct)*stop_loss_rows['position_max_size'])/stop_loss_rows['opening_capital'])
+
+
+        # Biggest realized loss
+        losses = raw_timeline.loc[raw_timeline['pnl_usd'] < 0]
+        realised_losses = losses['pnl_usd']/losses['opening_capital']
+        max_realised_loss = min(realised_losses)
+
+        # average realised risk
+        avg_realised_risk = self.avg(realised_losses)
+
+        def create_dict(*args):
+            return {k: eval(k) for k in args}
+
+        return create_dict('average_trade', 'median_trade', 'max_pos_cons', 'max_neg_cons',
+            'max_neg_cons', 'max_pullback',
+            'max_realised_loss', 'avg_realised_risk')
 
 class TimelineRowStylingMode(enum.Enum):
     #: Style using Pandas background_gradient
@@ -785,87 +747,6 @@ class TimelineStyler:
             styles = styles.apply(self.colour_timelime_row_simple, axis=1)
 
         return styles
-
-def expand_timeline_raw(
-        exchanges: Set[Exchange],
-        pair_universe: PandasPairUniverse,
-        timeline: pd.DataFrame,
-        initial_capital: float,
-        timestamp_format="%Y-%m-%d",
-) -> pd.DataFrame:
-    """Similar to expand_timeline, but only returns raw data instead of formatted strings
-    which allows easy statistical calculations for when summary stats depend on timeline.
-    Does not incorporate any styles or return a styling callable function
-    
-    :param exchanges: Needed for exchange metadata
-
-    :param pair_universe: Needed for trading pair metadata
-
-    :param timestamp_format: How to format Opened at column, as passed to `strftime()`
-
-    :return: DataFrame with human=readable position win/loss information, having DF indexed by timestamps
-    """
-    exchange_map = {e.exchange_id: e for e in exchanges}
-
-    # variable to represent total capital (position + cash) at the open of each position
-    global opening_capital
-    opening_capital = initial_capital
-
-    # https://stackoverflow.com/a/52363890/315168
-    def expander(row):
-        position: TradePosition = row["position"]
-        # timestamp = row.name  # ???
-        pair_id = position.pair_id
-        pair_info = pair_universe.get_pair_by_id(pair_id)
-        exchange = exchange_map.get(pair_info.exchange_id)
-        if not exchange:
-            raise RuntimeError(f"No exchange for id {pair_info.exchange_id}, pair {pair_info}")
-
-        if position.is_stop_loss():
-            remarks = "SL"
-        elif position.is_take_profit():
-            remarks = "TP"
-        else:
-            remarks = ""
-
-        pnl_usd = position.realised_profit if position.is_closed() else np.nan
-
-        global opening_capital
-        from decimal import Decimal
-
-        r = {
-            # "timestamp": timestamp,
-            "Id": position.position_id,
-            "Remarks": remarks,
-            "Opened at": position.opened_at.strftime(timestamp_format),
-            "Duration": format_duration_days_hours_mins(position.duration) if position.duration else np.nan,
-            "Exchange": exchange.name,
-            "Base asset": pair_info.base_token_symbol,
-            "Quote asset": pair_info.quote_token_symbol,
-            "position_max_size": position.get_max_size(),
-            "pnl_usd": pnl_usd,
-            "opening_capital": opening_capital,
-            "pnl_pct_raw": position.realised_profit_percent if position.is_closed() else 0,
-            "open_price_usd": position.open_price,
-            "close_price_usd": position.close_price if position.is_closed() else np.nan,
-            "trade_count": position.get_trade_count(),
-        }
-
-        opening_capital = opening_capital + pnl_usd
-        return r
-
-    applied_df = timeline.apply(expander, axis='columns', result_type='expand')
-
-    if len(applied_df) > 0:
-        # https://stackoverflow.com/a/52720936/315168
-        applied_df \
-            .sort_values(by=['Id'], ascending=[True], inplace=True)
-
-    # Get rid of NaN labels
-    # https://stackoverflow.com/a/28390992/315168
-    applied_df.fillna('', inplace=True)
-
-    return applied_df
     
 def expand_timeline(
         exchanges: Set[Exchange],
@@ -960,6 +841,136 @@ def expand_timeline(
 
     return applied_df, styling
 
+def expand_timeline_raw(
+        exchanges: Set[Exchange],
+        pair_universe: PandasPairUniverse,
+        timeline: pd.DataFrame,
+        initial_capital: float,
+        timestamp_format="%Y-%m-%d",
+) -> pd.DataFrame:
+    """Similar to expand_timeline, but only returns raw data instead of formatted strings
+    which allows easy statistical calculations for when summary stats depend on timeline.
+    Does not incorporate any styles or return a styling callable function
+    
+    :param exchanges: Needed for exchange metadata
+
+    :param pair_universe: Needed for trading pair metadata
+
+    :param timestamp_format: How to format Opened at column, as passed to `strftime()`
+
+    :return: DataFrame with human=readable position win/loss information, having DF indexed by timestamps
+    """
+    exchange_map = {e.exchange_id: e for e in exchanges}
+
+    # variable to represent total capital (position + cash) at the open of each position
+    global opening_capital
+    opening_capital = initial_capital
+
+    # https://stackoverflow.com/a/52363890/315168
+    def expander(row):
+        position: TradePosition = row["position"]
+        # timestamp = row.name  # ???
+        pair_id = position.pair_id
+        pair_info = pair_universe.get_pair_by_id(pair_id)
+        exchange = exchange_map.get(pair_info.exchange_id)
+        if not exchange:
+            raise RuntimeError(f"No exchange for id {pair_info.exchange_id}, pair {pair_info}")
+
+        if position.is_stop_loss():
+            remarks = "SL"
+        elif position.is_take_profit():
+            remarks = "TP"
+        else:
+            remarks = ""
+
+        pnl_usd = position.realised_profit if position.is_closed() else np.nan
+
+        global opening_capital
+
+        r = {
+            # "timestamp": timestamp,
+            "Id": position.position_id,
+            "Remarks": remarks,
+            "Opened at": position.opened_at.strftime(timestamp_format),
+            "Duration": format_duration_days_hours_mins(position.duration) if position.duration else np.nan,
+            "Exchange": exchange.name,
+            "Base asset": pair_info.base_token_symbol,
+            "Quote asset": pair_info.quote_token_symbol,
+            "position_max_size": position.get_max_size(),
+            "pnl_usd": pnl_usd,
+            "opening_capital": opening_capital,
+            "pnl_pct_raw": position.realised_profit_percent if position.is_closed() else 0,
+            "open_price_usd": position.open_price,
+            "close_price_usd": position.close_price if position.is_closed() else np.nan,
+            "trade_count": position.get_trade_count(),
+        }
+
+        opening_capital += pnl_usd
+        return r
+
+    applied_df = timeline.apply(expander, axis='columns', result_type='expand')
+
+    if len(applied_df) > 0:
+        # https://stackoverflow.com/a/52720936/315168
+        applied_df \
+            .sort_values(by=['Id'], ascending=[True], inplace=True)
+
+    # Get rid of NaN labels
+    # https://stackoverflow.com/a/28390992/315168
+    applied_df.fillna('', inplace=True)
+
+    return applied_df
+
+def expand_timeline_raw_simple(
+    timeline: pd.DataFrame,
+    timestamp_format="%Y-%m-%d"
+) -> pd.DataFrame:
+    """A simplified version of expand_timeline_raw that does not care about
+    pair info, exchanges, or opening capital"""
+
+    # https://stackoverflow.com/a/52363890/315168
+    def expander(row):
+        position: TradePosition = row["position"]
+        # timestamp = row.name  # ???
+        pair_id = position.pair_id
+
+        if position.is_stop_loss():
+            remarks = "SL"
+        elif position.is_take_profit():
+            remarks = "TP"
+        else:
+            remarks = ""
+
+        pnl_usd = position.realised_profit if position.is_closed() else np.nan
+
+        r = {
+            # "timestamp": timestamp,
+            "Id": position.position_id,
+            "Remarks": remarks,
+            "Opened at": position.opened_at.strftime(timestamp_format),
+            "Duration": format_duration_days_hours_mins(position.duration) if position.duration else np.nan,
+            "position_max_size": position.get_max_size(),
+            "pnl_usd": pnl_usd,
+            "pnl_pct_raw": position.realised_profit_percent if position.is_closed() else 0,
+            "open_price_usd": position.open_price,
+            "close_price_usd": position.close_price if position.is_closed() else np.nan,
+            "trade_count": position.get_trade_count(),
+        }
+
+        return r
+
+    applied_df = timeline.apply(expander, axis='columns', result_type='expand')
+
+    if len(applied_df) > 0:
+        # https://stackoverflow.com/a/52720936/315168
+        applied_df \
+            .sort_values(by=['Id'], ascending=[True], inplace=True)
+
+    # Get rid of NaN labels
+    # https://stackoverflow.com/a/28390992/315168
+    applied_df.fillna('', inplace=True)
+
+    return applied_df
 
 def build_trade_analysis(portfolio: Portfolio) -> TradeAnalysis:
     """Build a trade analysis from list of positions.
@@ -1024,3 +1035,37 @@ def build_trade_analysis(portfolio: Portfolio) -> TradeAnalysis:
             history.add_trade(spot_trade)
 
     return TradeAnalysis(portfolio, asset_histories=histories)
+
+# may be used in calculate_summary_statistics
+def get_max_consective(raw_timeline: pd.DataFrame):
+    lst = raw_timeline['pnl_pct_raw'] 
+
+    max_pos_cons = 0
+    max_neg_cons = 0
+    max_pullback_pct = 0
+    pos_cons = 0
+    neg_cons = 0
+    pullback = 0
+    
+    for count, item in enumerate(lst):
+            if(item > 0):
+                    neg_cons = 0
+                    pullback = 0
+                    pos_cons += 1
+            else:
+                    pos_cons = 0
+                    neg_cons += 1
+                    pullback += raw_timeline['pnl_usd'].iloc[count]
+            if(neg_cons > max_neg_cons):
+                    max_neg_cons = neg_cons
+            if(pos_cons > max_neg_cons):
+                    max_pos_cons = pos_cons
+
+            pullback_pct = pullback/(raw_timeline['opening_capital'].iloc[count] + raw_timeline['pnl_usd'].iloc[count])
+            if(pullback_pct < max_pullback_pct):
+                    # pull back is in the negative direction
+                    max_pullback_pct = pullback_pct
+    return {'max_pos_cons':max_pos_cons, 'max_neg_cons':max_neg_cons, 'max_pullback':max_pullback_pct}
+
+def avg(lst: list[int]):
+    return sum(lst) / len(lst)
