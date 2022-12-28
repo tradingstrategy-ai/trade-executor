@@ -377,7 +377,7 @@ class TradeSummary:
     max_pos_cons: Optional[int] = None
     max_neg_cons: Optional[int] = None
     max_pullback: Optional[float] = None
-    max_capital_at_risk_sl: Optional[float] = None
+    max_loss_risk: Optional[float] = None
     max_realised_loss: Optional[float] = None
     avg_realised_risk: Optional[float] = None
 
@@ -498,7 +498,7 @@ class TradeAnalysis:
             :param time_bucket:
             time bucket to display average duration as 'number of bars' instead of 'number of days'. 
         """
-        
+
         if(time_bucket is not None):
             assert isinstance(time_bucket, TimeBucket), "Not a valid time bucket"
 
@@ -542,7 +542,7 @@ class TradeAnalysis:
         profit: USDollarAmount = 0
 
         positions = []
-        for pair_id, position in self.get_all_positions():
+        for position in self.portfolio.get_all_positions():
 
             if position.is_open():
                 open_value += position.open_value
@@ -553,7 +553,7 @@ class TradeAnalysis:
 
             if position.is_stop_loss():
                 stop_losses += 1
-
+            
             if position.is_win():
                 won += 1
                 winning_trades.append(position.realised_profit_percent)
@@ -570,19 +570,17 @@ class TradeAnalysis:
                 # Any profit exactly balances out loss in slippage and commission
                 zero_loss += 1
 
-
             profit += position.realised_profit
-            
 
-            loss_risk_at_open_pc.append(full_position.get_loss_risk_at_open_pct())
-            capital_tied_at_open_pc.append(full_position.get_capital_tied_at_open_pct())
-            
+            if full_position.stop_loss:
+                loss_risk_at_open_pc.append(full_position.get_loss_risk_at_open_pct())
+            else:
+                capital_tied_at_open_pc.append(full_position.get_capital_tied_at_open_pct())
             
             positions.append(full_position)
             
         # sort positions by position id (chronologically)
         positions.sort(key=lambda x: x.position_id)
-        max_pos_cons, max_neg_cons, max_pullback = get_max_consective(positions).values()
         
         all_trades = winning_trades + losing_trades + [0 for i in range(zero_loss)]
         average_trade = avg(all_trades)
@@ -594,8 +592,6 @@ class TradeAnalysis:
         max_realised_loss = min(realised_losses)
         avg_realised_risk = avg(realised_losses)
 
-        avg_capital_tied_at_open_pc = avg(capital_tied_at_open_pc)
-        
         max_loss_risk_at_open_pc = max(loss_risk_at_open_pc)
 
         if winning_trades:
@@ -606,6 +602,8 @@ class TradeAnalysis:
 
         average_duration_of_winning_trades = get_avg_trade_duration(winning_trades_duration, time_bucket)
         average_duration_of_losing_trades = get_avg_trade_duration(losing_trades_duration, time_bucket)
+
+        max_pos_cons, max_neg_cons, max_pullback = get_max_consective(positions).values()
 
         return TradeSummary(
             won=won,
@@ -630,7 +628,7 @@ class TradeAnalysis:
             max_pos_cons=max_pos_cons,
             max_neg_cons=max_neg_cons,
             max_pullback=max_pullback,
-            max_loss_risk_at_open_pc=max_loss_risk_at_open_pc,
+            max_loss_risk=max_loss_risk_at_open_pc,
             max_realised_loss=max_realised_loss,
             avg_realised_risk=avg_realised_risk,
             time_bucket=time_bucket
@@ -1005,6 +1003,9 @@ def build_trade_analysis(portfolio: Portfolio) -> TradeAnalysis:
         trades = list(position.trades.values())
 
         for trade in trades:
+
+            if(position.position_id == 17 or position.position_id == 19):
+                pass
 
             history = histories.get(pair_id)
             if not history:
