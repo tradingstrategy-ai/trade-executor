@@ -15,6 +15,7 @@ by a live strategy. Visualisation includes
 import datetime
 import enum
 from dataclasses import dataclass, field
+from types import NoneType
 from typing import List, Dict, Optional, Any, Union
 import pandas as pd
 
@@ -56,12 +57,15 @@ class Plot:
     #: we use UNIX timestamp here to keep our state easily serialisable.
     points: Dict[int, float] = field(default_factory=dict)
 
+    #: Is the line horizontal-vertical. Used for stop loss line. See https://plotly.com/python/line-charts/?_ga=2.83222870.1162358725.1672302619-1029023258.1667666588#interpolation-with-line-plots
+    is_hv: Optional[bool] = False
+
     def add_point(self,
                   timestamp: datetime.datetime,
                   value: float,
                   ):
         assert isinstance(timestamp, datetime.datetime)
-        assert isinstance(value, (float, type(None))), f"Got {value} ({value.__class__})"
+        assert isinstance(value, (float, NoneType)), f"Got {value} ({value.__class__})"
         timestamp = convert_and_validate_timestamp_as_int(timestamp)
         self.points[timestamp] = value
 
@@ -119,7 +123,8 @@ class Visualisation:
              name: str,
              kind: PlotKind,
              value: float,
-             colour: Optional[str] = None):
+             colour: Optional[str] = None,
+             is_hv: Optional[bool] = False):
         # sourcery skip: remove-unnecessary-cast
         """Add a value to the output data and diagram.
         
@@ -139,6 +144,9 @@ class Visualisation:
 
         :param colour:
             Optional colour
+
+        :param is_hv:
+            Is the line horizontal-vertical. Used for stop loss line. See https://plotly.com/python/line-charts/?_ga=2.83222870.1162358725.1672302619-1029023258.1667666588#interpolation-with-line-plots
         """
 
         assert type(name) == str, "Got name"
@@ -156,6 +164,8 @@ class Visualisation:
         plot.add_point(timestamp, value)
 
         plot.kind = kind
+
+        plot.is_hv = is_hv
 
         if colour:
             plot.colour = colour

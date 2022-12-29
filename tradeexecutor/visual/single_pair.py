@@ -132,7 +132,7 @@ def visualise_technical_indicators(
         fig: go.Figure,
         visualisation: Visualisation,
         start_at: Optional[pd.Timestamp] = None,
-        end_at: Optional[pd.Timestamp] = None,
+        end_at: Optional[pd.Timestamp] = None
 ):
     """Draw technical indicators over candle chart.
 
@@ -148,7 +148,7 @@ def visualise_technical_indicators(
         df = export_plot_as_dataframe(plot, start_at, end_at)
         if len(df) > 0:
             
-            line_shape = "hv" if plot.name == "Stop Loss" else "linear"
+            line_shape = "linear" if plot.is_hv == True else "hv"
 
             start_ts = df["timestamp"].min()
             end_ts = df["timestamp"].max()
