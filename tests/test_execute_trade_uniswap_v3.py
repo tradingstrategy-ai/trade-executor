@@ -15,8 +15,8 @@ from web3.contract import Contract
 
 from eth_defi.hotwallet import HotWallet
 from eth_defi.token import create_token
-from eth_defi.uniswap_v3.deployment import UniswapV3Deployment, deploy_uniswap_v3, deploy_pool 
-from eth_defi.uniswap_v3.constants import FOREVER_DEADLINE
+from eth_defi.uniswap_v3.deployment import UniswapV3Deployment, deploy_uniswap_v3, deploy_pool , add_liquidity
+from eth_defi.uniswap_v3.constants import FOREVER_DEADLINE, MIN_TICK, MAX_TICK
 from eth_defi.uniswap_v3.price import estimate_buy_quantity
 from tradeexecutor.ethereum.execution import get_current_price, get_held_assets
 from tradeexecutor.ethereum.universe import create_pair_universe
@@ -119,23 +119,30 @@ def asset_aave(aave_token, chain_id) -> AssetIdentifier:
 @pytest.fixture
 def aave_usdc_uniswap_trading_pair(web3, deployer, uniswap_v3, aave_token, usdc_token) -> HexAddress:
     """AAVE-USDC pool with 200k liquidity."""
-    pair_address = deploy_pool(
+    pool_contract = deploy_pool(
         web3,
         deployer,
         uniswap_v3,
         aave_token,
         usdc_token,
+    )
+    add_liquidity(
+        web3,
+        deployer,
+        uniswap_v3,
+        pool_contract,
         1000 * 10**18,  # 1000 AAVE liquidity
         200_000 * 10**6,  # 200k USDC liquidity
+        MIN_TICK,
+        MAX_TICK
     )
-    # TODO add liquidity
-    return pair_address
+    return pool_contract.address
 
 
 @pytest.fixture
 def weth_usdc_uniswap_trading_pair(web3, deployer, uniswap_v3, weth_token, usdc_token) -> HexAddress:
     """AAVE-USDC pool with 1.7M liquidity."""
-    pair_address = deploy_pool(
+    pool_contract = deploy_pool(
         web3,
         deployer,
         uniswap_v3,
@@ -144,7 +151,17 @@ def weth_usdc_uniswap_trading_pair(web3, deployer, uniswap_v3, weth_token, usdc_
         1000 * 10**18,  # 1000 ETH liquidity
         1_700_000 * 10**6,  # 1.7M USDC liquidity
     )
-    return pair_address
+    add_liquidity(
+        web3,
+        deployer,
+        uniswap_v3,
+        pool_contract,
+        1000 * 10**18,  # 1000 AAVE liquidity
+        200_000 * 10**6,  # 200k USDC liquidity
+        MIN_TICK,
+        MAX_TICK
+    )
+    return pool_contract.address
 
 
 @pytest.fixture
