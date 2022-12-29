@@ -507,8 +507,8 @@ class TradeAnalysis:
         if(time_bucket is not None):
             assert isinstance(time_bucket, TimeBucket), "Not a valid time bucket"
 
-        def get_avg_profit_pct(trades: List | None):
-            return float(np.mean(trades)) if trades else 0
+        def get_avg_profit_pct_check(trades: List | None):
+            return float(np.mean(trades)) if trades else None
 
         def get_avg_trade_duration(duration_list: List | None, time_bucket: TimeBucket | None):
             if duration_list:
@@ -516,7 +516,18 @@ class TradeAnalysis:
                     return np.mean(duration_list)/time_bucket.to_timedelta()
                 else:
                     return np.mean(duration_list)
-        
+            else:
+                return None
+
+        def max_check(lst):
+            return max(lst) if lst else None
+        def min_check(lst):
+            return min(lst) if lst else None
+        def avg_check(lst):
+            return avg(lst) if lst else None
+        def median_check(lst):
+            return median(lst) if lst else None
+
         initial_cash = self.portfolio.get_initial_deposit()
 
         uninvested_cash = self.portfolio.get_current_cash()
@@ -547,17 +558,17 @@ class TradeAnalysis:
 
         positions = []
         for pair_id, position in self.get_all_positions():
-            
+
             if position.is_open():
                 open_value += position.open_value
                 undecided += 1
                 continue
-            
+
             full_position = self.portfolio.get_position_by_id(position.position_id)
 
             if position.is_stop_loss():
                 stop_losses += 1
-            
+
             if position.is_win():
                 won += 1
                 winning_trades.append(position.realised_profit_percent)
@@ -580,29 +591,27 @@ class TradeAnalysis:
                 loss_risk_at_open_pc.append(full_position.get_loss_risk_at_open_pct())
             else:
                 loss_risk_at_open_pc.append(full_position.get_capital_tied_at_open_pct())
-            
+
             positions.append(full_position)
-            
+
         # sort positions by position id (chronologically)
         positions.sort(key=lambda x: x.position_id)
-        
+
         all_trades = winning_trades + losing_trades + [0 for i in range(zero_loss)]
-        average_trade = avg(all_trades)
-        median_trade = median(all_trades)
+        average_trade = avg_check(all_trades)
+        median_trade = median_check(all_trades)
 
-        average_winning_trade_profit_pc = get_avg_profit_pct(winning_trades)  
-        average_losing_trade_loss_pc = get_avg_profit_pct(losing_trades)
+        average_winning_trade_profit_pc = get_avg_profit_pct_check(winning_trades)
+        average_losing_trade_loss_pc = get_avg_profit_pct_check(losing_trades)
 
-        max_realised_loss = min(realised_losses)
-        avg_realised_risk = avg(realised_losses)
+        max_realised_loss = min_check(realised_losses)
+        avg_realised_risk = avg_check(realised_losses)
 
-        max_loss_risk_at_open_pc = max(loss_risk_at_open_pc)
+        max_loss_risk_at_open_pc = max_check(loss_risk_at_open_pc)
 
-        if winning_trades:
-            biggest_winning_trade_pc = max(winning_trades)
+        biggest_winning_trade_pc = max_check(winning_trades)
 
-        if losing_trades:
-            biggest_losing_trade_pc = min(losing_trades)
+        biggest_losing_trade_pc = min_check(losing_trades)
 
         average_duration_of_winning_trades = get_avg_trade_duration(winning_trades_duration, time_bucket)
         average_duration_of_losing_trades = get_avg_trade_duration(losing_trades_duration, time_bucket)
@@ -668,12 +677,15 @@ class TradeAnalysis:
         return self.get_max_consective(raw_timeline)
     
     @staticmethod
-    def get_max_consective(positions: List[TradingPosition]):
+    def get_max_consective(positions: List[TradingPosition]) -> tuple[int, int ,int] | tuple[None, None, None]:
         """May be used in calculate_summary_statistics
         
         :param positions:
         An list of trading positions, ordered by opened_at time. Note, must be ordered to be correct.
         """
+
+        if not positions:
+            return None, None, None
 
         max_pos_cons = 0
         max_neg_cons = 0
