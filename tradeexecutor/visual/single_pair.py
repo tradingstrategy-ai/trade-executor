@@ -132,7 +132,7 @@ def visualise_technical_indicators(
         fig: go.Figure,
         visualisation: Visualisation,
         start_at: Optional[pd.Timestamp] = None,
-        end_at: Optional[pd.Timestamp] = None,
+        end_at: Optional[pd.Timestamp] = None
 ):
     """Draw technical indicators over candle chart.
 
@@ -147,6 +147,7 @@ def visualise_technical_indicators(
     for plot_id, plot in visualisation.plots.items():
         df = export_plot_as_dataframe(plot, start_at, end_at)
         if len(df) > 0:
+            
             start_ts = df["timestamp"].min()
             end_ts = df["timestamp"].max()
             logger.info(f"Visualisation {plot_id} has data for range {start_ts} - {end_ts}")
@@ -156,6 +157,7 @@ def visualise_technical_indicators(
                 mode="lines",
                 name=plot.name,
                 line=dict(color=plot.colour),
+                line_shape=plot.plot_shape.value
             ))
 
 
