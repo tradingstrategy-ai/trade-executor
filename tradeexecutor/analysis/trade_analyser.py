@@ -516,7 +516,7 @@ class TradeAnalysis:
                 else:
                     return np.mean(duration_list)
             else:
-                return None
+                return datetime.timedelta(0)
 
         def max_check(lst):
             return max(lst) if lst else None
