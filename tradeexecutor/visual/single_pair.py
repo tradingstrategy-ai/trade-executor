@@ -148,8 +148,6 @@ def visualise_technical_indicators(
         df = export_plot_as_dataframe(plot, start_at, end_at)
         if len(df) > 0:
             
-            line_shape = "linear" if plot.is_hv == True else "hv"
-
             start_ts = df["timestamp"].min()
             end_ts = df["timestamp"].max()
             logger.info(f"Visualisation {plot_id} has data for range {start_ts} - {end_ts}")
@@ -159,7 +157,7 @@ def visualise_technical_indicators(
                 mode="lines",
                 name=plot.name,
                 line=dict(color=plot.colour),
-                line_shape=line_shape
+                line_shape=plot.plot_shape.value
             ))
 
 

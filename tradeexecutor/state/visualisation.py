@@ -30,6 +30,17 @@ class PlotKind(enum.Enum):
     #: This plot is drawn on the top of the price graph
     technical_indicator_on_price = "technical_indicator_on_price"
 
+class PlotShape(enum.Enum):
+    """
+    Describes the various shapes that a line can take in a plot. See discussion: https://github.com/tradingstrategy-ai/trade-executor/pull/156#discussion_r1058819823
+    """
+
+    #: Standard linear line. Used in most cases. 
+    linear = "linear"
+
+    #: Is the line horizontal-vertical. Used for stop loss line.
+    #: See https://plotly.com/python/line-charts/?_ga=2.83222870.1162358725.1672302619-1029023258.1667666588#interpolation-with-line-plots
+    horizontal_vertical = "hv"
 
 @dataclass_json
 @dataclass
@@ -58,7 +69,7 @@ class Plot:
     points: Dict[int, float] = field(default_factory=dict)
 
     #: Is the line horizontal-vertical. Used for stop loss line. See https://plotly.com/python/line-charts/?_ga=2.83222870.1162358725.1672302619-1029023258.1667666588#interpolation-with-line-plots
-    is_hv: Optional[bool] = False
+    plot_shape: Optional[PlotShape] = PlotShape.linear
 
     def add_point(self,
                   timestamp: datetime.datetime,
@@ -124,7 +135,7 @@ class Visualisation:
              kind: PlotKind,
              value: float,
              colour: Optional[str] = None,
-             is_hv: Optional[bool] = False):
+             plot_shape: Optional[PlotShape] = PlotShape.linear):
         # sourcery skip: remove-unnecessary-cast
         """Add a value to the output data and diagram.
         
@@ -143,10 +154,10 @@ class Visualisation:
             Current value e.g. price as USD
 
         :param colour:
-            Optional colour
+            Optional colour 
 
-        :param is_hv:
-            Is the line horizontal-vertical. Used for stop loss line. See https://plotly.com/python/line-charts/?_ga=2.83222870.1162358725.1672302619-1029023258.1667666588#interpolation-with-line-plots
+        :param plot_shape:
+            PlotShape enum value e.g. Plotshape.linear or Plotshape.horizontal_vertical
         """
 
         assert type(name) == str, "Got name"
@@ -165,7 +176,7 @@ class Visualisation:
 
         plot.kind = kind
 
-        plot.is_hv = is_hv
+        plot.plot_shape = plot_shape
 
         if colour:
             plot.colour = colour
