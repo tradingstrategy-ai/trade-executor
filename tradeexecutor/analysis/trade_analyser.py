@@ -93,8 +93,7 @@ class SpotTrade:
         return abs(self.price * float(self.quantity))
 
 
-# Changed to kw_only = True so users aware of changes in parameters
-@dataclass(kw_only=True)
+@dataclass
 class TradePosition:
     """How a particular asset traded.
 
@@ -106,7 +105,7 @@ class TradePosition:
 
     * Exit (sell optionally)
     """
-
+    
     #: Position id of the trade
     #: Used to be self.trades[0].trade_id
     position_id: int
