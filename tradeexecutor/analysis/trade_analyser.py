@@ -694,17 +694,20 @@ class TradeAnalysis:
         pullback = 0
 
         for position in positions:
+            
+            # don't do anything if profit = $0
             if(position.get_realised_profit_usd() > 0):
                     neg_cons = 0
                     pullback = 0
                     pos_cons += 1
-            else:
+            elif(position.get_realised_profit_usd() < 0):
                     pos_cons = 0
                     neg_cons += 1
                     pullback += position.get_realised_profit_usd()
+            
             if(neg_cons > max_neg_cons):
                     max_neg_cons = neg_cons
-            if(pos_cons > max_neg_cons):
+            if(pos_cons > max_pos_cons):
                     max_pos_cons = pos_cons
 
             pullback_pct = pullback/(position.portfolio_value_at_open + position.get_realised_profit_usd())
