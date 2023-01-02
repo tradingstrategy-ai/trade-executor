@@ -50,6 +50,13 @@ class TradePricing:
     #:
     market_feed_delay: Optional[datetime.timedelta] = None
 
+    #: Is this buy or sell trade.
+    #:
+    #: True for buy.
+    #: False for sell.
+    #: None for Unknown.
+    side: Optional[bool] = None
+
     def __repr__(self):
         fee = self.pair_fee or 0
         return f"<TradePricing:{self.price} mid:{self.mid_price} fee:{fee:.4f}%>"
@@ -67,6 +74,13 @@ class TradePricing:
             assert type(self.pair_fee) == float, f"Got fee: {type(self.pair_fee)}"
         if self.market_feed_delay is not None:
             assert isinstance(self.market_feed_delay, datetime.timedelta)
+
+        # Do satefy checks for the price calculation
+        if self.side is not None:
+            if self.side:
+                assert self.price >= self.mid_price, f"Got bad buy pricing: {self.price} > {self.mid_price}"
+            if not self.side:
+                assert self.price <= self.mid_price, f"Got bad sell pricing: {self.price} < {self.mid_price}"
 
 
 class PricingModel(abc.ABC):

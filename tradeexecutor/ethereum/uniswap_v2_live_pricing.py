@@ -152,6 +152,7 @@ class UniswapV2LivePricing(PricingModel):
             mid_price=mid_price,
             lp_fee=lp_fee,
             pair_fee=fee,
+            side=False,
         )
 
     def get_buy_price(self,
@@ -218,6 +219,7 @@ class UniswapV2LivePricing(PricingModel):
             lp_fee=lp_fee,
             pair_fee=fee,
             market_feed_delay=datetime.timedelta(seconds=0),
+            side=True,
         )
 
     def get_mid_price(self,
@@ -233,7 +235,7 @@ class UniswapV2LivePricing(PricingModel):
         # Here we are using a hack)
         bp = self.get_buy_price(ts, pair, self.very_small_amount)
         sp = self.get_sell_price(ts, pair, self.very_small_amount)
-        return (bp + sp) / 2
+        return (bp.price + sp.price) / 2
 
     def quantize_base_quantity(self, pair: TradingPairIdentifier, quantity: Decimal, rounding=ROUND_DOWN) -> Decimal:
         """Convert any base token quantity to the native token units by its ERC-20 decimals."""

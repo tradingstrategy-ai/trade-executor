@@ -282,6 +282,8 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
         :param trading_fee:
             Trading fee express as float bps.
 
+            This is the LP fee applied to all swaps.
+
         :param chain_id:
             Store the chain id for which these routes were generated for.
 
