@@ -6,6 +6,8 @@ from decimal import Decimal
 from typing import Dict, Set, List, Optional, Tuple
 
 from eth_typing import HexAddress, ChecksumAddress
+
+from tradeexecutor.state.types import BPS
 from tradingstrategy.chain import ChainId
 from web3 import Web3
 from web3.contract import Contract
@@ -258,7 +260,7 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
                  allowed_intermediary_pairs: Dict[str, str],
                  reserve_token_address: str,
                  chain_id: Optional[ChainId] = None,
-                 trading_fee: Optional[int] = None
+                 trading_fee: Optional[BPS] = None
                  ):
         """
         :param factory_router_map:
@@ -278,7 +280,7 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
             are allowed to be used as a hop.
 
         :param trading_fee:
-            Trading fee express as int in bps. E.g. 30 => 0.3%
+            Trading fee express as float bps.
 
         :param chain_id:
             Store the chain id for which these routes were generated for.
@@ -301,6 +303,11 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
         self.allowed_intermediary_pairs = {k.lower(): v.lower() for k, v in allowed_intermediary_pairs.items()}
         self.reserve_token_address = reserve_token_address
         self.chain_id = chain_id
+
+        assert trading_fee is not None, "Trading fee missing"
+        assert trading_fee >= 0, f"Got fee: {trading_fee}"
+        assert trading_fee <= 1, f"Got fee: {trading_fee}"
+
         self.trading_fee = trading_fee
 
     def get_default_trading_fee(self) -> Optional[float]:

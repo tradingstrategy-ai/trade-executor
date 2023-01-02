@@ -138,12 +138,14 @@ class TradeExecution:
     #: How much reserves we spend for this traded, the actual realised amount.
     executed_reserve: Optional[Decimal] = None
 
-    #: LP fee recorded before the execution starts.
+    #: LP fee % recorded before the execution starts.
     #:
     #: Not available in the case this is ignored
     #: in backtesting or not supported by routers/trading pairs.
     #:
     #: Used to calculate :py:attr:`lp_fees_estimated`.
+    #:
+    #: Sourced from Uniswap v2 router or Uniswap v3 pool information.
     #:
     fee_tier: Optional[BPS] = None
 

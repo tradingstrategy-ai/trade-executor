@@ -64,7 +64,7 @@ class TradePricing:
         if self.lp_fee is not None:
             assert type(self.lp_fee) == float
         if self.pair_fee is not None:
-            assert type(self.pair_fee) == float
+            assert type(self.pair_fee) == float, f"Got fee: {type(self.pair_fee)}"
         if self.market_feed_delay is not None:
             assert isinstance(self.market_feed_delay, datetime.timedelta)
 

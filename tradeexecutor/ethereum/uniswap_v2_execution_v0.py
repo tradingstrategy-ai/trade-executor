@@ -143,6 +143,7 @@ class UniswapV2ExecutionModelVersion0(ExecutionModel):
             },
             allowed_intermediary_pairs={},
             reserve_token_address=reserve_asset.address,
+            trading_fee=0.0,
         )
 
         state.start_trades(datetime.datetime.utcnow(), trades)
