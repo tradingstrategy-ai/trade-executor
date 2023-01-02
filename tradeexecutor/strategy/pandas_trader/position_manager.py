@@ -440,7 +440,7 @@ class PositionManager:
             Returns None if the fee information is not available.
             This can be different from zero fees.
         """
-        return self.pricing_model.estimate_trading_fee(self.timestamp, pair)
+        return self.pricing_model.get_pair_fee(self.timestamp, pair)
 
 
 

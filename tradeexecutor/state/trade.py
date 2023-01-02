@@ -10,7 +10,7 @@ from dataclasses_json import dataclass_json
 
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
-from tradeexecutor.state.types import USDollarAmount
+from tradeexecutor.state.types import USDollarAmount, USDollarPrice, BPS
 
 
 class TradeType(enum.Enum):
@@ -104,7 +104,7 @@ class TradeExecution:
 
     #: How much slippage we could initially tolerate,
     #: 0.01 is 1% slippage.
-    planned_max_slippage: Optional[float] = None
+    planned_max_slippage: Optional[BPS] = None
 
     #: When capital is allocated for this trade
     started_at: Optional[datetime.datetime] = None
@@ -132,11 +132,39 @@ class TradeExecution:
     #: How much reserves we spend for this traded, the actual realised amount.
     executed_reserve: Optional[Decimal] = None
 
-    #: LP fees estimated in the USD
+    #: LP fee recorded before the execution starts.
+    #:
+    #: Not available in the case this is ignored
+    #: in backtesting or not supported by routers/trading pairs.
+    #:
+    #: Used to calculate :py:attr:`lp_fees_estimated`.
+    #:
+    lp_fee: Optional[BPS] = None
+
+    #: LP fees paid, currency convereted to the USD.
+    #:
+    #: The value is read back from the realised trade.
+    #: LP fee is usually % of the trade. For Uniswap style exchanges
+    #: fees are always taken from `amount in` token
+    #: and directly passed to the LPs as the part of the swap,
+    #: these is no separate fee information.
     lp_fees_paid: Optional[USDollarAmount] = None
 
+    #: LP fees estimated in the USD
+    #:
+    #: This is set before the execution and is mostly useful
+    #: for backtesting.
+    lp_fees_estimated: Optional[USDollarAmount] = None
+
+    #: What is the conversation rate between quote token and US dollar used in LP fee conversion.
+    #:
+    #: We set this exchange rate before the trade is started.
+    #: Both `lp_fees_estimated` and `lp_fees_paid` need to use the same exchange rate,
+    #: even though it would not be timestamp accurage.
+    lp_fee_exchange_rate: Optional[USDollarPrice] = None
+
     #: USD price per blockchain native currency unit, at the time of execution
-    native_token_price: Optional[USDollarAmount] = None
+    native_token_price: Optional[USDollarPrice] = None
 
     # Trade retries
     retry_of: Optional[int] = None
@@ -403,6 +431,18 @@ class TradeExecution:
     def get_planned_max_gas_price(self) -> int:
         """Get the maximum gas fee set to all transactions in this trade."""
         return max([t.get_planned_gas_price() for t in self.blockchain_transactions])
+
+    def estimate_trading_fee(self,
+                          lp_fee_exchange_rate: float,
+                          ) -> USDollarAmount:
+        """Fill in the LP fee estimation structure.
+
+        The trade must be prefilled with buy/sell side
+        quantity/value information. We calcualte
+        and convert the fees based
+
+        :param trading_pair_fee:
+        """
 
 
 

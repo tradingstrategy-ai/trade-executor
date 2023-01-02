@@ -11,6 +11,8 @@ from tradeexecutor.state.state import State, TradeType
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.identifier import TradingPairIdentifier
+from tradeexecutor.state.types import USDollarAmount, BPS
+from tradeexecutor.strategy.pricing_model import TradePricing
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 
 
@@ -47,15 +49,14 @@ class BacktestTrader:
         """Set the timestamp for the next executions."""
         self.ts = timestamp
 
-    def get_buy_price(self, pair: TradingPairIdentifier, reserve: Decimal) -> float:
+    def get_buy_price(self, pair: TradingPairIdentifier, reserve: Decimal) -> TradePricing:
         """Get the historical price for our current backtest time."""
-        price = self.pricing_model.get_buy_price(self.ts, pair, reserve)
-        return float(price)  # Convert from numpy.float32
+        return self.pricing_model.get_buy_price(self.ts, pair, reserve)
 
-    def get_sell_price(self, pair: TradingPairIdentifier, quantity: Decimal) -> float:
+
+    def get_sell_price(self, pair: TradingPairIdentifier, quantity: Decimal) -> TradePricing:
         """Get the historical price for our current backtest time."""
-        price = self.pricing_model.get_sell_price(self.ts, pair, quantity)
-        return float(price)  # Convert from numpy.float32
+        return self.pricing_model.get_sell_price(self.ts, pair, quantity)
 
     def create(self, pair: TradingPairIdentifier, quantity: Optional[Decimal], reserve: Optional[Decimal], price: float) -> Tuple[TradingPosition, TradeExecution]:
         """Open a new trade."""
@@ -71,11 +72,20 @@ class BacktestTrader:
             assumed_price=price,
             trade_type=TradeType.rebalance,
             reserve_currency=self.universe.reserve_assets[0],
-            reserve_currency_price=1.0)
+            reserve_currency_price=1.0,
+            lp_fee=pair.fee,
+        )
 
         return position, trade
 
-    def create_and_execute(self, pair: TradingPairIdentifier, quantity: Optional[Decimal], reserve: Optional[Decimal], price: float) -> Tuple[TradingPosition, TradeExecution]:
+    def create_and_execute(self,
+                           pair: TradingPairIdentifier,
+                           quantity: Optional[Decimal],
+                           reserve: Optional[Decimal],
+                           price: float,
+                           lp_fee: Optional[BPS] = None,
+                           lp_fees_estimated: Optional[USDollarAmount] = None,
+                           ) -> Tuple[TradingPosition, TradeExecution]:
 
         assert price > 0
         assert type(price) == float
@@ -88,6 +98,9 @@ class BacktestTrader:
             quantity=quantity,
             reserve=reserve,
             price=price)
+
+        trade.lp_fee = lp_fee
+        trade.lp_fees_estimated = lp_fees_estimated
 
         # Run trade start, simulated broadcast, simulated execution using
         # backtest execution model
@@ -102,10 +115,28 @@ class BacktestTrader:
         return position, trade
 
     def buy(self, pair, reserve) -> Tuple[TradingPosition, TradeExecution]:
-        assumed_price = self.get_buy_price(pair, reserve)
-        return self.create_and_execute(pair, quantity=None, reserve=reserve, price=assumed_price)
+
+        price_structure = self.get_buy_price(pair, reserve)
+
+        return self.create_and_execute(
+            pair,
+            quantity=None,
+            reserve=reserve,
+            price=price_structure.price,
+            lp_fee=price_structure.pair_fee,
+            lp_fees_estimated=price_structure.lp_fee,
+        )
 
     def sell(self, pair, quantity) -> Tuple[TradingPosition, TradeExecution]:
-        assumed_price = self.get_sell_price(pair, quantity)
-        return self.create_and_execute(pair, quantity=-quantity, reserve=None, price=assumed_price)
+
+        price_structure = self.get_sell_price(pair, quantity)
+
+        return self.create_and_execute(
+            pair,
+            quantity=-quantity,
+            reserve=None,
+            price=price_structure.price,
+            lp_fee=price_structure.pair_fee,
+            lp_fees_estimated=price_structure.lp_fee)
+
 

@@ -12,8 +12,8 @@ from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2SimpleRoutingMode
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.strategy.execution_model import ExecutionModel
 
-from tradeexecutor.state.types import USDollarAmount
-from tradeexecutor.strategy.pricing_model import PricingModel
+from tradeexecutor.state.types import USDollarAmount, USDollarPrice
+from tradeexecutor.strategy.pricing_model import PricingModel, TradePricing
 from tradeexecutor.strategy.routing import RoutingModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_trading_pair
 from tradingstrategy.candle import GroupedCandleUniverse
@@ -99,42 +99,83 @@ class BacktestSimplePricingModel(PricingModel):
     def get_sell_price(self,
                        ts: datetime.datetime,
                        pair: TradingPairIdentifier,
-                       quantity: Optional[Decimal]) -> USDollarAmount:
+                       quantity: Optional[Decimal]) -> TradePricing:
         # TODO: Include price impact
         pair_id = pair.internal_id
-        price, delay = self.candle_universe.get_price_with_tolerance(
+
+        mid_price, delay = self.candle_universe.get_price_with_tolerance(
             pair_id,
             ts,
             tolerance=self.data_delay_tolerance,
             kind=self.candle_timepoint_kind)
-        return float(price)
+
+        pair_fee = self.get_pair_fee(ts, pair)
+
+        if pair_fee:
+            reserve = float(quantity) * mid_price
+            lp_fee = float(reserve) * pair_fee
+
+            # Move price below mid price
+            price = mid_price * (1 - pair_fee)
+
+        else:
+            price = mid_price
+            lp_fee = None
+
+        return TradePricing(
+            price=float(price),
+            mid_price=float(mid_price),
+            lp_fee=lp_fee,
+            pair_fee=pair_fee,
+            market_feed_delay=delay.to_pytimedelta(),
+        )
 
     def get_buy_price(self,
                        ts: datetime.datetime,
                        pair: TradingPairIdentifier,
-                       reserve: Optional[Decimal]) -> USDollarAmount:
+                       reserve: Optional[Decimal]) -> TradePricing:
+
         # TODO: Include price impact
         pair_id = pair.internal_id
-        price, delay = self.candle_universe.get_price_with_tolerance(
+
+        mid_price, delay = self.candle_universe.get_price_with_tolerance(
             pair_id,
             ts,
             tolerance=self.data_delay_tolerance,
             kind=self.candle_timepoint_kind,
         )
-        return float(price)
+
+        pair_fee = self.get_pair_fee(ts, pair)
+
+        if pair_fee:
+            lp_fee = float(reserve) * pair_fee
+
+            # Move price above mid price
+            price = mid_price * (1 + pair_fee)
+        else:
+            lp_fee = None
+
+        return TradePricing(
+            price=float(price),
+            mid_price=float(mid_price),
+            lp_fee=lp_fee,
+            pair_fee=pair_fee,
+            market_feed_delay=delay.to_pytimedelta(),
+        )
 
     def get_mid_price(self,
                       ts: datetime.datetime,
-                      pair: TradingPairIdentifier) -> USDollarAmount:
+                      pair: TradingPairIdentifier) -> USDollarPrice:
         """Get the mid price by the candle."""
         pair_id = pair.internal_id
+
         price, delay = self.candle_universe.get_price_with_tolerance(
             pair_id,
             ts,
             tolerance=self.data_delay_tolerance,
             kind=self.candle_timepoint_kind,
         )
-        return float(price)
+        return price
 
     def quantize_base_quantity(self, pair: TradingPairIdentifier, quantity: Decimal, rounding=ROUND_DOWN) -> Decimal:
         """Convert any base token quantity to the native token units by its ERC-20 decimals."""
@@ -142,16 +183,15 @@ class BacktestSimplePricingModel(PricingModel):
         decimals = pair.base.decimals
         return Decimal(quantity).quantize((Decimal(10) ** Decimal(-decimals)), rounding=ROUND_DOWN)
 
-    def estimate_trading_fee(self,
-                      ts: datetime.datetime,
-                      pair: TradingPairIdentifier,
-                    ) -> Optional[float]:
+    def get_pair_fee(self,
+                     ts: datetime.datetime,
+                     pair: TradingPairIdentifier,
+                     ) -> Optional[float]:
         """Figure out the fee from a pair or a routing."""
         if pair.fee:
             return pair.fee
 
         return self.routing_model.get_default_trading_fee()
-
 
 
 def backtest_pricing_factory(

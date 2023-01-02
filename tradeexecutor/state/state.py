@@ -18,7 +18,7 @@ from .position import TradingPosition
 from .reserve import ReservePosition
 from .statistics import Statistics
 from .trade import TradeExecution, TradeStatus, TradeType
-from .types import USDollarAmount
+from .types import USDollarAmount, BPS, USDollarPrice
 from .visualisation import Visualisation
 
 
@@ -92,6 +92,7 @@ class State:
                      reserve_currency: AssetIdentifier,
                      reserve_currency_price: USDollarAmount,
                      notes: Optional[str] = None,
+                     lp_fee: Optional[BPS] = None,
                      ) -> Tuple[TradingPosition, TradeExecution, bool]:
         """Creates a request for a new trade.
 
@@ -150,7 +151,14 @@ class State:
         assert trade.get_status() == TradeStatus.started
         trade.broadcasted_at = broadcasted_at
 
-    def mark_trade_success(self, executed_at: datetime.datetime, trade: TradeExecution, executed_price: USDollarAmount, executed_amount: Decimal, executed_reserve: Decimal, lp_fees: USDollarAmount, native_token_price: USDollarAmount):
+    def mark_trade_success(self,
+                           executed_at: datetime.datetime,
+                           trade: TradeExecution,
+                           executed_price: USDollarPrice,
+                           executed_amount: Decimal,
+                           executed_reserve: Decimal,
+                           lp_fees: USDollarAmount,
+                           native_token_price: USDollarPrice):
         """"""
 
         position = self.portfolio.find_position_for_trade(trade)

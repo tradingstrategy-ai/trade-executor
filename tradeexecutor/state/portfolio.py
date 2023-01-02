@@ -13,7 +13,7 @@ from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.trade import TradeType
 from tradeexecutor.state.trade import TradeExecution
-from tradeexecutor.state.types import USDollarAmount
+from tradeexecutor.state.types import USDollarAmount, BPS
 
 
 class NotEnoughMoney(Exception):
@@ -211,6 +211,7 @@ class Portfolio:
                      reserve_currency: AssetIdentifier,
                      reserve_currency_price: USDollarAmount,
                      notes: Optional[str] = None,
+                     lp_fee: Optional[BPS] = None,
                      ) -> Tuple[TradingPosition, TradeExecution, bool]:
         """Create a trade.
 

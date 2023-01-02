@@ -13,7 +13,7 @@ from dataclasses_json import dataclass_json
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
 from tradeexecutor.state.trade import TradeType
 from tradeexecutor.state.trade import TradeExecution
-from tradeexecutor.state.types import USDollarAmount
+from tradeexecutor.state.types import USDollarAmount, BPS
 
 
 @dataclass_json
@@ -283,7 +283,9 @@ class TradingPosition:
                    assumed_price: USDollarAmount,
                    trade_type: TradeType,
                    reserve_currency: AssetIdentifier,
-                   reserve_currency_price: USDollarAmount) -> TradeExecution:
+                   reserve_currency_price: USDollarAmount,
+                   lp_fee: Optional[BPS] = None
+                   ) -> TradeExecution:
         """Open a new trade on position.
 
         Trade can be opened by knowing how much you want to buy (quantity) or how much cash you have to buy (reserve).
@@ -313,6 +315,7 @@ class TradingPosition:
             planned_price=assumed_price,
             planned_reserve=planned_reserve,
             reserve_currency=self.reserve_currency,
+            lp_fee=lp_fee,
         )
         self.trades[trade.trade_id] = trade
         return trade

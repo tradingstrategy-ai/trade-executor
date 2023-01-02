@@ -247,3 +247,87 @@ def test_buy_sell_backtest(
     assert wallet.get_balance(busd.address) == pytest.approx(Decimal('9999.990999999999889294777233'))
     assert wallet.get_balance(wbnb.address) == 0
 
+
+def test_buy_with_fee(
+    logger: logging.Logger,
+    state: State,
+    wallet: SimulatedWallet,
+    universe: TradingStrategyUniverse,
+    routing_model: BacktestRoutingModel,
+    pricing_model: BacktestSimplePricingModel,
+    wbnb: AssetIdentifier,
+    busd: AssetIdentifier,
+    ):
+    """Check that trading fee is accounted correctly in the backtest execution.
+
+    Compare to test_create_and_execute_backtest_trade where we do the
+    same trade without fees.
+    """
+
+    ts = datetime.datetime(2021, 6, 1)
+    execution_model = BacktestExecutionModel(wallet, max_slippage=0.01)
+    trader = BacktestTrader(ts, state, universe, execution_model, routing_model, pricing_model)
+    wbnb_busd = translate_trading_pair(universe.universe.pairs.get_single())
+
+    # Set 0.5% trading fee
+    wbnb_busd.fee = 0.0050
+
+    # Create trade for buying WBNB for 1000 USD
+    position, trade = trader.buy(wbnb_busd, reserve=Decimal(1000))
+
+    # Check we calculated LP fees correctly
+    assert trade.is_buy()
+    assert trade.get_status() == TradeStatus.success
+    assert trade.lp_fee == 0.0050
+    assert trade.executed_price == pytest.approx(357.15260665419106)
+    assert trade.lp_fees_estimated == 5.0
+    assert trade.lp_fees_paid == 5.0
+
+    # We bought around 3 BNB
+    assert position.get_quantity() == pytest.approx(Decimal('2.799923565917687953079317912'))
+
+
+def test_buy_sell_backtest_with_fee(
+    logger: logging.Logger,
+    state: State,
+    wallet: SimulatedWallet,
+    universe: TradingStrategyUniverse,
+    routing_model: BacktestRoutingModel,
+    pricing_model: BacktestSimplePricingModel,
+    wbnb: AssetIdentifier,
+    busd: AssetIdentifier,
+    ):
+    """Buying and sell using backtest execution."""
+
+    ts = datetime.datetime(2021, 6, 1)
+    execution_model = BacktestExecutionModel(wallet, max_slippage=0.01)
+    trader = BacktestTrader(ts, state, universe, execution_model, routing_model, pricing_model)
+    wbnb_busd = translate_trading_pair(universe.universe.pairs.get_single())
+
+    # Set 0.5% trading fee
+    wbnb_busd.fee = 0.0050
+
+    # Create trade for buying WBNB for 1000 USD
+    position, trade = trader.buy(wbnb_busd, reserve=Decimal(1000))
+
+    assert trade.is_buy()
+    assert trade.get_status() == TradeStatus.success
+    buy_price = trade.executed_price
+
+    position, trade = trader.sell(wbnb_busd, position.get_quantity())
+
+    assert trade.is_sell()
+    assert trade.is_success()
+    sell_price = trade.executed_price
+
+    assert position.is_closed()
+    assert trade.lp_fee == 0.005
+    assert trade.lp_fees_estimated == pytest.approx(4.960199004975125)
+    assert trade.lp_fees_paid == pytest.approx(4.960199004975125)
+
+    # Do simulated markets make any sense?
+    assert sell_price < buy_price
+
+    # Check our wallet was credited
+    assert wallet.get_balance(busd.address) == pytest.approx(Decimal('9990.040840796019796453251579'))
+    assert wallet.get_balance(wbnb.address) == 0
