@@ -129,7 +129,7 @@ def get_pancake_default_routing_parameters(reserve_currency: ReserveCurrency) ->
             "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c", "0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56", 
             "0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d", "0x55d398326f99059ff775485246999027b3197955"
         },
-        "fee": 25
+        "trading_fee": 25
     }
 
 def get_quickswap_default_routing_parameters(reserve_currency: ReserveCurrency) -> RoutingData:
@@ -185,7 +185,7 @@ def get_quickswap_default_routing_parameters(reserve_currency: ReserveCurrency) 
         "quote_token_addresses": {
             "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174", "0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270"
         },
-        "fee": 30
+        "trading_fee": 30
     }
 
 def get_trader_joe_default_routing_parameters(reserve_currency: ReserveCurrency) -> RoutingData:
@@ -233,7 +233,7 @@ def get_trader_joe_default_routing_parameters(reserve_currency: ReserveCurrency)
             "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e", "0x9702230a8ea53601f5cd2dc00fdbc13d4df4a8c7" 
             "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7"
         },
-        "fee": 30
+        "trading_fee": 30
     }
     
 
@@ -377,7 +377,7 @@ def get_uniswap_v2_default_routing_parameters(reserve_currency: ReserveCurrency)
             "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
             "0xdac17f958d2ee523a2206206994597c13d831ec7"
         },
-        "fee": 30
+        "trading_fee": 30
     }
 
 def get_uniswap_v3_compatible_routing_types():
@@ -397,7 +397,7 @@ def get_uniswap_v2_compatible_routing_types():
         TradeRouting.trader_joe_usdt, TradeRouting.trader_joe_usdc
     )
 
-def check_reserve_currency(routing_type: TradeRouting, reserve_currency: ReserveCurrency):
+def validate_reserve_currency(routing_type: TradeRouting, reserve_currency: ReserveCurrency):
     """Assert that reserve currency matches routing type"""
 
     if routing_type in (TradeRouting.pancakeswap_busd, TradeRouting.uniswap_v3_busd):
@@ -413,7 +413,7 @@ def check_reserve_currency(routing_type: TradeRouting, reserve_currency: Reserve
         if reserve_currency != ReserveCurrency.dai:
             raise MismatchReserveCurrency(f"Got {routing_type} with {reserve_currency}")
     else:
-        raise NotImplementedError(f"Unknown routing type")
+        raise NotImplementedError("Unknown routing type")
 
 def get_backtest_routing_model(routing_type: TradeRouting, reserve_currency: ReserveCurrency) -> BacktestRoutingModel:
     """Get routing options for backtests.
@@ -427,6 +427,7 @@ def get_backtest_routing_model(routing_type: TradeRouting, reserve_currency: Res
         real_routing_model.factory_router_map,
         real_routing_model.allowed_intermediary_pairs,
         real_routing_model.reserve_token_address,
+        real_routing_model.trading_fee
     )
 
 def create_compatible_routing(routing_type: TradeRouting, reserve_currency: ReserveCurrency):
@@ -463,7 +464,7 @@ def create_compatible_routing(routing_type: TradeRouting, reserve_currency: Rese
             params["allowed_intermediary_pairs"],
             params["reserve_token_address"],
             params["chain_id"],
-            params["fee"]
+            params["trading_fee"]
         )
 
         return routing_model
@@ -488,7 +489,7 @@ def create_compatible_routing(routing_type: TradeRouting, reserve_currency: Rese
         return routing_model
 
     # assert reserve currency matches routing_type
-    check_reserve_currency(routing_type, reserve_currency)
+    validate_reserve_currency(routing_type, reserve_currency)
 
     if(routing_type in get_uniswap_v2_compatible_routing_types()):
         return create_uniswap_v2_compatible_routing(routing_type, reserve_currency)
