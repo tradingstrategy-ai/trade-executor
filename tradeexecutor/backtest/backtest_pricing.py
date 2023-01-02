@@ -142,6 +142,17 @@ class BacktestSimplePricingModel(PricingModel):
         decimals = pair.base.decimals
         return Decimal(quantity).quantize((Decimal(10) ** Decimal(-decimals)), rounding=ROUND_DOWN)
 
+    def estimate_trading_fee(self,
+                      ts: datetime.datetime,
+                      pair: TradingPairIdentifier,
+                    ) -> Optional[float]:
+        """Figure out the fee from a pair or a routing."""
+        if pair.fee:
+            return pair.fee
+
+        return self.routing_model.get_default_trading_fee()
+
+
 
 def backtest_pricing_factory(
         execution_model: ExecutionModel,

@@ -87,6 +87,31 @@ class PricingModel(abc.ABC):
     def quantize_base_quantity(self, pair: TradingPairIdentifier, quantity: Decimal, rounding=ROUND_DOWN) -> Decimal:
         """Convert any base token quantity to the native token units by its ERC-20 decimals."""
 
+    @abc.abstractmethod
+    def estimate_trading_fee(self,
+                      ts: datetime.datetime,
+                      pair: TradingPairIdentifier,
+                    ) -> Optional[float]:
+        """Estimate the trading/LP fees for a trading pair.
+
+        This information can come either from the exchange itself (Uni v2 compatibles),
+        or from the trading pair (Uni v3).
+
+        The return value is used to fill the
+        fee values for any newly opened trades.
+
+        :param pair:
+            Trading pair for which we want to have the fee.
+
+            Can be left empty if the underlying exchange is always
+            offering the same fee.
+
+        :return:
+            The estimated trading fee, expressed as %.
+
+            Returns None if the fee information is not available.
+            This can be different from zero fees.
+        """
 
 #: This factory creates a new pricing model for each trade cycle.
 #: Pricing model depends on the trading universe that may change for each strategy tick,

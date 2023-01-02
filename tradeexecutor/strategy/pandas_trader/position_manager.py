@@ -416,3 +416,32 @@ class PositionManager:
         """
         dex_pair = self.universe.universe.pairs.get_pair_by_id(pair_id)
         return translate_trading_pair(dex_pair)
+
+    def estimate_trading_fee(self,
+                             pair: Optional[TradingPairIdentifier] = None,
+                             ) -> Optional[float]:
+        """Estimate the trading/LP fees for a trading pair.
+
+        This information can come either from the exchange itself (Uni v2 compatibles),
+        or from the trading pair (Uni v3).
+
+        The return value is used to fill the
+        fee values for any newly opened trades.
+
+        :param pair:
+            Trading pair for which we want to have the fee.
+
+            Can be left empty if the underlying exchange is always
+            offering the same fee.
+
+        :return:
+            The estimated trading fee, expressed as %.
+
+            Returns None if the fee information is not available.
+            This can be different from zero fees.
+        """
+        return self.pricing_model.estimate_trading_fee(self.timestamp, pair)
+
+
+
+
