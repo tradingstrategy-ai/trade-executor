@@ -50,7 +50,9 @@ class TradeExecution:
     Each trade has a reserve currency that we use to trade the token (usually USDC).
 
     Each trade can be
+
     - Buy: swap quote token -> base token
+
     - Sell: swap base token -> quote token
 
     When doing a buy `planned_reserve` (fiat) is the input. This yields to `executed_quantity` of tokens
@@ -60,9 +62,13 @@ class TradeExecution:
     of fiat that might be different from `planned_reserve.
 
     Trade execution has four states
+
     - Planning: The execution object is prepared
+
     - Capital allocation and transaction creation: We move reserve from out portfolio to the trade in internal accounting
+
     - Transaction broadcast: trade cannot be cancelled in this point
+
     - Resolving the trade: We check the Ethereum transaction receipt to see how well we succeeded in the trade
 
     There trade state is resolved based on the market variables (usually timestamps).
@@ -139,7 +145,7 @@ class TradeExecution:
     #:
     #: Used to calculate :py:attr:`lp_fees_estimated`.
     #:
-    lp_fee: Optional[BPS] = None
+    fee_tier: Optional[BPS] = None
 
     #: LP fees paid, currency convereted to the USD.
     #:
@@ -160,7 +166,7 @@ class TradeExecution:
     #:
     #: We set this exchange rate before the trade is started.
     #: Both `lp_fees_estimated` and `lp_fees_paid` need to use the same exchange rate,
-    #: even though it would not be timestamp accurage.
+    #: even though it would not be timestamp accurte.
     lp_fee_exchange_rate: Optional[USDollarPrice] = None
 
     #: USD price per blockchain native currency unit, at the time of execution
@@ -209,6 +215,12 @@ class TradeExecution:
         assert self.planned_reserve >= 0
         assert type(self.planned_price) == float, f"Price was given as {self.planned_price.__class__}: {self.planned_price}"
         assert self.opened_at.tzinfo is None, f"We got a datetime {self.opened_at} with tzinfo {self.opened_at.tzinfo}"
+
+        if self.lp_fees_estimated is not None:
+            assert type(self.lp_fees_estimated) == float
+
+        if self.fee_tier is not None:
+            assert type(self.fee_tier) == float
 
     def get_human_description(self) -> str:
         """User friendly description for this trade"""

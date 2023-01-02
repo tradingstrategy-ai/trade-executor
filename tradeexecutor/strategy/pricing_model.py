@@ -50,6 +50,9 @@ class TradePricing:
     #:
     market_feed_delay: Optional[datetime.timedelta] = None
 
+    def __repr__(self):
+        return f"<TradePricing:{self.price} mid:{self.mid_price} fee:{self.pair_fee:.4f}>"
+
     def __post_init__(self):
         """Validate parameters.
 

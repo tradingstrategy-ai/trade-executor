@@ -165,9 +165,9 @@ class PositionManager:
     def open_1x_long(self,
                      pair: Union[DEXPair, TradingPairIdentifier],
                      value: USDollarAmount,
-                     take_profit_pct: Optional[float]=None,
-                     stop_loss_pct: Optional[float]=None,
-                     notes: Optional[str]=None,
+                     take_profit_pct: Optional[float] = None,
+                     stop_loss_pct: Optional[float] = None,
+                     notes: Optional[str] = None,
                      ) -> List[TradeExecution]:
         """Open a long.
 
@@ -218,7 +218,7 @@ class PositionManager:
         if type(value) == float:
             value = Decimal(value)
 
-        price = self.pricing_model.get_buy_price(self.timestamp, executor_pair, value)
+        price_structure = self.pricing_model.get_buy_price(self.timestamp, executor_pair, value)
 
         reserve_asset, reserve_price = self.state.portfolio.get_default_reserve_currency()
 
@@ -227,19 +227,25 @@ class PositionManager:
             pair=executor_pair,
             quantity=None,
             reserve=Decimal(value),
-            assumed_price=price,
+            assumed_price=price_structure.price,
             trade_type=TradeType.rebalance,
             reserve_currency=self.reserve_currency,
             reserve_currency_price=reserve_price,
+            lp_fees_estimated=price_structure.lp_fee,
+            pair_fee=price_structure.pair_fee,
         )
 
         assert created, f"There was conflicting open position for pair: {executor_pair}"
 
         if take_profit_pct:
-            position.take_profit = price * take_profit_pct
+            position.take_profit = price_structure.mid_price * take_profit_pct
 
         if stop_loss_pct:
-            position.stop_loss = price * stop_loss_pct
+            position.stop_loss = price_structure.mid_price * stop_loss_pct
+
+        if notes:
+            position.notes = notes
+            trade.notes = notes
 
         self.state.visualisation.add_message(
             self.timestamp,
@@ -367,7 +373,7 @@ class PositionManager:
 
         pair = position.pair
         quantity = quantity_left
-        price = self.pricing_model.get_sell_price(self.timestamp, pair, quantity=quantity)
+        price_structure = self.pricing_model.get_sell_price(self.timestamp, pair, quantity=quantity)
 
         reserve_asset, reserve_price = self.state.portfolio.get_default_reserve_currency()
 
@@ -376,11 +382,13 @@ class PositionManager:
             pair,
             -quantity,  # Negative quantity = sell all
             None,
-            price,
+            price_structure.price,
             trade_type,
             reserve_asset,
             reserve_price,  # TODO: Harcoded stablecoin USD exchange rate
             notes=notes,
+            pair_fee=price_structure.pair_fee,
+            lp_fees_estimated=price_structure.lp_fee,
         )
         assert position == position2, "Somehow messed up the trade"
 

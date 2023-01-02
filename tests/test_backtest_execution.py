@@ -278,7 +278,7 @@ def test_buy_with_fee(
     # Check we calculated LP fees correctly
     assert trade.is_buy()
     assert trade.get_status() == TradeStatus.success
-    assert trade.lp_fee == 0.0050
+    assert trade.fee_tier == 0.0050
     assert trade.executed_price == pytest.approx(357.15260665419106)
     assert trade.lp_fees_estimated == 5.0
     assert trade.lp_fees_paid == 5.0
@@ -321,7 +321,7 @@ def test_buy_sell_backtest_with_fee(
     sell_price = trade.executed_price
 
     assert position.is_closed()
-    assert trade.lp_fee == 0.005
+    assert trade.fee_tier == 0.005
     assert trade.lp_fees_estimated == pytest.approx(4.960199004975125)
     assert trade.lp_fees_paid == pytest.approx(4.960199004975125)
 

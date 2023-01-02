@@ -12,6 +12,7 @@ import textwrap
 from abc import abstractmethod
 from dataclasses import dataclass
 import logging
+from math import isnan
 from typing import List, Optional, Callable, Tuple, Set, Dict, Iterable
 
 import pandas as pd
@@ -713,6 +714,12 @@ def translate_trading_pair(pair: DEXPair) -> TradingPairIdentifier:
         decimals=pair.quote_token_decimals,
     )
 
+    if isnan(pair.fee):
+        # Repair some data
+        fee = None
+    else:
+        fee = pair.fee
+
     return TradingPairIdentifier(
         base=base,
         quote=quote,
@@ -720,7 +727,7 @@ def translate_trading_pair(pair: DEXPair) -> TradingPairIdentifier:
         internal_id=pair.pair_id,
         info_url=pair.get_trading_pair_page_url(),
         exchange_address=pair.exchange_address,
-        fee=pair.fee,
+        fee=fee,
     )
 
 

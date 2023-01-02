@@ -92,7 +92,8 @@ class State:
                      reserve_currency: AssetIdentifier,
                      reserve_currency_price: USDollarAmount,
                      notes: Optional[str] = None,
-                     lp_fee: Optional[BPS] = None,
+                     pair_fee: Optional[BPS] = None,
+                     lp_fees_estimated: Optional[USDollarAmount] = None,
                      ) -> Tuple[TradingPosition, TradeExecution, bool]:
         """Creates a request for a new trade.
 
@@ -122,7 +123,10 @@ class State:
             assumed_price,
             trade_type,
             reserve_currency,
-            reserve_currency_price)
+            reserve_currency_price,
+            pair_fee=pair_fee,
+            lp_fees_estimated=lp_fees_estimated,
+        )
         return position, trade, created
 
     def start_execution(self, ts: datetime.datetime, trade: TradeExecution, txid: str, nonce: int):

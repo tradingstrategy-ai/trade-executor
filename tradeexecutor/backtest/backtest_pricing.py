@@ -1,5 +1,6 @@
 import logging
 import datetime
+import math
 import warnings
 from decimal import Decimal, ROUND_DOWN
 from typing import Optional
@@ -145,16 +146,21 @@ class BacktestSimplePricingModel(PricingModel):
             kind=self.candle_timepoint_kind,
         )
 
+        assert mid_price not in (0, math.nan), f"Got bad mid price: {mid_price}"
+
         pair_fee = self.get_pair_fee(ts, pair)
 
-        if pair_fee:
+        if pair_fee is not None:
             lp_fee = float(reserve) * pair_fee
 
             # Move price above mid price
             price = mid_price * (1 + pair_fee)
         else:
+            # Fee information not available
             lp_fee = None
             price = mid_price
+
+        assert price not in (0, math.nan) and price > 0, f"Got bad price: {price}"
 
         return TradePricing(
             price=float(price),

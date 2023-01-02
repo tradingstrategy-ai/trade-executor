@@ -97,10 +97,11 @@ class TradingPosition:
         assert self.position_id > 0
         assert self.last_pricing_at is not None
         assert self.reserve_currency is not None
+
         # Note that price *can* be zero,
         # on some obscure cases when we load the state from the disk
-        assert self.last_token_price >= 0
-        assert self.last_reserve_price >= 0
+        assert self.last_token_price >= 0, f"Token price was: {self.last_token_price}"
+        assert self.last_reserve_price >= 0, f"Reserve price was: {self.last_reserve_price}"
 
         # Do some extra checks to avoid Pandas types in serialisation
         assert isinstance(self.opened_at, datetime.datetime)
@@ -284,7 +285,8 @@ class TradingPosition:
                    trade_type: TradeType,
                    reserve_currency: AssetIdentifier,
                    reserve_currency_price: USDollarAmount,
-                   lp_fee: Optional[BPS] = None
+                   pair_fee: Optional[BPS] = None,
+                   lp_fees_estimated: Optional[USDollarAmount] = None,
                    ) -> TradeExecution:
         """Open a new trade on position.
 
@@ -315,7 +317,8 @@ class TradingPosition:
             planned_price=assumed_price,
             planned_reserve=planned_reserve,
             reserve_currency=self.reserve_currency,
-            lp_fee=lp_fee,
+            fee_tier=pair_fee,
+            lp_fees_estimated=lp_fees_estimated,
         )
         self.trades[trade.trade_id] = trade
         return trade

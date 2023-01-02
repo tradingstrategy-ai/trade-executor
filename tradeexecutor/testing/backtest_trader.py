@@ -99,7 +99,7 @@ class BacktestTrader:
             reserve=reserve,
             price=price)
 
-        trade.lp_fee = lp_fee
+        trade.fee_tier = lp_fee
         trade.lp_fees_estimated = lp_fees_estimated
 
         # Run trade start, simulated broadcast, simulated execution using
