@@ -290,7 +290,8 @@ class PositionManager:
         assert weight <= 1, f"Target weight cannot be over one: {weight}"
         assert weight >= 0, f"Target weight cannot be negative: {weight}"
 
-        price = self.pricing_model.get_buy_price(self.timestamp, pair, dollar_amount_delta)
+        price_structure = self.pricing_model.get_buy_price(self.timestamp, pair, dollar_amount_delta)
+        price = price_structure.price
 
         reserve_asset, reserve_price = self.state.portfolio.get_default_reserve_currency()
 

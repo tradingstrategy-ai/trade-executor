@@ -142,6 +142,7 @@ def execute_trades_simple(
         },
         allowed_intermediary_pairs={},
         reserve_token_address=reserve_asset.address,
+        trading_fee=0.030,
     )
 
     state.start_trades(datetime.datetime.utcnow(), trades)
