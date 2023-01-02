@@ -304,7 +304,7 @@ def routing_model(uniswap_v2, asset_usdc, asset_weth, weth_usdc_pair) -> Uniswap
         factory_router_map,
         allowed_intermediary_pairs,
         reserve_token_address=asset_usdc.address,
-        trading_fee=0.0,
+        trading_fee=0.030,
     )
 
 
@@ -582,12 +582,12 @@ def test_simulated_uniswap_qstrader_strategy_round_trip(
 
     # We have lost some money in trading fees
     assert state.portfolio.get_total_equity() == pytest.approx(9983.773698830146, rel=APPROX_REL)
-    assert state.portfolio.get_current_cash() == pytest.approx(936.5293500249995, rel=APPROX_REL)
+    assert state.portfolio.get_current_cash() == pytest.approx(913.1489764500003, rel=APPROX_REL)
 
     # Check our two open positions
     assert len(state.portfolio.open_positions) == 2
     position_1 = state.portfolio.get_open_position_for_pair(weth_usdc_pair)
-    assert position_1.get_quantity() == Decimal('2.747249930253346052')
+    assert position_1.get_quantity() == Decimal('2.754699344146152536')
     assert position_1.get_value() == pytest.approx(4684.555636069401, rel=APPROX_REL)
     position_2 = state.portfolio.get_open_position_for_pair(aave_usdc_pair)
     assert position_2.get_value() == pytest.approx(4362.366674108017, rel=APPROX_REL)
