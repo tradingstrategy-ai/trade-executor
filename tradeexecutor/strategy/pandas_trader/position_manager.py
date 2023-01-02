@@ -417,9 +417,9 @@ class PositionManager:
         dex_pair = self.universe.universe.pairs.get_pair_by_id(pair_id)
         return translate_trading_pair(dex_pair)
 
-    def estimate_trading_fee(self,
-                             pair: Optional[TradingPairIdentifier] = None,
-                             ) -> Optional[float]:
+    def get_pair_fee(self,
+                     pair: Optional[TradingPairIdentifier] = None,
+                     ) -> Optional[float]:
         """Estimate the trading/LP fees for a trading pair.
 
         This information can come either from the exchange itself (Uni v2 compatibles),

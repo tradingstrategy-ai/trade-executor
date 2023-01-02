@@ -154,6 +154,7 @@ class BacktestSimplePricingModel(PricingModel):
             price = mid_price * (1 + pair_fee)
         else:
             lp_fee = None
+            price = mid_price
 
         return TradePricing(
             price=float(price),

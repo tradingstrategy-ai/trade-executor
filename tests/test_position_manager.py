@@ -156,7 +156,7 @@ def test_get_current_position(position_manager_with_open_position: PositionManag
 def test_estimate_fee_not_available(synthetic_universe, position_manager):
     """"Estimate the trading fee."""
     eth_usdc = synthetic_universe.get_single_pair()
-    fee = position_manager.estimate_trading_fee(eth_usdc)
+    fee = position_manager.get_pair_fee(eth_usdc)
     assert fee is None
 
 
@@ -171,7 +171,7 @@ def test_estimate_fee_from_router(state, synthetic_universe, position_manager):
     eth_usdc = synthetic_universe.get_single_pair()
     ts = datetime.datetime(2021, 6, 2)
     position_manager = PositionManager(ts, synthetic_universe.universe, state, pricing_model)
-    fee = position_manager.estimate_trading_fee(eth_usdc)
+    fee = position_manager.get_pair_fee(eth_usdc)
     assert fee == 0.0025
 
 
@@ -179,5 +179,5 @@ def test_estimate_fee_from_pair(synthetic_universe, position_manager):
     """"Estimate the trading fee."""
     eth_usdc = synthetic_universe.get_single_pair()
     eth_usdc.fee = 0.020
-    fee = position_manager.estimate_trading_fee(eth_usdc)
+    fee = position_manager.get_pair_fee(eth_usdc)
     assert fee == 0.020

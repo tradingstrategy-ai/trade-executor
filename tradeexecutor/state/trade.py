@@ -431,18 +431,3 @@ class TradeExecution:
     def get_planned_max_gas_price(self) -> int:
         """Get the maximum gas fee set to all transactions in this trade."""
         return max([t.get_planned_gas_price() for t in self.blockchain_transactions])
-
-    def estimate_trading_fee(self,
-                          lp_fee_exchange_rate: float,
-                          ) -> USDollarAmount:
-        """Fill in the LP fee estimation structure.
-
-        The trade must be prefilled with buy/sell side
-        quantity/value information. We calcualte
-        and convert the fees based
-
-        :param trading_pair_fee:
-        """
-
-
-
