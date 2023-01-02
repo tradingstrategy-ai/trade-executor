@@ -129,6 +129,7 @@ class BacktestSimplePricingModel(PricingModel):
             lp_fee=lp_fee,
             pair_fee=pair_fee,
             market_feed_delay=delay.to_pytimedelta(),
+            side=False,
         )
 
     def get_buy_price(self,
@@ -168,6 +169,7 @@ class BacktestSimplePricingModel(PricingModel):
             lp_fee=lp_fee,
             pair_fee=pair_fee,
             market_feed_delay=delay.to_pytimedelta(),
+            side=True,
         )
 
     def get_mid_price(self,

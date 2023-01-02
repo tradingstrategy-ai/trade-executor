@@ -75,7 +75,7 @@ class TradePricing:
         if self.market_feed_delay is not None:
             assert isinstance(self.market_feed_delay, datetime.timedelta)
 
-        # Do satefy checks for the price calculation
+        # Do safety checks for the price calculation
         if self.side is not None:
             if self.side:
                 assert self.price >= self.mid_price, f"Got bad buy pricing: {self.price} > {self.mid_price}"
@@ -158,6 +158,15 @@ class PricingModel(abc.ABC):
 
         Mid price is an non-trddeable price between the best ask
         and the best pid.
+
+        :param ts:
+            Timestamp. Ignored for live pricing models.
+
+        :param pair:
+            Which trading pair price we query.
+
+        :return:
+            The mid price for the pair at a timestamp.
         """
 
     @abc.abstractmethod
@@ -176,6 +185,11 @@ class PricingModel(abc.ABC):
 
         The return value is used to fill the
         fee values for any newly opened trades.
+
+        :param ts:
+            Timestamp of the trade. Note that currently
+            fees do not vary over time, but might
+            do so in the future.
 
         :param pair:
             Trading pair for which we want to have the fee.

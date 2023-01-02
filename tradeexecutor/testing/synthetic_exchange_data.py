@@ -2,6 +2,7 @@
 from typing import Optional
 
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel
+from tradeexecutor.state.types import BPS
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.testing.synthetic_ethereum_data import generate_random_ethereum_address
 from tradingstrategy.chain import ChainId
@@ -22,7 +23,7 @@ def generate_exchange(exchange_id: int, chain_id: ChainId, address="0x0000000000
     return exchange
 
 
-def generate_simple_routing_model(universe: TradingStrategyUniverse, trading_fee: Optional[float]=None) -> BacktestRoutingModel:
+def generate_simple_routing_model(universe: TradingStrategyUniverse, trading_fee: Optional[BPS] = None) -> BacktestRoutingModel:
     """Creates a routing model for data generated synthetically.
 
     - Assumes there is only one exchange in the trading universe
