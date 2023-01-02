@@ -70,6 +70,7 @@ class UniverseOptions:
     stop_loss_time_bucket_override: Optional[TimeBucket] = None
 
 
+
 class UniverseModel(abc.ABC):
     """Create and manage trade universe.
 

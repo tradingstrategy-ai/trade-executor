@@ -45,7 +45,8 @@ from tradeexecutor.strategy.pricing_model import PricingModelFactory
 from tradeexecutor.strategy.qstrader.alpha_model import AlphaModel
 from tradeexecutor.strategy.qstrader.runner import QSTraderRunner
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverseModel, \
-    TradingStrategyUniverse, translate_trading_pair, Dataset, translate_token
+    TradingStrategyUniverse, translate_trading_pair, translate_token
+from tradeexecutor.strategy.dataset import Dataset
 from tradeexecutor.strategy.valuation import ValuationModelFactory
 from tradeexecutor.utils.price import is_legit_price_value
 

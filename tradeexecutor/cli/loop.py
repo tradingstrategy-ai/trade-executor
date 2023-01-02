@@ -157,7 +157,7 @@ class ExecutionLoop:
             state.name = self.name
             self.store.sync(state)
         else:
-            if self.store.is_pristine():
+            if self.store.is_empty():
                 # Create empty state and save it
                 state = self.store.create(self.name)
                 state.name = self.name
@@ -624,9 +624,7 @@ class ExecutionLoop:
 
             try:
                 ts = datetime.datetime.now()
-
                 self.update_position_valuations(ts, state, universe, execution_context.mode)
-
                 self.update_summary_statistics(state)
             except Exception as e:
                 die(e)

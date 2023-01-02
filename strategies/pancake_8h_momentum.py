@@ -24,7 +24,8 @@ from tradeexecutor.strategy.pricing_model import PricingModelFactory
 from tradeexecutor.strategy.qstrader.alpha_model import AlphaModel
 from tradeexecutor.strategy.qstrader.runner import QSTraderRunner
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverseModel, \
-    TradingStrategyUniverse, translate_trading_pair, Dataset
+    TradingStrategyUniverse, translate_trading_pair
+from tradeexecutor.strategy.dataset import Dataset
 from tradingstrategy.client import Client
 
 from tradingstrategy.candle import GroupedCandleUniverse
