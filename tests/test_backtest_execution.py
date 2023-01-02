@@ -168,11 +168,11 @@ def test_get_historical_price(
 
     # Get the price for buying WBNB for 1000 USD at 2021-1-1
     buy_price = trader.get_buy_price(wbnb_busd, Decimal(1_000))
-    assert buy_price == pytest.approx(354.3096008300781)
+    assert buy_price.price == pytest.approx(354.3096008300781)
 
     # Get the price for sellinb 1 WBNB
     sell_price = trader.get_sell_price(wbnb_busd, Decimal(1))
-    assert sell_price == pytest.approx(354.3096008300781)
+    assert sell_price.price == pytest.approx(354.3096008300781)
 
 
 def test_create_and_execute_backtest_trade(

@@ -42,9 +42,9 @@ class UniswapV2PoolRevaluator(ValuationModel):
         if quantity == 0:
             return ts, 0.0
 
-        price = self.pricing_model.get_sell_price(ts, pair, quantity)
+        price_structure = self.pricing_model.get_sell_price(ts, pair, quantity)
 
-        return ts, price
+        return ts, price_structure.price
 
 
 def uniswap_v2_sell_valuation_factory(pricing_model):

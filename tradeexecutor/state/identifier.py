@@ -113,7 +113,8 @@ class TradingPairIdentifier:
     fee: Optional[float] = None
 
     def __repr__(self):
-        return f"<Pair {self.base.token_symbol}-{self.quote.token_symbol} at {self.pool_address} ({self.fee * 100:.2} % fee) on exchange {self.exchange_address}>"
+        fee = self.fee or 0
+        return f"<Pair {self.base.token_symbol}-{self.quote.token_symbol} at {self.pool_address} ({fee * 100:.4f}% fee) on exchange {self.exchange_address}>"
 
     def __hash__(self):
         assert self.internal_id, "Internal id needed to be hashable"

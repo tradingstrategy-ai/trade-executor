@@ -714,7 +714,7 @@ def translate_trading_pair(pair: DEXPair) -> TradingPairIdentifier:
         decimals=pair.quote_token_decimals,
     )
 
-    if isnan(pair.fee):
+    if pair.fee and isnan(pair.fee):
         # Repair some data
         fee = None
     else:

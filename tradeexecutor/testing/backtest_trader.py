@@ -53,12 +53,15 @@ class BacktestTrader:
         """Get the historical price for our current backtest time."""
         return self.pricing_model.get_buy_price(self.ts, pair, reserve)
 
-
     def get_sell_price(self, pair: TradingPairIdentifier, quantity: Decimal) -> TradePricing:
         """Get the historical price for our current backtest time."""
         return self.pricing_model.get_sell_price(self.ts, pair, quantity)
 
-    def create(self, pair: TradingPairIdentifier, quantity: Optional[Decimal], reserve: Optional[Decimal], price: float) -> Tuple[TradingPosition, TradeExecution]:
+    def create(self,
+               pair: TradingPairIdentifier,
+               quantity: Optional[Decimal],
+               reserve: Optional[Decimal],
+               price: float) -> Tuple[TradingPosition, TradeExecution]:
         """Open a new trade."""
 
         assert len(self.universe.reserve_assets) == 1
@@ -72,8 +75,8 @@ class BacktestTrader:
             assumed_price=price,
             trade_type=TradeType.rebalance,
             reserve_currency=self.universe.reserve_assets[0],
-            reserve_currency_price=1.0,
-            lp_fee=pair.fee,
+            reserve_currency_price=1.0
+
         )
 
         return position, trade

@@ -381,7 +381,6 @@ class Portfolio:
         :param revalue_frozen:
             Revalue frozen positions as well
         """
-
         try:
             for p in self.open_positions.values():
                 ts, price = valuation_method(ts, p)

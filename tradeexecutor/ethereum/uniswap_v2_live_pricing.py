@@ -19,7 +19,7 @@ from tradeexecutor.strategy.execution_model import ExecutionModel
 from eth_defi.uniswap_v2.fees import estimate_buy_price_decimals, estimate_sell_price_decimals, \
     estimate_buy_received_amount_raw, estimate_sell_received_amount_raw
 from tradeexecutor.state.types import USDollarAmount
-from tradeexecutor.strategy.pricing_model import PricingModel
+from tradeexecutor.strategy.pricing_model import PricingModel, TradePricing
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_trading_pair
 from tradingstrategy.pair import PandasPairUniverse
 
@@ -94,7 +94,7 @@ class UniswapV2LivePricing(PricingModel):
                        ts: datetime.datetime,
                        pair: TradingPairIdentifier,
                        quantity: Optional[Decimal],
-                       ) -> USDollarAmount:
+                       ) -> TradePricing:
         """Get live price on Uniswap."""
 
         if quantity is None:
@@ -131,7 +131,7 @@ class UniswapV2LivePricing(PricingModel):
                        ts: datetime.datetime,
                        pair: TradingPairIdentifier,
                        reserve: Optional[Decimal],
-                       ) -> USDollarAmount:
+                       ) -> TradePricing:
         """Get live price on Uniswap.
 
         :param reserve:
@@ -185,6 +185,13 @@ class UniswapV2LivePricing(PricingModel):
         assert isinstance(pair, TradingPairIdentifier)
         decimals = pair.base.decimals
         return Decimal(quantity).quantize((Decimal(10) ** Decimal(-decimals)), rounding=ROUND_DOWN)
+
+    def get_pair_fee(self,
+                     ts: datetime.datetime,
+                     pair: TradingPairIdentifier,
+                     ) -> Optional[float]:
+        """Uniswap v2 compatibles have fixed fee across the exchange."""
+        return self.routing_model.get_default_trading_fee()
 
 
 def uniswap_v2_live_pricing_factory(
