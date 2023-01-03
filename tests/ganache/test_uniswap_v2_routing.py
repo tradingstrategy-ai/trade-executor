@@ -260,7 +260,9 @@ def routing_model(busd_asset):
     return UniswapV2SimpleRoutingModel(
         factory_router_map,
         allowed_intermediary_pairs,
-        reserve_token_address=busd_asset.address)
+        reserve_token_address=busd_asset.address,
+        trading_fee=0.0025, # https://docs.pancakeswap.finance/products/pancakeswap-exchange/pancakeswap-pools
+    )
 
 
 @pytest.fixture()

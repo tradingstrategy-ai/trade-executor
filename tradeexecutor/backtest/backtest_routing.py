@@ -104,6 +104,7 @@ class BacktestRoutingModel(RoutingModel):
                  factory_router_map: Dict[str, Tuple[str, Optional[str]]],
                  allowed_intermediary_pairs: Dict[str, str],
                  reserve_token_address: str,
+                 trading_fee: Optional[float] = None,
                  ):
         """
         :param factory_router_map:
@@ -126,6 +127,10 @@ class BacktestRoutingModel(RoutingModel):
             Token address of our reserve currency.
             Relevent for buy/sell routing.
             Lowercase.
+
+        :param trading_fee:
+            The trading fee applied to all trades by default,
+            unless a pair overrides.
         """
 
         assert type(factory_router_map) == dict
@@ -139,6 +144,10 @@ class BacktestRoutingModel(RoutingModel):
         self.factory_router_map = {k.lower(): v for k, v in factory_router_map.items()}
         self.allowed_intermediary_pairs = {k.lower(): v.lower() for k, v in allowed_intermediary_pairs.items()}
         self.reserve_token_address = reserve_token_address
+        self.trading_fee = trading_fee
+
+    def get_default_trading_fee(self) -> Optional[float]:
+        return self.trading_fee
 
     def get_reserve_asset(self, pair_universe: PandasPairUniverse) -> AssetIdentifier:
         """Translate our reserve token address tok an asset description."""

@@ -13,7 +13,7 @@ from dataclasses_json import dataclass_json
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
 from tradeexecutor.state.trade import TradeType
 from tradeexecutor.state.trade import TradeExecution
-from tradeexecutor.state.types import USDollarAmount
+from tradeexecutor.state.types import USDollarAmount, BPS
 
 
 @dataclass_json
@@ -97,10 +97,11 @@ class TradingPosition:
         assert self.position_id > 0
         assert self.last_pricing_at is not None
         assert self.reserve_currency is not None
+
         # Note that price *can* be zero,
         # on some obscure cases when we load the state from the disk
-        assert self.last_token_price >= 0
-        assert self.last_reserve_price >= 0
+        assert self.last_token_price >= 0, f"Token price was: {self.last_token_price}"
+        assert self.last_reserve_price >= 0, f"Reserve price was: {self.last_reserve_price}"
 
         # Do some extra checks to avoid Pandas types in serialisation
         assert isinstance(self.opened_at, datetime.datetime)
@@ -283,7 +284,10 @@ class TradingPosition:
                    assumed_price: USDollarAmount,
                    trade_type: TradeType,
                    reserve_currency: AssetIdentifier,
-                   reserve_currency_price: USDollarAmount) -> TradeExecution:
+                   reserve_currency_price: USDollarAmount,
+                   pair_fee: Optional[BPS] = None,
+                   lp_fees_estimated: Optional[USDollarAmount] = None,
+                   ) -> TradeExecution:
         """Open a new trade on position.
 
         Trade can be opened by knowing how much you want to buy (quantity) or how much cash you have to buy (reserve).
@@ -313,6 +317,8 @@ class TradingPosition:
             planned_price=assumed_price,
             planned_reserve=planned_reserve,
             reserve_currency=self.reserve_currency,
+            fee_tier=pair_fee,
+            lp_fees_estimated=lp_fees_estimated,
         )
         self.trades[trade.trade_id] = trade
         return trade

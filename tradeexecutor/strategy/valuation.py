@@ -52,9 +52,9 @@ class ValuationModel(Protocol):
         if quantity == 0:
             return ts, 0.0
 
-        price = self.pricing_model.get_sell_price(ts, pair, position)
+        price_structure = self.pricing_model.get_sell_price(ts, pair, position)
 
-        return ts, price
+        return ts, price_structure.price
 
 
 class ValuationModelFactory(Protocol):

@@ -165,7 +165,8 @@ class CashBufferedOrderSizer(OrderSizer):
             if weight > 0:
 
                 trading_pair = self.pricing_model.get_pair_for_id(asset)
-                asset_price = self.pricing_model.get_buy_price(dt, trading_pair, Decimal(after_cost_dollar_weight))
+                price_structure = self.pricing_model.get_buy_price(dt, trading_pair, Decimal(after_cost_dollar_weight))
+                asset_price = price_structure.price
 
                 if asset_price is not None:
 

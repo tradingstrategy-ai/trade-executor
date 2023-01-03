@@ -203,6 +203,7 @@ def routing_model(uniswap_v2, asset_usdc, asset_weth, weth_usdc_pair) -> Uniswap
         factory_router_map,
         allowed_intermediary_pairs,
         reserve_token_address=asset_usdc.address,
+        trading_fee=0.030,
     )
 
 
@@ -353,8 +354,9 @@ def test_live_stop_loss(
     exchange = exchanges[0] # Get the first exchange from the universe
     weth_usdc = pair_universe.get_one_pair_from_pandas_universe(exchange.exchange_id, "WETH", "USDC")
     pair = translate_trading_pair(weth_usdc)
-    price = pricing_method.get_buy_price(datetime.datetime.utcnow(), pair, None)
-    assert price == pytest.approx(1705.12, rel=APPROX_REL)
+
+    price_structure = pricing_method.get_buy_price(datetime.datetime.utcnow(), pair, None)
+    assert price_structure.price == pytest.approx(1705.12, rel=APPROX_REL)
 
     # Set up an execution loop we can step through
     state = State()
@@ -385,8 +387,12 @@ def test_live_stop_loss(
     )
 
     # After the first tick, we should have synced our reserves and opened the first position
+    mid_price = pricing_method.get_mid_price(ts, pair)
+    assert mid_price == pytest.approx(1704.4706166795725, rel=APPROX_REL)
+
     assert state.portfolio.reserves[usdc_token.address.lower()].quantity == 8000
-    assert state.portfolio.open_positions[1].get_value() == pytest.approx(994.0125000000002)
+    assert state.portfolio.open_positions[1].get_quantity() == Decimal('0.586126842081438121')
+    assert state.portfolio.open_positions[1].get_value() == pytest.approx(996.998769)
 
     # Sell ETH on the pool to change the price more than 10%.
     # The pool is 1000 ETH / 1.7M USDC.
@@ -403,8 +409,8 @@ def test_live_stop_loss(
     prepared_swap_call.transact({"from": deployer})
 
     # ETH price is down $1700 -> $1000
-    price = pricing_method.get_buy_price(datetime.datetime.utcnow(), pair, None)
-    assert price == pytest.approx(1009.6430522606291 , rel=APPROX_REL)
+    price_structure = pricing_method.get_buy_price(datetime.datetime.utcnow(), pair, None)
+    assert price_structure.price == pytest.approx(1009.6430522606291 , rel=APPROX_REL)
 
     ts = get_latest_block_timestamp(web3)
 
