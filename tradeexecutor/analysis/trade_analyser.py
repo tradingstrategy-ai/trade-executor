@@ -82,6 +82,15 @@ class SpotTrade:
     #: It also allows you to reconstruct the portfolio state over the time.
     state_details: Optional[Dict] = None
 
+    #: LP fees paid, currency convereted to the USD.
+    #:
+    #: The value is read back from the realised trade.
+    #: LP fee is usually % of the trade. For Uniswap style exchanges
+    #: fees are always taken from `amount in` token
+    #: and directly passed to the LPs as the part of the swap,
+    #: these is no separate fee information.
+    lp_fees_paid: Optional[USDollarAmount] = None
+
     def is_buy(self):
         return self.quantity > 0
 
@@ -183,7 +192,6 @@ class TradePosition:
         """
         sells = list(self.sells)
         return sells[-1].price
-        assert len(sells) == 1
 
     @property
     def close_price(self) -> float:
@@ -278,6 +286,10 @@ class TradePosition:
         """How many individual trades was done to manage this position."""
         return len(self.trades)
 
+    def get_total_lp_fees_paid(self) -> int:
+        """Get the total amount of swap fees paid in the position. Includes all trades."""
+        return sum(trade.lp_fees_paid for trade in self.trades if trade.lp_fees_paid is not None)
+
 
 @dataclass
 class AssetTradeHistory:
@@ -325,6 +337,7 @@ class AssetTradeHistory:
         else:
             # For backtesting
             # Open new position
+            assert position_id is not None, "position id must be provided when opening a new position for backtesting"
             new_position = TradePosition(opened_at=t.timestamp, position_id=position_id)
             new_position.add_trade(t)
             self.positions.append(new_position)
@@ -489,18 +502,12 @@ class TradeAnalysis:
 
     def calculate_summary_statistics(self, time_bucket: Optional[TimeBucket] = None) -> TradeSummary:
         """Calculate some statistics how our trades went.
-            raw_timeline and stop_loss_pct need only be provided if user wants complete list of summary statistics,
-            otherwise, the user will receive a shortened list of stats.
-
-            :param raw_timeline:
-            Created from the expand_timeline_raw() method, it only returns raw data instead of formatted strings
-            which allows easy statistical calculations for when summary stats depend on timeline.
-            
-            :param stop_loss_pct:
-            stop loss percentage
 
             :param time_bucket:
-            time bucket to display average duration as 'number of bars' instead of 'number of days'. 
+                Optional, used to display average duration as 'number of bars' instead of 'number of days'. 
+
+            :return:
+                TradeSummary instance
         """
 
         if(time_bucket is not None):
@@ -871,6 +878,7 @@ def expand_timeline(
             "Open price USD": format_price(position.open_price),
             "Close price USD": format_price(position.close_price) if position.is_closed() else np.nan,
             "Trade count": position.get_trade_count(),
+            "Total swap fees": f"${position.get_total_lp_fees_paid():,.2f}"
         }
         return r
 
@@ -1004,6 +1012,7 @@ def build_trade_analysis(portfolio: Portfolio) -> TradeAnalysis:
                 commission=0,
                 slippage=0,  # TODO
                 trade_type=trade.trade_type,
+                lp_fees_paid=trade.lp_fees_paid
             )
             history.add_trade(spot_trade, position_id=position.position_id)
 

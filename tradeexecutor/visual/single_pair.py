@@ -15,12 +15,18 @@ from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.visualisation import Visualisation, Plot
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.charting.candle_chart import visualise_ohlcv
+from tradingstrategy.utils.summarydataframe import as_dollar
 
 logger = logging.getLogger(__name__)
 
 
 def export_trade_for_dataframe(p: Portfolio, t: TradeExecution) -> dict:
     """Export data for a Pandas dataframe presentation"""
+
+    def add_text(t: TradeExecution, text: str):
+        fees_paid = t.get_fees_paid()
+        fees_label = f"${fees_paid:,.2f}" if fees_paid is not None else "None"
+        return f"{text} <br>Swap fee: {fees_label}"
 
     position = p.get_position_by_id(t.position_id)
 
@@ -48,7 +54,7 @@ def export_trade_for_dataframe(p: Portfolio, t: TradeExecution) -> dict:
         "timestamp": t.executed_at,
         "success": t.is_success(),
         "type": type,
-        "label": label,
+        "label": add_text(t,label),
         "price": t.executed_price,
     }
 
