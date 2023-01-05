@@ -7,7 +7,7 @@ Here we define the abstract overview of routing.
 """
 import abc
 from decimal import Decimal
-from typing import List
+from typing import List, Optional
 
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.trade import TradeExecution
@@ -52,6 +52,24 @@ class RoutingModel(abc.ABC):
     Nothing done here - check the subclasses.
     """
 
+    def perform_preflight_checks_and_logging(self, state: RoutingState):
+        """"Checks the integrity of the routing.
+
+        - Called from check-wallet to see our routing and balances are good
+        """
+
+    def get_default_trading_fee(self) -> Optional[float]:
+        """Get the trading/LP fee applied to all trading pairs.
+
+        This is Uni v2 style fee.
+
+        :return:
+            Trading fee, BPS * 10000 as a float.
+
+            If information not available return None.
+        """
+        return None
+
     @abc.abstractmethod
     def create_routing_state(self,
                              universe: StrategyExecutionUniverse,
@@ -85,8 +103,4 @@ class RoutingModel(abc.ABC):
             If a trade cannot be executed, e.g. due to an unsupported pair or an exchange,
         """
 
-    def perform_preflight_checks_and_logging(self, state: RoutingState):
-        """"Checks the integrity of the routing.
 
-        - Called from check-wallet to see our routing and balances are good
-        """

@@ -26,7 +26,8 @@ class SimulatedTestTrader:
             amount_in_usd: Decimal) -> TradeExecution:
         """Buy token (trading pair) for a certain value."""
 
-        price = self.pricing_model.get_buy_price(ts, pair, amount_in_usd)
+        price_structure = self.pricing_model.get_buy_price(ts, pair, amount_in_usd)
+        price = price_structure.price
 
         reserve_currency, exchange_rate = self.state.portfolio.get_default_reserve_currency()
 

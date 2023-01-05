@@ -155,7 +155,7 @@ class BacktestExecutionModel(ExecutionModel):
                 executed_price,
                 executed_quantity,
                 executed_reserve,
-                lp_fees=0,
+                lp_fees=trade.lp_fees_estimated,
                 native_token_price=1)
 
     def get_routing_state_details(self) -> dict:

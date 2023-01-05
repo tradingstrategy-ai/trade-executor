@@ -282,7 +282,8 @@ class PortfolioConstructionModel:
         for asset_id, asset_data in current_portfolio.items():
             pair = self.pricing_model.get_pair_for_id(asset_id)
             if pair:
-                target_prices[asset_id] = self.pricing_model.get_buy_price(dt, pair, None)
+                price_structure = self.pricing_model.get_buy_price(dt, pair, None)
+                target_prices[asset_id] = price_structure.price
 
         # Expose internal states to unit tests
         debug_details["positions_at_start_of_construction"] = current_portfolio.copy()  # current_portfolio is mutated later

@@ -6,10 +6,12 @@ and JSON-RPC API.
 import logging
 import datetime
 from decimal import Decimal, ROUND_DOWN
-from typing import Optional
+from typing import Optional, Dict
 
 from web3 import Web3
 
+from eth_defi.uniswap_v2.deployment import UniswapV2Deployment
+from eth_defi.uniswap_v2.pair import fetch_pair_details
 from tradeexecutor.ethereum.uniswap_v2_execution import UniswapV2ExecutionModel
 from tradeexecutor.ethereum.uniswap_v2_execution_v0 import UniswapV2ExecutionModelVersion0
 from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2SimpleRoutingModel, route_tokens, get_uniswap_for_pair
@@ -19,7 +21,7 @@ from tradeexecutor.strategy.execution_model import ExecutionModel
 from eth_defi.uniswap_v2.fees import estimate_buy_price_decimals, estimate_sell_price_decimals, \
     estimate_buy_received_amount_raw, estimate_sell_received_amount_raw
 from tradeexecutor.state.types import USDollarAmount
-from tradeexecutor.strategy.pricing_model import PricingModel
+from tradeexecutor.strategy.pricing_model import PricingModel, TradePricing
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_trading_pair
 from tradingstrategy.pair import PandasPairUniverse
 
@@ -70,7 +72,15 @@ class UniswapV2LivePricing(PricingModel):
         if(self.fee is None):
             logger.warning("No trading fee provided, web3-ethereum-defi defaults to trading fee of 30 bps")
 
+        self.uniswap_cache: Dict[TradingPairIdentifier, UniswapV2Deployment] = {}
+
         assert isinstance(self.very_small_amount, Decimal)
+
+    def get_uniswap(self, target_pair: TradingPairIdentifier) -> UniswapV2Deployment:
+        """Helper function to speed up Uniswap v2 deployment resolution."""
+        if target_pair not in self.uniswap_cache:
+            self.uniswap_cache[target_pair] = get_uniswap_for_pair(self.web3, self.routing_model.factory_router_map, target_pair)
+        return self.uniswap_cache[target_pair]
 
     def get_pair_for_id(self, internal_id: int) -> Optional[TradingPairIdentifier]:
         """Look up a trading pair.
@@ -92,7 +102,7 @@ class UniswapV2LivePricing(PricingModel):
                        ts: datetime.datetime,
                        pair: TradingPairIdentifier,
                        quantity: Optional[Decimal],
-                       ) -> USDollarAmount:
+                       ) -> TradePricing:
         """Get live price on Uniswap."""
 
         if quantity is None:
@@ -104,7 +114,7 @@ class UniswapV2LivePricing(PricingModel):
 
         base_addr, quote_addr, intermediate_addr = route_tokens(target_pair, intermediate_pair)
 
-        uniswap = get_uniswap_for_pair(self.web3, self.routing_model.factory_router_map, target_pair)
+        uniswap = self.get_uniswap(target_pair)
 
         # In three token trades, be careful to use the correct reserve token
         quantity_raw = target_pair.base.convert_to_raw_amount(quantity)
@@ -132,19 +142,40 @@ class UniswapV2LivePricing(PricingModel):
         else:
             received = target_pair.quote.convert_to_decimal(received_raw)
 
-        return float(received / quantity)
+        fee = self.get_pair_fee(ts, pair)
+        assert fee is not None, f"Uniswap v2 fee data missing: {uniswap}"
+
+        price = float(received / quantity)
+
+        # TODO: Verify calculation
+        mid_price = price * (1 + fee)
+
+        assert price <= mid_price, f"Bad pricing: {price}, {mid_price}"
+
+        lp_fee = (mid_price - price) * float(quantity)
+
+        return TradePricing(
+            price=price,
+            mid_price=mid_price,
+            lp_fee=lp_fee,
+            pair_fee=fee,
+            side=False,
+        )
 
     def get_buy_price(self,
                        ts: datetime.datetime,
                        pair: TradingPairIdentifier,
                        reserve: Optional[Decimal],
-                       ) -> USDollarAmount:
+                       ) -> TradePricing:
         """Get live price on Uniswap.
+
+        TODO: Fees are incorrectly calculated in the case of multipair routing
 
         :param reserve:
             The buy size in quote token e.g. in dollars
 
-        :return: Price for one reserve unit e.g. a dollar
+        :return:
+            Price for one reserve unit e.g. a dollar
         """
 
         if reserve is None:
@@ -184,24 +215,55 @@ class UniswapV2LivePricing(PricingModel):
                 intermediate_token_address=intermediate_addr
             )
         token_received = target_pair.base.convert_to_decimal(token_raw_received)
-        return float(reserve / token_received)
+
+        fee = self.get_pair_fee(ts, pair)
+        assert fee is not None, f"Uniswap v2 fee data missing: {uniswap}"
+
+        price = float(reserve / token_received)
+
+        lp_fee = float(reserve) * fee
+
+        # TODO: Verify calculation
+        mid_price = price * (1 - fee)
+
+        assert price >= mid_price, f"Bad pricing: {price}, {mid_price}"
+
+        return TradePricing(
+            price=float(price),
+            mid_price=float(mid_price),
+            lp_fee=lp_fee,
+            pair_fee=fee,
+            market_feed_delay=datetime.timedelta(seconds=0),
+            side=True,
+        )
 
     def get_mid_price(self,
                       ts: datetime.datetime,
                       pair: TradingPairIdentifier) -> USDollarAmount:
-        """Get the mid price by the candle."""
+        """Get the mid price from Uniswap pool.
+
+        Gets tricky, because we calculate dollar mid-price, not
+        quote token midprice.
+        """
 
         # TODO: Use native Uniswap router functions to get the mid price
-        # Here we are using a hack
+        # Here we are using a hack)
         bp = self.get_buy_price(ts, pair, self.very_small_amount)
         sp = self.get_sell_price(ts, pair, self.very_small_amount)
-        return (bp + sp) / 2
+        return (bp.price + sp.price) / 2
 
     def quantize_base_quantity(self, pair: TradingPairIdentifier, quantity: Decimal, rounding=ROUND_DOWN) -> Decimal:
         """Convert any base token quantity to the native token units by its ERC-20 decimals."""
         assert isinstance(pair, TradingPairIdentifier)
         decimals = pair.base.decimals
         return Decimal(quantity).quantize((Decimal(10) ** Decimal(-decimals)), rounding=ROUND_DOWN)
+
+    def get_pair_fee(self,
+                     ts: datetime.datetime,
+                     pair: TradingPairIdentifier,
+                     ) -> Optional[float]:
+        """Uniswap v2 compatibles have fixed fee across the exchange."""
+        return self.routing_model.get_default_trading_fee()
 
 
 def uniswap_v2_live_pricing_factory(

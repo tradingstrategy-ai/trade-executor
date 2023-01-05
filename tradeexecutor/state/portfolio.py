@@ -13,7 +13,7 @@ from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.trade import TradeType
 from tradeexecutor.state.trade import TradeExecution
-from tradeexecutor.state.types import USDollarAmount
+from tradeexecutor.state.types import USDollarAmount, BPS, USDollarPrice
 
 
 class NotEnoughMoney(Exception):
@@ -138,9 +138,9 @@ class Portfolio:
     def open_new_position(self,
                           ts: datetime.datetime,
                           pair: TradingPairIdentifier,
-                          assumed_price: USDollarAmount,
+                          assumed_price: USDollarPrice,
                           reserve_currency: AssetIdentifier,
-                          reserve_currency_price: USDollarAmount) -> TradingPosition:
+                          reserve_currency_price: USDollarPrice) -> TradingPosition:
         """Opens a new trading position.
 
         - Marks the position opened.
@@ -211,6 +211,8 @@ class Portfolio:
                      reserve_currency: AssetIdentifier,
                      reserve_currency_price: USDollarAmount,
                      notes: Optional[str] = None,
+                     pair_fee: Optional[BPS] = None,
+                     lp_fees_estimated: Optional[USDollarAmount] = None,
                      ) -> Tuple[TradingPosition, TradeExecution, bool]:
         """Create a trade.
 
@@ -224,7 +226,12 @@ class Portfolio:
 
         position = self.get_position_by_trading_pair(pair)
         if position is None:
-            position = self.open_new_position(ts, pair, assumed_price, reserve_currency, reserve_currency_price)
+            position = self.open_new_position(
+                ts,
+                pair,
+                assumed_price,
+                reserve_currency,
+                reserve_currency_price)
             created = True
         else:
             created = False
@@ -237,9 +244,12 @@ class Portfolio:
             assumed_price,
             trade_type,
             reserve_currency,
-            reserve_currency_price)
+            reserve_currency_price,
+            pair_fee=pair_fee,
+            lp_fees_estimated=lp_fees_estimated,
+        )
 
-        # Udpate notes
+        # Update notes
         trade.notes = notes
         position.notes = notes
 
@@ -371,7 +381,6 @@ class Portfolio:
         :param revalue_frozen:
             Revalue frozen positions as well
         """
-
         try:
             for p in self.open_positions.values():
                 ts, price = valuation_method(ts, p)

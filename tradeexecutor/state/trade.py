@@ -10,7 +10,7 @@ from dataclasses_json import dataclass_json
 
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
-from tradeexecutor.state.types import USDollarAmount
+from tradeexecutor.state.types import USDollarAmount, USDollarPrice, BPS
 
 
 class TradeType(enum.Enum):
@@ -50,7 +50,9 @@ class TradeExecution:
     Each trade has a reserve currency that we use to trade the token (usually USDC).
 
     Each trade can be
+
     - Buy: swap quote token -> base token
+
     - Sell: swap base token -> quote token
 
     When doing a buy `planned_reserve` (fiat) is the input. This yields to `executed_quantity` of tokens
@@ -60,9 +62,13 @@ class TradeExecution:
     of fiat that might be different from `planned_reserve.
 
     Trade execution has four states
+
     - Planning: The execution object is prepared
+
     - Capital allocation and transaction creation: We move reserve from out portfolio to the trade in internal accounting
+
     - Transaction broadcast: trade cannot be cancelled in this point
+
     - Resolving the trade: We check the Ethereum transaction receipt to see how well we succeeded in the trade
 
     There trade state is resolved based on the market variables (usually timestamps).
@@ -104,7 +110,7 @@ class TradeExecution:
 
     #: How much slippage we could initially tolerate,
     #: 0.01 is 1% slippage.
-    planned_max_slippage: Optional[float] = None
+    planned_max_slippage: Optional[BPS] = None
 
     #: When capital is allocated for this trade
     started_at: Optional[datetime.datetime] = None
@@ -132,11 +138,41 @@ class TradeExecution:
     #: How much reserves we spend for this traded, the actual realised amount.
     executed_reserve: Optional[Decimal] = None
 
-    #: LP fees estimated in the USD
+    #: LP fee % recorded before the execution starts.
+    #:
+    #: Not available in the case this is ignored
+    #: in backtesting or not supported by routers/trading pairs.
+    #:
+    #: Used to calculate :py:attr:`lp_fees_estimated`.
+    #:
+    #: Sourced from Uniswap v2 router or Uniswap v3 pool information.
+    #:
+    fee_tier: Optional[BPS] = None
+
+    #: LP fees paid, currency convereted to the USD.
+    #:
+    #: The value is read back from the realised trade.
+    #: LP fee is usually % of the trade. For Uniswap style exchanges
+    #: fees are always taken from `amount in` token
+    #: and directly passed to the LPs as the part of the swap,
+    #: these is no separate fee information.
     lp_fees_paid: Optional[USDollarAmount] = None
 
+    #: LP fees estimated in the USD
+    #:
+    #: This is set before the execution and is mostly useful
+    #: for backtesting.
+    lp_fees_estimated: Optional[USDollarAmount] = None
+
+    #: What is the conversation rate between quote token and US dollar used in LP fee conversion.
+    #:
+    #: We set this exchange rate before the trade is started.
+    #: Both `lp_fees_estimated` and `lp_fees_paid` need to use the same exchange rate,
+    #: even though it would not be timestamp accurte.
+    lp_fee_exchange_rate: Optional[USDollarPrice] = None
+
     #: USD price per blockchain native currency unit, at the time of execution
-    native_token_price: Optional[USDollarAmount] = None
+    native_token_price: Optional[USDollarPrice] = None
 
     # Trade retries
     retry_of: Optional[int] = None
@@ -181,6 +217,12 @@ class TradeExecution:
         assert self.planned_reserve >= 0
         assert type(self.planned_price) == float, f"Price was given as {self.planned_price.__class__}: {self.planned_price}"
         assert self.opened_at.tzinfo is None, f"We got a datetime {self.opened_at} with tzinfo {self.opened_at.tzinfo}"
+
+        if self.lp_fees_estimated is not None:
+            assert type(self.lp_fees_estimated) == float
+
+        if self.fee_tier is not None:
+            assert type(self.fee_tier) == float
 
     def get_human_description(self) -> str:
         """User friendly description for this trade"""
@@ -403,6 +445,3 @@ class TradeExecution:
     def get_planned_max_gas_price(self) -> int:
         """Get the maximum gas fee set to all transactions in this trade."""
         return max([t.get_planned_gas_price() for t in self.blockchain_transactions])
-
-
-

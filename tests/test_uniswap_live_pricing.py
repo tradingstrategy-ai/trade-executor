@@ -194,6 +194,7 @@ def routing_model(uniswap_v2, asset_usdc, asset_weth, weth_usdc_pair) -> Uniswap
         factory_router_map,
         allowed_intermediary_pairs,
         reserve_token_address=asset_usdc.address,
+        trading_fee=0.0,
     )
 
 
@@ -211,8 +212,8 @@ def test_uniswap_two_leg_buy_price_no_price_impact(
     pair = translate_trading_pair(weth_usdc)
 
     # Get price for "infinite" small trade amount
-    price = pricing_method.get_buy_price(datetime.datetime.utcnow(), pair, None)
-    assert price == pytest.approx(1705.12, rel=APPROX_REL)
+    price_structure = pricing_method.get_buy_price(datetime.datetime.utcnow(), pair, None)
+    assert price_structure.price == pytest.approx(1705.12, rel=APPROX_REL)
 
 
 def test_uniswap_two_leg_buy_price_with_price_impact(
@@ -230,11 +231,11 @@ def test_uniswap_two_leg_buy_price_with_price_impact(
 
     # Get price for 100 USDC
     # TODO: Looks incorrect
-    price = pricing_method.get_buy_price(datetime.datetime.utcnow(), pair, Decimal(50_000))
-    assert price == pytest.approx(1755.1153460381142, rel=APPROX_REL)
+    price_structure = pricing_method.get_buy_price(datetime.datetime.utcnow(), pair, Decimal(50_000))
+    assert price_structure.price == pytest.approx(1755.1153460381142, rel=APPROX_REL)
 
     mid_price = pricing_method.get_mid_price(datetime.datetime.utcnow(), pair)
-    assert price > mid_price
+    assert price_structure.price > mid_price
 
 
 def test_uniswap_two_leg_sell_price_no_price_impact(
@@ -250,11 +251,11 @@ def test_uniswap_two_leg_sell_price_no_price_impact(
     pair = translate_trading_pair(weth_usdc)
 
     # Get price for "infinite" small trade amount
-    price = pricing_method.get_sell_price(datetime.datetime.utcnow(), pair, None)
-    assert price == pytest.approx(1705.12, rel=APPROX_REL)
+    price_structure = pricing_method.get_sell_price(datetime.datetime.utcnow(), pair, None)
+    assert price_structure.price == pytest.approx(1705.12, rel=APPROX_REL)
 
     mid_price = pricing_method.get_mid_price(datetime.datetime.utcnow(), pair)
-    assert price < mid_price
+    assert price_structure.price < mid_price
 
 
 def test_uniswap_two_leg_sell_price_with_price_impact(
@@ -271,8 +272,8 @@ def test_uniswap_two_leg_sell_price_with_price_impact(
     pair = translate_trading_pair(weth_usdc)
 
     # Sell 50 ETH
-    price = pricing_method.get_sell_price(datetime.datetime.utcnow(), pair, Decimal(50))
-    assert price == pytest.approx(1614.42110776, rel=APPROX_REL)
+    price_structure = pricing_method.get_sell_price(datetime.datetime.utcnow(), pair, Decimal(50))
+    assert price_structure.price == pytest.approx(1614.42110776, rel=APPROX_REL)
 
 
 def test_uniswap_three_leg_buy_price_with_price_impact(
@@ -320,8 +321,8 @@ def test_uniswap_three_leg_buy_price_with_price_impact(
     assert weth_usdc.address == weth_pair_for
 
     # Get price for 20_000 USDC
-    price = pricing_method.get_buy_price(datetime.datetime.utcnow(), pair, Decimal(20_000))
-    assert price == pytest.approx(350.06125296652243, rel=APPROX_REL)
+    price_structure = pricing_method.get_buy_price(datetime.datetime.utcnow(), pair, Decimal(20_000))
+    assert price_structure.price == pytest.approx(350.06125296652243, rel=APPROX_REL)
 
 
 def test_uniswap_three_leg_sell_price_with_price_impact(
@@ -344,7 +345,7 @@ def test_uniswap_three_leg_sell_price_with_price_impact(
     pair = translate_trading_pair(aave_weth)
 
     # Get price for 500 AAVE
-    price = pricing_method.get_buy_price(datetime.datetime.utcnow(), pair, Decimal(500))
-    assert price == pytest.approx(342.2495177609056, rel=APPROX_REL)
+    price_structure = pricing_method.get_buy_price(datetime.datetime.utcnow(), pair, Decimal(500))
+    assert price_structure.price == pytest.approx(342.2495177609056, rel=APPROX_REL)
 
 
