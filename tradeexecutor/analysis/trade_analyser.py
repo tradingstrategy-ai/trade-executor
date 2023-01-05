@@ -287,7 +287,7 @@ class TradePosition:
         return len(self.trades)
 
     def get_total_lp_fees_paid(self) -> int:
-        """"""
+        """Get the total amount of swap fees paid in the position. Includes all trades."""
         return sum(trade.lp_fees_paid for trade in self.trades if trade.lp_fees_paid is not None)
 
 
