@@ -24,7 +24,9 @@ def export_trade_for_dataframe(p: Portfolio, t: TradeExecution) -> dict:
     """Export data for a Pandas dataframe presentation"""
 
     def add_text(t: TradeExecution, text: str):
-        return f"{text} <br>Swap fee: ${t.get_fees_paid():,.2f}"
+        fees_paid = t.get_fees_paid()
+        fees_label = f"${fees_paid:,.2f}" if fees_paid is not None else "None"
+        return f"{text} <br>Swap fee: {fees_label}"
 
     position = p.get_position_by_id(t.position_id)
 
