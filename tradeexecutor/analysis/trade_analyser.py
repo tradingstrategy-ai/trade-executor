@@ -288,7 +288,7 @@ class TradePosition:
 
     def get_total_lp_fees_paid(self) -> int:
         """"""
-        return sum(trade.lp_fees_paid for trade in self.trades)
+        return sum(trade.lp_fees_paid for trade in self.trades if trade.lp_fees_paid is not None)
 
 
 @dataclass
