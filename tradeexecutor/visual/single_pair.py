@@ -15,7 +15,7 @@ from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.visualisation import Visualisation, Plot
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.charting.candle_chart import visualise_ohlcv
-from tradingstrategy.utils.summarydataframe import as_dollar
+from tradingstrategy.utils.format import format_percent_2_decimals
 
 logger = logging.getLogger(__name__)
 
@@ -24,14 +24,14 @@ def export_trade_for_dataframe(p: Portfolio, t: TradeExecution) -> dict:
     """Export data for a Pandas dataframe presentation"""
 
     def add_text(t: TradeExecution, text: str):
-        fees_paid = t.get_fees_paid()
-        fees_label = f"${fees_paid:,.2f}" if fees_paid is not None else "None"
-        return f"{text} <br>Swap fee: {fees_label}"
+        fee_tier = t.fee_tier
+        fees_label = f"{format_percent_2_decimals(fee_tier)}" if fee_tier is not None else "None"
+        return f"{text}<br>Fee tier: {fees_label}"
 
     position = p.get_position_by_id(t.position_id)
 
     if t.is_failed():
-        label = f"Failed trade"
+        label = "Failed trade"
         type = "failed"
     else:
         if t.is_sell():

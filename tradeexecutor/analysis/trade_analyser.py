@@ -31,6 +31,7 @@ from statistics import median
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.trade import TradeExecution, TradeType
+from tradeexecutor.state.types import BPS
 from tradeexecutor.utils.format import calculate_percentage
 from tradeexecutor.utils.timestamp import json_encode_timedelta, json_decode_timedelta
 from tradingstrategy.timebucket import TimeBucket
@@ -90,6 +91,17 @@ class SpotTrade:
     #: and directly passed to the LPs as the part of the swap,
     #: these is no separate fee information.
     lp_fees_paid: Optional[USDollarAmount] = None
+
+    #: LP fee % recorded before the execution starts.
+    #:
+    #: Not available in the case this is ignored
+    #: in backtesting or not supported by routers/trading pairs.
+    #:
+    #: Used to calculate :py:attr:`lp_fees_estimated`.
+    #:
+    #: Sourced from Uniswap v2 router or Uniswap v3 pool information.
+    #:
+    fee_tier: Optional[BPS] = None
 
     def is_buy(self):
         return self.quantity > 0
@@ -289,7 +301,12 @@ class TradePosition:
     def get_total_lp_fees_paid(self) -> int:
         """Get the total amount of swap fees paid in the position. Includes all trades."""
         return sum(trade.lp_fees_paid for trade in self.trades if trade.lp_fees_paid is not None)
-
+    
+    def get_fee_tier(self) -> BPS:
+        fee_tier = self.trades[0].fee_tier
+        for trade in self.trades:
+            assert trade.fee_tier == fee_tier, "trades in same position have differing fee tiers"
+        return fee_tier
 
 @dataclass
 class AssetTradeHistory:
@@ -878,7 +895,8 @@ def expand_timeline(
             "Open price USD": format_price(position.open_price),
             "Close price USD": format_price(position.close_price) if position.is_closed() else np.nan,
             "Trade count": position.get_trade_count(),
-            "Total swap fees": f"${position.get_total_lp_fees_paid():,.2f}"
+            "Fee tier": format_percent_2_decimals(position.get_fee_tier())
+            #"Total swap fees": f"${position.get_total_lp_fees_paid():,.2f}"
         }
         return r
 
@@ -1012,7 +1030,8 @@ def build_trade_analysis(portfolio: Portfolio) -> TradeAnalysis:
                 commission=0,
                 slippage=0,  # TODO
                 trade_type=trade.trade_type,
-                lp_fees_paid=trade.lp_fees_paid
+                lp_fees_paid=trade.lp_fees_paid,
+                fee_tier=trade.fee_tier
             )
             history.add_trade(spot_trade, position_id=position.position_id)
 
