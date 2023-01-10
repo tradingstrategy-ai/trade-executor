@@ -413,34 +413,7 @@ def validate_reserve_currency(routing_type: TradeRouting, reserve_currency: Rese
         if reserve_currency != ReserveCurrency.dai:
             raise MismatchReserveCurrency(f"Got {routing_type} with {reserve_currency}")
     else:
-        # else
-        raise NotImplementedError(f"Unknown routing type")
-
-    if routing_type in (TradeRouting.pancakeswap_busd, TradeRouting.pancakeswap_usdc, TradeRouting.pancakeswap_usdt):
-        # pancake on bsc
-        params = get_pancake_default_routing_parameters(reserve_currency)
-    elif routing_type in (TradeRouting.quickswap_usdc, TradeRouting.quickswap_usdt, TradeRouting.quickswap_dai):
-        # quickswap on polygon
-        params = get_quickswap_default_routing_parameters(reserve_currency)
-    elif routing_type in (TradeRouting.trader_joe_usdc, TradeRouting.trader_joe_usdt):
-        # trader joe on avalanche
-        params = get_trader_joe_default_routing_parameters(reserve_currency)
-    elif routing_type in (TradeRouting.uniswap_v2_usdc, TradeRouting.uniswap_v2_usdt, TradeRouting.uniswap_v2_dai):
-        # uniswap v2 on eth
-        params = get_uniswap_v2_default_routing_parameters(reserve_currency)
-    else:
-        # else
-        raise NotImplementedError()
-
-    routing_model = UniswapV2SimpleRoutingModel(
-        params["factory_router_map"],
-        params["allowed_intermediary_pairs"],
-        params["reserve_token_address"],
-        params["chain_id"],
-        params["trading_fee"]
-    )
-
-    return routing_model
+        raise NotImplementedError("Unknown routing type")
 
 
 
@@ -470,8 +443,7 @@ def create_compatible_routing(routing_type: TradeRouting, reserve_currency: Rese
     """
 
     def create_uniswap_v2_compatible_routing(routing_type: TradeRouting, reserve_currency: ReserveCurrency) -> UniswapV2SimpleRoutingModel:
-        """Set up Uniswap v2 compatible routing.
-        """
+        """Set up Uniswap v2 compatible routing."""
 
         if routing_type in (TradeRouting.pancakeswap_busd, TradeRouting.pancakeswap_usdc, TradeRouting.pancakeswap_usdt):
             # pancake on bsc
@@ -499,8 +471,7 @@ def create_compatible_routing(routing_type: TradeRouting, reserve_currency: Rese
         return routing_model
     
     def create_uniswap_v3_compatible_routing(routing_type: TradeRouting, reserve_currency: ReserveCurrency) -> UniswapV3SimpleRoutingModel:
-        """Set up Uniswap v3 compatible routing.
-        """
+        """Set up Uniswap v3 compatible routing."""
 
         if routing_type in (TradeRouting.uniswap_v3_usdc, TradeRouting.uniswap_v3_usdt, TradeRouting.uniswap_v3_dai, TradeRouting.uniswap_v3_busd):
             params = get_uniswap_v3_default_routing_parameters(reserve_currency)
