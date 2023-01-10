@@ -132,7 +132,7 @@ def aave_usdc_uniswap_trading_pair(web3, deployer, uniswap_v2, aave_token, usdc_
 
 @pytest.fixture
 def weth_usdc_uniswap_trading_pair(web3, deployer, uniswap_v2, weth_token, usdc_token) -> HexAddress:
-    """AAVE-USDC pool with 1.7M liquidity."""
+    """ETH-USDC pool with 1.7M liquidity."""
     pair_address = deploy_trading_pair(
         web3,
         deployer,
