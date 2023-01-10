@@ -17,7 +17,7 @@ from eth_defi.hotwallet import HotWallet
 from eth_defi.token import create_token
 from eth_defi.uniswap_v3.deployment import UniswapV3Deployment, deploy_uniswap_v3, deploy_pool , add_liquidity
 from eth_defi.uniswap_v3.constants import FOREVER_DEADLINE, MIN_TICK, MAX_TICK
-from eth_defi.uniswap_v3.price import estimate_buy_quantity
+from eth_defi.uniswap_v3.price import UniswapV3PriceHelper
 from tradeexecutor.ethereum.execution import get_current_price, get_held_assets
 from tradeexecutor.ethereum.universe import create_pair_universe
 from tradeexecutor.ethereum.wallet import sync_reserves
@@ -91,6 +91,9 @@ def uniswap_v3(web3, deployer) -> UniswapV3Deployment:
     deployment = deploy_uniswap_v3(web3, deployer)
     return deployment
 
+@pytest.fixture()
+def price_helper(uniswap_v3):
+    return UniswapV3PriceHelper(uniswap_v3)
 
 @pytest.fixture
 def weth_token(uniswap_v3: UniswapV3Deployment) -> Contract:
@@ -117,14 +120,15 @@ def asset_aave(aave_token, chain_id) -> AssetIdentifier:
 
 
 @pytest.fixture
-def aave_usdc_uniswap_trading_pair(web3, deployer, uniswap_v3, aave_token, usdc_token) -> HexAddress:
-    """AAVE-USDC pool with 200k liquidity."""
+def aave_usdc_uniswap_pool(web3, deployer, uniswap_v3, aave_token, usdc_token) -> HexAddress:
+    """AAVE-USDC pool with 200k liquidity. Fee of 0.1%"""
     pool_contract = deploy_pool(
         web3,
         deployer,
         uniswap_v3,
         aave_token,
         usdc_token,
+        1000
     )
     add_liquidity(
         web3,
@@ -138,26 +142,24 @@ def aave_usdc_uniswap_trading_pair(web3, deployer, uniswap_v3, aave_token, usdc_
     )
     return pool_contract.address
 
-
 @pytest.fixture
 def weth_usdc_uniswap_trading_pair(web3, deployer, uniswap_v3, weth_token, usdc_token) -> HexAddress:
-    """AAVE-USDC pool with 1.7M liquidity."""
+    """ETH-USDC pool with 1.7M liquidity."""
     pool_contract = deploy_pool(
         web3,
         deployer,
         uniswap_v3,
         weth_token,
         usdc_token,
-        1000 * 10**18,  # 1000 ETH liquidity
-        1_700_000 * 10**6,  # 1.7M USDC liquidity
+        1000
     )
     add_liquidity(
         web3,
         deployer,
         uniswap_v3,
         pool_contract,
-        1000 * 10**18,  # 1000 AAVE liquidity
-        200_000 * 10**6,  # 200k USDC liquidity
+        1000 * 10**18,  # 1000 ETH liquidity
+        1_700_000 * 10**6,  # 1.7M USDC liquidity
         MIN_TICK,
         MAX_TICK
     )
@@ -237,7 +239,9 @@ def test_execute_trade_instructions_buy_weth(
         usdc_token: AssetIdentifier,
         weth_token: AssetIdentifier,
         weth_usdc_pair: TradingPairIdentifier,
-        start_ts: datetime.datetime):
+        start_ts: datetime.datetime,
+        price_helper: UniswapV3PriceHelper
+        ):
     """Sync reserves from one deposit."""
 
     portfolio = state.portfolio
@@ -251,8 +255,13 @@ def test_execute_trade_instructions_buy_weth(
 
     buy_amount = 500
 
+    # swap from quote to base (usdc to weth)
+    path = [usdc_token.address, weth_token.address]
+    fees = [1000]
+    
     # Estimate price
-    raw_assumed_quantity = estimate_buy_quantity(uniswap_v3, weth_token, usdc_token, buy_amount * 10 ** 6)
+    raw_assumed_quantity = price_helper.get_amount_out(buy_amount * 10 ** 6,path,fees)
+    
     assumed_quantity = Decimal(raw_assumed_quantity) / Decimal(10**18)
     assert assumed_quantity == pytest.approx(Decimal(0.293149332386944192))
 
