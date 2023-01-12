@@ -387,7 +387,6 @@ def get_backtest_routing_model(routing_type: TradeRouting, reserve_currency: Res
         real_routing_model.factory_router_map,
         real_routing_model.allowed_intermediary_pairs,
         real_routing_model.reserve_token_address,
-        real_routing_model.trading_fee
     )
 
 
