@@ -18,6 +18,7 @@ from eth_defi.token import create_token
 from eth_defi.uniswap_v3.deployment import UniswapV3Deployment, deploy_uniswap_v3, deploy_pool , add_liquidity
 from eth_defi.uniswap_v3.constants import FOREVER_DEADLINE, MIN_TICK, MAX_TICK
 from eth_defi.uniswap_v3.price import UniswapV3PriceHelper
+from eth_defi.uniswap_v3.utils import get_default_tick_range
 from tradeexecutor.ethereum.execution import get_current_price, get_held_assets
 from tradeexecutor.ethereum.universe import create_pair_universe
 from tradeexecutor.ethereum.wallet import sync_reserves
@@ -30,6 +31,8 @@ from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifie
 from tradeexecutor.testing.ethereumtrader_uniswap_v3 import EthereumTestTraderUniswapV3, execute_trades_simple
 from tradeexecutor.testing.dummy_trader import DummyTestTrader
 
+WETH_USDC_FEE = 3000
+AAVE_USDC_FEE = 3000
 
 @pytest.fixture
 def tester_provider():
@@ -120,48 +123,54 @@ def asset_aave(aave_token, chain_id) -> AssetIdentifier:
 
 
 @pytest.fixture
-def aave_usdc_uniswap_pool(web3, deployer, uniswap_v3, aave_token, usdc_token) -> HexAddress:
+def aave_usdc_uniswap_trading_pair(web3, deployer, uniswap_v3, aave_token, usdc_token) -> HexAddress:
     """AAVE-USDC pool with 200k liquidity. Fee of 0.1%"""
+    min_tick, max_tick = get_default_tick_range(AAVE_USDC_FEE)
+    
     pool_contract = deploy_pool(
         web3,
         deployer,
-        uniswap_v3,
-        aave_token,
-        usdc_token,
-        1000
+        deployment=uniswap_v3,
+        token0=aave_token,
+        token1=usdc_token,
+        fee=AAVE_USDC_FEE
     )
+    
     add_liquidity(
         web3,
         deployer,
-        uniswap_v3,
-        pool_contract,
-        1000 * 10**18,  # 1000 AAVE liquidity
-        200_000 * 10**6,  # 200k USDC liquidity
-        MIN_TICK,
-        MAX_TICK
+        deployment=uniswap_v3,
+        pool=pool_contract,
+        amount0=1000 * 10**18,  # 1000 AAVE liquidity
+        amount1=200_000 * 10**6,  # 200k USDC liquidity
+        lower_tick=min_tick,
+        upper_tick=max_tick
     )
     return pool_contract.address
 
 @pytest.fixture
 def weth_usdc_uniswap_trading_pair(web3, deployer, uniswap_v3, weth_token, usdc_token) -> HexAddress:
     """ETH-USDC pool with 1.7M liquidity."""
+    min_tick, max_tick = get_default_tick_range(WETH_USDC_FEE)
+    
     pool_contract = deploy_pool(
         web3,
         deployer,
-        uniswap_v3,
-        weth_token,
-        usdc_token,
-        1000
+        deployment=uniswap_v3,
+        token0=weth_token,
+        token1=usdc_token,
+        fee=WETH_USDC_FEE
     )
+    
     add_liquidity(
         web3,
         deployer,
-        uniswap_v3,
-        pool_contract,
-        1000 * 10**18,  # 1000 ETH liquidity
-        1_700_000 * 10**6,  # 1.7M USDC liquidity
-        MIN_TICK,
-        MAX_TICK
+        deployment=uniswap_v3,
+        pool=pool_contract,
+        amount0=1000 * 10**18,  # 1000 ETH liquidity
+        amount1=1_700_000 * 10**6,  # 1.7M USDC liquidity
+        lower_tick=min_tick,
+        upper_tick=max_tick
     )
     return pool_contract.address
 
@@ -257,7 +266,7 @@ def test_execute_trade_instructions_buy_weth(
 
     # swap from quote to base (usdc to weth)
     path = [usdc_token.address, weth_token.address]
-    fees = [1000]
+    fees = [WETH_USDC_FEE]
     
     # Estimate price
     raw_assumed_quantity = price_helper.get_amount_out(buy_amount * 10 ** 6,path,fees)
