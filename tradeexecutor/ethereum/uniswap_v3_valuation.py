@@ -27,6 +27,8 @@ class UniswapV3PoolRevaluator(ValuationModel):
     """
 
     def __init__(self, pricing_model: UniswapV3LivePricing):
+        assert isinstance(pricing_model, UniswapV3LivePricing), f"Require UniswapV3LivePricing instance. Received {pricing_model}"
+        
         self.pricing_model = pricing_model
 
     def __call__(self,
