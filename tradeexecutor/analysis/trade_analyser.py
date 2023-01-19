@@ -446,18 +446,21 @@ class TradeSummary:
             "Average duration of losing trades": avg_duration_losing,
         }
 
-        def add_prop_if_not_none(value, key: str, formatter: Callable):
-            if(value is not None):
-                human_data[key] = formatter(value)
+        def add_prop(value, key: str, formatter: Callable):
+            human_data[key] = (
+                formatter(value)
+                if value is not None
+                else formatter(0)
+            )
 
-        add_prop_if_not_none(self.average_trade, 'Average trade:', as_percent)
-        add_prop_if_not_none(self.median_trade, 'Median trade:', as_percent)
-        add_prop_if_not_none(self.max_pos_cons, 'Consecutive wins', as_integer)
-        add_prop_if_not_none(self.max_neg_cons, 'Consecutive losses', as_integer)
-        add_prop_if_not_none(self.max_realised_loss, 'Biggest realized risk', as_percent)
-        add_prop_if_not_none(self.avg_realised_risk, 'Avg realised risk', as_percent)
-        add_prop_if_not_none(self.max_pullback, 'Max pullback of total capital', as_percent)
-        add_prop_if_not_none(self.max_loss_risk, 'Max loss risk at opening of position', as_percent)
+        add_prop(self.average_trade, 'Average trade:', as_percent)
+        add_prop(self.median_trade, 'Median trade:', as_percent)
+        add_prop(self.max_pos_cons, 'Consecutive wins', as_integer)
+        add_prop(self.max_neg_cons, 'Consecutive losses', as_integer)
+        add_prop(self.max_realised_loss, 'Biggest realized risk', as_percent)
+        add_prop(self.avg_realised_risk, 'Avg realised risk', as_percent)
+        add_prop(self.max_pullback, 'Max pullback of total capital', as_percent)
+        add_prop(self.max_loss_risk, 'Max loss risk at opening of position', as_percent)
 
         return create_summary_table(human_data)
 
