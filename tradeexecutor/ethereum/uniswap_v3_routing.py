@@ -83,9 +83,9 @@ class UniswapV3RoutingState(RoutingState):
         # Assume allowance is always infinity
         return erc_20.functions.allowance.call(self.hot_wallet.address, router_address) > 0
 
-    def get_uniswap_for_pair(self, factory_router_map: dict, target_pair: TradingPairIdentifier) -> UniswapV3Deployment:
+    def get_uniswap_for_pair(self, address_map: dict, target_pair: TradingPairIdentifier) -> UniswapV3Deployment:
         """Get a router for a trading pair."""
-        return get_uniswap_for_pair(self.web3, factory_router_map, target_pair)
+        return get_uniswap_for_pair(self.web3, address_map, target_pair)
 
     def check_has_enough_tokens(
             self,
@@ -163,12 +163,12 @@ class UniswapV3RoutingState(RoutingState):
 
         web3 = self.web3
         hot_wallet = self.tx_builder.hot_wallet
-        
+
         # different pairs on Uniswap v3 can have different fees, so we need to get the fee dynamically every time like this
         pool_trading_fee = target_pair.fee
-        print("trading fee is: ", pool_trading_fee)
+        print("trading fee is: ", pool_trading_fee) # TODO remove
 
-        assert pool_trading_fee is not None, "trading fee not given to tp identifier" # TODO remove
+        assert pool_trading_fee is not None, "trading fee not given to tp identifier"
 
         if reserve_asset == target_pair.quote:
             # Buy with e.g. BUSD
@@ -195,21 +195,9 @@ class UniswapV3RoutingState(RoutingState):
             amount_in=reserve_amount,
             max_slippage=50,  # 50 bps = 0.5%
         )
-        tx = swap_func.build_transaction(
-            {
-                "from": hot_wallet.address,
-                "chainId": web3.eth.chain_id,
-                "gas": 350_000,  # estimate max 350k gas per swap
-            }
+        return self.get_signed_tx(
+            swap_func, hot_wallet, web3
         )
-        tx = fill_nonce(web3, tx)
-        gas_fees = estimate_gas_fees(web3)
-        apply_gas(tx, gas_fees)
-
-        # sign
-        signed_tx = hot_wallet.sign_transaction(tx)
-
-        return [signed_tx]
 
     def trade_on_router_three_way(self,
             uniswap: UniswapV3Deployment,
@@ -228,6 +216,15 @@ class UniswapV3RoutingState(RoutingState):
 
         web3 = self.web3
         hot_wallet = self.tx_builder.hot_wallet
+
+        # different pairs on Uniswap v3 can have different fees, so we need to get the fee dynamically every time like this
+        fee1 = intermediary_pair.fee
+        fee2 = target_pair.fee
+        print("trading fee is: ", fee1) # TODO remove
+        print("trading fee is: ", fee2)
+
+        assert fee1 is not None, "trading fee not given to tp identifier"
+        assert fee2 is not None, "trading fee not given to tp identifier"
 
         # Check we can chain two pairs
         assert intermediary_pair.base == target_pair.quote, f"Could not hop from intermediary {intermediary_pair} -> destination {target_pair}"
@@ -259,13 +256,30 @@ class UniswapV3RoutingState(RoutingState):
             recipient_address=hot_wallet.address,
             base_token=base_token,
             quote_token=quote_token,
+            pool_fees=[fee1, fee2],
             amount_in=reserve_amount,
             max_slippage=max_slippage * 100,  # In BPS,
             intermediate_token=intermediary_token,
         )
 
-        tx = self.tx_builder.sign_transaction(bound_swap_func, self.swap_gas_limit)
-        return [tx]
+        return self.get_signed_tx(
+            bound_swap_func, hot_wallet, web3
+        )
+
+    # TODO Rename this here and in `trade_on_router_two_way` and `trade_on_router_three_way`
+    def get_signed_tx(self, swap_func, hot_wallet, web3):
+        tx = swap_func.build_transaction(
+            {
+                "from": hot_wallet.address,
+                "chainId": web3.eth.chain_id,
+                "gas": self.swap_gas_limit,
+            }
+        )
+        tx = fill_nonce(web3, tx)
+        gas_fees = estimate_gas_fees(web3)
+        apply_gas(tx, gas_fees)
+        signed_tx = hot_wallet.sign_transaction(tx)
+        return [signed_tx]
 
 class UniswapV3SimpleRoutingModel(RoutingModel):
     """A simple router that does not optimise the trade execution cost. Designed for uniswap-v2 forks.
@@ -277,13 +291,13 @@ class UniswapV3SimpleRoutingModel(RoutingModel):
     """
 
     def __init__(self,
-                 factory_router_map: Dict[str, Tuple[str, Optional[str]]],
+                 address_map: Dict[str, HexAddress],
                  allowed_intermediary_pairs: Dict[str, str],
                  reserve_token_address: str,
                  chain_id: Optional[ChainId] = None,
                  ):
         """
-        :param factory_router_map:
+        :param address_map:
             Defines router smart contracts to be used with each DEX.
             Each Uniswap v2 is uniquely identified by its factory contract.
             Addresses always lowercase.
@@ -308,7 +322,7 @@ class UniswapV3SimpleRoutingModel(RoutingModel):
             Lowercase.
         """
 
-        assert type(factory_router_map) == dict
+        assert type(address_map) == dict
         assert type(allowed_intermediary_pairs) == dict
         assert type(reserve_token_address) == str
 
@@ -316,7 +330,7 @@ class UniswapV3SimpleRoutingModel(RoutingModel):
 
         # Convert all key addresses to lowercase to
         # avoid mix up with Ethereum address checksums
-        self.factory_router_map = {k.lower(): v for k, v in factory_router_map.items()}
+        self.address_map = {k.lower(): v for k, v in address_map.items()}
         self.allowed_intermediary_pairs = {k.lower(): v.lower() for k, v in allowed_intermediary_pairs.items()}
         self.reserve_token_address = reserve_token_address
         self.chain_id = chain_id
@@ -341,7 +355,7 @@ class UniswapV3SimpleRoutingModel(RoutingModel):
         :return:
             List of approval transactions (if any needed)
         """
-        uniswap = routing_state.get_uniswap_for_pair(self.factory_router_map, target_pair)
+        uniswap = routing_state.get_uniswap_for_pair(self.address_map, target_pair)
         token_address = reserve_asset.address
         txs = routing_state.ensure_token_approved(token_address, uniswap.router.address)
         txs += routing_state.trade_on_router_two_way(
@@ -368,7 +382,7 @@ class UniswapV3SimpleRoutingModel(RoutingModel):
         :return:
             List of approval transactions (if any needed)
         """
-        uniswap = routing_state.get_uniswap_for_pair(self.factory_router_map, target_pair)
+        uniswap = routing_state.get_uniswap_for_pair(self.address_map, target_pair)
         token_address = reserve_asset.address
         txs = routing_state.ensure_token_approved(token_address, uniswap.router.address)
         txs += routing_state.trade_on_router_three_way(
@@ -443,8 +457,7 @@ class UniswapV3SimpleRoutingModel(RoutingModel):
                 check_balances=check_balances,
             )
 
-    def route_pair(self, pair_universe: PandasPairUniverse, trading_pair: TradingPairIdentifier) \
-            -> Tuple[TradingPairIdentifier, Optional[TradingPairIdentifier]]:
+    def route_pair(self, pair_universe: PandasPairUniverse, trading_pair: TradingPairIdentifier) -> Tuple[TradingPairIdentifier, Optional[TradingPairIdentifier]]:
         """Return Uniswap routing information (path components) for a trading pair.
 
         For three-way pairs, figure out the intermedia step.
@@ -473,11 +486,10 @@ class UniswapV3SimpleRoutingModel(RoutingModel):
         dex_pair = pair_universe.get_pair_by_smart_contract(intermediate_pair_contract_address)
         assert dex_pair is not None, f"Pair universe did not contain pair for a pair contract address {intermediate_pair_contract_address}, quote token is {trading_pair.quote}"
 
-        intermediate_pair = translate_trading_pair(dex_pair)
-        if not intermediate_pair:
+        if intermediate_pair := translate_trading_pair(dex_pair):
+            return trading_pair, intermediate_pair
+        else:
             raise CannotRouteTrade(f"Universe does not have a trading pair with smart contract address {intermediate_pair_contract_address}")
-
-        return trading_pair, intermediate_pair
 
     def route_trade(self, pair_universe: PandasPairUniverse, trade: TradeExecution) -> Tuple[TradingPairIdentifier, Optional[TradingPairIdentifier]]:
         """Figure out how to map an abstract trade to smart contracts.
@@ -625,7 +637,7 @@ class UniswapV3SimpleRoutingModel(RoutingModel):
         """
 
         logger.info("Routing details")
-        for factory, router in self.factory_router_map.items():
+        for factory, router in self.address_map.items():
             logger.info("  Factory %s uses router %s", factory, router[0])
 
         reserve = self.get_reserve_asset(pair_universe)
@@ -649,18 +661,24 @@ def route_tokens(
         Web3.toChecksumAddress(trading_pair.quote.address))
 
 
-def get_uniswap_for_pair(web3: Web3, factory_router_map: dict, target_pair: TradingPairIdentifier) -> UniswapV3Deployment:
+def get_uniswap_for_pair(web3: Web3, address_map: dict, target_pair: TradingPairIdentifier) -> UniswapV3Deployment:
     """Get a router for a trading pair."""
     assert target_pair.exchange_address, f"Exchange address missing for {target_pair}"
+    
     factory_address = Web3.toChecksumAddress(target_pair.exchange_address)
-    router_address, init_code_hash = factory_router_map[factory_address.lower()]
+    assert factory_address == Web3.toChecksumAddress(address_map["factory"]), "address_map[\"factory\"] and target_pair.exchange_address should be equal"
+    
+    router_address = Web3.toChecksumAddress(address_map["router"])
+    position_manager_address = Web3.toChecksumAddress(address_map["position_manager"])
+    quoter_address = Web3.toChecksumAddress(address_map["quoter"])
 
     try:
         return fetch_deployment(
             web3,
             factory_address,
-            Web3.toChecksumAddress(router_address),
-            init_code_hash=init_code_hash,
+            router_address,
+            position_manager_address,
+            quoter_address
         )
     except ContractLogicError as e:
         raise RuntimeError(f"Could not fetch deployment data for router address {router_address} (factory {factory_address}) - data is likely wrong") from e
