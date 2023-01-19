@@ -11,7 +11,8 @@ from eth_defi.abi import get_deployed_contract
 from eth_defi.gas import estimate_gas_fees
 from eth_defi.hotwallet import HotWallet
 from eth_defi.uniswap_v3.deployment import UniswapV3Deployment
-from eth_defi.uniswap_v3.price import estimate_buy_quantity, estimate_sell_price
+from eth_defi.uniswap_v3.price import UniswapV3PriceHelper
+
 from tradeexecutor.ethereum.execution import broadcast_and_resolve
 from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.ethereum.uniswap_v3_routing import UniswapV3SimpleRoutingModel, UniswapV3RoutingState
@@ -40,6 +41,8 @@ class EthereumTestTraderUniswapV3:
 
         self.native_token_price = 1
         self.confirmation_block_count = 0
+        
+        self.price_helper = UniswapV3PriceHelper(uniswap)
 
     def execute(self, trades: List[TradeExecution]):
         execute_trades_simple(
@@ -56,7 +59,14 @@ class EthereumTestTraderUniswapV3:
         # Estimate buy price
         base_token = get_deployed_contract(self.web3, "ERC20MockDecimals.json", Web3.toChecksumAddress(pair.base.address))
         quote_token = get_deployed_contract(self.web3, "ERC20MockDecimals.json", Web3.toChecksumAddress(pair.quote.address))
-        raw_assumed_quantity = estimate_buy_quantity(self.uniswap, base_token, quote_token, amount_in_usd * (10 ** pair.quote.decimals))
+        
+        # TODO see estimate_buy_quantity in eth_defi/uniswap_v2/fees
+        raw_assumed_quantity = self.price_helper.get_amount_out(
+            amount_in_usd * (10 ** pair.quote.decimals),
+            [quote_token.address, base_token.address],
+            [pair.fee]
+        )
+        
         assumed_quantity = Decimal(raw_assumed_quantity) / Decimal(10**pair.base.decimals)
         assumed_price = amount_in_usd / assumed_quantity
 
@@ -78,12 +88,19 @@ class EthereumTestTraderUniswapV3:
         """Sell token token (trading pair) for a certain quantity."""
 
         assert isinstance(quantity, Decimal)
-
+        
         base_token = get_deployed_contract(self.web3, "ERC20MockDecimals.json", Web3.toChecksumAddress(pair.base.address))
         quote_token = get_deployed_contract(self.web3, "ERC20MockDecimals.json", Web3.toChecksumAddress(pair.quote.address))
 
         raw_quantity = int(quantity * 10**pair.base.decimals)
-        raw_assumed_quote_token = estimate_sell_price(self.uniswap, base_token, quote_token, raw_quantity)
+        
+        # TODO see estimate_sell_price() in eth_defi/uniswap_v2/fees.py
+        raw_assumed_quote_token = self.price_helper.get_amount_out(
+            raw_quantity,
+            [base_token.address, quote_token.address],
+            [pair.fee]
+        )
+        
         assumed_quota_token = Decimal(raw_assumed_quote_token) / Decimal(10**pair.quote.decimals)
 
         # assumed_price = quantity / assumed_quota_token
@@ -137,8 +154,11 @@ def execute_trades_simple(
 
     # We know only about one exchange
     routing_model = UniswapV3SimpleRoutingModel(
-        factory_router_map={
-            uniswap.factory.address: (uniswap.router.address, uniswap.init_code_hash),
+        address_map={
+            "factory": uniswap.factory.address,
+            "router": uniswap.swap_router.address,
+            "position_manager": uniswap.position_manager.address,
+            "quoter": uniswap.quoter.address
         },
         allowed_intermediary_pairs={},
         reserve_token_address=reserve_asset.address,
