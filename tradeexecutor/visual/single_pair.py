@@ -14,7 +14,7 @@ from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.visualisation import Visualisation, Plot
 from tradingstrategy.candle import GroupedCandleUniverse
-from tradingstrategy.charting.candle_chart import visualise_ohlcv
+from tradingstrategy.charting.candle_chart import visualise_ohlcv, make_candle_labels
 
 logger = logging.getLogger(__name__)
 
@@ -559,8 +559,13 @@ def visualise_single_pair(
 
     if first_trade:
         pair_name = f"{first_trade.pair.base.token_symbol} - {first_trade.pair.quote.token_symbol}"
+        pair = first_trade.pair
+        base_token = pair.base.token_symbol
+        quote_token = pair.quote.token_symbol
     else:
         pair_name = None
+        base_token = None
+        quote_token = None
 
     if not start_at:
         # No trades made, use the first candle timestamp
@@ -597,6 +602,12 @@ def visualise_single_pair(
         axes_text = None
         volume_text = None
 
+    labels = make_candle_labels(
+        candles,
+        base_token_name=base_token,
+        quote_token_name=quote_token,
+    )
+
     fig = visualise_ohlcv(
         candles,
         height=height,
@@ -604,6 +615,7 @@ def visualise_single_pair(
         chart_name=title_text,
         y_axis_name=axes_text,
         volume_axis_name=volume_text,
+        labels=labels,
     )
 
     visualise_technical_indicators(
