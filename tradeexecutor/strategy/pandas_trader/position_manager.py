@@ -233,6 +233,7 @@ class PositionManager:
             reserve_currency_price=reserve_price,
             lp_fees_estimated=price_structure.lp_fee,
             pair_fee=price_structure.pair_fee,
+            planned_mid_price=price_structure.mid_price,
         )
 
         assert created, f"There was conflicting open position for pair: {executor_pair}"

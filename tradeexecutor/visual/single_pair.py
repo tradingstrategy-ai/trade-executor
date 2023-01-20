@@ -23,38 +23,60 @@ logger = logging.getLogger(__name__)
 def export_trade_for_dataframe(p: Portfolio, t: TradeExecution) -> dict:
     """Export data for a Pandas dataframe presentation"""
 
-    def add_text(t: TradeExecution, text: str):
-        fees_paid = t.get_fees_paid()
-        fees_label = f"${fees_paid:,.2f}" if fees_paid is not None else "None"
-        return f"{text} <br>Swap fee: {fees_label}"
-
     position = p.get_position_by_id(t.position_id)
 
+    price_prefix = f"{t.pair.base.token_symbol} / USD"
+
     if t.is_failed():
-        label = f"Failed trade"
+        label = [f"Failed trade"]
         type = "failed"
     else:
         if t.is_sell():
             if t.is_stop_loss():
-                label = f"Stop loss {t.pair.base.token_symbol} @ {t.executed_price}. Stop loss trigger was at {position.stop_loss}."
+                label = [f"Stop loss {t.pair.base.token_symbol}", "", f"Trigger was at {position.stop_loss} {price_prefix}"]
                 type = "stop-loss"
             else:
-                label = f"Sell {t.pair.base.token_symbol} @ {t.executed_price}"
+                label = [f"Sell {t.pair.base.token_symbol}"]
                 type = "sell"
         else:
             if t.is_take_profit():
                 type = "take-profit"
-                label = f"Take profit {t.pair.base.token_symbol} @ {t.executed_price}. Take profit trigger was at {position.take_profit}."
+                label = [f"Take profit {t.pair.base.token_symbol}", "", "Trigger was at {position.take_profit} {price_prefix}"]
             else:
                 type = "buy"
-                label = f"Buy {t.pair.base.token_symbol} @ {t.executed_price}"
+                label = [f"Buy {t.pair.base.token_symbol}"]
+
+        label += [
+            "",
+            f"Value: {t.get_value()} USD",
+            f"Quantity: {t.get_position_quantity()} {t.pair.base.token_symbol}",
+            "",
+        ]
+
+        label += [
+            f"Executed at: {t.executed_at}",
+            f"Mid-price: {t.planned_mid_price} {price_prefix}",
+            f"Executed at price: {t.executed_price} {price_prefix}",
+            f"Estimated execution price: {t.planned_price} {price_prefix}",
+            "",
+        ]
+
+        if t.lp_fees_estimated is not None:
+            realised_fees = abs(1 - t.planned_mid_price / t.executed_price)
+            label += [
+                f"Fees paid: {t.get_fees_paid()} USD",
+                f"Fees planned: {t.lp_fees_estimated} USD",
+                f"Fees planned: {t.lp_fees_estimated} USD",
+                f"Realised fee: {realised_fees}%",
+                ""
+            ]
 
     # See Plotly Scatter usage https://stackoverflow.com/a/61349739/315168
     return {
         "timestamp": t.executed_at,
         "success": t.is_success(),
         "type": type,
-        "label": add_text(t,label),
+        "label": "<br>".join(label),
         "price": t.executed_price,
     }
 

@@ -100,13 +100,16 @@ class TradeExecution:
 
     #: What we thought the execution price for this trade would have been
     #: at the moment of strategy decision.
-    planned_price: USDollarAmount
+    planned_price: USDollarPrice
 
     #: Which reserve currency we are going to take.
     #: Note that pair.quote might be different from reserve currency.
     #: This is because we can do three-way trades like BUSD -> BNB -> Cake
     #: when our routing model supports this.
     reserve_currency: AssetIdentifier
+
+    #: What we thought was the mid-price when we made the decision to tale this trade
+    planned_mid_price: Optional[USDollarPrice] = None
 
     #: How much slippage we could initially tolerate,
     #: 0.01 is 1% slippage.
@@ -129,7 +132,7 @@ class TradeExecution:
     failed_at: Optional[datetime.datetime] = None
 
     #: What was the actual price we received
-    executed_price: Optional[USDollarAmount] = None
+    executed_price: Optional[USDollarPrice] = None
 
     #: How much underlying token we traded, the actual realised amount.
     #: Positive for buy, negative for sell
