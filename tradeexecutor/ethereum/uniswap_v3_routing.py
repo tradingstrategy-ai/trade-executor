@@ -16,6 +16,7 @@ from eth_defi.token import fetch_erc20_details
 from eth_defi.uniswap_v3.deployment import UniswapV3Deployment, fetch_deployment
 from eth_defi.uniswap_v3.swap import swap_with_slippage_protection
 from eth_defi.gas import apply_gas
+from eth_defi.hotwallet import HotWallet
 from web3.exceptions import ContractLogicError
 from web3._utils.transactions import fill_nonce
 
@@ -266,8 +267,7 @@ class UniswapV3RoutingState(RoutingState):
             bound_swap_func, hot_wallet, web3
         )
 
-    # TODO Rename this here and in `trade_on_router_two_way` and `trade_on_router_three_way`
-    def get_signed_tx(self, swap_func, hot_wallet, web3):
+    def get_signed_tx(self, swap_func, hot_wallet: HotWallet, web3: Web3):
         tx = swap_func.build_transaction(
             {
                 "from": hot_wallet.address,
@@ -278,7 +278,7 @@ class UniswapV3RoutingState(RoutingState):
         tx = fill_nonce(web3, tx)
         gas_fees = estimate_gas_fees(web3)
         apply_gas(tx, gas_fees)
-        signed_tx = hot_wallet.sign_transaction(tx)
+        signed_tx = hot_wallet.sign_transaction_with_new_nonce(tx)
         return [signed_tx]
 
 class UniswapV3SimpleRoutingModel(RoutingModel):
@@ -357,7 +357,7 @@ class UniswapV3SimpleRoutingModel(RoutingModel):
         """
         uniswap = routing_state.get_uniswap_for_pair(self.address_map, target_pair)
         token_address = reserve_asset.address
-        txs = routing_state.ensure_token_approved(token_address, uniswap.router.address)
+        txs = routing_state.ensure_token_approved(token_address, uniswap.swap_router.address)
         txs += routing_state.trade_on_router_two_way(
             uniswap,
             target_pair,
