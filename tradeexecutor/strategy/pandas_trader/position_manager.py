@@ -307,6 +307,7 @@ class PositionManager:
                 trade_type=TradeType.rebalance,
                 reserve_currency=self.reserve_currency,
                 reserve_currency_price=reserve_price,
+                planned_mid_price=price_structure.mid_price,
             )
         else:
             # Sell
@@ -333,6 +334,7 @@ class PositionManager:
                 trade_type=TradeType.rebalance,
                 reserve_currency=self.reserve_currency,
                 reserve_currency_price=reserve_price,
+                planned_mid_price=price_structure.mid_price,
             )
 
         return [trade]
@@ -391,6 +393,7 @@ class PositionManager:
             notes=notes,
             pair_fee=price_structure.pair_fee,
             lp_fees_estimated=price_structure.lp_fee,
+            planned_mid_price=price_structure.mid_price,
         )
         assert position == position2, "Somehow messed up the trade"
 

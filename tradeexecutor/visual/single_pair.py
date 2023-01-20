@@ -6,7 +6,7 @@ from typing import Optional, Union, List
 
 import plotly.graph_objects as go
 import pandas as pd
-from plotly.graph_objs.layout import Annotation, Shape
+from plotly.graph_objs.layout import Annotation
 
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.position import TradingPosition
@@ -15,7 +15,6 @@ from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.visualisation import Visualisation, Plot
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.charting.candle_chart import visualise_ohlcv
-from tradingstrategy.utils.summarydataframe import as_dollar
 
 logger = logging.getLogger(__name__)
 
@@ -27,49 +26,54 @@ def export_trade_for_dataframe(p: Portfolio, t: TradeExecution) -> dict:
 
     price_prefix = f"{t.pair.base.token_symbol} / USD"
 
+    label = [f"Executed at: {t.executed_at}", ""]
+
     if t.is_failed():
-        label = [f"Failed trade"]
+        label += [f"Failed trade"]
         type = "failed"
     else:
         if t.is_sell():
             if t.is_stop_loss():
-                label = [f"Stop loss {t.pair.base.token_symbol}", "", f"Trigger was at {position.stop_loss} {price_prefix}"]
+                label += [f"Stop loss {t.pair.base.token_symbol}", "", f"Trigger was at {position.stop_loss:.4f} {price_prefix}"]
                 type = "stop-loss"
             else:
-                label = [f"Sell {t.pair.base.token_symbol}"]
+                label += [f"Sell {t.pair.base.token_symbol}"]
                 type = "sell"
         else:
             if t.is_take_profit():
                 type = "take-profit"
-                label = [f"Take profit {t.pair.base.token_symbol}", "", "Trigger was at {position.take_profit} {price_prefix}"]
+                label = [f"Take profit {t.pair.base.token_symbol}", "", "Trigger was at {position.take_profit:.4f} {price_prefix}"]
             else:
                 type = "buy"
                 label = [f"Buy {t.pair.base.token_symbol}"]
 
         label += [
             "",
-            f"Value: {t.get_value()} USD",
+            f"Value: {t.get_value():.4f} USD",
             f"Quantity: {t.get_position_quantity()} {t.pair.base.token_symbol}",
             "",
         ]
 
         label += [
-            f"Executed at: {t.executed_at}",
-            f"Mid-price: {t.planned_mid_price} {price_prefix}",
-            f"Executed at price: {t.executed_price} {price_prefix}",
-            f"Estimated execution price: {t.planned_price} {price_prefix}",
+            f"Mid-price: {t.planned_mid_price:.4f} {price_prefix}" if t.planned_mid_price else "",
+            f"Executed at price: {t.executed_price:.4f} {price_prefix}",
+            f"Estimated execution price: {t.planned_price:.4f} {price_prefix}",
             "",
         ]
 
         if t.lp_fees_estimated is not None:
-            realised_fees = abs(1 - t.planned_mid_price / t.executed_price)
-            label += [
-                f"Fees paid: {t.get_fees_paid()} USD",
-                f"Fees planned: {t.lp_fees_estimated} USD",
-                f"Fees planned: {t.lp_fees_estimated} USD",
-                f"Realised fee: {realised_fees}%",
-                ""
-            ]
+            if t.executed_price and t.planned_mid_price:
+                realised_fees = abs(1 - t.planned_mid_price / t.executed_price)
+                label += [
+                    f"Fees paid: {t.get_fees_paid():.4f} USD",
+                    f"Fees planned: {t.lp_fees_estimated:.4f} USD",
+                    f"Fees realised: {realised_fees:.4f} %"
+                ]
+            else:
+                label += [
+                    f"Fees paid: {t.get_fees_paid():.4f} USD",
+                    f"Fees planned: {t.lp_fees_estimated:.4f} USD",
+                ]
 
     # See Plotly Scatter usage https://stackoverflow.com/a/61349739/315168
     return {
@@ -77,14 +81,14 @@ def export_trade_for_dataframe(p: Portfolio, t: TradeExecution) -> dict:
         "success": t.is_success(),
         "type": type,
         "label": "<br>".join(label),
-        "price": t.executed_price,
+        "price": t.planned_price if t.planned_mid_price else t.planned_price,
     }
 
 
 def export_trades_as_dataframe(
         portfolio: Portfolio,
-        start: Optional[pd.Timestamp]=None,
-        end: Optional[pd.Timestamp]=None,
+        start: Optional[pd.Timestamp] = None,
+        end: Optional[pd.Timestamp] = None,
 ) -> pd.DataFrame:
     """Convert executed trades to a dataframe, so it is easier to work with them in Plotly.
 
@@ -220,6 +224,7 @@ def visualise_trades(
             y=buys_df["price"],
             text=buys_df["label"],
             marker={"symbol": 'triangle-right', "size": 12, "line": {"width": 2, "color": "black"}},
+            hoverinfo="text",
         ),
         secondary_y=False,
     )
@@ -232,7 +237,8 @@ def visualise_trades(
             x=sells_df["timestamp"],
             y=sells_df["price"],
             text=sells_df["label"],
-            marker={"symbol": 'triangle-left', "size": 12, "line": {"width": 2, "color": "black"}}
+            marker={"symbol": 'triangle-left', "size": 12, "line": {"width": 2, "color": "black"}},
+            hoverinfo="text",
         ),
         secondary_y=False,
     )
@@ -245,7 +251,8 @@ def visualise_trades(
                 x=stop_loss_df["timestamp"],
                 y=stop_loss_df["price"],
                 text=stop_loss_df["label"],
-                marker={"symbol": 'triangle-left', "size": 12, "line": {"width": 2, "color": "black"}}
+                marker={"symbol": 'triangle-left', "size": 12, "line": {"width": 2, "color": "black"}},
+                hoverinfo="text",
             ),
             secondary_y=False,
         )
@@ -258,7 +265,8 @@ def visualise_trades(
                 x=take_profit_df["timestamp"],
                 y=take_profit_df["price"],
                 text=take_profit_df["label"],
-                marker={"symbol": 'triangle-left', "size": 12, "line": {"width": 2, "color": "black"}}
+                marker={"symbol": 'triangle-left', "size": 12, "line": {"width": 2, "color": "black"}},
+                hoverinfo="text",
             ),
             secondary_y=False,
         )
