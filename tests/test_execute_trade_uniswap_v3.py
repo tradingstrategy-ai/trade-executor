@@ -177,12 +177,24 @@ def weth_usdc_uniswap_trading_pair(web3, deployer, uniswap_v3, weth_token, usdc_
 
 @pytest.fixture
 def weth_usdc_pair(uniswap_v3, weth_usdc_uniswap_trading_pair, asset_usdc, asset_weth) -> TradingPairIdentifier:
-    return TradingPairIdentifier(asset_weth, asset_usdc, weth_usdc_uniswap_trading_pair, uniswap_v3.factory.address)
+    return TradingPairIdentifier(
+        asset_weth, 
+        asset_usdc, 
+        weth_usdc_uniswap_trading_pair, 
+        uniswap_v3.factory.address,
+        fee = WETH_USDC_FEE
+    )
 
 
 @pytest.fixture
 def aave_usdc_pair(uniswap_v3, aave_usdc_uniswap_trading_pair, asset_usdc, asset_aave) -> TradingPairIdentifier:
-    return TradingPairIdentifier(asset_aave, asset_usdc, aave_usdc_uniswap_trading_pair, uniswap_v3.factory.address)
+    return TradingPairIdentifier(
+        asset_aave, 
+        asset_usdc, 
+        aave_usdc_uniswap_trading_pair, 
+        uniswap_v3.factory.address,
+        fee = AAVE_USDC_FEE
+    )
 
 
 @pytest.fixture
