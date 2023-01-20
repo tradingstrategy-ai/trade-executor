@@ -31,6 +31,7 @@ from statistics import median
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.trade import TradeExecution, TradeType
+from tradeexecutor.state.types import USDollarPrice
 from tradeexecutor.utils.format import calculate_percentage
 from tradeexecutor.utils.timestamp import json_encode_timedelta, json_decode_timedelta
 from tradingstrategy.timebucket import TimeBucket
@@ -41,6 +42,7 @@ from tradingstrategy.types import PrimaryKey, USDollarAmount
 from tradingstrategy.utils.format import format_value, format_price, format_duration_days_hours_mins, \
     format_percent_2_decimals
 from tradingstrategy.utils.summarydataframe import as_dollar, as_integer, create_summary_table, as_percent, as_duration, as_bars
+
 
 logger = logging.getLogger(__name__)
 
@@ -61,8 +63,10 @@ class SpotTrade:
     #: When this trade was made, the backtes simulation thick
     timestamp: pd.Timestamp
 
-    #: Asset price at buy in
-    price: USDollarAmount
+    #: Asset mid-price
+    price: USDollarPrice
+
+    executed_price: USDollarPrice
 
     #: How much we bought the asset. Negative value for sells.
     quantity: float
@@ -99,7 +103,7 @@ class SpotTrade:
 
     @property
     def value(self) -> USDollarAmount:
-        return abs(self.price * float(self.quantity))
+        return abs(self.executed_price * float(self.quantity))
 
 
 @dataclass
@@ -141,7 +145,6 @@ class TradePosition:
         """Allows easily create index (hash map) of all positions"""
         return hash((self.position_id))
 
-    
     @property
     def pair_id(self) -> PrimaryKey:
         """Position id is the same as the opening trade id."""
@@ -221,7 +224,7 @@ class TradePosition:
     def realised_profit(self) -> USDollarAmount:
         """Calculated life-time profit over this position."""
         assert not self.is_open()
-        return -sum([float(t.quantity) * t.price - t.commission for t in self.trades])
+        return -sum([float(t.quantity) * t.executed_price - t.commission for t in self.trades])
 
     @property
     def realised_profit_percent(self) -> float:
@@ -321,7 +324,6 @@ class AssetTradeHistory:
         current_position = None
         if self.positions and self.positions[-1].is_open():
             current_position = self.positions[-1]
-
 
         if current_position:
             # For live trading
@@ -810,7 +812,8 @@ class TimelineStyler:
             styles = styles.apply(self.colour_timelime_row_simple, axis=1)
 
         return styles
-    
+
+
 def expand_timeline(
         exchanges: Set[Exchange],
         pair_universe: PandasPairUniverse,
@@ -874,14 +877,14 @@ def expand_timeline(
             "Exchange": exchange.name,
             "Base asset": pair_info.base_token_symbol,
             "Quote asset": pair_info.quote_token_symbol,
-            "Position max size": format_value(position.get_max_size()),
+            "Position max value": format_value(position.get_max_size()),
             "PnL USD": format_value(position.realised_profit) if position.is_closed() else np.nan,
             "PnL %": format_percent_2_decimals(position.realised_profit_percent) if position.is_closed() else np.nan,
             "PnL % raw": position.realised_profit_percent if position.is_closed() else 0,
-            "Open price USD": format_price(position.open_price),
-            "Close price USD": format_price(position.close_price) if position.is_closed() else np.nan,
+            "Open mid price USD": format_price(position.open_price),
+            "Close mid price USD": format_price(position.close_price) if position.is_closed() else np.nan,
             "Trade count": position.get_trade_count(),
-            "Total swap fees": f"${position.get_total_lp_fees_paid():,.2f}"
+            "LP fees": f"${position.get_total_lp_fees_paid():,.2f}"
         }
         return r
 
@@ -904,6 +907,7 @@ def expand_timeline(
     )
 
     return applied_df, styling
+
 
 def expand_timeline_raw(
         timeline: pd.DataFrame,
@@ -956,6 +960,7 @@ def expand_timeline_raw(
 
         return applied_df
 
+
 def build_trade_analysis(portfolio: Portfolio) -> TradeAnalysis:
     """Build a trade analysis from list of positions.
 
@@ -999,11 +1004,10 @@ def build_trade_analysis(portfolio: Portfolio) -> TradeAnalysis:
             # Internally negative quantities are for sells
             quantity = trade.executed_quantity
             timestamp = pd.Timestamp(trade.executed_at)
-            price = trade.executed_price
+            price = trade.planned_mid_price
 
             # print("Got event", event, status)
             assert quantity != 0, f"Got bad quantity for {trade}"
-            # import ipdb ; ipdb.set_trace()
             assert price > 0, f"Got invalid trade {trade}"
 
             spot_trade = SpotTrade(
@@ -1011,6 +1015,7 @@ def build_trade_analysis(portfolio: Portfolio) -> TradeAnalysis:
                 trade_id=trade.trade_id,
                 timestamp=timestamp,
                 price=price,
+                executed_price=trade.executed_price,
                 quantity=quantity,
                 commission=0,
                 slippage=0,  # TODO
