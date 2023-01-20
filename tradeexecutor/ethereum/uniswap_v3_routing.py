@@ -196,9 +196,8 @@ class UniswapV3RoutingState(RoutingState):
             amount_in=reserve_amount,
             max_slippage=50,  # 50 bps = 0.5%
         )
-        return self.get_signed_tx(
-            swap_func, hot_wallet, web3
-        )
+        
+        return self.get_signed_tx(swap_func, self.swap_gas_limit)
 
     def trade_on_router_three_way(self,
             uniswap: UniswapV3Deployment,
@@ -262,12 +261,18 @@ class UniswapV3RoutingState(RoutingState):
             max_slippage=max_slippage * 100,  # In BPS,
             intermediate_token=intermediary_token,
         )
+        
+        return self.get_signed_tx(bound_swap_func, self.swap_gas_limit)
 
-        return self.get_signed_tx(
-            bound_swap_func, hot_wallet, web3
+    def get_signed_tx(self, swap_func, gas_limit):
+        signed_tx = self.tx_builder.sign_transaction(
+            swap_func, gas_limit
         )
-
-    def get_signed_tx(self, swap_func, hot_wallet: HotWallet, web3: Web3):
+        return [signed_tx]
+    
+    # Don't use, rather get_signed_tx or self.tx_builder.sign_transaction...
+    # TODO remove
+    def _get_signed_tx(self, swap_func, hot_wallet: HotWallet, web3):
         tx = swap_func.build_transaction(
             {
                 "from": hot_wallet.address,
