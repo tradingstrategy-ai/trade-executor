@@ -100,6 +100,11 @@ class TradeExecution:
 
     #: What we thought the execution price for this trade would have been
     #: at the moment of strategy decision.
+    #:
+    #: This price includes any fees we pay for LPs,
+    #: and should become executed_price if the execution is perfect.
+    #:
+    #: For the market price see :py:attr:`planned_mid_price`.
     planned_price: USDollarPrice
 
     #: Which reserve currency we are going to take.
@@ -109,6 +114,8 @@ class TradeExecution:
     reserve_currency: AssetIdentifier
 
     #: What we thought was the mid-price when we made the decision to tale this trade
+    #:
+    #: This is the market price of the asset at the time of the trade decision.
     planned_mid_price: Optional[USDollarPrice] = None
 
     #: How much slippage we could initially tolerate,

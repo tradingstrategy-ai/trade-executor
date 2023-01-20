@@ -20,13 +20,16 @@ logger = logging.getLogger(__name__)
 
 
 def export_trade_for_dataframe(p: Portfolio, t: TradeExecution) -> dict:
-    """Export data for a Pandas dataframe presentation"""
+    """Export data for a Pandas dataframe presentation.
+
+    - Decimal roundings are based on rule of thumb and may need to be tuned
+    """
 
     position = p.get_position_by_id(t.position_id)
 
     price_prefix = f"{t.pair.base.token_symbol} / USD"
 
-    label = [f"Executed at: {t.executed_at}", ""]
+    label = []
 
     if t.is_failed():
         label += [f"Failed trade"]
@@ -42,15 +45,16 @@ def export_trade_for_dataframe(p: Portfolio, t: TradeExecution) -> dict:
         else:
             if t.is_take_profit():
                 type = "take-profit"
-                label = [f"Take profit {t.pair.base.token_symbol}", "", "Trigger was at {position.take_profit:.4f} {price_prefix}"]
+                label += [f"Take profit {t.pair.base.token_symbol}", "", "Trigger was at {position.take_profit:.4f} {price_prefix}"]
             else:
                 type = "buy"
-                label = [f"Buy {t.pair.base.token_symbol}"]
+                label += [f"Buy {t.pair.base.token_symbol}"]
 
         label += [
             "",
+            f"Executed at: {t.executed_at}",
             f"Value: {t.get_value():.4f} USD",
-            f"Quantity: {t.get_position_quantity()} {t.pair.base.token_symbol}",
+            f"Quantity: {abs(t.get_position_quantity()):.6f} {t.pair.base.token_symbol}",
             "",
         ]
 
@@ -199,7 +203,6 @@ def visualise_trades(
         trades_df: pd.DataFrame,):
     """Plot individual trades over the candlestick chart."""
 
-
     # If we have used stop loss, do different categories
     advanced_trade_types = ("stop-loss", "take-profit")
     advanced_trades = len(trades_df.loc[trades_df["type"].isin(advanced_trade_types)]) > 0
@@ -223,7 +226,7 @@ def visualise_trades(
             x=buys_df["timestamp"],
             y=buys_df["price"],
             text=buys_df["label"],
-            marker={"symbol": 'triangle-right', "size": 12, "line": {"width": 2, "color": "black"}},
+            marker={"color": "#aaaaff", "symbol": 'triangle-right', "size": 12, "line": {"width": 0, "color": "black"}},
             hoverinfo="text",
         ),
         secondary_y=False,
@@ -237,7 +240,7 @@ def visualise_trades(
             x=sells_df["timestamp"],
             y=sells_df["price"],
             text=sells_df["label"],
-            marker={"symbol": 'triangle-left', "size": 12, "line": {"width": 2, "color": "black"}},
+            marker={"color": "#aaaaff", "symbol": 'triangle-left', "size": 12, "line": {"width": 0, "color": "black"}},
             hoverinfo="text",
         ),
         secondary_y=False,
@@ -251,7 +254,7 @@ def visualise_trades(
                 x=stop_loss_df["timestamp"],
                 y=stop_loss_df["price"],
                 text=stop_loss_df["label"],
-                marker={"symbol": 'triangle-left', "size": 12, "line": {"width": 2, "color": "black"}},
+                marker={"symbol": 'triangle-left', "size": 12, "line": {"width": 0, "color": "black"}},
                 hoverinfo="text",
             ),
             secondary_y=False,
@@ -265,14 +268,13 @@ def visualise_trades(
                 x=take_profit_df["timestamp"],
                 y=take_profit_df["price"],
                 text=take_profit_df["label"],
-                marker={"symbol": 'triangle-left', "size": 12, "line": {"width": 2, "color": "black"}},
+                marker={"symbol": 'triangle-left', "size": 12, "line": {"width": 0, "color": "black"}},
                 hoverinfo="text",
             ),
             secondary_y=False,
         )
 
     return fig
-
 
 
 def get_position_hover_text(p: TradingPosition) -> str:

@@ -71,11 +71,11 @@ class BacktestExecutionModel(ExecutionModel):
 
         if trade.is_buy():
             executed_reserve = trade.planned_reserve
-            executed_quantity = trade.planned_quantity * Decimal(1 - self.lp_fees)
+            executed_quantity = trade.planned_quantity
         else:
             assert position and position.is_open(), f"Tried to execute sell on position that is not open: {trade}"
             executed_quantity = trade.planned_quantity
-            executed_reserve = abs(Decimal(trade.planned_quantity) * Decimal(trade.planned_price) * Decimal(1 + self.lp_fees))
+            executed_reserve = abs(Decimal(trade.planned_quantity) * Decimal(trade.planned_price))
         try:
             if trade.is_buy():
                 self.wallet.update_balance(reserve.address, -executed_reserve)
