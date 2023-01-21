@@ -41,7 +41,9 @@ class DummyTestTrader:
             assumed_price=price,
             trade_type=TradeType.rebalance,
             reserve_currency=pair.quote,
-            reserve_currency_price=1.0)
+            reserve_currency_price=1.0,
+            planned_mid_price=price,
+        )
 
         self.ts += datetime.timedelta(seconds=1)
         return position, trade

@@ -70,7 +70,9 @@ def weth_usdc(mock_exchange, usdc, weth) -> TradingPairIdentifier:
         generate_random_ethereum_address(),
         mock_exchange.address,
         internal_id=555,
-        internal_exchange_id=mock_exchange.exchange_id)
+        internal_exchange_id=mock_exchange.exchange_id,
+        fee=0.0030
+    )
 
 
 @pytest.fixture(scope="module")
@@ -164,11 +166,12 @@ def test_get_statistics_as_dataframe(state: State):
     assert s.index[-1] == pd.Timestamp('2021-12-31 00:00:00')
 
     # First value by date
-    assert s.loc[pd.Timestamp('2021-06-01 00:00:00')] == 9997.0
+    assert s.loc[pd.Timestamp('2021-06-01 00:00:00')] == 9994.017946161515
 
     # Last value by index
-    assert s.iloc[-1] == 10172.463477344705
+    assert s.iloc[-1] == 9541.619532761046
 
+    # Number of positoins
     assert len(s) == 214
 
 
@@ -182,7 +185,7 @@ def test_calculate_profitability_90_days(state: State):
     profitability_90_days, time_window = calculate_naive_profitability(s, look_back=pd.Timedelta(days=90))
 
     # Calculate last 90 days
-    assert profitability_90_days == pytest.approx(0.007274625902692977)
+    assert profitability_90_days == pytest.approx(-0.019484747529770786)
     assert time_window == pd.Timedelta(days=90)
 
 
@@ -197,7 +200,7 @@ def test_calculate_profitability_overflow_time_window(state: State):
     profitability_10_years, time_window = calculate_naive_profitability(s, look_back=pd.Timedelta(days=10*365))
 
     assert time_window == pd.Timedelta('213 days 00:00:00')
-    assert profitability_10_years == pytest.approx(0.01755161321843604)
+    assert profitability_10_years == pytest.approx(-0.045266920255454)
 
 
 def test_calculate_profitability_empty():
@@ -230,13 +233,13 @@ def test_calculate_all_summary_statistics(state: State):
     assert summary.enough_data
     assert summary.first_trade_at == datetime.datetime(2021, 6, 1, 0, 0)
     assert summary.last_trade_at == datetime.datetime(2021, 12, 31, 0, 0)
-    assert summary.profitability_90_days == pytest.approx(0.007274625902692977)
-    assert summary.current_value == pytest.approx(10172.463477344705)
+    assert summary.profitability_90_days == pytest.approx(-0.019484747529770786)
+    assert summary.current_value == pytest.approx(9541.619532761046)
 
     datapoints = summary.performance_chart_90_days
     assert len(datapoints) == 91
 
     assert datapoints[0] == (datetime.datetime(2021, 10, 2, 0, 0), 0.0)
-    assert datapoints[-1] == (datetime.datetime(2021, 12, 31, 0, 0), 0.007274625902692977 )
+    assert datapoints[-1] == (datetime.datetime(2021, 12, 31, 0, 0), -0.019484747529770786)
 
 

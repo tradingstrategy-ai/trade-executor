@@ -1015,10 +1015,8 @@ def build_trade_analysis(portfolio: Portfolio) -> TradeAnalysis:
             quantity = trade.executed_quantity
             timestamp = pd.Timestamp(trade.executed_at)
             price = trade.planned_mid_price
-
-            # print("Got event", event, status)
             assert quantity != 0, f"Got bad quantity for {trade}"
-            assert price > 0, f"Got invalid trade {trade}"
+            assert price is not None and price > 0, f"Got invalid trade {trade}"
 
             spot_trade = SpotTrade(
                 pair_id=pair_id,
