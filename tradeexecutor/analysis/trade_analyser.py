@@ -25,6 +25,8 @@ from typing import List, Dict, Iterable, Optional, Tuple, Callable, Set
 
 import numpy as np
 import pandas as pd
+from IPython.core.display import HTML
+from IPython.core.display_functions import display
 from dataclasses_json import dataclass_json, Exclude, config
 from statistics import median
 
@@ -118,7 +120,7 @@ class TradePosition:
 
     * Exit (sell optionally)
     """
-    
+
     #: Position id of the trade
     #: Used to be self.trades[0].trade_id
     position_id: int
@@ -412,6 +414,9 @@ class TradeSummary:
         self.end_value = self.open_value + self.uninvested_cash
 
     def to_dataframe(self) -> pd.DataFrame:
+        """Convert the data to a human readable summary table.
+
+        """
         if(self.time_bucket is not None):
             avg_duration_winning = as_bars(self.average_duration_of_winning_trades)
             avg_duration_losing = as_bars(self.average_duration_of_losing_trades)
@@ -464,8 +469,15 @@ class TradeSummary:
         add_prop(self.max_pullback, 'Max pullback of total capital', as_percent)
         add_prop(self.max_loss_risk, 'Max loss risk at opening of position', as_percent)
 
-        return create_summary_table(human_data)
+        df = create_summary_table(human_data)
+        df
+        return df
 
+    def show(self):
+        """Render a summary table in IPython notebook."""
+        with pd.option_context("display.max_row", None):
+            df = self.to_dataframe()
+            display(df.style.set_table_styles([{'selector': 'thead', 'props': [('display', 'none')]}]))
 
 @dataclass
 class TradeAnalysis:
@@ -509,7 +521,7 @@ class TradeAnalysis:
         """Calculate some statistics how our trades went.
 
             :param time_bucket:
-                Optional, used to display average duration as 'number of bars' instead of 'number of days'. 
+                Optional, used to display average duration as 'number of bars' instead of 'number of days'.
 
             :return:
                 TradeSummary instance
@@ -686,11 +698,11 @@ class TradeAnalysis:
         #     max_capital_at_risk_sl = max(((1-stop_loss_pct)*stop_loss_rows['position_max_size'])/stop_loss_rows['opening_capital'])
 
         return self.get_max_consective(raw_timeline)
-    
+
     @staticmethod
     def get_max_consective(positions: List[TradingPosition]) -> tuple[int, int ,int] | tuple[None, None, None]:
         """May be used in calculate_summary_statistics
-        
+
         :param positions:
         An list of trading positions, ordered by opened_at time. Note, must be ordered to be correct.
         """
@@ -706,7 +718,7 @@ class TradeAnalysis:
         pullback = 0
 
         for position in positions:
-            
+
             # don't do anything if profit = $0
             if(position.get_realised_profit_usd() > 0):
                     neg_cons = 0
@@ -716,7 +728,7 @@ class TradeAnalysis:
                     pos_cons = 0
                     neg_cons += 1
                     pullback += position.get_realised_profit_usd()
-            
+
             if(neg_cons > max_neg_cons):
                     max_neg_cons = neg_cons
             if(pos_cons > max_pos_cons):
@@ -728,7 +740,7 @@ class TradeAnalysis:
                     max_pullback_pct = pullback_pct
 
         return max_pos_cons, max_neg_cons, max_pullback_pct
-    
+
 class TimelineRowStylingMode(enum.Enum):
     #: Style using Pandas background_gradient
     gradient = "gradient"

@@ -326,6 +326,7 @@ def get_position_hover_text(p: TradingPosition) -> str:
         ]
 
     text += [
+        f"Entry price: {first_trade.planned_mid_price:.2f} USD (mid price)",
         f"Entry price: {first_trade.planned_price:.2f} USD (expected)",
         f"Entry price: {first_trade.executed_price:.2f} USD (executed)",
         f"Entry slippage: {entry_diff * 100:.4f} %",
@@ -540,7 +541,7 @@ def visualise_single_pair(
         end_at: Optional[Union[pd.Timestamp, datetime.datetime]] = None,
         height=800,
         axes=True,
-        title: Optional[Tuple[str, bool]] = True,
+        title: Union[str, bool] = True,
         theme="plotly_white",
 ) -> go.Figure:
     """Visualise single-pair trade execution.
@@ -565,12 +566,12 @@ def visualise_single_pair(
         Draw axes labels
 
     :param title:
-        Draw chart title.
+        Draw the chart title.
 
         Set to string to give your own name.
 
         Set `True` to use the state name as a title.
-        TODO: Legacy option and will be removed.
+        TODO: True is a legacy option and will be removed.
 
     :param theme:
         Plotly colour scheme to use
@@ -686,7 +687,7 @@ def visualise_single_pair_positions_with_duration_and_slippage(
         end_at: Optional[Union[pd.Timestamp, datetime.datetime]] = None,
         height=800,
         axes=True,
-        title=True,
+        title: Union[bool, str] = True,
         theme="plotly_white",
 ) -> go.Figure:
     """Visualise performance of a live trading strategy.
@@ -722,7 +723,13 @@ def visualise_single_pair_positions_with_duration_and_slippage(
         Draw axes labels
 
     :param title:
-        Draw title labels
+        Draw the chart title.
+
+        Set to string to give your own name.
+
+        Set `True` to use the state name as a title.
+        TODO: True is a legacy option and will be removed.
+
 
     :param theme:
         Plotly colour scheme to use
@@ -772,8 +779,10 @@ def visualise_single_pair_positions_with_duration_and_slippage(
 
     positions = [p for p in state.portfolio.get_all_positions()]
 
-    if title:
+    if title is True:
         title_text = state.name
+    elif type(title) == str:
+        title_text = title
     else:
         title_text = None
 
