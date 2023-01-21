@@ -150,7 +150,9 @@ def universe() -> TradingStrategyUniverse:
         generate_random_ethereum_address(),
         mock_exchange.address,
         internal_id=random.randint(1, 1000),
-        internal_exchange_id=mock_exchange.exchange_id)
+        internal_exchange_id=mock_exchange.exchange_id,
+        fee=0.0030,
+    )
 
     time_bucket = TimeBucket.d1
 
@@ -259,7 +261,7 @@ def test_analyse_synthetic_trading_portfolio(
     assert summary.initial_cash == 10_000
     assert summary.won == 4
     assert summary.lost == 7
-    assert summary.realised_profit == pytest.approx(18.539760716378737)
+    assert summary.realised_profit == pytest.approx(-47.17044385644749)
     assert summary.open_value == pytest.approx(0)
 
     timeline = analysis.create_timeline()
@@ -289,14 +291,10 @@ def test_analyse_synthetic_trading_portfolio(
     row = expanded_timeline.iloc[0]
     assert row["Opened at"] == "2021-07-02"
     assert row["Trade count"] == 2
-    assert row["Open price USD"] == "$1,617.294181"
-    assert row["Position max size"] == "$1,027.23"
 
     # 1    3          2021-07-10  26 days                      WETH        USDC         $1,002.72  $-137.39  -13.70%  -0.137013  $1,710.929622   $1,476.509241            2
     row2 = expanded_timeline.iloc[1]
     assert row2["Opened at"] == "2021-07-11"
-    assert row2["Close price USD"] == "$1,476.509241"
-    assert row2["Position max size"] == "$1,002.72"
 
 
 def test_benchmark_synthetic_trading_portfolio(

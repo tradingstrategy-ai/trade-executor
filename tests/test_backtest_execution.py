@@ -199,14 +199,15 @@ def test_create_and_execute_backtest_trade(
 
     assert trade.is_buy()
     assert trade.get_status() == TradeStatus.success
-    assert trade.executed_price == pytest.approx(355.375728014120)
+    assert trade.executed_price == pytest.approx(354.3096008300781)
+    assert trade.planned_mid_price == pytest.approx(354.3096008300781)
 
     # We bought around 3 BNB
-    assert position.get_quantity() == pytest.approx(Decimal('2.813923183747276159258725343'))
+    assert position.get_quantity() == pytest.approx(Decimal('2.822390354811711300681127340'))
 
     # Check our wallet was credited
     assert wallet.get_balance(busd.address) == 9_000
-    assert wallet.get_balance(wbnb.address) == Decimal('2.813923183747276159258725343')
+    assert wallet.get_balance(wbnb.address) == Decimal('2.822390354811711300681127340')
 
 
 def test_buy_sell_backtest(
@@ -225,6 +226,7 @@ def test_buy_sell_backtest(
     execution_model = BacktestExecutionModel(wallet, max_slippage=0.01)
     trader = BacktestTrader(ts, state, universe, execution_model, routing_model, pricing_model)
     wbnb_busd = translate_trading_pair(universe.universe.pairs.get_single())
+    wbnb_busd.fee = 0.0025
 
     # Create trade for buying WBNB for 1000 USD
     position, trade = trader.buy(wbnb_busd, reserve=Decimal(1000))
@@ -244,7 +246,7 @@ def test_buy_sell_backtest(
     assert sell_price < buy_price
 
     # Check our wallet was credited
-    assert wallet.get_balance(busd.address) == pytest.approx(Decimal('9999.990999999999889294777233'))
+    assert wallet.get_balance(busd.address) == pytest.approx(Decimal('9995.012468827930417209009430'))
     assert wallet.get_balance(wbnb.address) == 0
 
 
@@ -279,12 +281,13 @@ def test_buy_with_fee(
     assert trade.is_buy()
     assert trade.get_status() == TradeStatus.success
     assert trade.fee_tier == 0.0050
-    assert trade.executed_price == pytest.approx(357.15260665419106)
+    assert trade.executed_price == pytest.approx(356.0811488342285)
+    assert trade.planned_mid_price == pytest.approx(354.3096008300781)
     assert trade.lp_fees_estimated == 5.0
     assert trade.lp_fees_paid == 5.0
 
     # We bought around 3 BNB
-    assert position.get_quantity() == pytest.approx(Decimal('2.799923565917687953079317912'))
+    assert position.get_quantity() == pytest.approx(Decimal('2.808348611752946800965157280'))
 
 
 def test_buy_sell_backtest_with_fee(
@@ -303,6 +306,7 @@ def test_buy_sell_backtest_with_fee(
     execution_model = BacktestExecutionModel(wallet, max_slippage=0.01)
     trader = BacktestTrader(ts, state, universe, execution_model, routing_model, pricing_model)
     wbnb_busd = translate_trading_pair(universe.universe.pairs.get_single())
+    wbnb_busd.fee = 0.0025
 
     # Set 0.5% trading fee
     wbnb_busd.fee = 0.0050
@@ -322,8 +326,8 @@ def test_buy_sell_backtest_with_fee(
 
     assert position.is_closed()
     assert trade.fee_tier == 0.005
-    assert trade.lp_fees_estimated == pytest.approx(4.960199004975125)
-    assert trade.lp_fees_paid == pytest.approx(4.960199004975125)
+    assert trade.lp_fees_estimated == pytest.approx(4.975124378109453)
+    assert trade.lp_fees_paid == pytest.approx(4.975124378109453)
 
     # Do simulated markets make any sense?
     assert sell_price < buy_price

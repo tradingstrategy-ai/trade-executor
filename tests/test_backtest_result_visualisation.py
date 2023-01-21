@@ -110,8 +110,8 @@ def test_visualise_trades_with_indicator(usdc, weth, weth_usdc):
     data = fig.to_dict()["data"]
     assert len(data) == 4
     assert data[1]["name"] == "Test indicator"
-    assert data[2]["name"] == "Buys"
-    assert data[3]["name"] == "Sells"
+    assert data[2]["name"] == "Buy"
+    assert data[3]["name"] == "Sell"
 
     # Check test indicator data
     # that we have proper timestamps

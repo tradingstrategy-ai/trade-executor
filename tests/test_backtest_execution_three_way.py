@@ -237,6 +237,8 @@ def test_create_and_execute_backtest_three_way_trade(
     trader = BacktestTrader(ts, state, universe, execution_model, routing_model, pricing_model)
     cake_wbnb = translate_trading_pair(universe.universe.pairs.get_by_symbols("Cake", "WBNB"))
 
+    cake_wbnb.fee = 0.0025
+
     assert cake_wbnb.base.token_symbol == "Cake"
     assert cake_wbnb.quote.token_symbol == "WBNB"
 
@@ -245,14 +247,15 @@ def test_create_and_execute_backtest_three_way_trade(
 
     assert trade.is_buy()
     assert trade.get_status() == TradeStatus.success
-    assert trade.executed_price == pytest.approx(18.066385000585278)
+    assert trade.executed_price == pytest.approx(18.057216310197482)
+    assert trade.planned_mid_price == pytest.approx(18.012185845583524)
 
     # We bought around 3 BNB
-    assert position.get_quantity() == pytest.approx(Decimal('55.35141645479181046093885541'))
+    assert position.get_quantity() == pytest.approx(Decimal('55.37952156198451856881142523'))
 
     # Check our wallet was credited
     assert wallet.get_balance(busd.address) == 9_000
-    assert wallet.get_balance(cake.address) == pytest.approx(Decimal('55.35141645479181046093885541'))
+    assert wallet.get_balance(cake.address) == pytest.approx(Decimal('55.37952156198451856881142523'))
 
 
 def test_buy_sell_three_way_backtest(
@@ -272,6 +275,7 @@ def test_buy_sell_three_way_backtest(
     execution_model = BacktestExecutionModel(wallet, max_slippage=0.01)
     trader = BacktestTrader(ts, state, universe, execution_model, routing_model, pricing_model)
     cake_wbnb = translate_trading_pair(universe.universe.pairs.get_by_symbols("Cake", "WBNB"))
+    cake_wbnb.fee = 0.0025
 
     # Create trade for buying Cake for 1000 USD thru WBNB
     position, trade = trader.buy(cake_wbnb, reserve=Decimal(1000))
@@ -291,7 +295,7 @@ def test_buy_sell_three_way_backtest(
     assert sell_price < buy_price
 
     # Check our wallet was credited
-    assert wallet.get_balance(busd.address) == pytest.approx(Decimal('9999.990999999999889294777233'))
+    assert wallet.get_balance(busd.address) == pytest.approx(Decimal('9995.012468827930204002132236'))
     assert wallet.get_balance(cake.address) == 0
 
 

@@ -87,13 +87,14 @@ class State:
                      pair: TradingPairIdentifier,
                      quantity: Optional[Decimal],
                      reserve: Optional[Decimal],
-                     assumed_price: USDollarAmount,
+                     assumed_price: USDollarPrice,
                      trade_type: TradeType,
                      reserve_currency: AssetIdentifier,
-                     reserve_currency_price: USDollarAmount,
+                     reserve_currency_price: USDollarPrice,
                      notes: Optional[str] = None,
                      pair_fee: Optional[BPS] = None,
                      lp_fees_estimated: Optional[USDollarAmount] = None,
+                     planned_mid_price: Optional[USDollarPrice] = None,
                      ) -> Tuple[TradingPosition, TradeExecution, bool]:
         """Creates a request for a new trade.
 
@@ -126,6 +127,7 @@ class State:
             reserve_currency_price,
             pair_fee=pair_fee,
             lp_fees_estimated=lp_fees_estimated,
+            planned_mid_price=planned_mid_price,
         )
         return position, trade, created
 

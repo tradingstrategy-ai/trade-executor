@@ -11,7 +11,7 @@ from tradeexecutor.state.state import State, TradeType
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.identifier import TradingPairIdentifier
-from tradeexecutor.state.types import USDollarAmount, BPS
+from tradeexecutor.state.types import USDollarAmount, BPS, USDollarPrice
 from tradeexecutor.strategy.pricing_model import TradePricing
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 
@@ -61,7 +61,9 @@ class BacktestTrader:
                pair: TradingPairIdentifier,
                quantity: Optional[Decimal],
                reserve: Optional[Decimal],
-               price: float) -> Tuple[TradingPosition, TradeExecution]:
+               price: float,
+               planned_mid_price: Optional[USDollarPrice] = None,
+               ) -> Tuple[TradingPosition, TradeExecution]:
         """Open a new trade."""
 
         assert len(self.universe.reserve_assets) == 1
@@ -75,8 +77,8 @@ class BacktestTrader:
             assumed_price=price,
             trade_type=TradeType.rebalance,
             reserve_currency=self.universe.reserve_assets[0],
-            reserve_currency_price=1.0
-
+            reserve_currency_price=1.0,
+            planned_mid_price=planned_mid_price,
         )
 
         return position, trade
@@ -88,6 +90,7 @@ class BacktestTrader:
                            price: float,
                            lp_fee: Optional[BPS] = None,
                            lp_fees_estimated: Optional[USDollarAmount] = None,
+                           planned_mid_price: Optional[USDollarPrice] = None,
                            ) -> Tuple[TradingPosition, TradeExecution]:
 
         assert price > 0
@@ -100,7 +103,9 @@ class BacktestTrader:
             pair=pair,
             quantity=quantity,
             reserve=reserve,
-            price=price)
+            price=price,
+            planned_mid_price=planned_mid_price,
+        )
 
         trade.fee_tier = lp_fee
         trade.lp_fees_estimated = lp_fees_estimated
@@ -118,9 +123,7 @@ class BacktestTrader:
         return position, trade
 
     def buy(self, pair, reserve) -> Tuple[TradingPosition, TradeExecution]:
-
         price_structure = self.get_buy_price(pair, reserve)
-
         return self.create_and_execute(
             pair,
             quantity=None,
@@ -128,18 +131,19 @@ class BacktestTrader:
             price=price_structure.price,
             lp_fee=price_structure.pair_fee,
             lp_fees_estimated=price_structure.lp_fee,
+            planned_mid_price=price_structure.mid_price,
         )
 
     def sell(self, pair, quantity) -> Tuple[TradingPosition, TradeExecution]:
-
         price_structure = self.get_sell_price(pair, quantity)
-
         return self.create_and_execute(
             pair,
             quantity=-quantity,
             reserve=None,
             price=price_structure.price,
             lp_fee=price_structure.pair_fee,
-            lp_fees_estimated=price_structure.lp_fee)
+            lp_fees_estimated=price_structure.lp_fee,
+            planned_mid_price=price_structure.mid_price)
+
 
 

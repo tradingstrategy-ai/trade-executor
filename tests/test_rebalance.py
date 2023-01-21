@@ -189,6 +189,7 @@ def single_asset_portfolio(start_ts, weth_usdc, weth, usdc) -> Portfolio:
         executed_quantity=Decimal(0.095),
         lp_fees_paid =2.5,
         native_token_price=1.9,
+        planned_mid_price=None,
     )
 
     tx = BlockchainTransaction(
