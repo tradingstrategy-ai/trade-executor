@@ -25,9 +25,8 @@ from typing import List, Dict, Iterable, Optional, Tuple, Callable, Set
 
 import numpy as np
 import pandas as pd
-from IPython.core.display import HTML
 from IPython.core.display_functions import display
-from dataclasses_json import dataclass_json, Exclude, config
+from dataclasses_json import dataclass_json, config
 from statistics import median
 
 from tradeexecutor.state.position import TradingPosition
@@ -470,7 +469,6 @@ class TradeSummary:
         add_prop(self.max_loss_risk, 'Max loss risk at opening of position', as_percent)
 
         df = create_summary_table(human_data)
-        df
         return df
 
     def show(self):
