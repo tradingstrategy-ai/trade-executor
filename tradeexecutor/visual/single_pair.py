@@ -71,7 +71,7 @@ def export_trade_for_dataframe(p: Portfolio, t: TradeExecution) -> dict:
                 label += [
                     f"Fees paid: {t.get_fees_paid():.4f} USD",
                     f"Fees planned: {t.lp_fees_estimated:.4f} USD",
-                    f"Fees realised: {realised_fees:.4f} %"
+                    f"Fees: {realised_fees:.4f} %"
                 ]
             else:
                 label += [
@@ -85,7 +85,7 @@ def export_trade_for_dataframe(p: Portfolio, t: TradeExecution) -> dict:
         "success": t.is_success(),
         "type": type,
         "label": "<br>".join(label),
-        "price": t.planned_price if t.planned_mid_price else t.planned_price,
+        "price": t.planned_mid_price if t.planned_mid_price else t.planned_price,
     }
 
 
