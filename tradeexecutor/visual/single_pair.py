@@ -2,7 +2,7 @@
 import datetime
 import logging
 import textwrap
-from typing import Optional, Union, List
+from typing import Optional, Union, List, Tuple
 
 import plotly.graph_objects as go
 import pandas as pd
@@ -37,7 +37,8 @@ def export_trade_for_dataframe(p: Portfolio, t: TradeExecution) -> dict:
     else:
         if t.is_sell():
             if t.is_stop_loss():
-                label += [f"Stop loss {t.pair.base.token_symbol}", "", f"Trigger was at {position.stop_loss:.4f} {price_prefix}"]
+                label += [f"Stop loss {t.pair.base.token_symbol}", "",
+                          f"Trigger was at {position.stop_loss:.4f} {price_prefix}"]
                 type = "stop-loss"
             else:
                 label += [f"Sell {t.pair.base.token_symbol}"]
@@ -45,7 +46,8 @@ def export_trade_for_dataframe(p: Portfolio, t: TradeExecution) -> dict:
         else:
             if t.is_take_profit():
                 type = "take-profit"
-                label += [f"Take profit {t.pair.base.token_symbol}", "", "Trigger was at {position.take_profit:.4f} {price_prefix}"]
+                label += [f"Take profit {t.pair.base.token_symbol}", "",
+                          "Trigger was at {position.take_profit:.4f} {price_prefix}"]
             else:
                 type = "buy"
                 label += [f"Buy {t.pair.base.token_symbol}"]
@@ -130,8 +132,8 @@ def export_trades_as_dataframe(
 
 def export_plot_as_dataframe(
         plot: Plot,
-        start_at: Optional[pd.Timestamp]=None,
-        end_at: Optional[pd.Timestamp]=None,
+        start_at: Optional[pd.Timestamp] = None,
+        end_at: Optional[pd.Timestamp] = None,
 ) -> pd.DataFrame:
     """Convert visualisation state to Plotly friendly df.
 
@@ -183,7 +185,6 @@ def visualise_technical_indicators(
     for plot_id, plot in visualisation.plots.items():
         df = export_plot_as_dataframe(plot, start_at, end_at)
         if len(df) > 0:
-            
             start_ts = df["timestamp"].min()
             end_ts = df["timestamp"].max()
             logger.info(f"Visualisation {plot_id} has data for range {start_ts} - {end_ts}")
@@ -200,7 +201,7 @@ def visualise_technical_indicators(
 def visualise_trades(
         fig: go.Figure,
         candles: pd.DataFrame,
-        trades_df: pd.DataFrame,):
+        trades_df: pd.DataFrame, ):
     """Plot individual trades over the candlestick chart."""
 
     # If we have used stop loss, do different categories
@@ -221,12 +222,13 @@ def visualise_trades(
     # Buys
     fig.add_trace(
         go.Scatter(
-            name="Buys",
+            name="Buy",
             mode="markers",
             x=buys_df["timestamp"],
             y=buys_df["price"],
             text=buys_df["label"],
-            marker={"color": "#aaaaff", "symbol": 'triangle-right', "size": 12, "line": {"width": 0, "color": "black"}},
+            marker={"color": "#aaaaff", "symbol": 'triangle-right', "size": 12,
+                    "line": {"width": 1, "color": "#3333aa"}},
             hoverinfo="text",
         ),
         secondary_y=False,
@@ -235,12 +237,13 @@ def visualise_trades(
     # Sells
     fig.add_trace(
         go.Scatter(
-            name="Sells",
+            name="Sell",
             mode="markers",
             x=sells_df["timestamp"],
             y=sells_df["price"],
             text=sells_df["label"],
-            marker={"color": "#aaaaff", "symbol": 'triangle-left', "size": 12, "line": {"width": 0, "color": "black"}},
+            marker={"color": "#aaaaff", "symbol": 'triangle-left', "size": 12,
+                    "line": {"width": 1, "color": "#3333aa"}},
             hoverinfo="text",
         ),
         secondary_y=False,
@@ -254,7 +257,7 @@ def visualise_trades(
                 x=stop_loss_df["timestamp"],
                 y=stop_loss_df["price"],
                 text=stop_loss_df["label"],
-                marker={"symbol": 'triangle-left', "size": 12, "line": {"width": 0, "color": "black"}},
+                marker={"symbol": 'triangle-left', "size": 12, "line": {"width": 1, "color": "black"}},
                 hoverinfo="text",
             ),
             secondary_y=False,
@@ -268,7 +271,7 @@ def visualise_trades(
                 x=take_profit_df["timestamp"],
                 y=take_profit_df["price"],
                 text=take_profit_df["label"],
-                marker={"symbol": 'triangle-left', "size": 12, "line": {"width": 0, "color": "black"}},
+                marker={"symbol": 'triangle-left', "size": 12, "line": {"width": 1, "color": "black"}},
                 hoverinfo="text",
             ),
             secondary_y=False,
@@ -280,7 +283,7 @@ def visualise_trades(
 def get_position_hover_text(p: TradingPosition) -> str:
     """Get position hover text for Plotly."""
 
-       # First draw a position as a re
+    # First draw a position as a re
     first_trade = p.get_first_trade()
     last_trade = p.get_last_trade()
 
@@ -294,37 +297,74 @@ def get_position_hover_text(p: TradingPosition) -> str:
     exit_diff = (last_trade.executed_price - last_trade.planned_price) / last_trade.planned_price
     exit_dur = (last_trade.executed_at - last_trade.started_at)
 
-    if p.is_stop_loss():
-        remarks = f"Stop loss triggered at: {p.stop_loss:.2f} USD"
+    text = []
+
+    text += [
+        f"Position #{p.position_id}",
+        ""
+    ]
+
+    # Add remarks
+    if p.is_open():
+        text += [
+            "Position currently open",
+            ""
+        ]
+    elif p.is_stop_loss():
+        text += [
+            f"Stop loss triggered at: {p.stop_loss:.2f} USD",
+            ""
+        ]
     else:
-        remarks = "-"
+        pass
 
-    text = textwrap.dedent(f"""    Position #{p.position_id}
-    
-    Remarks: {remarks}
-    
-    Profit: {p.get_realised_profit_usd():.2f} USD
-    Profit: {p.get_total_profit_percent()*100:.4f} %
-    
-    Entry price: {first_trade.planned_price:.2f} USD (expected)
-    Entry price: {first_trade.executed_price:.2f} USD (executed)
-    Entry slippage: {entry_diff * 100:.4f} %
-    Entry duration: {entry_dur} 
-    
-    Exit price: {last_trade.planned_price:.2f} USD (expected)
-    Exit price: {last_trade.executed_price:.2f} USD (executed)
-    Exit slippage: {exit_diff * 100:.4f} %
-    Exit duration: {exit_dur}
-    
-    Avg buy price: {p.get_average_buy():.2f} USD
-    Avg sell price: {p.get_average_sell():.2f} USD
-   
-    Duration: {duration}
-    Started: {started_at} (first trade started)  
-    Ended: {ended_at} (last trade executed at)
-    """)
+    if p.is_closed():
+        text += [
+            f"Profit: {p.get_realised_profit_usd():.2f} USD",
+            f"Profit: {p.get_total_profit_percent() * 100:.4f} %",
+            ""
+        ]
 
-    return text.replace("\n", "<br>")
+    text += [
+        f"Entry price: {first_trade.planned_price:.2f} USD (expected)",
+        f"Entry price: {first_trade.executed_price:.2f} USD (executed)",
+        f"Entry slippage: {entry_diff * 100:.4f} %",
+        f"Entry duration: {entry_dur}",
+        ""
+    ]
+
+    if p.is_closed():
+        text += [
+            f"Exit price: {last_trade.planned_price:.2f} USD (expected)",
+            f"Exit price: {last_trade.executed_price:.2f} USD (executed)",
+            f"Exit slippage: {exit_diff * 100:.4f} %",
+            f"Exit duration: {exit_dur}",
+        ]
+
+    if p.has_buys() or p.has_sells():
+        if p.has_buys():
+            text += [
+                f"Avg buy price: {p.get_average_buy():.2f} USD",
+            ]
+        if p.has_sells():
+            text += [
+                f"Avg sell price: {p.get_average_sell():.2f} USD",
+            ]
+        text += [""]
+
+    if p.is_closed():
+        text += [
+            f"Duration: {duration}",
+            f"Started: {started_at} (first trade started)",
+            f"Ended: {ended_at} (last trade executed at)",
+            ""
+        ]
+    else:
+        text += [
+            f"Started: {started_at} (first trade started)",
+            ""
+        ]
+    return "<br>".join(text)
 
 
 def visualise_positions_with_duration_and_slippage(
@@ -500,7 +540,7 @@ def visualise_single_pair(
         end_at: Optional[Union[pd.Timestamp, datetime.datetime]] = None,
         height=800,
         axes=True,
-        title=True,
+        title: Optional[Tuple[str, bool]] = True,
         theme="plotly_white",
 ) -> go.Figure:
     """Visualise single-pair trade execution.
@@ -525,7 +565,12 @@ def visualise_single_pair(
         Draw axes labels
 
     :param title:
-        Draw title labels
+        Draw chart title.
+
+        Set to string to give your own name.
+
+        Set `True` to use the state name as a title.
+        TODO: Legacy option and will be removed.
 
     :param theme:
         Plotly colour scheme to use
@@ -590,8 +635,10 @@ def visualise_single_pair(
         end_at,
     )
 
-    if title:
+    if title is True:
         title_text = state.name
+    elif type(title) == str:
+        title_text = title
     else:
         title_text = None
 
@@ -630,7 +677,6 @@ def visualise_single_pair(
         visualise_trades(fig, candles, trades_df)
 
     return fig
-
 
 
 def visualise_single_pair_positions_with_duration_and_slippage(

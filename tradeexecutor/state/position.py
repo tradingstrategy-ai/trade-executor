@@ -331,6 +331,20 @@ class TradingPosition:
             return False
         return trade.trade_id in self.trades
 
+    def has_buys(self) -> bool:
+        """Does is position have any spot buys."""
+        for t in self.trades.values():
+            if t.is_buy():
+                return True
+        return False
+
+    def has_sells(self) -> bool:
+        """Does is position have any spot sells."""
+        for t in self.trades.values():
+            if t.is_sell():
+                return True
+        return False
+
     def can_be_closed(self) -> bool:
         """There are no tied tokens in this position."""
         return self.get_equity_for_position() == 0
