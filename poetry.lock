@@ -4187,14 +4187,14 @@ tqdm = ">=4.64.1,<5.0.0"
 
 [[package]]
 name = "trading-strategy"
-version = "0.10.1"
+version = "0.10.2"
 description = "DEX trading and blockchain quantitative finance data for Python"
 category = "main"
 optional = false
 python-versions = ">=3.10,<4"
 files = [
-    {file = "trading_strategy-0.10.1-py3-none-any.whl", hash = "sha256:b3a275a939bc44f540e3acac7e4450e5d59e085f1fd7d535f68ede7fd1fe7a55"},
-    {file = "trading_strategy-0.10.1.tar.gz", hash = "sha256:0b1e8b4a456183ad8d3449ed34067ec8dd9456b766227536650b734f9ed6c608"},
+    {file = "trading_strategy-0.10.2-py3-none-any.whl", hash = "sha256:575a178a418e014a8517520ea195ea069428f954162beaa6289dc7c846d5f764"},
+    {file = "trading_strategy-0.10.2.tar.gz", hash = "sha256:a0ea5ae83c2b109ca629d3ed6632c2e1e21d8f637f419ba13fc0b3041db684cd"},
 ]
 
 [package.dependencies]
@@ -4917,4 +4917,4 @@ web-server = ["pyramid", "WebTest", "pyramid-openapi3", "waitress"]
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.10,<3.11"
-content-hash = "df23ff12ca5d94a24598f74c30ee46e5757b56d4002a2d43337acd95bab70a53"
+content-hash = "76f4b3a2ff0377ec6f0f024e34e1911ac26c3b3a37a0263a5c05d6eb898abf60"
