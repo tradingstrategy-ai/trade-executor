@@ -89,6 +89,27 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
 
     backtest_stop_loss_candles: Optional[GroupedCandleUniverse] = None
 
+    def clone(self) -> "TradingStrategyUniverse":
+        """Create a copy of this universe.
+
+        Any dataframes are now copied,
+        but set by reference.
+        """
+        u = self.universe
+        new_universe = Universe(
+            time_bucket=u.time_bucket,
+            chains=u.chains,
+            exchanges=u.exchanges,
+            pairs=u.pairs,
+            candles=u.candles,
+            liquidity=u.liquidity,
+        )
+        return TradingStrategyUniverse(
+            universe=new_universe,
+            backtest_stop_loss_time_bucket=self.backtest_stop_loss_time_bucket,
+            backtest_stop_loss_candles=self.backtest_stop_loss_candles,
+        )
+
     def get_pair_count(self) -> int:
         return self.universe.pairs.get_count()
 
