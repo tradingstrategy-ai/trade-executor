@@ -13,7 +13,7 @@ from eth_defi.hotwallet import HotWallet
 from eth_defi.uniswap_v3.deployment import UniswapV3Deployment
 from eth_defi.uniswap_v3.price import UniswapV3PriceHelper
 
-from tradeexecutor.ethereum.execution import broadcast_and_resolve
+from tradeexecutor.ethereum.execution_v3_temp import broadcast_and_resolve
 from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.ethereum.uniswap_v3_routing import UniswapV3SimpleRoutingModel, UniswapV3RoutingState
 from tradeexecutor.state.freeze import freeze_position_on_failed_trade
