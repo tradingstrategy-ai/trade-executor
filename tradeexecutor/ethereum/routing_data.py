@@ -303,13 +303,14 @@ def get_uniswap_v3_default_routing_parameters(reserve_currency: ReserveCurrency)
 
     # Allowed exchanges as factory -> router pairs,
     # by their smart contract addresses
-    # init_code_hash: https://etherscan.io/address/0xe592427a0aece92de3edee1f18e0157c05861564#code#F12#L6
     # init_code_hash not applicable to v3 0xe34f199b19b2b4f47f68442619d555527d244f78a3297ea89325f843f87b8b54
     address_map = {
         "factory":"0x1F98431c8aD98523631AE4a59f267346ea31F984",
-        "router":"0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45",
+        "router": "0xE592427A0AEce92De3Edee1F18E0157C05861564",
         "position_manager":"0xC36442b4a4522E871399CD717aBDD847Ab11FE88",
-        "quoter":"0x61fFE014bA17989E743c5F6cB21bF9697530B21e"
+        "quoter": "0xb27308f9F90D607463bb33eA1BeBb41C27CE5AB6"
+        #"router02":"0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45",
+        #"quoterV2":"0x61fFE014bA17989E743c5F6cB21bF9697530B21e"
     }
 
     return {
