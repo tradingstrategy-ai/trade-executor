@@ -60,9 +60,11 @@ class EthereumTestTraderUniswapV3:
         base_token = get_deployed_contract(self.web3, "ERC20MockDecimals.json", Web3.toChecksumAddress(pair.base.address))
         quote_token = get_deployed_contract(self.web3, "ERC20MockDecimals.json", Web3.toChecksumAddress(pair.quote.address))
         
+        amount_in = int(amount_in_usd * (10 ** pair.quote.decimals))
+        
         # TODO see estimate_buy_quantity in eth_defi/uniswap_v2/fees
         raw_assumed_quantity = self.price_helper.get_amount_out(
-            amount_in_usd * (10 ** pair.quote.decimals),
+            amount_in,
             [quote_token.address, base_token.address],
             [pair.fee]
         )
