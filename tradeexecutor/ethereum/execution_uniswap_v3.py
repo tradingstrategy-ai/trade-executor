@@ -88,11 +88,11 @@ def resolve_trades(
         quote_token_details = fetch_erc20_details(web3, trade.pair.quote.checksum_address)
         reserve = trade.reserve_currency
         swap_tx = get_swap_transactions(trade)
-        uniswap = mock_partial_deployment_for_analysis_uniswap_v3(web3, swap_tx.contract_address)
+        uniswap = mock_partial_deployment_for_analysis(web3, swap_tx.contract_address)
 
         tx_dict = swap_tx.get_transaction()
         receipt = receipts[HexBytes(swap_tx.tx_hash)]
-        result = analyse_trade_by_receipt_uniswap_v3(web3, uniswap, tx_dict, swap_tx.tx_hash, receipt)
+        result = analyse_trade_by_receipt(web3, uniswap, tx_dict, swap_tx.tx_hash, receipt)
 
         if isinstance(result, TradeSuccess):
             path = [a.lower() for a in result.path]
@@ -189,7 +189,7 @@ def broadcast_and_resolve(
 
 # move below to eth_defi/uniswap_v3/analysis.py
 
-def mock_partial_deployment_for_analysis_uniswap_v3(web3: Web3, router_address: str):
+def mock_partial_deployment_for_analysis(web3: Web3, router_address: str):
     """Only need swap_router and PoolContract?"""
     
     factory = None
@@ -207,9 +207,106 @@ def mock_partial_deployment_for_analysis_uniswap_v3(web3: Web3, router_address: 
         quoter,
         PoolContract,
     )
+
+def get_input_args(params: tuple) -> dict:
+    """Names and decodes input arguments from router.decode_function_input()
+    Note there is no support yet for SwapRouter02, it does not accept a deadline parameter
+    See: https://docs.uniswap.org/contracts/v3/reference/periphery/interfaces/ISwapRouter#exactinputparams
+    
+    :params:
+    params from router.decode_function_input
+    
+    :returns:
+    Dict of exactInputParams as specified in the link above
+    """
+    
+    full_path_decoded = decode_path(params[0])
+    
+    # TODO: add support for SwapRouter02 which does not accept deadline parameter
+    return {
+        "path": full_path_decoded,
+        "recipient": params[1],
+        "deadline": params[2],
+        "amountIn": params[3],
+        "amountOutMinimum": params[4]
+    }
+    
+def decode_path(full_path_encoded: str) -> list:
+    """Decodes the path. A bit tricky. Thanks to https://degencode.substack.com/p/project-uniswapv3-mempool-watcher
+    
+    :param full_path_encoded:
+    Encoded path as returned from router.decode_function_input
+    
+    :returns:
+    fully decoded path including addresses and fees
+    """
+    
+    path_pos = 0
+    full_path_decoded = []
+    # read alternating 20 and 3 byte chunks from the encoded path,
+    # store each address (hex) and fee (int)
+    
+    byte_length = 20
+    while True:
+        # stop at the end
+        if path_pos == len(full_path_encoded):
+            break
+        elif (
+            byte_length == 20
+            and len(full_path_encoded)
+            >= path_pos + byte_length
+        ):
+            address = full_path_encoded[
+                path_pos : path_pos + byte_length
+            ].hex()
+            full_path_decoded.append(f"0x{Web3.toChecksumAddress(address)}")
+        elif (
+            byte_length == 3
+            and len(full_path_encoded)
+            >= path_pos + byte_length
+        ):
+            fee = int(
+                full_path_encoded[
+                    path_pos : path_pos + byte_length
+                ].hex(),
+                16,
+            )
+            full_path_decoded.append(fee)
+        else:
+            raise IndexError("Bad path")
+        
+        path_pos += byte_length
+        byte_length = 3 if byte_length == 20 else 20
+        
+    return full_path_decoded
+
+# TODO: delete  
+# def hex_to_path(path_str: str):
+#     """Ethereum Wallet Address is a distinct alphanumeric crypto identifier that contains 42 hexadecimal characters that start with 0x and is followed by a series of 40 random characters which can send transactions and has a balance in it. 
+    
+#     From: geeksforgeeks.org/how-to-create-an-ethereum-wallet-address-from-a-private-key/"""
+    
+#     path = []
+#     start = 0
+
+#     # should always be 42, but just in case
+#     start, stop = (
+#         (2, 42) 
+#         if path_str.startswith('0x') 
+#         else (0, 40)
+#     )
+
+#     while (stop <= len(path_str)):
+#         address = f"0x{path_str[start:stop]}"
+
+#         path.append(address)
+#         start += 40
+#         stop += 40
+    
+#     return path
     
     
-def analyse_trade_by_receipt_uniswap_v3(web3: Web3, uniswap: UniswapV3Deployment, tx: dict, tx_hash: str, tx_receipt: dict) -> TradeSuccess | TradeFail:
+def analyse_trade_by_receipt(web3: Web3, uniswap: UniswapV3Deployment, tx: dict, tx_hash: str, tx_receipt: dict) -> TradeSuccess | TradeFail:
     """
     """
 
@@ -232,14 +329,16 @@ def analyse_trade_by_receipt_uniswap_v3(web3: Web3, uniswap: UniswapV3Deployment
 
     # Decode inputs going to the Uniswap swap
     # https://stackoverflow.com/a/70737448/315168
-    function, input_args = router.decode_function_input(get_transaction_data_field(tx))
+    function, params_struct = router.decode_function_input(get_transaction_data_field(tx))
+    input_args = get_input_args(params_struct["params"])
+    
     path = input_args["path"]
 
     assert function.fn_name == "exactInput", f"Unsupported Uniswap v3 trade function {function}"
     assert len(path), f"Seeing a bad path Uniswap routing {path}"
 
     amount_in = input_args["amountIn"]
-    amount_out_min = input_args["amountOutMin"]
+    amount_out_min = input_args["amountOutMinimum"]
 
     # Decode the last output.
     # Assume Swap events go in the same chain as path
@@ -249,15 +348,19 @@ def analyse_trade_by_receipt_uniswap_v3(web3: Web3, uniswap: UniswapV3Deployment
     # Sync, etc. We are only interested in Swap events.
     events = swap.processReceipt(tx_receipt, errors=DISCARD)
 
-    # (AttributeDict({'args': AttributeDict({'sender': '0xDe09E74d4888Bc4e65F589e8c13Bce9F71DdF4c7', 'to': '0x2B5AD5c4795c026514f8317c7a215E218DcCD6cF', 'amount0In': 0, 'amount1In': 500000000000000000000, 'amount0Out': 284881561276680858, 'amount1Out': 0}), 'event': 'Swap', 'logIndex': 4, 'transactionIndex': 0, 'transactionHash': HexBytes('0x58312ff98147ca16c3a81019c8bca390cd78963175e4c0a30643d45d274df947'), 'address': '0x68931307eDCB44c3389C507dAb8D5D64D242e58f', 'blockHash': HexBytes('0x1222012923c7024b1d49e1a3e58552b89e230f8317ac1b031f070c4845d55db1'), 'blockNumber': 12}),)
-    amount0_out = events[-1]["args"]["amount0Out"]
-    amount1_out = events[-1]["args"]["amount1Out"]
+    # AttributeDict({'args': AttributeDict({'sender': '0x6D411e0A54382eD43F02410Ce1c7a7c122afA6E1', 'recipient': '0xC2c2C1C8871C189829d3CCD169010F430275BC70', 'amount0': -292184487391376249, 'amount1': 498353865, 'sqrtPriceX96': 3267615572280113943555521, 'liquidity': 41231056256176602, 'tick': -201931}), 'event': 'Swap', 'logIndex': 3, 'transactionIndex': 0, 'transactionHash': HexBytes('0xe7fff8231effe313010aed7d973fdbe75f58dc4a59c187b230e3fc101c58ec97'), 'address': '0x4529B3F2578Bf95c1604942fe1fCDeB93F1bb7b6', 'blockHash': HexBytes('0xe06feb724020c57c6a0392faf7db29fedf4246ce5126a5b743b2627b7dc69230'), 'blockNumber': 24})
+    
+    # See https://docs.uniswap.org/contracts/v3/reference/core/interfaces/pool/IUniswapV3PoolEvents#swap
+    
+    temp = events[-1]["args"] # TODO delete
+    amount0 = events[-1]["args"]["amount0"]
+    amount1 = events[-1]["args"]["amount1"]
 
     # Depending on the path, the out token can pop up as amount0Out or amount1Out
     # For complex swaps (unspported) we can have both
-    assert amount0_out == 0 or amount1_out == 0, "Unsupported swap type"
+    assert (amount0 > 0 and amount1 < 0) or (amount0 < 0 and amount1 > 0), "Unsupported swap type"
 
-    amount_out = amount0_out if amount0_out > 0 else amount1_out
+    amount_out = amount0 if amount0 > 0 else amount1
 
     in_token_details = fetch_erc20_details(web3, path[0])
     out_token_details = fetch_erc20_details(web3, path[-1])

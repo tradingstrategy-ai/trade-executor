@@ -9,7 +9,7 @@ from web3 import Web3
 
 from eth_defi.hotwallet import HotWallet
 from tradeexecutor.ethereum.execution import wait_trades_to_complete
-from tradeexecutor.ethereum.execution_v3_temp import broadcast_and_resolve, resolve_trades
+from tradeexecutor.ethereum.execution_uniswap_v3 import broadcast_and_resolve, resolve_trades
 from tradeexecutor.ethereum.uniswap_v3_routing import UniswapV3SimpleRoutingModel, UniswapV3RoutingState
 from tradeexecutor.state.freeze import freeze_position_on_failed_trade
 from tradeexecutor.state.state import State
