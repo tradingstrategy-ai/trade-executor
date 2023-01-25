@@ -186,6 +186,8 @@ def wait_for_universe_data_availability_jsonl(
         An updated trading universe
     """
 
+    assert client is not None
+    assert timestamp.second == 0
     # List of monitored pairs by this strategy
     pairs = current_universe.universe.pairs
     assert len(pairs.pair_map) > 0, "No pairs in the pair_map"
@@ -195,6 +197,7 @@ def wait_for_universe_data_availability_jsonl(
     started_at = datetime.datetime.utcnow()
     deadline = started_at + max_wait
     poll_cycle = 1
+    logger.info("Waiting for data availability for pairs %s, strategy cycle timestamp is %s", pairs, timestamp)
     while datetime.datetime.utcnow() < deadline:
 
         # Get the availability of the trading for candles

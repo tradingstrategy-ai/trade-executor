@@ -1,0 +1,80 @@
+"""Test trading data availability based strategy cycle strategy.
+
+To run:
+
+.. code-block:: shell
+
+    export TRADING_STRATEGY_API_KEY="secret-token:tradingstrategy-6ce98...."
+    export POLYGON_JSON_RPC="https://bsc-dataseed.binance.org/"
+    pytest --log-cli-level=info -s -k test_strategy_cycle_trigger
+
+.. note ::
+
+    There seems to be one frozen position among the trades.
+
+"""
+import logging
+import os
+import pickle
+from pathlib import Path
+from unittest import mock
+
+import pytest
+from eth_defi.hotwallet import HotWallet
+from tradeexecutor.cli.main import app
+
+# https://docs.pytest.org/en/latest/how-to/skipping.html#skip-all-test-functions-of-a-class-or-module
+pytestmark = pytest.mark.skipif(not os.environ.get("JSON_RPC_POLYGON"), reason="Set POLYGON_JSON_RPC environment variable to run this test")
+
+
+@pytest.fixture()
+def strategy_path() -> Path:
+    """Where do we load our strategy file."""
+    return Path(os.path.join(os.path.dirname(__file__), "..", "strategies", "test_only", "trader_joe_dummy.py"))
+
+
+@pytest.mark.skipif(os.environ.get("CI") is not None, reason="This test is too flaky on Github CI. Manual runs only.")
+def test_trading_data_availability_based_strategy_cycle_trigger(
+        strategy_path: Path,
+    ):
+    """Run the strategy test
+
+    - Use decision data from the past
+
+    - Trade against live exchanges
+    """
+
+    debug_dump_file = "/tmp/trading_data_availability_based_strategy_cycle_trigger.debug.json"
+
+    state_file = "/tmp/trading_data_availability_based_strategy_cycle_trigger.json"
+
+    # Set up the configuration for the backtesting,
+    # run the loop 6 cycles using Ganache + live BNB Chain fork
+    environment = {
+        "STRATEGY_FILE": strategy_path.as_posix(),
+        "JSON_RPC": os.environ["JSON_RPC_POLYGON"],
+        "STATE_FILE": state_file,
+        "RESET_STATE": "true",
+        "EXECUTION_TYPE": "dummy",
+        "STRATEGY_CYCLE_TRIGGER": "trading_pair_data_availability",
+        "CACHE_PATH": "/tmp/trading_data_availability_based_strategy_cycle_trigger",
+        "TRADING_STRATEGY_API_KEY": os.environ["TRADING_STRATEGY_API_KEY"],
+        "DEBUG_DUMP_FILE": debug_dump_file,
+        "CYCLE_DURATION": "16h",
+        "CONFIRMATION_BLOCK_COUNT": "8",
+        "MAX_POSITIONS": "2",
+        "UNIT_TESTING": "true",
+        "MAX_CYCLES": "1",
+    }
+
+    # Don't use CliRunner.invoke() here,
+    # as it patches stdout/stdin and causes our pdb to stop working
+    with mock.patch.dict('os.environ', environment, clear=True):
+        app(["start"], standalone_mode=False)
+
+    # We did one cycle
+    with open(debug_dump_file, "rb") as inp:
+        debug_dump = pickle.load(inp)
+        assert len(debug_dump) == 1
+        cycle_1 = debug_dump[0]
+
