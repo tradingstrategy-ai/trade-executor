@@ -1,21 +1,25 @@
 """Decision trigger.
 
-Wait for the latest data become available to act on it immediately.
+- Wait for the latest candle data become available to act on it immediately
+
+- Update :py:class:`TradingStrategyUniverse` with the latest data needed for the current strategy cycle
+
 """
 import datetime
 import logging
 import time
 from dataclasses import dataclass
-from typing import Set, Optional
+from typing import Set, Optional, Dict
 
 import pandas as pd
-from tradingstrategy.candle import GroupedCandleUniverse
+from tradingstrategy.candle import GroupedCandleUniverse, TradingPairDataAvailability
 
 from tradingstrategy.client import Client
 from tradingstrategy.pair import DEXPair
 from tradingstrategy.timebucket import TimeBucket
 
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
+from tradingstrategy.types import PrimaryKey
 
 logger = logging.getLogger(__name__)
 
@@ -58,15 +62,30 @@ def fetch_data(
         A candle containing a mix of pair data for all pairs.
     """
 
-    pair_ids = {p.internal_id for p in pairs}
-
+    pair_ids = {p.pair_id for p in pairs}
     start_time = timestamp - required_history_period - datetime.timedelta(seconds=1)
-
     return client.fetch_candles_by_pair_ids(
         pair_ids,
         bucket=bucket,
         start_time=start_time,
 
+    )
+
+
+def fetch_availability(
+        client: Client,
+        bucket: TimeBucket,
+        pairs: Set[DEXPair],
+) -> Dict[PrimaryKey, TradingPairDataAvailability]:
+    """Fetch the trading data availability from the oracle.
+
+    :return:
+        A candle containing a mix of pair data for all pairs.
+    """
+    pair_ids = {p.pair_id for p in pairs}
+    return client.fetch_trading_data_availability(
+        pair_ids,
+        bucket=bucket,
     )
 
 
@@ -132,8 +151,8 @@ def wait_for_universe_data_availability_jsonl(
 
     bucket = current_universe.universe.time_bucket
 
-    completed_pairs = set()
-    incompleted_pairs = {p for p in pairs.pair_map.values()}
+    completed_pairs: Set[DEXPair] = set()
+    incompleted_pairs: Set[DEXPair] = {pairs.get_pair_by_id(id) for id in pairs.pair_map.keys()}
 
     started_at = datetime.datetime.utcnow()
     deadline = started_at + max_wait
@@ -143,25 +162,28 @@ def wait_for_universe_data_availability_jsonl(
     while datetime.datetime.utcnow() < deadline:
 
         # Get new candles for all pairs for which we do not have new enough data yet
-        df = fetch_data(
+        avail_map = fetch_availability(
             client,
             bucket,
-            timestamp,
             incompleted_pairs,
-            required_history_period,
         )
 
         # Move any pairs with new complete data to the completed set
         for p in incompleted_pairs:
-            pair_candles = df.loc[df["internal_id"] == p.internal_id]
-            latest_timestamp = pair_candles["timestamp"].max()
-            # TODO: How to deal with incomplete candles
+            latest_timestamp = avail_map[p.pair_id]["last_candle_at"]
             if latest_timestamp >= timestamp:
                 incompleted_pairs.remove(p)
                 completed_pairs.add(p)
 
             if not incompleted_pairs or poll_cycle >= max_poll_cycles:
-                # We have latest data for all pairs
+                # We have latest data for all pairs and can now update the universe
+                df = fetch_data(
+                    client,
+                    bucket,
+                    timestamp,
+                    completed_pairs,
+                    required_history_period,
+                )
                 updated_universe = update_universe(current_universe, df)
                 time_waited = datetime.datetime.utcnow() - started_at
                 return UpdatedUniverseResult(
@@ -180,7 +202,3 @@ def wait_for_universe_data_availability_jsonl(
         f"Pairs incomplete: {incompleted_pairs}.\n"
         f"Pairs complete: {completed_pairs}\n"
     )
-
-
-
-

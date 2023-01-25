@@ -108,6 +108,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             universe=new_universe,
             backtest_stop_loss_time_bucket=self.backtest_stop_loss_time_bucket,
             backtest_stop_loss_candles=self.backtest_stop_loss_candles,
+            reserve_assets=self.reserve_assets,
         )
 
     def get_pair_count(self) -> int:
