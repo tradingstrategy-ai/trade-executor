@@ -23,6 +23,7 @@ from eth_defi.uniswap_v2.analysis import TradeSuccess, TradeFail # ok to do this
 from eth_defi.abi import get_deployed_contract, get_contract, get_transaction_data_field
 from eth_defi.revert_reason import fetch_transaction_revert_reason
 from eth_defi.token import fetch_erc20_details
+from eth_defi.uniswap_v3.utils import tick_to_price
 
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
@@ -95,20 +96,21 @@ def resolve_trades(
         result = analyse_trade_by_receipt(web3, uniswap, tx_dict, swap_tx.tx_hash, receipt)
 
         if isinstance(result, TradeSuccess):
-            path = [a.lower() for a in result.path]
+            path = [a.lower() for a in result.path if type(a) == str]
+            
             if trade.is_buy():
                 assert path[0] == reserve.address, f"Was expecting the route path to start with reserve token {reserve}, got path {result.path}"
-                price = 1 / result.price
                 executed_reserve = result.amount_in / Decimal(10**quote_token_details.decimals)
                 executed_amount = result.amount_out / Decimal(10**base_token_details.decimals)
             else:
                 # Ordered other way around
                 assert path[0] == base_token_details.address.lower(), f"Path is {path}, base token is {base_token_details}"
                 assert path[-1] == reserve.address
-                price = result.price
                 executed_amount = -result.amount_in / Decimal(10**base_token_details.decimals)
                 executed_reserve = result.amount_out / Decimal(10**quote_token_details.decimals)
 
+            price = 1/(1/Decimal(result.price) * Decimal(10**quote_token_details.decimals) / Decimal(10**base_token_details.decimals))
+            
             assert (executed_reserve > 0) and (executed_amount != 0) and (price > 0), f"Executed amount {executed_amount}, executed_reserve: {executed_reserve}, price: {price}, tx info {trade.tx_info}"
 
             # Mark as success
@@ -259,7 +261,7 @@ def decode_path(full_path_encoded: str) -> list:
             address = full_path_encoded[
                 path_pos : path_pos + byte_length
             ].hex()
-            full_path_decoded.append(f"0x{Web3.toChecksumAddress(address)}")
+            full_path_decoded.append(Web3.toChecksumAddress(address))
         elif (
             byte_length == 3
             and len(full_path_encoded)
@@ -279,33 +281,7 @@ def decode_path(full_path_encoded: str) -> list:
         byte_length = 3 if byte_length == 20 else 20
         
     return full_path_decoded
-
-# TODO: delete  
-# def hex_to_path(path_str: str):
-#     """Ethereum Wallet Address is a distinct alphanumeric crypto identifier that contains 42 hexadecimal characters that start with 0x and is followed by a series of 40 random characters which can send transactions and has a balance in it. 
-    
-#     From: geeksforgeeks.org/how-to-create-an-ethereum-wallet-address-from-a-private-key/"""
-    
-#     path = []
-#     start = 0
-
-#     # should always be 42, but just in case
-#     start, stop = (
-#         (2, 42) 
-#         if path_str.startswith('0x') 
-#         else (0, 40)
-#     )
-
-#     while (stop <= len(path_str)):
-#         address = f"0x{path_str[start:stop]}"
-
-#         path.append(address)
-#         start += 40
-#         stop += 40
-    
-#     return path
-    
-    
+      
 def analyse_trade_by_receipt(web3: Web3, uniswap: UniswapV3Deployment, tx: dict, tx_hash: str, tx_receipt: dict) -> TradeSuccess | TradeFail:
     """
     """
@@ -352,23 +328,27 @@ def analyse_trade_by_receipt(web3: Web3, uniswap: UniswapV3Deployment, tx: dict,
     
     # See https://docs.uniswap.org/contracts/v3/reference/core/interfaces/pool/IUniswapV3PoolEvents#swap
     
-    temp = events[-1]["args"] # TODO delete
-    amount0 = events[-1]["args"]["amount0"]
-    amount1 = events[-1]["args"]["amount1"]
-
+    props = events[-1]["args"]
+    amount0 = props["amount0"]
+    amount1 = props["amount1"]
+    tick = props["tick"]
+    
     # Depending on the path, the out token can pop up as amount0Out or amount1Out
     # For complex swaps (unspported) we can have both
     assert (amount0 > 0 and amount1 < 0) or (amount0 < 0 and amount1 > 0), "Unsupported swap type"
 
-    amount_out = amount0 if amount0 > 0 else amount1
-
+    amount_out = amount0 if amount0 < 0 else amount1
+    assert amount_out < 0, "amount out should be negative for uniswap v3"
+    
     in_token_details = fetch_erc20_details(web3, path[0])
     out_token_details = fetch_erc20_details(web3, path[-1])
 
-    amount_out_cleaned = Decimal(amount_out) / Decimal(10**out_token_details.decimals)
-    amount_in_cleaned = Decimal(amount_in) / Decimal(10**in_token_details.decimals)
+    # amount_out_cleaned = Decimal(amount_out) / Decimal(10**out_token_details.decimals)
+    # amount_in_cleaned = Decimal(amount_in) / Decimal(10**in_token_details.decimals)
+    # price = amount_out_cleaned / amount_in_cleaned
 
-    price = amount_out_cleaned / amount_in_cleaned
+    # see https://stackoverflow.com/a/74619134
+    raw_price = tick_to_price(tick)    
 
     return TradeSuccess(
         gas_used,
@@ -376,8 +356,8 @@ def analyse_trade_by_receipt(web3: Web3, uniswap: UniswapV3Deployment, tx: dict,
         path,
         amount_in,
         amount_out_min,
-        amount_out,
-        price,
+        abs(amount_out),
+        raw_price,
         in_token_details.decimals,
         out_token_details.decimals,
     )
