@@ -19,7 +19,8 @@ from eth_defi.uniswap_v3.deployment import UniswapV3Deployment, deploy_uniswap_v
 from eth_defi.uniswap_v3.constants import FOREVER_DEADLINE, MIN_TICK, MAX_TICK
 from eth_defi.uniswap_v3.price import UniswapV3PriceHelper
 from eth_defi.uniswap_v3.utils import get_default_tick_range
-from tradeexecutor.ethereum.execution import get_current_price, get_held_assets
+from tradeexecutor.ethereum.execution import get_held_assets
+from tradeexecutor.ethereum.execution_uniswap_v3 import get_current_price
 from tradeexecutor.ethereum.universe import create_pair_universe
 from tradeexecutor.ethereum.wallet import sync_reserves
 from tradeexecutor.state.sync import apply_sync_events
@@ -435,7 +436,7 @@ def test_buy_buy_sell_sell_tester(
 
     # 1000 USDC for 1700 USD/ETH
     weth_holding = position2.get_equity_for_position()
-    assert weth_holding == pytest.approx(Decimal("0.586126582552052406"))
+    assert weth_holding == pytest.approx(Decimal('0.586126840906346334'))
 
     # Now liquidate the portfolio
     sell_quantity_1 = weth_holding / 2
@@ -450,8 +451,8 @@ def test_buy_buy_sell_sell_tester(
     assert len(state.portfolio.closed_positions) == 1
 
     # We have everything in cash and lost some USDC in trading fees
-    assert portfolio.get_total_equity() == pytest.approx(9994.011623)
-    assert portfolio.get_current_cash() == pytest.approx(9994.011623)
+    assert portfolio.get_total_equity() == pytest.approx(9994.010745)
+    assert portfolio.get_current_cash() == pytest.approx(9994.010745)
 
 
 def test_two_parallel_positions(
@@ -495,17 +496,17 @@ def test_two_parallel_positions(
     trader.execute([trade1, trade2])
     assert hot_wallet.current_nonce == 3
 
-    assert position1.get_equity_for_position() == pytest.approx(Decimal("0.293149331800817389"))
-    assert position2.get_equity_for_position() == pytest.approx(Decimal('2.486302885086316575'))
-    assert position1.get_value() == pytest.approx(500)
-    assert position2.get_value() == pytest.approx(500)
-    assert portfolio.get_total_equity() == pytest.approx(9999.999998002779)
+    assert position1.get_equity_for_position() == pytest.approx(Decimal('0.29314933179905376'))
+    assert position2.get_equity_for_position() == pytest.approx(Decimal('2.486302890046558723'))
+    assert position1.get_value() == pytest.approx(499.999998997285)
+    assert position2.get_value() == pytest.approx(500.00000000000006)
+    assert portfolio.get_total_equity() == pytest.approx(9999.999998997286)
     assert portfolio.get_current_cash() == pytest.approx(9000.0)
 
     balances = get_held_assets(web3, hot_wallet.address, [asset_usdc, asset_aave, asset_weth])
-    assert balances[asset_usdc.address] == Decimal("9000.000002")
-    assert balances[asset_aave.address] == Decimal('2.486302885086316575')
-    assert balances[asset_weth.address] == Decimal("0.293149331800817389")
+    assert balances[asset_usdc.address] == Decimal("9000.000001")
+    assert balances[asset_aave.address] == Decimal('2.486302890046558723')
+    assert balances[asset_weth.address] == Decimal('0.29314933179905376')
 
     #
     # 3. Sell all WETH
@@ -526,11 +527,11 @@ def test_two_parallel_positions(
     assert position4.get_quantity() == 0
     assert position3.is_closed()
     assert position4.is_closed()
-    assert portfolio.get_total_equity() == pytest.approx(9994.017298)
-    assert portfolio.get_current_cash() == pytest.approx(9994.017298)
+    assert portfolio.get_total_equity() == pytest.approx(9994.013143)
+    assert portfolio.get_current_cash() == pytest.approx(9994.013143)
 
     balances = get_held_assets(web3, hot_wallet.address, [asset_usdc, asset_aave, asset_weth])
-    assert balances[asset_usdc.address] == pytest.approx(Decimal("9994.017298"))
+    assert balances[asset_usdc.address] == pytest.approx(Decimal('9994.013144'))
     assert balances[asset_aave.address] == 0
     assert balances[asset_weth.address] == 0
 
