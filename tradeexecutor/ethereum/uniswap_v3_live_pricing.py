@@ -116,7 +116,7 @@ class UniswapV3LivePricing(PricingModel):
         # In three token trades, be careful to use the correct reserve token
         quantity_raw = target_pair.base.convert_to_raw_amount(quantity)
 
-        # See estimate_sell_received_amount_raw in eth_defi.uniswap_v2.fees
+        # See eth_defi.uniswap_v2.fees.estimate_sell_received_amount_raw
         path = (
             [base_addr, intermediate_addr, quote_addr] 
             if intermediate_addr 

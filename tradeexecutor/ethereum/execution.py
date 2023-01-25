@@ -327,14 +327,13 @@ def wait_trades_to_complete(
     assert isinstance(confirmation_block_count, int)
     tx_hashes = []
     for t in trades:
-        for tx in t.blockchain_transactions:
-            tx_hashes.append(tx.tx_hash)
+        tx_hashes.extend(tx.tx_hash for tx in t.blockchain_transactions)
     receipts = wait_transactions_to_complete(web3, tx_hashes, confirmation_block_count, max_timeout, poll_delay)
     return receipts
 
 
 def is_swap_function(name: str):
-    return name in ("swapExactTokensForTokens",)
+    return name in {"swapExactTokensForTokens"}
 
 
 def get_swap_transactions(trade: TradeExecution) -> BlockchainTransaction:
