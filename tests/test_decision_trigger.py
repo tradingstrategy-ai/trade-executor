@@ -5,7 +5,8 @@ import os
 import pytest
 
 from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
-from tradeexecutor.strategy.pandas_trader.decision_trigger import wait_for_universe_data_availability_jsonl
+from tradeexecutor.strategy.pandas_trader.decision_trigger import wait_for_universe_data_availability_jsonl, \
+    validate_latest_candles
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, load_all_data
 from tradeexecutor.strategy.universe_model import UniverseOptions
 from tradeexecutor.utils.timer import timed_task
@@ -71,6 +72,11 @@ def test_decision_trigger_ready_data(persistent_test_client, universe):
     assert updated_universe_result.ready_at <=  datetime.datetime.utcnow()
     assert updated_universe_result.poll_cycles == 1
 
-    pair = updated_universe_result.updated_universe.get_single_pair()
-    candles = updated_universe_result.updated_universe.universe.candles.get_candles_by_pair(pair.internal_id)
-    print(candles)
+    pair = updated_universe_result.updated_universe.universe.pairs.get_single()
+    candles = updated_universe_result.updated_universe.universe.candles.get_candles_by_pair(pair.pair_id)
+
+    validate_latest_candles(
+        {pair},
+        candles,
+        timestamp
+    )

@@ -28,6 +28,11 @@ class NoNewDataReceived(Exception):
     """We never got new data despite max wait."""
 
 
+class BadNewDataReceived(Exception):
+    """Candles are off."""
+
+
+
 @dataclass(slots=True)
 class UpdatedUniverseResult:
     """Describe the result of universe waiting operation."""
@@ -68,7 +73,7 @@ def fetch_data(
         pair_ids,
         bucket=bucket,
         start_time=start_time,
-
+        end_time=timestamp,
     )
 
 
@@ -97,12 +102,52 @@ def update_universe(
 
     :param df:
         Unsorted DataFrame containing data for all trading pairs we are interested in.
-
-
     """
     updated_universe = universe.clone()
     updated_universe.universe.candles = GroupedCandleUniverse(df)
     return updated_universe
+
+
+def validate_latest_candles(
+        pairs: Set[DEXPair],
+        df: pd.DataFrame,
+        timestamp: datetime.datetime,
+):
+    """Ensure that the oracle served us correct up-to-date candles.
+
+    - The last timestamp of a pair must match
+      what we requested earlier.
+
+    - The timestamp cannot be sooner or later
+
+    .. note ::
+
+        This cam be only called for highly active pairs,
+        as many low and middle cap tokens may not see trades
+        in hours.
+
+    :param pairs:
+        Set of pairs our strategy is trading
+
+    :param df:
+        Dataframe of candles.
+
+        May contain candes for a single or multiple pairs.
+
+    :param timestamp:
+        What is the latest candle timestamp our strategy decision cycle needs to consume
+
+    :raise:
+        AssertionError
+    """
+
+    timestamp = pd.Timestamp(timestamp)
+
+    assert len(df) > 0, f"Empty dataframe. Pairs: {pairs}"
+
+    for p in pairs:
+        last_timestamp = df.loc[df["pair_id"] == p.pair_id].max()["timestamp"]
+        assert last_timestamp == timestamp, f"Did not receive wanted latest candle timestamp: {timestamp}. Pair {p} has timestamp {last_timestamp}"
 
 
 def wait_for_universe_data_availability_jsonl(
