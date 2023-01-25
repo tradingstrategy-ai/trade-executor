@@ -162,6 +162,34 @@ class PositionManager:
 
         return next(iter(open_positions.values()))
 
+    def get_last_closed_position(self) -> Optional[TradingPosition]:
+        """Get the position that was last closed.
+
+        If multiple positions are closed at the same time,
+        return a random position.
+
+        Example:
+
+        .. code-block:: python
+
+            last_position = position_manager.get_last_closed_position()
+            if last_position:
+                ago = timestamp - last_position.closed_at
+                print(f"Last position was closed {ago}")
+            else:
+                print("Strategy has not decided any position before")
+
+        :return:
+
+            None if the strategy has not closed any positions
+        """
+        closed_positions = self.state.portfolio.closed_positions
+
+        if len(closed_positions) == 0:
+            return None
+
+        return max(closed_positions.values(), key=lambda c: c.closed_at)
+
     def open_1x_long(self,
                      pair: Union[DEXPair, TradingPairIdentifier],
                      value: USDollarAmount,
@@ -233,6 +261,7 @@ class PositionManager:
             reserve_currency_price=reserve_price,
             lp_fees_estimated=price_structure.lp_fee,
             pair_fee=price_structure.pair_fee,
+            planned_mid_price=price_structure.mid_price,
         )
 
         assert created, f"There was conflicting open position for pair: {executor_pair}"
@@ -306,6 +335,7 @@ class PositionManager:
                 trade_type=TradeType.rebalance,
                 reserve_currency=self.reserve_currency,
                 reserve_currency_price=reserve_price,
+                planned_mid_price=price_structure.mid_price,
             )
         else:
             # Sell
@@ -332,6 +362,7 @@ class PositionManager:
                 trade_type=TradeType.rebalance,
                 reserve_currency=self.reserve_currency,
                 reserve_currency_price=reserve_price,
+                planned_mid_price=price_structure.mid_price,
             )
 
         return [trade]
@@ -390,6 +421,7 @@ class PositionManager:
             notes=notes,
             pair_fee=price_structure.pair_fee,
             lp_fees_estimated=price_structure.lp_fee,
+            planned_mid_price=price_structure.mid_price,
         )
         assert position == position2, "Somehow messed up the trade"
 

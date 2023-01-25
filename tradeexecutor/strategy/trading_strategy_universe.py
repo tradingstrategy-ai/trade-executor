@@ -757,6 +757,7 @@ def create_pair_universe_from_code(chain_id: ChainId, pairs: List[TradingPairIde
             token1_address=p.quote.address,
             token0_decimals=p.base.decimals,
             token1_decimals=p.quote.decimals,
+            fee=p.fee,
         )
         data.append(dex_pair.to_dict())
     df = pd.DataFrame(data)

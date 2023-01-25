@@ -13,7 +13,7 @@ from dataclasses_json import dataclass_json
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
 from tradeexecutor.state.trade import TradeType
 from tradeexecutor.state.trade import TradeExecution
-from tradeexecutor.state.types import USDollarAmount, BPS
+from tradeexecutor.state.types import USDollarAmount, BPS, USDollarPrice
 
 
 @dataclass_json
@@ -281,12 +281,13 @@ class TradingPosition:
                    trade_id: int,
                    quantity: Optional[Decimal],
                    reserve: Optional[Decimal],
-                   assumed_price: USDollarAmount,
+                   assumed_price: USDollarPrice,
                    trade_type: TradeType,
                    reserve_currency: AssetIdentifier,
-                   reserve_currency_price: USDollarAmount,
+                   reserve_currency_price: USDollarPrice,
                    pair_fee: Optional[BPS] = None,
                    lp_fees_estimated: Optional[USDollarAmount] = None,
+                   planned_mid_price: Optional[USDollarPrice] = None,
                    ) -> TradeExecution:
         """Open a new trade on position.
 
@@ -317,6 +318,7 @@ class TradingPosition:
             planned_price=assumed_price,
             planned_reserve=planned_reserve,
             reserve_currency=self.reserve_currency,
+            planned_mid_price=planned_mid_price,
             fee_tier=pair_fee,
             lp_fees_estimated=lp_fees_estimated,
         )
@@ -328,6 +330,20 @@ class TradingPosition:
         if trade.position_id != self.position_id:
             return False
         return trade.trade_id in self.trades
+
+    def has_buys(self) -> bool:
+        """Does is position have any spot buys."""
+        for t in self.trades.values():
+            if t.is_buy():
+                return True
+        return False
+
+    def has_sells(self) -> bool:
+        """Does is position have any spot sells."""
+        for t in self.trades.values():
+            if t.is_sell():
+                return True
+        return False
 
     def can_be_closed(self) -> bool:
         """There are no tied tokens in this position."""

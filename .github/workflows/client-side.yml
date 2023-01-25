@@ -31,5 +31,10 @@ jobs:
           installer-parallel: true
       - name: Install dependencies
         run: poetry install --no-interaction
+      # Poetry / Python issue
+      # https://github.com/python-poetry/poetry/issues/6328
+      # https://stackoverflow.com/questions/7446187/no-module-named-pkg-resources
+      - name: Fix No module named pkg_resources
+        run: poetry run pip install setuptools
       - name: Run test scripts
         run: poetry run pytest tests/test_optional_dependencies.py
