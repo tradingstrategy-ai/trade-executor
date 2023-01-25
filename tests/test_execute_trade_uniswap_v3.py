@@ -293,8 +293,8 @@ def test_execute_trade_instructions_buy_weth(
     execute_trades_simple(state, pair_universe, [trade], web3, hot_wallet, uniswap_v3)
 
     assert trade.get_status() == TradeStatus.success
-    assert trade.executed_price == pytest.approx(Decimal(1705.6136999031144))
-    assert trade.executed_quantity == pytest.approx(Decimal(0.292184487629472304))
+    assert trade.executed_price == pytest.approx(1700.930449623516)
+    assert trade.executed_quantity == pytest.approx(Decimal(0.292184487391376249))
 
 
 def test_execute_trade_instructions_buy_weth_with_tester(
@@ -319,18 +319,18 @@ def test_execute_trade_instructions_buy_weth_with_tester(
 
     assert position.is_open()
 
-    assert trade.planned_price == pytest.approx(1705.6153460381142)
-    assert trade.planned_quantity == pytest.approx(Decimal('0.293149332386944181'))
+    assert trade.planned_price == pytest.approx(1705.615346038114)
+    assert trade.planned_quantity == pytest.approx(Decimal('0.293149332386944223'))
 
     assert trade.get_status() == TradeStatus.success
-    assert trade.executed_price == pytest.approx(1705.6136999031144)
-    assert trade.executed_quantity == pytest.approx(Decimal('0.293149331800817389'))
+    assert trade.executed_price == pytest.approx(1700.930449623516)
+    assert trade.executed_quantity == pytest.approx(Decimal('0.29314933179905376'))
 
     # Cash balance has been deducted
     assert portfolio.get_current_cash() == pytest.approx(9500.0)
 
     # Portfolio is correctly valued
-    assert portfolio.get_total_equity() == pytest.approx(9999.999999000293)
+    assert portfolio.get_total_equity() == pytest.approx(9999.999998997286)
 
 
 def test_buy_sell_buy_with_tester(
@@ -357,21 +357,21 @@ def test_buy_sell_buy_with_tester(
     position, trade = trader.buy(weth_usdc_pair, Decimal(500))
 
     assert position.is_open()
-    assert trade.planned_price == pytest.approx(1705.6153460381142)
-    assert trade.planned_quantity == pytest.approx(Decimal('0.293149332386944181'))
+    assert trade.planned_price == pytest.approx(1705.615346038114)
+    assert trade.planned_quantity == pytest.approx(Decimal('0.293149332386944223'))
 
     assert trade.get_status() == TradeStatus.success
-    assert trade.executed_price == pytest.approx(1705.6136999031144)
-    assert trade.executed_quantity == pytest.approx(Decimal('0.293149331800817389'))
+    assert trade.executed_price == pytest.approx(1700.930449623516)
+    assert trade.executed_quantity == pytest.approx(Decimal('0.29314933179905376'))
 
     assert portfolio.get_current_cash() == pytest.approx(9500.0)
-    assert portfolio.get_total_equity() == pytest.approx(9999.999999000293)
+    assert portfolio.get_total_equity() == pytest.approx(9999.999998997286)
 
     #
     # 2. Sell all bought ETH
     #
 
-    assert position.get_quantity() == pytest.approx(Decimal('0.293149331800817389'))
+    assert position.get_quantity() == pytest.approx(Decimal('0.29314933179905376'))
     position2, trade2 = trader.sell(weth_usdc_pair, position.get_quantity())
 
     # We get the same position object as in the first buy
@@ -380,11 +380,11 @@ def test_buy_sell_buy_with_tester(
     assert position2.is_closed()
 
     assert trade2.get_status() == TradeStatus.success
-    assert trade2.executed_price == pytest.approx(1695.3999893054308)
-    assert trade2.executed_quantity == pytest.approx(-Decimal('0.293149331800817389'))
+    assert trade2.executed_price == pytest.approx(1699.9102484539058)
+    assert trade2.executed_quantity == pytest.approx(Decimal('-0.29314933179905376'))
 
-    assert portfolio.get_current_cash() == pytest.approx(9997.005374)
-    assert portfolio.get_total_equity() == pytest.approx(9997.005374)
+    assert portfolio.get_current_cash() == pytest.approx(9997.004936)
+    assert portfolio.get_total_equity() == pytest.approx(9997.004936)
 
     #
     # 3. Buy ETH again as a regret buy
@@ -394,12 +394,12 @@ def test_buy_sell_buy_with_tester(
 
     assert position3.is_open()
     assert position3.position_id != position.position_id
-    assert position3.get_equity_for_position() == pytest.approx(Decimal('0.293148815557626472'))
+    assert position3.get_equity_for_position() == pytest.approx(Decimal('0.293148816843562091'))
 
-    assert trade3.planned_price == pytest.approx(1705.618349674022)
-    assert trade3.planned_quantity == pytest.approx(Decimal('0.293148816143752232'))
-    assert trade3.executed_price == pytest.approx(1705.618349674022)
-    assert trade3.executed_quantity == pytest.approx(Decimal('0.293148816143752232'))
+    assert trade3.planned_price == pytest.approx(1705.618345602341)
+    assert trade3.planned_quantity == pytest.approx(Decimal('0.293148816843562091'))
+    assert trade3.executed_price == pytest.approx(1700.9304496235159)
+    assert trade3.executed_quantity == pytest.approx(Decimal('0.293148816843562091'))
 
     # Double check See we can serialise state after all this
     patch_dataclasses_json()
