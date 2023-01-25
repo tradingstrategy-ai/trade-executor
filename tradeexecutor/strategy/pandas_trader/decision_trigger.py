@@ -66,7 +66,6 @@ def fetch_data(
     :return:
         A candle containing a mix of pair data for all pairs.
     """
-
     pair_ids = {p.pair_id for p in pairs}
     start_time = timestamp - required_history_period - datetime.timedelta(seconds=1)
     return client.fetch_candles_by_pair_ids(
@@ -140,11 +139,8 @@ def validate_latest_candles(
     :raise:
         AssertionError
     """
-
     timestamp = pd.Timestamp(timestamp)
-
     assert len(df) > 0, f"Empty dataframe. Pairs: {pairs}"
-
     for p in pairs:
         last_timestamp = df.loc[df["pair_id"] == p.pair_id].max()["timestamp"]
         assert last_timestamp == timestamp, f"Did not receive wanted latest candle timestamp: {timestamp}. Pair {p} has timestamp {last_timestamp}"
@@ -157,7 +153,7 @@ def wait_for_universe_data_availability_jsonl(
         required_history_period=datetime.timedelta(days=90),
         max_wait=datetime.timedelta(minutes=30),
         max_poll_cycles: Optional[int] = None,
-        poll_delay = datetime.timedelta(seconds=30),
+        poll_delay = datetime.timedelta(seconds=15),
 ) -> UpdatedUniverseResult:
     """Wait for the data to be available for the latest strategy cycle.
 
@@ -193,20 +189,15 @@ def wait_for_universe_data_availability_jsonl(
     # List of monitored pairs by this strategy
     pairs = current_universe.universe.pairs
     assert len(pairs.pair_map) > 0, "No pairs in the pair_map"
-
     bucket = current_universe.universe.time_bucket
-
     completed_pairs: Set[DEXPair] = set()
     incompleted_pairs: Set[DEXPair] = {pairs.get_pair_by_id(id) for id in pairs.pair_map.keys()}
-
     started_at = datetime.datetime.utcnow()
     deadline = started_at + max_wait
-
     poll_cycle = 1
-
     while datetime.datetime.utcnow() < deadline:
 
-        # Get new candles for all pairs for which we do not have new enough data yet
+        # Get the availability of the trading for candles
         avail_map = fetch_availability(
             client,
             bucket,
