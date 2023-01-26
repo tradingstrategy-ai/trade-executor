@@ -301,6 +301,7 @@ class ExecutionLoop:
 
         if cycle == 1 and self.backtest_setup is not None:
             # The hook to set up backtest initial balance
+            logger.info("Performing initial backtest account funding")
             self.backtest_setup(state, universe, self.sync_method)
 
         # Execute the strategy tick and trades
@@ -569,6 +570,8 @@ class ExecutionLoop:
                 # Add some fuzziness to gacktesting timestamps
                 # TODO: Make this configurable - sub 1h strategies do not work
                 ts = next_tick + datetime.timedelta(minutes=random.randint(0, 4))
+
+                cycle += 1
 
             # Validate the backtest state at the end.
             # We want to avoid situation where we have stored

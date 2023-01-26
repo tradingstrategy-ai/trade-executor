@@ -152,6 +152,7 @@ class State:
 
         trade.started_at = ts
 
+        # TODO: Legacy attributes that need to go away
         trade.txid = txid
         trade.nonce = nonce
 

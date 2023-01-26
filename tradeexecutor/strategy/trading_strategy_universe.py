@@ -125,7 +125,8 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
     def __repr__(self):
         pair_count = self.universe.pairs.get_count()
         if pair_count <= 3:
-            return f"<TradingStrategyUniverse for {self.universe.pairs.pair_map.values()}>"
+            pair_tickers = [f"{p.base_token_symbol}-{p.quote_token_symbol}" for p in self.universe.pairs.iterate_pairs()]
+            return f"<TradingStrategyUniverse for {', '.join(pair_tickers)}>"
         else:
             return f"<TradingStrategyUniverse for {self.universe.pairs.get_count()} pairs>"
 

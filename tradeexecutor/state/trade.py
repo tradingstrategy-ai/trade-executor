@@ -50,7 +50,7 @@ class TradeStatus(enum.Enum):
 
 
 @dataclass_json
-@dataclass(slots=True)
+@dataclass()
 class TradeExecution:
     """Trade execution tracker.
 
