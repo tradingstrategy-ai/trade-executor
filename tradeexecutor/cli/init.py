@@ -87,7 +87,8 @@ def create_trade_execution_model(
 
     if execution_type == TradeExecutionType.dummy:
         # Used in test_strategy_cycle_trigger.py
-        execution_model = DummyExecutionModel()
+        web3 = web3config.get_default()
+        execution_model = DummyExecutionModel(web3)
         sync_method = DummmyWalletSyncer()
         valuation_model_factory = uniswap_v2_sell_valuation_factory
         pricing_model_factory = uniswap_v2_live_pricing_factory

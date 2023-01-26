@@ -111,7 +111,11 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         )
 
     def __repr__(self):
-        return f"<TradingStrategyUniverse for {self.universe.pairs.get_count()} pairs>"
+        pair_count = self.universe.pairs.get_count()
+        if pair_count <= 3:
+            return f"<TradingStrategyUniverse for {self.universe.pairs.pair_map.values()}>"
+        else:
+            return f"<TradingStrategyUniverse for {self.universe.pairs.get_count()} pairs>"
 
     def get_pair_count(self) -> int:
         return self.universe.pairs.get_count()
@@ -660,7 +664,7 @@ class DefaultTradingStrategyUniverseModel(TradingStrategyUniverseModel):
         # TODO: Circular imports
         from tradeexecutor.backtest.data_preload import preload_data
         with self.execution_context.timed_task_context_manager(task_name="preload_universe"):
-            preload_data(
+            return preload_data(
                 self.client,
                 self.create_trading_universe,
                 universe_options=universe_options)

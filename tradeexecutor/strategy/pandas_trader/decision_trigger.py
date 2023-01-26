@@ -198,6 +198,11 @@ def wait_for_universe_data_availability_jsonl(
     deadline = started_at + max_wait
     poll_cycle = 1
     logger.info("Waiting for data availability for pairs %s, strategy cycle timestamp is %s", pairs, timestamp)
+
+    if max_poll_cycles is None:
+        # Make sure we can do int comparison
+        max_poll_cycles = 99999
+
     while datetime.datetime.utcnow() < deadline:
 
         # Get the availability of the trading for candles
@@ -207,9 +212,14 @@ def wait_for_universe_data_availability_jsonl(
             incompleted_pairs,
         )
 
+        last_timestamps_log = {}
+
         # Move any pairs with new complete data to the completed set
         for p in incompleted_pairs:
             latest_timestamp = avail_map[p.pair_id]["last_candle_at"]
+
+            last_timestamps_log[p.get_ticker()] = latest_timestamp
+
             if latest_timestamp >= timestamp:
                 incompleted_pairs.remove(p)
                 completed_pairs.add(p)
@@ -231,6 +241,13 @@ def wait_for_universe_data_availability_jsonl(
                     time_waited=time_waited,
                     poll_cycles=poll_cycle,
                 )
+
+        logger.info("Timestamp wanted %s, Completed pairs: %d, Incompleted pairs: %d, last candles %s, sleeping %s",
+                    timestamp,
+                    len(completed_pairs),
+                    len(incompleted_pairs),
+                    last_timestamps_log,
+                    poll_delay)
 
         time.sleep(poll_delay.total_seconds())
         poll_cycle += 1

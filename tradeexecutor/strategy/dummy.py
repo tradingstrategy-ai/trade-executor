@@ -2,6 +2,8 @@
 import datetime
 from typing import List
 
+from web3 import Web3
+
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.execution_model import ExecutionModel
@@ -14,8 +16,8 @@ class DummyExecutionModel(ExecutionModel):
     Used in testing.
     """
 
-    def __init__(self):
-        pass
+    def __init__(self, web3: Web3):
+        self.web3 = web3
 
     def preflight_check(self):
         """Check that we can start the trade executor
@@ -35,6 +37,9 @@ class DummyExecutionModel(ExecutionModel):
         """Get needed details to establish a routing state.
 
         """
+        return {
+            "web3": self.web3,
+        }
 
     def is_stop_loss_supported(self) -> bool:
         """Do we support stop-loss/take profit functionality with this execution model?

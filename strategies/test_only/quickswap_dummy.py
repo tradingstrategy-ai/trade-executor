@@ -35,7 +35,7 @@ TRADING_STRATEGY_ENGINE_VERSION = "0.1"
 # NOTE: this setting has currently no effect
 TRADING_STRATEGY_TYPE = StrategyType.managed_positions
 
-TRADE_ROUTING = TradeRouting.trader_joe_usdc
+TRADE_ROUTING = TradeRouting.quickswap_usdc
 
 TRADING_STRATEGY_CYCLE = CycleDuration.cycle_1m
 
@@ -43,11 +43,11 @@ RESERVE_CURRENCY = ReserveCurrency.usdc
 
 CANDLE_TIME_BUCKET = TimeBucket.m1
 
-CHAIN_ID = ChainId.avalanche
+CHAIN_ID = ChainId.polygon
 
-EXCHANGE_SLUG = "trader-joe"
+EXCHANGE_SLUG = "quickswap"
 
-TRADING_PAIR = ("WAVAX", "USDC")
+TRADING_PAIR = ("WMATIC", "USDC")
 
 
 def decide_trades(

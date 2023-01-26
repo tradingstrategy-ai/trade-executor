@@ -157,7 +157,7 @@ def start(
 
         confirmation_timeout = datetime.timedelta(seconds=confirmation_timeout)
 
-        if execution_type == TradeExecutionType.uniswap_v2_hot_wallet:
+        if execution_type in (TradeExecutionType.uniswap_v2_hot_wallet, TradeExecutionType.dummy):
             web3config = create_web3_config(
                 json_rpc_binance=json_rpc_binance,
                 json_rpc_polygon=json_rpc_polygon,
@@ -357,10 +357,12 @@ def start(
         if server is None and time.time() < start_up_deadline:
             # Only terminate the process if the webhook server is not running,
             # otherwise the user can read the crash status from /status endpoint
+            logger.info("Raising the error and crashing away")
             raise
         else:
             # Execution is dead.
             # Sleep forever, let the webhook still serve the requests.
+            logger.info("Entering to the web server wait mode")
             time.sleep(3600*24*365)
     finally:
         if server:

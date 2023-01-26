@@ -129,6 +129,7 @@ class ExecutionLoop:
         self.runner: Optional[StrategyRunner] = None
         self.universe_model: Optional[UniverseModel] = None
         self.strategy_cycle_trigger = strategy_cycle_trigger
+        self.max_cycles = max_cycles
 
         # cycle -> dump mappings
         self.debug_dump_state = {}
@@ -599,7 +600,7 @@ class ExecutionLoop:
         # Start the cycle warmup immediately,
         # but later wait down in the loop for the data availability.
         if self.strategy_cycle_trigger == StrategyCycleTrigger.trading_pair_data_availability:
-            tick_offset = 0
+            tick_offset = datetime.timedelta(0)
 
         assert execution_context, "ExecutionContext missing"
 
@@ -657,6 +658,13 @@ class ExecutionLoop:
 
             except Exception as e:
                 die(e)
+
+            # Unit testing mode
+            # Used e.g. test_strategy_cycle_trigger.py
+            if self.max_cycles is not None:
+                if cycle >= self.max_cycles:
+                    logger.info(("Max cycles reached"))
+                    scheduler.shutdown(wait=False)
 
             run_state.completed_cycle = cycle
             run_state.cycles += 1
