@@ -51,14 +51,13 @@ def test_main_loop_crash(
         "EXECUTION_TYPE": "uniswap_v2_hot_wallet",
         "CACHE_PATH": "/tmp/main_loop_tests",
         "TRADING_STRATEGY_API_KEY": os.environ["TRADING_STRATEGY_API_KEY"],
-        "DISCORD_WEBHOOK_URL": "",
         "HTTP_PORT": f"{port}",
         "HTTP_ENABLED": "true",
         "MINUMUM_GAS_BALANCE": "0",
         "TRADE_IMMEDIATELY": "true",
         "JSON_RPC_BINANCE": os.environ["BNB_CHAIN_JSON_RPC"],
         "PATH": os.environ["PATH"],
-        "MAX_DATA_DELAY_MINUTES": str(7*24*60),
+        "HTTP_WAIT_GOOD_STARTUP_SECONDS": "0",
     }
 
     proc = subprocess.Popen(
@@ -105,7 +104,7 @@ def test_main_loop_crash(
         assert "last_refreshed_at" in data
         assert data["completed_cycle"] is None
         assert data["exception"] is None
-        assert data["executor_running"] == True
+        assert data["executor_running"] is True
 
         # Now wait until the main loop crashes
         deadline = time.time() + 30

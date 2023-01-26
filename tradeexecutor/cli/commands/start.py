@@ -61,6 +61,7 @@ def start(
     http_host: str = typer.Option("0.0.0.0", envvar="HTTP_HOST", help="The IP address to bind for the web server. By default listen to all IP addresses available in the run-time environment."),
     http_username: str = typer.Option(None, envvar="HTTP_USERNAME", help="Username for HTTP Basic Auth protection of webhooks"),
     http_password: str = typer.Option(None, envvar="HTTP_PASSWORD", help="Password for HTTP Basic Auth protection of webhooks"),
+    http_wait_good_startup_seconds: int = typer.Option(60, envvar="HTTP_WAIT_GOOD_STARTUP_SECONDS", help="How long we wait befor switching the web server mode where an exception does not bring the web server down"),
 
     # Web3 connection options
     json_rpc_binance: str = typer.Option(None, envvar="JSON_RPC_BINANCE", help="BNB Chain JSON-RPC node URL we connect to"),
@@ -291,11 +292,6 @@ def start(
                     mode=ExecutionMode.real_trading,
                     timed_task_context_manager=timed_task,
                 )
-
-        # If we die within few seconds of the launch,
-        # also terminate the webhook server immediately
-        start_up_deadline = time.time() + 3
-
     except Exception as e:
         # Logging is set up is in this point, so we can log this exception that
         # caused the start up to fail
@@ -358,7 +354,7 @@ def start(
 
         running_time = datetime.datetime.utcnow() - started_at
 
-        if server is None or running_time < datetime.timedelta(seconds=60):
+        if (server is None) or (running_time < datetime.timedelta(seconds=http_wait_good_startup_seconds)):
             # Only terminate the process if the webhook server is not running,
             # otherwise the user can read the crash status from /status endpoint
             logger.error("Raising the error and crashing away, running time was %s", running_time)
