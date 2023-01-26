@@ -576,7 +576,6 @@ class ExecutionLoop:
         """
 
         ts = datetime.datetime.utcnow()
-        logger.info("Strategy is executed in live mode, now is %s", ts)
 
         # Do not allow starting a strategy that has unclean state
         state.check_if_clean()
@@ -629,8 +628,13 @@ class ExecutionLoop:
                 state.cycle = cycle
 
                 # Wall clock time
-                unrounded_timestamp = datetime.datetime.now()
+                unrounded_timestamp = datetime.datetime.utcnow()
                 strategy_cycle_timestamp = snap_to_previous_tick(unrounded_timestamp, self.cycle_duration)
+
+                logger.info("Executing live strategy cycle, now is %s, decision slot is",
+                            unrounded_timestamp,
+                            strategy_cycle_timestamp
+                            )
 
                 # If we are in trigger mode, poll until we have data available
                 # and then immediately trigger the decision
