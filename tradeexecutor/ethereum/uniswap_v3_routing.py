@@ -302,10 +302,12 @@ class UniswapV3SimpleRoutingModel(RoutingModel):
                  chain_id: Optional[ChainId] = None,
                  ):
         """
+        
+        
         :param address_map:
             Defines router smart contracts to be used with each DEX.
-            Each Uniswap v2 is uniquely identified by its factory contract.
-            Addresses always lowercase.
+            Address map is a dict of factory, router, position_manager,
+            and quoter addresses
 
         :param allowed_intermediary_pairs:
 
