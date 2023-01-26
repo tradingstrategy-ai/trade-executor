@@ -2499,7 +2499,7 @@ tqdm = ">=4.64.1,<5.0.0"
 
 [[package]]
 name = "trading-strategy"
-version = "0.10.2"
+version = "0.11.1"
 description = "DEX trading and blockchain quantitative finance data for Python"
 category = "main"
 optional = false

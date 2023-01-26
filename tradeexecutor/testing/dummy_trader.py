@@ -34,7 +34,7 @@ class DummyTestTrader:
         """Open a new trade."""
         # 1. Plan
         position, trade, created = self.state.create_trade(
-            ts=self.ts,
+            strategy_cycle_at=self.ts,
             pair=pair,
             quantity=quantity,
             reserve=None,

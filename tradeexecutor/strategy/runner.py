@@ -411,6 +411,10 @@ class StrategyRunner(abc.ABC):
             List of generated stop loss trades
         """
 
+        if routing_state is None:
+            # Dummy executoin model
+            return
+
         assert isinstance(routing_state, RoutingState)
         assert isinstance(stop_loss_pricing_model, PricingModel)
 

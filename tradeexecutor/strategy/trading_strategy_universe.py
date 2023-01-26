@@ -17,7 +17,6 @@ from typing import List, Optional, Callable, Tuple, Set, Dict, Iterable
 
 import pandas as pd
 
-from tradeexecutor.backtest.data_preload import preload_data
 from tradeexecutor.strategy.execution_context import ExecutionMode, ExecutionContext
 from tradingstrategy.token import Token
 
@@ -88,6 +87,48 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
     backtest_stop_loss_time_bucket: Optional[TimeBucket] = None
 
     backtest_stop_loss_candles: Optional[GroupedCandleUniverse] = None
+
+    #: How much historic data is needed by the strategy to make its decision.
+    #:
+    #: This is the explicit time frame in days or hours for the historical
+    #: data before today for the strategy to make a decision.
+    #:
+    #: This will limit the amount of data downloaded from the oracle
+    #: and greatly optimise the strategy decision execution.
+    #:
+    #: E.g. for 90 days you can use `datetime.timedelta(days=90)`
+    required_history_period: Optional[datetime.timedelta] = None
+
+    def clone(self) -> "TradingStrategyUniverse":
+        """Create a copy of this universe.
+
+        Any dataframes are now copied,
+        but set by reference.
+        """
+        u = self.universe
+        new_universe = Universe(
+            time_bucket=u.time_bucket,
+            chains=u.chains,
+            exchanges=u.exchanges,
+            pairs=u.pairs,
+            candles=u.candles,
+            liquidity=u.liquidity,
+        )
+        return TradingStrategyUniverse(
+            universe=new_universe,
+            backtest_stop_loss_time_bucket=self.backtest_stop_loss_time_bucket,
+            backtest_stop_loss_candles=self.backtest_stop_loss_candles,
+            reserve_assets=self.reserve_assets,
+            required_history_period=self.required_history_period,
+        )
+
+    def __repr__(self):
+        pair_count = self.universe.pairs.get_count()
+        if pair_count <= 3:
+            pair_tickers = [f"{p.base_token_symbol}-{p.quote_token_symbol}" for p in self.universe.pairs.iterate_pairs()]
+            return f"<TradingStrategyUniverse for {', '.join(pair_tickers)}>"
+        else:
+            return f"<TradingStrategyUniverse for {self.universe.pairs.get_count()} pairs>"
 
     def get_pair_count(self) -> int:
         return self.universe.pairs.get_count()
@@ -187,6 +228,8 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         reserve_assets = [
             trading_pair_identifier.quote
         ]
+
+
 
         universe = Universe(
             time_bucket=dataset.time_bucket,
@@ -631,8 +674,10 @@ class DefaultTradingStrategyUniverseModel(TradingStrategyUniverseModel):
 
         - Not triggered in live trading, as universe changes between cycles
         """
+        # TODO: Circular imports
+        from tradeexecutor.backtest.data_preload import preload_data
         with self.execution_context.timed_task_context_manager(task_name="preload_universe"):
-            preload_data(
+            return preload_data(
                 self.client,
                 self.create_trading_universe,
                 universe_options=universe_options)
@@ -828,6 +873,7 @@ def load_pair_data_for_single_exchange(
         universe_options: UniverseOptions,
         liquidity=False,
         stop_loss_time_bucket: Optional[TimeBucket]=None,
+        required_history_period: Optional[datetime.timedelta] = None,
 ) -> Dataset:
     """Load pair data for a single decentralised exchange.
 
@@ -906,6 +952,10 @@ def load_pair_data_for_single_exchange(
         Override values given the strategy file.
         Used in testing the framework.
 
+    :param required_history_period:
+        How much historical data we need to load.
+
+        Depends on the strategy. Defaults to load all data.
     """
 
     assert isinstance(client, Client)
@@ -952,10 +1002,16 @@ def load_pair_data_for_single_exchange(
             pair = pair_tickers[0]
             desc = f"Loading OHLCV data for {pair[0]}-{pair[1]}"
 
+        if required_history_period is not None:
+            start_time = datetime.datetime.utcnow() - required_history_period
+        else:
+            start_time = None
+
         candles = client.fetch_candles_by_pair_ids(
             our_pair_ids,
             time_bucket,
             progress_bar_description=desc,
+            start_time=start_time,
         )
 
         if stop_loss_time_bucket:
@@ -964,6 +1020,7 @@ def load_pair_data_for_single_exchange(
                 our_pair_ids,
                 stop_loss_time_bucket,
                 progress_bar_description=stop_loss_desc,
+                start_time=start_time,
             )
         else:
             stop_loss_candles = None
