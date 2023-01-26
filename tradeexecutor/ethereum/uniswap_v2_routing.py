@@ -306,9 +306,6 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
         self.chain_id = chain_id
 
         assert trading_fee is not None, "Trading fee missing"
-        assert trading_fee >= 0, f"Got fee: {trading_fee}"
-        assert trading_fee <= 1, f"Got fee: {trading_fee}"
-
         self.trading_fee = trading_fee
 
     def get_default_trading_fee(self) -> Optional[float]:

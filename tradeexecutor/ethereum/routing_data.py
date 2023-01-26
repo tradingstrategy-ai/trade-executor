@@ -406,18 +406,23 @@ def get_uniswap_v2_compatible_routing_types():
 def validate_reserve_currency(routing_type: TradeRouting, reserve_currency: ReserveCurrency):
     """Assert that reserve currency matches routing type"""
 
-    if routing_type in (TradeRouting.pancakeswap_busd, TradeRouting.uniswap_v3_busd):
+    # busd
+    if routing_type in {TradeRouting.pancakeswap_busd, TradeRouting.uniswap_v3_busd}:
         if reserve_currency != ReserveCurrency.busd:
             raise MismatchReserveCurrency(f"Got {routing_type} with {reserve_currency}")
-    elif routing_type in (TradeRouting.pancakeswap_usdc, TradeRouting.quickswap_usdc, TradeRouting.trader_joe_usdc, TradeRouting.uniswap_v2_usdc, TradeRouting.uniswap_v3_usdc):
+    # usdc
+    elif routing_type in {TradeRouting.pancakeswap_usdc, TradeRouting.quickswap_usdc, TradeRouting.trader_joe_usdc, TradeRouting.uniswap_v2_usdc, TradeRouting.uniswap_v3_usdc}:
         if reserve_currency != ReserveCurrency.usdc:
             raise MismatchReserveCurrency(f"Got {routing_type} with {reserve_currency}")
-    elif routing_type == (TradeRouting.pancakeswap_usdt, TradeRouting.quickswap_usdt, TradeRouting.trader_joe_usdt, TradeRouting.uniswap_v2_usdt, TradeRouting.uniswap_v3_usdt):
+    # usdt
+    elif routing_type in {TradeRouting.pancakeswap_usdt, TradeRouting.quickswap_usdt, TradeRouting.trader_joe_usdt, TradeRouting.uniswap_v2_usdt, TradeRouting.uniswap_v3_usdt}:
         if reserve_currency != ReserveCurrency.usdt:
             raise MismatchReserveCurrency(f"Got {routing_type} with {reserve_currency}")
-    elif routing_type == (TradeRouting.quickswap_dai, TradeRouting.uniswap_v2_dai, TradeRouting.uniswap_v3_dai):
+    # dai
+    elif routing_type in {TradeRouting.quickswap_dai, TradeRouting.uniswap_v2_dai, TradeRouting.uniswap_v3_dai}:
         if reserve_currency != ReserveCurrency.dai:
             raise MismatchReserveCurrency(f"Got {routing_type} with {reserve_currency}")
+    # else
     else:
         raise NotImplementedError("Unknown routing type")
 
