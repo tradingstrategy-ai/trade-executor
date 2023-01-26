@@ -1,8 +1,5 @@
-"""Execution modes.
-
-- Are we doing live trading or backtesting
-
-- Any instrumentation like task duration tracing needed for the run
+"""Currently unused
+TODO implement
 """
 
 

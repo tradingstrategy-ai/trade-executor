@@ -23,7 +23,7 @@ from eth_defi.uniswap_v2.analysis import TradeSuccess, TradeFail # ok to do this
 from eth_defi.abi import get_deployed_contract, get_contract, get_transaction_data_field
 from eth_defi.revert_reason import fetch_transaction_revert_reason
 from eth_defi.token import fetch_erc20_details
-from eth_defi.uniswap_v3.utils import tick_to_price
+from eth_defi.uniswap_v3.utils import tick_to_price, decode_path
 from eth_defi.uniswap_v3.price import UniswapV3PriceHelper
 
 from tradeexecutor.state.state import State
@@ -233,55 +233,6 @@ def get_input_args(params: tuple) -> dict:
         "amountIn": params[3],
         "amountOutMinimum": params[4]
     }
-    
-def decode_path(full_path_encoded: str) -> list:
-    """Decodes the path. A bit tricky. Thanks to https://degencode.substack.com/p/project-uniswapv3-mempool-watcher
-    
-    :param full_path_encoded:
-    Encoded path as returned from router.decode_function_input
-    
-    :returns:
-    fully decoded path including addresses and fees
-    """
-    
-    path_pos = 0
-    full_path_decoded = []
-    # read alternating 20 and 3 byte chunks from the encoded path,
-    # store each address (hex) and fee (int)
-    
-    byte_length = 20
-    while True:
-        # stop at the end
-        if path_pos == len(full_path_encoded):
-            break
-        elif (
-            byte_length == 20
-            and len(full_path_encoded)
-            >= path_pos + byte_length
-        ):
-            address = full_path_encoded[
-                path_pos : path_pos + byte_length
-            ].hex()
-            full_path_decoded.append(Web3.toChecksumAddress(address))
-        elif (
-            byte_length == 3
-            and len(full_path_encoded)
-            >= path_pos + byte_length
-        ):
-            fee = int(
-                full_path_encoded[
-                    path_pos : path_pos + byte_length
-                ].hex(),
-                16,
-            )
-            full_path_decoded.append(fee)
-        else:
-            raise IndexError("Bad path")
-        
-        path_pos += byte_length
-        byte_length = 3 if byte_length == 20 else 20
-        
-    return full_path_decoded
       
 def analyse_trade_by_receipt(web3: Web3, uniswap: UniswapV3Deployment, tx: dict, tx_hash: str, tx_receipt: dict) -> TradeSuccess | TradeFail:
     """
