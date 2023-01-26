@@ -2750,7 +2750,7 @@ tester = ["eth-tester[py-evm] (==v0.6.0-beta.7)", "py-geth (>=3.9.1,<4)"]
 
 [[package]]
 name = "web3-ethereum-defi"
-version = "0.13.10"
+version = "0.13.11"
 description = "DeFi integration library for smart contracts, DeFi trading (Uniswap, PancakeSwap), Ethereum JSON-RPC, EVM transactions and automated test suites."
 category = "main"
 optional = false
@@ -2918,7 +2918,7 @@ web-server = ["pyramid", "WebTest", "pyramid-openapi3", "waitress"]
 [metadata]
 lock-version = "1.1"
 python-versions = ">=3.10,<3.11"
-content-hash = "cd3fd3ece36fdd26bdef874c6b4b16f83ce45cdf18772c0760bb1ceb4768fa32"
+content-hash = "831362d30c13eb327b1edf08ac7c07a76afda2441d491f4ceb1fa7bffef83e87"
 
 [metadata.files]
 aiohttp = [
@@ -4922,8 +4922,8 @@ web3 = [
     {file = "web3-5.31.3.tar.gz", hash = "sha256:4b2d420647c81856e3cf398996cd3cc80c719dc3a10881884c5c3b1467e4f850"},
 ]
 web3-ethereum-defi = [
-    {file = "web3_ethereum_defi-0.13.10-py3-none-any.whl", hash = "sha256:846e908d8ef55668d7a1315947d959e101a8e5119214481affaf7cd655e07264"},
-    {file = "web3_ethereum_defi-0.13.10.tar.gz", hash = "sha256:f4a45ee81af19afa8533756d2b4c610ef214f46b0740982d7e6d8ee497b4af12"},
+    {file = "web3_ethereum_defi-0.13.11-py3-none-any.whl", hash = "sha256:02f5af2cb2a6eed8f2eed6e07db7705716e31d78f8329f51b2d19817f38418c4"},
+    {file = "web3_ethereum_defi-0.13.11.tar.gz", hash = "sha256:b6ed6ba36c2e5bab0474b331dc7bee8397f54208710e23207a1875bfbe95661f"},
 ]
 webcolors = [
     {file = "webcolors-1.12-py3-none-any.whl", hash = "sha256:d98743d81d498a2d3eaf165196e65481f0d2ea85281463d856b1e51b09f62dce"},
