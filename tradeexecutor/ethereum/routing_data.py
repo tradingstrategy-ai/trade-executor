@@ -517,28 +517,28 @@ def create_uniswap_v2_compatible_routing(
     :returns:
     UniswapV2SimpleRoutingModel"""
 
-    if routing_type in (
+    if routing_type in {
         TradeRouting.pancakeswap_busd,
         TradeRouting.pancakeswap_usdc,
         TradeRouting.pancakeswap_usdt,
-    ):
+    }:
         # pancake on bsc
         params = get_pancake_default_routing_parameters(reserve_currency)
-    elif routing_type in (
+    elif routing_type in {
         TradeRouting.quickswap_usdc,
         TradeRouting.quickswap_usdt,
         TradeRouting.quickswap_dai,
-    ):
+    }:
         # quickswap on polygon
         params = get_quickswap_default_routing_parameters(reserve_currency)
-    elif routing_type in (TradeRouting.trader_joe_usdc, TradeRouting.trader_joe_usdt):
+    elif routing_type in {TradeRouting.trader_joe_usdc, TradeRouting.trader_joe_usdt}:
         # trader joe on avalanche
         params = get_trader_joe_default_routing_parameters(reserve_currency)
-    elif routing_type in (
+    elif routing_type in {
         TradeRouting.uniswap_v2_usdc,
         TradeRouting.uniswap_v2_usdt,
         TradeRouting.uniswap_v2_dai,
-    ):
+    }:
         # uniswap v2 on eth
         params = get_uniswap_v2_default_routing_parameters(reserve_currency)
     else:
@@ -571,12 +571,12 @@ def create_uniswap_v3_compatible_routing(
     :returns:
     UniswapV3SimpleRoutingModel"""
 
-    if routing_type in (
+    if routing_type in {
         TradeRouting.uniswap_v3_usdc,
         TradeRouting.uniswap_v3_usdt,
         TradeRouting.uniswap_v3_dai,
         TradeRouting.uniswap_v3_busd,
-    ):
+    }:
         params = get_uniswap_v3_default_routing_parameters(reserve_currency)
     else:
         raise NotImplementedError()
