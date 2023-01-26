@@ -393,6 +393,7 @@ def get_uniswap_v3_default_routing_parameters(
     # Allowed exchanges as factory -> router pairs,
     # by their smart contract addresses
     # init_code_hash not applicable to v3 0xe34f199b19b2b4f47f68442619d555527d244f78a3297ea89325f843f87b8b54
+    # not really a map, change name? 
     address_map = {
         "factory": "0x1F98431c8aD98523631AE4a59f267346ea31F984",
         "router": "0xE592427A0AEce92De3Edee1F18E0157C05861564",
@@ -493,12 +494,22 @@ def get_backtest_routing_model(
     """
 
     real_routing_model = create_compatible_routing(routing_type, reserve_currency)
-
-    return BacktestRoutingModel(
-        real_routing_model.factory_router_map,
-        real_routing_model.allowed_intermediary_pairs,
-        real_routing_model.reserve_token_address,
-    )
+    
+    if isinstance(real_routing_model, UniswapV2SimpleRoutingModel):
+        return BacktestRoutingModel(
+            real_routing_model.factory_router_map,
+            real_routing_model.allowed_intermediary_pairs,
+            real_routing_model.reserve_token_address,
+        )
+    elif isinstance(real_routing_model, UniswapV3SimpleRoutingModel):
+        return BacktestRoutingModel(
+            real_routing_model.address_map,
+            real_routing_model.allowed_intermediary_pairs,
+            real_routing_model.reserve_token_address
+        )
+    else:
+        raise TypeError(f"Routing model must either be of type UniswapV2SimpleRoutingModel, \
+            or of type UniswapV3SimpleRolutingModel. Received {type(real_routing_model)}")
 
 
 def create_uniswap_v2_compatible_routing(
