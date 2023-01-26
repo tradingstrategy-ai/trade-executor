@@ -38,11 +38,13 @@ def test_trading_data_availability_based_strategy_cycle_trigger(
     ):
     """Test live decision making triggers using trading data availability endpoint
 
+    - This test will take > 5 minutes to complete
+
     - Uses live oracle for the data
 
     - Does not do any trades or need keys - uses DummyExecution model
 
-    - Web3 connecition is still needed as it is used for the tested WMATIC-USDC
+    - Web3 connection is still needed as it is used for the tested WMATIC-USDC
       asset live pricing
     """
 
@@ -78,5 +80,6 @@ def test_trading_data_availability_based_strategy_cycle_trigger(
     with open(debug_dump_file, "rb") as inp:
         debug_dump = pickle.load(inp)
         assert len(debug_dump) == 1
-        cycle_1 = debug_dump[0]
-
+        cycle_1 = debug_dump[1]
+        print(cycle_1)
+        assert cycle_1["universe_update_poll_cycles"] > 0

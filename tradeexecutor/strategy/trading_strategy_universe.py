@@ -88,6 +88,17 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
 
     backtest_stop_loss_candles: Optional[GroupedCandleUniverse] = None
 
+    #: How much historic data is needed by the strategy to make its decision.
+    #:
+    #: This is the explicit time frame in days or hours for the historical
+    #: data before today for the strategy to make a decision.
+    #:
+    #: This will limit the amount of data downloaded from the oracle
+    #: and greatly optimise the strategy decision execution.
+    #:
+    #: E.g. for 90 days you can use `datetime.timedelta(days=90)`
+    required_history_period: Optional[datetime.timedelta] = None
+
     def clone(self) -> "TradingStrategyUniverse":
         """Create a copy of this universe.
 
@@ -108,6 +119,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             backtest_stop_loss_time_bucket=self.backtest_stop_loss_time_bucket,
             backtest_stop_loss_candles=self.backtest_stop_loss_candles,
             reserve_assets=self.reserve_assets,
+            required_history_period=self.required_history_period,
         )
 
     def __repr__(self):

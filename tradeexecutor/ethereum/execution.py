@@ -145,7 +145,7 @@ def prepare_swaps(
         if t.is_buy():
             state.portfolio.move_capital_from_reserves_to_trade(t, underflow_check=underflow_check)
 
-        t.started_at = ts
+        t.started_at = datetime.datetime.utcnow()
 
 
 def approve_tokens(

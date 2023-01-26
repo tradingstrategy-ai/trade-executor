@@ -37,13 +37,22 @@ class BadNewDataReceived(Exception):
 class UpdatedUniverseResult:
     """Describe the result of universe waiting operation."""
 
+    #: Trading Universe with updated candles
     updated_universe: TradingStrategyUniverse
 
+    #: When we finished waiting
     ready_at: datetime.datetime
 
+    #: How long we waited
     time_waited: datetime.timedelta
 
+    #: How many cycles we did waiting
     poll_cycles: int
+
+    #: Maximum difference between timestamp and last available candle.
+    #:
+    #: None if there was no poll cycles
+    max_diff: Optional[datetime.datetime]
 
 
 def fetch_data(
@@ -174,6 +183,9 @@ def wait_for_universe_data_availability_jsonl(
 
         Depends on the strategy. Defaults to 90 days.
 
+        If there is `current_universe.required_history_period` ignore this argument
+        and use the value from the trading universe instead.
+
     :param max_wait:
         Unless data is seen, die with an exception after this period.
 
@@ -203,6 +215,13 @@ def wait_for_universe_data_availability_jsonl(
         # Make sure we can do int comparison
         max_poll_cycles = 99999
 
+    # Use the required look back value from the trading
+    # universe if available.
+    if current_universe.required_history_period is not None:
+        required_history_period = current_universe.required_history_period
+
+    max_diff = None
+
     while datetime.datetime.utcnow() < deadline:
 
         # Get the availability of the trading for candles
@@ -226,6 +245,7 @@ def wait_for_universe_data_availability_jsonl(
 
             if not incompleted_pairs or poll_cycle >= max_poll_cycles:
                 # We have latest data for all pairs and can now update the universe
+                logger.info("Fetching candle data for the history period of %s", required_history_period)
                 df = fetch_data(
                     client,
                     bucket,
@@ -240,13 +260,19 @@ def wait_for_universe_data_availability_jsonl(
                     ready_at=datetime.datetime.utcnow(),
                     time_waited=time_waited,
                     poll_cycles=poll_cycle,
+                    max_diff=max_diff,
                 )
 
-        logger.info("Timestamp wanted %s, Completed pairs: %d, Incompleted pairs: %d, last candles %s, sleeping %s",
+        diff = timestamp - latest_timestamp
+        if not max_diff:
+            max_diff = diff
+
+        logger.info("Timestamp wanted %s, Completed pairs: %d, Incompleted pairs: %d, last candles %s, diff is %s, sleeping %s",
                     timestamp,
                     len(completed_pairs),
                     len(incompleted_pairs),
                     last_timestamps_log,
+                    diff,
                     poll_delay)
 
         time.sleep(poll_delay.total_seconds())

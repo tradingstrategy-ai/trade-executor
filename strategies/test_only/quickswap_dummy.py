@@ -85,4 +85,6 @@ def create_trading_universe(
         TRADING_PAIR[0],
         TRADING_PAIR[1],
     )
+    # We use 1 minutes candles and download 1 hour historical data
+    universe.required_history_period = datetime.timedelta(hours=1)
     return universe

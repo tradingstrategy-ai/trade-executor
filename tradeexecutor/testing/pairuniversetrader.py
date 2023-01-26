@@ -24,7 +24,7 @@ class PairUniverseTestTrader:
         reserve_currency, exchange_rate = self.state.portfolio.get_default_reserve_currency()
 
         position, trade, created = self.state.create_trade(
-            ts=datetime.datetime.utcnow(),
+            strategy_cycle_at=datetime.datetime.utcnow(),
             pair=pair,
             assumed_price=1.0,
             quantity=None,
@@ -41,7 +41,7 @@ class PairUniverseTestTrader:
         reserve_currency, exchange_rate = self.state.portfolio.get_default_reserve_currency()
 
         position, trade, created = self.state.create_trade(
-            ts=datetime.datetime.utcnow(),
+            strategy_cycle_at=datetime.datetime.utcnow(),
             pair=pair,
             assumed_price=1.0,
             quantity=-quantity,

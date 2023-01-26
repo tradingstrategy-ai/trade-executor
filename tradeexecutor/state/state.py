@@ -83,7 +83,7 @@ class State:
         return (pair.base.get_identifier() not in self.asset_blacklist) and (pair.quote.get_identifier() not in self.asset_blacklist)
 
     def create_trade(self,
-                     ts: datetime.datetime,
+                     strategy_cycle_at: datetime.datetime,
                      pair: TradingPairIdentifier,
                      quantity: Optional[Decimal],
                      reserve: Optional[Decimal],
@@ -106,18 +106,21 @@ class State:
 
         - To open a spot sell, fill in `quoantity` amount you wish to use for the buy,
           as a negative number
+          
+        :param strategy_cycle_at:
+            UTC naive timestamp of the current strategy cycle
 
         :return: Tuple position, trade, was a new position created
         """
 
-        assert isinstance(ts, datetime.datetime)
-        assert not isinstance(ts, pd.Timestamp)
+        assert isinstance(strategy_cycle_at, datetime.datetime)
+        assert not isinstance(strategy_cycle_at, pd.Timestamp)
 
         if quantity is not None:
             assert reserve is None, "Quantity and reserve both cannot be given at the same time"
 
         position, trade, created = self.portfolio.create_trade(
-            ts,
+            strategy_cycle_at,
             pair,
             quantity,
             reserve,

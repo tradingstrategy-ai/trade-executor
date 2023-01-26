@@ -61,7 +61,7 @@ class EthereumTestTrader:
         assumed_price = amount_in_usd / assumed_quantity
 
         position, trade, created= self.state.create_trade(
-            ts=self.ts,
+            strategy_cycle_at=self.ts,
             pair=pair,
             quantity=assumed_quantity,
             reserve=None,
@@ -90,7 +90,7 @@ class EthereumTestTrader:
         assumed_price = assumed_quota_token / quantity
 
         position, trade, created = self.state.create_trade(
-            ts=self.ts,
+            strategy_cycle_at=self.ts,
             pair=pair,
             quantity=-quantity,
             reserve=None,

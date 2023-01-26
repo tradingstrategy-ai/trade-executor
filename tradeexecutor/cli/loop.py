@@ -208,7 +208,8 @@ class ExecutionLoop:
              cycle: int,
              live: bool,
              existing_universe: Optional[StrategyExecutionUniverse]=None,
-             strategy_cycle_timestamp: Optional[datetime.datetime] = None
+             strategy_cycle_timestamp: Optional[datetime.datetime] = None,
+             extra_debug_data: Optional[dict] = None,
              ) -> StrategyExecutionUniverse:
         """Run one trade execution tick.
 
@@ -235,6 +236,9 @@ class ExecutionLoop:
             and filter new one. This is shortcut for backtesting
             where the universe does not change between cycles
             (as opposite to live trading new pairs pop in to the existince).
+
+        :param extra_debug_data:
+            Extra data to be passed to the debug dump used in unit testing.
         """
 
         assert isinstance(unrounded_timestamp, datetime.datetime)
@@ -256,12 +260,14 @@ class ExecutionLoop:
             "strategy_cycle_trigger": self.strategy_cycle_trigger.value,
         }
 
-        logger.trade("Performing strategy tick #%d for timestamp %s, cycle length is %s, unrounded time is %s, live trading is %s",
+        logger.trade("Performing strategy tick #%d for timestamp %s, cycle length is %s, unrounded time is %s, live trading is %s, the exisitng univese is %s",
                      cycle,
                      ts,
                      cycle_duration.value,
                      unrounded_timestamp,
-                     live)
+                     live,
+                     existing_universe,
+                     )
 
         if existing_universe is None:
 
@@ -271,6 +277,7 @@ class ExecutionLoop:
 
             # Refresh the trading universe for this cycle
             if self.strategy_cycle_trigger == StrategyCycleTrigger.cycle_offset:
+                logger.info("Creating new universe from the scratch using create_trading_universe()")
                 universe = self.universe_model.construct_universe(
                     ts,
                     self.execution_context.mode,
@@ -280,7 +287,10 @@ class ExecutionLoop:
                 # Check if our data is stagnated and we cannot execute the strategy
                 if self.max_data_delay is not None:
                     self.universe_model.check_data_age(ts, universe, self.max_data_delay)
-
+            elif self.strategy_cycle_trigger == StrategyCycleTrigger.trading_pair_data_availability:
+                assert existing_universe is not None, "StrategyCycleTrigger.trading_pair_data_availability needs to retain the previous universe"
+            else:
+                raise NotImplementedError()
         else:
             # Recycle the universe instance
             logger.info("Reusing previously loaded universe: %s", existing_universe)
@@ -306,6 +316,9 @@ class ExecutionLoop:
 
         # Store the current state to disk
         self.store.sync(state)
+
+        if extra_debug_data is not None:
+            debug_details.update(extra_debug_data)
 
         # Store debug trace
         self.debug_dump_state[cycle] = debug_details
@@ -535,10 +548,6 @@ class ExecutionLoop:
                         logger.info("Max backtest cycles reached")
                         break
 
-                # Advance to the next tick
-                cycle += 1
-                state.cycle = cycle
-
                 # Backtesting
                 next_tick = snap_to_next_tick(ts + datetime.timedelta(seconds=1), backtest_step, self.tick_offset)
 
@@ -611,7 +620,7 @@ class ExecutionLoop:
         # The first trade will be execute immediately, despite the time offset or tick
         if self.trade_immediately:
             ts = datetime.datetime.now()
-            self.tick(ts, self.cycle_duration, state, cycle, live=True)
+            universe = self.tick(ts, self.cycle_duration, state, cycle, live=True)
 
         def die(exc: Exception):
             # Shutdown the scheduler and mark an clean exit
@@ -624,14 +633,15 @@ class ExecutionLoop:
             nonlocal cycle
             nonlocal universe
             try:
-                cycle += 1
-                state.cycle = cycle
+
+                extra_debug_data = {}
 
                 # Wall clock time
                 unrounded_timestamp = datetime.datetime.utcnow()
                 strategy_cycle_timestamp = snap_to_previous_tick(unrounded_timestamp, self.cycle_duration)
 
-                logger.info("Executing live strategy cycle, now is %s, decision slot is",
+                logger.info("Executing live strategy cycle %d, now is %s, decision slot is %s",
+                            cycle,
                             unrounded_timestamp,
                             strategy_cycle_timestamp
                             )
@@ -647,8 +657,19 @@ class ExecutionLoop:
                     logger.info("Strategy cycle %d, universe updated result is %s", cycle, universe_update_result)
                     universe = universe_update_result.updated_universe
 
+                    extra_debug_data["universe_update_poll_cycles"] = universe_update_result.poll_cycles
+
                 # Run the main strategy logic
-                universe = self.tick(ts, self.cycle_duration, state, cycle, live=True)
+                universe = self.tick(
+                    ts,
+                    self.cycle_duration,
+                    state,
+                    cycle,
+                    existing_universe=universe,
+                    live=True,
+                    extra_debug_data=extra_debug_data,
+                )
+                logger.info("run_live() tick complete, universe is now %s", universe)
 
                 # Post execution, update our statistics
                 try:
@@ -659,6 +680,11 @@ class ExecutionLoop:
                     logger.warning("update_summary_statistics() failed in the live cycle: %s", e)
                     logger.exception(e)
                     pass
+
+                # Go to sleep and
+                # and advance to the next cycle
+                cycle += 1
+                state.cycle = cycle
 
             except Exception as e:
                 die(e)
