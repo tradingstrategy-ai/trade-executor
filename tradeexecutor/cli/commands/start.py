@@ -30,6 +30,7 @@ from ...strategy.cycle import CycleDuration
 from ...strategy.execution_context import ExecutionContext, ExecutionMode
 from ...strategy.execution_model import TradeExecutionType
 from ...strategy.run_state import RunState
+from ...strategy.strategy_cycle_trigger import StrategyCycleTrigger
 from ...strategy.strategy_module import read_strategy_module, StrategyModuleInformation
 from ...utils.timer import timed_task
 from ...webhook.server import create_webhook_server
@@ -100,6 +101,7 @@ def start(
     position_trigger_check_minutes: int = typer.Option(3.0, envvar="POSITION_TRIGGER_CHECK_MINUTES", help="How often we check for take profit/stop loss triggers. Default to once in 3 minutes. Set 0 to disable."),
     max_data_delay_minutes: int = typer.Option(3*60, envvar="MAX_DATA_DELAY_MINUTES", help="If our data feed is delayed more than this minutes, abort the execution. Defaukts to 3 hours."),
     trade_immediately: bool = typer.Option(False, "--trade-immediately", envvar="TRADE_IMMEDIATELY", help="Perform the first rebalance immediately, do not wait for the next trading universe refresh"),
+    strategy_cycle_trigger: StrategyCycleTrigger = typer.Option("cycle_offset", envvar="STRATEGY_CYCLE_TRIGGER", help="How do decide when to start executing the next live trading strategy cycle"),
 
     # Unsorted options
     state_file: Optional[Path] = typer.Option(None, envvar="STATE_FILE", help="JSON file where we serialise the execution state. If not given defaults to state/{executor-id}.json"),
@@ -155,7 +157,7 @@ def start(
 
         confirmation_timeout = datetime.timedelta(seconds=confirmation_timeout)
 
-        if execution_type == TradeExecutionType.uniswap_v2_hot_wallet:
+        if execution_type in (TradeExecutionType.uniswap_v2_hot_wallet, TradeExecutionType.dummy):
             web3config = create_web3_config(
                 json_rpc_binance=json_rpc_binance,
                 json_rpc_polygon=json_rpc_polygon,
@@ -327,6 +329,7 @@ def start(
             stats_refresh_frequency=stats_refresh_frequency,
             position_trigger_check_frequency=position_trigger_check_frequency,
             run_state=run_state,
+            strategy_cycle_trigger=strategy_cycle_trigger,
         )
         loop.run()
 
@@ -351,13 +354,15 @@ def start(
 
         logger.exception(e)
 
-        if server is None and time.time() < start_up_deadline:
+        if server is None:
             # Only terminate the process if the webhook server is not running,
             # otherwise the user can read the crash status from /status endpoint
+            logger.info("Raising the error and crashing away")
             raise
         else:
-            # Execution is dead.
+            # Execution is dea  d.
             # Sleep forever, let the webhook still serve the requests.
+            logger.info("Entering to the web server wait mode")
             time.sleep(3600*24*365)
     finally:
         if server:

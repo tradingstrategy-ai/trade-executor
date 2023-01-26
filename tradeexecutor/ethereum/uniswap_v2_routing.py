@@ -59,8 +59,22 @@ class UniswapV2RoutingState(RoutingState):
 
     def __init__(self,
                  pair_universe: PandasPairUniverse,
-                 tx_builder: TransactionBuilder,
+                 tx_builder: Optional[TransactionBuilder]=None,
                  swap_gas_limit=2_000_000):
+        """
+
+        :param pair_universe:
+            Pairs we trade
+
+        :param tx_builder:
+            For creating trade transactions.
+
+            Can be set to None on DummyExecutionModel.
+
+        :param swap_gas_limit:
+            What is the max gas we are willing to pay for a swap.
+
+        """
         self.pair_universe = pair_universe
         self.tx_builder = tx_builder
         self.hot_wallet = tx_builder.hot_wallet
@@ -599,15 +613,21 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
         assert universe.universe.pairs is not None, "Pairs are required"
 
         web3 = execution_details["web3"]
-        hot_wallet = execution_details["hot_wallet"]
+
+        # DummyExecutionModel does not have hot_wallet
+        hot_wallet = execution_details.get("hot_wallet")
 
         fees = estimate_gas_fees(web3)
 
         logger.info("Gas fee estimations for chain %d: %s", web3.eth.chain_id, fees)
 
         logger.info("Estimated gas fees for chain %d: %s", web3.eth.chain_id, fees)
-        tx_builder = TransactionBuilder(web3, hot_wallet, fees)
-        routing_state = UniswapV2RoutingState(universe.universe.pairs, tx_builder)
+        if hot_wallet:
+            tx_builder = TransactionBuilder(web3, hot_wallet, fees)
+            routing_state = UniswapV2RoutingState(universe.universe.pairs, tx_builder)
+        else:
+            routing_state = None
+
         return routing_state
 
     def perform_preflight_checks_and_logging(self,

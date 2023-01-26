@@ -56,6 +56,11 @@ class BacktestExecutionModel(ExecutionModel):
 
         assert trade.get_status() == TradeStatus.started
 
+        # In the backtesting simulation,
+        # execution happens always perfectly
+        # without any lag
+        trade.started_at = trade.opened_at
+
         state.mark_broadcasted(ts, trade)
 
         # Check that the trade "executes" against the simulated wallet
