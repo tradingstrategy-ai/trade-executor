@@ -4,6 +4,7 @@ from tradingstrategy.chain import ChainId
 
 from tradeexecutor.ethereum.routing_data import get_routing_model, MismatchReserveCurrency
 from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2SimpleRoutingModel
+from tradeexecutor.ethereum.uniswap_v3_routing import UniswapV3SimpleRoutingModel
 from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
@@ -79,7 +80,31 @@ def test_route_ethereum_dai(execution_context):
     routing = get_routing_model(execution_context, TradeRouting.uniswap_v2_dai, ReserveCurrency.dai)
     assert isinstance(routing, UniswapV2SimpleRoutingModel)
     assert routing.chain_id == ChainId.ethereum
+    
+def test_route_uniswap_v3_busd(execution_context):
+    """Test Uniswap V3 busd routing"""
+    routing = get_routing_model(execution_context, TradeRouting.uniswap_v3_busd, ReserveCurrency.busd)
+    assert isinstance(routing, UniswapV3SimpleRoutingModel)
+    assert routing.chain_id == ChainId.ethereum
 
+def test_route_uniswap_v3_usdc(execution_context):
+    """Test Uniswap V3 usdc routing"""
+    routing = get_routing_model(execution_context, TradeRouting.uniswap_v3_usdc, ReserveCurrency.usdc)
+    assert isinstance(routing, UniswapV3SimpleRoutingModel)
+    assert routing.chain_id == ChainId.ethereum
+
+def test_route_uniswap_v3_usdt(execution_context):
+    """Test Uniswap V3 usdt routing"""
+    routing = get_routing_model(execution_context, TradeRouting.uniswap_v3_usdt, ReserveCurrency.usdt)
+    assert isinstance(routing, UniswapV3SimpleRoutingModel)
+    assert routing.chain_id == ChainId.ethereum
+
+def test_route_uniswap_v3_dai(execution_context):
+    """Test Uniswap V3 dai routing"""
+    routing = get_routing_model(execution_context, TradeRouting.uniswap_v3_dai, ReserveCurrency.dai)
+    assert isinstance(routing, UniswapV3SimpleRoutingModel)
+    assert routing.chain_id == ChainId.ethereum
+    
 def test_route_mismatch_reserve_currency_pancake(execution_context):
     """Test Pancake BUSD routing."""
     with pytest.raises(MismatchReserveCurrency):
