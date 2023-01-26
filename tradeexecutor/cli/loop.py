@@ -657,7 +657,7 @@ class ExecutionLoop:
                         self.client,
                         universe,
                     )
-                    logger.info("Strategy cycle %d, universe updated result is %s", cycle, universe_update_result)
+                    logger.trade("Strategy cycle %d, universe updated result received: %s", cycle, universe_update_result)
                     universe = universe_update_result.updated_universe
 
                     extra_debug_data["universe_update_poll_cycles"] = universe_update_result.poll_cycles
