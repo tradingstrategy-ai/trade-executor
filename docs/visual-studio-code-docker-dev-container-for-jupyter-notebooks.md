@@ -91,7 +91,9 @@ there.
 
 ### Running an example notebook
 
-Here are short instructions how to edit and run notebooks.
+Here are short instructions how to edit and run example notebooks.
+
+![img.png](project-tree.png)
 
 Open `examples/synthetic-ema.ipynb`
 
