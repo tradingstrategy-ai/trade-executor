@@ -1,20 +1,19 @@
+
 # Visual Studio Code Dev Container for Jupyter Notebooks
 
-These instructions are for using [Trading Strategy](https://tradingstrategy.ai)
-backtesting and decentralised finance research environment in [Microsoft Visual Studio Code](https://code.visualstudio.com/).
+The Trading Strategy Dev Container is a pre-made development environment
+for quant finance research in decentralised finance using Visual Studio Code.
+It offers tools to analyse DEX market data, research and backtest trading strategies. 
 
 ![img_1.png](vscode-splash.png)
 
-[Microsoft Visual Studio Code](https://code.visualstudio.com/), a popular editor for Jupyter notebooks.
+[Microsoft Visual Studio Code](https://code.visualstudio.com/) is a popular editor for Jupyter notebooks.
 [Dev Container](https://code.visualstudio.com/docs/devcontainers/containers) is a Visual Studio Code
 feature to easily distribute ready-made development environments to users. Visual Studio Code
 comes with powerful editing features for [Jupyter Notebooks](https://jupyter.org/), a programming
 file format for data research.
 Dev Containers work on any operating system (Windows, macOS, Linux).
 Dev Container users a special `.devcontainer` configuration format in supported Git repositories.
-
-The Trading Strategy Dev Container is a pre-made development environment
-for quant finance research in decentralised finance. 
 
 It combines
 
