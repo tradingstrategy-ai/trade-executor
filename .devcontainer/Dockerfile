@@ -35,9 +35,3 @@ COPY . .
 RUN poetry config virtualenvs.create false
 RUN poetry install --no-dev --no-interaction --no-ansi -E web-server -E execution -E qstrader
 
-# Remove package maintainer documentation and files, as they are irrelevant for the user
-RUN rm -rf docs/ env/
-
-# Set up documentation
-RUN git clone https://github.com/tradingstrategy-ai/docs.git manual
-RUN find ./manual -iname "*.ipynb" -exec cp {} notebooks \;

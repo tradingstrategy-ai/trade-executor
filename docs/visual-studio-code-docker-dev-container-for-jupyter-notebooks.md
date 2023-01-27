@@ -7,7 +7,7 @@ a popular editor for Jupyter notebooks.
 [Dev Container](https://code.visualstudio.com/docs/devcontainers/containers) is a Visual Studio Code
 feature to easily distribute ready-made development environments to users.
 Dev Containers work on any operating system (Windows, macOS, Linux).
-Dev Container users a special `.devcontainer` configuration format in supported repositories.
+Dev Container users a special `.devcontainer` configuration format in supported Git repositories.
 
 The Trading Strategy Dev Container is a pre-made development environment
 for quant finance research in decentralised finance. 
@@ -20,7 +20,8 @@ It combines
   edit these notebooks
 - Example notebooks and documentation notebooks ready in the file explorer
 - The Docker image can be re-used for other Python editors and purposes;
-  in this documentation we focus on Visual Studio Code as it is the easiest
+  in this documentation we focus on Visual Studio Code as it is the easiest 
+- Apple Silicon (Macbook M1) friendliness
 
 ## Prerequisites
 
@@ -70,6 +71,14 @@ This contains all notebooks [from the documentation](https://tradingstrategy.ai/
 ### Running an example
 
 Open `notebooks/`
+
+
+### Using command line Python
+
+If you open Visual Studio Code terminal and run `python` command
+it comes with Trading Strategy packages installed.
+
+![img_1.png](command-line-python.png)
 
 ## Troubleshooting
 
