@@ -1,9 +1,11 @@
 # Visual Studio Code Dev Container for Jupyter Notebooks
 
-These instructions are for opening [Trading Strategy](https://tradingstrategy.ai)
-backtesting and decentralised finance research environment in [Microsoft Visual Studio Code](https://code.visualstudio.com/),
-a popular editor for Jupyter notebooks.
+These instructions are for using [Trading Strategy](https://tradingstrategy.ai)
+backtesting and decentralised finance research environment in [Microsoft Visual Studio Code](https://code.visualstudio.com/).
 
+![img_1.png](vscode-splash.png)
+
+[Microsoft Visual Studio Code](https://code.visualstudio.com/), a popular editor for Jupyter notebooks.
 [Dev Container](https://code.visualstudio.com/docs/devcontainers/containers) is a Visual Studio Code
 feature to easily distribute ready-made development environments to users.
 Dev Containers work on any operating system (Windows, macOS, Linux).
@@ -61,17 +63,42 @@ and finding *Reopen in container* action.
 
 ## Using the container
 
-See `notebooks` folder for the example notebooks
+After the container is started, open Terminal in Visual Studio Code (*View > Terminal*).
 
-- Backtesting notebook
-- Code examples
+Paste in the following command:
 
-This contains all notebooks [from the documentation](https://tradingstrategy.ai/docs/).
+```shell
+scripts/set-up-examples.sh 
+```
+
+This will create `examples` folder and copies all notebooks [from the documentation](https://tradingstrategy.ai/docs/)
+there.
 
 ### Running an example
 
-Open `notebooks/`
+Here are short instructions how to edit and run notebooks.
 
+Open `examples/synthetic-ema.ipynb`
+
+Edit the backtesting period in the first code cell:
+
+![img_1.png](backtesting-period.png)
+
+
+Set to 
+
+```python
+start_at = datetime.datetime(2022, 1, 1)
+end_at = datetime.datetime(2023, 1, 1)
+```
+
+Then press Run all:
+
+![img_1.png](run-all.png)
+
+Now scroll to the bottom of the notebook and see you have updated results for 2022 - 2023:
+
+![img_1.png](run-all-results.png)
 
 ### Using command line Python
 
@@ -95,7 +122,6 @@ Building the Docker image by hand:
 docker build --file .devcontainer/Dockerfile .
 ```
 
-![img.png](img.png)
 
 ## Further reading
 
