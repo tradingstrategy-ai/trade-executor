@@ -67,6 +67,10 @@ class JSONFileStore(StateStore):
             path = Path(path)
         self.path = path
 
+    def __repr__(self):
+        path = os.path.abspath(self.path)
+        return f"<JSON file at {path}>"
+
     def is_pristine(self) -> bool:
         return not self.path.exists()
 

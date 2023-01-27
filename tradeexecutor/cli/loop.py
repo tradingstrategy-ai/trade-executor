@@ -156,19 +156,23 @@ class ExecutionLoop:
           We do not support resumes for crashed backetsting.
 
         """
+        store: StateStore = self.store
         if self.reset:
+            logger.info("Resetting the existing state file %s", store)
             # Create empty state and save it
-            state = self.store.create(self.name)
+            state = store.create(self.name)
             state.name = self.name
-            self.store.sync(state)
+            store.sync(state)
         else:
-            if self.store.is_pristine():
+            if store.is_pristine():
+                logger.info("State is unwritten, creating new one %s", store)
                 # Create empty state and save it
-                state = self.store.create(self.name)
+                state = store.create(self.name)
                 state.name = self.name
-                self.store.sync(state)
+                store.sync(state)
             else:
-                state = self.store.load()
+                logger.info("Loading state file %s", store)
+                state = store.load()
 
         # Check that we did not corrupt the state while writing it to the disk
         state.perform_integrity_check()
