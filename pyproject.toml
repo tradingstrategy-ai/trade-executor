@@ -13,7 +13,7 @@ packages = [
 ]
 
 [tool.poetry.dependencies]
-python = ">=3.10,<3.11"
+python = ">=3.10,<3.12"
 
 # Use these during development
 # web3-ethereum-defi = {path = "deps/web3-ethereum-defi", develop = true}
