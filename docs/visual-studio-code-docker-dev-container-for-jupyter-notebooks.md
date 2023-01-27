@@ -24,6 +24,9 @@ Trading Strategy Dev Container combines
 - Example notebooks ready available in the project explorer
 - Apple Silicon (Macbook M1) friendliness
 
+You can find the related [.devcontainer files](https://github.com/tradingstrategy-ai/trade-executor/tree/master/.devcontainer) 
+and [Dockerimage](https://github.com/tradingstrategy-ai/trade-executor/tree/master/.devcontainer) on Github.
+
 ## Prerequisites
 
 - Existing basic knowledge of Python programming, Jupyter notebooks and data science and trading
