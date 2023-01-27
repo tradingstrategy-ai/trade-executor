@@ -215,7 +215,7 @@ def wait_for_universe_data_availability_jsonl(
     poll_cycle = 1
 
     wanted_timestamp = timestamp - bucket.to_timedelta()
-    logger.info("Waiting for data availability for pairs %s, strategy cycle timestamp is %s, wanted timestamp is",
+    logger.info("Waiting for data availability for pairs %s, strategy cycle timestamp is %s, wanted timestamp is %s",
                 pairs,
                 timestamp,
                 wanted_timestamp
