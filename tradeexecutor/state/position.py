@@ -277,7 +277,7 @@ class TradingPosition:
         return last_trade.is_take_profit()
 
     def open_trade(self,
-                   ts: datetime.datetime,
+                   strategy_cycle_at: datetime.datetime,
                    trade_id: int,
                    quantity: Optional[Decimal],
                    reserve: Optional[Decimal],
@@ -292,6 +292,10 @@ class TradingPosition:
         """Open a new trade on position.
 
         Trade can be opened by knowing how much you want to buy (quantity) or how much cash you have to buy (reserve).
+
+        :param strategy_cycle_at:
+            UTC naive timestamp of the current strategy cycle
+
         """
 
         if quantity is not None:
@@ -299,7 +303,7 @@ class TradingPosition:
 
         assert self.reserve_currency.get_identifier() == reserve_currency.get_identifier(), "New trade is using different reserve currency than the position has"
         assert isinstance(trade_id, int)
-        assert isinstance(ts, datetime.datetime)
+        assert isinstance(strategy_cycle_at, datetime.datetime)
 
         if reserve is not None:
             planned_reserve = reserve
@@ -313,7 +317,7 @@ class TradingPosition:
             position_id=self.position_id,
             trade_type=trade_type,
             pair=self.pair,
-            opened_at=ts,
+            opened_at=strategy_cycle_at,
             planned_quantity=planned_quantity,
             planned_price=assumed_price,
             planned_reserve=planned_reserve,

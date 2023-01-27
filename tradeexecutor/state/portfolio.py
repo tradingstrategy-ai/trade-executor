@@ -202,7 +202,7 @@ class Portfolio:
                 yield p
 
     def create_trade(self,
-                     ts: datetime.datetime,
+                     strategy_cycle_at: datetime.datetime,
                      pair: TradingPairIdentifier,
                      quantity: Optional[Decimal],
                      reserve: Optional[Decimal],
@@ -218,6 +218,10 @@ class Portfolio:
         """Create a trade.
 
         Trade can be opened by knowing how much you want to buy (quantity) or how much cash you have to buy (reserve).
+
+        :param strategy_cycle_at:
+            UTC naive timestamp of the current strategy cycle
+
         """
 
         assumed_price = float(assumed_price)  # convert from numpy.float32
@@ -228,7 +232,7 @@ class Portfolio:
         position = self.get_position_by_trading_pair(pair)
         if position is None:
             position = self.open_new_position(
-                ts,
+                strategy_cycle_at,
                 pair,
                 assumed_price,
                 reserve_currency,
@@ -238,7 +242,7 @@ class Portfolio:
             created = False
 
         trade = position.open_trade(
-            ts,
+            strategy_cycle_at,
             self.next_trade_id,
             quantity,
             reserve,

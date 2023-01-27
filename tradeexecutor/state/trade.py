@@ -14,8 +14,15 @@ from tradeexecutor.state.types import USDollarAmount, USDollarPrice, BPS
 
 
 class TradeType(enum.Enum):
+    """What kind of trade execution this was."""
+
+    #: A normal trade with strategy decision
     rebalance = "rebalance"
+
+    #: The trade was made because stop loss trigger reached
     stop_loss = "stop_loss"
+
+    #: The trade was made because take profit trigger reached
     take_profit = "take_profit"
 
 
@@ -43,7 +50,7 @@ class TradeStatus(enum.Enum):
 
 
 @dataclass_json
-@dataclass
+@dataclass()
 class TradeExecution:
     """Trade execution tracker.
 
@@ -86,7 +93,18 @@ class TradeExecution:
     #: Which trading pair this trade was for
     pair: TradingPairIdentifier
 
-    #: When the trade was opened
+    #: What was the strategy cycle timestamp for it was created.
+    #:
+    #: Naive UTC timestamp.
+    #:
+    #: See also
+    #:
+    #: - :py:attr:`started_at`
+    #:
+    #: - :py:meth:`get_execution_lag`
+    #:
+    #: - :py:meth:`get_decision_lag`
+    #:
     opened_at: datetime.datetime
 
     #: Positive for buy, negative for sell.
@@ -122,7 +140,12 @@ class TradeExecution:
     #: 0.01 is 1% slippage.
     planned_max_slippage: Optional[BPS] = None
 
-    #: When capital is allocated for this trade
+    #: When this trade was decided
+    #:
+    #: Wall clock time.
+    #:
+    #: For backtested trades, this is always set to
+    #: opened_at.
     started_at: Optional[datetime.datetime] = None
 
     #: How much reserves was moved on this trade before execution
@@ -233,6 +256,11 @@ class TradeExecution:
 
         if self.fee_tier is not None:
             assert type(self.fee_tier) == float
+
+    @property
+    def strategy_cycle_at(self):
+        """Alias for oepned_at"""
+        return self.opened_at
 
     def get_human_description(self) -> str:
         """User friendly description for this trade"""
@@ -424,6 +452,14 @@ class TradeExecution:
             return -self.trade_id
         else:
             return self.trade_id
+
+    def get_decision_lag(self) -> datetime.timedelta:
+        """How long it took between strategy decision cycle starting and the strategy to make a decision."""
+        return self.started_at - self.opened_at
+
+    def get_execution_lag(self) -> datetime.timedelta:
+        """How long it took between strategy decision cycle starting and the trade executed."""
+        return self.started_at - self.opened_at
 
     def mark_broadcasted(self, broadcasted_at: datetime.datetime):
         assert self.get_status() == TradeStatus.started, f"Trade in bad state: {self.get_status()}"

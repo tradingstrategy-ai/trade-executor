@@ -4,6 +4,8 @@ from typing import Optional, Callable
 
 import pandas as pd
 
+from tradeexecutor.strategy.strategy_module import CreateTradingUniverseProtocol
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradingstrategy.client import Client
 from tradingstrategy.environment.jupyter import download_with_tqdm_progress_bar
 
@@ -14,9 +16,9 @@ from tradeexecutor.utils.timer import timed_task
 
 def preload_data(
         client: Client,
-        create_trading_universe: Callable,
+        create_trading_universe: CreateTradingUniverseProtocol,
         universe_options: UniverseOptions,
-):
+) -> TradingStrategyUniverse:
     """Show nice progress bar for setting up data fees for backtesting trading universe.
 
     - We trigger call to `create_trading_universe` before the actual backtesting begins
@@ -34,7 +36,7 @@ def preload_data(
         timed_task_context_manager=timed_task,
     )
 
-    create_trading_universe(
+    return create_trading_universe(
         pd.Timestamp.now(),
         client,
         execution_context,

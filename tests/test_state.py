@@ -150,7 +150,7 @@ def test_single_buy(usdc, weth, weth_usdc, start_ts):
     # #1 Planning stage
     # Buy 0.1 ETH at 1700 USD/ETH
     position, trade, created = state.create_trade(
-        ts=start_ts,
+        strategy_cycle_at=start_ts,
         pair=weth_usdc,
         quantity=Decimal("0.1"),
         reserve=None,
@@ -228,7 +228,7 @@ def test_single_sell_all(usdc, weth, weth_usdc, start_ts, single_asset_portfolio
     # #1 Planning stage
     # Sell all ETH at 1700 USD/ETH
     position, trade, created = state.create_trade(
-        ts=start_ts,
+        strategy_cycle_at=start_ts,
         pair=weth_usdc,
         quantity=-eth_quantity,
         reserve=None,
@@ -744,7 +744,7 @@ def test_single_buy_failed(usdc, weth, weth_usdc, start_ts):
     # #1 Planning stage
     # Buy 0.1 ETH at 1700 USD/ETH
     position, trade, created = state.create_trade(
-        ts=start_ts,
+        strategy_cycle_at=start_ts,
         pair=weth_usdc,
         quantity=Decimal("0.1"),
         reserve=None,
