@@ -15,7 +15,7 @@ file format for data research.
 Dev Containers work on any operating system (Windows, macOS, Linux).
 Dev Container users a special `.devcontainer` configuration format in supported Git repositories.
 
-It combines
+Trading Strategy Dev Container combines
 
 - Trading Strategy framework and libraries
 - Ready set up Python environment with correct Python interpreter and Jupyter Notebook kernel
