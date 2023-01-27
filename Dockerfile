@@ -1,5 +1,5 @@
 #
-# Build trade-executor as a Docker container
+# Build trade-executor as a Docker container for live treading
 #
 # See https://stackoverflow.com/a/71786211/315168 for the recipe
 #
