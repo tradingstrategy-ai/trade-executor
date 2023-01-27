@@ -2104,8 +2104,15 @@ name = "python-logstash-tradingstrategy"
 version = "0.5.0"
 description = "Python logging handler for Logstash (forked)."
 category = "main"
-optional = true
+optional = false
 python-versions = "*"
+develop = false
+
+[package.source]
+type = "git"
+url = "https://github.com/tradingstrategy-ai/python-logstash.git"
+reference = "982dd3e6a374b443f14139508f0c12423193755a"
+resolved_reference = "982dd3e6a374b443f14139508f0c12423193755a"
 
 [[package]]
 name = "pytz"
@@ -2918,7 +2925,7 @@ web-server = ["pyramid", "WebTest", "pyramid-openapi3", "waitress"]
 [metadata]
 lock-version = "1.1"
 python-versions = ">=3.10,<3.11"
-content-hash = "831362d30c13eb327b1edf08ac7c07a76afda2441d491f4ceb1fa7bffef83e87"
+content-hash = "1f7e7811a958ae52d2b40e70822240c9f3c8eb3a55476cad57ee4f03bb2a856a"
 
 [metadata.files]
 aiohttp = [
@@ -4516,9 +4523,7 @@ python-logging-discord-handler = [
     {file = "python_logging_discord_handler-0.1.4-py3-none-any.whl", hash = "sha256:b804b48e3f5af8c9c781a9afe8243c806f01521662e38a60fcda2c3631d27f4f"},
     {file = "python_logging_discord_handler-0.1.4.tar.gz", hash = "sha256:8bfa839b6503b3b87e5851dd13bc5ff80bf2fadb496ac22c338ac10bd926f75a"},
 ]
-python-logstash-tradingstrategy = [
-    {file = "python_logstash_tradingstrategy-0.5.0-py3-none-any.whl", hash = "sha256:579a0533fa9e123d1e99b11c3b02f9415a880fbc87a37d4f632a7fdd07595b85"},
-]
+python-logstash-tradingstrategy = []
 pytz = [
     {file = "pytz-2022.6-py2.py3-none-any.whl", hash = "sha256:222439474e9c98fced559f1709d89e6c9cbf8d79c794ff3eb9f8800064291427"},
     {file = "pytz-2022.6.tar.gz", hash = "sha256:e89512406b793ca39f5971bc999cc538ce125c0e51c27941bef4568b460095e2"},
