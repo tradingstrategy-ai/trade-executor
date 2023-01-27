@@ -281,6 +281,9 @@ def wait_for_universe_data_availability_jsonl(
     raise NoNewDataReceived(
         f"Waited {max_wait} to get the data to make a trading strategy decision.\n"
         f"Decision cycle: {timestamp}.\n"
+        f"Latest candle we received: {latest_timestamp}.\n"
+        f"Diff: {diff}.\n"
+        f"Wait cycles: {poll_cycle}.\n"
         f"Pairs incomplete: {incompleted_pairs}.\n"
         f"Pairs complete: {completed_pairs}\n"
     )
