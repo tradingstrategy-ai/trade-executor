@@ -173,7 +173,9 @@ def wait_for_universe_data_availability_jsonl(
     - Uses simple polling appraoch
 
     :param timestamp:
-        The strategy decision timestamp.
+        The current strategy decision timestamp.
+
+        The latest available data we can have is the previous candle.
 
     :param current_universe:
         The current trading universe with old candles.
@@ -209,7 +211,13 @@ def wait_for_universe_data_availability_jsonl(
     started_at = datetime.datetime.utcnow()
     deadline = started_at + max_wait
     poll_cycle = 1
-    logger.info("Waiting for data availability for pairs %s, strategy cycle timestamp is %s", pairs, timestamp)
+
+    wanted_timestamp = timestamp - bucket.to_timedelta()
+    logger.info("Waiting for data availability for pairs %s, strategy cycle timestamp is %s, wanted timestamp is",
+                pairs,
+                timestamp,
+                wanted_timestamp
+                )
 
     if max_poll_cycles is None:
         # Make sure we can do int comparison
