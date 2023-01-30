@@ -18,7 +18,7 @@ from tradingstrategy.timebucket import TimeBucket
 from .app import app, TRADE_EXECUTOR_VERSION
 from ..init import prepare_executor_id, prepare_cache, create_web3_config, create_state_store, \
     create_trade_execution_model, create_metadata, create_approval_model
-from ..log import setup_logging, setup_discord_logging, setup_logstash_logging
+from ..log import setup_logging, setup_discord_logging, setup_logstash_logging, setup_file_logging
 from ..loop import ExecutionLoop
 from ..result import display_backtesting_results
 from ..version_info import VersionInfo
@@ -77,6 +77,7 @@ def start(
     # Logging
     discord_webhook_url: Optional[str] = typer.Option(None, envvar="DISCORD_WEBHOOK_URL", help="Discord webhook URL for notifications"),
     logstash_server: Optional[str] = typer.Option(None, envvar="LOGSTASH_SERVER", help="LogStash server hostname where to send logs"),
+    file_log_level: Optional[str] = typer.Option("info", envvar="FILE_LOG_LEVEL", help="Log file log level. The default log file is logs/id.log."),
 
     # Debugging and unit testing
     port_mortem_debugging: bool = typer.Option(False, "--post-mortem-debugging", envvar="POST_MORTEM_DEBUGGING", help="Launch ipdb debugger on a main loop crash to debug the exception"),
@@ -116,7 +117,7 @@ def start(
     # Guess id from the strategy file
     id = prepare_executor_id(id, strategy_file)
 
-    # We always need a name
+    # We always need a name-*-
     if not name:
         if strategy_file:
             name = os.path.basename(strategy_file)
@@ -143,6 +144,11 @@ def start(
             f"executor-{id}",  # Always prefix logged with executor id
             quiet=False,
         )
+
+    setup_file_logging(
+        f"logs/{id}.log",
+        file_log_level,
+    )
 
     try:
 

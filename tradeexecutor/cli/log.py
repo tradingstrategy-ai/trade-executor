@@ -5,6 +5,7 @@ We have a custom level `logging.TRADE` that we use to log trade execution to Dis
 
 import logging
 from logging import Logger
+from os import PathLike
 from typing import Optional, List
 
 from tradeexecutor.utils.ring_buffer_logging_handler import RingBufferHandler
@@ -23,7 +24,9 @@ except ImportError:
 _ring_buffer_handler: Optional[RingBufferHandler] = None
 
 
-def setup_logging(log_level: str | int=logging.INFO, in_memory_buffer=False) -> Logger:
+def setup_logging(
+        log_level: str | int=logging.INFO,
+        in_memory_buffer=False) -> Logger:
     """Setup root logger and quiet some levels.
 
     :param in_memory_buffer:
@@ -74,6 +77,29 @@ def setup_logging(log_level: str | int=logging.INFO, in_memory_buffer=False) -> 
         setup_in_memory_logging(logger)
 
     return logger
+
+
+def setup_file_logging(
+    log_filename: str,
+    log_level: str | int = logging.INFO,
+):
+    # https://stackoverflow.com/a/11111212/315168
+
+    fmt = "%(asctime)s %(name)-50s %(levelname)-8s %(message)s"
+    formatter = logging.Formatter(fmt)
+
+    if isinstance(log_level, str):
+        log_level = log_level.upper()
+
+    if log_level == "NONE":
+        # Allow disable
+        return
+
+    file_handler = logging.FileHandler(log_filename)
+    file_handler.setFormatter(formatter)
+    file_handler.setLevel(log_level)
+
+    logging.getLogger().addHandler(file_handler)
 
 
 def setup_in_memory_logging(logger):
