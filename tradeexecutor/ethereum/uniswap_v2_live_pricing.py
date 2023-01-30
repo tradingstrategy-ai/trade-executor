@@ -248,11 +248,10 @@ class UniswapV2LivePricing(PricingModel):
                      ts: datetime.datetime,
                      pair: TradingPairIdentifier,
                      ) -> Optional[float]:
-        """Uniswap v2 compatibles have fixed fee across the exchange."""
-        if pair.fee:
-            return pair.fee
-        else:
-            raise ValueError("Pair does not have fee")
+        """Uniswap v2 compatibles have fixed fee across the exchange.
+        No longer need to check routing model for fee.
+        No error checking required here"""
+        return pair.fee
 
 
 def uniswap_v2_live_pricing_factory(

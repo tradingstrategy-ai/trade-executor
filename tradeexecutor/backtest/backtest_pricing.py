@@ -196,11 +196,10 @@ class BacktestSimplePricingModel(PricingModel):
                      ts: datetime.datetime,
                      pair: TradingPairIdentifier,
                      ) -> Optional[float]:
-        """Figure out the fee from a pair or a routing."""
-        if pair.fee:
-            return pair.fee
-        else:
-            raise ValueError("Pair does not have fee")
+        """Figure out the fee from a pair. 
+        Trading fees are no longer supported in the routing model.
+        Error checking not required here since done upon TPI instantiation"""
+        return pair.fee
 
 
 def backtest_pricing_factory(
