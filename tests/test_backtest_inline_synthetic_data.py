@@ -132,6 +132,7 @@ def logger(request):
 
 @pytest.fixture(scope="module")
 def universe() -> TradingStrategyUniverse:
+    """Set up a mock universe."""
 
     start_at = datetime.datetime(2021, 6, 1)
     end_at = datetime.datetime(2022, 1, 1)

@@ -760,10 +760,16 @@ def translate_trading_pair(pair: DEXPair) -> TradingPairIdentifier:
     )
 
     if pair.fee and isnan(pair.fee):
-        # Repair some data
+        # Repair some broken data
         fee = None
     else:
-        fee = pair.fee
+        # Convert DEXPair.fee BPS to %
+        if pair.fee is not None:
+            # If BPS fee is set it must be more than 1 BPS
+            assert pair.fee > 1, f"DEXPair fee must be in BPS, got {pair.fee}"
+            fee = pair.fee / 10_000
+        else:
+            fee = None
 
     return TradingPairIdentifier(
         base=base,
@@ -802,7 +808,7 @@ def create_pair_universe_from_code(chain_id: ChainId, pairs: List[TradingPairIde
             token1_address=p.quote.address,
             token0_decimals=p.base.decimals,
             token1_decimals=p.quote.decimals,
-            fee=p.fee,
+            fee=int(p.fee * 10_000) if p.fee else None,  # Convert to bps according to the documentation
         )
         data.append(dex_pair.to_dict())
     df = pd.DataFrame(data)
