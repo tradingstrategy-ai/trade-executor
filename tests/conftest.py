@@ -39,3 +39,8 @@ def logger() -> Logger:
     Only seem to affect multitest runs.
     """
     return setup_pytest_logging()
+
+@pytest.fixture(scope="session")
+def trading_fee() -> float:
+    """Default trading_fee for tests: 0.25%"""
+    return 0.0025

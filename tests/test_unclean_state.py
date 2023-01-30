@@ -46,15 +46,17 @@ def aave() -> AssetIdentifier:
 
 
 @pytest.fixture
-def weth_usdc(mock_exchange_address, usdc, weth) -> TradingPairIdentifier:
+def weth_usdc(mock_exchange_address, usdc, weth, trading_fee) -> TradingPairIdentifier:
     """Mock some assets"""
-    return TradingPairIdentifier(weth, usdc, "0x4", mock_exchange_address, internal_id=1)
+    return TradingPairIdentifier(weth, usdc, "0x4", mock_exchange_address, internal_id=1, \
+                                 fee=trading_fee)
 
 
 @pytest.fixture
-def aave_usdc(mock_exchange_address, usdc, aave) -> TradingPairIdentifier:
+def aave_usdc(mock_exchange_address, usdc, aave, trading_fee) -> TradingPairIdentifier:
     """Mock some assets"""
-    return TradingPairIdentifier(aave, usdc, "0x5", mock_exchange_address, internal_id=2)
+    return TradingPairIdentifier(aave, usdc, "0x5", mock_exchange_address, internal_id=2, \
+        fee=trading_fee)
 
 
 @pytest.fixture

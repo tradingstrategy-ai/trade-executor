@@ -38,9 +38,16 @@ def weth() -> AssetIdentifier:
 
 
 @pytest.fixture
-def weth_usdc(mock_exchange_address, usdc, weth) -> TradingPairIdentifier:
+def weth_usdc(mock_exchange_address, usdc, weth, trading_fee) -> TradingPairIdentifier:
     """Mock some assets"""
-    return TradingPairIdentifier(weth, usdc, "0x4", mock_exchange_address, internal_id=555)
+    return TradingPairIdentifier(
+        weth, 
+        usdc, 
+        "0x4", 
+        mock_exchange_address, 
+        internal_id=555,
+        fee=trading_fee
+    )
 
 
 def test_synthetic_candles_timezone(usdc, weth, weth_usdc):

@@ -23,7 +23,7 @@ def generate_exchange(exchange_id: int, chain_id: ChainId, address="0x0000000000
     return exchange
 
 
-def generate_simple_routing_model(universe: TradingStrategyUniverse, trading_fee: Optional[BPS] = None) -> BacktestRoutingModel:
+def generate_simple_routing_model(universe: TradingStrategyUniverse) -> BacktestRoutingModel:
     """Creates a routing model for data generated synthetically.
 
     - Assumes there is only one exchange in the trading universe

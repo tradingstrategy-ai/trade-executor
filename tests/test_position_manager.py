@@ -27,7 +27,7 @@ from tradingstrategy.universe import Universe
 
 
 @pytest.fixture(scope="module")
-def synthetic_universe() -> TradingStrategyUniverse:
+def synthetic_universe(trading_fee) -> TradingStrategyUniverse:
     """Create ETH-USDC universe with random price data."""
 
     start_at = datetime.datetime(2021, 6, 1)
@@ -48,7 +48,7 @@ def synthetic_universe() -> TradingStrategyUniverse:
         mock_exchange.address,
         internal_id=random.randint(1, 1000),
         internal_exchange_id=mock_exchange.exchange_id,
-        fee=0.0025)
+        fee=trading_fee)
 
     time_bucket = TimeBucket.d1
 
@@ -157,7 +157,7 @@ def test_get_current_position(position_manager_with_open_position: PositionManag
 def test_estimate_fee_from_router(state, synthetic_universe, position_manager):
     """"Estimate the trading fee based on router data."""
 
-    routing_model = generate_simple_routing_model(synthetic_universe, trading_fee=0.0025)
+    routing_model = generate_simple_routing_model(synthetic_universe)
     pricing_model = BacktestSimplePricingModel(
         synthetic_universe.universe.candles,
         routing_model

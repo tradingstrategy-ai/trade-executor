@@ -112,6 +112,9 @@ class TradingPairIdentifier:
     #: Expressed as float
     fee: Optional[float] = None
 
+    def __post_init__(self):
+        assert self.fee, "Trading fee not provided to TradingPairIdentifier"
+    
     def __repr__(self):
         fee = self.fee or 0
         return f"<Pair {self.base.token_symbol}-{self.quote.token_symbol} at {self.pool_address} ({fee * 100:.4f}% fee) on exchange {self.exchange_address}>"

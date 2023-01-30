@@ -24,7 +24,7 @@ def ohlcv_sample_path() -> Path:
     return Path(p)
 
 
-def test_load_parquet(ohlcv_sample_path):
+def test_load_parquet(ohlcv_sample_path, trading_fee):
     """Load candle data from external Parquet file."""
 
     # Set up fake assets
@@ -43,7 +43,9 @@ def test_load_parquet(ohlcv_sample_path):
         generate_random_ethereum_address(),
         mock_exchange.address,
         internal_id=random.randint(1, 1000),
-        internal_exchange_id=mock_exchange.exchange_id)
+        internal_exchange_id=mock_exchange.exchange_id,
+        fee=trading_fee
+    )
 
     time_bucket = TimeBucket.h1
 

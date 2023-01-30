@@ -126,7 +126,7 @@ def decide_trades(
 
 
 @pytest.fixture(scope="module")
-def universe() -> TradingStrategyUniverse:
+def universe(trading_fee) -> TradingStrategyUniverse:
 
     start_at = datetime.datetime(2021, 6, 1)
     end_at = datetime.datetime(2022, 1, 1)
@@ -146,7 +146,7 @@ def universe() -> TradingStrategyUniverse:
         mock_exchange.address,
         internal_id=random.randint(1, 1000),
         internal_exchange_id=mock_exchange.exchange_id,
-        fee=0.0025)
+        fee=trading_fee)
 
     time_bucket = TimeBucket.d1
 

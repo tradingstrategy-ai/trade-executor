@@ -194,7 +194,7 @@ def weth() -> AssetIdentifier:
 
 
 @pytest.fixture
-def weth_usdc(mock_exchange, usdc, weth) -> TradingPairIdentifier:
+def weth_usdc(mock_exchange, usdc, weth, trading_fee) -> TradingPairIdentifier:
     """Mock some assets"""
     return TradingPairIdentifier(
         weth,
@@ -203,7 +203,7 @@ def weth_usdc(mock_exchange, usdc, weth) -> TradingPairIdentifier:
         mock_exchange.address,
         internal_id=555,
         internal_exchange_id=mock_exchange.exchange_id,
-        fee=0.0025)
+        fee=trading_fee)
 
 
 @pytest.fixture()
