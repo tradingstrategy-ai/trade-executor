@@ -99,7 +99,7 @@ class SpotTrade:
     #: Set for legacy trades with legacy data.
     #:
     #: Mark that calculations on this trade might be incorrect
-    bad_data_issues = False
+    bad_data_issues: bool = False
 
     def is_buy(self):
         return self.quantity > 0
