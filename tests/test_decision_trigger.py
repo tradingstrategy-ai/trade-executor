@@ -75,8 +75,10 @@ def test_decision_trigger_ready_data(persistent_test_client, universe):
     pair = updated_universe_result.updated_universe.universe.pairs.get_single()
     candles = updated_universe_result.updated_universe.universe.candles.get_candles_by_pair(pair.pair_id)
 
+    last_possible_timestamp = timestamp -  TimeBucket.d1.to_timedelta()
+
     validate_latest_candles(
         {pair},
         candles,
-        timestamp
+        last_possible_timestamp
     )

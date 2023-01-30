@@ -143,7 +143,9 @@ def validate_latest_candles(
         May contain candes for a single or multiple pairs.
 
     :param timestamp:
-        What is the latest candle timestamp our strategy decision cycle needs to consume
+
+        What is the latest timestamp we need to have avilable for every pair.
+        This is the strategy decision timestamp - current candle time frame.
 
     :raise:
         AssertionError
@@ -173,7 +175,9 @@ def wait_for_universe_data_availability_jsonl(
     - Uses simple polling appraoch
 
     :param timestamp:
-        The strategy decision timestamp.
+        The current strategy decision timestamp.
+
+        The latest available data we can have is the previous full candle.
 
     :param current_universe:
         The current trading universe with old candles.
@@ -209,7 +213,13 @@ def wait_for_universe_data_availability_jsonl(
     started_at = datetime.datetime.utcnow()
     deadline = started_at + max_wait
     poll_cycle = 1
-    logger.info("Waiting for data availability for pairs %s, strategy cycle timestamp is %s", pairs, timestamp)
+
+    wanted_timestamp = timestamp - bucket.to_timedelta()
+    logger.info("Waiting for data availability for pairs %s, strategy cycle timestamp is %s, wanted timestamp is %s",
+                pairs,
+                timestamp,
+                wanted_timestamp
+                )
 
     if max_poll_cycles is None:
         # Make sure we can do int comparison
@@ -220,7 +230,7 @@ def wait_for_universe_data_availability_jsonl(
     if current_universe.required_history_period is not None:
         required_history_period = current_universe.required_history_period
 
-    max_diff = None
+    max_diff = datetime.timedelta(0)
 
     while datetime.datetime.utcnow() < deadline:
 
@@ -234,41 +244,47 @@ def wait_for_universe_data_availability_jsonl(
         last_timestamps_log = {}
 
         # Move any pairs with new complete data to the completed set
+        pairs_to_move = set()
         for p in incompleted_pairs:
             latest_timestamp = avail_map[p.pair_id]["last_candle_at"]
 
             last_timestamps_log[p.get_ticker()] = latest_timestamp
 
-            if latest_timestamp >= timestamp:
-                incompleted_pairs.remove(p)
-                completed_pairs.add(p)
+            # This pair received its data and is ready
+            if latest_timestamp >= wanted_timestamp:
+                pairs_to_move.add(p)
 
-            if not incompleted_pairs or poll_cycle >= max_poll_cycles:
-                # We have latest data for all pairs and can now update the universe
-                logger.info("Fetching candle data for the history period of %s", required_history_period)
-                df = fetch_data(
-                    client,
-                    bucket,
-                    timestamp,
-                    completed_pairs,
-                    required_history_period,
-                )
-                updated_universe = update_universe(current_universe, df)
-                time_waited = datetime.datetime.utcnow() - started_at
-                return UpdatedUniverseResult(
-                    updated_universe=updated_universe,
-                    ready_at=datetime.datetime.utcnow(),
-                    time_waited=time_waited,
-                    poll_cycles=poll_cycle,
-                    max_diff=max_diff,
-                )
+            diff = wanted_timestamp - latest_timestamp
+            max_diff = max(diff, max_diff)
 
-        diff = timestamp - latest_timestamp
-        if not max_diff:
-            max_diff = diff
+        # Some pairs become ready with their data
+        for p in pairs_to_move:
+            incompleted_pairs.remove(p)
+            completed_pairs.add(p)
+
+        # Add we done with all incomplete pairs
+        if not incompleted_pairs or poll_cycle >= max_poll_cycles:
+            # We have latest data for all pairs and can now update the universe
+            logger.info("Fetching candle data for the history period of %s", required_history_period)
+            df = fetch_data(
+                client,
+                bucket,
+                wanted_timestamp,
+                completed_pairs,
+                required_history_period,
+            )
+            updated_universe = update_universe(current_universe, df)
+            time_waited = datetime.datetime.utcnow() - started_at
+            return UpdatedUniverseResult(
+                updated_universe=updated_universe,
+                ready_at=datetime.datetime.utcnow(),
+                time_waited=time_waited,
+                poll_cycles=poll_cycle,
+                max_diff=max_diff,
+            )
 
         logger.info("Timestamp wanted %s, Completed pairs: %d, Incompleted pairs: %d, last candles %s, diff is %s, sleeping %s",
-                    timestamp,
+                    wanted_timestamp,
                     len(completed_pairs),
                     len(incompleted_pairs),
                     last_timestamps_log,
@@ -281,6 +297,10 @@ def wait_for_universe_data_availability_jsonl(
     raise NoNewDataReceived(
         f"Waited {max_wait} to get the data to make a trading strategy decision.\n"
         f"Decision cycle: {timestamp}.\n"
+        f"Wanted candle timestamp: {wanted_timestamp}.\n"
+        f"Latest candle we received: {latest_timestamp}.\n"
+        f"Diff: {diff}.\n"
+        f"Wait cycles: {poll_cycle}.\n"
         f"Pairs incomplete: {incompleted_pairs}.\n"
         f"Pairs complete: {completed_pairs}\n"
     )

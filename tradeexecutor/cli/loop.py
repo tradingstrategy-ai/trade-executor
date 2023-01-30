@@ -130,6 +130,7 @@ class ExecutionLoop:
         self.universe_model: Optional[UniverseModel] = None
         self.strategy_cycle_trigger = strategy_cycle_trigger
         self.max_cycles = max_cycles
+        self.max_data_delay = max_data_delay
 
         # cycle -> dump mappings
         self.debug_dump_state = {}
@@ -660,6 +661,7 @@ class ExecutionLoop:
                         strategy_cycle_timestamp,
                         self.client,
                         universe,
+                        max_wait=self.max_data_delay,
                     )
                     logger.trade("Strategy cycle %d, universe updated result received: %s", cycle, universe_update_result)
                     universe = universe_update_result.updated_universe

@@ -13,15 +13,15 @@ packages = [
 ]
 
 [tool.poetry.dependencies]
-python = ">=3.10,<3.11"
+python = ">=3.10,<3.12"
 
 # Use these during development
 # web3-ethereum-defi = {path = "deps/web3-ethereum-defi", develop = true}
 # trading-strategy = {path = "deps/trading-strategy", develop = true}
 requests = "^2.27.1"
 web3 = "^5.26.0"
-web3-ethereum-defi = {version = "0.13.11", extras=["data"]}
-trading-strategy = "0.10.2"
+web3-ethereum-defi = {version="0.13.11", extras=["data"]}
+trading-strategy = "0.11.1"
 matplotlib = "^3.6.0"
 jupyterlab = "^3.5.0"
 pandas-ta = "^0.3.14-beta.0"

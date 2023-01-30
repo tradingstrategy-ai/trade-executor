@@ -296,6 +296,7 @@ class OurUniverseModel(TradingStrategyUniverseModel):
             # We do a bit detour here as we need to address the assets by their trading pairs first
             # https://tradingstrategy.ai/trading-view/binance/pancakeswap-v2/bnb-busd
             bnb_busd = pairs.get_pair_by_smart_contract("0x58f876857a02d6762e0101bb5c46a8c1ed44dc16")
+            bnb_busd.fee = 0.025
             assert bnb_busd, "We do not have BNB-BUSD, something wrong with the dataset"
 
             # Get daily candles as Pandas DataFrame
