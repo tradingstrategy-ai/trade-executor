@@ -25,6 +25,7 @@ from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifie
 APPROX_REL = 0.01
 APPROX_REL_DECIMAL = Decimal("0.1")
 
+TRADING_FEE = 0.0025
 
 
 @pytest.fixture
@@ -158,6 +159,7 @@ def weth_usdc_pair(uniswap_v2, weth_usdc_uniswap_trading_pair, asset_usdc, asset
         asset_usdc,
         weth_usdc_uniswap_trading_pair,
         uniswap_v2.factory.address,
+        fee = TRADING_FEE
     )
 
 
@@ -168,6 +170,7 @@ def aave_weth_pair(uniswap_v2, aave_weth_uniswap_trading_pair, asset_aave, asset
         asset_weth,
         aave_weth_uniswap_trading_pair,
         uniswap_v2.factory.address,
+        fee = TRADING_FEE
     )
 
 
@@ -194,7 +197,6 @@ def routing_model(uniswap_v2, asset_usdc, asset_weth, weth_usdc_pair) -> Uniswap
         factory_router_map,
         allowed_intermediary_pairs,
         reserve_token_address=asset_usdc.address,
-        trading_fee=0.0,
     )
 
 
@@ -208,7 +210,7 @@ def test_uniswap_two_leg_buy_price_no_price_impact(
     pricing_method = UniswapV2LivePricing(web3, pair_universe, routing_model)
 
     exchange = next(iter(exchange_universe.exchanges.values()))  # Get the first exchange from the universe
-    weth_usdc = pair_universe.get_one_pair_from_pandas_universe(exchange.exchange_id, "WETH", "USDC")
+    weth_usdc = pair_universe.get_one_pair_from_pandas_universe(exchange.exchange_id, "WETH", "USDC", TRADING_FEE)
     pair = translate_trading_pair(weth_usdc)
 
     # Get price for "infinite" small trade amount
@@ -226,7 +228,7 @@ def test_uniswap_two_leg_buy_price_with_price_impact(
     pricing_method = UniswapV2LivePricing(web3, pair_universe, routing_model)
 
     exchange = next(iter(exchange_universe.exchanges.values()))  # Get the first exchange from the universe
-    weth_usdc = pair_universe.get_one_pair_from_pandas_universe(exchange.exchange_id, "WETH", "USDC")
+    weth_usdc = pair_universe.get_one_pair_from_pandas_universe(exchange.exchange_id, "WETH", "USDC", TRADING_FEE)
     pair = translate_trading_pair(weth_usdc)
 
     # Get price for 100 USDC
@@ -247,7 +249,7 @@ def test_uniswap_two_leg_sell_price_no_price_impact(
     pricing_method = UniswapV2LivePricing(web3, pair_universe, routing_model)
 
     exchange = next(iter(exchange_universe.exchanges.values()))  # Get the first exchange from the universe
-    weth_usdc = pair_universe.get_one_pair_from_pandas_universe(exchange.exchange_id, "WETH", "USDC")
+    weth_usdc = pair_universe.get_one_pair_from_pandas_universe(exchange.exchange_id, "WETH", "USDC", TRADING_FEE)
     pair = translate_trading_pair(weth_usdc)
 
     # Get price for "infinite" small trade amount
@@ -268,7 +270,7 @@ def test_uniswap_two_leg_sell_price_with_price_impact(
     pricing_method = UniswapV2LivePricing(web3, pair_universe, routing_model)
 
     exchange = next(iter(exchange_universe.exchanges.values()))  # Get the first exchange from the universe
-    weth_usdc = pair_universe.get_one_pair_from_pandas_universe(exchange.exchange_id, "WETH", "USDC")
+    weth_usdc = pair_universe.get_one_pair_from_pandas_universe(exchange.exchange_id, "WETH", "USDC", TRADING_FEE)
     pair = translate_trading_pair(weth_usdc)
 
     # Sell 50 ETH
@@ -296,11 +298,11 @@ def test_uniswap_three_leg_buy_price_with_price_impact(
     # Do some setup checks before attempting to buy
     #
 
-    aave_weth = pair_universe.get_one_pair_from_pandas_universe(exchange.exchange_id, "AAVE", "WETH")
+    aave_weth = pair_universe.get_one_pair_from_pandas_universe(exchange.exchange_id, "AAVE", "WETH", TRADING_FEE)
     pair = translate_trading_pair(aave_weth)
     assert pair, "Pair missing?"
 
-    weth_usdc = pair_universe.get_one_pair_from_pandas_universe(exchange.exchange_id, "WETH", "USDC")
+    weth_usdc = pair_universe.get_one_pair_from_pandas_universe(exchange.exchange_id, "WETH", "USDC", TRADING_FEE)
     pair2 = translate_trading_pair(weth_usdc)
     assert pair2, "Pair missing?"
 
@@ -341,7 +343,7 @@ def test_uniswap_three_leg_sell_price_with_price_impact(
 
     exchange = next(iter(exchange_universe.exchanges.values()))  # Get the first exchange from the universe
 
-    aave_weth = pair_universe.get_one_pair_from_pandas_universe(exchange.exchange_id, "AAVE", "WETH")
+    aave_weth = pair_universe.get_one_pair_from_pandas_universe(exchange.exchange_id, "AAVE", "WETH", TRADING_FEE)
     pair = translate_trading_pair(aave_weth)
 
     # Get price for 500 AAVE

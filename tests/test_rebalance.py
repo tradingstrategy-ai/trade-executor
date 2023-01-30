@@ -73,7 +73,8 @@ def weth_usdc(mock_exchange, usdc, weth) -> TradingPairIdentifier:
         "0x4",
         mock_exchange.address,
         internal_id=1,
-        internal_exchange_id=mock_exchange.exchange_id)
+        internal_exchange_id=mock_exchange.exchange_id,
+        fee=0.0025)
 
 
 @pytest.fixture
@@ -85,7 +86,8 @@ def aave_usdc(mock_exchange, usdc, aave) -> TradingPairIdentifier:
         "0x5",
         mock_exchange.address,
         internal_id=2,
-        internal_exchange_id=mock_exchange.exchange_id
+        internal_exchange_id=mock_exchange.exchange_id,
+        fee=0.0025
     )
 
 
@@ -352,7 +354,7 @@ def test_rebalance_trades_flip_position(
     t = trades[1]
     assert t.is_buy()
     assert t.is_planned()
-    assert t.planned_price == 100
+    assert t.planned_price == 100.25
     assert t.get_planned_value() ==  157.7
 
 
@@ -415,7 +417,7 @@ def test_rebalance_trades_flip_position_partial(
     t = trades[1]
     assert t.is_buy()
     assert t.is_planned()
-    assert t.planned_price == 100
+    assert t.planned_price == 100.25
     assert t.get_planned_value() == pytest.approx(47.31)
 
 

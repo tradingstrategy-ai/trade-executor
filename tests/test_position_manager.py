@@ -47,7 +47,8 @@ def synthetic_universe() -> TradingStrategyUniverse:
         generate_random_ethereum_address(),
         mock_exchange.address,
         internal_id=random.randint(1, 1000),
-        internal_exchange_id=mock_exchange.exchange_id)
+        internal_exchange_id=mock_exchange.exchange_id,
+        fee=0.0025)
 
     time_bucket = TimeBucket.d1
 
@@ -135,30 +136,23 @@ def test_get_current_position(position_manager_with_open_position: PositionManag
     # This is expressed in Python Decimal class,
     # because Ethereum token balances are accurate up to 18 decimals
     # and this kind of accuracy cannot be expressed in floating point numbers.
+    # Take fee into account
     quantity = current_position.get_quantity()
-    assert quantity == Decimal('0.03033456189136483055782720622')
+    assert quantity == Decimal('0.03025891460485269943535152236')
 
     # The current price is the price of the trading pair
     # that was recorded on the last price feed sync.
     # This is a 64-bit floating point, as the current price
     # is always approximation based on market conditions.
     price = current_position.get_current_price()
-    assert price == 1648.28488966024
+    assert price == 1652.4056018843905
 
     # The opening price is the price of the first trade
     # that was made for this position. This is the actual
     # executed price of the trade, expressed as floating
     # point for the convenience.
     price = current_position.get_opening_price()
-    assert price == 1648.28488966024
-
-
-def test_estimate_fee_not_available(synthetic_universe, position_manager):
-    """"Estimate the trading fee."""
-    eth_usdc = synthetic_universe.get_single_pair()
-    fee = position_manager.get_pair_fee(eth_usdc)
-    assert fee is None
-
+    assert price == 1652.4056018843905
 
 def test_estimate_fee_from_router(state, synthetic_universe, position_manager):
     """"Estimate the trading fee based on router data."""

@@ -109,7 +109,7 @@ class TradingPairIdentifier:
     #: Trading fee for this pair.
     #:
     #: Uniswap v3 style fee where all trades share the same LP fees.
-    #:
+    #: Expressed as float
     fee: Optional[float] = None
 
     def __repr__(self):
@@ -123,7 +123,7 @@ class TradingPairIdentifier:
     def __eq__(self, other):
         assert isinstance(other, TradingPairIdentifier), f"Got {other}"
         return self.base == other.base and self.quote == other.quote
-
+    
     def get_identifier(self) -> str:
         """We use the smart contract pool address to uniquely identify trading positions.
 

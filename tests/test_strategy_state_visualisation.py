@@ -145,7 +145,8 @@ def universe() -> TradingStrategyUniverse:
         generate_random_ethereum_address(),
         mock_exchange.address,
         internal_id=random.randint(1, 1000),
-        internal_exchange_id=mock_exchange.exchange_id)
+        internal_exchange_id=mock_exchange.exchange_id,
+        fee=0.0025)
 
     time_bucket = TimeBucket.d1
 

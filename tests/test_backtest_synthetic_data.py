@@ -70,7 +70,8 @@ def weth_usdc(mock_exchange, usdc, weth) -> TradingPairIdentifier:
         generate_random_ethereum_address(),
         mock_exchange.address,
         internal_id=555,
-        internal_exchange_id=mock_exchange.exchange_id)
+        internal_exchange_id=mock_exchange.exchange_id,
+        fee=0.0025)
 
 
 @pytest.fixture()

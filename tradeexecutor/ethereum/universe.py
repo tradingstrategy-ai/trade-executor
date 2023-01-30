@@ -40,6 +40,7 @@ def create_pair_universe(web3: Web3, exchange: Exchange, pairs: List[TradingPair
             token1_address=p.quote.address,
             token0_decimals=p.base.decimals,
             token1_decimals=p.quote.decimals,
+            fee=p.fee
         )
         data.append(dex_pair.to_dict())
     df = pd.DataFrame(data)

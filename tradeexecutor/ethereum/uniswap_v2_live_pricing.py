@@ -203,7 +203,7 @@ class UniswapV2LivePricing(PricingModel):
         token_received = target_pair.base.convert_to_decimal(token_raw_received)
 
         fee = self.get_pair_fee(ts, pair)
-        assert fee is not None, f"Uniswap v2 fee data missing: {uniswap}"
+        assert fee is not None, f"Uniswap v2 fee data missing: {uniswap}" # TODO remove and throw error in TP Identifier
 
         price = float(reserve / token_received)
 

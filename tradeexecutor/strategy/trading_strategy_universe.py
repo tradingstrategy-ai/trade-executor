@@ -745,7 +745,8 @@ def translate_trading_pair(pair: DEXPair) -> TradingPairIdentifier:
     assert isinstance(pair, DEXPair), f"Expected DEXPair, got {type(pair)}"
     assert pair.base_token_decimals is not None, f"Base token missing decimals: {pair}"
     assert pair.quote_token_decimals is not None, f"Quote token missing decimals: {pair}"
-
+    assert pair.fee
+    
     base = AssetIdentifier(
         chain_id=pair.chain_id.value,
         address=pair.base_token_address,
@@ -759,12 +760,6 @@ def translate_trading_pair(pair: DEXPair) -> TradingPairIdentifier:
         decimals=pair.quote_token_decimals,
     )
 
-    if pair.fee and isnan(pair.fee):
-        # Repair some data
-        fee = None
-    else:
-        fee = pair.fee
-
     return TradingPairIdentifier(
         base=base,
         quote=quote,
@@ -772,7 +767,7 @@ def translate_trading_pair(pair: DEXPair) -> TradingPairIdentifier:
         internal_id=pair.pair_id,
         info_url=pair.get_trading_pair_page_url(),
         exchange_address=pair.exchange_address,
-        fee=fee,
+        fee=pair.fee,
     )
 
 

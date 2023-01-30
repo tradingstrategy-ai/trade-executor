@@ -274,7 +274,6 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
                  allowed_intermediary_pairs: Dict[str, str],
                  reserve_token_address: str,
                  chain_id: Optional[ChainId] = None,
-                 trading_fee: Optional[BPS] = None
                  ):
         """
         :param factory_router_map:

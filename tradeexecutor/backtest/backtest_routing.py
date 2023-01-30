@@ -143,7 +143,6 @@ class BacktestRoutingModel(RoutingModel):
         self.factory_router_map = {k.lower(): v for k, v in factory_router_map.items()}
         self.allowed_intermediary_pairs = {k.lower(): v.lower() for k, v in allowed_intermediary_pairs.items()}
         self.reserve_token_address = reserve_token_address
-        self.trading_fee = trading_fee
 
     def get_reserve_asset(self, pair_universe: PandasPairUniverse) -> AssetIdentifier:
         """Translate our reserve token address tok an asset description."""

@@ -57,5 +57,4 @@ def generate_simple_routing_model(universe: TradingStrategyUniverse, trading_fee
         factory_router_map,
         allowed_intermediary_pairs,
         reserve_token_address=reserve_asset.address,
-        trading_fee=trading_fee,
     )

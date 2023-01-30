@@ -48,7 +48,7 @@ from tradeexecutor.utils.blockchain import get_latest_block_timestamp
 APPROX_REL = 0.01
 APPROX_REL_DECIMAL = Decimal("0.1")
 
-
+TRADING_FEE = 0.003
 
 @pytest.fixture
 def tester_provider():
@@ -171,6 +171,7 @@ def weth_usdc_pair(uniswap_v2, weth_usdc_uniswap_trading_pair, asset_usdc, asset
         asset_usdc,
         weth_usdc_uniswap_trading_pair,
         uniswap_v2.factory.address,
+        fee = TRADING_FEE
     )
 
 
@@ -203,7 +204,6 @@ def routing_model(uniswap_v2, asset_usdc, asset_weth, weth_usdc_pair) -> Uniswap
         factory_router_map,
         allowed_intermediary_pairs,
         reserve_token_address=asset_usdc.address,
-        trading_fee=0.030,
     )
 
 
@@ -352,7 +352,7 @@ def test_live_stop_loss(
     exchanges = trading_strategy_universe.universe.exchanges
     pricing_method = UniswapV2LivePricing(web3, pair_universe, routing_model)
     exchange = exchanges[0] # Get the first exchange from the universe
-    weth_usdc = pair_universe.get_one_pair_from_pandas_universe(exchange.exchange_id, "WETH", "USDC")
+    weth_usdc = pair_universe.get_one_pair_from_pandas_universe(exchange.exchange_id, "WETH", "USDC", TRADING_FEE)
     pair = translate_trading_pair(weth_usdc)
 
     price_structure = pricing_method.get_buy_price(datetime.datetime.utcnow(), pair, None)
@@ -392,7 +392,7 @@ def test_live_stop_loss(
 
     assert state.portfolio.reserves[usdc_token.address.lower()].quantity == 8000
     assert state.portfolio.open_positions[1].get_quantity() == Decimal('0.586126842081438121')
-    assert state.portfolio.open_positions[1].get_value() == pytest.approx(996.998769)
+    assert state.portfolio.open_positions[1].get_value() == pytest.approx(994.0125000000002)
 
     # Sell ETH on the pool to change the price more than 10%.
     # The pool is 1000 ETH / 1.7M USDC.
