@@ -167,9 +167,6 @@ class UniswapV3RoutingState(RoutingState):
 
         # different pairs on Uniswap v3 can have different fees, so we need to get the fee dynamically every time like this
         pool_trading_fee = target_pair.fee
-        print("trading fee is: ", pool_trading_fee) # TODO remove
-
-        assert pool_trading_fee is not None, "trading fee not given to tp identifier"
 
         if reserve_asset == target_pair.quote:
             # Buy with e.g. BUSD
@@ -220,11 +217,6 @@ class UniswapV3RoutingState(RoutingState):
         # different pairs on Uniswap v3 can have different fees, so we need to get the fee dynamically every time like this
         fee1 = intermediary_pair.fee
         fee2 = target_pair.fee
-        print("trading fee is: ", fee1) # TODO remove
-        print("trading fee is: ", fee2)
-
-        assert fee1 is not None, "trading fee not given to tp identifier"
-        assert fee2 is not None, "trading fee not given to tp identifier"
 
         # Check we can chain two pairs
         assert intermediary_pair.base == target_pair.quote, f"Could not hop from intermediary {intermediary_pair} -> destination {target_pair}"

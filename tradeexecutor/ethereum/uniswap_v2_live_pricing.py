@@ -68,13 +68,6 @@ class UniswapV2LivePricing(PricingModel):
         self.pair_universe = pair_universe
         self.very_small_amount = very_small_amount
         self.routing_model = routing_model
-
-        # web3-ethereum-defi trading fee default is 30 bps
-        if(hasattr(routing_model, 'trading_fee')):
-            self.trading_fee = routing_model.trading_fee
-        else:
-            self.trading_fee = 30
-
         self.uniswap_cache: Dict[TradingPairIdentifier, UniswapV2Deployment] = {}
 
         assert isinstance(self.very_small_amount, Decimal)
@@ -122,22 +115,21 @@ class UniswapV2LivePricing(PricingModel):
         # In three token trades, be careful to use the correct reserve token
         quantity_raw = target_pair.base.convert_to_raw_amount(quantity)
 
+        fee = self.get_pair_fee(ts, pair)
+        
         received_raw = estimate_sell_received_amount_raw(
             uniswap,
             base_addr,
             quote_addr,
             quantity_raw,
             intermediate_token_address=intermediate_addr,
-            fee=self.trading_fee
+            fee=fee
         )
 
         if intermediate_pair is not None:
             received = intermediate_pair.quote.convert_to_decimal(received_raw)
         else:
             received = target_pair.quote.convert_to_decimal(received_raw)
-
-        fee = self.get_pair_fee(ts, pair)
-        assert fee is not None, f"Uniswap v2 fee data missing: {uniswap}"
 
         price = float(received / quantity)
 
@@ -191,19 +183,19 @@ class UniswapV2LivePricing(PricingModel):
             reserve_raw = target_pair.quote.convert_to_raw_amount(reserve)
             self.check_supported_quote_token(pair)
 
+        fee = self.get_pair_fee(ts, pair)
+        
         # Calculate base token received
         token_raw_received = estimate_buy_received_amount_raw(
             uniswap,
             base_addr,
             quote_addr,
             reserve_raw,
-            intermediate_token_address=intermediate_addr
+            intermediate_token_address=intermediate_addr,
+            fee=fee
         )
 
         token_received = target_pair.base.convert_to_decimal(token_raw_received)
-
-        fee = self.get_pair_fee(ts, pair)
-        assert fee is not None, f"Uniswap v2 fee data missing: {uniswap}" # TODO remove and throw error in TP Identifier
 
         price = float(reserve / token_received)
 
