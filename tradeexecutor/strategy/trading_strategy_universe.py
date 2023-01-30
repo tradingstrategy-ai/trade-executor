@@ -763,7 +763,9 @@ def translate_trading_pair(pair: DEXPair) -> TradingPairIdentifier:
         # Repair some data
         fee = None
     else:
-        fee = pair.fee
+        # Convert DEXPair.fee BPS to %
+        assert pair.fee > 1, f"DEXPair fee must be in BPS, got {pair.fee}"
+        fee = pair.fee / 10_000
 
     return TradingPairIdentifier(
         base=base,

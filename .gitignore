@@ -24,3 +24,6 @@ examples
 
 # Filled by trade executor logging subsystem
 logs/*
+
+# Stash your local test environment variables here
+env/local-test.env
