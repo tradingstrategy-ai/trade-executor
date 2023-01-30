@@ -58,18 +58,6 @@ class RoutingModel(abc.ABC):
         - Called from check-wallet to see our routing and balances are good
         """
 
-    def get_default_trading_fee(self) -> Optional[float]:
-        """Get the trading/LP fee applied to all trading pairs.
-
-        This is Uni v2 style fee.
-
-        :return:
-            Trading fee, BPS * 10000 as a float.
-
-            If information not available return None.
-        """
-        return None
-
     @abc.abstractmethod
     def create_routing_state(self,
                              universe: StrategyExecutionUniverse,

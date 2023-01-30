@@ -104,7 +104,6 @@ class BacktestRoutingModel(RoutingModel):
                  factory_router_map: Dict[str, Tuple[str, Optional[str]]],
                  allowed_intermediary_pairs: Dict[str, str],
                  reserve_token_address: str,
-                 trading_fee: Optional[float] = None,
                  ):
         """
         :param factory_router_map:
@@ -145,9 +144,6 @@ class BacktestRoutingModel(RoutingModel):
         self.allowed_intermediary_pairs = {k.lower(): v.lower() for k, v in allowed_intermediary_pairs.items()}
         self.reserve_token_address = reserve_token_address
         self.trading_fee = trading_fee
-
-    def get_default_trading_fee(self) -> Optional[float]:
-        return self.trading_fee
 
     def get_reserve_asset(self, pair_universe: PandasPairUniverse) -> AssetIdentifier:
         """Translate our reserve token address tok an asset description."""

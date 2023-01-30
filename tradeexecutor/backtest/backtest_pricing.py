@@ -199,8 +199,8 @@ class BacktestSimplePricingModel(PricingModel):
         """Figure out the fee from a pair or a routing."""
         if pair.fee:
             return pair.fee
-
-        return self.routing_model.get_default_trading_fee()
+        else:
+            raise ValueError("Pair does not have fee")
 
 
 def backtest_pricing_factory(

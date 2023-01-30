@@ -36,12 +36,6 @@ from tradeexecutor.strategy.execution_context import ExecutionContext, Execution
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.routing import RoutingModel
-from tradeexecutor.ethereum.constants import (
-    PANCAKE_FEE,
-    QUICKSWAP_FEE,
-    TRADER_JOE_FEE,
-    UNISWAP_V2_FEE,
-)
 
 
 class RoutingData(TypedDict):
@@ -141,7 +135,6 @@ def get_pancake_default_routing_parameters(
             "0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d",
             "0x55d398326f99059ff775485246999027b3197955",
         },
-        "trading_fee": PANCAKE_FEE,
     }
 
 
@@ -204,7 +197,6 @@ def get_quickswap_default_routing_parameters(
             "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
             "0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270",
         },
-        "trading_fee": QUICKSWAP_FEE,
     }
 
 
@@ -259,7 +251,6 @@ def get_trader_joe_default_routing_parameters(
             "0x9702230a8ea53601f5cd2dc00fdbc13d4df4a8c7"
             "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
         },
-        "trading_fee": TRADER_JOE_FEE,
     }
 
 
@@ -327,7 +318,6 @@ def get_uniswap_v2_default_routing_parameters(
             "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
             "0xdac17f958d2ee523a2206206994597c13d831ec7",
         },
-        "trading_fee": UNISWAP_V2_FEE,
     }
 
 
@@ -394,6 +384,7 @@ def get_uniswap_v3_default_routing_parameters(
     # by their smart contract addresses
     # init_code_hash not applicable to v3 0xe34f199b19b2b4f47f68442619d555527d244f78a3297ea89325f843f87b8b54
     # not really a map, change name? 
+    # V2 contracts (for router and quoter), not supported yet
     address_map = {
         "factory": "0x1F98431c8aD98523631AE4a59f267346ea31F984",
         "router": "0xE592427A0AEce92De3Edee1F18E0157C05861564",
@@ -560,7 +551,6 @@ def create_uniswap_v2_compatible_routing(
         params["allowed_intermediary_pairs"],
         params["reserve_token_address"],
         params["chain_id"],
-        params["trading_fee"],
     )
 
     return routing_model

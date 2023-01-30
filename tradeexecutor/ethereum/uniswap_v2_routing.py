@@ -320,11 +320,9 @@ class UniswapV2SimpleRoutingModel(RoutingModel):
         self.reserve_token_address = reserve_token_address
         self.chain_id = chain_id
 
-        assert trading_fee is not None, "Trading fee missing"
-        self.trading_fee = trading_fee
-
-    def get_default_trading_fee(self) -> Optional[float]:
-        return self.trading_fee
+        # fee provided by backend
+        # assert trading_fee is not None, "Trading fee missing"
+        # self.trading_fee = trading_fee
 
     def get_reserve_asset(self, pair_universe: PandasPairUniverse) -> AssetIdentifier:
         """Translate our reserve token address tok an asset description."""
