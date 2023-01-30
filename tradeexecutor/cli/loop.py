@@ -397,6 +397,10 @@ class ExecutionLoop:
 
         logger.info("Starting stop loss checks at %s", ts)
 
+        if len(state.portfolio.reserves) == 0:
+            logger.info("The strategy has no reserves or deposits yet")
+            return []
+
         routing_state, pricing_model, valuation_method = self.runner.setup_routing(universe)
 
         # Do stop loss checks for every time point between now and next strategy cycle
