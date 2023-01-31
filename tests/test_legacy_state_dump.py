@@ -18,6 +18,7 @@ from tradeexecutor.cli.log import setup_pytest_logging
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.state.state import State
 from tradeexecutor.state.statistics import Statistics, calculate_naive_profitability
+from tradeexecutor.statistics.core import calculate_statistics
 from tradeexecutor.statistics.summary import calculate_summary_statistics
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.execution_context import ExecutionMode
@@ -85,6 +86,7 @@ def test_legacy_calculate_profitability_90_days(state: State):
 def test_legacy_calculate_all_summary_statistics(state: State):
     """Calculate all summary statistics.
 
+    Used on the summary card etc.
     """
 
     # Set "last 90 days" to the end of backtest data
@@ -101,5 +103,19 @@ def test_legacy_calculate_all_summary_statistics(state: State):
 
     datapoints = summary.performance_chart_90_days
     assert len(datapoints) == 7
+
+
+def test_legacy_calculate_all_statistics(state: State):
+    """Calculate state embedded statistics,"""
+    portfolio = state.portfolio
+    clock = datetime.datetime(2023, 1, 31)
+
+    # Calculate statistics in both modes
+    execution_mode = ExecutionMode.real_trading
+    new_stats = calculate_statistics(clock, portfolio, execution_mode)
+
+    execution_mode = ExecutionMode.backtesting
+    new_stats = calculate_statistics(clock, portfolio, execution_mode)
+
 
 
