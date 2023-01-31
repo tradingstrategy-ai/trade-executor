@@ -96,6 +96,11 @@ class SpotTrade:
     #: these is no separate fee information.
     lp_fees_paid: Optional[USDollarAmount] = None
 
+    #: Set for legacy trades with legacy data.
+    #:
+    #: Mark that calculations on this trade might be incorrect
+    bad_data_issues: bool = False
+
     def is_buy(self):
         return self.quantity > 0
 
@@ -293,6 +298,14 @@ class TradePosition:
     def get_total_lp_fees_paid(self) -> int:
         """Get the total amount of swap fees paid in the position. Includes all trades."""
         return sum(trade.lp_fees_paid for trade in self.trades if trade.lp_fees_paid is not None)
+
+    def has_bad_data_issues(self) -> bool:
+        """Do we have legacy / incompatible data issues."""
+        for t in self.trades:
+            if t.bad_data_issues:
+                return True
+        return False
+
 
 
 @dataclass
@@ -878,6 +891,11 @@ def expand_timeline(
         else:
             remarks = ""
 
+        # Hack around to work with legacy data issue.
+        # Not an issue for new strategies.
+        if position.has_bad_data_issues():
+            remarks += "BAD"
+
         r = {
             # "timestamp": timestamp,
             "Id": position.position_id,
@@ -1012,11 +1030,19 @@ def build_trade_analysis(portfolio: Portfolio) -> TradeAnalysis:
                 continue
 
             # Internally negative quantities are for sells
+            bad_data_issues = False
             quantity = trade.executed_quantity
             timestamp = pd.Timestamp(trade.executed_at)
-            price = trade.planned_mid_price
+            if trade.planned_mid_price not in (0, None):
+                price = trade.planned_mid_price
+            else:
+                # TODO: Legacy trades.
+                # mid_price is filled to all latest trades
+                price = trade.executed_price
+                bad_data_issues = True
+
             assert quantity != 0, f"Got bad quantity for {trade}"
-            assert price is not None and price > 0, f"Got invalid trade {trade}"
+            assert (price is not None) and price > 0, f"Got invalid trade {trade.get_full_debug_dump_str()} - price is {price}"
 
             spot_trade = SpotTrade(
                 pair_id=pair_id,
@@ -1028,7 +1054,8 @@ def build_trade_analysis(portfolio: Portfolio) -> TradeAnalysis:
                 commission=0,
                 slippage=0,  # TODO
                 trade_type=trade.trade_type,
-                lp_fees_paid=trade.lp_fees_paid
+                lp_fees_paid=trade.lp_fees_paid,
+                bad_data_issues=bad_data_issues,
             )
             history.add_trade(spot_trade, position_id=position.position_id)
 

@@ -2,7 +2,8 @@
 
 import datetime
 import enum
-from dataclasses import dataclass, field
+import pprint
+from dataclasses import dataclass, field, asdict
 from decimal import Decimal
 from typing import Optional, Tuple, List
 
@@ -234,6 +235,9 @@ class TradeExecution:
             return f"<Buy #{self.trade_id} {self.planned_quantity} {self.pair.base.token_symbol} at {self.planned_price}, {self.get_status().name}>"
         else:
             return f"<Sell #{self.trade_id} {abs(self.planned_quantity)} {self.pair.base.token_symbol} at {self.planned_price}, {self.get_status().name}>"
+
+    def get_full_debug_dump_str(self):
+        return pprint.pformat(asdict(self))
 
     def __hash__(self):
         # TODO: Hash better?

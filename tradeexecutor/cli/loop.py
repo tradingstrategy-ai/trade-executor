@@ -349,6 +349,9 @@ class ExecutionLoop:
 
         # Set up the execution to perform the valuation
 
+        if len(state.portfolio.reserves) == 0:
+            logger.info("The strategy has no reserves or deposits yet")
+
         routing_state, pricing_model, valuation_method = self.runner.setup_routing(universe)
 
         with self.timed_task_context_manager("revalue_portfolio_statistics"):
@@ -396,6 +399,10 @@ class ExecutionLoop:
         """
 
         logger.info("Starting stop loss checks at %s", ts)
+
+        if len(state.portfolio.reserves) == 0:
+            logger.info("The strategy has no reserves or deposits yet")
+            return []
 
         routing_state, pricing_model, valuation_method = self.runner.setup_routing(universe)
 
