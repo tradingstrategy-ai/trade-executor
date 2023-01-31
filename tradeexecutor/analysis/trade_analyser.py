@@ -613,8 +613,13 @@ class TradeAnalysis:
                 losing_trades.append(position.realised_profit_percent)
                 losing_trades_duration.append(position.duration)
 
-                realised_loss = position.realised_profit/full_position.portfolio_value_at_open
+                if full_position.portfolio_value_at_open:
+                    realised_loss = position.realised_profit / full_position.portfolio_value_at_open
+                else:
+                    # Bad data
+                    realised_loss = 0
                 realised_losses.append(realised_loss)
+
             else:
                 # Any profit exactly balances out loss in slippage and commission
                 zero_loss += 1
@@ -745,10 +750,15 @@ class TradeAnalysis:
             if(pos_cons > max_pos_cons):
                     max_pos_cons = pos_cons
 
-            pullback_pct = pullback/(position.portfolio_value_at_open + position.get_realised_profit_usd())
-            if(pullback_pct < max_pullback_pct):
-                    # pull back is in the negative direction
-                    max_pullback_pct = pullback_pct
+            value_at_open = position.portfolio_value_at_open
+            if value_at_open:
+                pullback_pct = pullback / (value_at_open + position.get_realised_profit_usd())
+                if(pullback_pct < max_pullback_pct):
+                        # pull back is in the negative direction
+                        max_pullback_pct = pullback_pct
+            else:
+                # Bad input data / legacy data
+                max_pullback_pct = 0
 
         return max_pos_cons, max_neg_cons, max_pullback_pct
 
