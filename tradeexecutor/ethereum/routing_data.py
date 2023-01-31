@@ -38,6 +38,12 @@ from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.routing import RoutingModel
 
 
+QUICKSWAP_FEE = 0.0030
+TRADER_JOE_FEE = 0.0030
+PANCAKE_FEE = 0.0025
+UNISWAP_V2_FEE = 0.0030
+
+
 class RoutingData(TypedDict):
     """Describe raw smart contract order routing data."""
 
@@ -135,6 +141,7 @@ def get_pancake_default_routing_parameters(
             "0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d",
             "0x55d398326f99059ff775485246999027b3197955",
         },
+        "trading_fee": PANCAKE_FEE,
     }
 
 
@@ -197,6 +204,7 @@ def get_quickswap_default_routing_parameters(
             "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
             "0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270",
         },
+        "trading_fee": QUICKSWAP_FEE,
     }
 
 
@@ -251,6 +259,7 @@ def get_trader_joe_default_routing_parameters(
             "0x9702230a8ea53601f5cd2dc00fdbc13d4df4a8c7"
             "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
         },
+        "trading_fee": TRADER_JOE_FEE,
     }
 
 
@@ -318,6 +327,7 @@ def get_uniswap_v2_default_routing_parameters(
             "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
             "0xdac17f958d2ee523a2206206994597c13d831ec7",
         },
+        "trading_fee": UNISWAP_V2_FEE,
     }
 
 
@@ -551,6 +561,7 @@ def create_uniswap_v2_compatible_routing(
         params["allowed_intermediary_pairs"],
         params["reserve_token_address"],
         params["chain_id"],
+        params["trading_fee"],
     )
 
     return routing_model
