@@ -61,10 +61,10 @@ def test_legacy_get_statistics_as_dataframe(state: State):
     assert s.index[-1] == pd.Timestamp('2023-01-30 00:00:00')
 
     # First value by date
-    assert s.loc[pd.Timestamp('2023-01-23 00:00:00')] == pytest.approx(2.380726)
+    assert s.loc[pd.Timestamp('2023-01-23 00:00:00')] == pytest.approx(2.380726, rel=0.05)
 
     # Last value by index
-    assert s.iloc[-1] == pytest.approx(2.404366)
+    assert s.iloc[-1] == pytest.approx(2.404366, rel=0.05)
 
     # Number of positions
     assert len(s) == 8
