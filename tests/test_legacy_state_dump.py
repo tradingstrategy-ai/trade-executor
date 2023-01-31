@@ -4,33 +4,18 @@ New variables and features get added to state files constantly.
 Check that we can read old files.
 """
 import datetime
-import logging
 import os
-from pathlib import Path
 
 import pytest
 
 import pandas as pd
 
-from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel
-from tradeexecutor.backtest.backtest_runner import run_backtest, setup_backtest_for_universe
 from tradeexecutor.cli.log import setup_pytest_logging
-from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.state.state import State
 from tradeexecutor.state.statistics import Statistics, calculate_naive_profitability
 from tradeexecutor.statistics.core import calculate_statistics
 from tradeexecutor.statistics.summary import calculate_summary_statistics
-from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.execution_context import ExecutionMode
-from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, create_pair_universe_from_code
-from tradeexecutor.testing.synthetic_ethereum_data import generate_random_ethereum_address
-from tradeexecutor.testing.synthetic_exchange_data import generate_exchange, generate_simple_routing_model
-from tradeexecutor.testing.synthetic_price_data import generate_ohlcv_candles
-from tradingstrategy.candle import GroupedCandleUniverse
-from tradingstrategy.chain import ChainId
-from tradingstrategy.exchange import Exchange
-from tradingstrategy.timebucket import TimeBucket
-from tradingstrategy.universe import Universe
 
 
 @pytest.fixture(scope="module")
