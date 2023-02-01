@@ -473,8 +473,10 @@ class UniswapV3SimpleRoutingModel(RoutingModel):
         """
 
         logger.info("Routing details")
-        for factory, router in self.address_map.items():
-            logger.info("  Factory %s uses router %s", factory, router[0])
+        logger.info("  Factory: ", self.address_map["factory"])
+        logger.info("  Router: ", self.address_map["router"])
+        logger.info("  Position Manager: ", self.address_map["position_manager"])
+        logger.info("  Quoter: ", self.address_map["quoter"])
 
         reserve = self.get_reserve_asset(pair_universe)
         logger.info("  Routed reserve asset is %s", reserve)
