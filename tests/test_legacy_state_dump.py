@@ -91,9 +91,32 @@ def test_legacy_calculate_all_summary_statistics(state: State):
 
 
 def test_legacy_calculate_all_statistics(state: State):
-    """Calculate state embedded statistics,"""
+    """Calculate state embedded statistics.
+
+    Check we do not get any exceptions like NoneError of DivisionByZero.
+    """
     portfolio = state.portfolio
     clock = datetime.datetime(2023, 1, 31)
+
+    # Calculate statistics in both modes
+    execution_mode = ExecutionMode.real_trading
+    calculate_statistics(clock, portfolio, execution_mode)
+
+    execution_mode = ExecutionMode.backtesting
+    calculate_statistics(clock, portfolio, execution_mode)
+
+
+def test_empty_state_calculate_all_statistics():
+    """Calculate all statistics on an empty state
+
+    Check we do not get any exceptions like NoneError of DivisionByZero.
+    """
+
+    state = State()
+
+    portfolio = state.portfolio
+    clock = datetime.datetime(2023, 1, 31)
+
 
     # Calculate statistics in both modes
     execution_mode = ExecutionMode.real_trading
@@ -101,6 +124,5 @@ def test_legacy_calculate_all_statistics(state: State):
 
     execution_mode = ExecutionMode.backtesting
     new_stats = calculate_statistics(clock, portfolio, execution_mode)
-
 
 
