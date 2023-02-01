@@ -45,10 +45,8 @@ jobs:
           context: .
           file: notebook.dockerfile
           push: true
-          # Always add latest tag because it is used in documentation examples
-          tags:
-            - ${{ steps.meta.outputs.tags }}
-            - latest
+          # latest tag add is added automatically
+          tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           # experimental: https://github.com/docker/build-push-action/blob/master/docs/advanced/cache.md#cache-backend-api
           cache-from: type=gha
