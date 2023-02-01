@@ -4,6 +4,7 @@
 #
 # The label of the image is ghcr.io/tradingstrategy-ai/trading-strategy-notebook
 #
+#
 
 name: Build Docker image for running Jupyter notebooks
 on:
