@@ -1,153 +1,47 @@
 """Route trades to different Uniswap v2 like exchanges."""
 
 import logging
-from collections import defaultdict
-from decimal import Decimal
 from typing import Dict, Set, List, Optional, Tuple
 
 from eth_typing import HexAddress, ChecksumAddress
 from tradingstrategy.chain import ChainId
 from web3 import Web3
-from web3.contract import Contract
 
-from eth_defi.abi import get_deployed_contract
 from eth_defi.gas import estimate_gas_fees
-from eth_defi.token import fetch_erc20_details
 from eth_defi.uniswap_v3.deployment import UniswapV3Deployment, fetch_deployment
 from eth_defi.uniswap_v3.swap import swap_with_slippage_protection
-from eth_defi.gas import apply_gas
-from eth_defi.hotwallet import HotWallet
 from web3.exceptions import ContractLogicError
-from web3._utils.transactions import fill_nonce
 
-from tradeexecutor.ethereum.execution import get_token_for_asset
 from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
 from tradeexecutor.state.trade import TradeExecution
-from tradeexecutor.strategy.routing import RoutingModel, RoutingState, CannotRouteTrade
+from tradeexecutor.strategy.routing import RoutingModel, CannotRouteTrade
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_trading_pair, \
     translate_token
 from tradingstrategy.pair import PandasPairUniverse
 
 from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
-
+from tradeexecutor.ethereum.routing_state import (
+    RoutingStateBase, 
+    route_tokens, # forwarded import
+    OutOfBalance, # forwarded import
+)
 
 logger = logging.getLogger(__name__)
 
 
-class OutOfBalance(Exception):
-    """Did not have enough tokens"""
-
-
-class UniswapV3RoutingState(RoutingState):
-    """Manage transaction building for multiple Uniswap trades.
-
-    - Lifespan is one rebalance - remembers already made approvals
-
-    - Web3 connection and hot wallet
-
-    - Approval tx creation
-
-    - Swap tx creation
-
-    Manage the state of already given approvals here,
-    so that we do not do duplicates.
-
-    The approvals are not persistent in the executor state,
-    but are specific for each cycle.
-    """
-
+class UniswapV3RoutingState(RoutingStateBase):
     def __init__(self,
                  pair_universe: PandasPairUniverse,
-                 tx_builder: TransactionBuilder,
+                 tx_builder: Optional[TransactionBuilder]=None,
                  swap_gas_limit=2_000_000):
-        self.pair_universe = pair_universe
-        self.tx_builder = tx_builder
-        self.hot_wallet = tx_builder.hot_wallet
-        self.web3 = self.tx_builder.web3
-        # router -> erc-20 mappings
-        self.approved_routes = defaultdict(set)
-        self.swap_gas_limit = swap_gas_limit
-
-    def __repr__(self):
-        return f"<UniswapV3RoutingState Tx builder: {self.tx_builder} web3: {self.web3}>"
-
-    def is_route_approved(self, router_address: str):
-        return router_address in self.approved_routes
-
-    def mark_router_approved(self, token_address, router_address):
-        self.approved_routes[router_address].add(token_address)
-
-    def is_approved_on_chain(self, token_address: str, router_address: str) -> bool:
-        erc_20 = get_deployed_contract(self.web3, "ERC20MockDecimals.json", token_address)
-        # Assume allowance is always infinity
-        return erc_20.functions.allowance.call(self.hot_wallet.address, router_address) > 0
-
-    def get_uniswap_for_pair(self, address_map: dict, target_pair: TradingPairIdentifier) -> UniswapV3Deployment:
+        super().__init__(pair_universe, tx_builder, swap_gas_limit)
+    
+    def get_uniswap_for_pair(self, factory_router_map: dict, target_pair: TradingPairIdentifier) -> UniswapV3Deployment:
         """Get a router for a trading pair."""
-        return get_uniswap_for_pair(self.web3, address_map, target_pair)
-
-    def check_has_enough_tokens(
-            self,
-            erc_20: Contract,
-            amount: int,
-    ):
-        """Check we have enough buy side tokens to do a trade.
-
-        This might not be the case if we are preparing transactions ahead of time and
-        sell might have not happened yet.
-        """
-        balance = erc_20.functions.balanceOf(self.hot_wallet.address).call()
-        if balance < amount:
-            token_details = fetch_erc20_details(
-                erc_20.web3,
-                erc_20.address,
-            )
-            d_balance = token_details.convert_to_decimals(balance)
-            d_amount = token_details.convert_to_decimals(amount)
-            raise OutOfBalance(f"Address {self.hot_wallet.address} does not have enough {token_details} tokens to trade. Need {d_amount}, has {d_balance}")
-
-    def ensure_token_approved(self,
-                              token_address: str,
-                              router_address: str) -> List[BlockchainTransaction]:
-        """Make sure we have ERC-20 approve() for the trade
-
-        - Infinite approval on-chain
-
-        - ...or previous approval in this state,
-
-        :param token_address:
-        :param router_address:
-
-        :return: Create 0 or 1 transactions if needs to be approved
-        """
-
-        if token_address in self.approved_routes[router_address]:
-            # Already approved for this cycle in previous trade
-            return []
-
-        erc_20 = get_deployed_contract(self.web3, "ERC20MockDecimals.json", Web3.toChecksumAddress(token_address))
-
-        # Set internal state we are approved
-        self.mark_router_approved(token_address, router_address)
-
-        hot_wallet = self.tx_builder.hot_wallet
-
-        if erc_20.functions.allowance(hot_wallet.address, router_address).call() > 0:
-            # already approved in previous execution cycle
-            return []
-        else:
-            # Create infinite approval
-            tx = self.tx_builder.create_transaction(
-                erc_20,
-                "approve",
-                (router_address, 2**256-1),
-                100_000,  # For approve, assume it cannot take more than 100k gas
-            )
-
-            return [tx]
-
+        return get_uniswap_for_pair(self.web3, factory_router_map, target_pair)
+    
     def trade_on_router_two_way(self,
             uniswap: UniswapV3Deployment,
             target_pair: TradingPairIdentifier,
@@ -155,49 +49,31 @@ class UniswapV3RoutingState(RoutingState):
             reserve_amount: int,
             max_slippage: float,
             check_balances: False):
-        """Prepare the actual swap.
+        """Prepare the actual swap. Same for Uniswap V2 and V3.
 
         :param check_balances:
             Check on-chain balances that the account has enough tokens
             and raise exception if not.
         """
 
-        web3 = self.web3
         hot_wallet = self.tx_builder.hot_wallet
-
-        # different pairs on Uniswap v3 can have different fees, so we need to get the fee dynamically every time like this
-        pool_trading_fee = target_pair.fee
-        print("trading fee is: ", pool_trading_fee) # TODO remove
-
-        assert pool_trading_fee is not None, "trading fee not given to tp identifier"
-
-        if reserve_asset == target_pair.quote:
-            # Buy with e.g. BUSD
-            base_token = get_token_for_asset(web3, target_pair.base)
-            quote_token = get_token_for_asset(web3, target_pair.quote)
-        elif reserve_asset == target_pair.base:
-            # Sell, flip the direction
-            base_token = get_token_for_asset(web3, target_pair.quote)
-            quote_token = get_token_for_asset(web3, target_pair.base)
-        else:
-            raise RuntimeError(f"Cannot trade {target_pair}")
+        
+        base_token, quote_token = self.get_base_and_quote(target_pair, reserve_asset)
 
         if check_balances:
             self.check_has_enough_tokens(quote_token, reserve_amount)
 
-        # see https://github.com/tradingstrategy-ai/web3-ethereum-defi/pull/58/files#diff-d0e3c8eaefbd1c9de65d065c8ed60684157d90e47f68a348fa253a0e60428f0fR172-R191
-        # build transaction
-        swap_func = swap_with_slippage_protection(
-            uniswap_v3_deployment=uniswap,
+        bound_swap_func = swap_with_slippage_protection(
+            uniswap,
             recipient_address=hot_wallet.address,
             base_token=base_token,
             quote_token=quote_token,
-            pool_fees=[pool_trading_fee],
             amount_in=reserve_amount,
-            max_slippage=50,  # 50 bps = 0.5%
+            max_slippage=max_slippage * 100,  # In BPS
+            pool_fees=target_pair.fee # TODO check in right format
         )
         
-        return self.get_signed_tx(swap_func, self.swap_gas_limit)
+        return self.get_signed_tx(bound_swap_func, self.swap_gas_limit)
 
     def trade_on_router_three_way(self,
             uniswap: UniswapV3Deployment,
@@ -214,77 +90,31 @@ class UniswapV3RoutingState(RoutingState):
             and raise exception if not.
         """
 
-        web3 = self.web3
         hot_wallet = self.tx_builder.hot_wallet
 
-        # different pairs on Uniswap v3 can have different fees, so we need to get the fee dynamically every time like this
-        fee1 = intermediary_pair.fee
-        fee2 = target_pair.fee
-        print("trading fee is: ", fee1) # TODO remove
-        print("trading fee is: ", fee2)
+        self.validate_pairs(target_pair, intermediary_pair)
+        
+        self.validate_exchange(target_pair, intermediary_pair)
 
-        assert fee1 is not None, "trading fee not given to tp identifier"
-        assert fee2 is not None, "trading fee not given to tp identifier"
-
-        # Check we can chain two pairs
-        assert intermediary_pair.base == target_pair.quote, f"Could not hop from intermediary {intermediary_pair} -> destination {target_pair}"
-
-        assert target_pair.exchange_address, f"Target pair {target_pair} missing exchange information"
-        assert intermediary_pair.exchange_address, f"Intermediary pair {intermediary_pair} missing exchange information"
-
-        # Check routing happens on the same exchange
-        assert intermediary_pair.exchange_address.lower() == target_pair.exchange_address.lower()
-
-        if reserve_asset == intermediary_pair.quote:
-            # Buy BUSD -> BNB -> Cake
-            base_token = get_token_for_asset(web3, target_pair.base)
-            quote_token = get_token_for_asset(web3, intermediary_pair.quote)
-            intermediary_token = get_token_for_asset(web3, intermediary_pair.base)
-        elif reserve_asset == target_pair.base:
-            # Sell, Cake -> BNB -> BUSD
-            base_token = get_token_for_asset(web3, intermediary_pair.quote)  # BUSD
-            quote_token = get_token_for_asset(web3, target_pair.base)  # Cake
-            intermediary_token = get_token_for_asset(web3, intermediary_pair.base)  # BNB
-        else:
-            raise RuntimeError(f"Cannot trade {target_pair} through {intermediary_pair}")
+        base_token, quote_token, intermediary_token = self.get_base_quote_intermediary(target_pair, intermediary_pair, reserve_asset)
 
         if check_balances:
             self.check_has_enough_tokens(quote_token, reserve_amount)
 
+        pool_fees = [intermediary_pair.fee, target_pair.fee]
+        
         bound_swap_func = swap_with_slippage_protection(
             uniswap,
             recipient_address=hot_wallet.address,
             base_token=base_token,
             quote_token=quote_token,
-            pool_fees=[fee1, fee2],
+            pool_fees=pool_fees,
             amount_in=reserve_amount,
             max_slippage=max_slippage * 100,  # In BPS,
             intermediate_token=intermediary_token,
         )
         
         return self.get_signed_tx(bound_swap_func, self.swap_gas_limit)
-
-    def get_signed_tx(self, swap_func, gas_limit):
-        signed_tx = self.tx_builder.sign_transaction(
-            swap_func, gas_limit
-        )
-        return [signed_tx]
-    
-    # Don't use, rather get_signed_tx or self.tx_builder.sign_transaction...
-    # TODO remove
-    def _get_signed_tx(self, swap_func, hot_wallet: HotWallet, web3):
-        tx = swap_func.build_transaction(
-            {
-                "from": hot_wallet.address,
-                "chainId": web3.eth.chain_id,
-                "gas": self.swap_gas_limit,
-            }
-        )
-        tx = fill_nonce(web3, tx)
-        gas_fees = estimate_gas_fees(web3)
-        apply_gas(tx, gas_fees)
-        signed_tx = hot_wallet.sign_transaction_with_new_nonce(tx)
-        return [signed_tx]
 
 class UniswapV3SimpleRoutingModel(RoutingModel):
     """A simple router that does not optimise the trade execution cost. Designed for uniswap-v2 forks.
@@ -540,42 +370,41 @@ class UniswapV3SimpleRoutingModel(RoutingModel):
             if intermediary_pair is None:
                 # Two way trade
                 # Decide betwen buying and selling
-                if t.is_buy():
-                   trade_txs = self.trade(
+                trade_txs = (
+                    self.trade(
                         routing_state,
                         target_pair=target_pair,
                         reserve_asset=reserve_asset,
                         reserve_asset_amount=t.get_raw_planned_reserve(),
                         check_balances=check_balances,
                     )
-                else:
-                    trade_txs = self.trade(
+                    if t.is_buy()
+                    else self.trade(
                         routing_state,
                         target_pair=target_pair,
                         reserve_asset=target_pair.base,
                         reserve_asset_amount=-t.get_raw_planned_quantity(),
                         check_balances=check_balances,
                     )
+                )
+            elif t.is_buy():
+                trade_txs = self.trade(
+                    routing_state,
+                    target_pair=target_pair,
+                    reserve_asset=reserve_asset,
+                    reserve_asset_amount=t.get_raw_planned_reserve(),
+                    check_balances=check_balances,
+                    intermediary_pair=intermediary_pair,
+                )
             else:
-                # Three-way trade!
-                if t.is_buy():
-                    trade_txs = self.trade(
-                        routing_state,
-                        target_pair=target_pair,
-                        reserve_asset=reserve_asset,
-                        reserve_asset_amount=t.get_raw_planned_reserve(),
-                        check_balances=check_balances,
-                        intermediary_pair=intermediary_pair,
-                    )
-                else:
-                    trade_txs = self.trade(
-                        routing_state,
-                        target_pair=target_pair,
-                        reserve_asset=target_pair.base,
-                        reserve_asset_amount=-t.get_raw_planned_quantity(),
-                        check_balances=check_balances,
-                        intermediary_pair=intermediary_pair,
-                    )
+                trade_txs = self.trade(
+                    routing_state,
+                    target_pair=target_pair,
+                    reserve_asset=target_pair.base,
+                    reserve_asset_amount=-t.get_raw_planned_quantity(),
+                    check_balances=check_balances,
+                    intermediary_pair=intermediary_pair,
+                )
 
             t.set_blockchain_transactions(trade_txs)
             txs += trade_txs
@@ -609,7 +438,7 @@ class UniswapV3SimpleRoutingModel(RoutingModel):
 
     def create_routing_state(self,
                              universe: StrategyExecutionUniverse,
-                             execution_details: dict) -> RoutingState:
+                             execution_details: dict) -> UniswapV3RoutingState:
         """Create a new routing state for this cycle.
 
         - Connect routing to web3 and hot wallet
@@ -649,24 +478,7 @@ class UniswapV3SimpleRoutingModel(RoutingModel):
 
         reserve = self.get_reserve_asset(pair_universe)
         logger.info("  Routed reserve asset is %s", reserve)
-
-
-def route_tokens(
-        trading_pair: TradingPairIdentifier,
-        intermediate_pair: Optional[TradingPairIdentifier],
-)-> Tuple[ChecksumAddress, ChecksumAddress, Optional[ChecksumAddress]]:
-    """Convert trading pair route to physical token addresses.
-    """
-
-    if intermediate_pair is None:
-        return (Web3.toChecksumAddress(trading_pair.base.address),
-            Web3.toChecksumAddress(trading_pair.quote.address),
-            None)
-
-    return (Web3.toChecksumAddress(trading_pair.base.address),
-        Web3.toChecksumAddress(intermediate_pair.quote.address),
-        Web3.toChecksumAddress(trading_pair.quote.address))
-
+        
 
 def get_uniswap_for_pair(web3: Web3, address_map: dict, target_pair: TradingPairIdentifier) -> UniswapV3Deployment:
     """Get a router for a trading pair."""
