@@ -159,7 +159,7 @@ class RoutingStateBase(RoutingState):
 
         return [tx]
     
-    def get_base_quote_intermediary(self, target_pair, intermediary_pair, reserve_asset, web3):
+    def get_base_quote_intermediary(self, target_pair, intermediary_pair, reserve_asset):
         
         web3 = self.web3
         
