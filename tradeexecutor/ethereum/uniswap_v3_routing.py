@@ -23,7 +23,7 @@ from tradingstrategy.pair import PandasPairUniverse
 
 from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
 from tradeexecutor.ethereum.routing_state import (
-    RoutingStateBase, 
+    EthereumRoutingStateBase, 
     route_tokens, # forwarded import
     OutOfBalance, # forwarded import
 )
@@ -31,7 +31,7 @@ from tradeexecutor.ethereum.routing_state import (
 logger = logging.getLogger(__name__)
 
 
-class UniswapV3RoutingState(RoutingStateBase):
+class UniswapV3RoutingState(EthereumRoutingStateBase):
     def __init__(self,
                  pair_universe: PandasPairUniverse,
                  tx_builder: Optional[TransactionBuilder]=None,
