@@ -34,7 +34,6 @@ class RoutingModelBase(RoutingModel):
     """
     
     def __init__(self,
-                 factory_router_map: Dict[str, HexAddress],
                  allowed_intermediary_pairs: Dict[str, str],
                  reserve_token_address: str,
                  chain_id: Optional[ChainId] = None,
@@ -70,14 +69,11 @@ class RoutingModelBase(RoutingModel):
             Lowercase.
         """
 
-        assert type(factory_router_map) == dict
         assert type(allowed_intermediary_pairs) == dict
         assert type(reserve_token_address) == str
 
         assert reserve_token_address.lower() == reserve_token_address, "reserve token address must be specified as lower case"
 
-        self.factory_router_map = self.convert_address_dict_to_lower(factory_router_map)
-        
         self.allowed_intermediary_pairs = self.convert_address_dict_to_lower(allowed_intermediary_pairs)
         
         self.reserve_token_address = reserve_token_address

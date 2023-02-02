@@ -158,7 +158,10 @@ class UniswapV3SimpleRoutingModel(RoutingModelBase):
             Lowercase.
         """
 
-        super().__init__(address_map, allowed_intermediary_pairs, reserve_token_address, chain_id)
+        super().__init__(allowed_intermediary_pairs, reserve_token_address, chain_id)
+        
+        assert type(address_map) == dict
+        self.address_map = self.convert_address_dict_to_lower(address_map)
 
     def create_routing_state(self,
                              universe: StrategyExecutionUniverse,

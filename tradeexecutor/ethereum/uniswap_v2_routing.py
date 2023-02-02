@@ -159,9 +159,12 @@ class UniswapV2SimpleRoutingModel(RoutingModelBase):
             Lowercase.
         """
 
-        super().__init__(factory_router_map, allowed_intermediary_pairs, reserve_token_address, chain_id)
+        super().__init__(allowed_intermediary_pairs, reserve_token_address, chain_id)
+        
         
         assert type(factory_router_map) == dict
+        self.factory_router_map = self.convert_address_dict_to_lower(factory_router_map)
+        
         assert type(allowed_intermediary_pairs) == dict
         assert type(reserve_token_address) == str
 
