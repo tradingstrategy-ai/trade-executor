@@ -32,6 +32,9 @@ class UniswapV2RoutingState(EthereumRoutingStateBase):
                  swap_gas_limit=2_000_000):
         super().__init__(pair_universe, tx_builder, swap_gas_limit)
     
+    def __repr__(self):
+        return f"<UniswapV2RoutingState Tx builder: {self.tx_builder} web3: {self.web3}>"
+    
     def get_uniswap_for_pair(self, factory_router_map: dict, target_pair: TradingPairIdentifier) -> UniswapV2Deployment:
         """Get a router for a trading pair."""
         return get_uniswap_for_pair(self.web3, factory_router_map, target_pair)
@@ -186,7 +189,7 @@ class UniswapV2SimpleRoutingModel(RoutingModelBase):
         - Setup transaction builder based on this information
         """
 
-        super().create_routing_state(universe, execution_details)
+        return super().create_routing_state(universe, execution_details, UniswapV2RoutingState)
 
     def perform_preflight_checks_and_logging(self,
         routing_state: UniswapV2RoutingState,

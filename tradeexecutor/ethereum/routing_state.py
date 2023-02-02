@@ -85,9 +85,6 @@ class EthereumRoutingStateBase(RoutingState):
         self.approved_routes = defaultdict(set)
         self.swap_gas_limit = swap_gas_limit
 
-    def __repr__(self):
-        return f"<UniswapV2V3RoutingState Tx builder: {self.tx_builder} web3: {self.web3}>"
-
     def is_route_approved(self, router_address: str):
         return router_address in self.approved_routes
 
