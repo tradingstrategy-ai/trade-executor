@@ -13,6 +13,8 @@ from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
 
+from tradingstrategy.pair import PandasPairUniverse
+
 
 class CannotRouteTrade(Exception):
     """The router does not know who to execute a trade decided by a strategy."""
@@ -52,7 +54,7 @@ class RoutingModel(abc.ABC):
     Nothing done here - check the subclasses.
     """
 
-    def perform_preflight_checks_and_logging(self, state: RoutingState):
+    def perform_preflight_checks_and_logging(self, pair_universe: PandasPairUniverse):
         """"Checks the integrity of the routing.
 
         - Called from check-wallet to see our routing and balances are good

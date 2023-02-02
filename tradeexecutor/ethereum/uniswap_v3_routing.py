@@ -178,7 +178,6 @@ class UniswapV3SimpleRoutingModel(RoutingModelBase):
         return super().create_routing_state(universe, execution_details, UniswapV3RoutingState)
 
     def perform_preflight_checks_and_logging(self,
-        routing_state: UniswapV3RoutingState,
         pair_universe: PandasPairUniverse):
         """"Checks the integrity of the routing.
 
