@@ -34,7 +34,7 @@ class RoutingModelBase(RoutingModel):
     """
     
     def __init__(self,
-                 address_dict: Dict[str, HexAddress],
+                 factory_router_map: Dict[str, HexAddress],
                  allowed_intermediary_pairs: Dict[str, str],
                  reserve_token_address: str,
                  chain_id: Optional[ChainId] = None,
@@ -70,13 +70,13 @@ class RoutingModelBase(RoutingModel):
             Lowercase.
         """
 
-        assert type(address_dict) == dict
+        assert type(factory_router_map) == dict
         assert type(allowed_intermediary_pairs) == dict
         assert type(reserve_token_address) == str
 
         assert reserve_token_address.lower() == reserve_token_address, "reserve token address must be specified as lower case"
 
-        self.address_dict = self.convert_address_dict_to_lower(address_dict)
+        self.factory_router_map = self.convert_address_dict_to_lower(factory_router_map)
         
         self.allowed_intermediary_pairs = self.convert_address_dict_to_lower(allowed_intermediary_pairs)
         
@@ -304,7 +304,11 @@ class RoutingModelBase(RoutingModel):
     def create_routing_state(self,
                              universe: StrategyExecutionUniverse,
                              execution_details: dict,
-                             Routing_State: Type[EthereumRoutingStateBase]) -> EthereumRoutingStateBase:
+                             Routing_State: Type[EthereumRoutingStateBase] 
+                             # Doesn't get full typing
+                             # Type[UniswapV2RoutingState] | Type[UniswapV3RoutingState]
+                             # throws error due to circular import
+                             ) -> EthereumRoutingStateBase:
         """Create a new routing state for this cycle.
 
         - Connect routing to web3 and hot wallet
@@ -387,9 +391,9 @@ class RoutingModelBase(RoutingModel):
         assert pair_universe, "PairUniverse must be given so that we know how to route three way trades"
         
     @staticmethod
-    def convert_address_dict_to_lower( address_dict) -> dict:
+    def convert_address_dict_to_lower( factory_router_map) -> dict:
         """Convert all key addresses to lowercase to avoid mix up with Ethereum address checksums"""
-        return {k.lower(): v for k, v in address_dict.items()}
+        return {k.lower(): v for k, v in factory_router_map.items()}
     
     @staticmethod
     def pre_trade_assertions(reserve_asset_amount: int, max_slippage: float, target_pair: TradingPairIdentifier, reserve_asset: AssetIdentifier) -> None:
