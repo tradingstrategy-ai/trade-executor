@@ -17,6 +17,7 @@ from eth_defi.uniswap_v2.swap import swap_with_slippage_protection
 from tradeexecutor.backtest.simulated_wallet import SimulatedWallet
 from tradeexecutor.ethereum.execution import get_token_for_asset
 from tradeexecutor.ethereum.tx import TransactionBuilder
+from tradeexecutor.ethereum.routing_model import RoutingModelBase
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
 from tradeexecutor.state.trade import TradeExecution
@@ -141,8 +142,8 @@ class BacktestRoutingModel(RoutingModel):
 
         # Convert all key addresses to lowercase to
         # avoid mix up with Ethereum address checksums
-        self.factory_router_map = {k.lower(): v for k, v in factory_router_map.items()}
-        self.allowed_intermediary_pairs = {k.lower(): v.lower() for k, v in allowed_intermediary_pairs.items()}
+        self.factory_router_map = RoutingModelBase.convert_address_dict_to_lower(factory_router_map)
+        self.allowed_intermediary_pairs = RoutingModelBase.convert_address_dict_to_lower(allowed_intermediary_pairs)
         self.reserve_token_address = reserve_token_address
         self.trading_fee = trading_fee
 
@@ -157,7 +158,7 @@ class BacktestRoutingModel(RoutingModel):
         return translate_token(reserve_token)
 
     def trade(self,
-              routing_state: BacktestRoutingState,
+              routing_state: BacktestRoutingState, # TODO remove
               target_pair: TradingPairIdentifier,
               reserve_asset: AssetIdentifier,
               reserve_asset_amount: Decimal,  # Raw amount of the reserve asset
@@ -184,11 +185,7 @@ class BacktestRoutingModel(RoutingModel):
             These transactions, like approve() may relate to the earlier
             transactions in the `routing_state`.
         """
-
-        assert type(reserve_asset_amount) == int
-        assert max_slippage is not None, "Max slippage must be given"
-        assert type(max_slippage) == float
-        assert reserve_asset_amount > 0, f"For sells, switch reserve_asset to different token. Got target_pair: {target_pair}, reserve_asset: {reserve_asset}, amount: {reserve_asset_amount}"
+        RoutingModelBase.pre_trade_assertions(reserve_asset_amount, max_slippage, target_pair, reserve_asset)
 
         # Our reserves match directly the asset on trading pair
         # -> we can do one leg trade
@@ -224,32 +221,7 @@ class BacktestRoutingModel(RoutingModel):
         :return:
             (router address, target pair, intermediate pair) tuple
         """
-
-        assert isinstance(trading_pair, TradingPairIdentifier)
-
-        reserve_asset = self.get_reserve_asset(pair_universe)
-
-        # We can directly do a two-way trade
-        if trading_pair.quote == reserve_asset:
-            return trading_pair, None
-
-        # Only issue for legacy code
-        assert pair_universe, "PairUniverse must be given so that we know how to route three way trades"
-
-        # Try to find a mid-hop pool for the trade
-        intermediate_pair_contract_address = self.allowed_intermediary_pairs.get(trading_pair.quote.address.lower())
-
-        if not intermediate_pair_contract_address:
-            raise CannotRouteTrade(f"Does not know how to trade pair {trading_pair} - supported intermediate tokens are {list(self.allowed_intermediary_pairs.keys())}")
-
-        dex_pair = pair_universe.get_pair_by_smart_contract(intermediate_pair_contract_address)
-        assert dex_pair is not None, f"Pair universe did not contain pair for a pair contract address {intermediate_pair_contract_address}, quote token is {trading_pair.quote}"
-
-        intermediate_pair = translate_trading_pair(dex_pair)
-        if not intermediate_pair:
-            raise CannotRouteTrade(f"Universe does not have a trading pair with smart contract address {intermediate_pair_contract_address}")
-
-        return trading_pair, intermediate_pair
+        return RoutingModelBase.route_pair(pair_universe, trading_pair)
 
     def setup_internal(self, routing_state: RoutingState, trade: TradeExecution):
         """Simulate trade braodcast and mark it as success."""
