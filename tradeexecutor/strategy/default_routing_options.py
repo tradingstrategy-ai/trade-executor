@@ -102,6 +102,42 @@ class TradeRouting(enum.Enum):
     #: - Open positions with WETH quote token.
     uniswap_v2_dai = "uniswap_v2_dai"
 
+    #: Two or three legged trades on Uniswap v3 on Ethereum mainnet
+    #:
+    #: - Open positions with USDC quote token.
+    #:
+    #: - Open positions with WETH quote token.
+    uniswap_v3_usdc = "uniswap_v3_usdc"
+
+    #: Two or three legged trades on Uniswap v3 on Ethereum mainnet
+    #:
+    #: - Open positions with USDT quote token.
+    #:
+    #: - Open positions with WETH quote token.
+    #:
+    #: - Open positions with USDC quote token.
+    uniswap_v3_usdt = "uniswap_v3_usdt"
+
+    #: Two or three legged trades on Uniswap v3 on Ethereum mainnet
+    #:
+    #: - Open positions with DAI quote token.
+    #:
+    #: - Open positions with WETH quote token.
+    #:
+    #: - Open positions with USDC quote token.
+    uniswap_v3_dai = "uniswap_v3_dai"
+
+    #: Two or three legged trades on Uniswap v3 on Ethereum mainnet
+    #:
+    #: - Open positions with BUSD quote token.
+    #:
+    #: - Open positions with USDC quote token.
+    #:
+    #: - Open positions with USDT quote token.
+    #:
+    #: - Open positions with DAI quote token.
+    uniswap_v3_busd = "uniswap_v3_busd"
+
     #: Use user supplied routing model
     #:
     #: The routing table is constructed by the developer in the

@@ -1,14 +1,16 @@
 """Route trades to different Uniswap v2 like exchanges."""
-import logging
-from typing import Dict, Set, List, Optional, Tuple
 
-from tradeexecutor.state.types import BPS
+import logging
+from typing import Dict, Optional
+
+from eth_typing import HexAddress
 from tradingstrategy.chain import ChainId
 from web3 import Web3
-from web3.exceptions import ContractLogicError
 
-from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, fetch_deployment
-from eth_defi.uniswap_v2.swap import swap_with_slippage_protection
+from eth_defi.gas import estimate_gas_fees
+from eth_defi.uniswap_v3.deployment import UniswapV3Deployment, fetch_deployment
+from eth_defi.uniswap_v3.swap import swap_with_slippage_protection
+from web3.exceptions import ContractLogicError
 
 from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
@@ -17,15 +19,15 @@ from tradingstrategy.pair import PandasPairUniverse
 from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
 from tradeexecutor.ethereum.routing_state import (
     EthereumRoutingStateBase, 
-    route_tokens, # don't remove forwarded import
-    OutOfBalance, # don't remove forwarded import
+    route_tokens, # don't remove, forwarded import
+    OutOfBalance, # don't remove, forwarded import
 )
 from tradeexecutor.ethereum.routing_model import RoutingModelBase
- 
+
 logger = logging.getLogger(__name__)
 
 
-class UniswapV2RoutingState(EthereumRoutingStateBase):
+class UniswapV3RoutingState(EthereumRoutingStateBase):
     def __init__(self,
                  pair_universe: PandasPairUniverse,
                  tx_builder: Optional[TransactionBuilder]=None,
@@ -33,14 +35,14 @@ class UniswapV2RoutingState(EthereumRoutingStateBase):
         super().__init__(pair_universe, tx_builder, swap_gas_limit)
     
     def __repr__(self):
-        return f"<UniswapV2RoutingState Tx builder: {self.tx_builder} web3: {self.web3}>"
+        return f"<UniswapV3RoutingState Tx builder: {self.tx_builder} web3: {self.web3}>"
     
-    def get_uniswap_for_pair(self, factory_router_map: dict, target_pair: TradingPairIdentifier) -> UniswapV2Deployment:
+    def get_uniswap_for_pair(self, factory_router_map: dict, target_pair: TradingPairIdentifier) -> UniswapV3Deployment:
         """Get a router for a trading pair."""
         return get_uniswap_for_pair(self.web3, factory_router_map, target_pair)
     
     def trade_on_router_two_way(self,
-            uniswap: UniswapV2Deployment,
+            uniswap: UniswapV3Deployment,
             target_pair: TradingPairIdentifier,
             reserve_asset: AssetIdentifier,
             reserve_amount: int,
@@ -67,13 +69,13 @@ class UniswapV2RoutingState(EthereumRoutingStateBase):
             quote_token=quote_token,
             amount_in=reserve_amount,
             max_slippage=max_slippage * 100,  # In BPS
-            #fee=target_pair.fee # TODO
+            pool_fees=target_pair.fee # TODO check in right format
         )
         
         return self.get_signed_tx(bound_swap_func, self.swap_gas_limit)
 
     def trade_on_router_three_way(self,
-            uniswap: UniswapV2Deployment,
+            uniswap: UniswapV3Deployment,
             target_pair: TradingPairIdentifier,
             intermediary_pair: TradingPairIdentifier,
             reserve_asset: AssetIdentifier,
@@ -90,7 +92,7 @@ class UniswapV2RoutingState(EthereumRoutingStateBase):
         hot_wallet = self.tx_builder.hot_wallet
 
         self.validate_pairs(target_pair, intermediary_pair)
-
+        
         self.validate_exchange(target_pair, intermediary_pair)
 
         base_token, quote_token, intermediary_token = self.get_base_quote_intermediary(target_pair, intermediary_pair, reserve_asset)
@@ -98,22 +100,23 @@ class UniswapV2RoutingState(EthereumRoutingStateBase):
         if check_balances:
             self.check_has_enough_tokens(quote_token, reserve_amount)
 
+        pool_fees = [intermediary_pair.fee, target_pair.fee]
+        
         bound_swap_func = swap_with_slippage_protection(
             uniswap,
             recipient_address=hot_wallet.address,
             base_token=base_token,
             quote_token=quote_token,
+            pool_fees=pool_fees,
             amount_in=reserve_amount,
             max_slippage=max_slippage * 100,  # In BPS,
             intermediate_token=intermediary_token,
-            # fee = [intermediate_token.fee, target_pair.fee] # TODO 
         )
+        
+        return self.get_signed_tx(bound_swap_func, self.swap_gas_limit)
 
-        tx = self.tx_builder.sign_transaction(bound_swap_func, self.swap_gas_limit)
-        return [tx]
-
-class UniswapV2SimpleRoutingModel(RoutingModelBase):
-    """A simple router that does not optimise the trade execution cost.
+class UniswapV3SimpleRoutingModel(RoutingModelBase):
+    """A simple router that does not optimise the trade execution cost. Designed for uniswap-v2 forks.
 
     - Able to trade on multiple exchanges
 
@@ -122,17 +125,18 @@ class UniswapV2SimpleRoutingModel(RoutingModelBase):
     """
 
     def __init__(self,
-                 factory_router_map: Dict[str, Tuple[str, Optional[str]]],
+                 address_map: Dict[str, HexAddress],
                  allowed_intermediary_pairs: Dict[str, str],
                  reserve_token_address: str,
                  chain_id: Optional[ChainId] = None,
-                 trading_fee: Optional[BPS] = None
                  ):
         """
-        :param factory_router_map:
+        
+        
+        :param address_map:
             Defines router smart contracts to be used with each DEX.
-            Each Uniswap v2 is uniquely identified by its factory contract.
-            Addresses always lowercase.
+            Address map is a dict of factory, router, position_manager,
+            and quoter addresses
 
         :param allowed_intermediary_pairs:
 
@@ -145,11 +149,6 @@ class UniswapV2SimpleRoutingModel(RoutingModelBase):
             This set is the list of pair smart contract addresses that
             are allowed to be used as a hop.
 
-        :param trading_fee:
-            Trading fee express as float bps.
-
-            This is the LP fee applied to all swaps.
-
         :param chain_id:
             Store the chain id for which these routes were generated for.
 
@@ -161,28 +160,12 @@ class UniswapV2SimpleRoutingModel(RoutingModelBase):
 
         super().__init__(allowed_intermediary_pairs, reserve_token_address, chain_id)
         
-        
-        assert type(factory_router_map) == dict
-        self.factory_router_map = self.convert_address_dict_to_lower(factory_router_map)
-        
-        assert type(allowed_intermediary_pairs) == dict
-        assert type(reserve_token_address) == str
-
-        assert reserve_token_address.lower() == reserve_token_address
-
-        # TODO remove trading_fee
-        assert trading_fee is not None, "Trading fee missing"
-        assert trading_fee >= 0, f"Got fee: {trading_fee}"
-        assert trading_fee <= 1, f"Got fee: {trading_fee}"
-
-        self.trading_fee = trading_fee
-
-    def get_default_trading_fee(self) -> Optional[float]:
-        return self.trading_fee
+        assert type(address_map) == dict
+        self.address_map = self.convert_address_dict_to_lower(address_map)
 
     def create_routing_state(self,
                              universe: StrategyExecutionUniverse,
-                             execution_details: dict) -> UniswapV2RoutingState:
+                             execution_details: dict) -> UniswapV3RoutingState:
         """Create a new routing state for this cycle.
 
         - Connect routing to web3 and hot wallet
@@ -192,7 +175,7 @@ class UniswapV2SimpleRoutingModel(RoutingModelBase):
         - Setup transaction builder based on this information
         """
 
-        return super().create_routing_state(universe, execution_details, UniswapV2RoutingState)
+        return super().create_routing_state(universe, execution_details, UniswapV3RoutingState)
 
     def perform_preflight_checks_and_logging(self,
         pair_universe: PandasPairUniverse):
@@ -202,23 +185,31 @@ class UniswapV2SimpleRoutingModel(RoutingModelBase):
         """
 
         logger.info("Routing details")
-        for factory, router in self.factory_router_map.items():
-            logger.info("  Factory %s uses router %s", factory, router[0])
+        logger.info("  Factory: ", self.address_map["factory"])
+        logger.info("  Router: ", self.address_map["router"])
+        logger.info("  Position Manager: ", self.address_map["position_manager"])
+        logger.info("  Quoter: ", self.address_map["quoter"])
 
         self.reserve_asset_logging(pair_universe)
-        
-def get_uniswap_for_pair(web3: Web3, factory_router_map: dict, target_pair: TradingPairIdentifier) -> UniswapV2Deployment:
+
+def get_uniswap_for_pair(web3: Web3, address_map: dict, target_pair: TradingPairIdentifier) -> UniswapV3Deployment:
     """Get a router for a trading pair."""
     assert target_pair.exchange_address, f"Exchange address missing for {target_pair}"
+    
     factory_address = Web3.toChecksumAddress(target_pair.exchange_address)
-    router_address, init_code_hash = factory_router_map[factory_address.lower()]
+    assert factory_address == Web3.toChecksumAddress(address_map["factory"]), "address_map[\"factory\"] and target_pair.exchange_address should be equal"
+    
+    router_address = Web3.toChecksumAddress(address_map["router"])
+    position_manager_address = Web3.toChecksumAddress(address_map["position_manager"])
+    quoter_address = Web3.toChecksumAddress(address_map["quoter"])
 
     try:
         return fetch_deployment(
             web3,
             factory_address,
-            Web3.toChecksumAddress(router_address),
-            init_code_hash=init_code_hash,
+            router_address,
+            position_manager_address,
+            quoter_address
         )
     except ContractLogicError as e:
         raise RuntimeError(f"Could not fetch deployment data for router address {router_address} (factory {factory_address}) - data is likely wrong") from e
