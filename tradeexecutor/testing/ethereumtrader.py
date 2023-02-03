@@ -54,8 +54,9 @@ class EthereumTestTrader:
     def buy(self, pair: TradingPairIdentifier, amount_in_usd: Decimal, execute=True) -> Tuple[TradingPosition, TradeExecution]:
         """Buy token (trading pair) for a certain value."""
         # Estimate buy price
-        base_token = get_deployed_contract(self.web3, "ERC20MockDecimals.json", Web3.toChecksumAddress(pair.base.address))
-        quote_token = get_deployed_contract(self.web3, "ERC20MockDecimals.json", Web3.toChecksumAddress(pair.quote.address))
+        
+        base_token, quote_token = get_base_quote_contracts(self.web3, pair)
+ 
         raw_assumed_quantity = estimate_buy_quantity(self.uniswap, base_token, quote_token, amount_in_usd * (10 ** pair.quote.decimals))
         assumed_quantity = Decimal(raw_assumed_quantity) / Decimal(10**pair.base.decimals)
         assumed_price = amount_in_usd / assumed_quantity
@@ -79,8 +80,7 @@ class EthereumTestTrader:
 
         assert isinstance(quantity, Decimal)
 
-        base_token = get_deployed_contract(self.web3, "ERC20MockDecimals.json", Web3.toChecksumAddress(pair.base.address))
-        quote_token = get_deployed_contract(self.web3, "ERC20MockDecimals.json", Web3.toChecksumAddress(pair.quote.address))
+        base_token, quote_token = get_base_quote_contracts(self.web3, pair)
 
         raw_quantity = int(quantity * 10**pair.base.decimals)
         raw_assumed_quote_token = estimate_sell_price(self.uniswap, base_token, quote_token, raw_quantity)
@@ -103,7 +103,16 @@ class EthereumTestTrader:
             self.execute([trade])
         return position, trade
 
+# TODO check if duplicated, maybe in routing_model or routing_state
+def get_base_quote_contracts(web3: Web3, pair: TradingPairIdentifier) -> tuple[Contract]:
+    return (
+        get_mock_erc20_contract(web3, pair.base.address),
+        get_mock_erc20_contract(web3, pair.quote.address),
+    )
 
+def get_mock_erc20_contract(web3: Web3, address: str):
+    return get_deployed_contract(web3, "ERC20MockDecimals.json", Web3.toChecksumAddress(address))
+    
 def execute_trades_simple(
         state: State,
         pair_universe: PandasPairUniverse,
