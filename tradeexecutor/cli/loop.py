@@ -531,16 +531,29 @@ class ExecutionLoop:
 
         assert backtest_step != CycleDuration.cycle_unknown
 
+        # Throttle TQDM updates to 1 per second because
+        # otherwise we crash PyCharm
+        # https://stackoverflow.com/q/43288550/315168
+        last_progress_update = datetime.datetime.utcfromtimestamp(0)
+        progress_update_threshold = datetime.timedelta(seconds=1)
+        last_update_ts = None
+
         with tqdm(total=seconds) as progress_bar:
+
             while True:
 
                 ts = snap_to_previous_tick(ts, backtest_step)
 
                 # Bump progress bar forward and update backtest status
-                progress_bar.update(int(backtest_step.to_timedelta().total_seconds()))
-                friedly_ts = ts.strftime(ts_format)
-                trade_count = len(list(state.portfolio.get_all_trades()))
-                progress_bar.set_description(f"Backtesting {self.name}, {friendly_start} - {friendly_end} at {friedly_ts} ({cycle_name}), total {trade_count:,} trades, {cycle:,} cycles")
+                if datetime.datetime.utcnow() - last_progress_update > progress_update_threshold:
+                    friedly_ts = ts.strftime(ts_format)
+                    trade_count = len(list(state.portfolio.get_all_trades()))
+                    progress_bar.set_description(f"Backtesting {self.name}, {friendly_start} - {friendly_end} at {friedly_ts} ({cycle_name}), total {trade_count:,} trades, {cycle:,} cycles")
+                    last_progress_update = datetime.datetime.utcnow()
+                    if last_update_ts:
+                        passed_seconds = (ts - last_update_ts).total_seconds()
+                        progress_bar.update(int(passed_seconds))
+                    last_update_ts = ts
 
                 # Decide trades and everything for this cycle
                 universe: TradingStrategyUniverse = self.tick(
