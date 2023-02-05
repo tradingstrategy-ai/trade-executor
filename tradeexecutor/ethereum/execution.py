@@ -5,6 +5,7 @@ import datetime
 from collections import Counter
 from decimal import Decimal
 from typing import List, Dict, Set, Tuple
+from abc import ABC, abstractmethod
 
 from eth_account.datastructures import SignedTransaction
 from eth_typing import HexAddress
@@ -32,6 +33,200 @@ logger = logging.getLogger(__name__)
 
 class TradeExecutionFailed(Exception):
     """Our Uniswap trade reverted"""
+
+class ExecutionModel(ABC):
+    """Run order execution on a single Uniswap v2 style exchanges."""
+
+    def __init__(self,
+                 web3: Web3,
+                 hot_wallet: HotWallet,
+                 min_balance_threshold=Decimal("0.5"),
+                 confirmation_block_count=6,
+                 confirmation_timeout=datetime.timedelta(minutes=5),
+                 max_slippage: float = 0.01,
+                 stop_on_execution_failure=True,
+                 swap_gas_fee_limit=2_000_000):
+        """
+        :param web3:
+            Web3 connection used for this instance
+
+        :param hot_wallet:
+            Hot wallet instance used for this execution
+
+        :param min_balance_threshold:
+            Abort execution if our hot wallet gas fee balance drops below this
+
+        :param confirmation_block_count:
+            How many blocks to wait for the receipt confirmations to mitigate unstable chain tip issues
+
+        :param confirmation_timeout:
+            How long we wait transactions to clear
+
+        :param stop_on_execution_failure:
+            Raise an exception if any of the trades fail top execute
+
+        :param max_slippage:
+            Max slippage tolerance per trade. 0.01 is 1%.
+        """
+        assert isinstance(confirmation_timeout, datetime.timedelta), f"Got {confirmation_timeout} {confirmation_timeout.__class__}"
+        self.web3 = web3
+        self.hot_wallet = hot_wallet
+        self.stop_on_execution_failure = stop_on_execution_failure
+        self.min_balance_threshold = min_balance_threshold
+        self.confirmation_block_count = confirmation_block_count
+        self.confirmation_timeout = confirmation_timeout
+        self.swap_gas_fee_limit = swap_gas_fee_limit
+        self.max_slippage = max_slippage
+
+    @property
+    def chain_id(self) -> int:
+        """Which chain the live execution is connected to."""
+        return self.web3.eth.chain_id
+
+    def is_live_trading(self) -> bool:
+        return True
+
+    def is_stop_loss_supported(self) -> bool:
+        # TODO: fix this when we want to use stop loss in real strategy
+        return False
+
+    def preflight_check(self):
+        """Check that we can connect to the web3 node"""
+
+        # Check JSON-RPC works
+        assert self.web3.eth.block_number > 1
+
+        # Check we have money for gas fees
+        if self.min_balance_threshold > 0:
+            balance = self.hot_wallet.get_native_currency_balance(self.web3)
+            assert balance > self.min_balance_threshold, f"At least {self.min_balance_threshold} native currency need, our wallet {self.hot_wallet.address} has {balance:.8f}"
+
+    def initialize(self):
+        """Set up the wallet"""
+        logger.info("Initialising Uniswap v2 execution model")
+        self.hot_wallet.sync_nonce(self.web3)
+        balance = self.hot_wallet.get_native_currency_balance(self.web3)
+        logger.info("Our hot wallet is %s with nonce %d and balance %s", self.hot_wallet.address, self.hot_wallet.current_nonce, balance)
+
+    def execute_trades(self,
+                       ts: datetime.datetime,
+                       state: State,
+                       trades: List[TradeExecution],
+                       routing_model: UniswapV2SimpleRoutingModel | UniswapV3SimpleRoutingModel,
+                       routing_state: UniswapV2RoutingState | UniswapV3RoutingState,
+                       check_balances=False):
+        """Execute the trades determined by the algo on a designed Uniswap v2 instance.
+
+        :return: Tuple List of succeeded trades, List of failed trades
+        """
+        state.start_trades(datetime.datetime.utcnow(), trades, max_slippage=self.max_slippage)
+
+        # 61 is Ethereum Tester
+        if self.web3.eth.chain_id != 61:
+            assert self.confirmation_block_count > 0, f"confirmation_block_count set to {self.confirmation_block_count} "
+
+        routing_model.setup_trades(
+            routing_state,
+            trades,
+            check_balances=check_balances)
+
+        broadcast_and_resolve(
+            self.web3,
+            state,
+            trades,
+            confirmation_timeout=self.confirmation_timeout,
+            confirmation_block_count=self.confirmation_block_count,
+        )
+
+        # Clean up failed trades
+        freeze_position_on_failed_trade(ts, state, trades)
+
+    
+    def get_routing_state_details(self) -> dict:
+        return {
+            "web3": self.web3,
+            "hot_wallet": self.hot_wallet,
+        }
+
+    @abstractmethod
+    def repair_unconfirmed_trades(self, state: State, resolve_trades: callable) -> List[TradeExecution]:
+        """Repair unconfirmed trades.
+
+        Repair trades that failed to properly broadcast or confirm due to
+        blockchain node issues.
+        """
+
+        repaired = []
+
+        logger.info("Reparing the failed trade confirmation")
+
+        assert self.confirmation_timeout > datetime.timedelta(0), \
+            "Make sure you have a good tx confirmation timeout setting before attempting a repair"
+
+        # Check if we are on a live chain, not Ethereum Tester
+        if self.web3.eth.chain_id != 61:
+            assert self.confirmation_block_count > 0, \
+                "Make sure you have a good confirmation_block_count setting before attempting a repair"
+
+        for p in state.portfolio.open_positions.values():
+            t: TradeExecution
+            for t in p.trades.values():
+                if t.is_unfinished():
+                    logger.info("Found unconfirmed trade: %s", t)
+
+                    assert t.get_status() == TradeStatus.broadcasted
+
+                    receipt_data = wait_trades_to_complete(
+                        self.web3,
+                        [t],
+                        max_timeout=self.confirmation_timeout,
+                        confirmation_block_count=self.confirmation_block_count,
+                    )
+
+                    assert len(receipt_data) > 0, f"Got bad receipts: {receipt_data}"
+
+                    tx_data = {}
+
+                    # Build a tx hash -> (trade, tx) map
+                    for tx in t.blockchain_transactions:
+                        tx_data[tx.tx_hash] = (t, tx)
+
+                    resolve_trades(
+                        self.web3,
+                        datetime.datetime.now(),
+                        state,
+                        tx_data,
+                        receipt_data,
+                        stop_on_execution_failure=True)
+
+                    t.repaired_at = datetime.datetime.utcnow()
+                    if not t.notes:
+                        # Add human readable note,
+                        # but don't override any other notes
+                        t.notes = "Failed broadcast repaired"
+
+                    repaired.append(t)
+
+        return repaired
+
+    @staticmethod
+    def pre_execute_assertions(
+        ts: datetime.datetime, 
+        routing_model: 
+            UniswapV2SimpleRoutingModel |
+            UniswapV3SimpleRoutingModel,
+        routing_state: 
+            UniswapV2RoutingState |
+            UniswapV3RoutingSate
+    ):
+        assert isinstance(ts, datetime.datetime)
+
+        if isinstance(routing_model, UniswapV2SimpleRoutingModel):
+            assert isinstance(routing_state, UniswapV2RoutingState), "Incorrect routing_state specified"
+        elif isinstance(routing_model, UniswapV3SimpleRoutingModel):
+            assert isinstance(routing_state, UniswapV3RoutingState), "Incorrect routing_state specified"
+        else:
+            raise ValueError("Incorrect routing model specified")
 
 
 def translate_to_naive_swap(
@@ -345,109 +540,6 @@ def get_swap_transactions(trade: TradeExecution) -> BlockchainTransaction:
     raise RuntimeError("Should not happen")
 
 
-def resolve_trades(
-        web3: Web3,
-        ts: datetime.datetime,
-        state: State,
-        tx_map: Dict[HexBytes, Tuple[TradeExecution, BlockchainTransaction]],
-        receipts: Dict[HexBytes, dict],
-        stop_on_execution_failure=True):
-    """Resolve trade outcome.
-
-    Read on-chain Uniswap swap data from the transaction receipt and record how it went.
-
-    Mutates the trade objects in-place.
-
-    :param tx_map:
-        tx hash -> (trade, transaction) mapping
-
-    :param receipts:
-        tx hash -> receipt object mapping
-
-    :param stop_on_execution_failure:
-        Raise an exception if any of the trades failed
-    """
-
-    trades = set()
-
-    # First update the state of all transactions,
-    # as we now have receipt for them
-    for tx_hash, receipt in receipts.items():
-        trade, tx = tx_map[tx_hash.hex()]
-        logger.info("Resolved trade %s", trade)
-        # Update the transaction confirmation status
-        status = receipt["status"] == 1
-        reason = None
-        if status == 0:
-            reason = fetch_transaction_revert_reason(web3, tx_hash)
-        tx.set_confirmation_information(
-            ts,
-            receipt["blockNumber"],
-            receipt["blockHash"].hex(),
-            receipt.get("effectiveGasPrice", 0),
-            receipt["gasUsed"],
-            status,
-            revert_reason=reason,
-        )
-        trades.add(trade)
-
-    # Then resolve trade status by analysis the tx receipt
-    # if the blockchain transaction was successsful.
-    # Also get the actual executed token counts.
-    trade: TradeExecution
-    for trade in trades:
-        base_token_details = fetch_erc20_details(web3, trade.pair.base.checksum_address)
-        quote_token_details = fetch_erc20_details(web3, trade.pair.quote.checksum_address)
-        reserve = trade.reserve_currency
-        swap_tx = get_swap_transactions(trade)
-        uniswap = mock_partial_deployment_for_analysis(web3, swap_tx.contract_address)
-
-        tx_dict = swap_tx.get_transaction()
-        receipt = receipts[HexBytes(swap_tx.tx_hash)]
-        result = analyse_trade_by_receipt(web3, uniswap, tx_dict, swap_tx.tx_hash, receipt)
-
-        if isinstance(result, TradeSuccess):
-            path = [a.lower() for a in result.path]
-            if trade.is_buy():
-                assert path[0] == reserve.address, f"Was expecting the route path to start with reserve token {reserve}, got path {result.path}"
-                price = 1 / result.price
-                executed_reserve = result.amount_in / Decimal(10**quote_token_details.decimals)
-                executed_amount = result.amount_out / Decimal(10**base_token_details.decimals)
-            else:
-                # Ordered other way around
-                assert path[0] == base_token_details.address.lower(), f"Path is {path}, base token is {base_token_details}"
-                assert path[-1] == reserve.address
-                price = result.price
-                executed_amount = -result.amount_in / Decimal(10**base_token_details.decimals)
-                executed_reserve = result.amount_out / Decimal(10**quote_token_details.decimals)
-
-            assert (executed_reserve > 0) and (executed_amount != 0) and (price > 0), f"Executed amount {executed_amount}, executed_reserve: {executed_reserve}, price: {price}, tx info {trade.tx_info}"
-
-            # Mark as success
-            state.mark_trade_success(
-                ts,
-                trade,
-                executed_price=float(price),
-                executed_amount=executed_amount,
-                executed_reserve=executed_reserve,
-                lp_fees=0,
-                native_token_price=1.0,
-            )
-        else:
-            logger.error("Trade failed %s: %s", ts, trade)
-            state.mark_trade_failed(
-                ts,
-                trade,
-            )
-            if stop_on_execution_failure:
-                success_txs = []
-                for tx in trade.blockchain_transactions:
-                    if not tx.is_success():
-                        raise TradeExecutionFailed(f"Could not execute a trade: {trade}, transaction failed: {tx}, had other transactions {success_txs}")
-                    else:
-                        success_txs.append(tx)
-
-
 def get_current_price(web3: Web3, uniswap: UniswapV2Deployment, pair: TradingPairIdentifier, quantity=Decimal(1)) -> float:
     """Get a price from Uniswap v2 pool, assuming you are selling 1 unit of base token.
 
@@ -480,6 +572,7 @@ def broadcast_and_resolve(
         web3: Web3,
         state: State,
         trades: List[TradeExecution],
+        resolve_trades: callable,
         confirmation_timeout: datetime.timedelta = datetime.timedelta(minutes=1),
         confirmation_block_count: int=0,
         stop_on_execution_failure=False,

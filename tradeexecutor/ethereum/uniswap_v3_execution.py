@@ -2,55 +2,31 @@
 
 import datetime
 from decimal import Decimal
-from typing import List
+from typing import List, Dict, Tuple
 import logging
 
 from web3 import Web3
+from web3.logs import DISCARD
 
 from eth_defi.hotwallet import HotWallet
-from tradeexecutor.ethereum.execution import broadcast_and_resolve, wait_trades_to_complete
-from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2SimpleRoutingModel, UniswapV2RoutingState
+from eth_defi.uniswap_v2.analysis import TradeSuccess
+from eth_defi.revert_reason import fetch_transaction_revert_reason
+from eth_defi.token import fetch_erc20_details
+from eth_defi.uniswap_v3.analysis import mock_partial_deployment_for_analysis, analyse_trade_by_receipt
+
+from tradeexecutor.ethereum.execution import wait_trades_to_complete, TradeExecutionFailed, get_swap_transactions
+from tradeexecutor.ethereum.uniswap_v3_routing import UniswapV3SimpleRoutingModel, UniswapV3RoutingState
 from tradeexecutor.state.freeze import freeze_position_on_failed_trade
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution, TradeStatus
-#from tradeexecutor.strategy.execution_model import ExecutionModel
-from tradeexecutor.ethereum.execution import ExecutionModel, get_swap_transactions, TradeExecutionFailed
-
-
-import logging
-import datetime
-from collections import Counter
-from decimal import Decimal
-from typing import List, Dict, Set, Tuple
-from abc import ABC, abstractmethod
-
-from eth_account.datastructures import SignedTransaction
-from eth_typing import HexAddress
-from hexbytes import HexBytes
-from web3 import Web3
-from web3.contract import Contract
-
-
-from eth_defi.abi import get_deployed_contract
-from eth_defi.gas import GasPriceSuggestion, apply_gas, estimate_gas_fees
-from eth_defi.hotwallet import HotWallet
-from eth_defi.revert_reason import fetch_transaction_revert_reason
-from eth_defi.token import fetch_erc20_details, TokenDetails
-from eth_defi.confirmation import wait_transactions_to_complete, \
-    broadcast_and_wait_transactions_to_complete, broadcast_transactions
-from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, FOREVER_DEADLINE,  mock_partial_deployment_for_analysis
-from eth_defi.uniswap_v2.fees import estimate_sell_price_decimals
-from eth_defi.uniswap_v2.analysis import analyse_trade_by_hash, TradeSuccess, analyse_trade_by_receipt
-from tradeexecutor.state.state import State
-from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
-from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
+from tradeexecutor.strategy.execution_model import ExecutionModel
 
 
 logger = logging.getLogger(__name__)
 
 
-class UniswapV2ExecutionModel(ExecutionModel):
+class UniswapV3ExecutionModel(ExecutionModel):
     """Run order execution on a single Uniswap v2 style exchanges."""
 
     def __init__(self,
@@ -103,31 +79,26 @@ class UniswapV2ExecutionModel(ExecutionModel):
         """
         return super().repair_unconfirmed_trades(state, resolve_trades)
 
-
 def resolve_trades(
-        web3: Web3,
-        ts: datetime.datetime,
-        state: State,
-        tx_map: Dict[HexBytes, Tuple[TradeExecution, BlockchainTransaction]],
-        receipts: Dict[HexBytes, dict],
-        stop_on_execution_failure=True):
-    """Resolve trade outcome.
-
+    web3: Web3,
+    ts: datetime.datetime,
+    state: State,
+    tx_map: Dict[HexBytes, Tuple[TradeExecution, BlockchainTransaction]],
+    receipts: Dict[HexBytes, dict],
+    stop_on_execution_failure=True
+):
+    """Resolve trade outcome for uniswap_v3 like exchanges.
     Read on-chain Uniswap swap data from the transaction receipt and record how it went.
-
     Mutates the trade objects in-place.
-
     :param tx_map:
         tx hash -> (trade, transaction) mapping
-
     :param receipts:
         tx hash -> receipt object mapping
-
     :param stop_on_execution_failure:
         Raise an exception if any of the trades failed
     """
 
-    trades = set()
+    trades: set[TradeExecution] = set()
 
     # First update the state of all transactions,
     # as we now have receipt for them
@@ -153,7 +124,6 @@ def resolve_trades(
     # Then resolve trade status by analysis the tx receipt
     # if the blockchain transaction was successsful.
     # Also get the actual executed token counts.
-    trade: TradeExecution
     for trade in trades:
         base_token_details = fetch_erc20_details(web3, trade.pair.base.checksum_address)
         quote_token_details = fetch_erc20_details(web3, trade.pair.quote.checksum_address)
@@ -166,20 +136,21 @@ def resolve_trades(
         result = analyse_trade_by_receipt(web3, uniswap, tx_dict, swap_tx.tx_hash, receipt)
 
         if isinstance(result, TradeSuccess):
-            path = [a.lower() for a in result.path]
+            path = [a.lower() for a in result.path if type(a) == str]
+            
             if trade.is_buy():
                 assert path[0] == reserve.address, f"Was expecting the route path to start with reserve token {reserve}, got path {result.path}"
-                price = 1 / result.price
                 executed_reserve = result.amount_in / Decimal(10**quote_token_details.decimals)
                 executed_amount = result.amount_out / Decimal(10**base_token_details.decimals)
             else:
                 # Ordered other way around
                 assert path[0] == base_token_details.address.lower(), f"Path is {path}, base token is {base_token_details}"
                 assert path[-1] == reserve.address
-                price = result.price
                 executed_amount = -result.amount_in / Decimal(10**base_token_details.decimals)
                 executed_reserve = result.amount_out / Decimal(10**quote_token_details.decimals)
 
+            price = 1/(1/Decimal(result.price) * Decimal(10**quote_token_details.decimals) / Decimal(10**base_token_details.decimals))
+            
             assert (executed_reserve > 0) and (executed_amount != 0) and (price > 0), f"Executed amount {executed_amount}, executed_reserve: {executed_reserve}, price: {price}, tx info {trade.tx_info}"
 
             # Mark as success
