@@ -57,7 +57,7 @@ class UniswapV3RoutingState(EthereumRoutingStateBase):
 
         hot_wallet = self.tx_builder.hot_wallet
         
-        base_token, quote_token = self.get_base_and_quote(target_pair, reserve_asset)
+        base_token, quote_token = self. get_base_quote(self.web3, target_pair, reserve_asset)
 
         if check_balances:
             self.check_has_enough_tokens(quote_token, reserve_amount)
@@ -95,7 +95,7 @@ class UniswapV3RoutingState(EthereumRoutingStateBase):
         
         self.validate_exchange(target_pair, intermediary_pair)
 
-        base_token, quote_token, intermediary_token = self.get_base_quote_intermediary(target_pair, intermediary_pair, reserve_asset)
+        base_token, quote_token, intermediary_token = self.get_base_quote_intermediary(target_pair, intermediary_pair, reserve_asset, intermediary_pair)
 
         if check_balances:
             self.check_has_enough_tokens(quote_token, reserve_amount)

@@ -6,10 +6,13 @@ based on the exchanges the universe covers.
 Here we define the abstract overview of routing.
 """
 import abc
-from decimal import Decimal
 from typing import List, Optional
 
-from tradeexecutor.state.identifier import TradingPairIdentifier
+from web3 import Web3
+from web3.contract import Contract
+from eth_defi.abi import get_deployed_contract
+
+from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
 
@@ -46,6 +49,41 @@ class RoutingState(abc.ABC):
         #: Each routing state is specific to the current trading universe.
         #: The trade routing will change when new pairs are added and old goes away.
         self.universe = universe
+    
+    def get_base_quote(self, web3: Web3, target_pair: TradingPairIdentifier, reserve_asset: AssetIdentifier, error_msg: str = None):
+        """Get base and quote token from the pair and reserve asset. Called in parent class (RoutingState) with error_msg.
+        
+        See: https://tradingstrategy.ai/docs/programming/market-data/trading-pairs.html
+        
+        :param target_pair: Pair to be traded
+        :param reserver_asset: Asset to be kept as reserves
+        :returns: (base_token: Contract, quote_token: Contract)
+        :param error_msg:
+            Only provide this argument if error message includes external info such as an intermediary pair
+        """
+        if error_msg is None:
+            error_msg = f"Cannot route trade through {target_pair}"
+        
+        if reserve_asset == target_pair.quote:
+            # Buy with e.g. BUSD
+            base_token = self.get_token_for_asset(web3, target_pair.base)
+            quote_token = self.get_token_for_asset(web3, target_pair.quote)
+            
+        elif reserve_asset == target_pair.base:
+            # Sell, flip the direction
+            base_token = self.get_token_for_asset(web3, target_pair.quote)
+            quote_token = self.get_token_for_asset(web3, target_pair.base)
+            
+        else:
+            raise RuntimeError(error_msg)
+        
+        return base_token, quote_token
+    
+    @staticmethod
+    def get_token_for_asset(web3: Web3, asset: AssetIdentifier) -> Contract:
+        """Get ERC-20 contract proxy."""
+        erc_20 = get_deployed_contract(web3, "ERC20MockDecimals.json", Web3.toChecksumAddress(asset.address))
+        return erc_20
 
 
 class RoutingModel(abc.ABC):

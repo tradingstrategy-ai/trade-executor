@@ -16,19 +16,23 @@ from web3.contract import Contract
 from eth_defi.abi import get_deployed_contract
 from eth_defi.gas import GasPriceSuggestion, apply_gas, estimate_gas_fees
 from eth_defi.hotwallet import HotWallet
-from eth_defi.revert_reason import fetch_transaction_revert_reason
 from eth_defi.token import fetch_erc20_details, TokenDetails
 from eth_defi.confirmation import wait_transactions_to_complete, \
     broadcast_and_wait_transactions_to_complete, broadcast_transactions
-from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, FOREVER_DEADLINE,  mock_partial_deployment_for_analysis
-from eth_defi.uniswap_v2.fees import estimate_sell_price_decimals
-from eth_defi.uniswap_v2.analysis import analyse_trade_by_hash, TradeSuccess, analyse_trade_by_receipt
+from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, FOREVER_DEADLINE 
+
 from tradeexecutor.state.state import State
-from tradeexecutor.state.trade import TradeExecution
+from tradeexecutor.state.trade import TradeExecution, TradeStatus
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
-from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
+from tradeexecutor.state.freeze import freeze_position_on_failed_trade
+from tradeexecutor.state.identifier import AssetIdentifier
+from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2SimpleRoutingModel, UniswapV2RoutingState
+from tradeexecutor.ethereum.uniswap_v3_routing import UniswapV3SimpleRoutingModel, UniswapV3RoutingState
 
 logger = logging.getLogger(__name__)
+
+routing_models = UniswapV2SimpleRoutingModel | UniswapV3SimpleRoutingModel # TODO create enum
+routing_states = UniswapV2RoutingState | UniswapV3RoutingState # TODO create enum
 
 
 class TradeExecutionFailed(Exception):
@@ -112,8 +116,9 @@ class ExecutionModel(ABC):
                        ts: datetime.datetime,
                        state: State,
                        trades: List[TradeExecution],
-                       routing_model: UniswapV2SimpleRoutingModel | UniswapV3SimpleRoutingModel,
-                       routing_state: UniswapV2RoutingState | UniswapV3RoutingState,
+                       routing_model: routing_models,
+                       routing_state: routing_states,
+                       resolve_trades: callable,
                        check_balances=False):
         """Execute the trades determined by the algo on a designed Uniswap v2 instance.
 
@@ -134,6 +139,7 @@ class ExecutionModel(ABC):
             self.web3,
             state,
             trades,
+            resolve_trades=resolve_trades,
             confirmation_timeout=self.confirmation_timeout,
             confirmation_block_count=self.confirmation_block_count,
         )
@@ -161,12 +167,12 @@ class ExecutionModel(ABC):
         logger.info("Reparing the failed trade confirmation")
 
         assert self.confirmation_timeout > datetime.timedelta(0), \
-            "Make sure you have a good tx confirmation timeout setting before attempting a repair"
+                "Make sure you have a good tx confirmation timeout setting before attempting a repair"
 
         # Check if we are on a live chain, not Ethereum Tester
         if self.web3.eth.chain_id != 61:
             assert self.confirmation_block_count > 0, \
-                "Make sure you have a good confirmation_block_count setting before attempting a repair"
+                    "Make sure you have a good confirmation_block_count setting before attempting a repair"
 
         for p in state.portfolio.open_positions.values():
             t: TradeExecution
@@ -185,12 +191,8 @@ class ExecutionModel(ABC):
 
                     assert len(receipt_data) > 0, f"Got bad receipts: {receipt_data}"
 
-                    tx_data = {}
-
-                    # Build a tx hash -> (trade, tx) map
-                    for tx in t.blockchain_transactions:
-                        tx_data[tx.tx_hash] = (t, tx)
-
+                    tx_data = {tx.tx_hash: (t, tx) for tx in t.blockchain_transactions}
+                    
                     resolve_trades(
                         self.web3,
                         datetime.datetime.now(),
@@ -212,12 +214,8 @@ class ExecutionModel(ABC):
     @staticmethod
     def pre_execute_assertions(
         ts: datetime.datetime, 
-        routing_model: 
-            UniswapV2SimpleRoutingModel |
-            UniswapV3SimpleRoutingModel,
-        routing_state: 
-            UniswapV2RoutingState |
-            UniswapV3RoutingSate
+        routing_model: routing_models,
+        routing_state: routing_states
     ):
         assert isinstance(ts, datetime.datetime)
 
@@ -359,8 +357,7 @@ def approve_tokens(
 
     approvals = Counter()
 
-    for idx, t in enumerate(instructions):
-
+    for t in instructions:
         base_token_details = fetch_erc20_details(web3, t.pair.base.checksum_address)
         quote_token_details = fetch_erc20_details(web3, t.pair.quote.checksum_address)
 
@@ -370,7 +367,7 @@ def approve_tokens(
         else:
             approvals[base_token_details.address] += int(-t.planned_quantity * 10**base_token_details.decimals)
 
-    for idx, tpl in enumerate(approvals.items()):
+    for tpl in approvals.items():
         token_address, amount = tpl
 
         assert amount > 0, f"Got a non-positive approval {token_address}: {amount}"
@@ -405,8 +402,7 @@ def approve_infinity(
 
     approvals = Counter()
 
-    for idx, t in enumerate(instructions):
-
+    for t in instructions:
         base_token_details = fetch_erc20_details(web3, t.pair.base.checksum_address)
         quote_token_details = fetch_erc20_details(web3, t.pair.quote.checksum_address)
 
@@ -416,7 +412,7 @@ def approve_infinity(
         else:
             approvals[base_token_details.address] += int(-t.planned_quantity * 10**base_token_details.decimals)
 
-    for idx, tpl in enumerate(approvals.items()):
+    for tpl in approvals.items():
         token_address, amount = tpl
 
         assert amount > 0, f"Got a non-positive approval {token_address}: {amount}"
@@ -521,14 +517,13 @@ def wait_trades_to_complete(
     assert isinstance(confirmation_block_count, int)
     tx_hashes = []
     for t in trades:
-        for tx in t.blockchain_transactions:
-            tx_hashes.append(tx.tx_hash)
+        tx_hashes.extend(tx.tx_hash for tx in t.blockchain_transactions)
     receipts = wait_transactions_to_complete(web3, tx_hashes, confirmation_block_count, max_timeout, poll_delay)
     return receipts
 
 
 def is_swap_function(name: str):
-    return name in ("swapExactTokensForTokens",)
+    return name in {"swapExactTokensForTokens", "exactInput"}
 
 
 def get_swap_transactions(trade: TradeExecution) -> BlockchainTransaction:
@@ -540,17 +535,6 @@ def get_swap_transactions(trade: TradeExecution) -> BlockchainTransaction:
     raise RuntimeError("Should not happen")
 
 
-def get_current_price(web3: Web3, uniswap: UniswapV2Deployment, pair: TradingPairIdentifier, quantity=Decimal(1)) -> float:
-    """Get a price from Uniswap v2 pool, assuming you are selling 1 unit of base token.
-
-    Does decimal adjustment.
-
-    :return: Price in quote token.
-    """
-    price = estimate_sell_price_decimals(uniswap, pair.base.checksum_address, pair.quote.checksum_address, quantity)
-    return float(price)
-
-
 def get_held_assets(web3: Web3, address: HexAddress, assets: List[AssetIdentifier]) -> Dict[str, Decimal]:
     """Get list of assets hold by the a wallet."""
 
@@ -560,12 +544,6 @@ def get_held_assets(web3: Web3, address: HexAddress, assets: List[AssetIdentifie
         balance = token_details.contract.functions.balanceOf(address).call()
         result[token_details.address.lower()] = Decimal(balance) / Decimal(10 ** token_details.decimals)
     return result
-
-
-def get_token_for_asset(web3: Web3, asset: AssetIdentifier) -> Contract:
-    """Get ERC-20 contract proxy."""
-    erc_20 = get_deployed_contract(web3, "ERC20MockDecimals.json", Web3.toChecksumAddress(asset.address))
-    return erc_20
 
 
 def broadcast_and_resolve(

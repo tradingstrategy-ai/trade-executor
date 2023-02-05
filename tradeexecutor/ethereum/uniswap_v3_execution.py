@@ -6,20 +6,23 @@ from typing import List, Dict, Tuple
 import logging
 
 from web3 import Web3
-from web3.logs import DISCARD
+from hexbytes import HexBytes
+
 
 from eth_defi.hotwallet import HotWallet
 from eth_defi.uniswap_v2.analysis import TradeSuccess
 from eth_defi.revert_reason import fetch_transaction_revert_reason
 from eth_defi.token import fetch_erc20_details
+from eth_defi.uniswap_v3.deployment import UniswapV3Deployment
+from eth_defi.uniswap_v3.price import UniswapV3PriceHelper
 from eth_defi.uniswap_v3.analysis import mock_partial_deployment_for_analysis, analyse_trade_by_receipt
 
-from tradeexecutor.ethereum.execution import wait_trades_to_complete, TradeExecutionFailed, get_swap_transactions
-from tradeexecutor.ethereum.uniswap_v3_routing import UniswapV3SimpleRoutingModel, UniswapV3RoutingState
-from tradeexecutor.state.freeze import freeze_position_on_failed_trade
+
+from tradeexecutor.ethereum.execution import TradeExecutionFailed, get_swap_transactions
 from tradeexecutor.state.state import State
-from tradeexecutor.state.trade import TradeExecution, TradeStatus
+from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
+from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.strategy.execution_model import ExecutionModel
 
 
@@ -78,6 +81,29 @@ class UniswapV3ExecutionModel(ExecutionModel):
         blockchain node issues.
         """
         return super().repair_unconfirmed_trades(state, resolve_trades)
+
+def get_current_price(web3: Web3, uniswap: UniswapV3Deployment, pair: TradingPairIdentifier, quantity=Decimal(1)) -> float:
+    """Get a price from Uniswap v3 pool, assuming you are selling 1 unit of base token.
+    See see eth_defi.uniswap_v2.fees.estimate_sell_price_decimals
+    
+    Does decimal adjustment.
+    :return: Price in quote token.
+    """
+    
+    quantity_raw = pair.base.convert_to_raw_amount(quantity)
+    
+    path = [pair.base.checksum_address,  pair.quote.checksum_address] 
+    fees = [pair.fee]
+    assert fees, "no fees in pair"        
+        
+    price_helper = UniswapV3PriceHelper(uniswap)
+    out_raw = price_helper.get_amount_out(
+        amount_in=quantity_raw,
+        path=path,
+        fees=fees
+    )
+    
+    return float(pair.quote.convert_to_decimal(out_raw))
 
 def resolve_trades(
     web3: Web3,

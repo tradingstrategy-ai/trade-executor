@@ -104,6 +104,18 @@ class UniswapV2ExecutionModel(ExecutionModel):
         return super().repair_unconfirmed_trades(state, resolve_trades)
 
 
+def get_current_price(web3: Web3, uniswap: UniswapV2Deployment, pair: TradingPairIdentifier, quantity=Decimal(1)) -> float:
+    """Get a price from Uniswap v2 pool, assuming you are selling 1 unit of base token.
+
+    Does decimal adjustment.
+
+    :return: Price in quote token.
+    """
+    price = estimate_sell_price_decimals(uniswap, pair.base.checksum_address, pair.quote.checksum_address, quantity)
+    return float(price)
+
+
+
 def resolve_trades(
         web3: Web3,
         ts: datetime.datetime,

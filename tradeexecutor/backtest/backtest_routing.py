@@ -1,32 +1,18 @@
 """Find routes between historical pairs."""
 
 import logging
-from collections import defaultdict
 from decimal import Decimal
-from typing import Dict, Set, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
-from eth_typing import HexAddress, ChecksumAddress
-from web3 import Web3
-from web3.contract import Contract
 
-from eth_defi.abi import get_deployed_contract
-from eth_defi.gas import estimate_gas_fees
-from eth_defi.token import fetch_erc20_details
-from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, fetch_deployment
-from eth_defi.uniswap_v2.swap import swap_with_slippage_protection
 from tradeexecutor.backtest.simulated_wallet import SimulatedWallet
-from tradeexecutor.ethereum.execution import get_token_for_asset
-from tradeexecutor.ethereum.tx import TransactionBuilder
-from tradeexecutor.ethereum.routing_model import RoutingModelBase
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
 from tradeexecutor.state.trade import TradeExecution
-from tradeexecutor.strategy.routing import RoutingModel, RoutingState, CannotRouteTrade
-from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_trading_pair, \
-    translate_token
+from tradeexecutor.strategy.routing import RoutingModel, RoutingState
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_token
 from tradingstrategy.pair import PandasPairUniverse
 
-from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
 
 
 logger = logging.getLogger(__name__)
@@ -42,6 +28,8 @@ class BacktestRoutingState(RoutingState):
                  pair_universe: PandasPairUniverse,
                  wallet: SimulatedWallet,
                  ):
+        super.__init__(pair_universe)
+        
         self.pair_universe = pair_universe
         self.wallet = wallet
 
@@ -74,17 +62,8 @@ class BacktestRoutingState(RoutingState):
             and raise exception if not.
         """
 
-        if reserve_asset == target_pair.quote:
-            # Buy with e.g. BUSD
-            base_token = get_token_for_asset(web3, target_pair.base)
-            quote_token = get_token_for_asset(web3, target_pair.quote)
-        elif reserve_asset == target_pair.base:
-            # Sell, flip the direction
-            base_token = get_token_for_asset(web3, target_pair.quote)
-            quote_token = get_token_for_asset(web3, target_pair.base)
-        else:
-            raise RuntimeError(f"Cannot trade {target_pair}")
-
+        base_token, quote_token = self.get_base_quote(self.web3, target_pair, reserve_asset)
+        
         if check_balances:
             self.check_has_enough_tokens(quote_token, reserve_amount)
 

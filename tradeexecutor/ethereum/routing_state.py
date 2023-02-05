@@ -2,36 +2,24 @@
 
 import logging
 from collections import defaultdict
-from decimal import Decimal
-from typing import Dict, Set, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
-from eth_typing import HexAddress, ChecksumAddress
+from eth_typing import ChecksumAddress
 
 from tradeexecutor.state.types import BPS
-from tradingstrategy.chain import ChainId
 from web3 import Web3
 from web3.contract import Contract
 
 from eth_defi.abi import get_deployed_contract
-from eth_defi.gas import estimate_gas_fees
 from eth_defi.token import fetch_erc20_details
-from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, fetch_deployment
-from eth_defi.uniswap_v3.deployment import UniswapV3Deployment, fetch_deployment as fetch_deployment_v3
-from eth_defi.uniswap_v2.swap import swap_with_slippage_protection
-from eth_defi.uniswap_v3.swap import swap_with_slippage_protection as swap_with_slippage_protection_v3
-from web3.exceptions import ContractLogicError
 
 from tradeexecutor.ethereum.execution import get_token_for_asset
 from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
-from tradeexecutor.state.trade import TradeExecution
-from tradeexecutor.strategy.routing import RoutingModel, RoutingState, CannotRouteTrade
-from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_trading_pair, \
-    translate_token
+from tradeexecutor.strategy.routing import RoutingState
 from tradingstrategy.pair import PandasPairUniverse
 
-from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
 
 
 logger = logging.getLogger(__name__)
@@ -77,6 +65,8 @@ class EthereumRoutingStateBase(RoutingState):
             What is the max gas we are willing to pay for a swap.
 
         """
+        super.__init__(pair_universe)
+        
         self.pair_universe = pair_universe
         self.tx_builder = tx_builder
         self.hot_wallet = tx_builder.hot_wallet
@@ -156,25 +146,14 @@ class EthereumRoutingStateBase(RoutingState):
 
         return [tx]
     
-    def get_base_quote_intermediary(self, target_pair, intermediary_pair, reserve_asset):
-        
-        web3 = self.web3
-        
-        if reserve_asset == intermediary_pair.quote:
-            # Buy BUSD -> BNB -> Cake
-            base_token = get_token_for_asset(web3, target_pair.base)
-            quote_token = get_token_for_asset(web3, intermediary_pair.quote)
-            intermediary_token = get_token_for_asset(web3, intermediary_pair.base)
-        elif reserve_asset == target_pair.base:
-            # Sell, Cake -> BNB -> BUSD
-            base_token = get_token_for_asset(web3, intermediary_pair.quote)  # BUSD
-            quote_token = get_token_for_asset(web3, target_pair.base)  # Cake
-            intermediary_token = get_token_for_asset(web3, intermediary_pair.base)  # BNB
-        else:
-            raise RuntimeError(f"Cannot trade {target_pair} through {intermediary_pair}")
-        return base_token,quote_token,intermediary_token
     
-    def get_base_and_quote(self, target_pair, reserve_asset):
+    def get_signed_tx(self, swap_func, gas_limit):
+        signed_tx = self.tx_builder.sign_transaction(
+            swap_func, gas_limit
+        )
+        return [signed_tx]
+    
+    def get_base_quote_intermediary(self, web3: Web3, target_pair: TradingPairIdentifier, reserve_asset: AssetIdentifier, intermediary_pair: TradingPairIdentifier):
         """Get base and quote token from the pair and reserve asset. 
         
         See: https://tradingstrategy.ai/docs/programming/market-data/trading-pairs.html
@@ -183,25 +162,13 @@ class EthereumRoutingStateBase(RoutingState):
         :param reserver_asset: Asset to be kept as reserves
         :returns: (base_token: Contract, quote_token: Contract)
         """
-        web3 = self.web3
         
-        if reserve_asset == target_pair.quote:
-            # Buy with e.g. BUSD
-            base_token = get_token_for_asset(web3, target_pair.base)
-            quote_token = get_token_for_asset(web3, target_pair.quote)
-        elif reserve_asset == target_pair.base:
-            # Sell, flip the direction
-            base_token = get_token_for_asset(web3, target_pair.quote)
-            quote_token = get_token_for_asset(web3, target_pair.base)
-        else:
-            raise RuntimeError(f"Cannot trade {target_pair}")
-        return base_token,quote_token
-    
-    def get_signed_tx(self, swap_func, gas_limit):
-        signed_tx = self.tx_builder.sign_transaction(
-            swap_func, gas_limit
-        )
-        return [signed_tx]
+        intermediary_token = self.get_token_for_asset(web3, intermediary_pair.base) 
+        error_msg = f"Cannot trade {target_pair} through {intermediary_pair}"
+        
+        base_token, quote_token = self.get_base_quote(self.web3, target_pair, reserve_asset, error_msg)
+        
+        return base_token, quote_token, intermediary_token
     
     @staticmethod
     def validate_pairs(target_pair, intermediary_pair):
