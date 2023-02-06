@@ -10,26 +10,23 @@ from typing import Optional, Dict
 
 from web3 import Web3
 
-from eth_defi.uniswap_v2.deployment import UniswapV2Deployment
-from eth_defi.uniswap_v2.fees import estimate_buy_received_amount_raw, estimate_sell_received_amount_raw
-
-from tradeexecutor.ethereum.uniswap_v2_execution import UniswapV2ExecutionModel
-from tradeexecutor.ethereum.uniswap_v2_execution_v0 import UniswapV2ExecutionModelVersion0
-from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2SimpleRoutingModel, route_tokens, get_uniswap_for_pair
+from tradeexecutor.ethereum.uniswap_v3_execution import UniswapV3ExecutionModel
+from tradeexecutor.ethereum.uniswap_v3_routing import UniswapV3SimpleRoutingModel, route_tokens, get_uniswap_for_pair
 from tradeexecutor.state.identifier import TradingPairIdentifier
-from tradeexecutor.strategy.dummy import DummyExecutionModel
 from tradeexecutor.strategy.execution_model import ExecutionModel
-from tradeexecutor.state.types import USDollarAmount
-from tradeexecutor.strategy.pricing_model import PricingModel, TradePricing
-from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_trading_pair
 
+from tradeexecutor.state.types import USDollarAmount
+from tradeexecutor.strategy.pricing_model import PricingModel
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_trading_pair
 from tradingstrategy.pair import PandasPairUniverse
 
+from eth_defi.uniswap_v3.price import UniswapV3PriceHelper
+from eth_defi.uniswap_v3.deployment import UniswapV3Deployment
 
 logger = logging.getLogger(__name__)
 
 
-class UniswapV2LivePricing(PricingModel):
+class UniswapV3LivePricing(PricingModel):
     """Always pull the latest dollar price for an asset from Uniswap v2 deployment.
 
     Supports
@@ -38,7 +35,7 @@ class UniswapV2LivePricing(PricingModel):
 
     - Three-way trades BUSD -> BNB -> Cake
 
-    ... within a single exchange.
+    ... within a single, uniswap v3 like exchange.
 
     .. note ::
 
@@ -56,12 +53,12 @@ class UniswapV2LivePricing(PricingModel):
     def __init__(self,
                  web3: Web3,
                  pair_universe: PandasPairUniverse,
-                 routing_model: UniswapV2SimpleRoutingModel,
+                 routing_model: UniswapV3SimpleRoutingModel,
                  very_small_amount=Decimal("0.10")):
 
-        assert isinstance(routing_model, UniswapV2SimpleRoutingModel)
+        assert isinstance(routing_model, UniswapV3SimpleRoutingModel)
 
-        self.uniswap_cache: Dict[TradingPairIdentifier, UniswapV2Deployment] = {}
+        self.uniswap_cache: Dict[TradingPairIdentifier, UniswapV3Deployment] = {}
 
         super().__init__(
             web3,
@@ -69,18 +66,26 @@ class UniswapV2LivePricing(PricingModel):
             routing_model,
             very_small_amount
         )
-        
-    def get_uniswap(self, target_pair: TradingPairIdentifier) -> UniswapV2Deployment:
-        """Helper function to speed up Uniswap v2 deployment resolution."""
+
+    def get_uniswap(self, target_pair: TradingPairIdentifier) -> UniswapV3Deployment:
+        """Helper function to speed up Uniswap v3 deployment resolution."""
         if target_pair not in self.uniswap_cache:
-            self.uniswap_cache[target_pair] = get_uniswap_for_pair(self.web3, self.routing_model.factory_router_map, target_pair)
+            self.uniswap_cache[target_pair] = get_uniswap_for_pair(
+                self.web3, 
+                self.routing_model.address_map, 
+                target_pair
+            )
         return self.uniswap_cache[target_pair]
+    
+    def get_price_helper(self, target_pair: TradingPairIdentifier) -> UniswapV3PriceHelper:
+        uniswap_v3 = self.get_uniswap(target_pair)
+        return UniswapV3PriceHelper(uniswap_v3)
 
     def get_sell_price(self,
                        ts: datetime.datetime,
                        pair: TradingPairIdentifier,
                        quantity: Optional[Decimal],
-                       ) -> TradePricing:
+                       ) -> USDollarAmount:
         """Get live price on Uniswap."""
 
         if quantity is None:
@@ -92,59 +97,46 @@ class UniswapV2LivePricing(PricingModel):
 
         base_addr, quote_addr, intermediate_addr = route_tokens(target_pair, intermediate_pair)
 
-        uniswap = self.get_uniswap(target_pair)
-
         # In three token trades, be careful to use the correct reserve token
         quantity_raw = target_pair.base.convert_to_raw_amount(quantity)
 
-        received_raw = estimate_sell_received_amount_raw(
-            uniswap,
-            base_addr,
-            quote_addr,
-            quantity_raw,
-            intermediate_token_address=intermediate_addr,
-            fee=self.trading_fee
+        # See eth_defi.uniswap_v2.fees.estimate_sell_received_amount_raw
+        path = (
+            [base_addr, intermediate_addr, quote_addr] 
+            if intermediate_addr 
+            else [base_addr, quote_addr]
         )
-
+        fees = (
+            [intermediate_pair.fee, target_pair.fee]
+            if intermediate_addr
+            else [target_pair.fee]
+        )
+        
+        price_helper = self.get_price_helper(target_pair)
+        received_raw = price_helper.get_amount_out(
+            amount_in=quantity_raw,
+            path=path,
+            fees=fees
+        ) 
+            
         if intermediate_pair is not None:
             received = intermediate_pair.quote.convert_to_decimal(received_raw)
         else:
             received = target_pair.quote.convert_to_decimal(received_raw)
 
-        fee = self.get_pair_fee(ts, pair)
-        assert fee is not None, f"Uniswap v2 fee data missing: {uniswap}"
-
-        price = float(received / quantity)
-
-        # TODO: Verify calculation
-        mid_price = price * (1 + fee)
-
-        assert price <= mid_price, f"Bad pricing: {price}, {mid_price}"
-
-        lp_fee = (mid_price - price) * float(quantity)
-
-        return TradePricing(
-            price=price,
-            mid_price=mid_price,
-            lp_fee=lp_fee,
-            pair_fee=fee,
-            side=False,
-        )
+        return float(received / quantity)
 
     def get_buy_price(self,
                        ts: datetime.datetime,
                        pair: TradingPairIdentifier,
                        reserve: Optional[Decimal],
-                       ) -> TradePricing:
+                       ) -> USDollarAmount:
         """Get live price on Uniswap.
-
-        TODO: Fees are incorrectly calculated in the case of multipair routing
 
         :param reserve:
             The buy size in quote token e.g. in dollars
 
-        :return:
-            Price for one reserve unit e.g. a dollar
+        :return: Price for one reserve unit e.g. a dollar
         """
 
         if reserve is None:
@@ -156,8 +148,6 @@ class UniswapV2LivePricing(PricingModel):
 
         base_addr, quote_addr, intermediate_addr = route_tokens(target_pair, intermediate_pair)
 
-        uniswap = get_uniswap_for_pair(self.web3, self.routing_model.factory_router_map, target_pair)
-
         # In three token trades, be careful to use the correct reserve token
         if intermediate_pair is not None:
             reserve_raw = intermediate_pair.quote.convert_to_raw_amount(reserve)
@@ -166,51 +156,41 @@ class UniswapV2LivePricing(PricingModel):
             reserve_raw = target_pair.quote.convert_to_raw_amount(reserve)
             self.check_supported_quote_token(pair)
 
-        # Calculate base token received
-        token_raw_received = estimate_buy_received_amount_raw(
-            uniswap,
-            base_addr,
-            quote_addr,
-            reserve_raw,
-            intermediate_token_address=intermediate_addr
+        # See eth_defi.uniswap_v2.fees.estimate_buy_received_amount_raw
+        path = (
+            [quote_addr, intermediate_addr, base_addr]
+            if intermediate_addr
+            else base_addr 
         )
-
+        fees = (
+            [intermediate_pair.fee, target_pair.fee]
+            if intermediate_addr
+            else [target_pair.fee]
+        )
+        
+        price_helper = self.get_price_helper(target_pair)
+        token_raw_received = price_helper.get_amount_out(
+            amount_in=reserve_raw,
+            path=path,
+            fees=fees
+        )
+        
         token_received = target_pair.base.convert_to_decimal(token_raw_received)
-
-        fee = self.get_pair_fee(ts, pair)
-        assert fee is not None, f"Uniswap v2 fee data missing: {uniswap}"
-
-        price = float(reserve / token_received)
-
-        lp_fee = float(reserve) * fee
-
-        # TODO: Verify calculation
-        mid_price = price * (1 - fee)
-
-        assert price >= mid_price, f"Bad pricing: {price}, {mid_price}"
-
-        return TradePricing(
-            price=float(price),
-            mid_price=float(mid_price),
-            lp_fee=lp_fee,
-            pair_fee=fee,
-            market_feed_delay=datetime.timedelta(seconds=0),
-            side=True,
-        )
+        return float(reserve / token_received)
 
 
-def uniswap_v2_live_pricing_factory(
+def uniswap_v3_live_pricing_factory(
         execution_model: ExecutionModel,
         universe: TradingStrategyUniverse,
-        routing_model: UniswapV2SimpleRoutingModel) -> UniswapV2LivePricing:
+        routing_model: UniswapV3SimpleRoutingModel,
+        ) -> UniswapV3LivePricing:
 
     assert isinstance(universe, TradingStrategyUniverse)
-    assert isinstance(execution_model, (UniswapV2ExecutionModelVersion0, UniswapV2ExecutionModel, DummyExecutionModel)), f"Execution model not compatible with this execution model. Received {execution_model}"
-    assert isinstance(routing_model, UniswapV2SimpleRoutingModel), f"This pricing method only works with Uniswap routing model, we received {routing_model}"
-
+    assert isinstance(execution_model, (UniswapV3ExecutionModel)), f"Execution model not compatible with this execution model. Received {execution_model}"
+    assert isinstance(routing_model, UniswapV3SimpleRoutingModel), f"This pricing method only works with Uniswap routing model, we received {routing_model}"
     web3 = execution_model.web3
-    return UniswapV2LivePricing(
+    return UniswapV3LivePricing(
         web3,
         universe.universe.pairs,
-        routing_model)
-
+        routing_model
+    )
