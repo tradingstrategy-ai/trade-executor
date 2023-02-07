@@ -11,11 +11,15 @@ import pytest
 import pandas as pd
 
 from tradeexecutor.cli.log import setup_pytest_logging
+from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.state import State
 from tradeexecutor.state.statistics import Statistics, calculate_naive_profitability
 from tradeexecutor.statistics.core import calculate_statistics
 from tradeexecutor.statistics.summary import calculate_summary_statistics
 from tradeexecutor.strategy.execution_context import ExecutionMode
+from tradeexecutor.strategy.reverse_universe import reverse_trading_universe_from_state
+from tradingstrategy.client import Client
+from tradingstrategy.timebucket import TimeBucket
 
 
 @pytest.fixture(scope="module")
@@ -126,3 +130,23 @@ def test_empty_state_calculate_all_statistics():
     new_stats = calculate_statistics(clock, portfolio, execution_mode)
 
 
+def test_reverse_trading_universe_from_state(
+        state: State,
+        persistent_test_client: Client,
+):
+    """See that we can load the pair and candle data for a historical state."""
+
+    client = persistent_test_client
+    universe = reverse_trading_universe_from_state(
+        state,
+        client,
+        TimeBucket.d1,
+    )
+
+    assert universe.reserve_assets == {AssetIdentifier(chain_id=137, address='0x2791bca1f2de4661ed88a30c99a7a9449aa84174', token_symbol='USDC', decimals=6, internal_id=None, info_url=None)}
+    assert len(universe.universe.exchanges) == 1
+    assert universe.universe.pairs.get_count() == 1
+    assert universe.universe.pairs.get_count() == 1
+    start, end = universe.universe.candles.get_timestamp_range()
+    assert start == pd.Timestamp('2023-01-17 00:00:00')
+    assert end == pd.Timestamp('2023-02-03 00:00:00')

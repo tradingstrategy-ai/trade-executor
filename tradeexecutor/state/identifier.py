@@ -8,6 +8,7 @@ from typing import Optional
 
 from dataclasses_json import dataclass_json
 from eth_typing import HexAddress
+from tradingstrategy.chain import ChainId
 from web3 import Web3
 
 from tradeexecutor.state.types import JSONHexAddress
@@ -45,6 +46,15 @@ class AssetIdentifier:
 
     def __str__(self):
         return f"<{self.token_symbol} at {self.address}>"
+
+    def __hash__(self):
+        assert self.chain_id, "chain_id needs to be set to be hashable"
+        assert self.address, "address needs to be set to be hashable"
+        return hash((self.chain_id, self.address))
+
+    def __eq__(self, other):
+        assert isinstance(other, TradingPairIdentifier), f"Got {other}"
+        return self.chain_id == other.chain_id and self.address == other.address
 
     def __post_init__(self):
         assert type(self.address) == str, f"Got address {self.address} as {type(self.address)}"
@@ -112,6 +122,9 @@ class TradingPairIdentifier:
     #:
     fee: Optional[float] = None
 
+    def __post_init__(self):
+        assert self.base.chain_id == self.quote.chain_id, "Cross-chain trading pairs are not possible"
+
     def __repr__(self):
         fee = self.fee or 0
         return f"<Pair {self.base.token_symbol}-{self.quote.token_symbol} at {self.pool_address} ({fee * 100:.4f}% fee) on exchange {self.exchange_address}>"
@@ -123,6 +136,14 @@ class TradingPairIdentifier:
     def __eq__(self, other):
         assert isinstance(other, TradingPairIdentifier), f"Got {other}"
         return self.base == other.base and self.quote == other.quote
+
+    @property
+    def chain_id(self) -> int:
+        """Return raw chain id.
+
+        Get one from the base token, beacuse both tokens are on the same chain.
+        """
+        return self.base.chain_id
 
     def get_identifier(self) -> str:
         """We use the smart contract pool address to uniquely identify trading positions.

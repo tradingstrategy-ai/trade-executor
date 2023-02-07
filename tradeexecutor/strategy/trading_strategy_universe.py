@@ -229,8 +229,6 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             trading_pair_identifier.quote
         ]
 
-
-
         universe = Universe(
             time_bucket=dataset.time_bucket,
             chains={chain_id},
@@ -1043,3 +1041,5 @@ def load_pair_data_for_single_exchange(
             backtest_stop_loss_time_bucket=stop_loss_time_bucket,
             backtest_stop_loss_candles=stop_loss_candles,
         )
+
+

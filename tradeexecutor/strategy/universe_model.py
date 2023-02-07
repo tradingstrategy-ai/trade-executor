@@ -2,7 +2,7 @@
 import abc
 import datetime
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List, Optional, Collection
 
 from tradingstrategy.timebucket import TimeBucket
 
@@ -27,7 +27,9 @@ class StrategyExecutionUniverse:
     #: future there can be several.
     #:
     #: Usually return the list of a BUSD/USDC/similar stablecoin.
-    reserve_assets: List[AssetIdentifier]
+    #:
+    #: TODO: Migrate to Set[] in all the code
+    reserve_assets: Collection[AssetIdentifier]
 
     def __post_init__(self):
         # Check that reserve assets look good
