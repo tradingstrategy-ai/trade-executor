@@ -31,14 +31,15 @@ from tradeexecutor.ethereum.uniswap_v3_routing import UniswapV3SimpleRoutingMode
 
 logger = logging.getLogger(__name__)
 
-routing_models = UniswapV2SimpleRoutingModel | UniswapV3SimpleRoutingModel # TODO create enum
-routing_states = UniswapV2RoutingState | UniswapV3RoutingState # TODO create enum
+routing_models = UniswapV2SimpleRoutingModel | UniswapV3SimpleRoutingModel # TODO create enum, actually just use ehtereum Base
+routing_states = UniswapV2RoutingState | UniswapV3RoutingState # TODO create enum, actually just use ethereum base
 
 
 class TradeExecutionFailed(Exception):
     """Our Uniswap trade reverted"""
 
-class ExecutionModel(ABC):
+# TODO check with tradeexuctor.strategy.execution ExecutionModel
+class EthereumExecutionModel(ABC):
     """Run order execution on a single Uniswap v2 style exchanges."""
 
     def __init__(self,
@@ -118,7 +119,6 @@ class ExecutionModel(ABC):
                        trades: List[TradeExecution],
                        routing_model: routing_models,
                        routing_state: routing_states,
-                       resolve_trades: callable,
                        check_balances=False):
         """Execute the trades determined by the algo on a designed Uniswap v2 instance.
 
@@ -139,7 +139,7 @@ class ExecutionModel(ABC):
             self.web3,
             state,
             trades,
-            resolve_trades=resolve_trades,
+            resolve_trades=self.resolve_trades,
             confirmation_timeout=self.confirmation_timeout,
             confirmation_block_count=self.confirmation_block_count,
         )
@@ -155,7 +155,7 @@ class ExecutionModel(ABC):
         }
 
     @abstractmethod
-    def repair_unconfirmed_trades(self, state: State, resolve_trades: callable) -> List[TradeExecution]:
+    def repair_unconfirmed_trades(self, state: State) -> List[TradeExecution]:
         """Repair unconfirmed trades.
 
         Repair trades that failed to properly broadcast or confirm due to
@@ -193,7 +193,7 @@ class ExecutionModel(ABC):
 
                     tx_data = {tx.tx_hash: (t, tx) for tx in t.blockchain_transactions}
                     
-                    resolve_trades(
+                    self.resolve_trades(
                         self.web3,
                         datetime.datetime.now(),
                         state,
@@ -210,7 +210,7 @@ class ExecutionModel(ABC):
                     repaired.append(t)
 
         return repaired
-
+    
     @staticmethod
     def pre_execute_assertions(
         ts: datetime.datetime, 
@@ -225,6 +225,30 @@ class ExecutionModel(ABC):
             assert isinstance(routing_state, UniswapV3RoutingState), "Incorrect routing_state specified"
         else:
             raise ValueError("Incorrect routing model specified")
+    
+    @staticmethod
+    @abstractmethod
+    def resolve_trades(
+        web3: Web3,
+        ts: datetime.datetime,
+        state: State,
+        tx_map: Dict[HexBytes, Tuple[TradeExecution, BlockchainTransaction]],
+        receipts: Dict[HexBytes, dict],
+        stop_on_execution_failure=True):
+        """esolve trade outcome.
+
+        Read on-chain Uniswap swap data from the transaction receipt and record how it went.
+
+        Mutates the trade objects in-place.
+
+        :param tx_map:
+            tx hash -> (trade, transaction) mapping
+
+        :param receipts:
+            tx hash -> receipt object mapping
+
+        :param stop_on_execution_failure:
+            Raise an exception if any of the trades failed"""
 
 
 def translate_to_naive_swap(
