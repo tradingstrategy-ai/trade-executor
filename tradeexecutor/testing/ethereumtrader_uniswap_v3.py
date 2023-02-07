@@ -11,6 +11,7 @@ from eth_defi.abi import get_deployed_contract
 from eth_defi.gas import estimate_gas_fees
 from eth_defi.hotwallet import HotWallet
 from eth_defi.uniswap_v3.deployment import UniswapV3Deployment
+from eth_defi.uniswap_v3.price import UniswapV3PriceHelper
 
 from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.ethereum.uniswap_v3_routing import UniswapV3SimpleRoutingModel, UniswapV3RoutingState
@@ -30,6 +31,7 @@ class UniswapV3TestTrader(EthereumTrader):
         super().__init__(web3, uniswap, hot_wallet, state, pair_universe)
 
         self.execution_model = UniswapV3ExecutionModel(web3, hot_wallet)
+        self.price_helper = UniswapV3PriceHelper(uniswap)
 
     def buy(self, pair: TradingPairIdentifier, amount_in_usd: Decimal, execute=True) -> Tuple[TradingPosition, TradeExecution]:
         """Buy token (trading pair) for a certain value."""
@@ -50,7 +52,7 @@ class UniswapV3TestTrader(EthereumTrader):
         assumed_price = amount_in_usd / assumed_quantity
 
         position, trade, created= self.state.create_trade(
-            ts=self.ts,
+            strategy_cycle_at=self.ts,
             pair=pair,
             quantity=assumed_quantity,
             reserve=None,
@@ -60,7 +62,7 @@ class UniswapV3TestTrader(EthereumTrader):
             reserve_currency_price=1.0)
 
         if execute:
-            self.execute([trade])
+            self.execute_trades_simple([trade])
         return position, trade
 
     def sell(self, pair: TradingPairIdentifier, quantity: Decimal, execute=True) -> Tuple[TradingPosition, TradeExecution]:
@@ -86,7 +88,7 @@ class UniswapV3TestTrader(EthereumTrader):
         assumed_price = assumed_quota_token / quantity
 
         position, trade, created = self.state.create_trade(
-            ts=self.ts,
+            strategy_cycle_at=self.ts,
             pair=pair,
             quantity=-quantity,
             reserve=None,
@@ -96,7 +98,7 @@ class UniswapV3TestTrader(EthereumTrader):
             reserve_currency_price=1.0)
 
         if execute:
-            self.execute([trade])
+            self.execute_trades_simple([trade])
         return position, trade
 
     def execute_trades_simple(

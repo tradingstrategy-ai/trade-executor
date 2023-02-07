@@ -139,49 +139,72 @@ class UniswapV3ExecutionModel(EthereumExecutionModel):
 
             tx_dict = swap_tx.get_transaction()
             receipt = receipts[HexBytes(swap_tx.tx_hash)]
-            result = analyse_trade_by_receipt(web3, uniswap, tx_dict, swap_tx.tx_hash, receipt)
 
-            if isinstance(result, TradeSuccess):
-                path = [a.lower() for a in result.path if type(a) == str]
                 
-                if trade.is_buy():
+            if trade.is_buy():
+                result = analyse_trade_by_receipt(web3, uniswap, tx_dict, swap_tx.tx_hash, receipt, reverse_order=True)
+                
+                if isinstance(result, TradeSuccess):
+                
+                    path = [a.lower() for a in result.path if type(a) == str]
+                    
                     assert path[0] == reserve.address, f"Was expecting the route path to start with reserve token {reserve}, got path {result.path}"
                     executed_reserve = result.amount_in / Decimal(10**quote_token_details.decimals)
                     executed_amount = result.amount_out / Decimal(10**base_token_details.decimals)
+                    
                 else:
-                    # Ordered other way around
+                    logger.error("Trade failed %s: %s", ts, trade)
+                    state.mark_trade_failed(
+                        ts,
+                        trade,
+                    )
+                    if stop_on_execution_failure:
+                        success_txs = []
+                        for tx in trade.blockchain_transactions:
+                            if not tx.is_success():
+                                raise TradeExecutionFailed(f"Could not execute a trade: {trade}, transaction failed: {tx}, had other transactions {success_txs}")
+                            else:
+                                success_txs.append(tx)
+            else:
+                # Ordered other way around
+                result = analyse_trade_by_receipt(web3, uniswap, tx_dict, swap_tx.tx_hash, receipt, reverse_order=False)
+                
+                if isinstance(result, TradeSuccess):
+                
+                    path = [a.lower() for a in result.path if type(a) == str]
+                    
                     assert path[0] == base_token_details.address.lower(), f"Path is {path}, base token is {base_token_details}"
                     assert path[-1] == reserve.address
                     executed_amount = -result.amount_in / Decimal(10**base_token_details.decimals)
                     executed_reserve = result.amount_out / Decimal(10**quote_token_details.decimals)
+                else:
+                    logger.error("Trade failed %s: %s", ts, trade)
+                    state.mark_trade_failed(
+                        ts,
+                        trade,
+                    )
+                    if stop_on_execution_failure:
+                        success_txs = []
+                        for tx in trade.blockchain_transactions:
+                            if not tx.is_success():
+                                raise TradeExecutionFailed(f"Could not execute a trade: {trade}, transaction failed: {tx}, had other transactions {success_txs}")
+                            else:
+                                success_txs.append(tx)
+                            
+            price = result.price
 
-                price = 1/(1/Decimal(result.price) * Decimal(10**quote_token_details.decimals) / Decimal(10**base_token_details.decimals))
-                
-                assert (executed_reserve > 0) and (executed_amount != 0) and (price > 0), f"Executed amount {executed_amount}, executed_reserve: {executed_reserve}, price: {price}, tx info {trade.tx_info}"
+            assert (executed_reserve > 0) and (executed_amount != 0) and (price > 0), f"Executed amount {executed_amount}, executed_reserve: {executed_reserve}, price: {price}, tx info {trade.tx_info}"
 
-                # Mark as success
-                state.mark_trade_success(
-                    ts,
-                    trade,
-                    executed_price=float(price),
-                    executed_amount=executed_amount,
-                    executed_reserve=executed_reserve,
-                    lp_fees=0,
-                    native_token_price=1.0,
+            # Mark as success
+            state.mark_trade_success(
+                ts,
+                trade,
+                executed_price=float(price),
+                executed_amount=executed_amount,
+                executed_reserve=executed_reserve,
+                lp_fees=0,
+                native_token_price=1.0,
                 )
-            else:
-                logger.error("Trade failed %s: %s", ts, trade)
-                state.mark_trade_failed(
-                    ts,
-                    trade,
-                )
-                if stop_on_execution_failure:
-                    success_txs = []
-                    for tx in trade.blockchain_transactions:
-                        if not tx.is_success():
-                            raise TradeExecutionFailed(f"Could not execute a trade: {trade}, transaction failed: {tx}, had other transactions {success_txs}")
-                        else:
-                            success_txs.append(tx)
 
 def get_current_price(web3: Web3, uniswap: UniswapV3Deployment, pair: TradingPairIdentifier, quantity=Decimal(1)) -> float:
     """Get a price from Uniswap v3 pool, assuming you are selling 1 unit of base token.
