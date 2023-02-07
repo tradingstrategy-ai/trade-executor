@@ -45,6 +45,7 @@ class RoutingState(abc.ABC):
     - Discarded at the end of the cycle
     """
 
+    @abc.abstractmethod
     def __init__(self, universe: "tradeexecutor.strategy.universe_model.StrategyExecutionUniverse"):
         #: Each routing state is specific to the current trading universe.
         #: The trade routing will change when new pairs are added and old goes away.

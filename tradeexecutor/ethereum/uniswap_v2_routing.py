@@ -12,6 +12,7 @@ from eth_defi.uniswap_v2.swap import swap_with_slippage_protection
 
 from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
+from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradingstrategy.pair import PandasPairUniverse
 
 from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
@@ -206,6 +207,50 @@ class UniswapV2SimpleRoutingModel(RoutingModelBase):
             logger.info("  Factory %s uses router %s", factory, router[0])
 
         self.reserve_asset_logging(pair_universe)
+        
+    def make_direct_trade(
+        self, 
+        routing_state: EthereumRoutingStateBase,
+        target_pair: TradingPairIdentifier,
+        reserve_asset: AssetIdentifier,
+        reserve_amount: int,
+        max_slippage: float,
+        check_balances=False
+    ) -> List[BlockchainTransaction]:
+        
+        return super().make_direct_trade(
+            routing_state,
+            target_pair,
+            reserve_asset,
+            reserve_amount,
+            max_slippage,
+            self.factory_router_map,
+            check_balances
+        )
+    
+    def make_multihop_trade(
+        self,
+        routing_state: EthereumRoutingStateBase,
+        target_pair: TradingPairIdentifier,
+        intermediary_pair: TradingPairIdentifier,
+        reserve_asset: AssetIdentifier,
+        reserve_amount: int,
+        max_slippage: float,
+        check_balances=False
+    ) -> List[BlockchainTransaction]:
+        
+        return super().make_multihop_trade(
+            routing_state,
+            target_pair,
+            intermediary_pair,
+            reserve_asset,
+            reserve_amount,
+            max_slippage,
+            self.factory_router_map,
+            check_balances
+        )
+    
+    
         
 def get_uniswap_for_pair(web3: Web3, factory_router_map: dict, target_pair: TradingPairIdentifier) -> UniswapV2Deployment:
     """Get a router for a trading pair."""

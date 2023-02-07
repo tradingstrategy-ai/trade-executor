@@ -4,7 +4,6 @@ from typing import Type
 from tradeexecutor.strategy.routing import RoutingModel
 from typing import Dict, List, Optional, Tuple
 
-from eth_typing import HexAddress
 from tradingstrategy.chain import ChainId
 
 from eth_defi.gas import estimate_gas_fees
@@ -92,6 +91,7 @@ class RoutingModelBase(RoutingModel):
                           reserve_asset: AssetIdentifier,
                           reserve_amount: int,
                           max_slippage: float,
+                          address_map: Dict,
                           check_balances=False,
                           ) -> List[BlockchainTransaction]:
         """Prepare a trade where target pair has out reserve asset as a quote token.
@@ -99,9 +99,17 @@ class RoutingModelBase(RoutingModel):
         :return:
             List of approval transactions (if any needed)
         """
-        uniswap = routing_state.get_uniswap_for_pair(self.factory_router_map, target_pair)
+        uniswap = routing_state.get_uniswap_for_pair(address_map, target_pair)
         token_address = reserve_asset.address
-        txs = routing_state.ensure_token_approved(token_address, uniswap.router.address)
+        
+        # TODO find better way of doing this. Use inheritance?
+        if hasattr(uniswap, "router"):
+            txs = routing_state.ensure_token_approved(token_address, uniswap.router.address)
+        elif hasattr(uniswap, "swap_router"):
+            txs = routing_state.ensure_token_approved(token_address, uniswap.swap_router.address)
+        else:
+            raise TypeError("Incorrect Uniswap Instance provided. Can't get router.")
+            
         txs += routing_state.trade_on_router_two_way(
             uniswap,
             target_pair,
@@ -121,6 +129,7 @@ class RoutingModelBase(RoutingModel):
                           reserve_asset: AssetIdentifier,
                           reserve_amount: int,
                           max_slippage: float,
+                          address_map: Dict,
                           check_balances=False,
                           ) -> List[BlockchainTransaction]:
         """Prepare a trade where target pair has out reserve asset as a quote token.
@@ -128,9 +137,17 @@ class RoutingModelBase(RoutingModel):
         :return:
             List of approval transactions (if any needed)
         """
-        uniswap = routing_state.get_uniswap_for_pair(self.factory_router_map, target_pair)
+        uniswap = routing_state.get_uniswap_for_pair(address_map, target_pair)
         token_address = reserve_asset.address
-        txs = routing_state.ensure_token_approved(token_address, uniswap.router.address)
+        
+        # TODO find better way of doing this. Use inheritance?
+        if hasattr(uniswap, "router"):
+            txs = routing_state.ensure_token_approved(token_address, uniswap.router.address)
+        elif hasattr(uniswap, "swap_router"):
+            txs = routing_state.ensure_token_approved(token_address, uniswap.swap_router.address)
+        else:
+            raise TypeError("Incorrect Uniswap Instance provided. Can't get router.")
+        
         txs += routing_state.trade_on_router_three_way(
             uniswap,
             target_pair,
@@ -387,9 +404,9 @@ class RoutingModelBase(RoutingModel):
         assert pair_universe, "PairUniverse must be given so that we know how to route three way trades"
         
     @staticmethod
-    def convert_address_dict_to_lower( factory_router_map) -> dict:
+    def convert_address_dict_to_lower(address_dict) -> dict:
         """Convert all key addresses to lowercase to avoid mix up with Ethereum address checksums"""
-        return {k.lower(): v for k, v in factory_router_map.items()}
+        return {k.lower(): v for k, v in address_dict.items()}
     
     @staticmethod
     def pre_trade_assertions(reserve_asset_amount: int, max_slippage: float, target_pair: TradingPairIdentifier, reserve_asset: AssetIdentifier) -> None:

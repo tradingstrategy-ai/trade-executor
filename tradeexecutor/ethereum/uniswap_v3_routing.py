@@ -14,6 +14,7 @@ from web3.exceptions import ContractLogicError
 
 from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
+from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradingstrategy.pair import PandasPairUniverse
 
 from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
@@ -69,7 +70,7 @@ class UniswapV3RoutingState(EthereumRoutingStateBase):
             quote_token=quote_token,
             amount_in=reserve_amount,
             max_slippage=max_slippage * 100,  # In BPS
-            pool_fees=target_pair.fee # TODO check in right format
+            pool_fees=[target_pair.fee] # TODO check in right format
         )
         
         return self.get_signed_tx(bound_swap_func, self.swap_gas_limit)
@@ -191,6 +192,48 @@ class UniswapV3SimpleRoutingModel(RoutingModelBase):
         logger.info("  Quoter: ", self.address_map["quoter"])
 
         self.reserve_asset_logging(pair_universe)
+        
+    def make_direct_trade(
+        self, 
+        routing_state: EthereumRoutingStateBase,
+        target_pair: TradingPairIdentifier,
+        reserve_asset: AssetIdentifier,
+        reserve_amount: int,
+        max_slippage: float,
+        check_balances=False
+    ) -> list[BlockchainTransaction]:
+        
+        return super().make_direct_trade(
+            routing_state,
+            target_pair,
+            reserve_asset,
+            reserve_amount,
+            max_slippage,
+            self.address_map,
+            check_balances
+        )
+    
+    def make_multihop_trade(
+        self,
+        routing_state: EthereumRoutingStateBase,
+        target_pair: TradingPairIdentifier,
+        intermediary_pair: TradingPairIdentifier,
+        reserve_asset: AssetIdentifier,
+        reserve_amount: int,
+        max_slippage: float,
+        check_balances=False
+    ) -> list[BlockchainTransaction]:
+        
+        return super().make_multihop_trade(
+            routing_state,
+            target_pair,
+            intermediary_pair,
+            reserve_asset,
+            reserve_amount,
+            max_slippage,
+            self.address_map,
+            check_balances
+        )
 
 def get_uniswap_for_pair(web3: Web3, address_map: dict, target_pair: TradingPairIdentifier) -> UniswapV3Deployment:
     """Get a router for a trading pair."""
