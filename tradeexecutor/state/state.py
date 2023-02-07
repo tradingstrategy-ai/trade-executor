@@ -37,6 +37,12 @@ class State:
     #: Same as when the strategy was launched
     created_at: datetime.datetime = field(default_factory=datetime.datetime.utcnow)
 
+    #: When this state was saved
+    #:
+    #: UTC timestamp.
+    #: Set by by :py:meth:`tradeexecutor.state.store.StateStore.sync`
+    last_updated_at: Optional[datetime.datetime] = None
+
     #: The next cycle.
     #:
     #: How many strategy thinking and execution
