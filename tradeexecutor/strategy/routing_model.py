@@ -23,7 +23,7 @@ from tradeexecutor.ethereum.routing_state import EthereumRoutingStateBase
 
 logger = logging.getLogger(__name__)
 
-
+# TODO look at combining RoutingModelBase and RoutingModel
 class RoutingModelBase(RoutingModel):
     """A simple router that does not optimise the trade execution cost. Designed for uniswap-v2 forks.
 

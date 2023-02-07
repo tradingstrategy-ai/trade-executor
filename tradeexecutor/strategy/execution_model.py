@@ -9,11 +9,14 @@ Currently supported models
 import abc
 import datetime
 import enum
-from typing import List
+from typing import List, Dict, Tuple
+from web3 import Web3
+from hexbytes import HexBytes
 
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.routing import RoutingModel, RoutingState
+from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 
 
 class AutoClosingOrderUnsupported(Exception):
@@ -28,6 +31,8 @@ class ExecutionModel(abc.ABC):
     """Define how trades are executed.
 
     See also :py:class:`tradeexecutor.strategy.mode.ExecutionMode`.
+    
+    Used directly by BacktestExecutionModel, and indirectly (through EthereumExecutionModel) by UniswapV2ExecutionModel and UniswapV3ExecutionModel
     """
 
     @abc.abstractmethod
