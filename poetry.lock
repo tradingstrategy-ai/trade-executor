@@ -799,8 +799,8 @@ optional = false
 python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*"
 
 [package.dependencies]
-decorator = {version = "*", markers = "python_version > \"3.6\" and python_version < \"3.11\""}
-ipython = {version = ">=7.31.1", markers = "python_version > \"3.6\" and python_version < \"3.11\""}
+decorator = {version = "*", markers = "python_version > \"3.6\""}
+ipython = {version = ">=7.31.1", markers = "python_version > \"3.6\""}
 tomli = {version = "*", markers = "python_version > \"3.6\" and python_version < \"3.11\""}
 
 [[package]]
@@ -1607,7 +1607,10 @@ optional = false
 python-versions = ">=3.8"
 
 [package.dependencies]
-numpy = {version = ">=1.21.0", markers = "python_version >= \"3.10\""}
+numpy = [
+    {version = ">=1.21.0", markers = "python_version >= \"3.10\""},
+    {version = ">=1.23.2", markers = "python_version >= \"3.11\""},
+]
 python-dateutil = ">=2.8.1"
 pytz = ">=2020.1"
 
@@ -2744,8 +2747,8 @@ tester = ["eth-tester[py-evm] (==v0.6.0-beta.7)", "py-geth (>=3.9.1,<4)"]
 
 [[package]]
 name = "web3-ethereum-defi"
-version = "0.13.11"
-description = "DeFi integration library for smart contracts, DeFi trading (Uniswap, PancakeSwap), Ethereum JSON-RPC, EVM transactions and automated test suites."
+version = "0.14"
+description = "Integrate DeFi trading and and analytics for Uniswap, Aave, PancakeSwap, Trader Joe, QuickSwap and many others."
 category = "main"
 optional = false
 python-versions = ">=3.10,<4.0"
@@ -2911,8 +2914,8 @@ web-server = ["pyramid", "WebTest", "pyramid-openapi3", "waitress"]
 
 [metadata]
 lock-version = "1.1"
-python-versions = ">=3.10,<3.11"
-content-hash = "9fa6fad62b6b4ea151dcb34aa2d9be8b5054809b7dd483a8a39d261a284f5d04"
+python-versions = ">=3.10,<3.12"
+content-hash = "6d3c0767121ca79759e39d0ba0bde899eb492fb906e26a84ecb4b0c480a330a8"
 
 [metadata.files]
 aiohttp = [
@@ -4970,8 +4973,8 @@ web3 = [
     {file = "web3-5.31.3.tar.gz", hash = "sha256:4b2d420647c81856e3cf398996cd3cc80c719dc3a10881884c5c3b1467e4f850"},
 ]
 web3-ethereum-defi = [
-    {file = "web3_ethereum_defi-0.13.11-py3-none-any.whl", hash = "sha256:02f5af2cb2a6eed8f2eed6e07db7705716e31d78f8329f51b2d19817f38418c4"},
-    {file = "web3_ethereum_defi-0.13.11.tar.gz", hash = "sha256:b6ed6ba36c2e5bab0474b331dc7bee8397f54208710e23207a1875bfbe95661f"},
+    {file = "web3_ethereum_defi-0.14-py3-none-any.whl", hash = "sha256:2963762a9b15aeb93ce4b185037d85fafefa140248153e89751b9688ed3512d6"},
+    {file = "web3_ethereum_defi-0.14.tar.gz", hash = "sha256:b367b7105370de4a59a7426eef33823297bf3df9c46e7ed77bd21dc7a615e7d6"},
 ]
 webcolors = [
     {file = "webcolors-1.12-py3-none-any.whl", hash = "sha256:d98743d81d498a2d3eaf165196e65481f0d2ea85281463d856b1e51b09f62dce"},
