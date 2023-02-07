@@ -132,6 +132,9 @@ class ExecutionLoop:
         self.max_cycles = max_cycles
         self.max_data_delay = max_data_delay
 
+        # Crash the strategy execution if we get more lag than this
+        self.max_live_data_lag = datetime.timedelta(hours=1)
+
         # cycle -> dump mappings
         self.debug_dump_state = {}
 
@@ -689,6 +692,18 @@ class ExecutionLoop:
                     universe = universe_update_result.updated_universe
 
                     extra_debug_data["universe_update_poll_cycles"] = universe_update_result.poll_cycles
+
+                # Do a data lag check.
+                # This is not 100% fool-proof check for multipair strategies,
+                # as we randomly pick one pair. However it should detect most of market data feed
+                # stale situtations.
+                last_candle = universe.universe.candles.df.iloc[-1]
+                lag = strategy_cycle_timestamp - last_candle["timestamp"].to_pydatetime()
+                if lag > self.max_live_data_lag:
+                    logger.error("Aborting and waiting for manual restart after the data feed is fixed")
+                    raise RuntimeError(f"Strategy market data lag exceeded.\n"
+                                       f"Currently lag is {lag}, allowed max lag is {self.max_live_data_lag}.\n"
+                                       f"last candle is at {last_candle['timestamp']}")
 
                 # Run the main strategy logic
                 universe = self.tick(
