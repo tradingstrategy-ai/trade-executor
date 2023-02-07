@@ -112,6 +112,58 @@ class EthereumExecutionModel(ABC):
         self.hot_wallet.sync_nonce(self.web3)
         balance = self.hot_wallet.get_native_currency_balance(self.web3)
         logger.info("Our hot wallet is %s with nonce %d and balance %s", self.hot_wallet.address, self.hot_wallet.current_nonce, balance)
+        
+    def broadcast_and_resolve(
+        self,
+        web3: Web3,
+        state: State,
+        trades: List[TradeExecution],
+        confirmation_timeout: datetime.timedelta = datetime.timedelta(minutes=1),
+        confirmation_block_count: int=0,
+        stop_on_execution_failure=False,
+    ):
+        """Do the live trade execution.
+
+        - Push trades to a live blockchain
+
+        - Wait transactions to be mined
+
+        - Based on the transaction result, update the state of the trade if it was success or not
+
+        :param confirmation_block_count:
+            How many blocks to wait until marking transaction as confirmed
+
+        :confirmation_timeout:
+            Max time to wait for a confirmation.
+
+            We can use zero or negative values to simulate unconfirmed trades.
+            See `test_broadcast_failed_and_repair_state`.
+
+        :param stop_on_execution_failure:
+            If any of the transactions fail, then raise an exception.
+            Set for unit test.
+        """
+
+        assert isinstance(confirmation_timeout, datetime.timedelta)
+
+        broadcasted = broadcast(web3, datetime.datetime.utcnow(), trades)
+
+        if confirmation_timeout > datetime.timedelta(0):
+
+            receipts = wait_trades_to_complete(
+                web3,
+                trades,
+                max_timeout=confirmation_timeout,
+                confirmation_block_count=confirmation_block_count,
+            )
+
+            self.resolve_trades(
+                web3,
+                datetime.datetime.now(),
+                state,
+                broadcasted,
+                receipts,
+                stop_on_execution_failure=stop_on_execution_failure)
 
     def execute_trades(self,
                        ts: datetime.datetime,
@@ -135,11 +187,10 @@ class EthereumExecutionModel(ABC):
             trades,
             check_balances=check_balances)
 
-        broadcast_and_resolve(
+        self.broadcast_and_resolve(
             self.web3,
             state,
             trades,
-            resolve_trades=self.resolve_trades,
             confirmation_timeout=self.confirmation_timeout,
             confirmation_block_count=self.confirmation_block_count,
         )
@@ -568,56 +619,3 @@ def get_held_assets(web3: Web3, address: HexAddress, assets: List[AssetIdentifie
         balance = token_details.contract.functions.balanceOf(address).call()
         result[token_details.address.lower()] = Decimal(balance) / Decimal(10 ** token_details.decimals)
     return result
-
-
-def broadcast_and_resolve(
-        web3: Web3,
-        state: State,
-        trades: List[TradeExecution],
-        resolve_trades: callable,
-        confirmation_timeout: datetime.timedelta = datetime.timedelta(minutes=1),
-        confirmation_block_count: int=0,
-        stop_on_execution_failure=False,
-):
-    """Do the live trade execution.
-
-    - Push trades to a live blockchain
-
-    - Wait transactions to be mined
-
-    - Based on the transaction result, update the state of the trade if it was success or not
-
-    :param confirmation_block_count:
-        How many blocks to wait until marking transaction as confirmed
-
-    :confirmation_timeout:
-        Max time to wait for a confirmation.
-
-        We can use zero or negative values to simulate unconfirmed trades.
-        See `test_broadcast_failed_and_repair_state`.
-
-    :param stop_on_execution_failure:
-        If any of the transactions fail, then raise an exception.
-        Set for unit test.
-    """
-
-    assert isinstance(confirmation_timeout, datetime.timedelta)
-
-    broadcasted = broadcast(web3, datetime.datetime.utcnow(), trades)
-
-    if confirmation_timeout > datetime.timedelta(0):
-
-        receipts = wait_trades_to_complete(
-            web3,
-            trades,
-            max_timeout=confirmation_timeout,
-            confirmation_block_count=confirmation_block_count,
-        )
-
-        resolve_trades(
-            web3,
-            datetime.datetime.now(),
-            state,
-            broadcasted,
-            receipts,
-            stop_on_execution_failure=stop_on_execution_failure)

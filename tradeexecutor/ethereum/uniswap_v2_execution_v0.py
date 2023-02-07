@@ -12,7 +12,6 @@ import logging
 from eth_defi.gas import estimate_gas_fees
 from eth_defi.hotwallet import HotWallet
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment
-from tradeexecutor.ethereum.execution import broadcast_and_resolve
 from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2RoutingState, UniswapV2SimpleRoutingModel
 from tradeexecutor.state.freeze import freeze_position_on_failed_trade
@@ -149,7 +148,7 @@ class UniswapV2ExecutionModelVersion0(ExecutionModel):
         state.start_trades(datetime.datetime.utcnow(), trades)
 
         routing_model.setup_trades(routing_state, trades, check_balances=check_balances)
-        broadcast_and_resolve(self.web3, state, trades, stop_on_execution_failure=self.stop_on_execution_failure)
+        broadcast_and_resolve(self.web3, state, trades, stop_on_execution_failure=self.stop_on_execution_failure) # TODO fix if needs be? deprecated? 
 
         # Clean up failed trades
         freeze_position_on_failed_trade(ts, state, trades)

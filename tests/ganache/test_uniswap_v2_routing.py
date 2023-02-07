@@ -29,9 +29,9 @@ from eth_defi.hotwallet import HotWallet
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, fetch_deployment
 from eth_defi.utils import is_localhost_port_listening
 
-from tradeexecutor.ethereum.execution import broadcast_and_resolve
 from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2RoutingState, UniswapV2SimpleRoutingModel, OutOfBalance
+from tradeexecutor.ethereum.uniswap_v2_execution import UniswapV2ExecutionModel
 from tradeexecutor.ethereum.wallet import sync_reserves
 from tradeexecutor.state.sync import apply_sync_events
 from tradeexecutor.state.portfolio import Portfolio
@@ -263,6 +263,10 @@ def routing_model(busd_asset):
         reserve_token_address=busd_asset.address,
         trading_fee=0.0025, # https://docs.pancakeswap.finance/products/pancakeswap-exchange/pancakeswap-pools
     )
+
+@pytest.fixture()
+def execution_model(web3, hot_wallet) -> UniswapV2ExecutionModel:
+    return UniswapV2ExecutionModel(web3, hot_wallet)
 
 
 @pytest.fixture()
@@ -782,6 +786,7 @@ def test_stateful_routing_three_legs(
         cake_bnb_trading_pair,
         bnb_busd_trading_pair,
         state: State,
+        execution_model: UniswapV2ExecutionModel
 ):
     """Perform 3-leg buy/sell using RoutingModel.execute_trades().
 
@@ -817,7 +822,7 @@ def test_stateful_routing_three_legs(
 
     state.start_trades(datetime.datetime.utcnow(), trades)
     routing_model.execute_trades_internal(pair_universe, routing_state, trades, check_balances=True)
-    broadcast_and_resolve(web3, state, trades, stop_on_execution_failure=True)
+    execution_model.broadcast_and_resolve(web3, state, trades, stop_on_execution_failure=True)
 
     # Check all all trades and transactions completed
     for t in trades:
@@ -844,7 +849,7 @@ def test_stateful_routing_three_legs(
 
     state.start_trades(datetime.datetime.utcnow(), trades)
     routing_model.execute_trades_internal(pair_universe, routing_state, trades, check_balances=True)
-    broadcast_and_resolve(web3, state, trades, stop_on_execution_failure=True)
+    execution_model.broadcast_and_resolve(web3, state, trades, stop_on_execution_failure=True)
 
     # Check all all trades and transactions completed
     for t in trades:
@@ -867,6 +872,7 @@ def test_stateful_routing_two_legs(
         routing_model,
         cake_busd_trading_pair,
         state: State,
+        execution_model: UniswapV2ExecutionModel
 ):
     """Perform 2-leg buy/sell using RoutingModel.execute_trades().
 
@@ -899,7 +905,7 @@ def test_stateful_routing_two_legs(
 
     state.start_trades(datetime.datetime.utcnow(), trades)
     routing_model.execute_trades_internal(pair_universe, routing_state, trades, check_balances=True)
-    broadcast_and_resolve(web3, state, trades, stop_on_execution_failure=True)
+    execution_model.broadcast_and_resolve(web3, state, trades, stop_on_execution_failure=True)
 
     # Check all all trades and transactions completed
     for t in trades:
@@ -926,7 +932,7 @@ def test_stateful_routing_two_legs(
 
     state.start_trades(datetime.datetime.utcnow(), trades)
     routing_model.execute_trades_internal(pair_universe, routing_state, trades, check_balances=True)
-    broadcast_and_resolve(web3, state, trades, stop_on_execution_failure=True)
+    execution_model.broadcast_and_resolve(web3, state, trades, stop_on_execution_failure=True)
 
     # Check all all trades and transactions completed
     for t in trades:
