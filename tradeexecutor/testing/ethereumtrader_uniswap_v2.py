@@ -15,16 +15,16 @@ from eth_defi.uniswap_v2.deployment import UniswapV2Deployment
 from eth_defi.uniswap_v2.fees import estimate_buy_quantity, estimate_sell_price
 
 from tradeexecutor.ethereum.execution import broadcast_and_resolve
+from tradeexecutor.ethereum.uniswap_v2_execution import UniswapV2ExecutionModel
 from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2SimpleRoutingModel, UniswapV2RoutingState
 from tradeexecutor.state.freeze import freeze_position_on_failed_trade
 from tradeexecutor.state.state import State, TradeType
 from tradeexecutor.state.position import TradingPosition
-from tradeexecutor.state.trade import TradeExecution, TradeStatus
+from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.identifier import TradingPairIdentifier
-from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 
-
+# TODO rename to V2
 class EthereumTestTrader:
     """Helper class to trade against EthereumTester unit testing network."""
 
@@ -159,7 +159,7 @@ def execute_trades_simple(
     state.start_trades(datetime.datetime.utcnow(), trades)
     routing_state = UniswapV2RoutingState(pair_universe, tx_builder)
     routing_model.execute_trades_internal(pair_universe, routing_state, trades)
-    broadcast_and_resolve(web3, state, trades, stop_on_execution_failure=stop_on_execution_failure)
+    broadcast_and_resolve(web3, state, trades, UniswapV2ExecutionModel.resolve_trades, stop_on_execution_failure=stop_on_execution_failure)
 
     # Clean up failed trades
     freeze_position_on_failed_trade(datetime.datetime.utcnow(), state, trades)
