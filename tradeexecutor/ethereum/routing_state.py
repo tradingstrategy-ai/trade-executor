@@ -13,7 +13,6 @@ from web3.contract import Contract
 from eth_defi.abi import get_deployed_contract
 from eth_defi.token import fetch_erc20_details
 
-from tradeexecutor.ethereum.execution import get_token_for_asset
 from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
@@ -65,7 +64,7 @@ class EthereumRoutingStateBase(RoutingState):
             What is the max gas we are willing to pay for a swap.
 
         """
-        super.__init__(pair_universe)
+        super().__init__(pair_universe)
         
         self.pair_universe = pair_universe
         self.tx_builder = tx_builder

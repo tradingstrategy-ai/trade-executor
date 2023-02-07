@@ -10,6 +10,7 @@ from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.routing import RoutingModel, RoutingState
+from tradeexecutor.strategy.routing_model import RoutingModelBase
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_token
 from tradingstrategy.pair import PandasPairUniverse
 
@@ -28,7 +29,7 @@ class BacktestRoutingState(RoutingState):
                  pair_universe: PandasPairUniverse,
                  wallet: SimulatedWallet,
                  ):
-        super.__init__(pair_universe)
+        super().__init__(pair_universe)
         
         self.pair_universe = pair_universe
         self.wallet = wallet
