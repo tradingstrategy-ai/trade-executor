@@ -300,7 +300,7 @@ class RoutingModelBase(RoutingModel):
     def create_routing_state(self,
                              universe: StrategyExecutionUniverse,
                              execution_details: dict,
-                             Routing_State: Type[EthereumRoutingStateBase] 
+                             StateClass: Type[EthereumRoutingStateBase]
                              # Doesn't get full typing
                              # Type[UniswapV2RoutingState] | Type[UniswapV3RoutingState]
                              # throws error due to circular import
@@ -319,15 +319,24 @@ class RoutingModelBase(RoutingModel):
         assert universe.universe.pairs is not None, "Pairs are required"
 
         web3 = execution_details["web3"]
-        hot_wallet = execution_details["hot_wallet"]
+
+        # hot_wallet is not available in DummyExecutionModel,
+        # but is None. DummyExecutionModel will still provie
+        # web3 connection.
+        hot_wallet = execution_details.get("hot_wallet")
 
         fees = estimate_gas_fees(web3)
 
         logger.info("Gas fee estimations for chain %d: %s", web3.eth.chain_id, fees)
 
         logger.info("Estimated gas fees for chain %d: %s", web3.eth.chain_id, fees)
-        tx_builder = TransactionBuilder(web3, hot_wallet, fees)
-        routing_state = Routing_State(universe.universe.pairs, tx_builder)
+        if hot_wallet:
+            tx_builder = TransactionBuilder(web3, hot_wallet, fees)
+            routing_state = StateClass(universe.universe.pairs, tx_builder)
+        else:
+            # Dummy execution model cannot create transactions, because it has no private key
+            routing_state = StateClass(universe.universe.pairs, web3=web3)
+
         return routing_state
     
     def route_pair(self, pair_universe: PandasPairUniverse, trading_pair: TradingPairIdentifier) -> Tuple[TradingPairIdentifier, Optional[TradingPairIdentifier]]:
