@@ -26,11 +26,18 @@ logger = logging.getLogger(__name__)
 
 
 class UniswapV2RoutingState(EthereumRoutingStateBase):
+
     def __init__(self,
                  pair_universe: PandasPairUniverse,
                  tx_builder: Optional[TransactionBuilder]=None,
-                 swap_gas_limit=2_000_000):
-        super().__init__(pair_universe, tx_builder, swap_gas_limit)
+                 swap_gas_limit=2_000_000,
+                 web3: Optional[Web3] = None,
+                 ):
+        super().__init__(
+            pair_universe=pair_universe,
+            tx_builder=tx_builder,
+            swap_gas_limit=swap_gas_limit,
+            web3=web3)
     
     def __repr__(self):
         return f"<UniswapV2RoutingState Tx builder: {self.tx_builder} web3: {self.web3}>"
@@ -111,6 +118,7 @@ class UniswapV2RoutingState(EthereumRoutingStateBase):
 
         tx = self.tx_builder.sign_transaction(bound_swap_func, self.swap_gas_limit)
         return [tx]
+
 
 class UniswapV2SimpleRoutingModel(RoutingModelBase):
     """A simple router that does not optimise the trade execution cost.

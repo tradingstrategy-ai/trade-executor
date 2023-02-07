@@ -4,6 +4,7 @@ Load trading universe from candles, not vice versa.
 
 """
 import datetime
+import enum
 from typing import Set, Tuple
 
 from tradingstrategy.candle import GroupedCandleUniverse
@@ -19,11 +20,25 @@ from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
 
 
+class DataRangeMode(enum.Enum):
+    """How to get the candle data range from a trading state."""
+
+    #: Use the first and last executed rade
+    trades = "trades"
+
+    #: Use the technical indicator range.
+    #:
+    #: State updates its technical indicator plots even
+    #: even if the strategy is not making any trades.
+    indicators = "indicators"
+
+
 def reverse_trading_universe_from_state(
         state: State,
         client: Client,
         time_bucket: TimeBucket,
         overlook_period: datetime.timedelta = datetime.timedelta(days=7),
+        data_range_mode: DataRangeMode = DataRangeMode.trades,
 ) -> TradingStrategyUniverse:
     """Reverse-engineer trading universe from an existing execution state.
 
@@ -59,6 +74,10 @@ def reverse_trading_universe_from_state(
 
         We add +/- `overlook_period` to the data range.
 
+    :param data_range_mode:
+        Is this for visualising the latest technical indicators,
+        or old executed trades.
+
     :return:
         A trading universe containing data for all trading pairs
     """
@@ -81,8 +100,13 @@ def reverse_trading_universe_from_state(
         pair_addresses.add(pair.pool_address)
         pair_ids.add(pair.internal_id)
 
-        start = min(start, trade.started_at)
-        end = max(end, trade.executed_at)
+        if data_range_mode == DataRangeMode.trades:
+            start = min(start, trade.started_at)
+            end = max(end, trade.executed_at)
+
+    if data_range_mode == DataRangeMode.indicators:
+        # Get the data from the latest technical indicators.
+        start, end = state.visualisation.get_timestamp_range()
 
     exchange_universe = client.fetch_exchange_universe()
     pairs = client.fetch_pair_universe().to_pandas()
