@@ -153,18 +153,7 @@ class UniswapV3ExecutionModel(EthereumExecutionModel):
                     executed_amount = result.amount_out / Decimal(10**base_token_details.decimals)
                     
                 else:
-                    logger.error("Trade failed %s: %s", ts, trade)
-                    state.mark_trade_failed(
-                        ts,
-                        trade,
-                    )
-                    if stop_on_execution_failure:
-                        success_txs = []
-                        for tx in trade.blockchain_transactions:
-                            if not tx.is_success():
-                                raise TradeExecutionFailed(f"Could not execute a trade: {trade}, transaction failed: {tx}, had other transactions {success_txs}")
-                            else:
-                                success_txs.append(tx)
+                    self.report_failure(ts, state, trade, stop_on_execution_failure)
             else:
                 # Ordered other way around
                 result = analyse_trade_by_receipt(web3, uniswap, tx_dict, swap_tx.tx_hash, receipt, reverse_order=False)
@@ -178,18 +167,7 @@ class UniswapV3ExecutionModel(EthereumExecutionModel):
                     executed_amount = -result.amount_in / Decimal(10**base_token_details.decimals)
                     executed_reserve = result.amount_out / Decimal(10**quote_token_details.decimals)
                 else:
-                    logger.error("Trade failed %s: %s", ts, trade)
-                    state.mark_trade_failed(
-                        ts,
-                        trade,
-                    )
-                    if stop_on_execution_failure:
-                        success_txs = []
-                        for tx in trade.blockchain_transactions:
-                            if not tx.is_success():
-                                raise TradeExecutionFailed(f"Could not execute a trade: {trade}, transaction failed: {tx}, had other transactions {success_txs}")
-                            else:
-                                success_txs.append(tx)
+                    self.report_failure(ts, state, trade, stop_on_execution_failure)
                             
             price = result.price
 
@@ -205,6 +183,30 @@ class UniswapV3ExecutionModel(EthereumExecutionModel):
                 lp_fees=0,
                 native_token_price=1.0,
                 )
+    
+    @staticmethod
+    def report_failure(
+        ts: datetime.datetime,
+        state: State,
+        trade: TradeExecution,
+        stop_on_execution_failure
+    ) -> None:
+        """What to do if trade fails"""
+        
+        logger.error("Trade failed %s: %s", ts, trade)
+        
+        state.mark_trade_failed(
+            ts,
+            trade,
+        )
+        
+        if stop_on_execution_failure:
+            success_txs = []
+            for tx in trade.blockchain_transactions:
+                if not tx.is_success():
+                    raise TradeExecutionFailed(f"Could not execute a trade: {trade}, transaction failed: {tx}, had other transactions {success_txs}")
+                else:
+                    success_txs.append(tx)
 
 def get_current_price(web3: Web3, uniswap: UniswapV3Deployment, pair: TradingPairIdentifier, quantity=Decimal(1)) -> float:
     """Get a price from Uniswap v3 pool, assuming you are selling 1 unit of base token.
