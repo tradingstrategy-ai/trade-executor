@@ -29,3 +29,18 @@ BPS: TypeAlias = float
 JSONHexAddress: TypeAlias = str
 
 JSONHexBytes: TypeAlias = str
+
+#: Pair primary key as integer.
+#:
+#: Note that these are not stable over the time,
+#: please use (chain id, address tuple)
+PairInternalId: TypeAlias = int
+
+
+#: Raw Ethereum address as a string
+#:
+#: - lowercase
+#:
+#: - starts with 0x
+#:
+AddressAsString: TypeAlias = str
