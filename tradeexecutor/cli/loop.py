@@ -617,6 +617,8 @@ class ExecutionLoop:
         # Do not allow starting a strategy that has unclean state
         state.check_if_clean()
 
+        logger.trade("The execution state was last saved %s", state.last_updated_at)
+
         if self.is_live_trading_unit_test():
             # Test app initialisation.
             # Do not start any background threads.
