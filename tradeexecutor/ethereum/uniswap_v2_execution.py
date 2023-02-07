@@ -92,10 +92,8 @@ class UniswapV2ExecutionModel(EthereumExecutionModel):
         """
         return super().repair_unconfirmed_trades(state)
     
-    # TODO look at making non-static
-    @staticmethod
     def resolve_trades(
-        web3: Web3,
+        self,
         ts: datetime.datetime,
         state: State,
         tx_map: Dict[HexBytes, Tuple[TradeExecution, BlockchainTransaction]],
@@ -117,6 +115,8 @@ class UniswapV2ExecutionModel(EthereumExecutionModel):
             Raise an exception if any of the trades failed
         """
 
+        web3 = self.web3
+        
         trades = set()
 
         # First update the state of all transactions,

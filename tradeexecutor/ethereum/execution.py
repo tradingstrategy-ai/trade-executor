@@ -42,6 +42,7 @@ class TradeExecutionFailed(Exception):
 class EthereumExecutionModel(ABC):
     """Run order execution on a single Uniswap v2 style exchanges."""
 
+    @abstractmethod
     def __init__(self,
                  web3: Web3,
                  hot_wallet: HotWallet,
@@ -115,7 +116,6 @@ class EthereumExecutionModel(ABC):
         
     def broadcast_and_resolve(
         self,
-        web3: Web3,
         state: State,
         trades: List[TradeExecution],
         confirmation_timeout: datetime.timedelta = datetime.timedelta(minutes=1),
@@ -144,6 +144,8 @@ class EthereumExecutionModel(ABC):
             Set for unit test.
         """
 
+        web3 = self.web3
+        
         assert isinstance(confirmation_timeout, datetime.timedelta)
 
         broadcasted = broadcast(web3, datetime.datetime.utcnow(), trades)
@@ -158,7 +160,6 @@ class EthereumExecutionModel(ABC):
             )
 
             self.resolve_trades(
-                web3,
                 datetime.datetime.now(),
                 state,
                 broadcasted,
@@ -188,7 +189,6 @@ class EthereumExecutionModel(ABC):
             check_balances=check_balances)
 
         self.broadcast_and_resolve(
-            self.web3,
             state,
             trades,
             confirmation_timeout=self.confirmation_timeout,
@@ -204,6 +204,21 @@ class EthereumExecutionModel(ABC):
             "web3": self.web3,
             "hot_wallet": self.hot_wallet,
         }
+        
+    @staticmethod
+    def pre_execute_assertions(
+        ts: datetime.datetime, 
+        routing_model: routing_models,
+        routing_state: routing_states
+    ):
+        assert isinstance(ts, datetime.datetime)
+
+        if isinstance(routing_model, UniswapV2SimpleRoutingModel):
+            assert isinstance(routing_state, UniswapV2RoutingState), "Incorrect routing_state specified"
+        elif isinstance(routing_model, UniswapV3SimpleRoutingModel):
+            assert isinstance(routing_state, UniswapV3RoutingState), "Incorrect routing_state specified"
+        else:
+            raise ValueError("Incorrect routing model specified")
 
     @abstractmethod
     def repair_unconfirmed_trades(self, state: State) -> List[TradeExecution]:
@@ -245,7 +260,6 @@ class EthereumExecutionModel(ABC):
                     tx_data = {tx.tx_hash: (t, tx) for tx in t.blockchain_transactions}
                     
                     self.resolve_trades(
-                        self.web3,
                         datetime.datetime.now(),
                         state,
                         tx_data,
@@ -262,31 +276,15 @@ class EthereumExecutionModel(ABC):
 
         return repaired
     
-    @staticmethod
-    def pre_execute_assertions(
-        ts: datetime.datetime, 
-        routing_model: routing_models,
-        routing_state: routing_states
-    ):
-        assert isinstance(ts, datetime.datetime)
-
-        if isinstance(routing_model, UniswapV2SimpleRoutingModel):
-            assert isinstance(routing_state, UniswapV2RoutingState), "Incorrect routing_state specified"
-        elif isinstance(routing_model, UniswapV3SimpleRoutingModel):
-            assert isinstance(routing_state, UniswapV3RoutingState), "Incorrect routing_state specified"
-        else:
-            raise ValueError("Incorrect routing model specified")
-    
-    @staticmethod
     @abstractmethod
     def resolve_trades(
-        web3: Web3,
+        self,
         ts: datetime.datetime,
         state: State,
         tx_map: Dict[HexBytes, Tuple[TradeExecution, BlockchainTransaction]],
         receipts: Dict[HexBytes, dict],
         stop_on_execution_failure=True):
-        """esolve trade outcome.
+        """Resolve trade outcome.
 
         Read on-chain Uniswap swap data from the transaction receipt and record how it went.
 
@@ -603,8 +601,9 @@ def is_swap_function(name: str):
 
 def get_swap_transactions(trade: TradeExecution) -> BlockchainTransaction:
     """Get the swap transaction from multiple transactions associated with the trade"""
+    
     for tx in trade.blockchain_transactions:
-        if tx.function_selector in ("swapExactTokensForTokens",):
+        if is_swap_function(tx.function_selector):
             return tx
 
     raise RuntimeError("Should not happen")
