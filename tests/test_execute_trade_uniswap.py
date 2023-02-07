@@ -15,7 +15,7 @@ from web3.contract import Contract
 
 from eth_defi.hotwallet import HotWallet
 from eth_defi.token import create_token
-from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, deploy_uniswap_v2_like, deploy_trading_pair, FOREVER_DEADLINE
+from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, deploy_uniswap_v2_like, deploy_trading_pair
 from eth_defi.uniswap_v2.fees import estimate_buy_quantity
 from tradeexecutor.ethereum.execution import get_held_assets
 from tradeexecutor.ethereum.uniswap_v2_execution import get_current_price
@@ -27,7 +27,7 @@ from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeStatus
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
-from tradeexecutor.testing.ethereumtrader_uniswap_v2 import EthereumTestTrader, execute_trades_simple
+from tradeexecutor.testing.ethereumtrader_uniswap_v2 import UniswapV2TestTrader
 from tradeexecutor.testing.dummy_trader import DummyTestTrader
 
 
@@ -209,6 +209,9 @@ def state(portfolio) -> State:
 def pair_universe(web3, weth_usdc_pair, aave_usdc_pair) -> PandasPairUniverse:
     return create_pair_universe(web3, None, [weth_usdc_pair, aave_usdc_pair])
 
+@pytest.fixture()
+def ethereum_trader(web3: Web3, uniswap_v2: UniswapV2Deployment, hot_wallet: HotWallet, state: State, pair_universe: PandasPairUniverse) -> UniswapV2TestTrader:
+    return UniswapV2TestTrader(web3, uniswap_v2, hot_wallet, state, pair_universe)
 
 def test_execute_trade_instructions_buy_weth(
         web3: Web3,
@@ -219,7 +222,8 @@ def test_execute_trade_instructions_buy_weth(
         usdc_token: AssetIdentifier,
         weth_token: AssetIdentifier,
         weth_usdc_pair: TradingPairIdentifier,
-        start_ts: datetime.datetime):
+        start_ts: datetime.datetime,
+        ethereum_trader: UniswapV2TestTrader):
     """Sync reserves from one deposit."""
 
     portfolio = state.portfolio
@@ -242,7 +246,7 @@ def test_execute_trade_instructions_buy_weth(
     assert state.portfolio.get_total_equity() == pytest.approx(10000.0)
     assert trade.get_status() == TradeStatus.planned
 
-    execute_trades_simple(state, pair_universe, [trade], web3, hot_wallet, uniswap_v2)
+    ethereum_trader.execute_trades_simple([trade])
 
     assert trade.get_status() == TradeStatus.success
     assert trade.executed_price == pytest.approx(Decimal(1705.6136999031144))
@@ -266,7 +270,7 @@ def test_execute_trade_instructions_buy_weth_with_tester(
     assert portfolio.get_current_cash() == 10_000
 
     # Buy 500 USDC worth of WETH
-    trader = EthereumTestTrader(web3, uniswap_v2, hot_wallet, state, pair_universe)
+    trader = UniswapV2TestTrader(web3, uniswap_v2, hot_wallet, state, pair_universe)
     position, trade = trader.buy(weth_usdc_pair, Decimal(500))
 
     assert position.is_open()
@@ -305,7 +309,7 @@ def test_buy_sell_buy_with_tester(
     # 1. Buy 500 USDC worth of WETH
     #
 
-    trader = EthereumTestTrader(web3, uniswap_v2, hot_wallet, state, pair_universe)
+    trader = UniswapV2TestTrader(web3, uniswap_v2, hot_wallet, state, pair_universe)
     position, trade = trader.buy(weth_usdc_pair, Decimal(500))
 
     assert position.is_open()
@@ -381,7 +385,7 @@ def test_buy_buy_sell_sell_tester(
     # 2. Buy 500 USDC worth of WETH
     #
 
-    trader = EthereumTestTrader(web3, uniswap_v2, hot_wallet, state, pair_universe)
+    trader = UniswapV2TestTrader(web3, uniswap_v2, hot_wallet, state, pair_universe)
     position1, trade1 = trader.buy(weth_usdc_pair, Decimal(500))
     position2, trade2 = trader.buy(weth_usdc_pair, Decimal(500))
 
@@ -434,7 +438,7 @@ def test_two_parallel_positions(
     # 2. Buy 500 USDC worth of AAVE at 200 USD
     #
 
-    trader = EthereumTestTrader(web3, uniswap_v2, hot_wallet, state, pair_universe)
+    trader = UniswapV2TestTrader(web3, uniswap_v2, hot_wallet, state, pair_universe)
     position1, trade1 = trader.buy(weth_usdc_pair, Decimal(500), execute=False)
     position2, trade2 = trader.buy(aave_usdc_pair, Decimal(500), execute=False)
 
@@ -444,7 +448,7 @@ def test_two_parallel_positions(
     assert len(portfolio.open_positions) == 2
 
     # Execute both trades
-    trader.execute([trade1, trade2])
+    trader.execute_trades_simple([trade1, trade2])
     assert hot_wallet.current_nonce == 3
 
     assert position1.get_equity_for_position() == pytest.approx(Decimal("0.293149331800817389"))
@@ -467,7 +471,7 @@ def test_two_parallel_positions(
     position3, trade3 = trader.sell(weth_usdc_pair, position1.get_equity_for_position(), execute=False)
     position4, trade4 = trader.sell(aave_usdc_pair, position2.get_equity_for_position(), execute=False)
 
-    trader.execute([trade3, trade4])
+    trader.execute_trades_simple([trade3, trade4])
 
     assert trade3.blockchain_transactions[0].nonce == 3
     assert trade4.blockchain_transactions[0].nonce == 5
