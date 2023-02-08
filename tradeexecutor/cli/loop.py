@@ -317,10 +317,11 @@ class ExecutionLoop:
 
         # Execute the strategy tick and trades
         self.runner.tick(
-            ts,
-            universe,
-            state,
-            debug_details,
+            strategy_cycle_timestamp=ts,
+            universe=universe,
+            state=state,
+            debug_details=debug_details,
+            cycle_duration=cycle_duration,
         )
 
         state.uptime.record_cycle_complete(cycle)
@@ -570,6 +571,7 @@ class ExecutionLoop:
                     state,
                     cycle,
                     live=False,
+                    strategy_cycle_timestamp=ts,
                     existing_universe=universe)
 
                 # Revalue our portfolio

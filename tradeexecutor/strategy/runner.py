@@ -346,7 +346,9 @@ class StrategyRunner(abc.ABC):
         assert isinstance(universe, StrategyExecutionUniverse)
 
         assert isinstance(strategy_cycle_timestamp, datetime.datetime)
-        assert strategy_cycle_timestamp.second == 0, f"Does not look like a cycle timestamp: {strategy_cycle_timestamp}, should be even minutes"
+
+        if cycle_duration not in (CycleDuration.cycle_unknown, None):
+            assert strategy_cycle_timestamp.second == 0, f"Cycle duration {cycle_duration}: Does not look like a cycle timestamp: {strategy_cycle_timestamp}, should be even minutes"
 
         friendly_cycle_duration = cycle_duration.value if cycle_duration else "-"
         with self.timed_task_context_manager("strategy_tick", clock=strategy_cycle_timestamp, cycle_duration=friendly_cycle_duration):
