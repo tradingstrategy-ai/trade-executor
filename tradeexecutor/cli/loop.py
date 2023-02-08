@@ -818,12 +818,19 @@ class ExecutionLoop:
             'default': ThreadPoolExecutor(1),
         }
         start_time = datetime.datetime(1970, 1, 1)
+
+        # We use a single thread scheduler to run our various tasks.
+        # Any task blocks other tasks - there is no parallerism or multithread support at the moment.
+        # Multithread support would need making the architecture more complex with various locks
+        # that could then be additional source of bugs.
         scheduler = BlockingScheduler(executors=executors, timezone=datetime.timezone.utc)
         scheduler.add_job(
             live_cycle,
             'interval',
             seconds=self.cycle_duration.to_timedelta().total_seconds(),
-            start_date=start_time + tick_offset)
+            start_date=start_time + tick_offset,
+            misfire_grace_time = None,  # Will always run the job no matter how late it is
+        )
 
         if self.stats_refresh_frequency not in (datetime.timedelta(0), None):
             scheduler.add_job(
