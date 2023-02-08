@@ -11,7 +11,6 @@ from eth_account.datastructures import SignedTransaction
 from eth_typing import HexAddress
 from hexbytes import HexBytes
 from web3 import Web3
-from web3.contract import Contract
 
 from eth_defi.abi import get_deployed_contract
 from eth_defi.gas import GasPriceSuggestion, apply_gas, estimate_gas_fees
@@ -20,6 +19,8 @@ from eth_defi.token import fetch_erc20_details, TokenDetails
 from eth_defi.confirmation import wait_transactions_to_complete, \
     broadcast_and_wait_transactions_to_complete, broadcast_transactions
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, FOREVER_DEADLINE 
+from eth_defi.trade import TradeSuccess, TradeFail
+from eth_defi.revert_reason import fetch_transaction_revert_reason
 
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution, TradeStatus
@@ -88,7 +89,117 @@ class EthereumExecutionModel(ABC):
     def chain_id(self) -> int:
         """Which chain the live execution is connected to."""
         return self.web3.eth.chain_id
+    
+    @staticmethod
+    def pre_execute_assertions(
+        ts: datetime.datetime, 
+        routing_model: routing_models,
+        routing_state: routing_states
+    ):
+        assert isinstance(ts, datetime.datetime)
 
+        if isinstance(routing_model, UniswapV2SimpleRoutingModel):
+            assert isinstance(routing_state, UniswapV2RoutingState), "Incorrect routing_state specified"
+        elif isinstance(routing_model, UniswapV3SimpleRoutingModel):
+            assert isinstance(routing_state, UniswapV3RoutingState), "Incorrect routing_state specified"
+        else:
+            raise ValueError("Incorrect routing model specified")
+    
+    @staticmethod
+    def report_failure(
+        ts: datetime.datetime,
+        state: State,
+        trade: TradeExecution,
+        stop_on_execution_failure
+    ) -> None:
+        """What to do if trade fails"""
+        
+        logger.error("Trade failed %s: %s", ts, trade)
+        
+        state.mark_trade_failed(
+            ts,
+            trade,
+        )
+        
+        if stop_on_execution_failure:
+            success_txs = []
+            for tx in trade.blockchain_transactions:
+                if not tx.is_success():
+                    raise TradeExecutionFailed(f"Could not execute a trade: {trade}, transaction failed: {tx}, had other transactions {success_txs}")
+                else:
+                    success_txs.append(tx)
+    
+    @staticmethod
+    @abstractmethod
+    def analyse_trade_by_receipt(
+        web3: Web3, 
+        uniswap: UniswapV2Deployment, 
+        tx: dict, 
+        tx_hash: str,
+        tx_receipt: dict
+    ) -> (TradeSuccess | TradeFail):
+        """Links to either uniswap v2 or v3 implementation in eth_defi"""
+    
+    @staticmethod
+    @abstractmethod
+    def mock_partial_deployment_for_analysis():
+        """Links to either uniswap v2 or v3 implementation in eth_defi"""
+    
+    def repair_unconfirmed_trades(self, state: State) -> List[TradeExecution]:
+        """Repair unconfirmed trades.
+
+        Repair trades that failed to properly broadcast or confirm due to
+        blockchain node issues.
+        """
+
+        repaired = []
+
+        logger.info("Reparing the failed trade confirmation")
+
+        assert self.confirmation_timeout > datetime.timedelta(0), \
+                "Make sure you have a good tx confirmation timeout setting before attempting a repair"
+
+        # Check if we are on a live chain, not Ethereum Tester
+        if self.web3.eth.chain_id != 61:
+            assert self.confirmation_block_count > 0, \
+                    "Make sure you have a good confirmation_block_count setting before attempting a repair"
+
+        for p in state.portfolio.open_positions.values():
+            t: TradeExecution
+            for t in p.trades.values():
+                if t.is_unfinished():
+                    logger.info("Found unconfirmed trade: %s", t)
+
+                    assert t.get_status() == TradeStatus.broadcasted
+
+                    receipt_data = wait_trades_to_complete(
+                        self.web3,
+                        [t],
+                        max_timeout=self.confirmation_timeout,
+                        confirmation_block_count=self.confirmation_block_count,
+                    )
+
+                    assert len(receipt_data) > 0, f"Got bad receipts: {receipt_data}"
+
+                    tx_data = {tx.tx_hash: (t, tx) for tx in t.blockchain_transactions}
+                    
+                    self.resolve_trades(
+                        datetime.datetime.now(),
+                        state,
+                        tx_data,
+                        receipt_data,
+                        stop_on_execution_failure=True)
+
+                    t.repaired_at = datetime.datetime.utcnow()
+                    if not t.notes:
+                        # Add human readable note,
+                        # but don't override any other notes
+                        t.notes = "Failed broadcast repaired"
+
+                    repaired.append(t)
+
+        return repaired
+    
     def is_live_trading(self) -> bool:
         return True
 
@@ -204,79 +315,41 @@ class EthereumExecutionModel(ABC):
             "web3": self.web3,
             "hot_wallet": self.hot_wallet,
         }
+
+    def update_confimation_status(
+        self, ts: datetime.datetime,
+        tx_map: Dict[HexBytes, Tuple[TradeExecution, BlockchainTransaction]],
+        receipts: Dict[HexBytes, dict]
+    ) -> set[TradeExecution]:
+        """First update the state of all transactions, as we now have receipt for them. Update the transaction confirmation status"""
+
+        web3 = self.web3
         
-    @staticmethod
-    def pre_execute_assertions(
-        ts: datetime.datetime, 
-        routing_model: routing_models,
-        routing_state: routing_states
-    ):
-        assert isinstance(ts, datetime.datetime)
+        trades: set[TradeExecution] = set()
 
-        if isinstance(routing_model, UniswapV2SimpleRoutingModel):
-            assert isinstance(routing_state, UniswapV2RoutingState), "Incorrect routing_state specified"
-        elif isinstance(routing_model, UniswapV3SimpleRoutingModel):
-            assert isinstance(routing_state, UniswapV3RoutingState), "Incorrect routing_state specified"
-        else:
-            raise ValueError("Incorrect routing model specified")
-
-    @abstractmethod
-    def repair_unconfirmed_trades(self, state: State) -> List[TradeExecution]:
-        """Repair unconfirmed trades.
-
-        Repair trades that failed to properly broadcast or confirm due to
-        blockchain node issues.
-        """
-
-        repaired = []
-
-        logger.info("Reparing the failed trade confirmation")
-
-        assert self.confirmation_timeout > datetime.timedelta(0), \
-                "Make sure you have a good tx confirmation timeout setting before attempting a repair"
-
-        # Check if we are on a live chain, not Ethereum Tester
-        if self.web3.eth.chain_id != 61:
-            assert self.confirmation_block_count > 0, \
-                    "Make sure you have a good confirmation_block_count setting before attempting a repair"
-
-        for p in state.portfolio.open_positions.values():
-            t: TradeExecution
-            for t in p.trades.values():
-                if t.is_unfinished():
-                    logger.info("Found unconfirmed trade: %s", t)
-
-                    assert t.get_status() == TradeStatus.broadcasted
-
-                    receipt_data = wait_trades_to_complete(
-                        self.web3,
-                        [t],
-                        max_timeout=self.confirmation_timeout,
-                        confirmation_block_count=self.confirmation_block_count,
-                    )
-
-                    assert len(receipt_data) > 0, f"Got bad receipts: {receipt_data}"
-
-                    tx_data = {tx.tx_hash: (t, tx) for tx in t.blockchain_transactions}
-                    
-                    self.resolve_trades(
-                        datetime.datetime.now(),
-                        state,
-                        tx_data,
-                        receipt_data,
-                        stop_on_execution_failure=True)
-
-                    t.repaired_at = datetime.datetime.utcnow()
-                    if not t.notes:
-                        # Add human readable note,
-                        # but don't override any other notes
-                        t.notes = "Failed broadcast repaired"
-
-                    repaired.append(t)
-
-        return repaired
+        # First update the state of all transactions,
+        # as we now have receipt for them
+        for tx_hash, receipt in receipts.items():
+            trade, tx = tx_map[tx_hash.hex()]
+            logger.info("Resolved trade %s", trade)
+            # Update the transaction confirmation status
+            status = receipt["status"] == 1
+            reason = None
+            if status == 0:
+                reason = fetch_transaction_revert_reason(web3, tx_hash)
+            tx.set_confirmation_information(
+                ts,
+                receipt["blockNumber"],
+                receipt["blockHash"].hex(),
+                receipt.get("effectiveGasPrice", 0),
+                receipt["gasUsed"],
+                status,
+                revert_reason=reason,
+            )
+            trades.add(trade)
+        
+        return trades
     
-    @abstractmethod
     def resolve_trades(
         self,
         ts: datetime.datetime,
@@ -299,6 +372,67 @@ class EthereumExecutionModel(ABC):
         :param stop_on_execution_failure:
             Raise an exception if any of the trades failed"""
 
+        web3 = self.web3
+        
+        trades = self.update_confimation_status(ts, tx_map, receipts)
+
+        # Then resolve trade status by analysis the tx receipt
+        # if the blockchain transaction was successsful.
+        # Also get the actual executed token counts.
+        for trade in trades:
+            base_token_details = fetch_erc20_details(web3, trade.pair.base.checksum_address)
+            quote_token_details = fetch_erc20_details(web3, trade.pair.quote.checksum_address)
+            reserve = trade.reserve_currency
+            swap_tx = get_swap_transactions(trade)
+            uniswap = self.mock_partial_deployment_for_analysis(web3, swap_tx.contract_address)
+
+            tx_dict = swap_tx.get_transaction()
+            receipt = receipts[HexBytes(swap_tx.tx_hash)]
+
+                
+            if trade.is_buy():
+                result = self.analyse_trade_by_receipt(web3, uniswap, tx_dict, swap_tx.tx_hash, receipt, reverse_order=True)
+                
+                if isinstance(result, TradeSuccess):
+                
+                    path = [a.lower() for a in result.path if type(a) == str]
+                    
+                    assert path[0] == reserve.address, f"Was expecting the route path to start with reserve token {reserve}, got path {result.path}"
+                    executed_reserve = result.amount_in / Decimal(10**quote_token_details.decimals)
+                    executed_amount = result.amount_out / Decimal(10**base_token_details.decimals)
+                    
+                else:
+                    self.report_failure(ts, state, trade, stop_on_execution_failure)
+            else:
+                # Ordered other way around
+                result = self.analyse_trade_by_receipt(web3, uniswap, tx_dict, swap_tx.tx_hash, receipt, reverse_order=False)
+                
+                if isinstance(result, TradeSuccess):
+                
+                    path = [a.lower() for a in result.path if type(a) == str]
+                    
+                    assert path[0] == base_token_details.address.lower(), f"Path is {path}, base token is {base_token_details}"
+                    assert path[-1] == reserve.address
+                    executed_amount = -result.amount_in / Decimal(10**base_token_details.decimals)
+                    executed_reserve = result.amount_out / Decimal(10**quote_token_details.decimals)
+                else:
+                    self.report_failure(ts, state, trade, stop_on_execution_failure)
+                            
+            price = result.price
+
+            assert (executed_reserve > 0) and (executed_amount != 0) and (price > 0), f"Executed amount {executed_amount}, executed_reserve: {executed_reserve}, price: {price}, tx info {trade.tx_info}"
+
+            # Mark as success
+            state.mark_trade_success(
+                ts,
+                trade,
+                executed_price=float(price),
+                executed_amount=executed_amount,
+                executed_reserve=executed_reserve,
+                lp_fees=0,
+                native_token_price=1.0,
+                )
+        
 
 def translate_to_naive_swap(
         web3: Web3,
