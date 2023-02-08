@@ -82,13 +82,11 @@ def anvil_bnb_chain_fork(logger, large_busd_holder) -> str:
 
     mainnet_rpc = os.environ["BNB_CHAIN_JSON_RPC"]
 
-    # Start Ganache
     launch = fork_network_anvil(
         mainnet_rpc,
         unlocked_addresses=[large_busd_holder])
     try:
         yield launch.json_rpc_url
-        # Wind down Ganache process after the test is complete
     finally:
         launch.close(log_level=logging.INFO)
 
@@ -656,7 +654,6 @@ def test_three_leg_buy_sell_twice_on_chain(
             check_balances=True,
             intermediary_pair=bnb_busd_trading_pair,
         )
-
 
         # Execute
         tx_builder.broadcast_and_wait_transactions_to_complete(

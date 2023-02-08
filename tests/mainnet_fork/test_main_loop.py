@@ -13,6 +13,9 @@ from typing import List
 import flaky
 import pytest
 from eth_account import Account
+from eth_defi.anvil import fork_network_anvil
+from eth_defi.chain import install_chain_middleware
+from eth_defi.gas import node_default_gas_price_strategy
 from eth_typing import HexAddress, HexStr
 from hexbytes import HexBytes
 from typer.testing import CliRunner
@@ -54,7 +57,7 @@ def large_busd_holder() -> HexAddress:
 
 
 @pytest.fixture()
-def ganache_bnb_chain_fork(logger, large_busd_holder) -> str:
+def anvil_bnb_chain_fork(logger, large_busd_holder) -> str:
     """Create a testable fork of live BNB chain.
 
     :return: JSON-RPC URL for Web3
@@ -62,26 +65,23 @@ def ganache_bnb_chain_fork(logger, large_busd_holder) -> str:
 
     mainnet_rpc = os.environ["BNB_CHAIN_JSON_RPC"]
 
-    if not is_localhost_port_listening(19999):
-        # Start Ganache
-        launch = fork_network(
-            mainnet_rpc,
-            block_time=1,
-            unlocked_addresses=[large_busd_holder])
-        try:
-            yield launch.json_rpc_url
-        finally:
-            # Wind down Ganache process after the test is complete
-            launch.close(verbose=True)
-    else:
-        raise AssertionError("ganache zombie detected")
+    launch = fork_network_anvil(
+        mainnet_rpc,
+        unlocked_addresses=[large_busd_holder])
+    try:
+        yield launch.json_rpc_url
+    finally:
+        launch.close(log_level=logging.INFO)
 
 
 @pytest.fixture
-def web3(ganache_bnb_chain_fork: str):
+def web3(anvil_bnb_chain_fork: str):
     """Set up a local unit testing blockchain."""
     # https://web3py.readthedocs.io/en/stable/examples.html#contract-unit-tests-in-python
-    return Web3(HTTPProvider(ganache_bnb_chain_fork))
+    web3 = Web3(HTTPProvider(anvil_bnb_chain_fork, request_kwargs={"timeout": 5}))
+    web3.eth.set_gas_price_strategy(node_default_gas_price_strategy)
+    install_chain_middleware(web3)
+    return web3
 
 
 @pytest.fixture
@@ -182,12 +182,10 @@ def strategy_path() -> Path:
     return Path(os.path.join(os.path.dirname(__file__), "../../strategies/test_only", "pancakeswap_v2_main_loop.py"))
 
 
-# Flaky because of unstable Ganache
-@flaky.flaky
 def test_main_loop_success(
         logger: logging.Logger,
         strategy_path: Path,
-        ganache_bnb_chain_fork,
+        anvil_bnb_chain_fork,
         hot_wallet: HotWallet,
         pancakeswap_v2: UniswapV2Deployment,
     ):
@@ -206,7 +204,7 @@ def test_main_loop_success(
         "STRATEGY_FILE": strategy_path.as_posix(),
         "PRIVATE_KEY": hot_wallet.account.key.hex(),
         "HTTP_ENABLED": "false",
-        "JSON_RPC_BINANCE": ganache_bnb_chain_fork,
+        "JSON_RPC_BINANCE": anvil_bnb_chain_fork,
         "UNISWAP_V2_FACTORY_ADDRESS": pancakeswap_v2.factory.address,
         "UNISWAP_V2_ROUTER_ADDRESS": pancakeswap_v2.router.address,
         "UNISWAP_V2_INIT_CODE_HASH": pancakeswap_v2.init_code_hash,
