@@ -182,6 +182,8 @@ def strategy_path() -> Path:
     return Path(os.path.join(os.path.dirname(__file__), "../../strategies/test_only", "pancakeswap_v2_main_loop.py"))
 
 
+# Confirmation timeout issues
+@flaky.flaky()
 def test_main_loop_success(
         logger: logging.Logger,
         strategy_path: Path,
@@ -208,7 +210,7 @@ def test_main_loop_success(
         "UNISWAP_V2_FACTORY_ADDRESS": pancakeswap_v2.factory.address,
         "UNISWAP_V2_ROUTER_ADDRESS": pancakeswap_v2.router.address,
         "UNISWAP_V2_INIT_CODE_HASH": pancakeswap_v2.init_code_hash,
-        "CONFIRMATION_TIMEOUT": "30",
+        "CONFIRMATION_TIMEOUT": "90",
         "STATE_FILE": "/tmp/test_main_loop.json",
         "RESET_STATE": "true",
         "EXECUTION_TYPE": "uniswap_v2_hot_wallet",

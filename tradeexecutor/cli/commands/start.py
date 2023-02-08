@@ -131,8 +131,6 @@ def start(
         else:
             log_level = logging.INFO
 
-    print("Hello")
-
     # Make sure unit tests run logs do not get polluted
     # Don't touch any log levels, but
     # make sure we have logger.trading() available when
