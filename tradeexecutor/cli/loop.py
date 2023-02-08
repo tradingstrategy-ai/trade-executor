@@ -693,6 +693,9 @@ class ExecutionLoop:
                     universe = universe_update_result.updated_universe
 
                     extra_debug_data["universe_update_poll_cycles"] = universe_update_result.poll_cycles
+                else:
+                    # Force universe recreation on every cycle
+                    universe = None
 
                 # Do a data lag check.
                 # This is not 100% fool-proof check for multipair strategies,
