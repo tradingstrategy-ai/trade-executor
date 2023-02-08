@@ -28,7 +28,7 @@ class OutOfBalance(Exception):
     """Did not have enough tokens"""
 
 
-class EthereumRoutingStateBase(RoutingState):
+class ethereumroutingstate(RoutingState):
     """Manage transaction building for multiple Uniswap trades.
 
     - Lifespan is one rebalance - remembers already made approvals
