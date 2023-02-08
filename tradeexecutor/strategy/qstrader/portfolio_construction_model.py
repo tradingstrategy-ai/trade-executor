@@ -192,7 +192,7 @@ class PortfolioConstructionModel:
                     continue
 
                 if isinstance(dt, pd.Timestamp):
-                    dt = dt.to_pydatetime()
+                    dt = dt.to_pydatetime().replace(tzinfo=None)
 
                 position, trade, created = self.state.create_trade(
                     dt,

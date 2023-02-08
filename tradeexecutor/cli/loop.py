@@ -11,6 +11,8 @@ from typing import Optional, Callable, List, cast
 import pandas as pd
 from apscheduler.events import EVENT_JOB_ERROR
 
+from tradeexecutor.cli.watchdog import create_watchdog_registry, register_worker, mark_alive, start_background_watchdog, \
+    WatchdogMode
 from tradeexecutor.statistics.summary import calculate_summary_statistics
 from tradeexecutor.strategy.pandas_trader.decision_trigger import wait_for_universe_data_availability_jsonl
 from tradeexecutor.strategy.run_state import RunState
@@ -234,7 +236,7 @@ class ExecutionLoop:
             The current state of the strategy
 
         :param cycle:
-            The number ofthis cycle
+            The number of this cycle
 
         :param cycle_duration:
             Cycle duration for this cycle. Either from the strategy module,
@@ -320,6 +322,8 @@ class ExecutionLoop:
             state,
             debug_details,
         )
+
+        state.uptime.record_cycle_complete(cycle)
 
         # Check that state is good before writing it to the disk
         state.perform_integrity_check()
@@ -618,6 +622,18 @@ class ExecutionLoop:
 
         ts = datetime.datetime.utcnow()
 
+        # Start the watchdog process killer
+        watchdog_registry = create_watchdog_registry(WatchdogMode.thread_based)
+        start_background_watchdog(watchdog_registry)
+        # Create a watchdog thread that checks that the live trading cycle
+        # has completed for every candle + some tolerance minutes.
+        # This will terminate the live trading process if it has hung for a reason or another.
+        live_cycle_max_delay = (self.cycle_duration.to_timedelta() + datetime.timedelta(minutes=15)).total_seconds()
+        register_worker(
+            watchdog_registry,
+            "live_cycle",
+            live_cycle_max_delay)
+
         # Do not allow starting a strategy that has unclean state
         state.check_if_clean()
 
@@ -691,26 +707,25 @@ class ExecutionLoop:
                     )
                     logger.trade("Strategy cycle %d, universe updated result received: %s", cycle, universe_update_result)
                     universe = universe_update_result.updated_universe
-
                     extra_debug_data["universe_update_poll_cycles"] = universe_update_result.poll_cycles
+
+                    # Do a data lag check.
+                    # This is not 100% fool-proof check for multipair strategies,
+                    # as we randomly pick one pair. However it should detect most of market data feed
+                    # stale situtations.
+                    last_candle_timestamp = universe.universe.candles.df.iloc[-1]["timestamp"].to_pydatetime().replace(tzinfo=None)
+                    # We allow 30 minutes + time bucket size lag
+                    if last_candle_timestamp is not None:
+                        max_allowed_lag = self.max_live_data_lag_tolerance + universe.universe.time_bucket.to_timedelta()
+                        lag = strategy_cycle_timestamp - last_candle_timestamp
+                        if lag > max_allowed_lag:
+                            logger.error("Aborting and waiting for manual restart after the data feed is fixed")
+                            raise RuntimeError(f"Strategy market data lag exceeded.\n"
+                                               f"Currently lag to the start of the last candle is {lag}, allowed max lag is {max_allowed_lag}.\n"
+                                               f"Last candle is at {last_candle_timestamp}")
                 else:
                     # Force universe recreation on every cycle
                     universe = None
-
-                # Do a data lag check.
-                # This is not 100% fool-proof check for multipair strategies,
-                # as we randomly pick one pair. However it should detect most of market data feed
-                # stale situtations.
-                last_candle = universe.universe.candles.df.iloc[-1]
-
-                # We allow 30 minutes + time bucket size lag
-                max_allowed_lag = self.max_live_data_lag_tolerance + universe.universe.time_bucket.to_timedelta()
-                lag = strategy_cycle_timestamp - last_candle["timestamp"].to_pydatetime()
-                if lag > max_allowed_lag:
-                    logger.error("Aborting and waiting for manual restart after the data feed is fixed")
-                    raise RuntimeError(f"Strategy market data lag exceeded.\n"
-                                       f"Currently lag to the start of the last candle is {lag}, allowed max lag is {max_allowed_lag}.\n"
-                                       f"Last candle is at {last_candle['timestamp']}")
 
                 # Run the main strategy logic
                 universe = self.tick(
@@ -752,6 +767,9 @@ class ExecutionLoop:
             run_state.completed_cycle = cycle
             run_state.cycles += 1
             run_state.bumb_refreshed()
+
+            # Reset the background watchdog timer
+            mark_alive(watchdog_registry, "live_cycle")
 
         def live_positions():
             nonlocal universe
@@ -799,12 +817,19 @@ class ExecutionLoop:
             'default': ThreadPoolExecutor(1),
         }
         start_time = datetime.datetime(1970, 1, 1)
+
+        # We use a single thread scheduler to run our various tasks.
+        # Any task blocks other tasks - there is no parallerism or multithread support at the moment.
+        # Multithread support would need making the architecture more complex with various locks
+        # that could then be additional source of bugs.
         scheduler = BlockingScheduler(executors=executors, timezone=datetime.timezone.utc)
         scheduler.add_job(
             live_cycle,
             'interval',
             seconds=self.cycle_duration.to_timedelta().total_seconds(),
-            start_date=start_time + tick_offset)
+            start_date=start_time + tick_offset,
+            misfire_grace_time = None,  # Will always run the job no matter how late it is
+        )
 
         if self.stats_refresh_frequency not in (datetime.timedelta(0), None):
             scheduler.add_job(

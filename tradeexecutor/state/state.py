@@ -19,6 +19,7 @@ from .reserve import ReservePosition
 from .statistics import Statistics
 from .trade import TradeExecution, TradeStatus, TradeType
 from .types import USDollarAmount, BPS, USDollarPrice
+from .uptime import Uptime
 from .visualisation import Visualisation
 
 
@@ -75,6 +76,12 @@ class State:
     #: Strategy visualisation and debug messages
     #: to show how the strategy is thinking.
     visualisation: Visualisation = field(default_factory=Visualisation)
+
+    #: Trade execution uptime and success statistcis]
+    #:
+    #: Contains statistics about trade execution having to manage
+    #: to run its internal functions.
+    uptime: Uptime = field(default_factory=Uptime)
 
     def __repr__(self):
         return f"<State for {self.name}>"

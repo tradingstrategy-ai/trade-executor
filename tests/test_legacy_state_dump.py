@@ -110,6 +110,12 @@ def test_legacy_calculate_all_statistics(state: State):
     calculate_statistics(clock, portfolio, execution_mode)
 
 
+def test_legacy_visualisation(state: State):
+    """See that legacy visualisation data can be accessed.
+    """
+    assert state.visualisation.get_total_points() == 150
+
+
 def test_empty_state_calculate_all_statistics():
     """Calculate all statistics on an empty state
 
@@ -150,3 +156,4 @@ def test_reverse_trading_universe_from_state(
     start, end = universe.universe.candles.get_timestamp_range()
     assert start == pd.Timestamp('2023-01-17 00:00:00')
     assert end == pd.Timestamp('2023-02-03 00:00:00')
+

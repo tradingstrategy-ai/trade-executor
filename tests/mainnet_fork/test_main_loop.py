@@ -68,9 +68,11 @@ def ganache_bnb_chain_fork(logger, large_busd_holder) -> str:
             mainnet_rpc,
             block_time=1,
             unlocked_addresses=[large_busd_holder])
-        yield launch.json_rpc_url
-        # Wind down Ganache process after the test is complete
-        launch.close(verbose=True)
+        try:
+            yield launch.json_rpc_url
+        finally:
+            # Wind down Ganache process after the test is complete
+            launch.close(verbose=True)
     else:
         raise AssertionError("ganache zombie detected")
 
@@ -182,7 +184,7 @@ def strategy_path() -> Path:
 
 # Flaky because of unstable Ganache
 @flaky.flaky
-def test_main_loop(
+def test_main_loop_success(
         logger: logging.Logger,
         strategy_path: Path,
         ganache_bnb_chain_fork,
