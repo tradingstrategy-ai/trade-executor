@@ -240,6 +240,9 @@ class Visualisation:
             Return None, None if no data.
         """
 
+        if len(self.plots) == 0:
+            return None, None
+
         if plot_name is None:
             plot_name = next(iter(self.plots.keys()))
 
