@@ -223,6 +223,7 @@ def test_main_loop_success(
         "DISCORD_WEBHOOK_URL": "",
         "CYCLE_DURATION": "1d",
         "UNIT_TESTING": "true",
+        "LOG_LEVEL": "disabled",
     }
 
     # https://typer.tiangolo.com/tutorial/testing/
