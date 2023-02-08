@@ -252,7 +252,6 @@ def test_forked_pancake(
         logger: logging.Logger,
         web3: Web3,
         strategy_path: Path,
-        ganache_bnb_chain_fork,
         hot_wallet: HotWallet,
         pancakeswap_v2: UniswapV2Deployment,
         state: State,
