@@ -451,9 +451,15 @@ class EthereumExecutionModel(ExecutionModel):
 
             
             if is_v3:
-                # `price_test` was calculated without ordering
-                # `price` was calculated with differently order depending on whether buy or sell
-                # somewhow, price_test == price
+                """
+                - `price_test` was calculated without ordering
+                - `price` was calculated with differently order depending on whether buy or sell
+                - somewhow, price_test == price
+                
+                - price_test calculated using quote and base
+                - price calculated using in_token and out_token
+                """
+                
                 assert price == price_test
                 print(price)
                 print(price_test)
