@@ -11,6 +11,7 @@ from typing import Optional, Callable, List, cast
 import pandas as pd
 from apscheduler.events import EVENT_JOB_ERROR
 
+from tradeexecutor.cli.watchdog import create_watchdog_registry, register_worker, mark_alive, start_background_watchdog
 from tradeexecutor.statistics.summary import calculate_summary_statistics
 from tradeexecutor.strategy.pandas_trader.decision_trigger import wait_for_universe_data_availability_jsonl
 from tradeexecutor.strategy.run_state import RunState
@@ -618,6 +619,10 @@ class ExecutionLoop:
 
         ts = datetime.datetime.utcnow()
 
+        # Start the watchdog process killer
+        watchdog_registry = create_watchdog_registry()
+        start_background_watchdog(watchdog_registry)
+
         # Do not allow starting a strategy that has unclean state
         state.check_if_clean()
 
@@ -655,6 +660,17 @@ class ExecutionLoop:
         if self.trade_immediately:
             ts = datetime.datetime.now()
             universe = self.tick(ts, self.cycle_duration, state, cycle, live=True)
+
+        ts_universe = cast(TradingStrategyUniverse, universe)
+
+        # Create a watchdog thread that checks that the live trading cycle
+        # has completed for every candle + some tolerance minutes.
+        # This will terminate the live trading process if it has hung for a reason or another.
+        live_cycle_max_delay = (ts_universe.universe.time_bucket.to_timedelta() + datetime.timedelta(minutes=15)).total_seconds()
+        register_worker(
+            watchdog_registry,
+            "live_cycle",
+            live_cycle_max_delay)
 
         def die(exc: Exception):
             # Shutdown the scheduler and mark an clean exit
@@ -752,6 +768,9 @@ class ExecutionLoop:
             run_state.completed_cycle = cycle
             run_state.cycles += 1
             run_state.bumb_refreshed()
+
+            # Reset the background watchdog timer
+            mark_alive(watchdog_registry, "live_cycle")
 
         def live_positions():
             nonlocal universe
