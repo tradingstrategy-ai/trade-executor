@@ -322,6 +322,8 @@ class ExecutionLoop:
             debug_details,
         )
 
+        state.uptime.record_cycle_complete(cycle)
+
         # Check that state is good before writing it to the disk
         state.perform_integrity_check()
 
