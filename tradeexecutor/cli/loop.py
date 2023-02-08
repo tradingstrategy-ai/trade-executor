@@ -709,26 +709,25 @@ class ExecutionLoop:
                     )
                     logger.trade("Strategy cycle %d, universe updated result received: %s", cycle, universe_update_result)
                     universe = universe_update_result.updated_universe
-
                     extra_debug_data["universe_update_poll_cycles"] = universe_update_result.poll_cycles
+
+                    # Do a data lag check.
+                    # This is not 100% fool-proof check for multipair strategies,
+                    # as we randomly pick one pair. However it should detect most of market data feed
+                    # stale situtations.
+                    last_candle_timestamp = universe.universe.candles.df.iloc[-1]["timestamp"].to_pydatetime().replace(tzinfo=None)
+                    # We allow 30 minutes + time bucket size lag
+                    if last_candle_timestamp is not None:
+                        max_allowed_lag = self.max_live_data_lag_tolerance + universe.universe.time_bucket.to_timedelta()
+                        lag = strategy_cycle_timestamp - last_candle_timestamp
+                        if lag > max_allowed_lag:
+                            logger.error("Aborting and waiting for manual restart after the data feed is fixed")
+                            raise RuntimeError(f"Strategy market data lag exceeded.\n"
+                                               f"Currently lag to the start of the last candle is {lag}, allowed max lag is {max_allowed_lag}.\n"
+                                               f"Last candle is at {last_candle_timestamp}")
                 else:
                     # Force universe recreation on every cycle
                     universe = None
-
-                # Do a data lag check.
-                # This is not 100% fool-proof check for multipair strategies,
-                # as we randomly pick one pair. However it should detect most of market data feed
-                # stale situtations.
-                last_candle = universe.universe.candles.df.iloc[-1]
-
-                # We allow 30 minutes + time bucket size lag
-                max_allowed_lag = self.max_live_data_lag_tolerance + universe.universe.time_bucket.to_timedelta()
-                lag = strategy_cycle_timestamp - last_candle["timestamp"].to_pydatetime()
-                if lag > max_allowed_lag:
-                    logger.error("Aborting and waiting for manual restart after the data feed is fixed")
-                    raise RuntimeError(f"Strategy market data lag exceeded.\n"
-                                       f"Currently lag to the start of the last candle is {lag}, allowed max lag is {max_allowed_lag}.\n"
-                                       f"Last candle is at {last_candle['timestamp']}")
 
                 # Run the main strategy logic
                 universe = self.tick(
