@@ -322,6 +322,7 @@ class ExecutionLoop:
             state=state,
             debug_details=debug_details,
             cycle_duration=cycle_duration,
+            cycle=cycle,
         )
 
         state.uptime.record_cycle_complete(cycle)
@@ -734,7 +735,7 @@ class ExecutionLoop:
                     unrounded_timestamp,
                     self.cycle_duration,
                     state,
-                    cycle,
+                    cycle=cycle,
                     strategy_cycle_timestamp=strategy_cycle_timestamp,
                     existing_universe=universe,
                     live=True,
