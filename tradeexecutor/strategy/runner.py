@@ -236,16 +236,35 @@ class StrategyRunner(abc.ABC):
         logger.trade(buf.getvalue())
 
     def report_strategy_thinking(self,
-                                 clock: datetime.datetime,
-                                 universe: StrategyExecutionUniverse,
+                                 strategy_cycle_timestamp: datetime.datetime,
+                                 cycle: int,
+                                 universe: TradingStrategyUniverse,
                                  state: State,
                                  trades: List[TradeExecution],
-                                 debug_details: dict) -> object:
-        """Strategy runner subclass can fill in.
+                                 debug_details: dict):
+        """Strategy admin helpers to understand a live running strategy.
 
-        By default, no-op. Override in the subclass.
+        - Post latest variables
 
-        Called before trades are executed.
+        - Draw the single pair strategy visualisation.
+
+        :param strategy_cycle_timestamp:
+            real time lock
+
+        :param cycle:
+            Cycle number
+
+        :param universe:
+            Currnet trading universe
+
+        :param trades:
+            Trades executed on this cycle
+
+        :param state:
+            Current execution state
+
+        :param debug_details:
+            Dict of random debug stuff
         """
 
     def setup_routing(self, universe: StrategyExecutionUniverse) -> Tuple[RoutingState, PricingModel, ValuationModel]:
@@ -288,16 +307,17 @@ class StrategyRunner(abc.ABC):
         return routing_state, pricing_model, valuation_model
 
     def tick(self,
-             clock: datetime.datetime,
+             strategy_cycle_timestamp: datetime.datetime,
              universe: StrategyExecutionUniverse,
              state: State,
              debug_details: dict,
              cycle_duration: Optional[CycleDuration] = None,
-        ) -> dict:
+             cycle: Optional[int] = None,
+             ) -> dict:
         """Execute the core functions of a strategy.
 
-        :param clock:
-            Current timestamp of the execution cycle
+        :param strategy_cycle_timestamp:
+            Current timestamp of the execution cycle.
 
         :param universe:
             Loaded trading data
@@ -313,6 +333,9 @@ class StrategyRunner(abc.ABC):
             This may be specific in a strategy module, but also overridden for testing.
             This is used only for logging purposes.
 
+        :param cycle:
+            Strategy cycle number
+
         :param execution_context:
             Live or backtesting
 
@@ -322,27 +345,32 @@ class StrategyRunner(abc.ABC):
 
         assert isinstance(universe, StrategyExecutionUniverse)
 
+        assert isinstance(strategy_cycle_timestamp, datetime.datetime)
+
+        if cycle_duration not in (CycleDuration.cycle_unknown, None):
+            assert strategy_cycle_timestamp.second == 0, f"Cycle duration {cycle_duration}: Does not look like a cycle timestamp: {strategy_cycle_timestamp}, should be even minutes"
+
         friendly_cycle_duration = cycle_duration.value if cycle_duration else "-"
-        with self.timed_task_context_manager("strategy_tick", clock=clock, cycle_duration=friendly_cycle_duration):
+        with self.timed_task_context_manager("strategy_tick", clock=strategy_cycle_timestamp, cycle_duration=friendly_cycle_duration):
 
             routing_state, pricing_model, valuation_model = self.setup_routing(universe)
             assert pricing_model, "Routing did not provide pricing_model"
 
             # Watch incoming deposits
             with self.timed_task_context_manager("sync_portfolio"):
-                self.sync_portfolio(clock, universe, state, debug_details)
+                self.sync_portfolio(strategy_cycle_timestamp, universe, state, debug_details)
 
             # Assing a new value for every existing position
             with self.timed_task_context_manager("revalue_portfolio"):
-                self.revalue_portfolio(clock, state, valuation_model)
+                self.revalue_portfolio(strategy_cycle_timestamp, state, valuation_model)
 
             # Log output
             if self.is_progress_report_needed():
-                self.report_after_sync_and_revaluation(clock, universe, state, debug_details)
+                self.report_after_sync_and_revaluation(strategy_cycle_timestamp, universe, state, debug_details)
 
             # Run the strategy cycle
             with self.timed_task_context_manager("decide_trades"):
-                rebalance_trades = self.on_clock(clock, universe, pricing_model, state, debug_details)
+                rebalance_trades = self.on_clock(strategy_cycle_timestamp, universe, pricing_model, state, debug_details)
                 assert type(rebalance_trades) == list
                 debug_details["rebalance_trades"] = rebalance_trades
 
@@ -355,14 +383,15 @@ class StrategyRunner(abc.ABC):
                             last_point_at
                             )
 
-            # Log output
+            # Log what our strategy decided
             if self.is_progress_report_needed():
                 self.report_strategy_thinking(
-                    clock,
-                    universe,
-                    state,
-                    rebalance_trades,
-                    debug_details)
+                    strategy_cycle_timestamp=strategy_cycle_timestamp,
+                    cycle=cycle,
+                    universe=universe,
+                    state=state,
+                    trades=rebalance_trades,
+                    debug_details=debug_details)
 
             # Shortcut quit here if no trades are needed
             if len(rebalance_trades) == 0:
@@ -378,7 +407,7 @@ class StrategyRunner(abc.ABC):
 
             # Log output
             if self.is_progress_report_needed():
-                self.report_before_execution(clock, universe, state, approved_trades, debug_details)
+                self.report_before_execution(strategy_cycle_timestamp, universe, state, approved_trades, debug_details)
 
             # Physically execute the trades
             with self.timed_task_context_manager("execute_trades", trade_count=len(approved_trades)):
@@ -387,7 +416,7 @@ class StrategyRunner(abc.ABC):
                 check_balances = debug_details.get("check_balances", False)
 
                 self.execution_model.execute_trades(
-                    clock,
+                    strategy_cycle_timestamp,
                     state,
                     approved_trades,
                     self.routing_model,
@@ -396,7 +425,7 @@ class StrategyRunner(abc.ABC):
 
             # Log output
             if self.is_progress_report_needed():
-                self.report_after_execution(clock, universe, state, debug_details)
+                self.report_after_execution(strategy_cycle_timestamp, universe, state, debug_details)
 
         return debug_details
 

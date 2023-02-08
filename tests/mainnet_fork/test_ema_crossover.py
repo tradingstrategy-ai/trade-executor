@@ -22,6 +22,7 @@ from eth_account import Account
 
 from eth_defi.abi import get_deployed_contract
 from eth_defi.anvil import fork_network_anvil
+from eth_defi.chain import install_chain_middleware
 from eth_defi.confirmation import wait_transactions_to_complete
 from eth_defi.gas import node_default_gas_price_strategy
 from eth_typing import HexAddress, HexStr
@@ -76,13 +77,11 @@ def anvil_bnb_chain_fork(logger, large_busd_holder) -> str:
 
     mainnet_rpc = os.environ["BNB_CHAIN_JSON_RPC"]
 
-    # Start Ganache
     launch = fork_network_anvil(
         mainnet_rpc,
         unlocked_addresses=[large_busd_holder])
     try:
         yield launch.json_rpc_url
-        # Wind down Ganache process after the test is complete
     finally:
         launch.close(log_level=logging.INFO)
 
@@ -123,12 +122,10 @@ def strategy_path() -> Path:
     return Path(os.path.join(os.path.dirname(__file__), "../..", "strategies", "ema-crossover-long-only-no-stop-loss.py"))
 
 
-@pytest.mark.skipif(os.environ.get("CI") is not None, reason="This test is too flaky on Github CI. Manual runs only.")
-@flaky.flaky  # Flaky because of Ganache
 def test_ema_crossover(
         logger: logging.Logger,
         strategy_path: Path,
-        ganache_bnb_chain_fork,
+        anvil_bnb_chain_fork,
         hot_wallet: HotWallet,
         persistent_test_cache_path,
     ):
@@ -151,7 +148,7 @@ def test_ema_crossover(
         "STRATEGY_FILE": strategy_path.as_posix(),
         "PRIVATE_KEY": hot_wallet.account.key.hex(),
         "HTTP_ENABLED": "false",
-        "JSON_RPC": ganache_bnb_chain_fork,
+        "JSON_RPC": anvil_bnb_chain_fork,
         "GAS_PRICE_METHOD": "legacy",
         "STATE_FILE": state_file,
         "RESET_STATE": "true",

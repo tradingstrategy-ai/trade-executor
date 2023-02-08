@@ -29,6 +29,7 @@ from tradeexecutor.ethereum.uniswap_v2_execution import UniswapV2ExecutionModel
 from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2SimpleRoutingModel
 from tradeexecutor.state.state import State, UncleanState
 from tradeexecutor.state.trade import TradeExecution
+from tradeexecutor.strategy.cycle import snap_to_previous_tick
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.trading_strategy_universe import translate_trading_pair, TradingStrategyUniverse
@@ -536,12 +537,15 @@ def test_broadcast_failed_and_repair_state(
     # to signal we are testing broadcast problems
     execution_model.confirmation_timeout = datetime.timedelta(seconds=-1)
 
+    strategy_cycle_timestamp = snap_to_previous_tick(ts, loop.cycle_duration)
+
     loop.tick(
         ts,
         loop.cycle_duration,
         state,
         cycle=1,
         live=True,
+        strategy_cycle_timestamp=strategy_cycle_timestamp,
     )
 
     # Reset confirmation timeout to the normal value

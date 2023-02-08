@@ -224,7 +224,7 @@ class ExecutionLoop:
              ) -> StrategyExecutionUniverse:
         """Run one trade execution tick.
 
-        :parma unrounded_timestamp:
+        :param unrounded_timestamp:
             The approximately time when this ticket was triggered.
             Alawys after the tick timestamp.
             Will be rounded to the nearest cycle duration timestamps.
@@ -271,7 +271,7 @@ class ExecutionLoop:
             "strategy_cycle_trigger": self.strategy_cycle_trigger.value,
         }
 
-        logger.trade("Performing strategy tick #%d for timestamp %s, cycle length is %s, unrounded time is %s, live trading is %s, the exisitng univese is %s",
+        logger.trade("Performing strategy tick #%d for timestamp %s, cycle length is %s, trigger time was %s, live trading is %s, trading univese is %s",
                      cycle,
                      ts,
                      cycle_duration.value,
@@ -317,10 +317,11 @@ class ExecutionLoop:
 
         # Execute the strategy tick and trades
         self.runner.tick(
-            ts,
-            universe,
-            state,
-            debug_details,
+            strategy_cycle_timestamp=ts,
+            universe=universe,
+            state=state,
+            debug_details=debug_details,
+            cycle_duration=cycle_duration,
         )
 
         state.uptime.record_cycle_complete(cycle)
@@ -570,6 +571,7 @@ class ExecutionLoop:
                     state,
                     cycle,
                     live=False,
+                    strategy_cycle_timestamp=ts,
                     existing_universe=universe)
 
                 # Revalue our portfolio
@@ -729,10 +731,11 @@ class ExecutionLoop:
 
                 # Run the main strategy logic
                 universe = self.tick(
-                    ts,
+                    unrounded_timestamp,
                     self.cycle_duration,
                     state,
                     cycle,
+                    strategy_cycle_timestamp=strategy_cycle_timestamp,
                     existing_universe=universe,
                     live=True,
                     extra_debug_data=extra_debug_data,

@@ -80,7 +80,8 @@ class PandasTraderRunner(StrategyRunner):
                     raise PreflightCheckFailed(f"We do not have up-to-date data for candles. Last candles are at {end}")
 
     def report_strategy_thinking(self,
-                                 clock: datetime.datetime,
+                                 strategy_cycle_timestamp: datetime.datetime,
+                                 cycle: int,
                                  universe: TradingStrategyUniverse,
                                  state: State,
                                  trades: List[TradeExecution],
@@ -90,6 +91,24 @@ class PandasTraderRunner(StrategyRunner):
         - Post latest variables
 
         - Draw the single pair strategy visualisation.
+
+        :param strategy_cycle_timestamp:
+            real time lock
+
+        :param cycle:
+            Cycle number
+
+        :param universe:
+            Currnet trading universe
+
+        :param trades:
+            Trades executed on this cycle
+
+        :param state:
+            Current execution state
+
+        :param debug_details:
+            Dict of random debug stuff
         """
 
         visualisation = state.visualisation
@@ -142,7 +161,7 @@ class PandasTraderRunner(StrategyRunner):
 
             print("Strategy thinking", file=buf)
             print("", file=buf)
-            print(f"  Now: {datetime.datetime.utcnow()} UTC", file=buf)
+            print(f"  Strategy cycle #{cycle}: {strategy_cycle_timestamp} UTC, now is {datetime.datetime.utcnow()}", file=buf)
             print(f"  Last candle at: {last_candle['timestamp']} UTC, market data and action lag: {lag}", file=buf)
             print(f"  Price open:{last_candle['open']} close:{last_candle['close']} {pair.base.token_symbol} / {pair.quote.token_symbol}", file=buf)
 

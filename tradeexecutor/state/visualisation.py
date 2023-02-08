@@ -18,10 +18,14 @@ from dataclasses import dataclass, field
 from types import NoneType
 from typing import List, Dict, Optional, Any, Union, Tuple
 import pandas as pd
+import logging
 
 from dataclasses_json import dataclass_json
 
 from tradeexecutor.utils.timestamp import convert_and_validate_timestamp, convert_and_validate_timestamp_as_int
+
+
+logger = logging.getLogger(__name__)
 
 
 class PlotKind(enum.Enum):
@@ -84,6 +88,7 @@ class Plot:
         assert isinstance(timestamp, datetime.datetime)
         assert isinstance(value, (float, NoneType)), f"Got {value} ({value.__class__})"
         timestamp = convert_and_validate_timestamp_as_int(timestamp)
+        logger.info("Plotting %s at %s: %s", self.name, timestamp, value)
         self.points[timestamp] = value
 
     def get_last_value(self) -> float:
