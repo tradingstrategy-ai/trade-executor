@@ -29,6 +29,7 @@ from tradeexecutor.state.freeze import freeze_position_on_failed_trade
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2SimpleRoutingModel, UniswapV2RoutingState
 from tradeexecutor.ethereum.uniswap_v3_routing import UniswapV3SimpleRoutingModel, UniswapV3RoutingState
+from tradeexecutor.strategy.execution_model import ExecutionModel
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +41,7 @@ class TradeExecutionFailed(Exception):
     """Our Uniswap trade reverted"""
 
 # TODO check with tradeexuctor.strategy.execution ExecutionModel
-class EthereumExecutionModel(ABC):
+class EthereumExecutionModel(ExecutionModel):
     """Run order execution on a single Uniswap v2 style exchanges."""
 
     @abstractmethod
