@@ -2,7 +2,7 @@
 
 Suitable for multithread and multiprocess watching.
 """
-
+import enum
 import logging
 import os
 import signal
@@ -17,7 +17,7 @@ logger = logging.getLogger()
 
 
 #: Watchdog is a multprocess safe dict for now
-WatchdogRegistry: TypeAlias = DictProxy
+WatchdogRegistry: TypeAlias = DictProxy | dict
 
 
 #: Internal multiprocess manager co-ordinator
@@ -34,7 +34,29 @@ class WorkerNotRegistered(Exception):
     """Tried to get ping from a worker that is not yet registered."""
 
 
-def create_watchdog_registry() -> WatchdogRegistry:
+class WatchdogMode(enum.Enum):
+    """How does the watchdog communicate with its tasks."""
+
+    #: Thread based.
+    #:
+    #: The application does not need to communicate with child processe.
+    thread_based = "thread_based"
+
+    #: Process based.
+    #:
+    #: The application has child processes and needs to set up
+    #: multiprocess communicatons.
+    #:
+    #: :py:class:`DictProxy` is used to communicate task
+    #: liveness and it works across process boundaries.
+    #:
+    #: For the caveats see,
+    #: https://stackoverflow.com/a/75385991/315168 as this may
+    #: cause zombie processes.
+    process_based = "process_based"
+
+
+def create_watchdog_registry(mode: WatchdogMode) -> WatchdogRegistry:
     """Create new multiprocess co-ordation structure.
 
     - Call in the master process
@@ -44,12 +66,17 @@ def create_watchdog_registry() -> WatchdogRegistry:
     :return:
         Multiprocess communication safe dict
     """
+
     global _manager
 
-    if _manager is None:
-        _manager = Manager()
-
-    return _manager.dict()
+    if mode == WatchdogMode.process_based:
+        if _manager is None:
+            _manager = Manager()
+        return _manager.dict()
+    else:
+        # For thread-based co-ordinate we can use a normal Python dict
+        # that is thread safe
+        return dict()
 
 
 def register_worker(watchdog_registry: WatchdogRegistry, name: str, timeout_seconds: float):
@@ -178,5 +205,3 @@ def suicide():
     https://stackoverflow.com/a/7099229/315168
     """
     os.kill(os.getpid(), signal.SIGINT)
-
-

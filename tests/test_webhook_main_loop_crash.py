@@ -5,11 +5,14 @@ import secrets
 import subprocess
 import time
 from pathlib import Path
-
 import flaky
 import pytest
 import requests
 from hexbytes import HexBytes
+import logging
+
+
+logger = logging.getLogger(__name__)
 
 
 @pytest.fixture()
@@ -88,6 +91,8 @@ def test_main_loop_crash(
             server_up = True
             break
 
+        logger.info("The web server is up")
+
         if not server_up:
             proc.terminate()
             proc.wait()
@@ -105,6 +110,8 @@ def test_main_loop_crash(
         assert data["completed_cycle"] is None
         assert data["exception"] is None
         assert data["executor_running"] is True
+
+        logger.info("Waiting for the crash")
 
         # Now wait until the main loop crashes
         deadline = time.time() + 30
@@ -129,8 +136,11 @@ def test_main_loop_crash(
 
             time.sleep(0.5)
 
+        logger.info("Crash loop exited, got the right exception %s", got_right_exception)
+
         if not got_right_exception:
             # Execution loop did not crash
+            logger.info("Did not get expected error")
             proc.terminate()
             proc.wait()
             pipes = proc.communicate()
@@ -141,12 +151,19 @@ def test_main_loop_crash(
             raise AssertionError(f"Execution loop did not crash when crash was expected, last reply: {data}")
 
     finally:
+        logger.info("Terminating")
         proc.terminate()
-        proc.wait()
+        return_code = proc.wait()
+
+        logger.info("Done, return code is %d", return_code)
 
         if proc.returncode != 0:
+            logger.info("Reading output")
             pipes = proc.communicate()
+            logger.info("Has pipes")
             output = pipes[0].decode("utf-8")
             output += pipes[1].decode("utf-8")
-            print(f"trade-executor exited {proc.returncode}, output:")
-            print(output)
+            # logger.info(f"trade-executor exited {proc.returncode}, output:")
+            # logger.info(output)
+
+        logger.info("Finished")

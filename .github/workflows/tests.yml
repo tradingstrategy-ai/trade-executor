@@ -31,11 +31,19 @@ jobs:
           key: venv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('**/poetry.lock') }}
       - name: Install Ganache
         run: npm install -g ganache
+      - name: Install Anvil
+        run: |
+          curl -L https://foundry.paradigm.xyz | bash
+          PATH=~/.foundry/bin:$PATH
+          foundryup
+          anvil --version
       - name: Install dependencies
         if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
         # We don't install -E qstrader and run legacy tests on CI as they
         # download too much data
-        run: poetry install --no-interaction -E web-server -E execution
+        run: |
+          PATH=~/.foundry/bin:$PATH
+          poetry install --no-interaction -E web-server -E execution
       - name: Run test scripts
         run: poetry run pytest --tb=native
         env:

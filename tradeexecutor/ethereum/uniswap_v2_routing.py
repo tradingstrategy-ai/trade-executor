@@ -178,8 +178,13 @@ class UniswapV2SimpleRoutingModel(RoutingModelBase):
 
         assert reserve_token_address.lower() == reserve_token_address
 
-        # TODO remove trading_fee
-        assert trading_fee is not None, "Trading fee missing"
+        # TODO Fix trading fee handling away from here,
+        # as this information is now available for every pair.
+        # Only test_main_loop and others need this anymore
+        if trading_fee is None:
+            trading_fee = 0.0030
+
+        assert trading_fee is not None, "Trading fee missing for"
         assert trading_fee >= 0, f"Got fee: {trading_fee}"
         assert trading_fee <= 1, f"Got fee: {trading_fee}"
 

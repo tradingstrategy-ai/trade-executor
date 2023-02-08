@@ -131,13 +131,13 @@ def start(
         else:
             log_level = logging.INFO
 
-    if log_level != "disabled":
-        logger = setup_logging(log_level, in_memory_buffer=True)
-    else:
-        # Make sure unit tests run logs do not get polluted
-        # Don't touch any log levels, but
-        # make sure we have logger.trading() available
-        setup_custom_log_levels()
+    print("Hello")
+
+    # Make sure unit tests run logs do not get polluted
+    # Don't touch any log levels, but
+    # make sure we have logger.trading() available when
+    # log_level is "disabled"
+    logger = setup_logging(log_level, in_memory_buffer=True)
 
     if discord_webhook_url:
         setup_discord_logging(

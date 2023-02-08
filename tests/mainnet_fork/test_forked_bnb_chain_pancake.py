@@ -19,6 +19,9 @@ from typing import List
 import flaky
 import pytest
 from eth_account import Account
+from eth_defi.anvil import fork_network_anvil
+from eth_defi.chain import install_chain_middleware
+from eth_defi.gas import node_default_gas_price_strategy
 from eth_typing import HexAddress, HexStr
 from hexbytes import HexBytes
 
@@ -74,7 +77,7 @@ def large_busd_holder() -> HexAddress:
 
 
 @pytest.fixture()
-def ganache_bnb_chain_fork(logger, large_busd_holder) -> str:
+def anvil_bnb_chain_fork(logger, large_busd_holder) -> str:
     """Create a testable fork of live BNB chain.
 
     :return: JSON-RPC URL for Web3
@@ -82,25 +85,25 @@ def ganache_bnb_chain_fork(logger, large_busd_holder) -> str:
 
     mainnet_rpc = os.environ["BNB_CHAIN_JSON_RPC"]
 
-    if not is_localhost_port_listening(19999):
-        # Start Ganache
-        launch = fork_network(
-            mainnet_rpc,
-            unlocked_addresses=[large_busd_holder])
+    # Start Ganache
+    launch = fork_network_anvil(
+        mainnet_rpc,
+        unlocked_addresses=[large_busd_holder])
+    try:
         yield launch.json_rpc_url
         # Wind down Ganache process after the test is complete
-        launch.close(verbose=True)
-    else:
-        logger.warning("Detected existing Ganache running - terminate with: kill -9 $(lsof -ti:19999)")
-        # Assume ganache-cli manually launched by the dev
-        yield "http://localhost:19999"
+    finally:
+        launch.close(log_level=logging.INFO)
 
 
 @pytest.fixture
-def web3(ganache_bnb_chain_fork: str):
+def web3(anvil_bnb_chain_fork: str):
     """Set up a local unit testing blockchain."""
     # https://web3py.readthedocs.io/en/stable/examples.html#contract-unit-tests-in-python
-    return Web3(HTTPProvider(ganache_bnb_chain_fork, request_kwargs={"timeout": 2}))
+    web3 = Web3(HTTPProvider(anvil_bnb_chain_fork, request_kwargs={"timeout": 5}))
+    web3.eth.set_gas_price_strategy(node_default_gas_price_strategy)
+    install_chain_middleware(web3)
+    return web3
 
 
 @pytest.fixture
@@ -245,8 +248,6 @@ def routing_model(asset_busd):
         reserve_token_address=asset_busd.address)
 
 
-# Flaky because Ganache
-@flaky.flaky(max_runs=5)
 def test_forked_pancake(
         logger: logging.Logger,
         web3: Web3,
