@@ -663,8 +663,6 @@ class ExecutionLoop:
             ts = datetime.datetime.now()
             universe = self.tick(ts, self.cycle_duration, state, cycle, live=True)
 
-        ts_universe = cast(TradingStrategyUniverse, universe)
-
         # Create a watchdog thread that checks that the live trading cycle
         # has completed for every candle + some tolerance minutes.
         # This will terminate the live trading process if it has hung for a reason or another.
