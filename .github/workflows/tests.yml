@@ -39,11 +39,12 @@ jobs:
         if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
         # We don't install -E qstrader and run legacy tests on CI as they
         # download too much data
-        run: |
-          PATH=~/.foundry/bin:$PATH
+        run: |          
           poetry install --no-interaction -E web-server -E execution
       - name: Run test scripts
-        run: poetry run pytest --tb=native
+        run: |
+          PATH=~/.foundry/bin:$PATH
+          poetry run pytest --tb=native
         env:
           TRADING_STRATEGY_API_KEY: ${{ secrets.TRADING_STRATEGY_API_KEY }}
           BNB_CHAIN_JSON_RPC: ${{ secrets.BNB_CHAIN_JSON_RPC }}      
