@@ -15,6 +15,7 @@ from eth_defi.abi import get_deployed_contract
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
+from tradeexecutor.strategy.trading_strategy_universe import translate_token, translate_trading_pair
 
 from tradingstrategy.pair import PandasPairUniverse
 

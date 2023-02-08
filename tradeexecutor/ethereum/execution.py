@@ -392,7 +392,9 @@ class EthereumExecutionModel(ExecutionModel):
 
                 
             if trade.is_buy():
-                result = self.analyse_trade_by_receipt(web3, uniswap, tx_dict, swap_tx.tx_hash, receipt, reverse_order=True)
+                result = self.analyse_trade_by_receipt(web3, uniswap, tx_dict, swap_tx.tx_hash, receipt)
+                
+                # result = self.analyse_trade_by_receipt(web3, uniswap, tx_dict, swap_tx.tx_hash, receipt, reverse_order=True)
                 
                 if isinstance(result, TradeSuccess):
                 
