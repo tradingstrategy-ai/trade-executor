@@ -38,7 +38,9 @@ def test_run_one_live_cycle(
 
     - Run the trading cycle once
 
-    - The strateg is a dummy placeholder, it will never give any trades to execute
+    - Downloads MATIC-USDC data for Quickswap
+
+    - The strategy is a dummy placeholder, it will never give any trades to execute
 
     - Can be run with free or private Polygon RPC node
 
@@ -48,9 +50,7 @@ def test_run_one_live_cycle(
 
     """
 
-    debug_dump_file = "/tmp/trading_data_availability_based_strategy_cycle_trigger.debug.json"
-
-    state_file = "/tmp/trading_data_availability_based_strategy_cycle_trigger.json"
+    state_file = "/tmp/test_run_one_live_cycle.json"
 
     # Set up the configuration for the backtesting,
     # run the loop 6 cycles using Ganache + live BNB Chain fork
@@ -61,14 +61,12 @@ def test_run_one_live_cycle(
         "RESET_STATE": "true",
         "EXECUTION_TYPE": "dummy",
         "STRATEGY_CYCLE_TRIGGER": "cycle_offset",
-        "CACHE_PATH": "/tmp/trading_data_availability_based_strategy_cycle_trigger",
+        "CACHE_PATH": "/tmp/test_run_one_live_cycle",
         "TRADING_STRATEGY_API_KEY": os.environ["TRADING_STRATEGY_API_KEY"],
-        "DEBUG_DUMP_FILE": debug_dump_file,
         "CYCLE_DURATION": "1m",
-        "CONFIRMATION_BLOCK_COUNT": "8",
-        "MAX_POSITIONS": "2",
         "UNIT_TESTING": "true",
         "MAX_CYCLES": "1",
+        "LOG_LEVEL": "disabled",
     }
 
     # Don't use CliRunner.invoke() here,
