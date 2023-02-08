@@ -183,7 +183,7 @@ def strategy_path() -> Path:
 
 
 # Confirmation timeout issues
-@pytest.skip(reason="Confirmation timeout issues. Check how to change Anvil to zero block time.")
+@pytest.mark.skip(reason="Confirmation timeout issues. Check how to change Anvil to zero block time.")
 def test_main_loop_success(
         logger: logging.Logger,
         strategy_path: Path,
