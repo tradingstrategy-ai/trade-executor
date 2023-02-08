@@ -28,7 +28,6 @@ def strategy_path() -> Path:
     return Path(os.path.join(os.path.dirname(__file__), "..", "strategies", "test_only", "quickswap_dummy.py"))
 
 
-@pytest.mark.skipif(os.environ.get("CI") is not None, reason="This test is too flaky on Github CI. Manual runs only.")
 def test_trading_data_availability_based_strategy_cycle_trigger(
         strategy_path: Path,
     ):
