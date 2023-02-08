@@ -8,6 +8,7 @@ on:
 
 jobs:
   automated-test-suite:
+    timeout-minutes: 20
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
