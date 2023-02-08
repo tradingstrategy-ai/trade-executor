@@ -137,7 +137,8 @@ class EthereumExecutionModel(ExecutionModel):
         uniswap: UniswapV2Deployment, 
         tx: dict, 
         tx_hash: str,
-        tx_receipt: dict
+        tx_receipt: dict,
+        reverse_order: bool = False
     ) -> (TradeSuccess | TradeFail):
         """Links to either uniswap v2 or v3 implementation in eth_defi"""
     
@@ -278,6 +279,11 @@ class EthereumExecutionModel(ExecutionModel):
                 receipts,
                 stop_on_execution_failure=stop_on_execution_failure)
 
+
+    @abstractmethod
+    def is_uni_v3(self) -> bool:
+        """tells if uni v3 or not"""
+    
     def execute_trades(self,
                        ts: datetime.datetime,
                        state: State,
@@ -374,7 +380,7 @@ class EthereumExecutionModel(ExecutionModel):
             Raise an exception if any of the trades failed"""
 
         web3 = self.web3
-        
+
         trades = self.update_confimation_status(ts, tx_map, receipts)
 
         # Then resolve trade status by analysis the tx receipt
@@ -390,38 +396,69 @@ class EthereumExecutionModel(ExecutionModel):
             tx_dict = swap_tx.get_transaction()
             receipt = receipts[HexBytes(swap_tx.tx_hash)]
 
-                
+            
+            # Use this for the `raw_price`
+            # Don't need to worry about ordering for raw_price
+            # `price_test` calculated the same for buy/sell
+            if is_v3 := self.is_uni_v3():
+                result_test, raw_price = self.analyse_trade_by_receipt(web3, uniswap, tx_dict, swap_tx.tx_hash, receipt)
+                price_test = raw_price/10**(quote_token_details.decimals - base_token_details.decimals)
+
+
             if trade.is_buy():
-                result = self.analyse_trade_by_receipt(web3, uniswap, tx_dict, swap_tx.tx_hash, receipt)
-                
-                # result = self.analyse_trade_by_receipt(web3, uniswap, tx_dict, swap_tx.tx_hash, receipt, reverse_order=True)
-                
+
+
+                if is_v3:
+                    result, raw_price_unused = self.analyse_trade_by_receipt(web3, uniswap, tx_dict, swap_tx.tx_hash, receipt, reverse_order=True)
+                else:
+                    result = self.analyse_trade_by_receipt(web3, uniswap, tx_dict, swap_tx.tx_hash, receipt, reverse_order=True)
+
+
+
                 if isinstance(result, TradeSuccess):
-                
+
                     path = [a.lower() for a in result.path if type(a) == str]
-                    
+
                     assert path[0] == reserve.address, f"Was expecting the route path to start with reserve token {reserve}, got path {result.path}"
                     executed_reserve = result.amount_in / Decimal(10**quote_token_details.decimals)
                     executed_amount = result.amount_out / Decimal(10**base_token_details.decimals)
-                    
+
                 else:
                     self.report_failure(ts, state, trade, stop_on_execution_failure)
             else:
                 # Ordered other way around
-                result = self.analyse_trade_by_receipt(web3, uniswap, tx_dict, swap_tx.tx_hash, receipt, reverse_order=False)
-                
+               
+               
+                if is_v3:
+                    result, raw_price_unused = self.analyse_trade_by_receipt(web3, uniswap, tx_dict, swap_tx.tx_hash, receipt, reverse_order=False)
+                else:
+                    result = self.analyse_trade_by_receipt(web3, uniswap, tx_dict, swap_tx.tx_hash, receipt, reverse_order=False)
+
+
+
                 if isinstance(result, TradeSuccess):
-                
+
                     path = [a.lower() for a in result.path if type(a) == str]
-                    
+
                     assert path[0] == base_token_details.address.lower(), f"Path is {path}, base token is {base_token_details}"
                     assert path[-1] == reserve.address
                     executed_amount = -result.amount_in / Decimal(10**base_token_details.decimals)
                     executed_reserve = result.amount_out / Decimal(10**quote_token_details.decimals)
                 else:
                     self.report_failure(ts, state, trade, stop_on_execution_failure)
-                            
+
             price = result.price
+
+            
+            if is_v3:
+                # `price_test` was calculated without ordering
+                # `price` was calculated with differently order depending on whether buy or sell
+                # somewhow, price_test == price
+                assert price == price_test
+                print(price)
+                print(price_test)
+
+
 
             assert (executed_reserve > 0) and (executed_amount != 0) and (price > 0), f"Executed amount {executed_amount}, executed_reserve: {executed_reserve}, price: {price}, tx info {trade.tx_info}"
 

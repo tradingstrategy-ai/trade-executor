@@ -81,9 +81,10 @@ class UniswapV2ExecutionModel(EthereumExecutionModel):
         uniswap: UniswapV2Deployment, 
         tx: dict, 
         tx_hash: str,
-        tx_receipt: dict
+        tx_receipt: dict,
+        reverse_order: bool = False
     ) -> (TradeSuccess | TradeFail):
-        return analyse_trade_by_receipt(web3, uniswap, tx, tx_hash, tx_receipt)
+        return analyse_trade_by_receipt(web3, uniswap, tx, tx_hash, tx_receipt, reverse_order)
     
     @staticmethod
     def mock_partial_deployment_for_analysis(
@@ -91,6 +92,9 @@ class UniswapV2ExecutionModel(EthereumExecutionModel):
         router_address: str
     ) -> UniswapV2Deployment:
         return mock_partial_deployment_for_analysis(web3, router_address)
+    
+    def is_uni_v3(self):
+        return False
     
 
 def get_current_price(web3: Web3, uniswap: UniswapV2Deployment, pair: TradingPairIdentifier, quantity=Decimal(1)) -> float:
