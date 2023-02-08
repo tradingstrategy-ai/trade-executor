@@ -235,7 +235,7 @@ class ExecutionLoop:
             The current state of the strategy
 
         :param cycle:
-            The number ofthis cycle
+            The number of this cycle
 
         :param cycle_duration:
             Cycle duration for this cycle. Either from the strategy module,

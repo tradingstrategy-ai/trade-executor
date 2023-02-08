@@ -345,7 +345,15 @@ class StrategyRunner(abc.ABC):
                 rebalance_trades = self.on_clock(clock, universe, pricing_model, state, debug_details)
                 assert type(rebalance_trades) == list
                 debug_details["rebalance_trades"] = rebalance_trades
-                logger.info("We have %d trades", len(rebalance_trades))
+
+                # Make some useful diagnostics output for log files to troubleshoot if something
+                # when wrong internally
+                _, last_point_at = state.visualisation.get_timestamp_range()
+                logger.info("We have %d new trades, %d total visualisation points, last visualisation point at %s",
+                            len(rebalance_trades),
+                            state.visualisation.get_total_points(),
+                            last_point_at
+                            )
 
             # Log output
             if self.is_progress_report_needed():

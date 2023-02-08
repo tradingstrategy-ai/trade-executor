@@ -252,3 +252,7 @@ class Visualisation:
         last_timestamp, _ = plot.get_last_entry()
 
         return first_timestamp, last_timestamp
+
+    def get_total_points(self) -> int:
+        """Get number of data points stored in all plots."""
+        return sum([len(p.points) for p in self.plots.values()])
