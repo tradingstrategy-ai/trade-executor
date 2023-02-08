@@ -16,22 +16,14 @@ from tradeexecutor.ethereum.execution import EthereumExecutionModel
 import logging
 import datetime
 from decimal import Decimal
-from typing import List, Dict, Set, Tuple
 
-from eth_typing import HexAddress
-from hexbytes import HexBytes
 from web3 import Web3
 
 
 from eth_defi.hotwallet import HotWallet
-from eth_defi.revert_reason import fetch_transaction_revert_reason
-from eth_defi.token import fetch_erc20_details
 from eth_defi.uniswap_v2.fees import estimate_sell_price_decimals
 from eth_defi.uniswap_v2.analysis import TradeSuccess, analyse_trade_by_receipt
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, mock_partial_deployment_for_analysis
-from tradeexecutor.state.state import State
-from tradeexecutor.state.trade import TradeExecution
-from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.identifier import TradingPairIdentifier
 
 
