@@ -23,7 +23,7 @@ from tradeexecutor.ethereum.routing_state import (
     route_tokens, # don't remove, forwarded import
     OutOfBalance, # don't remove, forwarded import
 )
-from tradeexecutor.strategy.routing_model import RoutingModelBase
+from tradeexecutor.strategy.routing_model import EthereumRoutingModel
 
 logger = logging.getLogger(__name__)
 
@@ -116,7 +116,7 @@ class UniswapV3RoutingState(EthereumRoutingStateBase):
         
         return self.get_signed_tx(bound_swap_func, self.swap_gas_limit)
 
-class UniswapV3SimpleRoutingModel(RoutingModelBase):
+class UniswapV3SimpleRoutingModel(EthereumRoutingModel):
     """A simple router that does not optimise the trade execution cost. Designed for uniswap-v2 forks.
 
     - Able to trade on multiple exchanges

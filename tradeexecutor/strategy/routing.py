@@ -91,7 +91,107 @@ class RoutingModel(abc.ABC):
     """Trade roouting model base class.
 
     Nothing done here - check the subclasses.
+    
+    Used directly by BacktestRoutingModel and indirectly (through EthereumRoutingModel) by UniswapV2SimpleRoutingModel and UniswapV3SimpleRoutingModel
     """
+    
+    def __init__(self,
+                 allowed_intermediary_pairs: dict[str, str],
+                 reserve_token_address: str,
+                 ):
+        """
+        
+        
+        :param addresses:
+            Defines router smart contracts to be used with each DEX.
+            
+            Each Uniswap v2 is uniquely identified by its factory contract. Addresses always lowercase. Factory Router map
+            
+            For Uniswap V3, addresses is a dict of factory, router, position_manager,
+            and quoter addresses
+
+        :param allowed_intermediary_pairs:
+
+            Quote token address -> pair smart contract address mapping.
+
+            Because we hold our reserves only in one currecy e.g. BUSD
+            and we want to trade e.g. Cake/BNB pairs, we need to whitelist
+            BNB as an allowed intermediary token.
+            This makes it possible to do BUSD -> BNB -> Cake trade.
+            This set is the list of pair smart contract addresses that
+            are allowed to be used as a hop.
+
+        :param chain_id:
+            Store the chain id for which these routes were generated for.
+
+        :param reserve_token_address:
+            Token address of our reserve currency.
+            Relevent for buy/sell routing.
+            Lowercase.
+        """
+
+        assert type(allowed_intermediary_pairs) == dict
+        assert type(reserve_token_address) == str
+
+        assert reserve_token_address.lower() == reserve_token_address, "reserve token address must be specified as lower case"
+
+        self.allowed_intermediary_pairs = self.convert_address_dict_to_lower(allowed_intermediary_pairs)
+        
+        self.reserve_token_address = reserve_token_address
+    
+    @staticmethod
+    def convert_address_dict_to_lower(address_dict) -> dict:
+        """Convert all key addresses to lowercase to avoid mix up with Ethereum address checksums"""
+        return {k.lower(): v for k, v in address_dict.items()}
+    
+    @staticmethod
+    def pre_trade_assertions(reserve_asset_amount: int, max_slippage: float, target_pair: TradingPairIdentifier, reserve_asset: AssetIdentifier) -> None:
+        """Some basic assertions made at the beginning of the trade() method on child class.
+        
+        returns: None. 
+            An error will be raised during method call if assertions aren't met."""
+        assert type(reserve_asset_amount) == int
+        assert max_slippage is not None, "Max slippage must be given"
+        assert type(max_slippage) == float
+        assert reserve_asset_amount > 0, f"For sells, switch reserve_asset to different token. Got target_pair: {target_pair}, reserve_asset: {reserve_asset}, amount: {reserve_asset_amount}"
+    
+    def get_reserve_asset(self, pair_universe: PandasPairUniverse) -> AssetIdentifier:
+        """Translate our reserve token address tok an asset description."""
+        assert pair_universe is not None, "Pair universe missing"
+        reserve_token = pair_universe.get_token(self.reserve_token_address)
+        assert reserve_token, f"Pair universe does not contain our reserve asset {self.reserve_token_address}"
+        return translate_token(reserve_token)
+     
+    def route_pair(self, pair_universe: PandasPairUniverse, trading_pair: TradingPairIdentifier) -> tuple[TradingPairIdentifier, Optional[TradingPairIdentifier]]:
+        """Return Uniswap routing information (path components) for a trading pair.
+
+        For three-way pairs, figure out the intermedia step.
+
+        :return:
+            (router address, target pair, intermediate pair) tuple
+        """
+
+        self.route_pair_assertions(trading_pair, pair_universe)
+        
+        reserve_asset = self.get_reserve_asset(pair_universe)
+
+        # We can directly do a two-way trade
+        if trading_pair.quote == reserve_asset:
+            return trading_pair, None
+
+        # Try to find a mid-hop pool for the trade
+        intermediate_pair_contract_address = self.allowed_intermediary_pairs.get(trading_pair.quote.address.lower())
+
+        if not intermediate_pair_contract_address:
+            raise CannotRouteTrade(f"Does not know how to trade pair {trading_pair} - supported intermediate tokens are {list(self.allowed_intermediary_pairs.keys())}")
+
+        dex_pair = pair_universe.get_pair_by_smart_contract(intermediate_pair_contract_address)
+        assert dex_pair is not None, f"Pair universe did not contain pair for a pair contract address {intermediate_pair_contract_address}, quote token is {trading_pair.quote}"
+
+        if intermediate_pair := translate_trading_pair(dex_pair):
+            return trading_pair, intermediate_pair
+        else:
+            raise CannotRouteTrade(f"Universe does not have a trading pair with smart contract address {intermediate_pair_contract_address}")
 
     def perform_preflight_checks_and_logging(self, pair_universe: PandasPairUniverse):
         """"Checks the integrity of the routing.

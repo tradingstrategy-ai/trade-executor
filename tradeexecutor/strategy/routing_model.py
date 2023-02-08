@@ -22,8 +22,7 @@ from tradeexecutor.ethereum.routing_state import EthereumRoutingStateBase
 
 logger = logging.getLogger(__name__)
 
-# TODO look at combining RoutingModelBase and RoutingModel
-class RoutingModelBase(RoutingModel):
+class EthereumRoutingModel(RoutingModel):
     """A simple router that does not optimise the trade execution cost. Designed for uniswap-v2 forks.
 
     - Able to trade on multiple exchanges
@@ -68,22 +67,11 @@ class RoutingModelBase(RoutingModel):
             Lowercase.
         """
 
-        assert type(allowed_intermediary_pairs) == dict
-        assert type(reserve_token_address) == str
-
-        assert reserve_token_address.lower() == reserve_token_address, "reserve token address must be specified as lower case"
-
-        self.allowed_intermediary_pairs = self.convert_address_dict_to_lower(allowed_intermediary_pairs)
+        super().__init__(allowed_intermediary_pairs, reserve_token_address)
         
-        self.reserve_token_address = reserve_token_address
         self.chain_id = chain_id
     
-    def get_reserve_asset(self, pair_universe: PandasPairUniverse) -> AssetIdentifier:
-        """Translate our reserve token address tok an asset description."""
-        assert pair_universe is not None, "Pair universe missing"
-        reserve_token = pair_universe.get_token(self.reserve_token_address)
-        assert reserve_token, f"Pair universe does not contain our reserve asset {self.reserve_token_address}"
-        return translate_token(reserve_token)
+    
 
     def make_direct_trade(self,
                           routing_state: EthereumRoutingStateBase,
@@ -347,37 +335,6 @@ class RoutingModelBase(RoutingModel):
         routing_state = Routing_State(universe.universe.pairs, tx_builder)
         return routing_state
     
-    def route_pair(self, pair_universe: PandasPairUniverse, trading_pair: TradingPairIdentifier) -> Tuple[TradingPairIdentifier, Optional[TradingPairIdentifier]]:
-        """Return Uniswap routing information (path components) for a trading pair.
-
-        For three-way pairs, figure out the intermedia step.
-
-        :return:
-            (router address, target pair, intermediate pair) tuple
-        """
-
-        self.route_pair_assertions(trading_pair, pair_universe)
-        
-        reserve_asset = self.get_reserve_asset(pair_universe)
-
-        # We can directly do a two-way trade
-        if trading_pair.quote == reserve_asset:
-            return trading_pair, None
-
-        # Try to find a mid-hop pool for the trade
-        intermediate_pair_contract_address = self.allowed_intermediary_pairs.get(trading_pair.quote.address.lower())
-
-        if not intermediate_pair_contract_address:
-            raise CannotRouteTrade(f"Does not know how to trade pair {trading_pair} - supported intermediate tokens are {list(self.allowed_intermediary_pairs.keys())}")
-
-        dex_pair = pair_universe.get_pair_by_smart_contract(intermediate_pair_contract_address)
-        assert dex_pair is not None, f"Pair universe did not contain pair for a pair contract address {intermediate_pair_contract_address}, quote token is {trading_pair.quote}"
-
-        if intermediate_pair := translate_trading_pair(dex_pair):
-            return trading_pair, intermediate_pair
-        else:
-            raise CannotRouteTrade(f"Universe does not have a trading pair with smart contract address {intermediate_pair_contract_address}")
-    
     def route_trade(self, pair_universe: PandasPairUniverse, trade: TradeExecution) -> Tuple[TradingPairIdentifier, Optional[TradingPairIdentifier]]:
         """Figure out how to map an abstract trade to smart contracts.
 
@@ -402,19 +359,3 @@ class RoutingModelBase(RoutingModel):
 
         # Only issue for legacy code
         assert pair_universe, "PairUniverse must be given so that we know how to route three way trades"
-        
-    @staticmethod
-    def convert_address_dict_to_lower(address_dict) -> dict:
-        """Convert all key addresses to lowercase to avoid mix up with Ethereum address checksums"""
-        return {k.lower(): v for k, v in address_dict.items()}
-    
-    @staticmethod
-    def pre_trade_assertions(reserve_asset_amount: int, max_slippage: float, target_pair: TradingPairIdentifier, reserve_asset: AssetIdentifier) -> None:
-        """Some basic assertions made at the beginning of the trade() method on child class.
-        
-        returns: None. 
-            An error will be raised during method call if assertions aren't met."""
-        assert type(reserve_asset_amount) == int
-        assert max_slippage is not None, "Max slippage must be given"
-        assert type(max_slippage) == float
-        assert reserve_asset_amount > 0, f"For sells, switch reserve_asset to different token. Got target_pair: {target_pair}, reserve_asset: {reserve_asset}, amount: {reserve_asset_amount}"

@@ -10,7 +10,7 @@ from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.routing import RoutingModel, RoutingState
-from tradeexecutor.strategy.routing_model import RoutingModelBase
+from tradeexecutor.strategy.routing_model import EthereumRoutingModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_token
 from tradingstrategy.pair import PandasPairUniverse
 
@@ -115,16 +115,12 @@ class BacktestRoutingModel(RoutingModel):
         """
 
         assert type(factory_router_map) == dict
-        assert type(allowed_intermediary_pairs) == dict
-        assert type(reserve_token_address) == str
 
-        assert reserve_token_address.lower() == reserve_token_address
 
         # Convert all key addresses to lowercase to
         # avoid mix up with Ethereum address checksums
-        self.factory_router_map = RoutingModelBase.convert_address_dict_to_lower(factory_router_map)
-        self.allowed_intermediary_pairs = RoutingModelBase.convert_address_dict_to_lower(allowed_intermediary_pairs)
-        self.reserve_token_address = reserve_token_address
+        self.factory_router_map = self.convert_address_dict_to_lower(factory_router_map)
+
         self.trading_fee = trading_fee
 
     def get_default_trading_fee(self) -> Optional[float]:
@@ -165,7 +161,7 @@ class BacktestRoutingModel(RoutingModel):
             These transactions, like approve() may relate to the earlier
             transactions in the `routing_state`.
         """
-        RoutingModelBase.pre_trade_assertions(reserve_asset_amount, max_slippage, target_pair, reserve_asset)
+        self.pre_trade_assertions(reserve_asset_amount, max_slippage, target_pair, reserve_asset)
 
         # Our reserves match directly the asset on trading pair
         # -> we can do one leg trade
@@ -201,7 +197,7 @@ class BacktestRoutingModel(RoutingModel):
         :return:
             (router address, target pair, intermediate pair) tuple
         """
-        return RoutingModelBase.route_pair(pair_universe, trading_pair)
+        return self.route_pair(pair_universe, trading_pair)
 
     def setup_internal(self, routing_state: RoutingState, trade: TradeExecution):
         """Simulate trade braodcast and mark it as success."""

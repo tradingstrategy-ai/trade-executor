@@ -21,7 +21,7 @@ from tradeexecutor.ethereum.routing_state import (
     route_tokens, # don't remove forwarded import
     OutOfBalance, # don't remove forwarded import
 )
-from tradeexecutor.strategy.routing_model import RoutingModelBase
+from tradeexecutor.strategy.routing_model import EthereumRoutingModel
  
 logger = logging.getLogger(__name__)
 
@@ -113,7 +113,7 @@ class UniswapV2RoutingState(EthereumRoutingStateBase):
         tx = self.tx_builder.sign_transaction(bound_swap_func, self.swap_gas_limit)
         return [tx]
 
-class UniswapV2SimpleRoutingModel(RoutingModelBase):
+class UniswapV2SimpleRoutingModel(EthereumRoutingModel):
     """A simple router that does not optimise the trade execution cost.
 
     - Able to trade on multiple exchanges
@@ -127,7 +127,7 @@ class UniswapV2SimpleRoutingModel(RoutingModelBase):
                  allowed_intermediary_pairs: Dict[str, str],
                  reserve_token_address: str,
                  chain_id: Optional[ChainId] = None,
-                 trading_fee: Optional[BPS] = None
+                 trading_fee: Optional[BPS] = None # TODO remove
                  ):
         """
         :param factory_router_map:
@@ -166,11 +166,6 @@ class UniswapV2SimpleRoutingModel(RoutingModelBase):
         assert type(factory_router_map) == dict
         self.factory_router_map = self.convert_address_dict_to_lower(factory_router_map)
         
-        assert type(allowed_intermediary_pairs) == dict
-        assert type(reserve_token_address) == str
-
-        assert reserve_token_address.lower() == reserve_token_address
-
         # TODO remove trading_fee
         assert trading_fee is not None, "Trading fee missing"
         assert trading_fee >= 0, f"Got fee: {trading_fee}"
