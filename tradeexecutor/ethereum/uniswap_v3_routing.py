@@ -19,7 +19,7 @@ from tradingstrategy.pair import PandasPairUniverse
 
 from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
 from tradeexecutor.ethereum.routing_state import (
-    ethereumroutingstate, 
+    EthereumRoutingState, 
     route_tokens, # don't remove, forwarded import
     OutOfBalance, # don't remove, forwarded import
 )
@@ -28,7 +28,7 @@ from tradeexecutor.strategy.routing_model import EthereumRoutingModel
 logger = logging.getLogger(__name__)
 
 
-class UniswapV3RoutingState(ethereumroutingstate):
+class UniswapV3RoutingState(EthereumRoutingState):
     def __init__(self,
                  pair_universe: PandasPairUniverse,
                  tx_builder: Optional[TransactionBuilder]=None,
@@ -195,7 +195,7 @@ class UniswapV3SimpleRoutingModel(EthereumRoutingModel):
         
     def make_direct_trade(
         self, 
-        routing_state: ethereumroutingstate,
+        routing_state: EthereumRoutingState,
         target_pair: TradingPairIdentifier,
         reserve_asset: AssetIdentifier,
         reserve_amount: int,
@@ -215,7 +215,7 @@ class UniswapV3SimpleRoutingModel(EthereumRoutingModel):
     
     def make_multihop_trade(
         self,
-        routing_state: ethereumroutingstate,
+        routing_state: EthereumRoutingState,
         target_pair: TradingPairIdentifier,
         intermediary_pair: TradingPairIdentifier,
         reserve_asset: AssetIdentifier,

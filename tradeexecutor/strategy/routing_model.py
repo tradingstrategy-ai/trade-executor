@@ -18,7 +18,7 @@ from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniv
 from tradingstrategy.pair import PandasPairUniverse
 
 from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
-from tradeexecutor.ethereum.routing_state import ethereumroutingstate
+from tradeexecutor.ethereum.routing_state import EthereumRoutingState
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +74,7 @@ class EthereumRoutingModel(RoutingModel):
     
 
     def make_direct_trade(self,
-                          routing_state: ethereumroutingstate,
+                          routing_state: EthereumRoutingState,
                           target_pair: TradingPairIdentifier,
                           reserve_asset: AssetIdentifier,
                           reserve_amount: int,
@@ -109,8 +109,8 @@ class EthereumRoutingModel(RoutingModel):
         return txs
 
     def make_multihop_trade(self,
-                          routing_state: ethereumroutingstate, # doesn't get full typing
-                              # ethereumroutingstate throws error
+                          routing_state: EthereumRoutingState, # doesn't get full typing
+                              # EthereumRoutingState throws error
                               # due to circular import
                           target_pair: TradingPairIdentifier,
                           intermediary_pair: TradingPairIdentifier,
@@ -148,7 +148,7 @@ class EthereumRoutingModel(RoutingModel):
         return txs
 
     def trade(self,
-              routing_state: ethereumroutingstate,
+              routing_state: EthereumRoutingState,
               target_pair: TradingPairIdentifier,
               reserve_asset: AssetIdentifier,
               reserve_asset_amount: int,  # Raw amount of the reserve asset
@@ -207,7 +207,7 @@ class EthereumRoutingModel(RoutingModel):
     
     def execute_trades_internal(self,
                        pair_universe: PandasPairUniverse,
-                       routing_state: ethereumroutingstate,
+                       routing_state: EthereumRoutingState,
                        trades: List[TradeExecution],
                        check_balances=False):
         """Split for testability.
@@ -279,7 +279,7 @@ class EthereumRoutingModel(RoutingModel):
         # We can start to execute transactions.
 
     def setup_trades(self,
-                     routing_state: ethereumroutingstate,
+                     routing_state: EthereumRoutingState,
                      trades: List[TradeExecution],
                      check_balances=False):
         """Strategy and live execution connection.
@@ -305,11 +305,11 @@ class EthereumRoutingModel(RoutingModel):
     def create_routing_state(self,
                              universe: StrategyExecutionUniverse,
                              execution_details: dict,
-                             Routing_State: Type[ethereumroutingstate] 
+                             Routing_State: Type[EthereumRoutingState] 
                              # Doesn't get full typing
                              # Type[UniswapV2RoutingState] | Type[UniswapV3RoutingState]
                              # throws error due to circular import
-                             ) -> ethereumroutingstate:
+                             ) -> EthereumRoutingState:
         """Create a new routing state for this cycle.
 
         - Connect routing to web3 and hot wallet
