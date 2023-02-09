@@ -21,7 +21,7 @@ from tradeexecutor.state.state import State, TradeType
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.identifier import TradingPairIdentifier
-from tradeexecutor.strategy.ethereumtrader import EthereumTrader
+from tradeexecutor.ethereum.ethereumtrader import EthereumTrader
 
 
 class UniswapV3TestTrader(EthereumTrader):

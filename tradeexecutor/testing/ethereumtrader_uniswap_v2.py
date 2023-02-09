@@ -21,7 +21,7 @@ from tradeexecutor.state.state import State, TradeType
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.identifier import TradingPairIdentifier
-from tradeexecutor.strategy.ethereumtrader import EthereumTrader, get_base_quote_contracts
+from tradeexecutor.ethereum.ethereumtrader import EthereumTrader, get_base_quote_contracts
 
 class UniswapV2TestTrader(EthereumTrader):
     """Helper class to trade against EthereumTester unit testing network."""

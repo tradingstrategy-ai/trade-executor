@@ -22,7 +22,7 @@ from tradeexecutor.ethereum.routing_state import (
     route_tokens, # don't remove forwarded import
     OutOfBalance, # don't remove forwarded import
 )
-from tradeexecutor.strategy.routing_model import EthereumRoutingModel
+from tradeexecutor.ethereum.routing_model import EthereumRoutingModel
  
 logger = logging.getLogger(__name__)
 
