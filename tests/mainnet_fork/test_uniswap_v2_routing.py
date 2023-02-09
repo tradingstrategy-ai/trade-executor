@@ -10,12 +10,15 @@ To run these tests, we need to connect to BNB Chain:
 """
 
 import datetime
+import logging
 import os
 from decimal import Decimal
 
 import flaky
 import pytest
 from eth_account import Account
+from eth_defi.anvil import fork_network_anvil
+from eth_defi.chain import install_chain_middleware
 
 from eth_defi.gas import estimate_gas_fees, node_default_gas_price_strategy
 from eth_defi.confirmation import wait_transactions_to_complete
@@ -71,7 +74,7 @@ def large_busd_holder() -> HexAddress:
 
 
 @pytest.fixture()
-def ganache_bnb_chain_fork(logger, large_busd_holder) -> str:
+def anvil_bnb_chain_fork(logger, large_busd_holder) -> str:
     """Create a testable fork of live BNB chain.
 
     :return: JSON-RPC URL for Web3
@@ -79,31 +82,22 @@ def ganache_bnb_chain_fork(logger, large_busd_holder) -> str:
 
     mainnet_rpc = os.environ["BNB_CHAIN_JSON_RPC"]
 
-    if not is_localhost_port_listening(19999):
-        # Start Ganache
-        launch = fork_network(
-            mainnet_rpc,
-            block_time=1,  # Insta mining cannot be done in this test
-            evm_version="berlin",  # BSC is not yet London compatible?
-            unlocked_addresses=[large_busd_holder],  # Unlock WBNB stealing
-            quiet=True,  # Otherwise the Ganache output is millions lines of long
-        )
+    launch = fork_network_anvil(
+        mainnet_rpc,
+        unlocked_addresses=[large_busd_holder])
+    try:
         yield launch.json_rpc_url
-        # Wind down Ganache process after the test is complete
-        launch.close(verbose=True)
-    else:
-        # raise AssertionError("ganache zombie detected")
-
-        # Uncomment to test against manually started Ganache
-        yield "http://127.0.0.1:19999"
+    finally:
+        launch.close(log_level=logging.INFO)
 
 
 @pytest.fixture
-def web3(ganache_bnb_chain_fork: str):
+def web3(anvil_bnb_chain_fork: str):
     """Set up a local unit testing blockchain."""
     # https://web3py.readthedocs.io/en/stable/examples.html#contract-unit-tests-in-python
-    web3 = Web3(HTTPProvider(ganache_bnb_chain_fork))
+    web3 = Web3(HTTPProvider(anvil_bnb_chain_fork, request_kwargs={"timeout": 5}))
     web3.eth.set_gas_price_strategy(node_default_gas_price_strategy)
+    install_chain_middleware(web3)
     return web3
 
 
@@ -664,7 +658,6 @@ def test_three_leg_buy_sell_twice_on_chain(
             check_balances=True,
             intermediary_pair=bnb_busd_trading_pair,
         )
-
 
         # Execute
         tx_builder.broadcast_and_wait_transactions_to_complete(

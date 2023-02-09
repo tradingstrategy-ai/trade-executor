@@ -446,6 +446,9 @@ class Portfolio:
         - This deposit happened at the start of the backtest
         """
 
+        if len(self.reserves) == 0:
+            return 0
+
         assert len(self.reserves) == 1, f"Reserve assets are not defined for this state, cannot get initial deposit\n" \
                                         f"State is {self}"
         reserve = next(iter(self.reserves.values()))

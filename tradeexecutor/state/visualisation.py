@@ -16,12 +16,16 @@ import datetime
 import enum
 from dataclasses import dataclass, field
 from types import NoneType
-from typing import List, Dict, Optional, Any, Union
+from typing import List, Dict, Optional, Any, Union, Tuple
 import pandas as pd
+import logging
 
 from dataclasses_json import dataclass_json
 
 from tradeexecutor.utils.timestamp import convert_and_validate_timestamp, convert_and_validate_timestamp_as_int
+
+
+logger = logging.getLogger(__name__)
 
 
 class PlotKind(enum.Enum):
@@ -29,6 +33,7 @@ class PlotKind(enum.Enum):
 
     #: This plot is drawn on the top of the price graph
     technical_indicator_on_price = "technical_indicator_on_price"
+
 
 class PlotShape(enum.Enum):
     """
@@ -39,8 +44,10 @@ class PlotShape(enum.Enum):
     linear = "linear"
 
     #: Is the line horizontal-vertical. Used for stop loss line.
+    #:
     #: See https://plotly.com/python/line-charts/?_ga=2.83222870.1162358725.1672302619-1029023258.1667666588#interpolation-with-line-plots
     horizontal_vertical = "hv"
+
 
 @dataclass_json
 @dataclass
@@ -66,6 +73,9 @@ class Plot:
     #: TODO:
     #: Because we cannot use datetime.datetime directly as a key in JSON,
     #: we use UNIX timestamp here to keep our state easily serialisable.
+    #:
+    #: Also note that entries may not be in order - you might need
+    #: to sort the output yourself.
     points: Dict[int, float] = field(default_factory=dict)
 
     #: Is the line horizontal-vertical. Used for stop loss line. See https://plotly.com/python/line-charts/?_ga=2.83222870.1162358725.1672302619-1029023258.1667666588#interpolation-with-line-plots
@@ -78,6 +88,8 @@ class Plot:
         assert isinstance(timestamp, datetime.datetime)
         assert isinstance(value, (float, NoneType)), f"Got {value} ({value.__class__})"
         timestamp = convert_and_validate_timestamp_as_int(timestamp)
+        logger.info("Plotting %s at %s: %s", self.name, timestamp, value)
+        assert timestamp not in self.points, f"Plot {self.name} aleady has point for timestamp {timestamp}"
         self.points[timestamp] = value
 
     def get_last_value(self) -> float:
@@ -85,6 +97,43 @@ class Plot:
         # https://stackoverflow.com/a/63059166/315168
         key = next(reversed(self.points.keys()))
         return self.points[key]
+
+    def get_last_entry(self) -> Tuple[datetime.datetime, float]:
+        """Get the last entry in this plot.
+
+        :return:
+            timestamp, value tuple
+        """
+        last_entry = max(self.points.keys())
+        last_value = self.points[last_entry]
+
+        return datetime.datetime.utcfromtimestamp(last_entry), last_value
+
+    def get_first_entry(self) -> Tuple[datetime.datetime, float]:
+        """Get the first entry in this plot.
+
+        :return:
+            timestamp, value tuple
+        """
+        first_entry = min(self.points.keys())
+        first_value = self.points[first_entry]
+
+        return datetime.datetime.utcfromtimestamp(first_entry), first_value
+
+    def get_entries(self) -> List[Tuple[datetime.datetime, float]]:
+        """Get entries as a sorted list."
+
+        :return:
+            List[timestamp, value], oldest timestamp first
+        """
+        sorted_entries = []
+        keys = sorted(self.points.keys())
+        for k in keys:
+            timestamp = datetime.datetime.utcfromtimestamp(k)
+            v = self.points[k]
+            sorted_entries.append((timestamp, v))
+        return sorted_entries
+
 
 
 @dataclass_json
@@ -182,3 +231,37 @@ class Visualisation:
             plot.colour = colour
 
         self.plots[name] = plot
+
+    def get_timestamp_range(self, plot_name: Optional[str]=None) -> Tuple[Optional[datetime.datetime], Optional[datetime.datetime]]:
+        """Get the time range for which we have data.
+
+        :param plot_name:
+            Use range from a specific plot.
+
+            If not given use the first plot.
+
+        :return:
+            UTC started at, ended at.
+
+            Return None, None if no data.
+        """
+
+        if len(self.plots) == 0:
+            return None, None
+
+        if plot_name is None:
+            plot_name = next(iter(self.plots.keys()))
+
+        plot = self.plots[plot_name]
+
+        if len(plot.points) == 0:
+            return None, None
+
+        first_timestamp, _ = plot.get_first_entry()
+        last_timestamp, _ = plot.get_last_entry()
+
+        return first_timestamp, last_timestamp
+
+    def get_total_points(self) -> int:
+        """Get number of data points stored in all plots."""
+        return sum([len(p.points) for p in self.plots.values()])

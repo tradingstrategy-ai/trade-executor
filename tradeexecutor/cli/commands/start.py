@@ -18,7 +18,8 @@ from tradingstrategy.timebucket import TimeBucket
 from .app import app, TRADE_EXECUTOR_VERSION
 from ..init import prepare_executor_id, prepare_cache, create_web3_config, create_state_store, \
     create_trade_execution_model, create_metadata, create_approval_model
-from ..log import setup_logging, setup_discord_logging, setup_logstash_logging, setup_file_logging
+from ..log import setup_logging, setup_discord_logging, setup_logstash_logging, setup_file_logging, \
+    setup_custom_log_levels
 from ..loop import ExecutionLoop
 from ..result import display_backtesting_results
 from ..version_info import VersionInfo
@@ -130,6 +131,10 @@ def start(
         else:
             log_level = logging.INFO
 
+    # Make sure unit tests run logs do not get polluted
+    # Don't touch any log levels, but
+    # make sure we have logger.trading() available when
+    # log_level is "disabled"
     logger = setup_logging(log_level, in_memory_buffer=True)
 
     if discord_webhook_url:
@@ -279,7 +284,7 @@ def start(
         logger.info("Loading strategy file %s", strategy_file)
         strategy_factory = import_strategy_file(strategy_file)
 
-        logger.trade("%s: trade executor starting", name)
+        logger.trade("%s: trade execution starting", name)
 
         if backtest_start:
             # Running as a backtest

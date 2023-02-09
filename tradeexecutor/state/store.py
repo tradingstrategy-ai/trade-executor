@@ -1,5 +1,6 @@
 """State serialisation to disk and JavaScript clients."""
 import abc
+import datetime
 import enum
 import json
 import os
@@ -85,6 +86,8 @@ class JSONFileStore(StateStore):
         temp = tempfile.NamedTemporaryFile(mode='wt', delete=False, dir=dirname)
         with open(temp.name, "wt") as out:
 
+            state.last_updated_at = datetime.datetime.utcnow()
+
             # Insert special validation logic here to have
             # friendly error messages for the JSON serialisation errors
             data = state.to_dict(encode_json=False)
@@ -132,7 +135,7 @@ class NoneStore(StateStore):
 
     def sync(self, state: State):
         """Do not persist anything."""
-        pass
+        state.last_updated_at = datetime.datetime.utcnow()
 
     def create(self) -> State:
         raise NotImplementedError("This should not be called for NoneStore.\n"

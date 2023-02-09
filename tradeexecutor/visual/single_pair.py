@@ -666,6 +666,7 @@ def visualise_single_pair(
         labels=labels,
     )
 
+    # Draw EMAs etc.
     visualise_technical_indicators(
         fig,
         state.visualisation,
@@ -775,7 +776,7 @@ def visualise_single_pair_positions_with_duration_and_slippage(
     # Crop it to the trading range
     candles = candles.loc[candles["timestamp"].between(start_at, end_at)]
 
-    logger.info(f"Candles are {candle_start_ts} = {candle_end_ts}")
+    logger.info(f"Candles are {candle_start_ts} - {candle_end_ts}")
 
     positions = [p for p in state.portfolio.get_all_positions()]
 

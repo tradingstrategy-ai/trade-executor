@@ -32,7 +32,7 @@ def test_ring_buffer_logger():
     data = handler.export()
 
     # Check we get the correct order
-    pprint(data)
+    # pprint(data)
     assert data[-1]["level"] == "info"
     assert data[-1]["message"] == "Foo 1, bar 2"
 

@@ -546,7 +546,11 @@ class TradingPosition:
         :return:
             Percent of total portfolio value
         """
-        return self.get_loss_risk_at_open() / self.portfolio_value_at_open
+        if self.portfolio_value_at_open:
+            return self.get_loss_risk_at_open() / self.portfolio_value_at_open
+        else:
+            # Old invalid data
+            return 0
 
 
 class PositionType(enum.Enum):

@@ -8,6 +8,7 @@
 # https://hub.docker.com/_/python/
 FROM python:3.10.9-slim-buster
 
+# pysha3 does not yet work on Python 3.11
 # FROM python:3.11.1-slim-buster
 
 # Passed from Github Actions

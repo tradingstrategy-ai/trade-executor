@@ -47,67 +47,67 @@ class QSTraderRunner(StrategyRunner):
 
         assert kwargs.get("routing_model"), "Routing model missing"
 
-    def report_strategy_thinking(self, clock: datetime.datetime, universe: TradingStrategyUniverse, state: State, trades: List[TradeExecution], debug_details: dict):
-        """Report alpha model status."""
-        buf = StringIO()
-        universe = universe.universe
-
-        # TODO: move report_strategy_thinking() to a separate reporter class
-
-        data_start, data_end = universe.candles.get_timestamp_range()
-        liquidity_start, liquidity_end = universe.liquidity.get_timestamp_range()
-
-        print("Strategy thinking", file=buf)
-        print("", file=buf)
-        print("Dataset status:", file=buf)
-        print("", file=buf)
-        print(f"   Cash buffer: {self.cash_buffer * 100:.2f}%", file=buf)
-        print(f"   Candle dataset: {data_start} - {data_end}", file=buf)
-        print(f"   Liquidity dataset: {liquidity_start} - {liquidity_end}", file=buf)
-        print("", file=buf)
-
-        # Alpha model weights does not contain zero weight entries
-        alpha_model_weights = debug_details["alpha_model_weights"]
-
-        # Normalised weights do contain zero weight entries
-        normalised_weights = debug_details.get("normalised_weights", {})
-
-        if alpha_model_weights:
-            print("Alpha model weights:", file=buf)
-            print("", file=buf)
-
-            for pair_id, weight in alpha_model_weights.items():
-                norm_weight = normalised_weights.get(pair_id, weight)
-                pair = universe.pairs.get_pair_by_id(pair_id)
-                tp = translate_trading_pair(pair)
-                link = tp.info_url or ""
-                if "extra_debug_data" in debug_details:
-                    momentum = debug_details["extra_debug_data"][pair_id]["momentum"]
-                    print(f"    {tp.get_human_description()} weight:{norm_weight*100:.2f}%, momentum:{momentum*100:.2f}%", file=buf)
-                    if link:
-                        print(f"    link: {link}", file=buf)
-                    print("", file=buf)
-        else:
-            print("Error: Could not calculate any momentum! Data missing?", file=buf)
-
-        good_candle_count = debug_details.get("good_candle_count")
-        problem_candle_count = debug_details.get("problem_candle_count")
-        low_liquidity_count = debug_details.get("low_liquidity_count")
-        bad_momentum_count = debug_details.get("bad_momentum_count")
-        funny_price_count = debug_details.get("funny_price_count")
-        candle_range_start = debug_details.get("candle_range_start")
-        candle_range_end = debug_details.get("candle_range_end")
-        print("", file=buf)
-        print("Alpha model data quality:", file=buf)
-        print("", file=buf)
-        print(f"   Evaluated momentum range: {candle_range_start} - {candle_range_end}", file=buf)
-        print(f"   Pairs with good candles data: {good_candle_count}", file=buf)
-        print(f"   Pairs with bad price value: {funny_price_count}", file=buf)
-        print(f"   Pairs with negative momentum result: {bad_momentum_count}", file=buf)
-        print(f"   Pairs with problems in candles data: {problem_candle_count}", file=buf)
-        print(f"   Pairs with low liquidity: {low_liquidity_count}", file=buf)
-
-        logger.trade(buf.getvalue())
+    # def report_strategy_thinking(self, clock: datetime.datetime, universe: TradingStrategyUniverse, state: State, trades: List[TradeExecution], debug_details: dict):
+    #     """Report alpha model status."""
+    #     buf = StringIO()
+    #     universe = universe.universe
+    #
+    #     # TODO: move report_strategy_thinking() to a separate reporter class
+    #
+    #     data_start, data_end = universe.candles.get_timestamp_range()
+    #     liquidity_start, liquidity_end = universe.liquidity.get_timestamp_range()
+    #
+    #     print("Strategy thinking", file=buf)
+    #     print("", file=buf)
+    #     print("Dataset status:", file=buf)
+    #     print("", file=buf)
+    #     print(f"   Cash buffer: {self.cash_buffer * 100:.2f}%", file=buf)
+    #     print(f"   Candle dataset: {data_start} - {data_end}", file=buf)
+    #     print(f"   Liquidity dataset: {liquidity_start} - {liquidity_end}", file=buf)
+    #     print("", file=buf)
+    #
+    #     # Alpha model weights does not contain zero weight entries
+    #     alpha_model_weights = debug_details["alpha_model_weights"]
+    #
+    #     # Normalised weights do contain zero weight entries
+    #     normalised_weights = debug_details.get("normalised_weights", {})
+    #
+    #     if alpha_model_weights:
+    #         print("Alpha model weights:", file=buf)
+    #         print("", file=buf)
+    #
+    #         for pair_id, weight in alpha_model_weights.items():
+    #             norm_weight = normalised_weights.get(pair_id, weight)
+    #             pair = universe.pairs.get_pair_by_id(pair_id)
+    #             tp = translate_trading_pair(pair)
+    #             link = tp.info_url or ""
+    #             if "extra_debug_data" in debug_details:
+    #                 momentum = debug_details["extra_debug_data"][pair_id]["momentum"]
+    #                 print(f"    {tp.get_human_description()} weight:{norm_weight*100:.2f}%, momentum:{momentum*100:.2f}%", file=buf)
+    #                 if link:
+    #                     print(f"    link: {link}", file=buf)
+    #                 print("", file=buf)
+    #     else:
+    #         print("Error: Could not calculate any momentum! Data missing?", file=buf)
+    #
+    #     good_candle_count = debug_details.get("good_candle_count")
+    #     problem_candle_count = debug_details.get("problem_candle_count")
+    #     low_liquidity_count = debug_details.get("low_liquidity_count")
+    #     bad_momentum_count = debug_details.get("bad_momentum_count")
+    #     funny_price_count = debug_details.get("funny_price_count")
+    #     candle_range_start = debug_details.get("candle_range_start")
+    #     candle_range_end = debug_details.get("candle_range_end")
+    #     print("", file=buf)
+    #     print("Alpha model data quality:", file=buf)
+    #     print("", file=buf)
+    #     print(f"   Evaluated momentum range: {candle_range_start} - {candle_range_end}", file=buf)
+    #     print(f"   Pairs with good candles data: {good_candle_count}", file=buf)
+    #     print(f"   Pairs with bad price value: {funny_price_count}", file=buf)
+    #     print(f"   Pairs with negative momentum result: {bad_momentum_count}", file=buf)
+    #     print(f"   Pairs with problems in candles data: {problem_candle_count}", file=buf)
+    #     print(f"   Pairs with low liquidity: {low_liquidity_count}", file=buf)
+    #
+    #     logger.trade(buf.getvalue())
 
     def on_data_signal(self):
         pass

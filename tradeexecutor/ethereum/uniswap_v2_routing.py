@@ -6,6 +6,7 @@ from tradeexecutor.state.types import BPS
 from tradingstrategy.chain import ChainId
 from web3 import Web3
 from web3.exceptions import ContractLogicError
+from web3.exceptions import ContractLogicError
 
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, fetch_deployment
 from eth_defi.uniswap_v2.swap import swap_with_slippage_protection
@@ -93,6 +94,7 @@ class UniswapV2RoutingState(EthereumRoutingState):
         self.validate_pairs(target_pair, intermediary_pair)
 
         self.validate_exchange(target_pair, intermediary_pair)
+        self.validate_exchange(target_pair, intermediary_pair)
 
         base_token, quote_token, intermediary_token = self.get_base_quote_intermediary(target_pair, intermediary_pair, reserve_asset, intermediary_pair)
 
@@ -159,6 +161,10 @@ class UniswapV2SimpleRoutingModel(EthereumRoutingModel):
             Relevent for buy/sell routing.
             Lowercase.
         """
+
+        super().__init__(allowed_intermediary_pairs, reserve_token_address, chain_id)
+        
+        
 
         super().__init__(allowed_intermediary_pairs, reserve_token_address, chain_id)
         

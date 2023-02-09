@@ -124,7 +124,7 @@ class PositionManager:
         assert pricing_model, "pricing_model is needed in order to know buy/sell price of new positions"
 
         if isinstance(timestamp, pd.Timestamp):
-            timestamp = timestamp.to_pydatetime()
+            timestamp = timestamp.to_pydatetime().replace(tzinfo=None)
 
         self.timestamp = timestamp
         self.universe = universe

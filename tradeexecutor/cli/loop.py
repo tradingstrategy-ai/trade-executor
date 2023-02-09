@@ -11,6 +11,8 @@ from typing import Optional, Callable, List, cast
 import pandas as pd
 from apscheduler.events import EVENT_JOB_ERROR
 
+from tradeexecutor.cli.watchdog import create_watchdog_registry, register_worker, mark_alive, start_background_watchdog, \
+    WatchdogMode
 from tradeexecutor.statistics.summary import calculate_summary_statistics
 from tradeexecutor.strategy.pandas_trader.decision_trigger import wait_for_universe_data_availability_jsonl
 from tradeexecutor.strategy.run_state import RunState
@@ -132,6 +134,10 @@ class ExecutionLoop:
         self.max_cycles = max_cycles
         self.max_data_delay = max_data_delay
 
+        # Crash the strategy execution if we get more lag than this.
+        # This is how old the last candle can be.
+        self.max_live_data_lag_tolerance = datetime.timedelta(minutes=30)
+
         # cycle -> dump mappings
         self.debug_dump_state = {}
 
@@ -218,7 +224,7 @@ class ExecutionLoop:
              ) -> StrategyExecutionUniverse:
         """Run one trade execution tick.
 
-        :parma unrounded_timestamp:
+        :param unrounded_timestamp:
             The approximately time when this ticket was triggered.
             Alawys after the tick timestamp.
             Will be rounded to the nearest cycle duration timestamps.
@@ -230,7 +236,7 @@ class ExecutionLoop:
             The current state of the strategy
 
         :param cycle:
-            The number ofthis cycle
+            The number of this cycle
 
         :param cycle_duration:
             Cycle duration for this cycle. Either from the strategy module,
@@ -265,7 +271,7 @@ class ExecutionLoop:
             "strategy_cycle_trigger": self.strategy_cycle_trigger.value,
         }
 
-        logger.trade("Performing strategy tick #%d for timestamp %s, cycle length is %s, unrounded time is %s, live trading is %s, the exisitng univese is %s",
+        logger.trade("Performing strategy tick #%d for timestamp %s, cycle length is %s, trigger time was %s, live trading is %s, trading univese is %s",
                      cycle,
                      ts,
                      cycle_duration.value,
@@ -311,11 +317,15 @@ class ExecutionLoop:
 
         # Execute the strategy tick and trades
         self.runner.tick(
-            ts,
-            universe,
-            state,
-            debug_details,
+            strategy_cycle_timestamp=ts,
+            universe=universe,
+            state=state,
+            debug_details=debug_details,
+            cycle_duration=cycle_duration,
+            cycle=cycle,
         )
+
+        state.uptime.record_cycle_complete(cycle)
 
         # Check that state is good before writing it to the disk
         state.perform_integrity_check()
@@ -531,16 +541,29 @@ class ExecutionLoop:
 
         assert backtest_step != CycleDuration.cycle_unknown
 
+        # Throttle TQDM updates to 1 per second because
+        # otherwise we crash PyCharm
+        # https://stackoverflow.com/q/43288550/315168
+        last_progress_update = datetime.datetime.utcfromtimestamp(0)
+        progress_update_threshold = datetime.timedelta(seconds=1)
+        last_update_ts = None
+
         with tqdm(total=seconds) as progress_bar:
+
             while True:
 
                 ts = snap_to_previous_tick(ts, backtest_step)
 
                 # Bump progress bar forward and update backtest status
-                progress_bar.update(int(backtest_step.to_timedelta().total_seconds()))
-                friedly_ts = ts.strftime(ts_format)
-                trade_count = len(list(state.portfolio.get_all_trades()))
-                progress_bar.set_description(f"Backtesting {self.name}, {friendly_start} - {friendly_end} at {friedly_ts} ({cycle_name}), total {trade_count:,} trades, {cycle:,} cycles")
+                if datetime.datetime.utcnow() - last_progress_update > progress_update_threshold:
+                    friedly_ts = ts.strftime(ts_format)
+                    trade_count = len(list(state.portfolio.get_all_trades()))
+                    progress_bar.set_description(f"Backtesting {self.name}, {friendly_start} - {friendly_end} at {friedly_ts} ({cycle_name}), total {trade_count:,} trades, {cycle:,} cycles")
+                    last_progress_update = datetime.datetime.utcnow()
+                    if last_update_ts:
+                        passed_seconds = (ts - last_update_ts).total_seconds()
+                        progress_bar.update(int(passed_seconds))
+                    last_update_ts = ts
 
                 # Decide trades and everything for this cycle
                 universe: TradingStrategyUniverse = self.tick(
@@ -549,6 +572,7 @@ class ExecutionLoop:
                     state,
                     cycle,
                     live=False,
+                    strategy_cycle_timestamp=ts,
                     existing_universe=universe)
 
                 # Revalue our portfolio
@@ -601,8 +625,22 @@ class ExecutionLoop:
 
         ts = datetime.datetime.utcnow()
 
+        # Start the watchdog process killer
+        watchdog_registry = create_watchdog_registry(WatchdogMode.thread_based)
+        start_background_watchdog(watchdog_registry)
+        # Create a watchdog thread that checks that the live trading cycle
+        # has completed for every candle + some tolerance minutes.
+        # This will terminate the live trading process if it has hung for a reason or another.
+        live_cycle_max_delay = (self.cycle_duration.to_timedelta() + datetime.timedelta(minutes=15)).total_seconds()
+        register_worker(
+            watchdog_registry,
+            "live_cycle",
+            live_cycle_max_delay)
+
         # Do not allow starting a strategy that has unclean state
         state.check_if_clean()
+
+        logger.trade("The execution state was last saved %s", state.last_updated_at)
 
         if self.is_live_trading_unit_test():
             # Test app initialisation.
@@ -672,15 +710,33 @@ class ExecutionLoop:
                     )
                     logger.trade("Strategy cycle %d, universe updated result received: %s", cycle, universe_update_result)
                     universe = universe_update_result.updated_universe
-
                     extra_debug_data["universe_update_poll_cycles"] = universe_update_result.poll_cycles
+
+                    # Do a data lag check.
+                    # This is not 100% fool-proof check for multipair strategies,
+                    # as we randomly pick one pair. However it should detect most of market data feed
+                    # stale situtations.
+                    last_candle_timestamp = universe.universe.candles.df.iloc[-1]["timestamp"].to_pydatetime().replace(tzinfo=None)
+                    # We allow 30 minutes + time bucket size lag
+                    if last_candle_timestamp is not None:
+                        max_allowed_lag = self.max_live_data_lag_tolerance + universe.universe.time_bucket.to_timedelta()
+                        lag = strategy_cycle_timestamp - last_candle_timestamp
+                        if lag > max_allowed_lag:
+                            logger.error("Aborting and waiting for manual restart after the data feed is fixed")
+                            raise RuntimeError(f"Strategy market data lag exceeded.\n"
+                                               f"Currently lag to the start of the last candle is {lag}, allowed max lag is {max_allowed_lag}.\n"
+                                               f"Last candle is at {last_candle_timestamp}")
+                else:
+                    # Force universe recreation on every cycle
+                    universe = None
 
                 # Run the main strategy logic
                 universe = self.tick(
-                    ts,
+                    unrounded_timestamp,
                     self.cycle_duration,
                     state,
-                    cycle,
+                    cycle=cycle,
+                    strategy_cycle_timestamp=strategy_cycle_timestamp,
                     existing_universe=universe,
                     live=True,
                     extra_debug_data=extra_debug_data,
@@ -715,6 +771,9 @@ class ExecutionLoop:
             run_state.completed_cycle = cycle
             run_state.cycles += 1
             run_state.bumb_refreshed()
+
+            # Reset the background watchdog timer
+            mark_alive(watchdog_registry, "live_cycle")
 
         def live_positions():
             nonlocal universe
@@ -762,12 +821,19 @@ class ExecutionLoop:
             'default': ThreadPoolExecutor(1),
         }
         start_time = datetime.datetime(1970, 1, 1)
+
+        # We use a single thread scheduler to run our various tasks.
+        # Any task blocks other tasks - there is no parallerism or multithread support at the moment.
+        # Multithread support would need making the architecture more complex with various locks
+        # that could then be additional source of bugs.
         scheduler = BlockingScheduler(executors=executors, timezone=datetime.timezone.utc)
         scheduler.add_job(
             live_cycle,
             'interval',
             seconds=self.cycle_duration.to_timedelta().total_seconds(),
-            start_date=start_time + tick_offset)
+            start_date=start_time + tick_offset,
+            misfire_grace_time = None,  # Will always run the job no matter how late it is
+        )
 
         if self.stats_refresh_frequency not in (datetime.timedelta(0), None):
             scheduler.add_job(
