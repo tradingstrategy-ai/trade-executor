@@ -92,6 +92,12 @@ class UniswapV2ExecutionModel(EthereumExecutionModel):
     ) -> UniswapV2Deployment:
         return mock_partial_deployment_for_analysis(web3, router_address)
     
+    @staticmethod
+    def is_v3() -> bool:
+        """Returns true if instance is related to Uniswap V3, else false. 
+        Kind of a hack to be able to share resolve trades function amongst v2 and v3."""
+        return False
+    
 
 def get_current_price(web3: Web3, uniswap: UniswapV2Deployment, pair: TradingPairIdentifier, quantity=Decimal(1)) -> float:
     """Get a price from Uniswap v2 pool, assuming you are selling 1 unit of base token.

@@ -146,6 +146,12 @@ class EthereumExecutionModel(ExecutionModel):
     def mock_partial_deployment_for_analysis():
         """Links to either uniswap v2 or v3 implementation in eth_defi"""
     
+    @staticmethod
+    @abstractmethod 
+    def is_v3():
+        """Returns true if instance is related to Uniswap V3, else false. 
+        Kind of a hack to be able to share resolve trades function amongst v2 and v3."""
+    
     def repair_unconfirmed_trades(self, state: State) -> List[TradeExecution]:
         """Repair unconfirmed trades.
 
@@ -374,7 +380,7 @@ class EthereumExecutionModel(ExecutionModel):
             Raise an exception if any of the trades failed"""
 
         web3 = self.web3
-        
+
         trades = self.update_confimation_status(ts, tx_map, receipts)
 
         # Then resolve trade status by analysis the tx receipt
@@ -390,51 +396,49 @@ class EthereumExecutionModel(ExecutionModel):
             tx_dict = swap_tx.get_transaction()
             receipt = receipts[HexBytes(swap_tx.tx_hash)]
 
+            result = self.analyse_trade_by_receipt(web3, uniswap, tx_dict, swap_tx.tx_hash, receipt)
+
+            if is_v3 := self.is_v3():
+                price = result.price
+
+            if isinstance(result, TradeSuccess):
                 
-            if trade.is_buy():
-                result = self.analyse_trade_by_receipt(web3, uniswap, tx_dict, swap_tx.tx_hash, receipt)
+                # v3 path includes fee (int) as well
+                path = [a.lower() for a in result.path if type(a) == str]
                 
-                # result = self.analyse_trade_by_receipt(web3, uniswap, tx_dict, swap_tx.tx_hash, receipt, reverse_order=True)
-                
-                if isinstance(result, TradeSuccess):
-                
-                    path = [a.lower() for a in result.path if type(a) == str]
-                    
+                if trade.is_buy():
                     assert path[0] == reserve.address, f"Was expecting the route path to start with reserve token {reserve}, got path {result.path}"
+
+                    if not is_v3:
+                        price = 1 / result.price
+
                     executed_reserve = result.amount_in / Decimal(10**quote_token_details.decimals)
                     executed_amount = result.amount_out / Decimal(10**base_token_details.decimals)
-                    
                 else:
-                    self.report_failure(ts, state, trade, stop_on_execution_failure)
-            else:
-                # Ordered other way around
-                result = self.analyse_trade_by_receipt(web3, uniswap, tx_dict, swap_tx.tx_hash, receipt, reverse_order=False)
-                
-                if isinstance(result, TradeSuccess):
-                
-                    path = [a.lower() for a in result.path if type(a) == str]
-                    
+                    # Ordered other way around
                     assert path[0] == base_token_details.address.lower(), f"Path is {path}, base token is {base_token_details}"
                     assert path[-1] == reserve.address
+                    
+                    if not is_v3:
+                        price = result.price
+                    
                     executed_amount = -result.amount_in / Decimal(10**base_token_details.decimals)
                     executed_reserve = result.amount_out / Decimal(10**quote_token_details.decimals)
-                else:
-                    self.report_failure(ts, state, trade, stop_on_execution_failure)
-                            
-            price = result.price
 
-            assert (executed_reserve > 0) and (executed_amount != 0) and (price > 0), f"Executed amount {executed_amount}, executed_reserve: {executed_reserve}, price: {price}, tx info {trade.tx_info}"
+                assert (executed_reserve > 0) and (executed_amount != 0) and (price > 0), f"Executed amount {executed_amount}, executed_reserve: {executed_reserve}, price: {price}, tx info {trade.tx_info}"
 
-            # Mark as success
-            state.mark_trade_success(
-                ts,
-                trade,
-                executed_price=float(price),
-                executed_amount=executed_amount,
-                executed_reserve=executed_reserve,
-                lp_fees=0,
-                native_token_price=1.0,
+                # Mark as success
+                state.mark_trade_success(
+                    ts,
+                    trade,
+                    executed_price=float(price),
+                    executed_amount=executed_amount,
+                    executed_reserve=executed_reserve,
+                    lp_fees=0,
+                    native_token_price=1.0,
                 )
+            else:
+                self.report_failure(ts, state, trade, stop_on_execution_failure)
         
 
 def translate_to_naive_swap(
