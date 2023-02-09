@@ -417,7 +417,7 @@ class TradeSummary:
 
         self.total_trades = self.won + self.lost + self.zero_loss
         self.win_percent = calculate_percentage(self.won, self.total_trades)
-        self.return_percent = calculate_percentage(self.realised_profit, self.initial_cash)
+        self.return_percent = calculate_percentage(self.end_value - self.initial_cash, self.initial_cash)
         self.annualised_return_percent = calculate_percentage(self.return_percent * datetime.timedelta(days=365),
                                                               self.duration) if self.return_percent else None
         self.all_stop_loss_percent = calculate_percentage(self.stop_losses, self.total_trades)
