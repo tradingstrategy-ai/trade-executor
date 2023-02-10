@@ -126,13 +126,6 @@ class BacktestRoutingModel(RoutingModel):
     def get_default_trading_fee(self) -> Optional[float]:
         return self.trading_fee
 
-    def get_reserve_asset(self, pair_universe: PandasPairUniverse) -> AssetIdentifier:
-        """Translate our reserve token address tok an asset description."""
-        assert pair_universe is not None, "Pair universe missing"
-        reserve_token = pair_universe.get_token(self.reserve_token_address)
-        assert reserve_token, f"Pair universe does not contain our reserve asset {self.reserve_token_address}"
-        return translate_token(reserve_token)
-
     def trade(self,
               routing_state: BacktestRoutingState, # TODO remove
               target_pair: TradingPairIdentifier,
@@ -187,17 +180,6 @@ class BacktestRoutingModel(RoutingModel):
                 check_balances=check_balances,
                 intermediary_pair=intermediary_pair,
             )
-
-    def route_pair(self, pair_universe: PandasPairUniverse, trading_pair: TradingPairIdentifier) \
-            -> Tuple[TradingPairIdentifier, Optional[TradingPairIdentifier]]:
-        """Return Uniswap routing information (path components) for a trading pair.
-
-        For three-way pairs, figure out the intermedia step.
-
-        :return:
-            (router address, target pair, intermediate pair) tuple
-        """
-        return self.route_pair(pair_universe, trading_pair)
 
     def setup_internal(self, routing_state: RoutingState, trade: TradeExecution):
         """Simulate trade braodcast and mark it as success."""
