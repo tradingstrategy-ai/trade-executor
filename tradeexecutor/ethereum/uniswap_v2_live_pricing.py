@@ -121,6 +121,9 @@ class UniswapV2LivePricing(PricingModel):
 
         # In three token trades, be careful to use the correct reserve token
         quantity_raw = target_pair.base.convert_to_raw_amount(quantity)
+        fee = self.get_pair_fee(ts, pair)
+
+        bps_fee = int(fee * 10000)
 
         received_raw = estimate_sell_received_amount_raw(
             uniswap,
@@ -128,7 +131,7 @@ class UniswapV2LivePricing(PricingModel):
             quote_addr,
             quantity_raw,
             intermediate_token_address=intermediate_addr,
-            fee=self.trading_fee
+            fee=bps_fee,
         )
 
         if intermediate_pair is not None:
@@ -191,19 +194,22 @@ class UniswapV2LivePricing(PricingModel):
             reserve_raw = target_pair.quote.convert_to_raw_amount(reserve)
             self.check_supported_quote_token(pair)
 
+        fee = self.get_pair_fee(ts, pair)
+        assert fee is not None, f"Uniswap v2 fee data missing: exchange:{uniswap} pair:{pair}"
+
+        bps_fee = int(fee * 10000)
+
         # Calculate base token received
         token_raw_received = estimate_buy_received_amount_raw(
             uniswap,
             base_addr,
             quote_addr,
             reserve_raw,
-            intermediate_token_address=intermediate_addr
+            intermediate_token_address=intermediate_addr,
+            fee=bps_fee,
         )
 
         token_received = target_pair.base.convert_to_decimal(token_raw_received)
-
-        fee = self.get_pair_fee(ts, pair)
-        assert fee is not None, f"Uniswap v2 fee data missing: {uniswap}"
 
         price = float(reserve / token_received)
 
