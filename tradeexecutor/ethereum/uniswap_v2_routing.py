@@ -30,11 +30,16 @@ logger = logging.getLogger(__name__)
 
 
 class UniswapV2RoutingState(EthereumRoutingState):
+
     def __init__(self,
                  pair_universe: PandasPairUniverse,
-                 tx_builder: Optional[TransactionBuilder]=None,
+                 tx_builder: Optional[TransactionBuilder] = None,
+                 web3: Optional[Web3] = None,
                  swap_gas_limit=2_000_000):
-        super().__init__(pair_universe, tx_builder, swap_gas_limit)
+        super().__init__(pair_universe=pair_universe,
+                         tx_builder=tx_builder,
+                         swap_gas_limit=swap_gas_limit,
+                         web3=web3)
     
     def __repr__(self):
         return f"<UniswapV2RoutingState Tx builder: {self.tx_builder} web3: {self.web3}>"
@@ -117,6 +122,7 @@ class UniswapV2RoutingState(EthereumRoutingState):
         tx = self.tx_builder.sign_transaction(bound_swap_func, self.swap_gas_limit)
         return [tx]
 
+
 class UniswapV2SimpleRoutingModel(EthereumRoutingModel):
     """A simple router that does not optimise the trade execution cost.
 
@@ -165,19 +171,14 @@ class UniswapV2SimpleRoutingModel(EthereumRoutingModel):
         """
 
         super().__init__(allowed_intermediary_pairs, reserve_token_address, chain_id)
-        
-        
 
-        super().__init__(allowed_intermediary_pairs, reserve_token_address, chain_id)
-        
-        
         assert type(factory_router_map) == dict
         self.factory_router_map = self.convert_address_dict_to_lower(factory_router_map)
         
         # TODO remove trading_fee
-        assert trading_fee is not None, "Trading fee missing"
-        assert trading_fee >= 0, f"Got fee: {trading_fee}"
-        assert trading_fee <= 1, f"Got fee: {trading_fee}"
+        if trading_fee is not None:
+            assert trading_fee >= 0, f"Got fee: {trading_fee}"
+            assert trading_fee <= 1, f"Got fee: {trading_fee}"
 
         self.trading_fee = trading_fee
 

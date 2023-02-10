@@ -16,11 +16,19 @@ from pathlib import Path
 from unittest import mock
 
 import pytest
+
+from tradeexecutor.cli.log import setup_pytest_logging
 from tradeexecutor.cli.main import app
 from tradeexecutor.state.state import State
 
 # https://docs.pytest.org/en/latest/how-to/skipping.html#skip-all-test-functions-of-a-class-or-module
 pytestmark = pytest.mark.skipif(not os.environ.get("JSON_RPC_POLYGON"), reason="Set POLYGON_JSON_RPC environment variable to run this test")
+
+
+@pytest.fixture(scope="module")
+def logger(request):
+    """Setup test logger."""
+    return setup_pytest_logging(request)
 
 
 @pytest.fixture()
@@ -30,6 +38,7 @@ def strategy_path() -> Path:
 
 
 def test_run_one_live_cycle(
+        logger,
         strategy_path: Path,
     ):
     """Test dummy execution of a trading strategy cycle.

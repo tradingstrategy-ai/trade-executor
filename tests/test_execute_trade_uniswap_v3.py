@@ -157,6 +157,7 @@ def aave_usdc_uniswap_trading_pair(web3, deployer, uniswap_v3, aave_token, usdc_
     )
     return pool_contract.address
 
+
 @pytest.fixture
 def weth_usdc_uniswap_trading_pair(web3, deployer, uniswap_v3, weth_token, usdc_token, weth_usdc_fee) -> HexAddress:
     """ETH-USDC pool with 1.7M liquidity."""
@@ -297,7 +298,7 @@ def test_execute_trade_instructions_buy_weth(
     fees = [weth_usdc_fee]
     
     # Estimate price
-    raw_assumed_quantity = price_helper.get_amount_out(buy_amount * 10 ** 6,path,fees)
+    raw_assumed_quantity = price_helper.get_amount_out(buy_amount * 10 ** 6, path, fees)
     
     assumed_quantity = Decimal(raw_assumed_quantity) / Decimal(10**18)
     assert assumed_quantity == pytest.approx(Decimal(0.293149332386944192))

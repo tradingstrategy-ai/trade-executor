@@ -49,8 +49,10 @@ class EthereumRoutingState(RoutingState):
 
     def __init__(self,
                  pair_universe: PandasPairUniverse,
-                 tx_builder: Optional[TransactionBuilder]=None,
-                 swap_gas_limit=2_000_000):
+                 tx_builder: Optional[TransactionBuilder] = None,
+                 swap_gas_limit=2_000_000,
+                 web3: Optional[Web3] = None,
+                 ):
         """
 
         :param pair_universe:
@@ -61,16 +63,32 @@ class EthereumRoutingState(RoutingState):
 
             Can be set to None on DummyExecutionModel.
 
+        :param web3:
+            Use for routing smart contract reads.
+
+            Given when `tx_builder` is not present.
+
         :param swap_gas_limit:
             What is the max gas we are willing to pay for a swap.
 
         """
-        super().__init__(pair_universe)
-        
+
+        # Parent does not need to be called,
+        # TODO: fix parent API signature later,
+        # because full universe is not needed
         self.pair_universe = pair_universe
-        self.tx_builder = tx_builder
-        self.hot_wallet = tx_builder.hot_wallet
-        self.web3 = self.tx_builder.web3
+
+        if tx_builder is not None:
+            self.tx_builder = tx_builder
+            self.hot_wallet = tx_builder.hot_wallet
+            self.web3 = self.tx_builder.web3
+        else:
+            # DummyExecution model does not have a wallet
+            # and cannot build transactions
+            self.tx_builder = None
+            self.hot_wallet = None
+            self.web3 = web3
+
         # router -> erc-20 mappings
         self.approved_routes = defaultdict(set)
         self.swap_gas_limit = swap_gas_limit

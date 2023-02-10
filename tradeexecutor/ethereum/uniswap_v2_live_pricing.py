@@ -249,6 +249,11 @@ class UniswapV2LivePricing(PricingModel):
                      pair: TradingPairIdentifier,
                      ) -> Optional[float]:
         """Uniswap v2 compatibles have fixed fee across the exchange."""
+
+        if pair.fee:
+            # Fee set on the server-side data when data read from Parquet
+            return pair.fee
+
         return self.routing_model.get_default_trading_fee()
 
 

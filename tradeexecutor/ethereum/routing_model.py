@@ -324,15 +324,23 @@ class EthereumRoutingModel(RoutingModel):
         assert universe.universe.pairs is not None, "Pairs are required"
 
         web3 = execution_details["web3"]
-        hot_wallet = execution_details["hot_wallet"]
+
+        # Hot wallet is not present in dummy execution model
+        hot_wallet = execution_details.get("hot_wallet")
 
         fees = estimate_gas_fees(web3)
 
         logger.info("Gas fee estimations for chain %d: %s", web3.eth.chain_id, fees)
 
         logger.info("Estimated gas fees for chain %d: %s", web3.eth.chain_id, fees)
-        tx_builder = TransactionBuilder(web3, hot_wallet, fees)
-        routing_state = Routing_State(universe.universe.pairs, tx_builder)
+        if hot_wallet is not None:
+            tx_builder = TransactionBuilder(web3, hot_wallet, fees)
+            routing_state = Routing_State(universe.universe.pairs, tx_builder)
+        else:
+            routing_state = Routing_State(universe.universe.pairs,
+                                          tx_builder=None,
+                                          web3=web3)
+
         return routing_state
     
     def route_trade(self, pair_universe: PandasPairUniverse, trade: TradeExecution) -> Tuple[TradingPairIdentifier, Optional[TradingPairIdentifier]]:
