@@ -256,7 +256,7 @@ class UniswapV2LivePricing(PricingModel):
                      ) -> Optional[float]:
         """Uniswap v2 compatibles have fixed fee across the exchange."""
 
-        if pair.fee:
+        if pair.fee is not None:
             # Fee set on the server-side data when data read from Parquet
             return pair.fee
 
