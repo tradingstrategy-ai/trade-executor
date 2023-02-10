@@ -107,30 +107,6 @@ class EthereumExecutionModel(ExecutionModel):
             raise ValueError("Incorrect routing model specified")
     
     @staticmethod
-    def report_failure(
-        ts: datetime.datetime,
-        state: State,
-        trade: TradeExecution,
-        stop_on_execution_failure
-    ) -> None:
-        """What to do if trade fails"""
-        
-        logger.error("Trade failed %s: %s", ts, trade)
-        
-        state.mark_trade_failed(
-            ts,
-            trade,
-        )
-        
-        if stop_on_execution_failure:
-            success_txs = []
-            for tx in trade.blockchain_transactions:
-                if not tx.is_success():
-                    raise TradeExecutionFailed(f"Could not execute a trade: {trade}, transaction failed: {tx}, had other transactions {success_txs}")
-                else:
-                    success_txs.append(tx)
-    
-    @staticmethod
     @abstractmethod
     def analyse_trade_by_receipt(
         web3: Web3, 
@@ -323,39 +299,14 @@ class EthereumExecutionModel(ExecutionModel):
             "hot_wallet": self.hot_wallet,
         }
 
-    def update_confimation_status(
-        self, ts: datetime.datetime,
+    def update_confirmation_status(
+        self, 
+        ts: datetime.datetime,
         tx_map: Dict[HexBytes, Tuple[TradeExecution, BlockchainTransaction]],
         receipts: Dict[HexBytes, dict]
     ) -> set[TradeExecution]:
         """First update the state of all transactions, as we now have receipt for them. Update the transaction confirmation status"""
-
-        web3 = self.web3
-        
-        trades: set[TradeExecution] = set()
-
-        # First update the state of all transactions,
-        # as we now have receipt for them
-        for tx_hash, receipt in receipts.items():
-            trade, tx = tx_map[tx_hash.hex()]
-            logger.info("Resolved trade %s", trade)
-            # Update the transaction confirmation status
-            status = receipt["status"] == 1
-            reason = None
-            if status == 0:
-                reason = fetch_transaction_revert_reason(web3, tx_hash)
-            tx.set_confirmation_information(
-                ts,
-                receipt["blockNumber"],
-                receipt["blockHash"].hex(),
-                receipt.get("effectiveGasPrice", 0),
-                receipt["gasUsed"],
-                status,
-                revert_reason=reason,
-            )
-            trades.add(trade)
-        
-        return trades
+        return update_confirmation_status(self.web3, ts, tx_map, receipts)
     
     def resolve_trades(
         self,
@@ -381,7 +332,7 @@ class EthereumExecutionModel(ExecutionModel):
 
         web3 = self.web3
 
-        trades = self.update_confimation_status(ts, tx_map, receipts)
+        trades = self.update_confirmation_status(ts, tx_map, receipts)
 
         # Then resolve trade status by analysis the tx receipt
         # if the blockchain transaction was successsful.
@@ -438,8 +389,67 @@ class EthereumExecutionModel(ExecutionModel):
                     native_token_price=1.0,
                 )
             else:
-                self.report_failure(ts, state, trade, stop_on_execution_failure)
+                report_failure(ts, state, trade, stop_on_execution_failure)
+
+
+# Only usage outside this module is UniswapV2ExecutionModelV0
+def update_confirmation_status(
+        web3: Web3,
+        ts: datetime.datetime,
+        tx_map: Dict[HexBytes, Tuple[TradeExecution, BlockchainTransaction]],
+        receipts: Dict[HexBytes, dict]
+    ) -> set[TradeExecution]:
+        """First update the state of all transactions, as we now have receipt for them. Update the transaction confirmation status"""
         
+        trades: set[TradeExecution] = set()
+
+        # First update the state of all transactions,
+        # as we now have receipt for them
+        for tx_hash, receipt in receipts.items():
+            trade, tx = tx_map[tx_hash.hex()]
+            logger.info("Resolved trade %s", trade)
+            # Update the transaction confirmation status
+            status = receipt["status"] == 1
+            reason = None
+            if status == 0:
+                reason = fetch_transaction_revert_reason(web3, tx_hash)
+            tx.set_confirmation_information(
+                ts,
+                receipt["blockNumber"],
+                receipt["blockHash"].hex(),
+                receipt.get("effectiveGasPrice", 0),
+                receipt["gasUsed"],
+                status,
+                revert_reason=reason,
+            )
+            trades.add(trade)
+        
+        return trades                
+                
+# Only usage outside this module is UniswapV2ExecutionModelV0
+def report_failure(
+    ts: datetime.datetime,
+    state: State,
+    trade: TradeExecution,
+    stop_on_execution_failure
+) -> None:
+    """What to do if trade fails"""
+    
+    logger.error("Trade failed %s: %s", ts, trade)
+    
+    state.mark_trade_failed(
+        ts,
+        trade,
+    )
+    
+    if stop_on_execution_failure:
+        success_txs = []
+        for tx in trade.blockchain_transactions:
+            if not tx.is_success():
+                raise TradeExecutionFailed(f"Could not execute a trade: {trade}, transaction failed: {tx}, had other transactions {success_txs}")
+            else:
+                success_txs.append(tx)
+
 
 def translate_to_naive_swap(
         web3: Web3,
