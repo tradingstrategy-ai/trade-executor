@@ -165,23 +165,6 @@ class EthereumRoutingState(RoutingState):
         )
         return [signed_tx]
     
-    def get_base_quote_intermediary(self, target_pair: TradingPairIdentifier, reserve_asset: AssetIdentifier, intermediary_pair: TradingPairIdentifier):
-        """Get base and quote token from the pair and reserve asset. 
-        
-        See: https://tradingstrategy.ai/docs/programming/market-data/trading-pairs.html
-        
-        :param target_pair: Pair to be traded
-        :param reserver_asset: Asset to be kept as reserves
-        :returns: (base_token: Contract, quote_token: Contract)
-        """
-        
-        intermediary_token = get_token_for_asset(self.web3, intermediary_pair.base) 
-        error_msg = f"Cannot trade {target_pair} through {intermediary_pair}"
-        
-        base_token, quote_token = get_base_quote(self.web3, target_pair, reserve_asset, error_msg)
-        
-        return base_token, quote_token, intermediary_token
-    
     @staticmethod
     def validate_pairs(target_pair, intermediary_pair):
         """Check we can chain two pairs
@@ -245,7 +228,24 @@ def get_base_quote(web3: Web3, target_pair: TradingPairIdentifier, reserve_asset
             raise RuntimeError(error_msg)
         
         return base_token, quote_token
-    
+
+
+def get_base_quote_intermediary(web3: Web3, target_pair: TradingPairIdentifier, intermediary_pair: TradingPairIdentifier, reserve_asset: AssetIdentifier):
+        
+        if reserve_asset == intermediary_pair.quote:
+            # Buy BUSD -> BNB -> Cake
+            base_token = get_token_for_asset(web3, target_pair.base)
+            quote_token = get_token_for_asset(web3, intermediary_pair.quote)
+            intermediary_token = get_token_for_asset(web3, intermediary_pair.base)
+        elif reserve_asset == target_pair.base:
+            # Sell, Cake -> BNB -> BUSD
+            base_token = get_token_for_asset(web3, intermediary_pair.quote)  # BUSD
+            quote_token = get_token_for_asset(web3, target_pair.base)  # Cake
+            intermediary_token = get_token_for_asset(web3, intermediary_pair.base)  # BNB
+        else:
+            raise RuntimeError(f"Cannot trade {target_pair} through {intermediary_pair}")
+        return base_token,quote_token,intermediary_token
+
     
 def get_token_for_asset(web3: Web3, asset: AssetIdentifier) -> Contract:
     """Get ERC-20 contract proxy."""
