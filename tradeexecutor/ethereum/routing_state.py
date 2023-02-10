@@ -152,7 +152,7 @@ class EthereumRoutingState(RoutingState):
         )
         return [signed_tx]
     
-    def get_base_quote_intermediary(self, web3: Web3, target_pair: TradingPairIdentifier, reserve_asset: AssetIdentifier, intermediary_pair: TradingPairIdentifier):
+    def get_base_quote_intermediary(self, target_pair: TradingPairIdentifier, reserve_asset: AssetIdentifier, intermediary_pair: TradingPairIdentifier):
         """Get base and quote token from the pair and reserve asset. 
         
         See: https://tradingstrategy.ai/docs/programming/market-data/trading-pairs.html
@@ -162,10 +162,10 @@ class EthereumRoutingState(RoutingState):
         :returns: (base_token: Contract, quote_token: Contract)
         """
         
-        intermediary_token = self.get_token_for_asset(web3, intermediary_pair.base) 
+        intermediary_token = super().get_token_for_asset(self.web3, intermediary_pair.base) 
         error_msg = f"Cannot trade {target_pair} through {intermediary_pair}"
         
-        base_token, quote_token = self.get_base_quote(self.web3, target_pair, reserve_asset, error_msg)
+        base_token, quote_token = super().get_base_quote(self.web3, target_pair, reserve_asset, error_msg)
         
         return base_token, quote_token, intermediary_token
     
