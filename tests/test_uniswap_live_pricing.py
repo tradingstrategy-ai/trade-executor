@@ -158,6 +158,7 @@ def weth_usdc_pair(uniswap_v2, weth_usdc_uniswap_trading_pair, asset_usdc, asset
         asset_usdc,
         weth_usdc_uniswap_trading_pair,
         uniswap_v2.factory.address,
+        fee=0.0030,
     )
 
 
@@ -168,6 +169,7 @@ def aave_weth_pair(uniswap_v2, aave_weth_uniswap_trading_pair, asset_aave, asset
         asset_weth,
         aave_weth_uniswap_trading_pair,
         uniswap_v2.factory.address,
+        fee=0.0030,
     )
 
 

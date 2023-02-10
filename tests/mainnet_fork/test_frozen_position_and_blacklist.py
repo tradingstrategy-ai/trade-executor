@@ -206,12 +206,12 @@ def wbnb_busd_pair_address() -> HexAddress:
 
 @pytest.fixture
 def wbnb_busd_pair(pancakeswap_v2, wbnb_busd_pair_address, asset_wbnb, asset_busd) -> TradingPairIdentifier:
-    return TradingPairIdentifier(asset_wbnb, asset_busd, wbnb_busd_pair_address, pancakeswap_v2.factory.address, internal_id=int(wbnb_busd_pair_address, 16))
+    return TradingPairIdentifier(asset_wbnb, asset_busd, wbnb_busd_pair_address, pancakeswap_v2.factory.address, internal_id=int(wbnb_busd_pair_address, 16), fee=0.0025)
 
 
 @pytest.fixture
 def bit_busd_pair(pancakeswap_v2, bit_busd_pair_address, asset_bit, asset_busd) -> TradingPairIdentifier:
-    return TradingPairIdentifier(asset_bit, asset_busd, bit_busd_pair_address, pancakeswap_v2.factory.address, internal_id=int(bit_busd_pair_address, 16))
+    return TradingPairIdentifier(asset_bit, asset_busd, bit_busd_pair_address, pancakeswap_v2.factory.address, internal_id=int(bit_busd_pair_address, 16), fee=0.0025)
 
 
 @pytest.fixture
@@ -377,6 +377,7 @@ def test_buy_and_sell_blacklisted_asset(
     bit_busd = universe.pairs. get_one_pair_from_pandas_universe(exchange.exchange_id, "BIT", "BUSD")
 
     assert wbnb_busd
+    assert wbnb_busd.fee
     assert bit_busd
 
     # see strategy/simulated_uniswap.py for different days we can have 0, 1, 2

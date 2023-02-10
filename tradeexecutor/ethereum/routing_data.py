@@ -32,6 +32,7 @@ from tradingstrategy.chain import ChainId
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel
 from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2SimpleRoutingModel
 from tradeexecutor.ethereum.uniswap_v3_routing import UniswapV3SimpleRoutingModel
+from tradeexecutor.ethereum.uniswap_v3_routing import UniswapV3SimpleRoutingModel
 from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.default_routing_options import TradeRouting
@@ -402,7 +403,7 @@ def get_uniswap_v3_default_routing_parameters(
         "quoter": "0xb27308f9F90D607463bb33eA1BeBb41C27CE5AB6"
         # "router02":"0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45",
         # "quoterV2":"0x61fFE014bA17989E743c5F6cB21bF9697530B21e"
-    }
+    } # TODO create address_map class
 
     return {
         "chain_id": ChainId.ethereum,

@@ -172,6 +172,7 @@ def weth_usdc_pair(uniswap_v2, weth_usdc_uniswap_trading_pair, asset_usdc, asset
         asset_usdc,
         weth_usdc_uniswap_trading_pair,
         uniswap_v2.factory.address,
+        fee=0.0030,
     )
 
 
@@ -393,7 +394,7 @@ def test_live_stop_loss(
 
     assert state.portfolio.reserves[usdc_token.address.lower()].quantity == 8000
     assert state.portfolio.open_positions[1].get_quantity() == Decimal('0.586126842081438121')
-    assert state.portfolio.open_positions[1].get_value() == pytest.approx(996.998769)
+    assert state.portfolio.open_positions[1].get_value() == pytest.approx(996.998769, rel=APPROX_REL)
 
     # Sell ETH on the pool to change the price more than 10%.
     # The pool is 1000 ETH / 1.7M USDC.
@@ -411,7 +412,7 @@ def test_live_stop_loss(
 
     # ETH price is down $1700 -> $1000
     price_structure = pricing_method.get_buy_price(datetime.datetime.utcnow(), pair, None)
-    assert price_structure.price == pytest.approx(1009.6430522606291 , rel=APPROX_REL)
+    assert price_structure.price == pytest.approx(1009.6430522606291, rel=APPROX_REL)
 
     ts = get_latest_block_timestamp(web3)
 

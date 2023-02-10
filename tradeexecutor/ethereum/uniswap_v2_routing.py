@@ -6,38 +6,40 @@ from tradeexecutor.state.types import BPS
 from tradingstrategy.chain import ChainId
 from web3 import Web3
 from web3.exceptions import ContractLogicError
+from web3.exceptions import ContractLogicError
 
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, fetch_deployment
 from eth_defi.uniswap_v2.swap import swap_with_slippage_protection
 
 from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
+from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradingstrategy.pair import PandasPairUniverse
 
 from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
 from tradeexecutor.ethereum.routing_state import (
-    EthereumRoutingStateBase, 
+    EthereumRoutingState, 
     route_tokens, # don't remove forwarded import
     OutOfBalance, # don't remove forwarded import
+    get_base_quote,
+    get_base_quote_intermediary
 )
-from tradeexecutor.ethereum.routing_model import RoutingModelBase
+from tradeexecutor.ethereum.routing_model import EthereumRoutingModel
  
 logger = logging.getLogger(__name__)
 
 
-class UniswapV2RoutingState(EthereumRoutingStateBase):
+class UniswapV2RoutingState(EthereumRoutingState):
 
     def __init__(self,
                  pair_universe: PandasPairUniverse,
-                 tx_builder: Optional[TransactionBuilder]=None,
-                 swap_gas_limit=2_000_000,
+                 tx_builder: Optional[TransactionBuilder] = None,
                  web3: Optional[Web3] = None,
-                 ):
-        super().__init__(
-            pair_universe=pair_universe,
-            tx_builder=tx_builder,
-            swap_gas_limit=swap_gas_limit,
-            web3=web3)
+                 swap_gas_limit=2_000_000):
+        super().__init__(pair_universe=pair_universe,
+                         tx_builder=tx_builder,
+                         swap_gas_limit=swap_gas_limit,
+                         web3=web3)
     
     def __repr__(self):
         return f"<UniswapV2RoutingState Tx builder: {self.tx_builder} web3: {self.web3}>"
@@ -62,7 +64,7 @@ class UniswapV2RoutingState(EthereumRoutingStateBase):
 
         hot_wallet = self.tx_builder.hot_wallet
         
-        base_token, quote_token = self.get_base_and_quote(target_pair, reserve_asset)
+        base_token, quote_token = get_base_quote(self.web3, target_pair, reserve_asset)
 
         if check_balances:
             self.check_has_enough_tokens(quote_token, reserve_amount)
@@ -99,8 +101,9 @@ class UniswapV2RoutingState(EthereumRoutingStateBase):
         self.validate_pairs(target_pair, intermediary_pair)
 
         self.validate_exchange(target_pair, intermediary_pair)
+        self.validate_exchange(target_pair, intermediary_pair)
 
-        base_token, quote_token, intermediary_token = self.get_base_quote_intermediary(target_pair, intermediary_pair, reserve_asset)
+        base_token, quote_token, intermediary_token = get_base_quote_intermediary(self.web3,target_pair, intermediary_pair, reserve_asset)
 
         if check_balances:
             self.check_has_enough_tokens(quote_token, reserve_amount)
@@ -120,7 +123,7 @@ class UniswapV2RoutingState(EthereumRoutingStateBase):
         return [tx]
 
 
-class UniswapV2SimpleRoutingModel(RoutingModelBase):
+class UniswapV2SimpleRoutingModel(EthereumRoutingModel):
     """A simple router that does not optimise the trade execution cost.
 
     - Able to trade on multiple exchanges
@@ -134,7 +137,7 @@ class UniswapV2SimpleRoutingModel(RoutingModelBase):
                  allowed_intermediary_pairs: Dict[str, str],
                  reserve_token_address: str,
                  chain_id: Optional[ChainId] = None,
-                 trading_fee: Optional[BPS] = None
+                 trading_fee: Optional[BPS] = None # TODO remove
                  ):
         """
         :param factory_router_map:
@@ -168,25 +171,14 @@ class UniswapV2SimpleRoutingModel(RoutingModelBase):
         """
 
         super().__init__(allowed_intermediary_pairs, reserve_token_address, chain_id)
-        
-        
+
         assert type(factory_router_map) == dict
         self.factory_router_map = self.convert_address_dict_to_lower(factory_router_map)
         
-        assert type(allowed_intermediary_pairs) == dict
-        assert type(reserve_token_address) == str
-
-        assert reserve_token_address.lower() == reserve_token_address
-
-        # TODO Fix trading fee handling away from here,
-        # as this information is now available for every pair.
-        # Only test_main_loop and others need this anymore
-        if trading_fee is None:
-            trading_fee = 0.0030
-
-        assert trading_fee is not None, "Trading fee missing for"
-        assert trading_fee >= 0, f"Got fee: {trading_fee}"
-        assert trading_fee <= 1, f"Got fee: {trading_fee}"
+        # TODO remove trading_fee
+        if trading_fee is not None:
+            assert trading_fee >= 0, f"Got fee: {trading_fee}"
+            assert trading_fee <= 1, f"Got fee: {trading_fee}"
 
         self.trading_fee = trading_fee
 
@@ -219,6 +211,50 @@ class UniswapV2SimpleRoutingModel(RoutingModelBase):
             logger.info("  Factory %s uses router %s", factory, router[0])
 
         self.reserve_asset_logging(pair_universe)
+        
+    def make_direct_trade(
+        self, 
+        routing_state: EthereumRoutingState,
+        target_pair: TradingPairIdentifier,
+        reserve_asset: AssetIdentifier,
+        reserve_amount: int,
+        max_slippage: float,
+        check_balances=False
+    ) -> List[BlockchainTransaction]:
+        
+        return super().make_direct_trade(
+            routing_state,
+            target_pair,
+            reserve_asset,
+            reserve_amount,
+            max_slippage,
+            self.factory_router_map,
+            check_balances
+        )
+    
+    def make_multihop_trade(
+        self,
+        routing_state: EthereumRoutingState,
+        target_pair: TradingPairIdentifier,
+        intermediary_pair: TradingPairIdentifier,
+        reserve_asset: AssetIdentifier,
+        reserve_amount: int,
+        max_slippage: float,
+        check_balances=False
+    ) -> List[BlockchainTransaction]:
+        
+        return super().make_multihop_trade(
+            routing_state,
+            target_pair,
+            intermediary_pair,
+            reserve_asset,
+            reserve_amount,
+            max_slippage,
+            self.factory_router_map,
+            check_balances
+        )
+    
+    
         
 def get_uniswap_for_pair(web3: Web3, factory_router_map: dict, target_pair: TradingPairIdentifier) -> UniswapV2Deployment:
     """Get a router for a trading pair."""
