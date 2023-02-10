@@ -22,6 +22,7 @@ from tradeexecutor.ethereum.routing_state import (
     EthereumRoutingState, 
     route_tokens, # don't remove, forwarded import
     OutOfBalance, # don't remove, forwarded import
+    get_base_quote
 )
 from tradeexecutor.ethereum.routing_model import EthereumRoutingModel
 
@@ -58,7 +59,7 @@ class UniswapV3RoutingState(EthereumRoutingState):
 
         hot_wallet = self.tx_builder.hot_wallet
         
-        base_token, quote_token = self.get_base_quote(self.web3, target_pair, reserve_asset)
+        base_token, quote_token = get_base_quote(self.web3, target_pair, reserve_asset)
 
         if check_balances:
             self.check_has_enough_tokens(quote_token, reserve_amount)
