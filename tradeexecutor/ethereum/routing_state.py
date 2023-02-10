@@ -3,6 +3,7 @@
 import logging
 from collections import defaultdict
 from typing import List, Optional, Tuple
+from abc import ABC, abstractmethod
 
 from eth_typing import ChecksumAddress
 
@@ -73,6 +74,18 @@ class EthereumRoutingState(RoutingState):
         # router -> erc-20 mappings
         self.approved_routes = defaultdict(set)
         self.swap_gas_limit = swap_gas_limit
+        
+    @abstractmethod
+    def get_uniswap_for_pair():
+        """Get a router for a trading pair."""
+    
+    @abstractmethod
+    def trade_on_router_two_way():
+        """Prepare the actual swap. Same for Uniswap V2 and V3."""
+        
+    @abstractmethod
+    def trade_on_router_three_way():
+        """Prepare the actual swap for three way trade."""
 
     def is_route_approved(self, router_address: str):
         return router_address in self.approved_routes
@@ -162,10 +175,10 @@ class EthereumRoutingState(RoutingState):
         :returns: (base_token: Contract, quote_token: Contract)
         """
         
-        intermediary_token = super().get_token_for_asset(self.web3, intermediary_pair.base) 
+        intermediary_token = get_token_for_asset(self.web3, intermediary_pair.base) 
         error_msg = f"Cannot trade {target_pair} through {intermediary_pair}"
         
-        base_token, quote_token = super().get_base_quote(self.web3, target_pair, reserve_asset, error_msg)
+        base_token, quote_token = get_base_quote(self.web3, target_pair, reserve_asset, error_msg)
         
         return base_token, quote_token, intermediary_token
     
@@ -202,3 +215,39 @@ def route_tokens(
     return (Web3.toChecksumAddress(trading_pair.base.address),
         Web3.toChecksumAddress(intermediate_pair.quote.address),
         Web3.toChecksumAddress(trading_pair.quote.address))
+
+
+def get_base_quote(web3: Web3, target_pair: TradingPairIdentifier, reserve_asset: AssetIdentifier, error_msg: str = None):
+        """Get base and quote token from the pair and reserve asset. Called in parent class (RoutingState) with error_msg.
+        
+        See: https://tradingstrategy.ai/docs/programming/market-data/trading-pairs.html
+        
+        :param target_pair: Pair to be traded
+        :param reserver_asset: Asset to be kept as reserves
+        :returns: (base_token: Contract, quote_token: Contract)
+        :param error_msg:
+            Only provide this argument if error message includes external info such as an intermediary pair
+        """
+        if error_msg is None:
+            error_msg = f"Cannot route trade through {target_pair}"
+        
+        if reserve_asset == target_pair.quote:
+            # Buy with e.g. BUSD
+            base_token = get_token_for_asset(web3, target_pair.base)
+            quote_token = get_token_for_asset(web3, target_pair.quote)
+            
+        elif reserve_asset == target_pair.base:
+            # Sell, flip the direction
+            base_token = get_token_for_asset(web3, target_pair.quote)
+            quote_token = get_token_for_asset(web3, target_pair.base)
+            
+        else:
+            raise RuntimeError(error_msg)
+        
+        return base_token, quote_token
+    
+    
+def get_token_for_asset(web3: Web3, asset: AssetIdentifier) -> Contract:
+    """Get ERC-20 contract proxy."""
+    erc_20 = get_deployed_contract(web3, "ERC20MockDecimals.json", Web3.toChecksumAddress(asset.address))
+    return erc_20
