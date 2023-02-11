@@ -12,11 +12,10 @@ from web3 import Web3
 
 from tradeexecutor.ethereum.uniswap_v3_execution import UniswapV3ExecutionModel
 from tradeexecutor.ethereum.uniswap_v3_routing import UniswapV3SimpleRoutingModel, route_tokens, get_uniswap_for_pair
+from tradeexecutor.ethereum.eth_pricing_model import EthereumPricingModel
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.strategy.execution_model import ExecutionModel
-
 from tradeexecutor.state.types import USDollarAmount
-from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_trading_pair
 from tradingstrategy.pair import PandasPairUniverse
 
@@ -26,7 +25,7 @@ from eth_defi.uniswap_v3.deployment import UniswapV3Deployment
 logger = logging.getLogger(__name__)
 
 
-class UniswapV3LivePricing(PricingModel):
+class UniswapV3LivePricing(EthereumPricingModel):
     """Always pull the latest dollar price for an asset from Uniswap v2 deployment.
 
     Supports

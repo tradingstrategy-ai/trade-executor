@@ -16,11 +16,11 @@ from eth_defi.uniswap_v2.fees import estimate_buy_received_amount_raw, estimate_
 from tradeexecutor.ethereum.uniswap_v2_execution import UniswapV2ExecutionModel
 from tradeexecutor.ethereum.uniswap_v2_execution_v0 import UniswapV2ExecutionModelVersion0
 from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2SimpleRoutingModel, route_tokens, get_uniswap_for_pair
+from tradeexecutor.ethereum.eth_pricing_model import EthereumPricingModel
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.strategy.dummy import DummyExecutionModel
 from tradeexecutor.strategy.execution_model import ExecutionModel
-from tradeexecutor.state.types import USDollarAmount
-from tradeexecutor.strategy.pricing_model import PricingModel, TradePricing
+from tradeexecutor.strategy.pricing_model import TradePricing
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_trading_pair
 
 from tradingstrategy.pair import PandasPairUniverse
@@ -29,7 +29,7 @@ from tradingstrategy.pair import PandasPairUniverse
 logger = logging.getLogger(__name__)
 
 
-class UniswapV2LivePricing(PricingModel):
+class UniswapV2LivePricing(EthereumPricingModel):
     """Always pull the latest dollar price for an asset from Uniswap v2 deployment.
 
     Supports
