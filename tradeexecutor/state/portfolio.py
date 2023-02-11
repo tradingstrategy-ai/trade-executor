@@ -175,10 +175,14 @@ class Portfolio:
         For Uniswap-likes we use the pool address as the persistent identifier
         for each trading pair.
         """
-        for p in self.open_positions.values():
-            if p.pair.pool_address.lower() == pair.pool_address.lower():
-                return p
-        return None
+        # https://stackoverflow.com/a/2364277/315168
+        return next((p for p in self.open_positions.values() if p.pair == pair), None)
+        #for p in self.open_positions.values():
+            # TODO: Check with
+            # if p.pair.pool_address.lower() == pair.pool_address.lower():
+        #    if p.pair == pair:
+        #        return p
+        #return None
 
     def get_existing_open_position_by_trading_pair(self, pair: TradingPairIdentifier) -> Optional[TradingPosition]:
         """Get a position by a trading pair smart contract address identifier.

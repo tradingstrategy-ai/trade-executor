@@ -161,6 +161,17 @@ class PositionManager:
 
         return next(iter(open_positions.values()))
 
+    def get_current_position_for_pair(self, pair: TradingPairIdentifier) -> Optional[TradingPosition]:
+        """Get the current open position for a specific trading pair.
+
+        :return:
+            Currently open trading position.
+
+            If there is no open position return None.
+
+        """
+        return self.state.portfolio.get_position_by_trading_pair(pair)
+
     def get_last_closed_position(self) -> Optional[TradingPosition]:
         """Get the position that was last closed.
 
