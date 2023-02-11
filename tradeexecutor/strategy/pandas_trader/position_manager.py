@@ -16,8 +16,7 @@ from tradeexecutor.state.types import USDollarAmount
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradingstrategy.pair import DEXPair
 from tradingstrategy.universe import Universe
-from tradeexecutor.strategy.trading_strategy_universe import translate_trading_pair
-
+from tradeexecutor.strategy.trading_strategy_universe import translate_trading_pair, TradingStrategyUniverse
 
 logger = logging.getLogger(__name__)
 
@@ -56,8 +55,6 @@ class PositionManager:
                 state: State,
                 pricing_model: PricingModel,
                 cycle_debug_data: Dict) -> List[TradeExecution]:
-
-
 
             # Create a position manager helper class that allows us easily to create
             # opening/closing trades for different positions
@@ -123,6 +120,7 @@ class PositionManager:
         #: TODO: Take valuation model as input
 
         assert pricing_model, "pricing_model is needed in order to know buy/sell price of new positions"
+        assert isinstance(universe, Universe), f"Got {universe} {type(universe)}"
 
         if isinstance(timestamp, pd.Timestamp):
             timestamp = timestamp.to_pydatetime().replace(tzinfo=None)
@@ -163,7 +161,6 @@ class PositionManager:
 
         return next(iter(open_positions.values()))
 
-<<<<<<< HEAD
     def get_last_closed_position(self) -> Optional[TradingPosition]:
         """Get the position that was last closed.
 
