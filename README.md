@@ -43,6 +43,27 @@ poetry install -E web-server -E execution -E qstrader
 
 ![Archiecture overview](docs/deployment-overview.drawio.svg)
 
+## Running tests
+
+To run the full test suite, multiple blockchain node connections are needed.
+You also need [Trading Strategy API key](https://tradingstrategy.ai/trading-view/backtesting).
+
+```
+# Free and somewhat robust Polygon endpoint
+export JSON_RPC_POLYGON="https://polygon-rpc.com"
+export TRADING_STRATEGY_API_KEY=...
+export BNB_CHAIN_JSON_RPC=...
+
+pytest
+```
+
+Some tests take a long time, because they are checking different real-time timings.
+You can skip the slow tests with 
+
+```sell
+export SKIP_SLOW_TESTS=true
+```
+
 ## Development
 
 See [docs](./docs).

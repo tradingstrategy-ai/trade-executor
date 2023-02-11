@@ -408,6 +408,8 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         for t in quote_tokens:
             assert t.startswith("0x")
 
+        time_bucket = dataset.time_bucket
+
         # Normalise input parameters
         chain_ids = set(chain_ids)
         exchange_slugs = set(exchange_slugs)
@@ -444,12 +446,12 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         # Get daily candles as Pandas DataFrame
         all_candles = dataset.candles
         filtered_candles = filter_for_pairs(all_candles, pairs_df)
-        candle_universe = GroupedCandleUniverse(filtered_candles)
+        candle_universe = GroupedCandleUniverse(filtered_candles, time_bucket=time_bucket)
 
         # Get liquidity candles as Pandas Dataframe
         all_liquidity = dataset.liquidity
         filtered_liquidity = filter_for_pairs(all_liquidity, pairs_df)
-        liquidity_universe = GroupedLiquidityUniverse(filtered_liquidity)
+        liquidity_universe = GroupedLiquidityUniverse(filtered_liquidity, time_bucket=time_bucket)
 
         universe = Universe(
             time_bucket=dataset.time_bucket,
