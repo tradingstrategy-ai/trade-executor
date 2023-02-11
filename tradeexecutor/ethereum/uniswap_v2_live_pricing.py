@@ -103,7 +103,6 @@ class UniswapV2LivePricing(PricingModel):
             quote_addr,
             quantity_raw,
             intermediate_token_address=intermediate_addr,
-            fee=self.trading_fee
         )
 
         if intermediate_pair is not None:
