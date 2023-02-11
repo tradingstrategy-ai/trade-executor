@@ -324,7 +324,7 @@ def test_rebalance_trades_flip_position(
     # trading universe and mock price feeds
     position_manager = PositionManager(
         start_ts + datetime.timedelta(days=1),  # Trade on t plus 1 day
-        universe,
+        universe.universe,
         state,
         pricing_model,
     )
@@ -385,7 +385,7 @@ def test_rebalance_trades_flip_position_partial(
     # trading universe and mock price feeds
     position_manager = PositionManager(
         start_ts + datetime.timedelta(days=1),  # Trade on t plus 1 day
-        universe,
+        universe.universe,
         state,
         pricing_model,
     )
@@ -443,7 +443,7 @@ def test_rebalance_bad_weights(
     # trading universe and mock price feeds
     position_manager = PositionManager(
         start_ts + datetime.timedelta(days=1),  # Trade on t plus 1 day
-        universe,
+        universe.universe,
         state,
         pricing_model,
     )
