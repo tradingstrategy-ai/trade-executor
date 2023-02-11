@@ -27,9 +27,10 @@ def logger(request):
 @pytest.fixture()
 def strategy_path() -> Path:
     """Where do we load our strategy file."""
-    return Path(os.path.join(os.path.dirname(__file__), "..", "..", "strategies", "pancake-momentum-v2.py"))
+    return Path(os.path.join(os.path.dirname(__file__), "..", "..", "strategies", "test_only", "pancake-momentum-weekly.py"))
 
 
+@pytest.mark.skipif(os.environ.get("SKIP_SLOW_TEST"), reason="Slow tests skipping enabled")
 def test_pancake_momentum_v2(
     strategy_path,
     logger: logging.Logger,
@@ -39,13 +40,13 @@ def test_pancake_momentum_v2(
 
     client = persistent_test_client
 
-    # Override the the default strategy settings to speed up
+    # Override the default strategy settings to speed up
     # the tests
-    module_overrides = {
-        "momentum_lookback_period": pd.Timedelta(days=7),
-        "candle_time_bucket": TimeBucket.d7,
-        "trading_strategy_cycle": CycleDuration.cycle_7d,
-    }
+    # module_overrides = {
+    #    "momentum_lookback_period": pd.Timedelta(days=7),
+    #    "candle_time_bucket": TimeBucket.d7,
+    #    "trading_strategy_cycle": CycleDuration.cycle_7d,
+    #}
 
     # Run backtest over 6 months, daily
     setup = setup_backtest(
@@ -53,7 +54,6 @@ def test_pancake_momentum_v2(
         start_at=datetime.datetime(2021, 6, 1),
         end_at=datetime.datetime(2021, 7, 1),
         initial_deposit=10_000,
-        module_overrides=module_overrides,
     )
 
     state, universe, debug_dump = run_backtest(setup, client)

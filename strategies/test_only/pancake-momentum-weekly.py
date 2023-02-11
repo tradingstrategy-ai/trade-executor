@@ -1,8 +1,4 @@
-"""PancakeSwap v2 momentum strategy build on the top of the new trading framework.
-
-This is "alpha model" strategy that predicts the alpha (price increase)
-of multiple tokens based on their past behavior.
-"""
+# A test strategy executed in test_pancake_momentum_v2
 
 import datetime
 import enum
@@ -16,6 +12,7 @@ from tradeexecutor.ethereum.routing_data import get_pancake_default_routing_para
 
 from tradeexecutor.strategy.pandas_trader.rebalance import weight_by_1_slash_n, rebalance_portfolio, normalise_weights
 from tradeexecutor.strategy.pricing_model import PricingModel
+from tradeexecutor.strategy.universe_model import UniverseOptions
 from tradeexecutor.utils.price import is_legit_price_value
 from tradingstrategy.chain import ChainId
 from tradingstrategy.liquidity import LiquidityDataUnavailable
@@ -28,6 +25,7 @@ from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.strategy.strategy_type import StrategyType
+from tradeexecutor.state.visualisation import Visualisation, PlotKind
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.default_routing_options import TradeRouting
@@ -52,7 +50,7 @@ trade_routing = TradeRouting.pancakeswap_busd
 
 # How often the strategy performs the decide_trades cycle.
 # We do it for every 16h.
-trading_strategy_cycle = CycleDuration.cycle_16h
+trading_strategy_cycle = CycleDuration.cycle_7d
 
 # Strategy keeps its cash in BUSD
 reserve_currency = ReserveCurrency.busd
@@ -67,7 +65,7 @@ chain_id = ChainId.bsc
 exchange_slug = "pancakeswap-v2"
 
 # Use 4h candles for trading
-candle_time_frame = TimeBucket.h4
+candle_time_frame = TimeBucket.d7
 
 # How much of portfolio's total value is allocated
 # to positions (rest is kept in cash)
@@ -77,7 +75,7 @@ value_allocated_to_positions = 0.50
 max_assets_in_portfolio = 5
 
 # How far back we look the momentum.
-momentum_lookback_period = pd.Timedelta(hours=32)
+momentum_lookback_period = pd.Timedelta(days=7)
 
 # What is the liquidity risk we are willing to accept (USD)
 risk_min_liquidity_threshold = 100_000
@@ -303,7 +301,7 @@ def create_trading_universe(
         ts: datetime.datetime,
         client: Client,
         execution_context: ExecutionContext,
-        candle_time_frame_override: Optional[TimeBucket] = None,
+        universe_options: UniverseOptions,
 ) -> TradingStrategyUniverse:
     """Creates the trading universe where the strategy trades.
 
@@ -313,8 +311,10 @@ def create_trading_universe(
     # Load all datas we can get for our candle time bucket
     dataset = load_all_data(
         client,
-        candle_time_frame_override or candle_time_bucket,
-        execution_context)
+        candle_time_frame,
+        execution_context,
+        universe_options,
+    )
 
     routing_parameters = get_pancake_default_routing_parameters(ReserveCurrency.busd)
 
