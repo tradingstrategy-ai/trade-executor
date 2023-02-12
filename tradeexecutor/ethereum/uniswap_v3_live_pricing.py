@@ -16,7 +16,8 @@ from tradeexecutor.ethereum.eth_pricing_model import EthereumPricingModel
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.state.types import USDollarAmount
-from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_trading_pair
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
+from tradeexecutor.strategy.pricing_model import TradePricing
 from tradingstrategy.pair import PandasPairUniverse
 
 from eth_defi.uniswap_v3.price import UniswapV3PriceHelper
@@ -117,13 +118,36 @@ class UniswapV3LivePricing(EthereumPricingModel):
             path=path,
             fees=fees
         ) 
-            
+
+        fees = [int(fee) for fee in fees] # TODO fix, shouldn't need to do this
+
+        price = float(received / quantity)
+        
         if intermediate_pair is not None:
             received = intermediate_pair.quote.convert_to_decimal(received_raw)
+            
+            # TODO: Verify calculation
+            mid_price = price * (1 + self.get_pair_fee(ts, target_pair) + self.get_pair_fee(ts, intermediate_pair.fee))
         else:
             received = target_pair.quote.convert_to_decimal(received_raw)
+            
+            mid_price = price * (1 + self.get_pair_fee(ts, target_pair))
 
-        return float(received / quantity)
+        fee = self.get_pair_fee(ts, pair)
+        assert fee is not None, "Uniswap v3 fee data missing"
+
+        assert price <= mid_price, f"Bad pricing: {price}, {mid_price}"
+
+        lp_fee = (mid_price - price) * float(quantity)
+
+        return TradePricing(
+            price=price,
+            mid_price=mid_price,
+            lp_fee=lp_fee,
+            pair_fee=fee,
+            side=False,
+        )
+        
 
     def get_buy_price(self,
                        ts: datetime.datetime,
@@ -159,23 +183,46 @@ class UniswapV3LivePricing(EthereumPricingModel):
         path = (
             [quote_addr, intermediate_addr, base_addr]
             if intermediate_addr
-            else base_addr 
+            else [quote_addr, base_addr] 
         )
         fees = (
             [intermediate_pair.fee, target_pair.fee]
             if intermediate_addr
             else [target_pair.fee]
         )
-        
+
+        fees = [int(fee) for fee in fees] # TODO fix, shouldn't need to do this
+
         price_helper = self.get_price_helper(target_pair)
         token_raw_received = price_helper.get_amount_out(
             amount_in=reserve_raw,
             path=path,
             fees=fees
         )
-        
+
         token_received = target_pair.base.convert_to_decimal(token_raw_received)
-        return float(reserve / token_received)
+
+        fee = self.get_pair_fee(ts, pair)
+        assert fee is not None, "Uniswap v3 fee data missing"
+
+        price = float(reserve / token_received)
+
+        lp_fee = float(reserve) * fee
+
+        # TODO: Verify calculation
+        mid_price = price * (1 - fee)
+
+        assert price >= mid_price, f"Bad pricing: {price}, {mid_price}"
+
+        return TradePricing(
+            price=float(price),
+            mid_price=float(mid_price),
+            lp_fee=lp_fee,
+            pair_fee=fee,
+            market_feed_delay=datetime.timedelta(seconds=0),
+            side=True,
+        )
+        
 
 
 def uniswap_v3_live_pricing_factory(

@@ -96,6 +96,11 @@ class UniswapV2LivePricing(EthereumPricingModel):
 
         # In three token trades, be careful to use the correct reserve token
         quantity_raw = target_pair.base.convert_to_raw_amount(quantity)
+        
+        fee = self.get_pair_fee(ts, pair)
+        assert fee is not None, f"Uniswap v2 fee data missing: {uniswap}"
+
+        bps_fee = int(fee * 10000)
 
         received_raw = estimate_sell_received_amount_raw(
             uniswap,
@@ -103,20 +108,22 @@ class UniswapV2LivePricing(EthereumPricingModel):
             quote_addr,
             quantity_raw,
             intermediate_token_address=intermediate_addr,
+            fee=bps_fee,
         )
 
+        price = float(received / quantity)
+        
         if intermediate_pair is not None:
             received = intermediate_pair.quote.convert_to_decimal(received_raw)
+            _fee = self.get_pair_fee(ts, intermediate_pair)
+            assert _fee == fee, "Pairs for Uniswap V2 should have same fee"
+
+            # TODO: Verify calculation
+            mid_price = price * (1 + 2*fee)
         else:
             received = target_pair.quote.convert_to_decimal(received_raw)
 
-        fee = self.get_pair_fee(ts, pair)
-        assert fee is not None, f"Uniswap v2 fee data missing: {uniswap}"
-
-        price = float(received / quantity)
-
-        # TODO: Verify calculation
-        mid_price = price * (1 + fee)
+            mid_price = price * (1 + fee)
 
         assert price <= mid_price, f"Bad pricing: {price}, {mid_price}"
 
@@ -136,12 +143,9 @@ class UniswapV2LivePricing(EthereumPricingModel):
                        reserve: Optional[Decimal],
                        ) -> TradePricing:
         """Get live price on Uniswap.
-
         TODO: Fees are incorrectly calculated in the case of multipair routing
-
         :param reserve:
             The buy size in quote token e.g. in dollars
-
         :return:
             Price for one reserve unit e.g. a dollar
         """
@@ -156,14 +160,29 @@ class UniswapV2LivePricing(EthereumPricingModel):
         base_addr, quote_addr, intermediate_addr = route_tokens(target_pair, intermediate_pair)
 
         uniswap = get_uniswap_for_pair(self.web3, self.routing_model.factory_router_map, target_pair)
-
+        
+        price = float(reserve / token_received)
+        
         # In three token trades, be careful to use the correct reserve token
         if intermediate_pair is not None:
             reserve_raw = intermediate_pair.quote.convert_to_raw_amount(reserve)
             self.check_supported_quote_token(intermediate_pair)
+            
+            _fee = self.get_pair_fee(ts, intermediate_pair)
+            assert _fee == fee, "Pairs for Uniswap V2 should have same fee"
+            
+            # TODO: Verify calculation
+            mid_price = price * (1 - 2*fee)
         else:
             reserve_raw = target_pair.quote.convert_to_raw_amount(reserve)
             self.check_supported_quote_token(pair)
+            
+            mid_price = price * (1 - fee)
+
+        fee = self.get_pair_fee(ts, pair)
+        assert fee is not None, f"Uniswap v2 fee data missing: exchange:{uniswap} pair:{pair}"
+
+        bps_fee = int(fee * 10000)
 
         # Calculate base token received
         token_raw_received = estimate_buy_received_amount_raw(
@@ -171,20 +190,13 @@ class UniswapV2LivePricing(EthereumPricingModel):
             base_addr,
             quote_addr,
             reserve_raw,
-            intermediate_token_address=intermediate_addr
+            intermediate_token_address=intermediate_addr,
+            fee=bps_fee,
         )
 
         token_received = target_pair.base.convert_to_decimal(token_raw_received)
 
-        fee = self.get_pair_fee(ts, pair)
-        assert fee is not None, f"Uniswap v2 fee data missing: {uniswap}"
-
-        price = float(reserve / token_received)
-
         lp_fee = float(reserve) * fee
-
-        # TODO: Verify calculation
-        mid_price = price * (1 - fee)
 
         assert price >= mid_price, f"Bad pricing: {price}, {mid_price}"
 
@@ -196,6 +208,7 @@ class UniswapV2LivePricing(EthereumPricingModel):
             market_feed_delay=datetime.timedelta(seconds=0),
             side=True,
         )
+
 
 
 def uniswap_v2_live_pricing_factory(
