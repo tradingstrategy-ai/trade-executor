@@ -40,9 +40,9 @@ class UniswapV3RoutingState(EthereumRoutingState):
     def __repr__(self):
         return f"<UniswapV3RoutingState Tx builder: {self.tx_builder} web3: {self.web3}>"
     
-    def get_uniswap_for_pair(self, factory_router_map: dict, target_pair: TradingPairIdentifier) -> UniswapV3Deployment:
+    def get_uniswap_for_pair(self, address_map: dict, target_pair: TradingPairIdentifier) -> UniswapV3Deployment:
         """Get a router for a trading pair."""
-        return get_uniswap_for_pair(self.web3, factory_router_map, target_pair)
+        return get_uniswap_for_pair(self.web3, address_map, target_pair)
     
     def trade_on_router_two_way(self,
             uniswap: UniswapV3Deployment,
