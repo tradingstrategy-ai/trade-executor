@@ -1,10 +1,10 @@
 """Uniswap v2 routing model tests.
 
-To run these tests, we need to connect to BNB Chain:
+To run these tests, we need to connect to polygon Chain:
 
 .. code-block::  shell
 
-    export BNB_CHAIN_JSON_RPC="https://bsc-dataseed.binance.org/"
+    export polygon_CHAIN_JSON_RPC="https://bsc-dataseed.binance.org/"
     pytest -k test_uniswap_v2_routing
 
 """
@@ -19,7 +19,7 @@ import pytest
 from eth_account import Account
 from eth_defi.anvil import fork_network_anvil
 from eth_defi.chain import install_chain_middleware
-
+from eth_defi.abi import get_deployed_contract
 from eth_defi.gas import estimate_gas_fees, node_default_gas_price_strategy
 from eth_defi.confirmation import wait_transactions_to_complete
 from eth_typing import HexAddress, HexStr
@@ -29,12 +29,8 @@ from web3.contract import Contract
 from eth_defi.hotwallet import HotWallet
 from eth_defi.uniswap_v3.deployment import (
     UniswapV3Deployment,
-    deploy_uniswap_v3,
-    deploy_pool,
-    add_liquidity,
+    fetch_deployment,
 )
-from eth_defi.token import create_token
-from eth_defi.uniswap_v3.utils import get_default_tick_range
 
 from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.ethereum.uniswap_v3_routing import (
@@ -43,7 +39,6 @@ from tradeexecutor.ethereum.uniswap_v3_routing import (
     OutOfBalance,
 )
 from tradeexecutor.ethereum.uniswap_v3_execution import UniswapV3ExecutionModel
-from tradeexecutor.ethereum.universe import create_pair_universe
 from tradeexecutor.ethereum.wallet import sync_reserves
 from tradeexecutor.state.sync import apply_sync_events
 from tradeexecutor.state.portfolio import Portfolio
@@ -69,16 +64,6 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-@pytest.fixture()
-def weth_usdc_fee() -> int:
-    return 3000
-
-
-@pytest.fixture()
-def aave_usdc_fee() -> int:
-    return 3000
-
-
 @pytest.fixture(scope="module")
 def logger(request):
     """Setup test logger."""
@@ -86,27 +71,27 @@ def logger(request):
 
 
 @pytest.fixture()
-def large_busd_holder() -> HexAddress:
-    """A random account picked from BNB Smart chain that holds a lot of BUSD.
+def large_usdc_holder() -> HexAddress:
+    """A random account picked from Polygon chain that holds a lot of usdc.
 
-    This account is unlocked on Ganache, so you have access to good BUSD stash.
+    This account is unlocked on Ganache, so you have access to good usdc stash.
 
-    `To find large holder accounts, use bscscan <https://bscscan.com/token/0xe9e7cea3dedca5984780bafc599bd69add087d56#balances>`_.
+    `To find large holder accounts, use polygonscan <https://polygonscan.com/token/0x2791bca1f2de4661ed88a30c99a7a9449aa84174#balances>`_.
     """
-    # Binance Hot Wallet 6
-    return HexAddress(HexStr("0x8894E0a0c962CB723c1976a4421c95949bE2D4E3"))
+    # Binance Hot Wallet 2
+    return HexAddress(HexStr("0xe7804c37c13166fF0b37F5aE0BB07A3aEbb6e245"))
 
 
 @pytest.fixture()
-def anvil_bnb_chain_fork(logger, large_busd_holder) -> str:
-    """Create a testable fork of live BNB chain.
+def anvil_polygon_chain_fork(logger, large_usdc_holder) -> str:
+    """Create a testable fork of live polygon chain.
 
     :return: JSON-RPC URL for Web3
     """
 
     mainnet_rpc = os.environ["JSON_RPC_POLYGON"]
 
-    launch = fork_network_anvil(mainnet_rpc, unlocked_addresses=[large_busd_holder])
+    launch = fork_network_anvil(mainnet_rpc, unlocked_addresses=[large_usdc_holder])
     try:
         yield launch.json_rpc_url
     finally:
@@ -114,10 +99,10 @@ def anvil_bnb_chain_fork(logger, large_busd_holder) -> str:
 
 
 @pytest.fixture
-def web3(anvil_bnb_chain_fork: str):
+def web3(anvil_polygon_chain_fork: str):
     """Set up a local unit testing blockchain."""
     # https://web3py.readthedocs.io/en/stable/examples.html#contract-unit-tests-in-python
-    web3 = Web3(HTTPProvider(anvil_bnb_chain_fork, request_kwargs={"timeout": 5}))
+    web3 = Web3(HTTPProvider(anvil_polygon_chain_fork, request_kwargs={"timeout": 5}))
     web3.eth.set_gas_price_strategy(node_default_gas_price_strategy)
     install_chain_middleware(web3)
     return web3
@@ -129,70 +114,51 @@ def chain_id(web3) -> int:
     return web3.eth.chain_id
 
 
-@pytest.fixture()
-def deployer(web3) -> HexAddress:
-    """Deploy account.
-
-    Do some account allocation for tests.
-    """
-    return web3.eth.accounts[0]
-
-
-@pytest.fixture()
-def hot_wallet(
-    web3: Web3, busd_token: Contract, large_busd_holder: HexAddress
-) -> HotWallet:
-    """Our trading Ethereum account.
-
-    Start with 10,000 USDC cash and 2 BNB.
-    """
-    account = Account.create()
-    web3.eth.send_transaction(
-        {"from": large_busd_holder, "to": account.address, "value": 2 * 10**18}
-    )
-    tx_hash = busd_token.functions.transfer(
-        account.address, 10_000 * 10**18
-    ).transact({"from": large_busd_holder})
-    wait_transactions_to_complete(web3, [tx_hash])
-    wallet = HotWallet(account)
-    wallet.sync_nonce(web3)
-    return wallet
-
-
 @pytest.fixture
-def usdc_token(web3, deployer: HexAddress) -> Contract:
-    """Create USDC with 10M supply."""
-    token = create_token(
-        web3, deployer, "Fake USDC coin", "USDC", 10_000_000 * 10**6, 6
+def usdc_token(web3) -> Contract:
+    """usdc with $4B supply."""
+    # https://polygonscan.com/address/0x2791bca1f2de4661ed88a30c99a7a9449aa84174
+    token = get_deployed_contract(
+        web3, "ERC20MockDecimals.json", "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174"
     )
     return token
 
 
 @pytest.fixture
-def aave_token(web3, deployer: HexAddress) -> Contract:
-    """Create AAVE with 10M supply."""
-    token = create_token(
-        web3, deployer, "Fake Aave coin", "AAVE", 10_000_000 * 10**18, 18
+def eth_token(web3) -> Contract:
+    """eth token."""
+    # https://polygonscan.com//address/0x7ceb23fd6bc0add59e62ac25578270cff1b9f619
+    # https://tradingstrategy.ai/trading-view/polygon/tokens/0x7ceb23fd6bc0add59e62ac25578270cff1b9f619
+    token = get_deployed_contract(
+        web3, "ERC20MockDecimals.json", "0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619"
     )
     return token
 
 
 @pytest.fixture()
-def uniswap_v3(web3, deployer) -> UniswapV3Deployment:
-    """Uniswap v2 deployment."""
-    deployment = deploy_uniswap_v3(web3, deployer)
+def uniswap_v3(web3) -> UniswapV3Deployment:
+    """Fetch live uniswap_v3 v3 deployment.
+
+    See https://docs.uniswap_v3.exchange/concepts/protocol-overview/03-smart-contracts for more information
+    """
+    deployment = fetch_deployment(
+        web3,
+        "0x1F98431c8aD98523631AE4a59f267346ea31F984",
+        "0xE592427A0AEce92De3Edee1F18E0157C05861564",
+        "0xC36442b4a4522E871399CD717aBDD847Ab11FE88",
+        "0xb27308f9F90D607463bb33eA1BeBb41C27CE5AB6",
+    )
     return deployment
 
 
 @pytest.fixture
-def weth_token(uniswap_v3: UniswapV3Deployment) -> Contract:
-    """Mock some assets"""
+def wmatic_token(uniswap_v3: UniswapV3Deployment) -> Contract:
+    """WMATIC is native token of Polygon."""
     return uniswap_v3.weth
 
 
-@pytest.fixture
-def asset_usdc(usdc_token, chain_id) -> AssetIdentifier:
-    """Mock some assets"""
+@pytest.fixture()
+def usdc_asset(usdc_token, chain_id) -> AssetIdentifier:
     return AssetIdentifier(
         chain_id,
         usdc_token.address,
@@ -202,154 +168,115 @@ def asset_usdc(usdc_token, chain_id) -> AssetIdentifier:
 
 
 @pytest.fixture
-def asset_weth(weth_token, chain_id) -> AssetIdentifier:
-    """Mock some assets"""
+def matic_asset(wmatic_token, chain_id) -> AssetIdentifier:
     return AssetIdentifier(
         chain_id,
-        weth_token.address,
-        weth_token.functions.symbol().call(),
-        weth_token.functions.decimals().call(),
+        wmatic_token.address,
+        wmatic_token.functions.symbol().call(),
+        wmatic_token.functions.decimals().call(),
     )
 
 
 @pytest.fixture
-def asset_aave(aave_token, chain_id) -> AssetIdentifier:
-    """Mock some assets"""
+def eth_asset(eth_token, chain_id) -> AssetIdentifier:
     return AssetIdentifier(
         chain_id,
-        aave_token.address,
-        aave_token.functions.symbol().call(),
-        aave_token.functions.decimals().call(),
+        eth_token.address,
+        eth_token.functions.symbol().call(),
+        eth_token.functions.decimals().call(),
     )
 
 
 @pytest.fixture
-def aave_usdc_uniswap_trading_pair(
-    web3, deployer, uniswap_v3, aave_token, usdc_token, aave_usdc_fee
-) -> HexAddress:
-    """AAVE-USDC pool with 200k liquidity. Fee of 0.1%"""
-    min_tick, max_tick = get_default_tick_range(aave_usdc_fee)
-
-    pool_contract = deploy_pool(
-        web3,
-        deployer,
-        deployment=uniswap_v3,
-        token0=aave_token,
-        token1=usdc_token,
-        fee=aave_usdc_fee,
-    )
-
-    add_liquidity(
-        web3,
-        deployer,
-        deployment=uniswap_v3,
-        pool=pool_contract,
-        amount0=1000 * 10**18,  # 1000 AAVE liquidity
-        amount1=200_000 * 10**6,  # 200k USDC liquidity
-        lower_tick=min_tick,
-        upper_tick=max_tick,
-    )
-    return pool_contract.address
+def eth_matic_trading_pair_address() -> HexAddress:
+    """See https://tradingstrategy.ai/trading-view/polygon/uniswap-v3/matic-eth-fee-5"""
+    return HexAddress(HexStr("0x86f1d8390222A3691C28938eC7404A1661E618e0"))
 
 
 @pytest.fixture
-def weth_usdc_uniswap_trading_pair(
-    web3, deployer, uniswap_v3, weth_token, usdc_token, weth_usdc_fee
-) -> HexAddress:
-    """ETH-USDC pool with 1.7M liquidity."""
-    min_tick, max_tick = get_default_tick_range(weth_usdc_fee)
-
-    pool_contract = deploy_pool(
-        web3,
-        deployer,
-        deployment=uniswap_v3,
-        token0=weth_token,
-        token1=usdc_token,
-        fee=weth_usdc_fee,
-    )
-
-    add_liquidity(
-        web3,
-        deployer,
-        deployment=uniswap_v3,
-        pool=pool_contract,
-        amount0=1000 * 10**18,  # 1000 ETH liquidity
-        amount1=1_700_000 * 10**6,  # 1.7M USDC liquidity
-        lower_tick=min_tick,
-        upper_tick=max_tick,
-    )
-    return pool_contract.address
-
-
-@pytest.fixture
-def weth_usdc_pair(
-    uniswap_v3, weth_usdc_uniswap_trading_pair, asset_usdc, asset_weth, weth_usdc_fee
-) -> TradingPairIdentifier:
-    return TradingPairIdentifier(
-        asset_weth,
-        asset_usdc,
-        weth_usdc_uniswap_trading_pair,
-        uniswap_v3.factory.address,
-        fee=weth_usdc_fee,
-    )
-
-
-@pytest.fixture
-def aave_usdc_pair(
-    uniswap_v3, aave_usdc_uniswap_trading_pair, asset_usdc, asset_aave, aave_usdc_fee
-) -> TradingPairIdentifier:
-    return TradingPairIdentifier(
-        asset_aave,
-        asset_usdc,
-        aave_usdc_uniswap_trading_pair,
-        uniswap_v3.factory.address,
-        fee=aave_usdc_fee,
-    )
-
-
-@pytest.fixture
-def start_ts() -> datetime.datetime:
-    """Timestamp of action started"""
-    return datetime.datetime(2022, 1, 1, tzinfo=None)
-
-
-@pytest.fixture
-def supported_reserves(usdc) -> list[AssetIdentifier]:
-    """Timestamp of action started"""
-    return [usdc]
-
-
-@pytest.fixture
-def supported_reserves(asset_usdc) -> list[AssetIdentifier]:
-    """The reserve currencies we support."""
-    return [asset_usdc]
+def matic_usdc_trading_pair_address() -> HexAddress:
+    """See https://tradingstrategy.ai/trading-view/polygon/uniswap-v3/matic-usdc-fee-5"""
+    return HexAddress(HexStr("0xA374094527e1673A86dE625aa59517c5dE346d32"))
 
 
 @pytest.fixture()
-def pair_universe(web3, weth_usdc_pair, aave_usdc_pair) -> PandasPairUniverse:
-    return create_pair_universe(web3, None, [weth_usdc_pair, aave_usdc_pair])
+def hot_wallet(
+    web3: Web3, usdc_token: Contract, large_usdc_holder: HexAddress
+) -> HotWallet:
+    """Our trading Ethereum account.
 
-
-@pytest.fixture()
-def portfolio(web3, hot_wallet, start_ts, supported_reserves) -> Portfolio:
-    """A portfolio loaded with the initial cash.
-
-    We start with 10,000 USDC.
+    Start with 10,000 USDC cash and 2 polygon.
     """
-    portfolio = Portfolio()
-    events = sync_reserves(web3, start_ts, hot_wallet.address, [], supported_reserves)
-    apply_sync_events(portfolio, events)
-    return portfolio
+    account = Account.create()
+    web3.eth.send_transaction(
+        {"from": large_usdc_holder, "to": account.address, "value": 2 * 10**6}
+    )
+    tx_hash = usdc_token.functions.transfer(account.address, 10_000 * 10**6).transact(
+        {"from": large_usdc_holder}
+    )
+    wait_transactions_to_complete(web3, [tx_hash])
+    wallet = HotWallet(account)
+    wallet.sync_nonce(web3)
+    return wallet
+
+
+@pytest.fixture
+def eth_usdc_trading_pair(eth_asset, usdc_asset, uniswap_v3) -> TradingPairIdentifier:
+    """eth-usdc pair representation in the trade executor domain."""
+    return TradingPairIdentifier(
+        eth_asset,
+        usdc_asset,
+        "0x45dDa9cb7c25131DF268515131f647d726f50608",  #  https://tradingstrategy.ai/trading-view/polygon/uniswap-v3/eth-usdc-fee-5
+        internal_id=1000,  # random number
+        internal_exchange_id=1000,  # random number
+        exchange_address=uniswap_v3.factory.address,
+    )
+
+
+@pytest.fixture
+def matic_usdc_trading_pair(
+    matic_asset, usdc_asset, uniswap_v3
+) -> TradingPairIdentifier:
+    return TradingPairIdentifier(
+        matic_asset,
+        usdc_asset,
+        "0xA374094527e1673A86dE625aa59517c5dE346d32",  #  https://tradingstrategy.ai/trading-view/polygon/uniswap-v3/matic-usdc-fee-5
+        internal_id=1001,  # random number
+        internal_exchange_id=1000,  # random number
+        exchange_address=uniswap_v3.factory.address,
+    )
+
+
+@pytest.fixture
+def eth_matic_trading_pair(eth_asset, matic_asset, uniswap_v3) -> TradingPairIdentifier:
+    """eth-usdc pair representation in the trade executor domain."""
+    return TradingPairIdentifier(
+        eth_asset,
+        matic_asset,
+        "0x86f1d8390222A3691C28938eC7404A1661E618e0",  #  https://tradingstrategy.ai/trading-view/polygon/uniswap-v3/matic-eth-fee-5
+        internal_id=1002,  # random number
+        internal_exchange_id=1000,  # random number
+        exchange_address=uniswap_v3.factory.address,
+    )
+
+
+@pytest.fixture
+def pair_universe(
+    eth_usdc_trading_pair, matic_usdc_trading_pair, eth_matic_trading_pair
+) -> PandasPairUniverse:
+    """Pair universe needed for the trade routing."""
+    return create_pair_universe_from_code(
+        ChainId.bsc,
+        [eth_usdc_trading_pair, matic_usdc_trading_pair, eth_matic_trading_pair],
+    )
 
 
 @pytest.fixture()
-def state(portfolio) -> State:
-    return State(portfolio=portfolio)
+def routing_model(usdc_asset):
 
-
-@pytest.fixture()
-def routing_model(busd_asset):
-
+    # for uniswap v3
+    # same addresses for Mainnet, Polygon, Optimism, Arbitrum, Testnets Address
+    # only celo different
     address_map = {
         "factory": "0x1F98431c8aD98523631AE4a59f267346ea31F984",
         "router": "0xE592427A0AEce92De3Edee1F18E0157C05861564",
@@ -360,15 +287,15 @@ def routing_model(busd_asset):
     }
 
     allowed_intermediary_pairs = {
-        # For WBNB pairs route thru (WBNB, BUSD) pool
-        # https://tradingstrategy.ai/trading-view/binance/pancakeswap-v2/bnb-busd
+        # For Wpolygon pairs route thru (Wpolygon, usdc) pool
+        # https://tradingstrategy.ai/trading-view/binance/uniswap_v3-v2/polygon-usdc
         "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c": "0x58f876857a02d6762e0101bb5c46a8c1ed44dc16",
     }
 
     return UniswapV3SimpleRoutingModel(
         address_map,
         allowed_intermediary_pairs,
-        reserve_token_address=busd_asset.address,
+        reserve_token_address=usdc_asset.address,
     )
 
 
@@ -377,23 +304,44 @@ def execution_model(web3, hot_wallet) -> UniswapV3ExecutionModel:
     return UniswapV3ExecutionModel(web3, hot_wallet)
 
 
+@pytest.fixture()
+def portfolio(web3, hot_wallet, usdc_asset) -> Portfolio:
+    """A portfolio synced to the hot wallet, starting with 10_000 usdc."""
+    portfolio = Portfolio()
+    events = sync_reserves(
+        web3, datetime.datetime.utcnow(), hot_wallet.address, [], [usdc_asset]
+    )
+    assert len(events) > 0
+    apply_sync_events(portfolio, events)
+    reserve_currency, exchange_rate = portfolio.get_default_reserve_currency()
+    assert reserve_currency == usdc_asset
+    return portfolio
+
+
+@pytest.fixture
+def state(portfolio) -> State:
+    """State used in the tests."""
+    state = State(portfolio=portfolio)
+    return state
+
+
 # Flaky because Ganache hangs
 @flaky.flaky()
 def test_simple_routing_one_leg(
     web3,
     hot_wallet,
-    busd_asset,
-    cake_token,
+    usdc_asset,
+    eth_token,
     routing_model,
-    cake_busd_trading_pair,
+    eth_usdc_trading_pair,
     pair_universe,
 ):
-    """Make 1x two way trade BUSD -> Cake.
+    """Make 1x two way trade usdc -> eth.
 
-    - Buy Cake with BUSD
+    - Buy eth with usdc
     """
 
-    # Get live fee structure from BNB Chain
+    # Get live fee structure from polygon Chain
     fees = estimate_gas_fees(web3)
 
     # Prepare a transaction builder
@@ -408,9 +356,9 @@ def test_simple_routing_one_leg(
 
     txs = routing_model.trade(
         routing_state,
-        cake_busd_trading_pair,
-        busd_asset,
-        100 * 10**18,  # Buy Cake worth of 100 BUSD,
+        eth_usdc_trading_pair,
+        usdc_asset,
+        100 * 10**6,  # Buy eth worth of 100 usdc,
         check_balances=True,
     )
 
@@ -427,23 +375,23 @@ def test_simple_routing_one_leg(
         assert tx.is_success(), f"Transaction failed: {tx}"
 
     # We received the tokens we bought
-    assert cake_token.functions.balanceOf(hot_wallet.address).call() > 0
+    assert eth_token.functions.balanceOf(hot_wallet.address).call() > 0
 
 
 def test_simple_routing_buy_sell(
     web3,
     hot_wallet,
-    busd_asset,
-    cake_asset,
-    cake_token,
-    busd_token,
-    routing_model,
-    cake_busd_trading_pair,
+    usdc_asset,
+    eth_asset,
+    eth_token,
+    usdc_token,
+    routing_model: UniswapV3SimpleRoutingModel,
+    eth_usdc_trading_pair,
     pair_universe,
 ):
-    """Make 2x two way trade BUSD -> Cake -> BUSD."""
+    """Make 2x two way trade usdc -> eth -> usdc."""
 
-    # Get live fee structure from BNB Chain
+    # Get live fee structure from polygon Chain
     fees = estimate_gas_fees(web3)
 
     # Prepare a transaction builder
@@ -458,9 +406,9 @@ def test_simple_routing_buy_sell(
 
     txs = routing_model.trade(
         routing_state,
-        cake_busd_trading_pair,
-        busd_asset,
-        100 * 10**18,  # Buy Cake worth of 100 BUSD,
+        eth_usdc_trading_pair,
+        usdc_asset,
+        100 * 10**6,  # Buy eth worth of 100 usdc,
         check_balances=True,
     )
 
@@ -475,14 +423,14 @@ def test_simple_routing_buy_sell(
     assert all(tx.is_success() for tx in txs)
 
     # We received the tokens we bought
-    cake_balance = cake_token.functions.balanceOf(hot_wallet.address).call()
+    eth_balance = eth_token.functions.balanceOf(hot_wallet.address).call()
 
-    # Sell Cake we received
+    # Sell eth we received
     txs = routing_model.trade(
         routing_state,
-        cake_busd_trading_pair,
-        cake_asset,
-        cake_balance,  # Sell all cake
+        eth_usdc_trading_pair,
+        eth_asset,
+        eth_balance,  # Sell all eth
         check_balances=True,
     )
     assert len(txs) == 2
@@ -492,21 +440,21 @@ def test_simple_routing_buy_sell(
     )
     assert all(tx.is_success() for tx in txs)
 
-    # We started with 10_000 BUSD
-    balance = busd_token.functions.balanceOf(hot_wallet.address).call()
+    # We started with 10_000 usdc
+    balance = usdc_token.functions.balanceOf(hot_wallet.address).call()
     assert balance == pytest.approx(9999500634326300440503)
 
 
 def test_simple_routing_not_enough_balance(
     web3,
     hot_wallet,
-    busd_asset,
+    usdc_asset,
     routing_model,
-    cake_busd_trading_pair,
+    eth_usdc_trading_pair,
 ):
     """Try to buy, but does not have cash."""
 
-    # Get live fee structure from BNB Chain
+    # Get live fee structure from polygon Chain
     fees = estimate_gas_fees(web3)
 
     # Prepare a transaction builder
@@ -522,9 +470,9 @@ def test_simple_routing_not_enough_balance(
     with pytest.raises(OutOfBalance):
         routing_model.trade(
             routing_state,
-            cake_busd_trading_pair,
-            busd_asset,
-            1_000_000_000 * 10**18,  # Buy Cake worth of 10B BUSD,
+            eth_usdc_trading_pair,
+            usdc_asset,
+            1_000_000_000 * 10**6,  # Buy eth worth of 10B usdc,
             check_balances=True,
         )
 
@@ -532,18 +480,18 @@ def test_simple_routing_not_enough_balance(
 def test_simple_routing_three_leg(
     web3,
     hot_wallet,
-    busd_asset,
-    bnb_asset,
-    cake_asset,
-    cake_token,
-    routing_model,
-    cake_bnb_trading_pair,
-    bnb_busd_trading_pair,
+    usdc_asset,
+    polygon_asset,
+    eth_asset,
+    eth_token,
+    routing_model: UniswapV3SimpleRoutingModel,
+    eth_polygon_trading_pair,
+    polygon_usdc_trading_pair,
     pair_universe,
 ):
-    """Make 1x two way trade BUSD -> BNB -> Cake."""
+    """Make 1x two way trade usdc -> polygon -> eth."""
 
-    # Get live fee structure from BNB Chain
+    # Get live fee structure from polygon Chain
     fees = estimate_gas_fees(web3)
 
     # Prepare a transaction builder
@@ -557,11 +505,11 @@ def test_simple_routing_three_leg(
 
     txs = routing_model.trade(
         routing_state,
-        cake_bnb_trading_pair,
-        busd_asset,
-        100 * 10**18,  # Buy Cake worth of 100 BUSD,
+        eth_polygon_trading_pair,
+        usdc_asset,
+        100 * 10**6,  # Buy eth worth of 100 usdc,
         check_balances=True,
-        intermediary_pair=bnb_busd_trading_pair,
+        intermediary_pair=polygon_usdc_trading_pair,
     )
 
     # We should have 1 approve, 1 swap
@@ -577,29 +525,29 @@ def test_simple_routing_three_leg(
         assert tx.is_success(), f"Transaction failed: {tx}"
 
     # We received the tokens we bought
-    assert cake_token.functions.balanceOf(hot_wallet.address).call() > 0
+    assert eth_token.functions.balanceOf(hot_wallet.address).call() > 0
 
 
 def test_three_leg_buy_sell(
     web3,
     hot_wallet,
-    busd_asset,
-    bnb_asset,
-    cake_asset,
-    cake_token,
-    busd_token,
-    routing_model,
-    cake_bnb_trading_pair,
-    bnb_busd_trading_pair,
+    usdc_asset,
+    polygon_asset,
+    eth_asset,
+    eth_token,
+    usdc_token,
+    routing_model: UniswapV3SimpleRoutingModel,
+    eth_polygon_trading_pair,
+    polygon_usdc_trading_pair,
     pair_universe,
 ):
-    """Make trades BUSD -> BNB -> Cake and Cake -> BNB -> BUSD."""
+    """Make trades usdc -> polygon -> eth and eth -> polygon -> usdc."""
 
-    # We start without Cake
-    balance = cake_token.functions.balanceOf(hot_wallet.address).call()
+    # We start without eth
+    balance = eth_token.functions.balanceOf(hot_wallet.address).call()
     assert balance == 0
 
-    # Get live fee structure from BNB Chain
+    # Get live fee structure from polygon Chain
     fees = estimate_gas_fees(web3)
 
     # Prepare a transaction builder
@@ -613,11 +561,11 @@ def test_three_leg_buy_sell(
 
     txs = routing_model.trade(
         routing_state,
-        cake_bnb_trading_pair,
-        busd_asset,
-        100 * 10**18,  # Buy Cake worth of 100 BUSD,
+        eth_polygon_trading_pair,
+        usdc_asset,
+        100 * 10**6,  # Buy eth worth of 100 usdc,
         check_balances=True,
-        intermediary_pair=bnb_busd_trading_pair,
+        intermediary_pair=polygon_usdc_trading_pair,
     )
 
     # We should have 1 approve, 1 swap
@@ -638,16 +586,16 @@ def test_three_leg_buy_sell(
         assert tx.is_success(), f"Transaction failed: {tx}"
 
     # We received the tokens we bought
-    balance = cake_token.functions.balanceOf(hot_wallet.address).call()
+    balance = eth_token.functions.balanceOf(hot_wallet.address).call()
     assert balance > 0
 
     txs = routing_model.trade(
         routing_state,
-        cake_bnb_trading_pair,
-        cake_asset,
+        eth_polygon_trading_pair,
+        eth_asset,
         balance,
         check_balances=True,
-        intermediary_pair=bnb_busd_trading_pair,
+        intermediary_pair=polygon_usdc_trading_pair,
     )
 
     # We should have 1 approve, 1 swap
@@ -667,25 +615,25 @@ def test_three_leg_buy_sell(
     for tx in txs:
         assert tx.is_success(), f"Transaction failed: {tx}"
 
-    # We started with 10_000 BUSD
-    balance = busd_token.functions.balanceOf(hot_wallet.address).call()
+    # We started with 10_000 usdc
+    balance = usdc_token.functions.balanceOf(hot_wallet.address).call()
     assert balance == pytest.approx(9999003745120046326850)
 
 
 def test_three_leg_buy_sell_twice_on_chain(
     web3,
     hot_wallet,
-    busd_asset,
-    bnb_asset,
-    cake_asset,
-    cake_token,
-    busd_token,
+    usdc_asset,
+    polygon_asset,
+    eth_asset,
+    eth_token,
+    usdc_token,
     routing_model,
-    cake_bnb_trading_pair,
-    bnb_busd_trading_pair,
+    eth_polygon_trading_pair,
+    polygon_usdc_trading_pair,
     pair_universe,
 ):
-    """Make trades 2x BUSD -> BNB -> Cake and Cake -> BNB -> BUSD.
+    """Make trades 2x usdc -> polygon -> eth and eth -> polygon -> usdc.
 
     Because we do the round trip 2x, we should not need approvals
     on the second time and we need one less transactions.
@@ -695,7 +643,7 @@ def test_three_leg_buy_sell_twice_on_chain(
     back from the chain.
     """
 
-    # Get live fee structure from BNB Chain
+    # Get live fee structure from polygon Chain
     fees = estimate_gas_fees(web3)
 
     # Prepare a transaction builder
@@ -711,11 +659,11 @@ def test_three_leg_buy_sell_twice_on_chain(
 
         txs = routing_model.trade(
             routing_state,
-            cake_bnb_trading_pair,
-            busd_asset,
-            100 * 10**18,  # Buy Cake worth of 100 BUSD,
+            eth_polygon_trading_pair,
+            usdc_asset,
+            100 * 10**6,  # Buy eth worth of 100 usdc,
             check_balances=True,
-            intermediary_pair=bnb_busd_trading_pair,
+            intermediary_pair=polygon_usdc_trading_pair,
         )
 
         # Execute
@@ -728,16 +676,16 @@ def test_three_leg_buy_sell_twice_on_chain(
             assert tx.is_success(), f"Transaction failed: {tx}"
 
         # We received the tokens we bought
-        balance = cake_token.functions.balanceOf(hot_wallet.address).call()
+        balance = eth_token.functions.balanceOf(hot_wallet.address).call()
         assert balance > 0
 
         txs2 = routing_model.trade(
             routing_state,
-            cake_bnb_trading_pair,
-            cake_asset,
+            eth_polygon_trading_pair,
+            eth_asset,
             balance,
             check_balances=True,
-            intermediary_pair=bnb_busd_trading_pair,
+            intermediary_pair=polygon_usdc_trading_pair,
         )
 
         # Execute
@@ -762,23 +710,23 @@ def test_three_leg_buy_sell_twice_on_chain(
 def test_three_leg_buy_sell_twice(
     web3,
     hot_wallet,
-    busd_asset,
-    bnb_asset,
-    cake_asset,
-    cake_token,
-    busd_token,
+    usdc_asset,
+    polygon_asset,
+    eth_asset,
+    eth_token,
+    usdc_token,
     routing_model,
-    cake_bnb_trading_pair,
-    bnb_busd_trading_pair,
+    eth_polygon_trading_pair,
+    polygon_usdc_trading_pair,
     pair_universe,
 ):
-    """Make trades 2x BUSD -> BNB -> Cake and Cake -> BNB -> BUSD.
+    """Make trades 2x usdc -> polygon -> eth and eth -> polygon -> usdc.
 
     Because we do the round trip 2x, we should not need approvals
     on the second time and we need one less transactions.
     """
 
-    # Get live fee structure from BNB Chain
+    # Get live fee structure from polygon Chain
     fees = estimate_gas_fees(web3)
 
     # Prepare a transaction builder
@@ -794,11 +742,11 @@ def test_three_leg_buy_sell_twice(
 
         txs = routing_model.trade(
             routing_state,
-            cake_bnb_trading_pair,
-            busd_asset,
-            100 * 10**18,  # Buy Cake worth of 100 BUSD,
+            eth_polygon_trading_pair,
+            usdc_asset,
+            100 * 10**1,  # Buy eth worth of 100 usdc,
             check_balances=True,
-            intermediary_pair=bnb_busd_trading_pair,
+            intermediary_pair=polygon_usdc_trading_pair,
         )
 
         # Execute
@@ -811,16 +759,16 @@ def test_three_leg_buy_sell_twice(
             assert tx.is_success(), f"Transaction failed: {tx}"
 
         # We received the tokens we bought
-        balance = cake_token.functions.balanceOf(hot_wallet.address).call()
+        balance = eth_token.functions.balanceOf(hot_wallet.address).call()
         assert balance > 0
 
         txs2 = routing_model.trade(
             routing_state,
-            cake_bnb_trading_pair,
-            cake_asset,
+            eth_polygon_trading_pair,
+            eth_asset,
             balance,
             check_balances=True,
-            intermediary_pair=bnb_busd_trading_pair,
+            intermediary_pair=polygon_usdc_trading_pair,
         )
 
         # Execute
@@ -846,13 +794,13 @@ def test_stateful_routing_three_legs(
     web3,
     pair_universe,
     hot_wallet,
-    busd_asset,
-    bnb_asset,
-    cake_asset,
-    cake_token,
+    usdc_asset,
+    polygon_asset,
+    eth_asset,
+    eth_token,
     routing_model,
-    cake_bnb_trading_pair,
-    bnb_busd_trading_pair,
+    eth_polygon_trading_pair,
+    polygon_usdc_trading_pair,
     state: State,
     execution_model: UniswapV3ExecutionModel,
 ):
@@ -862,7 +810,7 @@ def test_stateful_routing_three_legs(
     and state management integrate.
     """
 
-    # Get live fee structure from BNB Chain
+    # Get live fee structure from polygon Chain
     fees = estimate_gas_fees(web3)
 
     # Prepare a transaction builder
@@ -872,20 +820,20 @@ def test_stateful_routing_three_legs(
 
     trader = PairUniverseTestTrader(state)
 
-    reserve = pair_universe.get_token(busd_asset.address)
+    reserve = pair_universe.get_token(usdc_asset.address)
     if not reserve:
         all_tokens = pair_universe.get_all_tokens()
         assert (
             reserve
-        ), f"Reserve asset {busd_asset.address} missing in the universe {busd_asset}, we have {all_tokens}"
+        ), f"Reserve asset {usdc_asset.address} missing in the universe {usdc_asset}, we have {all_tokens}"
 
-    # Buy Cake via BUSD -> BNB pool for 100 USD
-    trades = [trader.buy(cake_bnb_trading_pair, Decimal(100))]
+    # Buy eth via usdc -> polygon pool for 100 USD
+    trades = [trader.buy(eth_polygon_trading_pair, Decimal(100))]
 
     t = trades[0]
     assert t.is_buy()
-    assert t.reserve_currency == busd_asset
-    assert t.pair == cake_bnb_trading_pair
+    assert t.reserve_currency == usdc_asset
+    assert t.pair == eth_polygon_trading_pair
 
     state.start_trades(datetime.datetime.utcnow(), trades)
     routing_model.execute_trades_internal(
@@ -900,19 +848,19 @@ def test_stateful_routing_three_legs(
             assert tx.is_success()
 
     # We received the tokens we bought
-    assert cake_token.functions.balanceOf(hot_wallet.address).call() > 0
+    assert eth_token.functions.balanceOf(hot_wallet.address).call() > 0
 
-    cake_position: TradingPosition = state.portfolio.open_positions[1]
-    assert cake_position
+    eth_position: TradingPosition = state.portfolio.open_positions[1]
+    assert eth_position
 
-    # Buy Cake via BUSD -> BNB pool for 100 USD
-    trades = [trader.sell(cake_bnb_trading_pair, cake_position.get_quantity())]
+    # Buy eth via usdc -> polygon pool for 100 USD
+    trades = [trader.sell(eth_polygon_trading_pair, eth_position.get_quantity())]
 
     t = trades[0]
     assert t.is_sell()
-    assert t.reserve_currency == busd_asset
-    assert t.pair == cake_bnb_trading_pair
-    assert t.planned_quantity == -cake_position.get_quantity()
+    assert t.reserve_currency == usdc_asset
+    assert t.pair == eth_polygon_trading_pair
+    assert t.planned_quantity == -eth_position.get_quantity()
 
     state.start_trades(datetime.datetime.utcnow(), trades)
     routing_model.execute_trades_internal(
@@ -927,19 +875,19 @@ def test_stateful_routing_three_legs(
             assert tx.is_success()
 
     # On-chain balance is zero after the sell
-    assert cake_token.functions.balanceOf(hot_wallet.address).call() == 0
+    assert eth_token.functions.balanceOf(hot_wallet.address).call() == 0
 
 
 def test_stateful_routing_two_legs(
     web3,
     pair_universe,
     hot_wallet,
-    busd_asset,
-    bnb_asset,
-    cake_asset,
-    cake_token,
+    usdc_asset,
+    polygon_asset,
+    eth_asset,
+    eth_token,
     routing_model,
-    cake_busd_trading_pair,
+    eth_usdc_trading_pair,
     state: State,
     execution_model: UniswapV3ExecutionModel,
 ):
@@ -952,7 +900,7 @@ def test_stateful_routing_two_legs(
     except for the trading pair that we have changed.
     """
 
-    # Get live fee structure from BNB Chain
+    # Get live fee structure from polygon Chain
     fees = estimate_gas_fees(web3)
 
     # Prepare a transaction builder
@@ -962,13 +910,13 @@ def test_stateful_routing_two_legs(
 
     trader = PairUniverseTestTrader(state)
 
-    # Buy Cake via BUSD -> BNB pool for 100 USD
-    trades = [trader.buy(cake_busd_trading_pair, Decimal(100))]
+    # Buy eth via usdc -> polygon pool for 100 USD
+    trades = [trader.buy(eth_usdc_trading_pair, Decimal(100))]
 
     t = trades[0]
     assert t.is_buy()
-    assert t.reserve_currency == busd_asset
-    assert t.pair == cake_busd_trading_pair
+    assert t.reserve_currency == usdc_asset
+    assert t.pair == eth_usdc_trading_pair
 
     state.start_trades(datetime.datetime.utcnow(), trades)
     routing_model.execute_trades_internal(
@@ -983,19 +931,19 @@ def test_stateful_routing_two_legs(
             assert tx.is_success()
 
     # We received the tokens we bought
-    assert cake_token.functions.balanceOf(hot_wallet.address).call() > 0
+    assert eth_token.functions.balanceOf(hot_wallet.address).call() > 0
 
-    cake_position: TradingPosition = state.portfolio.open_positions[1]
-    assert cake_position
+    eth_position: TradingPosition = state.portfolio.open_positions[1]
+    assert eth_position
 
-    # Buy Cake via BUSD -> BNB pool for 100 USD
-    trades = [trader.sell(cake_busd_trading_pair, cake_position.get_quantity())]
+    # Buy eth via usdc -> polygon pool for 100 USD
+    trades = [trader.sell(eth_usdc_trading_pair, eth_position.get_quantity())]
 
     t = trades[0]
     assert t.is_sell()
-    assert t.reserve_currency == busd_asset
-    assert t.pair == cake_busd_trading_pair
-    assert t.planned_quantity == -cake_position.get_quantity()
+    assert t.reserve_currency == usdc_asset
+    assert t.pair == eth_usdc_trading_pair
+    assert t.planned_quantity == -eth_position.get_quantity()
 
     state.start_trades(datetime.datetime.utcnow(), trades)
     routing_model.execute_trades_internal(
@@ -1010,4 +958,4 @@ def test_stateful_routing_two_legs(
             assert tx.is_success()
 
     # On-chain balance is zero after the sell
-    assert cake_token.functions.balanceOf(hot_wallet.address).call() == 0
+    assert eth_token.functions.balanceOf(hot_wallet.address).call() == 0
