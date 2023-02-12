@@ -69,6 +69,8 @@ class UniswapV2RoutingState(EthereumRoutingState):
         if check_balances:
             self.check_has_enough_tokens(quote_token, reserve_amount)
 
+        bps_fee = target_pair.fee * 10_000
+        
         bound_swap_func = swap_with_slippage_protection(
             uniswap,
             recipient_address=hot_wallet.address,
@@ -76,7 +78,7 @@ class UniswapV2RoutingState(EthereumRoutingState):
             quote_token=quote_token,
             amount_in=reserve_amount,
             max_slippage=max_slippage * 100,  # In BPS
-            #fee=target_pair.fee # TODO
+            fee=bps_fee
         )
         
         return self.get_signed_tx(bound_swap_func, self.swap_gas_limit)
@@ -108,6 +110,9 @@ class UniswapV2RoutingState(EthereumRoutingState):
         if check_balances:
             self.check_has_enough_tokens(quote_token, reserve_amount)
 
+        assert target_pair.fee == intermediary_pair.fee, "Uniswap V2 pairs should all have the same fee"
+        bps_fee = target_pair.fee * 10_000
+        
         bound_swap_func = swap_with_slippage_protection(
             uniswap,
             recipient_address=hot_wallet.address,
@@ -116,7 +121,7 @@ class UniswapV2RoutingState(EthereumRoutingState):
             amount_in=reserve_amount,
             max_slippage=max_slippage * 100,  # In BPS,
             intermediate_token=intermediary_token,
-            # fee = [intermediate_token.fee, target_pair.fee] # TODO 
+            fee = bps_fee
         )
 
         tx = self.tx_builder.sign_transaction(bound_swap_func, self.swap_gas_limit)
