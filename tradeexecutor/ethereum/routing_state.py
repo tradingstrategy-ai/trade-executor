@@ -13,6 +13,8 @@ from web3.contract import Contract
 
 from eth_defi.abi import get_deployed_contract
 from eth_defi.token import fetch_erc20_details
+from eth_defi.uniswap_v2.deployment import UniswapV2Deployment
+from eth_defi.uniswap_v3.deployment import UniswapV3Deployment
 
 from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
@@ -27,6 +29,9 @@ logger = logging.getLogger(__name__)
 
 class OutOfBalance(Exception):
     """Did not have enough tokens"""
+
+
+deployment_types = UniswapV2Deployment | UniswapV3Deployment
 
 
 class EthereumRoutingState(RoutingState):
@@ -98,11 +103,24 @@ class EthereumRoutingState(RoutingState):
         """Get a router for a trading pair."""
     
     @abstractmethod
-    def trade_on_router_two_way():
+    def trade_on_router_two_way(self,
+            uniswap: deployment_types,
+            target_pair: TradingPairIdentifier,
+            reserve_asset: AssetIdentifier,
+            reserve_amount: int,
+            max_slippage: float,
+            check_balances: False):
         """Prepare the actual swap. Same for Uniswap V2 and V3."""
         
     @abstractmethod
-    def trade_on_router_three_way():
+    def trade_on_router_three_way(self,
+            uniswap: deployment_types,
+            target_pair: TradingPairIdentifier,
+            intermediary_pair: TradingPairIdentifier,
+            reserve_asset: AssetIdentifier,
+            reserve_amount: int,
+            max_slippage: float,
+            check_balances: False):
         """Prepare the actual swap for three way trade."""
 
     def is_route_approved(self, router_address: str):
