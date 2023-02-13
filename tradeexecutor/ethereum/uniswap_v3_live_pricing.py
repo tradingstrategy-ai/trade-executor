@@ -67,6 +67,10 @@ class UniswapV3LivePricing(EthereumPricingModel):
             very_small_amount
         )
 
+    def get_pair_fee_multiplier(self, ts, pair):
+        """Uniswap V3 pairs get fees in raw format e.g. 3000 instead of 0.3%"""
+        return super().get_pair_fee(ts, pair)/1_000_000
+    
     def get_uniswap(self, target_pair: TradingPairIdentifier) -> UniswapV3Deployment:
         """Helper function to speed up Uniswap v3 deployment resolution."""
         if target_pair not in self.uniswap_cache:
@@ -112,6 +116,8 @@ class UniswapV3LivePricing(EthereumPricingModel):
             else [target_pair.fee]
         )
         
+        fees = [int(fee) for fee in fees] # TODO fix, shouldn't need to do this
+        
         price_helper = self.get_price_helper(target_pair)
         received_raw = price_helper.get_amount_out(
             amount_in=quantity_raw,
@@ -119,23 +125,22 @@ class UniswapV3LivePricing(EthereumPricingModel):
             fees=fees
         ) 
 
-        fees = [int(fee) for fee in fees] # TODO fix, shouldn't need to do this
 
         
         if intermediate_pair is not None:
             received = intermediate_pair.quote.convert_to_decimal(received_raw)
             price = float(received / quantity)
-            mid_price = price * (1 + self.get_pair_fee(ts, target_pair) + self.get_pair_fee(ts, intermediate_pair.fee))
+            mid_price = price * (1 + self.get_pair_fee_multiplier(ts, target_pair) + self.get_pair_fee_multiplier(ts, intermediate_pair.fee))
             
         else:
             
             received = target_pair.quote.convert_to_decimal(received_raw)
             price = float(received / quantity)
-            mid_price = price * (1 + self.get_pair_fee(ts, target_pair))
+            mid_price = price * (1 + self.get_pair_fee_multiplier(ts, target_pair))
 
         
-        fee = self.get_pair_fee(ts, pair)
-        assert fee is not None, "Uniswap v3 fee data missing"
+        #fee = self.get_pair_fee(ts, pair)
+        #assert fee is not None, "Uniswap v3 fee data missing"
 
         assert price <= mid_price, f"Bad pricing: {price}, {mid_price}"
 
@@ -145,7 +150,7 @@ class UniswapV3LivePricing(EthereumPricingModel):
             price=price,
             mid_price=mid_price,
             lp_fee=lp_fee,
-            pair_fee=fee,
+            pair_fee=fees,
             side=False,
         )
         
@@ -203,7 +208,7 @@ class UniswapV3LivePricing(EthereumPricingModel):
 
         token_received = target_pair.base.convert_to_decimal(token_raw_received)
         
-        fee = self.get_pair_fee(ts, pair)
+        fee = self.get_pair_fee_multiplier(ts, pair)
         assert fee is not None, "Uniswap v3 fee data missing"
 
         price = float(reserve / token_received)
@@ -212,7 +217,7 @@ class UniswapV3LivePricing(EthereumPricingModel):
 
         # TODO: Verify calculation
         if intermediate_pair is not None:        
-            mid_price = price * (1 - intermediate_pair.fee - target_pair.fee)
+            mid_price = price * (1 - self.get_pair_fee_multiplier(ts, intermediate_pair) - self.get_pair_fee_multiplier(ts, target_pair))
         else:
             mid_price = price * (1 - fee)
 
@@ -222,7 +227,7 @@ class UniswapV3LivePricing(EthereumPricingModel):
             price=float(price),
             mid_price=float(mid_price),
             lp_fee=lp_fee,
-            pair_fee=fee,
+            pair_fee=fees,
             market_feed_delay=datetime.timedelta(seconds=0),
             side=True,
         )
