@@ -16,6 +16,7 @@ from eth_defi.uniswap_v3.deployment import (
     add_liquidity
 )
 from eth_defi.uniswap_v3.utils import get_default_tick_range
+from eth_defi.uniswap_v3.pool import fetch_pool_details
 
 from tradeexecutor.ethereum.uniswap_v3_routing import UniswapV3SimpleRoutingModel
 from tradeexecutor.ethereum.uniswap_v3_live_pricing import UniswapV3LivePricing
@@ -29,8 +30,8 @@ from tradingstrategy.exchange import ExchangeUniverse
 
 #: How much values we allow to drift.
 #: A hack fix receiving different decimal values on Github CI than on a local
-APPROX_REL = 0.01
-APPROX_REL_DECIMAL = Decimal("0.1")
+APPROX_REL = 0.0001
+APPROX_REL_DECIMAL = Decimal(APPROX_REL)
 
 
 @pytest.fixture()
@@ -303,7 +304,7 @@ def test_uniswap_v3_two_leg_buy_price_no_price_impact(
 
     # Get price for "infinite" small trade amount
     price_structure = pricing_method.get_buy_price(datetime.datetime.utcnow(), pair, None)
-    assert price_structure.price == pytest.approx(1705.12, rel=APPROX_REL)
+    assert price_structure.price == pytest.approx(1705.1154460381174, rel=APPROX_REL)
 
 
 def test_uniswap_v3_two_leg_buy_price_with_price_impact(
@@ -322,7 +323,7 @@ def test_uniswap_v3_two_leg_buy_price_with_price_impact(
     # Get price for 100 USDC
     # TODO: Looks incorrect
     price_structure = pricing_method.get_buy_price(datetime.datetime.utcnow(), pair, Decimal(50_000))
-    assert price_structure.price == pytest.approx(1755.1153460381142, rel=APPROX_REL)
+    assert price_structure.price == pytest.approx(1755.115346038114, rel=APPROX_REL)
 
     mid_price = pricing_method.get_mid_price(datetime.datetime.utcnow(), pair)
     assert price_structure.price > mid_price
@@ -342,7 +343,7 @@ def test_uniswap_v3_two_leg_sell_price_no_price_impact(
 
     # Get price for "infinite" small trade amount
     price_structure = pricing_method.get_sell_price(datetime.datetime.utcnow(), pair, None)
-    assert price_structure.price == pytest.approx(1705.12, rel=APPROX_REL)
+    assert price_structure.price == pytest.approx(1694.73103, rel=APPROX_REL)
 
     mid_price = pricing_method.get_mid_price(datetime.datetime.utcnow(), pair)
     assert price_structure.price < mid_price
@@ -404,15 +405,23 @@ def test_uniswap_v3_three_leg_buy_price_with_price_impact(
     #print("AAVE-WETH pool at", pair.pool_address)
     #print("WETH-USDC pool at", pair2.pool_address)
 
-    aave_pair_for, token0, token1 = uniswap_v3.pair_for(aave, weth)
-    assert aave_weth.address == aave_pair_for
+    pool = fetch_pool_details(web3, aave_weth.address)
+    assert (
+        (pool.token0.address.lower() == aave and pool.token1.address.lower() == weth)
+        or
+        (pool.token0.address.lower() == weth and pool.token1.address.lower() == aave)
+    )
 
-    weth_pair_for, token0, token1 = uniswap_v3.pair_for(weth, usdc)
-    assert weth_usdc.address == weth_pair_for
+    pool = fetch_pool_details(web3, weth_usdc.address)
+    assert (
+        (pool.token0.address.lower() == weth and pool.token1.address.lower() == usdc)
+        or
+        (pool.token0.address.lower() == usdc and pool.token1.address.lower() == weth)
+    )
 
     # Get price for 20_000 USDC
     price_structure = pricing_method.get_buy_price(datetime.datetime.utcnow(), pair, Decimal(20_000))
-    assert price_structure.price == pytest.approx(350.06125296652243, rel=APPROX_REL)
+    assert price_structure.price == pytest.approx(350.0612529665224, rel=APPROX_REL)
 
 
 def test_uniswap_v3_three_leg_sell_price_with_price_impact(
@@ -436,4 +445,4 @@ def test_uniswap_v3_three_leg_sell_price_with_price_impact(
 
     # Get price for 500 AAVE
     price_structure = pricing_method.get_buy_price(datetime.datetime.utcnow(), pair, Decimal(500))
-    assert price_structure.price == pytest.approx(342.2495177609056, rel=APPROX_REL)
+    assert price_structure.price == pytest.approx(342.2495177609055, rel=APPROX_REL)
