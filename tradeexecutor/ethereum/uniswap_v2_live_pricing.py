@@ -111,18 +111,22 @@ class UniswapV2LivePricing(EthereumPricingModel):
             fee=bps_fee,
         )
 
-        price = float(received / quantity)
         
         if intermediate_pair is not None:
             received = intermediate_pair.quote.convert_to_decimal(received_raw)
+            
             _fee = self.get_pair_fee(ts, intermediate_pair)
             assert _fee == fee, "Pairs for Uniswap V2 should have same fee"
+
+            price = float(received / quantity)
 
             # TODO: Verify calculation
             mid_price = price * (1 + 2*fee)
         else:
             received = target_pair.quote.convert_to_decimal(received_raw)
 
+            price = float(received / quantity)
+            
             mid_price = price * (1 + fee)
 
         assert price <= mid_price, f"Bad pricing: {price}, {mid_price}"
@@ -161,7 +165,8 @@ class UniswapV2LivePricing(EthereumPricingModel):
 
         uniswap = get_uniswap_for_pair(self.web3, self.routing_model.factory_router_map, target_pair)
         
-        price = float(reserve / token_received)
+        fee = self.get_pair_fee(ts, pair)
+        assert fee is not None, f"Uniswap v2 fee data missing: exchange:{uniswap} pair:{pair}"
         
         # In three token trades, be careful to use the correct reserve token
         if intermediate_pair is not None:
@@ -171,16 +176,9 @@ class UniswapV2LivePricing(EthereumPricingModel):
             _fee = self.get_pair_fee(ts, intermediate_pair)
             assert _fee == fee, "Pairs for Uniswap V2 should have same fee"
             
-            # TODO: Verify calculation
-            mid_price = price * (1 - 2*fee)
         else:
             reserve_raw = target_pair.quote.convert_to_raw_amount(reserve)
             self.check_supported_quote_token(pair)
-            
-            mid_price = price * (1 - fee)
-
-        fee = self.get_pair_fee(ts, pair)
-        assert fee is not None, f"Uniswap v2 fee data missing: exchange:{uniswap} pair:{pair}"
 
         bps_fee = int(fee * 10000)
 
@@ -196,6 +194,15 @@ class UniswapV2LivePricing(EthereumPricingModel):
 
         token_received = target_pair.base.convert_to_decimal(token_raw_received)
 
+        price = float(reserve / token_received)
+        
+        if intermediate_pair:
+            # TODO: Verify calculation
+            mid_price = price * (1 - 2*fee)
+        else:
+            mid_price = price * (1 - fee)
+            
+        
         lp_fee = float(reserve) * fee
 
         assert price >= mid_price, f"Bad pricing: {price}, {mid_price}"
