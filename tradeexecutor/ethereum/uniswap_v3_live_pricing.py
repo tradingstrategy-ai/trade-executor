@@ -1,6 +1,6 @@
-"""Uniswap v2 live pricing.
+"""Uniswap v3 live pricing.
 
-Directly asks Uniswap v2 asset price from Uniswap pair contract
+Directly asks Uniswap v3 asset price from Uniswap pair contract
 and JSON-RPC API.
 """
 import logging
@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 
 class UniswapV3LivePricing(EthereumPricingModel):
-    """Always pull the latest dollar price for an asset from Uniswap v2 deployment.
+    """Always pull the latest dollar price for an asset from Uniswap v3 deployment.
 
     Supports
 

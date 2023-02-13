@@ -1,6 +1,4 @@
-""""""
-
-"""Asset pricing model."""
+"""Asset pricing model for Uniswap V2 and V3 like exchanges."""
 
 import abc
 import datetime
@@ -46,6 +44,7 @@ class EthereumPricingModel(PricingModel):
         For example, in futures markets there could be different fees
         on buy/sell transctions.
 
+    Used by UniswapV2LivePricing and UniswapV3LivePricing
     """
 
     def __init__(self,
