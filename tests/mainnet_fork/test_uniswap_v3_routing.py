@@ -230,7 +230,7 @@ def eth_usdc_trading_pair(eth_asset, usdc_asset, uniswap_v3) -> TradingPairIdent
         internal_id=1000,  # random number
         internal_exchange_id=1000,  # random number
         exchange_address=uniswap_v3.factory.address,
-        fee=0.0005
+        fee=500
     )
 
 
@@ -245,7 +245,7 @@ def matic_usdc_trading_pair(
         internal_id=1001,  # random number
         internal_exchange_id=1000,  # random number
         exchange_address=uniswap_v3.factory.address,
-        fee=0.0005
+        fee=500
     )
 
 
@@ -259,7 +259,7 @@ def eth_matic_trading_pair(eth_asset, matic_asset, uniswap_v3) -> TradingPairIde
         internal_id=1002,  # random number
         internal_exchange_id=1000,  # random number
         exchange_address=uniswap_v3.factory.address,
-        fee=0.0005
+        fee=500
     )
 
 
