@@ -605,7 +605,7 @@ def test_alpha_model_flip_position_partially(
     assert len(trades) == 2, f"Got trades: {trades}"
 
     # Sells go first,
-    # with 167 worth of sales
+    # sell 50% of ETH
     t = trades[0]
     assert t.is_sell()
     assert t.is_planned()
@@ -615,11 +615,9 @@ def test_alpha_model_flip_position_partially(
     assert t.get_planned_value() == 78.85
 
     # Buy comes next,
-    # with approx the same value
+    # buy 50% of AAVE
     t = trades[1]
     assert t.is_buy()
     assert t.is_planned()
     assert t.planned_price == 100
     assert t.get_planned_value() == 78.85
-
-
