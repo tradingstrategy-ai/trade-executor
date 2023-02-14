@@ -173,7 +173,6 @@ def filter_duplicate_base_tokens(self, alpha_signals: Counter, debug_data: dict)
     return filtered_alpha
 
 
-
 def decide_trades(
         timestamp: pd.Timestamp,
         universe: Universe,

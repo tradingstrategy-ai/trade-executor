@@ -145,3 +145,9 @@ class TradeRouting(enum.Enum):
     #:
     #: Mostly useful for unit testing.
     user_supplied_routing_model = "user_supplied_routing_model"
+
+    #: Backtesting only
+    #:
+    #: The order routing is ignored. We use backtest estimations for trading
+    #: fees and assume all pairs are tradeable.
+    ignore = "ignore"

@@ -13,7 +13,7 @@ from abc import abstractmethod
 from dataclasses import dataclass
 import logging
 from math import isnan
-from typing import List, Optional, Callable, Tuple, Set, Dict, Iterable
+from typing import List, Optional, Callable, Tuple, Set, Dict, Iterable, Collection
 
 import pandas as pd
 
@@ -28,7 +28,8 @@ from tradingstrategy.client import Client
 from tradingstrategy.exchange import ExchangeUniverse, Exchange, ExchangeType
 from tradingstrategy.liquidity import GroupedLiquidityUniverse
 from tradingstrategy.pair import DEXPair, PandasPairUniverse, resolve_pairs_based_on_ticker, \
-    filter_for_exchanges, filter_for_quote_tokens, StablecoinFilteringMode, filter_for_stablecoins
+    filter_for_exchanges, filter_for_quote_tokens, StablecoinFilteringMode, filter_for_stablecoins, \
+    HumanReadableTradingPairDescription
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
 from tradingstrategy.utils.groupeduniverse import filter_for_pairs
@@ -460,6 +461,78 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             exchanges=our_exchanges,
             candles=candle_universe,
             liquidity=liquidity_universe,
+        )
+
+        return TradingStrategyUniverse(universe=universe, reserve_assets=reserve_assets)
+
+    @staticmethod
+    def create_multichain_universe_by_pair_descriptions(
+        dataset: Dataset,
+        pairs: Collection[HumanReadableTradingPairDescription],
+        reserve_token_symbol: str,
+    ) -> "TradingStrategyUniverse":
+        """Create a trading universe based on list of (exchange, pair tuples)
+
+        This is designed for backtesting multipe pairs across different chains.
+        The created universe do not have any routing options and thus
+        cannot make any trades.
+
+        :param dataset:
+            Datasets downloaded from the oracle
+
+        :param pairs:
+            List of trading pairs to filter down.
+
+            The pair set is desigend to be small, couple of dozens of pairs max.
+
+            See :py:data:`HumanReadableTradingPairDescription`.
+
+        :param reserve_token_symbol:
+            The token symbol of the reverse asset.
+
+            Because we do not support routing, we just pick the first matching token.
+        """
+
+        time_bucket = dataset.time_bucket
+
+        # Create trading pair database
+        pair_universe = PandasPairUniverse(dataset.pairs)
+
+        # Filter pairs first and then rest by the resolved pairs
+        our_pairs = {pair_universe.get_pair_by_human_description(dataset.exchanges, d) for d in pairs}
+        chain_ids = {d[0] for d in pairs}
+        pair_ids = {p.pair_id for p in our_pairs}
+        exchange_ids = {p.exchange_id for p in our_pairs}
+        our_exchanges = {dataset.exchanges.get_by_id(id) for id in exchange_ids}
+
+        filtered_pairs_df = dataset.pairs.loc[dataset.pairs["pair_id"].isin(pair_ids)]
+
+        # Recreate universe again, now with limited pairs
+        pair_universe = PandasPairUniverse(filtered_pairs_df)
+
+        # We do a bit detour here as we need to address the assets by their trading pairs first
+        reserve_token = None
+        for p in pair_universe.iterate_pairs():
+            if p.quote_token_symbol == reserve_token_symbol:
+                translated_pair = translate_trading_pair(p)
+                reserve_token = translated_pair.quote
+
+        assert reserve_token, f"Reserve token {reserve_token_symbol} missing the pair quote tokens"
+        reserve_assets = [
+            reserve_token
+        ]
+
+        # Get daily candles as Pandas DataFrame
+        all_candles = dataset.candles
+        filtered_candles = filter_for_pairs(all_candles, filtered_pairs_df)
+        candle_universe = GroupedCandleUniverse(filtered_candles, time_bucket=time_bucket)
+
+        universe = Universe(
+            time_bucket=dataset.time_bucket,
+            chains=chain_ids,
+            pairs=pair_universe,
+            exchanges=our_exchanges,
+            candles=candle_universe,
         )
 
         return TradingStrategyUniverse(universe=universe, reserve_assets=reserve_assets)

@@ -1,4 +1,7 @@
-"""Weighting based portfolio manipulation."""
+"""Weighting based portfolio manipulation.
+
+Various helper functions to calculate weights for assets, normalise them.
+"""
 
 from typing import Dict
 
