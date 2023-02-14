@@ -69,9 +69,9 @@ class UniswapV2RoutingState(EthereumRoutingState):
         if check_balances:
             self.check_has_enough_tokens(quote_token, reserve_amount)
 
-        bps_fee = target_pair.fee * 10_000
         
-        if bps_fee:
+        if target_pair.fee:
+            bps_fee = target_pair.fee * 10_000
             bound_swap_func = swap_with_slippage_protection(
                 uniswap,
                 recipient_address=hot_wallet.address,
@@ -123,9 +123,9 @@ class UniswapV2RoutingState(EthereumRoutingState):
             self.check_has_enough_tokens(quote_token, reserve_amount)
 
         assert target_pair.fee == intermediary_pair.fee, "Uniswap V2 pairs should all have the same fee"
-        bps_fee = target_pair.fee * 10_000
         
-        if bps_fee:
+        if target_pair.fee:
+            bps_fee = target_pair.fee * 10_000
             bound_swap_func = swap_with_slippage_protection(
                 uniswap,
                 recipient_address=hot_wallet.address,
