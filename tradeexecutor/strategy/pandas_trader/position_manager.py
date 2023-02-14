@@ -161,6 +161,17 @@ class PositionManager:
 
         return next(iter(open_positions.values()))
 
+    def get_current_position_for_pair(self, pair: TradingPairIdentifier) -> Optional[TradingPosition]:
+        """Get the current open position for a specific trading pair.
+
+        :return:
+            Currently open trading position.
+
+            If there is no open position return None.
+
+        """
+        return self.state.portfolio.get_position_by_trading_pair(pair)
+
     def get_last_closed_position(self) -> Optional[TradingPosition]:
         """Get the position that was last closed.
 
@@ -374,7 +385,8 @@ class PositionManager:
                        position: TradingPosition,
                        trade_type: TradeType=TradeType.rebalance,
                        notes: Optional[str] = None,
-                       ) -> Optional[TradeExecution]:
+                       trades_as_list=False,
+                       ) -> Optional[TradeExecution] | List[TradeExecution]:
         """Close a single position.
 
         The position may already have piled up selling trades.
@@ -390,9 +402,19 @@ class PositionManager:
         :param notes:
             Human readable notes for this trade
 
+        :param trades_as_list:
+            A migration parameter for the future signature where we are
+            always returning a list of trades.
+
         :return:
+            Get list of trades needed to close this position.
+
+            If `trades_as_list` is `False`.
             A trade that will close the position fully.
             If there is nothing left to close, return None.
+
+            Otherwise return list of trades.
+
         """
 
         assert position.is_long(), "Only long supported for now"
@@ -428,7 +450,11 @@ class PositionManager:
         )
         assert position == position2, "Somehow messed up the trade"
 
-        return trade
+        if trades_as_list:
+            return [trade]
+        else:
+            # TODO: Old path - will be removed in the future versions
+            return trade
 
     def close_all(self) -> List[TradeExecution]:
         """Close all open positions.

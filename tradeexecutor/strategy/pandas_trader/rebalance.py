@@ -3,11 +3,15 @@
 Based on the new alpha model weights, rebalance the existing portfolio.
 """
 import logging
-from typing import List, Dict
+from dataclasses import dataclass
+from typing import List, Dict, Optional
 
+from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.trade import TradeExecution
+from tradeexecutor.state.types import USDollarAmount
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
+
 
 
 logger = logging.getLogger(__name__)
@@ -135,7 +139,7 @@ def rebalance_portfolio(
         position_manager: PositionManager,
         new_weights: Dict[int, float],
         portfolio_total_value: float,
-        min_trade_threshold=10.0,
+        min_trade_threshold: USDollarAmount = 10.0,
 ) -> List[TradeExecution]:
     """Rebalance a portfolio based on alpha model weights.
 
