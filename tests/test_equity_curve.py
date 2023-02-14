@@ -10,8 +10,6 @@
 
 """
 
-
-
 import logging
 import random
 import datetime
@@ -20,19 +18,17 @@ from typing import List, Dict
 import pytest
 
 import pandas as pd
-from pandas_ta.overlap import ema
 
-from tradeexecutor.analysis.trade_analyser import build_trade_analysis, expand_timeline, TimelineRowStylingMode
 from tradeexecutor.backtest.backtest_runner import run_backtest_inline
 from tradeexecutor.cli.log import setup_pytest_logging
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
-from tradeexecutor.state.visualisation import PlotKind
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, \
     create_pair_universe_from_code, translate_trading_pair
 from tradeexecutor.testing.synthetic_ethereum_data import generate_random_ethereum_address
 from tradeexecutor.testing.synthetic_exchange_data import generate_exchange, generate_simple_routing_model
 from tradeexecutor.testing.synthetic_price_data import generate_ohlcv_candles
-from tradeexecutor.visual.benchmark import visualise_benchmark
+from tradeexecutor.visual.equity_curve import calculate_equity_curve, calculate_returns, calculate_cumulative_return, \
+    calculate_aggregate_returns
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.pricing_model import PricingModel
@@ -42,9 +38,7 @@ from tradingstrategy.universe import Universe
 from tradingstrategy.chain import ChainId
 from tradingstrategy.timebucket import TimeBucket
 from tradeexecutor.strategy.cycle import CycleDuration
-from tradeexecutor.strategy.strategy_module import pregenerated_create_trading_universe
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
-from tradeexecutor.strategy.strategy_type import StrategyType
 from tradeexecutor.strategy.default_routing_options import TradeRouting
 
 
@@ -82,27 +76,26 @@ def decide_trades(
         if position is None:
             trades += position_manager.open_1x_long(asset_1, cash * 0.25)
         else:
-            trades += position_manager.close_position(position)
+            trades += position_manager.close_position(position, trades_as_list=True)
 
     if timestamp.day % 5 == 0:
         position = position_manager.get_current_position_for_pair(asset_2)
         if position is None:
             trades += position_manager.open_1x_long(asset_2, cash * 0.25)
         else:
-            trades += position_manager.close_position(position)
+            trades += position_manager.close_position(position, trades_as_list=True)
 
     return trades
 
 
 @pytest.fixture(scope="module")
-def logger(request):
-    """Setup test logger."""
-    return setup_pytest_logging(request, mute_requests=False)
-
-
-@pytest.fixture(scope="module")
 def universe() -> TradingStrategyUniverse:
-    """Set up a mock universe."""
+    """Set up a mock universe with 6 months of candle data.
+
+    - WETH/USDC pair id 2
+
+    - AAVE/USDC pair id 3
+    """
 
     start_at = datetime.datetime(2021, 6, 1)
     end_at = datetime.datetime(2022, 1, 1)
@@ -121,7 +114,7 @@ def universe() -> TradingStrategyUniverse:
         usdc,
         generate_random_ethereum_address(),
         mock_exchange.address,
-        internal_id=random.randint(1, 1000),
+        internal_id=2,
         internal_exchange_id=mock_exchange.exchange_id,
         fee=0.0030,
     )
@@ -131,7 +124,7 @@ def universe() -> TradingStrategyUniverse:
         usdc,
         generate_random_ethereum_address(),
         mock_exchange.address,
-        internal_id=random.randint(1, 1000),
+        internal_id=3,
         internal_exchange_id=mock_exchange.exchange_id,
         fee=0.0030,
     )
@@ -141,9 +134,12 @@ def universe() -> TradingStrategyUniverse:
     pair_universe = create_pair_universe_from_code(mock_chain_id, [weth_usdc, aave_usdc])
 
     weth_candles = generate_ohlcv_candles(time_bucket, start_at, end_at, pair_id=weth_usdc.internal_id)
-    aave_candles = generate_ohlcv_candles(time_bucket, start_at, end_at, pair_id=weth_usdc.internal_id)
+    aave_candles = generate_ohlcv_candles(time_bucket, start_at, end_at, pair_id=aave_usdc.internal_id)
 
-    candle_universe = GroupedCandleUniverse.create_from_single_pair_dataframe(candles)
+    candle_universe = GroupedCandleUniverse.create_from_multiple_candle_datafarames([
+        weth_candles,
+        aave_candles,
+    ])
 
     universe = Universe(
         time_bucket=time_bucket,
@@ -157,31 +153,20 @@ def universe() -> TradingStrategyUniverse:
     return TradingStrategyUniverse(universe=universe, reserve_assets=[usdc])
 
 
-def test_ema_on_universe(universe: TradingStrategyUniverse):
-    """Calculate exponential moving average on single pair candle universe."""
-    start_timestamp = pd.Timestamp("2021-6-1")
-    batch_size = 20
-    candles = universe.universe.candles.get_single_pair_data(start_timestamp, sample_count=batch_size, allow_current=True)
-    assert len(candles) == 1
-
-    # Not enough data to calculate EMA - we haave only 1 sample
-    ema_20_series = ema(candles["close"], length=20)
-    assert ema_20_series is None
-
-    end_timestamp = pd.Timestamp("2021-12-31")
-    candles = universe.universe.candles.get_single_pair_data(end_timestamp, sample_count=batch_size, allow_current=True)
-    assert len(candles) == batch_size
-
-    ema_20_series = ema(candles["close"], length=20)
-    assert pd.isna(ema_20_series.iloc[-2])
-    assert float(ema_20_series.iloc[-1]) == pytest.approx(1955.019773)
+@pytest.fixture(scope="module")
+def logger(request):
+    """Setup test logger."""
+    return setup_pytest_logging(request, mute_requests=False)
 
 
-def test_run_inline_synthetic_backtest(
+@pytest.fixture(scope="module")
+def state(
         logger: logging.Logger,
         universe: TradingStrategyUniverse,
     ):
-    """Run the strategy backtest using inline decide_trades function.
+    """Prepare a run backtest.
+
+    Then one can calculate different statistics over this.
     """
 
     start_at, end_at = universe.universe.candles.get_timestamp_range()
@@ -204,120 +189,53 @@ def test_run_inline_synthetic_backtest(
         log_level=logging.WARNING,
     )
 
-    assert len(debug_dump) == 213
+    return state
 
 
-def test_analyse_synthetic_trading_portfolio(
-        logger: logging.Logger,
-        universe: TradingStrategyUniverse,
-    ):
-    """Analyse synthetic trading strategy results.
-
-    TODO: Might move this test to its own module.
-    """
-
-    start_at, end_at = universe.universe.candles.get_timestamp_range()
-
-    routing_model = generate_simple_routing_model(universe)
-
-    # Run the test
-    state, universe, debug_dump = run_backtest_inline(
-        start_at=start_at.to_pydatetime(),
-        end_at=end_at.to_pydatetime(),
-        client=None,  # None of downloads needed, because we are using synthetic data
-        cycle_duration=CycleDuration.cycle_1d,  # Override to use 24h cycles despite what strategy file says
-        decide_trades=decide_trades,
-        create_trading_universe=None,
-        universe=universe,
-        initial_deposit=10_000,
-        reserve_currency=ReserveCurrency.busd,
-        trade_routing=TradeRouting.user_supplied_routing_model,
-        routing_model=routing_model,
-        log_level=logging.WARNING,
-    )
-
-    analysis = build_trade_analysis(state.portfolio)
-    summary = analysis.calculate_summary_statistics()
-
-    # Should not cause exception
-    summary.to_dataframe()
-
-    assert summary.initial_cash == 10_000
-    assert summary.won == 4
-    assert summary.lost == 7
-    assert summary.realised_profit == pytest.approx(-47.17044385644749)
-    assert summary.open_value == pytest.approx(0)
-
-    timeline = analysis.create_timeline()
-
-    # Test expand timeline both colouring modes
-    df, apply_styles = expand_timeline(
-        universe.universe.exchanges,
-        universe.universe.pairs,
-        timeline,
-        row_styling_mode=TimelineRowStylingMode.simple,
-    )
-
-    # Check HTML output does not crash
-    # https://github.com/pandas-dev/pandas/issues/19358#issuecomment-359733504
-    apply_styles(df).to_html()
-
-    expanded_timeline, apply_styles = expand_timeline(
-        universe.universe.exchanges,
-        universe.universe.pairs,
-        timeline,
-        row_styling_mode=TimelineRowStylingMode.simple,
-    )
-    apply_styles(df).to_html()
-
-    # Do checks for the first position
-    # 0    1          2021-07-01   8 days                      WETH        USDC         $2,027.23    $27.23    2.72%   0.027230  $1,617.294181   $1,661.333561            2
-    row = expanded_timeline.iloc[0]
-    assert row["Opened at"] == "2021-07-02"
-    assert row["Trade count"] == 2
-
-    # 1    3          2021-07-10  26 days                      WETH        USDC         $1,002.72  $-137.39  -13.70%  -0.137013  $1,710.929622   $1,476.509241            2
-    row2 = expanded_timeline.iloc[1]
-    assert row2["Opened at"] == "2021-07-11"
+def test_precheck_universe(universe: TradingStrategyUniverse):
+    """Check our generated data looks correct."""
+    universe = universe.universe
+    assert universe.pairs.get_count() == 2
+    assert universe.candles.get_pair_count() == 2
+    assert len(universe.pairs.pair_map) == 2
+    assert universe.pairs.get_pair_by_id(2).base_token_symbol == "WETH"
+    assert universe.pairs.get_pair_by_id(3).base_token_symbol == "AAVE"
 
 
-def test_benchmark_synthetic_trading_portfolio(
-        logger: logging.Logger,
-        universe: TradingStrategyUniverse,
-    ):
-    """Build benchmark figures.
+def test_calculate_equity_curve(state: State):
+    """Get the backtest equity curve."""
 
-    TODO: Might move this test to its own module.
-    """
+    # Check that our trades look correct
+    assert len(list(state.portfolio.get_all_trades())) > 10
 
-    start_at, end_at = universe.universe.candles.get_timestamp_range()
+    curve = calculate_equity_curve(state)
+    assert type(curve) == pd.Series
 
-    routing_model = generate_simple_routing_model(universe)
+    # Check begin and end values of portfolio look correct
+    assert state.portfolio.get_total_equity() == pytest.approx(8605.74)
+    assert curve[pd.Timestamp("2021-06-01")] == 10_000
+    assert curve[pd.Timestamp("2021-12-30")] == pytest.approx(8605.74)
 
-    # Run the test
-    state, universe, debug_dump = run_backtest_inline(
-        start_at=start_at.to_pydatetime(),
-        end_at=end_at.to_pydatetime(),
-        client=None,  # None of downloads needed, because we are using synthetic data
-        cycle_duration=CycleDuration.cycle_1d,  # Override to use 24h cycles despite what strategy file says
-        decide_trades=decide_trades,
-        create_trading_universe=None,
-        universe=universe,
-        initial_deposit=10_000,
-        reserve_currency=ReserveCurrency.busd,
-        trade_routing=TradeRouting.user_supplied_routing_model,
-        routing_model=routing_model,
-        log_level=logging.WARNING,
-    )
 
-    # Visualise performance
-    fig = visualise_benchmark(
-        state.name,
-        portfolio_statistics=state.stats.portfolio,
-        all_cash=100_000,
-        buy_and_hold_asset_name="ETH",
-        buy_and_hold_price_series=universe.universe.candles.get_single_pair_data()["close"],
-    )
+def test_calculate_aggregated_returns(state: State):
+    """Calculate monthly returns."""
 
-    # Check that the diagram has 3 plots
-    assert len(fig.data) == 3
+    curve = calculate_equity_curve(state)
+
+    # Calculate raw returns series
+    returns = calculate_returns(curve)
+    assert returns[pd.Timestamp("2021-06-01")] == 0
+    assert returns[pd.Timestamp("2021-12-30")] != 0
+
+    # Calculate monthly aggregate returns.
+    # The test strategy should slowly bleed money in trade fees.
+    monthly_aggregate = calculate_aggregate_returns(curve, "1M")
+    assert monthly_aggregate["2021-07-31"] == pytest.approx(-0.07914776379460564)
+    assert monthly_aggregate["2021-11-30"] == pytest.approx(-0.0030962288338045596)
+
+    # December is incomplete so we do not get the date
+    assert pd.Timestamp("2021-12-31") not in monthly_aggregate
+
+
+
+
