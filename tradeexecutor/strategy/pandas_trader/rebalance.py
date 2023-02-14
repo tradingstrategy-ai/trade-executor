@@ -3,14 +3,63 @@
 Based on the new alpha model weights, rebalance the existing portfolio.
 """
 import logging
-from typing import List, Dict
+from dataclasses import dataclass
+from typing import List, Dict, Optional
 
+from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.trade import TradeExecution
+from tradeexecutor.state.types import USDollarAmount
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 
 
+
 logger = logging.getLogger(__name__)
+
+
+@dataclass_json
+@dataclass(slots=True)
+class AlphaWeight:
+    """Present one asset in alpha model weighting.
+
+    - Required variables are needed as an input from `decide_trades()` function in a strategy
+
+    - Optional variables are calculated in the various phases of alpha model processing
+    """
+
+    #: For which pair is this alpha weight
+    #:
+    #:
+    pair: TradingPairIdentifier
+
+    #: Raw weight
+    weight: float
+
+    #: Stop loss for this position
+    #:
+    #: Used for the risk management.
+    #:
+    #: 0.98 means 2% stop loss.
+    #:
+    #: Set to 0 to disable stop loss.
+    stop_loss: float
+
+    #: Weight 0...1 so that all portfolio weights sum to 1
+    normalised_weight: Optional[float] = None
+
+    #: Old weight of this value from the previous cycle.
+    #:
+    #: If this asset was part of the portfolio at :term:`Strategy cycle`
+    #: When
+    old_weight: Optional[float] = None
+
+    #: How many dolars we plan to invest on this one.
+    #:
+    #: Calculated by portfolio total investment equity * normalised weight * price.
+    investment_amount: Optional[USDollarAmount] = None
+
+
+
 
 
 
@@ -135,7 +184,7 @@ def rebalance_portfolio(
         position_manager: PositionManager,
         new_weights: Dict[int, float],
         portfolio_total_value: float,
-        min_trade_threshold=10.0,
+        min_trade_threshold: USDollarAmount = 10.0,
 ) -> List[TradeExecution]:
     """Rebalance a portfolio based on alpha model weights.
 
