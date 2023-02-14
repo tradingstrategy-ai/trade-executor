@@ -1,20 +1,23 @@
 """Alpha model and portfolio construction model related logic."""
+import datetime
 import heapq
 import logging
 
 from dataclasses import dataclass
-from typing import Optional, TypeAlias, Dict, Iterable, List
+from io import StringIO
+from typing import Optional, Dict, Iterable, List
 
+import pandas as pd
+import numpy as np
 from dataclasses_json import dataclass_json
 
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.types import PairInternalId, USDollarAmount
-from tradeexecutor.strategy.weights import normalise_weights
 
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
-from tradeexecutor.strategy.weighting import weight_by_1_slash_n, check_normalised_weights
+from tradeexecutor.strategy.weighting import weight_by_1_slash_n, check_normalised_weights, normalise_weights
 
 
 logger = logging.getLogger(__name__)
@@ -25,13 +28,24 @@ logger = logging.getLogger(__name__)
 class TradingPairSignal:
     """Present one asset in alpha model weighting.
 
-    - Required variables are needed as an input from `decide_trades()` function in a strategy
+    - Asset is represented as a trading pair, as that is how we internally present assets
 
-    - Optional variables are calculated in the various phases of alpha model processing
+    - We capture all the calculations and intermediate values for a single asset
+      in one instance (row) per each trading strategy cycle, making
+      investigations for alpha model strategies easy
+
+    - Required variables (pair, signal) are =input from `decide_trades()` function in a strategy
+
+    - Optional variables are calculated and filled in the various phases of alpha model processing,
+      as the model moves from abstract weightings to actual trade execution and dollar amounts
+
+    - Data here is serialisable for visualisation a a part of the strategy state visualisation
+      and also for console logging diagnostics
 
     .. note ::
 
         Currently only longs are supported.
+
     """
 
     #: For which pair is this alpha weight
@@ -51,16 +65,16 @@ class TradingPairSignal:
     #: 0.98 means 2% stop loss.
     #:
     #: Set to 0 to disable stop loss.
-    stop_loss: float = 0
+    stop_loss: float = 0.0
 
     #: Raw portfolio weight
     #:
     #: Each raw signal is assigned to a weight based on some methodology,
     #: e.g. 1/N where the highest signal gets 50% of portfolio weight.
-    raw_weight: Optional[float] = 0
+    raw_weight: float = 0.0
 
     #: Weight 0...1 so that all portfolio weights sum to 1
-    normalised_weight: Optional[float] = 0
+    normalised_weight: float = 0.0
 
     #: Old weight of this pair from the previous cycle.
     #:
@@ -69,63 +83,74 @@ class TradingPairSignal:
     #: The old weight is always normalised.
     #:
     #: This can be dynamically calculated from the :py:class:`tradeexecutor.state.portfolio.Portfolio` state.
-    old_weight: Optional[float] = None
+    old_weight: float = 0.0
 
     #: Old US Dollar value of this value from the previous cycle.
     #:
     #: If this asset was part of the portfolio at previous :term:`strategy cycle`
     #: then this is the value of the previous cycle weight.
     #:
-    old_value: Optional[USDollarAmount] = None
+    old_value: USDollarAmount = 0.0
 
     #: How many dollars we plan to invest on trading pair.
     #:
     #: Calculated by portfolio total investment equity * normalised weight * price.
-    position_target: Optional[USDollarAmount] = None
+    position_target: USDollarAmount = 0.0
 
     #: How much we are going to increase/decrease the position on this strategy cycle.
     #:
     #: If this is a positive, then we need to make a buy trade for this amount to
     #: reach out target position for this cycle. If negative then we need
     #: to decrease our position.
-    position_adjust: Optional[USDollarAmount] = None
+    position_adjust: USDollarAmount = 0.0
 
-
-
-#: Map of different weights of trading pairs for alpha model.
-#:
-#: If there is no entry present assume its weight is zero.
-#:
-AlphaSignals: TypeAlias = Dict[PairInternalId, TradingPairSignal]
-
+    def __repr__(self):
+        return f"Pair: {self.pair.get_ticker()} old weight: {self.old_weight:.4f} old value: {self.old_value:,} new weight: {self.normalised_weight:.4f} new value: {self.position_target:,}"
 
 
 @dataclass_json
 @dataclass(slots=True)
 class AlphaModel:
-    """Capture alpha model in a debuggable object.
+    """Capture alpha model state.
+
+    - A helper class for portfolio construction models and such
+
+    - Converts portfolio weightings to rebalancing trades
 
     - Supports stop loss and passing through other trade execution parameters
 
     - Each :term:`strategy cycle` creates its own
-      alpha model instance
+      :py:class:`AlphaModel` instance in `decide_trades()` function of the strategy
 
     - Stores the intermediate results of the calculationsn between raw
       weights and the final investment amount
 
-    - We are serializable as JSON, so we can pass
-      alpha model as it debug data around in :py:attr:`tradeexecutor.state.visualisation.Visualisation.calculations`.
+    - We are serializable as JSON, so we can pass the calculations
+      as data around in :py:attr:`tradeexecutor.state.visualisation.Visualisation.calculations`
+      and then later visualise alph model progress over time
 
     """
 
-    #: Pair internal id -> trading signal data
-    signals: AlphaSignals
+    #: Timestamp of the strategy cycle for which this alpha model was calculated
+    #:
+    timestamp: Optional[datetime.datetime]
 
-    def __init__(self):
+    #: Pair internal id -> trading signal data
+    signals: Dict[PairInternalId, TradingPairSignal]
+
+    #: How much we can afford to invest on this cycle
+    investable_equity: Optional[USDollarAmount] = 0.0
+
+    def __init__(self, timestamp: Optional[datetime.datetime | pd.Timestamp] = None):
         self.signals = dict()
 
-        #: Pairs we have touched on this cycle
-        self.pairs = set()
+        if timestamp is not None:
+            if isinstance(timestamp, pd.Timestamp):
+                # need to make serializable
+                timestamp = timestamp.to_pydatetime()
+            assert isinstance(timestamp, datetime.datetime)
+
+        self.timestamp = timestamp
 
     def iterate_signals(self) -> Iterable[TradingPairSignal]:
         """Iterate over all recorded signals."""
@@ -135,10 +160,25 @@ class AlphaModel:
         """Get a trading pair signal instance for one pair."""
         return self.signals.get(pair_id)
 
+    def get_signals_sorted_by_weight(self) -> Iterable[TradingPairSignal]:
+        """Get the signals sorted by the weight.
+
+        Return the highest weight first.
+        """
+        return sorted(self.signals.values(), key=lambda s: s.raw_weight, reverse=True)
+
+    def get_debug_print(self) -> str:
+        """Present the alpha model in a format suitable for the console."""
+        buf = StringIO()
+        print(f"Alpha model for {self.timestamp}, for USD {self.investable_equity:,} investments", file=buf)
+        for idx, signal in enumerate(self.get_signals_sorted_by_weight()):
+            print(f"   #{idx} {signal}", file=buf)
+        return buf.getvalue()
+
     def set_signal(
             self,
             pair: TradingPairIdentifier,
-            alpha: float,
+            alpha: float | np.float32,
             stop_loss: float = 0,
             ):
         """Set trading pair alpha to a value.
@@ -162,9 +202,14 @@ class AlphaModel:
             `0.98` means 2% stop loss.
         """
 
+        # Don't let Numpy values beyond this point, as
+        # they cause havoc in serisaliation
+        if isinstance(alpha, np.float32):
+            alpha = float(alpha)
+
         if alpha == 0:
             # Delete so that the pair so that it does not get any further computations
-            if pair.internal_id in self.weight:
+            if pair.internal_id in self.signals:
                 del self.signals[pair.internal_id]
 
         else:
@@ -175,32 +220,29 @@ class AlphaModel:
             )
             self.signals[pair.internal_id] = signal
 
-        if pair not in self.pairs:
-            self.pairs.add(pair)
-
     def set_old_weight(
             self,
-            pair_id: PairInternalId,
+            pair: TradingPairIdentifier,
             old_weight: float,
             old_value: USDollarAmount,
             ):
         """Set the weights for the8 current portfolio trading positions before rebalance."""
-        for pair, w in weights.items():
-            if pair.internal_id in self.signals:
-                self.signals[pair.internal_id].old_weight = old_weight
-            else:
-                self.signals[pair.internal_id] = TradingPairSignal(
-                    pair=pair,
-                    signal=0,
-                    old_weight=old_weight
-                )
+        if pair.internal_id in self.signals:
+            self.signals[pair.internal_id].old_weight = old_weight
+        else:
+            self.signals[pair.internal_id] = TradingPairSignal(
+                pair=pair,
+                signal=0,
+                old_weight=old_weight,
+                old_value=old_value,
+            )
 
     def select_top_signals(self, count: int):
         """Chooses top long signals.
 
         Modifies :py:attr:`weights` in-place.
         """
-        top_signals = heapq.nlargest(count, self.values(), key=lambda s: s.raw_weight)
+        top_signals = heapq.nlargest(count, self.signals.values(), key=lambda s: s.raw_weight)
         self.signals = {s.pair.internal_id: s for s in top_signals}
 
     def normalise_weights(self):
@@ -211,6 +253,9 @@ class AlphaModel:
 
     def assign_weights(self, method=weight_by_1_slash_n):
         """Convert raw signals to their portfolio weight counterparts.
+
+        Update :py:attr:`TradingPairSignal.raw_weight` attribute
+        to our target trading pairs.
 
         :param method:
             What method we use to convert a trading signal to a portfolio weights
@@ -227,7 +272,7 @@ class AlphaModel:
             value = position.get_value()
             weight = value  / total
             self.set_old_weight(
-                position.pair.internal_id,
+                position.pair,
                 weight,
                 value,
             )
@@ -259,12 +304,15 @@ class AlphaModel:
 
         return diffs
 
-    def calculate_target_positions_and_adjusts(self, investable_equity: USDollarAmount):
+    def calculate_target_positions(self, investable_equity: USDollarAmount):
         """Calculate individual dollar amount for each position based on its normalised weight."""
         # dollar_values = {pair_id: weight * investable_equity for pair_id, weight in diffs.items()}
+
+        self.investable_equity = investable_equity
+
         for s in self.iterate_signals():
-            s.position_target_value = s.normalised_weight * investable_equity
-            s.position_adjust = s.position_target_value - s.old_value
+            s.position_target = s.normalised_weight * investable_equity
+            s.position_adjust = s.position_target - s.old_value
 
     def generate_adjustment_trades_and_update_stop_losses(
             self,
@@ -300,14 +348,14 @@ class AlphaModel:
         trades: List[TradeExecution] = []
 
         for signal in self.iterate_signals():
-            pair = position_manager.get_trading_pair(signal.pair.pair_id)
-            signal = self.get_signal_by_pair_id(signal.pair.pair_id)
+            pair = signal.pair
 
             dollar_diff = signal.position_adjust
+            value = signal.position_target
 
             logger.info("Rebalancing %s, old weight: %f, new weight: %f, diff: %f USD",
                         pair,
-                        signal.old_weight
+                        signal.old_weight,
                         signal.normalised_weight,
                         dollar_diff)
 
@@ -319,7 +367,7 @@ class AlphaModel:
                     dollar_diff,
                     signal.normalised_weight,
                     signal.stop_loss,
-                ),
+                )
 
                 assert len(position_rebalance_trades) == 1, "Assuming always on trade for rebalacne"
                 logger.info("Adjusting holdings for %s: %s", pair, position_rebalance_trades[0])
@@ -329,7 +377,3 @@ class AlphaModel:
 
         # Return all rebalance trades
         return trades
-
-
-
-

@@ -11,6 +11,7 @@ import datetime
 import enum
 from collections import Counter
 from typing import Dict, List, Optional
+import logging
 
 import pandas as pd
 
@@ -19,8 +20,7 @@ from tradeexecutor.ethereum.routing_data import get_pancake_default_routing_para
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.strategy.alpha_model import AlphaModel
 
-from tradeexecutor.strategy.pandas_trader.rebalance import rebalance_portfolio_old
-from tradeexecutor.strategy.weights import normalise_weights, weight_by_1_slash_n
+from tradeexecutor.strategy.weighting import weight_by_1_slash_n
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.universe_model import UniverseOptions
 from tradeexecutor.utils.price import is_legit_price_value
@@ -35,7 +35,6 @@ from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.strategy.strategy_type import StrategyType
-from tradeexecutor.state.visualisation import Visualisation, PlotKind
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.default_routing_options import TradeRouting
@@ -95,6 +94,9 @@ risk_min_liquidity_threshold = 100_000
 min_position_update_threshold = 5.0
 
 
+logger = logging.getLogger(__name__)
+
+
 class RiskAssessment(enum.Enum):
     """Potential risk flags for a trading pair."""
     accepted_risk = "risk_accepted"
@@ -107,7 +109,7 @@ class RiskAssessment(enum.Enum):
 
 def assess_risk(
         state: State,
-        pair: TradingPairIdentifier,
+        dex_pair: DEXPair,
         price: float,
         liquidity: float) -> RiskAssessment:
     """Do the risk check for the trading pair if it accepted to our alpha model.
@@ -117,7 +119,7 @@ def assess_risk(
     - The price unit must look sensible
     """
 
-    executor_pair = pair
+    executor_pair = translate_trading_pair(dex_pair)
 
     # Skip any trading pair with machine generated tokens
     # or otherwise partial looking info
@@ -129,7 +131,7 @@ def assess_risk(
         return RiskAssessment.blacklisted
 
     # This token is marked as not tradeable, so we don't touch it
-    if (pair.buy_tax != 0) or (pair.sell_tax != 0) or (pair.transfer_tax != 0):
+    if (dex_pair.buy_tax != 0) or (dex_pair.sell_tax != 0) or (dex_pair.transfer_tax != 0):
         return RiskAssessment.token_tax
 
     # The pair does not have enough liquidity for us to enter
@@ -183,7 +185,7 @@ def decide_trades(
     # opening/closing trades for different positions
     position_manager = PositionManager(timestamp, universe, state, pricing_model)
 
-    alpha_model = AlphaModel()
+    alpha_model = AlphaModel(timestamp)
 
     # The time range end is the current candle
     # The time range start is 2 * 4 hours back, and turn the range
@@ -205,10 +207,6 @@ def decide_trades(
         "accepted_alpha_candidates": 0,
     })
 
-    # Expose pair specific debug data to the
-    # research
-    pair_debug_data = {}
-
     # Iterate over all candles for all pairs in this timestamp (ts)
     for pair_id, pair_df in candle_data:
 
@@ -228,7 +226,10 @@ def decide_trades(
         open = first_candle["open"]  # QStrader data frames are using capitalised version of OHLCV core variables
         close = last_candle["close"]  # QStrader data frames are using capitalised version of OHLCV core variables
 
-        pair = translate_trading_pair(pair_universe.get_pair_by_id(pair_id))
+        # DEXPair instance contains more data than internal TradingPairIdentifier
+        # we use to store this pair across the strategy
+        dex_pair = pair_universe.get_pair_by_id(pair_id)
+        pair = translate_trading_pair(dex_pair)
 
         if is_legit_price_value(close):
             # This trading pair is too funny that we do not want to play with it
@@ -259,7 +260,7 @@ def decide_trades(
 
         risk = assess_risk(
             state,
-            pair,
+            dex_pair,
             close,
             available_liquidity_for_pair)
 
@@ -307,6 +308,8 @@ def decide_trades(
 
     # Record alpha model state so we can later visualise our alpha model thinking better
     state.visualisation.add_calculations(timestamp, alpha_model.to_dict())
+
+    logger.info("Cycle %s, model: %s", timestamp, alpha_model.get_debug_print())
 
     return trades
 

@@ -426,6 +426,7 @@ class PositionManager:
                 planned_mid_price=price_structure.mid_price,
             )
 
+        # Update stop loss for this position
         if stop_loss:
             position.stop_loss = price_structure.mid_price * stop_loss
 

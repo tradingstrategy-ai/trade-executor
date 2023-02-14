@@ -92,17 +92,20 @@ class BacktestExecutionModel(ExecutionModel):
         except OutOfSimulatedBalance as e:
             # Better error messages to helping out why backtesting failed
             raise BacktestExecutionFailed(
-                f"Execution of trade {trade} failed.\n"
-                f"Trade type: {trade.trade_type.name}.\n"
-                f"Wallet base balance: {base_balance} {base.token_symbol}.\n"
-                f"Wallet quote balance: {quote_balance} {quote.token_symbol}.\n"
-                f"Wallet reserve balance: {reserve_balance} {reserve.token_symbol}.\n"
-                f"Executed base amount: {executed_quantity} {base.token_symbol}\n"
-                f"Executed reserve amount: {executed_reserve} {reserve.token_symbol}\n"
-                f"Planned base amount: {trade.planned_quantity} {base.token_symbol}\n"
-                f"Planned reserve amount: {trade.planned_reserve} {reserve.token_symbol}\n"
-                f"Position quantity: {position and position.get_quantity() or '-'} {base.token_symbol}\n"
-                f"Out of balance: {e}\n"
+                f"Trade failed\n"
+                f"  Execution of trade {trade} failed.\n"
+                f"  Pair: {trade.pair}.\n"
+                f"  Trade type: {trade.trade_type.name}.\n"
+                f"  Trade quantity: {trade.planned_quantity}, reserve: {trade.planned_reserve} {trade.reserve_currency}.\n"
+                f"  Wallet base balance: {base_balance} {base.token_symbol} ({base.address}).\n"
+                f"  Wallet quote balance: {quote_balance} {quote.token_symbol} ({quote.address}).\n"
+                f"  Wallet reserve balance: {reserve_balance} {reserve.token_symbol} ({reserve.address}).\n"
+                f"  Executed base amount: {executed_quantity} {base.token_symbol} ({base.address})\n"
+                f"  Executed reserve amount: {executed_reserve} {reserve.token_symbol} ({reserve.address})\n"
+                f"  Planned base amount: {trade.planned_quantity} {base.token_symbol} ({base.address})\n"
+                f"  Planned reserve amount: {trade.planned_reserve} {reserve.token_symbol} ({reserve.address})\n"
+                f"  Existing position quantity: {position and position.get_quantity() or '-'} {base.token_symbol}\n"
+                f"  Out of balance: {e}\n"
             ) from e
 
         assert abs(executed_quantity) > 0

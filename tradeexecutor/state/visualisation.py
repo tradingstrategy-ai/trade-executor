@@ -189,8 +189,8 @@ class Visualisation:
         self.messages[timestamp] = timepoint_messages
 
     def add_calculations(self,
-                    timestamp: datetime.datetime,
-                    calculations: dict):
+                         timestamp: datetime.datetime,
+                         cycle_calculations: dict):
         """Update strategy cycle calculations diagnostics.
 
         - Each strategy cycle can dump whatever intermediate
@@ -203,17 +203,16 @@ class Visualisation:
         :param timestamp:
             The current strategy cycle timestamp
 
-        :param calculations:
+        :param cycle_calculations:
             The contents of the calculations.
 
             Must be JSON serialisable dict.
 
         """
 
-        assert isinstance(calcuations, dict)
+        assert isinstance(cycle_calculations, dict)
         timestamp = convert_and_validate_timestamp_as_int(timestamp)
-        self.calculations[timestamp] = calculations
-
+        self.calculations[timestamp] = cycle_calculations
 
     def plot_indicator(self,
              timestamp: Union[datetime.datetime, pd.Timestamp],

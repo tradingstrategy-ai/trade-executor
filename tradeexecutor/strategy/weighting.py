@@ -73,7 +73,7 @@ def weight_by_1_slash_n(alpha_signals: Dict[int, float]) -> Dict[int, float]:
     `The Fallacy of 1/N and Static Weight Allocation <https://www.r-bloggers.com/2013/06/the-fallacy-of-1n-and-static-weight-allocation/>`__.
     """
     weighed_signals = {}
-    for idx, tuple in enumerate(alpha_signals, 1):
+    for idx, tuple in enumerate(alpha_signals.items(), 1):
         pair_id, alpha = tuple
         weighed_signals[pair_id] = 1 / idx
     return weighed_signals
