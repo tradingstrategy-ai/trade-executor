@@ -29,7 +29,7 @@ def calculate_equity_curve(
     portfolio_stats: List[PortfolioStatistics] = stats.portfolio
     index = [stat.calculated_at for stat in portfolio_stats]
 
-    assert len(index) > 0, "Cannot calculate equity curve because there are no portfolio.stats.portfolio entries"
+    assert len(index) >= 2, "Cannot calculate equity curve because there are no portfolio.stats.portfolio entries"
 
     values = [getattr(stat, attribute_name) for stat in portfolio_stats]
     return pd.Series(values, index)
