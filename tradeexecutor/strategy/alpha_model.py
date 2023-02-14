@@ -3,7 +3,7 @@ import datetime
 import heapq
 import logging
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from io import StringIO
 from typing import Optional, Dict, Iterable, List
 
@@ -114,7 +114,7 @@ class TradingPairSignal:
 @dataclass_json
 @dataclass(slots=True)
 class AlphaModel:
-    """Capture alpha model state.
+    """Capture alpha model state for one strategy cycle.
 
     - A helper class for portfolio construction models and such
 
@@ -130,7 +130,8 @@ class AlphaModel:
 
     - We are serializable as JSON, so we can pass the calculations
       as data around in :py:attr:`tradeexecutor.state.visualisation.Visualisation.calculations`
-      and then later visualise alph model progress over time
+      and then later visualise alph model progress over time with other analytic
+      diagrams
 
     """
 
@@ -139,21 +140,17 @@ class AlphaModel:
     timestamp: Optional[datetime.datetime]
 
     #: Pair internal id -> trading signal data
-    signals: Dict[PairInternalId, TradingPairSignal]
+    signals: Dict[PairInternalId, TradingPairSignal] = field(default_factory=dict)
 
     #: How much we can afford to invest on this cycle
     investable_equity: Optional[USDollarAmount] = 0.0
 
-    def __init__(self, timestamp: Optional[datetime.datetime | pd.Timestamp] = None):
-        self.signals = dict()
-
-        if timestamp is not None:
-            if isinstance(timestamp, pd.Timestamp):
+    def __post_init__(self):
+        if self.timestamp is not None:
+            if isinstance(self.timestamp, pd.Timestamp):
                 # need to make serializable
-                timestamp = timestamp.to_pydatetime()
-            assert isinstance(timestamp, datetime.datetime)
-
-        self.timestamp = timestamp
+                self.timestamp = self.timestamp.to_pydatetime()
+            assert isinstance(self.timestamp, datetime.datetime)
 
     def iterate_signals(self) -> Iterable[TradingPairSignal]:
         """Iterate over all recorded signals."""

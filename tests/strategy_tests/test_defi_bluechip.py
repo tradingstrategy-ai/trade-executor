@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from tradeexecutor.analysis.alpha_model_analyser import render_alpha_model_timeline
 from tradeexecutor.backtest.backtest_runner import run_backtest, setup_backtest
 from tradeexecutor.cli.log import setup_pytest_logging
 from tradeexecutor.statistics.summary import calculate_summary_statistics
@@ -64,5 +65,11 @@ def test_defi_bluechip(
 
     # More than 5x profit
     assert summary.current_value > 50_000
+
+    # Create analysis
+    table, df = render_alpha_model_timeline(state, max_assets_per_portfolio=3)
+
+    import ipdb ; ipdb.set_trace()
+
 
 

@@ -545,8 +545,8 @@ class ExecutionLoop:
         # otherwise we crash PyCharm
         # https://stackoverflow.com/q/43288550/315168
         last_progress_update = datetime.datetime.utcfromtimestamp(0)
-        progress_update_threshold = datetime.timedelta(seconds=1)
-        last_update_ts = None
+        progress_update_threshold = datetime.timedelta(seconds=0.1)
+        last_update_ts = None  # The last pushed timestamp to tqdm
 
         with tqdm(total=seconds) as progress_bar:
 
@@ -561,6 +561,7 @@ class ExecutionLoop:
                     progress_bar.set_description(f"Backtesting {self.name}, {friendly_start} - {friendly_end} at {friedly_ts} ({cycle_name}), total {trade_count:,} trades, {cycle:,} cycles")
                     last_progress_update = datetime.datetime.utcnow()
                     if last_update_ts:
+                        # Push update for the period
                         passed_seconds = (ts - last_update_ts).total_seconds()
                         progress_bar.update(int(passed_seconds))
                     last_update_ts = ts
@@ -591,6 +592,8 @@ class ExecutionLoop:
                 if next_tick >= self.backtest_end:
                     # Backteting has ended
                     logger.info("Terminating backtesting. Backtest end %s, current timestamp %s", self.backtest_end, next_tick)
+                    passed_seconds = (ts - last_update_ts).total_seconds()
+                    progress_bar.update(int(passed_seconds))
                     break
 
                 # If we have stop loss checks enabled on a separate price feed,

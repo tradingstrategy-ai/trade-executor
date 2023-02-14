@@ -100,6 +100,14 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
     #: E.g. for 90 days you can use `datetime.timedelta(days=90)`
     required_history_period: Optional[datetime.timedelta] = None
 
+    def __repr__(self):
+        pair_count = self.universe.pairs.get_count()
+        if pair_count <= 3:
+            pair_tickers = [f"{p.base_token_symbol}-{p.quote_token_symbol}" for p in self.universe.pairs.iterate_pairs()]
+            return f"<TradingStrategyUniverse for {', '.join(pair_tickers)}>"
+        else:
+            return f"<TradingStrategyUniverse for {self.universe.pairs.get_count()} pairs>"
+
     def clone(self) -> "TradingStrategyUniverse":
         """Create a copy of this universe.
 
@@ -122,14 +130,6 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             reserve_assets=self.reserve_assets,
             required_history_period=self.required_history_period,
         )
-
-    def __repr__(self):
-        pair_count = self.universe.pairs.get_count()
-        if pair_count <= 3:
-            pair_tickers = [f"{p.base_token_symbol}-{p.quote_token_symbol}" for p in self.universe.pairs.iterate_pairs()]
-            return f"<TradingStrategyUniverse for {', '.join(pair_tickers)}>"
-        else:
-            return f"<TradingStrategyUniverse for {self.universe.pairs.get_count()} pairs>"
 
     def get_pair_count(self) -> int:
         return self.universe.pairs.get_count()
@@ -179,7 +179,26 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             if a.decimals == 0:
                 raise TradingUniverseIssue(f"Reserve asset lacks decimals {a}")
 
-    @staticmethod
+    def get_pair_by_human_description(self, desc: HumanReadableTradingPairDescription) -> TradingPairIdentifier:
+        """Get pair by its human-readable description.
+
+        See :py:meth:`tradingstrategy.pair.PandasPairUniverse.get_pair_by_human_description`
+
+        The trading pair must be loaded in the exchange universe.
+
+        :return:
+            The trading pair on the exchange.
+
+            Highest volume trading pair if multiple matches.
+
+        :raise NoPairFound:
+            In the case input data cannot be resolved.
+
+        """
+        assert self.universe.exchange_universe, "You must set universe.exchange_universe to be able to use this method"
+        pair = self.universe.pairs.get_pair_by_human_description(self.universe.exchange_universe, desc)
+        return translate_trading_pair(pair)
+
     def create_single_pair_universe(
         dataset: Dataset,
         chain_id: ChainId,
@@ -533,6 +552,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             pairs=pair_universe,
             exchanges=our_exchanges,
             candles=candle_universe,
+            exchange_universe=ExchangeUniverse.from_collection(our_exchanges),
         )
 
         return TradingStrategyUniverse(universe=universe, reserve_assets=reserve_assets)

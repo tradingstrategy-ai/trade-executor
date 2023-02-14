@@ -284,7 +284,7 @@ class TradePosition:
         max_size = 0
 
         if len(self.trades) > 2:
-            logger.warning("Position has %d trades so this method might produce wrong result")
+            logger.warning("Position has %d trades so this method might produce wrong result", self.trades)
 
         for t in self.trades:
             cur_size = t.value
