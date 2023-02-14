@@ -95,6 +95,10 @@ def calculate_aggregate_returns(equity_curve: pd.Series, freq: str = "BM"):
         There are multiple ways to calculate aggregated returns and they give a bit different results.
         See this article for details: https://quantdare.com/calculate-monthly-returns-with-pandas/
 
+    .. note ::
+
+        The current simplicist method does not calculate returns for the first and last period.
+
     :param equity_curve:
         The equity curve of the portfolio.
 
