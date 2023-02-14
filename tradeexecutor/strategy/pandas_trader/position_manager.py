@@ -204,6 +204,46 @@ class PositionManager:
         """Return the active portfolio of the strategy."""
         return self.state.portfolio
 
+    def get_trading_pair(self, pair_id: int) -> TradingPairIdentifier:
+        """Get a trading pair identifier by its internal id.
+
+        Note that internal integer ids are not stable over
+        multiple trade cycles and might be reset.
+        Always use (chain id, smart contract) for persistent
+        pair identifier.
+
+        :return:
+            Trading pair information
+        """
+        dex_pair = self.universe.pairs.get_pair_by_id(pair_id)
+        return translate_trading_pair(dex_pair)
+
+    def get_pair_fee(self,
+                     pair: Optional[TradingPairIdentifier] = None,
+                     ) -> Optional[float]:
+        """Estimate the trading/LP fees for a trading pair.
+
+        This information can come either from the exchange itself (Uni v2 compatibles),
+        or from the trading pair (Uni v3).
+
+        The return value is used to fill the
+        fee values for any newly opened trades.
+
+        :param pair:
+            Trading pair for which we want to have the fee.
+
+            Can be left empty if the underlying exchange is always
+            offering the same fee.
+
+        :return:
+            The estimated trading fee, expressed as %.
+
+            Returns None if the fee information is not available.
+            This can be different from zero fees.
+        """
+        return self.pricing_model.get_pair_fee(self.timestamp, pair)
+
+
     def open_1x_long(self,
                      pair: Union[DEXPair, TradingPairIdentifier],
                      value: USDollarAmount,
@@ -300,6 +340,7 @@ class PositionManager:
                         pair: TradingPairIdentifier,
                         dollar_amount_delta: USDollarAmount,
                         weight: float,
+                        stop_loss: Optional[float] = None,
                         ) -> List[TradeExecution]:
         """Adjust holdings for a certain position.
 
@@ -324,6 +365,12 @@ class PositionManager:
             What is the weight of the asset in the new target portfolio 0....1.
             Currently only used to detect condition "sell all" instead of
             trying to match quantity/price conversion.
+
+        :param stop_loss:
+            Set the stop loss for the position.
+
+            Use 0...1 based on the current price.
+            E.g. 0.98 = 2% stop loss under the current mid price.
 
         :return:
             List of trades to be executed to get to the desired
@@ -378,6 +425,9 @@ class PositionManager:
                 reserve_currency_price=reserve_price,
                 planned_mid_price=price_structure.mid_price,
             )
+
+        if stop_loss:
+            position.stop_loss = price_structure.mid_price * stop_loss
 
         return [trade]
 
@@ -472,46 +522,4 @@ class PositionManager:
                 trades.append(trade)
 
         return trades
-
-    def get_trading_pair(self, pair_id: int) -> TradingPairIdentifier:
-        """Get a trading pair identifier by its internal id.
-
-        Note that internal integer ids are not stable over
-        multiple trade cycles and might be reset.
-        Always use (chain id, smart contract) for persistent
-        pair identifier.
-
-        :return:
-            Trading pair information
-        """
-        dex_pair = self.universe.pairs.get_pair_by_id(pair_id)
-        return translate_trading_pair(dex_pair)
-
-    def get_pair_fee(self,
-                     pair: Optional[TradingPairIdentifier] = None,
-                     ) -> Optional[float]:
-        """Estimate the trading/LP fees for a trading pair.
-
-        This information can come either from the exchange itself (Uni v2 compatibles),
-        or from the trading pair (Uni v3).
-
-        The return value is used to fill the
-        fee values for any newly opened trades.
-
-        :param pair:
-            Trading pair for which we want to have the fee.
-
-            Can be left empty if the underlying exchange is always
-            offering the same fee.
-
-        :return:
-            The estimated trading fee, expressed as %.
-
-            Returns None if the fee information is not available.
-            This can be different from zero fees.
-        """
-        return self.pricing_model.get_pair_fee(self.timestamp, pair)
-
-
-
 
