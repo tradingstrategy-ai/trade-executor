@@ -136,8 +136,8 @@ class UniswapV2LivePricing(EthereumPricingModel):
         return TradePricing(
             price=price,
             mid_price=mid_price,
-            lp_fee=lp_fee,
-            pair_fee=fee,
+            lp_fee=[lp_fee],
+            pair_fee=[fee],
             side=False,
         )
 
@@ -210,8 +210,8 @@ class UniswapV2LivePricing(EthereumPricingModel):
         return TradePricing(
             price=float(price),
             mid_price=float(mid_price),
-            lp_fee=lp_fee,
-            pair_fee=fee,
+            lp_fee=[lp_fee],
+            pair_fee=[fee],
             market_feed_delay=datetime.timedelta(seconds=0),
             side=True,
         )

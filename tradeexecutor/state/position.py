@@ -285,8 +285,8 @@ class TradingPosition:
                    trade_type: TradeType,
                    reserve_currency: AssetIdentifier,
                    reserve_currency_price: USDollarPrice,
-                   pair_fee: Optional[BPS] = None,
-                   lp_fees_estimated: Optional[USDollarAmount] = None,
+                   pair_fee: Optional[list[BPS]] = None,
+                   lp_fees_estimated: Optional[list[USDollarAmount]] = None,
                    planned_mid_price: Optional[USDollarPrice] = None,
                    ) -> TradeExecution:
         """Open a new trade on position.

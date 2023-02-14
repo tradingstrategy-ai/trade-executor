@@ -181,7 +181,10 @@ class TradeExecution:
     #:
     #: Sourced from Uniswap v2 router or Uniswap v3 pool information.
     #:
-    fee_tier: Optional[BPS] = None
+    #: Same as `pair_fee` in TradePricing
+    #: If there is an intermediary pair, then this list will have two elements,
+    #: one for each swap
+    fee_tier: Optional[list[BPS]] = None
 
     #: LP fees paid, currency convereted to the USD.
     #:
@@ -196,7 +199,11 @@ class TradeExecution:
     #:
     #: This is set before the execution and is mostly useful
     #: for backtesting.
-    lp_fees_estimated: Optional[USDollarAmount] = None
+    #:
+    #: Same as `lp_fee` in TradePricing.
+    #: If there is an intermediary pair, this list will have two elements.
+    #: One for each swap
+    lp_fees_estimated: Optional[list[USDollarAmount]] = None
 
     #: What is the conversation rate between quote token and US dollar used in LP fee conversion.
     #:
@@ -256,10 +263,10 @@ class TradeExecution:
         assert self.opened_at.tzinfo is None, f"We got a datetime {self.opened_at} with tzinfo {self.opened_at.tzinfo}"
 
         if self.lp_fees_estimated is not None:
-            assert type(self.lp_fees_estimated) == float
-
+            assert [type(_lp_fee) == float for _lp_fee in self.lp_fees_estimated], f"lp_fee must be provided as type list[float]. Got Got lp_fee: {self.lp_fees_estimated} {type(self.lp_fees_estimated)}"
+        
         if self.fee_tier is not None:
-            assert type(self.fee_tier) == float
+           assert [type(_pair_fee) in {float, int} for _pair_fee in self.fee_tier], f"pair_fee must be provided as a list. Got fee: {self.fee_tier} {type(self.fee_tier)} "
 
     @property
     def strategy_cycle_at(self):
@@ -432,7 +439,7 @@ class TradeExecution:
         """
         return self.get_position_quantity(), self.get_reserve_quantity()
 
-    def get_fees_paid(self) -> USDollarAmount:
+    def get_fees_paid(self) -> list[USDollarAmount]:
         """
         TODO: Make this functio to behave
         :return:
@@ -441,7 +448,7 @@ class TradeExecution:
         if status == TradeStatus.success:
             return self.lp_fees_paid
         elif status == TradeStatus.failed:
-            return 0
+            return [0]
         else:
             raise AssertionError(f"Unsupported trade state to query fees: {self.get_status()}")
 

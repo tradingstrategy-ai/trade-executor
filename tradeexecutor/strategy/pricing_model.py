@@ -40,11 +40,11 @@ class TradePricing:
     #: How much liquidity provider fees we are going to pay on this trade.
     #:
     #: Set to None if data is not available.
-    lp_fee: Optional[USDollarAmount] = None
+    lp_fee: Optional[list[USDollarAmount]] = None
 
     #: What was the LP fee % used as the base of the calculations.
     #:
-    pair_fee: Optional[BPS] = None
+    pair_fee: Optional[list[BPS]] = None
 
     #: How old price data we used for this estimate
     #:
@@ -58,9 +58,9 @@ class TradePricing:
     side: Optional[bool] = None
 
     def __repr__(self):
-        fee = self.pair_fee or 0
-        return f"<TradePricing:{self.price} mid:{self.mid_price} fee:{fee:.4f}%>"
-
+        fee_list = [fee or 0 for fee in self.pair_fee]
+        return f"<TradePricing:{self.price} mid:{self.mid_price} fee:{format_fees_percentage(fee_list)}>"
+    
     def __post_init__(self):
         """Validate parameters.
 
@@ -68,13 +68,13 @@ class TradePricing:
         """
         assert type(self.price) == float
         assert type(self.mid_price) == float
+        
         if self.lp_fee is not None:
-            assert type(self.lp_fee) == float
+            assert [type(_lp_fee) == float for _lp_fee in self.lp_fee], f"lp_fee must be provided as type list[float]. Got Got lp_fee: {self.lp_fee} {type(self.lp_fee)}"
+        
         if self.pair_fee is not None:
-            assert type(self.pair_fee) in [
-                float,
-                list,
-            ], f"Got fee: {self.pair_fee} {type(self.pair_fee)} "
+           assert [type(_pair_fee) in {float, int} for _pair_fee in self.pair_fee], f"pair_fee must be provided as a list. Got fee: {self.pair_fee} {type(self.pair_fee)} "
+        
         if self.market_feed_delay is not None:
             assert isinstance(self.market_feed_delay, datetime.timedelta)
 
@@ -85,6 +85,39 @@ class TradePricing:
             if not self.side:
                 assert self.price <= self.mid_price, f"Got bad sell pricing: {self.price} < {self.mid_price}"
 
+
+def format_fees_percentage(fees: list[BPS]):
+    """Returns string of formatted fees
+    
+    e.g. fees = [0.03, 0.005]
+    => 0.3000% 0.0500%
+    
+    :param fees:
+        list of lp fees in float (multiplier) format
+        
+    :returns:
+        formatted list
+    """
+    _fees = [fee or 0 for fee in fees]
+    strFormat = len(_fees) * '{:.4f}% '
+    return strFormat.format(*_fees)
+    
+    
+def format_fees_dollars(fees: list[USDollarAmount]):
+    """Returns string of formatted fees
+    
+    e.g. fees = [30, 50]
+    => $30.00 $50.00
+    
+    :param fees:
+        list of fees paid in absolute value (dollars)
+    
+    :returns:
+        formatted list
+    """
+    _fees = [fee or 0 for fee in fees]
+    strFormat = len(_fees) * '${:.2f} '
+    return strFormat.format(*_fees)
 
 class PricingModel(abc.ABC):
     """Get a price for the asset.

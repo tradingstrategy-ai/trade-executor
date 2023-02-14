@@ -105,8 +105,8 @@ class State:
                      reserve_currency: AssetIdentifier,
                      reserve_currency_price: USDollarPrice,
                      notes: Optional[str] = None,
-                     pair_fee: Optional[BPS] = None,
-                     lp_fees_estimated: Optional[USDollarAmount] = None,
+                     pair_fee: Optional[list[BPS]] = None,
+                     lp_fees_estimated: Optional[list[USDollarAmount]] = None,
                      planned_mid_price: Optional[USDollarPrice] = None,
                      ) -> Tuple[TradingPosition, TradeExecution, bool]:
         """Creates a request for a new trade.

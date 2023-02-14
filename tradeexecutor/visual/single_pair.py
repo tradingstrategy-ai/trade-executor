@@ -13,6 +13,8 @@ from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.visualisation import Visualisation, Plot
+from tradeexecutor.strategy.pricing_model import format_fees_dollars, format_fees_percentage
+
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.charting.candle_chart import visualise_ohlcv, make_candle_labels
 
@@ -71,14 +73,14 @@ def export_trade_for_dataframe(p: Portfolio, t: TradeExecution) -> dict:
             if t.executed_price and t.planned_mid_price:
                 realised_fees = abs(1 - t.planned_mid_price / t.executed_price)
                 label += [
-                    f"Fees paid: {t.get_fees_paid():.4f} USD",
-                    f"Fees planned: {t.lp_fees_estimated:.4f} USD",
+                    f"Fees paid: {format_fees_dollars(t.get_fees_paid())}",
+                    f"Fees planned: {format_fees_dollars(t.lp_fees_estimated)}",
                     f"Fees: {realised_fees:.4f} %"
                 ]
             else:
                 label += [
-                    f"Fees paid: {t.get_fees_paid():.4f} USD",
-                    f"Fees planned: {t.lp_fees_estimated:.4f} USD",
+                    f"Fees paid: {format_fees_dollars(t.get_fees_paid())}",
+                    f"Fees planned: {format_fees_dollars(t.lp_fees_estimated)}",
                 ]
 
     # See Plotly Scatter usage https://stackoverflow.com/a/61349739/315168
