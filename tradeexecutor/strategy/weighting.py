@@ -80,3 +80,9 @@ def weight_by_1_slash_n(alpha_signals: Dict[int, float]) -> Dict[int, float]:
         pair_id, alpha = tuple
         weighed_signals[pair_id] = 1 / idx
     return weighed_signals
+
+
+def weight_passthrouh(alpha_signals: Dict[int, float]) -> Dict[int, float]:
+    """Use the given raw weight value as is as the portfolio weight."""
+    return alpha_signals
+

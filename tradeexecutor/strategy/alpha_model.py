@@ -160,8 +160,18 @@ class AlphaModel:
         yield from self.signals.values()
 
     def get_signal_by_pair_id(self, pair_id: PairInternalId) -> Optional[TradingPairSignal]:
-        """Get a trading pair signal instance for one pair."""
+        """Get a trading pair signal instance for one pair.
+
+        Use integer id lookup.
+        """
         return self.signals.get(pair_id)
+
+    def get_signal_by_pair(self, pair: TradingPairIdentifier) -> Optional[TradingPairSignal]:
+        """Get a trading pair signal instance for one pair.
+
+        Use verbose :py:class:`TradingPairIdentifier` lookup.
+        """
+        return self.get_signal_by_pair_id(pair.internal_id)
 
     def get_signals_sorted_by_weight(self) -> Iterable[TradingPairSignal]:
         """Get the signals sorted by the weight.
@@ -232,6 +242,7 @@ class AlphaModel:
         """Set the weights for the8 current portfolio trading positions before rebalance."""
         if pair.internal_id in self.signals:
             self.signals[pair.internal_id].old_weight = old_weight
+            self.signals[pair.internal_id].old_value = old_value
         else:
             self.signals[pair.internal_id] = TradingPairSignal(
                 pair=pair,
@@ -269,7 +280,12 @@ class AlphaModel:
             self.signals[pair_id].raw_weight = raw_weight
 
     def update_old_weights(self, portfolio: Portfolio):
-        """Update the old weights of the last strategy cycle to the alpha model."""
+        """Update the old weights of the last strategy cycle to the alpha model.
+
+        - Update % of portfolio weight of an asset
+
+        - Update USD portfolio value of an asset
+        """
         total = portfolio.get_open_position_equity()
         for position in portfolio.open_positions.values():
             value = position.get_value()
