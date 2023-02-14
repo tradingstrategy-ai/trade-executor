@@ -46,12 +46,28 @@ class BacktestExecutionModel(ExecutionModel):
 
     def simulate_trade(self,
                        ts: datetime.datetime,
-                       state: State, trade:
-            TradeExecution) -> Tuple[Decimal, Decimal]:
+                       state: State,
+                       idx: int,
+                       trade: TradeExecution) -> Tuple[Decimal, Decimal]:
         """Set backtesting trade state from planned to executed.
         
         Currently, always executes trades "perfectly" i.e. no different slipppage
         that was planned, etc.
+
+        :poram ts:
+            Strategy cycle timestamp
+
+        :param state:
+            Current backtesting state
+
+        :param idx:
+            Index of the trade to be executed on this cycle
+
+        :param trade:
+            The actual trade
+
+        :return:
+            Executed quantity and executed reserve amounts
         """
 
         assert trade.get_status() == TradeStatus.started
@@ -91,8 +107,8 @@ class BacktestExecutionModel(ExecutionModel):
 
         except OutOfSimulatedBalance as e:
             # Better error messages to helping out why backtesting failed
-            raise BacktestExecutionFailed(
-                f"Trade failed\n"
+            raise BacktestExecutionFailed(f"\n"
+                f"  Trade #{idx} failed on strategy cycle {ts}\n"
                 f"  Execution of trade {trade} failed.\n"
                 f"  Pair: {trade.pair}.\n"
                 f"  Trade type: {trade.trade_type.name}.\n"
@@ -148,10 +164,10 @@ class BacktestExecutionModel(ExecutionModel):
                 if not self.is_stop_loss_supported():
                     raise AutoClosingOrderUnsupported("Trade was marked with stop loss/take profit even though backtesting trading universe does have price feed for stop loss checks available.")
 
-        for trade in trades:
+        for idx, trade in enumerate(trades):
 
             # 3. Simulate tx broadcast
-            executed_quantity, executed_reserve = self.simulate_trade(ts, state, trade)
+            executed_quantity, executed_reserve = self.simulate_trade(ts, state, idx, trade)
 
             # 4. execution is dummy operation where planned execution becomes actual execution
             # Assume we always get the same execution we planned

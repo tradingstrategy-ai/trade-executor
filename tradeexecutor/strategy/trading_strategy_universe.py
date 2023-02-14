@@ -895,6 +895,7 @@ def load_all_data(
         time_frame: TimeBucket,
         execution_context: ExecutionContext,
         universe_options: UniverseOptions,
+        with_liquidity=True,
 ) -> Dataset:
     """Load all pair, candle and liquidity data for a given time bucket.
 
@@ -910,6 +911,16 @@ def load_all_data(
 
     :param execution_context:
         Defines if we are live or backtesting
+
+    :param with_liquidity:
+        Load liquidity data.
+
+        Note that all pairs may not have liquidity data available.
+
+    :return:
+        Dataset that covers all historical data.
+
+        This dataset is big and you need to filter it down for backtests.
     """
 
     assert isinstance(client, Client)
@@ -933,7 +944,11 @@ def load_all_data(
         exchanges = client.fetch_exchange_universe()
         pairs = client.fetch_pair_universe().to_pandas()
         candles = client.fetch_all_candles(time_frame).to_pandas()
-        liquidity = client.fetch_all_liquidity_samples(time_frame).to_pandas()
+
+        if with_liquidity:
+            liquidity = client.fetch_all_liquidity_samples(time_frame).to_pandas()
+        else:
+            liquidity = None
 
         return Dataset(
             time_bucket=time_frame,

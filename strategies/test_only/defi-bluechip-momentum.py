@@ -1,6 +1,7 @@
 import datetime
 from collections import Counter
 from typing import Dict, List
+import logging
 
 import pandas as pd
 
@@ -21,6 +22,9 @@ from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniv
     load_all_data
 from tradeexecutor.strategy.universe_model import UniverseOptions
 from tradeexecutor.strategy.weighting import weight_by_1_slash_n
+
+
+logger = logging.getLogger(__name__)
 
 # Tell what trade execution engine version this strategy needs to use
 trading_strategy_engine_version = "0.1"
@@ -59,11 +63,11 @@ initial_deposit = 10_000
 # List of trading pairs that we consider "DeFi blueschips" for this strategy
 # For token ordering, wrappign see https://tradingstrategy.ai/docs/programming/market-data/trading-pairs.html
 pairs = (
-    (ChainId.ethereum, "uniswap-v2", "WETH", "USD"),  # ETH
-    (ChainId.ethereum, "uniswap-v2", "AAVE", "ETH"),  # AAVE
-    (ChainId.ethereum, "uniswap-v2", "UNI", "ETH"),  # UNI
-    (ChainId.ethereum, "uniswap-v2", "CRV", "ETH"),  # Curve
-    (ChainId.ethereum, "sushiswap", "SUSHI", "ETH"),  # Sushi
+    (ChainId.ethereum, "uniswap-v2", "WETH", "USDC"),  # ETH
+    (ChainId.ethereum, "uniswap-v2", "AAVE", "WETH"),  # AAVE
+    (ChainId.ethereum, "uniswap-v2", "UNI", "WETH"),  # UNI
+    (ChainId.ethereum, "uniswap-v2", "CRV", "WETH"),  # Curve
+    (ChainId.ethereum, "sushi", "SUSHI", "WETH"),  # Sushi
     (ChainId.bsc, "pancakeswap-v2", "WBNB", "BUSD"),  # BNB
     (ChainId.bsc, "pancakeswap-v2", "Cake", "BUSD"),  # Cake
     (ChainId.polygon, "quickswap", "WMATIC", "USDC"),  # Matic
@@ -168,6 +172,8 @@ def decide_trades(
     # Record alpha model state so we can later visualise our alpha model thinking better
     state.visualisation.add_calculations(timestamp, alpha_model.to_dict())
 
+    logger.info("Cycle %s, model: %s", timestamp, alpha_model.get_debug_print())
+
     return trades
 
 
@@ -177,12 +183,9 @@ def create_trading_universe(
         execution_context: ExecutionContext,
         universe_options: UniverseOptions,
 ) -> TradingStrategyUniverse:
-    """Creates the trading universe where the strategy trades.
 
-    We reload candle data for each cycle.
-    """
-
-    assert execution_context.mode == ExecutionMode.backtesting, f"Live trading not supported"
+    assert not execution_context.mode.is_live_trading(), \
+        f"Only strategy backtesting supported, got {execution_context.mode}"
 
     # Load all datas we can get for our candle time bucket
     dataset = load_all_data(
@@ -190,13 +193,14 @@ def create_trading_universe(
         trading_strategy_cycle.to_timebucket(),
         execution_context,
         universe_options,
+        with_liquidity=False,
     )
 
     # Filter down the dataset to the pairs we specified
-    universe = TradingStrategyUniverse.create_multipair_universe(
+    universe = TradingStrategyUniverse.create_multichain_universe_by_pair_descriptions(
         dataset,
-        [chain_id],
-        [exchange_slug],
+        pairs,
+        reserve_token_symbol="USDC"  # Pick any USDC - does not matter as we do not route
     )
 
     return universe

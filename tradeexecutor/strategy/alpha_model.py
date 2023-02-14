@@ -39,6 +39,9 @@ class TradingPairSignal:
     - Optional variables are calculated and filled in the various phases of alpha model processing,
       as the model moves from abstract weightings to actual trade execution and dollar amounts
 
+    - When we need to close old positions, we automatically generate :py:attr:`old_weight`
+      and negative :py:attr:`position_adjust` for them
+
     - Data here is serialisable for visualisation a a part of the strategy state visualisation
       and also for console logging diagnostics
 
@@ -105,7 +108,7 @@ class TradingPairSignal:
     position_adjust: USDollarAmount = 0.0
 
     def __repr__(self):
-        return f"Pair: {self.pair.get_ticker()} old weight: {self.old_weight:.4f} old value: {self.old_value:,} new weight: {self.normalised_weight:.4f} new value: {self.position_target:,}"
+        return f"Pair: {self.pair.get_ticker()} old weight: {self.old_weight:.4f} old value: {self.old_value:,} new weight: {self.normalised_weight:.4f} new value: {self.position_target:,} adjust: {self.position_adjust:,}"
 
 
 @dataclass_json
@@ -171,8 +174,8 @@ class AlphaModel:
         """Present the alpha model in a format suitable for the console."""
         buf = StringIO()
         print(f"Alpha model for {self.timestamp}, for USD {self.investable_equity:,} investments", file=buf)
-        for idx, signal in enumerate(self.get_signals_sorted_by_weight()):
-            print(f"   #{idx} {signal}", file=buf)
+        for idx, signal in enumerate(self.get_signals_sorted_by_weight(), start=1):
+            print(f"   Signal #{idx} {signal}", file=buf)
         return buf.getvalue()
 
     def set_signal(

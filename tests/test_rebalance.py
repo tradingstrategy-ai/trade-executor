@@ -23,6 +23,7 @@ from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
+from tradeexecutor.strategy.alpha_model import AlphaModel
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.strategy.pandas_trader.rebalance import get_existing_portfolio_weights, rebalance_portfolio_old, \
     get_weight_diffs
@@ -461,3 +462,77 @@ def test_rebalance_bad_weights(
             new_weights,
             portfolio.get_open_position_equity(),
         )
+
+
+def test_alpha_model_trades_flip_position(
+    single_asset_portfolio: Portfolio,
+    universe,
+    pricing_model,
+    weth_usdc: TradingPairIdentifier,
+    aave_usdc: TradingPairIdentifier,
+    start_ts,
+):
+    """"Create trades for a portfolio to go from 100% ETH to 100% AAVE.
+
+    Uses AlphaModel based approach
+    """
+
+    portfolio = single_asset_portfolio
+
+    state = State(portfolio=portfolio)
+
+    # Check we have WETH-USDC open
+    position = state.portfolio.get_position_by_trading_pair(weth_usdc)
+    assert position.get_quantity() > 0
+    weth_quantity = position.get_quantity()
+
+    # Create the PositionManager that
+    # will create buy/sell trades based on our
+    # trading universe and mock price feeds
+    position_manager = PositionManager(
+        start_ts + datetime.timedelta(days=1),  # Trade on t plus 1 day
+        universe.universe,
+        state,
+        pricing_model,
+    )
+
+    # Go all in to AAVE
+    alpha_model = AlphaModel()
+    alpha_model.set_signal(aave_usdc, 1.0)
+
+    alpha_model.assign_weights()
+    alpha_model.normalise_weights()
+
+    # Load in old weight for each trading pair signal,
+    # so we can calculate the adjustment trade size
+    alpha_model.update_old_weights(state.portfolio)
+
+    # Calculate how much dollar value we want each individual position to be on this strategy cycle,
+    # based on our total available equity
+    portfolio = position_manager.get_current_portfolio()
+    portfolio_target_value = portfolio.get_open_position_equity()
+    alpha_model.calculate_target_positions(portfolio_target_value)
+
+    # Shift portfolio from current positions to target positions
+    # determined by the alpha signals (momentum)
+    trades = alpha_model.generate_adjustment_trades_and_update_stop_losses(position_manager)
+
+    assert len(trades) == 2, f"Got trades: {trades}"
+
+    # Sells go first,
+    # with 167 worth of sales
+    t = trades[0]
+    assert t.is_sell()
+    assert t.is_planned()
+    assert t.pair == weth_usdc
+    assert t.planned_price == 1660
+    assert t.planned_quantity == -weth_quantity
+    assert t.get_planned_value() == 157.7
+
+    # Buy comes next,
+    # with approx the same value
+    t = trades[1]
+    assert t.is_buy()
+    assert t.is_planned()
+    assert t.planned_price == 100
+    assert t.get_planned_value() == 157.7
