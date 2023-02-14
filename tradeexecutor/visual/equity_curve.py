@@ -1,10 +1,8 @@
 """Equity curve based statistics and visualisations."""
-from typing import Iterable, List
+from typing import List
 
-import numpy as np
 import pandas as pd
 
-from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.state import State
 from tradeexecutor.state.statistics import Statistics, PortfolioStatistics
 
