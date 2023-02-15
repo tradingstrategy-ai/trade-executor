@@ -96,6 +96,8 @@ def single_asset_portfolio(start_ts, weth_usdc, weth, usdc) -> Portfolio:
         executed_quantity=Decimal(0.095),
         lp_fees_paid =2.5,
         native_token_price=1.9,
+        fee_tier=[weth_usdc.fee],
+        path=[weth_usdc]
     )
 
     tx = BlockchainTransaction(
@@ -142,7 +144,7 @@ def test_update_reserves(usdc, weth, weth_usdc, start_ts):
     assert state.portfolio.get_total_equity() == 1_000
 
 
-def test_single_buy(usdc, weth, weth_usdc, start_ts):
+def test_single_buy(usdc, weth, weth_usdc: TradingPairIdentifier, start_ts):
     """Do a single token purchase."""
     state = State()
     state.update_reserves([ReservePosition(usdc, Decimal(1000), start_ts, 1.0, start_ts)])
@@ -157,7 +159,9 @@ def test_single_buy(usdc, weth, weth_usdc, start_ts):
         assumed_price=1700,
         trade_type=TradeType.rebalance,
         reserve_currency=usdc,
-        reserve_currency_price=1.0)
+        reserve_currency_price=1.0,
+        pair_fee=[weth_usdc.fee],
+        path=[weth_usdc])
 
     assert trade.get_status() == TradeStatus.planned
     assert trade.planned_reserve == Decimal("170")
@@ -214,7 +218,7 @@ def test_single_buy(usdc, weth, weth_usdc, start_ts):
     assert len(state.portfolio.open_positions) == 1
 
 
-def test_single_sell_all(usdc, weth, weth_usdc, start_ts, single_asset_portfolio):
+def test_single_sell_all(usdc, weth, weth_usdc: TradingPairIdentifier, start_ts, single_asset_portfolio):
     """Sell the single open ETH position in the portfolio."""
     state = State(portfolio=single_asset_portfolio)
 
@@ -235,7 +239,9 @@ def test_single_sell_all(usdc, weth, weth_usdc, start_ts, single_asset_portfolio
         assumed_price=1700,
         trade_type=TradeType.rebalance,
         reserve_currency=usdc,
-        reserve_currency_price=1.0)
+        reserve_currency_price=1.0,
+        pair_fee=[weth_usdc.fee],
+        path=[weth_usdc])
 
     # State and position is currently updated
     assert position == state.portfolio.open_positions[1]
@@ -751,7 +757,9 @@ def test_single_buy_failed(usdc, weth, weth_usdc, start_ts):
         assumed_price=1700,
         trade_type=TradeType.rebalance,
         reserve_currency=usdc,
-        reserve_currency_price=1.0)
+        reserve_currency_price=1.0,
+        pair_fee=[weth_usdc.fee],
+        path=[weth_usdc])
 
     # #2 Capital allocation
     txid = "0xffffff"

@@ -236,6 +236,10 @@ class TradeExecution:
     #: E.g. failed broadcast issue was fixed.
     #: Marked when the repair command is called.
     repaired_at: Optional[datetime.datetime] = None
+    
+    #: Path of the trade
+    #: One trade can have multiple swaps if there is an intermediary pair.
+    path: Optional[List[TradingPairIdentifier]] = None
 
     def __repr__(self):
         if self.is_buy():
@@ -268,6 +272,9 @@ class TradeExecution:
         # fee_tier assertions
         # fee_tier is no longer optional, forced to exist
         assert [type(_pair_fee) in {float, int} for _pair_fee in self.fee_tier], f"pair_fee must be provided as a list. Got fee: {self.fee_tier} {type(self.fee_tier)} "
+        
+        if self.path:
+            assert [type(address) == TradingPairIdentifier for address in self.path], "path must be provided as a list of TradePairIdentifier" 
 
     @property
     def strategy_cycle_at(self):

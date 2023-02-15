@@ -43,6 +43,8 @@ class DummyTestTrader:
             reserve_currency=pair.quote,
             reserve_currency_price=1.0,
             planned_mid_price=price,
+            pair_fee=[pair.fee],
+            path=[pair]
         )
 
         self.ts += datetime.timedelta(seconds=1)

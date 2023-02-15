@@ -214,6 +214,7 @@ class Portfolio:
                      pair_fee: Optional[BPS] = None,
                      lp_fees_estimated: Optional[USDollarAmount] = None,
                      planned_mid_price: Optional[USDollarPrice] = None,
+                     path: Optional[list[str]] = None
                      ) -> Tuple[TradingPosition, TradeExecution, bool]:
         """Create a trade.
 
@@ -253,6 +254,7 @@ class Portfolio:
             pair_fee=pair_fee,
             lp_fees_estimated=lp_fees_estimated,
             planned_mid_price=planned_mid_price,
+            path=path
         )
 
         # Update notes

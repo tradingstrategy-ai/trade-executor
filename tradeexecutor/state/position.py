@@ -288,6 +288,7 @@ class TradingPosition:
                    pair_fee: Optional[list[BPS]] = None,
                    lp_fees_estimated: Optional[list[USDollarAmount]] = None,
                    planned_mid_price: Optional[USDollarPrice] = None,
+                   path: Optional[list[str]] = None
                    ) -> TradeExecution:
         """Open a new trade on position.
 
@@ -325,6 +326,7 @@ class TradingPosition:
             planned_mid_price=planned_mid_price,
             fee_tier=pair_fee,
             lp_fees_estimated=lp_fees_estimated,
+            path=path
         )
         self.trades[trade.trade_id] = trade
         return trade

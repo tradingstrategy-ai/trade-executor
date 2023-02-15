@@ -88,6 +88,9 @@ class TradePricing:
                 assert self.price >= self.mid_price, f"Got bad buy pricing: {self.price} > {self.mid_price}"
             if not self.side:
                 assert self.price <= self.mid_price, f"Got bad sell pricing: {self.price} < {self.mid_price}"
+                
+        if self.path:
+            assert [type(address) == TradingPairIdentifier for address in self.path], "path must be provided as a list of TradePairIdentifier" 
 
 
 def format_fees_percentage(fees: list[BPS]):
