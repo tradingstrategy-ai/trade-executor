@@ -686,7 +686,7 @@ class TradeAnalysis:
 
         max_pos_cons, max_neg_cons, max_pullback = self.get_max_consective(positions)
 
-        lp_fees_average_pc = lp_fees_paid / trade_volume
+        lp_fees_average_pc = lp_fees_paid / trade_volume if trade_volume else 0
 
         return TradeSummary(
             won=won,
