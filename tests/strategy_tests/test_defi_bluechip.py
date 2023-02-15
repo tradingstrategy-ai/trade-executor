@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
+import plotly.graph_objects as go
 
 from tradeexecutor.analysis.alpha_model_analyser import create_alpha_model_timeline_all_assets, render_alpha_model_plotly_table
 from tradeexecutor.backtest.backtest_runner import run_backtest, setup_backtest
@@ -14,6 +15,8 @@ from tradeexecutor.cli.log import setup_pytest_logging
 from tradeexecutor.statistics.summary import calculate_summary_statistics
 from tradeexecutor.strategy.execution_context import ExecutionMode
 from tradeexecutor.analysis.trade_analyser import build_trade_analysis
+from tradeexecutor.visual.single_pair import visualise_single_pair, visualise_single_pair_positions_with_duration_and_slippage
+from tradingstrategy.chain import ChainId
 
 # https://docs.pytest.org/en/latest/how-to/skipping.html#skip-all-test-functions-of-a-class-or-module
 pytestmark = pytest.mark.skipif(os.environ.get("TRADING_STRATEGY_API_KEY") is None, reason="Set TRADING_STRATEGY_API_KEY environment variable to run this test")
@@ -80,3 +83,21 @@ def test_defi_bluechip(
     summary = analysis.calculate_summary_statistics()
     df = summary.to_dataframe()
     assert isinstance(df, pd.DataFrame)
+
+    crv_usd = universe.get_pair_by_human_description((ChainId.ethereum, "uniswap-v2", "CRV", "WETH"))
+
+    fig = visualise_single_pair(
+        state,
+        universe.universe.candles,
+        pair_id=crv_usd.internal_id,
+    )
+    assert isinstance(fig, go.Figure)
+
+    candles = universe.universe.candles.get_candles_by_pair(crv_usd.internal_id)
+    fig = visualise_single_pair_positions_with_duration_and_slippage(
+        state,
+        candles=candles,
+        pair_id=crv_usd.internal_id,
+    )
+    assert isinstance(fig, go.Figure)
+

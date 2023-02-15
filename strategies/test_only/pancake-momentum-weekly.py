@@ -303,7 +303,7 @@ def decide_trades(
 
     # Shift portfolio from current positions to target positions
     # determined by the alpha signals (momentum)
-    trades = alpha_model.generate_adjustment_trades_and_update_stop_losses(position_manager)
+    trades = alpha_model.generate_rebalance_trades_and_triggers(position_manager)
 
     # Record alpha model state so we can later visualise our alpha model thinking better
     state.visualisation.add_calculations(timestamp, alpha_model.to_dict())

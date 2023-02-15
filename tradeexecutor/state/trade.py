@@ -244,9 +244,10 @@ class TradeExecution:
 
     def __hash__(self):
         # TODO: Hash better?
-        return hash(str(self))
+        return hash(self.trade_id)
 
     def __eq__(self, other):
+        """Note that we do not support comparison across different portfolios ATM."""
         assert isinstance(other, TradeExecution)
         return self.trade_id == other.trade_id
 

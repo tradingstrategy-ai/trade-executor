@@ -39,7 +39,7 @@ def construct_event_timeline(state: State) -> pd.DatetimeIndex:
     )
 
     # https://stackoverflow.com/a/55696161/315168
-    return rebalance_timestamps.union(triggered_timestamps)
+    return rebalance_timestamps.union(triggered_timestamps).drop_duplicates()
 
 
 
@@ -115,6 +115,15 @@ def create_alpha_model_timeline_all_assets(
         if t.is_triggered():
             trigger_trade_map[t.opened_at][t.pair] = t
 
+    def reset(pair):
+       # Clear row-over-row book keeping for a trading pair
+        if pair in previous_cycle:
+            del previous_cycle[pair]
+        if pair in previous_prices_by_pair:
+            del previous_prices_by_pair[pair]
+        if pair in previous_positions_by_pair:
+            del previous_positions_by_pair[pair]
+
     event_ts: pd.Timestamp
     for event_ts in timeline:
 
@@ -152,7 +161,7 @@ def create_alpha_model_timeline_all_assets(
                         text += f"{new_line}"
                         profit = position.get_total_profit_usd()
                         text += f"Profit: ${profit:,.0f} ({profit_pct * 100:.2f}%)"
-
+                    reset(pair)
                 row.append(text)
             rows.append(row)
 
@@ -183,13 +192,7 @@ def create_alpha_model_timeline_all_assets(
                     row.append(text)
 
                     # Clear row-over-row book keeping
-                    if pair in previous_cycle:
-                        del previous_cycle[pair]
-                    if pair in previous_prices_by_pair:
-                        del previous_prices_by_pair[pair]
-                    if pair in previous_positions_by_pair:
-                        del previous_positions_by_pair[pair]
-
+                    reset(pair)
                     continue
 
                 if not signal.position_adjust_ignored:
@@ -233,7 +236,6 @@ def create_alpha_model_timeline_all_assets(
                         f"Signal: {signal.signal * 100:.0f}% {new_line}" \
                         f"{new_line}"
 
-                # Get only what we hold
                 if signal.has_trades():
                     if previous_cycle.get(pair) is None:
                         # Open position
@@ -243,7 +245,7 @@ def create_alpha_model_timeline_all_assets(
                         if trade:
                             if trade == position.get_last_trade():
                                 # Close
-                                text += f"Close: ${value:,.2f}{new_line}"
+                                text += f"Close: ${value:,.0f}{new_line}"
                             else:
                                 # Adjust - buy or sell
                                 text += f"Adjust: ${value:+,.0f}{new_line}"
@@ -252,8 +254,9 @@ def create_alpha_model_timeline_all_assets(
                     text += f"Hold{new_line}"
 
                 profit = signal.profit_before_trades
+                profit_pct = signal.profit_before_trades_pct
                 if profit:
-                    text += f"Profit: ${profit:,.0f}"
+                    text += f"Profit: ${profit:,.0f} ({profit_pct:.2f}%)"
 
                 row.append(text)
 

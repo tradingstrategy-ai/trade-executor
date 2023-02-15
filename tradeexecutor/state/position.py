@@ -93,6 +93,14 @@ class TradingPosition:
         else:
             return f"<Closed position #{self.position_id} {self.pair} ${self.get_first_trade().get_value()}>"
 
+    def __hash__(self):
+        return hash(self.position_id)
+
+    def __eq__(self, other):
+        """Note that we do not support comparison across different portfolios ATM."""
+        assert isinstance(other, TradingPosition)
+        return self.position_id == other.position_id
+
     def __post_init__(self):
         assert self.position_id > 0
         assert self.last_pricing_at is not None

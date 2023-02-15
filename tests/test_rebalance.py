@@ -515,7 +515,7 @@ def test_alpha_model_trades_flip_position(
 
     # Shift portfolio from current positions to target positions
     # determined by the alpha signals (momentum)
-    trades = alpha_model.generate_adjustment_trades_and_update_stop_losses(position_manager)
+    trades = alpha_model.generate_rebalance_trades_and_triggers(position_manager)
 
     assert len(trades) == 2, f"Got trades: {trades}"
 
@@ -600,7 +600,7 @@ def test_alpha_model_flip_position_partially(
 
     # Shift portfolio from current positions to target positions
     # determined by the alpha signals (momentum)
-    trades = alpha_model.generate_adjustment_trades_and_update_stop_losses(position_manager)
+    trades = alpha_model.generate_rebalance_trades_and_triggers(position_manager)
 
     assert len(trades) == 2, f"Got trades: {trades}"
 

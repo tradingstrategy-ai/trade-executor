@@ -1,20 +1,23 @@
 """Tools to visualise live trading/backtest outcome for strategies trading only one pair."""
 import datetime
 import logging
-import textwrap
-from typing import Optional, Union, List, Tuple
+
+from typing import Optional, Union, List, Collection
 
 import plotly.graph_objects as go
 import pandas as pd
 from plotly.graph_objs.layout import Annotation
 
+from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.visualisation import Visualisation, Plot
+from tradeexecutor.state.types import PairInternalId
+
 from tradingstrategy.candle import GroupedCandleUniverse
-from tradingstrategy.charting.candle_chart import visualise_ohlcv, make_candle_labels
+from tradingstrategy.charting.candle_chart import visualise_ohlcv, make_candle_labels, VolumeBarMode
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +96,7 @@ def export_trade_for_dataframe(p: Portfolio, t: TradeExecution) -> dict:
 
 def export_trades_as_dataframe(
         portfolio: Portfolio,
+        pair_id: PairInternalId,
         start: Optional[pd.Timestamp] = None,
         end: Optional[pd.Timestamp] = None,
 ) -> pd.DataFrame:
@@ -115,6 +119,10 @@ def export_trades_as_dataframe(
     data = []
 
     for t in portfolio.get_all_trades():
+
+        if t.pair.internal_id != pair_id:
+            continue
+
         # Crop
         if start or end:
 
@@ -168,6 +176,7 @@ def export_plot_as_dataframe(
 
 def visualise_technical_indicators(
         fig: go.Figure,
+        pair_id: PairInternalId,
         visualisation: Visualisation,
         start_at: Optional[pd.Timestamp] = None,
         end_at: Optional[pd.Timestamp] = None
@@ -371,7 +380,7 @@ def get_position_hover_text(p: TradingPosition) -> str:
 def visualise_positions_with_duration_and_slippage(
         fig: go.Figure,
         candles: pd.DataFrame,
-        positions: List[TradingPosition]):
+        positions: Collection[TradingPosition]):
     """Visualise trades as coloured area over time.
 
     Add arrow indicators to point start and end duration,
@@ -535,20 +544,28 @@ def visualise_positions_with_duration_and_slippage(
 
 
 def visualise_single_pair(
-        state: State,
+        state: Optional[State],
         candle_universe: GroupedCandleUniverse | pd.DataFrame,
         start_at: Optional[Union[pd.Timestamp, datetime.datetime]] = None,
         end_at: Optional[Union[pd.Timestamp, datetime.datetime]] = None,
+        pair_id: Optional[PairInternalId] = None,
         height=800,
         axes=True,
         title: Union[str, bool] = True,
         theme="plotly_white",
+        volume_bar_mode=VolumeBarMode.overlay,
 ) -> go.Figure:
     """Visualise single-pair trade execution.
 
     :param state:
         The recorded state of the strategy execution.
-        Either live or backtest.
+
+        You must give either `state` or `positions`.
+
+    :param pair_id:
+        The visualised pair in the case the strategy contains trades for multiple pairs.
+
+        If the strategy contains trades only for one pair this is not needed.
 
     :param candle_universe:
         Price candles we used for the strategy
@@ -592,14 +609,19 @@ def visualise_single_pair(
         assert isinstance(end_at, pd.Timestamp)
 
     if isinstance(candle_universe, GroupedCandleUniverse):
-        assert candle_universe.get_pair_count() == 1, "visualise_single_pair() can be only used for a trading universe with a single pair"
-        candles = candle_universe.get_single_pair_data()
+        if not pair_id:
+            assert candle_universe.get_pair_count() == 1, "visualise_single_pair() can be only used for a trading universe with a single pair, please pass pair_id"
+            pair_id = candle_universe.get_pair_ids()[0]
+        candles = candle_universe.get_candles_by_pair(pair_id)
     else:
         # Raw dataframe
         candles = candle_universe
 
+    # Get all positions for the trading pair we want to visualise
+    positions = [p for p in state.portfolio.get_all_positions() if p.pair.internal_id == pair_id]
+
     try:
-        first_trade = next(iter(state.portfolio.get_all_trades()))
+        first_trade = positions[0].get_first_trade()
     except StopIteration:
         first_trade = None
 
@@ -632,6 +654,7 @@ def visualise_single_pair(
 
     trades_df = export_trades_as_dataframe(
         state.portfolio,
+        pair_id,
         start_at,
         end_at,
     )
@@ -664,11 +687,13 @@ def visualise_single_pair(
         y_axis_name=axes_text,
         volume_axis_name=volume_text,
         labels=labels,
+        volume_bar_mode=volume_bar_mode,
     )
 
     # Draw EMAs etc.
     visualise_technical_indicators(
         fig,
+        pair_id,
         state.visualisation,
         start_at,
         end_at,
@@ -684,6 +709,7 @@ def visualise_single_pair(
 def visualise_single_pair_positions_with_duration_and_slippage(
         state: State,
         candles: pd.DataFrame,
+        pair_id: Optional[PairInternalId] = None,
         start_at: Optional[Union[pd.Timestamp, datetime.datetime]] = None,
         end_at: Optional[Union[pd.Timestamp, datetime.datetime]] = None,
         height=800,
@@ -710,6 +736,11 @@ def visualise_single_pair_positions_with_duration_and_slippage(
 
     :param candle_universe:
         Price candles we used for the strategy
+
+    :param pair_id:
+        The visualised pair in the case the strategy contains trades for multiple pairs.
+
+        If the strategy contains trades only for one pair this is not needed.
 
     :param height:
         Chart height in pixels
@@ -776,9 +807,12 @@ def visualise_single_pair_positions_with_duration_and_slippage(
     # Crop it to the trading range
     candles = candles.loc[candles["timestamp"].between(start_at, end_at)]
 
+    if not pair_id:
+        pair_id = candles.iloc[0]["pair_id"]
+
     logger.info(f"Candles are {candle_start_ts} - {candle_end_ts}")
 
-    positions = [p for p in state.portfolio.get_all_positions()]
+    positions = [p for p in state.portfolio.get_all_positions() if p.pair.internal_id == pair_id]
 
     if title is True:
         title_text = state.name
@@ -800,11 +834,13 @@ def visualise_single_pair_positions_with_duration_and_slippage(
         theme=theme,
         chart_name=title_text,
         y_axis_name=axes_text,
-        volume_axis_name=volume_text,
+        volume_axis_name=None,
+        volume_bar_mode=VolumeBarMode.hidden,
     )
 
     visualise_technical_indicators(
         fig,
+        pair_id,
         state.visualisation,
         start_at,
         end_at,

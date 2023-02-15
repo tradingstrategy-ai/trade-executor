@@ -139,7 +139,16 @@ class TradingPairSignal:
     #: so that we can show the profitability of the position of the signal.
     #:
     #: Calculate the position profit before any trades were executed.
-    profit_before_trades: float = 0
+    profit_before_trades: USDollarAmount = 0
+
+    #: What was the profit of the position of this signal.
+    #:
+    #: Record the historical profit as the part of the signal model.
+    #: Makes building alpha model visualisation easier later,
+    #: so that we can show the profitability of the position of the signal.
+    #:
+    #: Calculate the position profit before any trades were executed.
+    profit_before_trades_pct: Percent = 0
 
     def __post_init__(self):
         assert isinstance(self.pair, TradingPairIdentifier)
@@ -228,7 +237,6 @@ class AlphaModel:
         Return the highest weight first.
         """
         return sorted(self.signals.values(), key=lambda s: s.raw_weight, reverse=True)
-
 
     def get_debug_print(self) -> str:
         """Present the alpha model in a format suitable for the console."""
@@ -392,7 +400,7 @@ class AlphaModel:
             s.position_target = s.normalised_weight * investable_equity
             s.position_adjust = s.position_target - s.old_value
 
-    def generate_adjustment_trades_and_update_stop_losses(
+    def generate_rebalance_trades_and_triggers(
             self,
             position_manager: PositionManager,
             min_trade_threshold: USDollarAmount = 10.0,
@@ -403,7 +411,9 @@ class AlphaModel:
 
         - Sells for the existing assets
 
-        - Buys for new assetes or assets where we want to increase our position
+        - Buys for new assets or assets where we want to increase our position
+
+        - Set up take profit/stop loss triggers for positions
 
         :param position_manager:
             Portfolio of our existing holdings
@@ -431,9 +441,11 @@ class AlphaModel:
             dollar_diff = signal.position_adjust
             value = signal.position_target
 
+            # Do backtesting record keeping
             position = position_manager.get_current_position_for_pair(pair)
             if position:
                 signal.profit_before_trades = position.get_total_profit_usd()
+                signal.profit_before_trades_pct = position.get_total_profit_percent()
             else:
                 signal.profit_before_trades = 0
 

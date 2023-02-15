@@ -32,7 +32,7 @@ from statistics import median
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.trade import TradeExecution, TradeType
-from tradeexecutor.state.types import USDollarPrice
+from tradeexecutor.state.types import USDollarPrice, Percent
 from tradeexecutor.utils.format import calculate_percentage
 from tradeexecutor.utils.timestamp import json_encode_timedelta, json_decode_timedelta
 from tradingstrategy.timebucket import TimeBucket
@@ -416,7 +416,10 @@ class TradeSummary:
     max_pullback: Optional[float] = None
     max_loss_risk: Optional[float] = None
     max_realised_loss: Optional[float] = None
-    avg_realised_risk: Optional[float] = None
+    avg_realised_risk: Optional[Percent] = None
+
+    lp_fees_paid: Optional[USDollarPrice] = None
+    lp_fees_average_pc: Optional[USDollarPrice] = None
 
     def __post_init__(self):
 
