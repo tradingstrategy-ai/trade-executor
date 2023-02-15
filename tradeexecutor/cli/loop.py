@@ -576,7 +576,7 @@ class ExecutionLoop:
                         "trades": trade_count,
                         "cycles": cycle,
                         "TPs": take_profits,
-                        "SL": stop_losses,
+                        "SLs": stop_losses,
                     })
                     last_progress_update = datetime.datetime.utcnow()
                     if last_update_ts:

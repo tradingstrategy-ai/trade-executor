@@ -109,12 +109,6 @@ def create_alpha_model_timeline_all_assets(
     previous_positions_by_pair: Dict[TradingPairIdentifier, TradingPosition] = {}
     previous_prices_by_pair: Dict[TradingPairIdentifier, USDollarPrice] = {}
 
-    # Build a map of stop loss trades triggered by a timestamp by a trading pair
-    trigger_trade_map: Dict[datetime.datetime, Dict[TradingPairIdentifier, TradeExecution]] = defaultdict(dict)
-    for t in state.portfolio.get_all_trades():
-        if t.is_triggered():
-            trigger_trade_map[t.opened_at][t.pair] = t
-
     def reset(pair):
        # Clear row-over-row book keeping for a trading pair
         if pair in previous_cycle:
@@ -124,6 +118,13 @@ def create_alpha_model_timeline_all_assets(
         if pair in previous_positions_by_pair:
             del previous_positions_by_pair[pair]
 
+    # Build a map of stop loss trades triggered by a timestamp by a trading pair
+    trigger_trade_map: Dict[datetime.datetime, Dict[TradingPairIdentifier, TradeExecution]] = defaultdict(dict)
+    for t in state.portfolio.get_all_trades():
+        if t.is_triggered():
+            trigger_trade_map[t.opened_at][t.pair] = t
+
+    # Iterate over our event timeline
     event_ts: pd.Timestamp
     for event_ts in timeline:
 
@@ -134,10 +135,18 @@ def create_alpha_model_timeline_all_assets(
         # Check if got some stop loss trades for this timestamp
         # If both stop loss and rebalance happen at the same timestamp,
         # write out stop loss row first
-        trigger_trades = trigger_trade_map[event_ts.to_pydatetime()]
+        trigger_ts = event_ts.to_pydatetime()
+        trigger_trades = trigger_trade_map[trigger_ts]
         if len(trigger_trades) > 0:
+
+            first = next(iter(trigger_trades.values()))
+            if first.is_stop_loss():
+                icon = "🛑"
+            else:
+                icon = "⭐"
+
             row = [
-                event_ts.strftime("%Y-%m-%d %H:%M"),
+                f"{event_ts.strftime('%Y-%m-%d %H:%M')} {icon}",
                 "",
             ]
             for idx, pair in enumerate(pair_universe.iterate_pairs()):
@@ -148,19 +157,21 @@ def create_alpha_model_timeline_all_assets(
                     position = state.portfolio.get_position_by_id(trade.position_id)
                     profit = position.get_total_profit_usd()
                     profit_pct = position.get_total_profit_percent()
-                    if t.is_stop_loss():
+                    if trade.is_stop_loss():
                         text += f"🛑 Stop loss{new_line}"
                         text += f"{new_line}"
                         text += f"Price: ${trade.planned_mid_price:,.4f}{new_line}"
                         text += f"{new_line}"
-                        text += f"Loss: ${profit:,.0f} ({profit_pct * 100:.2f}%)"
-                    else:
+                        text += f"Loss: {profit:,.0f}$ {profit_pct * 100:.2f}%"
+                    elif trade.is_take_profit():
                         text += f"⭐️ Take Profit{new_line}"
                         text += f"{new_line}"
                         text += f"Price: ${trade.planned_mid_price:,.4f}{new_line}"
                         text += f"{new_line}"
                         profit = position.get_total_profit_usd()
-                        text += f"Profit: ${profit:,.0f} ({profit_pct * 100:.2f}%)"
+                        text += f"Profit: ${profit:,.0f} {profit_pct * 100:.2f}%"
+                    else:
+                        raise AssertionError(f"Expected take profit/stop loss, timepoint {trigger_ts} trigger trades are {trigger_trades.values()}")
                     reset(pair)
                 row.append(text)
             rows.append(row)
@@ -175,7 +186,7 @@ def create_alpha_model_timeline_all_assets(
             total_equity = equity_curve[ts]
 
             row = [
-                event_ts.strftime("%Y-%m-%d"),
+                f"{event_ts.strftime('%Y-%m-%d')}{new_line}🔁",
                 f"${total_equity:,.0f}"
             ]
 
@@ -256,7 +267,7 @@ def create_alpha_model_timeline_all_assets(
                 profit = signal.profit_before_trades
                 profit_pct = signal.profit_before_trades_pct
                 if profit:
-                    text += f"Profit: ${profit:,.0f} ({profit_pct:.2f}%)"
+                    text += f"PnL: {profit:,.0f}$ {profit_pct:.2f}%"
 
                 row.append(text)
 

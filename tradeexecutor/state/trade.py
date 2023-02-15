@@ -239,6 +239,14 @@ class TradeExecution:
         else:
             return f"<Sell #{self.trade_id} {abs(self.planned_quantity)} {self.pair.base.token_symbol} at {self.planned_price}, {self.get_status().name}>"
 
+    def pretty_print(self) -> str:
+        """Get diagnostics output for the trade.
+
+        Use Python `pprint` module.
+        """
+        d = asdict(self)
+        return pprint.pformat(d)
+
     def get_full_debug_dump_str(self):
         return pprint.pformat(asdict(self))
 

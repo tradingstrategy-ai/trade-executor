@@ -476,6 +476,8 @@ class TradeSummary:
             "Biggest losing trade %": as_percent(self.biggest_losing_trade_pc),
             "Average duration of winning trades": avg_duration_winning,
             "Average duration of losing trades": avg_duration_losing,
+            "LP fees paid": as_dollar(self.lp_fees_paid),
+            "LP fees paid % of volume": as_percent(self.lp_fees_average_pc),
         }
 
         def add_prop(value, key: str, formatter: Callable):
