@@ -132,6 +132,12 @@ class TradingPairSignal:
     #: Calculate the position profit before any trades were executed.
     profit_before_trades: float = 0
 
+    def __post_init__(self):
+        assert isinstance(self.pair, TradingPairIdentifier)
+        if type(self.signal) != float:
+            # Convert from numpy.float64
+            self.signal = float(self.signal)
+
     def __repr__(self):
         return f"Pair: {self.pair.get_ticker()} old weight: {self.old_weight:.4f} old value: {self.old_value:,} new weight: {self.normalised_weight:.4f} new value: {self.position_target:,} adjust: {self.position_adjust:,}"
 

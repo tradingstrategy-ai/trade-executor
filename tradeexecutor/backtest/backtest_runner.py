@@ -293,9 +293,16 @@ def run_backtest(
 
     if not setup.universe:
         def backtest_setup(state: State, universe: TradingStrategyUniverse, deposit_syncer: BacktestSyncer):
+            # Use strategy script create_trading_universe() hook to construct the universe
             # Called on the first cycle. Only if the universe is not predefined.
             # Create the initial state of the execution.
             nonlocal backtest_universe
+
+            # Mark backtest stop loss data being available,
+            # after create_trading_universe() has loaded it
+            if universe.has_stop_loss_data():
+                setup.execution_model.stop_loss_data_available = True
+
             events = deposit_syncer(state.portfolio, setup.start_at, universe.reserve_assets)
             assert len(events) == 1, f"Did not get 1 initial backtest deposit event, got {len(events)} events.\nMake sure you did not call backtest_setup() twice?"
             token, usd_exchange_rate = state.portfolio.get_default_reserve_currency()

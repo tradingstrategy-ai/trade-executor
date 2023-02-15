@@ -555,7 +555,17 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             exchange_universe=ExchangeUniverse.from_collection(our_exchanges),
         )
 
-        return TradingStrategyUniverse(universe=universe, reserve_assets=reserve_assets)
+        if dataset.backtest_stop_loss_candles is not None:
+            stop_loss_candle_universe = GroupedCandleUniverse(dataset.backtest_stop_loss_candles)
+        else:
+            stop_loss_candle_universe = None
+
+        return TradingStrategyUniverse(
+            universe=universe,
+            reserve_assets=reserve_assets,
+            backtest_stop_loss_time_bucket=dataset.backtest_stop_loss_time_bucket,
+            backtest_stop_loss_candles=stop_loss_candle_universe,
+        )
 
 
 class TradingStrategyUniverseModel(UniverseModel):
@@ -937,6 +947,10 @@ def load_all_data(
 
         Note that all pairs may not have liquidity data available.
 
+    :param stop_loss_time_frame:
+        Load more granular candle data which is intended
+        to be used for stop loss backtesting only.
+
     :return:
         Dataset that covers all historical data.
 
@@ -1155,3 +1169,141 @@ def load_pair_data_for_single_exchange(
         )
 
 
+
+def load_partial_data(
+        client: Client,
+        execution_context: ExecutionContext,
+        time_bucket: TimeBucket,
+        pairs: Collection[HumanReadableTradingPairDescription],
+        universe_options: UniverseOptions,
+        liquidity=False,
+        stop_loss_time_bucket: Optional[TimeBucket]=None,
+        required_history_period: Optional[datetime.timedelta] = None,
+        start_at: Optional[datetime.datetime] = None,
+        end_at: Optional[datetime.datetime] = None,
+        name: Optional[str] = None,
+) -> Dataset:
+    """Load pair data for named trading pairs.a
+
+    A loading function designed to load data for 2-20 pairs.
+    Instead of loading all pair data over Parquet datasets,
+    load only specific pair data from their corresponding JSONL endpoints.
+
+    :param client:
+        Trading Strategy client instance
+
+    :param time_bucket:
+        The candle time frame
+
+    :param chain_id:
+        Which blockchain hosts our exchange
+
+    :param exchange_slug:
+        Which exchange hosts our trading pairs
+
+    :param exchange_slug:
+        Which exchange hosts our trading pairs
+
+    :param pair_tickers:
+        List of trading pair tickers as base token quote token tuples.
+        E.g. `[('WBNB', 'BUSD'), ('Cake', 'BUSD')]`.
+
+    :param liquidity:
+        Set true to load liquidity data as well
+
+    :param stop_loss_time_bucket:
+        If set load stop loss trigger
+        data using this candle granularity.
+
+    :param execution_context:
+        Defines if we are live or backtesting
+
+    :param universe_options:
+        Override values given the strategy file.
+        Used in testing the framework.
+
+    :param required_history_period:
+        How much historical data we need to load.
+
+        Depends on the strategy. Defaults to load all data.
+
+    :param start_at:
+        Load data for a specific backtesting data range.
+
+    :param end_at:
+        Load data for a specific backtesting data range.
+
+    :param name:
+        The loading operation name used in progress bars
+
+    :return:
+        Datataset containing the requested data
+
+    """
+
+    assert isinstance(client, Client)
+    assert isinstance(time_bucket, TimeBucket)
+    assert isinstance(execution_context, ExecutionContext)
+    assert isinstance(universe_options, UniverseOptions)
+
+    # Apply overrides
+    stop_loss_time_bucket = universe_options.stop_loss_time_bucket_override or stop_loss_time_bucket
+    time_bucket = universe_options.candle_time_bucket_override or time_bucket
+
+    assert start_at and end_at, "Current implementatation is designed for backtest use only and needs both start_at and end_at timestamps"
+
+    live = execution_context.live_trading
+    with execution_context.timed_task_context_manager("load_partial_pair_data", time_bucket=time_bucket.value):
+
+        exchange_universe = client.fetch_exchange_universe()
+
+        pairs_df = client.fetch_pair_universe().to_pandas()
+        pair_universe = PandasPairUniverse(pairs_df)
+
+        # Filter pairs first and then rest by the resolved pairs
+        our_pairs = {pair_universe.get_pair_by_human_description(exchange_universe, d) for d in pairs}
+        our_pair_ids = {p.pair_id for p in our_pairs}
+        exchange_ids = {p.exchange_id for p in our_pairs}
+        our_exchanges = {exchange_universe.get_by_id(id) for id in exchange_ids}
+        our_exchange_universe = ExchangeUniverse.from_collection(our_exchanges)
+
+        # Eliminate the pairs we are not interested in from the database
+        filtered_pairs_df = pairs_df.loc[pairs_df["pair_id"].isin(our_pair_ids)]
+
+        # Autogenerate names by the pair count
+        if not name:
+            name = f"{len(filtered_pairs_df)} pairs"
+
+        progress_bar_desc = f"Loading OHLCV data for {name}"
+        candles = client.fetch_candles_by_pair_ids(
+            our_pair_ids,
+            time_bucket,
+            progress_bar_description=progress_bar_desc,
+            start_time=start_at,
+            end_time=end_at,
+        )
+
+        if stop_loss_time_bucket:
+            stop_loss_desc = f"Loading stop loss/take granular data for {name}"
+            stop_loss_candles = client.fetch_candles_by_pair_ids(
+                our_pair_ids,
+                stop_loss_time_bucket,
+                progress_bar_description=stop_loss_desc,
+                start_time=start_at,
+                end_time=end_at,
+            )
+        else:
+            stop_loss_candles = None
+
+        if liquidity:
+            raise NotImplemented("Partial liquidity data loading is not yet supported")
+
+        return Dataset(
+            time_bucket=time_bucket,
+            exchanges=our_exchange_universe,
+            pairs=filtered_pairs_df,
+            candles=candles,
+            liquidity=None,
+            backtest_stop_loss_time_bucket=stop_loss_time_bucket,
+            backtest_stop_loss_candles=stop_loss_candles,
+        )

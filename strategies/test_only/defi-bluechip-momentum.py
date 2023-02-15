@@ -19,7 +19,7 @@ from tradeexecutor.strategy.pandas_trader.position_manager import PositionManage
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.strategy_module import StrategyType, TradeRouting, ReserveCurrency
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_trading_pair, \
-    load_all_data
+    load_all_data, load_partial_data
 from tradeexecutor.strategy.universe_model import UniverseOptions
 from tradeexecutor.strategy.weighting import weight_by_1_slash_n
 
@@ -49,6 +49,9 @@ value_allocated_to_positions = 0.80
 
 # Set 5% midprice stop loss
 stop_loss = 0.95
+
+# Which candle time frame we use for backtesting stop loss triggers
+stop_loss_data_granularity = TimeBucket.h1
 
 # Strategy keeps its cash in USDC
 reserve_currency = ReserveCurrency.usdc
@@ -89,41 +92,33 @@ def decide_trades(
 
     alpha_model = AlphaModel(timestamp)
 
-    # The time range end is the current candle
-    # The time range start is 2 * 4 hours back, and turn the range
-    # exclusive instead of inclusive
-    start = timestamp - momentum_lookback_period - datetime.timedelta(minutes=59)
-    end = timestamp
+    # Watch out for the inclusive range and include and avoid peeking in the future
+    adjusted_timestamp = timestamp - pd.Timedelta(seconds=1)
+    start = adjusted_timestamp - momentum_lookback_period - datetime.timedelta(seconds=1)
+    end = adjusted_timestamp
 
     candle_universe = universe.candles
     pair_universe = universe.pairs
-    candle_data = candle_universe.iterate_samples_by_pair_range(start, end)
 
-    # Track the data issues so we can later use this information
-    # in diagnosing strategy issues
-    issue_tracker = Counter({
-        "lacks_open_and_close_in_momentum_window": 0,
-        "non_positive_momentum": 0,
-        "accepted_alpha_candidates": 0,
-    })
+    # Get candle data for all candles, inclusive time range
+    candle_data = candle_universe.iterate_samples_by_pair_range(start, end)
 
     # Iterate over all candles for all pairs in this timestamp (ts)
     for pair_id, pair_df in candle_data:
 
+        # We should have candles for range start - end,
+        # where end is the current strategy cycle timestamp
+        # and start is one week before end.
+        # Because of sparse data we may have 0, 1 or 2 candles
         first_candle = pair_df.iloc[0]
         last_candle = pair_df.iloc[-1]
 
         # How many candles we are going to evaluate
         candle_count = len(pair_df)
 
-        pair_momentum_window = last_candle["timestamp"] - first_candle["timestamp"]
-        if pair_momentum_window < momentum_lookback_period:
-            # This trading pair does not have data for this window,
-            # ignore the pair and mark it as a problem
-            issue_tracker["lacks_open_and_close_in_momentum_window"] += 1
-            continue
+        assert last_candle["timestamp"] < timestamp, "Something wrong with the data - we should not be able to peek the candle of the current timestamp, but always use the previous candle"
 
-        open = first_candle["open"]
+        open = last_candle["open"]
         close = last_candle["close"]
 
         # DEXPair instance contains more data than internal TradingPairIdentifier
@@ -136,18 +131,16 @@ def decide_trades(
         momentum = (close - open) / open
         momentum = max(0, momentum)
 
-        # This pair has positive momentum, check if it has enough available liquidity
+        # This pair has not positive momentum,
+        # we only buy when stuff goes up
         if momentum <= 0:
-            issue_tracker["non_positive_momentum"] += 1
             continue
 
         alpha_model.set_signal(
             pair,
             momentum,
-            stop_loss=0,
+            stop_loss=stop_loss,
         )
-
-        issue_tracker["accepted_alpha_candidates"] += 1
 
     # Select max_assets_in_portfolio assets in which we are going to invest
     # Calculate a weight for ecah asset in the portfolio using 1/N method based on the raw signal
@@ -172,8 +165,6 @@ def decide_trades(
     # Record alpha model state so we can later visualise our alpha model thinking better
     state.visualisation.add_calculations(timestamp, alpha_model.to_dict())
 
-    logger.info("Cycle %s, model: %s", timestamp, alpha_model.get_debug_print())
-
     return trades
 
 
@@ -187,13 +178,17 @@ def create_trading_universe(
     assert not execution_context.mode.is_live_trading(), \
         f"Only strategy backtesting supported, got {execution_context.mode}"
 
-    # Load all datas we can get for our candle time bucket
-    dataset = load_all_data(
-        client,
-        trading_strategy_cycle.to_timebucket(),
-        execution_context,
-        universe_options,
-        with_liquidity=False,
+    # Load data for our trading pair whitelist
+    dataset = load_partial_data(
+        client=client,
+        time_bucket=trading_strategy_cycle.to_timebucket(),
+        pairs=pairs,
+        execution_context=execution_context,
+        universe_options=universe_options,
+        liquidity=False,
+        stop_loss_time_bucket=stop_loss_data_granularity,
+        start_at=start_at,
+        end_at=end_at,
     )
 
     # Filter down the dataset to the pairs we specified
