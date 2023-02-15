@@ -17,7 +17,7 @@ from tradeexecutor.state.types import USDollarAmount, BPS, USDollarPrice
 
 
 @dataclass_json
-@dataclass
+@dataclass(slots=True)
 class TradingPosition:
 
     #: Runnint int counter primary key for positions

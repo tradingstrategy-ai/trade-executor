@@ -24,6 +24,8 @@ USDollarPrice: TypeAlias = float
 #: Basis points expressed as float
 #:
 #: 10000 bps = 100 % = 1 float
+#:
+#: See also :py:data:`Percent`.
 BPS: TypeAlias = float
 
 JSONHexAddress: TypeAlias = str
@@ -44,3 +46,14 @@ PairInternalId: TypeAlias = int
 #: - starts with 0x
 #:
 AddressAsString: TypeAlias = str
+
+
+#: Represents percents
+#:
+#: This is an alias for float used for core readability purposes,
+#; to differ function arguments from absolute values.
+#:
+#: 1.0 = 100%
+#:
+#: See also :py:data:`BPS`.
+Percent: TypeAlias = float

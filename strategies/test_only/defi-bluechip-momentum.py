@@ -19,7 +19,7 @@ from tradeexecutor.strategy.pandas_trader.position_manager import PositionManage
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.strategy_module import StrategyType, TradeRouting, ReserveCurrency
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_trading_pair, \
-    load_all_data, load_partial_data
+    load_partial_data
 from tradeexecutor.strategy.universe_model import UniverseOptions
 from tradeexecutor.strategy.weighting import weight_by_1_slash_n
 
@@ -50,6 +50,9 @@ value_allocated_to_positions = 0.80
 # Set 5% midprice stop loss
 stop_loss = 0.95
 
+# Set 5% mid price take profit
+take_profit = 1.05
+
 # Which candle time frame we use for backtesting stop loss triggers
 stop_loss_data_granularity = TimeBucket.h1
 
@@ -75,7 +78,8 @@ pairs = (
     (ChainId.bsc, "pancakeswap-v2", "Cake", "BUSD"),  # Cake
     (ChainId.polygon, "quickswap", "WMATIC", "USDC"),  # Matic
     (ChainId.avalanche, "trader-joe", "WAVAX", "USDC"),  # Avax
-    (ChainId.avalanche, "trader-joe", "JOE", "WAVAX"),  # TraderJoe
+    # Price adjust problems
+    #  (ChainId.avalanche, "trader-joe", "JOE", "WAVAX"),  # TraderJoe
 )
 
 
@@ -140,6 +144,7 @@ def decide_trades(
             pair,
             momentum,
             stop_loss=stop_loss,
+            take_profit=take_profit,
         )
 
     # Select max_assets_in_portfolio assets in which we are going to invest

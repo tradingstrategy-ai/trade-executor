@@ -34,12 +34,12 @@ def construct_event_timeline(state: State) -> pd.DatetimeIndex:
     )
 
     # Datetimes of stop loss trade opens
-    stop_loss_timestamps = pd.to_datetime(
-        [t.opened_at for t in state.portfolio.get_all_trades() if t.is_stop_loss()]
+    triggered_timestamps = pd.to_datetime(
+        [t.opened_at for t in state.portfolio.get_all_trades() if t.is_triggered()]
     )
 
     # https://stackoverflow.com/a/55696161/315168
-    return rebalance_timestamps.union(stop_loss_timestamps)
+    return rebalance_timestamps.union(triggered_timestamps)
 
 
 
@@ -75,6 +75,11 @@ def create_alpha_model_timeline_all_assets(
     - Show asset column for each asset in the trading universe, making
       this very wide table
 
+    :param new_line:
+        The new line marker used in the table cells.
+
+        Defaults to Plotly table compatible newlines.
+
     :return:
         DataFrame where each row is a strategy cycle
         and contains textual information about asset rebalances during the cycle.
@@ -105,10 +110,10 @@ def create_alpha_model_timeline_all_assets(
     previous_prices_by_pair: Dict[TradingPairIdentifier, USDollarPrice] = {}
 
     # Build a map of stop loss trades triggered by a timestamp by a trading pair
-    stop_loss_trade_map: Dict[datetime.datetime, Dict[TradingPairIdentifier, TradeExecution]] = defaultdict(dict)
+    trigger_trade_map: Dict[datetime.datetime, Dict[TradingPairIdentifier, TradeExecution]] = defaultdict(dict)
     for t in state.portfolio.get_all_trades():
-        if t.is_stop_loss():
-            stop_loss_trade_map[t.opened_at][t.pair] = t
+        if t.is_triggered():
+            trigger_trade_map[t.opened_at][t.pair] = t
 
     event_ts: pd.Timestamp
     for event_ts in timeline:
@@ -120,24 +125,33 @@ def create_alpha_model_timeline_all_assets(
         # Check if got some stop loss trades for this timestamp
         # If both stop loss and rebalance happen at the same timestamp,
         # write out stop loss row first
-        stop_loss_trades = stop_loss_trade_map[event_ts.to_pydatetime()]
-        if len(stop_loss_trades) > 0:
+        trigger_trades = trigger_trade_map[event_ts.to_pydatetime()]
+        if len(trigger_trades) > 0:
             row = [
                 event_ts.strftime("%Y-%m-%d %H:%M"),
                 "",
             ]
             for idx, pair in enumerate(pair_universe.iterate_pairs()):
                 pair = translate_trading_pair(pair)
-                trade = stop_loss_trades.get(pair)
+                trade = trigger_trades.get(pair)
                 text = ""
                 if trade:
                     position = state.portfolio.get_position_by_id(trade.position_id)
-                    text += f"🛑 Stop loss{new_line}"
-                    text += f"{new_line}"
-                    text += f"Price: ${trade.planned_mid_price:,.0f}{new_line}"
-                    text += f"{new_line}"
                     profit = position.get_total_profit_usd()
-                    text += f"Loss: ${profit:,.0f}"
+                    profit_pct = position.get_total_profit_percent()
+                    if t.is_stop_loss():
+                        text += f"🛑 Stop loss{new_line}"
+                        text += f"{new_line}"
+                        text += f"Price: ${trade.planned_mid_price:,.4f}{new_line}"
+                        text += f"{new_line}"
+                        text += f"Loss: ${profit:,.0f} ({profit_pct * 100:.2f}%)"
+                    else:
+                        text += f"⭐️ Take Profit{new_line}"
+                        text += f"{new_line}"
+                        text += f"Price: ${trade.planned_mid_price:,.4f}{new_line}"
+                        text += f"{new_line}"
+                        profit = position.get_total_profit_usd()
+                        text += f"Profit: ${profit:,.0f} ({profit_pct * 100:.2f}%)"
 
                 row.append(text)
             rows.append(row)
@@ -182,7 +196,8 @@ def create_alpha_model_timeline_all_assets(
                     assert signal.position_id, f"No position info: {signal}, cycle {ts}"
                     position = portfolio.get_position_by_id(signal.position_id)
                     trades = list(position.get_trades_by_strategy_cycle(snapshot.timestamp))
-                    assert len(trades) == 1, f"Unexpected trades: {trades}"
+                    # We may get more than 1 trade if take profit/stopp loss was triggered on the same cycle
+                    assert len(trades) >= 1, f"No trades for signal found when there should have been"
                     trade = trades[0]
                     quantity = trade.executed_quantity
                     price = trade.executed_price
@@ -212,7 +227,7 @@ def create_alpha_model_timeline_all_assets(
                         else:
                             text += f"🔻 {price_change * 100:.2f}% {new_line}"
 
-                    text += f"Price: {price:,.2f}{new_line}"\
+                    text += f"Price: ${price:,.4f}{new_line}"\
 
                 text += f"Weight: {weight * 100:.0f}% {new_line}" \
                         f"Signal: {signal.signal * 100:.0f}% {new_line}" \

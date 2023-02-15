@@ -14,7 +14,7 @@ from dataclasses_json import dataclass_json
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.trade import TradeExecution
-from tradeexecutor.state.types import PairInternalId, USDollarAmount
+from tradeexecutor.state.types import PairInternalId, USDollarAmount, Percent
 
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.strategy.weighting import weight_by_1_slash_n, check_normalised_weights, normalise_weights
@@ -68,10 +68,19 @@ class TradingPairSignal:
     #:
     #: Used for the risk management.
     #:
-    #: 0.98 means 2% stop loss.
+    #: 0.98 means 2% stop loss over mid price at open.
     #:
     #: Set to 0 to disable stop loss.
     stop_loss: float = 0.0
+
+    #: Take profit for this position
+    #:
+    #: Used for the risk management.
+    #:
+    #: 1.02 means 2% take profit over mid price at open.
+    #:
+    #: Set to 0 to disable stop loss.
+    take_profit: float = 0.0
 
     #: Raw portfolio weight
     #:
@@ -233,7 +242,8 @@ class AlphaModel:
             self,
             pair: TradingPairIdentifier,
             alpha: float | np.float32,
-            stop_loss: float = 0,
+            stop_loss: Percent = 0,
+            take_profit: Percent = 0,
             ):
         """Set trading pair alpha to a value.
 
@@ -254,6 +264,13 @@ class AlphaModel:
             As the percentage of the position value.
 
             `0.98` means 2% stop loss.
+
+        :param take_profit:
+            Stop loss threshold for this pair.
+
+            As the percentage of the position value.
+
+            `1.02` means 2% take profit.
         """
 
         # Don't let Numpy values beyond this point, as
@@ -271,6 +288,7 @@ class AlphaModel:
                 pair=pair,
                 signal=alpha,
                 stop_loss=stop_loss,
+                take_profit=take_profit,
             )
             self.signals[pair.internal_id] = signal
 
@@ -433,7 +451,8 @@ class AlphaModel:
                     pair,
                     dollar_diff,
                     signal.normalised_weight,
-                    signal.stop_loss,
+                    stop_loss=signal.stop_loss,
+                    take_profit=signal.take_profit,
                 )
 
                 assert len(position_rebalance_trades) == 1, "Assuming always on trade for rebalacne"

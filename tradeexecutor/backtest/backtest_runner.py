@@ -8,6 +8,8 @@ from pathlib import Path
 from queue import Queue
 from typing import Optional, Callable, Tuple
 
+import pandas as pd
+
 from tradeexecutor.backtest.backtest_execution import BacktestExecutionModel
 from tradeexecutor.backtest.backtest_pricing import BacktestSimplePricingModel
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel
@@ -169,6 +171,7 @@ def setup_backtest_for_universe(
     assert state.portfolio.get_current_cash() == initial_deposit
 
     # Set up execution and pricing
+    import ipdb ; ipdb.set_trace()
     pricing_model = BacktestSimplePricingModel(universe.universe.candles, routing_model)
     execution_model = BacktestExecutionModel(wallet, max_slippage)
 
@@ -280,13 +283,16 @@ def run_backtest(
     # Captured in teh callback
     backtest_universe: TradingStrategyUniverse = None
 
-    def pricing_model_factory(execution_model, universe, routing_model):
+    def pricing_model_factory(execution_model, universe: TradingStrategyUniverse, routing_model):
         if setup.pricing_model:
             # Use pricing model given inline
             return setup.pricing_model
 
-        # Construct a backtest pricing model
-        return BacktestSimplePricingModel(universe, routing_model)
+        return BacktestSimplePricingModel(
+            universe,
+            routing_model,
+            data_delay_tolerance=guess_data_delay_tolerance(universe),
+        )
 
     def valuation_model_factory(pricing_model):
         return BacktestValuationModel(pricing_model)
@@ -455,7 +461,12 @@ def run_backtest_inline(
             assert trade_routing, "You just give either routing_mode or trade_routing"
             assert reserve_currency, "Reserve current must be given to generate routing model"
             routing_model = get_backtest_routing_model(trade_routing, reserve_currency)
-        pricing_model = BacktestSimplePricingModel(universe.universe.candles, routing_model)
+
+        pricing_model = BacktestSimplePricingModel(
+            universe.universe.candles,
+            routing_model,
+            data_delay_tolerance=guess_data_delay_tolerance(universe),
+        )
     else:
         assert create_trading_universe, "Must give create_trading_universe if no universe given"
         pricing_model = None
@@ -486,4 +497,18 @@ def run_backtest_inline(
     )
 
     return run_backtest(backtest_setup, client)
+
+
+def guess_data_delay_tolerance(universe: TradingStrategyUniverse) -> pd.Timedelta:
+    """Try to dynamically be flexible with the backtesting pricing look up.
+
+    This could work around some data quality issues or early historical data.
+    """
+    if universe.universe.time_bucket == TimeBucket.d7:
+        data_delay_tolerance = pd.Timedelta("9d")
+    else:
+        data_delay_tolerance = pd.Timedelta("2d")
+
+    return data_delay_tolerance
+
 

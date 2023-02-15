@@ -276,45 +276,49 @@ class TradeExecution:
         else:
             return f"Sell {abs(self.planned_quantity)} {self.pair.base.token_symbol} <id:{self.pair.base.internal_id}> at {self.planned_price}"
 
-    def is_sell(self):
+    def is_sell(self) -> bool:
         assert self.planned_quantity != 0, "Buy/sell concept does not exist for zero quantity"
         return self.planned_quantity < 0
 
-    def is_buy(self):
+    def is_buy(self) -> bool:
         assert self.planned_quantity != 0, "Buy/sell concept does not exist for zero quantity"
         return self.planned_quantity >= 0
 
-    def is_success(self):
+    def is_success(self) -> bool:
         """This trade was succcessfully completed."""
         return self.executed_at is not None
 
-    def is_failed(self):
+    def is_failed(self) -> bool:
         """This trade was succcessfully completed."""
         return self.failed_at is not None
 
-    def is_pending(self):
+    def is_pending(self) -> bool:
         """This trade was succcessfully completed."""
         return self.get_status() in (TradeStatus.started, TradeStatus.broadcasted)
 
-    def is_planned(self):
+    def is_planned(self) -> bool:
         """This trade is still in planning, unallocated."""
         return self.get_status() in (TradeStatus.planned,)
 
-    def is_started(self):
+    def is_started(self) -> bool:
         """This trade has a txid allocated."""
         return self.get_status() in (TradeStatus.started,)
 
-    def is_rebalance(self):
+    def is_rebalance(self) -> bool:
         """This trade is part of the normal strategy rebalance."""
         return self.trade_type == TradeType.rebalance
 
-    def is_stop_loss(self):
+    def is_stop_loss(self) -> bool:
         """This trade is made to close stop loss on a position."""
         return self.trade_type == TradeType.stop_loss
 
-    def is_take_profit(self):
+    def is_take_profit(self) -> bool:
         """This trade is made to close take profit on a position."""
         return self.trade_type == TradeType.take_profit
+
+    def is_triggered(self) -> bool:
+        """Was this trade based on a trigger signal."""
+        return self.trade_type == TradeType.take_profit or self.trade_type == TradeType.stop_loss
 
     def is_accounted_for_equity(self) -> bool:
         """Does this trade contribute towards the trading position equity.

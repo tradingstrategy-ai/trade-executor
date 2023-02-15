@@ -367,6 +367,7 @@ class TradeSummary:
     lost: int
     zero_loss: int
     stop_losses: int
+    take_profits: int
     undecided: int
     realised_profit: USDollarAmount
     open_value: USDollarAmount
@@ -400,6 +401,10 @@ class TradeSummary:
     annualised_return_percent: float = field(init=False)
     all_stop_loss_percent: float = field(init=False)
     lost_stop_loss_percent: float = field(init=False)
+
+    all_take_profit_percent: float = field(init=False)
+    won_take_profit_percent: float = field(init=False)
+
     average_net_profit: USDollarAmount = field(init=False)
     end_value: USDollarAmount = field(init=False)
 
@@ -421,7 +426,9 @@ class TradeSummary:
         self.annualised_return_percent = calculate_percentage(self.return_percent * datetime.timedelta(days=365),
                                                               self.duration) if self.return_percent else None
         self.all_stop_loss_percent = calculate_percentage(self.stop_losses, self.total_trades)
+        self.all_take_profit_percent = calculate_percentage(self.take_profits, self.total_trades)
         self.lost_stop_loss_percent = calculate_percentage(self.stop_losses, self.lost)
+        self.won_take_profit_percent = calculate_percentage(self.take_profits, self.won)
         self.average_net_profit = self.realised_profit / self.total_trades if self.total_trades else None
         self.end_value = self.open_value + self.uninvested_cash
 
@@ -451,6 +458,9 @@ class TradeSummary:
             "Stop losses triggered": as_integer(self.stop_losses),
             "Stop loss % of all": as_percent(self.all_stop_loss_percent),
             "Stop loss % of lost": as_percent(self.lost_stop_loss_percent),
+            "Take profits triggered": as_integer(self.take_profits),
+            "Take profit % of all": as_percent(self.all_take_profit_percent),
+            "Take profit % of win": as_percent(self.won_take_profit_percent),
             "Zero profit trades": as_integer(self.zero_loss),
             "Positions open at the end": as_integer(self.undecided),
             "Realised profit and loss": as_dollar(self.realised_profit),
@@ -586,7 +596,7 @@ class TradeAnalysis:
         if first_trade and first_trade != last_trade:
             duration = last_trade.executed_at - first_trade.executed_at
 
-        won = lost = zero_loss = stop_losses = undecided = 0
+        won = lost = zero_loss = stop_losses = take_profits = undecided = 0
         open_value: USDollarAmount = 0
         profit: USDollarAmount = 0
 
@@ -602,6 +612,9 @@ class TradeAnalysis:
 
             if position.is_stop_loss():
                 stop_losses += 1
+
+            if position.is_take_profit():
+                take_profits += 1
 
             if position.is_win():
                 won += 1
@@ -662,6 +675,7 @@ class TradeAnalysis:
             lost=lost,
             zero_loss=zero_loss,
             stop_losses=stop_losses,
+            take_profits=take_profits,
             undecided=undecided,
             realised_profit=profit + extra_return,
             open_value=open_value,

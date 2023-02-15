@@ -12,8 +12,9 @@ from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeType, TradeExecution
-from tradeexecutor.state.types import USDollarAmount
+from tradeexecutor.state.types import USDollarAmount, Percent
 from tradeexecutor.strategy.pricing_model import PricingModel
+from tradingstrategy.candle import CandleSampleUnavailable
 from tradingstrategy.pair import DEXPair
 from tradingstrategy.universe import Universe
 from tradeexecutor.strategy.trading_strategy_universe import translate_trading_pair, TradingStrategyUniverse
@@ -340,7 +341,8 @@ class PositionManager:
                         pair: TradingPairIdentifier,
                         dollar_amount_delta: USDollarAmount,
                         weight: float,
-                        stop_loss: Optional[float] = None,
+                        stop_loss: Optional[Percent] = None,
+                        take_profit: Optional[Percent] = None,
                         ) -> List[TradeExecution]:
         """Adjust holdings for a certain position.
 
@@ -369,8 +371,14 @@ class PositionManager:
         :param stop_loss:
             Set the stop loss for the position.
 
-            Use 0...1 based on the current price.
+            Use 0...1 based on the current mid price.
             E.g. 0.98 = 2% stop loss under the current mid price.
+
+        :param take_profit:
+            Set the take profit for the position.
+
+            Use 0...1 based on the current mid price.
+            E.g. 1.02 = 2% take profit over the current mid-price.
 
         :return:
             List of trades to be executed to get to the desired
@@ -380,7 +388,13 @@ class PositionManager:
         assert weight <= 1, f"Target weight cannot be over one: {weight}"
         assert weight >= 0, f"Target weight cannot be negative: {weight}"
 
-        price_structure = self.pricing_model.get_buy_price(self.timestamp, pair, dollar_amount_delta)
+        try:
+            price_structure = self.pricing_model.get_buy_price(self.timestamp, pair, dollar_amount_delta)
+        except CandleSampleUnavailable as e:
+            # Backtesting cannot fetch price for an asset,
+            # probably not enough data and the pair is trading early?
+            raise CandleSampleUnavailable(f"Could not fetch price for {pair}") from e
+
         price = price_structure.price
 
         reserve_asset, reserve_price = self.state.portfolio.get_default_reserve_currency()
@@ -428,7 +442,13 @@ class PositionManager:
 
         # Update stop loss for this position
         if stop_loss:
+            assert stop_loss < 1, f"Got stop loss {stop_loss}"
             position.stop_loss = price_structure.mid_price * stop_loss
+
+
+        if take_profit:
+            assert take_profit > 1, f"Got take profit {take_profit}"
+            position.take_profit = price_structure.mid_price * take_profit
 
         return [trade]
 
