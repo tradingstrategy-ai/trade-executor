@@ -184,7 +184,7 @@ class TradeExecution:
     #: Same as `pair_fee` in TradePricing
     #: If there is an intermediary pair, then this list will have two elements,
     #: one for each swap
-    fee_tier: Optional[list[BPS]] = None
+    fee_tier: Optional[List[BPS]] = None
 
     #: LP fees paid, currency convereted to the USD.
     #:
@@ -203,7 +203,7 @@ class TradeExecution:
     #: Same as `lp_fee` in TradePricing.
     #: If there is an intermediary pair, this list will have two elements.
     #: One for each swap
-    lp_fees_estimated: Optional[list[USDollarAmount]] = None
+    lp_fees_estimated: Optional[List[USDollarAmount]] = None
 
     #: What is the conversation rate between quote token and US dollar used in LP fee conversion.
     #:
