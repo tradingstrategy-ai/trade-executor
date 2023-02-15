@@ -7,8 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from tradeexecutor.analysis.alpha_model_analyser import render_alpha_model_timeline, \
-    create_alpha_model_timeline_all_assets, render_alpha_model_plotly_table
+from tradeexecutor.analysis.alpha_model_analyser import create_alpha_model_timeline_all_assets, render_alpha_model_plotly_table
 from tradeexecutor.backtest.backtest_runner import run_backtest, setup_backtest
 from tradeexecutor.cli.log import setup_pytest_logging
 from tradeexecutor.statistics.summary import calculate_summary_statistics
@@ -66,10 +65,6 @@ def test_defi_bluechip(
 
     # We don't lose all the money
     assert summary.current_value > 1000
-
-    # Create short analysis
-    # Ignore for now
-    render_alpha_model_timeline(state, max_assets_per_portfolio=3)
 
     # Create a table where we have per asset column of taken positions
     df = create_alpha_model_timeline_all_assets(state, universe)

@@ -301,3 +301,4 @@ class Visualisation:
     def get_total_points(self) -> int:
         """Get number of data points stored in all plots."""
         return sum([len(p.points) for p in self.plots.values()])
+

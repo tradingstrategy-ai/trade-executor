@@ -451,11 +451,11 @@ class ExecutionLoop:
         logger.info("Warmed up universe %s", universe)
         return universe
 
-    def run_backtest_stop_loss_checks(self,
-                                      start_ts: datetime.datetime,
-                                      end_ts: datetime.datetime,
-                                      state: State,
-                                      universe: TradingStrategyUniverse):
+    def run_backtest_trigger_checks(self,
+                                    start_ts: datetime.datetime,
+                                    end_ts: datetime.datetime,
+                                    state: State,
+                                    universe: TradingStrategyUniverse) -> int:
         """Generate stop loss price checks.
 
         Backtests may use finer grade data for stop loss signals,
@@ -471,8 +471,11 @@ class ExecutionLoop:
         :param end_ts:
             When to stop testing (exclusive).
 
-        param universe:
+        :param universe:
             Trading universe containing price data for stoploss checks.
+
+        :return:
+            Number of triger checks performed
         """
 
         assert universe.backtest_stop_loss_candles is not None
@@ -494,6 +497,7 @@ class ExecutionLoop:
         stop_loss_pricing_model = BacktestSimplePricingModel(universe.backtest_stop_loss_candles, self.runner.routing_model)
 
         # Do stop loss checks for every time point between now and next strategy cycle
+        check_count = 0
         while ts < end_ts:
             logger.debug("Backtesting stop loss at %s", ts)
             self.runner.check_position_triggers(
@@ -504,6 +508,8 @@ class ExecutionLoop:
                 routing_state
             )
             ts += tick_size.to_timedelta()
+            check_count += 1
+        return check_count
 
     def run_backtest(self, state: State) -> dict:
         """Backtest loop."""
@@ -547,6 +553,7 @@ class ExecutionLoop:
         last_progress_update = datetime.datetime.utcfromtimestamp(0)
         progress_update_threshold = datetime.timedelta(seconds=0.1)
         last_update_ts = None  # The last pushed timestamp to tqdm
+        trigger_checks = 0
 
         with tqdm(total=seconds) as progress_bar:
 
@@ -558,7 +565,7 @@ class ExecutionLoop:
                 if datetime.datetime.utcnow() - last_progress_update > progress_update_threshold:
                     friedly_ts = ts.strftime(ts_format)
                     trade_count = len(list(state.portfolio.get_all_trades()))
-                    progress_bar.set_description(f"Backtesting {self.name}, {friendly_start} - {friendly_end} at {friedly_ts} ({cycle_name}), total {trade_count:,} trades, {cycle:,} cycles")
+                    progress_bar.set_description(f"Backtesting {self.name}, {friendly_start} - {friendly_end} at {friedly_ts} ({cycle_name}), total {trade_count:,} trades, {cycle:,} cycles, {trigger_checks:,} triggers")
                     last_progress_update = datetime.datetime.utcnow()
                     if last_update_ts:
                         # Push update for the period
@@ -599,7 +606,7 @@ class ExecutionLoop:
                 # If we have stop loss checks enabled on a separate price feed,
                 # run backtest stop loss checks until the next time
                 if universe.backtest_stop_loss_candles is not None:
-                    self.run_backtest_stop_loss_checks(
+                    trigger_checks += self.run_backtest_trigger_checks(
                         ts,
                         next_tick,
                         state,

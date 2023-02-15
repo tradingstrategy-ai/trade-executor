@@ -98,6 +98,9 @@ class TradeExecution:
     #:
     #: Naive UTC timestamp.
     #:
+    #: If the trade was executed by a take profit/stop loss trigger
+    #: then this is the trigger timestamp (not wall clock time)
+    #:
     #: See also
     #:
     #: - :py:attr:`started_at`
