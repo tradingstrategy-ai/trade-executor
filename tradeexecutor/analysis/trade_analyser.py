@@ -616,7 +616,7 @@ class TradeAnalysis:
         for pair_id, position in self.get_all_positions():
 
             for t in position.trades:
-                trade_volume += float(t.quantity) * t.executed_price
+                trade_volume += abs(float(t.quantity) * t.executed_price)
                 lp_fees_paid += t.lp_fees_paid or 0
 
             if position.is_open():
