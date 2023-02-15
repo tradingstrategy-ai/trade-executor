@@ -70,13 +70,21 @@ class Portfolio:
     def get_position_by_id(self, position_id: int) -> TradingPosition:
         """Get any position open/closed/frozen by id.
 
+        Always assume the position for a `position_id` exists.
+
         :param position_id:
             Internal running counter id for the position inside
             this portfolio.
 
         :return:
-            Always returns or fails with py:class:`AssertionError`.
+            Always returns
+
+        :throw:
+            Fails with py:class:`AssertionError` if there is no such position.
         """
+
+        assert position_id
+
         p1 = self.open_positions.get(position_id)
         p2 = self.closed_positions.get(position_id)
         if p2:
@@ -87,7 +95,7 @@ class Portfolio:
             # Sanity check we do not have the same position in multiple tables
             assert not (p1 or p2)
 
-        assert p1 or p2 or p3
+        assert p1 or p2 or p3, f"Did not have position with id {position_id}"
 
         return p1 or p2 or p3
 

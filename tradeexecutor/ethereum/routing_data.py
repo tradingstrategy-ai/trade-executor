@@ -29,7 +29,7 @@ from typing import TypedDict, List
 
 from tradingstrategy.chain import ChainId
 
-from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel
+from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel, BacktestRoutingIgnoredModel
 from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2SimpleRoutingModel
 from tradeexecutor.ethereum.uniswap_v3_routing import UniswapV3SimpleRoutingModel
 from tradeexecutor.ethereum.uniswap_v3_routing import UniswapV3SimpleRoutingModel
@@ -450,6 +450,10 @@ def validate_reserve_currency(
 ):
     """Assert that reserve currency matches routing type"""
 
+    if routing_type == TradeRouting.ignore:
+        # Backtesting that does not use routing
+        return
+
     # busd
     if routing_type in {TradeRouting.pancakeswap_busd, TradeRouting.uniswap_v3_busd}:
         if reserve_currency != ReserveCurrency.busd:
@@ -488,12 +492,17 @@ def validate_reserve_currency(
 
 
 def get_backtest_routing_model(
-    routing_type: TradeRouting, reserve_currency: ReserveCurrency
-) -> BacktestRoutingModel:
+    routing_type: TradeRouting,
+    reserve_currency: ReserveCurrency
+) -> BacktestRoutingModel | BacktestRoutingIgnoredModel:
     """Get routing options for backtests.
 
     At the moment, just create a real router and copy parameters from there.
     """
+
+    if routing_type == TradeRouting.ignore:
+        params = get_uniswap_v2_default_routing_parameters(reserve_currency)
+        return BacktestRoutingIgnoredModel(params["reserve_token_address"])
 
     real_routing_model = create_compatible_routing(routing_type, reserve_currency)
     

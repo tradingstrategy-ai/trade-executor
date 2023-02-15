@@ -6,7 +6,7 @@ import pickle
 import random
 from pathlib import Path
 from queue import Queue
-from typing import Optional, Callable, List, cast
+from typing import Optional, Callable, List, cast, Tuple
 
 import pandas as pd
 from apscheduler.events import EVENT_JOB_ERROR
@@ -451,11 +451,11 @@ class ExecutionLoop:
         logger.info("Warmed up universe %s", universe)
         return universe
 
-    def run_backtest_stop_loss_checks(self,
-                                      start_ts: datetime.datetime,
-                                      end_ts: datetime.datetime,
-                                      state: State,
-                                      universe: TradingStrategyUniverse):
+    def run_backtest_trigger_checks(self,
+                                    start_ts: datetime.datetime,
+                                    end_ts: datetime.datetime,
+                                    state: State,
+                                    universe: TradingStrategyUniverse) -> Tuple[int, int]:
         """Generate stop loss price checks.
 
         Backtests may use finer grade data for stop loss signals,
@@ -471,8 +471,11 @@ class ExecutionLoop:
         :param end_ts:
             When to stop testing (exclusive).
 
-        param universe:
+        :param universe:
             Trading universe containing price data for stoploss checks.
+
+        :return:
+            Tuple (take profit, stop loss) count triggered
         """
 
         assert universe.backtest_stop_loss_candles is not None
@@ -494,16 +497,26 @@ class ExecutionLoop:
         stop_loss_pricing_model = BacktestSimplePricingModel(universe.backtest_stop_loss_candles, self.runner.routing_model)
 
         # Do stop loss checks for every time point between now and next strategy cycle
+        tp = 0
+        sl = 0
+
         while ts < end_ts:
             logger.debug("Backtesting stop loss at %s", ts)
-            self.runner.check_position_triggers(
+            trades = self.runner.check_position_triggers(
                 ts,
                 state,
                 universe,
                 stop_loss_pricing_model,
                 routing_state
             )
+            for t in trades:
+                if t.is_stop_loss():
+                    sl += 1
+                elif t.is_take_profit():
+                    tp += 1
             ts += tick_size.to_timedelta()
+
+        return tp, sl
 
     def run_backtest(self, state: State) -> dict:
         """Backtest loop."""
@@ -545,22 +558,29 @@ class ExecutionLoop:
         # otherwise we crash PyCharm
         # https://stackoverflow.com/q/43288550/315168
         last_progress_update = datetime.datetime.utcfromtimestamp(0)
-        progress_update_threshold = datetime.timedelta(seconds=1)
-        last_update_ts = None
+        progress_update_threshold = datetime.timedelta(seconds=0.1)
+        last_update_ts = None  # The last pushed timestamp to tqdm
+        trigger_checks = 0
+        stop_losses = take_profits = 0
 
         with tqdm(total=seconds) as progress_bar:
 
             while True:
-
                 ts = snap_to_previous_tick(ts, backtest_step)
-
                 # Bump progress bar forward and update backtest status
                 if datetime.datetime.utcnow() - last_progress_update > progress_update_threshold:
                     friedly_ts = ts.strftime(ts_format)
                     trade_count = len(list(state.portfolio.get_all_trades()))
-                    progress_bar.set_description(f"Backtesting {self.name}, {friendly_start} - {friendly_end} at {friedly_ts} ({cycle_name}), total {trade_count:,} trades, {cycle:,} cycles")
+                    progress_bar.set_description(f"Backtesting {self.name}, {friendly_start} - {friendly_end} at {friedly_ts} ({cycle_name})")
+                    progress_bar.set_postfix({
+                        "trades": trade_count,
+                        "cycles": cycle,
+                        "TPs": take_profits,
+                        "SLs": stop_losses,
+                    })
                     last_progress_update = datetime.datetime.utcnow()
                     if last_update_ts:
+                        # Push update for the period
                         passed_seconds = (ts - last_update_ts).total_seconds()
                         progress_bar.update(int(passed_seconds))
                     last_update_ts = ts
@@ -591,17 +611,21 @@ class ExecutionLoop:
                 if next_tick >= self.backtest_end:
                     # Backteting has ended
                     logger.info("Terminating backtesting. Backtest end %s, current timestamp %s", self.backtest_end, next_tick)
+                    passed_seconds = (ts - last_update_ts).total_seconds()
+                    progress_bar.update(int(passed_seconds))
                     break
 
                 # If we have stop loss checks enabled on a separate price feed,
                 # run backtest stop loss checks until the next time
                 if universe.backtest_stop_loss_candles is not None:
-                    self.run_backtest_stop_loss_checks(
+                    res = self.run_backtest_trigger_checks(
                         ts,
                         next_tick,
                         state,
                         universe,
                     )
+                    take_profits += res[0]
+                    stop_losses += res[1]
 
                 # Add some fuzziness to gacktesting timestamps
                 # TODO: Make this configurable - sub 1h strategies do not work

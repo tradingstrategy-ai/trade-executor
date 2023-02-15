@@ -17,7 +17,7 @@ from tradeexecutor.state.types import USDollarAmount, BPS, USDollarPrice
 
 
 @dataclass_json
-@dataclass
+@dataclass(slots=True)
 class TradingPosition:
 
     #: Runnint int counter primary key for positions
@@ -92,6 +92,14 @@ class TradingPosition:
             return f"<Open position #{self.position_id} {self.pair} ${self.get_value()}>"
         else:
             return f"<Closed position #{self.position_id} {self.pair} ${self.get_first_trade().get_value()}>"
+
+    def __hash__(self):
+        return hash(self.position_id)
+
+    def __eq__(self, other):
+        """Note that we do not support comparison across different portfolios ATM."""
+        assert isinstance(other, TradingPosition)
+        return self.position_id == other.position_id
 
     def __post_init__(self):
         assert self.position_id > 0
@@ -265,6 +273,17 @@ class TradingPosition:
         If the position is closed, the value should be zero.
         """
         return self.calculate_value_using_price(self.last_token_price, self.last_reserve_price)
+
+    def get_trades_by_strategy_cycle(self, timestamp: datetime.datetime) -> Iterable[TradeExecution]:
+        """Get all trades made for this position at a specific time.
+
+        :return:
+            Iterable of 0....N trades
+        """
+        assert isinstance(timestamp, datetime.datetime)
+        for t in self.trades.values():
+            if t.strategy_cycle_at == timestamp:
+                yield t
 
     def is_stop_loss_closed(self) -> bool:
         """Did this position close with stop loss."""
@@ -461,6 +480,16 @@ class TradingPosition:
         if bought == 0:
             return 0
         return profit / bought
+
+    def get_total_profit_at_timestamp(self, timestamp: datetime.datetime) -> USDollarAmount:
+        """Get the profit of the position what it was at a certain point of time.
+
+        Include realised and unrealised profit.
+
+        :param timestamp:
+            Include all traeds before and including at this timestamp.
+        """
+        raise NotImplementedError()
 
     def get_freeze_reason(self) -> str:
         """Return the revert reason why this position is frozen.

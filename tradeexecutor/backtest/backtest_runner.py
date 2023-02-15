@@ -8,6 +8,8 @@ from pathlib import Path
 from queue import Queue
 from typing import Optional, Callable, Tuple
 
+import pandas as pd
+
 from tradeexecutor.backtest.backtest_execution import BacktestExecutionModel
 from tradeexecutor.backtest.backtest_pricing import BacktestSimplePricingModel
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel
@@ -280,22 +282,32 @@ def run_backtest(
     # Captured in teh callback
     backtest_universe: TradingStrategyUniverse = None
 
-    def pricing_model_factory(execution_model, universe, routing_model):
+    def pricing_model_factory(execution_model, universe: TradingStrategyUniverse, routing_model):
         if setup.pricing_model:
             # Use pricing model given inline
             return setup.pricing_model
 
-        # Construct a backtest pricing model
-        return BacktestSimplePricingModel(universe, routing_model)
+        return BacktestSimplePricingModel(
+            universe,
+            routing_model,
+            data_delay_tolerance=guess_data_delay_tolerance(universe),
+        )
 
     def valuation_model_factory(pricing_model):
         return BacktestValuationModel(pricing_model)
 
     if not setup.universe:
         def backtest_setup(state: State, universe: TradingStrategyUniverse, deposit_syncer: BacktestSyncer):
+            # Use strategy script create_trading_universe() hook to construct the universe
             # Called on the first cycle. Only if the universe is not predefined.
             # Create the initial state of the execution.
             nonlocal backtest_universe
+
+            # Mark backtest stop loss data being available,
+            # after create_trading_universe() has loaded it
+            if universe.has_stop_loss_data():
+                setup.execution_model.stop_loss_data_available = True
+
             events = deposit_syncer(state.portfolio, setup.start_at, universe.reserve_assets)
             assert len(events) == 1, f"Did not get 1 initial backtest deposit event, got {len(events)} events.\nMake sure you did not call backtest_setup() twice?"
             token, usd_exchange_rate = state.portfolio.get_default_reserve_currency()
@@ -448,7 +460,12 @@ def run_backtest_inline(
             assert trade_routing, "You just give either routing_mode or trade_routing"
             assert reserve_currency, "Reserve current must be given to generate routing model"
             routing_model = get_backtest_routing_model(trade_routing, reserve_currency)
-        pricing_model = BacktestSimplePricingModel(universe.universe.candles, routing_model)
+
+        pricing_model = BacktestSimplePricingModel(
+            universe.universe.candles,
+            routing_model,
+            data_delay_tolerance=guess_data_delay_tolerance(universe),
+        )
     else:
         assert create_trading_universe, "Must give create_trading_universe if no universe given"
         pricing_model = None
@@ -479,4 +496,18 @@ def run_backtest_inline(
     )
 
     return run_backtest(backtest_setup, client)
+
+
+def guess_data_delay_tolerance(universe: TradingStrategyUniverse) -> pd.Timedelta:
+    """Try to dynamically be flexible with the backtesting pricing look up.
+
+    This could work around some data quality issues or early historical data.
+    """
+    if universe.universe.time_bucket == TimeBucket.d7:
+        data_delay_tolerance = pd.Timedelta("9d")
+    else:
+        data_delay_tolerance = pd.Timedelta("2d")
+
+    return data_delay_tolerance
+
 

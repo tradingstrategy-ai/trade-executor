@@ -115,8 +115,6 @@ class BacktestRoutingModel(RoutingModel):
         """
 
         assert type(factory_router_map) == dict
-
-
         # Convert all key addresses to lowercase to
         # avoid mix up with Ethereum address checksums
         self.factory_router_map = self.convert_address_dict_to_lower(factory_router_map)
@@ -180,6 +178,112 @@ class BacktestRoutingModel(RoutingModel):
                 check_balances=check_balances,
                 intermediary_pair=intermediary_pair,
             )
+
+    def setup_internal(self, routing_state: RoutingState, trade: TradeExecution):
+        """Simulate trade braodcast and mark it as success."""
+
+        # 2. Capital allocation
+        nonce, tx_hash = routing_state.wallet.fetch_nonce_and_tx_hash()
+
+        trade.blockchain_transactions = [
+            BlockchainTransaction(
+                nonce=nonce,
+                tx_hash=tx_hash,
+            )
+        ]
+
+    def setup_trades(self,
+                     routing_state: BacktestRoutingState,
+                     trades: List[TradeExecution],
+                     check_balances=False):
+        """Strategy and live execution connection.
+
+        Turns abstract strategy trades to real blockchain transactions.
+
+        - Modifies TradeExecution objects in place and associates a blockchain transaction for each
+
+        - Signs tranactions from the hot wallet and broadcasts them to the network
+
+        :param check_balances:
+            Check that the wallet has enough reserves to perform the trades
+            before executing them. Because we are selling before buying.
+            sometimes we do no know this until the sell tx has been completed.
+
+        :param max_slippage:
+            Max slippaeg tolerated per trade. 0.01 is 1%.
+
+        """
+        for t in trades:
+            self.setup_internal(routing_state, t)
+
+    def create_routing_state(self,
+                     universe: TradingStrategyUniverse,
+                     execution_details: dict) -> BacktestRoutingState:
+        """Create a new routing state for this cycle."""
+        assert isinstance(universe, TradingStrategyUniverse)
+        wallet = execution_details["wallet"]
+        return BacktestRoutingState(universe.universe.pairs, wallet)
+
+
+class BacktestRoutingIgnoredModel(BacktestRoutingModel):
+    """A router that assumes all trading pairs are tradeable with the resever currency.
+
+    This is a hypotethical router for backtest different trading scenarios
+    where there is not yet information how the trade could be executed
+    in real life.
+
+    - A router that assumes trades can be just "done"
+
+    This ignores realities of
+
+    - Tokens not portable across chains
+
+    - Trading pairs having multiple legs (USDC->WETH->AAVE)
+
+    - Use trading fee assuming we would trade any pair without hops
+=    """
+
+    def __init__(self, reserve_token_address: str):
+        RoutingModel.__init__(self, dict(), reserve_token_address)
+
+    def trade(self,
+              routing_state: BacktestRoutingState, # TODO remove
+              target_pair: TradingPairIdentifier,
+              reserve_asset: AssetIdentifier,
+              reserve_asset_amount: Decimal,  # Raw amount of the reserve asset
+              max_slippage: float=0.01,
+              check_balances=False,
+              intermediary_pair: Optional[TradingPairIdentifier] = None,
+              ) -> List[BlockchainTransaction]:
+        """Make a simplified trade.
+
+        Just fill in the blanks on `TradeExecution`.
+
+        :param routing_state:
+        :param target_pair:
+        :param reserve_asset:
+        :param reserve_asset_amount:
+        :param max_slippage:
+            Max slippage per trade. 0.01 is 1%.
+        :param check_balances:
+            Check on-chain balances that the account has enough tokens
+            and raise exception if not.
+        :param intermediary_pair:
+            Ignore
+        :return:
+            List of prepared transactions to make this trade.
+            These transactions, like approve() may relate to the earlier
+            transactions in the `routing_state`.
+        """
+        self.pre_trade_assertions(reserve_asset_amount, max_slippage, target_pair, reserve_asset)
+
+        return self.routing_state.create_and_complete_trade(
+            target_pair,
+            reserve_asset,
+            reserve_asset_amount,
+            max_slippage=max_slippage,
+            check_balances=check_balances,
+        )
 
     def setup_internal(self, routing_state: RoutingState, trade: TradeExecution):
         """Simulate trade braodcast and mark it as success."""
