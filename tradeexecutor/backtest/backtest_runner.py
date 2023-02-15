@@ -171,7 +171,6 @@ def setup_backtest_for_universe(
     assert state.portfolio.get_current_cash() == initial_deposit
 
     # Set up execution and pricing
-    import ipdb ; ipdb.set_trace()
     pricing_model = BacktestSimplePricingModel(universe.universe.candles, routing_model)
     execution_model = BacktestExecutionModel(wallet, max_slippage)
 

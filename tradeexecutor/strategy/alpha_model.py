@@ -198,7 +198,7 @@ class AlphaModel:
 
     #: Timestamp of the strategy cycle for which this alpha model was calculated
     #:
-    timestamp: Optional[datetime.datetime]
+    timestamp: Optional[datetime.datetime] = None
 
     #: Pair internal id -> trading signal data
     signals: Dict[PairInternalId, TradingPairSignal] = field(default_factory=dict)

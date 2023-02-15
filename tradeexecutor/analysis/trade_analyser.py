@@ -367,7 +367,6 @@ class TradeSummary:
     lost: int
     zero_loss: int
     stop_losses: int
-    take_profits: int
     undecided: int
     realised_profit: USDollarAmount
     open_value: USDollarAmount
@@ -418,8 +417,12 @@ class TradeSummary:
     max_realised_loss: Optional[float] = None
     avg_realised_risk: Optional[Percent] = None
 
-    lp_fees_paid: Optional[USDollarPrice] = None
-    lp_fees_average_pc: Optional[USDollarPrice] = None
+    take_profits: int = field(default=0)
+
+    trade_volume: USDollarAmount = field(default=0.0)
+
+    lp_fees_paid: Optional[USDollarPrice] = 0
+    lp_fees_average_pc: Optional[USDollarPrice] = 0
 
     def __post_init__(self):
 
@@ -454,6 +457,7 @@ class TradeSummary:
             "Annualised return %": as_percent(self.annualised_return_percent),
             "Cash at start": as_dollar(self.initial_cash),
             "Value at end": as_dollar(self.end_value),
+            "Trade volume": as_dollar(self.trade_volume),
             "Trade win percent": as_percent(self.win_percent),
             "Total trades done": as_integer(self.total_trades),
             "Won trades": as_integer(self.won),
@@ -604,9 +608,16 @@ class TradeAnalysis:
         won = lost = zero_loss = stop_losses = take_profits = undecided = 0
         open_value: USDollarAmount = 0
         profit: USDollarAmount = 0
+        trade_volume = 0
+        lp_fees_paid = 0
 
         positions = []
+        position: TradePosition
         for pair_id, position in self.get_all_positions():
+
+            for t in position.trades:
+                trade_volume += float(t.quantity) * t.executed_price
+                lp_fees_paid += t.lp_fees_paid or 0
 
             if position.is_open():
                 open_value += position.open_value
@@ -675,6 +686,8 @@ class TradeAnalysis:
 
         max_pos_cons, max_neg_cons, max_pullback = self.get_max_consective(positions)
 
+        lp_fees_average_pc = lp_fees_paid / trade_volume
+
         return TradeSummary(
             won=won,
             lost=lost,
@@ -702,7 +715,10 @@ class TradeAnalysis:
             max_loss_risk=max_loss_risk_at_open_pc,
             max_realised_loss=max_realised_loss,
             avg_realised_risk=avg_realised_risk,
-            time_bucket=time_bucket
+            time_bucket=time_bucket,
+            trade_volume=trade_volume,
+            lp_fees_paid=lp_fees_paid,
+            lp_fees_average_pc=lp_fees_average_pc,
         )
 
     def create_timeline(self) -> pd.DataFrame:

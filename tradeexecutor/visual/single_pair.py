@@ -611,7 +611,7 @@ def visualise_single_pair(
     if isinstance(candle_universe, GroupedCandleUniverse):
         if not pair_id:
             assert candle_universe.get_pair_count() == 1, "visualise_single_pair() can be only used for a trading universe with a single pair, please pass pair_id"
-            pair_id = candle_universe.get_pair_ids()[0]
+            pair_id = next(iter(candle_universe.get_pair_ids()))
         candles = candle_universe.get_candles_by_pair(pair_id)
     else:
         # Raw dataframe
@@ -620,9 +620,9 @@ def visualise_single_pair(
     # Get all positions for the trading pair we want to visualise
     positions = [p for p in state.portfolio.get_all_positions() if p.pair.internal_id == pair_id]
 
-    try:
+    if len(positions) > 0:
         first_trade = positions[0].get_first_trade()
-    except StopIteration:
+    else:
         first_trade = None
 
     if first_trade:
