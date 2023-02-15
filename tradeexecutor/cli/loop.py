@@ -571,7 +571,13 @@ class ExecutionLoop:
                 if datetime.datetime.utcnow() - last_progress_update > progress_update_threshold:
                     friedly_ts = ts.strftime(ts_format)
                     trade_count = len(list(state.portfolio.get_all_trades()))
-                    progress_bar.set_description(f"Backtesting {self.name}, {friendly_start} - {friendly_end} at {friedly_ts} ({cycle_name}), total {trade_count:,} trades, {cycle:,} cycles, {take_profits:,} TPs, {stop_losses:,} SLs")
+                    progress_bar.set_description(f"Backtesting {self.name}, {friendly_start} - {friendly_end} at {friedly_ts} ({cycle_name})")
+                    progress_bar.set_postfix({
+                        "trades": trade_count,
+                        "cycles": cycle,
+                        "TPs": take_profits,
+                        "SL": stop_losses,
+                    })
                     last_progress_update = datetime.datetime.utcnow()
                     if last_update_ts:
                         # Push update for the period
