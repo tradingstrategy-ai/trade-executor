@@ -266,6 +266,17 @@ class TradingPosition:
         """
         return self.calculate_value_using_price(self.last_token_price, self.last_reserve_price)
 
+    def get_trades_by_strategy_cycle(self, timestamp: datetime.datetime) -> Iterable[TradeExecution]:
+        """Get all trades made for this position at a specific time.
+
+        :return:
+            Iterable of 0....N trades
+        """
+        assert isinstance(timestamp, datetime.datetime)
+        for t in self.trades.values():
+            if t.strategy_cycle_at == timestamp:
+                yield t
+
     def is_stop_loss_closed(self) -> bool:
         """Did this position close with stop loss."""
         last_trade = self.get_last_trade()
@@ -461,6 +472,16 @@ class TradingPosition:
         if bought == 0:
             return 0
         return profit / bought
+
+    def get_total_profit_at_timestamp(self, timestamp: datetime.datetime) -> USDollarAmount:
+        """Get the profit of the position what it was at a certain point of time.
+
+        Include realised and unrealised profit.
+
+        :param timestamp:
+            Include all traeds before and including at this timestamp.
+        """
+        raise NotImplementedError()
 
     def get_freeze_reason(self) -> str:
         """Return the revert reason why this position is frozen.

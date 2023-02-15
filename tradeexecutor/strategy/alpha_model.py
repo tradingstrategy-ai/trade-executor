@@ -28,6 +28,9 @@ logger = logging.getLogger(__name__)
 class TradingPairSignal:
     """Present one asset in alpha model weighting.
 
+    - The life cycle of the instance is one strategy cycle and it is part of
+      :py:class:`AlphaModel`
+
     - Asset is represented as a trading pair, as that is how we internally present assets
 
     - We capture all the calculations and intermediate values for a single asset
@@ -107,8 +110,42 @@ class TradingPairSignal:
     #: to decrease our position.
     position_adjust: USDollarAmount = 0.0
 
+    #: Trading position that is controlled by this signal.
+    #:
+    #: Query with :py:meth:`tradeexecutor.state.portfolio.Portfolio.get_position_by_id`
+    #:
+    #: After open, any position will live until it is fully closed.
+    #: After that a new position will be opened.
+    position_id: Optional[int] = None
+
+    #: No rebalancing trades was executed for this position adjust.
+    #:
+    #: This is because the resulting trade is under the minimum trade threshold.
+    position_adjust_ignored: bool = False
+
+    #: What was the profit of the position of this signal.
+    #:
+    #: Record the historical profit as the part of the signal model.
+    #: Makes building alpha model visualisation easier later,
+    #: so that we can show the profitability of the position of the signal.
+    #:
+    #: Calculate the position profit before any trades were executed.
+    profit_before_trades: float = 0
+
     def __repr__(self):
         return f"Pair: {self.pair.get_ticker()} old weight: {self.old_weight:.4f} old value: {self.old_value:,} new weight: {self.normalised_weight:.4f} new value: {self.position_target:,} adjust: {self.position_adjust:,}"
+
+    def has_trades(self) -> bool:
+        """Did/should this signal cause any trades to be executed.
+
+        - We have trades if we need to rebalance (old weight != new weight)
+
+        - Even if the weight does not change we might still rebalance because the prices change
+
+        - Some adjustments might be too small and then we just ignore any trades
+          and have :py:attr:position_adjust_ignored` flag set
+        """
+        return (self.normalised_weight or self.old_weight) and not self.position_adjust_ignored
 
 
 @dataclass_json
@@ -176,6 +213,7 @@ class AlphaModel:
         Return the highest weight first.
         """
         return sorted(self.signals.values(), key=lambda s: s.raw_weight, reverse=True)
+
 
     def get_debug_print(self) -> str:
         """Present the alpha model in a format suitable for the console."""
@@ -369,6 +407,12 @@ class AlphaModel:
             dollar_diff = signal.position_adjust
             value = signal.position_target
 
+            position = position_manager.get_current_position_for_pair(pair)
+            if position:
+                signal.profit_before_trades = position.get_total_profit_usd()
+            else:
+                signal.profit_before_trades = 0
+
             logger.info("Rebalancing %s, old weight: %f, new weight: %f, diff: %f USD",
                         pair,
                         signal.old_weight,
@@ -377,6 +421,7 @@ class AlphaModel:
 
             if abs(dollar_diff) < min_trade_threshold:
                 logger.info("Not doing anything, value %f below trade threshold %f", value, min_trade_threshold)
+                signal.position_adjust_ignored = True
             else:
                 position_rebalance_trades = position_manager.adjust_position(
                     pair,
@@ -386,6 +431,12 @@ class AlphaModel:
                 )
 
                 assert len(position_rebalance_trades) == 1, "Assuming always on trade for rebalacne"
+
+                # Connect trading signal to its position
+                first_trade = position_rebalance_trades[0]
+                assert first_trade.position_id
+                signal.position_id = first_trade.position_id
+
                 logger.info("Adjusting holdings for %s: %s", pair, position_rebalance_trades[0])
                 trades += position_rebalance_trades
 
