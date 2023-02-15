@@ -112,7 +112,7 @@ class UniswapV2LivePricing(EthereumPricingModel):
         )
 
         
-        if intermediate_pair is not None:
+        if intermediate_pair:
             received = intermediate_pair.quote.convert_to_decimal(received_raw)
             
             _fee = self.get_pair_fee(ts, intermediate_pair)
@@ -122,12 +122,16 @@ class UniswapV2LivePricing(EthereumPricingModel):
 
             # TODO: Verify calculation
             mid_price = price * (1 + 2*fee)
+            
+            path = [intermediate_pair, target_pair]
         else:
             received = target_pair.quote.convert_to_decimal(received_raw)
 
             price = float(received / quantity)
             
             mid_price = price * (1 + fee)
+            
+            path = [target_pair]
 
         assert price <= mid_price, f"Bad pricing: {price}, {mid_price}"
 
@@ -139,6 +143,7 @@ class UniswapV2LivePricing(EthereumPricingModel):
             lp_fee=[lp_fee],
             pair_fee=[fee],
             side=False,
+            path=path
         )
 
     def get_buy_price(self,
@@ -169,7 +174,7 @@ class UniswapV2LivePricing(EthereumPricingModel):
         assert fee is not None, f"Uniswap v2 fee data missing: exchange:{uniswap} pair:{pair}"
         
         # In three token trades, be careful to use the correct reserve token
-        if intermediate_pair is not None:
+        if intermediate_pair:
             reserve_raw = intermediate_pair.quote.convert_to_raw_amount(reserve)
             self.check_supported_quote_token(intermediate_pair)
             
@@ -199,14 +204,18 @@ class UniswapV2LivePricing(EthereumPricingModel):
         if intermediate_pair:
             # TODO: Verify calculation
             mid_price = price * (1 - 2*fee)
+            
+            path = [intermediate_pair, target_pair]
         else:
             mid_price = price * (1 - fee)
+            
+            path = [target_pair]
             
         
         lp_fee = float(reserve) * fee
 
         assert price >= mid_price, f"Bad pricing: {price}, {mid_price}"
-
+        
         return TradePricing(
             price=float(price),
             mid_price=float(mid_price),
@@ -214,6 +223,7 @@ class UniswapV2LivePricing(EthereumPricingModel):
             pair_fee=[fee],
             market_feed_delay=datetime.timedelta(seconds=0),
             side=True,
+            path=path
         )
 
 

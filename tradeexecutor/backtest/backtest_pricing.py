@@ -130,6 +130,7 @@ class BacktestSimplePricingModel(PricingModel):
             pair_fee=[pair_fee],
             market_feed_delay=delay.to_pytimedelta(),
             side=False,
+            path=[pair]
         )
 
     def get_buy_price(self,
@@ -170,6 +171,7 @@ class BacktestSimplePricingModel(PricingModel):
             pair_fee=[pair_fee],
             market_feed_delay=delay.to_pytimedelta(),
             side=True,
+            path=[pair]
         )
 
     def get_mid_price(self,

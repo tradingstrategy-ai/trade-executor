@@ -127,10 +127,12 @@ class UniswapV3LivePricing(EthereumPricingModel):
 
 
         
-        if intermediate_pair is not None:
+        if intermediate_pair:
             received = intermediate_pair.quote.convert_to_decimal(received_raw)
             price = float(received / quantity)
             mid_price = price * (1 + self.get_pair_fee_multiplier(ts, target_pair) + self.get_pair_fee_multiplier(ts, intermediate_pair.fee))
+
+            path = [intermediate_pair, target_pair]
             
         else:
             
@@ -138,6 +140,7 @@ class UniswapV3LivePricing(EthereumPricingModel):
             price = float(received / quantity)
             mid_price = price * (1 + self.get_pair_fee_multiplier(ts, target_pair))
 
+            path = [target_pair]
         
         #fee = self.get_pair_fee(ts, pair)
         #assert fee is not None, "Uniswap v3 fee data missing"
@@ -152,6 +155,7 @@ class UniswapV3LivePricing(EthereumPricingModel):
             lp_fee=[lp_fee],
             pair_fee=[fees],
             side=False,
+            path=path
         )
         
 
@@ -216,10 +220,14 @@ class UniswapV3LivePricing(EthereumPricingModel):
         lp_fee = float(reserve) * fee
 
         # TODO: Verify calculation
-        if intermediate_pair is not None:        
+        if intermediate_pair:        
             mid_price = price * (1 - self.get_pair_fee_multiplier(ts, intermediate_pair) - self.get_pair_fee_multiplier(ts, target_pair))
+            
+            path = [intermediate_pair, target_pair]
         else:
             mid_price = price * (1 - fee)
+            
+            path = [target_pair]
 
         assert price >= mid_price, f"Bad pricing: {price}, {mid_price}"
 
@@ -230,6 +238,7 @@ class UniswapV3LivePricing(EthereumPricingModel):
             pair_fee=[fees],
             market_feed_delay=datetime.timedelta(seconds=0),
             side=True,
+            path=path
         )
         
 
