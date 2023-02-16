@@ -265,7 +265,7 @@ class TradeExecution:
         assert type(self.planned_price) == float, f"Price was given as {self.planned_price.__class__}: {self.planned_price}"
         assert self.opened_at.tzinfo is None, f"We got a datetime {self.opened_at} with tzinfo {self.opened_at.tzinfo}"
 
-        if self.lp_fees_estimated is not None:
+        if self.lp_fees_estimated and all(self.lp_fees_estimated):
             assert [type(_lp_fee) == float for _lp_fee in self.lp_fees_estimated], f"lp_fee must be provided as type list[float]. Got Got lp_fee: {self.lp_fees_estimated} {type(self.lp_fees_estimated)}"
         
         if self.fee_tier and all(self.fee_tier):
