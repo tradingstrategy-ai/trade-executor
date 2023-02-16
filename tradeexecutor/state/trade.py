@@ -456,7 +456,11 @@ class TradeExecution:
         """
         status = self.get_status()
         if status == TradeStatus.success:
-            return sum(self.lp_fees_paid)
+            return (
+                sum(self.lp_fees_paid)
+                if type(self.lp_fees_paid) == list
+                else self.lp_fees_paid
+            )
         elif status == TradeStatus.failed:
             return [0]
         else:
