@@ -449,12 +449,11 @@ class TradeExecution:
 
     def get_fees_paid(self) -> list[USDollarAmount]:
         """
-        TODO: Make this functio to behave
-        :return:
+        :return: total amount of lp fees (swap fees) paid in US dollars
         """
         status = self.get_status()
         if status == TradeStatus.success:
-            return self.lp_fees_paid
+            return sum(self.lp_fees_paid)
         elif status == TradeStatus.failed:
             return [0]
         else:
