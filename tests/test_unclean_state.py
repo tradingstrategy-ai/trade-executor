@@ -88,8 +88,6 @@ def test_broadcasted_trade(start_ts, weth_usdc, weth, usdc):
         broadcasted_at =start_ts,
         lp_fees_paid =2.5,
         native_token_price=1.9,
-        fee_tier=[weth_usdc.fee],
-        path=[weth_usdc]
     )
 
     tx = BlockchainTransaction(

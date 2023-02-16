@@ -39,9 +39,7 @@ class SimulatedTestTrader:
             reserve=amount_in_usd,
             trade_type=TradeType.rebalance,
             reserve_currency=reserve_currency,
-            reserve_currency_price=1.0,
-            pair_fee=[pair.fee],
-            path=[pair])
+            reserve_currency_price=1.0)
 
         return trade
 

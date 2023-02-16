@@ -59,9 +59,7 @@ class UniswapV3TestTrader(EthereumTrader):
             assumed_price=float(assumed_price),
             trade_type=TradeType.rebalance,
             reserve_currency=pair.quote,
-            reserve_currency_price=1.0,
-            pair_fee=[pair.fee],
-            path=[pair])
+            reserve_currency_price=1.0)
 
         if execute:
             self.execute_trades_simple([trade])
@@ -97,9 +95,7 @@ class UniswapV3TestTrader(EthereumTrader):
             assumed_price=float(assumed_price),
             trade_type=TradeType.rebalance,
             reserve_currency=pair.quote,
-            reserve_currency_price=1.0,
-            pair_fee=[pair.fee],
-            path=[pair])
+            reserve_currency_price=1.0)
 
         if execute:
             self.execute_trades_simple([trade])
