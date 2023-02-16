@@ -193,7 +193,10 @@ class TradeExecution:
     #: fees are always taken from `amount in` token
     #: and directly passed to the LPs as the part of the swap,
     #: these is no separate fee information.
-    lp_fees_paid: Optional[USDollarAmount] = None
+    #: 
+    #: If there is an intermediary pair, this list will have two elements.
+    #: One for each swap
+    lp_fees_paid: Optional[List[USDollarAmount]] | USDollarAmount = None
 
     #: LP fees estimated in the USD
     #:
