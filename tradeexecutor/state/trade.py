@@ -268,9 +268,8 @@ class TradeExecution:
         if self.lp_fees_estimated is not None:
             assert [type(_lp_fee) == float for _lp_fee in self.lp_fees_estimated], f"lp_fee must be provided as type list[float]. Got Got lp_fee: {self.lp_fees_estimated} {type(self.lp_fees_estimated)}"
         
-        # fee_tier assertions
-        # fee_tier is no longer optional, forced to exist
-        assert [type(_pair_fee) in {float, int} for _pair_fee in self.fee_tier], f"pair_fee must be provided as a list. Got fee: {self.fee_tier} {type(self.fee_tier)} "
+        if self.fee_tier and all(self.fee_tier):
+            assert [type(_pair_fee) in {float, int} for _pair_fee in self.fee_tier], f"pair_fee must be provided as a list. Got fee: {self.fee_tier} {type(self.fee_tier)} "
 
     @property
     def strategy_cycle_at(self):
