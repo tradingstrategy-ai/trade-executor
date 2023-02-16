@@ -36,7 +36,7 @@ class UniswapV2PoolRevaluator(EthereumPoolRevaluator):
                  ts: datetime.datetime,
                  position: TradingPosition) -> Tuple[datetime.datetime, USDollarAmount]:
 
-        super().__call__(ts, position)
+        return super().__call__(ts, position)
 
 
 def uniswap_v2_sell_valuation_factory(pricing_model):
