@@ -770,6 +770,10 @@ def translate_trading_pair(pair: DEXPair) -> TradingPairIdentifier:
             if pair.fee != 0:
                 assert pair.fee > 1, f"DEXPair fee must be in BPS, got {pair.fee}"
             fee = pair.fee / 10_000
+            
+            # If fee is bigger than, then it must be bps or raw_fee, which are ints
+            if fee > 1:
+                fee = int(fee)
         else:
             fee = None
 
