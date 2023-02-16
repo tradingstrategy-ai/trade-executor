@@ -33,7 +33,18 @@ class EthereumPoolRevaluator(ValuationModel):
     def __call__(self,
                  ts: datetime.datetime,
                  position: TradingPosition) -> Tuple[datetime.datetime, USDollarAmount]:
-        
+        """
+
+        :param ts:
+            When to revalue. Used in backesting. Live strategies may ignore.
+        :param position:
+            Open position
+        :return:
+            (revaluation date, price) tuple.
+            Note that revaluation date may differ from the wantead timestamp if
+            there is no data available.
+
+        """
         assert isinstance(ts, datetime.datetime)
         pair = position.pair
 
