@@ -47,8 +47,8 @@ from tradeexecutor.utils.blockchain import get_latest_block_timestamp
 
 #: How much values we allow to drift.
 #: A hack fix receiving different decimal values on Github CI than on a local
-APPROX_REL = 0.01
-APPROX_REL_DECIMAL = Decimal("0.1")
+APPROX_REL = 0.001
+APPROX_REL_DECIMAL = Decimal("0.001")
 
 WETH_USDC_FEE = 3000
 
@@ -393,16 +393,16 @@ def test_live_stop_loss(
 
     # After the first tick, we should have synced our reserves and opened the first position
     mid_price = pricing_method.get_mid_price(ts, pair)
-    assert mid_price == pytest.approx(1704.4706166795725, rel=APPROX_REL)
+    assert mid_price == pytest.approx(1701.9176812836754, rel=APPROX_REL)
 
     assert state.portfolio.reserves[usdc_token.address.lower()].quantity == 8000
-    assert state.portfolio.open_positions[1].get_quantity() == Decimal('0.586126842081438121')
-    assert state.portfolio.open_positions[1].get_value() == pytest.approx(996.998769, rel=APPROX_REL)
+    assert state.portfolio.open_positions[1].get_quantity() == Decimal('0.586126842081438205')
+    assert state.portfolio.open_positions[1].get_value() == pytest.approx(994.010747, rel=APPROX_REL)
 
     # Sell ETH on the pool to change the price more than 10%.
     # The pool is 1000 ETH / 1.7M USDC.
     # Deployer dumps 300 ETH to cause a massive price impact.
-    weth_token.functions.approve(uniswap_v3.router.address, 1000 * 10**18).transact({"from": deployer})
+    weth_token.functions.approve(uniswap_v3.swap_router.address, 1000 * 10**18).transact({"from": deployer})
     prepared_swap_call = swap_with_slippage_protection(
         uniswap_v3_deployment=uniswap_v3,
         recipient_address=deployer,
@@ -410,12 +410,13 @@ def test_live_stop_loss(
         quote_token=weth_token,
         amount_in=300 * 10**18,
         max_slippage=10_000,
+        pool_fees=[WETH_USDC_FEE]
     )
     prepared_swap_call.transact({"from": deployer})
 
     # ETH price is down $1700 -> $1000
     price_structure = pricing_method.get_buy_price(datetime.datetime.utcnow(), pair, None)
-    assert price_structure.price == pytest.approx(1009.6430522606291, rel=APPROX_REL)
+    assert price_structure.price == pytest.approx(1011.2548284709007, rel=APPROX_REL)
 
     ts = get_latest_block_timestamp(web3)
 
@@ -435,7 +436,7 @@ def test_live_stop_loss(
     assert state.portfolio.closed_positions[1].is_stop_loss()
 
     # We are ~500 USD on loss after stop loss trigger
-    assert state.portfolio.reserves[usdc_token.address.lower()].quantity == pytest.approx(Decimal('8588.500854'))
+    assert state.portfolio.reserves[usdc_token.address.lower()].quantity == pytest.approx(Decimal('8588.907521'))
 
 
 
@@ -478,7 +479,7 @@ def test_live_stop_loss_missing(
     # Sell ETH on the pool to change the price more than 10%.
     # The pool is 1000 ETH / 1.7M USDC.
     # Deployer dumps 300 ETH to cause a massive price impact.
-    weth_token.functions.approve(uniswap_v3.router.address, 1000 * 10**18).transact({"from": deployer})
+    weth_token.functions.approve(uniswap_v3.swap_router.address, 1000 * 10**18).transact({"from": deployer})
     prepared_swap_call = swap_with_slippage_protection(
         uniswap_v3_deployment=uniswap_v3,
         recipient_address=deployer,
@@ -486,6 +487,7 @@ def test_live_stop_loss_missing(
         quote_token=weth_token,
         amount_in=300 * 10**18,
         max_slippage=10_000,
+        pool_fees=[WETH_USDC_FEE]
     )
     prepared_swap_call.transact({"from": deployer})
 
