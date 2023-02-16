@@ -96,7 +96,7 @@ class TradePricing:
         """:returns: The total lp fees paid (dollars) for the trade."""
         return sum(self.lp_fee)
 
-def format_fees_percentage(fees: list[BPS]):
+def format_fees_percentage(fees: list[BPS]) -> str:
     """Returns string of formatted fees
     
     e.g. fees = [0.03, 0.005]
@@ -106,15 +106,18 @@ def format_fees_percentage(fees: list[BPS]):
         list of lp fees in float (multiplier) format
         
     :returns:
-        formatted list
+        formatted str
     """
     _fees = [fee or 0 for fee in fees]
     strFormat = len(_fees) * '{:.4f}% '
     return strFormat.format(*_fees)
     
     
-def format_fees_dollars(fees: list[USDollarAmount]):
+def format_fees_dollars(fees: list[USDollarAmount] | USDollarAmount) -> str:
     """Returns string of formatted fees
+    
+    :param fees:
+        Can either be a list of fees or a single fee
     
     e.g. fees = [30, 50]
     => $30.00 $50.00
@@ -123,8 +126,12 @@ def format_fees_dollars(fees: list[USDollarAmount]):
         list of fees paid in absolute value (dollars)
     
     :returns:
-        formatted list
+        formatted str
     """
+    
+    if type(fees) != list:
+        return f"${fees:.2f}"
+    
     _fees = [fee or 0 for fee in fees]
     strFormat = len(_fees) * '${:.2f} '
     return strFormat.format(*_fees)
