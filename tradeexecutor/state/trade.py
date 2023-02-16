@@ -445,15 +445,22 @@ class TradeExecution:
 
     def get_fees_paid(self) -> list[USDollarAmount]:
         """
+        Get total swap fees paid for trade. Returns 0 instead of `None`
+        
         :return: total amount of lp fees (swap fees) paid in US dollars
         """
+        
+        
         status = self.get_status()
         if status == TradeStatus.success:
-            return (
-                sum(self.lp_fees_paid)
-                if type(self.lp_fees_paid) == list
-                else self.lp_fees_paid
-            )
+            if type(self.lp_fees_paid) == list:
+                return (
+                    sum(self.lp_fees_paid) 
+                    if all(self.lp_fees_paid) 
+                    else 0
+                )
+
+            return self.lp_fees_paid or 0
         elif status == TradeStatus.failed:
             return [0]
         else:
