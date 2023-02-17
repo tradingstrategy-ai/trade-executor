@@ -428,7 +428,7 @@ class TradeExecution:
         """
         return self.get_position_quantity(), self.get_reserve_quantity()
 
-    def get_fees_paid(self) -> list[USDollarAmount]:
+    def get_fees_paid(self) -> USDollarAmount:
         """
         Get total swap fees paid for trade. Returns 0 instead of `None`
         

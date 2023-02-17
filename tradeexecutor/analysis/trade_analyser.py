@@ -94,7 +94,7 @@ class SpotTrade:
     #: fees are always taken from `amount in` token
     #: and directly passed to the LPs as the part of the swap,
     #: these is no separate fee information.
-    lp_fees_paid: Optional[list[USDollarAmount]] = None
+    lp_fees_paid: Optional[USDollarAmount] = None
 
     #: Set for legacy trades with legacy data.
     #:
@@ -297,9 +297,7 @@ class TradePosition:
 
     def get_total_lp_fees_paid(self) -> int:
         """Get the total amount of swap fees paid in the position. Includes all trades."""
-        # sum list of lists
-        # list lp fees from list of trades
-        return sum(sum(trade for trade in trade.lp_fees_paid if trade is not None) for trade in self.trades)
+        return sum(trade.lp_fees_paid for trade in self.trades if trade.lp_fees_paid is not None)
 
     def has_bad_data_issues(self) -> bool:
         """Do we have legacy / incompatible data issues."""
