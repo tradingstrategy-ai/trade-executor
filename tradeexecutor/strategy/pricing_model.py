@@ -2,6 +2,7 @@
 
 import abc
 import datetime
+from logging import getLogger
 from dataclasses import dataclass
 from decimal import Decimal, ROUND_DOWN
 from typing import Callable, Optional, List
@@ -13,9 +14,15 @@ from tradeexecutor.strategy.routing import RoutingModel
 from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
 
 
+logger = getLogger(__name__)
+
+
 @dataclass(slots=True, frozen=True)
 class TradePricing:
     """Describe price results for a price query.
+    
+    - One TradePricing instance can represent multiple swaps if there 
+    is an intermediary pair
 
     - Each price result is tied to quantiy/amount
 
@@ -40,10 +47,13 @@ class TradePricing:
     #: How much liquidity provider fees we are going to pay on this trade.
     #:
     #: Set to None if data is not available.
+    #:
+    #: Can be specified as single value or list, will be converted to list regardless 
     lp_fee: Optional[list[USDollarAmount]] = None
 
     #: What was the LP fee % used as the base of the calculations.
     #:
+    #: Can be specified as single value or list, will be converted to list regardless
     pair_fee: Optional[list[BPS]] = None
 
     #: How old price data we used for this estimate
@@ -60,7 +70,55 @@ class TradePricing:
     #: Path of the trade
     #: One trade can have multiple swaps if there is an intermediary pair.
     path: Optional[List[TradingPairIdentifier]] = None
+    
+    @property
+    def pair_fee(self):
+        return self._pair_fee
+    
+    @property
+    def lp_fee(self):
+        return self._lp_fee
+    
+    @property
+    def path(self):
+        return self._path
+    
+    @pair_fee.setter
+    def pair_fee(self, value):
+        if type(value) != list:
+            lst = [value]
 
+        if all(lst):
+            assert [
+                type(fee) in {float, int} for fee in lst
+            ], "pair_fee elements must be float or int."
+        else:
+            logger.warn("pair_fee provided with falsy values")
+
+        self._pair_fee = value
+
+    @lp_fee.setter
+    def lp_fee(self, value):
+        if type(value) != list:
+            lst = [value]
+
+        if all(lst):
+            assert [
+                type(fee) == float for fee in lst
+            ], "lp_fee elements must be float."
+        else:
+            logger.warn("lp_fee provided with falsy values")
+
+        self._lp_fee = value
+        
+    @path.setter
+    def path(self, value):
+        assert type(value) == list, "Path must be provided as a list"
+        
+        assert [type(address) == TradingPairIdentifier for address in self.path], "path must be provided as a list of TradePairIdentifier" 
+        
+        self._path = value
+    
     def __repr__(self):
         fee_list = [fee or 0 for fee in self.pair_fee]
         return f"<TradePricing:{self.price} mid:{self.mid_price} fee:{format_fees_percentage(fee_list)}>"
@@ -73,12 +131,6 @@ class TradePricing:
         assert type(self.price) == float
         assert type(self.mid_price) == float
         
-        if self.lp_fee is not None:
-            assert [type(_lp_fee) == float for _lp_fee in self.lp_fee], f"lp_fee must be provided as type list[float]. Got Got lp_fee: {self.lp_fee} {type(self.lp_fee)}"
-        
-        if self.pair_fee is not None:
-           assert [type(_pair_fee) in {float, int} for _pair_fee in self.pair_fee], f"pair_fee must be provided as a list. Got fee: {self.pair_fee} {type(self.pair_fee)} "
-        
         if self.market_feed_delay is not None:
             assert isinstance(self.market_feed_delay, datetime.timedelta)
 
@@ -88,9 +140,6 @@ class TradePricing:
                 assert self.price >= self.mid_price, f"Got bad buy pricing: {self.price} > {self.mid_price}"
             if not self.side:
                 assert self.price <= self.mid_price, f"Got bad sell pricing: {self.price} < {self.mid_price}"
-                
-        if self.path:
-            assert [type(address) == TradingPairIdentifier for address in self.path], "path must be provided as a list of TradePairIdentifier" 
             
     def get_total_lp_fees(self):
         """:returns: The total lp fees paid (dollars) for the trade."""
