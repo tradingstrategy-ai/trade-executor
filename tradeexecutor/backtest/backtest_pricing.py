@@ -126,8 +126,8 @@ class BacktestSimplePricingModel(PricingModel):
         return TradePricing(
             price=float(price),
             mid_price=float(mid_price),
-            lp_fee=[lp_fee],
-            pair_fee=[pair_fee],
+            lp_fee=lp_fee,
+            pair_fee=pair_fee,
             market_feed_delay=delay.to_pytimedelta(),
             side=False,
             path=[pair]
@@ -167,8 +167,8 @@ class BacktestSimplePricingModel(PricingModel):
         return TradePricing(
             price=float(price),
             mid_price=float(mid_price),
-            lp_fee=[lp_fee],
-            pair_fee=[pair_fee],
+            lp_fee=lp_fee,
+            pair_fee=pair_fee,
             market_feed_delay=delay.to_pytimedelta(),
             side=True,
             path=[pair]

@@ -60,7 +60,7 @@ class UniswapV3TestTrader(EthereumTrader):
             trade_type=TradeType.rebalance,
             reserve_currency=pair.quote,
             reserve_currency_price=1.0,
-            pair_fee=[pair.fee]
+            pair_fee=pair.fee
         )
 
         if execute:
@@ -98,7 +98,7 @@ class UniswapV3TestTrader(EthereumTrader):
             trade_type=TradeType.rebalance,
             reserve_currency=pair.quote,
             reserve_currency_price=1.0,
-            pair_fee=[pair.fee]
+            pair_fee=pair.fee
         )
 
         if execute:

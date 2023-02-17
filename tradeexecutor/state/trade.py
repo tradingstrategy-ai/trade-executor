@@ -53,7 +53,9 @@ class TradeStatus(enum.Enum):
 @dataclass_json
 @dataclass()
 class TradeExecution:
-    """Trade execution tracker.
+    """Trade execution tracker. 
+    
+    - One TradeExecution instance can only represent one swap
 
     Each trade has a reserve currency that we use to trade the token (usually USDC).
 
@@ -181,10 +183,7 @@ class TradeExecution:
     #:
     #: Sourced from Uniswap v2 router or Uniswap v3 pool information.
     #:
-    #: Same as `pair_fee` in TradePricing
-    #: If there is an intermediary pair, then this list will have two elements,
-    #: one for each swap
-    fee_tier: Optional[List[BPS]] = None
+    fee_tier: Optional[BPS] = None
 
     #: LP fees paid, currency convereted to the USD.
     #:
@@ -193,20 +192,13 @@ class TradeExecution:
     #: fees are always taken from `amount in` token
     #: and directly passed to the LPs as the part of the swap,
     #: these is no separate fee information.
-    #: 
-    #: If there is an intermediary pair, this list will have two elements.
-    #: One for each swap
-    lp_fees_paid: Optional[List[USDollarAmount]] | USDollarAmount = None
+    lp_fees_paid: Optional[USDollarAmount] = None
 
     #: LP fees estimated in the USD
     #:
     #: This is set before the execution and is mostly useful
     #: for backtesting.
-    #:
-    #: Same as `lp_fee` in TradePricing.
-    #: If there is an intermediary pair, this list will have two elements.
-    #: One for each swap
-    lp_fees_estimated: Optional[List[USDollarAmount]] = None
+    lp_fees_estimated: Optional[USDollarAmount] = None
 
     #: What is the conversation rate between quote token and US dollar used in LP fee conversion.
     #:
@@ -264,13 +256,7 @@ class TradeExecution:
         assert self.planned_reserve >= 0
         assert type(self.planned_price) == float, f"Price was given as {self.planned_price.__class__}: {self.planned_price}"
         assert self.opened_at.tzinfo is None, f"We got a datetime {self.opened_at} with tzinfo {self.opened_at.tzinfo}"
-
-        if self.lp_fees_estimated and all(self.lp_fees_estimated):
-            assert [type(_lp_fee) == float for _lp_fee in self.lp_fees_estimated], f"lp_fee must be provided as type list[float]. Got Got lp_fee: {self.lp_fees_estimated} {type(self.lp_fees_estimated)}"
         
-        if self.fee_tier and all(self.fee_tier):
-            assert [type(_pair_fee) in {float, int} for _pair_fee in self.fee_tier], f"pair_fee must be provided as a list. Got fee: {self.fee_tier} {type(self.fee_tier)} "
-
     @property
     def strategy_cycle_at(self):
         """Alias for oepned_at"""
@@ -449,19 +435,11 @@ class TradeExecution:
         :return: total amount of lp fees (swap fees) paid in US dollars
         """
         
-        
         status = self.get_status()
         if status == TradeStatus.success:
-            if type(self.lp_fees_paid) == list:
-                return (
-                    sum(self.lp_fees_paid) 
-                    if all(self.lp_fees_paid) 
-                    else 0
-                )
-
             return self.lp_fees_paid or 0
         elif status == TradeStatus.failed:
-            return [0]
+            return 0
         else:
             raise AssertionError(f"Unsupported trade state to query fees: {self.get_status()}")
 

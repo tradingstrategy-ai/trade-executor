@@ -51,7 +51,7 @@ class PairUniverseTestTrader:
             trade_type=TradeType.rebalance,
             reserve_currency=reserve_currency,
             reserve_currency_price=1.0,
-            pair_fee=[pair.fee],
-            path=[pair])
+            pair_fee=pair.fee,
+        )
 
         return trade
