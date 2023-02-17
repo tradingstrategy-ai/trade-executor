@@ -7,30 +7,20 @@ import logging
 from web3 import Web3
 
 from eth_defi.hotwallet import HotWallet
-from eth_defi.trade import TradeSuccess, TradeFail
+from eth_defi.uniswap_v2.analysis import TradeSuccess, TradeFail
+from eth_defi.uniswap_v3.deployment import UniswapV3Deployment
+from eth_defi.uniswap_v3.price import UniswapV3PriceHelper
+from eth_defi.uniswap_v3.analysis import analyse_trade_by_receipt
+from eth_defi.uniswap_v3.deployment import mock_partial_deployment_for_analysis
 
+from tradeexecutor.state.identifier import TradingPairIdentifier
 #from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.ethereum.execution import EthereumExecutionModel
-
-
-import logging
-import datetime
-from decimal import Decimal
-
-from web3 import Web3
-
-
-from eth_defi.hotwallet import HotWallet
-from eth_defi.uniswap_v2.fees import estimate_sell_price_decimals
-from eth_defi.uniswap_v2.analysis import TradeSuccess, analyse_trade_by_receipt
-from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, mock_partial_deployment_for_analysis
-from tradeexecutor.state.identifier import TradingPairIdentifier
-
 
 logger = logging.getLogger(__name__)
 
 
-class UniswapV2ExecutionModel(EthereumExecutionModel):
+class UniswapV3ExecutionModel(EthereumExecutionModel):
     """Run order execution on a single Uniswap v2 style exchanges."""
 
     def __init__(self,
@@ -78,7 +68,7 @@ class UniswapV2ExecutionModel(EthereumExecutionModel):
     @staticmethod
     def analyse_trade_by_receipt(
         web3: Web3, 
-        uniswap: UniswapV2Deployment, 
+        uniswap: UniswapV3Deployment, 
         tx: dict, 
         tx_hash: str,
         tx_receipt: dict
@@ -87,25 +77,38 @@ class UniswapV2ExecutionModel(EthereumExecutionModel):
     
     @staticmethod
     def mock_partial_deployment_for_analysis(
-        web3: Web3,
+        web3: Web3, 
         router_address: str
-    ) -> UniswapV2Deployment:
+    ) -> UniswapV3Deployment:
         return mock_partial_deployment_for_analysis(web3, router_address)
     
     @staticmethod
     def is_v3() -> bool:
         """Returns true if instance is related to Uniswap V3, else false. 
         Kind of a hack to be able to share resolve trades function amongst v2 and v3."""
-        return False
+        return True
     
 
-def get_current_price(web3: Web3, uniswap: UniswapV2Deployment, pair: TradingPairIdentifier, quantity=Decimal(1)) -> float:
-    """Get a price from Uniswap v2 pool, assuming you are selling 1 unit of base token.
-
+def get_current_price(web3: Web3, uniswap: UniswapV3Deployment, pair: TradingPairIdentifier, quantity=Decimal(1)) -> float:
+    """Get a price from Uniswap v3 pool, assuming you are selling 1 unit of base token.
+    See see eth_defi.uniswap_v2.fees.estimate_sell_price_decimals
+    
     Does decimal adjustment.
-
     :return: Price in quote token.
     """
-    price = estimate_sell_price_decimals(uniswap, pair.base.checksum_address, pair.quote.checksum_address, quantity)
-    return float(price)
+    
+    quantity_raw = pair.base.convert_to_raw_amount(quantity)
+    
+    path = [pair.base.checksum_address,  pair.quote.checksum_address] 
+    fees = [pair.fee]
+    assert fees, "no fees in pair"        
+        
+    price_helper = UniswapV3PriceHelper(uniswap)
+    out_raw = price_helper.get_amount_out(
+        amount_in=quantity_raw,
+        path=path,
+        fees=fees
+    )
+    
+    return float(pair.quote.convert_to_decimal(out_raw))
 

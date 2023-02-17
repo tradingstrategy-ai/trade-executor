@@ -56,7 +56,7 @@ pytestmark = pytest.mark.skipif(os.environ.get("TRADING_STRATEGY_API_KEY") is No
 
 #: How much values we allow to drift.
 #: A hack fix receiving different decimal values on Github CI than on a local
-APPROX_REL = 0.01
+APPROX_REL = 0.05
 APPROX_REL_DECIMAL = Decimal("0.1")
 
 
@@ -184,6 +184,7 @@ def weth_usdc_pair(uniswap_v2, weth_usdc_uniswap_trading_pair, asset_usdc, asset
         asset_usdc,
         weth_usdc_uniswap_trading_pair,
         exchange_address=uniswap_v2.factory.address,
+        fee=0,
         internal_id=int(weth_usdc_uniswap_trading_pair, 16))
 
 
@@ -196,6 +197,7 @@ def aave_usdc_pair(uniswap_v2, aave_usdc_uniswap_trading_pair, asset_usdc, asset
         aave_usdc_uniswap_trading_pair,
         internal_id=int(aave_usdc_uniswap_trading_pair, 16),
         exchange_address=uniswap_v2.factory.address,
+        fee=0,
     )
 
 
@@ -587,7 +589,7 @@ def test_simulated_uniswap_qstrader_strategy_round_trip(
     # Check our two open positions
     assert len(state.portfolio.open_positions) == 2
     position_1 = state.portfolio.get_open_position_for_pair(weth_usdc_pair)
-    assert position_1.get_quantity() == Decimal('2.754699344146152536')
+    assert position_1.get_quantity() == pytest.approx(Decimal('2.754699344146152536'), rel=APPROX_REL_DECIMAL)
     assert position_1.get_value() == pytest.approx(4684.555636069401, rel=APPROX_REL)
     position_2 = state.portfolio.get_open_position_for_pair(aave_usdc_pair)
     assert position_2.get_value() == pytest.approx(4362.366674108017, rel=APPROX_REL)

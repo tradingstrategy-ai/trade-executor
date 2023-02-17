@@ -2,36 +2,24 @@
 
 import logging
 from collections import defaultdict
-from decimal import Decimal
-from typing import Dict, Set, List, Optional, Tuple
+from typing import List, Optional, Tuple
+from abc import ABC, abstractmethod
 
-from eth_typing import HexAddress, ChecksumAddress
+from eth_typing import ChecksumAddress
 
 from tradeexecutor.state.types import BPS
-from tradingstrategy.chain import ChainId
 from web3 import Web3
 from web3.contract import Contract
 
 from eth_defi.abi import get_deployed_contract
-from eth_defi.gas import estimate_gas_fees
 from eth_defi.token import fetch_erc20_details
-from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, fetch_deployment
-from eth_defi.uniswap_v3.deployment import UniswapV3Deployment, fetch_deployment as fetch_deployment_v3
-from eth_defi.uniswap_v2.swap import swap_with_slippage_protection
-from eth_defi.uniswap_v3.swap import swap_with_slippage_protection as swap_with_slippage_protection_v3
-from web3.exceptions import ContractLogicError
 
-from tradeexecutor.ethereum.execution import get_token_for_asset
 from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
-from tradeexecutor.state.trade import TradeExecution
-from tradeexecutor.strategy.routing import RoutingModel, RoutingState, CannotRouteTrade
-from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_trading_pair, \
-    translate_token
+from tradeexecutor.strategy.routing import RoutingState
 from tradingstrategy.pair import PandasPairUniverse
 
-from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
 
 
 logger = logging.getLogger(__name__)
@@ -41,7 +29,7 @@ class OutOfBalance(Exception):
     """Did not have enough tokens"""
 
 
-class EthereumRoutingStateBase(RoutingState):
+class EthereumRoutingState(RoutingState):
     """Manage transaction building for multiple Uniswap trades.
 
     - Lifespan is one rebalance - remembers already made approvals
@@ -75,11 +63,21 @@ class EthereumRoutingStateBase(RoutingState):
 
             Can be set to None on DummyExecutionModel.
 
+        :param web3:
+            Use for routing smart contract reads.
+
+            Given when `tx_builder` is not present.
+
         :param swap_gas_limit:
             What is the max gas we are willing to pay for a swap.
 
         """
+
+        # Parent does not need to be called,
+        # TODO: fix parent API signature later,
+        # because full universe is not needed
         self.pair_universe = pair_universe
+
         if tx_builder is not None:
             self.tx_builder = tx_builder
             self.hot_wallet = tx_builder.hot_wallet
@@ -94,6 +92,18 @@ class EthereumRoutingStateBase(RoutingState):
         # router -> erc-20 mappings
         self.approved_routes = defaultdict(set)
         self.swap_gas_limit = swap_gas_limit
+        
+    @abstractmethod
+    def get_uniswap_for_pair():
+        """Get a router for a trading pair."""
+    
+    @abstractmethod
+    def trade_on_router_two_way():
+        """Prepare the actual swap. Same for Uniswap V2 and V3."""
+        
+    @abstractmethod
+    def trade_on_router_three_way():
+        """Prepare the actual swap for three way trade."""
 
     def is_route_approved(self, router_address: str):
         return router_address in self.approved_routes
@@ -166,46 +176,6 @@ class EthereumRoutingStateBase(RoutingState):
 
         return [tx]
     
-    def get_base_quote_intermediary(self, target_pair, intermediary_pair, reserve_asset):
-        
-        web3 = self.web3
-        
-        if reserve_asset == intermediary_pair.quote:
-            # Buy BUSD -> BNB -> Cake
-            base_token = get_token_for_asset(web3, target_pair.base)
-            quote_token = get_token_for_asset(web3, intermediary_pair.quote)
-            intermediary_token = get_token_for_asset(web3, intermediary_pair.base)
-        elif reserve_asset == target_pair.base:
-            # Sell, Cake -> BNB -> BUSD
-            base_token = get_token_for_asset(web3, intermediary_pair.quote)  # BUSD
-            quote_token = get_token_for_asset(web3, target_pair.base)  # Cake
-            intermediary_token = get_token_for_asset(web3, intermediary_pair.base)  # BNB
-        else:
-            raise RuntimeError(f"Cannot trade {target_pair} through {intermediary_pair}")
-        return base_token,quote_token,intermediary_token
-    
-    def get_base_and_quote(self, target_pair, reserve_asset):
-        """Get base and quote token from the pair and reserve asset. 
-        
-        See: https://tradingstrategy.ai/docs/programming/market-data/trading-pairs.html
-        
-        :param target_pair: Pair to be traded
-        :param reserver_asset: Asset to be kept as reserves
-        :returns: (base_token: Contract, quote_token: Contract)
-        """
-        web3 = self.web3
-        
-        if reserve_asset == target_pair.quote:
-            # Buy with e.g. BUSD
-            base_token = get_token_for_asset(web3, target_pair.base)
-            quote_token = get_token_for_asset(web3, target_pair.quote)
-        elif reserve_asset == target_pair.base:
-            # Sell, flip the direction
-            base_token = get_token_for_asset(web3, target_pair.quote)
-            quote_token = get_token_for_asset(web3, target_pair.base)
-        else:
-            raise RuntimeError(f"Cannot trade {target_pair}")
-        return base_token,quote_token
     
     def get_signed_tx(self, swap_func, gas_limit):
         signed_tx = self.tx_builder.sign_transaction(
@@ -246,3 +216,56 @@ def route_tokens(
     return (Web3.toChecksumAddress(trading_pair.base.address),
         Web3.toChecksumAddress(intermediate_pair.quote.address),
         Web3.toChecksumAddress(trading_pair.quote.address))
+
+
+def get_base_quote(web3: Web3, target_pair: TradingPairIdentifier, reserve_asset: AssetIdentifier, error_msg: str = None):
+        """Get base and quote token from the pair and reserve asset. Called in parent class (RoutingState) with error_msg.
+        
+        See: https://tradingstrategy.ai/docs/programming/market-data/trading-pairs.html
+        
+        :param target_pair: Pair to be traded
+        :param reserver_asset: Asset to be kept as reserves
+        :returns: (base_token: Contract, quote_token: Contract)
+        :param error_msg:
+            Only provide this argument if error message includes external info such as an intermediary pair
+        """
+        if error_msg is None:
+            error_msg = f"Cannot route trade through {target_pair}"
+        
+        if reserve_asset == target_pair.quote:
+            # Buy with e.g. BUSD
+            base_token = get_token_for_asset(web3, target_pair.base)
+            quote_token = get_token_for_asset(web3, target_pair.quote)
+            
+        elif reserve_asset == target_pair.base:
+            # Sell, flip the direction
+            base_token = get_token_for_asset(web3, target_pair.quote)
+            quote_token = get_token_for_asset(web3, target_pair.base)
+            
+        else:
+            raise RuntimeError(error_msg)
+        
+        return base_token, quote_token
+
+
+def get_base_quote_intermediary(web3: Web3, target_pair: TradingPairIdentifier, intermediary_pair: TradingPairIdentifier, reserve_asset: AssetIdentifier):
+        
+        if reserve_asset == intermediary_pair.quote:
+            # Buy BUSD -> BNB -> Cake
+            base_token = get_token_for_asset(web3, target_pair.base)
+            quote_token = get_token_for_asset(web3, intermediary_pair.quote)
+            intermediary_token = get_token_for_asset(web3, intermediary_pair.base)
+        elif reserve_asset == target_pair.base:
+            # Sell, Cake -> BNB -> BUSD
+            base_token = get_token_for_asset(web3, intermediary_pair.quote)  # BUSD
+            quote_token = get_token_for_asset(web3, target_pair.base)  # Cake
+            intermediary_token = get_token_for_asset(web3, intermediary_pair.base)  # BNB
+        else:
+            raise RuntimeError(f"Cannot trade {target_pair} through {intermediary_pair}")
+        return base_token,quote_token,intermediary_token
+
+    
+def get_token_for_asset(web3: Web3, asset: AssetIdentifier) -> Contract:
+    """Get ERC-20 contract proxy."""
+    erc_20 = get_deployed_contract(web3, "ERC20MockDecimals.json", Web3.toChecksumAddress(asset.address))
+    return erc_20

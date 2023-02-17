@@ -4,6 +4,7 @@ from typing import Type
 from tradeexecutor.strategy.routing import RoutingModel
 from typing import Dict, List, Optional, Tuple
 
+from eth_typing import HexAddress
 from tradingstrategy.chain import ChainId
 
 from eth_defi.gas import estimate_gas_fees
@@ -18,11 +19,12 @@ from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniv
 from tradingstrategy.pair import PandasPairUniverse
 
 from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
-from tradeexecutor.ethereum.routing_state import EthereumRoutingState
+from tradeexecutor.ethereum.routing_state import EthereumRoutingStateBase
 
 logger = logging.getLogger(__name__)
 
-class EthereumRoutingModel(RoutingModel):
+
+class RoutingModelBase(RoutingModel):
     """A simple router that does not optimise the trade execution cost. Designed for uniswap-v2 forks.
 
     - Able to trade on multiple exchanges
@@ -67,19 +69,29 @@ class EthereumRoutingModel(RoutingModel):
             Lowercase.
         """
 
-        super().__init__(allowed_intermediary_pairs, reserve_token_address)
+        assert type(allowed_intermediary_pairs) == dict
+        assert type(reserve_token_address) == str
+
+        assert reserve_token_address.lower() == reserve_token_address, "reserve token address must be specified as lower case"
+
+        self.allowed_intermediary_pairs = self.convert_address_dict_to_lower(allowed_intermediary_pairs)
         
+        self.reserve_token_address = reserve_token_address
         self.chain_id = chain_id
     
-    
+    def get_reserve_asset(self, pair_universe: PandasPairUniverse) -> AssetIdentifier:
+        """Translate our reserve token address tok an asset description."""
+        assert pair_universe is not None, "Pair universe missing"
+        reserve_token = pair_universe.get_token(self.reserve_token_address)
+        assert reserve_token, f"Pair universe does not contain our reserve asset {self.reserve_token_address}"
+        return translate_token(reserve_token)
 
     def make_direct_trade(self,
-                          routing_state: EthereumRoutingState,
+                          routing_state: EthereumRoutingStateBase,
                           target_pair: TradingPairIdentifier,
                           reserve_asset: AssetIdentifier,
                           reserve_amount: int,
                           max_slippage: float,
-                          address_map: Dict,
                           check_balances=False,
                           ) -> List[BlockchainTransaction]:
         """Prepare a trade where target pair has out reserve asset as a quote token.
@@ -87,17 +99,9 @@ class EthereumRoutingModel(RoutingModel):
         :return:
             List of approval transactions (if any needed)
         """
-        uniswap = routing_state.get_uniswap_for_pair(address_map, target_pair)
+        uniswap = routing_state.get_uniswap_for_pair(self.factory_router_map, target_pair)
         token_address = reserve_asset.address
-        
-        # TODO find better way of doing this. Use inheritance?
-        if hasattr(uniswap, "router"):
-            txs = routing_state.ensure_token_approved(token_address, uniswap.router.address)
-        elif hasattr(uniswap, "swap_router"):
-            txs = routing_state.ensure_token_approved(token_address, uniswap.swap_router.address)
-        else:
-            raise TypeError("Incorrect Uniswap Instance provided. Can't get router.")
-            
+        txs = routing_state.ensure_token_approved(token_address, uniswap.router.address)
         txs += routing_state.trade_on_router_two_way(
             uniswap,
             target_pair,
@@ -109,15 +113,14 @@ class EthereumRoutingModel(RoutingModel):
         return txs
 
     def make_multihop_trade(self,
-                          routing_state: EthereumRoutingState, # doesn't get full typing
-                              # EthereumRoutingState throws error
+                          routing_state: EthereumRoutingStateBase, # doesn't get full typing
+                              # EthereumRoutingStateBase throws error
                               # due to circular import
                           target_pair: TradingPairIdentifier,
                           intermediary_pair: TradingPairIdentifier,
                           reserve_asset: AssetIdentifier,
                           reserve_amount: int,
                           max_slippage: float,
-                          address_map: Dict,
                           check_balances=False,
                           ) -> List[BlockchainTransaction]:
         """Prepare a trade where target pair has out reserve asset as a quote token.
@@ -125,17 +128,9 @@ class EthereumRoutingModel(RoutingModel):
         :return:
             List of approval transactions (if any needed)
         """
-        uniswap = routing_state.get_uniswap_for_pair(address_map, target_pair)
+        uniswap = routing_state.get_uniswap_for_pair(self.factory_router_map, target_pair)
         token_address = reserve_asset.address
-        
-        # TODO find better way of doing this. Use inheritance?
-        if hasattr(uniswap, "router"):
-            txs = routing_state.ensure_token_approved(token_address, uniswap.router.address)
-        elif hasattr(uniswap, "swap_router"):
-            txs = routing_state.ensure_token_approved(token_address, uniswap.swap_router.address)
-        else:
-            raise TypeError("Incorrect Uniswap Instance provided. Can't get router.")
-        
+        txs = routing_state.ensure_token_approved(token_address, uniswap.router.address)
         txs += routing_state.trade_on_router_three_way(
             uniswap,
             target_pair,
@@ -148,7 +143,7 @@ class EthereumRoutingModel(RoutingModel):
         return txs
 
     def trade(self,
-              routing_state: EthereumRoutingState,
+              routing_state: EthereumRoutingStateBase,
               target_pair: TradingPairIdentifier,
               reserve_asset: AssetIdentifier,
               reserve_asset_amount: int,  # Raw amount of the reserve asset
@@ -207,7 +202,7 @@ class EthereumRoutingModel(RoutingModel):
     
     def execute_trades_internal(self,
                        pair_universe: PandasPairUniverse,
-                       routing_state: EthereumRoutingState,
+                       routing_state: EthereumRoutingStateBase,
                        trades: List[TradeExecution],
                        check_balances=False):
         """Split for testability.
@@ -279,7 +274,7 @@ class EthereumRoutingModel(RoutingModel):
         # We can start to execute transactions.
 
     def setup_trades(self,
-                     routing_state: EthereumRoutingState,
+                     routing_state: EthereumRoutingStateBase,
                      trades: List[TradeExecution],
                      check_balances=False):
         """Strategy and live execution connection.
@@ -305,11 +300,11 @@ class EthereumRoutingModel(RoutingModel):
     def create_routing_state(self,
                              universe: StrategyExecutionUniverse,
                              execution_details: dict,
-                             Routing_State: Type[EthereumRoutingState] 
+                             StateClass: Type[EthereumRoutingStateBase]
                              # Doesn't get full typing
                              # Type[UniswapV2RoutingState] | Type[UniswapV3RoutingState]
                              # throws error due to circular import
-                             ) -> EthereumRoutingState:
+                             ) -> EthereumRoutingStateBase:
         """Create a new routing state for this cycle.
 
         - Connect routing to web3 and hot wallet
@@ -325,7 +320,9 @@ class EthereumRoutingModel(RoutingModel):
 
         web3 = execution_details["web3"]
 
-        # Hot wallet is not present in dummy execution model
+        # hot_wallet is not available in DummyExecutionModel,
+        # but is None. DummyExecutionModel will still provie
+        # web3 connection.
         hot_wallet = execution_details.get("hot_wallet")
 
         fees = estimate_gas_fees(web3)
@@ -333,15 +330,45 @@ class EthereumRoutingModel(RoutingModel):
         logger.info("Gas fee estimations for chain %d: %s", web3.eth.chain_id, fees)
 
         logger.info("Estimated gas fees for chain %d: %s", web3.eth.chain_id, fees)
-        if hot_wallet is not None:
+        if hot_wallet:
             tx_builder = TransactionBuilder(web3, hot_wallet, fees)
-            routing_state = Routing_State(universe.universe.pairs, tx_builder)
+            routing_state = StateClass(universe.universe.pairs, tx_builder)
         else:
-            routing_state = Routing_State(universe.universe.pairs,
-                                          tx_builder=None,
-                                          web3=web3)
+            # Dummy execution model cannot create transactions, because it has no private key
+            routing_state = StateClass(universe.universe.pairs, web3=web3)
 
         return routing_state
+    
+    def route_pair(self, pair_universe: PandasPairUniverse, trading_pair: TradingPairIdentifier) -> Tuple[TradingPairIdentifier, Optional[TradingPairIdentifier]]:
+        """Return Uniswap routing information (path components) for a trading pair.
+
+        For three-way pairs, figure out the intermedia step.
+
+        :return:
+            (router address, target pair, intermediate pair) tuple
+        """
+
+        self.route_pair_assertions(trading_pair, pair_universe)
+        
+        reserve_asset = self.get_reserve_asset(pair_universe)
+
+        # We can directly do a two-way trade
+        if trading_pair.quote == reserve_asset:
+            return trading_pair, None
+
+        # Try to find a mid-hop pool for the trade
+        intermediate_pair_contract_address = self.allowed_intermediary_pairs.get(trading_pair.quote.address.lower())
+
+        if not intermediate_pair_contract_address:
+            raise CannotRouteTrade(f"Does not know how to trade pair {trading_pair} - supported intermediate tokens are {list(self.allowed_intermediary_pairs.keys())}")
+
+        dex_pair = pair_universe.get_pair_by_smart_contract(intermediate_pair_contract_address)
+        assert dex_pair is not None, f"Pair universe did not contain pair for a pair contract address {intermediate_pair_contract_address}, quote token is {trading_pair.quote}"
+
+        if intermediate_pair := translate_trading_pair(dex_pair):
+            return trading_pair, intermediate_pair
+        else:
+            raise CannotRouteTrade(f"Universe does not have a trading pair with smart contract address {intermediate_pair_contract_address}")
     
     def route_trade(self, pair_universe: PandasPairUniverse, trade: TradeExecution) -> Tuple[TradingPairIdentifier, Optional[TradingPairIdentifier]]:
         """Figure out how to map an abstract trade to smart contracts.
@@ -367,3 +394,19 @@ class EthereumRoutingModel(RoutingModel):
 
         # Only issue for legacy code
         assert pair_universe, "PairUniverse must be given so that we know how to route three way trades"
+        
+    @staticmethod
+    def convert_address_dict_to_lower( factory_router_map) -> dict:
+        """Convert all key addresses to lowercase to avoid mix up with Ethereum address checksums"""
+        return {k.lower(): v for k, v in factory_router_map.items()}
+    
+    @staticmethod
+    def pre_trade_assertions(reserve_asset_amount: int, max_slippage: float, target_pair: TradingPairIdentifier, reserve_asset: AssetIdentifier) -> None:
+        """Some basic assertions made at the beginning of the trade() method on child class.
+        
+        returns: None. 
+            An error will be raised during method call if assertions aren't met."""
+        assert type(reserve_asset_amount) == int
+        assert max_slippage is not None, "Max slippage must be given"
+        assert type(max_slippage) == float
+        assert reserve_asset_amount > 0, f"For sells, switch reserve_asset to different token. Got target_pair: {target_pair}, reserve_asset: {reserve_asset}, amount: {reserve_asset_amount}"

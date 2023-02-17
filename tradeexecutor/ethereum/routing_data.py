@@ -29,8 +29,9 @@ from typing import TypedDict, List
 
 from tradingstrategy.chain import ChainId
 
-from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel
+from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel, BacktestRoutingIgnoredModel
 from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2SimpleRoutingModel
+from tradeexecutor.ethereum.uniswap_v3_routing import UniswapV3SimpleRoutingModel
 from tradeexecutor.ethereum.uniswap_v3_routing import UniswapV3SimpleRoutingModel
 from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
@@ -402,7 +403,7 @@ def get_uniswap_v3_default_routing_parameters(
         "quoter": "0xb27308f9F90D607463bb33eA1BeBb41C27CE5AB6"
         # "router02":"0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45",
         # "quoterV2":"0x61fFE014bA17989E743c5F6cB21bF9697530B21e"
-    }
+    } # TODO create address_map class
 
     return {
         "chain_id": ChainId.ethereum,
@@ -449,6 +450,10 @@ def validate_reserve_currency(
 ):
     """Assert that reserve currency matches routing type"""
 
+    if routing_type == TradeRouting.ignore:
+        # Backtesting that does not use routing
+        return
+
     # busd
     if routing_type in {TradeRouting.pancakeswap_busd, TradeRouting.uniswap_v3_busd}:
         if reserve_currency != ReserveCurrency.busd:
@@ -487,12 +492,17 @@ def validate_reserve_currency(
 
 
 def get_backtest_routing_model(
-    routing_type: TradeRouting, reserve_currency: ReserveCurrency
-) -> BacktestRoutingModel:
+    routing_type: TradeRouting,
+    reserve_currency: ReserveCurrency
+) -> BacktestRoutingModel | BacktestRoutingIgnoredModel:
     """Get routing options for backtests.
 
     At the moment, just create a real router and copy parameters from there.
     """
+
+    if routing_type == TradeRouting.ignore:
+        params = get_uniswap_v2_default_routing_parameters(reserve_currency)
+        return BacktestRoutingIgnoredModel(params["reserve_token_address"])
 
     real_routing_model = create_compatible_routing(routing_type, reserve_currency)
     

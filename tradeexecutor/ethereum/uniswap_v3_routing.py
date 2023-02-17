@@ -14,32 +14,29 @@ from web3.exceptions import ContractLogicError
 
 from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
+from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradingstrategy.pair import PandasPairUniverse
 
 from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
 from tradeexecutor.ethereum.routing_state import (
-    EthereumRoutingStateBase, 
+    EthereumRoutingState, 
     route_tokens, # don't remove, forwarded import
     OutOfBalance, # don't remove, forwarded import
+    get_base_quote,
+    get_base_quote_intermediary
 )
-from tradeexecutor.ethereum.routing_model import RoutingModelBase
+from tradeexecutor.ethereum.routing_model import EthereumRoutingModel
 
 logger = logging.getLogger(__name__)
 
 
-class UniswapV3RoutingState(EthereumRoutingStateBase):
+class UniswapV3RoutingState(EthereumRoutingState):
     def __init__(self,
                  pair_universe: PandasPairUniverse,
                  tx_builder: Optional[TransactionBuilder]=None,
-                 swap_gas_limit=2_000_000,
-                 web3: Optional[Web3] = None,
-                 ):
-            super().__init__(
-            pair_universe=pair_universe,
-            tx_builder=tx_builder,
-            swap_gas_limit=swap_gas_limit,
-            web3=web3)
-
+                 swap_gas_limit=2_000_000):
+        super().__init__(pair_universe, tx_builder, swap_gas_limit)
+    
     def __repr__(self):
         return f"<UniswapV3RoutingState Tx builder: {self.tx_builder} web3: {self.web3}>"
     
@@ -63,7 +60,7 @@ class UniswapV3RoutingState(EthereumRoutingStateBase):
 
         hot_wallet = self.tx_builder.hot_wallet
         
-        base_token, quote_token = self.get_base_and_quote(target_pair, reserve_asset)
+        base_token, quote_token = get_base_quote(self.web3, target_pair, reserve_asset)
 
         if check_balances:
             self.check_has_enough_tokens(quote_token, reserve_amount)
@@ -75,7 +72,7 @@ class UniswapV3RoutingState(EthereumRoutingStateBase):
             quote_token=quote_token,
             amount_in=reserve_amount,
             max_slippage=max_slippage * 100,  # In BPS
-            pool_fees=target_pair.fee # TODO check in right format
+            pool_fees=[target_pair.fee] # TODO check in right format
         )
         
         return self.get_signed_tx(bound_swap_func, self.swap_gas_limit)
@@ -101,7 +98,7 @@ class UniswapV3RoutingState(EthereumRoutingStateBase):
         
         self.validate_exchange(target_pair, intermediary_pair)
 
-        base_token, quote_token, intermediary_token = self.get_base_quote_intermediary(target_pair, intermediary_pair, reserve_asset)
+        base_token, quote_token, intermediary_token = get_base_quote_intermediary(self.web3,target_pair, intermediary_pair, reserve_asset)
 
         if check_balances:
             self.check_has_enough_tokens(quote_token, reserve_amount)
@@ -121,7 +118,7 @@ class UniswapV3RoutingState(EthereumRoutingStateBase):
         
         return self.get_signed_tx(bound_swap_func, self.swap_gas_limit)
 
-class UniswapV3SimpleRoutingModel(RoutingModelBase):
+class UniswapV3SimpleRoutingModel(EthereumRoutingModel):
     """A simple router that does not optimise the trade execution cost. Designed for uniswap-v2 forks.
 
     - Able to trade on multiple exchanges
@@ -197,6 +194,48 @@ class UniswapV3SimpleRoutingModel(RoutingModelBase):
         logger.info("  Quoter: ", self.address_map["quoter"])
 
         self.reserve_asset_logging(pair_universe)
+        
+    def make_direct_trade(
+        self, 
+        routing_state: EthereumRoutingState,
+        target_pair: TradingPairIdentifier,
+        reserve_asset: AssetIdentifier,
+        reserve_amount: int,
+        max_slippage: float,
+        check_balances=False
+    ) -> list[BlockchainTransaction]:
+        
+        return super().make_direct_trade(
+            routing_state,
+            target_pair,
+            reserve_asset,
+            reserve_amount,
+            max_slippage,
+            self.address_map,
+            check_balances
+        )
+    
+    def make_multihop_trade(
+        self,
+        routing_state: EthereumRoutingState,
+        target_pair: TradingPairIdentifier,
+        intermediary_pair: TradingPairIdentifier,
+        reserve_asset: AssetIdentifier,
+        reserve_amount: int,
+        max_slippage: float,
+        check_balances=False
+    ) -> list[BlockchainTransaction]:
+        
+        return super().make_multihop_trade(
+            routing_state,
+            target_pair,
+            intermediary_pair,
+            reserve_asset,
+            reserve_amount,
+            max_slippage,
+            self.address_map,
+            check_balances
+        )
 
 def get_uniswap_for_pair(web3: Web3, address_map: dict, target_pair: TradingPairIdentifier) -> UniswapV3Deployment:
     """Get a router for a trading pair."""

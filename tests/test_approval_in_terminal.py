@@ -151,7 +151,9 @@ def weth_usdc_pair(uniswap_v2, weth_usdc_uniswap_trading_pair, asset_usdc, asset
         asset_usdc,
         weth_usdc_uniswap_trading_pair,
         uniswap_v2.factory.address,
-        int(weth_usdc_uniswap_trading_pair, 16))
+        int(weth_usdc_uniswap_trading_pair, 16),
+        fee=0.0030,
+    )
 
 
 @pytest.fixture

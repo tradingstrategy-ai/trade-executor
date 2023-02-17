@@ -148,10 +148,20 @@ class Visualisation:
 
     #: Messages for each strategy cycle.
     #:
-    #: TODO:
     #: Because we cannot use datetime.datetime directly as a key in JSON,
     #: we use UNIX timestamp here to keep our state easily serialisable.
     messages: Dict[int, List[str]] = field(default_factory=dict)
+
+    #: Extra calculation diagnostics for each strategy cycle.
+    #:
+    #: Cycle -> dict of values mappings.
+    #:
+    #: Currently used to record the alpha model state when doing
+    #: doing portfolio construction modelling.
+    #:
+    #: Because we cannot use datetime.datetime directly as a key in JSON,
+    #: we use UNIX timestamp here to keep our state easily serialisable.
+    calculations: Dict[int, dict] = field(default_factory=dict)
 
     # Extra technical indicator outputs.
     #:
@@ -177,6 +187,32 @@ class Visualisation:
         timepoint_messages = self.messages.get(timestamp, list())
         timepoint_messages.append(content)
         self.messages[timestamp] = timepoint_messages
+
+    def add_calculations(self,
+                         timestamp: datetime.datetime,
+                         cycle_calculations: dict):
+        """Update strategy cycle calculations diagnostics.
+
+        - Each strategy cycle can dump whatever intermediate
+          calculations state on the visualisation record keeping,
+          so that it can be later pulled up in the analysis.
+
+        - Currently this is used to store the alpha model calculations
+          for portfolio construction model.
+
+        :param timestamp:
+            The current strategy cycle timestamp
+
+        :param cycle_calculations:
+            The contents of the calculations.
+
+            Must be JSON serialisable dict.
+
+        """
+
+        assert isinstance(cycle_calculations, dict)
+        timestamp = convert_and_validate_timestamp_as_int(timestamp)
+        self.calculations[timestamp] = cycle_calculations
 
     def plot_indicator(self,
              timestamp: Union[datetime.datetime, pd.Timestamp],
@@ -265,3 +301,4 @@ class Visualisation:
     def get_total_points(self) -> int:
         """Get number of data points stored in all plots."""
         return sum([len(p.points) for p in self.plots.values()])
+

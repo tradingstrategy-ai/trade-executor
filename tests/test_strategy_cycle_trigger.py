@@ -16,7 +16,9 @@ from pathlib import Path
 from unittest import mock
 
 import pytest
+
 from tradeexecutor.cli.main import app
+from tradeexecutor.cli.log import setup_pytest_logging
 
 # https://docs.pytest.org/en/latest/how-to/skipping.html#skip-all-test-functions-of-a-class-or-module
 pytestmark = pytest.mark.skipif(not os.environ.get("JSON_RPC_POLYGON"), reason="Set POLYGON_JSON_RPC environment variable to run this test")
@@ -28,7 +30,15 @@ def strategy_path() -> Path:
     return Path(os.path.join(os.path.dirname(__file__), "..", "strategies", "test_only", "quickswap_dummy.py"))
 
 
+@pytest.fixture(scope="module")
+def logger(request):
+    """Setup test logger."""
+    return setup_pytest_logging(request, mute_requests=False)
+
+
+@pytest.mark.skipif(os.environ.get("SKIP_SLOW_TEST"), reason="Slow tests skipping enabled")
 def test_trading_data_availability_based_strategy_cycle_trigger(
+        logger,
         strategy_path: Path,
     ):
     """Test live decision making triggers using trading data availability endpoint

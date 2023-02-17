@@ -6,6 +6,7 @@
   WETH/USD and AAVE/USD
 
 """
+import os
 import datetime
 import random
 from decimal import Decimal
@@ -22,9 +23,11 @@ from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
+from tradeexecutor.strategy.alpha_model import AlphaModel
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
-from tradeexecutor.strategy.pandas_trader.rebalance import get_existing_portfolio_weights, rebalance_portfolio, \
-    get_weight_diffs, clip_to_normalised, BadWeightsException
+from tradeexecutor.strategy.pandas_trader.rebalance import get_existing_portfolio_weights, rebalance_portfolio_old, \
+    get_weight_diffs
+from tradeexecutor.strategy.weighting import BadWeightsException, clip_to_normalised, weight_passthrouh
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, create_pair_universe_from_code
 from tradeexecutor.testing.synthetic_ethereum_data import generate_random_ethereum_address
 from tradeexecutor.testing.synthetic_exchange_data import generate_exchange, generate_simple_routing_model
@@ -34,6 +37,10 @@ from tradingstrategy.chain import ChainId
 from tradingstrategy.exchange import Exchange
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
+
+
+# https://docs.pytest.org/en/latest/how-to/skipping.html#skip-all-test-functions-of-a-class-or-module
+pytestmark = pytest.mark.skipif(os.environ.get("TRADING_STRATEGY_API_KEY") is None, reason="Set TRADING_STRATEGY_API_KEY environment variable to run this test")
 
 
 @pytest.fixture
@@ -319,7 +326,7 @@ def test_rebalance_trades_flip_position(
     # trading universe and mock price feeds
     position_manager = PositionManager(
         start_ts + datetime.timedelta(days=1),  # Trade on t plus 1 day
-        universe,
+        universe.universe,
         state,
         pricing_model,
     )
@@ -329,7 +336,7 @@ def test_rebalance_trades_flip_position(
         aave_usdc.internal_id: 1,
     }
 
-    trades = rebalance_portfolio(
+    trades = rebalance_portfolio_old(
         position_manager,
         new_weights,
         portfolio.get_open_position_equity(),
@@ -380,7 +387,7 @@ def test_rebalance_trades_flip_position_partial(
     # trading universe and mock price feeds
     position_manager = PositionManager(
         start_ts + datetime.timedelta(days=1),  # Trade on t plus 1 day
-        universe,
+        universe.universe,
         state,
         pricing_model,
     )
@@ -391,7 +398,7 @@ def test_rebalance_trades_flip_position_partial(
         weth_usdc.internal_id: 0.7,
     }
 
-    trades = rebalance_portfolio(
+    trades = rebalance_portfolio_old(
         position_manager,
         new_weights,
         portfolio.get_open_position_equity(),
@@ -438,7 +445,7 @@ def test_rebalance_bad_weights(
     # trading universe and mock price feeds
     position_manager = PositionManager(
         start_ts + datetime.timedelta(days=1),  # Trade on t plus 1 day
-        universe,
+        universe.universe,
         state,
         pricing_model,
     )
@@ -450,8 +457,167 @@ def test_rebalance_bad_weights(
     }
 
     with pytest.raises(BadWeightsException):
-        rebalance_portfolio(
+        rebalance_portfolio_old(
             position_manager,
             new_weights,
             portfolio.get_open_position_equity(),
         )
+
+
+def test_alpha_model_trades_flip_position(
+    single_asset_portfolio: Portfolio,
+    universe,
+    pricing_model,
+    weth_usdc: TradingPairIdentifier,
+    aave_usdc: TradingPairIdentifier,
+    start_ts,
+):
+    """"Create trades for a portfolio to go from 100% ETH to 100% AAVE.
+
+    Uses AlphaModel based approach
+    """
+
+    portfolio = single_asset_portfolio
+
+    state = State(portfolio=portfolio)
+
+    # Check we have WETH-USDC open
+    position = state.portfolio.get_position_by_trading_pair(weth_usdc)
+    assert position.get_quantity() > 0
+    weth_quantity = position.get_quantity()
+
+    # Create the PositionManager that
+    # will create buy/sell trades based on our
+    # trading universe and mock price feeds
+    position_manager = PositionManager(
+        start_ts + datetime.timedelta(days=1),  # Trade on t plus 1 day
+        universe.universe,
+        state,
+        pricing_model,
+    )
+
+    # Go all in to AAVE
+    alpha_model = AlphaModel()
+    alpha_model.set_signal(aave_usdc, 1.0)
+
+    alpha_model.assign_weights()
+    alpha_model.normalise_weights()
+
+    # Load in old weight for each trading pair signal,
+    # so we can calculate the adjustment trade size
+    alpha_model.update_old_weights(state.portfolio)
+
+    # Calculate how much dollar value we want each individual position to be on this strategy cycle,
+    # based on our total available equity
+    portfolio = position_manager.get_current_portfolio()
+    portfolio_target_value = portfolio.get_open_position_equity()
+    alpha_model.calculate_target_positions(portfolio_target_value)
+
+    # Shift portfolio from current positions to target positions
+    # determined by the alpha signals (momentum)
+    trades = alpha_model.generate_rebalance_trades_and_triggers(position_manager)
+
+    assert len(trades) == 2, f"Got trades: {trades}"
+
+    # Sells go first,
+    # with 167 worth of sales
+    t = trades[0]
+    assert t.is_sell()
+    assert t.is_planned()
+    assert t.pair == weth_usdc
+    assert t.planned_price == 1660
+    assert t.planned_quantity == -weth_quantity
+    assert t.get_planned_value() == 157.7
+
+    # Buy comes next,
+    # with approx the same value
+    t = trades[1]
+    assert t.is_buy()
+    assert t.is_planned()
+    assert t.planned_price == 100
+    assert t.get_planned_value() == 157.7
+
+
+def test_alpha_model_flip_position_partially(
+    single_asset_portfolio: Portfolio,
+    universe,
+    pricing_model,
+    weth_usdc: TradingPairIdentifier,
+    aave_usdc: TradingPairIdentifier,
+    start_ts,
+):
+    """"Create trades for a portfolio to go from 100% ETH to 50% AAVE / 50% ETH.
+
+    Uses AlphaModel based approach.
+    """
+
+    portfolio = single_asset_portfolio
+
+    state = State(portfolio=portfolio)
+
+    # Check we have WETH-USDC open
+    position = state.portfolio.get_position_by_trading_pair(weth_usdc)
+    assert position.get_quantity() > 0
+    weth_quantity = position.get_quantity()
+    assert position.get_value() == pytest.approx(157.7)
+
+    # Create the PositionManager that
+    # will create buy/sell trades based on our
+    # trading universe and mock price feeds
+    position_manager = PositionManager(
+        start_ts + datetime.timedelta(days=1),  # Trade on t plus 1 day
+        universe.universe,
+        state,
+        pricing_model,
+    )
+
+    # Go 50% in to AAVE
+    alpha_model = AlphaModel()
+    alpha_model.set_signal(aave_usdc, 0.5)
+    alpha_model.set_signal(weth_usdc, 0.5)
+    alpha_model.assign_weights(method=weight_passthrouh)
+    alpha_model.normalise_weights()
+
+    # Check we have 50% / 50%
+    for signal in alpha_model.iterate_signals():
+        assert signal.raw_weight == 0.5, f"Bad signal: {signal}"
+        assert signal.normalised_weight == 0.5, f"Bad signal: {signal}"
+
+    # Load in old weight for each trading pair signal,
+    # so we can calculate the adjustment trade size
+    alpha_model.update_old_weights(state.portfolio)
+    assert alpha_model.get_signal_by_pair(weth_usdc).old_value == pytest.approx(157.7)
+
+    # Calculate how much dollar value we want each individual position to be on this strategy cycle,
+    # based on our total available equity
+    portfolio = position_manager.get_current_portfolio()
+    portfolio_target_value = portfolio.get_open_position_equity()
+    alpha_model.calculate_target_positions(portfolio_target_value)
+
+    # Check we have 50% / 50%
+    assert alpha_model.get_signal_by_pair(weth_usdc).position_adjust < 0
+    assert alpha_model.get_signal_by_pair(aave_usdc).position_adjust > 0
+
+    # Shift portfolio from current positions to target positions
+    # determined by the alpha signals (momentum)
+    trades = alpha_model.generate_rebalance_trades_and_triggers(position_manager)
+
+    assert len(trades) == 2, f"Got trades: {trades}"
+
+    # Sells go first,
+    # sell 50% of ETH
+    t = trades[0]
+    assert t.is_sell()
+    assert t.is_planned()
+    assert t.pair == weth_usdc
+    assert t.planned_price == 1660
+    assert t.planned_quantity == pytest.approx(-weth_quantity / 2)
+    assert t.get_planned_value() == 78.85
+
+    # Buy comes next,
+    # buy 50% of AAVE
+    t = trades[1]
+    assert t.is_buy()
+    assert t.is_planned()
+    assert t.planned_price == 100
+    assert t.get_planned_value() == 78.85

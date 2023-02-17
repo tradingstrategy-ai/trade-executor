@@ -7,42 +7,12 @@ from typing import List, Dict
 
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.trade import TradeExecution
+from tradeexecutor.state.types import USDollarAmount
+from tradeexecutor.strategy.alpha_model import AlphaModel
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
-
+from tradeexecutor.strategy.weighting import check_normalised_weights
 
 logger = logging.getLogger(__name__)
-
-
-class BadWeightsException(Exception):
-    """Sum of weights not 1."""
-
-
-
-def check_normalised_weights(weights: Dict[int, float], epsilon=0.0001):
-    """Check that the sum of weights is good."""
-
-    total = sum(weights.values())
-    if abs(total - 1) > epsilon:
-        raise BadWeightsException(f"Total sum of normalised portfolio weights was not 1."
-                                  f"Sum: {total}")
-
-
-def clip_to_normalised(weights: Dict[int, float]) -> Dict[int, float]:
-    """If the sum of the weights are not exactly 1, then decrease the largest member to make the same sum 1 precise.
-
-    """
-    total = sum(weights.values())
-    diff = total - 1
-    largest = max(weights.items(), key=lambda x: x[1])
-
-    clipped = largest[1] - diff
-
-    fixed = weights.copy()
-    fixed[largest[0]] = clipped
-
-    total = sum(fixed.values())
-    assert total == 1
-    return fixed
 
 
 def get_existing_portfolio_weights(portfolio: Portfolio) -> Dict[int, float]:
@@ -85,13 +55,17 @@ def get_weight_diffs(
     return diffs
 
 
-def rebalance_portfolio(
+def rebalance_portfolio_old(
         position_manager: PositionManager,
         new_weights: Dict[int, float],
-        portfolio_total_value: float,
-        min_trade_threshold=10.0,
+        portfolio_total_value: USDollarAmount,
+        min_trade_threshold: USDollarAmount = 10.0,
 ) -> List[TradeExecution]:
     """Rebalance a portfolio based on alpha model weights.
+
+    .. warning ::
+
+        This is old deprecated method. Do not use anymore.
 
     This will generate
 

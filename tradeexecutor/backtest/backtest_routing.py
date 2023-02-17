@@ -1,32 +1,19 @@
 """Find routes between historical pairs."""
 
 import logging
-from collections import defaultdict
 from decimal import Decimal
-from typing import Dict, Set, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
-from eth_typing import HexAddress, ChecksumAddress
-from web3 import Web3
-from web3.contract import Contract
 
-from eth_defi.abi import get_deployed_contract
-from eth_defi.gas import estimate_gas_fees
-from eth_defi.token import fetch_erc20_details
-from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, fetch_deployment
-from eth_defi.uniswap_v2.swap import swap_with_slippage_protection
 from tradeexecutor.backtest.simulated_wallet import SimulatedWallet
-from tradeexecutor.ethereum.execution import get_token_for_asset
-from tradeexecutor.ethereum.tx import TransactionBuilder
-from tradeexecutor.ethereum.routing_model import RoutingModelBase
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
 from tradeexecutor.state.trade import TradeExecution
-from tradeexecutor.strategy.routing import RoutingModel, RoutingState, CannotRouteTrade
-from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_trading_pair, \
-    translate_token
+from tradeexecutor.strategy.routing import RoutingModel, RoutingState
+from tradeexecutor.ethereum.routing_model import EthereumRoutingModel
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_token
 from tradingstrategy.pair import PandasPairUniverse
 
-from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
 
 
 logger = logging.getLogger(__name__)
@@ -42,6 +29,8 @@ class BacktestRoutingState(RoutingState):
                  pair_universe: PandasPairUniverse,
                  wallet: SimulatedWallet,
                  ):
+        super().__init__(pair_universe)
+        
         self.pair_universe = pair_universe
         self.wallet = wallet
 
@@ -74,17 +63,8 @@ class BacktestRoutingState(RoutingState):
             and raise exception if not.
         """
 
-        if reserve_asset == target_pair.quote:
-            # Buy with e.g. BUSD
-            base_token = get_token_for_asset(web3, target_pair.base)
-            quote_token = get_token_for_asset(web3, target_pair.quote)
-        elif reserve_asset == target_pair.base:
-            # Sell, flip the direction
-            base_token = get_token_for_asset(web3, target_pair.quote)
-            quote_token = get_token_for_asset(web3, target_pair.base)
-        else:
-            raise RuntimeError(f"Cannot trade {target_pair}")
-
+        base_token, quote_token = self.get_base_quote(self.web3, target_pair, reserve_asset)
+        
         if check_balances:
             self.check_has_enough_tokens(quote_token, reserve_amount)
 
@@ -135,27 +115,14 @@ class BacktestRoutingModel(RoutingModel):
         """
 
         assert type(factory_router_map) == dict
-        assert type(allowed_intermediary_pairs) == dict
-        assert type(reserve_token_address) == str
-
-        assert reserve_token_address.lower() == reserve_token_address
-
         # Convert all key addresses to lowercase to
         # avoid mix up with Ethereum address checksums
-        self.factory_router_map = RoutingModelBase.convert_address_dict_to_lower(factory_router_map)
-        self.allowed_intermediary_pairs = RoutingModelBase.convert_address_dict_to_lower(allowed_intermediary_pairs)
-        self.reserve_token_address = reserve_token_address
+        self.factory_router_map = self.convert_address_dict_to_lower(factory_router_map)
+
         self.trading_fee = trading_fee
 
     def get_default_trading_fee(self) -> Optional[float]:
         return self.trading_fee
-
-    def get_reserve_asset(self, pair_universe: PandasPairUniverse) -> AssetIdentifier:
-        """Translate our reserve token address tok an asset description."""
-        assert pair_universe is not None, "Pair universe missing"
-        reserve_token = pair_universe.get_token(self.reserve_token_address)
-        assert reserve_token, f"Pair universe does not contain our reserve asset {self.reserve_token_address}"
-        return translate_token(reserve_token)
 
     def trade(self,
               routing_state: BacktestRoutingState, # TODO remove
@@ -185,7 +152,7 @@ class BacktestRoutingModel(RoutingModel):
             These transactions, like approve() may relate to the earlier
             transactions in the `routing_state`.
         """
-        RoutingModelBase.pre_trade_assertions(reserve_asset_amount, max_slippage, target_pair, reserve_asset)
+        self.pre_trade_assertions(reserve_asset_amount, max_slippage, target_pair, reserve_asset)
 
         # Our reserves match directly the asset on trading pair
         # -> we can do one leg trade
@@ -212,16 +179,111 @@ class BacktestRoutingModel(RoutingModel):
                 intermediary_pair=intermediary_pair,
             )
 
-    def route_pair(self, pair_universe: PandasPairUniverse, trading_pair: TradingPairIdentifier) \
-            -> Tuple[TradingPairIdentifier, Optional[TradingPairIdentifier]]:
-        """Return Uniswap routing information (path components) for a trading pair.
+    def setup_internal(self, routing_state: RoutingState, trade: TradeExecution):
+        """Simulate trade braodcast and mark it as success."""
 
-        For three-way pairs, figure out the intermedia step.
+        # 2. Capital allocation
+        nonce, tx_hash = routing_state.wallet.fetch_nonce_and_tx_hash()
 
-        :return:
-            (router address, target pair, intermediate pair) tuple
+        trade.blockchain_transactions = [
+            BlockchainTransaction(
+                nonce=nonce,
+                tx_hash=tx_hash,
+            )
+        ]
+
+    def setup_trades(self,
+                     routing_state: BacktestRoutingState,
+                     trades: List[TradeExecution],
+                     check_balances=False):
+        """Strategy and live execution connection.
+
+        Turns abstract strategy trades to real blockchain transactions.
+
+        - Modifies TradeExecution objects in place and associates a blockchain transaction for each
+
+        - Signs tranactions from the hot wallet and broadcasts them to the network
+
+        :param check_balances:
+            Check that the wallet has enough reserves to perform the trades
+            before executing them. Because we are selling before buying.
+            sometimes we do no know this until the sell tx has been completed.
+
+        :param max_slippage:
+            Max slippaeg tolerated per trade. 0.01 is 1%.
+
         """
-        return RoutingModelBase.route_pair(pair_universe, trading_pair)
+        for t in trades:
+            self.setup_internal(routing_state, t)
+
+    def create_routing_state(self,
+                     universe: TradingStrategyUniverse,
+                     execution_details: dict) -> BacktestRoutingState:
+        """Create a new routing state for this cycle."""
+        assert isinstance(universe, TradingStrategyUniverse)
+        wallet = execution_details["wallet"]
+        return BacktestRoutingState(universe.universe.pairs, wallet)
+
+
+class BacktestRoutingIgnoredModel(BacktestRoutingModel):
+    """A router that assumes all trading pairs are tradeable with the resever currency.
+
+    This is a hypotethical router for backtest different trading scenarios
+    where there is not yet information how the trade could be executed
+    in real life.
+
+    - A router that assumes trades can be just "done"
+
+    This ignores realities of
+
+    - Tokens not portable across chains
+
+    - Trading pairs having multiple legs (USDC->WETH->AAVE)
+
+    - Use trading fee assuming we would trade any pair without hops
+=    """
+
+    def __init__(self, reserve_token_address: str):
+        RoutingModel.__init__(self, dict(), reserve_token_address)
+
+    def trade(self,
+              routing_state: BacktestRoutingState, # TODO remove
+              target_pair: TradingPairIdentifier,
+              reserve_asset: AssetIdentifier,
+              reserve_asset_amount: Decimal,  # Raw amount of the reserve asset
+              max_slippage: float=0.01,
+              check_balances=False,
+              intermediary_pair: Optional[TradingPairIdentifier] = None,
+              ) -> List[BlockchainTransaction]:
+        """Make a simplified trade.
+
+        Just fill in the blanks on `TradeExecution`.
+
+        :param routing_state:
+        :param target_pair:
+        :param reserve_asset:
+        :param reserve_asset_amount:
+        :param max_slippage:
+            Max slippage per trade. 0.01 is 1%.
+        :param check_balances:
+            Check on-chain balances that the account has enough tokens
+            and raise exception if not.
+        :param intermediary_pair:
+            Ignore
+        :return:
+            List of prepared transactions to make this trade.
+            These transactions, like approve() may relate to the earlier
+            transactions in the `routing_state`.
+        """
+        self.pre_trade_assertions(reserve_asset_amount, max_slippage, target_pair, reserve_asset)
+
+        return self.routing_state.create_and_complete_trade(
+            target_pair,
+            reserve_asset,
+            reserve_asset_amount,
+            max_slippage=max_slippage,
+            check_balances=check_balances,
+        )
 
     def setup_internal(self, routing_state: RoutingState, trade: TradeExecution):
         """Simulate trade braodcast and mark it as success."""
