@@ -120,7 +120,11 @@ class TradePricing:
         self._path = value
     
     def __repr__(self):
-        fee_list = [fee or 0 for fee in self.pair_fee]
+        if not self.pair_fee:
+            fee_list = [0]
+        else:
+            fee_list = [fee or 0 for fee in self.pair_fee]
+            
         return f"<TradePricing:{self.price} mid:{self.mid_price} fee:{format_fees_percentage(fee_list)}>"
     
     def __post_init__(self):
