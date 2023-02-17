@@ -13,8 +13,35 @@ from tradeexecutor.strategy.execution_model import ExecutionModel, AutoClosingOr
 
 logger = logging.getLogger(__name__)
 
+
 class BacktestExecutionFailed(Exception):
     """Something went wrong in the backtest simulation."""
+
+
+def fix_sell_token_amount(
+        current_balance: Decimal,
+        order_quantity: Decimal,
+        epsilon=Decimal(10**-9)
+) -> Decimal:
+    """Fix rounding errors that may cause wallet dust overflow.
+
+    TODO: This should be handled other part of the system.
+    """
+
+    assert  isinstance(current_balance, Decimal)
+    assert  isinstance(order_quantity, Decimal)
+
+    # Not trying to sell more than we have
+    if order_quantity <= current_balance:
+        return order_quantity
+
+    # We are trying to sell more we have
+    diff = abs(current_balance - order_quantity)
+    if diff < epsilon:
+        # Fix to be within the epslion diff
+        return current_balance
+
+    return order_quantity
 
 
 class BacktestExecutionModel(ExecutionModel):
@@ -95,7 +122,7 @@ class BacktestExecutionModel(ExecutionModel):
             executed_quantity = trade.planned_quantity
         else:
             assert position and position.is_open(), f"Tried to execute sell on position that is not open: {trade}"
-            executed_quantity = trade.planned_quantity
+            executed_quantity = fix_sell_token_amount(base_balance, trade.planned_quantity)
             executed_reserve = abs(Decimal(trade.planned_quantity) * Decimal(trade.planned_price))
         try:
             if trade.is_buy():

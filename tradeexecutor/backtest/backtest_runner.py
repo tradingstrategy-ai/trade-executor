@@ -363,13 +363,14 @@ def run_backtest_inline(
     initial_deposit: float,
     reserve_currency: ReserveCurrency,
     trade_routing: Optional[TradeRouting],
-    create_trading_universe: Optional[CreateTradingUniverseProtocol]=None,
-    universe: Optional[TradingStrategyUniverse]=None,
-    routing_model: Optional[BacktestRoutingModel]=None,
+    create_trading_universe: Optional[CreateTradingUniverseProtocol] = None,
+    universe: Optional[TradingStrategyUniverse] = None,
+    routing_model: Optional[BacktestRoutingModel] = None,
     max_slippage=0.01,
-    candle_time_frame: Optional[TimeBucket]=None,
+    candle_time_frame: Optional[TimeBucket] = None,
     log_level=logging.WARNING,
     data_preload=True,
+    data_delay_tolerance: Optional[pd.Timedelta] = None,
     name: str="backtest",
 ) -> Tuple[State, TradingStrategyUniverse, dict]:
     """Run backtests for given decide_trades and create_trading_universe functions.
@@ -428,6 +429,20 @@ def run_backtest_inline(
         Before the backtesting begins, load and cache datasets
         with nice progress bar to the user.
 
+    :param data_delay_tolerance:
+        What is the maximum hours/days lookup we allow in the backtesting when we ask for the latest price of an asset.
+
+        The asset price fetch might fail due to sparse candle data - trades have not been made or the blockchain was halted during the price look-up period.
+        Because there are no trades we cannot determine what was the correct asset price using {data_delay_tolerance} data tolerance delay.
+
+        The default value `None` tries to guess the value based on the univerity candle timeframe,
+        but often this guess is incorrect as only analysing every pair data gives a correct answer.
+
+        The workarounds include ignoring assets in your backtest that might not have price data (look up they have enough valid candles
+        at the decide_trades timestamp) or simply increasing this parameter.
+
+        This parameter is passed to :py:class:`tradeexecutor.backtest.backtest_pricing.BacktestSimplePricingModel`.
+
     :return:
         tuple (State of a completely executed strategy, trading strategy universe, debug dump dict)
     """
@@ -461,10 +476,13 @@ def run_backtest_inline(
             assert reserve_currency, "Reserve current must be given to generate routing model"
             routing_model = get_backtest_routing_model(trade_routing, reserve_currency)
 
+        if data_delay_tolerance is None:
+            data_delay_tolerance = guess_data_delay_tolerance(universe)
+
         pricing_model = BacktestSimplePricingModel(
             universe.universe.candles,
             routing_model,
-            data_delay_tolerance=guess_data_delay_tolerance(universe),
+            data_delay_tolerance=data_delay_tolerance,
         )
     else:
         assert create_trading_universe, "Must give create_trading_universe if no universe given"

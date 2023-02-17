@@ -393,7 +393,16 @@ class PositionManager:
         except CandleSampleUnavailable as e:
             # Backtesting cannot fetch price for an asset,
             # probably not enough data and the pair is trading early?
-            raise CandleSampleUnavailable(f"Could not fetch price for {pair}") from e
+            data_delay_tolerance = getattr(self.pricing_model, "data_delay_tolerance", None)
+            raise CandleSampleUnavailable(
+                f"Could not fetch price for {pair} at {self.timestamp}\n"
+                f"\n"
+                f"This is usually due to sparse candle data - trades have not been made or the blockchain was halted during the price look-up period.\n"
+                f"Because there are no trades we cannot determine what was the correct asset price using {data_delay_tolerance} data tolerance delay.\n"
+                f"\n"
+                f"You can work around this by checking that any trading pair candles are fresh enough in your decide_trades() function\n"
+                f"or increase the parameter in BacktestSimplePricingModel(data_delay_tolerance) or run_backtest_inline(data_delay_tolerance)\n"
+            ) from e
 
         price = price_structure.price
 
