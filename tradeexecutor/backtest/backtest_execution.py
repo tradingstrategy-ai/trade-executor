@@ -13,8 +13,50 @@ from tradeexecutor.strategy.execution_model import ExecutionModel, AutoClosingOr
 
 logger = logging.getLogger(__name__)
 
+
 class BacktestExecutionFailed(Exception):
     """Something went wrong in the backtest simulation."""
+
+
+def fix_sell_token_amount(
+        current_balance: Decimal,
+        order_quantity: Decimal,
+        epsilon=Decimal(10**-9)
+) -> Tuple[Decimal, bool]:
+    """Fix rounding errors that may cause wallet dust overflow.
+
+    TODO: This should be handled other part of the system.
+
+    :return:
+        (new amount, was fixed) tuple
+    """
+
+    assert isinstance(current_balance, Decimal)
+    assert isinstance(order_quantity, Decimal)
+    assert order_quantity < 0
+
+    # Not trying to sell more than we have
+    if abs(order_quantity) <= current_balance:
+        return order_quantity, False
+
+    # We are trying to sell more we have
+    diff = abs(current_balance + order_quantity)
+    if diff <= epsilon:
+        # Fix to be within the epsilon diff
+        logger.warning("Fixing token sell amount to be within the epsilon. Wallet balance: %s, sell order quantity: %s, diff: %s",
+                       current_balance,
+                       order_quantity,
+                       diff
+                       )
+        return -current_balance, True
+
+    logger.warning("Trying to sell more than we have. Wallet balance: %s, sell order quantity: %s, diff: %s, epsilon: %s",
+                   current_balance,
+                   order_quantity,
+                   diff,
+                   epsilon
+                   )
+    return order_quantity, False
 
 
 class BacktestExecutionModel(ExecutionModel):
@@ -46,12 +88,28 @@ class BacktestExecutionModel(ExecutionModel):
 
     def simulate_trade(self,
                        ts: datetime.datetime,
-                       state: State, trade:
-            TradeExecution) -> Tuple[Decimal, Decimal]:
+                       state: State,
+                       idx: int,
+                       trade: TradeExecution) -> Tuple[Decimal, Decimal]:
         """Set backtesting trade state from planned to executed.
         
         Currently, always executes trades "perfectly" i.e. no different slipppage
         that was planned, etc.
+
+        :poram ts:
+            Strategy cycle timestamp
+
+        :param state:
+            Current backtesting state
+
+        :param idx:
+            Index of the trade to be executed on this cycle
+
+        :param trade:
+            The actual trade
+
+        :return:
+            Executed quantity and executed reserve amounts
         """
 
         assert trade.get_status() == TradeStatus.started
@@ -74,12 +132,13 @@ class BacktestExecutionModel(ExecutionModel):
 
         position = state.portfolio.get_existing_open_position_by_trading_pair(trade.pair)
 
+        sell_amount_epsilon_fix = False
         if trade.is_buy():
             executed_reserve = trade.planned_reserve
             executed_quantity = trade.planned_quantity
         else:
             assert position and position.is_open(), f"Tried to execute sell on position that is not open: {trade}"
-            executed_quantity = trade.planned_quantity
+            executed_quantity, sell_amount_epsilon_fix = fix_sell_token_amount(base_balance, trade.planned_quantity)
             executed_reserve = abs(Decimal(trade.planned_quantity) * Decimal(trade.planned_price))
         try:
             if trade.is_buy():
@@ -91,18 +150,22 @@ class BacktestExecutionModel(ExecutionModel):
 
         except OutOfSimulatedBalance as e:
             # Better error messages to helping out why backtesting failed
-            raise BacktestExecutionFailed(
-                f"Execution of trade {trade} failed.\n"
-                f"Trade type: {trade.trade_type.name}.\n"
-                f"Wallet base balance: {base_balance} {base.token_symbol}.\n"
-                f"Wallet quote balance: {quote_balance} {quote.token_symbol}.\n"
-                f"Wallet reserve balance: {reserve_balance} {reserve.token_symbol}.\n"
-                f"Executed base amount: {executed_quantity} {base.token_symbol}\n"
-                f"Executed reserve amount: {executed_reserve} {reserve.token_symbol}\n"
-                f"Planned base amount: {trade.planned_quantity} {base.token_symbol}\n"
-                f"Planned reserve amount: {trade.planned_reserve} {reserve.token_symbol}\n"
-                f"Position quantity: {position and position.get_quantity() or '-'} {base.token_symbol}\n"
-                f"Out of balance: {e}\n"
+            raise BacktestExecutionFailed(f"\n"
+                f"  Trade #{idx} failed on strategy cycle {ts}\n"
+                f"  Execution of trade {trade} failed.\n"
+                f"  Pair: {trade.pair}.\n"
+                f"  Trade type: {trade.trade_type.name}.\n"
+                f"  Trade quantity: {trade.planned_quantity}, reserve: {trade.planned_reserve} {trade.reserve_currency}.\n"
+                f"  Wallet base balance: {base_balance} {base.token_symbol} ({base.address}).\n"
+                f"  Wallet quote balance: {quote_balance} {quote.token_symbol} ({quote.address}).\n"
+                f"  Wallet reserve balance: {reserve_balance} {reserve.token_symbol} ({reserve.address}).\n"
+                f"  Executed base amount: {executed_quantity} {base.token_symbol} ({base.address})\n"
+                f"  Executed reserve amount: {executed_reserve} {reserve.token_symbol} ({reserve.address})\n"
+                f"  Planned base amount: {trade.planned_quantity} {base.token_symbol} ({base.address})\n"
+                f"  Planned reserve amount: {trade.planned_reserve} {reserve.token_symbol} ({reserve.address})\n"
+                f"  Existing position quantity: {position and position.get_quantity() or '-'} {base.token_symbol}\n"
+                f"  Sell amount epsilon fix applied: {sell_amount_epsilon_fix}.\n"
+                f"  Out of balance: {e}\n"
             ) from e
 
         assert abs(executed_quantity) > 0
@@ -145,10 +208,10 @@ class BacktestExecutionModel(ExecutionModel):
                 if not self.is_stop_loss_supported():
                     raise AutoClosingOrderUnsupported("Trade was marked with stop loss/take profit even though backtesting trading universe does have price feed for stop loss checks available.")
 
-        for trade in trades:
+        for idx, trade in enumerate(trades):
 
             # 3. Simulate tx broadcast
-            executed_quantity, executed_reserve = self.simulate_trade(ts, state, trade)
+            executed_quantity, executed_reserve = self.simulate_trade(ts, state, idx, trade)
 
             # 4. execution is dummy operation where planned execution becomes actual execution
             # Assume we always get the same execution we planned

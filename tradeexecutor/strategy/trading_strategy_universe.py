@@ -13,7 +13,7 @@ from abc import abstractmethod
 from dataclasses import dataclass
 import logging
 from math import isnan
-from typing import List, Optional, Callable, Tuple, Set, Dict, Iterable
+from typing import List, Optional, Callable, Tuple, Set, Dict, Iterable, Collection
 
 import pandas as pd
 
@@ -28,7 +28,8 @@ from tradingstrategy.client import Client
 from tradingstrategy.exchange import ExchangeUniverse, Exchange, ExchangeType
 from tradingstrategy.liquidity import GroupedLiquidityUniverse
 from tradingstrategy.pair import DEXPair, PandasPairUniverse, resolve_pairs_based_on_ticker, \
-    filter_for_exchanges, filter_for_quote_tokens, StablecoinFilteringMode, filter_for_stablecoins
+    filter_for_exchanges, filter_for_quote_tokens, StablecoinFilteringMode, filter_for_stablecoins, \
+    HumanReadableTradingPairDescription
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
 from tradingstrategy.utils.groupeduniverse import filter_for_pairs
@@ -99,6 +100,14 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
     #: E.g. for 90 days you can use `datetime.timedelta(days=90)`
     required_history_period: Optional[datetime.timedelta] = None
 
+    def __repr__(self):
+        pair_count = self.universe.pairs.get_count()
+        if pair_count <= 3:
+            pair_tickers = [f"{p.base_token_symbol}-{p.quote_token_symbol}" for p in self.universe.pairs.iterate_pairs()]
+            return f"<TradingStrategyUniverse for {', '.join(pair_tickers)}>"
+        else:
+            return f"<TradingStrategyUniverse for {self.universe.pairs.get_count()} pairs>"
+
     def clone(self) -> "TradingStrategyUniverse":
         """Create a copy of this universe.
 
@@ -121,14 +130,6 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             reserve_assets=self.reserve_assets,
             required_history_period=self.required_history_period,
         )
-
-    def __repr__(self):
-        pair_count = self.universe.pairs.get_count()
-        if pair_count <= 3:
-            pair_tickers = [f"{p.base_token_symbol}-{p.quote_token_symbol}" for p in self.universe.pairs.iterate_pairs()]
-            return f"<TradingStrategyUniverse for {', '.join(pair_tickers)}>"
-        else:
-            return f"<TradingStrategyUniverse for {self.universe.pairs.get_count()} pairs>"
 
     def get_pair_count(self) -> int:
         return self.universe.pairs.get_count()
@@ -178,7 +179,26 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             if a.decimals == 0:
                 raise TradingUniverseIssue(f"Reserve asset lacks decimals {a}")
 
-    @staticmethod
+    def get_pair_by_human_description(self, desc: HumanReadableTradingPairDescription) -> TradingPairIdentifier:
+        """Get pair by its human-readable description.
+
+        See :py:meth:`tradingstrategy.pair.PandasPairUniverse.get_pair_by_human_description`
+
+        The trading pair must be loaded in the exchange universe.
+
+        :return:
+            The trading pair on the exchange.
+
+            Highest volume trading pair if multiple matches.
+
+        :raise NoPairFound:
+            In the case input data cannot be resolved.
+
+        """
+        assert self.universe.exchange_universe, "You must set universe.exchange_universe to be able to use this method"
+        pair = self.universe.pairs.get_pair_by_human_description(self.universe.exchange_universe, desc)
+        return translate_trading_pair(pair)
+
     def create_single_pair_universe(
         dataset: Dataset,
         chain_id: ChainId,
@@ -460,9 +480,93 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             exchanges=our_exchanges,
             candles=candle_universe,
             liquidity=liquidity_universe,
+            exchange_universe=ExchangeUniverse.from_collection(our_exchanges),
         )
 
         return TradingStrategyUniverse(universe=universe, reserve_assets=reserve_assets)
+
+    @staticmethod
+    def create_multichain_universe_by_pair_descriptions(
+        dataset: Dataset,
+        pairs: Collection[HumanReadableTradingPairDescription],
+        reserve_token_symbol: str,
+    ) -> "TradingStrategyUniverse":
+        """Create a trading universe based on list of (exchange, pair tuples)
+
+        This is designed for backtesting multipe pairs across different chains.
+        The created universe do not have any routing options and thus
+        cannot make any trades.
+
+        :param dataset:
+            Datasets downloaded from the oracle
+
+        :param pairs:
+            List of trading pairs to filter down.
+
+            The pair set is desigend to be small, couple of dozens of pairs max.
+
+            See :py:data:`HumanReadableTradingPairDescription`.
+
+        :param reserve_token_symbol:
+            The token symbol of the reverse asset.
+
+            Because we do not support routing, we just pick the first matching token.
+        """
+
+        time_bucket = dataset.time_bucket
+
+        # Create trading pair database
+        pair_universe = PandasPairUniverse(dataset.pairs)
+
+        # Filter pairs first and then rest by the resolved pairs
+        our_pairs = {pair_universe.get_pair_by_human_description(dataset.exchanges, d) for d in pairs}
+        chain_ids = {d[0] for d in pairs}
+        pair_ids = {p.pair_id for p in our_pairs}
+        exchange_ids = {p.exchange_id for p in our_pairs}
+        our_exchanges = {dataset.exchanges.get_by_id(id) for id in exchange_ids}
+
+        filtered_pairs_df = dataset.pairs.loc[dataset.pairs["pair_id"].isin(pair_ids)]
+
+        # Recreate universe again, now with limited pairs
+        pair_universe = PandasPairUniverse(filtered_pairs_df)
+
+        # We do a bit detour here as we need to address the assets by their trading pairs first
+        reserve_token = None
+        for p in pair_universe.iterate_pairs():
+            if p.quote_token_symbol == reserve_token_symbol:
+                translated_pair = translate_trading_pair(p)
+                reserve_token = translated_pair.quote
+
+        assert reserve_token, f"Reserve token {reserve_token_symbol} missing the pair quote tokens"
+        reserve_assets = [
+            reserve_token
+        ]
+
+        # Get daily candles as Pandas DataFrame
+        all_candles = dataset.candles
+        filtered_candles = filter_for_pairs(all_candles, filtered_pairs_df)
+        candle_universe = GroupedCandleUniverse(filtered_candles, time_bucket=time_bucket)
+
+        universe = Universe(
+            time_bucket=dataset.time_bucket,
+            chains=chain_ids,
+            pairs=pair_universe,
+            exchanges=our_exchanges,
+            candles=candle_universe,
+            exchange_universe=ExchangeUniverse.from_collection(our_exchanges),
+        )
+
+        if dataset.backtest_stop_loss_candles is not None:
+            stop_loss_candle_universe = GroupedCandleUniverse(dataset.backtest_stop_loss_candles)
+        else:
+            stop_loss_candle_universe = None
+
+        return TradingStrategyUniverse(
+            universe=universe,
+            reserve_assets=reserve_assets,
+            backtest_stop_loss_time_bucket=dataset.backtest_stop_loss_time_bucket,
+            backtest_stop_loss_candles=stop_loss_candle_universe,
+        )
 
 
 class TradingStrategyUniverseModel(UniverseModel):
@@ -826,6 +930,7 @@ def load_all_data(
         time_frame: TimeBucket,
         execution_context: ExecutionContext,
         universe_options: UniverseOptions,
+        with_liquidity=True,
 ) -> Dataset:
     """Load all pair, candle and liquidity data for a given time bucket.
 
@@ -841,6 +946,20 @@ def load_all_data(
 
     :param execution_context:
         Defines if we are live or backtesting
+
+    :param with_liquidity:
+        Load liquidity data.
+
+        Note that all pairs may not have liquidity data available.
+
+    :param stop_loss_time_frame:
+        Load more granular candle data which is intended
+        to be used for stop loss backtesting only.
+
+    :return:
+        Dataset that covers all historical data.
+
+        This dataset is big and you need to filter it down for backtests.
     """
 
     assert isinstance(client, Client)
@@ -864,7 +983,11 @@ def load_all_data(
         exchanges = client.fetch_exchange_universe()
         pairs = client.fetch_pair_universe().to_pandas()
         candles = client.fetch_all_candles(time_frame).to_pandas()
-        liquidity = client.fetch_all_liquidity_samples(time_frame).to_pandas()
+
+        if with_liquidity:
+            liquidity = client.fetch_all_liquidity_samples(time_frame).to_pandas()
+        else:
+            liquidity = None
 
         return Dataset(
             time_bucket=time_frame,
@@ -1051,3 +1174,141 @@ def load_pair_data_for_single_exchange(
         )
 
 
+
+def load_partial_data(
+        client: Client,
+        execution_context: ExecutionContext,
+        time_bucket: TimeBucket,
+        pairs: Collection[HumanReadableTradingPairDescription],
+        universe_options: UniverseOptions,
+        liquidity=False,
+        stop_loss_time_bucket: Optional[TimeBucket]=None,
+        required_history_period: Optional[datetime.timedelta] = None,
+        start_at: Optional[datetime.datetime] = None,
+        end_at: Optional[datetime.datetime] = None,
+        name: Optional[str] = None,
+) -> Dataset:
+    """Load pair data for named trading pairs.a
+
+    A loading function designed to load data for 2-20 pairs.
+    Instead of loading all pair data over Parquet datasets,
+    load only specific pair data from their corresponding JSONL endpoints.
+
+    :param client:
+        Trading Strategy client instance
+
+    :param time_bucket:
+        The candle time frame
+
+    :param chain_id:
+        Which blockchain hosts our exchange
+
+    :param exchange_slug:
+        Which exchange hosts our trading pairs
+
+    :param exchange_slug:
+        Which exchange hosts our trading pairs
+
+    :param pair_tickers:
+        List of trading pair tickers as base token quote token tuples.
+        E.g. `[('WBNB', 'BUSD'), ('Cake', 'BUSD')]`.
+
+    :param liquidity:
+        Set true to load liquidity data as well
+
+    :param stop_loss_time_bucket:
+        If set load stop loss trigger
+        data using this candle granularity.
+
+    :param execution_context:
+        Defines if we are live or backtesting
+
+    :param universe_options:
+        Override values given the strategy file.
+        Used in testing the framework.
+
+    :param required_history_period:
+        How much historical data we need to load.
+
+        Depends on the strategy. Defaults to load all data.
+
+    :param start_at:
+        Load data for a specific backtesting data range.
+
+    :param end_at:
+        Load data for a specific backtesting data range.
+
+    :param name:
+        The loading operation name used in progress bars
+
+    :return:
+        Datataset containing the requested data
+
+    """
+
+    assert isinstance(client, Client)
+    assert isinstance(time_bucket, TimeBucket)
+    assert isinstance(execution_context, ExecutionContext)
+    assert isinstance(universe_options, UniverseOptions)
+
+    # Apply overrides
+    stop_loss_time_bucket = universe_options.stop_loss_time_bucket_override or stop_loss_time_bucket
+    time_bucket = universe_options.candle_time_bucket_override or time_bucket
+
+    assert start_at and end_at, "Current implementatation is designed for backtest use only and needs both start_at and end_at timestamps"
+
+    live = execution_context.live_trading
+    with execution_context.timed_task_context_manager("load_partial_pair_data", time_bucket=time_bucket.value):
+
+        exchange_universe = client.fetch_exchange_universe()
+
+        pairs_df = client.fetch_pair_universe().to_pandas()
+        pair_universe = PandasPairUniverse(pairs_df)
+
+        # Filter pairs first and then rest by the resolved pairs
+        our_pairs = {pair_universe.get_pair_by_human_description(exchange_universe, d) for d in pairs}
+        our_pair_ids = {p.pair_id for p in our_pairs}
+        exchange_ids = {p.exchange_id for p in our_pairs}
+        our_exchanges = {exchange_universe.get_by_id(id) for id in exchange_ids}
+        our_exchange_universe = ExchangeUniverse.from_collection(our_exchanges)
+
+        # Eliminate the pairs we are not interested in from the database
+        filtered_pairs_df = pairs_df.loc[pairs_df["pair_id"].isin(our_pair_ids)]
+
+        # Autogenerate names by the pair count
+        if not name:
+            name = f"{len(filtered_pairs_df)} pairs"
+
+        progress_bar_desc = f"Loading OHLCV data for {name}"
+        candles = client.fetch_candles_by_pair_ids(
+            our_pair_ids,
+            time_bucket,
+            progress_bar_description=progress_bar_desc,
+            start_time=start_at,
+            end_time=end_at,
+        )
+
+        if stop_loss_time_bucket:
+            stop_loss_desc = f"Loading stop loss/take granular data for {name}"
+            stop_loss_candles = client.fetch_candles_by_pair_ids(
+                our_pair_ids,
+                stop_loss_time_bucket,
+                progress_bar_description=stop_loss_desc,
+                start_time=start_at,
+                end_time=end_at,
+            )
+        else:
+            stop_loss_candles = None
+
+        if liquidity:
+            raise NotImplemented("Partial liquidity data loading is not yet supported")
+
+        return Dataset(
+            time_bucket=time_bucket,
+            exchanges=our_exchange_universe,
+            pairs=filtered_pairs_df,
+            candles=candles,
+            liquidity=None,
+            backtest_stop_loss_time_bucket=stop_loss_time_bucket,
+            backtest_stop_loss_candles=stop_loss_candles,
+        )

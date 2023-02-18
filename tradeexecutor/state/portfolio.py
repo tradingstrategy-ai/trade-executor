@@ -70,13 +70,21 @@ class Portfolio:
     def get_position_by_id(self, position_id: int) -> TradingPosition:
         """Get any position open/closed/frozen by id.
 
+        Always assume the position for a `position_id` exists.
+
         :param position_id:
             Internal running counter id for the position inside
             this portfolio.
 
         :return:
-            Always returns or fails with py:class:`AssertionError`.
+            Always returns
+
+        :throw:
+            Fails with py:class:`AssertionError` if there is no such position.
         """
+
+        assert position_id
+
         p1 = self.open_positions.get(position_id)
         p2 = self.closed_positions.get(position_id)
         if p2:
@@ -87,7 +95,7 @@ class Portfolio:
             # Sanity check we do not have the same position in multiple tables
             assert not (p1 or p2)
 
-        assert p1 or p2 or p3
+        assert p1 or p2 or p3, f"Did not have position with id {position_id}"
 
         return p1 or p2 or p3
 
@@ -175,10 +183,14 @@ class Portfolio:
         For Uniswap-likes we use the pool address as the persistent identifier
         for each trading pair.
         """
-        for p in self.open_positions.values():
-            if p.pair.pool_address.lower() == pair.pool_address.lower():
-                return p
-        return None
+        # https://stackoverflow.com/a/2364277/315168
+        return next((p for p in self.open_positions.values() if p.pair == pair), None)
+        #for p in self.open_positions.values():
+            # TODO: Check with
+            # if p.pair.pool_address.lower() == pair.pool_address.lower():
+        #    if p.pair == pair:
+        #        return p
+        #return None
 
     def get_existing_open_position_by_trading_pair(self, pair: TradingPairIdentifier) -> Optional[TradingPosition]:
         """Get a position by a trading pair smart contract address identifier.

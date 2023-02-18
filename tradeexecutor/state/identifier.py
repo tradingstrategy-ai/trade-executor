@@ -152,8 +152,11 @@ class TradingPairIdentifier:
         """
         return self.pool_address.lower()
 
-    def get_human_description(self) -> str:
+    def get_ticker(self) -> str:
         return f"{self.base.token_symbol}-{self.quote.token_symbol}"
+
+    def get_human_description(self) -> str:
+        return self.get_ticker()
 
     def has_complete_info(self) -> bool:
         """Check if the pair has good information.

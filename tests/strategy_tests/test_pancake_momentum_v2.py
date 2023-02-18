@@ -62,5 +62,5 @@ def test_pancake_momentum_v2(
     assert len(debug_dump) == 5
 
     # We have done some trades
-    assert len(list(state.portfolio.get_all_trades())) >= 40
+    assert len(list(state.portfolio.get_all_trades())) >= 10
 

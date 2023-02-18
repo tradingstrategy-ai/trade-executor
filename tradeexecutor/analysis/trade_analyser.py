@@ -32,7 +32,7 @@ from statistics import median
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.trade import TradeExecution, TradeType
-from tradeexecutor.state.types import USDollarPrice
+from tradeexecutor.state.types import USDollarPrice, Percent
 from tradeexecutor.utils.format import calculate_percentage
 from tradeexecutor.utils.timestamp import json_encode_timedelta, json_decode_timedelta
 from tradingstrategy.timebucket import TimeBucket
@@ -284,7 +284,7 @@ class TradePosition:
         max_size = 0
 
         if len(self.trades) > 2:
-            logger.warning("Position has %d trades so this method might produce wrong result")
+            logger.warning("Position has %d trades so this method might produce wrong result", self.trades)
 
         for t in self.trades:
             cur_size = t.value
@@ -400,6 +400,10 @@ class TradeSummary:
     annualised_return_percent: float = field(init=False)
     all_stop_loss_percent: float = field(init=False)
     lost_stop_loss_percent: float = field(init=False)
+
+    all_take_profit_percent: float = field(init=False)
+    won_take_profit_percent: float = field(init=False)
+
     average_net_profit: USDollarAmount = field(init=False)
     end_value: USDollarAmount = field(init=False)
 
@@ -411,7 +415,14 @@ class TradeSummary:
     max_pullback: Optional[float] = None
     max_loss_risk: Optional[float] = None
     max_realised_loss: Optional[float] = None
-    avg_realised_risk: Optional[float] = None
+    avg_realised_risk: Optional[Percent] = None
+
+    take_profits: int = field(default=0)
+
+    trade_volume: USDollarAmount = field(default=0.0)
+
+    lp_fees_paid: Optional[USDollarPrice] = 0
+    lp_fees_average_pc: Optional[USDollarPrice] = 0
 
     def __post_init__(self):
 
@@ -421,7 +432,9 @@ class TradeSummary:
         self.annualised_return_percent = calculate_percentage(self.return_percent * datetime.timedelta(days=365),
                                                               self.duration) if self.return_percent else None
         self.all_stop_loss_percent = calculate_percentage(self.stop_losses, self.total_trades)
+        self.all_take_profit_percent = calculate_percentage(self.take_profits, self.total_trades)
         self.lost_stop_loss_percent = calculate_percentage(self.stop_losses, self.lost)
+        self.won_take_profit_percent = calculate_percentage(self.take_profits, self.won)
         self.average_net_profit = self.realised_profit / self.total_trades if self.total_trades else None
         self.end_value = self.open_value + self.uninvested_cash
 
@@ -444,6 +457,7 @@ class TradeSummary:
             "Annualised return %": as_percent(self.annualised_return_percent),
             "Cash at start": as_dollar(self.initial_cash),
             "Value at end": as_dollar(self.end_value),
+            "Trade volume": as_dollar(self.trade_volume),
             "Trade win percent": as_percent(self.win_percent),
             "Total trades done": as_integer(self.total_trades),
             "Won trades": as_integer(self.won),
@@ -451,6 +465,9 @@ class TradeSummary:
             "Stop losses triggered": as_integer(self.stop_losses),
             "Stop loss % of all": as_percent(self.all_stop_loss_percent),
             "Stop loss % of lost": as_percent(self.lost_stop_loss_percent),
+            "Take profits triggered": as_integer(self.take_profits),
+            "Take profit % of all": as_percent(self.all_take_profit_percent),
+            "Take profit % of win": as_percent(self.won_take_profit_percent),
             "Zero profit trades": as_integer(self.zero_loss),
             "Positions open at the end": as_integer(self.undecided),
             "Realised profit and loss": as_dollar(self.realised_profit),
@@ -463,6 +480,8 @@ class TradeSummary:
             "Biggest losing trade %": as_percent(self.biggest_losing_trade_pc),
             "Average duration of winning trades": avg_duration_winning,
             "Average duration of losing trades": avg_duration_losing,
+            "LP fees paid": as_dollar(self.lp_fees_paid),
+            "LP fees paid % of volume": as_percent(self.lp_fees_average_pc),
         }
 
         def add_prop(value, key: str, formatter: Callable):
@@ -586,12 +605,19 @@ class TradeAnalysis:
         if first_trade and first_trade != last_trade:
             duration = last_trade.executed_at - first_trade.executed_at
 
-        won = lost = zero_loss = stop_losses = undecided = 0
+        won = lost = zero_loss = stop_losses = take_profits = undecided = 0
         open_value: USDollarAmount = 0
         profit: USDollarAmount = 0
+        trade_volume = 0
+        lp_fees_paid = 0
 
         positions = []
+        position: TradePosition
         for pair_id, position in self.get_all_positions():
+
+            for t in position.trades:
+                trade_volume += abs(float(t.quantity) * t.executed_price)
+                lp_fees_paid += t.lp_fees_paid or 0
 
             if position.is_open():
                 open_value += position.open_value
@@ -602,6 +628,9 @@ class TradeAnalysis:
 
             if position.is_stop_loss():
                 stop_losses += 1
+
+            if position.is_take_profit():
+                take_profits += 1
 
             if position.is_win():
                 won += 1
@@ -657,11 +686,14 @@ class TradeAnalysis:
 
         max_pos_cons, max_neg_cons, max_pullback = self.get_max_consective(positions)
 
+        lp_fees_average_pc = lp_fees_paid / trade_volume if trade_volume else 0
+
         return TradeSummary(
             won=won,
             lost=lost,
             zero_loss=zero_loss,
             stop_losses=stop_losses,
+            take_profits=take_profits,
             undecided=undecided,
             realised_profit=profit + extra_return,
             open_value=open_value,
@@ -683,7 +715,10 @@ class TradeAnalysis:
             max_loss_risk=max_loss_risk_at_open_pc,
             max_realised_loss=max_realised_loss,
             avg_realised_risk=avg_realised_risk,
-            time_bucket=time_bucket
+            time_bucket=time_bucket,
+            trade_volume=trade_volume,
+            lp_fees_paid=lp_fees_paid,
+            lp_fees_average_pc=lp_fees_average_pc,
         )
 
     def create_timeline(self) -> pd.DataFrame:

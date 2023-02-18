@@ -14,7 +14,8 @@ import pandas as pd
 
 from tradeexecutor.ethereum.routing_data import get_pancake_default_routing_parameters
 
-from tradeexecutor.strategy.pandas_trader.rebalance import weight_by_1_slash_n, rebalance_portfolio, normalise_weights
+from tradeexecutor.strategy.pandas_trader.rebalance import rebalance_portfolio_old
+from tradeexecutor.strategy.weights import normalise_weights, weight_by_1_slash_n
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.utils.price import is_legit_price_value
 from tradingstrategy.chain import ChainId
@@ -289,7 +290,7 @@ def decide_trades(
 
     # Shift portfolio from current positions to target positions
     # determined by the alpha signals (momentum)
-    trades = rebalance_portfolio(
+    trades = rebalance_portfolio_old(
         position_manager,
         weights,
         portfolio_target_value,
