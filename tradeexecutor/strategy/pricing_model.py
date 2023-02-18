@@ -49,12 +49,12 @@ class TradePricing:
     #: Set to None if data is not available.
     #:
     #: Can be specified as single value or list, will be converted to list regardless 
-    lp_fee: Optional[list[USDollarAmount]] = None
+    lp_fee: Optional[List[USDollarAmount]] = None
 
     #: What was the LP fee % used as the base of the calculations.
     #:
     #: Can be specified as single value or list, will be converted to list regardless
-    pair_fee: Optional[list[BPS]] = None
+    pair_fee: Optional[List[BPS]] = None
 
     #: How old price data we used for this estimate
     #:
