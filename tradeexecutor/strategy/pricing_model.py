@@ -147,7 +147,7 @@ class TradePricing:
             
     def get_total_lp_fees(self):
         """:returns: The total lp fees paid (dollars) for the trade."""
-        return sum(self.lp_fee)
+        return sum(fee for fee in self.lp_fee if fee > 0)
 
 def format_fees_percentage(fees: list[BPS]) -> str:
     """Returns string of formatted fees
