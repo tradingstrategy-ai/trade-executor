@@ -22,26 +22,41 @@ def fix_sell_token_amount(
         current_balance: Decimal,
         order_quantity: Decimal,
         epsilon=Decimal(10**-9)
-) -> Decimal:
+) -> Tuple[Decimal, bool]:
     """Fix rounding errors that may cause wallet dust overflow.
 
     TODO: This should be handled other part of the system.
+
+    :return:
+        (new amount, was fixed) tuple
     """
 
-    assert  isinstance(current_balance, Decimal)
-    assert  isinstance(order_quantity, Decimal)
+    assert isinstance(current_balance, Decimal)
+    assert isinstance(order_quantity, Decimal)
+    assert order_quantity < 0
 
     # Not trying to sell more than we have
-    if order_quantity <= current_balance:
-        return order_quantity
+    if abs(order_quantity) <= current_balance:
+        return order_quantity, False
 
     # We are trying to sell more we have
-    diff = abs(current_balance - order_quantity)
-    if diff < epsilon:
-        # Fix to be within the epslion diff
-        return current_balance
+    diff = abs(current_balance + order_quantity)
+    if diff <= epsilon:
+        # Fix to be within the epsilon diff
+        logger.warning("Fixing token sell amount to be within the epsilon. Wallet balance: %s, sell order quantity: %s, diff: %s",
+                       current_balance,
+                       order_quantity,
+                       diff
+                       )
+        return -current_balance, True
 
-    return order_quantity
+    logger.warning("Trying to sell more than we have. Wallet balance: %s, sell order quantity: %s, diff: %s, epsilon: %s",
+                   current_balance,
+                   order_quantity,
+                   diff,
+                   epsilon
+                   )
+    return order_quantity, False
 
 
 class BacktestExecutionModel(ExecutionModel):
@@ -117,12 +132,13 @@ class BacktestExecutionModel(ExecutionModel):
 
         position = state.portfolio.get_existing_open_position_by_trading_pair(trade.pair)
 
+        sell_amount_epsilon_fix = False
         if trade.is_buy():
             executed_reserve = trade.planned_reserve
             executed_quantity = trade.planned_quantity
         else:
             assert position and position.is_open(), f"Tried to execute sell on position that is not open: {trade}"
-            executed_quantity = fix_sell_token_amount(base_balance, trade.planned_quantity)
+            executed_quantity, sell_amount_epsilon_fix = fix_sell_token_amount(base_balance, trade.planned_quantity)
             executed_reserve = abs(Decimal(trade.planned_quantity) * Decimal(trade.planned_price))
         try:
             if trade.is_buy():
@@ -148,6 +164,7 @@ class BacktestExecutionModel(ExecutionModel):
                 f"  Planned base amount: {trade.planned_quantity} {base.token_symbol} ({base.address})\n"
                 f"  Planned reserve amount: {trade.planned_reserve} {reserve.token_symbol} ({reserve.address})\n"
                 f"  Existing position quantity: {position and position.get_quantity() or '-'} {base.token_symbol}\n"
+                f"  Sell amount epsilon fix applied: {sell_amount_epsilon_fix}.\n"
                 f"  Out of balance: {e}\n"
             ) from e
 

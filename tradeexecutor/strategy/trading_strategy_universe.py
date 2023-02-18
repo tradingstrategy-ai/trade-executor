@@ -480,6 +480,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             exchanges=our_exchanges,
             candles=candle_universe,
             liquidity=liquidity_universe,
+            exchange_universe=ExchangeUniverse.from_collection(our_exchanges),
         )
 
         return TradingStrategyUniverse(universe=universe, reserve_assets=reserve_assets)
