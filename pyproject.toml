@@ -21,7 +21,7 @@ python = ">=3.10,<3.12"
 requests = "^2.27.1"
 web3 = "^5.26.0"
 web3-ethereum-defi = {version="0.14.1", extras=["data"]}
-trading-strategy = "0.12.3"
+trading-strategy = "0.12.4"
 matplotlib = "^3.6.0"
 jupyterlab = "^3.5.0"
 pandas-ta = "^0.3.14-beta.0"
