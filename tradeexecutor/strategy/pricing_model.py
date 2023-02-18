@@ -68,6 +68,9 @@ class TradePricing:
         """
         assert type(self.price) == float
         assert type(self.mid_price) == float
+        
+        # frozen = True, so no need for getters and setters
+        # can just do checks in post init
         if self.lp_fee is not None:
             assert type(self.lp_fee) == float
         if self.pair_fee is not None:
