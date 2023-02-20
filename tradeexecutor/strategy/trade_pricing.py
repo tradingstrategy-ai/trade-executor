@@ -98,14 +98,17 @@ class TradePricing:
     
     def get_total_lp_fees(self):
         """Returns the total lp fees paid (dollars) for the trade."""
-        return sum(self.lp_fee)
+        return sum(filter(None,self.lp_fee))
     
     def get_fee_percentage(self):
         """Returns a single decimal value for the percentage of fees paid. 
         This calculation represents the average of all the pair fees"""
         # TODO verify calculation
 
-        return sum(self.pair_fee)/len(self.pair_fee)
+        if all(self.pair_fee):
+            return sum(self.pair_fee)/len(self.pair_fee)
+        else:
+            return 0 
 
 
 def format_fees_percentage(fees: list[BPS]) -> str:
