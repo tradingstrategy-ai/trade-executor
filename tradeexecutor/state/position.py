@@ -14,7 +14,7 @@ from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifie
 from tradeexecutor.state.trade import TradeType
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.types import USDollarAmount, BPS, USDollarPrice
-
+from tradeexecutor.strategy.trade_pricing import TradePricing
 
 @dataclass_json
 @dataclass(slots=True)
@@ -307,6 +307,7 @@ class TradingPosition:
                    pair_fee: Optional[BPS] = None,
                    lp_fees_estimated: Optional[USDollarAmount] = None,
                    planned_mid_price: Optional[USDollarPrice] = None,
+                   price_structure: Optional[TradePricing] = None
                    ) -> TradeExecution:
         """Open a new trade on position.
 
@@ -320,6 +321,9 @@ class TradingPosition:
         if quantity is not None:
             assert reserve is None, "Quantity and reserve both cannot be given at the same time"
 
+        if price_structure is not None:
+            assert isinstance(price_structure, TradePricing)
+        
         assert self.reserve_currency.get_identifier() == reserve_currency.get_identifier(), "New trade is using different reserve currency than the position has"
         assert isinstance(trade_id, int)
         assert isinstance(strategy_cycle_at, datetime.datetime)
@@ -344,6 +348,7 @@ class TradingPosition:
             planned_mid_price=planned_mid_price,
             fee_tier=pair_fee,
             lp_fees_estimated=lp_fees_estimated,
+            price_structure=price_structure
         )
         self.trades[trade.trade_id] = trade
         return trade

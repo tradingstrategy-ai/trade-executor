@@ -22,6 +22,7 @@ from .types import USDollarAmount, BPS, USDollarPrice
 from .uptime import Uptime
 from .visualisation import Visualisation
 
+from tradeexecutor.strategy.trade_pricing import TradePricing
 
 
 class UncleanState(Exception):
@@ -108,6 +109,7 @@ class State:
                      pair_fee: Optional[BPS] = None,
                      lp_fees_estimated: Optional[USDollarAmount] = None,
                      planned_mid_price: Optional[USDollarPrice] = None,
+                     price_structure: Optional[TradePricing] = None
                      ) -> Tuple[TradingPosition, TradeExecution, bool]:
         """Creates a request for a new trade.
 
@@ -128,6 +130,9 @@ class State:
 
         assert isinstance(strategy_cycle_at, datetime.datetime)
         assert not isinstance(strategy_cycle_at, pd.Timestamp)
+        
+        if price_structure is not None:
+            assert isinstance(price_structure, TradePricing)
 
         if quantity is not None:
             assert reserve is None, "Quantity and reserve both cannot be given at the same time"
@@ -144,6 +149,7 @@ class State:
             pair_fee=pair_fee,
             lp_fees_estimated=lp_fees_estimated,
             planned_mid_price=planned_mid_price,
+            price_structure=price_structure
         )
         return position, trade, created
 

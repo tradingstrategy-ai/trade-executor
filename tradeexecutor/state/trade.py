@@ -12,7 +12,7 @@ from dataclasses_json import dataclass_json
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
 from tradeexecutor.state.types import USDollarAmount, USDollarPrice, BPS
-
+from tradeexecutor.strategy.trade_pricing import TradePricing
 
 class TradeType(enum.Enum):
     """What kind of trade execution this was."""
@@ -53,7 +53,9 @@ class TradeStatus(enum.Enum):
 @dataclass_json
 @dataclass()
 class TradeExecution:
-    """Trade execution tracker.
+    """Trade execution tracker. 
+    
+    - One TradeExecution instance can only represent one swap
 
     Each trade has a reserve currency that we use to trade the token (usually USDC).
 
@@ -232,6 +234,11 @@ class TradeExecution:
     #: E.g. failed broadcast issue was fixed.
     #: Marked when the repair command is called.
     repaired_at: Optional[datetime.datetime] = None
+    
+    #: Related TradePricing instance
+    #:
+    #: TradePricing instance can refer to more than one swap
+    price_structure: Optional[TradePricing] = None
 
     def __repr__(self):
         if self.is_buy():
@@ -264,15 +271,9 @@ class TradeExecution:
         assert self.planned_quantity != 0
         assert self.planned_price > 0
         assert self.planned_reserve >= 0
-        assert type(self.planned_price) == float, f"Price was given as {self.planned_price.__class__}: {self.planned_price}"
+        assert type(self.planned_price) in {float, int}, f"Price was given as {self.planned_price.__class__}: {self.planned_price}"
         assert self.opened_at.tzinfo is None, f"We got a datetime {self.opened_at} with tzinfo {self.opened_at.tzinfo}"
-
-        if self.lp_fees_estimated is not None:
-            assert type(self.lp_fees_estimated) == float
-
-        if self.fee_tier is not None:
-            assert type(self.fee_tier) == float
-
+        
     @property
     def strategy_cycle_at(self):
         """Alias for oepned_at"""
@@ -450,12 +451,14 @@ class TradeExecution:
 
     def get_fees_paid(self) -> USDollarAmount:
         """
-        TODO: Make this functio to behave
-        :return:
+        Get total swap fees paid for trade. Returns 0 instead of `None`
+        
+        :return: total amount of lp fees (swap fees) paid in US dollars
         """
+        
         status = self.get_status()
         if status == TradeStatus.success:
-            return self.lp_fees_paid
+            return self.lp_fees_paid or 0
         elif status == TradeStatus.failed:
             return 0
         else:
