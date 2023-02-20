@@ -95,10 +95,17 @@ class TradePricing:
                 
         if self.path:
             assert [type(address) == TradingPairIdentifier for address in self.path], "path must be provided as a list of TradePairIdentifier" 
-            
+    
     def get_total_lp_fees(self):
-        """:returns: The total lp fees paid (dollars) for the trade."""
+        """Returns the total lp fees paid (dollars) for the trade."""
         return sum(self.lp_fee)
+    
+    def get_fee_percentage(self):
+        """Returns a single decimal value for the percentage of fees paid. 
+        This calculation represents the average of all the pair fees"""
+        # TODO verify calculation
+
+        return sum(self.pair_fee)/len(self.pair_fee)
 
 
 def format_fees_percentage(fees: list[BPS]) -> str:
