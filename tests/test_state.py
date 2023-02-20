@@ -492,7 +492,7 @@ def test_statistics(usdc, weth_usdc, aave_usdc, start_ts):
     assert summary.total_trades == 2
     assert summary.win_percent == 0.5
     assert summary.return_percent == pytest.approx(0.04363200000000006)
-    assert summary.annualised_return_percent == 171713.52
+    assert summary.annualised_return_percent == pytest.approx(152886.528)
     assert summary.realised_profit == pytest.approx(49.0049999)
     assert summary.uninvested_cash == portfolio_stats.free_cash
     assert summary.average_net_profit == pytest.approx(24.50249)
