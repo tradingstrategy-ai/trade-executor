@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from decimal import Decimal, ROUND_DOWN
 from typing import Callable, Optional, List
 
+from dataclasses_json import dataclass_json
+
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.types import USDollarAmount, BPS, USDollarPrice
 from tradeexecutor.strategy.execution_model import ExecutionModel

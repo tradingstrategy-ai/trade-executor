@@ -11,6 +11,7 @@ import pandas as pd
 import pytest
 from hexbytes import HexBytes
 
+from tradeexecutor.strategy.pricing_model import TradePricing
 from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
 from tradeexecutor.state.state import State, TradeType
 from tradeexecutor.state.portfolio import NotEnoughMoney
@@ -26,6 +27,7 @@ from tradeexecutor.testing.dummy_trader import DummyTestTrader
 from tradingstrategy.chain import ChainId
 from tradingstrategy.types import USDollarAmount
 from tradeexecutor.strategy.execution_context import ExecutionMode
+
 
 
 @pytest.fixture
@@ -892,3 +894,24 @@ def test_validate_state():
     with pytest.raises(BadStateData):
         bad = {"foo": {"bar": pd.Timestamp("1970-1-1")}}
         validate_nested_state_dict(bad)
+
+
+def test_serialise_timedelta():
+    """Serialise timedelta, that is part of a TradePricing object."""
+
+    patch_dataclasses_json()
+
+    p = TradePricing(
+        price=1000.0,
+        mid_price=1000.0,
+        lp_fee=1000.0 * 0.0030,
+        pair_fee=0.0030,
+        market_feed_delay=datetime.timedelta(minutes=2),
+        side=True,
+    )
+
+    buf = p.to_json()
+    p2 = TradePricing.from_json(buf)
+
+    assert p2.market_feed_delay == datetime.timedelta(minutes=2)
+
