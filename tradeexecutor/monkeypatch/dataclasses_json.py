@@ -16,7 +16,7 @@ from uuid import UUID
 from dataclasses_json import core
 
 
-
+# Mankeypatched _ExtendedEncoder.default()
 def _patched_default(self, o) -> core.Json:
     result: core.Json
     if core._isinstance_safe(o, Collection):
@@ -74,6 +74,7 @@ def _patched_support_extended_types(field_type, field_value):
 
 
 def patch_dataclasses_json():
+    """Add monkey patched fixes to dataclasses_json package"""
     if core._support_extended_types != _patched_support_extended_types:
         core._support_extended_types = _patched_support_extended_types
 
