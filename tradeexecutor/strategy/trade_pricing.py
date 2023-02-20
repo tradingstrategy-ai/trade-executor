@@ -5,11 +5,13 @@ from typing import Optional, List
 
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.types import USDollarAmount, BPS, USDollarPrice
+from dataclasses_json import dataclass_json
 
 
 logger = getLogger(__name__)
 
 
+@dataclass_json
 @dataclass(slots=True, frozen=True)
 class TradePricing:
     """Describe price results for a price query.
@@ -48,6 +50,7 @@ class TradePricing:
     market_feed_delay: Optional[datetime.timedelta] = None
 
     #: Is this buy or sell trade.
+    #:
     #:
     #: True for buy.
     #: False for sell.
