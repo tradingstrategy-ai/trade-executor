@@ -234,6 +234,11 @@ class TradeExecution:
     #: E.g. failed broadcast issue was fixed.
     #: Marked when the repair command is called.
     repaired_at: Optional[datetime.datetime] = None
+    
+    #: Related TradePricing instance
+    #:
+    #: TradePricing instance can refer to more than one swap
+    price_structure: Optional[TradePricing] = None
 
     def __repr__(self):
         if self.is_buy():
@@ -266,7 +271,7 @@ class TradeExecution:
         assert self.planned_quantity != 0
         assert self.planned_price > 0
         assert self.planned_reserve >= 0
-        assert type(self.planned_price) == float, f"Price was given as {self.planned_price.__class__}: {self.planned_price}"
+        assert type(self.planned_price) in {float, int}, f"Price was given as {self.planned_price.__class__}: {self.planned_price}"
         assert self.opened_at.tzinfo is None, f"We got a datetime {self.opened_at} with tzinfo {self.opened_at.tzinfo}"
         
     @property

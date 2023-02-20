@@ -317,6 +317,7 @@ class PositionManager:
             lp_fees_estimated=price_structure.lp_fee,
             pair_fee=price_structure.pair_fee,
             planned_mid_price=price_structure.mid_price,
+            price_structure=price_structure
         )
 
         assert created, f"There was conflicting open position for pair: {executor_pair}"
