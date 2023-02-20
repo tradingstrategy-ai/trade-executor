@@ -428,15 +428,15 @@ class TradeSummary:
 
         self.total_trades = self.won + self.lost + self.zero_loss
         self.win_percent = calculate_percentage(self.won, self.total_trades)
-        self.return_percent = calculate_percentage(self.end_value - self.initial_cash, self.initial_cash)
-        self.annualised_return_percent = calculate_percentage(self.return_percent * datetime.timedelta(days=365),
-                                                              self.duration) if self.return_percent else None
         self.all_stop_loss_percent = calculate_percentage(self.stop_losses, self.total_trades)
         self.all_take_profit_percent = calculate_percentage(self.take_profits, self.total_trades)
         self.lost_stop_loss_percent = calculate_percentage(self.stop_losses, self.lost)
         self.won_take_profit_percent = calculate_percentage(self.take_profits, self.won)
         self.average_net_profit = self.realised_profit / self.total_trades if self.total_trades else None
         self.end_value = self.open_value + self.uninvested_cash
+        self.return_percent = calculate_percentage(self.end_value - self.initial_cash, self.initial_cash)
+        self.annualised_return_percent = calculate_percentage(self.return_percent * datetime.timedelta(days=365),
+                                                              self.duration) if self.return_percent else None
 
     def to_dataframe(self) -> pd.DataFrame:
         """Convert the data to a human readable summary table.
