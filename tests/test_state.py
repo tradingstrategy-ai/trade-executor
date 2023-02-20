@@ -11,7 +11,7 @@ import pandas as pd
 import pytest
 from hexbytes import HexBytes
 
-from tradeexecutor.strategy.pricing_model import TradePricing
+from tradeexecutor.strategy.trade_pricing import TradePricing
 from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
 from tradeexecutor.state.state import State, TradeType
 from tradeexecutor.state.portfolio import NotEnoughMoney
