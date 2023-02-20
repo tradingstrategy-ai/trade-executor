@@ -12,7 +12,7 @@ from dataclasses_json import dataclass_json
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
 from tradeexecutor.state.types import USDollarAmount, USDollarPrice, BPS
-
+from tradeexecutor.strategy.trade_pricing import TradePricing
 
 class TradeType(enum.Enum):
     """What kind of trade execution this was."""

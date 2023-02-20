@@ -13,7 +13,8 @@ from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.strategy.routing import RoutingModel
 from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
 from tradeexecutor.strategy.trading_strategy_universe import translate_trading_pair
-from tradeexecutor.strategy.pricing_model import TradePricing, PricingModel
+from tradeexecutor.strategy.pricing_model import PricingModel
+from tradeexecutor.strategy.trade_pricing import TradePricing
 from tradeexecutor.ethereum.routing_model import EthereumRoutingModel
 
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment

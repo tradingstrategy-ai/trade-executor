@@ -22,6 +22,7 @@ from .types import USDollarAmount, BPS, USDollarPrice
 from .uptime import Uptime
 from .visualisation import Visualisation
 
+from tradeexecutor.strategy.trade_pricing import TradePricing
 
 
 class UncleanState(Exception):

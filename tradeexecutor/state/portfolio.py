@@ -14,7 +14,7 @@ from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.trade import TradeType
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.types import USDollarAmount, BPS, USDollarPrice
-
+from tradeexecutor.strategy.trade_pricing import TradePricing
 
 class NotEnoughMoney(Exception):
     """We try to allocate reserve for a buy trade, but do not have cash."""

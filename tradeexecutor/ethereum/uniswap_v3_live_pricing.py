@@ -17,7 +17,7 @@ from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.state.types import USDollarAmount
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
-from tradeexecutor.strategy.pricing_model import TradePricing
+from tradeexecutor.strategy.trade_pricing import TradePricing
 from tradingstrategy.pair import PandasPairUniverse
 
 from eth_defi.uniswap_v3.price import UniswapV3PriceHelper

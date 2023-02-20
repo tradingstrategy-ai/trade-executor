@@ -14,7 +14,7 @@ from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifie
 from tradeexecutor.state.trade import TradeType
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.types import USDollarAmount, BPS, USDollarPrice
-
+from tradeexecutor.strategy.trade_pricing import TradePricing
 
 @dataclass_json
 @dataclass(slots=True)

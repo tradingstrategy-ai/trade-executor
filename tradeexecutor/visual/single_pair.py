@@ -14,7 +14,7 @@ from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.visualisation import Visualisation, Plot
-from tradeexecutor.strategy.pricing_model import format_fees_dollars, format_fees_percentage
+from tradeexecutor.strategy.trade_pricing import format_fees_dollars, format_fees_percentage
 
 from tradeexecutor.state.types import PairInternalId
 
