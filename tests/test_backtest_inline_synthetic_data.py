@@ -35,6 +35,7 @@ from tradeexecutor.strategy.strategy_module import pregenerated_create_trading_u
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.strategy_type import StrategyType
 from tradeexecutor.strategy.default_routing_options import TradeRouting
+from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
 
 # How much of the cash to put on a single trade
 position_size = 0.10
@@ -201,6 +202,8 @@ def test_run_inline_synthetic_backtest(
     """Run the strategy backtest using inline decide_trades function.
     """
 
+    patch_dataclasses_json()
+    
     start_at, end_at = universe.universe.candles.get_timestamp_range()
 
     routing_model = generate_simple_routing_model(universe)
