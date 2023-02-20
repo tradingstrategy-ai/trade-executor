@@ -1,7 +1,13 @@
-"""Fix dataclasses_json to always serialised and deserialise dates in the timezone-naive format."""
+"""Fix dataclasses_json to support us.
+
+ - Always serialised and deserialise dates in the timezone-naive format
+
+ - Add support for timedelta objects
+
+ """
+
 import json
 from datetime import datetime, timedelta
-from datetime import timezone
 from decimal import Decimal
 from enum import Enum
 from typing import Collection, Mapping
@@ -20,7 +26,9 @@ def _patched_default(self, o) -> core.Json:
             result = list(o)
     elif core._isinstance_safe(o, datetime):
         result = o.timestamp()
+    #
     # Patch timedelta support
+    #
     elif core._isinstance_safe(o, timedelta):
         result = o.total_seconds()
     elif core._isinstance_safe(o, UUID):
@@ -42,7 +50,9 @@ def _patched_support_extended_types(field_type, field_value):
             # Fixed here
             # tz = datetime.now(timezone.utc).astimezone().tzinfo
             res = datetime.fromtimestamp(field_value, tz=None)
+    #
     # Add timedelta support
+    #
     elif core._issubclass_safe(field_type, timedelta):
         if isinstance(field_value, timedelta):
             res = field_value
