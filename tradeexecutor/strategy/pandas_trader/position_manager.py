@@ -314,8 +314,8 @@ class PositionManager:
             trade_type=TradeType.rebalance,
             reserve_currency=self.reserve_currency,
             reserve_currency_price=reserve_price,
-            lp_fees_estimated=price_structure.lp_fee,
-            pair_fee=price_structure.pair_fee,
+            lp_fees_estimated=price_structure.get_total_lp_fees(),
+            pair_fee=price_structure.get_fee_percentage(),
             planned_mid_price=price_structure.mid_price,
             price_structure=price_structure
         )
@@ -421,6 +421,8 @@ class PositionManager:
                 reserve_currency=self.reserve_currency,
                 reserve_currency_price=reserve_price,
                 planned_mid_price=price_structure.mid_price,
+                lp_fees_estimated=price_structure.get_total_lp_fees(),
+                pair_fee=price_structure.get_fee_percentage()
             )
         else:
             # Sell
@@ -525,8 +527,8 @@ class PositionManager:
             reserve_asset,
             reserve_price,  # TODO: Harcoded stablecoin USD exchange rate
             notes=notes,
-            pair_fee=price_structure.pair_fee,
-            lp_fees_estimated=price_structure.lp_fee,
+            pair_fee=price_structure.get_fee_percentage(),
+            lp_fees_estimated=price_structure.get_total_lp_fees(),
             planned_mid_price=price_structure.mid_price,
         )
         assert position == position2, "Somehow messed up the trade"
