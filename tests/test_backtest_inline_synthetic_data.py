@@ -202,8 +202,6 @@ def test_run_inline_synthetic_backtest(
     """Run the strategy backtest using inline decide_trades function.
     """
 
-    patch_dataclasses_json()
-    
     start_at, end_at = universe.universe.candles.get_timestamp_range()
 
     routing_model = generate_simple_routing_model(universe)
