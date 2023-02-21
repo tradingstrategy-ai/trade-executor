@@ -471,9 +471,9 @@ class StrategyRunner(abc.ABC):
                 stop_loss_pricing_model,
             )
 
-            stop_loss_trades = check_position_triggers(position_manager)
+            triggered_trades = check_position_triggers(position_manager)
 
-            approved_trades = self.approval_model.confirm_trades(state, stop_loss_trades)
+            approved_trades = self.approval_model.confirm_trades(state, triggered_trades)
 
             if approved_trades:
                 logger.info("Executing %d stop loss/take profit trades at %s", len(approved_trades), clock)

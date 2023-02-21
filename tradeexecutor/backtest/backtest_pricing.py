@@ -14,7 +14,8 @@ from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.strategy.execution_model import ExecutionModel
 
 from tradeexecutor.state.types import USDollarAmount, USDollarPrice
-from tradeexecutor.strategy.pricing_model import PricingModel, TradePricing
+from tradeexecutor.strategy.pricing_model import PricingModel
+from tradeexecutor.strategy.trade_pricing import TradePricing
 from tradeexecutor.strategy.routing import RoutingModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_trading_pair
 from tradingstrategy.candle import GroupedCandleUniverse
@@ -130,6 +131,7 @@ class BacktestSimplePricingModel(PricingModel):
             pair_fee=pair_fee,
             market_feed_delay=delay.to_pytimedelta(),
             side=False,
+            path=[pair]
         )
 
     def get_buy_price(self,
@@ -170,6 +172,7 @@ class BacktestSimplePricingModel(PricingModel):
             pair_fee=pair_fee,
             market_feed_delay=delay.to_pytimedelta(),
             side=True,
+            path=[pair]
         )
 
     def get_mid_price(self,

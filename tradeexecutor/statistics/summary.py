@@ -38,7 +38,9 @@ def calculate_summary_statistics(
         How long we look back for the summary statistics
 
     :param now_:
-        Override current time for unit testing
+        Override current time for unit testing.
+
+        Set this to the date of the last trade.
 
     :return:
         Summary calculations for the summary tile,
@@ -61,6 +63,7 @@ def calculate_summary_statistics(
 
     if not now_:
         now_ = pd.Timestamp.utcnow().tz_localize(None)
+
     start_at = now_ - time_window
 
     stats = state.stats

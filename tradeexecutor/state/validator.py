@@ -32,6 +32,7 @@ ALLOWED_VALUE_TYPES = (
     Enum,  # Supported by dadtaclasses_json
     datetime.datetime,  # Supported by dadtaclasses_json
     Decimal,  # Supported by dadtaclasses_json
+    datetime.timedelta,
 )
 
 #: We especially do not want to see these in serialisation.

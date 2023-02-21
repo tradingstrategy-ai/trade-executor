@@ -1,4 +1,4 @@
-[![.github/workflows/tests.yml](https://github.com/tradingstrategy-ai/trade-executor/actions/workflows/tests.yml/badge.svg)](https://github.com/tradingstrategy-ai/trade-executor/actions/workflows/tests.yml)
+[![Automated test suite and Docker image build](https://github.com/tradingstrategy-ai/trade-executor/actions/workflows/test-and-build-image.yml/badge.svg)](https://github.com/tradingstrategy-ai/trade-executor/actions/workflows/test-and-build-image.yml)
 
 # Trade Executor
 

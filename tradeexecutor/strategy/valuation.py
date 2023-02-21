@@ -25,6 +25,8 @@ class ValuationModel(Protocol):
     """Revalue a current position.
 
     TODO: See if this should be moved inside state module, as it is referred by state.revalue_positions.
+    
+    Used by EthereumPoolRevaluator model (which, in turn, is used by UniswapV2PoolRevaluator and UniswapV3PoolRevaluator)
     """
 
     def __call__(self,

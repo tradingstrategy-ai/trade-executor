@@ -31,7 +31,9 @@ class PairUniverseTestTrader:
             reserve=amount_in_usd,
             trade_type=TradeType.rebalance,
             reserve_currency=reserve_currency,
-            reserve_currency_price=1.0)
+            reserve_currency_price=1.0,
+            pair_fee=pair.fee,
+        )
 
         return trade
 
@@ -48,6 +50,8 @@ class PairUniverseTestTrader:
             reserve=None,
             trade_type=TradeType.rebalance,
             reserve_currency=reserve_currency,
-            reserve_currency_price=1.0)
+            reserve_currency_price=1.0,
+            pair_fee=pair.fee,
+        )
 
         return trade

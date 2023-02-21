@@ -12,7 +12,7 @@ from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.types import USDollarAmount, BPS, USDollarPrice
-from tradeexecutor.strategy.pricing_model import TradePricing
+from tradeexecutor.strategy.trade_pricing import TradePricing
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 
 
@@ -129,8 +129,8 @@ class BacktestTrader:
             quantity=None,
             reserve=reserve,
             price=price_structure.price,
-            lp_fee=price_structure.pair_fee,
-            lp_fees_estimated=price_structure.lp_fee,
+            lp_fee=price_structure.get_fee_percentage(),
+            lp_fees_estimated=price_structure.get_total_lp_fees(),
             planned_mid_price=price_structure.mid_price,
         )
 
@@ -141,8 +141,8 @@ class BacktestTrader:
             quantity=-quantity,
             reserve=None,
             price=price_structure.price,
-            lp_fee=price_structure.pair_fee,
-            lp_fees_estimated=price_structure.lp_fee,
+            lp_fee=price_structure.get_fee_percentage(),
+            lp_fees_estimated=price_structure.get_total_lp_fees(),
             planned_mid_price=price_structure.mid_price)
 
 

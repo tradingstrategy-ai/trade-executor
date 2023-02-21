@@ -14,10 +14,10 @@ from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifie
 from tradeexecutor.state.trade import TradeType
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.types import USDollarAmount, BPS, USDollarPrice
-
+from tradeexecutor.strategy.trade_pricing import TradePricing
 
 @dataclass_json
-@dataclass
+@dataclass(slots=True)
 class TradingPosition:
 
     #: Runnint int counter primary key for positions
@@ -92,6 +92,14 @@ class TradingPosition:
             return f"<Open position #{self.position_id} {self.pair} ${self.get_value()}>"
         else:
             return f"<Closed position #{self.position_id} {self.pair} ${self.get_first_trade().get_value()}>"
+
+    def __hash__(self):
+        return hash(self.position_id)
+
+    def __eq__(self, other):
+        """Note that we do not support comparison across different portfolios ATM."""
+        assert isinstance(other, TradingPosition)
+        return self.position_id == other.position_id
 
     def __post_init__(self):
         assert self.position_id > 0
@@ -266,6 +274,17 @@ class TradingPosition:
         """
         return self.calculate_value_using_price(self.last_token_price, self.last_reserve_price)
 
+    def get_trades_by_strategy_cycle(self, timestamp: datetime.datetime) -> Iterable[TradeExecution]:
+        """Get all trades made for this position at a specific time.
+
+        :return:
+            Iterable of 0....N trades
+        """
+        assert isinstance(timestamp, datetime.datetime)
+        for t in self.trades.values():
+            if t.strategy_cycle_at == timestamp:
+                yield t
+
     def is_stop_loss_closed(self) -> bool:
         """Did this position close with stop loss."""
         last_trade = self.get_last_trade()
@@ -288,6 +307,7 @@ class TradingPosition:
                    pair_fee: Optional[BPS] = None,
                    lp_fees_estimated: Optional[USDollarAmount] = None,
                    planned_mid_price: Optional[USDollarPrice] = None,
+                   price_structure: Optional[TradePricing] = None
                    ) -> TradeExecution:
         """Open a new trade on position.
 
@@ -301,6 +321,9 @@ class TradingPosition:
         if quantity is not None:
             assert reserve is None, "Quantity and reserve both cannot be given at the same time"
 
+        if price_structure is not None:
+            assert isinstance(price_structure, TradePricing)
+        
         assert self.reserve_currency.get_identifier() == reserve_currency.get_identifier(), "New trade is using different reserve currency than the position has"
         assert isinstance(trade_id, int)
         assert isinstance(strategy_cycle_at, datetime.datetime)
@@ -325,6 +348,7 @@ class TradingPosition:
             planned_mid_price=planned_mid_price,
             fee_tier=pair_fee,
             lp_fees_estimated=lp_fees_estimated,
+            price_structure=price_structure
         )
         self.trades[trade.trade_id] = trade
         return trade
@@ -461,6 +485,16 @@ class TradingPosition:
         if bought == 0:
             return 0
         return profit / bought
+
+    def get_total_profit_at_timestamp(self, timestamp: datetime.datetime) -> USDollarAmount:
+        """Get the profit of the position what it was at a certain point of time.
+
+        Include realised and unrealised profit.
+
+        :param timestamp:
+            Include all traeds before and including at this timestamp.
+        """
+        raise NotImplementedError()
 
     def get_freeze_reason(self) -> str:
         """Return the revert reason why this position is frozen.

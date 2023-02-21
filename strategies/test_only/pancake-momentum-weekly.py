@@ -1,16 +1,26 @@
-# A test strategy executed in test_pancake_momentum_v2
+"""A test strategy executed in test_pancake_momentum_v2.
+
+To run tests:
+
+.. code-block:: python
+
+    pytest -k test_pancake_momentum_v2
+"""
 
 import datetime
 import enum
 from collections import Counter
 from typing import Dict, List, Optional
+import logging
 
 import pandas as pd
 
 
 from tradeexecutor.ethereum.routing_data import get_pancake_default_routing_parameters
+from tradeexecutor.state.identifier import TradingPairIdentifier
+from tradeexecutor.strategy.alpha_model import AlphaModel
 
-from tradeexecutor.strategy.pandas_trader.rebalance import weight_by_1_slash_n, rebalance_portfolio, normalise_weights
+from tradeexecutor.strategy.weighting import weight_by_1_slash_n
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.universe_model import UniverseOptions
 from tradeexecutor.utils.price import is_legit_price_value
@@ -25,7 +35,6 @@ from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.strategy.strategy_type import StrategyType
-from tradeexecutor.state.visualisation import Visualisation, PlotKind
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.default_routing_options import TradeRouting
@@ -85,6 +94,9 @@ risk_min_liquidity_threshold = 100_000
 min_position_update_threshold = 5.0
 
 
+logger = logging.getLogger(__name__)
+
+
 class RiskAssessment(enum.Enum):
     """Potential risk flags for a trading pair."""
     accepted_risk = "risk_accepted"
@@ -97,7 +109,7 @@ class RiskAssessment(enum.Enum):
 
 def assess_risk(
         state: State,
-        pair: DEXPair,
+        dex_pair: DEXPair,
         price: float,
         liquidity: float) -> RiskAssessment:
     """Do the risk check for the trading pair if it accepted to our alpha model.
@@ -107,7 +119,7 @@ def assess_risk(
     - The price unit must look sensible
     """
 
-    executor_pair = translate_trading_pair(pair)
+    executor_pair = translate_trading_pair(dex_pair)
 
     # Skip any trading pair with machine generated tokens
     # or otherwise partial looking info
@@ -119,7 +131,7 @@ def assess_risk(
         return RiskAssessment.blacklisted
 
     # This token is marked as not tradeable, so we don't touch it
-    if (pair.buy_tax != 0) or (pair.sell_tax != 0) or (pair.transfer_tax != 0):
+    if (dex_pair.buy_tax != 0) or (dex_pair.sell_tax != 0) or (dex_pair.transfer_tax != 0):
         return RiskAssessment.token_tax
 
     # The pair does not have enough liquidity for us to enter
@@ -161,7 +173,6 @@ def filter_duplicate_base_tokens(self, alpha_signals: Counter, debug_data: dict)
     return filtered_alpha
 
 
-
 def decide_trades(
         timestamp: pd.Timestamp,
         universe: Universe,
@@ -173,8 +184,7 @@ def decide_trades(
     # opening/closing trades for different positions
     position_manager = PositionManager(timestamp, universe, state, pricing_model)
 
-    # pair id -> how much alpha it has
-    alpha_signals = Counter()
+    alpha_model = AlphaModel(timestamp)
 
     # The time range end is the current candle
     # The time range start is 2 * 4 hours back, and turn the range
@@ -196,10 +206,6 @@ def decide_trades(
         "accepted_alpha_candidates": 0,
     })
 
-    # Expose pair specific debug data to the
-    # research
-    pair_debug_data = {}
-
     # Iterate over all candles for all pairs in this timestamp (ts)
     for pair_id, pair_df in candle_data:
 
@@ -219,7 +225,10 @@ def decide_trades(
         open = first_candle["open"]  # QStrader data frames are using capitalised version of OHLCV core variables
         close = last_candle["close"]  # QStrader data frames are using capitalised version of OHLCV core variables
 
-        pair = pair_universe.get_pair_by_id(pair_id)
+        # DEXPair instance contains more data than internal TradingPairIdentifier
+        # we use to store this pair across the strategy
+        dex_pair = pair_universe.get_pair_by_id(pair_id)
+        pair = translate_trading_pair(dex_pair)
 
         if is_legit_price_value(close):
             # This trading pair is too funny that we do not want to play with it
@@ -250,7 +259,7 @@ def decide_trades(
 
         risk = assess_risk(
             state,
-            pair,
+            dex_pair,
             close,
             available_liquidity_for_pair)
 
@@ -258,41 +267,48 @@ def decide_trades(
             # Do candle check only after we know the pair is "good" liquidity wise
             # and should have candles
             candle_count = len(pair_df)
-            alpha_signals[pair_id] = momentum
+
+            alpha_model.set_signal(
+                pair,
+                momentum,
+                stop_loss=0,
+            )
 
             issue_tracker["accepted_alpha_candidates"] += 1
         else:
-            # Delette pair from the alpha set because of observed risk
-            del alpha_signals[pair_id]
+            # Delete pair from the alpha set because of observed risk
+            alpha_model.set_signal(
+                pair,
+                0,
+            )
 
             # Track the number of risk issues we have detectd in this cycle
             issue_tracker[str(risk.value)] += 1
 
-        # Extra debug details are available for pairs for which a buy decision can be made
-        pair_debug_data[pair_id] = {
-            "pair": pair,
-            "open": open,
-            "close": close,
-            "momentum": momentum,
-            "liquidity": available_liquidity_for_pair,
-            "candle_count": candle_count,
-        }
+    # Select max_assets_in_portfolio assets in which we are going to invest
+    # Calculate a weight for ecah asset in the portfolio using 1/N method based on the raw signal
+    alpha_model.select_top_signals(max_assets_in_portfolio)
+    alpha_model.assign_weights(method=weight_by_1_slash_n)
+    alpha_model.normalise_weights()
 
-    alpha_signals = alpha_signals.most_common(max_assets_in_portfolio)
+    # Load in old weight for each trading pair signal,
+    # so we can calculate the adjustment trade size
+    alpha_model.update_old_weights(state.portfolio)
 
-    weights = normalise_weights(weight_by_1_slash_n(alpha_signals))
-
+    # Calculate how much dollar value we want each individual position to be on this strategy cycle,
+    # based on our total available equity
     portfolio = position_manager.get_current_portfolio()
     portfolio_target_value = portfolio.get_total_equity() * value_allocated_to_positions
+    alpha_model.calculate_target_positions(portfolio_target_value)
 
     # Shift portfolio from current positions to target positions
     # determined by the alpha signals (momentum)
-    trades = rebalance_portfolio(
-        position_manager,
-        weights,
-        portfolio_target_value,
-        min_position_update_threshold
-    )
+    trades = alpha_model.generate_rebalance_trades_and_triggers(position_manager)
+
+    # Record alpha model state so we can later visualise our alpha model thinking better
+    state.visualisation.add_calculations(timestamp, alpha_model.to_dict())
+
+    logger.info("Cycle %s, model: %s", timestamp, alpha_model.get_debug_print())
 
     return trades
 

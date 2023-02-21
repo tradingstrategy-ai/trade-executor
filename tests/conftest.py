@@ -39,3 +39,13 @@ def logger() -> Logger:
     Only seem to affect multitest runs.
     """
     return setup_pytest_logging()
+
+
+def pytest_sessionstart(session):
+    """
+    Called after the Session object has been created and
+    before performing collection and entering the run test loop.
+    """
+    # Make sure dataclasses-json is monkey patched
+    from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
+    patch_dataclasses_json()

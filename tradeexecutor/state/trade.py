@@ -12,7 +12,7 @@ from dataclasses_json import dataclass_json
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
 from tradeexecutor.state.types import USDollarAmount, USDollarPrice, BPS
-
+from tradeexecutor.strategy.trade_pricing import TradePricing
 
 class TradeType(enum.Enum):
     """What kind of trade execution this was."""
@@ -53,7 +53,9 @@ class TradeStatus(enum.Enum):
 @dataclass_json
 @dataclass()
 class TradeExecution:
-    """Trade execution tracker.
+    """Trade execution tracker. 
+    
+    - One TradeExecution instance can only represent one swap
 
     Each trade has a reserve currency that we use to trade the token (usually USDC).
 
@@ -97,6 +99,9 @@ class TradeExecution:
     #: What was the strategy cycle timestamp for it was created.
     #:
     #: Naive UTC timestamp.
+    #:
+    #: If the trade was executed by a take profit/stop loss trigger
+    #: then this is the trigger timestamp (not wall clock time)
     #:
     #: See also
     #:
@@ -229,6 +234,11 @@ class TradeExecution:
     #: E.g. failed broadcast issue was fixed.
     #: Marked when the repair command is called.
     repaired_at: Optional[datetime.datetime] = None
+    
+    #: Related TradePricing instance
+    #:
+    #: TradePricing instance can refer to more than one swap
+    price_structure: Optional[TradePricing] = None
 
     def __repr__(self):
         if self.is_buy():
@@ -236,14 +246,23 @@ class TradeExecution:
         else:
             return f"<Sell #{self.trade_id} {abs(self.planned_quantity)} {self.pair.base.token_symbol} at {self.planned_price}, {self.get_status().name}>"
 
+    def pretty_print(self) -> str:
+        """Get diagnostics output for the trade.
+
+        Use Python `pprint` module.
+        """
+        d = asdict(self)
+        return pprint.pformat(d)
+
     def get_full_debug_dump_str(self):
         return pprint.pformat(asdict(self))
 
     def __hash__(self):
         # TODO: Hash better?
-        return hash(str(self))
+        return hash(self.trade_id)
 
     def __eq__(self, other):
+        """Note that we do not support comparison across different portfolios ATM."""
         assert isinstance(other, TradeExecution)
         return self.trade_id == other.trade_id
 
@@ -252,9 +271,9 @@ class TradeExecution:
         assert self.planned_quantity != 0
         assert self.planned_price > 0
         assert self.planned_reserve >= 0
-        assert type(self.planned_price) == float, f"Price was given as {self.planned_price.__class__}: {self.planned_price}"
+        assert type(self.planned_price) in {float, int}, f"Price was given as {self.planned_price.__class__}: {self.planned_price}"
         assert self.opened_at.tzinfo is None, f"We got a datetime {self.opened_at} with tzinfo {self.opened_at.tzinfo}"
-
+        
     @property
     def strategy_cycle_at(self):
         """Alias for oepned_at"""
@@ -285,45 +304,49 @@ class TradeExecution:
         else:
             return f"Sell {abs(self.planned_quantity)} {self.pair.base.token_symbol} <id:{self.pair.base.internal_id}> at {self.planned_price}"
 
-    def is_sell(self):
+    def is_sell(self) -> bool:
         assert self.planned_quantity != 0, "Buy/sell concept does not exist for zero quantity"
         return self.planned_quantity < 0
 
-    def is_buy(self):
+    def is_buy(self) -> bool:
         assert self.planned_quantity != 0, "Buy/sell concept does not exist for zero quantity"
         return self.planned_quantity >= 0
 
-    def is_success(self):
+    def is_success(self) -> bool:
         """This trade was succcessfully completed."""
         return self.executed_at is not None
 
-    def is_failed(self):
+    def is_failed(self) -> bool:
         """This trade was succcessfully completed."""
         return self.failed_at is not None
 
-    def is_pending(self):
+    def is_pending(self) -> bool:
         """This trade was succcessfully completed."""
         return self.get_status() in (TradeStatus.started, TradeStatus.broadcasted)
 
-    def is_planned(self):
+    def is_planned(self) -> bool:
         """This trade is still in planning, unallocated."""
         return self.get_status() in (TradeStatus.planned,)
 
-    def is_started(self):
+    def is_started(self) -> bool:
         """This trade has a txid allocated."""
         return self.get_status() in (TradeStatus.started,)
 
-    def is_rebalance(self):
+    def is_rebalance(self) -> bool:
         """This trade is part of the normal strategy rebalance."""
         return self.trade_type == TradeType.rebalance
 
-    def is_stop_loss(self):
+    def is_stop_loss(self) -> bool:
         """This trade is made to close stop loss on a position."""
         return self.trade_type == TradeType.stop_loss
 
-    def is_take_profit(self):
+    def is_take_profit(self) -> bool:
         """This trade is made to close take profit on a position."""
         return self.trade_type == TradeType.take_profit
+
+    def is_triggered(self) -> bool:
+        """Was this trade based on a trigger signal."""
+        return self.trade_type == TradeType.take_profit or self.trade_type == TradeType.stop_loss
 
     def is_accounted_for_equity(self) -> bool:
         """Does this trade contribute towards the trading position equity.
@@ -446,12 +469,14 @@ class TradeExecution:
 
     def get_fees_paid(self) -> USDollarAmount:
         """
-        TODO: Make this functio to behave
-        :return:
+        Get total swap fees paid for trade. Returns 0 instead of `None`
+        
+        :return: total amount of lp fees (swap fees) paid in US dollars
         """
+        
         status = self.get_status()
         if status == TradeStatus.success:
-            return self.lp_fees_paid
+            return self.lp_fees_paid or 0
         elif status == TradeStatus.failed:
             return 0
         else:

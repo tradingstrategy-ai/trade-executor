@@ -57,3 +57,45 @@ def test_create_multipair_universe(persistent_test_client):
     range = universe.universe.candles.get_timestamp_range()
     assert range[0] < pd.Timestamp('2022-01-01 00:00:00')
     assert range[1] > pd.Timestamp('2022-01-01 00:00:00')
+
+
+def test_create_multipair_universe_by_pair_descriptions(persistent_test_client):
+    """Create a trading universe with multiple pairs using human pair descriptions."""
+
+    client = persistent_test_client
+    candle_time_bucket = TimeBucket.d7
+
+    execution_context = ExecutionContext(
+        ExecutionMode.unit_testing_trading,
+        timed_task,
+    )
+
+    dataset = load_all_data(
+        client,
+        candle_time_bucket,
+        execution_context,
+        UniverseOptions(),
+    )
+
+    pairs = (
+        (ChainId.ethereum, "uniswap-v2", "WETH", "USDC"),  # ETH
+        (ChainId.ethereum, "uniswap-v2", "AAVE", "WETH"),  # AAVE
+        (ChainId.ethereum, "uniswap-v2", "UNI", "WETH"),  # UNI
+        (ChainId.ethereum, "uniswap-v2", "CRV", "WETH"),  # Curve
+        (ChainId.ethereum, "sushi", "SUSHI", "WETH"),  # Sushi
+        (ChainId.bsc, "pancakeswap-v2", "WBNB", "BUSD"),  # BNB
+        (ChainId.bsc, "pancakeswap-v2", "Cake", "BUSD"),  # Cake
+        (ChainId.polygon, "quickswap", "WMATIC", "USDC"),  # Matic
+        (ChainId.avalanche, "trader-joe", "WAVAX", "USDC"),  # Avax
+        (ChainId.avalanche, "trader-joe", "JOE", "WAVAX"),  # TraderJoe
+    )
+
+    universe = TradingStrategyUniverse.create_multichain_universe_by_pair_descriptions(
+        dataset,
+        pairs,
+        "USDC",
+    )
+
+    assert universe.universe.pairs.get_count() == 10
+    assert universe.universe.candles.get_pair_count() == 10
+    assert universe.reserve_assets[0].token_symbol == "USDC"
