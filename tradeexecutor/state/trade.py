@@ -281,20 +281,29 @@ class TradeExecution:
     
     @property
     def fee_tier(self) -> (float | int):
+        """LP fee % recorded before the execution starts."""
         return self._fee_tier
 
     @property
     def lp_fees_estimated(self) -> (float | int):
+        """LP fees estimated in the USD.
+        This is set before the execution and is mostly useful
+        for backtesting.
+        """
         return self._lp_fees_estimated
     
     @fee_tier.setter
     def fee_tier(self, value):
+        """Setter for fee_tier"""
+        
         # TODO standardize fees
         #assert type(value) == float, "fee tier must be provided as a float to trade execution"
         self._fee_tier = value
     
     @lp_fees_estimated.setter
     def lp_fees_estimated(self, value):
+        """Setter for lp_fees_estimated"""
+        
         # TODO standardize
         #assert type(value) == float
         self._lp_fees_estimated = value
