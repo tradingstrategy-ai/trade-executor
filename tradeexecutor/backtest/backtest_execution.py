@@ -150,6 +150,19 @@ class BacktestExecutionModel(ExecutionModel):
 
         except OutOfSimulatedBalance as e:
             # Better error messages to helping out why backtesting failed
+
+            if trade.is_buy():
+                # Give a hint to the user
+                extra_help_message = f"---\n" \
+                                     f"Tip:" \
+                                     f"This is a buy trade that failed.\n" \
+                                     f"It means that the strategy had less cash to make purchases that it expected.\n" \
+                                     f"It may happen during multiple rebalance operations, as the strategy model might not account properly the trading fees when\n" \
+                                     f"it estimates the available cash in hand to make buys and sells for rebalancing operations.\n" \
+                                     f"Try increasing the strategy cash buffer to see if it solves the problem.\n"
+            else:
+                extra_help_message = ""
+
             raise BacktestExecutionFailed(f"\n"
                 f"  Trade #{idx} failed on strategy cycle {ts}\n"
                 f"  Execution of trade {trade} failed.\n"
@@ -166,6 +179,7 @@ class BacktestExecutionModel(ExecutionModel):
                 f"  Existing position quantity: {position and position.get_quantity() or '-'} {base.token_symbol}\n"
                 f"  Sell amount epsilon fix applied: {sell_amount_epsilon_fix}.\n"
                 f"  Out of balance: {e}\n"
+                f"  {extra_help_message}\n"
             ) from e
 
         assert abs(executed_quantity) > 0
