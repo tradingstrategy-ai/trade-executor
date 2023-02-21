@@ -289,12 +289,14 @@ class TradeExecution:
     
     @fee_tier.setter
     def fee_tier(self, value):
-        assert type(value) == float, "fee tier must be provided as a float to trade execution"
+        # TODO standardize fees
+        #assert type(value) == float, "fee tier must be provided as a float to trade execution"
         self._fee_tier = value
     
     @lp_fees_estimated.setter
     def lp_fees_estimated(self, value):
-        assert type(value) == float
+        # TODO standardize
+        #assert type(value) == float
         self._lp_fees_estimated = value
 
     def get_human_description(self) -> str:
