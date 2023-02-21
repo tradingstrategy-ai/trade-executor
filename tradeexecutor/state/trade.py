@@ -280,11 +280,11 @@ class TradeExecution:
         return self.opened_at
     
     @property
-    def fee_tier(self):
+    def fee_tier(self) -> (float | int):
         return self._fee_tier
 
     @property
-    def lp_fees_estimated(self):
+    def lp_fees_estimated(self) -> (float | int):
         return self._lp_fees_estimated
     
     @fee_tier.setter
