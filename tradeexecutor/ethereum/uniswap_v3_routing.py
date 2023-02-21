@@ -65,7 +65,9 @@ class UniswapV3RoutingState(EthereumRoutingState):
         if check_balances:
             self.check_has_enough_tokens(quote_token, reserve_amount)
 
-        fee = int(target_pair.fee)
+        fee = target_pair.fee
+        
+        assert fee > 1, "fee must be provided as raw fee for uniswap v3"
         
         bound_swap_func = swap_with_slippage_protection(
             uniswap,
@@ -105,7 +107,9 @@ class UniswapV3RoutingState(EthereumRoutingState):
         if check_balances:
             self.check_has_enough_tokens(quote_token, reserve_amount)
 
-        pool_fees = [int(intermediary_pair.fee), int(target_pair.fee)]
+        assert intermediary_pair.fee > 1 and target_pair.fee > 1, "fees must be provided as raw fee for uniswap v3"
+        
+        pool_fees = [intermediary_pair.fee, target_pair.fee]
         
         bound_swap_func = swap_with_slippage_protection(
             uniswap,
