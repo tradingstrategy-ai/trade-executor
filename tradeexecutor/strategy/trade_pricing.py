@@ -30,10 +30,17 @@ class TradePricing:
     #: for the pricing model.
     price: USDollarPrice
 
-    #: The "fair" market price during the transaction.
+    #: The theoretical market price during the transaction.
     #:
-    #: This is the mid price - no LP fees, price impact,
-    #: etc. included.
+    #: This is the `(ask price + bid price) / 2` order book price
+    #: that no one can obtain.
+    #:
+    #: No LP fees, price impact, etc. are included in this price.
+    #: It can be used as a basis for other fee estimation
+    #: calculations.
+    #:
+    #: See :term:`mid price` for more information.
+    #:
     mid_price: USDollarPrice
 
     #: How much liquidity provider fees we are going to pay on this trade.
