@@ -500,6 +500,14 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             print(f"Resamping liquidity data to {liquidity_resample_frequency}, this may take a long time")
             resampled_liquidity = ResampledLiquidityUniverse(filtered_liquidity, resample_period=liquidity_resample_frequency)
 
+        if dataset.backtest_stop_loss_candles is not None:
+            backtest_stop_loss_time_bucket = dataset.backtest_stop_loss_time_bucket
+            filtered_candles = filter_for_pairs(all_candles, dataset.backtest_stop_loss_candles)
+            backtest_stop_loss_candles = GroupedCandleUniverse(filtered_candles, time_bucket=dataset.backtest_stop_loss_time_bucket)
+        else:
+            backtest_stop_loss_time_bucket = None
+            backtest_stop_loss_candles = None
+
         universe = Universe(
             time_bucket=dataset.time_bucket,
             chains=chain_ids,
@@ -511,7 +519,12 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             exchange_universe=ExchangeUniverse.from_collection(our_exchanges),
         )
 
-        return TradingStrategyUniverse(universe=universe, reserve_assets=reserve_assets)
+        return TradingStrategyUniverse(
+            universe=universe,
+            reserve_assets=reserve_assets,
+            backtest_stop_loss_time_bucket=backtest_stop_loss_time_bucket,
+            backtest_stop_loss_candles=backtest_stop_loss_candles,
+        )
 
     @staticmethod
     def create_multichain_universe_by_pair_descriptions(
@@ -960,6 +973,7 @@ def load_all_data(
         universe_options: UniverseOptions,
         with_liquidity=True,
         liquidity_time_frame: Optional[TimeBucket] = None,
+        stop_loss_time_frame: Optional[TimeBucket] = None,
 ) -> Dataset:
     """Load all pair, candle and liquidity data for a given time bucket.
 
@@ -982,8 +996,7 @@ def load_all_data(
         Note that all pairs may not have liquidity data available.
 
     :param stop_loss_time_frame:
-        Load more granular candle data which is intended
-        to be used for stop loss backtesting only.
+        Load more granular candle data for take profit /tstop loss backtesting.
 
     :param liquidity_time_frame:
         Enable downloading different granularity of liquidity data.
@@ -1025,6 +1038,11 @@ def load_all_data(
         else:
             liquidity = None
 
+        if stop_loss_time_frame:
+            stop_loss_candles = client.fetch_all_candles(stop_loss_time_frame).to_pandas()
+        else:
+            stop_loss_candles = None
+
         return Dataset(
             time_bucket=time_frame,
             liquidity_time_bucket=liquidity_time_frame,
@@ -1032,6 +1050,8 @@ def load_all_data(
             pairs=pairs,
             candles=candles,
             liquidity=liquidity,
+            backtest_stop_loss_time_bucket=stop_loss_time_frame,
+            backtest_stop_loss_candles=stop_loss_candles,
         )
 
 
