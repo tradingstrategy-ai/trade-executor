@@ -26,7 +26,7 @@ from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId
 from tradingstrategy.client import Client
 from tradingstrategy.exchange import ExchangeUniverse, Exchange, ExchangeType
-from tradingstrategy.liquidity import GroupedLiquidityUniverse
+from tradingstrategy.liquidity import GroupedLiquidityUniverse, ResampledLiquidityUniverse
 from tradingstrategy.pair import DEXPair, PandasPairUniverse, resolve_pairs_based_on_ticker, \
     filter_for_exchanges, filter_for_quote_tokens, StablecoinFilteringMode, filter_for_stablecoins, \
     HumanReadableTradingPairDescription
@@ -60,6 +60,9 @@ class Dataset:
 
     #: All liquidity samples
     liquidity: Optional[pd.DataFrame] = None
+
+    #: Liquidity data granularity
+    liquidity_time_bucket: Optional[TimeBucket] = None
 
     #: Granularity of backtesting OHLCV data
     backtest_stop_loss_time_bucket: Optional[TimeBucket] = None
@@ -391,6 +394,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         quote_tokens: Iterable[str],
         reserve_token: str,
         factory_router_map: Dict[str, tuple],
+        liquidity_resample_frequency: Optional[str] = None,
     ) -> "TradingStrategyUniverse":
         """Create a trading universe where pairs match a filter conditions.
 
@@ -417,6 +421,17 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             Ensure we have a router address for every exchange we are going to use.
             TODO: In the future this information is not needed.
 
+        :param liquidity_resample_frequency:
+            Create a resampled liquidity universe instead of accurate one.
+
+            Using :py:class:`ResampledLiquidityUniverse` will greatly
+            speed up backtests that estimate trading pair liquidity,
+            by trading off sample accuracy for code execution speed.
+
+            Must be a Pandas frequency string value, like `1d`.
+
+            Note that resamping itself takes a lot of time upfront,
+            so you want to use this only if the backtest takes lont time.
         """
 
         assert type(chain_ids) == list or type(chain_ids) == set
@@ -471,7 +486,17 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         # Get liquidity candles as Pandas Dataframe
         all_liquidity = dataset.liquidity
         filtered_liquidity = filter_for_pairs(all_liquidity, pairs_df)
-        liquidity_universe = GroupedLiquidityUniverse(filtered_liquidity, time_bucket=time_bucket)
+
+        if liquidity_resample_frequency is None:
+            liquidity_universe = GroupedLiquidityUniverse(filtered_liquidity, time_bucket=dataset.liquidity_time_bucket)
+            resampled_liquidity = None
+        else:
+            liquidity_universe = None
+            # Do just a print notification now, consider beta
+            # Optimally we want to resample, then store on a local disk cache,
+            # so that we do not need to run resample at the start of each backtest
+            print(f"Resamping liquidity data to {liquidity_resample_frequency}, this may take a long time")
+            resampled_liquidity = ResampledLiquidityUniverse(filtered_liquidity, resample_period=liquidity_resample_frequency)
 
         universe = Universe(
             time_bucket=dataset.time_bucket,
@@ -480,6 +505,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             exchanges=our_exchanges,
             candles=candle_universe,
             liquidity=liquidity_universe,
+            resampled_liquidity=resampled_liquidity,
             exchange_universe=ExchangeUniverse.from_collection(our_exchanges),
         )
 
@@ -931,6 +957,7 @@ def load_all_data(
         execution_context: ExecutionContext,
         universe_options: UniverseOptions,
         with_liquidity=True,
+        liquidity_time_frame: Optional[TimeBucket] = None,
 ) -> Dataset:
     """Load all pair, candle and liquidity data for a given time bucket.
 
@@ -955,6 +982,11 @@ def load_all_data(
     :param stop_loss_time_frame:
         Load more granular candle data which is intended
         to be used for stop loss backtesting only.
+
+    :param liquidity_time_frame:
+        Enable downloading different granularity of liquidity data.
+
+        If not given default to `time_frame`.
 
     :return:
         Dataset that covers all historical data.
@@ -985,12 +1017,15 @@ def load_all_data(
         candles = client.fetch_all_candles(time_frame).to_pandas()
 
         if with_liquidity:
-            liquidity = client.fetch_all_liquidity_samples(time_frame).to_pandas()
+            if not liquidity_time_frame:
+                liquidity_time_frame = time_frame
+            liquidity = client.fetch_all_liquidity_samples(liquidity_time_frame).to_pandas()
         else:
             liquidity = None
 
         return Dataset(
             time_bucket=time_frame,
+            liquidity_time_bucket=liquidity_time_frame,
             exchanges=exchanges,
             pairs=pairs,
             candles=candles,
