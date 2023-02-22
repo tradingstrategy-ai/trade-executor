@@ -424,6 +424,8 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         :param liquidity_resample_frequency:
             Create a resampled liquidity universe instead of accurate one.
 
+            If given, this will set `Universe.resampled_liquidity` attribute.
+
             Using :py:class:`ResampledLiquidityUniverse` will greatly
             speed up backtests that estimate trading pair liquidity,
             by trading off sample accuracy for code execution speed.
