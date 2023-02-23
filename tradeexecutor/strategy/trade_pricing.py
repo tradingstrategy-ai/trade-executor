@@ -98,17 +98,36 @@ class TradePricing:
     
     def get_total_lp_fees(self):
         """Returns the total lp fees paid (dollars) for the trade."""
+        if all(self.lp_fee):
+            return sum(self.lp_fee)
+        
+        logger.warning("some trades don't have an associated lp fee")
         return sum(filter(None,self.lp_fee))
     
     def get_fee_percentage(self):
         """Returns a single decimal value for the percentage of fees paid. 
-        This calculation represents the average of all the pair fees"""
-        # TODO verify calculation
+        This calculation represents the average of all the pair fees. 
+        Calculation is the same for v2 and v3.
+        
+        Calculation:
+        
+        -> x(1 - fee0)(1 - fee1) = x(1 - fee)
+        -> (1 - fee0)(1 - fee1) = (1 - fee)
+        -> fee = 1 - (1 - fee0)(1 - fee1)        
+        """
 
         if all(self.pair_fee):
-            return sum(self.pair_fee)/len(self.pair_fee)
-        else:
-            return 0 
+            if len(self.pair_fee) == 1:
+                assert self.pair_fee[0] < 1
+                return self.pair_fee[0]
+            elif len(self.pair_fee) == 2:
+                assert [0 <= fee < 1 for fee in self.pair_fee]
+                return 1 - (1 - self.pair_fee[0])(1 - self.pair_fee[1])
+            else:
+                raise ValueError("Swap involves fees from more than two pairs")
+            
+        logger.warning("some pairs in the trade have a fee of None")
+        return None 
 
 
 def format_fees_percentage(fees: list[BPS]) -> str:
