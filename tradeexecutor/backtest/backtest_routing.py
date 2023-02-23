@@ -34,43 +34,6 @@ class BacktestRoutingState(RoutingState):
         self.pair_universe = pair_universe
         self.wallet = wallet
 
-    def is_route_approved(self, router_address: str):
-        return router_address in self.approved_routes
-
-    def mark_router_approved(self, token_address, router_address):
-        self.approved_routes[router_address].add(token_address)
-
-    def check_has_enough_tokens(
-            self,
-            token: AssetIdentifier,
-            amount: Decimal,
-    ):
-        """Check we have enough buy side tokens to do a trade."""
-        balance = self.wallet.get_balance(token.address)
-        if balance < amount:
-            raise OutOfBalance(f"SimulatedWallet does not have enough {token} tokens to trade. Need {amount}, has {balance}")
-
-    def create_trade(self,
-            target_pair: TradingPairIdentifier,
-            reserve_asset: AssetIdentifier,
-            reserve_amount: Decimal,
-            max_slippage: float,
-            check_balances: False):
-        """Prepare the actual swap.
-
-        :param check_balances:
-            Check on-chain balances that the account has enough tokens
-            and raise exception if not.
-        """
-
-        base_token, quote_token = self.get_base_quote(self.web3, target_pair, reserve_asset)
-        
-        if check_balances:
-            self.check_has_enough_tokens(quote_token, reserve_amount)
-
-        tx = self.create_simulated_trade(target_pair, max)
-        return [tx]
-
 
 class BacktestRoutingModel(RoutingModel):
     """A simple router that does not optimise the trade execution cost.
@@ -123,61 +86,6 @@ class BacktestRoutingModel(RoutingModel):
 
     def get_default_trading_fee(self) -> Optional[float]:
         return self.trading_fee
-
-    def trade(self,
-              routing_state: BacktestRoutingState, # TODO remove
-              target_pair: TradingPairIdentifier,
-              reserve_asset: AssetIdentifier,
-              reserve_asset_amount: Decimal,  # Raw amount of the reserve asset
-              max_slippage: float=0.01,
-              check_balances=False,
-              intermediary_pair: Optional[TradingPairIdentifier] = None,
-              ) -> List[BlockchainTransaction]:
-        """
-
-        :param routing_state:
-        :param target_pair:
-        :param reserve_asset:
-        :param reserve_asset_amount:
-        :param max_slippage:
-            Max slippage per trade. 0.01 is 1%.
-        :param check_balances:
-            Check on-chain balances that the account has enough tokens
-            and raise exception if not.
-        :param intermediary_pair:
-            If the trade needs to be routed through a intermediary pool, e.g.
-            BUSD -> BNB -> Cake.
-        :return:
-            List of prepared transactions to make this trade.
-            These transactions, like approve() may relate to the earlier
-            transactions in the `routing_state`.
-        """
-        self.pre_trade_assertions(reserve_asset_amount, max_slippage, target_pair, reserve_asset)
-
-        # Our reserves match directly the asset on trading pair
-        # -> we can do one leg trade
-        if not intermediary_pair:
-            if target_pair.quote == reserve_asset or target_pair.base == reserve_asset:
-                return self.routing_state.create_and_complete_trade(
-                    target_pair,
-                    reserve_asset,
-                    reserve_asset_amount,
-                    max_slippage=max_slippage,
-                    check_balances=check_balances,
-                )
-            raise RuntimeError(f"Do not how to trade reserve {reserve_asset} with {target_pair}")
-        else:
-
-            assert intermediary_pair.pool_address.lower() in self.allowed_intermediary_pairs.values(), f"Does not how to trade a pair. Got intermediary pair {intermediary_pair} that is not allowed, allowed intermediary pairs are {self.allowed_intermediary_pairs}"
-
-            return self.routing_state.create_and_complete_trade(
-                target_pair,
-                reserve_asset,
-                reserve_asset_amount,
-                max_slippage=max_slippage,
-                check_balances=check_balances,
-                intermediary_pair=intermediary_pair,
-            )
 
     def setup_internal(self, routing_state: RoutingState, trade: TradeExecution):
         """Simulate trade braodcast and mark it as success."""
