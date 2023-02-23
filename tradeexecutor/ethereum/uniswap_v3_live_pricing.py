@@ -116,8 +116,6 @@ class UniswapV3LivePricing(EthereumPricingModel):
             else [target_pair.fee]
         )
         
-        fees = [int(fee) for fee in fees] # TODO fix, shouldn't need to do this
-        
         price_helper = self.get_price_helper(target_pair)
         received_raw = price_helper.get_amount_out(
             amount_in=quantity_raw,
@@ -125,26 +123,22 @@ class UniswapV3LivePricing(EthereumPricingModel):
             fees=fees
         ) 
 
-
         
         if intermediate_pair:
             received = intermediate_pair.quote.convert_to_decimal(received_raw)
-            price = float(received / quantity)
-            mid_price = price * (1 + self.get_pair_fee_multiplier(ts, target_pair) + self.get_pair_fee_multiplier(ts, intermediate_pair.fee))
-
             path = [intermediate_pair, target_pair]
             
         else:
-            
             received = target_pair.quote.convert_to_decimal(received_raw)
             price = float(received / quantity)
-            mid_price = price * (1 + self.get_pair_fee_multiplier(ts, target_pair))
-
             path = [target_pair]
         
-        #fee = self.get_pair_fee(ts, pair)
-        #assert fee is not None, "Uniswap v3 fee data missing"
-
+        price = float(received / quantity)
+        
+        if intermediate_pair:
+            mid_price = price / [(1 - self.get_pair_fee_multiplier(ts, target_pair)) * (1 - self.get_pair_fee_multiplier(ts, intermediate_pair.fee))]
+            mid_price = price / (1 - self.get_pair_fee_multiplier(ts, target_pair))
+        
         assert price <= mid_price, f"Bad pricing: {price}, {mid_price}"
 
         lp_fee = (mid_price - price) * float(quantity)
@@ -201,8 +195,6 @@ class UniswapV3LivePricing(EthereumPricingModel):
             else [target_pair.fee]
         )
 
-        fees = [int(fee) for fee in fees] # TODO fix, shouldn't need to do this
-
         price_helper = self.get_price_helper(target_pair)
         token_raw_received = price_helper.get_amount_out(
             amount_in=reserve_raw,
@@ -219,9 +211,10 @@ class UniswapV3LivePricing(EthereumPricingModel):
 
         lp_fee = float(reserve) * fee
 
-        # TODO: Verify calculation
+        # TODO: Verify mid_price calculation
+
         if intermediate_pair:        
-            mid_price = price * (1 - self.get_pair_fee_multiplier(ts, intermediate_pair) - self.get_pair_fee_multiplier(ts, target_pair))
+            mid_price = price * (1 - self.get_pair_fee_multiplier(ts, intermediate_pair)) * (1 - self.get_pair_fee_multiplier(ts, target_pair))
             
             path = [intermediate_pair, target_pair]
         else:
