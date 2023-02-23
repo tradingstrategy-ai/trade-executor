@@ -136,8 +136,9 @@ class UniswapV3LivePricing(EthereumPricingModel):
         price = float(received / quantity)
         
         if intermediate_pair:
-            mid_price = price / [(1 - self.get_pair_fee_multiplier(ts, target_pair)) * (1 - self.get_pair_fee_multiplier(ts, intermediate_pair.fee))]
-            mid_price = price / (1 - self.get_pair_fee_multiplier(ts, target_pair))
+            mid_price = price * (1 + self.get_pair_fee_multiplier(ts, target_pair)) * (1 + self.get_pair_fee_multiplier(ts, intermediate_pair.fee))
+        else:
+            mid_price = price * (1 + self.get_pair_fee_multiplier(ts, target_pair))
         
         assert price <= mid_price, f"Bad pricing: {price}, {mid_price}"
 

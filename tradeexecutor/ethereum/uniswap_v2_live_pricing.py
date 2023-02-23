@@ -125,11 +125,11 @@ class UniswapV2LivePricing(EthereumPricingModel):
             
         if intermediate_pair:
             # TODO: Verify calculation
-            mid_price = price / [(1 - fee) * (1 - fee)]
+            mid_price = price * (1 + fee) * (1 + fee)
             
             path = [intermediate_pair, target_pair]
         else:
-            mid_price = price / (1 - fee)
+            mid_price = price * (1 + fee)
             
             path = [target_pair]
             
