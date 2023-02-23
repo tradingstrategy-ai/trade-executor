@@ -82,7 +82,7 @@ class UniswapV2RoutingState(EthereumRoutingState):
                 fee=bps_fee
             )
         else:
-            logger.warn("Pair supplied without fee, using default fee")
+            logger.warning("Pair supplied without fee, using default fee")
             
             bound_swap_func = swap_with_slippage_protection(
                 uniswap,
@@ -137,7 +137,7 @@ class UniswapV2RoutingState(EthereumRoutingState):
                 fee = bps_fee
             )
         else:
-            logger.warn("Pair supplied without fee, using default fee")
+            logger.warning("Pair supplied without fee, using default fee")
             
             bound_swap_func = swap_with_slippage_protection(
                 uniswap,
