@@ -33,6 +33,13 @@ class DummyTestTrader:
     def create(self, pair: TradingPairIdentifier, quantity: Decimal, price: float) -> Tuple[TradingPosition, TradeExecution]:
         """Open a new trade."""
         # 1. Plan
+        
+        fee = (
+            pair.fee/1_000_000
+            if pair.fee 
+            else None
+        )
+        
         position, trade, created = self.state.create_trade(
             strategy_cycle_at=self.ts,
             pair=pair,
@@ -43,7 +50,7 @@ class DummyTestTrader:
             reserve_currency=pair.quote,
             reserve_currency_price=1.0,
             planned_mid_price=price,
-            pair_fee=pair.fee
+            pair_fee=fee
         )
 
         self.ts += datetime.timedelta(seconds=1)
