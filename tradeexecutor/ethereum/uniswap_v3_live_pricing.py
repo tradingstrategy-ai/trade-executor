@@ -143,12 +143,14 @@ class UniswapV3LivePricing(EthereumPricingModel):
         assert price <= mid_price, f"Bad pricing: {price}, {mid_price}"
 
         lp_fee = (mid_price - price) * float(quantity)
-
+        
+        fees_multiplier = [fee/1_000_000 for fee in fees]
+        
         return TradePricing(
             price=price,
             mid_price=mid_price,
             lp_fee=[lp_fee],
-            pair_fee=fees,
+            pair_fee=fees_multiplier,
             side=False,
             path=path
         )
@@ -224,12 +226,14 @@ class UniswapV3LivePricing(EthereumPricingModel):
             path = [target_pair]
 
         assert price >= mid_price, f"Bad pricing: {price}, {mid_price}"
+        
+        fees_multiplier = [fee/1_000_000 for fee in fees]
 
         return TradePricing(
             price=float(price),
             mid_price=float(mid_price),
             lp_fee=[lp_fee],
-            pair_fee=fees,
+            pair_fee=fees_multiplier,
             market_feed_delay=datetime.timedelta(seconds=0),
             side=True,
             path=path

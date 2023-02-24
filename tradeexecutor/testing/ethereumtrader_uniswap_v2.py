@@ -41,6 +41,12 @@ class UniswapV2TestTrader(EthereumTrader):
         assumed_quantity = Decimal(raw_assumed_quantity) / Decimal(10**pair.base.decimals)
         assumed_price = amount_in_usd / assumed_quantity
 
+        fee = (
+            pair.fee/1_000_000
+            if pair.fee 
+            else None
+        )
+        
         position, trade, created= self.state.create_trade(
             strategy_cycle_at=self.ts,
             pair=pair,
@@ -50,7 +56,7 @@ class UniswapV2TestTrader(EthereumTrader):
             trade_type=TradeType.rebalance,
             reserve_currency=pair.quote,
             reserve_currency_price=1.0,
-            pair_fee=pair.fee
+            pair_fee=fee
         )
 
         if execute:
@@ -71,6 +77,12 @@ class UniswapV2TestTrader(EthereumTrader):
         # assumed_price = quantity / assumed_quota_token
         assumed_price = assumed_quota_token / quantity
 
+        fee = (
+            pair.fee/1_000_000
+            if pair.fee 
+            else None
+        )
+        
         position, trade, created = self.state.create_trade(
             strategy_cycle_at=self.ts,
             pair=pair,
@@ -80,7 +92,7 @@ class UniswapV2TestTrader(EthereumTrader):
             trade_type=TradeType.rebalance,
             reserve_currency=pair.quote,
             reserve_currency_price=1.0,
-            pair_fee=pair.fee
+            pair_fee=fee
         )
         
 
