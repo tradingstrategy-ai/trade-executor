@@ -3,9 +3,11 @@
 import datetime
 import enum
 import pprint
+import logging
 from dataclasses import dataclass, field, asdict
 from decimal import Decimal
 from typing import Optional, Tuple, List
+from types import NoneType
 
 from dataclasses_json import dataclass_json
 
@@ -13,6 +15,10 @@ from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
 from tradeexecutor.state.types import USDollarAmount, USDollarPrice, BPS
 from tradeexecutor.strategy.trade_pricing import TradePricing
+
+
+logger = logging.getLogger()
+
 
 class TradeType(enum.Enum):
     """What kind of trade execution this was."""
@@ -299,12 +305,27 @@ class TradeExecution:
         """Setter for fee_tier.
         Ensures fee_tier is a float"""
         
-        assert type(value) in {float, type(None)}, "fee tier must be provided as a float to trade execution"
-        self._fee_tier = value
+        if type(value) is property:
+            # hack
+            # See comment on this post: https://florimond.dev/en/posts/2018/10/reconciling-dataclasses-and-properties-in-python/
+            value = None
+        
+        assert type(value) in {float, NoneType}, "If fee tier is specified, it must be provided as a float to trade execution"
+        
+        if value is None and self.pair.fee is not None:
+            logger.warning("No fee_tier provided but fee was found on associated trading pair, using trading pair fee")
+            self._fee_tier = self.pair.fee/1_000_000
+        else:
+            self._fee_tier = value
     
     @lp_fees_estimated.setter
     def lp_fees_estimated(self, value):
         """Setter for lp_fees_estimated"""
+        
+        if type(value) is property:
+            # hack
+            # See comment on this post: https://florimond.dev/en/posts/2018/10/reconciling-dataclasses-and-properties-in-python/
+            value = None
         
         # TODO standardize
         #assert type(value) == float
