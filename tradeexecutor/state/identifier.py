@@ -126,6 +126,11 @@ class TradingPairIdentifier:
     exchange_address: str
 
     #: How this asset is referred in the internal database
+    #:
+    #: Internal ids are not stable over the long duration.
+    #: Internal ids are not also stable across different oracles.
+    #: Always use `(chain_id, pool_address)` pair for persistent lookups.
+    #:
     internal_id: Optional[int] = None
 
     #: What is the internal exchange id of this trading pair.
