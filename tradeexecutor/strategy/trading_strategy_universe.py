@@ -83,13 +83,28 @@ class Dataset:
 
 @dataclass
 class TradingStrategyUniverse(StrategyExecutionUniverse):
-    """A trading executor trading universe that using data from TradingStrategy.ai data feeds."""
+    """A trading executor trading universe that using data from TradingStrategy.ai data feeds.
 
-    #: Trading universe datasets
+    - Supports generic trading universe definitions
+
+    - Adds special support for reserve currency handling and
+      take profit/stop loss backtesting
+    """
+
+    #: Trading universe datasets.
+    #:
+    #: This encapsulates more generic `Universe` class from `tradingstrategy` package.
     universe: Optional[Universe] = None
 
+    #: Are we using special take profit/stop loss trigger data.
+    #:
+    #: If we are, what is the time granularity of this data.
     backtest_stop_loss_time_bucket: Optional[TimeBucket] = None
 
+    #: Special Pandas data feed for candles used only during the backtesting.
+    #:
+    #: This allows us to simulate take profit and stop loss trigger orders
+    #: that would be based on real-time market data in a live execution environment.
     backtest_stop_loss_candles: Optional[GroupedCandleUniverse] = None
 
     #: How much historic data is needed by the strategy to make its decision.
