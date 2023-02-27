@@ -40,9 +40,9 @@ class UniswapV3RoutingState(EthereumRoutingState):
     def __repr__(self):
         return f"<UniswapV3RoutingState Tx builder: {self.tx_builder} web3: {self.web3}>"
     
-    def get_uniswap_for_pair(self, factory_router_map: dict, target_pair: TradingPairIdentifier) -> UniswapV3Deployment:
+    def get_uniswap_for_pair(self, address_map: dict, target_pair: TradingPairIdentifier) -> UniswapV3Deployment:
         """Get a router for a trading pair."""
-        return get_uniswap_for_pair(self.web3, factory_router_map, target_pair)
+        return get_uniswap_for_pair(self.web3, address_map, target_pair)
     
     def trade_on_router_two_way(self,
             uniswap: UniswapV3Deployment,
@@ -65,6 +65,10 @@ class UniswapV3RoutingState(EthereumRoutingState):
         if check_balances:
             self.check_has_enough_tokens(quote_token, reserve_amount)
 
+        fee = target_pair.fee
+        
+        assert fee > 1, "fee must be provided as raw fee for uniswap v3"
+        
         bound_swap_func = swap_with_slippage_protection(
             uniswap,
             recipient_address=hot_wallet.address,
@@ -72,7 +76,7 @@ class UniswapV3RoutingState(EthereumRoutingState):
             quote_token=quote_token,
             amount_in=reserve_amount,
             max_slippage=max_slippage * 100,  # In BPS
-            pool_fees=[target_pair.fee] # TODO check in right format
+            pool_fees=[fee]
         )
         
         return self.get_signed_tx(bound_swap_func, self.swap_gas_limit)
@@ -103,6 +107,8 @@ class UniswapV3RoutingState(EthereumRoutingState):
         if check_balances:
             self.check_has_enough_tokens(quote_token, reserve_amount)
 
+        assert intermediary_pair.fee > 1 and target_pair.fee > 1, "fees must be provided as raw fee for uniswap v3"
+        
         pool_fees = [intermediary_pair.fee, target_pair.fee]
         
         bound_swap_func = swap_with_slippage_protection(

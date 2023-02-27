@@ -115,27 +115,29 @@ class UniswapV2LivePricing(EthereumPricingModel):
         if intermediate_pair:
             received = intermediate_pair.quote.convert_to_decimal(received_raw)
             
-            _fee = self.get_pair_fee(ts, intermediate_pair)
-            assert _fee == fee, "Pairs for Uniswap V2 should have same fee"
-
-            price = float(received / quantity)
-
-            # TODO: Verify calculation
-            mid_price = price * (1 + 2*fee)
+            fee2 = self.get_pair_fee(ts, intermediate_pair)
+            assert fee2 == fee, "Pairs for Uniswap V2 should have same fee"
             
-            path = [intermediate_pair, target_pair]
         else:
             received = target_pair.quote.convert_to_decimal(received_raw)
 
-            price = float(received / quantity)
+        price = float(received / quantity)
             
+        if intermediate_pair:
+            # TODO: Verify calculation
+            mid_price = price * (1 + fee) * (1 + fee)
+            
+            path = [intermediate_pair, target_pair]
+        else:
             mid_price = price * (1 + fee)
             
             path = [target_pair]
-
+            
+            
+        lp_fee = (mid_price - price) * float(quantity)
+            
         assert price <= mid_price, f"Bad pricing: {price}, {mid_price}"
 
-        lp_fee = (mid_price - price) * float(quantity)
 
         return TradePricing(
             price=price,
@@ -178,9 +180,6 @@ class UniswapV2LivePricing(EthereumPricingModel):
             reserve_raw = intermediate_pair.quote.convert_to_raw_amount(reserve)
             self.check_supported_quote_token(intermediate_pair)
             
-            _fee = self.get_pair_fee(ts, intermediate_pair)
-            assert _fee == fee, "Pairs for Uniswap V2 should have same fee"
-            
         else:
             reserve_raw = target_pair.quote.convert_to_raw_amount(reserve)
             self.check_supported_quote_token(pair)
@@ -202,8 +201,11 @@ class UniswapV2LivePricing(EthereumPricingModel):
         price = float(reserve / token_received)
         
         if intermediate_pair:
+            fee2 = self.get_pair_fee(ts, intermediate_pair)
+            assert fee2 == fee, "Pairs for Uniswap V2 should have same fee"
+            
             # TODO: Verify calculation
-            mid_price = price * (1 - 2*fee)
+            mid_price = price * (1 - fee) * (1 - fee)
             
             path = [intermediate_pair, target_pair]
         else:

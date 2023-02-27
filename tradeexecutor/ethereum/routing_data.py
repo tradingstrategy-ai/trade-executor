@@ -332,10 +332,10 @@ def get_uniswap_v2_default_routing_parameters(
     }
 
 
-def get_uniswap_v3_default_routing_parameters(
+def get_uniswap_v3_ethereum_default_routing_parameters(
     reserve_currency: ReserveCurrency,
 ) -> RoutingData:
-    """Generate routing using Uniswap V3 router"""
+    """Generate routing using Uniswap V3 router for Ethereum"""
 
     if reserve_currency == ReserveCurrency.usdc:
         # https://tradingstrategy.ai/trading-view/ethereum/tokens/0xdac17f958d2ee523a2206206994597c13d831ec7
@@ -417,15 +417,78 @@ def get_uniswap_v3_default_routing_parameters(
             "0xdac17f958d2ee523a2206206994597c13d831ec7",
         },
     }
+    
+
+def get_uniswap_v3_polygon_default_routing_parameters(
+    reserve_currency: ReserveCurrency,
+) -> RoutingData:
+    """Generate routing using Uniswap V3 router for Polygon"""
+
+    if reserve_currency == ReserveCurrency.usdc:
+        # https://tradingstrategy.ai/trading-view/polygon/tokens/0x2791bca1f2de4661ed88a30c99a7a9449aa84174
+        reserve_token_address = "0x2791bca1f2de4661ed88a30c99a7a9449aa84174".lower()
+
+        allowed_intermediary_pairs = {
+            # Route WMATIC through USDC:WMATIC fee 0.05% pool,
+            # https://tradingstrategy.ai/trading-view/polygon/uniswap-v3/matic-usdc-fee-5
+            "0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270": "0xa374094527e1673a86de625aa59517c5de346d32",
+            # Route WETH through USDC:WETH fee 0.05% pool,
+            # https://tradingstrategy.ai/trading-view/polygon/uniswap-v3/eth-usdc-fee-5
+            "0x7ceb23fd6bc0add59e62ac25578270cff1b9f619": "0x45dda9cb7c25131df268515131f647d726f50608",
+        }
+    elif reserve_currency == ReserveCurrency.usdt:
+        # https://tradingstrategy.ai/trading-view/polygon/tokens/0xc2132d05d31c914a87c6611c10748aeb04b58e8f
+        reserve_token_address = "0xc2132d05d31c914a87c6611c10748aeb04b58e8f"
+
+        allowed_intermediary_pairs = {
+            # Route WMATIC through USDT:ETH fee 0.05% pool
+            # https://tradingstrategy.ai/trading-view/polygon/uniswap-v3/matic-usdt-fee-5
+            "0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270": "0x9b08288c3be4f62bbf8d1c20ac9c5e6f9467d8b7",
+        }
+
+    # Allowed exchanges as factory -> router pairs,
+    # by their smart contract addresses
+    # init_code_hash not applicable to v3 0xe34f199b19b2b4f47f68442619d555527d244f78a3297ea89325f843f87b8b54
+    # not really a map, change name? 
+    # V2 contracts (for router and quoter), not supported yet
+    # Same address_map for ethereum and polygon
+    address_map = {
+        "factory": "0x1F98431c8aD98523631AE4a59f267346ea31F984",
+        "router": "0xE592427A0AEce92De3Edee1F18E0157C05861564",
+        "position_manager": "0xC36442b4a4522E871399CD717aBDD847Ab11FE88",
+        "quoter": "0xb27308f9F90D607463bb33eA1BeBb41C27CE5AB6"
+        # "router02":"0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45",
+        # "quoterV2":"0x61fFE014bA17989E743c5F6cB21bF9697530B21e"
+    } # TODO create address_map class
+
+    return {
+        "chain_id": ChainId.polygon,
+        "address_map": address_map,
+        "allowed_intermediary_pairs": allowed_intermediary_pairs,
+        "reserve_token_address": reserve_token_address,
+        # USDC, WMATIC, USDT
+        "quote_token_addresses": {
+            "0x2791bca1f2de4661ed88a30c99a7a9449aa84174",
+            "0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270",
+            "0xc2132d05d31c914a87c6611c10748aeb04b58e8f",
+        },
+    }
 
 
-def get_uniswap_v3_compatible_routing_types():
+def get_uniswap_v3_compatible_routing_types_eth():
     # TODO find a way to get without hardcoding
     return {
         TradeRouting.uniswap_v3_usdc,
         TradeRouting.uniswap_v3_busd,
         TradeRouting.uniswap_v3_dai,
         TradeRouting.uniswap_v3_usdt,
+    }
+
+def get_uniswap_v3_compatible_routing_types_poly():
+    # TODO find a way to get without hardcoding
+    return {
+        TradeRouting.uniswap_v3_usdc_poly,
+        TradeRouting.uniswap_v3_usdt_poly,
     }
 
 
@@ -593,13 +656,10 @@ def create_uniswap_v3_compatible_routing(
     :returns:
     UniswapV3SimpleRoutingModel"""
 
-    if routing_type in {
-        TradeRouting.uniswap_v3_usdc,
-        TradeRouting.uniswap_v3_usdt,
-        TradeRouting.uniswap_v3_dai,
-        TradeRouting.uniswap_v3_busd,
-    }:
-        params = get_uniswap_v3_default_routing_parameters(reserve_currency)
+    if routing_type in get_uniswap_v3_compatible_routing_types_eth():
+        params = get_uniswap_v3_ethereum_default_routing_parameters(reserve_currency)
+    elif routing_type in get_uniswap_v3_compatible_routing_types_poly():
+        params = get_uniswap_v3_polygon_default_routing_parameters(reserve_currency)
     else:
         raise NotImplementedError()
 
@@ -631,7 +691,9 @@ def create_compatible_routing(
 
     if routing_type in get_uniswap_v2_compatible_routing_types():
         return create_uniswap_v2_compatible_routing(routing_type, reserve_currency)
-    elif routing_type in get_uniswap_v3_compatible_routing_types():
+    elif routing_type in {
+        get_uniswap_v3_compatible_routing_types_eth().union(get_uniswap_v3_compatible_routing_types_poly())
+    }:
         return create_uniswap_v3_compatible_routing(routing_type, reserve_currency)
 
 

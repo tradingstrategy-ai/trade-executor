@@ -69,15 +69,29 @@ class UniswapV2RoutingState(EthereumRoutingState):
         if check_balances:
             self.check_has_enough_tokens(quote_token, reserve_amount)
 
-        bound_swap_func = swap_with_slippage_protection(
-            uniswap,
-            recipient_address=hot_wallet.address,
-            base_token=base_token,
-            quote_token=quote_token,
-            amount_in=reserve_amount,
-            max_slippage=max_slippage * 100,  # In BPS
-            #fee=target_pair.fee # TODO
-        )
+        
+        if target_pair.fee:
+            bps_fee = target_pair.fee * 10_000
+            bound_swap_func = swap_with_slippage_protection(
+                uniswap,
+                recipient_address=hot_wallet.address,
+                base_token=base_token,
+                quote_token=quote_token,
+                amount_in=reserve_amount,
+                max_slippage=max_slippage * 100,  # In BPS
+                fee=bps_fee
+            )
+        else:
+            logger.warning("Pair supplied without fee, using default fee")
+            
+            bound_swap_func = swap_with_slippage_protection(
+                uniswap,
+                recipient_address=hot_wallet.address,
+                base_token=base_token,
+                quote_token=quote_token,
+                amount_in=reserve_amount,
+                max_slippage=max_slippage * 100,  # In BPS
+            )
         
         return self.get_signed_tx(bound_swap_func, self.swap_gas_limit)
 
@@ -108,16 +122,32 @@ class UniswapV2RoutingState(EthereumRoutingState):
         if check_balances:
             self.check_has_enough_tokens(quote_token, reserve_amount)
 
-        bound_swap_func = swap_with_slippage_protection(
-            uniswap,
-            recipient_address=hot_wallet.address,
-            base_token=base_token,
-            quote_token=quote_token,
-            amount_in=reserve_amount,
-            max_slippage=max_slippage * 100,  # In BPS,
-            intermediate_token=intermediary_token,
-            # fee = [intermediate_token.fee, target_pair.fee] # TODO 
-        )
+        assert target_pair.fee == intermediary_pair.fee, "Uniswap V2 pairs should all have the same fee"
+        
+        if target_pair.fee:
+            bps_fee = target_pair.fee * 10_000
+            bound_swap_func = swap_with_slippage_protection(
+                uniswap,
+                recipient_address=hot_wallet.address,
+                base_token=base_token,
+                quote_token=quote_token,
+                amount_in=reserve_amount,
+                max_slippage=max_slippage * 100,  # In BPS,
+                intermediate_token=intermediary_token,
+                fee = bps_fee
+            )
+        else:
+            logger.warning("Pair supplied without fee, using default fee")
+            
+            bound_swap_func = swap_with_slippage_protection(
+                uniswap,
+                recipient_address=hot_wallet.address,
+                base_token=base_token,
+                quote_token=quote_token,
+                amount_in=reserve_amount,
+                max_slippage=max_slippage * 100,  # In BPS,
+                intermediate_token=intermediary_token,
+            )
 
         tx = self.tx_builder.sign_transaction(bound_swap_func, self.swap_gas_limit)
         return [tx]

@@ -137,6 +137,22 @@ class TradeRouting(enum.Enum):
     #:
     #: - Open positions with DAI quote token.
     uniswap_v3_busd = "uniswap_v3_busd"
+    
+    #: Two or three legged trades on Uniswap v3 on Polygon mainnet
+    #:
+    #: - Open positions with USDC quote token.
+    #:
+    #: - Open positions with WETH quote token.
+    uniswap_v3_usdc_poly = "uniswap_v3_usdc_poly"
+
+    #: Two or three legged trades on Uniswap v3 on Polygon mainnet
+    #:
+    #: - Open positions with USDT quote token.
+    #:
+    #: - Open positions with WETH quote token.
+    #:
+    #: - Open positions with USDC quote token.
+    uniswap_v3_usdt_poly = "uniswap_v3_usdt_poly"
 
     #: Use user supplied routing model
     #:
