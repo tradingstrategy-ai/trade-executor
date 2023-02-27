@@ -42,11 +42,14 @@ class State:
 
     - Can be serialised as :term:`JSON`
 
-    - Contains one :py:class:`Portfolio` object
+    - Contains one :py:class:`Portfolio` object that contains
+      all positions, trades and underlying blockchain transactions
 
     - Contains one :py:class:`Visualisation` object
+      that contains run-time calculated and stored visualisation  about the portfolio
 
-    - Contains one :py:class:`Stats` object
+    - Contains one :py:class:`Statistics` object
+      that contains run-time calculated and stored metrics about the portfolio
 
     Uses of this class include
 
