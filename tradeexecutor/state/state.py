@@ -32,7 +32,34 @@ class UncleanState(Exception):
 @dataclass_json
 @dataclass
 class State:
-    """The current state of the trading strategy execution."""
+    """The current state of the trading strategy execution.
+
+    It tells the current and past state of a single trading strategy execution:
+    positions, their trades and related valuations, metrics and such data.
+
+    This class is the root object of the serialisable state tree
+    for a trading strategy.
+
+    - Can be serialised as :term:`JSON`
+
+    - Contains one :py:class:`Portfolio` object
+
+    - Contains one :py:class:`Visualisation` object
+
+    - Contains one :py:class:`Stats` object
+
+    Uses of this class include
+
+    - Backtest fills in the state when simulating the trades
+
+    - The live execution environment keeps its internal state
+      on a disk as a serialised :py:class:`State` object
+
+    - Analysis and performance metrics read the state
+
+    - The web frontend reads the state
+
+    """
 
     #: When this state was created
     #:
