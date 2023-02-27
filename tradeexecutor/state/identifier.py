@@ -96,7 +96,25 @@ class AssetIdentifier:
 @dataclass_json
 @dataclass
 class TradingPairIdentifier:
+    """Uniquely identify one trading pair across all tradeable blockchain assets.
+
+    - Tokens are converted from machine readable token0 - token1 pair
+      to more human-friendly base and quote token pair.
+      See :ref:`conversion <trading pair>`.
+
+    - This class is a data class that is copy-by-value.
+      We copy both machine-readable information (smart contract addresses)
+      and human readable information (symbols), as both are important
+      to store for the persistent use - we do not expect to be able to lookup
+      the information again with smart contract addresses in the future,
+      as API access is expensive and blockchains may permanently be abandon.
+
+    """
+
+    #: Base token in this trading pair
     base: AssetIdentifier
+
+    #: Quote token in this trading pair
     quote: AssetIdentifier
 
     #: Smart contract address of the pool contract.
@@ -153,9 +171,11 @@ class TradingPairIdentifier:
         return self.pool_address.lower()
 
     def get_ticker(self) -> str:
+        """Return base token symbol - quote token symbol human readable ticket."""
         return f"{self.base.token_symbol}-{self.quote.token_symbol}"
 
     def get_human_description(self) -> str:
+        """Same as get_ticker()."""
         return self.get_ticker()
 
     def has_complete_info(self) -> bool:
