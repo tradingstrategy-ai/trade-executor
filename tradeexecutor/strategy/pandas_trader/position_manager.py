@@ -27,11 +27,31 @@ class NoSingleOpenPositionException(Exception):
 
 
 class PositionManager:
-    """Open/closing of positions.
+    """An utility class to open and close new trade positions.
 
-    Abstracts the complex logic with prices and such from the strategy writer.
+    `PositionManager` hides away the complex logic reason about trades.
+    It is designed to be used in a trading strategy's `decide_trades()` function
+    as an utility class to generate trades a list of :py:class:`TradeExecution`
+    objects.
 
-    Takes the price feed and current execution state as an input and
+    It offers a simple interface for trading for people who are used to
+    TradingView's :term:`Pine Script` or similar limited trade scripting environment.
+
+    PositionManager helps about
+
+    - How to have up-to-date price information
+
+    - Setting take profit/stop loss parameters for positions
+
+    - Converting between US dollar prices, crypto prices
+
+    - Converting between quantity and value of a trade
+
+    - Caring whether we have an existing position open for the trading pair already
+
+    - Shortcut methods for trading strategies that trade only a single trading pair
+
+    `PositionManager` takes the price feed and current execution state as an input and
     produces the execution instructions to change positions.
 
     Below are some recipes how to use position manager.
