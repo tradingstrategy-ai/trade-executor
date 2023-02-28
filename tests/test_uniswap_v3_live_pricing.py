@@ -298,8 +298,8 @@ def test_uniswap_v3_two_leg_buy_price_no_price_impact(
     # Get price for "infinite" small trade amount
     price_structure = pricing_method.get_buy_price(datetime.datetime.utcnow(), pair, None)
     assert price_structure.price == pytest.approx(1705.1154460381174, rel=APPROX_REL)
-    assert price_structure.lp_fee == [0.00030000000000000003] # TODO address floating point errors
-    assert price_structure.get_total_lp_fees() == pytest.approx(0.00030000000000000003, rel=APPROX_REL)
+    assert price_structure.lp_fee == [0.0003000000000000003] # TODO address floating point errors
+    assert price_structure.get_total_lp_fees() == pytest.approx(0.0003000000000000003, rel=APPROX_REL)
 
 
 def test_uniswap_v3_two_leg_buy_price_with_price_impact(
@@ -345,7 +345,7 @@ def test_uniswap_v3_two_leg_sell_price_no_price_impact(
     mid_price = pricing_method.get_mid_price(datetime.datetime.utcnow(), pair)
     assert price_structure.price < mid_price
     
-    assert price_structure.get_total_lp_fees() == pytest.approx(0.5084193089999872, rel=APPROX_REL)
+    assert price_structure.get_total_lp_fees() == pytest.approx(0.0003000000000000003, rel=APPROX_REL)
 
 
 def test_uniswap_v3_two_leg_sell_price_with_price_impact(
@@ -365,7 +365,7 @@ def test_uniswap_v3_two_leg_sell_price_with_price_impact(
     price_structure = pricing_method.get_sell_price(datetime.datetime.utcnow(), pair, Decimal(50))
     assert price_structure.price == pytest.approx(1614.42110776, rel=APPROX_REL)
     
-    assert price_structure.get_total_lp_fees() == pytest.approx(242.16316616399354, rel=APPROX_REL)
+    assert price_structure.get_total_lp_fees() == pytest.approx(0.15000000000000013, rel=APPROX_REL)
 
 
 def test_uniswap_v3_three_leg_buy_price_with_price_impact(
@@ -424,7 +424,8 @@ def test_uniswap_v3_three_leg_buy_price_with_price_impact(
     price_structure = pricing_method.get_buy_price(datetime.datetime.utcnow(), pair, Decimal(20_000))
     assert price_structure.price == pytest.approx(350.0612529665224, rel=APPROX_REL)
     
-    assert price_structure.get_total_lp_fees() == pytest.approx(60.0, rel=APPROX_REL)
+    # makes sense 20_000 * 0.003 * 2 = 120
+    assert price_structure.get_total_lp_fees() == pytest.approx(119.81999999999937, rel=APPROX_REL)
 
 
 def test_uniswap_v3_three_leg_sell_price_with_price_impact(
@@ -450,4 +451,5 @@ def test_uniswap_v3_three_leg_sell_price_with_price_impact(
     price_structure = pricing_method.get_buy_price(datetime.datetime.utcnow(), pair, Decimal(500))
     assert price_structure.price == pytest.approx(342.2495177609055, rel=APPROX_REL)
     
-    assert price_structure.get_total_lp_fees() == pytest.approx(1.5, rel=APPROX_REL)
+    # makes sense 500 * 0.003 * 2 = 3
+    assert price_structure.get_total_lp_fees() == pytest.approx(2.9954999999999843, rel=APPROX_REL)
