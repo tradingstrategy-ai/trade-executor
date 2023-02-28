@@ -23,7 +23,7 @@ from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifie
 #: How much values we allow to drift.
 #: A hack fix receiving different decimal values on Github CI than on a local
 APPROX_REL = 0.01
-APPROX_REL_DECIMAL = Decimal("0.1")
+APPROX_REL_DECIMAL = Decimal("0.01")
 
 
 
