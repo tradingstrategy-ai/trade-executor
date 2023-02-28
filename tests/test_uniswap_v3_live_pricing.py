@@ -33,20 +33,13 @@ from tradingstrategy.exchange import ExchangeUniverse
 APPROX_REL = 0.0001
 APPROX_REL_DECIMAL = Decimal(APPROX_REL)
 
+WETH_USDC_FEE = 0.003
+AAVE_USDC_FEE = 0.003
+AAVE_WETH_FEE = 0.003
 
-@pytest.fixture()
-def weth_usdc_fee() -> int:
-    return 3000
-
-
-@pytest.fixture()
-def aave_usdc_fee() -> int:
-    return 3000
-
-@pytest.fixture()
-def aave_weth_fee() -> int:
-    return 3000
-
+WETH_USDC_FEE_RAW = 3000
+AAVE_USDC_FEE_RAW = 3000
+AAVE_WETH_FEE_RAW = 3000
 
 @pytest.fixture
 def chain_id(web3) -> int:
@@ -134,9 +127,9 @@ def asset_aave(aave_token, chain_id) -> AssetIdentifier:
 
 
 @pytest.fixture
-def aave_usdc_uniswap_trading_pair(web3, deployer, uniswap_v3, aave_token, usdc_token, aave_usdc_fee) -> HexAddress:
+def aave_usdc_uniswap_trading_pair(web3, deployer, uniswap_v3, aave_token, usdc_token) -> HexAddress:
     """AAVE-USDC pool with 200k liquidity. Fee of 0.1%"""
-    min_tick, max_tick = get_default_tick_range(aave_usdc_fee)
+    min_tick, max_tick = get_default_tick_range(AAVE_USDC_FEE_RAW)
     
     pool_contract = deploy_pool(
         web3,
@@ -144,7 +137,7 @@ def aave_usdc_uniswap_trading_pair(web3, deployer, uniswap_v3, aave_token, usdc_
         deployment=uniswap_v3,
         token0=aave_token,
         token1=usdc_token,
-        fee=aave_usdc_fee
+        fee=AAVE_USDC_FEE_RAW
     )
     
     add_liquidity(
@@ -161,9 +154,9 @@ def aave_usdc_uniswap_trading_pair(web3, deployer, uniswap_v3, aave_token, usdc_
 
 
 @pytest.fixture
-def weth_usdc_uniswap_trading_pair(web3, deployer, uniswap_v3, weth_token, usdc_token, weth_usdc_fee) -> HexAddress:
+def weth_usdc_uniswap_trading_pair(web3, deployer, uniswap_v3, weth_token, usdc_token) -> HexAddress:
     """ETH-USDC pool with 1.7M liquidity."""
-    min_tick, max_tick = get_default_tick_range(weth_usdc_fee)
+    min_tick, max_tick = get_default_tick_range(WETH_USDC_FEE_RAW)
     
     pool_contract = deploy_pool(
         web3,
@@ -171,7 +164,7 @@ def weth_usdc_uniswap_trading_pair(web3, deployer, uniswap_v3, weth_token, usdc_
         deployment=uniswap_v3,
         token0=weth_token,
         token1=usdc_token,
-        fee=weth_usdc_fee
+        fee=WETH_USDC_FEE_RAW
     )
     
     add_liquidity(
@@ -188,13 +181,13 @@ def weth_usdc_uniswap_trading_pair(web3, deployer, uniswap_v3, weth_token, usdc_
 
 
 @pytest.fixture
-def aave_weth_uniswap_trading_pair(web3, deployer, uniswap_v3, aave_token, weth_token, aave_weth_fee) -> HexAddress:
+def aave_weth_uniswap_trading_pair(web3, deployer, uniswap_v3, aave_token, weth_token) -> HexAddress:
     """AAVE-ETH pool.
 
     Price is 1:5 AAVE:ETH
     """
     """ETH-USDC pool with 1.7M liquidity."""
-    min_tick, max_tick = get_default_tick_range(aave_weth_fee)
+    min_tick, max_tick = get_default_tick_range(AAVE_WETH_FEE_RAW)
     
     pool_contract = deploy_pool(
         web3,
@@ -202,7 +195,7 @@ def aave_weth_uniswap_trading_pair(web3, deployer, uniswap_v3, aave_token, weth_
         deployment=uniswap_v3,
         token0=weth_token,
         token1=aave_token,
-        fee=aave_weth_fee
+        fee=AAVE_WETH_FEE_RAW
     )
     
     add_liquidity(
@@ -219,35 +212,35 @@ def aave_weth_uniswap_trading_pair(web3, deployer, uniswap_v3, aave_token, weth_
     
 
 @pytest.fixture
-def weth_usdc_pair(uniswap_v3, weth_usdc_uniswap_trading_pair, asset_usdc, asset_weth, weth_usdc_fee) -> TradingPairIdentifier:
+def weth_usdc_pair(uniswap_v3, weth_usdc_uniswap_trading_pair, asset_usdc, asset_weth) -> TradingPairIdentifier:
     return TradingPairIdentifier(
         asset_weth, 
         asset_usdc, 
         weth_usdc_uniswap_trading_pair, 
         uniswap_v3.factory.address,
-        fee = weth_usdc_fee
+        fee = WETH_USDC_FEE
     )
 
 
 @pytest.fixture
-def aave_usdc_pair(uniswap_v3, aave_usdc_uniswap_trading_pair, asset_usdc, asset_aave, aave_usdc_fee) -> TradingPairIdentifier:
+def aave_usdc_pair(uniswap_v3, aave_usdc_uniswap_trading_pair, asset_usdc, asset_aave) -> TradingPairIdentifier:
     return TradingPairIdentifier(
         asset_aave, 
         asset_usdc, 
         aave_usdc_uniswap_trading_pair, 
         uniswap_v3.factory.address,
-        fee = aave_usdc_fee
+        fee = AAVE_USDC_FEE
     )
     
 
 @pytest.fixture
-def aave_weth_pair(uniswap_v3, aave_weth_uniswap_trading_pair, asset_aave, asset_weth, aave_weth_fee) -> TradingPairIdentifier:
+def aave_weth_pair(uniswap_v3, aave_weth_uniswap_trading_pair, asset_aave, asset_weth) -> TradingPairIdentifier:
     return TradingPairIdentifier(
         asset_aave,
         asset_weth,
         aave_weth_uniswap_trading_pair,
         uniswap_v3.factory.address,
-        fee=aave_weth_fee,
+        fee=AAVE_WETH_FEE,
     )
 
 
