@@ -935,10 +935,10 @@ def translate_trading_pair(pair: DEXPair) -> TradingPairIdentifier:
             # which returns multiplier
             # so we could either get multiplier or bps
             if pair.fee > 1:
-                fee = pair.fee / 10_000
+                fee = pair.fee/10_000
                 
                 # highest fee tier is currently 0.3%, which is 0.003 (hack)
-                assert fee <= 0.003, "fee must be provided as bps, not raw fee"
+                assert 0.0001 <= fee <= 0.003, "bug in converting fee to multiplier, make sure bps"
             else:
                 fee = pair.fee
             
