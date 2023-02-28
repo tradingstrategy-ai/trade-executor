@@ -939,6 +939,8 @@ def translate_trading_pair(pair: DEXPair) -> TradingPairIdentifier:
                 
                 # highest fee tier is currently 0.3%, which is 0.003 (hack)
                 assert fee <= 0.003, "fee must be provided as bps, not raw fee"
+            else:
+                fee = pair.fee
             
             # If fee is bigger than, then it must be bps or raw_fee, which are ints
             # if fee > 1:
