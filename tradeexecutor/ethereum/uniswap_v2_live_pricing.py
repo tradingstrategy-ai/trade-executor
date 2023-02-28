@@ -140,7 +140,7 @@ class UniswapV2LivePricing(EthereumPricingModel):
             path = [target_pair]
             
         
-        lp_fee = quantity * total_fee_pct
+        lp_fee = float(quantity) * total_fee_pct
         #lp_fee = (mid_price - price) * float(quantity)
             
         assert price <= mid_price, f"Bad pricing: {price}, {mid_price}"
@@ -224,7 +224,7 @@ class UniswapV2LivePricing(EthereumPricingModel):
             
             path = [target_pair]
             
-            fees = fee
+            fees = [fee]
             
             total_fee_pct = 1 - (1 - fees[0])
             
