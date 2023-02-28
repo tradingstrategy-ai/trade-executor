@@ -8,15 +8,14 @@ import plotly.graph_objects as go
 import pandas as pd
 from plotly.graph_objs.layout import Annotation
 
-from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
-from tradeexecutor.state.visualisation import Visualisation, Plot
-from tradeexecutor.strategy.trade_pricing import format_fees_dollars, format_fees_percentage
+from tradeexecutor.strategy.trade_pricing import format_fees_dollars
 
 from tradeexecutor.state.types import PairInternalId
+from tradeexecutor.visual.technical_indicator import overlay_all_technical_indicators
 
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.charting.candle_chart import visualise_ohlcv, make_candle_labels, VolumeBarMode
@@ -138,75 +137,6 @@ def export_trades_as_dataframe(
 
         data.append(export_trade_for_dataframe(portfolio, t))
     return pd.DataFrame(data)
-
-
-def export_plot_as_dataframe(
-        plot: Plot,
-        start_at: Optional[pd.Timestamp] = None,
-        end_at: Optional[pd.Timestamp] = None,
-) -> pd.DataFrame:
-    """Convert visualisation state to Plotly friendly df.
-
-    :param start_at:
-        Crop range
-
-    :param end_at:
-        Crop range
-    """
-    data = []
-    for time, value in plot.points.items():
-        time = pd.to_datetime(time, unit='s')
-
-        if start_at or end_at:
-            if time < start_at or time > end_at:
-                continue
-
-        data.append({
-            "timestamp": time,
-            "value": value,
-        })
-
-    # set_index fails if the frame is empty
-    if len(data) == 0:
-        return pd.DataFrame()
-
-    # Convert timestamp to pd.Timestamp column
-    df = pd.DataFrame(data)
-    df = df.set_index(pd.DatetimeIndex(df["timestamp"]))
-    return df
-
-
-def visualise_technical_indicators(
-        fig: go.Figure,
-        pair_id: PairInternalId,
-        visualisation: Visualisation,
-        start_at: Optional[pd.Timestamp] = None,
-        end_at: Optional[pd.Timestamp] = None
-):
-    """Draw technical indicators over candle chart.
-
-    :param start_at:
-        Crop range
-
-    :param end_at:
-        Crop range
-    """
-
-    # https://plotly.com/python/graphing-multiple-chart-types/
-    for plot_id, plot in visualisation.plots.items():
-        df = export_plot_as_dataframe(plot, start_at, end_at)
-        if len(df) > 0:
-            start_ts = df["timestamp"].min()
-            end_ts = df["timestamp"].max()
-            logger.info(f"Visualisation {plot_id} has data for range {start_ts} - {end_ts}")
-            fig.add_trace(go.Scatter(
-                x=df["timestamp"],
-                y=df["value"],
-                mode="lines",
-                name=plot.name,
-                line=dict(color=plot.colour),
-                line_shape=plot.plot_shape.value
-            ))
 
 
 def visualise_trades(
@@ -693,9 +623,8 @@ def visualise_single_pair(
     )
 
     # Draw EMAs etc.
-    visualise_technical_indicators(
+    overlay_all_technical_indicators(
         fig,
-        pair_id,
         state.visualisation,
         start_at,
         end_at,
@@ -840,9 +769,8 @@ def visualise_single_pair_positions_with_duration_and_slippage(
         volume_bar_mode=VolumeBarMode.hidden,
     )
 
-    visualise_technical_indicators(
+    overlay_all_technical_indicators(
         fig,
-        pair_id,
         state.visualisation,
         start_at,
         end_at,

@@ -471,6 +471,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         x: Exchange
         avail_exchanges = dataset.exchanges.exchanges
         our_exchanges = {x for x in avail_exchanges.values() if (x.chain_id in chain_ids) and (x.exchange_slug in exchange_slugs)}
+        exchange_universe = ExchangeUniverse.from_collection(our_exchanges)
 
         # Check we got all exchanges in the dataset
         for x in our_exchanges:
@@ -485,8 +486,11 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         # trading between stable does not make sense for our strategies
         pairs_df = filter_for_stablecoins(pairs_df, StablecoinFilteringMode.only_volatile_pairs)
 
-        # Create trading pair database
-        pairs = PandasPairUniverse(pairs_df)
+        # Create the trading pair data for this specific strategy
+        pairs = PandasPairUniverse(
+            pairs_df,
+            exchange_universe=exchange_universe,
+        )
 
         # We do a bit detour here as we need to address the assets by their trading pairs first
         reserve_token_info = pairs.get_token(reserve_token)
@@ -531,7 +535,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             candles=candle_universe,
             liquidity=liquidity_universe,
             resampled_liquidity=resampled_liquidity,
-            exchange_universe=ExchangeUniverse.from_collection(our_exchanges),
+            exchange_universe=exchange_universe,
         )
 
         return TradingStrategyUniverse(

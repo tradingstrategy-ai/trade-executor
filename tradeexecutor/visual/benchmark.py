@@ -1,15 +1,17 @@
 """Compare portfolio performance against other strategies."""
 import datetime
-from typing import Optional, List, Union
+from typing import Optional, List, Union, Collection
 
 import plotly.graph_objects as go
 import pandas as pd
 
 
 from tradeexecutor.state.statistics import PortfolioStatistics
+from tradeexecutor.state.visualisation import Plot
+from tradeexecutor.visual.technical_indicator import visualise_technical_indicator
 
 
-def visualise_portfolio_statistics(
+def visualise_portfolio_equity_curve(
         name: str,
         portfolio_statistics: List[PortfolioStatistics],
         colour="#008800") -> go.Scatter:
@@ -32,6 +34,7 @@ def visualise_portfolio_statistics(
         name=name,
         line=dict(color=colour),
     )
+
 
 def visualise_all_cash(
         start_at: pd.Timestamp,
@@ -85,14 +88,15 @@ def visualise_buy_and_hold(
 
 
 def visualise_benchmark(
-    name: Optional[str]=None,
-    portfolio_statistics: Optional[List[PortfolioStatistics]]=None,
-    all_cash: Optional[float]=None,
-    buy_and_hold_asset_name: Optional[str]=None,
-    buy_and_hold_price_series: Optional[pd.Series]=None,
+    name: Optional[str] = None,
+    portfolio_statistics: Optional[List[PortfolioStatistics]] = None,
+    all_cash: Optional[float] = None,
+    buy_and_hold_asset_name: Optional[str] = None,
+    buy_and_hold_price_series: Optional[pd.Series] = None,
+    additional_indicators: Collection[Plot] = None,
     height=1200,
-    start_at: Optional[Union[pd.Timestamp, datetime.datetime]]=None,
-    end_at: Optional[Union[pd.Timestamp, datetime.datetime]]=None,
+    start_at: Optional[Union[pd.Timestamp, datetime.datetime]] = None,
+    end_at: Optional[Union[pd.Timestamp, datetime.datetime]] = None,
 
 ) -> go.Figure:
     """Visualise strategy performance against benchmarks.
@@ -120,6 +124,23 @@ def visualise_benchmark(
 
     :param end_at:
         When the backtest ended
+
+    :param visualisation:
+        Additional technical indicators drawn on this chart.
+
+        List of indicator names.
+
+        The indicators must be plotted earlier using `state.visualisation.plot_indicator()`.
+
+    :param additional_indicators:
+        Additional technical indicators drawn on this chart.
+
+        List of indicator names.
+
+        The indicators must be plotted earlier using `state.visualisation.plot_indicator()`.
+
+        **Note**: Currently not very useful due to Y axis scale
+
     """
 
     fig = go.Figure()
@@ -144,7 +165,7 @@ def visualise_benchmark(
     if not end_at:
         end_at = pd.Timestamp(portfolio_statistics[-1].calculated_at)
 
-    scatter = visualise_portfolio_statistics(name, portfolio_statistics)
+    scatter = visualise_portfolio_equity_curve(name, portfolio_statistics)
     fig.add_trace(scatter)
 
     if all_cash:
@@ -158,6 +179,11 @@ def visualise_benchmark(
 
         scatter = visualise_buy_and_hold(buy_and_hold_asset_name, buy_and_hold_price_series, all_cash)
         fig.add_trace(scatter)
+
+    if additional_indicators:
+        for plot in additional_indicators:
+            scatter = visualise_technical_indicator(plot, start_at, end_at)
+            fig.add_trace(scatter)
 
     if name:
         fig.update_layout(title=f"{name} portfolio value", height=height)

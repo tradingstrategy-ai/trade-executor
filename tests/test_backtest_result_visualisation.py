@@ -12,7 +12,8 @@ from tradeexecutor.state.validator import validate_state_serialisation
 from tradeexecutor.state.visualisation import PlotKind
 from tradeexecutor.testing.synthetic_price_data import generate_ohlcv_candles
 from tradeexecutor.testing.dummy_trader import DummyTestTrader
-from tradeexecutor.visual.single_pair import visualise_single_pair, export_plot_as_dataframe
+from tradeexecutor.visual.single_pair import visualise_single_pair
+from tradeexecutor.visual.technical_indicator import export_plot_as_dataframe
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId
 from tradingstrategy.timebucket import TimeBucket
