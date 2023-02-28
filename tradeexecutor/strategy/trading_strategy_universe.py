@@ -931,20 +931,15 @@ def translate_trading_pair(pair: DEXPair) -> TradingPairIdentifier:
             # if pair.fee != 0:
             #     assert pair.fee > 1, f"DEXPair fee must be in BPS, got {pair.fee}"
             
-            # hack because currently single pair universe gets from jsonl endpoint 
-            # which returns multiplier
-            # so we could either get multiplier or bps
+            # can receive fee in bps or multiplier, but not raw form
             if pair.fee > 1:
                 fee = pair.fee/10_000
                 
-                # highest fee tier is currently 1%, which is 0.01 (hack)
-                assert 0.0001 <= fee <= 0.01, "bug in converting fee to multiplier, make sure bps"
             else:
                 fee = pair.fee
             
-            # If fee is bigger than, then it must be bps or raw_fee, which are ints
-            # if fee > 1:
-            #     fee = int(fee)
+            # highest fee tier is currently 1%, which is 0.01
+            assert 0.0001 <= fee <= 0.01, "bug in converting fee to multiplier, make sure bps"
         else:
             fee = None
 
