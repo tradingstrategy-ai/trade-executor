@@ -50,7 +50,8 @@ from tradeexecutor.utils.blockchain import get_latest_block_timestamp
 APPROX_REL = 0.001
 APPROX_REL_DECIMAL = Decimal("0.001")
 
-WETH_USDC_FEE = 3000
+WETH_USDC_FEE = 0.003
+WETH_USDC_FEE_RAW = 3000
 
 @pytest.fixture
 def tester_provider():
@@ -135,7 +136,7 @@ def asset_weth(weth_token, chain_id) -> AssetIdentifier:
 def weth_usdc_uniswap_trading_pair(web3, deployer, uniswap_v3, weth_token, usdc_token) -> HexAddress:
     """ETH-USDC pool with 1.7M liquidity."""
 
-    min_tick, max_tick = get_default_tick_range(WETH_USDC_FEE)
+    min_tick, max_tick = get_default_tick_range(WETH_USDC_FEE_RAW)
     
     pool_contract = deploy_pool(
         web3,
@@ -143,7 +144,7 @@ def weth_usdc_uniswap_trading_pair(web3, deployer, uniswap_v3, weth_token, usdc_
         deployment=uniswap_v3,
         token0=weth_token,
         token1=usdc_token,
-        fee=WETH_USDC_FEE
+        fee=WETH_USDC_FEE_RAW
     )
     
     add_liquidity(
@@ -410,7 +411,7 @@ def test_live_stop_loss(
         quote_token=weth_token,
         amount_in=300 * 10**18,
         max_slippage=10_000,
-        pool_fees=[WETH_USDC_FEE]
+        pool_fees=[WETH_USDC_FEE_RAW]
     )
     prepared_swap_call.transact({"from": deployer})
 
@@ -487,7 +488,7 @@ def test_live_stop_loss_missing(
         quote_token=weth_token,
         amount_in=300 * 10**18,
         max_slippage=10_000,
-        pool_fees=[WETH_USDC_FEE]
+        pool_fees=[WETH_USDC_FEE_RAW]
     )
     prepared_swap_call.transact({"from": deployer})
 
