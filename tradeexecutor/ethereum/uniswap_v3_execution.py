@@ -100,14 +100,14 @@ def get_current_price(web3: Web3, uniswap: UniswapV3Deployment, pair: TradingPai
     quantity_raw = pair.base.convert_to_raw_amount(quantity)
     
     path = [pair.base.checksum_address,  pair.quote.checksum_address] 
-    fees = [pair.fee]
-    assert fees, "no fees in pair"        
+    raw_fees = [int(pair.fee * 1_000_000)]
+    assert raw_fees, "no fees in pair"        
         
     price_helper = UniswapV3PriceHelper(uniswap)
     out_raw = price_helper.get_amount_out(
         amount_in=quantity_raw,
         path=path,
-        fees=fees
+        fees=raw_fees
     )
     
     return float(pair.quote.convert_to_decimal(out_raw))

@@ -79,13 +79,6 @@ class RoutingModelBase(RoutingModel):
         self.reserve_token_address = reserve_token_address
         self.chain_id = chain_id
     
-    def get_reserve_asset(self, pair_universe: PandasPairUniverse) -> AssetIdentifier:
-        """Translate our reserve token address tok an asset description."""
-        assert pair_universe is not None, "Pair universe missing"
-        reserve_token = pair_universe.get_token(self.reserve_token_address)
-        assert reserve_token, f"Pair universe does not contain our reserve asset {self.reserve_token_address}"
-        return translate_token(reserve_token)
-
     def make_direct_trade(self,
                           routing_state: EthereumRoutingStateBase,
                           target_pair: TradingPairIdentifier,

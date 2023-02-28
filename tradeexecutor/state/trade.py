@@ -185,6 +185,8 @@ class TradeExecution:
 
     #: LP fee % recorded before the execution starts.
     #:
+    #: Recorded as multiplier
+    #:
     #: Not available in the case this is ignored
     #: in backtesting or not supported by routers/trading pairs.
     #:
@@ -192,7 +194,7 @@ class TradeExecution:
     #:
     #: Sourced from Uniswap v2 router or Uniswap v3 pool information.
     #:
-    fee_tier: Optional[BPS] = None
+    fee_tier: Optional[float] = None
 
     #: LP fees paid, currency convereted to the USD.
     #:
@@ -310,11 +312,14 @@ class TradeExecution:
             # See comment on this post: https://florimond.dev/en/posts/2018/10/reconciling-dataclasses-and-properties-in-python/
             value = None
         
-        assert type(value) in {float, NoneType}, "If fee tier is specified, it must be provided as a float to trade execution"
+        assert (type(value) in {float, NoneType}) or (value == 0), "If fee tier is specified, it must be provided as a float to trade execution"
         
-        if value is None and self.pair.fee is not None:
+        if value is None and (self.pair.fee or self.pair.fee == 0):
+            assert type(self.pair.fee) == float, "trading pair fee not in float format"
+            
             logger.warning("No fee_tier provided but fee was found on associated trading pair, using trading pair fee")
-            self._fee_tier = self.pair.fee/1_000_000
+            
+            self._fee_tier = self.pair.fee
         else:
             self._fee_tier = value
     
@@ -330,7 +335,7 @@ class TradeExecution:
         # TODO standardize
         #assert type(value) == float
         self._lp_fees_estimated = value
-
+    
     def get_human_description(self) -> str:
         """User friendly description for this trade"""
         if self.is_buy():

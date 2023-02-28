@@ -924,16 +924,23 @@ def translate_trading_pair(pair: DEXPair) -> TradingPairIdentifier:
         fee = None
     else:
         # Convert DEXPair.fee BPS to %
+        # So, after this, fee can either be multiplier or None
         if pair.fee is not None:
             # If BPS fee is set it must be more than 1 BPS.
             # Allow explicit fee = 0 in testing.
-            if pair.fee != 0:
-                assert pair.fee > 1, f"DEXPair fee must be in BPS, got {pair.fee}"
-            fee = pair.fee / 10_000
+            # if pair.fee != 0:
+            #     assert pair.fee > 1, f"DEXPair fee must be in BPS, got {pair.fee}"
             
-            # If fee is bigger than, then it must be bps or raw_fee, which are ints
-            if fee > 1:
-                fee = int(fee)
+            # can receive fee in bps or multiplier, but not raw form
+            if pair.fee > 1:
+                fee = pair.fee/10_000
+                
+            else:
+                fee = pair.fee
+            
+            # highest fee tier is currently 1% and lowest in 0.01%
+            if fee != 0:
+                assert 0.0001 <= fee <= 0.01, "bug in converting fee to multiplier, make sure bps"
         else:
             fee = None
 

@@ -117,9 +117,15 @@ class UniswapV2LivePricing(EthereumPricingModel):
             
             fee2 = self.get_pair_fee(ts, intermediate_pair)
             assert fee2 == fee, "Pairs for Uniswap V2 should have same fee"
+            fees = [fee, fee2]
             
+            total_fee_pct = 1 - (1-fees[0]) * (1-fees[1])
         else:
             received = target_pair.quote.convert_to_decimal(received_raw)
+            
+            fees = [fee]
+            
+            total_fee_pct = 1 - (1 - fees[0])
 
         price = float(received / quantity)
             
@@ -133,8 +139,9 @@ class UniswapV2LivePricing(EthereumPricingModel):
             
             path = [target_pair]
             
-            
-        lp_fee = (mid_price - price) * float(quantity)
+        
+        lp_fee = float(quantity) * total_fee_pct
+        #lp_fee = (mid_price - price) * float(quantity)
             
         assert price <= mid_price, f"Bad pricing: {price}, {mid_price}"
 
@@ -143,7 +150,7 @@ class UniswapV2LivePricing(EthereumPricingModel):
             price=price,
             mid_price=mid_price,
             lp_fee=[lp_fee],
-            pair_fee=[fee],
+            pair_fee=fees,
             side=False,
             path=path
         )
@@ -208,13 +215,21 @@ class UniswapV2LivePricing(EthereumPricingModel):
             mid_price = price * (1 - fee) * (1 - fee)
             
             path = [intermediate_pair, target_pair]
+            
+            fees = [fee, fee2]
+            
+            total_fee_pct = 1 - (1-fees[0]) * (1-fees[1])
         else:
             mid_price = price * (1 - fee)
             
             path = [target_pair]
             
+            fees = [fee]
+            
+            total_fee_pct = 1 - (1 - fees[0])
+            
         
-        lp_fee = float(reserve) * fee
+        lp_fee = float(reserve) * total_fee_pct
 
         assert price >= mid_price, f"Bad pricing: {price}, {mid_price}"
         
@@ -222,7 +237,7 @@ class UniswapV2LivePricing(EthereumPricingModel):
             price=float(price),
             mid_price=float(mid_price),
             lp_fee=[lp_fee],
-            pair_fee=[fee],
+            pair_fee=fees,
             market_feed_delay=datetime.timedelta(seconds=0),
             side=True,
             path=path

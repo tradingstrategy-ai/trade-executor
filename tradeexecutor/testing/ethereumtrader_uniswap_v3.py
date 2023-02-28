@@ -41,22 +41,18 @@ class UniswapV3TestTrader(EthereumTrader):
         
         amount_in = int(amount_in_usd * (10 ** pair.quote.decimals))
         
+        raw_fee = int(pair.fee * 1_000_000)
+        
         # TODO see estimate_buy_quantity in eth_defi/uniswap_v2/fees
         raw_assumed_quantity = self.price_helper.get_amount_out(
             amount_in,
             [quote_token.address, base_token.address],
-            [pair.fee]
+            [raw_fee]
         )
         
         assumed_quantity = Decimal(raw_assumed_quantity) / Decimal(10**pair.base.decimals)
         assumed_price = amount_in_usd / assumed_quantity
 
-        fee = (
-            pair.fee/1_000_000
-            if pair.fee 
-            else None
-        )
-        
         position, trade, created= self.state.create_trade(
             strategy_cycle_at=self.ts,
             pair=pair,
@@ -66,7 +62,7 @@ class UniswapV3TestTrader(EthereumTrader):
             trade_type=TradeType.rebalance,
             reserve_currency=pair.quote,
             reserve_currency_price=1.0,
-            pair_fee=fee
+            pair_fee=pair.fee
         )
 
         if execute:
@@ -83,11 +79,13 @@ class UniswapV3TestTrader(EthereumTrader):
 
         raw_quantity = int(quantity * 10**pair.base.decimals)
         
+        raw_fee = int(pair.fee * 1_000_000)
+        
         # TODO see estimate_sell_price() in eth_defi/uniswap_v2/fees.py
         raw_assumed_quote_token = self.price_helper.get_amount_out(
             raw_quantity,
             [base_token.address, quote_token.address],
-            [pair.fee]
+            [raw_fee]
         )
         
         assumed_quota_token = Decimal(raw_assumed_quote_token) / Decimal(10**pair.quote.decimals)
@@ -95,12 +93,6 @@ class UniswapV3TestTrader(EthereumTrader):
         # assumed_price = quantity / assumed_quota_token
         assumed_price = assumed_quota_token / quantity
 
-        fee = (
-            pair.fee/1_000_000
-            if pair.fee 
-            else None
-        )
-        
         position, trade, created = self.state.create_trade(
             strategy_cycle_at=self.ts,
             pair=pair,
@@ -110,7 +102,7 @@ class UniswapV3TestTrader(EthereumTrader):
             trade_type=TradeType.rebalance,
             reserve_currency=pair.quote,
             reserve_currency_price=1.0,
-            pair_fee=fee
+            pair_fee=pair.fee
         )
 
         if execute:
