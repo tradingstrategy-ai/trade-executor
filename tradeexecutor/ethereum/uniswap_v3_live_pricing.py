@@ -105,22 +105,22 @@ class UniswapV3LivePricing(EthereumPricingModel):
         quantity_raw = target_pair.base.convert_to_raw_amount(quantity)
 
         # See eth_defi.uniswap_v2.fees.estimate_sell_received_amount_raw
-        path = (
-            [base_addr, intermediate_addr, quote_addr] 
-            if intermediate_addr 
-            else [base_addr, quote_addr]
-        )
-        fees = (
-            [intermediate_pair.fee, target_pair.fee]
-            if intermediate_addr
-            else [target_pair.fee]
-        )
+        if intermediate_pair:
+            path = [base_addr, intermediate_addr, quote_addr] 
+            fees = [intermediate_pair.fee, target_pair.fee]
+            total_fee_pct = 1 - (1-fees[0]) * (1-fees[1])
+        else:
+            path = [base_addr, quote_addr]
+            fees = [target_pair.fee]
+            total_fee_pct = 1 - (1-fees[0])
+                        
+        raw_fees = [int(fee * 1_000_000) for fee in fees]
         
         price_helper = self.get_price_helper(target_pair)
         received_raw = price_helper.get_amount_out(
             amount_in=quantity_raw,
             path=path,
-            fees=fees
+            fees=raw_fees
         ) 
 
         
@@ -142,7 +142,11 @@ class UniswapV3LivePricing(EthereumPricingModel):
         
         assert price <= mid_price, f"Bad pricing: {price}, {mid_price}"
 
-        lp_fee = (mid_price - price) * float(quantity)
+        lp_fee = float(quantity) * total_fee_pct
+        
+        #lp_fee = (mid_price - price) * float(quantity)
+        
+        #assert lp_fee == float(quantity) * total_fee_pct
         
         return TradePricing(
             price=price,
@@ -180,27 +184,30 @@ class UniswapV3LivePricing(EthereumPricingModel):
         if intermediate_pair is not None:
             reserve_raw = intermediate_pair.quote.convert_to_raw_amount(reserve)
             self.check_supported_quote_token(intermediate_pair)
+            
+            path = [quote_addr, intermediate_addr, base_addr]
+            
+            fees = [intermediate_pair.fee, target_pair.fee]
+            
+            total_fee_pct = 1 - (1 - fees[0]) * (1-fees[1])
         else:
             reserve_raw = target_pair.quote.convert_to_raw_amount(reserve)
             self.check_supported_quote_token(pair)
+            
+            path = [quote_addr, base_addr] 
+            
+            fees = [target_pair.fee]
+            
+            total_fee_pct = 1 - (1 - fees[0])
+
+        raw_fees = [int(fee * 1_000_000) for fee in fees]
 
         # See eth_defi.uniswap_v2.fees.estimate_buy_received_amount_raw
-        path = (
-            [quote_addr, intermediate_addr, base_addr]
-            if intermediate_addr
-            else [quote_addr, base_addr] 
-        )
-        fees = (
-            [intermediate_pair.fee, target_pair.fee]
-            if intermediate_addr
-            else [target_pair.fee]
-        )
-
         price_helper = self.get_price_helper(target_pair)
         token_raw_received = price_helper.get_amount_out(
             amount_in=reserve_raw,
             path=path,
-            fees=fees
+            fees=raw_fees
         )
 
         token_received = target_pair.base.convert_to_decimal(token_raw_received)
@@ -210,7 +217,7 @@ class UniswapV3LivePricing(EthereumPricingModel):
 
         price = float(reserve / token_received)
 
-        lp_fee = float(reserve) * fee
+        lp_fee = float(reserve) * total_fee_pct
 
         # TODO: Verify mid_price calculation
 
