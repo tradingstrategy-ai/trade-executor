@@ -938,8 +938,9 @@ def translate_trading_pair(pair: DEXPair) -> TradingPairIdentifier:
             else:
                 fee = pair.fee
             
-            # highest fee tier is currently 1%, which is 0.01
-            assert 0.0001 <= fee <= 0.01, "bug in converting fee to multiplier, make sure bps"
+            # highest fee tier is currently 1% and lowest in 0.01%
+            if fee != 0:
+                assert 0.0001 <= fee <= 0.01, "bug in converting fee to multiplier, make sure bps"
         else:
             fee = None
 
