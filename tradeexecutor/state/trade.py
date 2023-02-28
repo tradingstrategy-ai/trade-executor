@@ -282,9 +282,6 @@ class TradeExecution:
         assert type(self.planned_price) in {float, int}, f"Price was given as {self.planned_price.__class__}: {self.planned_price}"
         assert self.opened_at.tzinfo is None, f"We got a datetime {self.opened_at} with tzinfo {self.opened_at.tzinfo}"
         
-        if not self.fee_tier and self.get_fee_from_pair():
-            self.fee_tier = self.get_fee_from_pair()
-        
     @property
     def strategy_cycle_at(self):
         """Alias for oepned_at"""
@@ -317,10 +314,12 @@ class TradeExecution:
         
         assert (type(value) in {float, NoneType}) or (value == 0), "If fee tier is specified, it must be provided as a float to trade execution"
         
-        if value is None and self.get_fee_from_pair():
+        if value is None and (self.pair.fee or self.pair.fee == 0):
+            assert type(self.pair.fee) == float, "trading pair fee not in float format"
+            
             logger.warning("No fee_tier provided but fee was found on associated trading pair, using trading pair fee")
             
-            self._fee_tier = self.get_fee_from_pair
+            self._fee_tier = self.pair.fee
         else:
             self._fee_tier = value
     
@@ -337,21 +336,6 @@ class TradeExecution:
         #assert type(value) == float
         self._lp_fees_estimated = value
     
-    def get_fee_from_pair(self) -> None | float:
-        """Gets fee, in multiplier format, from self.pair
-        If pair fee is none, returns none"""
-        
-        pair_fee = self.pair.fee
-        
-        if not pair_fee:
-            return None
-        
-        # to ensure fee is raw_fee (for next operation)
-        # bps of 1000 is 10%, so bps of 1_000 is practically impossible?
-        assert pair_fee >= 1000 
-        
-        return self.pair/1_000_000
-        
     def get_human_description(self) -> str:
         """User friendly description for this trade"""
         if self.is_buy():
