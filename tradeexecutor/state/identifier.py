@@ -147,6 +147,7 @@ class TradingPairIdentifier:
 
     def __post_init__(self):
         assert self.base.chain_id == self.quote.chain_id, "Cross-chain trading pairs are not possible"
+        assert (type(self.fee) in {float, type(None)}) or (self.fee == 0)
 
     def __repr__(self):
         fee = self.fee or 0

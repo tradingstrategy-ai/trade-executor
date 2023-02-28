@@ -136,7 +136,7 @@ class State:
                      reserve_currency: AssetIdentifier,
                      reserve_currency_price: USDollarPrice,
                      notes: Optional[str] = None,
-                     pair_fee: Optional[BPS] = None,
+                     pair_fee: Optional[float] = None,
                      lp_fees_estimated: Optional[USDollarAmount] = None,
                      planned_mid_price: Optional[USDollarPrice] = None,
                      price_structure: Optional[TradePricing] = None
@@ -160,6 +160,9 @@ class State:
 
         assert isinstance(strategy_cycle_at, datetime.datetime)
         assert not isinstance(strategy_cycle_at, pd.Timestamp)
+        
+        if pair_fee:
+            assert type(pair_fee) == float
         
         if price_structure is not None:
             assert isinstance(price_structure, TradePricing)

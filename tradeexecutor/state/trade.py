@@ -185,6 +185,8 @@ class TradeExecution:
 
     #: LP fee % recorded before the execution starts.
     #:
+    #: Recorded as multiplier
+    #:
     #: Not available in the case this is ignored
     #: in backtesting or not supported by routers/trading pairs.
     #:
@@ -192,7 +194,7 @@ class TradeExecution:
     #:
     #: Sourced from Uniswap v2 router or Uniswap v3 pool information.
     #:
-    fee_tier: Optional[BPS] = None
+    fee_tier: Optional[float] = None
 
     #: LP fees paid, currency convereted to the USD.
     #:
@@ -280,6 +282,9 @@ class TradeExecution:
         assert type(self.planned_price) in {float, int}, f"Price was given as {self.planned_price.__class__}: {self.planned_price}"
         assert self.opened_at.tzinfo is None, f"We got a datetime {self.opened_at} with tzinfo {self.opened_at.tzinfo}"
         
+        if not self.fee_tier and self.get_fee_from_pair():
+            self.fee_tier = self.get_fee_from_pair()
+        
     @property
     def strategy_cycle_at(self):
         """Alias for oepned_at"""
@@ -310,11 +315,12 @@ class TradeExecution:
             # See comment on this post: https://florimond.dev/en/posts/2018/10/reconciling-dataclasses-and-properties-in-python/
             value = None
         
-        assert type(value) in {float, NoneType}, "If fee tier is specified, it must be provided as a float to trade execution"
+        assert (type(value) in {float, NoneType}) or (value == 0), "If fee tier is specified, it must be provided as a float to trade execution"
         
-        if value is None and self.pair.fee is not None:
+        if value is None and self.get_fee_from_pair():
             logger.warning("No fee_tier provided but fee was found on associated trading pair, using trading pair fee")
-            self._fee_tier = self.pair.fee/1_000_000
+            
+            self._fee_tier = self.get_fee_from_pair
         else:
             self._fee_tier = value
     
@@ -330,7 +336,22 @@ class TradeExecution:
         # TODO standardize
         #assert type(value) == float
         self._lp_fees_estimated = value
-
+    
+    def get_fee_from_pair(self) -> None | float:
+        """Gets fee, in multiplier format, from self.pair
+        If pair fee is none, returns none"""
+        
+        pair_fee = self.pair.fee
+        
+        if not pair_fee:
+            return None
+        
+        # to ensure fee is raw_fee (for next operation)
+        # bps of 1000 is 10%, so bps of 1_000 is practically impossible?
+        assert pair_fee >= 1000 
+        
+        return self.pair/1_000_000
+        
     def get_human_description(self) -> str:
         """User friendly description for this trade"""
         if self.is_buy():
