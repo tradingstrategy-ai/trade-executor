@@ -264,7 +264,6 @@ class PositionManager:
         """
         return self.pricing_model.get_pair_fee(self.timestamp, pair)
 
-
     def open_1x_long(self,
                      pair: Union[DEXPair, TradingPairIdentifier],
                      value: USDollarAmount,
