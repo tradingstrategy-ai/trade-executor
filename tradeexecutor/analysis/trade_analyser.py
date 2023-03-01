@@ -27,7 +27,7 @@ import numpy as np
 import pandas as pd
 from IPython.core.display_functions import display
 from dataclasses_json import dataclass_json, config
-from statistics import median
+from statistics import median, stdev
 
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.portfolio import Portfolio
@@ -402,7 +402,7 @@ class TradeSummary:
     ))
     time_bucket: Optional[TimeBucket] = None
 
-    total_trades: int = field(init=False)
+    total_positions: int = field(init=False)
     win_percent: float = field(init=False)
     return_percent: float = field(init=False)
     annualised_return_percent: float = field(init=False)
@@ -431,16 +431,18 @@ class TradeSummary:
 
     lp_fees_paid: Optional[USDollarPrice] = 0
     lp_fees_average_pc: Optional[USDollarPrice] = 0
+    
+    volatility: Optional[float] = None
 
     def __post_init__(self):
 
-        self.total_trades = self.won + self.lost + self.zero_loss
-        self.win_percent = calculate_percentage(self.won, self.total_trades)
-        self.all_stop_loss_percent = calculate_percentage(self.stop_losses, self.total_trades)
-        self.all_take_profit_percent = calculate_percentage(self.take_profits, self.total_trades)
+        self.total_positions = self.won + self.lost + self.zero_loss
+        self.win_percent = calculate_percentage(self.won, self.total_positions)
+        self.all_stop_loss_percent = calculate_percentage(self.stop_losses, self.total_positions)
+        self.all_take_profit_percent = calculate_percentage(self.take_profits, self.total_positions)
         self.lost_stop_loss_percent = calculate_percentage(self.stop_losses, self.lost)
         self.won_take_profit_percent = calculate_percentage(self.take_profits, self.won)
-        self.average_net_profit = self.realised_profit / self.total_trades if self.total_trades else None
+        self.average_net_profit = self.realised_profit / self.total_positions if self.total_positions else None
         self.end_value = self.open_value + self.uninvested_cash
         initial_cash = self.initial_cash or 0
         self.return_percent = calculate_percentage(self.end_value - initial_cash, initial_cash)
@@ -468,7 +470,7 @@ class TradeSummary:
             "Value at end": as_dollar(self.end_value),
             "Trade volume": as_dollar(self.trade_volume),
             "Trade win percent": as_percent(self.win_percent),
-            "Total trades done": as_integer(self.total_trades),
+            "Total trades done": as_integer(self.total_positions),
             "Won trades": as_integer(self.won),
             "Lost trades": as_integer(self.lost),
             "Stop losses triggered": as_integer(self.stop_losses),
@@ -491,6 +493,9 @@ class TradeSummary:
             "Average duration of losing trades": avg_duration_losing,
             "LP fees paid": as_dollar(self.lp_fees_paid),
             "LP fees paid % of volume": as_percent(self.lp_fees_average_pc),
+            # used returns (realised percentage profit) to calc volatility
+            # So volatility will be in percentage format
+            "Volatility": as_percent(self.volatility)
         }
 
         def add_prop(value, key: str, formatter: Callable):
@@ -679,6 +684,7 @@ class TradeAnalysis:
         all_trades = winning_trades + losing_trades + [0 for i in range(zero_loss)]
         average_trade = avg_check(all_trades)
         median_trade = median_check(all_trades)
+        volatility = stdev(all_trades)
 
         average_winning_trade_profit_pc = get_avg_profit_pct_check(winning_trades)
         average_losing_trade_loss_pc = get_avg_profit_pct_check(losing_trades)
@@ -730,6 +736,7 @@ class TradeAnalysis:
             trade_volume=trade_volume,
             lp_fees_paid=lp_fees_paid,
             lp_fees_average_pc=lp_fees_average_pc,
+            volatility=volatility
         )
 
     def create_timeline(self) -> pd.DataFrame:
