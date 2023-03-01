@@ -33,6 +33,7 @@ from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse,  \
     DefaultTradingStrategyUniverseModel
 from tradeexecutor.strategy.universe_model import StaticUniverseModel, UniverseOptions
+from tradeexecutor.utils.accuracy import setup_decimal_accuracy
 from tradeexecutor.utils.timer import timed_task
 from tradingstrategy.client import Client
 from tradingstrategy.timebucket import TimeBucket
@@ -458,6 +459,9 @@ def run_backtest_inline(
     # Setup our special logging level if not done yet.
     # (Not done when called from notebook)
     setup_notebook_logging(log_level)
+
+    # Make sure no rounding bugs
+    setup_decimal_accuracy()
 
     wallet = SimulatedWallet()
     deposit_syncer = BacktestSyncer(wallet, Decimal(initial_deposit))

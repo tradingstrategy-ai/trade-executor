@@ -494,14 +494,18 @@ class ExecutionLoop:
         routing_state, pricing_model, valuation_model = self.runner.setup_routing(universe)
         assert pricing_model, "Routing did not provide pricing_model"
 
-        stop_loss_pricing_model = BacktestSimplePricingModel(universe.backtest_stop_loss_candles, self.runner.routing_model)
+        stop_loss_pricing_model = BacktestSimplePricingModel(
+            universe.backtest_stop_loss_candles,
+            self.runner.routing_model,
+            time_bucket=universe.backtest_stop_loss_time_bucket
+        )
 
         # Do stop loss checks for every time point between now and next strategy cycle
         tp = 0
         sl = 0
 
         while ts < end_ts:
-            logger.debug("Backtesting stop loss at %s", ts)
+            logger.debug("Backtesting take profit/stop loss at %s", ts)
             trades = self.runner.check_position_triggers(
                 ts,
                 state,
