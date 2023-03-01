@@ -11,7 +11,9 @@ from typing import Iterable
 #: If sum of token quantities goes below this value assume the sum is zero
 SUM_EPSILON = Decimal(10**-18)
 
-
+#: Preconstruced Decimal Zero
+#:
+#: Avoid object reinitialisation.
 ZERO_DECIMAL = Decimal(0)
 
 
@@ -42,7 +44,7 @@ def sum_decimal(numbers: Iterable[Decimal]) -> Decimal:
     """
     total = sum(numbers)
     if total < SUM_EPSILON:
-        return Decimal(0)
+        return ZERO_DECIMAL
     return total
 
 
