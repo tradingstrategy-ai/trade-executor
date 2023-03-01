@@ -19,7 +19,7 @@ from tradeexecutor.strategy.trade_pricing import TradePricing
 from tradeexecutor.strategy.routing import RoutingModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_trading_pair
 from tradingstrategy.candle import GroupedCandleUniverse
-
+from tradingstrategy.timebucket import TimeBucket
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +30,9 @@ class BacktestSimplePricingModel(PricingModel):
     - Open price of the price candle at the timestamp,
       or closest earlier timestamp is used
 
+    - Different pricing model can be used for rebalances (more coarse)
+      and stop losses (more granular)
+
     - This is a simple model and does not use liquidity data
       for the price impact estimation
 
@@ -38,11 +41,13 @@ class BacktestSimplePricingModel(PricingModel):
     """
 
     def __init__(self,
-                 candle_universe: GroupedCandleUniverse,
-                 routing_model: RoutingModel,
-                 data_delay_tolerance=pd.Timedelta("2d"),
-                 candle_timepoint_kind="open",
-                 very_small_amount=Decimal("0.10")):
+                candle_universe: GroupedCandleUniverse,
+                routing_model: RoutingModel,
+                data_delay_tolerance=pd.Timedelta("2d"),
+                candle_timepoint_kind="open",
+                very_small_amount=Decimal("0.10"),
+                time_bucket: Optional[TimeBucket]=None,
+        ):
         """
 
         :param candle_universe:
@@ -68,6 +73,10 @@ class BacktestSimplePricingModel(PricingModel):
             What kind o a test amount we do use for a trade
             when we do not know the actual size of the trade.
 
+        :param time_bucket:
+            The granularity of the price data.
+
+            Currently used for diagnostics and debug only.
         """
 
         # TODO: Remove later - now to support some old code111
@@ -81,6 +90,10 @@ class BacktestSimplePricingModel(PricingModel):
         self.routing_model = routing_model
         self.candle_timepoint_kind = candle_timepoint_kind
         self.data_delay_tolerance = data_delay_tolerance
+        self.time_bucket = time_bucket
+
+    def __repr__(self):
+        return f"<BacktestSimplePricingModel bucket: {self.time_bucket}, candles: {self.candle_universe}>"
 
     def get_pair_for_id(self, internal_id: int) -> Optional[TradingPairIdentifier]:
         """Look up a trading pair.

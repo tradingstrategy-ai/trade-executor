@@ -472,3 +472,10 @@ class Portfolio:
             return float(reserve.initial_deposit) * reserve.initial_deposit_reserve_token_price
         return None
 
+    def get_all_traded_pairs(self) -> Iterable[TradingPairIdentifier]:
+        """Get all pairs for which we have or had positions."""
+        already_iterated_pairs = set()
+        for p in self.get_all_positions():
+            if p.pair not in already_iterated_pairs:
+                already_iterated_pairs.add(p.pair)
+                yield p.pair
