@@ -505,7 +505,7 @@ class ExecutionLoop:
         sl = 0
 
         while ts < end_ts:
-            logger.debug("Backtesting stop loss at %s", ts)
+            logger.debug("Backtesting take profit/stop loss at %s", ts)
             trades = self.runner.check_position_triggers(
                 ts,
                 state,

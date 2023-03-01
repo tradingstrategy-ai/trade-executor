@@ -20,6 +20,12 @@ from tradeexecutor.strategy.trade_pricing import TradePricing
 logger = logging.getLogger()
 
 
+#: Absolute minimum units we are willing to trade regardless of an asset
+#:
+#: Used to catch floating point rounding errors
+QUANTITY_EPSILON = Decimal(10**-18)
+
+
 class TradeType(enum.Enum):
     """What kind of trade execution this was."""
 
@@ -275,8 +281,15 @@ class TradeExecution:
         return self.trade_id == other.trade_id
 
     def __post_init__(self):
+
         assert self.trade_id > 0
         assert self.planned_quantity != 0
+
+        if abs(self.planned_quantity) < QUANTITY_EPSILON:
+            import ipdb ; ipdb.set_trace()
+
+        assert abs(self.planned_quantity) > QUANTITY_EPSILON, f"We got a planned quantity that does look like a good number: {self.planned_quantity}, trade is: {self}"
+
         assert self.planned_price > 0
         assert self.planned_reserve >= 0
         assert type(self.planned_price) in {float, int}, f"Price was given as {self.planned_price.__class__}: {self.planned_price}"

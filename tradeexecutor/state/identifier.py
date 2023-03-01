@@ -94,7 +94,7 @@ class AssetIdentifier:
 
 
 @dataclass_json
-@dataclass
+@dataclass(slots=True)
 class TradingPairIdentifier:
     """Uniquely identify one trading pair across all tradeable blockchain assets.
 
@@ -102,22 +102,35 @@ class TradingPairIdentifier:
       to more human-friendly base and quote token pair.
       See :ref:`conversion <trading pair>`.
 
-    - This class is a data class that is copy-by-value.
+    - This class is a data class that is a copy-by-value in the persistent state:
       We copy both machine-readable information (smart contract addresses)
       and human readable information (symbols), as both are important
       to store for the persistent use - we do not expect to be able to lookup
       the information again with smart contract addresses in the future,
       as API access is expensive and blockchains may permanently be abandon.
 
+
+    - This class is preferred to be used as immutable, but
+      sometimes it is handy to manually override :py:attr`fee`
+      for different backtesting scenarios
+
     """
 
     #: Base token in this trading pair
+    #:
+    #: E.g. `WETH`
     base: AssetIdentifier
 
     #: Quote token in this trading pair
+    #:
+    #: E.g. `USDC`
     quote: AssetIdentifier
 
     #: Smart contract address of the pool contract.
+    #:
+    #: - Uniswap v2 pair contract address
+    #:
+    #: - Uniswap v3 pool contract address
     pool_address: str
 
     #: Exchange address.
@@ -141,7 +154,12 @@ class TradingPairIdentifier:
 
     #: Trading fee for this pair.
     #:
-    #: Uniswap v3 style fee where all trades share the same LP fees.
+    #: Liquidity provider fee expressed as the percent of the trade.
+    #:
+    #: E.g. `0.0030` for 0.30% fee.
+    #:
+    #: Should be filled for all Uniswap v2 and Uniswap v3 pairs.
+    #: If the smaller Uni v2 forks do not have good data, 0.0030% is assumed.
     #:
     fee: Optional[float] = None
 
@@ -172,6 +190,8 @@ class TradingPairIdentifier:
         """Return raw chain id.
 
         Get one from the base token, beacuse both tokens are on the same chain.
+
+        See also :py:class:`tradingstrategy.chain.ChainId`
         """
         return self.base.chain_id
 
@@ -183,7 +203,10 @@ class TradingPairIdentifier:
         return self.pool_address.lower()
 
     def get_ticker(self) -> str:
-        """Return base token symbol - quote token symbol human readable ticket."""
+        """Return base token symbol - quote token symbol human readable ticket.
+
+        Example: `WETH-USDC`.
+        """
         return f"{self.base.token_symbol}-{self.quote.token_symbol}"
 
     def get_human_description(self) -> str:
@@ -192,6 +215,9 @@ class TradingPairIdentifier:
 
     def has_complete_info(self) -> bool:
         """Check if the pair has good information.
+
+        Because of the open-ended  nature a lot of irrelevant broken
+        data can be found on blockchains.
 
         Both base and quote token must have
 
