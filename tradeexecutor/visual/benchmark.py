@@ -61,7 +61,7 @@ def visualise_all_cash(
         x=df.index,
         y=df["value"],
         mode="lines",
-        name="All cash",
+        name="Hold cash",
         line=dict(color=colour),
     )
 

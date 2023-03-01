@@ -315,7 +315,7 @@ class TradeExecution:
         assert (type(value) in {float, NoneType}) or (value == 0), "If fee tier is specified, it must be provided as a float to trade execution"
 
         if value is None and (self.pair.fee or self.pair.fee == 0):
-            assert type(self.pair.fee) == float, "trading pair fee not in float format"
+            assert type(self.pair.fee) == float, f"trading pair fee not in float format, got {self.pair.fee} ({type(self.pair.fee)}"
             # Low verbosity as otherwise this message is filling test logs
             logger.debug("No fee_tier provided but fee was found on associated trading pair, using trading pair fee")
             self._fee_tier = self.pair.fee

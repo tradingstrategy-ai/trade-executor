@@ -28,27 +28,56 @@ def check_normalised_weights(weights: Dict[int, float], epsilon=0.0001):
                                   f"Sum: {total}")
 
 
-def clip_to_normalised(weights: Dict[int, float]) -> Dict[int, float]:
+def clip_to_normalised(
+        weights: Dict[int, float],
+        epsilon=0.00003,
+        very_small_subtract=0.00001,
+) -> Dict[int, float]:
     """If the sum of the weights are not exactly 1, then decrease the largest member to make the same sum 1 precise.
 
+    :param weights:
+        Weights where the sum is almost 1.
+
+        A dict of pair id -> weight mappings.
+
+    :param epsilon:
+        We check that our floating point sum is within this value.
+
+    :param very_small_subtract:
+        Use this value to substract so we never go above 1, always under.
+
+    :return:
+
+        A dict of pair id -> fixed weight mappings.
+
+        New weights where the largest weight have been clipped to make exactly 1
     """
 
     # Empty weights
     if not weights:
         return weights
 
-    total = sum(weights.values())
-    diff = total - 1
-    largest = max(weights.items(), key=lambda x: x[1])
+    for round_substract_helper in (0, very_small_subtract):
+        total = sum(weights.values())
+        diff = total - 1
+        largest = max(weights.items(), key=lambda x: x[1])
 
-    clipped = largest[1] - diff
+        clipped = largest[1] - diff - round_substract_helper
 
-    fixed = weights.copy()
-    fixed[largest[0]] = clipped
+        fixed = weights.copy()
+        fixed[largest[0]] = clipped
 
-    total = sum(fixed.values())
-    assert total == 1
-    return fixed
+        total = sum(fixed.values())
+
+        if total > 1:
+            # We somehow still ended above one
+            # Try again with more subtract
+            continue
+
+        assert abs(total - 1) < epsilon, f"Assumed all weights total is 1, got {total}, epsilon is {epsilon}"
+        return fixed
+
+    raise AssertionError("Should never happen")
 
 
 def normalise_weights(weights: Dict[int, float]) -> Dict[int, float]:
