@@ -3,7 +3,7 @@
 Ethereum assets have 18 decimals.
 
 """
-import decimal
+
 from decimal import Decimal
 from typing import Iterable
 
@@ -23,7 +23,8 @@ def setup_decimal_accuracy():
     .. note::
 
         Currently we assume we can safely trade without worring about the decimal accuracy,
-        as we have some special epsilon rules in place to work around the kinks.
+        as we have some special epsilon rules in place to work around the kinks. Increasing the
+        decimal accuracy will slow down calculations.
 
         Also increasing the decimal accuracy does not remedy us from issues.
 
