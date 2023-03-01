@@ -18,13 +18,22 @@ ZERO_DECIMAL = Decimal(0)
 
 
 def setup_decimal_accuracy():
-    """Make sure we can handle Decimals up to 18 digits."""
+    """Make sure we can handle Decimals up to 18 digits.
+
+    .. note::
+
+        Currently we assume we can safely trade without worring about the decimal accuracy,
+        as we have some special epsilon rules in place to work around the kinks.
+
+        Also increasing the decimal accuracy does not remedy us from issues.
+
+    """
 
     # From ethereum.stackexchange.com:
     #
     # > I believe the minimum correct precision is math.ceil(math.log10(2**256)) = 78, no matter how many decimals the token is.
     #
-    decimal.getcontext().prec = 78
+    #decimal.getcontext().prec = 78
 
 
 def sum_decimal(numbers: Iterable[Decimal]) -> Decimal:
