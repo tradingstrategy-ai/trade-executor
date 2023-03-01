@@ -691,9 +691,11 @@ def create_compatible_routing(
 
     if routing_type in get_uniswap_v2_compatible_routing_types():
         return create_uniswap_v2_compatible_routing(routing_type, reserve_currency)
-    elif routing_type in {
-        get_uniswap_v3_compatible_routing_types_eth().union(get_uniswap_v3_compatible_routing_types_poly())
-    }:
+    elif routing_type in \
+        get_uniswap_v3_compatible_routing_types_eth()\
+        .union(
+            get_uniswap_v3_compatible_routing_types_poly()
+        ):
         return create_uniswap_v3_compatible_routing(routing_type, reserve_currency)
 
 
