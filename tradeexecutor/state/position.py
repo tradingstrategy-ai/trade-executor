@@ -254,8 +254,8 @@ class TradingPosition:
         return first_trade.executed_price
 
     def get_equity_for_position(self) -> Decimal:
-        # TODO: Rename to get_quantity_for_position
-        return sum([t.get_equity_for_position() for t in self.trades.values() if t.is_success()])
+        """How many asset units this position tolds."""
+        return sum_decimal([t.get_equity_for_position() for t in self.trades.values() if t.is_success()])
 
     def has_unexecuted_trades(self) -> bool:
         return any([t for t in self.trades.values() if t.is_pending()])
@@ -400,11 +400,11 @@ class TradingPosition:
 
     def get_buy_quantity(self) -> Decimal:
         """How many units we have bought total"""
-        return sum([t.get_position_quantity() for t in self.trades.values() if t.is_success() if t.is_buy()])
+        return sum_decimal([t.get_position_quantity() for t in self.trades.values() if t.is_success() if t.is_buy()])
 
     def get_sell_quantity(self) -> Decimal:
         """How many units we have sold total"""
-        return sum([abs(t.get_position_quantity()) for t in self.trades.values() if t.is_success() if t.is_sell()])
+        return sum_decimal([abs(t.get_position_quantity()) for t in self.trades.values() if t.is_success() if t.is_sell()])
 
     def get_net_quantity(self) -> Decimal:
         """The difference in the quantity of assets bought and sold to date."""
@@ -443,7 +443,7 @@ class TradingPosition:
         Include only the first trade that opened the position.
         Calculate based on the executed price.
         """
-        first_trade =self.get_first_trade()
+        first_trade = self.get_first_trade()
         return first_trade.get_position_quantity()
 
     def get_average_price(self) -> Optional[USDollarAmount]:
