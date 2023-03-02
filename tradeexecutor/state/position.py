@@ -21,6 +21,24 @@ from tradeexecutor.utils.accuracy import sum_decimal
 @dataclass_json
 @dataclass(slots=True)
 class TradingPosition:
+    """Represents a single trading position.
+
+    - Each position trades a single asset
+
+    - Position is opened when the first trade is made
+
+    - Position is closed when the last remaining quantity is sold/closed
+
+    - Position can have its target trigger levels for :py:attr:`take_profit` and :py:attr:`stop_loss`
+
+    - Position can have multiple trades and increase or decrease the position exposure
+
+    - Positions are revalued outside the trades
+
+    - Trades for the position can have different triggers: rebalance, stop los, etc.
+
+    - Position can be marked as frozen meaning the automatic system does not how to clean it up
+    """
 
     #: Runnint int counter primary key for positions
     position_id: int
