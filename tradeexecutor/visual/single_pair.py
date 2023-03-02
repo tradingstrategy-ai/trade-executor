@@ -483,6 +483,7 @@ def visualise_single_pair(
         pair_id: Optional[PairInternalId] = None,
         height=800,
         axes=True,
+        technical_indicators=True,
         title: Union[str, bool] = True,
         theme="plotly_white",
         volume_bar_mode=VolumeBarMode.overlay,
@@ -513,6 +514,11 @@ def visualise_single_pair(
 
     :param axes:
         Draw axes labels
+
+    :param technical_indicators:
+        Extract technical indicators from the state and overlay them on the price action.
+
+        Only makes sense if the indicators were drawn against the price action of this pair.
 
     :param title:
         Draw the chart title.
@@ -623,12 +629,13 @@ def visualise_single_pair(
     )
 
     # Draw EMAs etc.
-    overlay_all_technical_indicators(
-        fig,
-        state.visualisation,
-        start_at,
-        end_at,
-    )
+    if technical_indicators:
+        overlay_all_technical_indicators(
+            fig,
+            state.visualisation,
+            start_at,
+            end_at,
+        )
 
     # Add trade markers if any trades have been made
     if len(trades_df) > 0:
@@ -647,6 +654,7 @@ def visualise_single_pair_positions_with_duration_and_slippage(
         axes=True,
         title: Union[bool, str] = True,
         theme="plotly_white",
+        technical_indicators=True,
 ) -> go.Figure:
     """Visualise performance of a live trading strategy.
 
@@ -693,6 +701,10 @@ def visualise_single_pair_positions_with_duration_and_slippage(
         Set `True` to use the state name as a title.
         TODO: True is a legacy option and will be removed.
 
+    :param technical_indicators:
+        Extract technical indicators from the state and overlay them on the price action.
+
+        Only makes sense if the indicators were drawn against the price action of this pair.
 
     :param theme:
         Plotly colour scheme to use
@@ -769,12 +781,13 @@ def visualise_single_pair_positions_with_duration_and_slippage(
         volume_bar_mode=VolumeBarMode.hidden,
     )
 
-    overlay_all_technical_indicators(
-        fig,
-        state.visualisation,
-        start_at,
-        end_at,
-    )
+    if technical_indicators:
+        overlay_all_technical_indicators(
+            fig,
+            state.visualisation,
+            start_at,
+            end_at,
+        )
 
     # Add trade markers if any trades have been made
     visualise_positions_with_duration_and_slippage(fig, candles, positions)

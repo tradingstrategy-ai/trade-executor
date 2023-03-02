@@ -182,8 +182,8 @@ class BacktestExecutionModel(ExecutionModel):
                 f"  {extra_help_message}\n"
             ) from e
 
-        assert abs(executed_quantity) > 0
-        assert executed_reserve > 0
+        assert abs(executed_quantity) > 0, f"Expected executed_quantity for the trade to be above zero, got executed_quantity:{executed_quantity}, planned_quantity:{trade.planned_quantity}, trade is {trade}"
+        assert executed_reserve > 0, f"Expected executed_reserve for the trade to be above zero, got {executed_reserve}"
         return executed_quantity, executed_reserve
 
     def execute_trades(self,

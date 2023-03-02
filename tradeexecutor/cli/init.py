@@ -1,5 +1,6 @@
 """Command line application initialisation helpers."""
 import datetime
+import decimal
 import logging
 import os
 from decimal import Decimal
@@ -197,3 +198,6 @@ def prepare_executor_id(id: Optional[str], strategy_file: Path) -> str:
 def monkey_patch():
     """Apply all monkey patches."""
     patch_dataclasses_json()
+
+
+

@@ -521,7 +521,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
 
         if dataset.backtest_stop_loss_candles is not None:
             backtest_stop_loss_time_bucket = dataset.backtest_stop_loss_time_bucket
-            filtered_candles = filter_for_pairs(all_candles, dataset.backtest_stop_loss_candles)
+            filtered_candles = filter_for_pairs(dataset.backtest_stop_loss_candles, pairs_df)
             backtest_stop_loss_candles = GroupedCandleUniverse(filtered_candles, time_bucket=dataset.backtest_stop_loss_time_bucket)
         else:
             backtest_stop_loss_time_bucket = None

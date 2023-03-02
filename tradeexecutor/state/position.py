@@ -11,10 +11,12 @@ import pandas as pd
 from dataclasses_json import dataclass_json
 
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
-from tradeexecutor.state.trade import TradeType
+from tradeexecutor.state.trade import TradeType, QUANTITY_EPSILON
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.types import USDollarAmount, BPS, USDollarPrice
 from tradeexecutor.strategy.trade_pricing import TradePricing
+from tradeexecutor.utils.accuracy import sum_decimal
+
 
 @dataclass_json
 @dataclass(slots=True)
@@ -211,9 +213,20 @@ class TradingPosition:
     def get_quantity(self) -> Decimal:
         """Get the tied up token quantity in all successfully executed trades.
 
-        Does not account for trades that are currently being executd.
+        - Does not account for trades that are currently being executed.
+
+        - Because decimal summ might
+
+        :return:
+            Number of asset units held by this position.
+
+            Rounded down to zero if the sum of
         """
-        s = sum([t.get_position_quantity() for t in self.trades.values() if t.is_success()])
+        s = sum_decimal([t.get_position_quantity() for t in self.trades.values() if t.is_success()])
+
+        if s != Decimal(0):
+            assert s >= QUANTITY_EPSILON, "Safety check in floating point math triggered"
+
         return Decimal(s)  # Make zero to decimal
 
     def get_live_quantity(self) -> Decimal:
