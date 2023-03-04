@@ -433,6 +433,8 @@ class TradeSummary:
     lp_fees_average_pc: Optional[USDollarPrice] = 0
     
     volatility: Optional[float] = None
+    best_day_profit_percent: Optional[float] = None
+    worst_day_profit_percent: Optional[float] = None
 
     def __post_init__(self):
 
@@ -493,9 +495,6 @@ class TradeSummary:
             "Average duration of losing trades": avg_duration_losing,
             "LP fees paid": as_dollar(self.lp_fees_paid),
             "LP fees paid % of volume": as_percent(self.lp_fees_average_pc),
-            # used returns (realised percentage profit) to calc volatility
-            # So volatility will be in percentage format
-            "Volatility": as_percent(self.volatility)
         }
 
         def add_prop(value, key: str, formatter: Callable):
@@ -513,6 +512,14 @@ class TradeSummary:
         add_prop(self.avg_realised_risk, 'Avg realised risk', as_percent)
         add_prop(self.max_pullback, 'Max pullback of total capital', as_percent)
         add_prop(self.max_loss_risk, 'Max loss risk at opening of position', as_percent)
+        
+        # used returns (realised percentage profit) to calc volatility
+        # So volatility will be in percentage format
+        # TODO verify calculation
+        add_prop(self.volatility, "Volatility", as_percent)
+        
+        add_prop(self.best_day_profit_percent, 'Best day profit %', as_percent)
+        add_prop(self.worst_day_profit_percent, 'Worst day profit %', as_percent)
 
         df = create_summary_table(human_data)
         return df
@@ -586,14 +593,7 @@ class TradeAnalysis:
             else:
                 return datetime.timedelta(0)
 
-        def max_check(lst):
-            return max(lst) if lst else None
-        def min_check(lst):
-            return min(lst) if lst else None
-        def avg_check(lst):
-            return avg(lst) if lst else None
-        def median_check(lst):
-            return median(lst) if lst else None
+
 
         initial_cash = self.portfolio.get_initial_deposit()
 
@@ -627,13 +627,31 @@ class TradeAnalysis:
 
         positions = []
         position: TradePosition
+        previous_position: TradePosition = None
+
+        best_day_profit_percent = None
+        worst_day_profit_percent = None
+
         for pair_id, position in self.get_all_positions():
+            if previous_position is None:
+                previous_position = position
+
+            cur_day = getattr(position.closed_at, "day", None)
+            prev_day = getattr(previous_position.closed_at, "day", None)
             
+            # To avoid cur_day = prev_day = None
+            if cur_day == prev_day and cur_day != None:
+                if position.realised_profit_percent > previous_position.realised_profit_percent:
+                    best_day_profit_percent = position.realised_profit_percent
+                else:
+                    worst_day_profit_percent = position.realised_profit_percent
+                    
+            previous_position = position
+
             lp_fees_paid += position.get_total_lp_fees_paid() or 0
-            
+
             for t in position.trades:
                 trade_volume += abs(float(t.quantity) * t.executed_price)
-
 
             if position.is_open():
                 open_value += position.open_value
@@ -682,21 +700,21 @@ class TradeAnalysis:
         positions.sort(key=lambda x: x.position_id)
 
         all_trades = winning_trades + losing_trades + [0 for i in range(zero_loss)]
-        average_trade = avg_check(all_trades)
-        median_trade = median_check(all_trades)
+        average_trade = self.func_with_check(avg, all_trades)
+        median_trade = self.func_with_check(median, all_trades)
         volatility = stdev(all_trades)
 
         average_winning_trade_profit_pc = get_avg_profit_pct_check(winning_trades)
         average_losing_trade_loss_pc = get_avg_profit_pct_check(losing_trades)
 
-        max_realised_loss = min_check(realised_losses)
-        avg_realised_risk = avg_check(realised_losses)
+        max_realised_loss = self.func_with_check(min, realised_losses)
+        avg_realised_risk = self.func_with_check(avg, realised_losses)
 
-        max_loss_risk_at_open_pc = max_check(loss_risk_at_open_pc)
+        max_loss_risk_at_open_pc = self.func_with_check(max, loss_risk_at_open_pc)
 
-        biggest_winning_trade_pc = max_check(winning_trades)
+        biggest_winning_trade_pc = self.func_with_check(max, winning_trades)
 
-        biggest_losing_trade_pc = min_check(losing_trades)
+        biggest_losing_trade_pc = self.func_with_check(min, losing_trades)
 
         average_duration_of_winning_trades = get_avg_trade_duration(winning_trades_duration, time_bucket)
         average_duration_of_losing_trades = get_avg_trade_duration(losing_trades_duration, time_bucket)
@@ -736,7 +754,9 @@ class TradeAnalysis:
             trade_volume=trade_volume,
             lp_fees_paid=lp_fees_paid,
             lp_fees_average_pc=lp_fees_average_pc,
-            volatility=volatility
+            volatility=volatility,
+            best_day_profit_percent=best_day_profit_percent,
+            worst_day_profit_percent=worst_day_profit_percent
         )
 
     def create_timeline(self) -> pd.DataFrame:
@@ -814,6 +834,12 @@ class TradeAnalysis:
                 max_pullback_pct = 0
 
         return max_pos_cons, max_neg_cons, max_pullback_pct
+    
+    @staticmethod
+    def func_with_check(func: callable, lst: list):
+        """Returns given function applied to given list.
+        However, if the list is false, it returns None."""
+        return func(lst) if lst else None
 
 class TimelineRowStylingMode(enum.Enum):
     #: Style using Pandas background_gradient
