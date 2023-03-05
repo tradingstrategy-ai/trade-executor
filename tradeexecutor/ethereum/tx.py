@@ -55,8 +55,10 @@ class TransactionBuilder:
     ) -> BlockchainTransaction:
         """Createa a signed tranaction and set up tx broadcast parameters.
 
-        :param args_bound_func: Web3 function thingy
-    dvdms 中出し 学生服 女子校生 独占配信 痴女 ハイビジョン     :param gas_limit: Max gas per this transaction
+        :param args_bound_func:
+            Web3 function thingy
+        :param gas_limit:
+            Max gas per this transaction
         """
 
         logger.info("Signing transactions using gas fee method %s for %s", self.gas_fees, args_bound_func)
