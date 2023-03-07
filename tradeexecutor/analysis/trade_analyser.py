@@ -1203,7 +1203,7 @@ def build_trade_analysis(portfolio: Portfolio) -> TradeAnalysis:
             loss_risk_at_open_pct = position.get_loss_risk_at_open_pct()
             avg_daily_profit_usd = position.get_avg_daily_profit_usd()
             stop_loss = position.stop_loss
-
+            capital_tied_at_open_pct=position.get_capital_tied_at_open_pct()
             if stop_loss:
                 loss_risk_at_open_pct = position.get_loss_risk_at_open_pct()
             else:
