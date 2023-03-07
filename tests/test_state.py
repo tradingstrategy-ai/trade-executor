@@ -489,7 +489,7 @@ def test_statistics(usdc, weth_usdc, aave_usdc, start_ts):
     assert summary.won == 1
     assert summary.lost == 0
     assert summary.zero_loss == 1
-    assert summary.total_trades == 2
+    assert summary.total_positions == 2
     assert summary.win_percent == 0.5
     assert summary.return_percent == pytest.approx(0.04363200000000006)
     assert summary.annualised_return_percent == pytest.approx(152886.528)
@@ -860,7 +860,7 @@ def test_state_summary_without_initial_cash(usdc, weth_usdc, start_ts: datetime.
     assert summary.initial_cash is None
     assert summary.return_percent is None
     assert summary.annualised_return_percent is None
-    assert summary.total_trades == 1
+    assert summary.total_positions == 1
     assert summary.end_value == pytest.approx(1006.418)
     assert summary.average_net_profit == pytest.approx(9.800999)
 
