@@ -746,7 +746,14 @@ class TradeAnalysis:
         all_trades = winning_trades + losing_trades + [0 for i in range(zero_loss)]
         average_trade = func_with_check(avg, all_trades)
         median_trade = func_with_check(median, all_trades)
-        volatility = stdev(all_trades)
+
+        # variance requires at least two data points
+        if len(all_trades) >=2:
+            volatility = stdev(all_trades)
+        elif len(all_trades) == 1:
+            volatility = 0
+        else:
+            volatility = None
 
         average_winning_trade_profit_pc = get_avg_profit_pct_check(winning_trades)
         average_losing_trade_loss_pc = get_avg_profit_pct_check(losing_trades)
