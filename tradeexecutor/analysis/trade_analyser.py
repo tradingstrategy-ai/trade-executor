@@ -1200,7 +1200,6 @@ def build_trade_analysis(portfolio: Portfolio) -> TradeAnalysis:
             portfolio_value_at_open = position.portfolio_value_at_open
 
             # used in calculate_summary_statistics()
-            loss_risk_at_open_pct = position.get_loss_risk_at_open_pct()
             avg_daily_profit_usd = position.get_avg_daily_profit_usd()
             stop_loss = position.stop_loss
             capital_tied_at_open_pct=position.get_capital_tied_at_open_pct()
