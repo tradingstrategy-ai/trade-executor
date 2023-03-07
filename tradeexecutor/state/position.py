@@ -617,6 +617,32 @@ class TradingPosition:
             # Old invalid data
             return 0
 
+    def get_avg_daily_profit_usd(self) -> USDollarAmount | None:
+        """Gets the average daily profit in dollars for the position.
+        For accuracy, gets the average profit per second then multiply by 1440
+        (1440 seconds in a day)"""
+        
+        # only applies to closed positions with profit values
+
+        total_profit_usd = self.get_total_profit_usd()
+
+        if (total_profit_usd is None) or (self.opened_at is None) or (self.closed_at is None):
+            return None
+
+        seconds = (self.closed_at - self.opened_at).total_seconds()
+
+        # to avoid division by 0
+        if seconds > 0:
+            avg_daily_profit_usd = total_profit_usd / seconds * 1440
+        elif seconds == 0:
+            # opened and closed in the same instant
+            avg_daily_profit_usd = total_profit_usd * 1440
+        else:
+            raise ValueError("closed_at smaller than opened_at")
+
+        return avg_daily_profit_usd
+        
+
 
 class PositionType(enum.Enum):
     token_hold = "token_hold"

@@ -140,6 +140,29 @@ class TradePosition:
     #: but we cache it by hand to speed up processing
     closed_at: Optional[pd.Timestamp] = None
 
+    #: The total dollar value of the portfolio when the position
+    #: was opened
+    portfolio_value_at_open: Optional[USDollarAmount] = None
+
+    #: What is the maximum risk of this position.
+    #: Risk relative to the portfolio size.
+    loss_risk_at_open_pct: Optional[float] = None
+    
+    #: How much portfolio capital was risk when this position was opened.
+    #: This is based on the opening values, any position adjustment after open is ignored
+    #: Assume capital is tied to the position and we can never release it.
+    #: Assume no stop loss is used, or it cannot be trigged
+    capital_tied_at_open_pct: Optional[float] = None
+
+    #: Average daily profit of the position
+    #: Calculated by finding average profit per second then multiplying by 1440
+    avg_daily_profit_usd: Optional[USDollarAmount] = None
+
+    #: Trigger a stop loss if this price is reached,
+    #:
+    #: We use mid-price as the trigger price.
+    stop_loss: Optional[USDollarAmount] = None
+
     def __eq__(self, other: "TradePosition"):
         """Trade positions are unique by opening timestamp and pair id.]
 
@@ -337,7 +360,15 @@ class AssetTradeHistory:
 
         return None
 
-    def add_trade(self, t: SpotTrade, position_id: Optional[int]=None):
+    def add_trade(
+        self, t: SpotTrade, 
+        position_id: int | None,
+        portfolio_value_at_open: USDollarAmount | None,
+        loss_risk_at_open_pct: float | None,
+        capital_tied_at_open_pct: float | None,
+        avg_daily_profit_usd: USDollarAmount | None,
+        stop_loss: USDollarAmount | None,
+    ):
         """Adds a new trade to the asset history.
 
         If there is an open position the trade is added against this,
@@ -362,7 +393,15 @@ class AssetTradeHistory:
             # For backtesting
             # Open new position
             assert position_id is not None, "position id must be provided when opening a new position for backtesting"
-            new_position = TradePosition(opened_at=t.timestamp, position_id=position_id)
+            new_position = TradePosition(
+                opened_at=t.timestamp, 
+                position_id=position_id,
+                portfolio_value_at_open=portfolio_value_at_open,
+                loss_risk_at_open_pct=loss_risk_at_open_pct,
+                capital_tied_at_open_pct=capital_tied_at_open_pct,
+                avg_daily_profit_usd=avg_daily_profit_usd,
+                stop_loss=stop_loss
+            )
             new_position.add_trade(t)
             self.positions.append(new_position)
 
@@ -433,8 +472,12 @@ class TradeSummary:
     lp_fees_average_pc: Optional[USDollarPrice] = 0
     
     volatility: Optional[float] = None
+    
     best_day_profit_percent: Optional[float] = None
     worst_day_profit_percent: Optional[float] = None
+    
+    best_day_profit_usd: Optional[float] = None
+    worst_day_profit_usd: Optional[float] = None
 
     def __post_init__(self):
 
@@ -520,6 +563,8 @@ class TradeSummary:
         
         add_prop(self.best_day_profit_percent, 'Best day profit %', as_percent)
         add_prop(self.worst_day_profit_percent, 'Worst day profit %', as_percent)
+        add_prop(self.best_day_profit_usd, 'Best average daily profit', as_dollar)
+        add_prop(self.worst_day_profit_usd, 'Worst average daily profit', as_dollar)
 
         df = create_summary_table(human_data)
         return df
@@ -556,7 +601,8 @@ class TradeAnalysis:
         return max(all_closes())
 
     def get_all_positions(self) -> Iterable[Tuple[PrimaryKey, TradePosition]]:
-        """Return open and closed positions over all traded assets."""
+        """Return open and closed positions over all traded assets.
+        Should be ordered since build_trade_analysis orders items by id"""
         for pair_id, history in self.asset_histories.items():
             for position in history.positions:
                 yield pair_id, position
@@ -578,6 +624,11 @@ class TradeAnalysis:
                 TradeSummary instance
         """
 
+        def func_with_check(func: callable, lst: list):
+            """Returns given function applied to given list.
+            However, if the list is false, it returns None."""
+            return func(lst) if lst else None
+
         if(time_bucket is not None):
             assert isinstance(time_bucket, TimeBucket), "Not a valid time bucket"
 
@@ -592,8 +643,6 @@ class TradeAnalysis:
                     return np.mean(duration_list)
             else:
                 return datetime.timedelta(0)
-
-
 
         initial_cash = self.portfolio.get_initial_deposit()
 
@@ -626,27 +675,27 @@ class TradeAnalysis:
         lp_fees_paid = 0
 
         positions = []
-        position: TradePosition
-        previous_position: TradePosition = None
 
+        best_day_profit_usd = None
+        worst_day_profit_usd = None
+
+        #TODO
         best_day_profit_percent = None
         worst_day_profit_percent = None
 
         for pair_id, position in self.get_all_positions():
-            if previous_position is None:
-                previous_position = position
-
-            cur_day = getattr(position.closed_at, "day", None)
-            prev_day = getattr(previous_position.closed_at, "day", None)
             
-            # To avoid cur_day = prev_day = None
-            if cur_day == prev_day and cur_day != None:
-                if position.realised_profit_percent > previous_position.realised_profit_percent:
-                    best_day_profit_percent = position.realised_profit_percent
-                else:
-                    worst_day_profit_percent = position.realised_profit_percent
-                    
-            previous_position = position
+            # get best/worst profits
+            if best_day_profit_usd is None:
+                best_day_profit_usd = position.avg_daily_profit_usd
+            if worst_day_profit_usd is None:
+                worst_day_profit_usd = position.avg_daily_profit_usd 
+            
+            if position.avg_daily_profit_usd:
+                if position.avg_daily_profit_usd > best_day_profit_usd:
+                    best_day_profit_usd = position.avg_daily_profit_usd   
+                if position.avg_daily_profit_usd < worst_day_profit_usd:
+                    worst_day_profit_usd = position.avg_daily_profit_usd
 
             lp_fees_paid += position.get_total_lp_fees_paid() or 0
 
@@ -657,8 +706,6 @@ class TradeAnalysis:
                 open_value += position.open_value
                 undecided += 1
                 continue
-
-            full_position = self.portfolio.get_position_by_id(position.position_id)
 
             if position.is_stop_loss():
                 stop_losses += 1
@@ -676,8 +723,8 @@ class TradeAnalysis:
                 losing_trades.append(position.realised_profit_percent)
                 losing_trades_duration.append(position.duration)
 
-                if full_position.portfolio_value_at_open:
-                    realised_loss = position.realised_profit / full_position.portfolio_value_at_open
+                if position.portfolio_value_at_open:
+                    realised_loss = position.realised_profit / position.portfolio_value_at_open
                 else:
                     # Bad data
                     realised_loss = 0
@@ -689,36 +736,35 @@ class TradeAnalysis:
 
             profit += position.realised_profit
 
-            if full_position.stop_loss:
-                loss_risk_at_open_pc.append(full_position.get_loss_risk_at_open_pct())
+            if position.stop_loss:
+                loss_risk_at_open_pc.append(position.loss_risk_at_open_pct)
             else:
-                loss_risk_at_open_pc.append(full_position.get_capital_tied_at_open_pct())
+                loss_risk_at_open_pc.append(position.capital_tied_at_open_pct)
 
-            positions.append(full_position)
-
-        # sort positions by position id (chronologically)
-        positions.sort(key=lambda x: x.position_id)
+            positions.append(position)
 
         all_trades = winning_trades + losing_trades + [0 for i in range(zero_loss)]
-        average_trade = self.func_with_check(avg, all_trades)
-        median_trade = self.func_with_check(median, all_trades)
+        average_trade = func_with_check(avg, all_trades)
+        median_trade = func_with_check(median, all_trades)
         volatility = stdev(all_trades)
 
         average_winning_trade_profit_pc = get_avg_profit_pct_check(winning_trades)
         average_losing_trade_loss_pc = get_avg_profit_pct_check(losing_trades)
 
-        max_realised_loss = self.func_with_check(min, realised_losses)
-        avg_realised_risk = self.func_with_check(avg, realised_losses)
+        max_realised_loss = func_with_check(min, realised_losses)
+        avg_realised_risk = func_with_check(avg, realised_losses)
 
-        max_loss_risk_at_open_pc = self.func_with_check(max, loss_risk_at_open_pc)
+        max_loss_risk_at_open_pc = func_with_check(max, loss_risk_at_open_pc)
 
-        biggest_winning_trade_pc = self.func_with_check(max, winning_trades)
+        biggest_winning_trade_pc = func_with_check(max, winning_trades)
 
-        biggest_losing_trade_pc = self.func_with_check(min, losing_trades)
+        biggest_losing_trade_pc = func_with_check(min, losing_trades)
 
         average_duration_of_winning_trades = get_avg_trade_duration(winning_trades_duration, time_bucket)
         average_duration_of_losing_trades = get_avg_trade_duration(losing_trades_duration, time_bucket)
 
+        # Sort positions based on their id
+        positions = sorted(positions, key=lambda p: p.position_id)
         max_pos_cons, max_neg_cons, max_pullback = self.get_max_consective(positions)
 
         lp_fees_average_pc = lp_fees_paid / trade_volume if trade_volume else 0
@@ -756,7 +802,9 @@ class TradeAnalysis:
             lp_fees_average_pc=lp_fees_average_pc,
             volatility=volatility,
             best_day_profit_percent=best_day_profit_percent,
-            worst_day_profit_percent=worst_day_profit_percent
+            worst_day_profit_percent=worst_day_profit_percent,
+            best_day_profit_usd=best_day_profit_usd,
+            worst_day_profit_usd=worst_day_profit_usd,
         )
 
     def create_timeline(self) -> pd.DataFrame:
@@ -789,7 +837,7 @@ class TradeAnalysis:
         return self.get_max_consective(raw_timeline)
 
     @staticmethod
-    def get_max_consective(positions: List[TradingPosition]) -> tuple[int, int ,int] | tuple[None, None, None]:
+    def get_max_consective(positions: List[TradePosition]) -> tuple[int, int ,int] | tuple[None, None, None]:
         """May be used in calculate_summary_statistics
 
         :param positions:
@@ -809,23 +857,22 @@ class TradeAnalysis:
         for position in positions:
 
             # don't do anything if profit = $0
-            if(position.get_realised_profit_usd() > 0):
+            if(position.realised_profit > 0):
                     neg_cons = 0
                     pullback = 0
                     pos_cons += 1
-            elif(position.get_realised_profit_usd() < 0):
+            elif(position.realised_profit < 0):
                     pos_cons = 0
                     neg_cons += 1
-                    pullback += position.get_realised_profit_usd()
+                    pullback += position.realised_profit
 
             if(neg_cons > max_neg_cons):
                     max_neg_cons = neg_cons
             if(pos_cons > max_pos_cons):
                     max_pos_cons = pos_cons
 
-            value_at_open = position.portfolio_value_at_open
-            if value_at_open:
-                pullback_pct = pullback / (value_at_open + position.get_realised_profit_usd())
+            if value_at_open := position.portfolio_value_at_open:
+                pullback_pct = pullback / (value_at_open + position.realised_profit)
                 if(pullback_pct < max_pullback_pct):
                         # pull back is in the negative direction
                         max_pullback_pct = pullback_pct
@@ -833,13 +880,8 @@ class TradeAnalysis:
                 # Bad input data / legacy data
                 max_pullback_pct = 0
 
-        return max_pos_cons, max_neg_cons, max_pullback_pct
-    
-    @staticmethod
-    def func_with_check(func: callable, lst: list):
-        """Returns given function applied to given list.
-        However, if the list is false, it returns None."""
-        return func(lst) if lst else None
+        return max_pos_cons, max_neg_cons, max_pullback_pct        
+
 
 class TimelineRowStylingMode(enum.Enum):
     #: Style using Pandas background_gradient
@@ -1146,7 +1188,25 @@ def build_trade_analysis(portfolio: Portfolio) -> TradeAnalysis:
                 lp_fees_paid=trade.lp_fees_paid,
                 bad_data_issues=bad_data_issues,
             )
-            history.add_trade(spot_trade, position_id=position.position_id)
+
+            # used in get_max_consecutive
+            portfolio_value_at_open = position.portfolio_value_at_open
+
+            # used in calculate_summary_statistics()
+            loss_risk_at_open_pct = position.get_loss_risk_at_open_pct()
+            capital_tied_at_open_pct = position.get_capital_tied_at_open_pct()
+            avg_daily_profit_usd = position.get_avg_daily_profit_usd()
+            stop_loss = position.stop_loss
+
+            history.add_trade(
+                spot_trade, 
+                position_id=position.position_id,
+                portfolio_value_at_open=portfolio_value_at_open,
+                loss_risk_at_open_pct=loss_risk_at_open_pct,
+                capital_tied_at_open_pct=capital_tied_at_open_pct,
+                avg_daily_profit_usd=avg_daily_profit_usd,
+                stop_loss=stop_loss
+            )
 
     return TradeAnalysis(portfolio, asset_histories=histories)
 
