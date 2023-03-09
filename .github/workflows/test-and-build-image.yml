@@ -40,7 +40,7 @@ jobs:
         # We don't install -E qstrader and run legacy tests on CI as they
         # download too much data
         run: |          
-          poetry install --no-interaction -E web-server -E execution
+          poetry install --no-interaction -E web-server -E execution -E quantstats
       - name: Run test scripts
         run: |
           PATH=~/.foundry/bin:$PATH
