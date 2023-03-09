@@ -147,6 +147,29 @@ class TradePosition:
     #: but we cache it by hand to speed up processing
     closed_at: Optional[pd.Timestamp] = None
 
+    #: The total dollar value of the portfolio when the position
+    #: was opened
+    portfolio_value_at_open: Optional[USDollarAmount] = None
+
+    #: What is the maximum risk of this position.
+    #: Risk relative to the portfolio size.
+    loss_risk_at_open_pct: Optional[float] = None
+    
+    #: How much portfolio capital was risk when this position was opened.
+    #: This is based on the opening values, any position adjustment after open is ignored
+    #: Assume capital is tied to the position and we can never release it.
+    #: Assume no stop loss is used, or it cannot be trigged
+    capital_tied_at_open_pct: Optional[float] = None
+
+    #: Average daily profit of the position
+    #: Calculated by finding average profit per second then multiplying by 1440
+    avg_daily_profit_usd: Optional[USDollarAmount] = None
+
+    #: Trigger a stop loss if this price is reached,
+    #:
+    #: We use mid-price as the trigger price.
+    stop_loss: Optional[USDollarAmount] = None
+
     def __eq__(self, other: "TradePosition"):
         """Trade positions are unique by opening timestamp and pair id.]
 
