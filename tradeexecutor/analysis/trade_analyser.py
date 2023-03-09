@@ -751,8 +751,7 @@ class TradeAnalysis:
             else:
                 loss_risk_at_open_pc.append(position.capital_tied_at_open_pct())
 
-        # sort positions by position id (chronologically)
-        positions.sort(key=lambda x: x.position_id)
+            positions.append(position)
 
         all_trades = winning_trades + losing_trades + [0 for i in range(zero_loss)]
         average_trade = avg_check(all_trades)
@@ -773,6 +772,8 @@ class TradeAnalysis:
         average_duration_of_winning_trades = get_avg_trade_duration(winning_trades_duration, time_bucket)
         average_duration_of_losing_trades = get_avg_trade_duration(losing_trades_duration, time_bucket)
 
+        # sort positions by position id (chronologically)
+        positions.sort(key=lambda x: x.position_id)
         max_pos_cons, max_neg_cons, max_pullback = self.get_max_consective(positions)
 
         lp_fees_average_pc = lp_fees_paid / trade_volume if trade_volume else 0
