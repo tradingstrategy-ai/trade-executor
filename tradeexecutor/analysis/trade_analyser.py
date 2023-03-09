@@ -17,6 +17,7 @@ Example analysis include:
     It could be simplified greatly now.
 
 """
+
 import datetime
 import enum
 import logging
@@ -44,7 +45,11 @@ from tradingstrategy.utils.format import format_value, format_price, format_dura
     format_percent_2_decimals
 from tradingstrategy.utils.summarydataframe import as_dollar, as_integer, create_summary_table, as_percent, as_duration, as_bars
 
-import quantstats as qs
+try:
+    import quantstats as qs
+    HAS_QUANTSTATS = True
+except Exception:
+    HAS_QUANTSTATS = False
 
 
 logger = logging.getLogger(__name__)
@@ -529,7 +534,7 @@ class TradeSummary:
         """Show basic and advanced stats and plots"""
         return (
             qs.reports.full(self.daily_returns) 
-            if self.daily_returns is not None
+            if HAS_QUANTSTATS and self.daily_returns is not None
             else None
         )
     
@@ -537,7 +542,7 @@ class TradeSummary:
         """Show basic stats only"""
         return (
             qs.reports.metrics(self.daily_returns)
-            if self.daily_returns is not None
+            if HAS_QUANTSTATS and self.daily_returns is not None
             else None
         )
 
@@ -545,7 +550,7 @@ class TradeSummary:
         """Show basic and advanced stats"""
         return (
             qs.reports.metrics(self.daily_returns, mode='full')
-            if self.daily_returns is not None
+            if HAS_QUANTSTATS and self.daily_returns is not None
             else None
         )
 
@@ -553,7 +558,7 @@ class TradeSummary:
         """Show basic plots"""
         return (
             qs.reports.plots(self.daily_returns)
-            if self.daily_returns is not None
+            if HAS_QUANTSTATS and self.daily_returns is not None
             else None
         )
 
@@ -561,7 +566,7 @@ class TradeSummary:
         """Show basic and advanced plots"""
         return (
             qs.reports.plots(self.daily_returns, mode='full')
-            if self.daily_returns is not None
+            if HAS_QUANTSTATS and self.daily_returns is not None
             else None
         )
 
@@ -755,7 +760,7 @@ class TradeAnalysis:
 
         # for advanced statistics
         # import here to avoid circular import error
-        if state is not None:
+        if state is not None and HAS_QUANTSTATS:
             from tradeexecutor.visual.equity_curve import get_daily_returns
             daily_returns = get_daily_returns(state)
         else:
