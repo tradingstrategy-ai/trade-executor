@@ -569,7 +569,7 @@ def test_broadcast_failed_and_repair_state(
     trades = loop.runner.repair_state(state)
 
     # We repaired one trade
-    assert len(trades)== 1
+    assert len(trades) == 1
 
     # State is clean now
     t = state.portfolio.open_positions[1].trades[1]

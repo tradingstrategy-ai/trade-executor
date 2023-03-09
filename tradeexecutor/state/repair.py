@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from itertools import chain
 from typing import List, TypedDict
 
+from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 
@@ -27,35 +28,40 @@ class RepairAborted(Exception):
     """User chose no"""
 
 
-@dataclass(slots=Trueno)
-class RepairStats:
-    """"""
+@dataclass(slots=True)
+class RepairResult:
+    """The report of the repair results.
+
+    Note that repair might not have done anything - every list is empty.
+    """
 
     #: How many frozen positions we encountered
-    frozen_positions: int = 0
+    frozen_positions: List[TradingPosition]
 
-    #: How many individal trades we repaired
-    repaired_trades: int = 0
+    #: What positions we managed to unfreeze
+    unfrozen_positions: List[TradingPosition]
 
-    #: How many positions we recovered
-    recovered_positions: int = 0
+    #: How many individual trades we repaired
+    trades_needing_repair: List[TradeExecution]
+
+    #: New trades we made to fix the accounting
+    new_trades: List[TradeExecution]
 
 
-def make_counter_trade(t: TradeExecution) -> TradeExecution:
+def make_counter_trade(p: TradingPosition, t: TradeExecution) -> TradeExecution:
     """Make a virtual trade that fixes the total balances of a position and unwinds the broken trade."""
+    counter_trade
+    pass
 
 
-
-def repair_trade(t: TradeExecution) -> TradeExecution:
-    counter_trade = make_counter_trade(t)
+def repair_trade(p: TradingPosition, t: TradeExecution) -> TradeExecution:
+    counter_trade = make_counter_trade(p, t)
     t.repaired_at = datetime.datetime.utcnow()
     return counter_trade
 
 
 def find_trades_to_be_repaired(state: State) -> List[TradeExecution]:
-
     trades_to_be_repaired = []
-
     # Closed trades do not need attention
     for p in chain(state.portfolio.open_positions.values(), state.portfolio.frozen_positions.values()):
         t: TradeExecution
@@ -101,7 +107,21 @@ def reconfirm_trade(reconfirming_needed_trades: List[TradeExecution]):
         repaired.append(t)
 
 
-def repair_trades(state: State, interactive=True) -> List[TradeExecution]:
+def unfreeze_position(position: TradingPosition) -> bool:
+    """Attempt to unfreeze positions.
+
+    - All failed trades on a position must be cleared
+
+    :return:
+        if we managed to unfreeze the position
+    """
+    pass
+
+
+def repair_trades(
+        state: State,
+        attempt_repair=True,
+        interactive=True) -> RepairResult:
     """Repair trade.
 
     - Find frozen positions and trades in them
@@ -112,40 +132,64 @@ def repair_trades(state: State, interactive=True) -> List[TradeExecution]:
 
     - Does not actually broadcast any transactions - only fixes the internal accounting
 
+    :param attempt_repair:
+        If not set, only list broken trades and frozen positions.
+
+        Do not attempt to repair them.
+
     :param interactive:
-        Command line interactive user experience
+        Command line interactive user experience.
+
+        Allows press `n` for abort.
 
     :raise RepairAborted:
         User chose no
     """
 
-    stats = RepairStats()
+    logger.info("Repairing trades")
 
-    trades_to_be_repaired = []
+    frozen_positions = list(state.portfolio.frozen_positions.values())
 
-    logger.info("Repairing trades, using execution model %s", self)
-
-    total_trades = 0
-
-    stats.frozen_positions = len(list(state.portfolio.frozen_positions))
-
-    logger.info("Strategy has %d frozen positions", stats.frozen_positions)\
+    logger.info("Strategy has %d frozen positions", len(frozen_positions))
 
     trades_to_be_repaired = find_trades_to_be_repaired(state)
 
     logger.info("Found %d trades to be repaired", len(trades_to_be_repaired))
 
-    if not trades_to_be_repaired:
-        return []
-
-    for t in trades_to_be_repaired:
-        print(t)
+    if len(trades_to_be_repaired) == 0 or not attempt_repair:
+        return RepairResult(
+            frozen_positions,
+            [],
+            trades_to_be_repaired,
+            [],
+        )
 
     if interactive:
+
+        for t in trades_to_be_repaired:
+            print("Needs repair:", t)
+
         confirmation = input("Attempt to repair [y/n]").lower()
         if confirmation != "y":
             raise RepairAborted()
 
-    repair_trades(trades_to_be_repaired)
+    new_trades = []
+    for t in trades_to_be_repaired:
+        new_trades.append(repair_trade(t))
 
-    return trades_to_be_repaired
+    unfrozen_positions = []
+    for p in frozen_positions:
+        if unfreeze_position(p):
+            unfrozen_positions.append(p)
+            logger.info("Position unfrozen: %s", p)
+
+    for t in new_trades:
+        logger.info("Correction trade made: %s", t)
+
+    return RepairResult(
+        frozen_positions,
+        unfrozen_positions,
+        trades_to_be_repaired,
+        new_trades,
+    )
+

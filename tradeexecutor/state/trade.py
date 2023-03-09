@@ -243,12 +243,18 @@ class TradeExecution:
     #: Special case; not worth to display unless the field is filled in.
     notes: Optional[str] = None
 
-    #: Trade was manually repaird
+    #: Trade was manually repaired
     #:
     #: E.g. failed broadcast issue was fixed.
     #: Marked when the repair command is called.
     repaired_at: Optional[datetime.datetime] = None
-    
+
+    #: Which is the trade that this trade is repairing.
+    #:
+    #: This trade makes a opposing trade to the trade referred here,
+    #: making accounting match again and unfreezing the position.
+    repaired_trade_id: Optional[datetime.datetime] = None
+
     #: Related TradePricing instance
     #:
     #: TradePricing instance can refer to more than one swap
@@ -417,6 +423,10 @@ class TradeExecution:
         and underlying transactions.
         """
         return self.repaired_at is not None
+
+    def is_repair_needed(self) -> bool:
+        """This trade needs repair, but is not repaired yet."""
+        return self.is_failed() and not self.is_repaired()
 
     def get_status(self) -> TradeStatus:
         if self.failed_at:
