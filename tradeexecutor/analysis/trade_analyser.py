@@ -161,10 +161,6 @@ class TradePosition:
     #: Assume no stop loss is used, or it cannot be trigged
     capital_tied_at_open_pct: Optional[float] = None
 
-    #: Average daily profit of the position
-    #: Calculated by finding average profit per second then multiplying by 1440
-    avg_daily_profit_usd: Optional[USDollarAmount] = None
-
     #: Trigger a stop loss if this price is reached,
     #:
     #: We use mid-price as the trigger price.
@@ -367,7 +363,14 @@ class AssetTradeHistory:
 
         return None
 
-    def add_trade(self, t: SpotTrade, position_id: Optional[int]=None):
+    def add_trade(
+        self, t: SpotTrade, 
+        position_id: int | None,
+        portfolio_value_at_open: USDollarAmount | None,
+        loss_risk_at_open_pct: float | None,
+        capital_tied_at_open_pct: float | None,
+        stop_loss: USDollarAmount | None,
+    ):
         """Adds a new trade to the asset history.
 
         If there is an open position the trade is added against this,
@@ -392,7 +395,14 @@ class AssetTradeHistory:
             # For backtesting
             # Open new position
             assert position_id is not None, "position id must be provided when opening a new position for backtesting"
-            new_position = TradePosition(opened_at=t.timestamp, position_id=position_id)
+            new_position = TradePosition(
+                opened_at=t.timestamp, 
+                position_id=position_id,
+                portfolio_value_at_open=portfolio_value_at_open,
+                loss_risk_at_open_pct=loss_risk_at_open_pct,
+                capital_tied_at_open_pct=capital_tied_at_open_pct,
+                stop_loss=stop_loss
+            )
             new_position.add_trade(t)
             self.positions.append(new_position)
 
