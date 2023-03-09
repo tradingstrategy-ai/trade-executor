@@ -35,7 +35,6 @@ from tradeexecutor.state.trade import TradeExecution, TradeType
 from tradeexecutor.state.types import USDollarPrice, Percent
 from tradeexecutor.utils.format import calculate_percentage
 from tradeexecutor.utils.timestamp import json_encode_timedelta, json_decode_timedelta
-#from tradeexecutor.visual.equity_curve import get_daily_returns
 from tradingstrategy.timebucket import TimeBucket
 
 from tradingstrategy.exchange import Exchange
@@ -435,6 +434,8 @@ class TradeSummary:
     lp_fees_paid: Optional[USDollarPrice] = 0
     lp_fees_average_pc: Optional[USDollarPrice] = 0
 
+    #: advanced users can use this property instead of the
+    #: provided quantstats helper methods
     daily_returns: Optional[pd.Series] = None
 
     def __post_init__(self):
@@ -451,10 +452,6 @@ class TradeSummary:
         self.return_percent = calculate_percentage(self.end_value - initial_cash, initial_cash)
         self.annualised_return_percent = calculate_percentage(self.return_percent * datetime.timedelta(days=365),
                                                               self.duration) if self.return_percent else None
-
-        # advanced stats
-        if self.daily_returns:
-            self.adv_report = qs.reports.full(self.daily_returns)
 
 
     def to_dataframe(self) -> pd.DataFrame:
@@ -527,6 +524,47 @@ class TradeSummary:
         with pd.option_context("display.max_row", None):
             df = self.to_dataframe()
             display(df.style.set_table_styles([{'selector': 'thead', 'props': [('display', 'none')]}]))
+    
+    def get_full_report(self):
+        """Show basic and advanced stats and plots"""
+        return (
+            qs.reports.full(self.daily_returns) 
+            if self.daily_returns is not None
+            else None
+        )
+    
+    def get_basic_stats(self):
+        """Show basic stats only"""
+        return (
+            qs.reports.metrics(self.daily_returns)
+            if self.daily_returns is not None
+            else None
+        )
+
+    def get_full_stats(self):
+        """Show basic and advanced stats"""
+        return (
+            qs.reports.metrics(self.daily_returns, mode='full')
+            if self.daily_returns is not None
+            else None
+        )
+
+    def get_basic_plots(self):
+        """Show basic plots"""
+        return (
+            qs.reports.plots(self.daily_returns)
+            if self.daily_returns is not None
+            else None
+        )
+
+    def get_full_plots(self):
+        """Show basic and advanced plots"""
+        return (
+            qs.reports.plots(self.daily_returns, mode='full')
+            if self.daily_returns is not None
+            else None
+        )
+
 
 @dataclass
 class TradeAnalysis:
@@ -536,8 +574,6 @@ class TradeAnalysis:
 
     #: How a particular asset traded. Asset id -> Asset history mapping
     asset_histories: Dict[object, AssetTradeHistory] = field(default_factory=dict)
-
-    daily_returns: Optional[pd.Series] = None
 
     def get_first_opened_at(self) -> Optional[pd.Timestamp]:
         def all_opens():
@@ -568,7 +604,11 @@ class TradeAnalysis:
                 if position.is_open():
                     yield pair_id, position
 
-    def calculate_summary_statistics(self, time_bucket: Optional[TimeBucket] = None) -> TradeSummary:
+    def calculate_summary_statistics(
+        self, 
+        time_bucket: Optional[TimeBucket] = None,
+        state = None
+    ) -> TradeSummary:
         """Calculate some statistics how our trades went.
 
             :param time_bucket:
@@ -580,6 +620,8 @@ class TradeAnalysis:
 
         if(time_bucket is not None):
             assert isinstance(time_bucket, TimeBucket), "Not a valid time bucket"
+
+        # TODO cannot add assertion or typing for state since circular import error
 
         def get_avg_profit_pct_check(trades: List | None):
             return float(np.mean(trades)) if trades else None
@@ -710,6 +752,14 @@ class TradeAnalysis:
         max_pos_cons, max_neg_cons, max_pullback = self.get_max_consective(positions)
 
         lp_fees_average_pc = lp_fees_paid / trade_volume if trade_volume else 0
+
+        # for advanced statistics
+        # import here to avoid circular import error
+        if state is not None:
+            from tradeexecutor.visual.equity_curve import get_daily_returns
+            daily_returns = get_daily_returns(state)
+        else:
+            daily_returns = None
 
         return TradeSummary(
             won=won,
@@ -1059,8 +1109,7 @@ def expand_timeline_raw(
 
 
 def build_trade_analysis(
-    portfolio: Portfolio,
-    state
+    portfolio: Portfolio
 ) -> TradeAnalysis:
     """Build a trade analysis from list of positions.
 
@@ -1072,8 +1121,6 @@ def build_trade_analysis(
     :param state:
         optional parameter that should be specified if user would like to see advanced statistics
     """
-
-    daily_returns = get_daily_returns(state)
 
     histories = {}
 
@@ -1138,8 +1185,7 @@ def build_trade_analysis(
 
     return TradeAnalysis(
         portfolio, 
-        asset_histories=histories,
-        daily_returns=daily_returns
+        asset_histories=histories
     )
 
 def avg(lst: list[int]):

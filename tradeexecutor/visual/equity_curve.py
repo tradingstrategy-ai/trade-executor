@@ -126,7 +126,7 @@ def calculate_aggregate_returns(equity_curve: pd.Series, freq: str = "BM") -> pd
     return sampled.pct_change()
 
 
-def get_daily_returns(state: State):
+def get_daily_returns(state: State) -> (pd.Series | None):
     """Used for advanced statistics
 
     :returns:
