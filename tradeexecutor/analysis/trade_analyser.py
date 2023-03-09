@@ -757,9 +757,9 @@ class TradeAnalysis:
             profit += position.realised_profit
 
             if position.stop_loss:
-                loss_risk_at_open_pc.append(position.loss_risk_at_open_pct())
+                loss_risk_at_open_pc.append(position.loss_risk_at_open_pct)
             else:
-                loss_risk_at_open_pc.append(position.capital_tied_at_open_pct())
+                loss_risk_at_open_pc.append(position.capital_tied_at_open_pct)
 
             positions.append(position)
 
@@ -862,7 +862,7 @@ class TradeAnalysis:
         return self.get_max_consective(raw_timeline)
 
     @staticmethod
-    def get_max_consective(positions: List[TradingPosition]) -> tuple[int, int ,int] | tuple[None, None, None]:
+    def get_max_consective(positions: List[TradePosition]) -> tuple[int, int ,int] | tuple[None, None, None]:
         """May be used in calculate_summary_statistics
 
         :param positions:
@@ -880,16 +880,17 @@ class TradeAnalysis:
         pullback = 0
 
         for position in positions:
+            realized_profit = position.realised_profit
 
             # don't do anything if profit = $0
-            if(position.get_realised_profit_usd() > 0):
+            if(realized_profit > 0):
                     neg_cons = 0
                     pullback = 0
                     pos_cons += 1
-            elif(position.get_realised_profit_usd() < 0):
+            elif(realized_profit < 0):
                     pos_cons = 0
                     neg_cons += 1
-                    pullback += position.get_realised_profit_usd()
+                    pullback += realized_profit
 
             if(neg_cons > max_neg_cons):
                     max_neg_cons = neg_cons
@@ -898,7 +899,7 @@ class TradeAnalysis:
 
             value_at_open = position.portfolio_value_at_open
             if value_at_open:
-                pullback_pct = pullback / (value_at_open + position.get_realised_profit_usd())
+                pullback_pct = pullback / (value_at_open + realized_profit)
                 if(pullback_pct < max_pullback_pct):
                         # pull back is in the negative direction
                         max_pullback_pct = pullback_pct
