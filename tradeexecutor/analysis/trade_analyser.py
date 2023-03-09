@@ -35,6 +35,7 @@ from tradeexecutor.state.trade import TradeExecution, TradeType
 from tradeexecutor.state.types import USDollarPrice, Percent
 from tradeexecutor.utils.format import calculate_percentage
 from tradeexecutor.utils.timestamp import json_encode_timedelta, json_decode_timedelta
+#from tradeexecutor.visual.equity_curve import get_daily_returns
 from tradingstrategy.timebucket import TimeBucket
 
 from tradingstrategy.exchange import Exchange
@@ -43,6 +44,8 @@ from tradingstrategy.types import PrimaryKey, USDollarAmount
 from tradingstrategy.utils.format import format_value, format_price, format_duration_days_hours_mins, \
     format_percent_2_decimals
 from tradingstrategy.utils.summarydataframe import as_dollar, as_integer, create_summary_table, as_percent, as_duration, as_bars
+
+import quantstats as qs
 
 
 logger = logging.getLogger(__name__)
@@ -432,6 +435,8 @@ class TradeSummary:
     lp_fees_paid: Optional[USDollarPrice] = 0
     lp_fees_average_pc: Optional[USDollarPrice] = 0
 
+    daily_returns: Optional[pd.Series] = None
+
     def __post_init__(self):
 
         self.total_trades = self.won + self.lost + self.zero_loss
@@ -446,6 +451,11 @@ class TradeSummary:
         self.return_percent = calculate_percentage(self.end_value - initial_cash, initial_cash)
         self.annualised_return_percent = calculate_percentage(self.return_percent * datetime.timedelta(days=365),
                                                               self.duration) if self.return_percent else None
+
+        # advanced stats
+        if self.daily_returns:
+            self.adv_report = qs.reports.full(self.daily_returns)
+
 
     def to_dataframe(self) -> pd.DataFrame:
         """Convert the data to a human readable summary table.
@@ -526,6 +536,8 @@ class TradeAnalysis:
 
     #: How a particular asset traded. Asset id -> Asset history mapping
     asset_histories: Dict[object, AssetTradeHistory] = field(default_factory=dict)
+
+    daily_returns: Optional[pd.Series] = None
 
     def get_first_opened_at(self) -> Optional[pd.Timestamp]:
         def all_opens():
@@ -730,6 +742,7 @@ class TradeAnalysis:
             trade_volume=trade_volume,
             lp_fees_paid=lp_fees_paid,
             lp_fees_average_pc=lp_fees_average_pc,
+            daily_returns=daily_returns
         )
 
     def create_timeline(self) -> pd.DataFrame:
@@ -1045,14 +1058,22 @@ def expand_timeline_raw(
         return applied_df
 
 
-def build_trade_analysis(portfolio: Portfolio) -> TradeAnalysis:
+def build_trade_analysis(
+    portfolio: Portfolio,
+    state
+) -> TradeAnalysis:
     """Build a trade analysis from list of positions.
 
     - Read positions from backtesting or live state
 
     - Create TradeAnalysis instance that can be used to display Jupyter notebook
       data on the performance
+
+    :param state:
+        optional parameter that should be specified if user would like to see advanced statistics
     """
+
+    daily_returns = get_daily_returns(state)
 
     histories = {}
 
@@ -1115,7 +1136,11 @@ def build_trade_analysis(portfolio: Portfolio) -> TradeAnalysis:
             )
             history.add_trade(spot_trade, position_id=position.position_id)
 
-    return TradeAnalysis(portfolio, asset_histories=histories)
+    return TradeAnalysis(
+        portfolio, 
+        asset_histories=histories,
+        daily_returns=daily_returns
+    )
 
 def avg(lst: list[int]):
     return sum(lst) / len(lst)
