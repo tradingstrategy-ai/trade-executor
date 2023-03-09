@@ -59,6 +59,9 @@ class TransactionBuilder:
             Web3 function thingy
         :param gas_limit:
             Max gas per this transaction
+
+        :return:
+            Prepared BlockchainTransaction instance
         """
 
         logger.info("Signing transactions using gas fee method %s for %s", self.gas_fees, args_bound_func)

@@ -34,7 +34,7 @@ def repair(
     log_level: str = typer.Option(None, envvar="LOG_LEVEL", help="The Python default logging level. The defaults are 'info' is live execution, 'warning' if backtesting. Set 'disabled' in testing."),
 
     strategy_file: Path = typer.Option(..., envvar="STRATEGY_FILE"),
-    private_key: str = typer.Option(None, envvar="PRIVATE_KEY"),
+    private_key: str = typer.Option(None, envvar="PRIVATE_KEY", help="Trade executor private key."),
     trading_strategy_api_key: str = typer.Option(None, envvar="TRADING_STRATEGY_API_KEY", help="Trading Strategy API key"),
     state_file: Optional[Path] = typer.Option(None, envvar="STATE_FILE", help="JSON file where we serialise the execution state. If not given defaults to state/{executor-id}.json"),
     cache_path: Optional[Path] = typer.Option("cache/", envvar="CACHE_PATH", help="Where to store downloaded datasets"),
@@ -98,10 +98,9 @@ def repair(
 
     store = create_state_store(Path(state_file))
 
-    if store.is_pristine():
-        state = store.create()
-    else:
-        state = store.load()
+    assert not store.is_pristine(), f"State file not found {state_file}"
+
+    state = store.load()
 
     # Set up the strategy engine
     factory = make_factory_from_strategy_mod(mod)
@@ -125,20 +124,12 @@ def repair(
         ExecutionMode.preflight_check,
         UniverseOptions())
 
-    runner = run_description.runner
-
-    try:
-        state.check_if_clean()
-        raise RuntimeError("State was clean - nothing to repair")
-    except UncleanState:
-        pass
-
-    print("Issues detected in the strategy to state.")
     print("Make sure trade executor is stopped before attempting to repair.")
-    confirm = input(f"Attempt to repair: {id}: {state_file}? [y/n]")
+    confirm = input(f"Is trade executor stopped: {state_file}? [y/n]")
     if confirm.lower() != "y":
         return
 
+    runner = run_description.runner
     repaired = runner.repair_state(state)
 
     store.sync(state)
