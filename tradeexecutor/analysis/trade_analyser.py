@@ -432,7 +432,7 @@ class TradeSummary:
     ))
     time_bucket: Optional[TimeBucket] = None
 
-    total_trades: int = field(init=False)
+    total_positions: int = field(init=False)
     win_percent: float = field(init=False)
     return_percent: float = field(init=False)
     annualised_return_percent: float = field(init=False)
@@ -468,13 +468,13 @@ class TradeSummary:
 
     def __post_init__(self):
 
-        self.total_trades = self.won + self.lost + self.zero_loss
-        self.win_percent = calculate_percentage(self.won, self.total_trades)
-        self.all_stop_loss_percent = calculate_percentage(self.stop_losses, self.total_trades)
-        self.all_take_profit_percent = calculate_percentage(self.take_profits, self.total_trades)
+        self.total_positions = self.won + self.lost + self.zero_loss
+        self.win_percent = calculate_percentage(self.won, self.total_positions)
+        self.all_stop_loss_percent = calculate_percentage(self.stop_losses, self.total_positions)
+        self.all_take_profit_percent = calculate_percentage(self.take_profits, self.total_positions)
         self.lost_stop_loss_percent = calculate_percentage(self.stop_losses, self.lost)
         self.won_take_profit_percent = calculate_percentage(self.take_profits, self.won)
-        self.average_net_profit = self.realised_profit / self.total_trades if self.total_trades else None
+        self.average_net_profit = self.realised_profit / self.total_positions if self.total_positions else None
         self.end_value = self.open_value + self.uninvested_cash
         initial_cash = self.initial_cash or 0
         self.return_percent = calculate_percentage(self.end_value - initial_cash, initial_cash)
@@ -503,7 +503,7 @@ class TradeSummary:
             "Value at end": as_dollar(self.end_value),
             "Trade volume": as_dollar(self.trade_volume),
             "Trade win percent": as_percent(self.win_percent),
-            "Total trades done": as_integer(self.total_trades),
+            "Total positions": as_integer(self.total_positions),
             "Won trades": as_integer(self.won),
             "Lost trades": as_integer(self.lost),
             "Stop losses triggered": as_integer(self.stop_losses),
