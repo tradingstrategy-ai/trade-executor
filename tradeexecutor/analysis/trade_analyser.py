@@ -717,8 +717,6 @@ class TradeAnalysis:
                 undecided += 1
                 continue
 
-            full_position = self.portfolio.get_position_by_id(position.position_id)
-
             if position.is_stop_loss():
                 stop_losses += 1
 
@@ -735,8 +733,8 @@ class TradeAnalysis:
                 losing_trades.append(position.realised_profit_percent)
                 losing_trades_duration.append(position.duration)
 
-                if full_position.portfolio_value_at_open:
-                    realised_loss = position.realised_profit / full_position.portfolio_value_at_open
+                if position.portfolio_value_at_open:
+                    realised_loss = position.realised_profit / position.portfolio_value_at_open
                 else:
                     # Bad data
                     realised_loss = 0
@@ -748,12 +746,10 @@ class TradeAnalysis:
 
             profit += position.realised_profit
 
-            if full_position.stop_loss:
-                loss_risk_at_open_pc.append(full_position.get_loss_risk_at_open_pct())
+            if position.stop_loss:
+                loss_risk_at_open_pc.append(position.loss_risk_at_open_pct())
             else:
-                loss_risk_at_open_pc.append(full_position.get_capital_tied_at_open_pct())
-
-            positions.append(full_position)
+                loss_risk_at_open_pc.append(position.capital_tied_at_open_pct())
 
         # sort positions by position id (chronologically)
         positions.sort(key=lambda x: x.position_id)
