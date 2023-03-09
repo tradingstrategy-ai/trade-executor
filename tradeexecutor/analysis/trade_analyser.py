@@ -773,6 +773,8 @@ class TradeAnalysis:
         average_duration_of_losing_trades = get_avg_trade_duration(losing_trades_duration, time_bucket)
 
         # sort positions by position id (chronologically)
+        # should be unnecessary to sort since build_trade_analysis sorts same way
+        # but just in case used directly
         positions.sort(key=lambda x: x.position_id)
         max_pos_cons, max_neg_cons, max_pullback = self.get_max_consective(positions)
 
