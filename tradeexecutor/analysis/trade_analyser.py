@@ -1213,7 +1213,6 @@ def build_trade_analysis(
             portfolio_value_at_open = position.portfolio_value_at_open
 
             # used in calculate_summary_statistics()
-            avg_daily_profit_usd = position.get_avg_daily_profit_usd()
             stop_loss = position.stop_loss
             
             if position.portfolio_value_at_open:
@@ -1232,7 +1231,6 @@ def build_trade_analysis(
                 portfolio_value_at_open=portfolio_value_at_open,
                 loss_risk_at_open_pct=loss_risk_at_open_pct,
                 capital_tied_at_open_pct=capital_tied_at_open_pct,
-                avg_daily_profit_usd=avg_daily_profit_usd,
                 stop_loss=stop_loss
             )
 
