@@ -166,6 +166,10 @@ class TradePosition:
     #: We use mid-price as the trigger price.
     stop_loss: Optional[USDollarAmount] = None
 
+    #: Related to loss_risk_at_open_pct
+    #: This is the related dollar value for maximum risk of the position
+    maximum_risk: Optional[USDollarAmount] = None
+
     def __eq__(self, other: "TradePosition"):
         """Trade positions are unique by opening timestamp and pair id.]
 
@@ -370,6 +374,7 @@ class AssetTradeHistory:
         loss_risk_at_open_pct: float | None,
         capital_tied_at_open_pct: float | None,
         stop_loss: USDollarAmount | None,
+        maximum_risk: USDollarAmount | None
     ):
         """Adds a new trade to the asset history.
 
@@ -401,7 +406,8 @@ class AssetTradeHistory:
                 portfolio_value_at_open=portfolio_value_at_open,
                 loss_risk_at_open_pct=loss_risk_at_open_pct,
                 capital_tied_at_open_pct=capital_tied_at_open_pct,
-                stop_loss=stop_loss
+                stop_loss=stop_loss,
+                maximum_risk=maximum_risk
             )
             new_position.add_trade(t)
             self.positions.append(new_position)
@@ -1232,6 +1238,7 @@ def build_trade_analysis(
                 capital_tied_at_open_pct=None
             
             if stop_loss:
+                maximum_risk = position.get_loss_risk_at_open()
                 loss_risk_at_open_pct = position.get_loss_risk_at_open_pct()
             else:
                 loss_risk_at_open_pct = None
@@ -1242,7 +1249,8 @@ def build_trade_analysis(
                 portfolio_value_at_open=portfolio_value_at_open,
                 loss_risk_at_open_pct=loss_risk_at_open_pct,
                 capital_tied_at_open_pct=capital_tied_at_open_pct,
-                stop_loss=stop_loss
+                stop_loss=stop_loss,
+                maximum_risk=maximum_risk
             )
 
     return TradeAnalysis(
