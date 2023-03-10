@@ -1241,6 +1241,7 @@ def build_trade_analysis(
                 maximum_risk = position.get_loss_risk_at_open()
                 loss_risk_at_open_pct = position.get_loss_risk_at_open_pct()
             else:
+                maximum_risk = None
                 loss_risk_at_open_pct = None
 
             history.add_trade(
