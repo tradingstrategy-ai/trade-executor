@@ -17,9 +17,10 @@ from dataclasses import dataclass
 from itertools import chain
 from typing import List, TypedDict
 
+from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
-from tradeexecutor.state.trade import TradeExecution
+from tradeexecutor.state.trade import TradeExecution, TradeType
 
 logger = logging.getLogger(__name__)
 
@@ -48,16 +49,30 @@ class RepairResult:
     new_trades: List[TradeExecution]
 
 
-def make_counter_trade(p: TradingPosition, t: TradeExecution) -> TradeExecution:
+def make_counter_trade(portfolio: Portfolio, p: TradingPosition, t: TradeExecution) -> TradeExecution:
     """Make a virtual trade that fixes the total balances of a position and unwinds the broken trade."""
-    counter_trade
-    pass
-
-
-def repair_trade(p: TradingPosition, t: TradeExecution) -> TradeExecution:
-    counter_trade = make_counter_trade(p, t)
-    t.repaired_at = datetime.datetime.utcnow()
+    position, counter_trade, created = portfolio.create_trade(
+        strategy_cycle_at=t.strategy_cycle_at,
+        pair=t.pair,
+        quantity=-t.planned_quantity,
+        assumed_price=t.planned_price,
+        trade_type=TradeType.repair,
+        reserve_currency=t.reserve_currency,
+        planned_mid_price=t.planned_mid_price,
+        price_structure=t.price_structure,
+        reserve_currency_price=
+    )
+    assert created is False
+    assert position == p
     return counter_trade
+
+
+def repair_trade(portfolio: Portfolio, t: TradeExecution) -> TradeExecution:
+    p = portfolio.get_position_by_id(t.position_id)
+    c = make_counter_trade(portfolio, p, t)
+    t.repaired_at = datetime.datetime.utcnow()
+    c.repaired_trade_id = t.trade_id
+    return c
 
 
 def find_trades_to_be_repaired(state: State) -> List[TradeExecution]:
@@ -175,7 +190,7 @@ def repair_trades(
 
     new_trades = []
     for t in trades_to_be_repaired:
-        new_trades.append(repair_trade(t))
+        new_trades.append(repair_trade(state.portfolio, t))
 
     unfrozen_positions = []
     for p in frozen_positions:

@@ -38,6 +38,13 @@ class TradeType(enum.Enum):
     #: The trade was made because take profit trigger reached
     take_profit = "take_profit"
 
+    #: This is an accounting counter trade to cancel a broken trade.
+    #:
+    #: - The original trade is marked as repaied
+    #:
+    #: - This trade contains any reverse accounting variables needed to fix the position total
+    repair = "repair"
+
 
 class TradeStatus(enum.Enum):
 
@@ -60,6 +67,11 @@ class TradeStatus(enum.Enum):
     #: Trade was reversed e.g. due to too much slippage.
     #: Trade can be retries.
     failed = "failed"
+
+    #: This trade was originally failed, but later repaired.
+    #:
+    #: A counter entry was made in the position and this trade was marked as repaired.
+    repaired = "repaired"
 
 
 @dataclass_json
@@ -126,10 +138,12 @@ class TradeExecution:
     opened_at: datetime.datetime
 
     #: Positive for buy, negative for sell.
+    #:
     #: Always accurately known for sells.
     planned_quantity: Decimal
 
     #: How many reserve tokens (USD) we use in this trade
+    #:
     #: Always known accurately for buys.
     #: Expressed in `reserve_currency`.
     planned_reserve: Decimal
@@ -225,6 +239,8 @@ class TradeExecution:
     lp_fee_exchange_rate: Optional[USDollarPrice] = None
 
     #: USD price per blockchain native currency unit, at the time of execution
+    #:
+    #: Used for converting tx fees and gas units to dollars
     native_token_price: Optional[USDollarPrice] = None
 
     # Trade retries
@@ -253,6 +269,11 @@ class TradeExecution:
     #:
     #: This trade makes a opposing trade to the trade referred here,
     #: making accounting match again and unfreezing the position.
+    #:
+    #: For the repair trade
+    #:
+    #: - Strategy cycle is set to the original broken trade
+    #:
     repaired_trade_id: Optional[datetime.datetime] = None
 
     #: Related TradePricing instance
@@ -428,8 +449,20 @@ class TradeExecution:
         """This trade needs repair, but is not repaired yet."""
         return self.is_failed() and not self.is_repaired()
 
+    def is_repair_trade(self) -> bool:
+        """This trade is fixes a frozen position and counters another trade.
+        """
+        return self.repaired_trade_id is not None
+
     def get_status(self) -> TradeStatus:
-        if self.failed_at:
+        """Resolve the trade status.
+
+        Based on the different state variables set on this item,
+        figure out what is the best status for this trade.
+        """
+        if self.repaired_at:
+            return TradeStatus.repaired
+        elif self.failed_at:
             return TradeStatus.failed
         elif self.executed_at:
             return TradeStatus.success
@@ -470,7 +503,7 @@ class TradeExecution:
         else:
             return self.planned_quantity
 
-    def get_reserve_quantity(self) -> Decimal:
+    def get_reserve_quantity(self) -> Decimal:  
         """Get the planned or executed quantity of the quote token.
 
         Negative for buy, positive for sell.
@@ -507,7 +540,9 @@ class TradeExecution:
         Value is always a positive number.
         """
 
-        if self.executed_at:
+        if self.repaired_at:
+            return -
+        elif self.executed_at:
             return self.get_executed_value()
         elif self.failed_at:
             return self.get_planned_value()
