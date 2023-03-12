@@ -409,7 +409,7 @@ class TradingPosition:
             planned_quantity = reserve / Decimal(assumed_price)
         else:
             planned_quantity = quantity
-            planned_reserve = quantity * Decimal(assumed_price) if quantity > 0 else 0
+            planned_reserve = quantity * Decimal(assumed_price) if quantity > Decimal(0) else Decimal(0)
 
         trade = TradeExecution(
             trade_id=trade_id,

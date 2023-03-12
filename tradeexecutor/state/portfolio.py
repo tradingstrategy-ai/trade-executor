@@ -226,7 +226,8 @@ class Portfolio:
                      pair_fee: Optional[BPS] = None,
                      lp_fees_estimated: Optional[USDollarAmount] = None,
                      planned_mid_price: Optional[USDollarPrice] = None,
-                     price_structure: Optional[TradePricing] = None
+                     price_structure: Optional[TradePricing] = None,
+                     position: Optional[TradingPosition] = None,
                      ) -> Tuple[TradingPosition, TradeExecution, bool]:
         """Create a trade.
 
@@ -283,6 +284,11 @@ class Portfolio:
             The state of the market at the time of planning the trade,
             and what fees we assumed we are going to get.
 
+        :param position:
+            Override the position for the trade.
+
+            Use for repair trades.
+
         :return:
             Tuple of entries
 
@@ -299,7 +305,10 @@ class Portfolio:
         if quantity is not None:
             assert reserve is None, "Quantity and reserve both cannot be given at the same time"
 
-        position = self.get_position_by_trading_pair(pair)
+        if position is None:
+            # Open a new position
+            position = self.get_position_by_trading_pair(pair)
+
         if position is None:
             position = self.open_new_position(
                 strategy_cycle_at,
@@ -309,6 +318,9 @@ class Portfolio:
                 reserve_currency_price)
             created = True
         else:
+            # Trade counts against old position,
+            # - inc/dec size
+            # - repair trades
             created = False
 
         trade = position.open_trade(

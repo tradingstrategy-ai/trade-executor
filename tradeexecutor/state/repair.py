@@ -14,13 +14,14 @@ Trade failure modes may include
 import datetime
 import logging
 from dataclasses import dataclass
+from decimal import Decimal
 from itertools import chain
 from typing import List, TypedDict
 
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
-from tradeexecutor.state.trade import TradeExecution, TradeType
+from tradeexecutor.state.trade import TradeExecution, TradeType, TradeStatus
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +52,10 @@ class RepairResult:
 
 def make_counter_trade(portfolio: Portfolio, p: TradingPosition, t: TradeExecution) -> TradeExecution:
     """Make a virtual trade that fixes the total balances of a position and unwinds the broken trade."""
+
+    # Note: we do not negate the values of the original trade,
+    # because get_quantity() and others will return 0 to repaired spot trades for now.
+    # This behavior may change in the future for more complex trades.
     position, counter_trade, created = portfolio.create_trade(
         strategy_cycle_at=t.strategy_cycle_at,
         pair=t.pair,
@@ -60,18 +65,44 @@ def make_counter_trade(portfolio: Portfolio, p: TradingPosition, t: TradeExecuti
         reserve_currency=t.reserve_currency,
         planned_mid_price=t.planned_mid_price,
         price_structure=t.price_structure,
-        reserve_currency_price=
+        reserve=None,
+        reserve_currency_price=t.get_reserve_currency_exchange_rate(),
+        position=p,
     )
     assert created is False
     assert position == p
+
+    counter_trade.mark_success(
+        datetime.datetime.utcnow(),
+        t.planned_price,
+        Decimal(0),
+        Decimal(0),
+        0,
+        t.native_token_price,
+        force=True,
+    )
+    assert counter_trade.is_success()
+    assert counter_trade.get_value() == 0
+    assert counter_trade.get_position_quantity() == 0
+    assert counter_trade.trade_type == TradeType.repair
     return counter_trade
 
 
 def repair_trade(portfolio: Portfolio, t: TradeExecution) -> TradeExecution:
+    """Repair a trade.
+
+    - Make a counter trade for bookkeeping
+
+    - Set the original trade to repaired state (instead of failed state)
+    """
     p = portfolio.get_position_by_id(t.position_id)
     c = make_counter_trade(portfolio, p, t)
     t.repaired_at = datetime.datetime.utcnow()
     c.repaired_trade_id = t.trade_id
+    assert t.get_status() == TradeStatus.repaired
+    assert t.get_value() == 0
+    assert t.get_position_quantity() == 0
+    assert t.planned_quantity != 0
     return c
 
 
