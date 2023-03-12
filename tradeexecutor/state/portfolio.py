@@ -400,7 +400,16 @@ class Portfolio:
         return position.get_equity_for_position()
 
     def adjust_reserves(self, asset: AssetIdentifier, amount: Decimal):
-        """Remove currency from reserved"""
+        """Remove currency from reserved.
+
+        For internal accounting of the portfolio state.
+
+        :param asset:
+            Reserve asset
+
+        :param amount:
+            Negative to reduce portfolio reserves, positive to increase
+        """
         assert isinstance(amount, Decimal), f"Got amount {amount}"
         reserve = self.get_reserve_position(asset)
         assert reserve, f"No reserves available for {asset}"

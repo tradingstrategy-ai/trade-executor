@@ -200,7 +200,10 @@ class TradeExecution:
     #: When this trade entered mempool
     broadcasted_at: Optional[datetime.datetime] = None
 
-    #: Timestamp of the block where the txid was first mined
+    #: Timestamp of the block where the txid was first mined.
+    #:
+    #: For failed trades, this is not set until repaired,
+    #: but instead we set :py:attr:`failed_at`.
     executed_at: Optional[datetime.datetime] = None
 
     #: The trade did not go through.
@@ -417,7 +420,7 @@ class TradeExecution:
 
     def is_failed(self) -> bool:
         """This trade was succcessfully completed."""
-        return self.failed_at is not None
+        return (self.failed_at is not None) and (self.repaired_at is None)
 
     def is_pending(self) -> bool:
         """This trade was succcessfully completed."""
@@ -465,6 +468,10 @@ class TradeExecution:
         and underlying transactions.
         """
         return self.repaired_at is not None
+
+    def is_executed(self) -> bool:
+        """Did this trade ever execute."""
+        return self.executed_at is not None
 
     def is_repair_needed(self) -> bool:
         """This trade needs repair, but is not repaired yet."""
@@ -616,6 +623,9 @@ class TradeExecution:
         Lower, negative, trades should be executed first.
 
         We need to execute sells first because we need to have cash in hand to execute buys.
+
+        :return:
+            Sortable int
         """
         if self.is_sell():
             return -self.trade_id

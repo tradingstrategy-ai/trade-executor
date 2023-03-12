@@ -79,8 +79,16 @@ class TradingPosition:
     #: When this position was closed
     closed_at: Optional[datetime.datetime] = None
 
-    #: Timestamp when this position was moved to a frozen state
+    #: Timestamp when this position was moved to a frozen state.
+    #:
+    #: This can happen multiple times, so is is the last time when this happened.
+    #:
+    #: See also :py:attr:`unfrozen_at`.
     frozen_at: Optional[datetime.datetime] = None
+
+    #: Timestamp when this position was marked lively again
+    #:
+    unfrozen_at: Optional[datetime.datetime] = None
 
     #: When this position had a trade last time
     last_trade_at: Optional[datetime.datetime] = None
@@ -315,6 +323,19 @@ class TradingPosition:
         for t in self.trades.values():
             if t.strategy_cycle_at == timestamp:
                 yield t
+
+    def get_unexeuted_reserve(self) -> Decimal:
+        """Get the reserve currency allocated for trades.
+
+        Assumes position can only have one reserve currency.
+
+        Only spot buys can have unexecuted reserve.
+
+        :return:
+            Amount of capital we have allocated in trades that did not correctly execute
+        """
+        unexecuted = [t for t in self.trades.values() if not t.is_executed()]
+        return sum(t.planned_reserve for t in unexecuted)
 
     def is_stop_loss_closed(self) -> bool:
         """Did this position close with stop loss."""

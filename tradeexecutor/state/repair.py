@@ -97,12 +97,20 @@ def repair_trade(portfolio: Portfolio, t: TradeExecution) -> TradeExecution:
     """
     p = portfolio.get_position_by_id(t.position_id)
     c = make_counter_trade(portfolio, p, t)
-    t.repaired_at = datetime.datetime.utcnow()
+    t.repaired_at = t.executed_at = datetime.datetime.utcnow()
+    t.executed_quantity = 0
+    t.executed_reserve = 0
     c.repaired_trade_id = t.trade_id
     assert t.get_status() == TradeStatus.repaired
     assert t.get_value() == 0
     assert t.get_position_quantity() == 0
     assert t.planned_quantity != 0
+
+    # Unwind capital allocation
+    if t.is_buy():
+        portfolio.adjust_reserves(t.reserve_currency, +t.planned_reserve)
+        t.planned_reserve = 0
+
     return c
 
 
@@ -153,7 +161,7 @@ def reconfirm_trade(reconfirming_needed_trades: List[TradeExecution]):
         repaired.append(t)
 
 
-def unfreeze_position(position: TradingPosition) -> bool:
+def unfreeze_position(portfolio: Portfolio, position: TradingPosition) -> bool:
     """Attempt to unfreeze positions.
 
     - All failed trades on a position must be cleared
@@ -161,7 +169,27 @@ def unfreeze_position(position: TradingPosition) -> bool:
     :return:
         if we managed to unfreeze the position
     """
-    pass
+
+    # Double check trade status look good and we have no longer failed trades
+    trades = list(position.trades.values())
+    assert all([t.is_success() for t in trades]), f"All trades where not successful: {trades}"
+    assert all([not t.is_failed() for t in trades]), f"Some trades were still failed: {trades}"
+    assert any([t.is_repaired() for t in trades])
+
+    # Based on if the last failing trade was open or close,
+    # the position should ended up in open or closed
+    total_equity = position.get_equity_for_position()
+    if total_equity > 0:
+        portfolio.open_positions[position.position_id] = position
+    elif total_equity == 0:
+        portfolio.closed_positions[position.position_id] = position
+    else:
+        raise RuntimeError("Not gonna happen")
+
+    position.unfrozen_at = datetime.datetime.utcnow()
+    del portfolio.frozen_positions[position.position_id]
+
+    return True
 
 
 def repair_trades(
@@ -225,7 +253,7 @@ def repair_trades(
 
     unfrozen_positions = []
     for p in frozen_positions:
-        if unfreeze_position(p):
+        if unfreeze_position(state.portfolio, p):
             unfrozen_positions.append(p)
             logger.info("Position unfrozen: %s", p)
 
