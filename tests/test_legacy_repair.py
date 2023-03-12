@@ -12,6 +12,7 @@ import pytest
 from tradeexecutor.cli.log import setup_pytest_logging
 from tradeexecutor.state.repair import repair_trades
 from tradeexecutor.state.state import State
+from tradeexecutor.state.trade import TradeStatus, TradeType
 from tradeexecutor.statistics.core import calculate_statistics
 from tradeexecutor.strategy.execution_context import ExecutionMode
 from tradingstrategy.client import Client
@@ -119,13 +120,16 @@ def test_repair_trades(
     assert pos1.is_closed()
     assert pos1.get_equity_for_position() == 0
     assert pos1.get_unexeuted_reserve() == 0
+    assert pos1.get_value() == 0
     assert t1.get_reserve_quantity() == 0
     assert t1.is_repaired()
+    assert not t1.is_repair_needed()
 
     pos2 = state.portfolio.get_position_by_id(26)
     assert pos2.is_closed()
     assert pos2.get_equity_for_position() == 0
     assert pos2.get_unexeuted_reserve() == 0
+    assert pos2.get_value() == 0
     assert t2.is_repaired()
 
     # When closing failed (sell) position repair is done,
@@ -134,7 +138,17 @@ def test_repair_trades(
     assert pos3.is_open()
     assert pos3.get_equity_for_position() == Decimal('3.180200722896299527')
     assert pos3.get_unexeuted_reserve() == 0
+    assert pos3.get_value() == pytest.approx(48.802913)  # Unsold tokens hold some value
     assert t3.is_repaired()
+
+    # Check the counter trades
+    t4 = pos1.get_last_trade()
+    assert t4.repaired_trade_id == t1.trade_id
+    assert t4.is_repair_trade()
+    assert t4.get_status() == TradeStatus.success
+    assert t4.trade_type == TradeType.repair
+    assert t4.get_value() == 0
+    assert t4.get_position_quantity() == 0
 
     assert portfolio.get_current_cash() == pytest.approx(137.19343519999998)
     assert len(list(portfolio.get_unfrozen_positions())) == 3
