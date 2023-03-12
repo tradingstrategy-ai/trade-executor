@@ -10,6 +10,13 @@ Trade failure modes may include
 
 - Executed, failed
 
+Failure trades may be
+
+- Buy e.g. first trade failed: open position -> closed position, allocated capital returned
+
+- Sell e.g. closing trade failed: position stays open, the assets are marked to be available
+  for the future sell
+
 """
 import datetime
 import logging
@@ -97,10 +104,14 @@ def repair_trade(portfolio: Portfolio, t: TradeExecution) -> TradeExecution:
     """
     p = portfolio.get_position_by_id(t.position_id)
     c = make_counter_trade(portfolio, p, t)
+    now = datetime.datetime.utcnow()
     t.repaired_at = t.executed_at = datetime.datetime.utcnow()
     t.executed_quantity = 0
     t.executed_reserve = 0
+    assert c.trade_id
     c.repaired_trade_id = t.trade_id
+    t.notes = f"Repaired at {now.strftime('%Y-%m-%d %H:%M')}, by #{c.trade_id}"
+    c.notes = f"Repairing trade #{c.repaired_trade_id}"
     assert t.get_status() == TradeStatus.repaired
     assert t.get_value() == 0
     assert t.get_position_quantity() == 0
@@ -182,7 +193,9 @@ def unfreeze_position(portfolio: Portfolio, position: TradingPosition) -> bool:
     if total_equity > 0:
         portfolio.open_positions[position.position_id] = position
     elif total_equity == 0:
+        assert position.can_be_closed()
         portfolio.closed_positions[position.position_id] = position
+        position.closed_at = datetime.datetime.utcnow()
     else:
         raise RuntimeError("Not gonna happen")
 
@@ -266,4 +279,3 @@ def repair_trades(
         trades_to_be_repaired,
         new_trades,
     )
-

@@ -88,6 +88,8 @@ class TradingPosition:
 
     #: Timestamp when this position was marked lively again
     #:
+    #: Set by :py:mod:`tradeexecutor.state.repair` when the position
+    #: trades are repaired and the position is moved to open or closed list.
     unfrozen_at: Optional[datetime.datetime] = None
 
     #: When this position had a trade last time
@@ -155,6 +157,10 @@ class TradingPosition:
     def is_frozen(self) -> bool:
         """This position has had a failed trade and can no longer be automatically moved around."""
         return self.frozen_at is not None
+
+    def is_unfrozen(self) -> bool:
+        """This position was frozen, but its trades were successfully repaired."""
+        return self.unfrozen_at is not None
 
     def has_automatic_close(self) -> bool:
         """This position has stop loss/take profit set."""

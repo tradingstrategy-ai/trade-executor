@@ -469,6 +469,10 @@ class TradeExecution:
         """
         return self.repaired_at is not None
 
+    def is_repair_trade(self) -> bool:
+        """This trade repairs another trade in the same position."""
+        return self.repaired_trade_id is not None
+
     def is_executed(self) -> bool:
         """Did this trade ever execute."""
         return self.executed_at is not None
@@ -476,6 +480,11 @@ class TradeExecution:
     def is_repair_needed(self) -> bool:
         """This trade needs repair, but is not repaired yet."""
         return self.is_failed() and not self.is_repaired()
+
+    def is_repair_trade(self) -> bool:
+        """This trade is fixes a frozen position and counters another trade.
+        """
+        return self.repaired_trade_id is not None
 
     def is_repair_trade(self) -> bool:
         """This trade is fixes a frozen position and counters another trade.

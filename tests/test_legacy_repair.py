@@ -3,6 +3,7 @@
 - Use some collected live state dumps with failed trades (buy, sell) in them. Thanks Polygon!
 
 """
+import datetime
 import os
 from decimal import Decimal
 
@@ -11,6 +12,8 @@ import pytest
 from tradeexecutor.cli.log import setup_pytest_logging
 from tradeexecutor.state.repair import repair_trades
 from tradeexecutor.state.state import State
+from tradeexecutor.statistics.core import calculate_statistics
+from tradeexecutor.strategy.execution_context import ExecutionMode
 from tradingstrategy.client import Client
 
 
@@ -51,6 +54,13 @@ def test_assess_repair_need(
     assert trades[2].is_sell()
     assert trades[2].position_id == 36
 
+    assert trades[2].opened_at ==  datetime.datetime(2023, 3, 1, 19, 51, 0, 858)
+
+    # Before repair run some summary statistics to see they don't crash
+    execution_mode = ExecutionMode.real_trading
+    clock = datetime.datetime(2023, 4, 1)
+    calculate_statistics(clock, state.portfolio, execution_mode)
+
 
 def test_repair_trades(
         state: State,
@@ -60,7 +70,7 @@ def test_repair_trades(
 
     We have both buys and sells.
 
-    Failed positions are 1, 26, 36
+    Failed positions are 1 (buy), 26 (buy), 36 (sell)
     """
 
     # Check how our positions look like
@@ -106,22 +116,36 @@ def test_repair_trades(
 
     # Check how our positions look like
     pos1 = state.portfolio.get_position_by_id(1)
+    assert pos1.is_closed()
     assert pos1.get_equity_for_position() == 0
     assert pos1.get_unexeuted_reserve() == 0
     assert t1.get_reserve_quantity() == 0
     assert t1.is_repaired()
 
     pos2 = state.portfolio.get_position_by_id(26)
+    assert pos2.is_closed()
     assert pos2.get_equity_for_position() == 0
     assert pos2.get_unexeuted_reserve() == 0
+    assert t2.is_repaired()
 
-    # When closing failed position repair is done,
+    # When closing failed (sell) position repair is done,
     # the tokens are left on the position
     pos3 = state.portfolio.get_position_by_id(36)
+    assert pos3.is_open()
     assert pos3.get_equity_for_position() == Decimal('3.180200722896299527')
     assert pos3.get_unexeuted_reserve() == 0
     assert t3.is_repaired()
 
     assert portfolio.get_current_cash() == pytest.approx(137.19343519999998)
+    assert len(list(portfolio.get_unfrozen_positions())) == 3
 
-    # After repair run some summary
+    # After repair run some summary statistics to see they don't crash
+    execution_mode = ExecutionMode.real_trading
+    clock = datetime.datetime(2023, 4, 1)
+    calculate_statistics(clock, portfolio, execution_mode)
+
+    # We can serialise the repaired state
+    dump = state.to_json()
+    state2 = State.from_json(dump)
+    state2.perform_integrity_check()
+

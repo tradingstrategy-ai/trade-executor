@@ -107,6 +107,13 @@ class Portfolio:
         """Get currently open positions."""
         return self.open_positions.values()
 
+    def get_unfrozen_positions(self) -> Iterable[TradingPosition]:
+        """Get positions that have been repaired."""
+        positions = chain(self.open_positions.values(), self.closed_positions.values())
+        for p in positions:
+            if p.is_unfrozen():
+                yield p
+
     def get_executed_positions(self) -> Iterable[TradingPosition]:
         """Get all positions with already executed trades.
 
