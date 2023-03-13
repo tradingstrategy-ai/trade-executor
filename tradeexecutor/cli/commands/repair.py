@@ -63,36 +63,36 @@ def repair(
 
     cache_path = prepare_cache(id, cache_path)
 
-    client = Client.create_live_client(trading_strategy_api_key, cache_path=cache_path)
+    # client = Client.create_live_client(trading_strategy_api_key, cache_path=cache_path)
 
     execution_context = ExecutionContext(
         mode=ExecutionMode.preflight_check,
         timed_task_context_manager=timed_task
     )
 
-    web3config = create_web3_config(
-        json_rpc_binance=json_rpc_binance,
-        json_rpc_polygon=json_rpc_polygon,
-        json_rpc_avalanche=json_rpc_avalanche,
-        json_rpc_ethereum=json_rpc_ethereum,
-        gas_price_method=None,
-    )
-
-    assert web3config, "No RPC endpoints given. A working JSON-RPC connection is needed for check-wallet"
-
-    # Check that we are connected to the chain strategy assumes
-    web3config.set_default_chain(mod.chain_id)
-    web3config.check_default_chain_id()
-
-    execution_model, sync_method, valuation_model_factory, pricing_model_factory = create_trade_execution_model(
-        execution_type=TradeExecutionType.uniswap_v2_hot_wallet,
-        private_key=private_key,
-        web3config=web3config,
-        confirmation_timeout=datetime.timedelta(seconds=60),
-        confirmation_block_count=6,
-        max_slippage=2.50,
-        min_balance_threshold=0,
-    )
+    # web3config = create_web3_config(
+    #     json_rpc_binance=json_rpc_binance,
+    #     json_rpc_polygon=json_rpc_polygon,
+    #     json_rpc_avalanche=json_rpc_avalanche,
+    #     json_rpc_ethereum=json_rpc_ethereum,
+    #     gas_price_method=None,
+    # )
+    #
+    # assert web3config, "No RPC endpoints given. A working JSON-RPC connection is needed for check-wallet"
+    #
+    # # Check that we are connected to the chain strategy assumes
+    # web3config.set_default_chain(mod.chain_id)
+    # # web3config.check_default_chain_id()
+    #
+    # execution_model, sync_method, valuation_model_factory, pricing_model_factory = create_trade_execution_model(
+    #     execution_type=TradeExecutionType.uniswap_v2_hot_wallet,
+    #     private_key=private_key,
+    #     web3config=web3config,
+    #     confirmation_timeout=datetime.timedelta(seconds=60),
+    #     confirmation_block_count=6,
+    #     max_slippage=2.50,
+    #     min_balance_threshold=0,
+    # )
 
     if not state_file:
         state_file = f"state/{id}.json"
@@ -104,18 +104,18 @@ def repair(
     state = store.load()
 
     # Set up the strategy engine
-    factory = make_factory_from_strategy_mod(mod)
-    run_description: StrategyExecutionDescription = factory(
-        execution_model=execution_model,
-        execution_context=execution_context,
-        timed_task_context_manager=execution_context.timed_task_context_manager,
-        sync_method=sync_method,
-        valuation_model_factory=valuation_model_factory,
-        pricing_model_factory=pricing_model_factory,
-        approval_model=UncheckedApprovalModel(),
-        client=client,
-        run_state=RunState(),
-    )
+    # factory = make_factory_from_strategy_mod(mod)
+    # run_description: StrategyExecutionDescription = factory(
+    #     execution_model=execution_model,
+    #     execution_context=execution_context,
+    #     timed_task_context_manager=execution_context.timed_task_context_manager,
+    #     sync_method=sync_method,
+    #     valuation_model_factory=valuation_model_factory,
+    #     pricing_model_factory=pricing_model_factory,
+    #     approval_model=UncheckedApprovalModel(),
+    #     client=client,
+    #     run_state=RunState(),
+    # )
 
     # TODO: Current repair logic does not ened the price data ATM
     #
