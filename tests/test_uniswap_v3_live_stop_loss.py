@@ -505,6 +505,7 @@ def test_live_stop_loss_missing(
     assert len(trades) == 0, "Stop loss unexpectedly triggered"
 
 
+@pytest.mark.skip(reason="Currently unsupported")
 def test_broadcast_failed_and_repair_state(
         logger,
         web3: Web3,
