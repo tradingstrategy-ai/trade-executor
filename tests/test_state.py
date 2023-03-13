@@ -915,3 +915,16 @@ def test_serialise_timedelta():
 
     assert p2.market_feed_delay == datetime.timedelta(minutes=2)
 
+
+def test_validate_state_with_too_large_int():
+    """Integer is too big."""
+    int_too_big = {"foo": 2**80}
+    with pytest.raises(BadStateData):
+        validate_nested_state_dict(int_too_big)
+
+
+def test_validate_state_with_nane():
+    """We have NaN."""
+    nan = {"foo": float('inf')}
+    with pytest.raises(BadStateData):
+        validate_nested_state_dict(nan)
