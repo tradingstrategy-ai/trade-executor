@@ -15,7 +15,7 @@ from uuid import UUID
 
 from dataclasses_json import core
 
-from tradeexecutor.utils.timestamp import convert_and_validate_timestamp_as_int
+from tradeexecutor.utils.timestamp import convert_and_validate_timestamp_as_float
 
 
 # Mankeypatched _ExtendedEncoder.default()
@@ -28,7 +28,7 @@ def _patched_default(self, o) -> core.Json:
             result = list(o)
     elif core._isinstance_safe(o, datetime):
         #assert o.tzinfo == None, "Received a datetime with attached tz info: {o}"
-        result = convert_and_validate_timestamp_as_int(o)
+        result = convert_and_validate_timestamp_as_float(o)
     #
     # Patch timedelta support
     #

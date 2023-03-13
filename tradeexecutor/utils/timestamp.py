@@ -31,12 +31,31 @@ def convert_and_validate_timestamp_as_int(timestamp: Union[pd.Timestamp, datetim
     """Serialise timestamp as UNIX epoch seconds UTC.
 
     Needed when we need to have time based keys in our state,
-    as the current JSON encoder cannot directly encode datetime.datetime keys/
+    as the current JSON encoder cannot directly encode datetime.datetime keys.
+
+    :return:
+        UNIX UTC timestamp
     """
     timestamp = convert_and_validate_timestamp(timestamp)
 
     # https://stackoverflow.com/a/5499906/315168
     return int(calendar.timegm(timestamp.utctimetuple()))
+
+
+def convert_and_validate_timestamp_as_float(timestamp: Union[pd.Timestamp, datetime.datetime]) -> float:
+    """Serialise timestamp as UNIX epoch seconds UTC.
+
+    Needed when we need to have time based keys in our state,
+    as the current JSON encoder cannot directly encode datetime.datetime keys.
+
+    :return:
+        UNIX UTC timestamp
+    """
+    timestamp = convert_and_validate_timestamp(timestamp)
+
+    # https://stackoverflow.com/a/5499906/315168
+    return calendar.timegm(timestamp.utctimetuple())
+
 
 
 def json_encode_timedelta(val: datetime.timedelta) -> float:
