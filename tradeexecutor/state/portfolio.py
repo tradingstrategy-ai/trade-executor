@@ -99,6 +99,23 @@ class Portfolio:
 
         return p1 or p2 or p3
 
+    def get_trade_by_id(self, trade_id: int) -> Optional[TradeExecution]:
+        """Look up any trade in all positions.
+
+        .. note ::
+
+            Slow lookup. Only designed for testing.
+
+        :return:
+            Found trade or
+        """
+        for p in self.get_all_positions():
+            t = p.trades.get(trade_id)
+            if t is not None:
+                return t
+
+        return None
+
     def get_all_positions(self) -> Iterable[TradingPosition]:
         """Get open, closed and frozen, positions."""
         return chain(self.open_positions.values(), self.closed_positions.values(), self.frozen_positions.values())

@@ -45,6 +45,9 @@ def test_assess_repair_need(
     We have both buys and sells.
     """
 
+    t = state.portfolio.get_trade_by_id(70)
+    assert t.opened_at == datetime.datetime(2023, 3, 1, 19, 51, 0, 858)
+
     repair_report = repair_trades(state, attempt_repair=False, interactive=False)
     assert len(repair_report.frozen_positions) == 3
     assert len(repair_report.trades_needing_repair) == 3
@@ -56,8 +59,9 @@ def test_assess_repair_need(
     assert trades[1].position_id == 26
     assert trades[2].is_sell()
     assert trades[2].position_id == 36
+    assert trades[2].trade_id == 70
 
-    assert trades[2].opened_at == datetime.datetime(2023, 3, 1, 23, 51, 0, 858)
+    assert trades[2].opened_at == datetime.datetime(2023, 3, 1, 19, 51, 0, 858)
 
     # Before repair run some summary statistics to see they don't crash
     execution_mode = ExecutionMode.real_trading
