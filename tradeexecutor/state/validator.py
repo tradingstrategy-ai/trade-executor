@@ -53,6 +53,7 @@ _neginf=-INFINITY
 # https://www.tutorialspoint.com/what-is-javascript-s-highest-integer-value-that-a-number-can-go-to-without-losing-precision
 JS_MAX_INT = 9007199254740991
 
+
 def validate_state_value(name: str | int, val: object):
     """Check the state value against our whitelist and blacklist."""
 
