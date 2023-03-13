@@ -17,6 +17,7 @@ from tradeexecutor.cli.log import setup_pytest_logging
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.state.state import State
 from tradeexecutor.state.statistics import Statistics, calculate_naive_profitability
+from tradeexecutor.state.validator import validate_nested_state_dict
 from tradeexecutor.statistics.summary import calculate_summary_statistics
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.execution_context import ExecutionMode
@@ -242,4 +243,6 @@ def test_calculate_all_summary_statistics(state: State):
     assert datapoints[0] == (datetime.datetime(2021, 10, 2, 0, 0), 0.0)
     assert datapoints[-1] == (datetime.datetime(2021, 12, 31, 0, 0), -0.019484747529770786)
 
-
+    # Make sure we do not output anything that is not JSON'able
+    data = summary.to_dict()
+    validate_nested_state_dict(data)
