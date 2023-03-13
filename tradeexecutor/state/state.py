@@ -252,9 +252,8 @@ class State:
             planned_mid_price=planned_mid_price,
             price_structure=price_structure,
             position=position,
+            notes=notes,
         )
-
-        trade.notes = notes
 
         return position, trade, created
 

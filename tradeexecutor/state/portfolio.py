@@ -347,6 +347,8 @@ class Portfolio:
             # - repair trades
             created = False
 
+        assert position.pair == pair
+
         trade = position.open_trade(
             strategy_cycle_at,
             self.next_trade_id,
