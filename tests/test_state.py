@@ -923,7 +923,7 @@ def test_validate_state_with_too_large_int():
         validate_nested_state_dict(int_too_big)
 
 
-def test_validate_state_with_nane():
+def test_validate_state_with_nan():
     """We have NaN."""
     nan = {"foo": float('inf')}
     with pytest.raises(BadStateData):
