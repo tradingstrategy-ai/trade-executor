@@ -550,7 +550,10 @@ class PositionManager:
             lp_fees_estimated=price_structure.get_total_lp_fees(),
             planned_mid_price=price_structure.mid_price,
         )
-        assert position == position2, "Somehow messed up the trade"
+        assert position == position2, f"Somehow messed up the trade.\n" \
+                                      f"Original position: {position}.\n" \
+                                      f"Trade's position {position2}.\n" \
+                                      f"Trade: {trade}"
 
         if trades_as_list:
             return [trade]
