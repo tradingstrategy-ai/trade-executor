@@ -12,6 +12,7 @@ from pyramid.view import view_config
 from tradeexecutor.cli.log import get_ring_buffer_handler
 from tradeexecutor.state.metadata import Metadata
 from tradeexecutor.state.store import JSONFileStore
+from tradeexecutor.state.validator import validate_state_serialisation
 from tradeexecutor.strategy.summary import StrategySummary
 from tradeexecutor.strategy.run_state import RunState
 from tradeexecutor.webhook.error import exception_response
@@ -62,6 +63,9 @@ def web_metadata(request: Request):
         executor_running=execution_state.executor_running,
         summary_statistics=execution_state.summary_statistics,
     )
+
+    data = StrategySummary.to_dict()
+    validate_state_serialisation(data)
 
     r = Response(content_type="application/json")
     r.text = summary.to_json(allow_nan=False)

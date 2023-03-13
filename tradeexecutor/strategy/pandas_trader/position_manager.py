@@ -552,7 +552,7 @@ class PositionManager:
         )
         assert position == position2, f"Somehow messed up the close_position() trade.\n" \
                                       f"Original position: {position}.\n" \
-                                      f"Trade's position {position2}.\n" \
+                                      f"Trade's position: {position2}.\n" \
                                       f"Trade: {trade}\n" \
                                       f"Quantity left: {quantity_left}\n" \
                                       f"Price structure: {price_structure}\n" \
