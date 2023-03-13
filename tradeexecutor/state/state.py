@@ -139,7 +139,8 @@ class State:
                      pair_fee: Optional[float] = None,
                      lp_fees_estimated: Optional[USDollarAmount] = None,
                      planned_mid_price: Optional[USDollarPrice] = None,
-                     price_structure: Optional[TradePricing] = None
+                     price_structure: Optional[TradePricing] = None,
+                     position: Optional[TradingPosition] = None,
                      ) -> Tuple[TradingPosition, TradeExecution, bool]:
         """Creates a request for a new trade.
 
@@ -182,7 +183,8 @@ class State:
             pair_fee=pair_fee,
             lp_fees_estimated=lp_fees_estimated,
             planned_mid_price=planned_mid_price,
-            price_structure=price_structure
+            price_structure=price_structure,
+            position=position,
         )
         return position, trade, created
 
