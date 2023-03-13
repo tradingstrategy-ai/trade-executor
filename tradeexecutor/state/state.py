@@ -154,9 +154,76 @@ class State:
           as a negative number
           
         :param strategy_cycle_at:
-            UTC naive timestamp of the current strategy cycle
+            The strategy cycle timestamp for which this trade was executed.
 
-        :return: Tuple position, trade, was a new position created
+        :param trade_id:
+            Trade id allocated by the portfolio
+
+        :param quantity:
+            How many units this trade does.
+
+            Positive for buys, negative for sells in the spot market.
+
+        :param assumed_price:
+            The planned execution price.
+
+            This is the price we expect to pay per `quantity` unit after the execution.
+            This is the mid price + any LP fees included.
+
+        :param trade_type:
+            What kind of a trade is this.
+
+        :param reserve_currency:
+            Which portfolio reserve we use for this trade.
+
+         :param reserve_currency_price:
+            If the quote token is not USD, then the exchange rate between USD and quote token we assume we have.
+
+            Actual exchange rate may depend on the execution.
+
+        :param notes:
+            Any human-readable remarks we want to tell about this trade.
+
+        :param pair_fee:
+            The fee tier from the trading pair / overriden fee.
+
+        :param lp_fees_estimated:
+            HOw much we estimate to pay in LP fees (dollar)
+
+        :param planned_mid_price:
+            What was the mid-price of the trading pair when we started to plan this trade.
+
+        :param reserve:
+            How many reserve units this trade produces/consumes.
+
+            I.e. dollar amount for buys/sells.
+
+        :param price_structure:
+            The full planned price structure for this trade.
+
+            The state of the market at the time of planning the trade,
+            and what fees we assumed we are going to get.
+
+        :param position:
+            Override the position for the trade.
+
+            - Use for close trades (you need to explicitly tell which position to close
+              as there might be two positions with the same pair)
+
+            - Use for repair trades.
+
+        :param notes:
+            Human-readable string to show on the trade.
+
+        :return:
+            Tuple of entries
+
+            - Trade position (old/new)
+
+            - New trade
+
+            - True if a a new position was opened
+
         """
 
         assert isinstance(strategy_cycle_at, datetime.datetime)
@@ -186,6 +253,9 @@ class State:
             price_structure=price_structure,
             position=position,
         )
+
+        trade.notes = notes
+
         return position, trade, created
 
     def start_execution(self, ts: datetime.datetime, trade: TradeExecution, txid: str, nonce: int):
