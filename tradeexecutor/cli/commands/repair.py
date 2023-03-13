@@ -38,7 +38,7 @@ def repair(
     private_key: str = typer.Option(None, envvar="PRIVATE_KEY", help="Trade executor private key."),
     trading_strategy_api_key: str = typer.Option(None, envvar="TRADING_STRATEGY_API_KEY", help="Trading Strategy API key"),
     state_file: Optional[Path] = typer.Option(None, envvar="STATE_FILE", help="JSON file where we serialise the execution state. If not given defaults to state/{executor-id}.json"),
-    cache_path: Optional[Path] = typer.Option("cache/", envvar="CACHE_PATH", help="Where to store downloaded datasets"),
+    # cache_path: Optional[Path] = typer.Option("cache/", envvar="CACHE_PATH", help="Where to store downloaded datasets"),
 
     # Web3 connection options
     json_rpc_binance: str = typer.Option(None, envvar="JSON_RPC_BINANCE", help="BNB Chain JSON-RPC node URL we connect to"),
@@ -61,7 +61,7 @@ def repair(
 
     mod = read_strategy_module(strategy_file)
 
-    cache_path = prepare_cache(id, cache_path)
+    # cache_path = prepare_cache(id, cache_path)
 
     # client = Client.create_live_client(trading_strategy_api_key, cache_path=cache_path)
 
