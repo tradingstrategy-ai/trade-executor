@@ -4,6 +4,7 @@ import logging
 import datetime
 from collections import Counter
 from decimal import Decimal
+from itertools import chain
 from typing import List, Dict, Set, Tuple
 from abc import ABC, abstractmethod
 
@@ -137,7 +138,7 @@ class EthereumExecutionModel(ExecutionModel):
 
         repaired = []
 
-        logger.info("Reparing the failed trade confirmation")
+        logger.info("Repairing trades, using execution model %s", self)
 
         assert self.confirmation_timeout > datetime.timedelta(0), \
                 "Make sure you have a good tx confirmation timeout setting before attempting a repair"
@@ -147,39 +148,61 @@ class EthereumExecutionModel(ExecutionModel):
             assert self.confirmation_block_count > 0, \
                     "Make sure you have a good confirmation_block_count setting before attempting a repair"
 
-        for p in state.portfolio.open_positions.values():
+        trades_to_be_repaired = []
+
+        total_trades = 0
+
+        logger.info("Strategy has %d frozen positions", len(list(state.portfolio.frozen_positions)))
+
+        for p in chain(state.portfolio.open_positions.values(), state.portfolio.frozen_positions.values()):
             t: TradeExecution
             for t in p.trades.values():
-                if t.is_unfinished():
-                    logger.info("Found unconfirmed trade: %s", t)
+                if t.is_unfinished() or t.is_failed():
+                    logger.info("Found a trade: %s", t)
+                    trades_to_be_repaired.append(t)
+                total_trades += 1
 
-                    assert t.get_status() == TradeStatus.broadcasted
+        assert total_trades > 0, "No executed trades found on the strategy"
 
-                    receipt_data = wait_trades_to_complete(
-                        self.web3,
-                        [t],
-                        max_timeout=self.confirmation_timeout,
-                        confirmation_block_count=self.confirmation_block_count,
-                    )
+        logger.info("Strategy has total %d trades", total_trades)
 
-                    assert len(receipt_data) > 0, f"Got bad receipts: {receipt_data}"
+        if not trades_to_be_repaired:
+            return []
 
-                    tx_data = {tx.tx_hash: (t, tx) for tx in t.blockchain_transactions}
-                    
-                    self.resolve_trades(
-                        datetime.datetime.now(),
-                        state,
-                        tx_data,
-                        receipt_data,
-                        stop_on_execution_failure=True)
+        print("Found %d trades to be repaired", len(trades_to_be_repaired))
+        confirmation = input("Attempt to repair [y/n]").lower()
 
-                    t.repaired_at = datetime.datetime.utcnow()
-                    if not t.notes:
-                        # Add human readable note,
-                        # but don't override any other notes
-                        t.notes = "Failed broadcast repaired"
+        if confirmation != "y":
+            return []
 
-                    repaired.append(t)
+        for t in trades_to_be_repaired:
+            assert t.get_status() == TradeStatus.broadcasted
+
+            receipt_data = wait_trades_to_complete(
+                self.web3,
+                [t],
+                max_timeout=self.confirmation_timeout,
+                confirmation_block_count=self.confirmation_block_count,
+            )
+
+            assert len(receipt_data) > 0, f"Got bad receipts: {receipt_data}"
+
+            tx_data = {tx.tx_hash: (t, tx) for tx in t.blockchain_transactions}
+
+            self.resolve_trades(
+                datetime.datetime.now(),
+                state,
+                tx_data,
+                receipt_data,
+                stop_on_execution_failure=True)
+
+            t.repaired_at = datetime.datetime.utcnow()
+            if not t.notes:
+                # Add human readable note,
+                # but don't override any other notes
+                t.notes = "Failed broadcast repaired"
+
+            repaired.append(t)
 
         return repaired
     

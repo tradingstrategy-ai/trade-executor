@@ -11,6 +11,7 @@ import pytest
 import pandas as pd
 
 from tradeexecutor.cli.log import setup_pytest_logging
+from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.state import State
 from tradeexecutor.state.statistics import Statistics, calculate_naive_profitability
@@ -31,6 +32,7 @@ def logger(request):
 @pytest.fixture(scope="module")
 def state() -> State:
     """Read a random old data dump."""
+    patch_dataclasses_json()
     f = os.path.join(os.path.dirname(__file__), "legacy-state-dump.json")
     return State.from_json(open(f, "rt").read())
 
@@ -69,7 +71,7 @@ def test_legacy_calculate_profitability_90_days(state: State):
     profitability, time_window = calculate_naive_profitability(s, look_back=pd.Timedelta(days=90))
 
     # Calculate last 90 days
-    assert profitability == pytest.approx(0.009929744120070886, rel=0.05)
+    assert profitability == pytest.approx(0.00964009122330515, rel=0.05)
 
 
 def test_legacy_calculate_all_summary_statistics(state: State):

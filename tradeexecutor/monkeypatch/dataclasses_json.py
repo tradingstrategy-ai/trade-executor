@@ -15,6 +15,8 @@ from uuid import UUID
 
 from dataclasses_json import core
 
+from tradeexecutor.utils.timestamp import convert_and_validate_timestamp_as_float
+
 
 # Mankeypatched _ExtendedEncoder.default()
 def _patched_default(self, o) -> core.Json:
@@ -25,7 +27,8 @@ def _patched_default(self, o) -> core.Json:
         else:
             result = list(o)
     elif core._isinstance_safe(o, datetime):
-        result = o.timestamp()
+        #assert o.tzinfo == None, "Received a datetime with attached tz info: {o}"
+        result = convert_and_validate_timestamp_as_float(o)
     #
     # Patch timedelta support
     #
@@ -49,7 +52,7 @@ def _patched_support_extended_types(field_type, field_value):
         else:
             # Fixed here
             # tz = datetime.now(timezone.utc).astimezone().tzinfo
-            res = datetime.fromtimestamp(field_value, tz=None)
+            res = datetime.utcfromtimestamp(field_value)
     #
     # Add timedelta support
     #

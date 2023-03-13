@@ -38,6 +38,13 @@ class TradeType(enum.Enum):
     #: The trade was made because take profit trigger reached
     take_profit = "take_profit"
 
+    #: This is an accounting counter trade to cancel a broken trade.
+    #:
+    #: - The original trade is marked as repaied
+    #:
+    #: - This trade contains any reverse accounting variables needed to fix the position total
+    repair = "repair"
+
 
 class TradeStatus(enum.Enum):
 
@@ -60,6 +67,15 @@ class TradeStatus(enum.Enum):
     #: Trade was reversed e.g. due to too much slippage.
     #: Trade can be retries.
     failed = "failed"
+
+    #: This trade was originally failed, but later repaired.
+    #:
+    #: A counter entry was made in the position and this trade was marked as repaired.
+    repaired = "repaired"
+
+    #: A virtual trade to reverse any balances of a repaired trade.
+    #:
+    repair_entry = "repair_entry"
 
 
 @dataclass_json
@@ -126,10 +142,12 @@ class TradeExecution:
     opened_at: datetime.datetime
 
     #: Positive for buy, negative for sell.
+    #:
     #: Always accurately known for sells.
     planned_quantity: Decimal
 
     #: How many reserve tokens (USD) we use in this trade
+    #:
     #: Always known accurately for buys.
     #: Expressed in `reserve_currency`.
     planned_reserve: Decimal
@@ -148,6 +166,16 @@ class TradeExecution:
     #: This is because we can do three-way trades like BUSD -> BNB -> Cake
     #: when our routing model supports this.
     reserve_currency: AssetIdentifier
+
+    #: What is the reserve currency exchange rate used for this trade
+    #:
+    #: - Access using :py:attr:`get_reserve_currency_exchange_rate`.
+    #:
+    #: - USDC/USD exchange rate.
+    #:
+    #: - If not set (legacy) assume 1.0 reset assets / USD
+    #:
+    reserve_currency_exchange_rate: Optional[USDollarPrice] = None
 
     #: What we thought was the mid-price when we made the decision to tale this trade
     #:
@@ -172,7 +200,10 @@ class TradeExecution:
     #: When this trade entered mempool
     broadcasted_at: Optional[datetime.datetime] = None
 
-    #: Timestamp of the block where the txid was first mined
+    #: Timestamp of the block where the txid was first mined.
+    #:
+    #: For failed trades, this is not set until repaired,
+    #: but instead we set :py:attr:`failed_at`.
     executed_at: Optional[datetime.datetime] = None
 
     #: The trade did not go through.
@@ -225,6 +256,8 @@ class TradeExecution:
     lp_fee_exchange_rate: Optional[USDollarPrice] = None
 
     #: USD price per blockchain native currency unit, at the time of execution
+    #:
+    #: Used for converting tx fees and gas units to dollars
     native_token_price: Optional[USDollarPrice] = None
 
     # Trade retries
@@ -243,12 +276,23 @@ class TradeExecution:
     #: Special case; not worth to display unless the field is filled in.
     notes: Optional[str] = None
 
-    #: Trade was manually repaird
+    #: Trade was manually repaired
     #:
     #: E.g. failed broadcast issue was fixed.
     #: Marked when the repair command is called.
     repaired_at: Optional[datetime.datetime] = None
-    
+
+    #: Which is the trade that this trade is repairing.
+    #:
+    #: This trade makes a opposing trade to the trade referred here,
+    #: making accounting match again and unfreezing the position.
+    #:
+    #: For the repair trade
+    #:
+    #: - Strategy cycle is set to the original broken trade
+    #:
+    repaired_trade_id: Optional[datetime.datetime] = None
+
     #: Related TradePricing instance
     #:
     #: TradePricing instance can refer to more than one swap
@@ -283,10 +327,9 @@ class TradeExecution:
     def __post_init__(self):
 
         assert self.trade_id > 0
-        assert self.planned_quantity != 0
 
-        if abs(self.planned_quantity) < QUANTITY_EPSILON:
-            import ipdb ; ipdb.set_trace()
+        if self.trade_type != TradeType.repair:
+            assert self.planned_quantity != 0
 
         assert abs(self.planned_quantity) > QUANTITY_EPSILON, f"We got a planned quantity that does look like a good number: {self.planned_quantity}, trade is: {self}"
 
@@ -355,6 +398,14 @@ class TradeExecution:
         else:
             return f"Sell {abs(self.planned_quantity)} {self.pair.base.token_symbol} <id:{self.pair.base.internal_id}> at {self.planned_price}"
 
+    def get_reserve_currency_exchange_rate(self) -> USDollarPrice:
+        """What was the reserve stablecoin exchange trade for this trade.
+
+        :return:
+            1.0 if not set
+        """
+        return self.reserve_currency_exchange_rate or 1.0
+
     def is_sell(self) -> bool:
         assert self.planned_quantity != 0, "Buy/sell concept does not exist for zero quantity"
         return self.planned_quantity < 0
@@ -369,7 +420,7 @@ class TradeExecution:
 
     def is_failed(self) -> bool:
         """This trade was succcessfully completed."""
-        return self.failed_at is not None
+        return (self.failed_at is not None) and (self.repaired_at is None)
 
     def is_pending(self) -> bool:
         """This trade was succcessfully completed."""
@@ -418,8 +469,40 @@ class TradeExecution:
         """
         return self.repaired_at is not None
 
+    def is_repair_trade(self) -> bool:
+        """This trade repairs another trade in the same position."""
+        return self.repaired_trade_id is not None
+
+    def is_executed(self) -> bool:
+        """Did this trade ever execute."""
+        return self.executed_at is not None
+
+    def is_repair_needed(self) -> bool:
+        """This trade needs repair, but is not repaired yet."""
+        return self.is_failed() and not self.is_repaired()
+
+    def is_repair_trade(self) -> bool:
+        """This trade is fixes a frozen position and counters another trade.
+        """
+        return self.repaired_trade_id is not None
+
+    def is_repair_trade(self) -> bool:
+        """This trade is fixes a frozen position and counters another trade.
+        """
+        return self.repaired_trade_id is not None
+
     def get_status(self) -> TradeStatus:
-        if self.failed_at:
+        """Resolve the trade status.
+
+        Based on the different state variables set on this item,
+        figure out what is the best status for this trade.
+        """
+        if self.repaired_trade_id:
+            # Bookkeeping trades are only internal and thus always success
+            return TradeStatus.success
+        elif self.repaired_at:
+            return TradeStatus.repaired
+        elif self.failed_at:
             return TradeStatus.failed
         elif self.executed_at:
             return TradeStatus.success
@@ -455,17 +538,24 @@ class TradeExecution:
 
         Positive for buy, negative for sell.
         """
-        if self.executed_quantity is not None:
+
+        if self.repaired_trade_id or self.repaired_at:
+            # Repaired trades are shortcuted to zero
+            return Decimal(0)
+        elif self.executed_quantity is not None:
             return self.executed_quantity
         else:
             return self.planned_quantity
 
-    def get_reserve_quantity(self) -> Decimal:
+    def get_reserve_quantity(self) -> Decimal:  
         """Get the planned or executed quantity of the quote token.
 
         Negative for buy, positive for sell.
         """
-        if self.executed_reserve is not None:
+        if self.repaired_trade_id or self.repaired_at:
+            # Repaired trades are shortctted to zero
+            return Decimal(0)
+        elif self.executed_reserve is not None:
             return self.executed_quantity
         else:
             return self.planned_reserve
@@ -497,7 +587,10 @@ class TradeExecution:
         Value is always a positive number.
         """
 
-        if self.executed_at:
+        if self.repaired_at:
+            # Repaired trades have their value set to zero
+            return 0.0
+        elif self.executed_at:
             return self.get_executed_value()
         elif self.failed_at:
             return self.get_planned_value()
@@ -539,6 +632,9 @@ class TradeExecution:
         Lower, negative, trades should be executed first.
 
         We need to execute sells first because we need to have cash in hand to execute buys.
+
+        :return:
+            Sortable int
         """
         if self.is_sell():
             return -self.trade_id
@@ -557,8 +653,23 @@ class TradeExecution:
         assert self.get_status() == TradeStatus.started, f"Trade in bad state: {self.get_status()}"
         self.broadcasted_at = broadcasted_at
 
-    def mark_success(self, executed_at: datetime.datetime, executed_price: USDollarAmount, executed_quantity: Decimal, executed_reserve: Decimal, lp_fees: USDollarAmount, native_token_price: USDollarAmount):
-        assert self.get_status() == TradeStatus.broadcasted, f"Cannot mark trade success if it is not broadcasted. Current status: {self.get_status()}"
+    def mark_success(self,
+                     executed_at: datetime.datetime,
+                     executed_price: USDollarAmount,
+                     executed_quantity: Decimal,
+                     executed_reserve: Decimal,
+                     lp_fees: USDollarAmount,
+                     native_token_price: USDollarAmount,
+                     force=False,
+                     ):
+        """Mark trade success.
+
+        - Called by execution engine when we get a confirmation from the blockchain our blockchain txs where good
+
+        - Called by repair to force trades to good state
+        """
+        if not force:
+            assert self.get_status() == TradeStatus.broadcasted, f"Cannot mark trade success if it is not broadcasted. Current status: {self.get_status()}"
         assert isinstance(executed_quantity, Decimal)
         assert type(executed_price) == float, f"Received executed price: {executed_price} {type(executed_price)}"
         assert executed_at.tzinfo is None

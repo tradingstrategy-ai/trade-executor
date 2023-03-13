@@ -79,8 +79,18 @@ class TradingPosition:
     #: When this position was closed
     closed_at: Optional[datetime.datetime] = None
 
-    #: Timestamp when this position was moved to a frozen state
+    #: Timestamp when this position was moved to a frozen state.
+    #:
+    #: This can happen multiple times, so is is the last time when this happened.
+    #:
+    #: See also :py:attr:`unfrozen_at`.
     frozen_at: Optional[datetime.datetime] = None
+
+    #: Timestamp when this position was marked lively again
+    #:
+    #: Set by :py:mod:`tradeexecutor.state.repair` when the position
+    #: trades are repaired and the position is moved to open or closed list.
+    unfrozen_at: Optional[datetime.datetime] = None
 
     #: When this position had a trade last time
     last_trade_at: Optional[datetime.datetime] = None
@@ -147,6 +157,10 @@ class TradingPosition:
     def is_frozen(self) -> bool:
         """This position has had a failed trade and can no longer be automatically moved around."""
         return self.frozen_at is not None
+
+    def is_unfrozen(self) -> bool:
+        """This position was frozen, but its trades were successfully repaired."""
+        return self.unfrozen_at is not None
 
     def has_automatic_close(self) -> bool:
         """This position has stop loss/take profit set."""
@@ -316,6 +330,19 @@ class TradingPosition:
             if t.strategy_cycle_at == timestamp:
                 yield t
 
+    def get_unexeuted_reserve(self) -> Decimal:
+        """Get the reserve currency allocated for trades.
+
+        Assumes position can only have one reserve currency.
+
+        Only spot buys can have unexecuted reserve.
+
+        :return:
+            Amount of capital we have allocated in trades that did not correctly execute
+        """
+        unexecuted = [t for t in self.trades.values() if not t.is_executed()]
+        return sum(t.planned_reserve for t in unexecuted)
+
     def is_stop_loss_closed(self) -> bool:
         """Did this position close with stop loss."""
         last_trade = self.get_last_trade()
@@ -345,7 +372,52 @@ class TradingPosition:
         Trade can be opened by knowing how much you want to buy (quantity) or how much cash you have to buy (reserve).
 
         :param strategy_cycle_at:
-            UTC naive timestamp of the current strategy cycle
+            The strategy cycle timestamp for which this trade was executed.
+
+        :param trade_id:
+            Trade id allocated by the portfolio
+
+        :param quantity:
+            How many units this trade does.
+
+            Positive for buys, negative for sells in the spot market.
+
+        :param assumed_price:
+            The planned execution price.
+
+            This is the price we expect to pay per `quantity` unit after the execution.
+            This is the mid price + any LP fees included.
+
+        :param trade_type:
+            What kind of a trade is this.
+
+        :param reserve_currency:
+            Which portfolio reserve we use for this trade.
+
+         :param reserve_currency_price:
+            If the quote token is not USD, then the exchange rate between USD and quote token we assume we have.
+
+            Actual exchange rate may depend on the execution.
+
+        :param pair_fee:
+            The fee tier from the trading pair / overriden fee.
+
+        :param lp_fees_estimated:
+            HOw much we estimate to pay in LP fees (dollar)
+
+        :param planned_mid_price:
+            What was the mid-price of the trading pair when we started to plan this trade.
+
+        :param reserve:
+            How many reserve units this trade produces/consumes.
+
+            I.e. dollar amount for buys/sells.
+
+        :param price_structure:
+            The full planned price structure for this trade.
+
+            The state of the market at the time of planning the trade,
+            and what fees we assumed we are going to get.
 
         """
 
@@ -364,7 +436,7 @@ class TradingPosition:
             planned_quantity = reserve / Decimal(assumed_price)
         else:
             planned_quantity = quantity
-            planned_reserve = quantity * Decimal(assumed_price) if quantity > 0 else 0
+            planned_reserve = quantity * Decimal(assumed_price) if quantity > Decimal(0) else Decimal(0)
 
         trade = TradeExecution(
             trade_id=trade_id,
