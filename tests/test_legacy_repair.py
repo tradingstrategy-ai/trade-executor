@@ -10,6 +10,7 @@ from decimal import Decimal
 import pytest
 
 from tradeexecutor.cli.log import setup_pytest_logging
+from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
 from tradeexecutor.state.repair import repair_trades
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeStatus, TradeType
@@ -30,6 +31,7 @@ def state() -> State:
 
     Taken as a snapshot from alpha version trade execution run.
     """
+    patch_dataclasses_json()
     f = os.path.join(os.path.dirname(__file__), "legacy-repair-dump.json")
     return State.from_json(open(f, "rt").read())
 
@@ -55,7 +57,7 @@ def test_assess_repair_need(
     assert trades[2].is_sell()
     assert trades[2].position_id == 36
 
-    assert trades[2].opened_at ==  datetime.datetime(2023, 3, 1, 19, 51, 0, 858)
+    assert trades[2].opened_at == datetime.datetime(2023, 3, 1, 23, 51, 0, 858)
 
     # Before repair run some summary statistics to see they don't crash
     execution_mode = ExecutionMode.real_trading

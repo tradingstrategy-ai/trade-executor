@@ -15,6 +15,7 @@ from .app import app
 from ..init import prepare_executor_id, prepare_cache, create_web3_config, create_state_store, \
     create_trade_execution_model
 from ..log import setup_logging
+from ...state.repair import repair_trades
 from ...state.state import UncleanState
 from ...strategy.approval import UncheckedApprovalModel
 from ...strategy.bootstrap import make_factory_from_strategy_mod
@@ -116,22 +117,24 @@ def repair(
         run_state=RunState(),
     )
 
+    # TODO: Current repair logic does not ened the price data ATM
+    #
     # We construct the trading universe to know what's our reserve asset
-    universe_model: TradingStrategyUniverseModel = run_description.universe_model
-    ts = datetime.datetime.utcnow()
-    universe = universe_model.construct_universe(
-        ts,
-        ExecutionMode.preflight_check,
-        UniverseOptions())
+    # universe_model: TradingStrategyUniverseModel = run_description.universe_model
+    # ts = datetime.datetime.utcnow()
+    # universe = universe_model.construct_universe(
+    #     ts,
+    #     ExecutionMode.preflight_check,
+    #     UniverseOptions())
+    #
+    # runner = run_description.runner
 
-    print("Make sure trade executor is stopped before attempting to repair.")
-    confirm = input(f"Is trade executor stopped: {state_file}? [y/n]")
-    if confirm.lower() != "y":
-        return
-
-    runner = run_description.runner
-    repaired = runner.repair_state(state)
+    report = repair_trades(
+        state,
+        attempt_repair=True,
+        interactive=True,
+    )
 
     store.sync(state)
 
-    print(f"Repaired {len(repaired)} trades")
+    print(f"Repair report: {report}")
