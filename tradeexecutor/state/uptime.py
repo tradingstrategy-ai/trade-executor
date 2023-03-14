@@ -3,12 +3,15 @@
 Record uptime and completion statistics as the part of the state.
 """
 
+import logging
 import datetime
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
 from dataclasses_json import dataclass_json
 
+
+logger = logging.getLogger(__name__)
 
 @dataclass_json
 @dataclass
@@ -29,5 +32,10 @@ class Uptime:
         if now_ is None:
             now_ = datetime.datetime.utcnow()
         assert isinstance(now_, datetime.datetime)
-        assert cycle_number not in self.cycles_completed_at, f"Cycle completion for #{cycle_number} already recorded"
+
+        # Should not ever happen, but may happen if state crashes at the right moment
+        # Do warning only, as uptime recording is not critical for correct function of the strategy
+        if cycle_number in self.cycles_completed_at:
+            logger.warning(f"Cycle completion for #%d already recorded", cycle_number)
+
         self.cycles_completed_at[cycle_number] = now_
