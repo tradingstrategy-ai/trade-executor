@@ -264,7 +264,7 @@ def test_uniswap_v2_routing_models(
 
 
 @pytest.mark.parametrize(
-    "trade_routing,reserve_currency,allowed_intermediary_pairs,reserve_token_address",
+    "trade_routing,reserve_currency,allowed_intermediary_pairs,reserve_token_address, chain_id",
     [
         (
             TradeRouting.uniswap_v3_usdc,
@@ -273,7 +273,8 @@ def test_uniswap_v2_routing_models(
                 "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2": "0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640",
                 "0xdac17f958d2ee523a2206206994597c13d831ec7": "0x3416cf6c708da44db2624d63ea0aaef7113527c6",
             },
-            "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48".lower()
+            "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48".lower(),
+            ChainId.ethereum
         ),
         (
             TradeRouting.uniswap_v3_usdt,
@@ -282,7 +283,8 @@ def test_uniswap_v2_routing_models(
                 "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2": "0x11b815efb8f581194ae79006d24e0d814b7697f6",
                 "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48": "0x3416cf6c708da44db2624d63ea0aaef7113527c6",
             },
-            "0xdac17f958d2ee523a2206206994597c13d831ec7"
+            "0xdac17f958d2ee523a2206206994597c13d831ec7",
+            ChainId.ethereum,
         ),
         (
             TradeRouting.uniswap_v3_dai,
@@ -291,7 +293,8 @@ def test_uniswap_v2_routing_models(
                 "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
                 "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48": "0x5777d92f208679db4b9778590fa3cab3ac9e2168",
             },
-            "0x6b175474e89094c44da98b954eedeac495271d0f"
+            "0x6b175474e89094c44da98b954eedeac495271d0f",
+            ChainId.ethereum
         ),
         (
             TradeRouting.uniswap_v3_busd,
@@ -301,7 +304,8 @@ def test_uniswap_v2_routing_models(
                 "0xdac17f958d2ee523a2206206994597c13d831ec7": "0xd5ad5ec825cac700d7deafe3102dc2b6da6d195d",
                 "0x6b175474e89094c44da98b954eedeac495271d0f": "0xd1000344c3a00846462b4624bb452621cf2ce001",
             },
-            "0x4fabb145d64652a948d72533023f6e7a623c7c53"
+            "0x4fabb145d64652a948d72533023f6e7a623c7c53",
+            ChainId.ethereum
         ),
         (
             TradeRouting.uniswap_v3_usdc_poly,
@@ -310,7 +314,8 @@ def test_uniswap_v2_routing_models(
                 "0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270": "0xa374094527e1673a86de625aa59517c5de346d32",
                 "0x7ceb23fd6bc0add59e62ac25578270cff1b9f619": "0x45dda9cb7c25131df268515131f647d726f50608",
             },
-            "0x2791bca1f2de4661ed88a30c99a7a9449aa84174".lower()
+            "0x2791bca1f2de4661ed88a30c99a7a9449aa84174".lower(),
+            ChainId.polygon
         ),
         (
             TradeRouting.uniswap_v3_usdt_poly,
@@ -318,7 +323,8 @@ def test_uniswap_v2_routing_models(
             {
                 "0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270": "0x9b08288c3be4f62bbf8d1c20ac9c5e6f9467d8b7",
             },
-            "0xc2132d05d31c914a87c6611c10748aeb04b58e8f"
+            "0xc2132d05d31c914a87c6611c10748aeb04b58e8f",
+            ChainId.polygon
         )
     ]
 )
@@ -326,7 +332,8 @@ def test_uniswap_v3_routing_models(
     trade_routing,
     reserve_currency,
     allowed_intermediary_pairs,
-    reserve_token_address
+    reserve_token_address,
+    chain_id
 ):
     routing_model = get_routing_model(EXECUTION_CONTEXT, trade_routing, reserve_currency)
 
@@ -334,7 +341,7 @@ def test_uniswap_v3_routing_models(
         UNISWAP_V3_ADDRESS_MAP,
         allowed_intermediary_pairs,
         reserve_token_address,
-        ChainId.ethereum,
+        chain_id,
     )
 
     assert routing_model.allowed_intermediary_pairs == expected_model.allowed_intermediary_pairs
