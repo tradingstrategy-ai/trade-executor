@@ -528,6 +528,7 @@ def validate_reserve_currency(
         TradeRouting.trader_joe_usdc,
         TradeRouting.uniswap_v2_usdc,
         TradeRouting.uniswap_v3_usdc,
+        TradeRouting.uniswap_v3_usdc_poly
     }:
         if reserve_currency != ReserveCurrency.usdc:
             raise MismatchReserveCurrency(f"Got {routing_type} with {reserve_currency}")
@@ -538,6 +539,7 @@ def validate_reserve_currency(
         TradeRouting.trader_joe_usdt,
         TradeRouting.uniswap_v2_usdt,
         TradeRouting.uniswap_v3_usdt,
+        TradeRouting.uniswap_v3_usdt_poly
     }:
         if reserve_currency != ReserveCurrency.usdt:
             raise MismatchReserveCurrency(f"Got {routing_type} with {reserve_currency}")
