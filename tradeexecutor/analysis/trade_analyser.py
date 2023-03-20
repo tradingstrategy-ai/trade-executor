@@ -17,6 +17,7 @@ Example analysis include:
     It could be simplified greatly now.
 
 """
+
 import datetime
 import enum
 import logging
@@ -43,6 +44,12 @@ from tradingstrategy.types import PrimaryKey, USDollarAmount
 from tradingstrategy.utils.format import format_value, format_price, format_duration_days_hours_mins, \
     format_percent_2_decimals
 from tradingstrategy.utils.summarydataframe import as_dollar, as_integer, create_summary_table, as_percent, as_duration, as_bars
+
+try:
+    import quantstats as qs
+    HAS_QUANTSTATS = True
+except Exception:
+    HAS_QUANTSTATS = False
 
 
 logger = logging.getLogger(__name__)
@@ -139,6 +146,29 @@ class TradePosition:
     #: Closing the position could be deducted from the trades themselves,
     #: but we cache it by hand to speed up processing
     closed_at: Optional[pd.Timestamp] = None
+
+    #: The total dollar value of the portfolio when the position
+    #: was opened
+    portfolio_value_at_open: Optional[USDollarAmount] = None
+
+    #: What is the maximum risk of this position.
+    #: Risk relative to the portfolio size.
+    loss_risk_at_open_pct: Optional[float] = None
+    
+    #: How much portfolio capital was risk when this position was opened.
+    #: This is based on the opening values, any position adjustment after open is ignored
+    #: Assume capital is tied to the position and we can never release it.
+    #: Assume no stop loss is used, or it cannot be trigged
+    capital_tied_at_open_pct: Optional[float] = None
+
+    #: Trigger a stop loss if this price is reached,
+    #:
+    #: We use mid-price as the trigger price.
+    stop_loss: Optional[USDollarAmount] = None
+
+    #: Related to loss_risk_at_open_pct
+    #: This is the related dollar value for maximum risk of the position
+    maximum_risk: Optional[USDollarAmount] = None
 
     def __eq__(self, other: "TradePosition"):
         """Trade positions are unique by opening timestamp and pair id.]
@@ -337,7 +367,15 @@ class AssetTradeHistory:
 
         return None
 
-    def add_trade(self, t: SpotTrade, position_id: Optional[int]=None):
+    def add_trade(
+        self, t: SpotTrade, 
+        position_id: int | None,
+        portfolio_value_at_open: USDollarAmount | None,
+        loss_risk_at_open_pct: float | None,
+        capital_tied_at_open_pct: float | None,
+        stop_loss: USDollarAmount | None,
+        maximum_risk: USDollarAmount | None
+    ):
         """Adds a new trade to the asset history.
 
         If there is an open position the trade is added against this,
@@ -362,7 +400,15 @@ class AssetTradeHistory:
             # For backtesting
             # Open new position
             assert position_id is not None, "position id must be provided when opening a new position for backtesting"
-            new_position = TradePosition(opened_at=t.timestamp, position_id=position_id)
+            new_position = TradePosition(
+                opened_at=t.timestamp, 
+                position_id=position_id,
+                portfolio_value_at_open=portfolio_value_at_open,
+                loss_risk_at_open_pct=loss_risk_at_open_pct,
+                capital_tied_at_open_pct=capital_tied_at_open_pct,
+                stop_loss=stop_loss,
+                maximum_risk=maximum_risk
+            )
             new_position.add_trade(t)
             self.positions.append(new_position)
 
@@ -402,7 +448,7 @@ class TradeSummary:
     ))
     time_bucket: Optional[TimeBucket] = None
 
-    total_trades: int = field(init=False)
+    total_positions: int = field(init=False)
     win_percent: float = field(init=False)
     return_percent: float = field(init=False)
     annualised_return_percent: float = field(init=False)
@@ -432,20 +478,25 @@ class TradeSummary:
     lp_fees_paid: Optional[USDollarPrice] = 0
     lp_fees_average_pc: Optional[USDollarPrice] = 0
 
+    #: advanced users can use this property instead of the
+    #: provided quantstats helper methods
+    daily_returns: Optional[pd.Series] = None
+
     def __post_init__(self):
 
-        self.total_trades = self.won + self.lost + self.zero_loss
-        self.win_percent = calculate_percentage(self.won, self.total_trades)
-        self.all_stop_loss_percent = calculate_percentage(self.stop_losses, self.total_trades)
-        self.all_take_profit_percent = calculate_percentage(self.take_profits, self.total_trades)
+        self.total_positions = self.won + self.lost + self.zero_loss
+        self.win_percent = calculate_percentage(self.won, self.total_positions)
+        self.all_stop_loss_percent = calculate_percentage(self.stop_losses, self.total_positions)
+        self.all_take_profit_percent = calculate_percentage(self.take_profits, self.total_positions)
         self.lost_stop_loss_percent = calculate_percentage(self.stop_losses, self.lost)
         self.won_take_profit_percent = calculate_percentage(self.take_profits, self.won)
-        self.average_net_profit = self.realised_profit / self.total_trades if self.total_trades else None
+        self.average_net_profit = self.realised_profit / self.total_positions if self.total_positions else None
         self.end_value = self.open_value + self.uninvested_cash
         initial_cash = self.initial_cash or 0
         self.return_percent = calculate_percentage(self.end_value - initial_cash, initial_cash)
         self.annualised_return_percent = calculate_percentage(self.return_percent * datetime.timedelta(days=365),
                                                               self.duration) if self.return_percent else None
+
 
     def to_dataframe(self) -> pd.DataFrame:
         """Convert the data to a human readable summary table.
@@ -468,7 +519,7 @@ class TradeSummary:
             "Value at end": as_dollar(self.end_value),
             "Trade volume": as_dollar(self.trade_volume),
             "Trade win percent": as_percent(self.win_percent),
-            "Total trades done": as_integer(self.total_trades),
+            "Total positions": as_integer(self.total_positions),
             "Won trades": as_integer(self.won),
             "Lost trades": as_integer(self.lost),
             "Stop losses triggered": as_integer(self.stop_losses),
@@ -517,6 +568,47 @@ class TradeSummary:
         with pd.option_context("display.max_row", None):
             df = self.to_dataframe()
             display(df.style.set_table_styles([{'selector': 'thead', 'props': [('display', 'none')]}]))
+    
+    def get_full_report(self):
+        """Show basic and advanced stats and plots"""
+        return (
+            qs.reports.full(self.daily_returns) 
+            if HAS_QUANTSTATS and self.daily_returns is not None
+            else None
+        )
+    
+    def get_basic_stats(self):
+        """Show basic stats only"""
+        return (
+            qs.reports.metrics(self.daily_returns)
+            if HAS_QUANTSTATS and self.daily_returns is not None
+            else None
+        )
+
+    def get_full_stats(self):
+        """Show basic and advanced stats"""
+        return (
+            qs.reports.metrics(self.daily_returns, mode='full')
+            if HAS_QUANTSTATS and self.daily_returns is not None
+            else None
+        )
+
+    def get_basic_plots(self):
+        """Show basic plots"""
+        return (
+            qs.reports.plots(self.daily_returns)
+            if HAS_QUANTSTATS and self.daily_returns is not None
+            else None
+        )
+
+    def get_full_plots(self):
+        """Show basic and advanced plots"""
+        return (
+            qs.reports.plots(self.daily_returns, mode='full')
+            if HAS_QUANTSTATS and self.daily_returns is not None
+            else None
+        )
+
 
 @dataclass
 class TradeAnalysis:
@@ -556,7 +648,11 @@ class TradeAnalysis:
                 if position.is_open():
                     yield pair_id, position
 
-    def calculate_summary_statistics(self, time_bucket: Optional[TimeBucket] = None) -> TradeSummary:
+    def calculate_summary_statistics(
+        self, 
+        time_bucket: Optional[TimeBucket] = None,
+        state = None
+    ) -> TradeSummary:
         """Calculate some statistics how our trades went.
 
             :param time_bucket:
@@ -568,6 +664,8 @@ class TradeAnalysis:
 
         if(time_bucket is not None):
             assert isinstance(time_bucket, TimeBucket), "Not a valid time bucket"
+
+        # TODO cannot add assertion or typing for state since circular import error
 
         def get_avg_profit_pct_check(trades: List | None):
             return float(np.mean(trades)) if trades else None
@@ -635,8 +733,6 @@ class TradeAnalysis:
                 undecided += 1
                 continue
 
-            full_position = self.portfolio.get_position_by_id(position.position_id)
-
             if position.is_stop_loss():
                 stop_losses += 1
 
@@ -653,8 +749,8 @@ class TradeAnalysis:
                 losing_trades.append(position.realised_profit_percent)
                 losing_trades_duration.append(position.duration)
 
-                if full_position.portfolio_value_at_open:
-                    realised_loss = position.realised_profit / full_position.portfolio_value_at_open
+                if position.portfolio_value_at_open:
+                    realised_loss = position.realised_profit / position.portfolio_value_at_open
                 else:
                     # Bad data
                     realised_loss = 0
@@ -666,15 +762,12 @@ class TradeAnalysis:
 
             profit += position.realised_profit
 
-            if full_position.stop_loss:
-                loss_risk_at_open_pc.append(full_position.get_loss_risk_at_open_pct())
+            if position.stop_loss:
+                loss_risk_at_open_pc.append(position.loss_risk_at_open_pct)
             else:
-                loss_risk_at_open_pc.append(full_position.get_capital_tied_at_open_pct())
+                loss_risk_at_open_pc.append(position.capital_tied_at_open_pct)
 
-            positions.append(full_position)
-
-        # sort positions by position id (chronologically)
-        positions.sort(key=lambda x: x.position_id)
+            positions.append(position)
 
         all_trades = winning_trades + losing_trades + [0 for i in range(zero_loss)]
         average_trade = avg_check(all_trades)
@@ -695,9 +788,21 @@ class TradeAnalysis:
         average_duration_of_winning_trades = get_avg_trade_duration(winning_trades_duration, time_bucket)
         average_duration_of_losing_trades = get_avg_trade_duration(losing_trades_duration, time_bucket)
 
+        # sort positions by position id (chronologically)
+        # should be unnecessary to sort since build_trade_analysis sorts same way
+        # but just in case used directly
+        positions.sort(key=lambda x: x.position_id)
         max_pos_cons, max_neg_cons, max_pullback = self.get_max_consective(positions)
 
         lp_fees_average_pc = lp_fees_paid / trade_volume if trade_volume else 0
+
+        # for advanced statistics
+        # import here to avoid circular import error
+        if state is not None and HAS_QUANTSTATS:
+            from tradeexecutor.visual.equity_curve import get_daily_returns
+            daily_returns = get_daily_returns(state)
+        else:
+            daily_returns = None
 
         return TradeSummary(
             won=won,
@@ -730,6 +835,7 @@ class TradeAnalysis:
             trade_volume=trade_volume,
             lp_fees_paid=lp_fees_paid,
             lp_fees_average_pc=lp_fees_average_pc,
+            daily_returns=daily_returns
         )
 
     def create_timeline(self) -> pd.DataFrame:
@@ -762,7 +868,7 @@ class TradeAnalysis:
         return self.get_max_consective(raw_timeline)
 
     @staticmethod
-    def get_max_consective(positions: List[TradingPosition]) -> tuple[int, int ,int] | tuple[None, None, None]:
+    def get_max_consective(positions: List[TradePosition]) -> tuple[int, int ,int] | tuple[None, None, None]:
         """May be used in calculate_summary_statistics
 
         :param positions:
@@ -780,16 +886,17 @@ class TradeAnalysis:
         pullback = 0
 
         for position in positions:
+            realized_profit = position.realised_profit
 
             # don't do anything if profit = $0
-            if(position.get_realised_profit_usd() > 0):
+            if(realized_profit > 0):
                     neg_cons = 0
                     pullback = 0
                     pos_cons += 1
-            elif(position.get_realised_profit_usd() < 0):
+            elif(realized_profit < 0):
                     pos_cons = 0
                     neg_cons += 1
-                    pullback += position.get_realised_profit_usd()
+                    pullback += realized_profit
 
             if(neg_cons > max_neg_cons):
                     max_neg_cons = neg_cons
@@ -798,7 +905,7 @@ class TradeAnalysis:
 
             value_at_open = position.portfolio_value_at_open
             if value_at_open:
-                pullback_pct = pullback / (value_at_open + position.get_realised_profit_usd())
+                pullback_pct = pullback / (value_at_open + realized_profit)
                 if(pullback_pct < max_pullback_pct):
                         # pull back is in the negative direction
                         max_pullback_pct = pullback_pct
@@ -1045,13 +1152,18 @@ def expand_timeline_raw(
         return applied_df
 
 
-def build_trade_analysis(portfolio: Portfolio) -> TradeAnalysis:
+def build_trade_analysis(
+    portfolio: Portfolio
+) -> TradeAnalysis:
     """Build a trade analysis from list of positions.
 
     - Read positions from backtesting or live state
 
     - Create TradeAnalysis instance that can be used to display Jupyter notebook
       data on the performance
+
+    :param state:
+        optional parameter that should be specified if user would like to see advanced statistics
     """
 
     histories = {}
@@ -1117,9 +1229,39 @@ def build_trade_analysis(portfolio: Portfolio) -> TradeAnalysis:
                 lp_fees_paid=trade.lp_fees_paid,
                 bad_data_issues=bad_data_issues,
             )
-            history.add_trade(spot_trade, position_id=position.position_id)
 
-    return TradeAnalysis(portfolio, asset_histories=histories)
+            # used in get_max_consecutive
+            portfolio_value_at_open = position.portfolio_value_at_open
+
+            # used in calculate_summary_statistics()
+            stop_loss = position.stop_loss
+            
+            if position.portfolio_value_at_open:
+                capital_tied_at_open_pct=position.get_capital_tied_at_open_pct()
+            else:
+                capital_tied_at_open_pct=None
+            
+            if stop_loss:
+                maximum_risk = position.get_loss_risk_at_open()
+                loss_risk_at_open_pct = position.get_loss_risk_at_open_pct()
+            else:
+                maximum_risk = None
+                loss_risk_at_open_pct = None
+
+            history.add_trade(
+                spot_trade, 
+                position_id=position.position_id,
+                portfolio_value_at_open=portfolio_value_at_open,
+                loss_risk_at_open_pct=loss_risk_at_open_pct,
+                capital_tied_at_open_pct=capital_tied_at_open_pct,
+                stop_loss=stop_loss,
+                maximum_risk=maximum_risk
+            )
+
+    return TradeAnalysis(
+        portfolio, 
+        asset_histories=histories
+    )
 
 def avg(lst: list[int]):
     return sum(lst) / len(lst)
