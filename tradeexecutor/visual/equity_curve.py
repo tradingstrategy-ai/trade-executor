@@ -131,8 +131,6 @@ def get_daily_returns(state: State) -> (pd.Series | None):
 
     :returns:
         If valid state provided, returns are returned as calendar day (D) frequency, else None"""
-    if isinstance(state, State):
-        equity_curve = calculate_equity_curve(state)
-        return calculate_aggregate_returns(equity_curve, freq="D")
-    else:
-        return None
+    
+    equity_curve = calculate_equity_curve(state)
+    return calculate_aggregate_returns(equity_curve, freq="D")
