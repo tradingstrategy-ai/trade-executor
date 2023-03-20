@@ -8,13 +8,30 @@
 
 """
 import datetime
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional, Any, Dict, Tuple
 
-from dataclasses_json import dataclass_json
+from dataclasses_json import dataclass_json, config
 
 from eth_defi.tx import decode_signed_transaction
 from tradeexecutor.state.types import JSONHexAddress, JSONHexBytes
+
+
+def solidity_arg_encoder(val: tuple) -> tuple:
+    """JSON safe Solidity function argument encoder."""
+
+    if type(val) not in (list, tuple):
+        return val
+
+    def _int_to_string(x):
+        if type(x) == int:
+            return str(x)
+        elif type(x) == float:
+            # Smart contracts cannot have float arguents
+            raise RuntimeError(f"Cannot encode: {val}")
+        return x
+
+    return list(_int_to_string(x) for x in val)
 
 
 @dataclass_json
@@ -54,7 +71,17 @@ class BlockchainTransaction:
     function_selector: Optional[str] = None
 
     #: Arguments we passed to the smart contract function
-    args: Optional[Tuple[Any]] = None
+    #:
+    #: This is not JSON serialisable because
+    #: individual arguments may contain values that are token amounts
+    #: and thus outside the maximum int of JavaScript.
+    #:
+    args: Optional[Tuple[Any]] = field(
+        default=None,
+        metadata=config(
+            encoder=solidity_arg_encoder,
+        )
+    )
 
     #: Blockchain bookkeeping
     tx_hash: Optional[JSONHexBytes] = None

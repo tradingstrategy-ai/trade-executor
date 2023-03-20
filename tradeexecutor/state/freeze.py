@@ -42,6 +42,7 @@ def freeze_position_on_failed_trade(ts: datetime.datetime, state: State, trades:
             position.frozen_at = ts
             del portfolio.open_positions[position.position_id]
 
+            # Mark assets automatically blacklisted so no future trades
             state.blacklist_asset(position.pair.base)
 
             failed.append(t)

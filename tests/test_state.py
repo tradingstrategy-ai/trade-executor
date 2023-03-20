@@ -915,3 +915,26 @@ def test_serialise_timedelta():
 
     assert p2.market_feed_delay == datetime.timedelta(minutes=2)
 
+
+def test_validate_state_with_too_large_int():
+    """Integer is too big."""
+    int_too_big = {"foo": 2**80}
+    with pytest.raises(BadStateData):
+        validate_nested_state_dict(int_too_big)
+
+
+def test_validate_state_with_nan():
+    """We have NaN."""
+    nan = {"foo": float('inf')}
+    with pytest.raises(BadStateData):
+        validate_nested_state_dict(nan)
+
+
+def test_blockchain_transaction_params():
+    """Blockchain transactions must be able encode very large numbers."""
+    args = (2**80,)
+    bt = BlockchainTransaction(args=args)
+    data = bt.to_dict()
+    assert data["args"] == ['1208925819614629174706176']
+    validate_nested_state_dict(data)
+    bt.to_json()

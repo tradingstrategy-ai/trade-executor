@@ -549,8 +549,15 @@ class PositionManager:
             pair_fee=price_structure.get_fee_percentage(),
             lp_fees_estimated=price_structure.get_total_lp_fees(),
             planned_mid_price=price_structure.mid_price,
+            position=position,
         )
-        assert position == position2, "Somehow messed up the trade"
+        assert position == position2, f"Somehow messed up the close_position() trade.\n" \
+                                      f"Original position: {position}.\n" \
+                                      f"Trade's position: {position2}.\n" \
+                                      f"Trade: {trade}\n" \
+                                      f"Quantity left: {quantity_left}\n" \
+                                      f"Price structure: {price_structure}\n" \
+                                      f"Reserve asset: {reserve_asset}\n"
 
         if trades_as_list:
             return [trade]

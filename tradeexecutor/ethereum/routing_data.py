@@ -403,7 +403,7 @@ def get_uniswap_v3_ethereum_default_routing_parameters(
         "quoter": "0xb27308f9F90D607463bb33eA1BeBb41C27CE5AB6"
         # "router02":"0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45",
         # "quoterV2":"0x61fFE014bA17989E743c5F6cB21bF9697530B21e"
-    } # TODO create address_map class
+    }
 
     return {
         "chain_id": ChainId.ethereum,
@@ -528,6 +528,7 @@ def validate_reserve_currency(
         TradeRouting.trader_joe_usdc,
         TradeRouting.uniswap_v2_usdc,
         TradeRouting.uniswap_v3_usdc,
+        TradeRouting.uniswap_v3_usdc_poly
     }:
         if reserve_currency != ReserveCurrency.usdc:
             raise MismatchReserveCurrency(f"Got {routing_type} with {reserve_currency}")
@@ -538,6 +539,7 @@ def validate_reserve_currency(
         TradeRouting.trader_joe_usdt,
         TradeRouting.uniswap_v2_usdt,
         TradeRouting.uniswap_v3_usdt,
+        TradeRouting.uniswap_v3_usdt_poly
     }:
         if reserve_currency != ReserveCurrency.usdt:
             raise MismatchReserveCurrency(f"Got {routing_type} with {reserve_currency}")

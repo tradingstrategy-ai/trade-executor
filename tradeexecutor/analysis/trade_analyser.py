@@ -1189,6 +1189,10 @@ def build_trade_analysis(
 
         for trade in trades:
 
+            if trade.is_repaired() or trade.is_repair_trade():
+                # These trades have quantity set to zero
+                continue
+
             history = histories.get(pair_id)
             if not history:
                 history = histories[pair_id] = AssetTradeHistory()

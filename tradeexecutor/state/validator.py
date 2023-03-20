@@ -9,6 +9,7 @@ so you can easily locate any values that are bad, unlike with :py:mod:`json`.
 import datetime
 from decimal import Decimal
 from enum import Enum
+from json.encoder import INFINITY
 from types import NoneType
 
 import pandas as pd
@@ -45,9 +46,36 @@ BAD_VALUE_TYPES = (
     pd.Timestamp,
 )
 
+_inf=INFINITY
+
+_neginf=-INFINITY
+
+# https://www.tutorialspoint.com/what-is-javascript-s-highest-integer-value-that-a-number-can-go-to-without-losing-precision
+JS_MAX_INT = 9007199254740991
+
 
 def validate_state_value(name: str | int, val: object):
     """Check the state value against our whitelist and blacklist."""
+
+    if type(val) in (int, float):
+        # JavaScript number compatibility check
+
+        o = val
+        if o != o:
+            text = 'NaN'
+        elif o == _inf:
+            text = 'Infinity'
+        elif o == _neginf:
+            text = '-Infinity'
+        else:
+            text = None
+
+        if text:
+            raise BadStateData(f"{name}: {val} ({type(val)} - not a number: {text}")
+
+    if type(val) == int:
+        if val > JS_MAX_INT:
+            raise BadStateData(f"{name}: {val} ({type(val)} - larger than JavaScript max int")
 
     if isinstance(val, BAD_VALUE_TYPES):
         raise BadStateData(f"{name}: {val} ({type(val)} - blacklisted value type")
