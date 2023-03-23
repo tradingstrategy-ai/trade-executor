@@ -3,6 +3,7 @@ from typing import List
 
 import pandas as pd
 
+
 from tradeexecutor.state.state import State
 from tradeexecutor.state.statistics import Statistics, PortfolioStatistics
 
@@ -77,7 +78,7 @@ def calculate_cumulative_return(returns: pd.Series) -> pd.Series:
     #return np.exp(np.log(1 + returns).cumsum())[-1] - 1
 
 
-def calculate_aggregate_returns(equity_curve: pd.Series, freq: str = "BM"):
+def calculate_aggregate_returns(equity_curve: pd.Series, freq: str = "BM") -> pd.Series:
     """Calculate strategy aggregatd results over different timespans.
 
     Good to calculate
@@ -125,3 +126,11 @@ def calculate_aggregate_returns(equity_curve: pd.Series, freq: str = "BM"):
     return sampled.pct_change()
 
 
+def get_daily_returns(state: State) -> (pd.Series | None):
+    """Used for advanced statistics
+
+    :returns:
+        If valid state provided, returns are returned as calendar day (D) frequency, else None"""
+    
+    equity_curve = calculate_equity_curve(state)
+    return calculate_aggregate_returns(equity_curve, freq="D")
