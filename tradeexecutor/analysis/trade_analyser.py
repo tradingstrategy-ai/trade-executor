@@ -417,9 +417,9 @@ class AssetTradeHistory:
 @dataclass(slots=True)
 class TradeSummary:
     """Some generic statistics over all the trades"""
-    won: int
-    lost: int
-    zero_loss: int
+    won_positions: int
+    lost_positions: int
+    zero_loss_positions: int
     stop_losses: int
     undecided: int
     realised_profit: USDollarAmount
@@ -449,7 +449,7 @@ class TradeSummary:
     time_bucket: Optional[TimeBucket] = None
 
     total_positions: int = field(init=False)
-    win_percent: float = field(init=False)
+    position_win_percent: float = field(init=False)
     return_percent: float = field(init=False)
     annualised_return_percent: float = field(init=False)
     all_stop_loss_percent: float = field(init=False)
@@ -484,12 +484,12 @@ class TradeSummary:
 
     def __post_init__(self):
 
-        self.total_positions = self.won + self.lost + self.zero_loss
-        self.win_percent = calculate_percentage(self.won, self.total_positions)
+        self.total_positions = self.won_positions + self.lost_positions + self.zero_loss_positions
+        self.position_win_percent = calculate_percentage(self.won_positions, self.total_positions)
         self.all_stop_loss_percent = calculate_percentage(self.stop_losses, self.total_positions)
         self.all_take_profit_percent = calculate_percentage(self.take_profits, self.total_positions)
         self.lost_stop_loss_percent = calculate_percentage(self.stop_losses, self.lost)
-        self.won_take_profit_percent = calculate_percentage(self.take_profits, self.won)
+        self.won_take_profit_percent = calculate_percentage(self.take_profits, self.won_positions)
         self.average_net_profit = self.realised_profit / self.total_positions if self.total_positions else None
         self.end_value = self.open_value + self.uninvested_cash
         initial_cash = self.initial_cash or 0
@@ -518,17 +518,17 @@ class TradeSummary:
             "Cash at start": as_dollar(self.initial_cash),
             "Value at end": as_dollar(self.end_value),
             "Trade volume": as_dollar(self.trade_volume),
-            "Trade win percent": as_percent(self.win_percent),
+            "Positions win %": as_percent(self.position_win_percent),
             "Total positions": as_integer(self.total_positions),
-            "Won trades": as_integer(self.won),
-            "Lost trades": as_integer(self.lost),
+            "Won positions": as_integer(self.won_positions),
+            "Lost positions": as_integer(self.lost_postions),
             "Stop losses triggered": as_integer(self.stop_losses),
-            "Stop loss % of all": as_percent(self.all_stop_loss_percent),
-            "Stop loss % of lost": as_percent(self.lost_stop_loss_percent),
+            "Stop loss % of all positions": as_percent(self.all_stop_loss_percent),
+            "Stop loss % of lost positions": as_percent(self.lost_stop_loss_percent),
             "Take profits triggered": as_integer(self.take_profits),
             "Take profit % of all": as_percent(self.all_take_profit_percent),
             "Take profit % of win": as_percent(self.won_take_profit_percent),
-            "Zero profit trades": as_integer(self.zero_loss),
+            "Zero profit trades": as_integer(self.zero_loss_positions),
             "Positions open at the end": as_integer(self.undecided),
             "Realised profit and loss": as_dollar(self.realised_profit),
             "Portfolio unrealised value": as_dollar(self.open_value),
@@ -700,6 +700,8 @@ class TradeAnalysis:
 
         winning_trades = []
         losing_trades = []
+        zero_loss_trades = []
+
         winning_trades_duration = []
         losing_trades_duration = []
         loss_risk_at_open_pc = []
@@ -713,7 +715,7 @@ class TradeAnalysis:
         if first_trade and first_trade != last_trade:
             duration = last_trade.executed_at - first_trade.executed_at
 
-        won = lost = zero_loss = stop_losses = take_profits = undecided = 0
+        won_positions = lost_positions = zero_loss_positions = stop_losses = take_profits = undecided = 0
         open_value: USDollarAmount = 0
         profit: USDollarAmount = 0
         trade_volume = 0
@@ -721,6 +723,7 @@ class TradeAnalysis:
 
         positions = []
         position: TradePosition
+        
         for pair_id, position in self.get_all_positions():
             
             lp_fees_paid += position.get_total_lp_fees_paid() or 0
@@ -741,15 +744,16 @@ class TradeAnalysis:
                 take_profits += 1
 
             if position.is_win():
-                won += 1
-                winning_trades.append(position.realised_profit_percent)
-                winning_trades_duration.append(position.duration)
+                won_position_profits.append(position.realised_profit_percent)
+                won_position_durations.append(position.duration)
+
+                num_winning_trades += len(position.trades)
 
             elif position.is_lose():
-                lost += 1
-                losing_trades.append(position.realised_profit_percent)
-                losing_trades_duration.append(position.duration)
+                lost_position_profits.append(position.realised_profit_percent)
+                lost_position_durations.append(position.duration)
 
+                # calculate realized loss
                 if position.portfolio_value_at_open:
                     realised_loss = position.realised_profit / position.portfolio_value_at_open
                 else:
@@ -759,7 +763,7 @@ class TradeAnalysis:
 
             else:
                 # Any profit exactly balances out loss in slippage and commission
-                zero_loss += 1
+                zero_loss_positions += 1
 
             profit += position.realised_profit
 
@@ -770,37 +774,32 @@ class TradeAnalysis:
 
             positions.append(position)
 
-        all_trades = winning_trades + losing_trades + [0 for i in range(zero_loss)]
-        average_trade = avg_check(all_trades)
-        median_trade = median_check(all_trades)
+        average_position = avg_check(positions)
+        median_trade = median_check(positions)
 
-        average_winning_trade_profit_pc = get_avg_profit_pct_check(winning_trades)
-        average_losing_trade_loss_pc = get_avg_profit_pct_check(losing_trades)
+        average_won_position_profit_pc = get_avg_profit_pct_check(winning_trades)
+        average_lost_position_loss_pc = get_avg_profit_pct_check(losing_trades)
 
         max_realised_loss = min_check(realised_losses)
         avg_realised_risk = avg_check(realised_losses)
 
         max_loss_risk_at_open_pc = max_check(loss_risk_at_open_pc)
 
-        biggest_winning_trade_pc = max_check(winning_trades)
+        biggest_won_position_pc = max_check(won_positions)
 
-        biggest_losing_trade_pc = min_check(losing_trades)
+        biggest_lost_position_pc = min_check(lost_positions)
 
-        average_duration_of_winning_trades = get_avg_trade_duration(winning_trades_duration, time_bucket)
-        average_duration_of_losing_trades = get_avg_trade_duration(losing_trades_duration, time_bucket)
+        average_duration_of_winning_trades = get_avg_trade_duration(won_position_durations, time_bucket)
+        average_duration_of_losing_trades = get_avg_trade_duration(lost_position_durations, time_bucket)
 
-        # sort positions by position id (chronologically)
-        # should be unnecessary to sort since build_trade_analysis sorts same way
-        # but just in case used directly
-        positions.sort(key=lambda x: x.position_id)
         max_pos_cons, max_neg_cons, max_pullback = self.get_max_consective(positions)
 
         lp_fees_average_pc = lp_fees_paid / trade_volume if trade_volume else 0
 
         return TradeSummary(
-            won=won,
-            lost=lost,
-            zero_loss=zero_loss,
+            won_positions=won_positions,
+            lost_positions=lost_positions,
+            zero_loss_positions=zero_loss_positions,
             stop_losses=stop_losses,
             take_profits=take_profits,
             undecided=undecided,
@@ -870,6 +869,11 @@ class TradeAnalysis:
 
         if not positions:
             return None, None, None
+        
+        # sort positions by position id (chronologically)
+        # should be unnecessary to sort since build_trade_analysis sorts same way
+        # but just in case used directly
+        positions.sort(key=lambda x: x.position_id)
 
         max_pos_cons = 0
         max_neg_cons = 0
