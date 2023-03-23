@@ -930,7 +930,6 @@ files = [
     {file = "debugpy-1.6.6-cp38-cp38-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:9b5d1b13d7c7bf5d7cf700e33c0b8ddb7baf030fcf502f76fc061ddd9405d16c"},
     {file = "debugpy-1.6.6-cp38-cp38-win32.whl", hash = "sha256:70ab53918fd907a3ade01909b3ed783287ede362c80c75f41e79596d5ccacd32"},
     {file = "debugpy-1.6.6-cp38-cp38-win_amd64.whl", hash = "sha256:c05349890804d846eca32ce0623ab66c06f8800db881af7a876dc073ac1c2225"},
-    {file = "debugpy-1.6.6-cp39-cp39-macosx_11_0_x86_64.whl", hash = "sha256:11a0f3a106f69901e4a9a5683ce943a7a5605696024134b522aa1bfda25b5fec"},
     {file = "debugpy-1.6.6-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:a771739902b1ae22a120dbbb6bd91b2cae6696c0e318b5007c5348519a4211c6"},
     {file = "debugpy-1.6.6-cp39-cp39-win32.whl", hash = "sha256:549ae0cb2d34fc09d1675f9b01942499751d174381b6082279cf19cdb3c47cbe"},
     {file = "debugpy-1.6.6-cp39-cp39-win_amd64.whl", hash = "sha256:de4a045fbf388e120bb6ec66501458d3134f4729faed26ff95de52a754abddb1"},
@@ -4396,14 +4395,14 @@ tqdm = ">=4.64.1,<5.0.0"
 
 [[package]]
 name = "trading-strategy"
-version = "0.13.5"
+version = "0.13.6"
 description = "DEX and cryptocurrency trading data for Python - OHCLV, Uniswap, others"
 category = "main"
 optional = false
 python-versions = ">=3.10,<4"
 files = [
-    {file = "trading_strategy-0.13.5-py3-none-any.whl", hash = "sha256:a0833e5b0cae738492e5f25cee5c4d2f8c7c4c593f5c7f0aa75e05bf14bab437"},
-    {file = "trading_strategy-0.13.5.tar.gz", hash = "sha256:ea1309065842b780fc87eaa837a9bb0608d4f01defd2f0b77e0536fa9d3edd55"},
+    {file = "trading_strategy-0.13.6-py3-none-any.whl", hash = "sha256:875795ecb256e4d2beec883113ef8d3fd78b28fd0cf6f4ba2136a2aaf5db8cb5"},
+    {file = "trading_strategy-0.13.6.tar.gz", hash = "sha256:a4d5fcdfd22788d6b61a009aabe2cdfd94f7c378affd46647279a64cd30dba18"},
 ]
 
 [package.dependencies]
@@ -4737,6 +4736,7 @@ category = "main"
 optional = false
 python-versions = "*"
 files = [
+    {file = "wcwidth-0.2.6-py2.py3-none-any.whl", hash = "sha256:795b138f6875577cd91bba52baf9e445cd5118fd32723b460e30a0af30ea230e"},
     {file = "wcwidth-0.2.6.tar.gz", hash = "sha256:a5220780a404dbe3353789870978e472cfe477761f06ee55077256e509b156d0"},
 ]
 
@@ -5132,4 +5132,4 @@ web-server = ["pyramid", "WebTest", "pyramid-openapi3", "waitress"]
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.10,<3.12"
-content-hash = "54e77c700a000a5be3731c18435f2a5ee7a37948cf883203f141642ddf905147"
+content-hash = "ce8cc012649694fe058e867eebf8b168615aea9af91e1c795986e3163646d504"
