@@ -565,8 +565,12 @@ class TradeSummary:
 
     def show(self):
         """Render a summary table in IPython notebook."""
+        self.show_custom(self.to_dataframe())
+
+    @staticmethod
+    def show_custom(df: pd.DataFrame):
+        """Render a summary table in IPython notebook."""
         with pd.option_context("display.max_row", None):
-            df = self.to_dataframe()
             display(df.style.set_table_styles([{'selector': 'thead', 'props': [('display', 'none')]}]))
     
     def check_quantstats(self):
@@ -578,7 +582,7 @@ class TradeSummary:
             raise RuntimeError("Daily returns have not been calculated. Remember to provided state \
                 argument. E.g. summary = analysis.calculate_summary_statistics(state=state)")
 
-    def get_full_report(self):
+    def get_full_report(self) -> None:
         """Show basic and advanced stats and plots"""
         self.check_quantstats()
         return qs.reports.full(self.daily_returns) 
@@ -593,12 +597,12 @@ class TradeSummary:
         self.check_quantstats()
         return qs.reports.metrics(self.daily_returns, mode='full', display=False)
 
-    def get_basic_plots(self):
+    def get_basic_plots(self) -> None:
         """Show basic plots"""
         self.check_quantstats()
         return qs.reports.plots(self.daily_returns)
 
-    def get_full_plots(self):
+    def get_full_plots(self) -> None:
         """Show basic and advanced plots"""
         self.check_quantstats()
         return qs.reports.plots(self.daily_returns, mode='full')
