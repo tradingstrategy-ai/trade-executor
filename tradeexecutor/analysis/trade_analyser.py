@@ -433,16 +433,16 @@ class TradeSummary:
         decoder=json_decode_timedelta,
     ))
 
-    average_winning_trade_profit_pc: float
-    average_losing_trade_loss_pc: float
-    biggest_winning_trade_pc: Optional[float]
-    biggest_losing_trade_pc: Optional[float]
+    average_won_position_profit_pc: float
+    average_lost_position_loss_pc: float
+    biggest_won_position_profit_pc: Optional[float]
+    biggest_lost_position_profit_pc: Optional[float]
 
-    average_duration_of_winning_trades: datetime.timedelta = field(metadata=config(
+    average_duration_of_won_positions: datetime.timedelta = field(metadata=config(
         encoder=json_encode_timedelta,
         decoder=json_decode_timedelta,
     ))
-    average_duration_of_losing_trades: datetime.timedelta = field(metadata=config(
+    average_duration_of_lost_positions: datetime.timedelta = field(metadata=config(
         encoder=json_encode_timedelta,
         decoder=json_decode_timedelta,
     ))
@@ -462,8 +462,8 @@ class TradeSummary:
     end_value: USDollarAmount = field(init=False)
 
     # used if raw_timeline is provided as argument to calculate_summary_statistics
-    average_trade: Optional[float] = None
-    median_trade: Optional[float] = None
+    average_position: Optional[float] = None
+    median_position: Optional[float] = None
     max_pos_cons: Optional[int] = None
     max_neg_cons: Optional[int] = None
     max_pullback: Optional[float] = None
@@ -503,11 +503,11 @@ class TradeSummary:
 
         """
         if(self.time_bucket is not None):
-            avg_duration_winning = as_bars(self.average_duration_of_winning_trades)
-            avg_duration_losing = as_bars(self.average_duration_of_losing_trades)
+            avg_duration_winning = as_bars(self.average_duration_of_won_positions)
+            avg_duration_losing = as_bars(self.average_duration_of_lost_positions)
         else:
-            avg_duration_winning = as_duration(self.average_duration_of_winning_trades)
-            avg_duration_losing = as_duration(self.average_duration_of_losing_trades)
+            avg_duration_winning = as_duration(self.average_duration_of_won_positions)
+            avg_duration_losing = as_duration(self.average_duration_of_lost_positions)
 
         """Creates a human-readable Pandas dataframe table from the object."""
 
@@ -534,10 +534,10 @@ class TradeSummary:
             "Portfolio unrealised value": as_dollar(self.open_value),
             "Extra returns on lending pool interest": as_dollar(self.extra_return),
             "Cash left at the end": as_dollar(self.uninvested_cash),
-            "Average winning trade profit %": as_percent(self.average_winning_trade_profit_pc),
-            "Average losing trade loss %": as_percent(self.average_losing_trade_loss_pc),
-            "Biggest winning trade %": as_percent(self.biggest_winning_trade_pc),
-            "Biggest losing trade %": as_percent(self.biggest_losing_trade_pc),
+            "Average winning trade profit %": as_percent(self.average_won_position_profit_pc),
+            "Average losing trade loss %": as_percent(self.average_lost_position_loss_pc),
+            "Biggest winning trade %": as_percent(self.biggest_won_position_profit_pc),
+            "Biggest losing trade %": as_percent(self.biggest_lost_position_profit_pc),
             "Average duration of winning trades": avg_duration_winning,
             "Average duration of losing trades": avg_duration_losing,
             "LP fees paid": as_dollar(self.lp_fees_paid),
@@ -551,8 +551,8 @@ class TradeSummary:
                 else formatter(0)
             )
 
-        add_prop(self.average_trade, 'Average trade:', as_percent)
-        add_prop(self.median_trade, 'Median trade:', as_percent)
+        add_prop(self.average_position, 'Average trade:', as_percent)
+        add_prop(self.median_position, 'Median trade:', as_percent)
         add_prop(self.max_pos_cons, 'Consecutive wins', as_integer)
         add_prop(self.max_neg_cons, 'Consecutive losses', as_integer)
         add_prop(self.max_realised_loss, 'Biggest realized risk', as_percent)
@@ -671,7 +671,7 @@ class TradeAnalysis:
         def get_avg_profit_pct_check(trades: List | None):
             return float(np.mean(trades)) if trades else None
 
-        def get_avg_trade_duration(duration_list: List | None, time_bucket: TimeBucket | None):
+        def get_avg_position_duration(duration_list: List | None, time_bucket: TimeBucket | None):
             if duration_list:
                 if isinstance(time_bucket, TimeBucket):
                     return np.mean(duration_list)/time_bucket.to_timedelta()
@@ -680,14 +680,8 @@ class TradeAnalysis:
             else:
                 return datetime.timedelta(0)
 
-        def max_check(lst):
-            return max(lst) if lst else None
-        def min_check(lst):
-            return min(lst) if lst else None
-        def avg_check(lst):
-            return avg(lst) if lst else None
-        def median_check(lst):
-            return median(lst) if lst else None
+        def func_check(func, lst):
+            return func(lst) if lst else None
 
         initial_cash = self.portfolio.get_initial_deposit()
 
@@ -698,26 +692,20 @@ class TradeAnalysis:
 
         duration = datetime.timedelta(0)
 
-        winning_trades = []
-        losing_trades = []
-        zero_loss_trades = []
-
-        winning_trades_duration = []
-        losing_trades_duration = []
         loss_risk_at_open_pc = []
-        realised_losses = []
-        biggest_winning_trade_pc = None
-        biggest_losing_trade_pc = None
-        average_duration_of_losing_trades = datetime.timedelta(0)
-        average_duration_of_winning_trades = datetime.timedelta(0)
+        average_duration_of_lost_positions = datetime.timedelta(0)
+        average_duration_of_won_positions = datetime.timedelta(0)
 
         first_trade, last_trade = self.portfolio.get_first_and_last_executed_trade()
         if first_trade and first_trade != last_trade:
             duration = last_trade.executed_at - first_trade.executed_at
 
-        won_positions = lost_positions = zero_loss_positions = stop_losses = take_profits = undecided = 0
+        won_positions = lost_positions = zero_loss_positions = []
+        stop_losses = take_profits = []
+
+        undecided = 0
         open_value: USDollarAmount = 0
-        profit: USDollarAmount = 0
+        cumulative_profit: USDollarAmount = 0
         trade_volume = 0
         lp_fees_paid = 0
 
@@ -731,92 +719,111 @@ class TradeAnalysis:
             for t in position.trades:
                 trade_volume += abs(float(t.quantity) * t.executed_price)
 
-
+            # is position is open, skip
             if position.is_open():
                 open_value += position.open_value
                 undecided += 1
                 continue
 
-            if position.is_stop_loss():
-                stop_losses += 1
 
-            if position.is_take_profit():
-                take_profits += 1
-
+            # won position
             if position.is_win():
-                won_position_profits.append(position.realised_profit_percent)
-                won_position_durations.append(position.duration)
-
-                num_winning_trades += len(position.trades)
-
+                won_positions.append({
+                    "realized_profit_percent": position.realised_profit_percent,
+                    "duration": position.duration,
+                })
+            
+            # lost position
             elif position.is_lose():
-                lost_position_profits.append(position.realised_profit_percent)
-                lost_position_durations.append(position.duration)
-
                 # calculate realized loss
                 if position.portfolio_value_at_open:
                     realised_loss = position.realised_profit / position.portfolio_value_at_open
                 else:
                     # Bad data
                     realised_loss = 0
-                realised_losses.append(realised_loss)
+                
+                lost_positions.append({
+                    "realized_profit_percent": position.realised_profit_percent,
+                    "duration": position.duration,
+                    "realised_loss": realised_loss
+                })
 
+            # zero loss position
             else:
                 # Any profit exactly balances out loss in slippage and commission
-                zero_loss_positions += 1
+                zero_loss_positions.append({
+                    "duration": position.duration
+                })
 
-            profit += position.realised_profit
 
-            if position.stop_loss:
+            # stop loss 
+            if position.is_stop_loss():
+                # for further stop loss analysis in the furture
+                stop_losses.append({
+                    "duration": position.duration,
+                    "realised_profit_percent": position.realised_profit_percent
+                })
+
+                # TODO verify `loss_risk_at_open_pc`
                 loss_risk_at_open_pc.append(position.loss_risk_at_open_pct)
             else:
                 loss_risk_at_open_pc.append(position.capital_tied_at_open_pct)
 
+            # take profit
+            if position.is_take_profit():
+                # for further take profits analysis in the future
+                take_profits.append({
+                    "duration": position.duration,
+                    "realised_profit_percent": position.realised_profit_percent,
+                })
+
+
+            cumulative_profit += position.realised_profit
+
             positions.append(position)
 
-        average_position = avg_check(positions)
-        median_trade = median_check(positions)
+        average_position = func_check(avg, positions)
+        median_position = func_check(median, positions)
 
-        average_won_position_profit_pc = get_avg_profit_pct_check(winning_trades)
-        average_lost_position_loss_pc = get_avg_profit_pct_check(losing_trades)
+        average_won_position_profit_pc = get_avg_profit_pct_check([key["realised_profit_percent"] for key in won_positions])
+        average_lost_position_loss_pc = get_avg_profit_pct_check([key["realised_profit_percent"] for key in lost_positions])
 
-        max_realised_loss = min_check(realised_losses)
-        avg_realised_risk = avg_check(realised_losses)
+        max_realised_loss = func_check(min, [key["realised_loss"] for key in lost_positions])
+        avg_realised_risk = func_check(avg, [key["realised_loss"] for key in lost_positions])
 
-        max_loss_risk_at_open_pc = max_check(loss_risk_at_open_pc)
+        max_loss_risk_at_open_pc = func_check(max, loss_risk_at_open_pc)
 
-        biggest_won_position_pc = max_check(won_positions)
+        biggest_won_position_profit_pc = func_check(max, [key["realised_profit_percent"] for key in won_positions])
+        biggest_lost_position_profit_pc = func_check(min, [key["realised_profit_percent"] for key in lost_positions])
 
-        biggest_lost_position_pc = min_check(lost_positions)
-
-        average_duration_of_winning_trades = get_avg_trade_duration(won_position_durations, time_bucket)
-        average_duration_of_losing_trades = get_avg_trade_duration(lost_position_durations, time_bucket)
+        average_duration_of_won_positions = get_avg_position_duration([key["duration"] for key in won_positions], time_bucket)
+        average_duration_of_lost_positions = get_avg_position_duration([key["duration"] for key in lost_positions], time_bucket)
 
         max_pos_cons, max_neg_cons, max_pullback = self.get_max_consective(positions)
 
         lp_fees_average_pc = lp_fees_paid / trade_volume if trade_volume else 0
 
         return TradeSummary(
-            won_positions=won_positions,
-            lost_positions=lost_positions,
-            zero_loss_positions=zero_loss_positions,
-            stop_losses=stop_losses,
-            take_profits=take_profits,
+            won_positions=len(won_positions),
+            lost_positions=len(lost_positions),
+            zero_loss_positions=len(zero_loss_positions),
+            stop_losses=len(stop_losses),
+            take_profits=len(take_profits),
             undecided=undecided,
-            realised_profit=profit + extra_return,
+            realised_profit=cumulative_profit + extra_return,
             open_value=open_value,
             uninvested_cash=uninvested_cash,
             initial_cash=initial_cash,
             extra_return=extra_return,
             duration=duration,
-            average_winning_trade_profit_pc=average_winning_trade_profit_pc,
-            average_losing_trade_loss_pc=average_losing_trade_loss_pc,
-            biggest_winning_trade_pc=biggest_winning_trade_pc,
-            biggest_losing_trade_pc=biggest_losing_trade_pc,
-            average_duration_of_winning_trades=average_duration_of_winning_trades,
-            average_duration_of_losing_trades=average_duration_of_losing_trades,
-            average_trade=average_trade,
-            median_trade=median_trade,
+            average_won_position_profit_pc=average_won_position_profit_pc,
+            average_lost_position_loss_pc=average_lost_position_loss_pc,
+            biggest_won_position_profit_pc=biggest_won_position_profit_pc,
+            biggest_lost_position_profit_pc=biggest_lost_position_profit_pc,
+            average_duration_of_won_positions=average_duration_of_won_positions,
+            average_duration_of_lost_positions=average_duration_of_lost_positions,
+            average_position=average_position,
+            median_position=median_position,
             max_pos_cons=max_pos_cons,
             max_neg_cons=max_neg_cons,
             max_pullback=max_pullback,
