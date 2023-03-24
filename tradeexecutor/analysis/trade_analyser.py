@@ -583,15 +583,15 @@ class TradeSummary:
         self.check_quantstats()
         return qs.reports.full(self.daily_returns) 
     
-    def get_basic_stats(self):
+    def get_basic_stats(self) -> pd.DataFrame:
         """Show basic stats only"""
         self.check_quantstats()
-        return qs.reports.metrics(self.daily_returns)
+        return qs.reports.metrics(self.daily_returns, display=False)
 
-    def get_full_stats(self):
+    def get_full_stats(self) -> pd.DataFrame:
         """Show basic and advanced stats"""
         self.check_quantstats()
-        return qs.reports.metrics(self.daily_returns, mode='full')
+        return qs.reports.metrics(self.daily_returns, mode='full', display=False)
 
     def get_basic_plots(self):
         """Show basic plots"""
