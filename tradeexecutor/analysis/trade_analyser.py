@@ -588,12 +588,17 @@ class TradeSummary:
         return qs.reports.full(self.daily_returns) 
     
     def get_basic_stats(self) -> pd.DataFrame:
-        """Show basic stats only"""
+        """Gets basic stats only.
+        
+        returns: Pandas DataFrame object 
+        """
         self.check_quantstats()
         return qs.reports.metrics(self.daily_returns, display=False)
 
     def get_full_stats(self) -> pd.DataFrame:
-        """Show basic and advanced stats"""
+        """Gets basic and advanced stats.
+        
+        returns: Pandas DataFrame object"""
         self.check_quantstats()
         return qs.reports.metrics(self.daily_returns, mode='full', display=False)
 
