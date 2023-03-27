@@ -583,7 +583,13 @@ class TradeSummary:
                 argument. E.g. summary = analysis.calculate_summary_statistics(state=state)")
 
     def show_full_report(self) -> None:
-        """Show basic and advanced stats and plots"""
+        """Show basic and advanced stats and plots
+        
+        - Should be used in Jupyter notebooks
+        - Shows a bunch of statistics (basic and advanced) and some plots
+        - This function cannot be used in normal python (.py) files since its only
+        purpose to display
+        """
         self.check_quantstats()
         return qs.reports.full(self.daily_returns) 
     
@@ -603,12 +609,22 @@ class TradeSummary:
         return qs.reports.metrics(self.daily_returns, mode='full', display=False)
 
     def show_basic_plots(self) -> None:
-        """Show basic plots"""
+        """Show basic plots
+        
+        - Should be used in Jupyter notebooks
+        - Shows some basic plots
+        - This function cannot be used in normal python (.py) files since its only
+        purpose to display"""
         self.check_quantstats()
         return qs.reports.plots(self.daily_returns)
 
     def show_full_plots(self) -> None:
-        """Show basic and advanced plots"""
+        """Show basic and advanced plots
+        
+        - Should be used in Jupyter notebooks
+        - Shows both basic and more advanced plots
+        - This function cannot be used in normal python (.py) files since its only
+        purpose to display"""
         self.check_quantstats()
         return qs.reports.plots(self.daily_returns, mode='full')
 
