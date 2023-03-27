@@ -565,49 +565,71 @@ class TradeSummary:
 
     def show(self):
         """Render a summary table in IPython notebook."""
+        self.show_custom(self.to_dataframe())
+    
+    @staticmethod
+    def show_custom(df: pd.DataFrame):
+        """Render a summary table in IPython notebook.
+        
+        TODO: truncate unnecassary decimals at the end of floats
+        """
         with pd.option_context("display.max_row", None):
-            df = self.to_dataframe()
             display(df.style.set_table_styles([{'selector': 'thead', 'props': [('display', 'none')]}]))
     
-    def get_full_report(self):
-        """Show basic and advanced stats and plots"""
-        return (
-            qs.reports.full(self.daily_returns) 
-            if HAS_QUANTSTATS and self.daily_returns is not None
-            else None
-        )
+    def check_quantstats(self):
+        """Check that requirements are met for using quantstats library. Used as decorator for provided helper methods."""
+        if not HAS_QUANTSTATS:
+            raise RuntimeError("Quantstats library not installed")
+
+        if not hasattr(self, "daily_returns"):
+            raise RuntimeError("Daily returns have not been calculated. Remember to provided state \
+                argument. E.g. summary = analysis.calculate_summary_statistics(state=state)")
+
+    def show_full_report(self) -> None:
+        """Show basic and advanced stats and plots
+        
+        - Should be used in IPython notebooks
+        - Shows a bunch of statistics (basic and advanced) and some plots
+        - This function cannot be used in normal python (.py) files since its only
+        purpose to display
+        """
+        self.check_quantstats()
+        return qs.reports.full(self.daily_returns) 
     
-    def get_basic_stats(self):
-        """Show basic stats only"""
-        return (
-            qs.reports.metrics(self.daily_returns)
-            if HAS_QUANTSTATS and self.daily_returns is not None
-            else None
-        )
+    def get_basic_stats(self) -> pd.DataFrame:
+        """Gets basic stats only.
+        
+        returns: Pandas DataFrame object 
+        """
+        self.check_quantstats()
+        return qs.reports.metrics(self.daily_returns, display=False)
 
-    def get_full_stats(self):
-        """Show basic and advanced stats"""
-        return (
-            qs.reports.metrics(self.daily_returns, mode='full')
-            if HAS_QUANTSTATS and self.daily_returns is not None
-            else None
-        )
+    def get_full_stats(self) -> pd.DataFrame:
+        """Gets basic and advanced stats.
+        
+        returns: Pandas DataFrame object"""
+        self.check_quantstats()
+        return qs.reports.metrics(self.daily_returns, mode='full', display=False)
 
-    def get_basic_plots(self):
-        """Show basic plots"""
-        return (
-            qs.reports.plots(self.daily_returns)
-            if HAS_QUANTSTATS and self.daily_returns is not None
-            else None
-        )
+    def show_basic_plots(self) -> None:
+        """Show basic plots
+        
+        - Should be used in IPython notebooks
+        - Shows some basic plots
+        - This function cannot be used in normal python (.py) files since its only
+        purpose to display"""
+        self.check_quantstats()
+        return qs.reports.plots(self.daily_returns)
 
-    def get_full_plots(self):
-        """Show basic and advanced plots"""
-        return (
-            qs.reports.plots(self.daily_returns, mode='full')
-            if HAS_QUANTSTATS and self.daily_returns is not None
-            else None
-        )
+    def show_full_plots(self) -> None:
+        """Show basic and advanced plots
+        
+        - Should be used in IPython notebooks
+        - Shows both basic and more advanced plots
+        - This function cannot be used in normal python (.py) files since its only
+        purpose to display"""
+        self.check_quantstats()
+        return qs.reports.plots(self.daily_returns, mode='full')
 
 
 @dataclass
@@ -665,7 +687,14 @@ class TradeAnalysis:
         if(time_bucket is not None):
             assert isinstance(time_bucket, TimeBucket), "Not a valid time bucket"
 
-        # TODO cannot add assertion or typing for state since circular import error
+        # for advanced statistics
+        # import here to avoid circular import error
+        if state is not None and HAS_QUANTSTATS:
+            from tradeexecutor.visual.equity_curve import get_daily_returns
+            daily_returns = get_daily_returns(state)
+        else:
+            daily_returns = None
+
 
         def get_avg_profit_pct_check(trades: List | None):
             return float(np.mean(trades)) if trades else None
@@ -795,14 +824,6 @@ class TradeAnalysis:
         max_pos_cons, max_neg_cons, max_pullback = self.get_max_consective(positions)
 
         lp_fees_average_pc = lp_fees_paid / trade_volume if trade_volume else 0
-
-        # for advanced statistics
-        # import here to avoid circular import error
-        if state is not None and HAS_QUANTSTATS:
-            from tradeexecutor.visual.equity_curve import get_daily_returns
-            daily_returns = get_daily_returns(state)
-        else:
-            daily_returns = None
 
         return TradeSummary(
             won=won,
@@ -1159,7 +1180,7 @@ def build_trade_analysis(
 
     - Read positions from backtesting or live state
 
-    - Create TradeAnalysis instance that can be used to display Jupyter notebook
+    - Create TradeAnalysis instance that can be used to display IPython notebook
       data on the performance
 
     :param state:
@@ -1262,6 +1283,7 @@ def build_trade_analysis(
         portfolio, 
         asset_histories=histories
     )
+
 
 def avg(lst: list[int]):
     return sum(lst) / len(lst)

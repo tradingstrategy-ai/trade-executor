@@ -11,7 +11,7 @@ import pytest
 import pandas as pd
 from pandas_ta.overlap import ema
 
-from tradeexecutor.analysis.trade_analyser import build_trade_analysis, expand_timeline, TimelineRowStylingMode
+from tradeexecutor.analysis.trade_analyser import build_trade_analysis, expand_timeline, TimelineRowStylingMode, TradeAnalysis, TradeSummary
 from tradeexecutor.backtest.backtest_runner import run_backtest_inline
 from tradeexecutor.cli.log import setup_pytest_logging
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
@@ -35,6 +35,11 @@ from tradeexecutor.strategy.strategy_module import pregenerated_create_trading_u
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.strategy_type import StrategyType
 from tradeexecutor.strategy.default_routing_options import TradeRouting
+
+
+# relative tolerance for floating point tests
+APPROX_REL = 1e-6
+
 
 # How much of the cash to put on a single trade
 position_size = 0.10
@@ -194,76 +199,169 @@ def test_ema_on_universe(universe: TradingStrategyUniverse):
     assert float(ema_20_series.iloc[-1]) == pytest.approx(1955.019773)
 
 
+# to avoid running backtest multiple times
+@pytest.fixture(scope="module")
+def backtest_result(
+    universe: TradingStrategyUniverse
+) -> tuple[State, TradingStrategyUniverse, dict]:
+    start_at, end_at = universe.universe.candles.get_timestamp_range()
+
+    routing_model = generate_simple_routing_model(universe)
+
+    # Run the test
+    state, universe, debug_dump = run_backtest_inline(
+        start_at=start_at.to_pydatetime(),
+        end_at=end_at.to_pydatetime(),
+        client=None,  # None of downloads needed, because we are using synthetic data
+        cycle_duration=CycleDuration.cycle_1d,  # Override to use 24h cycles despite what strategy file says
+        decide_trades=decide_trades,
+        create_trading_universe=None,
+        universe=universe,
+        initial_deposit=10_000,
+        reserve_currency=ReserveCurrency.busd,
+        trade_routing=TradeRouting.user_supplied_routing_model,
+        routing_model=routing_model,
+        log_level=logging.WARNING,
+    )
+
+    return state, universe, debug_dump
+
+
 def test_run_inline_synthetic_backtest(
         logger: logging.Logger,
-        universe: TradingStrategyUniverse,
+        backtest_result: tuple[State, TradingStrategyUniverse, dict],
     ):
     """Run the strategy backtest using inline decide_trades function.
     """
 
-    start_at, end_at = universe.universe.candles.get_timestamp_range()
-
-    routing_model = generate_simple_routing_model(universe)
-
-    # Run the test
-    state, universe, debug_dump = run_backtest_inline(
-        start_at=start_at.to_pydatetime(),
-        end_at=end_at.to_pydatetime(),
-        client=None,  # None of downloads needed, because we are using synthetic data
-        cycle_duration=CycleDuration.cycle_1d,  # Override to use 24h cycles despite what strategy file says
-        decide_trades=decide_trades,
-        create_trading_universe=None,
-        universe=universe,
-        initial_deposit=10_000,
-        reserve_currency=ReserveCurrency.busd,
-        trade_routing=TradeRouting.user_supplied_routing_model,
-        routing_model=routing_model,
-        log_level=logging.WARNING,
-    )
+    state, universe, debug_dump = backtest_result
 
     assert len(debug_dump) == 213
 
 
-def test_analyse_synthetic_trading_portfolio(
-        logger: logging.Logger,
-        universe: TradingStrategyUniverse,
-    ):
-    """Analyse synthetic trading strategy results.
-
-    TODO: Might move this test to its own module.
-    """
-
-    start_at, end_at = universe.universe.candles.get_timestamp_range()
-
-    routing_model = generate_simple_routing_model(universe)
-
-    # Run the test
-    state, universe, debug_dump = run_backtest_inline(
-        start_at=start_at.to_pydatetime(),
-        end_at=end_at.to_pydatetime(),
-        client=None,  # None of downloads needed, because we are using synthetic data
-        cycle_duration=CycleDuration.cycle_1d,  # Override to use 24h cycles despite what strategy file says
-        decide_trades=decide_trades,
-        create_trading_universe=None,
-        universe=universe,
-        initial_deposit=10_000,
-        reserve_currency=ReserveCurrency.busd,
-        trade_routing=TradeRouting.user_supplied_routing_model,
-        routing_model=routing_model,
-        log_level=logging.WARNING,
-    )
-
+@pytest.fixture(scope = "module")
+def analysis(
+    backtest_result: tuple[State, TradingStrategyUniverse, dict]
+) -> TradeAnalysis:
+    state, universe, debug_dump = backtest_result
     analysis = build_trade_analysis(state.portfolio)
-    summary = analysis.calculate_summary_statistics()
+
+    return analysis
+
+
+@pytest.fixture(scope = "module")
+def summary(
+    backtest_result: tuple[State, TradingStrategyUniverse, dict],
+    analysis: TradeAnalysis
+) -> TradeSummary:
+
+    state, universe, debug_dump = backtest_result
+
+    summary = analysis.calculate_summary_statistics(state = state)
 
     # Should not cause exception
     summary.to_dataframe()
 
+    return summary
+
+
+def test_basic_summary_statistics(
+    summary: TradeSummary,
+):
+    """Analyse synthetic trading strategy adv_stats.
+
+    TODO: Might move this test to its own module.
+    # TODO summary stat test with stop losses involved
+    """
+
     assert summary.initial_cash == 10_000
     assert summary.won == 4
     assert summary.lost == 7
-    assert summary.realised_profit == pytest.approx(-47.17044385644749)
-    assert summary.open_value == pytest.approx(0)
+    assert summary.realised_profit == pytest.approx(-47.17044385644749, rel=APPROX_REL)
+    assert summary.open_value == pytest.approx(0, rel=APPROX_REL)
+    assert summary.end_value == pytest.approx(9952.829556143553, rel=APPROX_REL)
+    assert summary.win_percent == pytest.approx(0.36363636363636365, rel=APPROX_REL)
+    assert summary.duration == datetime.timedelta(days=181)
+    assert summary.trade_volume == pytest.approx(21900.29776619458, rel=APPROX_REL)
+    assert summary.uninvested_cash == pytest.approx(9952.829556143553, rel=APPROX_REL)
+
+    assert summary.stop_losses == 0
+    assert summary.take_profits == 0
+    assert summary.total_positions == 11
+    assert summary.undecided == 0
+    assert summary.zero_loss == 0
+
+    assert summary.annualised_return_percent == pytest.approx(-0.0095122718274248, rel=APPROX_REL)
+    assert summary.realised_profit == pytest.approx(-47.17044385644749, rel=APPROX_REL)
+    assert summary.return_percent == pytest.approx(-0.004717044385644658, rel=APPROX_REL)
+
+    assert summary.lp_fees_average_pc == pytest.approx(0.003004503819031923, rel=APPROX_REL)
+    assert summary.lp_fees_paid == pytest.approx(65.79952827646791, rel=APPROX_REL)
+
+    assert summary.average_duration_of_losing_trades == pd.Timedelta('8 days 13:42:51.428571428')
+    assert summary.average_duration_of_winning_trades == pd.Timedelta('19 days 00:00:00')
+
+    assert summary.median_trade == pytest.approx(-0.02569303244842014, rel=APPROX_REL)
+    assert summary.average_losing_trade_loss_pc == pytest.approx(-0.05157416459057936, rel=APPROX_REL)
+    assert summary.average_net_profit == pytest.approx(-4.288222168767954, rel=APPROX_REL)
+    assert summary.average_trade == pytest.approx(-0.00398060248726169, rel=APPROX_REL)
+    assert summary.average_winning_trade_profit_pc == pytest.approx(0.07930813119354424, rel=APPROX_REL)
+    assert summary.avg_realised_risk == pytest.approx(-0.005157416459057936, rel=APPROX_REL)
+    assert summary.biggest_losing_trade_pc == pytest.approx(-0.14216816784355246, rel=APPROX_REL)
+    assert summary.biggest_winning_trade_pc == pytest.approx(0.1518660490865238, rel=APPROX_REL)
+
+    assert summary.max_loss_risk == pytest.approx(0.10000000000000002, rel=APPROX_REL)
+    assert summary.max_neg_cons == 3
+    assert summary.max_pos_cons == 1
+    assert summary.max_pullback == pytest.approx(-0.01703492069936046, rel=APPROX_REL)
+
+
+
+def test_advanced_summary_statistics(
+    summary: TradeSummary
+):
+    full_stats = summary.get_full_stats()
+
+    adv_stats = full_stats.to_dict()["Strategy"]
+
+    assert adv_stats['Start Period'] == '2021-06-01'
+    assert adv_stats['End Period'] == '2021-12-30'
+    assert adv_stats['Risk-Free Rate'] == pytest.approx(0, rel=APPROX_REL)
+    assert adv_stats['Time in Market'] == pytest.approx(0.7, rel=APPROX_REL)
+    assert adv_stats['Cumulative Return'] == pytest.approx(0, rel=APPROX_REL)
+    assert adv_stats['CAGR﹪'] == pytest.approx(-0.01, rel=APPROX_REL)
+    assert adv_stats['Sharpe'] == pytest.approx(-0.14, rel=APPROX_REL)
+    assert adv_stats['Prob. Sharpe Ratio'] == pytest.approx(0.45, rel=APPROX_REL)
+    assert adv_stats['Smart Sharpe'] == pytest.approx(-0.13, rel=APPROX_REL)
+    assert adv_stats['Sortino'] == pytest.approx(-0.2, rel=APPROX_REL)
+    assert adv_stats['Smart Sortino'] == pytest.approx(-0.19, rel=APPROX_REL)
+    assert adv_stats['Sortino/√2'] == pytest.approx(-0.14, rel=APPROX_REL)
+    assert adv_stats['Smart Sortino/√2'] == pytest.approx(-0.13, rel=APPROX_REL)
+    assert adv_stats['Omega'] == pytest.approx(0.98, rel=APPROX_REL)
+    assert adv_stats['Max Drawdown'] == pytest.approx(-0.03, rel=APPROX_REL)
+    assert adv_stats['Longest DD Days'] == 76
+    assert adv_stats['Volatility (ann.)'] == pytest.approx(0.04, rel=APPROX_REL)
+    assert adv_stats['Calmar'] == pytest.approx(-0.32, rel=APPROX_REL)
+    assert adv_stats['Skew'] == pytest.approx(0.22, rel=APPROX_REL)
+    assert adv_stats['Kurtosis'] == pytest.approx(0.08, rel=APPROX_REL)
+    assert adv_stats['Expected Daily'] == pytest.approx(0, rel=APPROX_REL)
+    assert adv_stats['Expected Monthly'] == pytest.approx(0, rel=APPROX_REL)
+    assert adv_stats['Expected Yearly'] == pytest.approx(0, rel=APPROX_REL)
+    assert adv_stats['Kelly Criterion'] == pytest.approx(-0.01, rel=APPROX_REL)
+    assert adv_stats['Risk of Ruin'] == pytest.approx(0, rel=APPROX_REL)
+    assert adv_stats['Daily Value-at-Risk'] == pytest.approx(0, rel=APPROX_REL)
+    assert adv_stats['Expected Shortfall (cVaR)'] == pytest.approx(0, rel=APPROX_REL)
+    assert adv_stats['Max Consecutive Wins'] == 5.0
+    assert adv_stats['Max Consecutive Losses'] == 7.0
+    assert adv_stats['Gain/Pain Ratio'] == pytest.approx(-0.02, rel=APPROX_REL)
+
+
+
+def test_timeline(
+    analysis: TradeAnalysis,
+    backtest_result: tuple[State, TradingStrategyUniverse, dict]
+):
+    state, universe, debug_dump = backtest_result
 
     timeline = analysis.create_timeline()
 
@@ -299,9 +397,9 @@ def test_analyse_synthetic_trading_portfolio(
 
 
 def test_benchmark_synthetic_trading_portfolio(
-        logger: logging.Logger,
-        universe: TradingStrategyUniverse,
-    ):
+    logger: logging.Logger,
+    universe: TradingStrategyUniverse,
+):
     """Build benchmark figures.
 
     TODO: Might move this test to its own module.
