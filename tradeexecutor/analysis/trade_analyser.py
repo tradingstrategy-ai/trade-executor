@@ -565,8 +565,15 @@ class TradeSummary:
 
     def show(self):
         """Render a summary table in IPython notebook."""
+        self.show_custom(self.to_dataframe())
+    
+    @staticmethod
+    def show_custom(df: pd.DataFrame):
+        """Render a summary table in IPython notebook.
+        
+        TODO: truncate unnecassary decimals at the end of floats
+        """
         with pd.option_context("display.max_row", None):
-            df = self.to_dataframe()
             display(df.style.set_table_styles([{'selector': 'thead', 'props': [('display', 'none')]}]))
     
     def check_quantstats(self):
@@ -578,28 +585,49 @@ class TradeSummary:
             raise RuntimeError("Daily returns have not been calculated. Remember to provided state \
                 argument. E.g. summary = analysis.calculate_summary_statistics(state=state)")
 
-    def get_full_report(self):
-        """Show basic and advanced stats and plots"""
+    def show_full_report(self) -> None:
+        """Show basic and advanced stats and plots
+        
+        - Should be used in IPython notebooks
+        - Shows a bunch of statistics (basic and advanced) and some plots
+        - This function cannot be used in normal python (.py) files since its only
+        purpose to display
+        """
         self.check_quantstats()
         return qs.reports.full(self.daily_returns) 
     
-    def get_basic_stats(self):
-        """Show basic stats only"""
+    def get_basic_stats(self) -> pd.DataFrame:
+        """Gets basic stats only.
+        
+        returns: Pandas DataFrame object 
+        """
         self.check_quantstats()
-        return qs.reports.metrics(self.daily_returns)
+        return qs.reports.metrics(self.daily_returns, display=False)
 
-    def get_full_stats(self):
-        """Show basic and advanced stats"""
+    def get_full_stats(self) -> pd.DataFrame:
+        """Gets basic and advanced stats.
+        
+        returns: Pandas DataFrame object"""
         self.check_quantstats()
-        return qs.reports.metrics(self.daily_returns, mode='full')
+        return qs.reports.metrics(self.daily_returns, mode='full', display=False)
 
-    def get_basic_plots(self):
-        """Show basic plots"""
+    def show_basic_plots(self) -> None:
+        """Show basic plots
+        
+        - Should be used in IPython notebooks
+        - Shows some basic plots
+        - This function cannot be used in normal python (.py) files since its only
+        purpose to display"""
         self.check_quantstats()
         return qs.reports.plots(self.daily_returns)
 
-    def get_full_plots(self):
-        """Show basic and advanced plots"""
+    def show_full_plots(self) -> None:
+        """Show basic and advanced plots
+        
+        - Should be used in IPython notebooks
+        - Shows both basic and more advanced plots
+        - This function cannot be used in normal python (.py) files since its only
+        purpose to display"""
         self.check_quantstats()
         return qs.reports.plots(self.daily_returns, mode='full')
 
@@ -667,6 +695,9 @@ class TradeAnalysis:
         else:
             daily_returns = None
 
+
+        def get_avg_profit_pct_check(trades: List | None):
+            return float(np.mean(trades)) if trades else None
 
         def get_avg_profit_pct_check(positions: List[float] | None):
             return float(np.mean(positions)) if positions else None
@@ -1173,7 +1204,7 @@ def build_trade_analysis(
 
     - Read positions from backtesting or live state
 
-    - Create TradeAnalysis instance that can be used to display Jupyter notebook
+    - Create TradeAnalysis instance that can be used to display IPython notebook
       data on the performance
 
     :param state:
@@ -1276,6 +1307,7 @@ def build_trade_analysis(
         portfolio, 
         asset_histories=histories
     )
+
 
 def avg(lst: list[int]):
     return sum(lst) / len(lst)
