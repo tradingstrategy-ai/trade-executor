@@ -582,7 +582,7 @@ class TradeSummary:
             raise RuntimeError("Daily returns have not been calculated. Remember to provided state \
                 argument. E.g. summary = analysis.calculate_summary_statistics(state=state)")
 
-    def get_full_report(self) -> None:
+    def show_full_report(self) -> None:
         """Show basic and advanced stats and plots"""
         self.check_quantstats()
         return qs.reports.full(self.daily_returns) 
@@ -602,12 +602,12 @@ class TradeSummary:
         self.check_quantstats()
         return qs.reports.metrics(self.daily_returns, mode='full', display=False)
 
-    def get_basic_plots(self) -> None:
+    def show_basic_plots(self) -> None:
         """Show basic plots"""
         self.check_quantstats()
         return qs.reports.plots(self.daily_returns)
 
-    def get_full_plots(self) -> None:
+    def show_full_plots(self) -> None:
         """Show basic and advanced plots"""
         self.check_quantstats()
         return qs.reports.plots(self.daily_returns, mode='full')
