@@ -435,8 +435,8 @@ class TradeSummary:
 
     average_won_position_profit_pc: float
     average_lost_position_loss_pc: float
-    biggest_won_position_profit_pc: Optional[float]
-    biggest_lost_position_profit_pc: Optional[float]
+    biggest_won_position_pc: Optional[float]
+    biggest_lost_position_pc: Optional[float]
 
     average_duration_of_won_positions: datetime.timedelta = field(metadata=config(
         encoder=json_encode_timedelta,
@@ -536,8 +536,8 @@ class TradeSummary:
             "Cash left at the end": as_dollar(self.uninvested_cash),
             "Average winning positions profit %": as_percent(self.average_won_position_profit_pc),
             "Average losing position loss %": as_percent(self.average_lost_position_loss_pc),
-            "Biggest winning position %": as_percent(self.biggest_won_position_profit_pc),
-            "Biggest losing position %": as_percent(self.biggest_lost_position_profit_pc),
+            "Biggest winning position %": as_percent(self.biggest_won_position_pc),
+            "Biggest losing position %": as_percent(self.biggest_lost_position_pc),
             "Average duration of winning positions": avg_duration_winning,
             "Average duration of losing positions": avg_duration_losing,
             "LP fees paid": as_dollar(self.lp_fees_paid),
@@ -820,7 +820,7 @@ class TradeAnalysis:
         all_position_profits = won_position_profits + lost_position_profits
 
         average_position = func_check(avg, all_position_profits)
-        median_position = func_check(median, lost_position_profits)
+        median_position = func_check(median, all_position_profits)
 
         average_won_position_profit_pc = get_avg_profit_pct_check(won_position_profits)
         average_lost_position_loss_pc = get_avg_profit_pct_check(lost_position_profits)
@@ -830,8 +830,8 @@ class TradeAnalysis:
 
         max_loss_risk_at_open_pc = func_check(max, loss_risk_at_open_pc)
 
-        biggest_won_position_profit_pc = func_check(max, won_position_profits)
-        biggest_lost_position_profit_pc = func_check(min, lost_position_profits)
+        biggest_won_position_pc = func_check(max, won_position_profits)
+        biggest_lost_position_pc = func_check(min, lost_position_profits)
 
         average_duration_of_won_positions = get_avg_position_duration([key["duration"] for key in won_positions], time_bucket)
         average_duration_of_lost_positions = get_avg_position_duration([key["duration"] for key in lost_positions], time_bucket)
@@ -855,8 +855,8 @@ class TradeAnalysis:
             duration=duration,
             average_won_position_profit_pc=average_won_position_profit_pc,
             average_lost_position_loss_pc=average_lost_position_loss_pc,
-            biggest_won_position_profit_pc=biggest_won_position_profit_pc,
-            biggest_lost_position_profit_pc=biggest_lost_position_profit_pc,
+            biggest_won_position_pc=biggest_won_position_pc,
+            biggest_lost_position_pc=biggest_lost_position_pc,
             average_duration_of_won_positions=average_duration_of_won_positions,
             average_duration_of_lost_positions=average_duration_of_lost_positions,
             average_position=average_position,
