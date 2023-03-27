@@ -199,40 +199,11 @@ def test_ema_on_universe(universe: TradingStrategyUniverse):
     assert float(ema_20_series.iloc[-1]) == pytest.approx(1955.019773)
 
 
-def test_run_inline_synthetic_backtest(
-        logger: logging.Logger,
-        universe: TradingStrategyUniverse,
-    ):
-    """Run the strategy backtest using inline decide_trades function.
-    """
-
-    start_at, end_at = universe.universe.candles.get_timestamp_range()
-
-    routing_model = generate_simple_routing_model(universe)
-
-    # Run the test
-    state, universe, debug_dump = run_backtest_inline(
-        start_at=start_at.to_pydatetime(),
-        end_at=end_at.to_pydatetime(),
-        client=None,  # None of downloads needed, because we are using synthetic data
-        cycle_duration=CycleDuration.cycle_1d,  # Override to use 24h cycles despite what strategy file says
-        decide_trades=decide_trades,
-        create_trading_universe=None,
-        universe=universe,
-        initial_deposit=10_000,
-        reserve_currency=ReserveCurrency.busd,
-        trade_routing=TradeRouting.user_supplied_routing_model,
-        routing_model=routing_model,
-        log_level=logging.WARNING,
-    )
-
-    assert len(debug_dump) == 213
-
 # to avoid running backtest multiple times
 @pytest.fixture(scope="module")
 def backtest_result(
     universe: TradingStrategyUniverse
-) -> tuple[State, TradingStrategyUniverse]:
+) -> tuple[State, TradingStrategyUniverse, dict]:
     start_at, end_at = universe.universe.candles.get_timestamp_range()
 
     routing_model = generate_simple_routing_model(universe)
@@ -253,13 +224,26 @@ def backtest_result(
         log_level=logging.WARNING,
     )
 
-    return state, universe
+    return state, universe, debug_dump
+
+
+def test_run_inline_synthetic_backtest(
+        logger: logging.Logger,
+        backtest_result: tuple[State, TradingStrategyUniverse, dict],
+    ):
+    """Run the strategy backtest using inline decide_trades function.
+    """
+
+    state, universe, debug_dump = backtest_result
+
+    assert len(debug_dump) == 213
+
 
 @pytest.fixture(scope = "module")
 def analysis(
-    backtest_result: tuple[State, TradingStrategyUniverse]
+    backtest_result: tuple[State, TradingStrategyUniverse, dict]
 ) -> TradeAnalysis:
-    state, universe = backtest_result
+    state, universe, debug_dump = backtest_result
     analysis = build_trade_analysis(state.portfolio)
 
     return analysis
@@ -267,11 +251,11 @@ def analysis(
 
 @pytest.fixture(scope = "module")
 def summary(
-    backtest_result: tuple[State, TradingStrategyUniverse],
+    backtest_result: tuple[State, TradingStrategyUniverse, dict],
     analysis: TradeAnalysis
 ) -> TradeSummary:
 
-    state, universe = backtest_result
+    state, universe, debug_dump = backtest_result
 
     summary = analysis.calculate_summary_statistics(state = state)
 
@@ -375,9 +359,9 @@ def test_advanced_summary_statistics(
 
 def test_timeline(
     analysis: TradeAnalysis,
-    backtest_result: tuple[State, TradingStrategyUniverse]
+    backtest_result: tuple[State, TradingStrategyUniverse, dict]
 ):
-    state, universe = backtest_result
+    state, universe, debug_dump = backtest_result
 
     timeline = analysis.create_timeline()
 
