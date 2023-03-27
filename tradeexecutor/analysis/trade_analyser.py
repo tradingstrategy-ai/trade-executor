@@ -695,10 +695,6 @@ class TradeAnalysis:
         else:
             daily_returns = None
 
-
-        def get_avg_profit_pct_check(trades: List | None):
-            return float(np.mean(trades)) if trades else None
-
         def get_avg_profit_pct_check(positions: List[float] | None):
             return float(np.mean(positions)) if positions else None
 
