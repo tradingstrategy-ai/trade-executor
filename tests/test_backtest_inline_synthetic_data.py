@@ -36,6 +36,11 @@ from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.strategy_type import StrategyType
 from tradeexecutor.strategy.default_routing_options import TradeRouting
 
+
+# relative tolerance for floating point tests
+APPROX_REL = 1e-6
+
+
 # How much of the cash to put on a single trade
 position_size = 0.10
 
@@ -262,10 +267,13 @@ def analysis(
 
 @pytest.fixture(scope = "module")
 def summary(
+    backtest_result: tuple[State, TradingStrategyUniverse],
     analysis: TradeAnalysis
 ) -> TradeSummary:
 
-    summary = analysis.calculate_summary_statistics()
+    state, universe = backtest_result
+
+    summary = analysis.calculate_summary_statistics(state = state)
 
     # Should not cause exception
     summary.to_dataframe()
@@ -276,23 +284,22 @@ def summary(
 def test_basic_summary_statistics(
     summary: TradeSummary,
 ):
-    """Analyse synthetic trading strategy results.
+    """Analyse synthetic trading strategy adv_stats.
 
     TODO: Might move this test to its own module.
     # TODO summary stat test with stop losses involved
     """
-    
 
     assert summary.initial_cash == 10_000
     assert summary.won == 4
     assert summary.lost == 7
-    assert summary.realised_profit == pytest.approx(-47.17044385644749)
-    assert summary.open_value == pytest.approx(0)
-    assert summary.end_value == 9952.829556143553
-    assert summary.win_percent == 0.36363636363636365
+    assert summary.realised_profit == pytest.approx(-47.17044385644749, rel=APPROX_REL)
+    assert summary.open_value == pytest.approx(0, rel=APPROX_REL)
+    assert summary.end_value == pytest.approx(9952.829556143553, rel=APPROX_REL)
+    assert summary.win_percent == pytest.approx(0.36363636363636365, rel=APPROX_REL)
     assert summary.duration == datetime.timedelta(days=181)
-    assert summary.trade_volume == 21900.29776619458
-    assert summary.uninvested_cash == 9952.829556143553
+    assert summary.trade_volume == pytest.approx(21900.29776619458, rel=APPROX_REL)
+    assert summary.uninvested_cash == pytest.approx(9952.829556143553, rel=APPROX_REL)
 
     assert summary.stop_losses == 0
     assert summary.take_profits == 0
@@ -300,35 +307,71 @@ def test_basic_summary_statistics(
     assert summary.undecided == 0
     assert summary.zero_loss == 0
 
-    assert summary.annualised_return_percent == -0.0095122718274248
-    assert summary.realised_profit == -47.17044385644749
-    assert summary.return_percent == -0.004717044385644658
+    assert summary.annualised_return_percent == pytest.approx(-0.0095122718274248, rel=APPROX_REL)
+    assert summary.realised_profit == pytest.approx(-47.17044385644749, rel=APPROX_REL)
+    assert summary.return_percent == pytest.approx(-0.004717044385644658, rel=APPROX_REL)
 
-    assert summary.lp_fees_average_pc == 0.003004503819031923
-    assert summary.lp_fees_paid == 65.79952827646791
-    
+    assert summary.lp_fees_average_pc == pytest.approx(0.003004503819031923, rel=APPROX_REL)
+    assert summary.lp_fees_paid == pytest.approx(65.79952827646791, rel=APPROX_REL)
+
     assert summary.average_duration_of_losing_trades == pd.Timedelta('8 days 13:42:51.428571428')
     assert summary.average_duration_of_winning_trades == pd.Timedelta('19 days 00:00:00')
-    
-    assert summary.median_trade == -0.02569303244842014
-    assert summary.average_losing_trade_loss_pc == -0.05157416459057936
-    assert summary.average_net_profit == -4.288222168767954
-    assert summary.average_trade == -0.00398060248726169
-    assert summary.average_winning_trade_profit_pc == 0.07930813119354424
-    assert summary.avg_realised_risk == -0.005157416459057936
-    assert summary.biggest_losing_trade_pc == -0.14216816784355246
-    assert summary.biggest_winning_trade_pc == 0.1518660490865238
 
-    assert summary.max_loss_risk == 0.10000000000000002
+    assert summary.median_trade == pytest.approx(-0.02569303244842014, rel=APPROX_REL)
+    assert summary.average_losing_trade_loss_pc == pytest.approx(-0.05157416459057936, rel=APPROX_REL)
+    assert summary.average_net_profit == pytest.approx(-4.288222168767954, rel=APPROX_REL)
+    assert summary.average_trade == pytest.approx(-0.00398060248726169, rel=APPROX_REL)
+    assert summary.average_winning_trade_profit_pc == pytest.approx(0.07930813119354424, rel=APPROX_REL)
+    assert summary.avg_realised_risk == pytest.approx(-0.005157416459057936, rel=APPROX_REL)
+    assert summary.biggest_losing_trade_pc == pytest.approx(-0.14216816784355246, rel=APPROX_REL)
+    assert summary.biggest_winning_trade_pc == pytest.approx(0.1518660490865238, rel=APPROX_REL)
+
+    assert summary.max_loss_risk == pytest.approx(0.10000000000000002, rel=APPROX_REL)
     assert summary.max_neg_cons == 3
     assert summary.max_pos_cons == 1
-    assert summary.max_pullback == -0.01703492069936046
+    assert summary.max_pullback == pytest.approx(-0.01703492069936046, rel=APPROX_REL)
+
 
 
 def test_advanced_summary_statistics(
-
+    summary: TradeSummary
 ):
-    pass
+    full_stats = summary.get_full_stats()
+
+    adv_stats = full_stats.to_dict()["Strategy"]
+
+    assert adv_stats['Start Period'] == '2021-06-01'
+    assert adv_stats['End Period'] == '2021-12-30'
+    assert adv_stats['Risk-Free Rate'] == pytest.approx(0, rel=APPROX_REL)
+    assert adv_stats['Time in Market'] == pytest.approx(0.7, rel=APPROX_REL)
+    assert adv_stats['Cumulative Return'] == pytest.approx(0, rel=APPROX_REL)
+    assert adv_stats['CAGR﹪'] == pytest.approx(-0.01, rel=APPROX_REL)
+    assert adv_stats['Sharpe'] == pytest.approx(-0.14, rel=APPROX_REL)
+    assert adv_stats['Prob. Sharpe Ratio'] == pytest.approx(0.45, rel=APPROX_REL)
+    assert adv_stats['Smart Sharpe'] == pytest.approx(-0.13, rel=APPROX_REL)
+    assert adv_stats['Sortino'] == pytest.approx(-0.2, rel=APPROX_REL)
+    assert adv_stats['Smart Sortino'] == pytest.approx(-0.19, rel=APPROX_REL)
+    assert adv_stats['Sortino/√2'] == pytest.approx(-0.14, rel=APPROX_REL)
+    assert adv_stats['Smart Sortino/√2'] == pytest.approx(-0.13, rel=APPROX_REL)
+    assert adv_stats['Omega'] == pytest.approx(0.98, rel=APPROX_REL)
+    assert adv_stats['Max Drawdown'] == pytest.approx(-0.03, rel=APPROX_REL)
+    assert adv_stats['Longest DD Days'] == 76
+    assert adv_stats['Volatility (ann.)'] == pytest.approx(0.04, rel=APPROX_REL)
+    assert adv_stats['Calmar'] == pytest.approx(-0.32, rel=APPROX_REL)
+    assert adv_stats['Skew'] == pytest.approx(0.22, rel=APPROX_REL)
+    assert adv_stats['Kurtosis'] == pytest.approx(0.08, rel=APPROX_REL)
+    assert adv_stats['Expected Daily'] == pytest.approx(0, rel=APPROX_REL)
+    assert adv_stats['Expected Monthly'] == pytest.approx(0, rel=APPROX_REL)
+    assert adv_stats['Expected Yearly'] == pytest.approx(0, rel=APPROX_REL)
+    assert adv_stats['Kelly Criterion'] == pytest.approx(-0.01, rel=APPROX_REL)
+    assert adv_stats['Risk of Ruin'] == pytest.approx(0, rel=APPROX_REL)
+    assert adv_stats['Daily Value-at-Risk'] == pytest.approx(0, rel=APPROX_REL)
+    assert adv_stats['Expected Shortfall (cVaR)'] == pytest.approx(0, rel=APPROX_REL)
+    assert adv_stats['Max Consecutive Wins'] == 5.0
+    assert adv_stats['Max Consecutive Losses'] == 7.0
+    assert adv_stats['Gain/Pain Ratio'] == pytest.approx(-0.02, rel=APPROX_REL)
+
+
 
 def test_timeline(
     analysis: TradeAnalysis,
