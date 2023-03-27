@@ -275,12 +275,12 @@ def test_basic_summary_statistics(
     """
 
     assert summary.initial_cash == 10_000
-    assert summary.won == 4
-    assert summary.lost == 7
+    assert summary.won_positions == 4
+    assert summary.lost_positions == 7
     assert summary.realised_profit == pytest.approx(-47.17044385644749, rel=APPROX_REL)
     assert summary.open_value == pytest.approx(0, rel=APPROX_REL)
     assert summary.end_value == pytest.approx(9952.829556143553, rel=APPROX_REL)
-    assert summary.win_percent == pytest.approx(0.36363636363636365, rel=APPROX_REL)
+    assert summary.position_win_percent == pytest.approx(0.36363636363636365, rel=APPROX_REL)
     assert summary.duration == datetime.timedelta(days=181)
     assert summary.trade_volume == pytest.approx(21900.29776619458, rel=APPROX_REL)
     assert summary.uninvested_cash == pytest.approx(9952.829556143553, rel=APPROX_REL)
@@ -288,8 +288,8 @@ def test_basic_summary_statistics(
     assert summary.stop_losses == 0
     assert summary.take_profits == 0
     assert summary.total_positions == 11
-    assert summary.undecided == 0
-    assert summary.zero_loss == 0
+    assert summary.undecided_positions == 0
+    assert summary.zero_loss_positions == 0
 
     assert summary.annualised_return_percent == pytest.approx(-0.0095122718274248, rel=APPROX_REL)
     assert summary.realised_profit == pytest.approx(-47.17044385644749, rel=APPROX_REL)
@@ -298,17 +298,17 @@ def test_basic_summary_statistics(
     assert summary.lp_fees_average_pc == pytest.approx(0.003004503819031923, rel=APPROX_REL)
     assert summary.lp_fees_paid == pytest.approx(65.79952827646791, rel=APPROX_REL)
 
-    assert summary.average_duration_of_losing_trades == pd.Timedelta('8 days 13:42:51.428571428')
-    assert summary.average_duration_of_winning_trades == pd.Timedelta('19 days 00:00:00')
+    assert summary.average_duration_of_lost_positions == pd.Timedelta('8 days 13:42:51.428571428')
+    assert summary.average_duration_of_won_positions == pd.Timedelta('19 days 00:00:00')
 
-    assert summary.median_trade == pytest.approx(-0.02569303244842014, rel=APPROX_REL)
-    assert summary.average_losing_trade_loss_pc == pytest.approx(-0.05157416459057936, rel=APPROX_REL)
+    assert summary.median_position == pytest.approx(-0.02569303244842014, rel=APPROX_REL)
+    assert summary.average_lost_position_loss_pc == pytest.approx(-0.05157416459057936, rel=APPROX_REL)
     assert summary.average_net_profit == pytest.approx(-4.288222168767954, rel=APPROX_REL)
-    assert summary.average_trade == pytest.approx(-0.00398060248726169, rel=APPROX_REL)
-    assert summary.average_winning_trade_profit_pc == pytest.approx(0.07930813119354424, rel=APPROX_REL)
+    assert summary.average_position == pytest.approx(-0.00398060248726169, rel=APPROX_REL)
+    assert summary.average_won_position_profit_pc == pytest.approx(0.07930813119354424, rel=APPROX_REL)
     assert summary.avg_realised_risk == pytest.approx(-0.005157416459057936, rel=APPROX_REL)
-    assert summary.biggest_losing_trade_pc == pytest.approx(-0.14216816784355246, rel=APPROX_REL)
-    assert summary.biggest_winning_trade_pc == pytest.approx(0.1518660490865238, rel=APPROX_REL)
+    assert summary.biggest_lost_position_pc == pytest.approx(-0.14216816784355246, rel=APPROX_REL)
+    assert summary.biggest_won_position_pc == pytest.approx(0.1518660490865238, rel=APPROX_REL)
 
     assert summary.max_loss_risk == pytest.approx(0.10000000000000002, rel=APPROX_REL)
     assert summary.max_neg_cons == 3
