@@ -449,7 +449,7 @@ class TradeSummary:
     time_bucket: Optional[TimeBucket] = None
 
     total_positions: int = field(init=False)
-    position_win_percent: float = field(init=False)
+    won_position_percent: float = field(init=False)
     return_percent: float = field(init=False)
     annualised_return_percent: float = field(init=False)
     all_stop_loss_percent: float = field(init=False)
@@ -485,7 +485,7 @@ class TradeSummary:
     def __post_init__(self):
 
         self.total_positions = self.won_positions + self.lost_positions + self.zero_loss_positions
-        self.position_win_percent = calculate_percentage(self.won_positions, self.total_positions)
+        self.won_position_percent = calculate_percentage(self.won_positions, self.total_positions)
         self.all_stop_loss_percent = calculate_percentage(self.stop_losses, self.total_positions)
         self.all_take_profit_percent = calculate_percentage(self.take_profits, self.total_positions)
         self.lost_stop_loss_percent = calculate_percentage(self.stop_losses, self.lost_positions)
@@ -518,7 +518,7 @@ class TradeSummary:
             "Cash at start": as_dollar(self.initial_cash),
             "Value at end": as_dollar(self.end_value),
             "Trade volume": as_dollar(self.trade_volume),
-            "Positions win rate": as_percent(self.position_win_percent),
+            "Positions win rate": as_percent(self.won_position_percent),
             "Total positions": as_integer(self.total_positions),
             "Won positions": as_integer(self.won_positions),
             "Lost positions": as_integer(self.lost_positions),
