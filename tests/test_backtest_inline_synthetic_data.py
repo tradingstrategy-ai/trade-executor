@@ -11,7 +11,7 @@ import pytest
 import pandas as pd
 from pandas_ta.overlap import ema
 
-from tradeexecutor.analysis.trade_analyser import build_trade_analysis, expand_timeline, TimelineRowStylingMode
+from tradeexecutor.analysis.trade_analyser import build_trade_analysis, expand_timeline, TimelineRowStylingMode, TradeAnalysis, TradeSummary
 from tradeexecutor.backtest.backtest_runner import run_backtest_inline
 from tradeexecutor.cli.log import setup_pytest_logging
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
@@ -223,16 +223,11 @@ def test_run_inline_synthetic_backtest(
 
     assert len(debug_dump) == 213
 
-
-def test_analyse_synthetic_trading_portfolio(
-        logger: logging.Logger,
-        universe: TradingStrategyUniverse,
-    ):
-    """Analyse synthetic trading strategy results.
-
-    TODO: Might move this test to its own module.
-    """
-
+# to avoid running backtest multiple times
+@pytest.fixture(scope="module")
+def backtest_result(
+    universe: TradingStrategyUniverse
+) -> tuple[State, TradingStrategyUniverse]:
     start_at, end_at = universe.universe.candles.get_timestamp_range()
 
     routing_model = generate_simple_routing_model(universe)
@@ -253,17 +248,93 @@ def test_analyse_synthetic_trading_portfolio(
         log_level=logging.WARNING,
     )
 
+    return state, universe
+
+@pytest.fixture(scope = "module")
+def analysis(
+    backtest_result: tuple[State, TradingStrategyUniverse]
+) -> TradeAnalysis:
+    state, universe = backtest_result
     analysis = build_trade_analysis(state.portfolio)
+
+    return analysis
+
+
+@pytest.fixture(scope = "module")
+def summary(
+    analysis: TradeAnalysis
+) -> TradeSummary:
+
     summary = analysis.calculate_summary_statistics()
 
     # Should not cause exception
     summary.to_dataframe()
+
+    return summary
+
+
+def test_basic_summary_statistics(
+    summary: TradeSummary,
+):
+    """Analyse synthetic trading strategy results.
+
+    TODO: Might move this test to its own module.
+    # TODO summary stat test with stop losses involved
+    """
+    
 
     assert summary.initial_cash == 10_000
     assert summary.won == 4
     assert summary.lost == 7
     assert summary.realised_profit == pytest.approx(-47.17044385644749)
     assert summary.open_value == pytest.approx(0)
+    assert summary.end_value == 9952.829556143553
+    assert summary.win_percent == 0.36363636363636365
+    assert summary.duration == datetime.timedelta(days=181)
+    assert summary.trade_volume == 21900.29776619458
+    assert summary.uninvested_cash == 9952.829556143553
+
+    assert summary.stop_losses == 0
+    assert summary.take_profits == 0
+    assert summary.total_positions == 11
+    assert summary.undecided == 0
+    assert summary.zero_loss == 0
+
+    assert summary.annualised_return_percent == -0.0095122718274248
+    assert summary.realised_profit == -47.17044385644749
+    assert summary.return_percent == -0.004717044385644658
+
+    assert summary.lp_fees_average_pc == 0.003004503819031923
+    assert summary.lp_fees_paid == 65.79952827646791
+    
+    assert summary.average_duration_of_losing_trades == pd.Timedelta('8 days 13:42:51.428571428')
+    assert summary.average_duration_of_winning_trades == pd.Timedelta('19 days 00:00:00')
+    
+    assert summary.median_trade == -0.02569303244842014
+    assert summary.average_losing_trade_loss_pc == -0.05157416459057936
+    assert summary.average_net_profit == -4.288222168767954
+    assert summary.average_trade == -0.00398060248726169
+    assert summary.average_winning_trade_profit_pc == 0.07930813119354424
+    assert summary.avg_realised_risk == -0.005157416459057936
+    assert summary.biggest_losing_trade_pc == -0.14216816784355246
+    assert summary.biggest_winning_trade_pc == 0.1518660490865238
+
+    assert summary.max_loss_risk == 0.10000000000000002
+    assert summary.max_neg_cons == 3
+    assert summary.max_pos_cons == 1
+    assert summary.max_pullback == -0.01703492069936046
+
+
+def test_advanced_summary_statistics(
+
+):
+    pass
+
+def test_timeline(
+    analysis: TradeAnalysis,
+    backtest_result: tuple[State, TradingStrategyUniverse]
+):
+    state, universe = backtest_result
 
     timeline = analysis.create_timeline()
 
@@ -299,9 +370,9 @@ def test_analyse_synthetic_trading_portfolio(
 
 
 def test_benchmark_synthetic_trading_portfolio(
-        logger: logging.Logger,
-        universe: TradingStrategyUniverse,
-    ):
+    logger: logging.Logger,
+    universe: TradingStrategyUniverse,
+):
     """Build benchmark figures.
 
     TODO: Might move this test to its own module.
