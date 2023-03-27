@@ -828,8 +828,8 @@ def test_serialize_state(usdc, weth_usdc, start_ts: datetime.datetime):
     assert position2.last_pricing_at == start_ts
     assert position2.last_pricing_at.tzinfo == None  # Be especially careful with timestamps
     assert isinstance(summary.duration, datetime.timedelta)
-    assert isinstance(summary.average_duration_of_winning_trades, datetime.timedelta)
-    assert isinstance(summary.average_duration_of_losing_trades, datetime.timedelta)
+    assert isinstance(summary.average_duration_of_won_positions, datetime.timedelta)
+    assert isinstance(summary.average_duration_of_lost_positions, datetime.timedelta)
 
 
 def test_state_summary_without_initial_cash(usdc, weth_usdc, start_ts: datetime.datetime):
