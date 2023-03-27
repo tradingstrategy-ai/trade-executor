@@ -566,10 +566,13 @@ class TradeSummary:
     def show(self):
         """Render a summary table in IPython notebook."""
         self.show_custom(self.to_dataframe())
-
+    
     @staticmethod
     def show_custom(df: pd.DataFrame):
-        """Render a summary table in IPython notebook."""
+        """Render a summary table in IPython notebook.
+        
+        TODO: truncate unnecassary decimals at the end of floats
+        """
         with pd.option_context("display.max_row", None):
             display(df.style.set_table_styles([{'selector': 'thead', 'props': [('display', 'none')]}]))
     
@@ -585,7 +588,7 @@ class TradeSummary:
     def show_full_report(self) -> None:
         """Show basic and advanced stats and plots
         
-        - Should be used in Jupyter notebooks
+        - Should be used in IPython notebooks
         - Shows a bunch of statistics (basic and advanced) and some plots
         - This function cannot be used in normal python (.py) files since its only
         purpose to display
@@ -611,7 +614,7 @@ class TradeSummary:
     def show_basic_plots(self) -> None:
         """Show basic plots
         
-        - Should be used in Jupyter notebooks
+        - Should be used in IPython notebooks
         - Shows some basic plots
         - This function cannot be used in normal python (.py) files since its only
         purpose to display"""
@@ -621,7 +624,7 @@ class TradeSummary:
     def show_full_plots(self) -> None:
         """Show basic and advanced plots
         
-        - Should be used in Jupyter notebooks
+        - Should be used in IPython notebooks
         - Shows both basic and more advanced plots
         - This function cannot be used in normal python (.py) files since its only
         purpose to display"""
@@ -1177,7 +1180,7 @@ def build_trade_analysis(
 
     - Read positions from backtesting or live state
 
-    - Create TradeAnalysis instance that can be used to display Jupyter notebook
+    - Create TradeAnalysis instance that can be used to display IPython notebook
       data on the performance
 
     :param state:
@@ -1280,6 +1283,7 @@ def build_trade_analysis(
         portfolio, 
         asset_histories=histories
     )
+
 
 def avg(lst: list[int]):
     return sum(lst) / len(lst)
