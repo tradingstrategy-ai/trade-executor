@@ -33,6 +33,9 @@ class PlotKind(enum.Enum):
 
     #: This plot is drawn on the top of the price graph
     technical_indicator_on_price = "technical_indicator_on_price"
+    
+    #: This plot is drawn below the price graph
+    technical_indicator_detached = "technical_indicator_detached"
 
 
 class PlotShape(enum.Enum):
