@@ -3136,30 +3136,31 @@ files = [
 
 [[package]]
 name = "openapi-core"
-version = "0.13.8"
+version = "0.17.1"
 description = "client-side and server-side support for the OpenAPI Specification v3"
 category = "main"
 optional = true
-python-versions = ">= 2.7, != 3.0.*, != 3.1.*, != 3.2.*, != 3.3.*, != 3.4.*"
+python-versions = ">=3.7.0,<4.0.0"
 files = [
-    {file = "openapi-core-0.13.8.tar.gz", hash = "sha256:8dcd1ce197e6d534c4cb798c8c916758c751006506990ca3f9f42c7abb3514ed"},
-    {file = "openapi_core-0.13.8-py2-none-any.whl", hash = "sha256:1662fef13e90a924570c32685426ba96845bbd7a0ff10ead4b2a675e81d131c5"},
-    {file = "openapi_core-0.13.8-py3-none-any.whl", hash = "sha256:f8c81551d72b377cb08e46795580f75b819d5c33b36ece054329e5efa644c0d7"},
+    {file = "openapi_core-0.17.1-py3-none-any.whl", hash = "sha256:c61175ba12987705c93d1df3dbcba4f84f9450057142cca7dc234aa03e2a59db"},
+    {file = "openapi_core-0.17.1.tar.gz", hash = "sha256:561b7e2b37b336e9c62d4634b9059d12d9bb2e1859062a39d3a0fa6afc8c9de6"},
 ]
 
 [package.dependencies]
-attrs = "*"
 isodate = "*"
-lazy-object-proxy = "*"
+jsonschema-spec = ">=0.1.1,<0.2.0"
 more-itertools = "*"
-openapi-schema-validator = "*"
-openapi-spec-validator = "*"
+openapi-schema-validator = ">=0.4.2,<0.5.0"
+openapi-spec-validator = ">=0.5.0,<0.6.0"
 parse = "*"
-six = "*"
+pathable = ">=0.4.0,<0.5.0"
+typing-extensions = ">=4.3.0,<5.0.0"
 werkzeug = "*"
 
 [package.extras]
-django = ["django (>=2.2)"]
+django = ["django (>=3.0)"]
+docs = ["sphinx (>=5.3.0,<6.0.0)", "sphinx-immaterial (>=0.11.0,<0.12.0)"]
+falcon = ["falcon (>=3.0)"]
 flask = ["flask"]
 requests = ["requests"]
 
@@ -4044,19 +4045,18 @@ testing = ["coverage", "pytest (>=5.4.2)", "pytest-cov", "webtest (>=1.3.1)", "z
 
 [[package]]
 name = "pyramid-openapi3"
-version = "0.13"
-description = "Pyramid addon for OpenAPI3 validation"
+version = "0.16.0"
+description = "Pyramid addon for OpenAPI3 validation of requests and responses."
 category = "main"
 optional = true
-python-versions = "*"
+python-versions = ">=3.7,<4.0"
 files = [
-    {file = "pyramid_openapi3-0.13-py2.py3-none-any.whl", hash = "sha256:4bf6f29cdc49d625fabc61e0de98b8d399a5f24ffc74a7da464325898bb053a8"},
-    {file = "pyramid_openapi3-0.13.tar.gz", hash = "sha256:43c4c96a37533edc546eb00ecf990b176b1d931982188b1139a360824a0f4b40"},
+    {file = "pyramid_openapi3-0.16.0-py3-none-any.whl", hash = "sha256:d79c7994eb7c94df65c937c19603f0f780a8112e0e144577f75832aa0cae67b1"},
+    {file = "pyramid_openapi3-0.16.0.tar.gz", hash = "sha256:f1bb0d0760664db0a498faa7189d6af0f8ffe5e2ab963c491a2ff840bf6eb6e7"},
 ]
 
 [package.dependencies]
-openapi-core = ">=0.13.4,<0.14"
-openapi-spec-validator = "*"
+openapi-core = ">=0.16.1"
 pyramid = ">=1.10.7"
 
 [[package]]
@@ -5844,4 +5844,4 @@ web-server = ["pyramid", "WebTest", "pyramid-openapi3", "waitress"]
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.10,<3.11"
-content-hash = "c79508a3619ddebcdbba64f9d1828799773a39ce3fc663f2ad2d629c8b51f1cc"
+content-hash = "1fa7049e205c5ebde118d3a9c0f4d750abf5af1366bbfc8b3dce4d285b9fd760"
