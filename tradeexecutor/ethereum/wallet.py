@@ -44,7 +44,7 @@ def sync_reserves(
     our_chain_id = web3.eth.chain_id
 
     # Get raw ERC-20 holdings of the address
-    balances = update_wallet_balances(web3, wallet_address, [web3.toChecksumAddress(a.address) for a in supported_reserve_currencies])
+    balances = update_wallet_balances(web3, wallet_address, [web3.to_checksum_address(a.address) for a in supported_reserve_currencies])
 
     reserves_per_token = {r.asset.address: r for r in current_reserves}
 
@@ -64,7 +64,7 @@ def sync_reserves(
         else:
             current_value = Decimal(0)
 
-        decimal_holding = balances.get(Web3.toChecksumAddress(address))
+        decimal_holding = balances.get(Web3.to_checksum_address(address))
 
         # We get decimals = None if Ganache is acting
         assert decimal_holding.decimals, f"Token did not have decimals: token:{currency} holding:{decimal_holding}"

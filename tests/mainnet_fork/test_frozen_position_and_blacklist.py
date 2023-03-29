@@ -230,7 +230,7 @@ def hot_wallet(web3: Web3, busd_token: Contract, hot_wallet_private_key: HexByte
     web3.eth.send_transaction({"from": large_busd_holder, "to": account.address, "value": 2*10**18})
 
     balance = web3.eth.get_balance(large_busd_holder)
-    assert balance  > web3.toWei("1", "ether"), f"Account is empty {large_busd_holder}"
+    assert balance  > web3.to_wei("1", "ether"), f"Account is empty {large_busd_holder}"
 
     txid = busd_token.functions.transfer(account.address, 100 * 10**18).transact({"from": large_busd_holder})
     wait_transactions_to_complete(web3, [txid])

@@ -31,6 +31,7 @@ from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2SimpleRoutingModel, UniswapV2RoutingState
 from tradeexecutor.ethereum.uniswap_v3_routing import UniswapV3SimpleRoutingModel, UniswapV3RoutingState
 from tradeexecutor.strategy.execution_model import ExecutionModel
+from tradingstrategy.chain import ChainId
 
 logger = logging.getLogger(__name__)
 
@@ -296,8 +297,7 @@ class EthereumExecutionModel(ExecutionModel):
         """
         state.start_trades(datetime.datetime.utcnow(), trades, max_slippage=self.max_slippage)
 
-        # 61 is Ethereum Tester
-        if self.web3.eth.chain_id != 61:
+        if self.web3.eth.chain_id != ChainId.ethereum_tester.value:
             assert self.confirmation_block_count > 0, f"confirmation_block_count set to {self.confirmation_block_count} "
 
         routing_model.setup_trades(

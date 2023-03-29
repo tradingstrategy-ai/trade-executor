@@ -244,12 +244,12 @@ def get_uniswap_for_pair(web3: Web3, address_map: dict, target_pair: TradingPair
     """Get a router for a trading pair."""
     assert target_pair.exchange_address, f"Exchange address missing for {target_pair}"
     
-    factory_address = Web3.toChecksumAddress(target_pair.exchange_address)
-    assert factory_address == Web3.toChecksumAddress(address_map["factory"]), "address_map[\"factory\"] and target_pair.exchange_address should be equal"
+    factory_address = Web3.to_checksum_address(target_pair.exchange_address)
+    assert factory_address == Web3.to_checksum_address(address_map["factory"]), "address_map[\"factory\"] and target_pair.exchange_address should be equal"
     
-    router_address = Web3.toChecksumAddress(address_map["router"])
-    position_manager_address = Web3.toChecksumAddress(address_map["position_manager"])
-    quoter_address = Web3.toChecksumAddress(address_map["quoter"])
+    router_address = Web3.to_checksum_address(address_map["router"])
+    position_manager_address = Web3.to_checksum_address(address_map["position_manager"])
+    quoter_address = Web3.to_checksum_address(address_map["quoter"])
 
     try:
         return fetch_deployment(

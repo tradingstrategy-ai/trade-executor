@@ -434,13 +434,13 @@ def test_simulated_uniswap_qstrader_strategy_single_trade(
 
     assert t.is_success()
     tx_info = t.blockchain_transactions[-1]
-    assert tx_info.chain_id == 61   # Ethereum Tester
+    assert tx_info.chain_id == ChainId.ethereum_tester.value   # Ethereum Tester
     assert tx_info.tx_hash.startswith("0x")
     assert tx_info.nonce == 1
 
     # Test raw Ethereum tx data access
     tx_dict = tx_info.get_transaction()
-    assert tx_dict["chainId"] == 61
+    assert tx_dict["chainId"] == ChainId.ethereum_tester.value
     assert tx_dict["value"] == 0
     assert tx_dict["v"] in (0, 1)
     assert tx_dict["s"] > 0

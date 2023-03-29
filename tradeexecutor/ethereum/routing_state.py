@@ -173,7 +173,7 @@ class EthereumRoutingState(RoutingState):
             # Already approved for this cycle in previous trade
             return []
 
-        erc_20 = get_deployed_contract(self.web3, "ERC20MockDecimals.json", Web3.toChecksumAddress(token_address))
+        erc_20 = get_deployed_contract(self.web3, "ERC20MockDecimals.json", Web3.to_checksum_address(token_address))
 
         # Set internal state we are approved
         self.mark_router_approved(token_address, router_address)
@@ -227,13 +227,13 @@ def route_tokens(
     """
 
     if intermediate_pair is None:
-        return (Web3.toChecksumAddress(trading_pair.base.address),
-            Web3.toChecksumAddress(trading_pair.quote.address),
+        return (Web3.to_checksum_address(trading_pair.base.address),
+            Web3.to_checksum_address(trading_pair.quote.address),
             None)
 
-    return (Web3.toChecksumAddress(trading_pair.base.address),
-        Web3.toChecksumAddress(intermediate_pair.quote.address),
-        Web3.toChecksumAddress(trading_pair.quote.address))
+    return (Web3.to_checksum_address(trading_pair.base.address),
+        Web3.to_checksum_address(intermediate_pair.quote.address),
+        Web3.to_checksum_address(trading_pair.quote.address))
 
 
 def get_base_quote(web3: Web3, target_pair: TradingPairIdentifier, reserve_asset: AssetIdentifier, error_msg: str = None):
@@ -285,5 +285,5 @@ def get_base_quote_intermediary(web3: Web3, target_pair: TradingPairIdentifier, 
     
 def get_token_for_asset(web3: Web3, asset: AssetIdentifier) -> Contract:
     """Get ERC-20 contract proxy."""
-    erc_20 = get_deployed_contract(web3, "ERC20MockDecimals.json", Web3.toChecksumAddress(asset.address))
+    erc_20 = get_deployed_contract(web3, "ERC20MockDecimals.json", Web3.to_checksum_address(asset.address))
     return erc_20

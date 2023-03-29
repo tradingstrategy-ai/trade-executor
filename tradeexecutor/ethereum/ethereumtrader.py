@@ -67,4 +67,4 @@ def get_base_quote_contracts(web3: Web3, pair: TradingPairIdentifier) -> tuple[C
     )
 
 def get_mock_erc20_contract(web3: Web3, address: str):
-    return get_deployed_contract(web3, "ERC20MockDecimals.json", Web3.toChecksumAddress(address))
+    return get_deployed_contract(web3, "ERC20MockDecimals.json", Web3.to_checksum_address(address))
