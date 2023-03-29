@@ -383,6 +383,8 @@ def test_simple_routing_one_leg(
     assert eth_token.functions.balanceOf(hot_wallet.address).call() > 0
 
 
+# Flaky because get_block("latest") issue on Anvil
+@flaky.flaky()
 def test_simple_routing_buy_sell(
     web3,
     hot_wallet,
