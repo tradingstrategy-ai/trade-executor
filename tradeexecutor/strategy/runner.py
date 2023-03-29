@@ -15,7 +15,7 @@ from tradeexecutor.strategy.approval import ApprovalModel
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.strategy.execution_model import ExecutionModel
-from tradeexecutor.state.sync import SyncMethod
+from tradeexecutor.state.sync import SyncMethodV0
 from tradeexecutor.strategy.run_state import RunState
 from tradeexecutor.strategy.output import output_positions, DISCORD_BREAK_CHAR, output_trades
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
@@ -57,7 +57,7 @@ class StrategyRunner(abc.ABC):
                  execution_model: ExecutionModel,
                  approval_model: ApprovalModel,
                  valuation_model_factory: ValuationModelFactory,
-                 sync_method: SyncMethod,
+                 sync_method: SyncMethodV0,
                  pricing_model_factory: PricingModelFactory,
                  execution_context: ExecutionContext,
                  routing_model: Optional[RoutingModel] = None,

@@ -24,7 +24,7 @@ from tradeexecutor.ethereum.web3config import Web3Config
 from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
 from tradeexecutor.state.metadata import Metadata
 from tradeexecutor.state.store import JSONFileStore, StateStore
-from tradeexecutor.state.sync import DummmyWalletSyncer
+from tradeexecutor.state.sync import DummyWalletSyncer
 from tradeexecutor.strategy.approval import UncheckedApprovalModel, ApprovalType, ApprovalModel
 from tradeexecutor.strategy.dummy import DummyExecutionModel
 from tradeexecutor.strategy.execution_model import TradeExecutionType
@@ -90,7 +90,7 @@ def create_trade_execution_model(
         # Used in test_strategy_cycle_trigger.py
         web3 = web3config.get_default()
         execution_model = DummyExecutionModel(web3)
-        sync_method = DummmyWalletSyncer()
+        sync_method = DummyWalletSyncer()
         valuation_model_factory = uniswap_v2_sell_valuation_factory
         pricing_model_factory = uniswap_v2_live_pricing_factory
         return execution_model, sync_method, valuation_model_factory, pricing_model_factory

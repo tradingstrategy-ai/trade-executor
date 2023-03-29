@@ -1,85 +1,110 @@
-"""Synchrone deposits/withdrawals of the portfolio.
-
-Syncs the external portfolio changes from a (blockchain) source.
-See ethereum/hotwallet_sync.py for details.
-"""
-
+""""Store information about caught up chain state."""
+from abc import ABC, abstractmethod
 import datetime
-from decimal import Decimal
-from typing import Callable, List
+from dataclasses import dataclass, field
+from typing import Optional, List, Dict, Callable, Protocol
 
-from tradeexecutor.ethereum.wallet import ReserveUpdateEvent, logger
-from tradeexecutor.state.portfolio import Portfolio
+from dataclasses_json import dataclass_json
+
+from tradeexecutor.ethereum.wallet import ReserveUpdateEvent
 from tradeexecutor.state.identifier import AssetIdentifier
-from tradeexecutor.state.reserve import ReservePosition
+from tradeexecutor.state.portfolio import Portfolio
+from tradeexecutor.state.state import State
+
+from tradingstrategy.chain import ChainId
 
 
-SyncMethod = Callable[[Portfolio, datetime.datetime, List[AssetIdentifier]], List[ReserveUpdateEvent]]
+@dataclass_json
+@dataclass
+class Deployment:
+    """Information for the strategy deployment.
 
+    - Capture information about the vault deployment in the strategy's persistent state
 
-class DummmyWalletSyncer:
-    """Simulate a wallet events with a fixed balance set in the beginning."""
+    - This information can be later used to look up information (e.g deposit transactions)
 
-    def __init__(self, initial_deposit_amount: Decimal = Decimal(0)):
-        assert isinstance(initial_deposit_amount, Decimal)
-        self.initial_deposit_amount = initial_deposit_amount
-        self.initial_deposit_processed_at = None
-
-    def __call__(self, portfolio: Portfolio, ts: datetime.datetime, supported_reserves: List[AssetIdentifier]) -> List[ReserveUpdateEvent]:
-        """Process the backtest initial deposit.
-
-        The backtest wallet is credited once at the start.
-        """
-
-        if not self.initial_deposit_processed_at:
-            self.initial_deposit_processed_at = ts
-
-            assert len(supported_reserves) == 1
-
-            reserve_token = supported_reserves[0]
-
-            # Generate a deposit event
-            evt = ReserveUpdateEvent(
-                asset=reserve_token,
-                past_balance=Decimal(0),
-                new_balance=self.initial_deposit_amount,
-                updated_at=ts
-            )
-
-            # Update state
-            apply_sync_events(portfolio, [evt])
-
-            return [evt]
-        else:
-            return []
-
-
-def apply_sync_events(portfolio: Portfolio, new_reserves: List[ReserveUpdateEvent], default_price=1.0):
-    """Apply deposit and withdraws on reserves in the portfolio.
-
-    :param default_price: Set the reserve currency price for new reserves.
+    - This information can be later used to look up verify data
     """
 
-    for evt in new_reserves:
+    #: Which chain we are deployed
+    chain_id: ChainId
 
-        res_pos = portfolio.reserves.get(evt.asset.get_identifier())
-        if res_pos is not None:
-            # Update existing
-            res_pos.quantity = evt.new_balance
-            res_pos.last_sync_at = evt.updated_at
-            logger.info("Portfolio reserve synced. Asset: %s", evt.asset)
-        else:
-            # Initialise new reserve position
-            res_pos = ReservePosition(
-                asset=evt.asset,
-                quantity=evt.new_balance,
-                last_sync_at=evt.updated_at,
-                reserve_token_price=default_price,
-                last_pricing_at=evt.updated_at,
-                initial_deposit_reserve_token_price=default_price,
-                initial_deposit=evt.new_balance,
-            )
-            portfolio.reserves[res_pos.get_identifier()] = res_pos
-            logger.info("Portfolio reserve created. Asset: %s", evt.asset)
+    #: Vault smart contract address
+    #:
+    #: For hot wallet execution, the address of the hot wallet
+    address: str
+
+    #: When the vault was deployed
+    #:
+    #: Not available for hot wallet based strategies
+    deployment_block_number: Optional[int]
+
+    #: When the vault was deployed
+    #:
+    #: Not available for hot wallet based strategies
+    deployment_transaction: Optional[str]
+
+    #: UTC block timestamp of the vault deployment tx
+    #:
+    #: Not available for hot wallet based strategies
+    deployment_timestamp: Optional[datetime.datetime]
 
 
+@dataclass_json
+@dataclass
+class Treasury:
+    """State of syncind deposits and redemptions from the chain.
+
+    """
+
+    #: The strategy cycle timestamp for which we run the last sync
+    #:
+    last_updated: Optional[datetime.datetime] = None
+
+    #: What is the last processed block for deposit
+    last_scanned_block_for_deposits: int = 0
+
+    #: What is the last processed block for redempetions
+    last_scanned_block_for_redemptions: int = 0
+
+    #: List of Solidity deposit/withdraw events that we have correctly accounted in the strategy balances.
+    #:
+    #: Contains Solidity event logs for processed transactions
+    processed_events: List[dict] = field(default_factory=list)
+
+
+@dataclass_json
+@dataclass
+class Sync:
+    """On-chain sync state.
+
+    - Store persistent information about the vault on transactions we have synced,
+      so that the strategy knows its available capital
+
+    - Updated before the strategy execution step
+    """
+
+    deployment: Deployment = field(default_factory=Deployment)
+
+    treasury: Treasury = field(default_factory=Treasury)
+
+
+# Prototype sync method that is not applicable to the future production usage
+SyncMethodV0 = Callable[[Portfolio, datetime.datetime, List[AssetIdentifier]], List[ReserveUpdateEvent]]
+
+
+class SyncMethod(ABC):
+    """Describe the sync adapter."""
+
+    @abstractmethod
+    def sync_initial(self, state: State):
+        """Initialize the vault connection."""
+        pass
+
+    @abstractmethod
+    def sync_treasuty(self,
+                 strategy_cycle_ts: datetime.datetime,
+                 state: State,
+                 ):
+        """Apply the balance sync before each strategy cycle."""
+        pass

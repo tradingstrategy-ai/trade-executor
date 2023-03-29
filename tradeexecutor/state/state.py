@@ -12,6 +12,7 @@ from typing import List, Callable, Tuple, Set, Optional
 import pandas as pd
 from dataclasses_json import dataclass_json
 
+from .sync import Sync
 from .identifier import AssetIdentifier, TradingPairIdentifier
 from .portfolio import Portfolio
 from .position import TradingPosition
@@ -113,6 +114,8 @@ class State:
     #: Contains statistics about trade execution having to manage
     #: to run its internal functions.
     uptime: Uptime = field(default_factory=Uptime)
+
+    sync: Sync = field(default_factory=Sync)
 
     def __repr__(self):
         return f"<State for {self.name}>"
