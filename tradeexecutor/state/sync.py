@@ -1,15 +1,18 @@
-""""Store information about caught up chain state."""
-from abc import ABC, abstractmethod
+""""Store information about caught up chain state.
+
+- Treasury understanding is needed in order to reflect on-chain balance changes to the strategy execution
+
+- Most treasury changes are deposits and redemptions
+
+- Interest rate events also change on-chain treasury balances
+
+- See :py:mod:`tradeexecutor.strategy.sync_model` how to on-chain treasuty
+"""
 import datetime
 from dataclasses import dataclass, field
-from typing import Optional, List, Dict, Callable, Protocol
+from typing import Optional, List
 
 from dataclasses_json import dataclass_json
-
-from tradeexecutor.ethereum.wallet import ReserveUpdateEvent
-from tradeexecutor.state.identifier import AssetIdentifier
-from tradeexecutor.state.portfolio import Portfolio
-from tradeexecutor.state.state import State
 
 from tradingstrategy.chain import ChainId
 
@@ -27,27 +30,27 @@ class Deployment:
     """
 
     #: Which chain we are deployed
-    chain_id: ChainId
+    chain_id: Optional[ChainId] = None
 
     #: Vault smart contract address
     #:
     #: For hot wallet execution, the address of the hot wallet
-    address: str
+    address: Optional[str] = None
 
     #: When the vault was deployed
     #:
     #: Not available for hot wallet based strategies
-    deployment_block_number: Optional[int]
+    deployment_block_number: Optional[int] = None
 
     #: When the vault was deployed
     #:
     #: Not available for hot wallet based strategies
-    deployment_transaction: Optional[str]
+    deployment_transaction: Optional[str] = None
 
     #: UTC block timestamp of the vault deployment tx
     #:
     #: Not available for hot wallet based strategies
-    deployment_timestamp: Optional[datetime.datetime]
+    deployment_timestamp: Optional[datetime.datetime] = None
 
 
 @dataclass_json
@@ -89,22 +92,5 @@ class Sync:
     treasury: Treasury = field(default_factory=Treasury)
 
 
-# Prototype sync method that is not applicable to the future production usage
-SyncMethodV0 = Callable[[Portfolio, datetime.datetime, List[AssetIdentifier]], List[ReserveUpdateEvent]]
 
 
-class SyncMethod(ABC):
-    """Describe the sync adapter."""
-
-    @abstractmethod
-    def sync_initial(self, state: State):
-        """Initialize the vault connection."""
-        pass
-
-    @abstractmethod
-    def sync_treasuty(self,
-                 strategy_cycle_ts: datetime.datetime,
-                 state: State,
-                 ):
-        """Apply the balance sync before each strategy cycle."""
-        pass

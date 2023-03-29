@@ -23,7 +23,7 @@ from tradeexecutor.ethereum.execution import get_held_assets
 from tradeexecutor.ethereum.uniswap_v3_execution import get_current_price
 from tradeexecutor.ethereum.universe import create_pair_universe
 from tradeexecutor.ethereum.wallet import sync_reserves
-from tradeexecutor.state.sync import apply_sync_events
+from tradeexecutor.testing.dummy_wallet import  apply_sync_events
 from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeStatus

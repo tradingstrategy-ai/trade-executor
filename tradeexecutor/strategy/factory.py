@@ -9,7 +9,7 @@ from contextlib import AbstractContextManager
 
 from tradingstrategy.client import Client
 
-from tradeexecutor.state.sync import SyncMethodV0
+from tradeexecutor.strategy.sync_model import SyncMethodV0
 from tradeexecutor.strategy.approval import ApprovalModel
 from tradeexecutor.strategy.description import StrategyExecutionDescription
 from tradeexecutor.strategy.execution_model import ExecutionModel

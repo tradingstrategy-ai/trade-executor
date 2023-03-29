@@ -14,7 +14,7 @@ from pathlib import Path
 from tradingstrategy.client import Client
 
 from tradeexecutor.ethereum.routing_data import get_routing_model
-from tradeexecutor.state.sync import SyncMethodV0
+from tradeexecutor.strategy.sync_model import SyncMethodV0
 from tradeexecutor.strategy.approval import ApprovalModel
 from tradeexecutor.strategy.description import StrategyExecutionDescription
 from tradeexecutor.strategy.execution_context import ExecutionContext

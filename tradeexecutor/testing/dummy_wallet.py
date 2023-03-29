@@ -54,6 +54,10 @@ class DummyWalletSyncer:
 def apply_sync_events(portfolio: Portfolio, new_reserves: List[ReserveUpdateEvent], default_price=1.0):
     """Apply deposit and withdraws on reserves in the portfolio.
 
+    .. note ::
+
+        This is only used with deprecated :py:data:`tradeexecutor.strategy.sync_model.SyncMethodV0`
+
     :param default_price: Set the reserve currency price for new reserves.
     """
 

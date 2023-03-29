@@ -37,7 +37,7 @@ from tradingstrategy.universe import Universe
 
 from tradeexecutor.ethereum.uniswap_v2_execution_v0 import UniswapV2ExecutionModelVersion0
 from tradeexecutor.state.state import State
-from tradeexecutor.state.sync import SyncMethodV0
+from tradeexecutor.strategy.sync_model import SyncMethodV0
 from tradeexecutor.strategy.approval import ApprovalModel
 from tradeexecutor.strategy.description import StrategyExecutionDescription
 from tradeexecutor.strategy.execution_model import ExecutionModel
