@@ -30,6 +30,7 @@ class EthereumHotWalletReserveSyncer:
     """
 
     def __init__(self, web3: Web3, wallet_address: HexAddress):
+        assert isinstance(web3, Web3)
         self.web3 = web3
         self.wallet_address = wallet_address
 

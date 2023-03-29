@@ -101,7 +101,6 @@ def web3(anvil_bnb_chain_fork: str):
     """Set up a local unit testing blockchain."""
     # https://web3py.readthedocs.io/en/stable/examples.html#contract-unit-tests-in-python
     web3 = Web3(HTTPProvider(anvil_bnb_chain_fork, request_kwargs={"timeout": 5}))
-    web3.eth.set_gas_price_strategy(node_default_gas_price_strategy)
     install_chain_middleware(web3)
     return web3
 
@@ -194,7 +193,7 @@ def hot_wallet(web3: Web3, busd_token: Contract, hot_wallet_private_key: HexByte
     web3.eth.send_transaction({"from": large_busd_holder, "to": account.address, "value": 2*10**18})
 
     balance = web3.eth.get_balance(large_busd_holder)
-    assert balance  > web3.toWei("1", "ether"), f"Account is empty {large_busd_holder}"
+    assert balance  > web3.to_wei("1", "ether"), f"Account is empty {large_busd_holder}"
 
     busd_token.functions.transfer(account.address, 10_000 * 10**18).transact({"from": large_busd_holder})
     wallet = HotWallet(account)

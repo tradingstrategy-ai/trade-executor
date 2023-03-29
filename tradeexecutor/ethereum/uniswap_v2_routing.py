@@ -289,14 +289,14 @@ class UniswapV2SimpleRoutingModel(EthereumRoutingModel):
 def get_uniswap_for_pair(web3: Web3, factory_router_map: dict, target_pair: TradingPairIdentifier) -> UniswapV2Deployment:
     """Get a router for a trading pair."""
     assert target_pair.exchange_address, f"Exchange address missing for {target_pair}"
-    factory_address = Web3.toChecksumAddress(target_pair.exchange_address)
+    factory_address = Web3.to_checksum_address(target_pair.exchange_address)
     router_address, init_code_hash = factory_router_map[factory_address.lower()]
 
     try:
         return fetch_deployment(
             web3,
             factory_address,
-            Web3.toChecksumAddress(router_address),
+            Web3.to_checksum_address(router_address),
             init_code_hash=init_code_hash,
         )
     except ContractLogicError as e:

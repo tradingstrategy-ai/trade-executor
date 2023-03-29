@@ -36,8 +36,8 @@ class UniswapV3TestTrader(EthereumTrader):
     def buy(self, pair: TradingPairIdentifier, amount_in_usd: Decimal, execute=True) -> Tuple[TradingPosition, TradeExecution]:
         """Buy token (trading pair) for a certain value."""
         # Estimate buy price
-        base_token = get_deployed_contract(self.web3, "ERC20MockDecimals.json", Web3.toChecksumAddress(pair.base.address))
-        quote_token = get_deployed_contract(self.web3, "ERC20MockDecimals.json", Web3.toChecksumAddress(pair.quote.address))
+        base_token = get_deployed_contract(self.web3, "ERC20MockDecimals.json", Web3.to_checksum_address(pair.base.address))
+        quote_token = get_deployed_contract(self.web3, "ERC20MockDecimals.json", Web3.to_checksum_address(pair.quote.address))
         
         amount_in = int(amount_in_usd * (10 ** pair.quote.decimals))
         
@@ -74,8 +74,8 @@ class UniswapV3TestTrader(EthereumTrader):
 
         assert isinstance(quantity, Decimal)
         
-        base_token = get_deployed_contract(self.web3, "ERC20MockDecimals.json", Web3.toChecksumAddress(pair.base.address))
-        quote_token = get_deployed_contract(self.web3, "ERC20MockDecimals.json", Web3.toChecksumAddress(pair.quote.address))
+        base_token = get_deployed_contract(self.web3, "ERC20MockDecimals.json", Web3.to_checksum_address(pair.base.address))
+        quote_token = get_deployed_contract(self.web3, "ERC20MockDecimals.json", Web3.to_checksum_address(pair.quote.address))
 
         raw_quantity = int(quantity * 10**pair.base.decimals)
         
