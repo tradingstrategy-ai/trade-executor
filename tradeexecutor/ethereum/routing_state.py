@@ -147,7 +147,7 @@ class EthereumRoutingState(RoutingState):
         balance = erc_20.functions.balanceOf(self.hot_wallet.address).call()
         if balance < amount:
             token_details = fetch_erc20_details(
-                erc_20.web3,
+                erc_20.w3,
                 erc_20.address,
             )
             d_balance = token_details.convert_to_decimals(balance)
