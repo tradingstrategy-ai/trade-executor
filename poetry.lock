@@ -3136,21 +3136,21 @@ files = [
 
 [[package]]
 name = "openapi-core"
-version = "0.17.1"
+version = "0.16.6"
 description = "client-side and server-side support for the OpenAPI Specification v3"
 category = "main"
 optional = true
 python-versions = ">=3.7.0,<4.0.0"
 files = [
-    {file = "openapi_core-0.17.1-py3-none-any.whl", hash = "sha256:c61175ba12987705c93d1df3dbcba4f84f9450057142cca7dc234aa03e2a59db"},
-    {file = "openapi_core-0.17.1.tar.gz", hash = "sha256:561b7e2b37b336e9c62d4634b9059d12d9bb2e1859062a39d3a0fa6afc8c9de6"},
+    {file = "openapi_core-0.16.6-py3-none-any.whl", hash = "sha256:0ce163fa5b1388cee296993fde2f1519fe6b115e3d6b2ee4eb1f5f57dc807a6c"},
+    {file = "openapi_core-0.16.6.tar.gz", hash = "sha256:ed79a6adf9b0375804eac50b9b45e282b8a18fed5f6745dacc70fc1f3ea0abc3"},
 ]
 
 [package.dependencies]
 isodate = "*"
 jsonschema-spec = ">=0.1.1,<0.2.0"
 more-itertools = "*"
-openapi-schema-validator = ">=0.4.2,<0.5.0"
+openapi-schema-validator = ">=0.3.0,<0.5"
 openapi-spec-validator = ">=0.5.0,<0.6.0"
 parse = "*"
 pathable = ">=0.4.0,<0.5.0"
@@ -3159,7 +3159,6 @@ werkzeug = "*"
 
 [package.extras]
 django = ["django (>=3.0)"]
-docs = ["sphinx (>=5.3.0,<6.0.0)", "sphinx-immaterial (>=0.11.0,<0.12.0)"]
 falcon = ["falcon (>=3.0)"]
 flask = ["flask"]
 requests = ["requests"]
@@ -3533,17 +3532,18 @@ test = ["appdirs (==1.4.4)", "covdefaults (>=2.3)", "pytest (>=7.2.2)", "pytest-
 
 [[package]]
 name = "plotly"
-version = "5.13.1"
+version = "5.14.0"
 description = "An open-source, interactive data visualization library for Python"
 category = "main"
 optional = false
 python-versions = ">=3.6"
 files = [
-    {file = "plotly-5.13.1-py2.py3-none-any.whl", hash = "sha256:f776a5c664908450c6c1727f61e8e2e22798d9c6c69d37a9057735365084a2fa"},
-    {file = "plotly-5.13.1.tar.gz", hash = "sha256:90ee9a1fee0dda30e2830e129855081ea17bd1b06a553a62b62de15caff1a219"},
+    {file = "plotly-5.14.0-py2.py3-none-any.whl", hash = "sha256:2e3407d93a9700beebbef66d11f63992c58e058dd808442ee54af40f98fb4940"},
+    {file = "plotly-5.14.0.tar.gz", hash = "sha256:02e40264f145e524d9628fd516031976b60d74a33bbabce037ea28580bcd4e0c"},
 ]
 
 [package.dependencies]
+packaging = "*"
 tenacity = ">=6.2.0"
 
 [[package]]
@@ -5839,9 +5839,9 @@ data = ["web3-ethereum-defi"]
 execution = ["python-logging-discord-handler", "python-logstash-tradingstrategy", "APScheduler", "typer", "colorama", "coloredlogs", "prompt-toolkit", "python-dotenv", "kaleido"]
 qstrader = ["trading-strategy-qstrader"]
 quantstats = ["quantstats"]
-web-server = ["pyramid", "WebTest", "pyramid-openapi3", "waitress"]
+web-server = ["pyramid", "WebTest", "openapi-core", "pyramid-openapi3", "waitress"]
 
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.10,<3.11"
-content-hash = "1fa7049e205c5ebde118d3a9c0f4d750abf5af1366bbfc8b3dce4d285b9fd760"
+content-hash = "1f33fa06153d5d6b171ead32d74f4c8ddb98f83a60ffec1cd1ddf397823389fc"

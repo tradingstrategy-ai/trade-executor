@@ -535,6 +535,8 @@ def test_simple_routing_three_leg(
     assert eth_token.functions.balanceOf(hot_wallet.address).call() > 0
 
 
+# web3.exceptions.BlockNotFound: Block with id: 'latest' not found.
+@flaky.flaky()
 def test_three_leg_buy_sell(
     web3,
     hot_wallet,
