@@ -588,6 +588,14 @@ class TradeSummary:
                 raise RuntimeError("Daily returns have not been calculated. Remember to provided state argument. E.g. summary = analysis.calculate_summary_statistics(state=state)")
             
             with warnings.catch_warnings():
+                
+                # Silences 2 warnings from quantstats library
+                # 1.                
+                # /usr/local/lib/python3.10/site-packages/quantstats/stats.py:968: FutureWarning: In a future version of pandas all arguments of DataFrame.pivot will be keyword-only.
+                # returns = returns.pivot('Year', 'Month', 'Returns').fillna(0)
+                # 2.
+                # findfont: Font family 'Arial' not found.
+
                 warnings.simplefilter("ignore")
                 result = function(*args, **kwargs)
                 
