@@ -92,6 +92,11 @@ class Plot:
     
     #: Colour of the horizontal line
     horizontal_line_colour: Optional[str] = None
+    
+    #: Size of the indicator plot relative to the price plot.
+    #:
+    #: The price plot is regarded as 1.0, and the indicator plot default is 0.2
+    relative_size: Optional[float] = 0.2
 
     def add_point(self,
                   timestamp: datetime.datetime,
@@ -235,6 +240,7 @@ class Visualisation:
              plot_shape: Optional[PlotShape] = PlotShape.linear,
              horizontal_line: Optional[float] = None,
              horizontal_line_colour: Optional[str] = None,
+             relative_size: Optional[float] = None,
         ):
         # sourcery skip: remove-unnecessary-cast
         """Add a value to the output data and diagram.
@@ -270,6 +276,9 @@ class Visualisation:
             except TypeError as e:
                 raise RuntimeError(f"Could not convert value {value} {value.__class__} to float") from e
 
+        if relative_size:
+            assert kind == PlotKind.technical_indicator_detached, "Relative size is only supported for detached technical indicators"
+        
         plot = self.plots.get(name, Plot(name=name, kind=kind))
 
         plot.add_point(timestamp, value)
@@ -281,6 +290,8 @@ class Visualisation:
         plot.horizontal_line = horizontal_line
         
         plot.horizontal_line_colour = horizontal_line_colour
+        
+        plot.relative_size = relative_size
 
         if colour:
             plot.colour = colour
