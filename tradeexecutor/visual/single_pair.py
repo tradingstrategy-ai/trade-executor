@@ -642,6 +642,7 @@ def visualise_single_pair(
             state.visualisation,
             start_at,
             end_at,
+            volume_bar_mode,
         )
 
     # Add trade markers if any trades have been made

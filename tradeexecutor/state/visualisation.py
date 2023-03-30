@@ -81,8 +81,17 @@ class Plot:
     #: to sort the output yourself.
     points: Dict[int, float] = field(default_factory=dict)
 
-    #: Is the line horizontal-vertical. Used for stop loss line. See https://plotly.com/python/line-charts/?_ga=2.83222870.1162358725.1672302619-1029023258.1667666588#interpolation-with-line-plots
+    #: Standard is linear. 
+    #: Alternative is horizontal-vertical which can be used for stop loss line. 
+    #: See https://plotly.com/python/line-charts/?_ga=2.83222870.1162358725.1672302619-1029023258.1667666588#interpolation-with-line-plots
     plot_shape: Optional[PlotShape] = PlotShape.linear
+    
+    #: Horizontal line value.
+    #: Must be between the highest and lowest of the plot points
+    horizontal_line: Optional[float] = None
+    
+    #: Colour of the horizontal line
+    horizontal_line_colour: Optional[str] = None
 
     def add_point(self,
                   timestamp: datetime.datetime,
@@ -223,7 +232,10 @@ class Visualisation:
              kind: PlotKind,
              value: float,
              colour: Optional[str] = None,
-             plot_shape: Optional[PlotShape] = PlotShape.linear):
+             plot_shape: Optional[PlotShape] = PlotShape.linear,
+             horizontal_line: Optional[float] = None,
+             horizontal_line_colour: Optional[str] = None,
+        ):
         # sourcery skip: remove-unnecessary-cast
         """Add a value to the output data and diagram.
         
@@ -265,6 +277,10 @@ class Visualisation:
         plot.kind = kind
 
         plot.plot_shape = plot_shape
+        
+        plot.horizontal_line = horizontal_line
+        
+        plot.horizontal_line_colour = horizontal_line_colour
 
         if colour:
             plot.colour = colour
