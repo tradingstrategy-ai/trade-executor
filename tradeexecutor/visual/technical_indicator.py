@@ -42,7 +42,6 @@ def overlay_all_technical_indicators(
     # https://plotly.com/python/graphing-multiple-chart-types/
     for plot in visualisation.plots.values():
         
-        
         trace = visualise_technical_indicator(
             plot,
             start_at,
