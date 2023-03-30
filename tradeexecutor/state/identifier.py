@@ -71,7 +71,7 @@ class AssetIdentifier:
     @property
     def checksum_address(self) -> HexAddress:
         """Ethereum madness."""
-        return Web3.toChecksumAddress(self.address)
+        return Web3.to_checksum_address(self.address)
 
     def __eq__(self, other: "AssetIdentifier") -> bool:
         """Assets are considered be identical if they share the same smart contract address."""

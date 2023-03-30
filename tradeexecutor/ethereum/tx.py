@@ -3,16 +3,15 @@ import datetime
 import logging
 from typing import List
 
-from eth_account._utils.typed_transactions import TypedTransaction
 from eth_account.datastructures import SignedTransaction
 from hexbytes import HexBytes
 from web3 import Web3
-from web3.contract import Contract, ContractFunction
+from web3.contract.contract import Contract, ContractFunction
 
 from eth_defi.gas import GasPriceSuggestion, apply_gas
 from eth_defi.hotwallet import HotWallet
 from eth_defi.revert_reason import fetch_transaction_revert_reason
-from eth_defi.confirmation import broadcast_transactions, wait_transactions_to_complete, \
+from eth_defi.confirmation import broadcast_transactions, \
     broadcast_and_wait_transactions_to_complete
 from eth_defi.tx import decode_signed_transaction
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction

@@ -48,7 +48,7 @@ def test_main_loop_crash(
 
     # Set up the configuration for the live trader
     env = {
-        "STRATEGY_FILE": strategy_path.as_posix(),
+        "STRATEGY_FILE": strategy_path.as_posix(),  # Pass crash test
         "PRIVATE_KEY": hot_wallet_private_key.hex(),
         "HTTP_ENABLED": "false",
         "EXECUTION_TYPE": "uniswap_v2_hot_wallet",
@@ -61,6 +61,7 @@ def test_main_loop_crash(
         "JSON_RPC_BINANCE": os.environ["BNB_CHAIN_JSON_RPC"],
         "PATH": os.environ["PATH"],
         "HTTP_WAIT_GOOD_STARTUP_SECONDS": "0",
+        "MAX_DATA_DELAY_MINUTES": str(10*60*24*365)  # 10 years or "disabled"
     }
 
     proc = subprocess.Popen(

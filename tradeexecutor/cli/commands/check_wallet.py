@@ -124,7 +124,7 @@ def check_wallet(
     # Get all tokens from the universe
     reserve_assets = universe.reserve_assets
     web3 = web3config.get_default()
-    tokens = [Web3.toChecksumAddress(a.address) for a in reserve_assets]
+    tokens = [Web3.to_checksum_address(a.address) for a in reserve_assets]
 
     logger.info("RPC details")
 
