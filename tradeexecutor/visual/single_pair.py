@@ -488,6 +488,7 @@ def visualise_single_pair(
         title: Union[str, bool] = True,
         theme="plotly_white",
         volume_bar_mode=VolumeBarMode.overlay,
+        vertical_spacing = 0.05,
 ) -> go.Figure:
     """Visualise single-pair trade execution.
 
@@ -531,6 +532,12 @@ def visualise_single_pair(
 
     :param theme:
         Plotly colour scheme to use
+        
+    :param volume_bar_mode:
+        How to draw the volume bars
+    
+    :param vertical_spacing:
+        Vertical spacing between the subplots. Default is 0.05.
     """
 
     logger.info("Visualising %s", state)
@@ -623,6 +630,7 @@ def visualise_single_pair(
         for plot in state.visualisation.plots.values()
     )
     
+    # visualise candles and volume and create empty grid space for technical indicators
     fig = visualise_ohlcv(
         candles,
         height=height,
@@ -632,7 +640,8 @@ def visualise_single_pair(
         volume_axis_name=volume_text,
         labels=labels,
         volume_bar_mode=volume_bar_mode,
-        num_detached_indicators=num_detached_indicators
+        num_detached_indicators=num_detached_indicators,
+        vertical_spacing=vertical_spacing,
     )
 
     # Draw EMAs etc.
