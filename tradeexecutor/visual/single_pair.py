@@ -13,6 +13,7 @@ from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.trade_pricing import format_fees_dollars
+from tradeexecutor.state.visualisation import PlotKind
 
 from tradeexecutor.state.types import PairInternalId
 from tradeexecutor.visual.technical_indicator import overlay_all_technical_indicators
@@ -617,6 +618,11 @@ def visualise_single_pair(
         quote_token_name=quote_token,
     )
 
+    num_detached_indicators = sum(
+        plot.kind == PlotKind.technical_indicator_detached
+        for plot in state.visualisation.plots.values()
+    )
+    
     fig = visualise_ohlcv(
         candles,
         height=height,
@@ -626,6 +632,7 @@ def visualise_single_pair(
         volume_axis_name=volume_text,
         labels=labels,
         volume_bar_mode=volume_bar_mode,
+        num_detached_indicators=num_detached_indicators
     )
 
     # Draw EMAs etc.
@@ -771,6 +778,11 @@ def visualise_single_pair_positions_with_duration_and_slippage(
         axes_text = None
         volume_text = None
 
+    num_detached_indicators = sum(
+        plot.kind == PlotKind.technical_indicator_detached
+        for plot in state.visualisation.plots.values()
+    )
+
     fig = visualise_ohlcv(
         candles,
         height=height,
@@ -779,6 +791,7 @@ def visualise_single_pair_positions_with_duration_and_slippage(
         y_axis_name=axes_text,
         volume_axis_name=None,
         volume_bar_mode=VolumeBarMode.hidden,
+        num_detached_indicators=num_detached_indicators
     )
 
     if technical_indicators:

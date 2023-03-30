@@ -12,7 +12,7 @@ import pandas as pd
 from plotly import graph_objects as go
 
 
-from tradeexecutor.state.visualisation import Visualisation, Plot
+from tradeexecutor.state.visualisation import Visualisation, Plot, PlotKind
 
 
 logger = logging.getLogger(__name__)
@@ -33,6 +33,8 @@ def overlay_all_technical_indicators(
         Crop range
     """
 
+    current_row = 2
+    
     # https://plotly.com/python/graphing-multiple-chart-types/
     for plot_id, plot in visualisation.plots.items():
         trace = visualise_technical_indicator(
@@ -41,7 +43,14 @@ def overlay_all_technical_indicators(
             end_at,
         )
         if trace is not None:
-            fig.add_trace(trace)
+            if plot.kind == PlotKind.technical_indicator_on_price:
+                fig.add_trace(trace, row=1, col=1)
+            elif plot.kind == PlotKind.technical_indicator_detached:
+                fig.print_grid()
+                fig.add_trace(trace, row=current_row, col=1)
+                current_row += 1
+            else:
+                raise ValueError("Unknown plot kind: %s" % plot.plot_kind)
 
 
 def visualise_technical_indicator(
