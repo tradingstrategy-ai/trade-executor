@@ -630,7 +630,10 @@ def visualise_single_pair(
         for plot in state.visualisation.plots.values()
     )
     
+    # since python dicts are now ordered by insertion
     relative_sizing = [plot.relative_size for plot in state.visualisation.plots.values() if plot.kind == PlotKind.technical_indicator_detached]
+    
+    subplot_names = [plot.name for plot in state.visualisation.plots.values() if plot.kind == PlotKind.technical_indicator_detached]
     
     # visualise candles and volume and create empty grid space for technical indicators
     fig = visualise_ohlcv(
@@ -644,7 +647,8 @@ def visualise_single_pair(
         volume_bar_mode=volume_bar_mode,
         num_detached_indicators=num_detached_indicators,
         vertical_spacing=vertical_spacing,
-        relative_sizing=relative_sizing
+        relative_sizing=relative_sizing,
+        subplot_names=subplot_names,
     )
 
     # Draw EMAs etc.
