@@ -41,6 +41,8 @@ def overlay_all_technical_indicators(
 
     # https://plotly.com/python/graphing-multiple-chart-types/
     for plot in visualisation.plots.values():
+        
+        
         trace = visualise_technical_indicator(
             plot,
             start_at,
@@ -52,20 +54,25 @@ def overlay_all_technical_indicators(
             raise ValueError(f"Unknown plot kind: {plot.plot_kind}")
         
         # add trace to plot
-        fig.add_trace(trace, row=cur_row, col=1)
+        if plot.kind == PlotKind.technical_indicator_detached:
+            cur_row += 1
+            fig.add_trace(trace, row=cur_row, col=1)
+        elif plot.kind == PlotKind.technical_indicator_on_price:
+            fig.add_trace(trace, row=1, col=1)
+        else:
+            raise ValueError(f"Unknown plot kind: {plot.plot_kind}")
 
         # add horizontal line if needs be
         _add_hline(fig, start_at, end_at, cur_row, plot)
 
-        # on to next row
-        cur_row += 1
+        
 
 def _get_initial_row(volume_bar_mode):
     """Get first row for plot based on volume bar mode."""
     if volume_bar_mode in {VolumeBarMode.hidden, VolumeBarMode.overlay}:
         cur_row = 1
     elif volume_bar_mode == VolumeBarMode.separate:
-        cur_row = 3
+        cur_row = 2
     else:
         raise ValueError("Unknown volume bar mode: %s" % volume_bar_mode)
     return cur_row
