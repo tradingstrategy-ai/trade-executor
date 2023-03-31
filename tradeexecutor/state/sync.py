@@ -40,17 +40,27 @@ class Deployment:
     #: When the vault was deployed
     #:
     #: Not available for hot wallet based strategies
-    deployment_block_number: Optional[int] = None
+    block_number: Optional[int] = None
 
     #: When the vault was deployed
     #:
     #: Not available for hot wallet based strategies
-    deployment_transaction: Optional[str] = None
+    tx_hash: Optional[str] = None
 
     #: UTC block timestamp of the vault deployment tx
     #:
     #: Not available for hot wallet based strategies
-    deployment_timestamp: Optional[datetime.datetime] = None
+    block_mined_at: Optional[datetime.datetime] = None
+
+    #: Vault name
+    #:
+    #: Enzyme vault name - same as vault toke name
+    vault_token_name: Optional[str] = None
+
+    #: Vault token symbol
+    #:
+    #: Enzyme vault name - same as vault toke name
+    vault_token_symbol: Optional[str] = None
 
 
 @dataclass_json
@@ -65,10 +75,14 @@ class Treasury:
     last_updated: Optional[datetime.datetime] = None
 
     #: What is the last processed block for deposit
-    last_scanned_block_for_deposits: int = 0
+    #:
+    #: 0 = not scanned yet
+    last_scanned_block_for_deposits: Optional[int] = 0
 
     #: What is the last processed block for redempetions
-    last_scanned_block_for_redemptions: int = 0
+    #:
+    #: 0 = not scanned yet
+    last_scanned_block_for_redemptions: Optional[int] = 0
 
     #: List of Solidity deposit/withdraw events that we have correctly accounted in the strategy balances.
     #:
@@ -91,6 +105,7 @@ class Sync:
 
     treasury: Treasury = field(default_factory=Treasury)
 
-
-
+    def is_initialised(self) -> bool:
+        """Have we scanned the initial deployment event for the sync model."""
+        return self.deployment.block_number is not None
 

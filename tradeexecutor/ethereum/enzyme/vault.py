@@ -5,7 +5,8 @@ import logging
 import dataclasses
 import datetime
 from decimal import Decimal
-from typing import Dict, List
+from functools import partial
+from typing import Dict, List, cast
 
 from dataclasses_json import dataclass_json
 from eth_typing import HexAddress
@@ -13,9 +14,13 @@ from web3 import Web3
 
 from eth_defi.balances import DecimalisedHolding, \
     fetch_erc20_balances_by_token_list, convert_balances_to_decimal
+from eth_defi.enzyme.vault import Vault
+from eth_defi.event_reader.reader import read_events, Web3EventReader, extract_events, extract_timestamps_json_rpc
 from tradeexecutor.state.reserve import ReservePosition
 
 from tradeexecutor.state.identifier import AssetIdentifier
+from tradeexecutor.state.state import State
+from tradeexecutor.strategy.sync_model import SyncModel
 
 logger = logging.getLogger(__name__)
 
@@ -140,38 +145,66 @@ def sync_balances(
     return events
 
 
-class EnzymeVaultSyncer:
+class EnzymeVaultSyncModel(SyncModel):
     """Update Enzyme vault balances."""
 
-    def __init__(self):
+    def __init__(self,
+                 web3: Web3,
+                 vault_address: str,
+                 ):
+        self.web3 = web3
+        self.vault = Vault.fetch(web3, vault_address)
+
+    def sync_initial(self, state: State):
+        """Get the deployment event by scanning the whole chain from the start"""
+        sync = state.sync
+        assert not sync.is_initialised(), "Initialisation twice is not allowed"
+
+        web3 = self.web3
+        deployment = state.sync.deployment
+
+        def notify(
+            current_block: int,
+            start_block: int,
+            end_block: int,
+            chunk_size: int,
+            total_events: int,
+            last_timestamp: int,
+            context,
+        ):
+            # Because the code is only run once ever,
+            # we show the progress by
+            done = (current_block - start_block) / (end_block - start_block)
+            logger.info(f"EnzymeVaultSyncModel.sync_initial(): Scanning blocks {current_block:,} - {current_block + chunk_size:,}, done {done * 100:.1f}%")
+
+        # Set up the reader interface for fetch_deployment_event()
+        # extract_timestamp is disabled to speed up the event reading,
+        # we handle it separately
+        reader: Web3EventReader = cast(Web3EventReader, partial(read_events, notify=notify, chunk_size=10_000, extract_timestamps=None))
+
+        deployment_event = self.vault.fetch_deployment_event(reader=extract_events)
+
+        # Check that we got good event data
+        block_number = deployment_event["blockNumber"]
+        block_hash = deployment_event["blockHash"]
+        tx_hash = deployment_event["transactionHash"]
+        assert block_number > 1
+
+        # Get the block info to get the timestamp for the event
+        block_data =  extract_timestamps_json_rpc(web3, block_number, block_number)
+        timestamp_unix = block_data[block_hash]
+        timestamp_dt = datetime.datetime.utcfromtimestamp(timestamp_unix)
+
+        deployment.address = self.vault.vault.address
+        deployment.block_number = block_number
+        deployment.tx_hash = tx_hash
+        deployment.block_mined_at = timestamp_dt
+        deployment.vault_token_name = self.vault.get_name()
+        deployment.vault_token_symbol = self.vault.get_symbol()
+
+    def sync_treasury(self,
+                 strategy_cycle_ts: datetime.datetime,
+                 state: State,
+                 ):
+        """Apply the balance sync before each strategy cycle."""
         pass
-
-    def __call__(self, portfolio: Portfolio, ts: datetime.datetime, supported_reserves: List[AssetIdentifier]) -> List[ReserveUpdateEvent]:
-        """Process the backtest initial deposit.
-
-        The backtest wallet is credited once at the start.
-        """
-
-        if not self.initial_deposit_processed_at:
-            self.initial_deposit_processed_at = ts
-
-            assert len(supported_reserves) == 1
-
-            reserve_token = supported_reserves[0]
-
-            # Generate a deposit event
-            evt = ReserveUpdateEvent(
-                asset=reserve_token,
-                past_balance=Decimal(0),
-                new_balance=self.initial_deposit_amount,
-                updated_at=ts
-            )
-
-            # Update state
-            apply_sync_events(portfolio, [evt])
-
-            return [evt]
-        else:
-            return []
-
-

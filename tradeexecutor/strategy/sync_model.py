@@ -14,8 +14,8 @@ from tradeexecutor.state.state import State
 SyncMethodV0 = Callable[[Portfolio, datetime.datetime, List[AssetIdentifier]], List[ReserveUpdateEvent]]
 
 
-class SyncMethod(ABC):
-    """Describe the sync adapter."""
+class SyncModel(ABC):
+    """Abstract class for syncing on-chain fund movements event to the strategy treasury."""
 
     @abstractmethod
     def sync_initial(self, state: State):
@@ -23,7 +23,7 @@ class SyncMethod(ABC):
         pass
 
     @abstractmethod
-    def sync_treasuty(self,
+    def sync_treasury(self,
                  strategy_cycle_ts: datetime.datetime,
                  state: State,
                  ):
