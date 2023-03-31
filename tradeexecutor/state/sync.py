@@ -9,12 +9,64 @@
 - See :py:mod:`tradeexecutor.strategy.sync_model` how to on-chain treasuty
 """
 import datetime
+from decimal import Decimal
 from dataclasses import dataclass, field
 from typing import Optional, List
 
 from dataclasses_json import dataclass_json
 
 from tradingstrategy.chain import ChainId
+
+from tradeexecutor.state.identifier import AssetIdentifier
+
+
+@dataclass_json
+@dataclass
+class BalanceUpdateEvent:
+    """Processed balance update event."""
+
+    #: Asset that was updated
+    #:
+    #:
+    asset: AssetIdentifier
+
+    #: When the update happened
+    #:
+    #: The block mined timestamp
+    block_mined_at: datetime.datetime
+
+    #: Chain that updated the balance
+    chain_id: int
+
+    #: What was the position balance before update
+    past_balance: Decimal
+
+    #: What was the position balance after update
+    new_balance: Decimal
+
+    #: Investor address that the balance update is related to
+    #:
+    #:
+    owner_address: Optional[str] = None
+
+    #: Transaction that updated the balance
+    #:
+    #: Set None for interested calculation updates
+    tx_hash: Optional[str] = None
+
+    #: Log that updated the balance
+    #:
+    #: Set None for interest rate updates
+    log_index: Optional[int] = None
+
+    #: If this update was for open position
+    #:
+    #: Set None for reserve updates
+    position_id: Optional[int] = None
+
+    def is_reserve_update(self) -> bool:
+        """Return whether this event updates reserve balance or open position balance"""
+        return self.position_id is None
 
 
 @dataclass_json
@@ -70,24 +122,25 @@ class Treasury:
 
     """
 
+    #: Wall clock time. timestamp for which we run the last sync
+    #:
+    #: Wall clock time, at the beginning on the sync cycle.
+    last_updated_at: Optional[datetime.datetime] = None
+
     #: The strategy cycle timestamp for which we run the last sync
     #:
-    last_updated: Optional[datetime.datetime] = None
+    #: Wall clock time, at the beginning on the sync cycle.
+    last_cycle_at: Optional[datetime.datetime] = None
 
     #: What is the last processed block for deposit
     #:
     #: 0 = not scanned yet
-    last_scanned_block_for_deposits: Optional[int] = 0
-
-    #: What is the last processed block for redempetions
-    #:
-    #: 0 = not scanned yet
-    last_scanned_block_for_redemptions: Optional[int] = 0
+    last_block_scanned: Optional[int] = None
 
     #: List of Solidity deposit/withdraw events that we have correctly accounted in the strategy balances.
     #:
     #: Contains Solidity event logs for processed transactions
-    processed_events: List[dict] = field(default_factory=list)
+    processed_events: List[BalanceUpdateEvent] = field(default_factory=list)
 
 
 @dataclass_json

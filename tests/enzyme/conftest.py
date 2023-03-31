@@ -17,6 +17,8 @@ from web3.contract import Contract
 from eth_defi.anvil import AnvilLaunch, launch_anvil, make_anvil_custom_rpc_request
 from eth_defi.chain import install_chain_middleware, install_retry_middleware
 from eth_defi.deploy import deploy_contract
+from eth_defi.enzyme.deployment import EnzymeDeployment, RateAsset
+from eth_defi.enzyme.vault import Vault
 from eth_defi.token import create_token
 from eth_defi.uniswap_v2.deployment import deploy_uniswap_v2_like, UniswapV2Deployment, deploy_trading_pair
 from eth_defi.uniswap_v2.utils import sort_tokens
@@ -197,3 +199,59 @@ def usdc_usd_mock_chainlink_aggregator(web3, deployer) -> Contract:
     )
     aggregator.functions.setValue(1 * 10**6).transact({"from": deployer})
     return aggregator
+
+
+@pytest.fixture()
+def enzyme_deployment(
+        web3,
+        deployer,
+        mln,
+        weth,
+        usdc,
+        usdc_usd_mock_chainlink_aggregator,
+) -> EnzymeDeployment:
+    """Enzyme deployment on a test VM fixture.
+
+    - Comes with mocked USDC Chainlink price feed
+    """
+
+    deployment = EnzymeDeployment.deploy_core(
+        web3,
+        deployer,
+        mln,
+        weth,
+    )
+
+    # Create a vault for user 1
+    # where we nominate everything in USDC
+    deployment.add_primitive(
+        usdc,
+        usdc_usd_mock_chainlink_aggregator,
+        RateAsset.USD,
+    )
+
+    return deployment
+
+
+@pytest.fixture()
+def enzyme_vault_contract(
+        web3,
+        deployer,
+        usdc,
+        user_1,
+        enzyme_deployment,
+) -> Contract:
+    """Create an example vault.
+
+    - USDC nominatead
+
+    - user_1 is the owner
+    """
+
+    comptroller_contract, vault_contract = enzyme_deployment.create_new_vault(
+        user_1,
+        usdc,
+    )
+
+    return vault_contract
+

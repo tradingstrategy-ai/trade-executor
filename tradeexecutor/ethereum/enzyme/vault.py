@@ -2,147 +2,25 @@
 
 
 import logging
-import dataclasses
 import datetime
-from decimal import Decimal
 from functools import partial
-from typing import Dict, List, cast
+from typing import cast, Collection
 
-from dataclasses_json import dataclass_json
-from eth_typing import HexAddress
 from web3 import Web3
 
-from eth_defi.balances import DecimalisedHolding, \
-    fetch_erc20_balances_by_token_list, convert_balances_to_decimal
+from eth_defi.enzyme.events import fetch_vault_balance_events, EnzymeBalanceEvent, Deposit, Redemption
 from eth_defi.enzyme.vault import Vault
 from eth_defi.event_reader.reader import read_events, Web3EventReader, extract_events, extract_timestamps_json_rpc
-from tradeexecutor.state.reserve import ReservePosition
+from eth_defi.event_reader.reorganisation_monitor import ReorganisationMonitor
+from tradeexecutor.ethereum.token import translate_token_details
+from tradeexecutor.state.portfolio import Portfolio
 
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.state import State
+from tradeexecutor.state.sync import BalanceUpdateEvent
 from tradeexecutor.strategy.sync_model import SyncModel
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass_json
-@dataclasses.dataclass
-class ReserveUpdateEvent:
-    asset: AssetIdentifier
-    updated_at: datetime.datetime
-    past_balance: Decimal
-    new_balance: Decimal
-
-
-def update_wallet_balances(web3: Web3, address: HexAddress, tokens: List[HexAddress]) -> Dict[HexAddress, DecimalisedHolding]:
-    """Get raw balances of ERC-20 tokens."""
-    balances = fetch_erc20_balances_by_token_list(web3, address, tokens)
-    return convert_balances_to_decimal(web3, balances)
-
-
-def sync_reserves(
-        web3: Web3,
-        clock: datetime.datetime,
-        wallet_address: HexAddress,
-        current_reserves: List[ReservePosition],
-        supported_reserve_currencies: List[AssetIdentifier]) -> List[ReserveUpdateEvent]:
-    """Check the address for any incoming stablecoin transfers to see how much cash we have."""
-
-    our_chain_id = web3.eth.chain_id
-
-    # Get raw ERC-20 holdings of the address
-    balances = update_wallet_balances(web3, wallet_address, [web3.toChecksumAddress(a.address) for a in supported_reserve_currencies])
-
-    reserves_per_token = {r.asset.address: r for r in current_reserves}
-
-    events: ReserveUpdateEvent = []
-
-    for currency in supported_reserve_currencies:
-
-        address = currency.address
-
-        # 1337 is Ganache
-        if our_chain_id != 1337:
-            assert currency.chain_id == our_chain_id, f"Asset expects chain_id {currency.chain_id}, currently connected to {our_chain_id}"
-
-        if currency.address in reserves_per_token:
-            # We have an existing record of having this reserve
-            current_value = reserves_per_token[address].quantity
-        else:
-            current_value = Decimal(0)
-
-        decimal_holding = balances.get(Web3.toChecksumAddress(address))
-
-        # We get decimals = None if Ganache is acting
-        assert decimal_holding.decimals, f"Token did not have decimals: token:{currency} holding:{decimal_holding}"
-
-        if (decimal_holding is not None) and (decimal_holding.value != current_value):
-            evt = ReserveUpdateEvent(
-                asset=currency,
-                past_balance=current_value,
-                new_balance=decimal_holding.value,
-                updated_at=clock
-            )
-            events.append(evt)
-            logger.info("Reserve currency update detected. Asset: %s, past: %s, new: %s", evt.asset, evt.past_balance, evt.new_balance)
-
-    return events
-
-
-def sync_balances(
-        web3: Web3,
-        clock: datetime.datetime,
-        wallet_address: HexAddress,
-        current_reserves: List[ReservePosition],
-        supported_reserve_currencies: List[AssetIdentifier]) -> List[ReserveUpdateEvent]:
-    """Sync Enzyme vault balances.
-
-    Enzyme vault can have
-
-    - Deposits
-
-    - In-kind redemptions
-    """
-
-    our_chain_id = web3.eth.chain_id
-
-    # Get raw ERC-20 holdings of the address
-    balances = update_wallet_balances(web3, wallet_address, [web3.toChecksumAddress(a.address) for a in supported_reserve_currencies])
-
-    reserves_per_token = {r.asset.address: r for r in current_reserves}
-
-    events: ReserveUpdateEvent = []
-
-    for currency in supported_reserve_currencies:
-
-        address = currency.address
-
-        # 1337 is Ganache
-        if our_chain_id != 1337:
-            assert currency.chain_id == our_chain_id, f"Asset expects chain_id {currency.chain_id}, currently connected to {our_chain_id}"
-
-        if currency.address in reserves_per_token:
-            # We have an existing record of having this reserve
-            current_value = reserves_per_token[address].quantity
-        else:
-            current_value = Decimal(0)
-
-        decimal_holding = balances.get(Web3.toChecksumAddress(address))
-
-        # We get decimals = None if Ganache is acting
-        assert decimal_holding.decimals, f"Token did not have decimals: token:{currency} holding:{decimal_holding}"
-
-        if (decimal_holding is not None) and (decimal_holding.value != current_value):
-            evt = ReserveUpdateEvent(
-                asset=currency,
-                past_balance=current_value,
-                new_balance=decimal_holding.value,
-                updated_at=clock
-            )
-            events.append(evt)
-            logger.info("Reserve currency update detected. Asset: %s, past: %s, new: %s", evt.asset, evt.past_balance, evt.new_balance)
-
-    return events
 
 
 class EnzymeVaultSyncModel(SyncModel):
@@ -151,19 +29,26 @@ class EnzymeVaultSyncModel(SyncModel):
     def __init__(self,
                  web3: Web3,
                  vault_address: str,
+                 reorg_mon: ReorganisationMonitor,
                  ):
+        """
+
+        :param web3:
+            Web3
+
+        :param vault_address:
+            The address of the vault
+
+        :param last_block_chain_tip_margin:
+            How many blocks not to look up when looking up deposit events
+        """
         self.web3 = web3
+        self.reorg_mon = reorg_mon
         self.vault = Vault.fetch(web3, vault_address)
+        self.scan_chunk_size = 10_000
 
-    def sync_initial(self, state: State):
-        """Get the deployment event by scanning the whole chain from the start"""
-        sync = state.sync
-        assert not sync.is_initialised(), "Initialisation twice is not allowed"
-
-        web3 = self.web3
-        deployment = state.sync.deployment
-
-        def notify(
+    def _notify(
+            self,
             current_block: int,
             start_block: int,
             end_block: int,
@@ -171,16 +56,76 @@ class EnzymeVaultSyncModel(SyncModel):
             total_events: int,
             last_timestamp: int,
             context,
-        ):
-            # Because the code is only run once ever,
-            # we show the progress by
+    ):
+        """Log notifier used in Enzyme event reading"""
+        # Because the code is only run once ever,
+        # we show the progress by
+        if end_block - start_block > 0:
             done = (current_block - start_block) / (end_block - start_block)
-            logger.info(f"EnzymeVaultSyncModel.sync_initial(): Scanning blocks {current_block:,} - {current_block + chunk_size:,}, done {done * 100:.1f}%")
+            logger.info(f"EnzymeVaultSyncMode: Scanning blocks {current_block:,} - {current_block + chunk_size:,}, done {done * 100:.1f}%")
+
+    def fetch_vault_reserve_asset(self) -> AssetIdentifier:
+        """Read the reserve asset from the vault data."""
+        token = self.vault.denomination_token
+        address = token.address
+        assert type(address) == str
+        return translate_token_details(token)
+
+    def process_deposit(self, portfolio: Portfolio, event: Deposit) -> BalanceUpdateEvent:
+        """Translate Enzyme SharesBought event to our internal deposit storage format."""
+
+        asset = translate_token_details(event.denomination_token)
+        if len(portfolio.reserves) == 0:
+            # Initial deposit
+            portfolio.initialise_reserves(asset)
+        else:
+            assert asset == portfolio.get_default_reserve_currency()
+
+        reserve_position = portfolio.get_reserve_position(asset)
+        past_balance = reserve_position.quantity
+        new_balance = reserve_position.quantity + event.investment_amount
+
+        return BalanceUpdateEvent(
+            asset=asset,
+            block_mined_at=event.timestamp,
+            chain_id=asset.chain_id,
+            past_balance=past_balance,
+            new_balance=new_balance,
+            owner_address=event.receiver,
+            tx_hash=event.event_data["transactionHash"],
+            log_index=event.event_data["logIndex"],
+            position_id=None,
+        )
+
+    def translate_and_apply_event(self, state: State, event: EnzymeBalanceEvent) -> BalanceUpdateEvent:
+        """Translate on-chain event data to our persistent format."""
+        portfolio = state.portfolio
+        match event:
+            case Deposit():
+                return self.process_deposit(portfolio, event)
+            case Redemption():
+                raise RuntimeError(f"Unsupported event: {event}")
+            case _:
+                raise RuntimeError(f"Unsupported event: {event}")
+
+    def sync_initial(self, state: State):
+        """Get the deployment event by scanning the whole chain from the start.
+
+        Updates `state.sync.deployment` structure.
+        """
+        sync = state.sync
+        assert not sync.is_initialised(), "Initialisation twice is not allowed"
+
+        web3 = self.web3
+        deployment = state.sync.deployment
 
         # Set up the reader interface for fetch_deployment_event()
         # extract_timestamp is disabled to speed up the event reading,
         # we handle it separately
-        reader: Web3EventReader = cast(Web3EventReader, partial(read_events, notify=notify, chunk_size=10_000, extract_timestamps=None))
+        reader: Web3EventReader = cast(
+            Web3EventReader,
+            partial(read_events, notify=self._notify, chunk_size=self.scan_chunk_size, extract_timestamps=None)
+        )
 
         deployment_event = self.vault.fetch_deployment_event(reader=extract_events)
 
@@ -205,6 +150,55 @@ class EnzymeVaultSyncModel(SyncModel):
     def sync_treasury(self,
                  strategy_cycle_ts: datetime.datetime,
                  state: State,
-                 ):
-        """Apply the balance sync before each strategy cycle."""
-        pass
+                 ) -> Collection[BalanceUpdateEvent]:
+        """Apply the balance sync before each strategy cycle.
+
+        - Deposits by shareholders
+
+        - Redemptions
+
+        :return:
+            List of new treasury balance events
+        """
+
+        web3 = self.web3
+        sync = state.sync
+        assert sync.is_initialised(), "Vault sync not initialised"
+
+        vault = self.vault
+
+        treasury_sync = sync.treasury
+
+        if treasury_sync.last_block_scanned:
+            start_block = treasury_sync.last_block_scanned + 1
+        else:
+            start_block = sync.deployment.block_number
+
+        # TODO:
+        end_block = web3.eth.block_number
+
+        # Set up the reader interface for fetch_deployment_event()
+        # extract_timestamp is disabled to speed up the event reading,
+        # we handle it separately
+        reader: Web3EventReader = cast(
+            Web3EventReader,
+            partial(read_events, notify=self._notify, chunk_size=self.scan_chunk_size, reorg_mon=self.reorg_mon, extract_timestamps=None)
+        )
+
+        events_iter = fetch_vault_balance_events(
+            vault,
+            start_block,
+            end_block,
+            reader,
+        )
+
+        events = []
+        for chain_event in events_iter:
+            events.append(self.translate_and_apply_event(state, chain_event))
+
+        treasury_sync.processed_events += events
+        treasury_sync.last_block_scanned = end_block
+        treasury_sync.last_updated_at = datetime.datetime.utcnow()
+        treasury_sync.last_cycle_at = strategy_cycle_ts
+
+        return events

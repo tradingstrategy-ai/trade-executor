@@ -581,3 +581,18 @@ class Portfolio:
             if p.pair not in already_iterated_pairs:
                 already_iterated_pairs.add(p.pair)
                 yield p.pair
+
+    def initialise_reserves(self, asset: AssetIdentifier):
+        """Create the initial reserve currency list.
+
+        Currently we assume there can be only one reserve currency.
+        """
+        assert len(self.reserves) == 0, "Reserves already initialised"
+        self.reserves[asset.address] = ReservePosition(
+            asset=asset,
+            quantity=Decimal(0),
+            last_sync_at=None,
+            reserve_token_price=None,
+            last_pricing_at=None,
+        )
+
