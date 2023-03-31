@@ -76,9 +76,12 @@ def _get_initial_row(volume_bar_mode):
         raise ValueError("Unknown volume bar mode: %s" % volume_bar_mode)
     return cur_row
 
-def _add_hline(fig, start_at, end_at, cur_row, plot):
+def _add_hline(fig, start_at, end_at, cur_row, plot: Plot):
     """Add horizontal line to plot if needed."""
     if line_val := plot.horizontal_line:
+        assert line_val < max(plot.points.values()), "Line value must be within range of plot."
+        assert line_val > min(plot.points.values()), "Line value must be within range of plot."
+        
         start_at, end_at = _get_start_and_end(start_at, end_at, plot)
 
         horizontal_line_colour = plot.horizontal_line_colour or "grey"
