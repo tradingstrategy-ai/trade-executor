@@ -34,6 +34,9 @@ def overlay_all_technical_indicators(
 
     :param end_at:
         Crop range
+    
+    :param volume_bar_mode:
+        How to draw volume bars e.g. overlay, seperate, hidden
     """
 
     # get starting row for indicators
@@ -62,11 +65,12 @@ def overlay_all_technical_indicators(
             raise ValueError(f"Unknown plot kind: {plot.plot_kind}")
 
         # add horizontal line if needs be
-        _add_hline(fig, start_at, end_at, cur_row, plot)
+        if line_val := plot.horizontal_line:
+            _add_hline(fig, line_val, start_at, end_at, cur_row, plot)
 
         
 
-def _get_initial_row(volume_bar_mode):
+def _get_initial_row(volume_bar_mode: VolumeBarMode):
     """Get first row for plot based on volume bar mode."""
     if volume_bar_mode in {VolumeBarMode.hidden, VolumeBarMode.overlay}:
         cur_row = 1
@@ -76,28 +80,38 @@ def _get_initial_row(volume_bar_mode):
         raise ValueError("Unknown volume bar mode: %s" % volume_bar_mode)
     return cur_row
 
-def _add_hline(fig, start_at, end_at, cur_row, plot: Plot):
-    """Add horizontal line to plot if needed."""
-    if line_val := plot.horizontal_line:
-        assert line_val < max(plot.points.values()), "Line value must be within range of plot."
-        assert line_val > min(plot.points.values()), "Line value must be within range of plot."
-        
-        start_at, end_at = _get_start_and_end(start_at, end_at, plot)
+def _add_hline(
+    fig: go.Figure, 
+    line_val: float,
+    start_at: pd.Timestamp | None, 
+    end_at: pd.Timestamp | None, 
+    cur_row: int, 
+    plot: Plot,
+):
+    """Add horizontal line to plot"""
+    assert line_val < max(plot.points.values()), "Line value must be within range of plot."
+    assert line_val > min(plot.points.values()), "Line value must be within range of plot."
+    
+    start_at, end_at = _get_start_and_end(start_at, end_at, plot)
 
-        horizontal_line_colour = plot.horizontal_line_colour or "grey"
+    horizontal_line_colour = plot.horizontal_line_colour or "grey"
 
-            # Add a horizontal line to the first subplot
-        fig.add_shape(
-                type="line",
-                x0=start_at,
-                y0=line_val,
-                x1=end_at,
-                y1=line_val,
-                line=dict(color=horizontal_line_colour, width=1),
-                row=cur_row, col=1
-            )
+        # Add a horizontal line to the first subplot
+    fig.add_shape(
+            type="line",
+            x0=start_at,
+            y0=line_val,
+            x1=end_at,
+            y1=line_val,
+            line=dict(color=horizontal_line_colour, width=1),
+            row=cur_row, col=1
+        )
 
-def _get_start_and_end(start_at, end_at, plot):
+def _get_start_and_end(
+    start_at: pd.Timestamp | None, 
+    end_at: pd.Timestamp | None, 
+    plot: Plot,
+):
     """Get first and last entry from plot if start_at and end_at are not set."""
     if not start_at and end_at:
         start_at = plot.get_first_entry()[0]
