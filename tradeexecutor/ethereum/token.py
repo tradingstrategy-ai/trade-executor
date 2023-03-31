@@ -1,4 +1,4 @@
-"""ERC-20 data helpers."""
+"""ERC-20 token data helpers."""
 
 from web3 import Web3
 
@@ -14,7 +14,6 @@ def fetch_token_as_asset(web3: Web3, contract_address: str) -> AssetIdentifier:
 
     :return:
         Asset identifier that can be use with persistent storage.
-
     """
     token = fetch_erc20_details(web3, contract_address)
     return translate_token_details(token)
@@ -23,8 +22,11 @@ def fetch_token_as_asset(web3: Web3, contract_address: str) -> AssetIdentifier:
 def translate_token_details(token: TokenDetails) -> AssetIdentifier:
     """Translate on-chain fetched ERC-20 details to the persistent format.
 
-    :param tokken: 
-    :return: 
+    :param token:
+        On-chain token data
+
+    :return:
+        Persistent asset identifier
     """
     web3 = token.contract.w3
     return AssetIdentifier(

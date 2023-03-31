@@ -14,6 +14,7 @@ from eth_typing import HexAddress
 from web3 import EthereumTesterProvider, Web3, HTTPProvider
 from web3.contract import Contract
 
+from eth_defi.abi import get_deployed_contract
 from eth_defi.anvil import AnvilLaunch, launch_anvil, make_anvil_custom_rpc_request
 from eth_defi.chain import install_chain_middleware, install_retry_middleware
 from eth_defi.deploy import deploy_contract
@@ -255,3 +256,17 @@ def enzyme_vault_contract(
 
     return vault_contract
 
+
+@pytest.fixture()
+def vault_comptroller_contract(
+        enzyme_vault_contract,
+) -> Contract:
+    """Get the comptroller for our test vault.
+
+    - Needed to process deposits
+    """
+
+    web3 = enzyme_vault_contract.w3
+    comptroller_address = enzyme_vault_contract.functions.getAccessor().call()
+    comptroller = get_deployed_contract(web3, "enzyme/ComptrollerLib.json", comptroller_address)
+    return comptroller

@@ -4,7 +4,7 @@
 import logging
 import datetime
 from functools import partial
-from typing import cast, Collection
+from typing import cast, Collection, List
 
 from web3 import Web3
 
@@ -17,7 +17,7 @@ from tradeexecutor.state.portfolio import Portfolio
 
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.state import State
-from tradeexecutor.state.sync import BalanceUpdateEvent
+from tradeexecutor.state.sync import BalanceUpdateEvent, BalanceUpdateType
 from tradeexecutor.strategy.sync_model import SyncModel
 
 logger = logging.getLogger(__name__)
@@ -30,6 +30,7 @@ class EnzymeVaultSyncModel(SyncModel):
                  web3: Web3,
                  vault_address: str,
                  reorg_mon: ReorganisationMonitor,
+                 only_chain_listener=True,
                  ):
         """
 
@@ -39,13 +40,19 @@ class EnzymeVaultSyncModel(SyncModel):
         :param vault_address:
             The address of the vault
 
-        :param last_block_chain_tip_margin:
-            How many blocks not to look up when looking up deposit events
+        :param reorg_mon:
+            How to deal with block updates
+
+        :param only_chain_listerer:
+            This is the only adapter using reorg_monn.
+
+            Will call :py:meth:`process_blocks` as the part :py:meth:`sync_treasury`.
         """
         self.web3 = web3
         self.reorg_mon = reorg_mon
         self.vault = Vault.fetch(web3, vault_address)
         self.scan_chunk_size = 10_000
+        self.only_chain_listener = only_chain_listener
 
     def _notify(
             self,
@@ -63,6 +70,15 @@ class EnzymeVaultSyncModel(SyncModel):
         if end_block - start_block > 0:
             done = (current_block - start_block) / (end_block - start_block)
             logger.info(f"EnzymeVaultSyncMode: Scanning blocks {current_block:,} - {current_block + chunk_size:,}, done {done * 100:.1f}%")
+
+    def process_blocks(self):
+        """Process the reorgsanisation monitor blocks.
+
+        :raise ChainReorganisationDetected:
+            When any if the block data in our internal buffer
+            does not match those provided by events.
+        """
+        self.reorg_mon.figure_reorganisation_and_new_blocks()
 
     def fetch_vault_reserve_asset(self) -> AssetIdentifier:
         """Read the reserve asset from the vault data."""
@@ -86,6 +102,7 @@ class EnzymeVaultSyncModel(SyncModel):
         new_balance = reserve_position.quantity + event.investment_amount
 
         return BalanceUpdateEvent(
+            type=BalanceUpdateType.deposit,
             asset=asset,
             block_mined_at=event.timestamp,
             chain_id=asset.chain_id,
@@ -150,7 +167,7 @@ class EnzymeVaultSyncModel(SyncModel):
     def sync_treasury(self,
                  strategy_cycle_ts: datetime.datetime,
                  state: State,
-                 ) -> Collection[BalanceUpdateEvent]:
+                 ) -> List[BalanceUpdateEvent]:
         """Apply the balance sync before each strategy cycle.
 
         - Deposits by shareholders
@@ -159,11 +176,18 @@ class EnzymeVaultSyncModel(SyncModel):
 
         :return:
             List of new treasury balance events
+
+        :raise ChainReorganisationDetected:
+            When any if the block data in our internal buffer
+            does not match those provided by events.
         """
 
         web3 = self.web3
         sync = state.sync
         assert sync.is_initialised(), "Vault sync not initialised"
+
+        if self.only_chain_listener:
+            self.process_blocks()
 
         vault = self.vault
 
@@ -195,6 +219,12 @@ class EnzymeVaultSyncModel(SyncModel):
         events = []
         for chain_event in events_iter:
             events.append(self.translate_and_apply_event(state, chain_event))
+
+        past_events = set(treasury_sync.processed_events)
+        # Check that we do not have conflicting events
+        for new_event in events:
+            # Use BalanceUpdateEvent.__hash__
+            assert new_event not in past_events, f"Event already processed: {new_event}"
 
         treasury_sync.processed_events += events
         treasury_sync.last_block_scanned = end_block

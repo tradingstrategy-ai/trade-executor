@@ -9,9 +9,10 @@
 - See :py:mod:`tradeexecutor.strategy.sync_model` how to on-chain treasuty
 """
 import datetime
+import enum
 from decimal import Decimal
 from dataclasses import dataclass, field
-from typing import Optional, List
+from typing import Optional, List, Iterable
 
 from dataclasses_json import dataclass_json
 
@@ -20,10 +21,18 @@ from tradingstrategy.chain import ChainId
 from tradeexecutor.state.identifier import AssetIdentifier
 
 
+class BalanceUpdateType(enum.Enum):
+    deposit = "deposit"
+    redemption = "redemption"
+    interest = "interest"
+
+
 @dataclass_json
 @dataclass
 class BalanceUpdateEvent:
     """Processed balance update event."""
+
+    type: BalanceUpdateType
 
     #: Asset that was updated
     #:
@@ -63,6 +72,21 @@ class BalanceUpdateEvent:
     #:
     #: Set None for reserve updates
     position_id: Optional[int] = None
+
+    def __eq__(self, other: "BalanceUpdateEvent"):
+        assert isinstance(other, BalanceUpdateEvent), f"Got {other}"
+        match self.type:
+            case BalanceUpdateType.deposit:
+                return self.chain_id == other.chain_id and self.tx_hash == other.tx_hash and self.log_index == other.log_index
+            case _:
+                raise RuntimeError("Unsupported")
+
+    def __hash__(self):
+        match self.type:
+            case BalanceUpdateType.deposit:
+                return hash((self.chain_id, self.tx_hash, self.log_index))
+            case _:
+                raise RuntimeError("Unsupported")
 
     def is_reserve_update(self) -> bool:
         """Return whether this event updates reserve balance or open position balance"""
@@ -141,6 +165,9 @@ class Treasury:
     #:
     #: Contains Solidity event logs for processed transactions
     processed_events: List[BalanceUpdateEvent] = field(default_factory=list)
+
+    def get_deposits(self) -> Iterable[BalanceUpdateEvent]:
+        return filter(lambda x:x.type == BalanceUpdateType.deposit, self.processed_events)
 
 
 @dataclass_json
