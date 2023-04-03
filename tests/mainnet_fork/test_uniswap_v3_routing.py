@@ -103,7 +103,6 @@ def web3(anvil_polygon_chain_fork: str):
     """Set up a local unit testing blockchain."""
     # https://web3py.readthedocs.io/en/stable/examples.html#contract-unit-tests-in-python
     web3 = Web3(HTTPProvider(anvil_polygon_chain_fork, request_kwargs={"timeout": 5}))
-    web3.eth.set_gas_price_strategy(node_default_gas_price_strategy)
     install_chain_middleware(web3)
     return web3
 
@@ -384,6 +383,8 @@ def test_simple_routing_one_leg(
     assert eth_token.functions.balanceOf(hot_wallet.address).call() > 0
 
 
+# Flaky because get_block("latest") issue on Anvil
+@flaky.flaky()
 def test_simple_routing_buy_sell(
     web3,
     hot_wallet,
@@ -534,6 +535,8 @@ def test_simple_routing_three_leg(
     assert eth_token.functions.balanceOf(hot_wallet.address).call() > 0
 
 
+# web3.exceptions.BlockNotFound: Block with id: 'latest' not found.
+@flaky.flaky()
 def test_three_leg_buy_sell(
     web3,
     hot_wallet,

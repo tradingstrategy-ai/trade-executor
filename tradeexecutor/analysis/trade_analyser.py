@@ -19,6 +19,7 @@ Example analysis include:
 """
 
 import datetime
+import warnings
 import enum
 import logging
 from dataclasses import dataclass, field
@@ -609,15 +610,32 @@ class PositionSummary:
         with pd.option_context("display.max_row", None):
             display(df.style.set_table_styles([{'selector': 'thead', 'props': [('display', 'none')]}]))
     
-    def check_quantstats(self):
-        """Check that requirements are met for using quantstats library. Used as decorator for provided helper methods."""
-        if not HAS_QUANTSTATS:
-            raise RuntimeError("Quantstats library not installed")
+    @staticmethod
+    def check_quantstats(function):
+        """Decorator function that checks that requirements are met for using quantstats library. Used as decorator for provided helper methods."""
+        def wrapper(*args, **kwargs):
+            if not HAS_QUANTSTATS:
+                raise RuntimeError("Quantstats library not installed")
 
-        if not hasattr(self, "daily_returns"):
-            raise RuntimeError("Daily returns have not been calculated. Remember to provided state \
-                argument. E.g. summary = analysis.calculate_summary_statistics(state=state)")
+            if not hasattr(args[0], "daily_returns"):
+                raise RuntimeError("Daily returns have not been calculated. Remember to provided state argument. E.g. summary = analysis.calculate_summary_statistics(state=state)")
+            
+            with warnings.catch_warnings():
+                
+                # Silences 2 warnings from quantstats library
+                # 1.                
+                # /usr/local/lib/python3.10/site-packages/quantstats/stats.py:968: FutureWarning: In a future version of pandas all arguments of DataFrame.pivot will be keyword-only.
+                # returns = returns.pivot('Year', 'Month', 'Returns').fillna(0)
+                # 2.
+                # findfont: Font family 'Arial' not found.
 
+                warnings.simplefilter("ignore")
+                result = function(*args, **kwargs)
+                
+                return result
+        return wrapper
+    
+    @check_quantstats
     def show_full_report(self) -> None:
         """Show basic and advanced stats and plots
         
@@ -626,24 +644,24 @@ class PositionSummary:
         - This function cannot be used in normal python (.py) files since its only
         purpose to display
         """
-        self.check_quantstats()
         return qs.reports.full(self.daily_returns) 
     
+    @check_quantstats
     def get_basic_stats(self) -> pd.DataFrame:
         """Gets basic stats only.
         
         returns: Pandas DataFrame object 
         """
-        self.check_quantstats()
         return qs.reports.metrics(self.daily_returns, display=False)
 
+    @check_quantstats
     def get_full_stats(self) -> pd.DataFrame:
         """Gets basic and advanced stats.
         
         returns: Pandas DataFrame object"""
-        self.check_quantstats()
         return qs.reports.metrics(self.daily_returns, mode='full', display=False)
 
+    @check_quantstats
     def show_basic_plots(self) -> None:
         """Show basic plots
         
@@ -651,9 +669,9 @@ class PositionSummary:
         - Shows some basic plots
         - This function cannot be used in normal python (.py) files since its only
         purpose to display"""
-        self.check_quantstats()
         return qs.reports.plots(self.daily_returns)
 
+    @check_quantstats
     def show_full_plots(self) -> None:
         """Show basic and advanced plots
         
@@ -661,7 +679,6 @@ class PositionSummary:
         - Shows both basic and more advanced plots
         - This function cannot be used in normal python (.py) files since its only
         purpose to display"""
-        self.check_quantstats()
         return qs.reports.plots(self.daily_returns, mode='full')
 
 
