@@ -2,6 +2,7 @@
 
 from web3 import Web3
 
+from eth_defi.event_reader.reorganisation_monitor import create_reorganisation_monitor
 from tradeexecutor.ethereum.enzyme.vault import EnzymeVaultSyncModel
 from tradeexecutor.state.state import State
 
@@ -12,7 +13,9 @@ def test_enzyme_sync_model_init(
 ):
     """Fetch the initial data vault data from the chain."""
 
-    sync_model = EnzymeVaultSyncModel(web3, enzyme_vault_contract.address)
+    reorg_mon = create_reorganisation_monitor(web3)
+
+    sync_model = EnzymeVaultSyncModel(web3, enzyme_vault_contract.address, reorg_mon)
     state = State()
     sync_model.sync_initial(state)
 

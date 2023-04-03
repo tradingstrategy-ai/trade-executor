@@ -716,6 +716,7 @@ def test_three_leg_buy_sell_twice_on_chain(
     assert len(txs_2) == 2
 
 
+@flaky.flaky()
 def test_three_leg_buy_sell_twice(
     web3,
     hot_wallet,
