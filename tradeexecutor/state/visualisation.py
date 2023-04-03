@@ -36,6 +36,9 @@ class PlotKind(enum.Enum):
     
     #: This plot is drawn below the price graph
     technical_indicator_detached = "technical_indicator_detached"
+    
+    #: This plot is overlaid on a detached indicator plot
+    technical_indicator_overlay_on_detached = "technical_indicator_overlay"
 
 
 class PlotShape(enum.Enum):
@@ -97,6 +100,9 @@ class Plot:
     #:
     #: The price plot is regarded as 1.0, and the indicator plot default is 0.2
     relative_size: Optional[float] = 0.2
+    
+    #: If this plot is overlayed on top of a detached technical indicator, this is the name of the overlay it should be attached to.
+    detached_overlay_name: str | None = None
 
     def add_point(self,
                   timestamp: datetime.datetime,
@@ -241,6 +247,7 @@ class Visualisation:
              horizontal_line: Optional[float] = None,
              horizontal_line_colour: Optional[str] = None,
              relative_size: Optional[float] = None,
+             detached_overlay_name: str | None = None,
         ):
         # sourcery skip: remove-unnecessary-cast
         """Add a value to the output data and diagram.
@@ -264,6 +271,9 @@ class Visualisation:
 
         :param plot_shape:
             PlotShape enum value e.g. Plotshape.linear or Plotshape.horizontal_vertical
+            
+        :param detached_overlay_name:
+            If this plot is overlayed on top of a detached technical indicator, this is the name of the overlay it should be attached to.
         """
 
         assert type(name) == str, "Got name"
@@ -279,6 +289,13 @@ class Visualisation:
         if relative_size:
             assert kind == PlotKind.technical_indicator_detached, "Relative size is only supported for detached technical indicators"
         
+        if detached_overlay_name:
+            assert type(detached_overlay_name) is str, "Detached overlay must be a string"
+            assert kind == PlotKind.technical_indicator_overlay_on_detached, "Detached overlay must be a PlotKind.technical_indicator_overlay_on_detached"
+        
+        if kind == PlotKind.technical_indicator_overlay_on_detached:
+            assert detached_overlay_name and type(detached_overlay_name) == str, "Detached overlay must be a string for PlotKind.technical_indicator_overlay_on_detached"
+            
         plot = self.plots.get(name, Plot(name=name, kind=kind))
 
         plot.add_point(timestamp, value)
@@ -292,6 +309,8 @@ class Visualisation:
         plot.horizontal_line_colour = horizontal_line_colour
         
         plot.relative_size = relative_size
+        
+        plot.detached_overlay_name = detached_overlay_name
 
         if colour:
             plot.colour = colour

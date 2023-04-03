@@ -633,7 +633,20 @@ def visualise_single_pair(
     # since python dicts are now ordered by insertion
     relative_sizing = [plot.relative_size for plot in state.visualisation.plots.values() if plot.kind == PlotKind.technical_indicator_detached]
     
-    subplot_names = [plot.name for plot in state.visualisation.plots.values() if plot.kind == PlotKind.technical_indicator_detached]
+    subplot_names = []
+    for plot in state.visualisation.plots.values():
+        # get subplot names for detached technical indicators without overlay
+        if (plot.kind == PlotKind.technical_indicator_detached) and (plot.name not in [plot.detached_overlay_name for plot in state.visualisation.plots.values() if plot.kind == PlotKind.technical_indicator_overlay_on_detached]):
+            subplot_names.append(plot.name)
+            
+        # get subplot names for detached technical indicators with overlay
+        if plot.kind == PlotKind.technical_indicator_overlay_on_detached:
+            # check that detached plot exists
+            assert plot.detached_overlay_name in [plot.name for plot in state.visualisation.plots.values() if plot.kind == PlotKind.technical_indicator_detached]
+            
+            # add to list
+            subplot_names.append(plot.name + f"<br> + {plot.detached_overlay_name}")
+    
     
     # visualise candles and volume and create empty grid space for technical indicators
     fig = visualise_ohlcv(

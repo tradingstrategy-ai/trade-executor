@@ -45,6 +45,7 @@ def overlay_all_technical_indicators(
     # https://plotly.com/python/graphing-multiple-chart-types/
     for plot in visualisation.plots.values():
         
+        # get trace which is unattached to plot
         trace = visualise_technical_indicator(
             plot,
             start_at,
@@ -60,7 +61,11 @@ def overlay_all_technical_indicators(
             cur_row += 1
             fig.add_trace(trace, row=cur_row, col=1)
         elif plot.kind == PlotKind.technical_indicator_on_price:
+            # don't increment current row
             fig.add_trace(trace, row=1, col=1)
+        elif plot.kind == PlotKind.technical_indicator_overlay_on_detached:
+            # don't increment current row
+            fig.add_trace(trace, row=cur_row, col=1)
         else:
             raise ValueError(f"Unknown plot kind: {plot.plot_kind}")
 
@@ -89,8 +94,11 @@ def _add_hline(
     plot: Plot,
 ):
     """Add horizontal line to plot"""
-    assert line_val < max(plot.points.values()), "Line value must be within range of plot."
-    assert line_val > min(plot.points.values()), "Line value must be within range of plot."
+    
+    minimum = min(plot.points.values())
+    maximum = max(plot.points.values())
+    
+    assert minimum < line_val < maximum, f"Horizontal line value must be within range of plot. Plot range: {minimum} - {maximum}"
     
     start_at, end_at = _get_start_and_end(start_at, end_at, plot)
 
