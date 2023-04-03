@@ -415,13 +415,13 @@ class AssetTradeHistory:
 
 @dataclass_json
 @dataclass(slots=True)
-class TradeSummary:
+class PositionSummary:
     """Some generic statistics over all the trades"""
-    won_positions: int
-    lost_positions: int
-    zero_loss_positions: int
+    won: int
+    lost: int
+    zero_loss: int
     stop_losses: int
-    undecided_positions: int
+    undecided: int
     realised_profit: USDollarAmount
     open_value: USDollarAmount
     uninvested_cash: USDollarAmount
@@ -433,37 +433,50 @@ class TradeSummary:
         decoder=json_decode_timedelta,
     ))
 
-    average_won_position_profit_pc: float
-    average_lost_position_loss_pc: float
-    biggest_won_position_pc: Optional[float]
-    biggest_lost_position_pc: Optional[float]
+    average_won_profit_pc: float
+    average_lost_loss_pc: float
+    biggest_won_pc: Optional[float]
+    biggest_lost_pc: Optional[float]
 
-    average_duration_of_won_positions: datetime.timedelta = field(metadata=config(
+    average_duration_of_won: datetime.timedelta = field(metadata=config(
         encoder=json_encode_timedelta,
         decoder=json_decode_timedelta,
     ))
-    average_duration_of_lost_positions: datetime.timedelta = field(metadata=config(
+    average_duration_of_lost: datetime.timedelta = field(metadata=config(
         encoder=json_encode_timedelta,
         decoder=json_decode_timedelta,
     ))
     time_bucket: Optional[TimeBucket] = None
 
     total_positions: int = field(init=False)
+    # percentage of positions that were won
     won_position_percent: float = field(init=False)
+    # total returns for strategy
     return_percent: float = field(init=False)
     annualised_return_percent: float = field(init=False)
+    # percentage of positions that were stop losses
     all_stop_loss_percent: float = field(init=False)
+    # (total stop losses)/(lost positions)
+    # can be > 1 if there are more stop losses than lost positions
+    # TODO this is a confusing metric, more intuitive is (losing stop losses)/(total_stop_losses)
+    # and (winning stop losses)/(total_stop_losses)
     lost_stop_loss_percent: float = field(init=False)
 
+    # percentage of positions that were take profits
     all_take_profit_percent: float = field(init=False)
+    # (take profits)/(won positions)
+    # can be > 1 if there are more take profits than won positions
+    # same confusion as lost_stop_loss_percent
+    # TODO add (winning take profits)/(total_take_profits)
+    # and (losing take profits)/(total_take_profits)
     won_take_profit_percent: float = field(init=False)
 
+    # (realised profit usd)/(total positions)
     average_net_profit: USDollarAmount = field(init=False)
     end_value: USDollarAmount = field(init=False)
 
-    # used if raw_timeline is provided as argument to calculate_summary_statistics
-    average_position: Optional[float] = None
-    median_position: Optional[float] = None
+    average: Optional[float] = None
+    median: Optional[float] = None
     max_pos_cons: Optional[int] = None
     max_neg_cons: Optional[int] = None
     max_pullback: Optional[float] = None
@@ -478,8 +491,8 @@ class TradeSummary:
     lp_fees_paid: Optional[USDollarPrice] = 0
     lp_fees_average_pc: Optional[USDollarPrice] = 0
 
-    #: advanced users can use this property instead of the
-    #: provided quantstats helper methods
+    # advanced users can use this property instead of the
+    # provided quantstats helper methods
     daily_returns: Optional[pd.Series] = None
 
     def __post_init__(self):
@@ -490,7 +503,7 @@ class TradeSummary:
         self.all_take_profit_percent = calculate_percentage(self.take_profits, self.total_positions)
         self.lost_stop_loss_percent = calculate_percentage(self.stop_losses, self.lost_positions)
         self.won_take_profit_percent = calculate_percentage(self.take_profits, self.won_positions)
-        self.average_net_profit = self.realised_profit / self.total_positions if self.total_positions else None
+        self.average_net_profit = calculate_percentage(self.realised_profit, self.total_positions)
         self.end_value = self.open_value + self.uninvested_cash
         initial_cash = self.initial_cash or 0
         self.return_percent = calculate_percentage(self.end_value - initial_cash, initial_cash)
@@ -674,14 +687,14 @@ class TradeAnalysis:
         self, 
         time_bucket: Optional[TimeBucket] = None,
         state = None
-    ) -> TradeSummary:
+    ) -> PositionSummary:
         """Calculate some statistics how our trades went.
 
             :param time_bucket:
                 Optional, used to display average duration as 'number of bars' instead of 'number of days'.
 
             :return:
-                TradeSummary instance
+                PositionSummary instance
         """
 
         if(time_bucket is not None):
@@ -840,7 +853,7 @@ class TradeAnalysis:
 
         lp_fees_average_pc = lp_fees_paid / trade_volume if trade_volume else 0
 
-        return TradeSummary(
+        return PositionSummary(
             won_positions=len(won_positions),
             lost_positions=len(lost_positions),
             zero_loss_positions=len(zero_loss_positions),

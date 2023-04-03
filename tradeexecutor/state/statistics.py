@@ -18,7 +18,7 @@ from pandas import DatetimeIndex
 
 from tradingstrategy.types import USDollarAmount
 
-from tradeexecutor.analysis.trade_analyser import TradeSummary
+from tradeexecutor.analysis.trade_analyser import PositionSummary
 
 
 @dataclass_json
@@ -107,7 +107,7 @@ class PortfolioStatistics:
     last_trade_at: Optional[datetime.datetime] = None
 
     realised_profit_usd: Optional[USDollarAmount] = 0
-    summary: Optional[TradeSummary] = None
+    summary: Optional[PositionSummary] = None
 
 
 @dataclass_json

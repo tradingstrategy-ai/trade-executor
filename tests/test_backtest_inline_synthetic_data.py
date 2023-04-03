@@ -11,7 +11,7 @@ import pytest
 import pandas as pd
 from pandas_ta.overlap import ema
 
-from tradeexecutor.analysis.trade_analyser import build_trade_analysis, expand_timeline, TimelineRowStylingMode, TradeAnalysis, TradeSummary
+from tradeexecutor.analysis.trade_analyser import build_trade_analysis, expand_timeline, TimelineRowStylingMode, TradeAnalysis, PositionSummary
 from tradeexecutor.backtest.backtest_runner import run_backtest_inline
 from tradeexecutor.cli.log import setup_pytest_logging
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
@@ -253,7 +253,7 @@ def analysis(
 def summary(
     backtest_result: tuple[State, TradingStrategyUniverse, dict],
     analysis: TradeAnalysis
-) -> TradeSummary:
+) -> PositionSummary:
 
     state, universe, debug_dump = backtest_result
 
@@ -266,7 +266,7 @@ def summary(
 
 
 def test_basic_summary_statistics(
-    summary: TradeSummary,
+    summary: PositionSummary,
 ):
     """Analyse synthetic trading strategy adv_stats.
 
@@ -318,7 +318,7 @@ def test_basic_summary_statistics(
 
 
 def test_advanced_summary_statistics(
-    summary: TradeSummary
+    summary: PositionSummary
 ):
     full_stats = summary.get_full_stats()
 
