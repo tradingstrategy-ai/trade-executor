@@ -75,7 +75,7 @@ class AssetIdentifier:
 
     def __eq__(self, other: "AssetIdentifier") -> bool:
         """Assets are considered be identical if they share the same smart contract address."""
-        assert isinstance(other, AssetIdentifier)
+        assert isinstance(other, AssetIdentifier), f"Compared to wrong class: {other} {other.__class__}"
         return self.address.lower() == other.address.lower()
 
     def convert_to_raw_amount(self, amount: Decimal) -> int:

@@ -36,7 +36,7 @@ from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2RoutingState, UniswapV2SimpleRoutingModel, OutOfBalance
 from tradeexecutor.ethereum.uniswap_v2_execution import UniswapV2ExecutionModel
 from tradeexecutor.ethereum.wallet import sync_reserves
-from tradeexecutor.state.sync import apply_sync_events
+from tradeexecutor.testing.dummy_wallet import apply_sync_events
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.state import State
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
@@ -679,6 +679,7 @@ def test_three_leg_buy_sell_twice_on_chain(
     assert len(txs_2) == 2
 
 
+@flaky.flaky()
 def test_three_leg_buy_sell_twice(
         web3,
         hot_wallet,

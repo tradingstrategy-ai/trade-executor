@@ -37,17 +37,21 @@ class ReservePosition:
     last_pricing_at: datetime.datetime
 
     #: What was the first deposit amount.
+    #:
     #: Used to shortcut the backtest performance benchmark.
+    #:
     #: TODO: Remove optional in future versions.
     initial_deposit: Optional[Decimal] = None
 
     #: What was the first deposit exchange rate.
+    #:
     #: Used to shortcut the backtest performance benchmark.
+    #:
     #: TODO: Remove optional in future versions.
     initial_deposit_reserve_token_price: Optional[USDollarAmount] = None
 
     def __post_init__(self):
-        assert self.asset.decimals > 0, f"Looks like we have inproper reserve asset: {self.asset}"
+        assert self.asset.decimals > 0, f"Looks like we have improper reserve asset: {self.asset}"
 
     def get_identifier(self) -> str:
         return self.asset.get_identifier()

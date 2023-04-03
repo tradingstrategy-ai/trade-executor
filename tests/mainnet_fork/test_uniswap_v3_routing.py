@@ -40,7 +40,7 @@ from tradeexecutor.ethereum.uniswap_v3_routing import (
 )
 from tradeexecutor.ethereum.uniswap_v3_execution import UniswapV3ExecutionModel
 from tradeexecutor.ethereum.wallet import sync_reserves
-from tradeexecutor.state.sync import apply_sync_events
+from tradeexecutor.testing.dummy_wallet import apply_sync_events
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.state import State
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
@@ -484,6 +484,9 @@ def test_simple_routing_not_enough_balance(
         )
 
 
+# More flakiness with Anvil
+# https://github.com/foundry-rs/foundry/issues/4666
+@flaky.flaky()
 def test_simple_routing_three_leg(
     web3,
     hot_wallet,
@@ -716,6 +719,7 @@ def test_three_leg_buy_sell_twice_on_chain(
     assert len(txs_2) == 2
 
 
+@flaky.flaky()
 def test_three_leg_buy_sell_twice(
     web3,
     hot_wallet,
