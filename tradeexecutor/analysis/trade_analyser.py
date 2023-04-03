@@ -510,17 +510,19 @@ class PositionSummary:
         self.annualised_return_percent = calculate_percentage(self.return_percent * datetime.timedelta(days=365),
                                                               self.duration) if self.return_percent else None
 
-
+        # if time bucket provided, convert average duration from time to number of bars
+        if self.time_bucket is not None:
+            self.avg_duration_won_bars = as_bars(self.average_duration_of_won)
+            self.avg_duration_lost_bars = as_bars(self.average_duration_of_lost)
+        else:
+            self.avg_duration_won_bars = as_duration(self.average_duration_of_won)
+            self.avg_duration_lost_bars = as_duration(self.average_duration_of_lost)
+        
     def to_dataframe(self) -> pd.DataFrame:
         """Convert the data to a human readable summary table.
 
         """
-        if(self.time_bucket is not None):
-            avg_duration_winning = as_bars(self.average_duration_of_won_positions)
-            avg_duration_losing = as_bars(self.average_duration_of_lost_positions)
-        else:
-            avg_duration_winning = as_duration(self.average_duration_of_won_positions)
-            avg_duration_losing = as_duration(self.average_duration_of_lost_positions)
+        
 
         """Creates a human-readable Pandas dataframe table from the object."""
 
@@ -533,26 +535,26 @@ class PositionSummary:
             "Trade volume": as_dollar(self.trade_volume),
             "Positions win rate": as_percent(self.won_position_percent),
             "Total positions": as_integer(self.total_positions),
-            "Won positions": as_integer(self.won_positions),
-            "Lost positions": as_integer(self.lost_positions),
+            "Won positions": as_integer(self.won),
+            "Lost positions": as_integer(self.lost),
             "Stop losses triggered": as_integer(self.stop_losses),
             "Stop loss % of all positions": as_percent(self.all_stop_loss_percent),
             "Stop loss % of lost positions": as_percent(self.lost_stop_loss_percent),
             "Take profits triggered": as_integer(self.take_profits),
             "Take profit % of all positions": as_percent(self.all_take_profit_percent),
             "Take profit % of won positions": as_percent(self.won_take_profit_percent),
-            "Zero profit positions": as_integer(self.zero_loss_positions),
-            "Positions open at the end": as_integer(self.undecided_positions),
+            "Zero profit positions": as_integer(self.zero_loss),
+            "Positions open at the end": as_integer(self.undecided),
             "Realised profit and loss": as_dollar(self.realised_profit),
             "Portfolio unrealised value": as_dollar(self.open_value),
             "Extra returns on lending pool interest": as_dollar(self.extra_return),
             "Cash left at the end": as_dollar(self.uninvested_cash),
-            "Average winning positions profit %": as_percent(self.average_won_position_profit_pc),
-            "Average losing position loss %": as_percent(self.average_lost_position_loss_pc),
+            "Average winning positions profit %": as_percent(self.average_won_profit_pc),
+            "Average losing position loss %": as_percent(self.average_lost_loss_pc),
             "Biggest winning position %": as_percent(self.biggest_won_position_pc),
             "Biggest losing position %": as_percent(self.biggest_lost_position_pc),
-            "Average duration of winning positions": avg_duration_winning,
-            "Average duration of losing positions": avg_duration_losing,
+            "Average duration of winning positions": self.avg_duration_won_bars,
+            "Average duration of losing positions": self.avg_duration_lost_bars,
             "LP fees paid": as_dollar(self.lp_fees_paid),
             "LP fees paid % of volume": as_percent(self.lp_fees_average_pc),
         }
@@ -564,8 +566,8 @@ class PositionSummary:
                 else formatter(0)
             )
 
-        add_prop(self.average_position, 'Average position:', as_percent)
-        add_prop(self.median_position, 'Median position:', as_percent)
+        add_prop(self.average, 'Average position:', as_percent)
+        add_prop(self.median, 'Median position:', as_percent)
         add_prop(self.max_pos_cons, 'Most consecutive wins', as_integer)
         add_prop(self.max_neg_cons, 'Most consecutive losses', as_integer)
         add_prop(self.max_realised_loss, 'Biggest realized risk', as_percent)
