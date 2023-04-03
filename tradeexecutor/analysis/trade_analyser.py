@@ -522,6 +522,12 @@ class PositionSummary:
         """Convert the data to a human readable summary table.
 
         """
+        if self.time_bucket is not None and self.avg_duration_lost_bars and self.avg_duration_won_bars:
+            _avg_duration_won = self.avg_duration_won_bars
+            _avg_duration_lost = self.avg_duration_lost_bars
+        else:
+            _avg_duration_lost = self.average_duration_of_won
+            _avg_duration_won = self.average_duration_of_lost
         
 
         """Creates a human-readable Pandas dataframe table from the object."""
@@ -553,8 +559,8 @@ class PositionSummary:
             "Average losing position loss %": as_percent(self.average_lost_loss_pc),
             "Biggest winning position %": as_percent(self.biggest_won_position_pc),
             "Biggest losing position %": as_percent(self.biggest_lost_position_pc),
-            "Average duration of winning positions": self.avg_duration_won_bars,
-            "Average duration of losing positions": self.avg_duration_lost_bars,
+            "Average duration of winning positions": _avg_duration_won,
+            "Average duration of losing positions": _avg_duration_lost,
             "LP fees paid": as_dollar(self.lp_fees_paid),
             "LP fees paid % of volume": as_percent(self.lp_fees_average_pc),
         }
