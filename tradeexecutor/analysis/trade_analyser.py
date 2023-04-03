@@ -491,10 +491,13 @@ class PositionSummary:
 
     lp_fees_paid: Optional[USDollarPrice] = 0
     lp_fees_average_pc: Optional[USDollarPrice] = 0
-
+    
     # advanced users can use this property instead of the
     # provided quantstats helper methods
     daily_returns: Optional[pd.Series] = None
+    
+    avg_duration_lost_bars: float | None = field(init=False)
+    avg_duration_won_bars: float | None = field(init=False)
     
     # old names provided for backwards compatibility
     average_winning_trade_profit_pc: float | None = field(init=False)
@@ -510,12 +513,12 @@ class PositionSummary:
 
     def __post_init__(self):
 
-        self.total_positions = self.won_positions + self.lost_positions + self.zero_loss_positions
-        self.won_position_percent = calculate_percentage(self.won_positions, self.total_positions)
+        self.total_positions = self.won+ self.lost + self.zero_loss
+        self.won_position_percent = calculate_percentage(self.won, self.total_positions)
         self.all_stop_loss_percent = calculate_percentage(self.stop_losses, self.total_positions)
         self.all_take_profit_percent = calculate_percentage(self.take_profits, self.total_positions)
-        self.lost_stop_loss_percent = calculate_percentage(self.stop_losses, self.lost_positions)
-        self.won_take_profit_percent = calculate_percentage(self.take_profits, self.won_positions)
+        self.lost_stop_loss_percent = calculate_percentage(self.stop_losses, self.lost)
+        self.won_take_profit_percent = calculate_percentage(self.take_profits, self.won)
         self.average_net_profit = calculate_percentage(self.realised_profit, self.total_positions)
         self.end_value = self.open_value + self.uninvested_cash
         initial_cash = self.initial_cash or 0
@@ -536,11 +539,11 @@ class PositionSummary:
 
         """
         if self.time_bucket is not None and self.avg_duration_lost_bars and self.avg_duration_won_bars:
-            _avg_duration_won = self.avg_duration_won_bars
-            _avg_duration_lost = self.avg_duration_lost_bars
+            _avg_duration_won = as_integer(self.avg_duration_won_bars)
+            _avg_duration_lost = as_integer(self.avg_duration_lost_bars)
         else:
-            _avg_duration_lost = self.average_duration_of_won
-            _avg_duration_won = self.average_duration_of_lost
+            _avg_duration_lost = as_duration(self.average_duration_of_won)
+            _avg_duration_won = as_duration(self.average_duration_of_lost)
         
 
         """Creates a human-readable Pandas dataframe table from the object."""
@@ -570,8 +573,8 @@ class PositionSummary:
             "Cash left at the end": as_dollar(self.uninvested_cash),
             "Average winning positions profit %": as_percent(self.average_won_profit_pc),
             "Average losing position loss %": as_percent(self.average_lost_loss_pc),
-            "Biggest winning position %": as_percent(self.biggest_won_position_pc),
-            "Biggest losing position %": as_percent(self.biggest_lost_position_pc),
+            "Biggest winning position %": as_percent(self.biggest_won_pc),
+            "Biggest losing position %": as_percent(self.biggest_lost_pc),
             "Average duration of winning positions": _avg_duration_won,
             "Average duration of losing positions": _avg_duration_lost,
             "LP fees paid": as_dollar(self.lp_fees_paid),
@@ -891,26 +894,26 @@ class TradeAnalysis:
         lp_fees_average_pc = lp_fees_paid / trade_volume if trade_volume else 0
 
         return PositionSummary(
-            won_positions=len(won_positions),
-            lost_positions=len(lost_positions),
-            zero_loss_positions=len(zero_loss_positions),
+            won=len(won_positions),
+            lost=len(lost_positions),
+            zero_loss=len(zero_loss_positions),
             stop_losses=len(stop_losses),
             take_profits=len(take_profits),
-            undecided_positions=undecided_positions,
+            undecided=undecided_positions,
             realised_profit=cumulative_profit + extra_return,
             open_value=open_value,
             uninvested_cash=uninvested_cash,
             initial_cash=initial_cash,
             extra_return=extra_return,
             duration=duration,
-            average_won_position_profit_pc=average_won_position_profit_pc,
-            average_lost_position_loss_pc=average_lost_position_loss_pc,
-            biggest_won_position_pc=biggest_won_position_pc,
-            biggest_lost_position_pc=biggest_lost_position_pc,
-            average_duration_of_won_positions=average_duration_of_won_positions,
-            average_duration_of_lost_positions=average_duration_of_lost_positions,
-            average_position=average_position,
-            median_position=median_position,
+            average_won_profit_pc=average_won_position_profit_pc,
+            average_lost_loss_pc=average_lost_position_loss_pc,
+            biggest_won_pc=biggest_won_position_pc,
+            biggest_lost_pc=biggest_lost_position_pc,
+            average_duration_of_won=average_duration_of_won_positions,
+            average_duration_of_lost=average_duration_of_lost_positions,
+            average=average_position,
+            median=median_position,
             max_pos_cons=max_pos_cons,
             max_neg_cons=max_neg_cons,
             max_pullback=max_pullback,
