@@ -500,15 +500,15 @@ class PositionSummary:
     avg_duration_won_bars: float | None = field(init=False)
     
     # old names provided for backwards compatibility
-    average_winning_trade_profit_pc: float | None = field(init=False)
-    average_losing_trade_loss_pc: float | None = field(init=False)
-    biggest_winning_trade_pc: float | None = field(init=False)
-    biggest_losing_trade_pc: float | None = field(init=False)
-    average_duration_of_winning_trades: float | None = field(init=False)
-    average_duration_of_losing_trades: float | None = field(init=False)
-    win_percent: float | None = field(init=False)
-    average_trade: float | None = field(init=False)
-    median_trade: float | None = field(init=False)
+    average_winning_trade_profit_pc: float | None = None
+    average_losing_trade_loss_pc: float | None = None
+    biggest_winning_trade_pc: float | None = None
+    biggest_losing_trade_pc: float | None = None
+    average_duration_of_winning_trades: float | None = None
+    average_duration_of_losing_trades: float | None = None
+    win_percent: float | None = None
+    average_trade: float | None = None
+    median_trade: float | None = None
     
 
     def __post_init__(self):
