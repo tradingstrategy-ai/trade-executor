@@ -484,6 +484,9 @@ def test_simple_routing_not_enough_balance(
         )
 
 
+# More flakiness with Anvil
+# https://github.com/foundry-rs/foundry/issues/4666
+@flaky.flaky()
 def test_simple_routing_three_leg(
     web3,
     hot_wallet,
