@@ -448,6 +448,7 @@ class PositionSummary:
     ))
     time_bucket: Optional[TimeBucket] = None
 
+    # these stats calculate in post-init, so init=False
     total_positions: int = field(init=False)
     # percentage of positions that were won
     won_position_percent: float = field(init=False)
@@ -470,7 +471,6 @@ class PositionSummary:
     # TODO add (winning take profits)/(total_take_profits)
     # and (losing take profits)/(total_take_profits)
     won_take_profit_percent: float = field(init=False)
-
     # (realised profit usd)/(total positions)
     average_net_profit: USDollarAmount = field(init=False)
     end_value: USDollarAmount = field(init=False)
@@ -494,6 +494,18 @@ class PositionSummary:
     # advanced users can use this property instead of the
     # provided quantstats helper methods
     daily_returns: Optional[pd.Series] = None
+    
+    # old names provided for backwards compatibility
+    average_winning_trade_profit_pc: float | None = field(init=False)
+    average_losing_trade_loss_pc: float | None = field(init=False)
+    biggest_winning_trade_pc: float | None = field(init=False)
+    biggest_losing_trade_pc: float | None = field(init=False)
+    average_duration_of_winning_trades: float | None = field(init=False)
+    average_duration_of_losing_trades: float | None = field(init=False)
+    win_percent: float | None = field(init=False)
+    average_trade: float | None = field(init=False)
+    median_trade: float | None = field(init=False)
+    
 
     def __post_init__(self):
 
