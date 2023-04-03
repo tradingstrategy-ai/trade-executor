@@ -437,7 +437,7 @@ def test_statistics(usdc, weth_usdc, aave_usdc, start_ts):
     assert portfolio_stats.unrealised_profit_usd == pytest.approx(2.673)
     assert portfolio_stats.realised_profit_usd == 0
 
-    assert summary.undecided_positions == portfolio_stats.open_position_count
+    assert summary.undecided == portfolio_stats.open_position_count
     assert summary.uninvested_cash == portfolio_stats.free_cash
     assert summary.realised_profit == portfolio_stats.realised_profit_usd
 
@@ -486,9 +486,9 @@ def test_statistics(usdc, weth_usdc, aave_usdc, start_ts):
     assert stats.closed_positions[2].value_at_open == pytest.approx(99)
     assert stats.closed_positions[2].value_at_max == pytest.approx(99)
 
-    assert summary.won_positions == 1
-    assert summary.lost_positions == 0
-    assert summary.zero_loss_positions == 1
+    assert summary.won == 1
+    assert summary.lost == 0
+    assert summary.zero_loss == 1
     assert summary.total_positions == 2
     assert summary.won_position_percent == 0.5
     assert summary.return_percent == pytest.approx(0.04363200000000006)
