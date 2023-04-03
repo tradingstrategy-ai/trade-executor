@@ -1,6 +1,5 @@
 """Enzyme vaults integration."""
 
-
 import logging
 import datetime
 from functools import partial
@@ -95,11 +94,18 @@ class EnzymeVaultSyncModel(SyncModel):
             # Initial deposit
             portfolio.initialise_reserves(asset)
         else:
-            assert asset == portfolio.get_default_reserve_currency()
+            reserve_asset, reserve_price = portfolio.get_default_reserve_currency()
+            assert asset == reserve_asset
 
         reserve_position = portfolio.get_reserve_position(asset)
         past_balance = reserve_position.quantity
         new_balance = reserve_position.quantity + event.investment_amount
+
+        exchange_rate = self.vault.fetch_denomination_token_usd_exchange_rate()
+        reserve_position.reserve_token_price = float(exchange_rate)
+        reserve_position.last_pricing_at = datetime.datetime.utcnow()
+        reserve_position.last_sync_at = datetime.datetime.utcnow()
+        reserve_position.quantity += event.investment_amount
 
         return BalanceUpdateEvent(
             type=BalanceUpdateType.deposit,
@@ -153,7 +159,7 @@ class EnzymeVaultSyncModel(SyncModel):
         assert block_number > 1
 
         # Get the block info to get the timestamp for the event
-        block_data =  extract_timestamps_json_rpc(web3, block_number, block_number)
+        block_data = extract_timestamps_json_rpc(web3, block_number, block_number)
         timestamp_unix = block_data[block_hash]
         timestamp_dt = datetime.datetime.utcfromtimestamp(timestamp_unix)
 
@@ -165,9 +171,9 @@ class EnzymeVaultSyncModel(SyncModel):
         deployment.vault_token_symbol = self.vault.get_symbol()
 
     def sync_treasury(self,
-                 strategy_cycle_ts: datetime.datetime,
-                 state: State,
-                 ) -> List[BalanceUpdateEvent]:
+                      strategy_cycle_ts: datetime.datetime,
+                      state: State,
+                      ) -> List[BalanceUpdateEvent]:
         """Apply the balance sync before each strategy cycle.
 
         - Deposits by shareholders

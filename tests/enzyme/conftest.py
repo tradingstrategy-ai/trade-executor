@@ -20,9 +20,11 @@ from eth_defi.chain import install_chain_middleware, install_retry_middleware
 from eth_defi.deploy import deploy_contract
 from eth_defi.enzyme.deployment import EnzymeDeployment, RateAsset
 from eth_defi.enzyme.vault import Vault
-from eth_defi.token import create_token
+from eth_defi.token import create_token, fetch_erc20_details
 from eth_defi.uniswap_v2.deployment import deploy_uniswap_v2_like, UniswapV2Deployment, deploy_trading_pair
 from eth_defi.uniswap_v2.utils import sort_tokens
+from tradeexecutor.ethereum.token import translate_token_details
+from tradeexecutor.state.identifier import AssetIdentifier
 
 
 @pytest.fixture()
@@ -144,6 +146,14 @@ def usdc(web3, deployer) -> Contract:
 
 
 @pytest.fixture()
+def usdc_asset(usdc: Contract) -> AssetIdentifier:
+    """USDC as a persistent id.
+    """
+    details = fetch_erc20_details(usdc.w3, usdc.address)
+    return translate_token_details(details)
+
+
+@pytest.fixture()
 def weth_usdc_pair(web3, deployer, uniswap_v2, usdc, weth) -> Contract:
     """Create Uniswap v2 pool for WETH-USDC.
 
@@ -210,6 +220,7 @@ def enzyme_deployment(
         weth,
         usdc,
         usdc_usd_mock_chainlink_aggregator,
+        weth_usd_mock_chainlink_aggregator,
 ) -> EnzymeDeployment:
     """Enzyme deployment on a test VM fixture.
 
@@ -230,6 +241,8 @@ def enzyme_deployment(
         usdc_usd_mock_chainlink_aggregator,
         RateAsset.USD,
     )
+
+    deployment.contracts.value_interpreter.functions.setEthUsdAggregator(weth_usd_mock_chainlink_aggregator.address).transact({"from": deployer})
 
     return deployment
 
