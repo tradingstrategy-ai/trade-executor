@@ -5356,13 +5356,14 @@ tester = ["eth-tester[py-evm] (==v0.8.0-b.3)", "py-geth (>=3.11.0)"]
 
 [[package]]
 name = "web3-ethereum-defi"
-version = "0.16.1"
+version = "0.17"
 description = "High level Python APIs for Ethereum-compatible smart contracts, blockchains and protocols like Uniswap, Aave, Enzyme"
 category = "main"
 optional = false
 python-versions = ">=3.10,<3.11"
 files = [
-    {file = "web3_ethereum_defi-0.16.1-py3-none-any.whl", hash = "sha256:697498881d0dd79275b45a50e8e9d931137725309e6fe46ad97c3ff31502d5e5"},
+    {file = "web3_ethereum_defi-0.17-py3-none-any.whl", hash = "sha256:1079e03b28e0cfe7cd8666efaf0b5f310524abc4b6523d605ff61bdf6f2eebee"},
+    {file = "web3_ethereum_defi-0.17.tar.gz", hash = "sha256:9e3aa16e160069dfa69c106dbeabee574e1f63e9962d2f8667081e7e4331d4fb"},
 ]
 
 [package.dependencies]
@@ -5858,4 +5859,4 @@ web-server = ["pyramid", "WebTest", "openapi-core", "pyramid-openapi3", "waitres
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.10,<3.11"
-content-hash = "94a2258496590250f5327e6ed1fe1cf4f31a22059c2bedf490568a2b6c2c8638"
+content-hash = "6e581aa33685743b7e4abc358bace01c4450ef348e151e96786fd1410db8e62b"
