@@ -11,7 +11,7 @@ from web3.exceptions import ContractLogicError
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, fetch_deployment
 from eth_defi.uniswap_v2.swap import swap_with_slippage_protection
 
-from tradeexecutor.ethereum.tx import TransactionBuilder
+from tradeexecutor.ethereum.tx import HotWalletTransactionBuilder
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradingstrategy.pair import PandasPairUniverse
@@ -33,7 +33,7 @@ class UniswapV2RoutingState(EthereumRoutingState):
 
     def __init__(self,
                  pair_universe: PandasPairUniverse,
-                 tx_builder: Optional[TransactionBuilder] = None,
+                 tx_builder: Optional[HotWalletTransactionBuilder] = None,
                  web3: Optional[Web3] = None,
                  swap_gas_limit=2_000_000):
         super().__init__(pair_universe=pair_universe,
@@ -93,7 +93,7 @@ class UniswapV2RoutingState(EthereumRoutingState):
                 max_slippage=max_slippage * 100,  # In BPS
             )
         
-        return self.get_signed_tx(bound_swap_func, self.swap_gas_limit)
+        return self.create_signed_transaction(bound_swap_func, self.swap_gas_limit)
 
     def trade_on_router_three_way(self,
             uniswap: UniswapV2Deployment,

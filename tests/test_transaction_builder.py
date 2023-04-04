@@ -14,8 +14,14 @@ from eth_defi.gas import estimate_gas_fees
 from eth_defi.hotwallet import HotWallet
 from eth_defi.token import create_token
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, deploy_trading_pair, deploy_uniswap_v2_like
-from tradeexecutor.ethereum.tx import TransactionBuilder, APPROVE_GAS_LIMIT
+from tradeexecutor.ethereum.tx import HotWalletTransactionBuilder
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
+
+
+
+#: How many gas units we assume ERC-20 approval takes
+#: TODO: Move to a better model
+APPROVE_GAS_LIMIT = 100_000
 
 
 @pytest.fixture
@@ -157,23 +163,20 @@ def test_build_erc20_approve(
         web3,
         hot_wallet,
         uniswap_v2,
-        usdc_token,
+        usdc_token: Contract,
     ):
     """Create approve() transaction and execute it."""
 
     fees = estimate_gas_fees(web3)
 
-    tx_builder = TransactionBuilder(
+    tx_builder = HotWalletTransactionBuilder(
         web3,
         hot_wallet,
-        fees,
     )
 
-    tx = tx_builder.create_transaction(
-        usdc_token,
-        "approve",
-        (uniswap_v2.router.address, 2**256-1),
-        APPROVE_GAS_LIMIT,
+    tx = tx_builder.sign_transaction(
+        usdc_token.functions.approve(uniswap_v2.router.address, 2**256-1),
+        gas_limit=APPROVE_GAS_LIMIT,
     )
 
     tx_hash = tx_builder.broadcast(tx)
@@ -190,18 +193,13 @@ def test_planned_gas_price(
     ):
     """We can read planned gas price back from the transaction."""
 
-    fees = estimate_gas_fees(web3)
-
-    tx_builder = TransactionBuilder(
+    tx_builder = HotWalletTransactionBuilder(
         web3,
         hot_wallet,
-        fees,
     )
 
-    tx = tx_builder.create_transaction(
-        usdc_token,
-        "approve",
-        (uniswap_v2.router.address, 2**256-1),
+    tx = tx_builder.sign_transaction(
+        usdc_token.functions.approve(uniswap_v2.router.address, 2**256-1),
         APPROVE_GAS_LIMIT,
     )
 

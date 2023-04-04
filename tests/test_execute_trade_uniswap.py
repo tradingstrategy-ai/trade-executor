@@ -209,9 +209,11 @@ def state(portfolio) -> State:
 def pair_universe(web3, weth_usdc_pair, aave_usdc_pair) -> PandasPairUniverse:
     return create_pair_universe(web3, None, [weth_usdc_pair, aave_usdc_pair])
 
+
 @pytest.fixture()
 def ethereum_trader(web3: Web3, uniswap_v2: UniswapV2Deployment, hot_wallet: HotWallet, state: State, pair_universe: PandasPairUniverse) -> UniswapV2TestTrader:
     return UniswapV2TestTrader(web3, uniswap_v2, hot_wallet, state, pair_universe)
+
 
 def test_execute_trade_instructions_buy_weth(
         web3: Web3,

@@ -8,7 +8,7 @@ from tradingstrategy.chain import ChainId
 
 from eth_defi.gas import estimate_gas_fees
 
-from tradeexecutor.ethereum.tx import TransactionBuilder
+from tradeexecutor.ethereum.tx import HotWalletTransactionBuilder
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
 from tradeexecutor.state.trade import TradeExecution
@@ -334,7 +334,7 @@ class EthereumRoutingModel(RoutingModel):
 
         logger.info("Estimated gas fees for chain %d: %s", web3.eth.chain_id, fees)
         if hot_wallet is not None:
-            tx_builder = TransactionBuilder(web3, hot_wallet, fees)
+            tx_builder = HotWalletTransactionBuilder(web3, hot_wallet)
             routing_state = Routing_State(universe.universe.pairs, tx_builder)
         else:
             routing_state = Routing_State(universe.universe.pairs,

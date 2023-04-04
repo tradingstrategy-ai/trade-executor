@@ -11,20 +11,22 @@ import pytest
 from pytest import FixtureRequest
 
 from eth_typing import HexAddress
-from web3 import EthereumTesterProvider, Web3, HTTPProvider
+from tradingstrategy.pair import PandasPairUniverse
+from web3 import Web3, HTTPProvider
 from web3.contract import Contract
 
 from eth_defi.abi import get_deployed_contract
-from eth_defi.anvil import AnvilLaunch, launch_anvil, make_anvil_custom_rpc_request
-from eth_defi.chain import install_chain_middleware, install_retry_middleware
+from eth_defi.anvil import AnvilLaunch, launch_anvil
+from eth_defi.chain import install_chain_middleware
 from eth_defi.deploy import deploy_contract
 from eth_defi.enzyme.deployment import EnzymeDeployment, RateAsset
-from eth_defi.enzyme.vault import Vault
+
 from eth_defi.token import create_token, fetch_erc20_details
 from eth_defi.uniswap_v2.deployment import deploy_uniswap_v2_like, UniswapV2Deployment, deploy_trading_pair
-from eth_defi.uniswap_v2.utils import sort_tokens
+
 from tradeexecutor.ethereum.token import translate_token_details
-from tradeexecutor.state.identifier import AssetIdentifier
+from tradeexecutor.ethereum.universe import create_pair_universe
+from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 
 
 @pytest.fixture()
@@ -283,3 +285,28 @@ def vault_comptroller_contract(
     comptroller_address = enzyme_vault_contract.functions.getAccessor().call()
     comptroller = get_deployed_contract(web3, "enzyme/ComptrollerLib.json", comptroller_address)
     return comptroller
+
+
+@pytest.fixture
+def weth_usdc_uniswap_pool(web3, deployer, uniswap_v2, weth, usdc) -> HexAddress:
+    """ETH-USDC pool with 1.7M liquidity."""
+    pair_address = deploy_trading_pair(
+        web3,
+        deployer,
+        uniswap_v2,
+        weth,
+        usdc,
+        1000 * 10**18,  # 1000 ETH liquidity
+        1_700_000 * 10**6,  # 1.7M USDC liquidity
+    )
+    return pair_address
+
+
+@pytest.fixture
+def weth_usdc_trading_pair(uniswap_v2, weth_usdc_uniswap_pool, usdc_asset, weth_asset) -> TradingPairIdentifier:
+    return TradingPairIdentifier(usdc_asset, weth_asset, weth_usdc_uniswap_pool, uniswap_v2.factory.address, fee=0.30)
+
+
+@pytest.fixture()
+def pair_universe(web3, weth_usdc_trading_pair) -> PandasPairUniverse:
+    return create_pair_universe(web3, None, [weth_usdc_trading_pair])

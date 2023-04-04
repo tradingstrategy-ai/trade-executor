@@ -12,7 +12,7 @@ from eth_defi.uniswap_v3.deployment import UniswapV3Deployment, fetch_deployment
 from eth_defi.uniswap_v3.swap import swap_with_slippage_protection
 from web3.exceptions import ContractLogicError
 
-from tradeexecutor.ethereum.tx import TransactionBuilder
+from tradeexecutor.ethereum.tx import HotWalletTransactionBuilder
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradingstrategy.pair import PandasPairUniverse
@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 class UniswapV3RoutingState(EthereumRoutingState):
     def __init__(self,
                  pair_universe: PandasPairUniverse,
-                 tx_builder: Optional[TransactionBuilder]=None,
+                 tx_builder: Optional[HotWalletTransactionBuilder]=None,
                  swap_gas_limit=2_000_000):
         super().__init__(pair_universe, tx_builder, swap_gas_limit)
     
@@ -77,7 +77,7 @@ class UniswapV3RoutingState(EthereumRoutingState):
             pool_fees=[raw_fee]
         )
         
-        return self.get_signed_tx(bound_swap_func, self.swap_gas_limit)
+        return self.create_signed_transaction(bound_swap_func, self.swap_gas_limit)
 
     def trade_on_router_three_way(self,
             uniswap: UniswapV3Deployment,
@@ -119,7 +119,8 @@ class UniswapV3RoutingState(EthereumRoutingState):
             intermediate_token=intermediary_token,
         )
         
-        return self.get_signed_tx(bound_swap_func, self.swap_gas_limit)
+        return self.create_signed_transaction(bound_swap_func, self.swap_gas_limit)
+
 
 class UniswapV3SimpleRoutingModel(EthereumRoutingModel):
     """A simple router that does not optimise the trade execution cost. Designed for uniswap-v2 forks.

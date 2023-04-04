@@ -16,7 +16,7 @@ from eth_defi.token import fetch_erc20_details
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment
 from eth_defi.uniswap_v3.deployment import UniswapV3Deployment
 
-from tradeexecutor.ethereum.tx import TransactionBuilder
+from tradeexecutor.ethereum.tx import HotWalletTransactionBuilder
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
 from tradeexecutor.strategy.routing import RoutingState
@@ -54,7 +54,7 @@ class EthereumRoutingState(RoutingState):
 
     def __init__(self,
                  pair_universe: PandasPairUniverse,
-                 tx_builder: Optional[TransactionBuilder] = None,
+                 tx_builder: Optional[HotWalletTransactionBuilder] = None,
                  swap_gas_limit=2_000_000,
                  web3: Optional[Web3] = None,
                  ):
@@ -185,17 +185,14 @@ class EthereumRoutingState(RoutingState):
             return []
         
         # Create infinite approval
-        tx = self.tx_builder.create_transaction(
-            erc_20,
-            "approve",
-            (router_address, 2**256-1),
+        tx = self.tx_builder.sign_transaction(
+            erc_20.functions.approve(router_address, 2**256-1),
             100_000,  # For approve, assume it cannot take more than 100k gas
         )
 
         return [tx]
     
-    
-    def get_signed_tx(self, swap_func, gas_limit):
+    def create_signed_transaction(self, swap_func, gas_limit):
         signed_tx = self.tx_builder.sign_transaction(
             swap_func, gas_limit
         )

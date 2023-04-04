@@ -32,7 +32,7 @@ from eth_defi.hotwallet import HotWallet
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, fetch_deployment
 from eth_defi.utils import is_localhost_port_listening
 
-from tradeexecutor.ethereum.tx import TransactionBuilder
+from tradeexecutor.ethereum.tx import HotWalletTransactionBuilder
 from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2RoutingState, UniswapV2SimpleRoutingModel, OutOfBalance
 from tradeexecutor.ethereum.uniswap_v2_execution import UniswapV2ExecutionModel
 from tradeexecutor.ethereum.wallet import sync_reserves
@@ -297,14 +297,10 @@ def test_simple_routing_one_leg(
     - Buy Cake with BUSD
     """
 
-    # Get live fee structure from BNB Chain
-    fees = estimate_gas_fees(web3)
-
     # Prepare a transaction builder
-    tx_builder = TransactionBuilder(
+    tx_builder = HotWalletTransactionBuilder(
         web3,
         hot_wallet,
-        fees,
     )
 
     # Create
@@ -349,14 +345,10 @@ def test_simple_routing_buy_sell(
 ):
     """Make 2x two way trade BUSD -> Cake -> BUSD."""
 
-    # Get live fee structure from BNB Chain
-    fees = estimate_gas_fees(web3)
-
     # Prepare a transaction builder
-    tx_builder = TransactionBuilder(
+    tx_builder = HotWalletTransactionBuilder(
         web3,
         hot_wallet,
-        fees,
     )
 
     # Create
@@ -416,14 +408,10 @@ def test_simple_routing_not_enough_balance(
 ):
     """Try to buy, but does not have cash."""
 
-    # Get live fee structure from BNB Chain
-    fees = estimate_gas_fees(web3)
-
     # Prepare a transaction builder
-    tx_builder = TransactionBuilder(
+    tx_builder = HotWalletTransactionBuilder(
         web3,
         hot_wallet,
-        fees,
     )
 
     # Create
@@ -453,14 +441,10 @@ def test_simple_routing_three_leg(
 ):
     """Make 1x two way trade BUSD -> BNB -> Cake."""
 
-    # Get live fee structure from BNB Chain
-    fees = estimate_gas_fees(web3)
-
     # Prepare a transaction builder
-    tx_builder = TransactionBuilder(
+    tx_builder = HotWalletTransactionBuilder(
         web3,
         hot_wallet,
-        fees,
     )
 
     routing_state = UniswapV2RoutingState(pair_universe, tx_builder)
@@ -511,14 +495,10 @@ def test_three_leg_buy_sell(
     balance = cake_token.functions.balanceOf(hot_wallet.address).call()
     assert balance == 0
 
-    # Get live fee structure from BNB Chain
-    fees = estimate_gas_fees(web3)
-
     # Prepare a transaction builder
-    tx_builder = TransactionBuilder(
+    tx_builder = HotWalletTransactionBuilder(
         web3,
         hot_wallet,
-        fees,
     )
 
     routing_state = UniswapV2RoutingState(pair_universe, tx_builder)
@@ -611,14 +591,10 @@ def test_three_leg_buy_sell_twice_on_chain(
     back from the chain.
     """
 
-    # Get live fee structure from BNB Chain
-    fees = estimate_gas_fees(web3)
-
     # Prepare a transaction builder
-    tx_builder = TransactionBuilder(
+    tx_builder = HotWalletTransactionBuilder(
         web3,
         hot_wallet,
-        fees,
     )
 
     routing_state = None
@@ -699,14 +675,10 @@ def test_three_leg_buy_sell_twice(
     on the second time and we need one less transactions.
     """
 
-    # Get live fee structure from BNB Chain
-    fees = estimate_gas_fees(web3)
-
     # Prepare a transaction builder
-    tx_builder = TransactionBuilder(
+    tx_builder = HotWalletTransactionBuilder(
         web3,
         hot_wallet,
-        fees,
     )
 
     routing_state = UniswapV2RoutingState(pair_universe, tx_builder)
@@ -787,11 +759,8 @@ def test_stateful_routing_three_legs(
     and state management integrate.
     """
 
-    # Get live fee structure from BNB Chain
-    fees = estimate_gas_fees(web3)
-
     # Prepare a transaction builder
-    tx_builder = TransactionBuilder(web3, hot_wallet, fees)
+    tx_builder = HotWalletTransactionBuilder(web3, hot_wallet)
 
     routing_state = UniswapV2RoutingState(pair_universe, tx_builder)
 
@@ -876,11 +845,8 @@ def test_stateful_routing_two_legs(
     except for the trading pair that we have changed.
     """
 
-    # Get live fee structure from BNB Chain
-    fees = estimate_gas_fees(web3)
-
     # Prepare a transaction builder
-    tx_builder = TransactionBuilder(web3, hot_wallet, fees)
+    tx_builder = HotWalletTransactionBuilder(web3, hot_wallet)
 
     routing_state = UniswapV2RoutingState(pair_universe, tx_builder)
 
