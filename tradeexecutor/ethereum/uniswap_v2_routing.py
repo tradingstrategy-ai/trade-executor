@@ -109,7 +109,8 @@ class UniswapV2RoutingState(EthereumRoutingState):
             reserve_asset: AssetIdentifier,
             reserve_amount: int,
             max_slippage: float,
-            check_balances: False):
+            check_balances: False,
+            asset_deltas: Optional[List[AssetDelta]] = None):
         """Prepare the actual swap for three way trade.
 
         :param check_balances:
@@ -156,7 +157,12 @@ class UniswapV2RoutingState(EthereumRoutingState):
                 intermediate_token=intermediary_token,
             )
 
-        tx = self.tx_builder.sign_transaction(bound_swap_func, self.swap_gas_limit)
+        tx = self.tx_builder.sign_transaction(
+            uniswap.router,
+            bound_swap_func,
+            self.swap_gas_limit,
+            asset_deltas
+        )
         return [tx]
 
 

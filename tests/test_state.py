@@ -811,8 +811,6 @@ def test_single_buy_failed(usdc, weth, weth_usdc, start_ts):
 def test_serialize_state(usdc, weth_usdc, start_ts: datetime.datetime):
     """Dump and reload the internal state."""
 
-    patch_dataclasses_json()
-
     state = State()
     state.update_reserves([ReservePosition(
         usdc, 
@@ -854,8 +852,6 @@ def test_serialize_state(usdc, weth_usdc, start_ts: datetime.datetime):
 
 def test_state_summary_without_initial_cash(usdc, weth_usdc, start_ts: datetime.datetime):
     """Backward compat test for reverse without init cash info."""
-    patch_dataclasses_json()
-
     state = State()
     state.update_reserves([ReservePosition(
         usdc, 
@@ -918,8 +914,6 @@ def test_validate_state():
 
 def test_serialise_timedelta():
     """Serialise timedelta, that is part of a TradePricing object."""
-
-    patch_dataclasses_json()
 
     p = TradePricing(
         price=1000.0,

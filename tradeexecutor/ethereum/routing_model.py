@@ -71,8 +71,6 @@ class EthereumRoutingModel(RoutingModel):
         super().__init__(allowed_intermediary_pairs, reserve_token_address)
         
         self.chain_id = chain_id
-    
-    
 
     def make_direct_trade(self,
                           routing_state: EthereumRoutingState,
@@ -240,13 +238,17 @@ class EthereumRoutingModel(RoutingModel):
             assert len(t.blockchain_transactions) == 0, f"Trade {t} had already blockchain transactions associated with it"
 
             # TODO: Add support for accurate multihop asset deltas
-            asset_deltas = t.calculate_asset_deltas()
+            if t.slippage_tolerance is not None:
+                asset_deltas = t.calculate_asset_deltas()
+            else:
+                # Old path that does not slippage tolerances for trades
+                asset_deltas = None
 
             target_pair, intermediary_pair = self.route_trade(pair_universe, t)
 
             if intermediary_pair is None:
                 # Two way trade
-                # Decide betwen buying and selling
+                # Decide between buying and selling
                 trade_txs = (
                     self.trade(
                         routing_state,

@@ -2,9 +2,23 @@ import os
 from logging import Logger
 
 import pytest
+
+from tradeexecutor.testing.pytest_helpers import phase_report_key
 from tradingstrategy.client import Client
 
 from tradeexecutor.cli.log import setup_pytest_logging
+
+
+@pytest.hookimpl(tryfirst=True, hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    """See tradeexecutor.testing.pytest_helpers."""
+    # execute all other hooks to obtain the report object
+    outcome = yield
+    rep = outcome.get_result()
+
+    # store test results for each phase of a call, which can
+    # be "setup", "call", "teardown"
+    item.stash.setdefault(phase_report_key, {})[rep.when] = rep
 
 
 @pytest.fixture(scope="session")

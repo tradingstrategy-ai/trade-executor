@@ -125,6 +125,11 @@ class BlockchainTransaction:
     #: The transaction revert reason if we manage to extract it
     revert_reason: Optional[str] = None
 
+    #: Solidity stack trace of failure.
+    #:
+    #: Used in the unit testing environment with Anvil.
+    stack_trace: Optional[str] = None
+
     def __repr__(self):
         if self.status is True:
             return f"<Tx from:{self.from_address}\n  nonce:{self.nonce}\n  to:{self.contract_address}\n  func:{self.function_selector}\n  args:{self.args}\n  succeed>\n"
@@ -177,6 +182,7 @@ class BlockchainTransaction:
         realised_gas_price: int,
         status: bool,
         revert_reason: Optional[str] = None,
+        stack_trace: Optional[str] = None,
         ):
         """Update the information we are going to use to broadcast the transaction."""
         assert isinstance(ts, datetime.datetime)
@@ -192,6 +198,7 @@ class BlockchainTransaction:
         self.realised_gas_units_consumed = realised_gas_units_consumed
         self.status = status
         self.revert_reason = revert_reason
+        self.stack_trace = stack_trace
 
     def get_planned_gas_price(self) -> int:
         """How much wei per gas unit we planned to spend on this transactions.

@@ -14,11 +14,13 @@ from hexbytes import HexBytes
 from web3 import Web3
 
 from eth_defi.abi import get_deployed_contract
+from eth_defi.deploy import get_or_create_contract_registry
 from eth_defi.gas import GasPriceSuggestion, apply_gas, estimate_gas_fees
 from eth_defi.hotwallet import HotWallet
 from eth_defi.token import fetch_erc20_details, TokenDetails
 from eth_defi.confirmation import wait_transactions_to_complete, \
     broadcast_and_wait_transactions_to_complete, broadcast_transactions
+from eth_defi.trace import trace_evm_transaction, print_symbolic_trace
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, FOREVER_DEADLINE 
 from eth_defi.trade import TradeSuccess, TradeFail
 from eth_defi.revert_reason import fetch_transaction_revert_reason
@@ -434,8 +436,17 @@ def update_confirmation_status(
             # Update the transaction confirmation status
             status = receipt["status"] == 1
             reason = None
+            stack_trace = None
+
+            # Transaction failed,
+            # try to get as much as information possible
             if status == 0:
                 reason = fetch_transaction_revert_reason(web3, tx_hash)
+
+                if web3.eth.chain_id == ChainId.anvil.value:
+                    trace_data = trace_evm_transaction(web3, tx_hash)
+                    stack_trace = print_symbolic_trace(get_or_create_contract_registry(web3), trace_data)
+
             tx.set_confirmation_information(
                 ts,
                 receipt["blockNumber"],
@@ -444,6 +455,7 @@ def update_confirmation_status(
                 receipt["gasUsed"],
                 status,
                 revert_reason=reason,
+                stack_trace=stack_trace,
             )
             trades.add(trade)
         
@@ -469,7 +481,10 @@ def report_failure(
         success_txs = []
         for tx in trade.blockchain_transactions:
             if not tx.is_success():
-                raise TradeExecutionFailed(f"Could not execute a trade: {trade}, transaction failed: {tx}, had other transactions {success_txs}")
+                raise TradeExecutionFailed(f"Could not execute a trade: {trade}.\n"
+                                           f"Transaction failed: {tx}\n"
+                                           f"Other succeeded transactions: {success_txs}\n"
+                                           f"Stack trace:{tx.stack_trace}")
             else:
                 success_txs.append(tx)
 

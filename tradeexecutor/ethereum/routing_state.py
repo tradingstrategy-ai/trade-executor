@@ -137,7 +137,7 @@ class EthereumRoutingState(RoutingState):
     def is_approved_on_chain(self, token_address: str, router_address: str) -> bool:
         erc_20 = get_deployed_contract(self.web3, "ERC20MockDecimals.json", token_address)
         # Assume allowance is always infinity
-        return erc_20.functions.allowance.call(self.hot_wallet.address, router_address) > 0
+        return erc_20.functions.allowance.call(self.tx_builder.get_approve_address(), router_address) > 0
 
     def check_has_enough_tokens(
             self,
@@ -149,7 +149,8 @@ class EthereumRoutingState(RoutingState):
         This might not be the case if we are preparing transactions ahead of time and
         sell might have not happened yet.
         """
-        balance = erc_20.functions.balanceOf(self.hot_wallet.address).call()
+        address = self.tx_builder.get_erc_20_balance_address()
+        balance = erc_20.functions.balanceOf(address).call()
         if balance < amount:
             token_details = fetch_erc20_details(
                 erc_20.w3,
@@ -157,7 +158,7 @@ class EthereumRoutingState(RoutingState):
             )
             d_balance = token_details.convert_to_decimals(balance)
             d_amount = token_details.convert_to_decimals(amount)
-            raise OutOfBalance(f"Address {self.hot_wallet.address} does not have enough {token_details} tokens to trade. Need {d_amount}, has {d_balance}")
+            raise OutOfBalance(f"Address {address} does not have enough {token_details} tokens to trade. Need {d_amount}, has {d_balance}")
 
     def ensure_token_approved(self,
                               token_address: str,

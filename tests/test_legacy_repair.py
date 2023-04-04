@@ -31,7 +31,6 @@ def state() -> State:
 
     Taken as a snapshot from alpha version trade execution run.
     """
-    patch_dataclasses_json()
     f = os.path.join(os.path.dirname(__file__), "legacy-repair-dump.json")
     return State.from_json(open(f, "rt").read())
 

@@ -185,6 +185,14 @@ class TransactionBuilder(ABC):
     def get_approve_address(self) -> str:
         """Get the target address for ERC-20 approve()"""
 
+    @abstractmethod
+    def get_erc_20_balance_address(self) -> str:
+        """Get the address that holds ERC-20 supply"""
+
+    @abstractmethod
+    def get_gas_wallet_address(self) -> str:
+        """Get the address that holds native token for gas fees"""
+
 
 class HotWalletTransactionBuilder(TransactionBuilder):
     """Create transactions from the hot wallet and store them in the state.
@@ -205,6 +213,14 @@ class HotWalletTransactionBuilder(TransactionBuilder):
 
     def get_approve_address(self) -> str:
         """Get the target address for ERC-20 approve()"""
+        return self.hot_wallet.address
+
+    def get_erc_20_balance_address(self) -> str:
+        """Get the address that holds ERC-20 supply"""
+        return self.hot_wallet.address
+
+    def get_gas_wallet_address(self) -> str:
+        """Get the address that holds native token for gas fees"""
         return self.hot_wallet.address
 
     def sign_transaction(

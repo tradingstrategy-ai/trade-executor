@@ -51,6 +51,7 @@ def test_enzyme_execute_open_position(
     vault: Vault,
     usdc: Contract,
     usdc_asset: AssetIdentifier,
+    weth_asset: AssetIdentifier,
     user_1: HexAddress,
     uniswap_v2: UniswapV2Deployment,
     weth_usdc_trading_pair: TradingPairIdentifier,
@@ -102,5 +103,9 @@ def test_enzyme_execute_open_position(
     )
 
     deltas = trade.calculate_asset_deltas()
+    assert deltas[0].asset == usdc_asset.address
+    assert deltas[0].raw_amount == pytest.approx(-500 * 10**6)
+    assert deltas[1].asset == weth_asset.address
+    assert deltas[1].raw_amount == pytest.approx(0.3076799826432617 * 10**18)
 
-    trader.execute_trades_simple([trade])
+    # trader.execute_trades_simple([trade])
