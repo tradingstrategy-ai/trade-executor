@@ -1,7 +1,7 @@
 """Enzyme's vault transaction construction."""
 import datetime
 import logging
-from typing import List
+from typing import List, Optional
 
 from eth_account.datastructures import SignedTransaction
 from hexbytes import HexBytes
@@ -15,14 +15,10 @@ from eth_defi.hotwallet import HotWallet
 from eth_defi.revert_reason import fetch_transaction_revert_reason
 from eth_defi.confirmation import broadcast_transactions, \
     broadcast_and_wait_transactions_to_complete
-from eth_defi.tx import decode_signed_transaction
+from eth_defi.tx import decode_signed_transaction, AssetDelta
 from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 
-
-#: How many gas units we assume ERC-20 approval takes
-#: TODO: Move to a better model
-APPROVE_GAS_LIMIT = 100_000
 
 
 logger = logging.getLogger(__name__)
@@ -41,36 +37,30 @@ class EnzymeTransactionBuilder(TransactionBuilder):
     def __init__(self,
                  hot_wallet: HotWallet,
                  vault: Vault,
-                 gas_price_suggestion: GasPriceSuggestion,
                  ):
-        assert isinstance(gas_price_suggestion, GasPriceSuggestion)
         self.vault_controlled_wallet = VaultControlledWallet(vault, hot_wallet)
-        self.gas_price_suggestion = gas_price_suggestion
 
     @property
     def web3(self) -> Web3:
         """Get the underlying web3 connection."""
         return self.vault_controlled_wallet.vault.web3
 
-    def broadcast(self, tx: "BlockchainTransaction") -> HexBytes:
-        """Broadcast the transaction.
+    @property
+    def vault(self) -> Vault:
+        """Get the underlying web3 connection."""
+        return self.vault_controlled_wallet.vault
 
-        Push the transaction to the peer-to-peer network / MEV relay
-        to be includedin the
-
-        Sets the `tx.broadcasted_at` timestamp.
-
-        :return:
-            Transaction hash, or `tx_hash`
-        """
-        signed_tx = HotWalletTransactionBuilder.serialise_to_broadcast_format(tx)
-        tx.broadcasted_at = datetime.datetime.utcnow()
-        return broadcast_transactions(self.web3, [signed_tx])[0]
+    @property
+    def hot_wallet(self) -> HotWallet:
+        """Get the underlying web3 connection."""
+        return self.vault_controlled_wallet.hot_wallet
 
     def sign_transaction(
             self,
             args_bound_func: ContractFunction,
-            gas_limit: int
+            gas_limit: int,
+            gas_price_suggestion: Optional[GasPriceSuggestion] = None,
+            asset_deltas: Optional[List[AssetDelta]] = None,
     ) -> BlockchainTransaction:
         """Createa a signed tranaction and set up tx broadcast parameters.
 
@@ -82,6 +72,8 @@ class EnzymeTransactionBuilder(TransactionBuilder):
         :return:
             Prepared BlockchainTransaction instance
         """
+
+        assert asset_delta is not None,  "Cannot make Enzyme trades without asset_deltas set"
 
         logger.info("Signing transactions using gas fee method %s for %s", self.gas_fees, args_bound_func)
 

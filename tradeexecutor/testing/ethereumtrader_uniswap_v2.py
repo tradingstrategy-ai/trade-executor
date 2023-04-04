@@ -46,7 +46,12 @@ class UniswapV2TestTrader(EthereumTrader):
                 hot_wallet,
             )
 
-    def buy(self, pair: TradingPairIdentifier, amount_in_usd: Decimal, execute=True) -> Tuple[TradingPosition, TradeExecution]:
+    def buy(self,
+            pair: TradingPairIdentifier,
+            amount_in_usd: Decimal,
+            execute=True,
+            slippage_tolerance: Optional[float] = None,
+            ) -> Tuple[TradingPosition, TradeExecution]:
         """Buy token (trading pair) for a certain value."""
         # Estimate buy price
         
@@ -65,7 +70,8 @@ class UniswapV2TestTrader(EthereumTrader):
             trade_type=TradeType.rebalance,
             reserve_currency=pair.quote,
             reserve_currency_price=1.0,
-            pair_fee=pair.fee
+            pair_fee=pair.fee,
+            slippage_tolerance=slippage_tolerance,
         )
 
         if execute:
