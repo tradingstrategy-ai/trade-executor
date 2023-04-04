@@ -12,10 +12,11 @@ from typing import List, Optional
 from eth_account.datastructures import SignedTransaction
 from hexbytes import HexBytes
 from web3 import Web3
-from web3.contract.contract import Contract, ContractFunction
+from web3.contract.contract import ContractFunction
 
 from eth_defi.gas import GasPriceSuggestion, apply_gas, estimate_gas_fees
 from eth_defi.hotwallet import HotWallet
+from eth_defi.tx import AssetDelta
 from eth_defi.revert_reason import fetch_transaction_revert_reason
 from eth_defi.confirmation import broadcast_transactions, \
     broadcast_and_wait_transactions_to_complete
@@ -54,6 +55,7 @@ class TransactionBuilder(ABC):
             args_bound_func: ContractFunction,
             gas_limit: int,
             gas_price_suggestion: Optional[GasPriceSuggestion] = None,
+            asset_deltas: Optional[List[AssetDelta]] = None,
     ) -> BlockchainTransaction:
         """Createa a signed tranaction and set up tx broadcast parameters.
 
@@ -69,6 +71,9 @@ class TransactionBuilder(ABC):
             What gas price will be used.
 
             Support old-style and London style transactions.
+
+        :param asset_deltas:
+            Expected assets inbound and outbound.
 
         :return:
             Prepared BlockchainTransaction instance.
@@ -117,6 +122,7 @@ class HotWalletTransactionBuilder(TransactionBuilder):
             args_bound_func: ContractFunction,
             gas_limit: int,
             gas_price_suggestion: Optional[GasPriceSuggestion] = None,
+            asset_deltas: Optional[List[AssetDelta]] = None,
     ) -> BlockchainTransaction:
         """Sign a transaction with the hot wallet private key."""
 

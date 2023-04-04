@@ -144,6 +144,7 @@ class State:
                      planned_mid_price: Optional[USDollarPrice] = None,
                      price_structure: Optional[TradePricing] = None,
                      position: Optional[TradingPosition] = None,
+                     slippage_tolerance: Optional[float] = None,
                      ) -> Tuple[TradingPosition, TradeExecution, bool]:
         """Creates a request for a new trade.
 
@@ -218,6 +219,11 @@ class State:
         :param notes:
             Human-readable string to show on the trade.
 
+        :param slippage_tolerance:
+            Slippage tolerance for this trade.
+
+            See :py:attr:`tradeexecutor.state.trade.TradeExecution.slippage_tolerance` for details.
+
         :return:
             Tuple of entries
 
@@ -255,6 +261,7 @@ class State:
             planned_mid_price=planned_mid_price,
             price_structure=price_structure,
             position=position,
+            slippage_tolerance=slippage_tolerance,
             notes=notes,
         )
 
