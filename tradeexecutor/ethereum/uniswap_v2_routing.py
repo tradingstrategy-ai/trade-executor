@@ -2,6 +2,7 @@
 import logging
 from typing import Dict, Set, List, Optional, Tuple
 
+from eth_defi.tx import AssetDelta
 from tradeexecutor.state.types import BPS
 from tradingstrategy.chain import ChainId
 from web3 import Web3
@@ -54,7 +55,9 @@ class UniswapV2RoutingState(EthereumRoutingState):
             reserve_asset: AssetIdentifier,
             reserve_amount: int,
             max_slippage: float,
-            check_balances: False):
+            check_balances: False,
+            asset_deltas: Optional[List[AssetDelta]] = None,
+        ):
         """Prepare the actual swap. Same for Uniswap V2 and V3.
 
         :param check_balances:
@@ -68,7 +71,6 @@ class UniswapV2RoutingState(EthereumRoutingState):
 
         if check_balances:
             self.check_has_enough_tokens(quote_token, reserve_amount)
-
         
         if target_pair.fee:
             bps_fee = target_pair.fee * 10_000
@@ -93,7 +95,12 @@ class UniswapV2RoutingState(EthereumRoutingState):
                 max_slippage=max_slippage * 100,  # In BPS
             )
         
-        return self.create_signed_transaction(bound_swap_func, self.swap_gas_limit)
+        return self.create_signed_transaction(
+            uniswap.router,
+            bound_swap_func,
+            self.swap_gas_limit,
+            asset_deltas,
+        )
 
     def trade_on_router_three_way(self,
             uniswap: UniswapV2Deployment,
@@ -249,7 +256,8 @@ class UniswapV2SimpleRoutingModel(EthereumRoutingModel):
         reserve_asset: AssetIdentifier,
         reserve_amount: int,
         max_slippage: float,
-        check_balances=False
+        check_balances=False,
+        asset_deltas: Optional[List[AssetDelta]] = None,
     ) -> List[BlockchainTransaction]:
         
         return super().make_direct_trade(
@@ -259,7 +267,8 @@ class UniswapV2SimpleRoutingModel(EthereumRoutingModel):
             reserve_amount,
             max_slippage,
             self.factory_router_map,
-            check_balances
+            check_balances,
+            asset_deltas=asset_deltas,
         )
     
     def make_multihop_trade(
@@ -270,7 +279,8 @@ class UniswapV2SimpleRoutingModel(EthereumRoutingModel):
         reserve_asset: AssetIdentifier,
         reserve_amount: int,
         max_slippage: float,
-        check_balances=False
+        check_balances=False,
+        asset_deltas: Optional[List[AssetDelta]] = None,
     ) -> List[BlockchainTransaction]:
         
         return super().make_multihop_trade(
@@ -281,7 +291,8 @@ class UniswapV2SimpleRoutingModel(EthereumRoutingModel):
             reserve_amount,
             max_slippage,
             self.factory_router_map,
-            check_balances
+            check_balances,
+            asset_deltas=asset_deltas,
         )
     
     

@@ -61,7 +61,7 @@ class UniswapV2TestTrader(EthereumTrader):
         assumed_quantity = Decimal(raw_assumed_quantity) / Decimal(10**pair.base.decimals)
         assumed_price = amount_in_usd / assumed_quantity
 
-        position, trade, created= self.state.create_trade(
+        position, trade, created = self.state.create_trade(
             strategy_cycle_at=self.ts,
             pair=pair,
             quantity=assumed_quantity,
@@ -76,6 +76,7 @@ class UniswapV2TestTrader(EthereumTrader):
 
         if execute:
             self.execute_trades_simple([trade])
+
         return position, trade
 
     def sell(self, pair: TradingPairIdentifier, quantity: Decimal, execute=True) -> Tuple[TradingPosition, TradeExecution]:
@@ -111,7 +112,6 @@ class UniswapV2TestTrader(EthereumTrader):
     def execute_trades_simple(
         self,
         trades: List[TradeExecution],
-        max_slippage=0.01, 
         stop_on_execution_failure=True
     ) -> Tuple[List[TradeExecution], List[TradeExecution]]:
         """Execute trades on web3 instance.

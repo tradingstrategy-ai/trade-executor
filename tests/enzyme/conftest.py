@@ -334,7 +334,7 @@ def vault(
 
 @pytest.fixture
 def weth_usdc_trading_pair(uniswap_v2, weth_usdc_uniswap_pair, usdc_asset, weth_asset) -> TradingPairIdentifier:
-    return TradingPairIdentifier(usdc_asset, weth_asset, weth_usdc_uniswap_pair, uniswap_v2.factory.address, fee=0.30)
+    return TradingPairIdentifier(weth_asset, usdc_asset, weth_usdc_uniswap_pair, uniswap_v2.factory.address, fee=0.30)
 
 
 @pytest.fixture()

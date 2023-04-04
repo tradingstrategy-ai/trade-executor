@@ -6,7 +6,9 @@ from typing import List, Optional, Tuple
 from abc import ABC, abstractmethod
 
 from eth_typing import ChecksumAddress
+from web3.contract.contract import ContractFunction
 
+from eth_defi.tx import AssetDelta
 from tradeexecutor.state.types import BPS
 from web3 import Web3
 from web3.contract import Contract
@@ -16,7 +18,7 @@ from eth_defi.token import fetch_erc20_details
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment
 from eth_defi.uniswap_v3.deployment import UniswapV3Deployment
 
-from tradeexecutor.ethereum.tx import HotWalletTransactionBuilder
+from tradeexecutor.ethereum.tx import HotWalletTransactionBuilder, TransactionBuilder
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
 from tradeexecutor.strategy.routing import RoutingState
@@ -54,7 +56,7 @@ class EthereumRoutingState(RoutingState):
 
     def __init__(self,
                  pair_universe: PandasPairUniverse,
-                 tx_builder: Optional[HotWalletTransactionBuilder] = None,
+                 tx_builder: Optional[TransactionBuilder] = None,
                  swap_gas_limit=2_000_000,
                  web3: Optional[Web3] = None,
                  ):
@@ -85,7 +87,6 @@ class EthereumRoutingState(RoutingState):
 
         if tx_builder is not None:
             self.tx_builder = tx_builder
-            self.hot_wallet = tx_builder.hot_wallet
             self.web3 = self.tx_builder.web3
         else:
             # DummyExecution model does not have a wallet
@@ -109,7 +110,9 @@ class EthereumRoutingState(RoutingState):
             reserve_asset: AssetIdentifier,
             reserve_amount: int,
             max_slippage: float,
-            check_balances: False):
+            check_balances: False,
+            asset_deltas: Optional[List[AssetDelta]] = None,
+        ):
         """Prepare the actual swap. Same for Uniswap V2 and V3."""
         
     @abstractmethod
@@ -120,7 +123,9 @@ class EthereumRoutingState(RoutingState):
             reserve_asset: AssetIdentifier,
             reserve_amount: int,
             max_slippage: float,
-            check_balances: False):
+            check_balances: False,
+            asset_deltas: Optional[List[AssetDelta]] = None,
+        ):
         """Prepare the actual swap for three way trade."""
 
     def is_route_approved(self, router_address: str):
@@ -169,6 +174,8 @@ class EthereumRoutingState(RoutingState):
         :return: Create 0 or 1 transactions if needs to be approved
         """
 
+        assert self.tx_builder is not None
+
         if token_address in self.approved_routes[router_address]:
             # Already approved for this cycle in previous trade
             return []
@@ -178,23 +185,35 @@ class EthereumRoutingState(RoutingState):
         # Set internal state we are approved
         self.mark_router_approved(token_address, router_address)
 
-        hot_wallet = self.tx_builder.hot_wallet
+        approve_address = self.tx_builder.get_approve_address()
 
-        if erc_20.functions.allowance(hot_wallet.address, router_address).call() > 0:
+        if erc_20.functions.allowance(approve_address, router_address).call() > 0:
             # already approved in previous execution cycle
             return []
         
         # Create infinite approval
         tx = self.tx_builder.sign_transaction(
+            erc_20,
             erc_20.functions.approve(router_address, 2**256-1),
-            100_000,  # For approve, assume it cannot take more than 100k gas
+            gas_limit=100_000,  # For approve, assume it cannot take more than 100k gas
+            gas_price_suggestion=None,
+            asset_deltas=[],
         )
 
         return [tx]
     
-    def create_signed_transaction(self, swap_func, gas_limit):
+    def create_signed_transaction(
+            self,
+            contract: Contract,
+            swap_func: ContractFunction,
+            gas_limit: int,
+            asset_deltas: List[AssetDelta]):
         signed_tx = self.tx_builder.sign_transaction(
-            swap_func, gas_limit
+            contract,
+            swap_func,
+            gas_limit,
+            gas_price_suggestion=None,
+            asset_deltas=asset_deltas,
         )
         return [signed_tx]
     

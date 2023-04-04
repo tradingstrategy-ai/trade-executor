@@ -102,3 +102,5 @@ def test_enzyme_execute_open_position(
     )
 
     deltas = trade.calculate_asset_deltas()
+
+    trader.execute_trades_simple([trade])

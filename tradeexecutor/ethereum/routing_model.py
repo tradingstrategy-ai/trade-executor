@@ -1,6 +1,7 @@
 import logging
 from typing import Type
 
+from eth_defi.tx import AssetDelta
 from tradeexecutor.strategy.routing import RoutingModel
 from typing import Dict, List, Optional, Tuple
 
@@ -81,6 +82,7 @@ class EthereumRoutingModel(RoutingModel):
                           max_slippage: float,
                           address_map: Dict,
                           check_balances=False,
+                          asset_deltas: Optional[List[AssetDelta]] = None,
                           ) -> List[BlockchainTransaction]:
         """Prepare a trade where target pair has out reserve asset as a quote token.
 
@@ -105,6 +107,7 @@ class EthereumRoutingModel(RoutingModel):
             reserve_amount,
             max_slippage,
             check_balances,
+            asset_deltas=asset_deltas,
             )
         return txs
 
@@ -119,6 +122,7 @@ class EthereumRoutingModel(RoutingModel):
                           max_slippage: float,
                           address_map: Dict,
                           check_balances=False,
+                          asset_deltas: Optional[List[AssetDelta]] = None,
                           ) -> List[BlockchainTransaction]:
         """Prepare a trade where target pair has out reserve asset as a quote token.
 
@@ -144,6 +148,7 @@ class EthereumRoutingModel(RoutingModel):
             reserve_amount,
             max_slippage,
             check_balances,
+            asset_deltas=asset_deltas,
             )
         return txs
 
@@ -155,6 +160,7 @@ class EthereumRoutingModel(RoutingModel):
               max_slippage: float=0.01,
               check_balances=False,
               intermediary_pair: Optional[TradingPairIdentifier] = None,
+              asset_deltas: Optional[List[AssetDelta]] = None,
               ) -> List[BlockchainTransaction]:
         """
 
@@ -189,6 +195,7 @@ class EthereumRoutingModel(RoutingModel):
                     reserve_asset_amount,
                     max_slippage=max_slippage,
                     check_balances=check_balances,
+                    asset_deltas=asset_deltas,
                 )
             raise RuntimeError(f"Do not how to trade reserve {reserve_asset} with {target_pair}")
         else:
@@ -203,6 +210,7 @@ class EthereumRoutingModel(RoutingModel):
                 reserve_asset_amount,
                 max_slippage=max_slippage,
                 check_balances=check_balances,
+                asset_deltas=asset_deltas,
             )
     
     def execute_trades_internal(self,
@@ -231,6 +239,9 @@ class EthereumRoutingModel(RoutingModel):
         for t in trades:
             assert len(t.blockchain_transactions) == 0, f"Trade {t} had already blockchain transactions associated with it"
 
+            # TODO: Add support for accurate multihop asset deltas
+            asset_deltas = t.calculate_asset_deltas()
+
             target_pair, intermediary_pair = self.route_trade(pair_universe, t)
 
             if intermediary_pair is None:
@@ -243,6 +254,7 @@ class EthereumRoutingModel(RoutingModel):
                         reserve_asset=reserve_asset,
                         reserve_asset_amount=t.get_raw_planned_reserve(),
                         check_balances=check_balances,
+                        asset_deltas=asset_deltas,
                     )
                     if t.is_buy()
                     else self.trade(
@@ -251,6 +263,7 @@ class EthereumRoutingModel(RoutingModel):
                         reserve_asset=target_pair.base,
                         reserve_asset_amount=-t.get_raw_planned_quantity(),
                         check_balances=check_balances,
+                        asset_deltas=asset_deltas,
                     )
                 )
             elif t.is_buy():
@@ -270,6 +283,7 @@ class EthereumRoutingModel(RoutingModel):
                     reserve_asset_amount=-t.get_raw_planned_quantity(),
                     check_balances=check_balances,
                     intermediary_pair=intermediary_pair,
+                    asset_deltas=asset_deltas,
                 )
 
             t.set_blockchain_transactions(trade_txs)

@@ -38,12 +38,8 @@ class EnzymeTransactionBuilder(TransactionBuilder):
                  hot_wallet: HotWallet,
                  vault: Vault,
                  ):
+        super().__init__(vault.web3)
         self.vault_controlled_wallet = VaultControlledWallet(vault, hot_wallet)
-
-    @property
-    def web3(self) -> Web3:
-        """Get the underlying web3 connection."""
-        return self.vault_controlled_wallet.vault.web3
 
     @property
     def vault(self) -> Vault:
@@ -55,8 +51,13 @@ class EnzymeTransactionBuilder(TransactionBuilder):
         """Get the underlying web3 connection."""
         return self.vault_controlled_wallet.hot_wallet
 
+    def get_approve_address(self) -> str:
+        """Get the target address for ERC-20 approve()"""
+        return self.vault.generic_adapter.address
+
     def sign_transaction(
             self,
+            contract: Contract,
             args_bound_func: ContractFunction,
             gas_limit: int,
             gas_price_suggestion: Optional[GasPriceSuggestion] = None,
@@ -73,23 +74,28 @@ class EnzymeTransactionBuilder(TransactionBuilder):
             Prepared BlockchainTransaction instance
         """
 
-        assert asset_delta is not None,  "Cannot make Enzyme trades without asset_deltas set"
+        assert isinstance(contract, Contract), f"Expected Contract, got {contract}"
+        assert isinstance(args_bound_func, ContractFunction), f"Expected ContractFunction, got {args_bound_func}"
 
-        logger.info("Signing transactions using gas fee method %s for %s", self.gas_fees, args_bound_func)
+        assert asset_deltas is not None, f"{args_bound_func.fn_name}() - cannot make Enzyme trades without asset_deltas set. Set to [] for approve()"
 
-        tx = EnzymeVaultTransaction(
+        logger.info("Enzyme tx for %s.%s(%s), gas limit %d, deltas %s",
+                    contract.address,
+                    args_bound_func.fn_name,
+                    ", ".join([str(a) for a in args_bound_func.args]),
+                    gas_price_suggestion,
+                    asset_deltas)
 
+        enzyme_tx = EnzymeVaultTransaction(
+            contract,
+            args_bound_func,
+            gas_limit,
         )
 
-        tx = args_bound_func.build_transaction({
-            "chainId": self.chain_id,
-            "from": self.hot_wallet.address,
-            "gas": gas_limit,
-        })
+        gas_price_suggestion = gas_price_suggestion or self.fetch_gas_price_suggestion()
+        gas_data = gas_price_suggestion.get_tx_gas_params()
 
-        apply_gas(tx, self.gas_fees)
-
-        signed_tx = self.hot_wallet.sign_transaction_with_new_nonce(tx)
+        signed_tx = self.vault_controlled_wallet.sign_transaction_with_new_nonce(enzyme_tx, gas_data)
         signed_bytes = signed_tx.rawTransaction.hex()
 
         return BlockchainTransaction(
@@ -101,114 +107,5 @@ class EnzymeTransactionBuilder(TransactionBuilder):
             signed_bytes=signed_bytes,
             tx_hash=signed_tx.hash.hex(),
             nonce=signed_tx.nonce,
-            details=tx,
+            details=enzyme_tx.as_json_friendly_dict(),
         )
-
-    def create_transaction(
-            self,
-            contract: Contract,
-            function_selector: str,
-            args: tuple,
-            gas_limit: int,
-            gas_price_suggestion: GasPriceSuggestion,
-    ) -> BlockchainTransaction:
-        """Create a trackable transaction for the trade executor state.
-
-        - Sets up the state management for the transaction
-
-        - Creates the signed transaction from the hot wallet
-        """
-        #
-        # tx = token.functions.approve(
-        #     deployment.router.address,
-        #     amount,
-        # ).build_transaction({
-        #     'chainId': web3.eth.chain_id,
-        #     'gas': 100_000,  # Estimate max 100k per approval
-        #     'from': hot_wallet.address,
-        # })
-        contract_func = contract.functions[function_selector]
-        args_bound_func = contract_func(*args)
-        return self.sign_transaction(args_bound_func, gas_limit)
-
-    def broadcast(self, tx: "BlockchainTransaction") -> HexBytes:
-        """Broadcast the transaction.
-
-        :return: tx_hash
-        """
-        signed_tx = TransactionBuilder.serialise_to_broadcast_format(tx)
-        tx.broadcasted_at = datetime.datetime.utcnow()
-        return broadcast_transactions(self.web3, [signed_tx])[0]
-
-    @staticmethod
-    def decode_signed_bytes(tx: "BlockchainTransaction") -> dict:
-        """Get raw transaction data out from the signed tx bytes."""
-        return decode_signed_transaction(tx.signed_bytes)
-
-    @staticmethod
-    def serialise_to_broadcast_format(tx: "BlockchainTransaction") -> SignedTransaction:
-        """Get a transaction as a format ready to broadcast."""
-        # TODO: Make hash, r, s, v filled up as well
-        return SignedTransaction(rawTransaction=tx.signed_bytes, hash=None, r=0, s=0, v=0)
-
-    @staticmethod
-    def broadcast_and_wait_transactions_to_complete(
-            web3: Web3,
-            txs: List[BlockchainTransaction],
-            confirmation_block_count=0,
-            max_timeout=datetime.timedelta(minutes=5),
-            poll_delay=datetime.timedelta(seconds=1),
-            revert_reasons=False,
-    ):
-        """Watch multiple transactions executed at parallel.
-
-        Modifies the given transaction objects in-place
-        and updates block inclusion and succeed status.
-        """
-
-        # Log what we are doing
-        for tx in txs:
-            logger.info("Broadcasting and executing transaction %s", tx)
-
-        logger.info("Waiting %d txs to confirm", len(txs))
-        assert isinstance(confirmation_block_count, int)
-
-        # tx hash -> BlockchainTransaction map
-        tx_hashes = {t.tx_hash: t for t in txs}
-
-        signed_txs = [TransactionBuilder.serialise_to_broadcast_format(t) for t in txs]
-
-        now_ = datetime.datetime.utcnow()
-        for tx in txs:
-            tx.broadcasted_at = now_
-
-        receipts = broadcast_and_wait_transactions_to_complete(
-            web3,
-            signed_txs,
-            confirm_ok=False,
-            confirmation_block_count=confirmation_block_count,
-            max_timeout=max_timeout,
-            poll_delay=poll_delay)
-
-        now_ = datetime.datetime.utcnow()
-
-        # Update persistant status of transactions
-        # based on the result read from the chain
-        for tx_hash, receipt in receipts.items():
-            tx = tx_hashes[tx_hash.hex()]
-            status = receipt["status"] == 1
-
-            reason = None
-            if not status:
-                if revert_reasons:
-                    reason = fetch_transaction_revert_reason(web3, tx_hash)
-
-            tx.set_confirmation_information(
-                now_,
-                receipt["blockNumber"],
-                receipt["blockHash"].hex(),
-                receipt.get("effectiveGasPrice", 0),
-                receipt["gasUsed"],
-                status,
-                reason
-            )
