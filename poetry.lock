@@ -4134,6 +4134,21 @@ toml = "*"
 testing = ["argcomplete", "hypothesis (>=3.56)", "mock", "nose", "requests", "xmlschema"]
 
 [[package]]
+name = "pytest-reverse"
+version = "1.5.0"
+description = "Pytest plugin to reverse test order."
+category = "dev"
+optional = false
+python-versions = ">=3.7"
+files = [
+    {file = "pytest-reverse-1.5.0.tar.gz", hash = "sha256:71952dbcc09d0bbed88af33dab2d540298325cc6193a00b4bb037f380041d680"},
+    {file = "pytest_reverse-1.5.0-py3-none-any.whl", hash = "sha256:78ec5c8bab341403abf43a1e59e0f7499b7b0b897a54606f67e4f4d1ffc8b4cc"},
+]
+
+[package.dependencies]
+pytest = "*"
+
+[[package]]
 name = "python-baseconv"
 version = "1.2.2"
 description = "Convert numbers from base 10 integers to base X strings and back again."
@@ -5843,4 +5858,4 @@ web-server = ["pyramid", "WebTest", "openapi-core", "pyramid-openapi3", "waitres
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.10,<3.11"
-content-hash = "61d510a30de34f0761c6ed2bd0fc9158be125c9720b6b9787baff18bb096b671"
+content-hash = "94a2258496590250f5327e6ed1fe1cf4f31a22059c2bedf490568a2b6c2c8638"
