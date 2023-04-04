@@ -365,7 +365,8 @@ class TradingPosition:
                    pair_fee: Optional[BPS] = None,
                    lp_fees_estimated: Optional[USDollarAmount] = None,
                    planned_mid_price: Optional[USDollarPrice] = None,
-                   price_structure: Optional[TradePricing] = None
+                   price_structure: Optional[TradePricing] = None,
+                   slippage_tolerance: Optional[float] = None
                    ) -> TradeExecution:
         """Open a new trade on position.
 
@@ -419,6 +420,10 @@ class TradingPosition:
             The state of the market at the time of planning the trade,
             and what fees we assumed we are going to get.
 
+        :param slippage_tolerance:
+            Slippage tolerance for this trade.
+
+            See :py:attr:`tradeexecutor.state.trade.TradeExecution.slippage_tolerance` for details.
         """
 
         if quantity is not None:
@@ -436,7 +441,7 @@ class TradingPosition:
             planned_quantity = reserve / Decimal(assumed_price)
         else:
             planned_quantity = quantity
-            planned_reserve = quantity * Decimal(assumed_price) if quantity > Decimal(0) else Decimal(0)
+            planned_reserve = abs(quantity * Decimal(assumed_price))
 
         trade = TradeExecution(
             trade_id=trade_id,
@@ -451,7 +456,8 @@ class TradingPosition:
             planned_mid_price=planned_mid_price,
             fee_tier=pair_fee,
             lp_fees_estimated=lp_fees_estimated,
-            price_structure=price_structure
+            price_structure=price_structure,
+            slippage_tolerance=slippage_tolerance,
         )
         self.trades[trade.trade_id] = trade
         return trade

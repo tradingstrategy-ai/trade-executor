@@ -11,6 +11,8 @@ from types import NoneType
 
 from dataclasses_json import dataclass_json
 
+from eth_defi.tx import AssetDelta
+
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
 from tradeexecutor.state.types import USDollarAmount, USDollarPrice, BPS
@@ -148,8 +150,14 @@ class TradeExecution:
 
     #: How many reserve tokens (USD) we use in this trade
     #:
-    #: Always known accurately for buys.
-    #: Expressed in `reserve_currency`.
+    #: - Always a position number (only the sign of :py:attr:`planned_quantity` changes between buy/sell)
+    #:
+    #: - For buys, Always known accurately for buys.
+    #:
+    #: - For sells, an estimation based on :py:attr:`planned_price`
+    #:
+    #: Expressed in :py:attr:`reserve_currency`.
+    #:
     planned_reserve: Decimal
 
     #: What we thought the execution price for this trade would have been
@@ -219,6 +227,26 @@ class TradeExecution:
 
     #: How much reserves we spend for this traded, the actual realised amount.
     executed_reserve: Optional[Decimal] = None
+
+    #: Slippage tolerance for this trade.
+    #:
+    #: Examples
+    #:
+    #: - `0`: no slippage toleranc eallowed at all
+    #:
+    #: - `0.01`: 1% slippage tolerance
+    #:
+    #: - `1`: MEV bots can steal all your money
+    #:
+    #: We estimate `executed_quantity = planned_quantity * slippage_tolerance`.
+    #: If any trade outcome exceeds the slippage tolerance the trade fails.
+    #:
+    #: If you are usinga vault-based trading, slippage tolerance must be always set
+    #: to calculate the asset delta.
+    #:
+    #: See also :py:meth:`calculate_asset_deltas`.
+    #:
+    slippage_tolerance: Optional[float] = None
 
     #: LP fee % recorded before the execution starts.
     #:
@@ -694,3 +722,53 @@ class TradeExecution:
     def get_planned_max_gas_price(self) -> int:
         """Get the maximum gas fee set to all transactions in this trade."""
         return max([t.get_planned_gas_price() for t in self.blockchain_transactions])
+
+    def calculate_asset_deltas(self) -> List[AssetDelta]:
+        """Get the expected amount fo token balance change in a wallet for this trade.
+
+        Needed for vault based trading to work, as they run
+        slippage tolerance checks on expectd inputs and outputs.
+
+        Each trade has minimum of two asset deltas
+
+        - The token you spent to buu/sell (input)
+
+        - The token you receive (output)
+
+        The output will always have :py:attr:`slippage_tolerance` applied.
+        Input is passed as is.
+
+        :return:
+
+            List of asset deltas [input, output]
+
+        """
+        assert self.slippage_tolerance is not None, "Slippage tolerance must be set before we can calculate_asset_deltas()"
+        assert 0 <= self.slippage_tolerance <= 1.0, f"Slippage tolerance must be 0...1, got {self.slippage_tolerance}"
+
+        if self.is_buy():
+            input_asset = self.reserve_currency
+            input_amount = self.planned_reserve
+
+            output_asset = self.pair.base
+            output_amount = self.planned_quantity
+
+            assert input_amount > 0, "Buy missing input amount"
+            assert output_amount > 0, "Buy missing output amount"
+        else:
+            input_asset = self.pair.base
+            input_amount = -self.planned_quantity
+
+            output_asset = self.reserve_currency
+            output_amount = self.planned_reserve
+
+            assert input_amount > 0, "Sell missing input amount"
+            assert output_amount > 0, "Sell missing output amount"
+
+        assert input_amount > 0
+        assert output_amount > 0
+
+        return [
+            AssetDelta(input_asset.address, -input_asset.convert_to_raw_amount(input_amount)),
+            AssetDelta(output_asset.address, output_asset.convert_to_raw_amount(output_amount * Decimal(1 - self.slippage_tolerance))),
+        ]

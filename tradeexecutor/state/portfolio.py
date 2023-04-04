@@ -252,6 +252,7 @@ class Portfolio:
                      planned_mid_price: Optional[USDollarPrice] = None,
                      price_structure: Optional[TradePricing] = None,
                      position: Optional[TradingPosition] = None,
+                     slippage_tolerance: Optional[float] = None,
                      ) -> Tuple[TradingPosition, TradeExecution, bool]:
         """Create a trade.
 
@@ -313,6 +314,11 @@ class Portfolio:
 
             Use for repair trades.
 
+        :param slippage_tolerance:
+            Slippage tolerance for this trade.
+
+            See :py:attr:`tradeexecutor.state.trade.TradeExecution.slippage_tolerance` for details.
+
         :return:
             Tuple of entries
 
@@ -361,7 +367,8 @@ class Portfolio:
             pair_fee=pair_fee,
             lp_fees_estimated=lp_fees_estimated,
             planned_mid_price=planned_mid_price,
-            price_structure=price_structure
+            price_structure=price_structure,
+            slippage_tolerance=slippage_tolerance,
         )
 
         # Update notes

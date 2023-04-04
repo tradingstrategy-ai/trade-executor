@@ -798,6 +798,7 @@ class ExecutionLoop:
 
             run_state.completed_cycle = cycle
             run_state.cycles += 1
+            run_state.frozen_positions = len(state.portfolio.frozen_positions)
             run_state.bumb_refreshed()
 
             # Reset the background watchdog timer
