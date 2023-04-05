@@ -32,7 +32,7 @@ from eth_defi.uniswap_v3.deployment import (
     fetch_deployment,
 )
 
-from tradeexecutor.ethereum.tx import TransactionBuilder
+from tradeexecutor.ethereum.tx import HotWalletTransactionBuilder
 from tradeexecutor.ethereum.uniswap_v3_routing import (
     UniswapV3RoutingState,
     UniswapV3SimpleRoutingModel,
@@ -40,7 +40,7 @@ from tradeexecutor.ethereum.uniswap_v3_routing import (
 )
 from tradeexecutor.ethereum.uniswap_v3_execution import UniswapV3ExecutionModel
 from tradeexecutor.ethereum.wallet import sync_reserves
-from tradeexecutor.state.sync import apply_sync_events
+from tradeexecutor.testing.dummy_wallet import apply_sync_events
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.state import State
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
@@ -54,6 +54,7 @@ from tradeexecutor.strategy.trading_strategy_universe import (
     create_pair_universe_from_code,
 )
 from tradeexecutor.testing.pairuniversetrader import PairUniverseTestTrader
+from tradeexecutor.testing.pytest_helpers import is_failed_test
 from tradingstrategy.chain import ChainId
 from tradingstrategy.pair import PandasPairUniverse
 
@@ -83,7 +84,7 @@ def large_usdc_holder() -> HexAddress:
 
 
 @pytest.fixture()
-def anvil_polygon_chain_fork(logger, large_usdc_holder) -> str:
+def anvil_polygon_chain_fork(request, logger, large_usdc_holder) -> str:
     """Create a testable fork of live polygon chain.
 
     :return: JSON-RPC URL for Web3
@@ -95,7 +96,12 @@ def anvil_polygon_chain_fork(logger, large_usdc_holder) -> str:
     try:
         yield launch.json_rpc_url
     finally:
-        launch.close(log_level=logging.INFO)
+        verbose_anvil_exit = is_failed_test(request)
+        stdout, stderr = launch.close()
+
+        if verbose_anvil_exit:
+            print(f"Anvil stdout:\n{stdout.decode('utf-8')}")
+            print(f"Anvil stderr:\n{stderr.decode('utf-8')}")
 
 
 @pytest.fixture
@@ -346,14 +352,11 @@ def test_simple_routing_one_leg(
     - Buy eth with usdc
     """
 
-    # Get live fee structure from polygon Chain
-    fees = estimate_gas_fees(web3)
 
     # Prepare a transaction builder
-    tx_builder = TransactionBuilder(
+    tx_builder = HotWalletTransactionBuilder(
         web3,
         hot_wallet,
-        fees,
     )
 
     # Create
@@ -398,14 +401,11 @@ def test_simple_routing_buy_sell(
 ):
     """Make 2x two way trade usdc -> eth -> usdc."""
 
-    # Get live fee structure from polygon Chain
-    fees = estimate_gas_fees(web3)
 
     # Prepare a transaction builder
-    tx_builder = TransactionBuilder(
+    tx_builder = HotWalletTransactionBuilder(
         web3,
         hot_wallet,
-        fees,
     )
 
     # Create
@@ -461,14 +461,11 @@ def test_simple_routing_not_enough_balance(
 ):
     """Try to buy, but does not have cash."""
 
-    # Get live fee structure from polygon Chain
-    fees = estimate_gas_fees(web3)
 
     # Prepare a transaction builder
-    tx_builder = TransactionBuilder(
+    tx_builder = HotWalletTransactionBuilder(
         web3,
         hot_wallet,
-        fees,
     )
 
     # Create
@@ -484,6 +481,9 @@ def test_simple_routing_not_enough_balance(
         )
 
 
+# More flakiness with Anvil
+# https://github.com/foundry-rs/foundry/issues/4666
+@flaky.flaky()
 def test_simple_routing_three_leg(
     web3,
     hot_wallet,
@@ -498,14 +498,11 @@ def test_simple_routing_three_leg(
 ):
     """Make 1x two way trade usdc -> polygon -> eth."""
 
-    # Get live fee structure from polygon Chain
-    fees = estimate_gas_fees(web3)
 
     # Prepare a transaction builder
-    tx_builder = TransactionBuilder(
+    tx_builder = HotWalletTransactionBuilder(
         web3,
         hot_wallet,
-        fees,
     )
 
     routing_state = UniswapV3RoutingState(pair_universe, tx_builder)
@@ -556,14 +553,10 @@ def test_three_leg_buy_sell(
     balance = eth_token.functions.balanceOf(hot_wallet.address).call()
     assert balance == 0
 
-    # Get live fee structure from polygon Chain
-    fees = estimate_gas_fees(web3)
-
     # Prepare a transaction builder
-    tx_builder = TransactionBuilder(
+    tx_builder = HotWalletTransactionBuilder(
         web3,
         hot_wallet,
-        fees,
     )
 
     routing_state = UniswapV3RoutingState(pair_universe, tx_builder)
@@ -652,14 +645,11 @@ def test_three_leg_buy_sell_twice_on_chain(
     back from the chain.
     """
 
-    # Get live fee structure from polygon Chain
-    fees = estimate_gas_fees(web3)
 
     # Prepare a transaction builder
-    tx_builder = TransactionBuilder(
+    tx_builder = HotWalletTransactionBuilder(
         web3,
         hot_wallet,
-        fees,
     )
 
     routing_state = None
@@ -716,6 +706,7 @@ def test_three_leg_buy_sell_twice_on_chain(
     assert len(txs_2) == 2
 
 
+@flaky.flaky()
 def test_three_leg_buy_sell_twice(
     web3,
     hot_wallet,
@@ -735,14 +726,11 @@ def test_three_leg_buy_sell_twice(
     on the second time and we need one less transactions.
     """
 
-    # Get live fee structure from polygon Chain
-    fees = estimate_gas_fees(web3)
 
     # Prepare a transaction builder
-    tx_builder = TransactionBuilder(
+    tx_builder = HotWalletTransactionBuilder(
         web3,
         hot_wallet,
-        fees,
     )
 
     routing_state = UniswapV3RoutingState(pair_universe, tx_builder)
@@ -819,11 +807,8 @@ def test_stateful_routing_three_legs(
     and state management integrate.
     """
 
-    # Get live fee structure from polygon Chain
-    fees = estimate_gas_fees(web3)
-
     # Prepare a transaction builder
-    tx_builder = TransactionBuilder(web3, hot_wallet, fees)
+    tx_builder = HotWalletTransactionBuilder(web3, hot_wallet)
 
     routing_state = UniswapV3RoutingState(pair_universe, tx_builder)
 
@@ -909,11 +894,8 @@ def test_stateful_routing_two_legs(
     except for the trading pair that we have changed.
     """
 
-    # Get live fee structure from polygon Chain
-    fees = estimate_gas_fees(web3)
-
     # Prepare a transaction builder
-    tx_builder = TransactionBuilder(web3, hot_wallet, fees)
+    tx_builder = HotWalletTransactionBuilder(web3, hot_wallet)
 
     routing_state = UniswapV3RoutingState(pair_universe, tx_builder)
 

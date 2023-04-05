@@ -1,5 +1,5 @@
 """Reverse engineering Trading Strategy trading universe from the local EVM tester Uniswap v2 deployment."""
-from typing import List
+from typing import List, Optional
 
 import pandas as pd
 from web3 import Web3
@@ -11,10 +11,19 @@ from tradingstrategy.exchange import ExchangeUniverse, Exchange, ExchangeType
 from tradingstrategy.pair import DEXPair, PandasPairUniverse
 
 
-def create_pair_universe(web3: Web3, exchange: Exchange, pairs: List[TradingPairIdentifier]) -> PandasPairUniverse:
-    """Creates a PairUniverse from Trade Executor test data.
+def create_pair_universe(web3: Web3, exchange: Optional[Exchange], pairs: List[TradingPairIdentifier]) -> PandasPairUniverse:
+    """Creates a PairUniverse from on-chain test data.
 
-    PairUniverse is used by QSTrader based tests, so we need to support it.
+    A test trading universe.
+
+    :param web3:
+        Web3 connection to the test backend
+
+    :param exchange:
+        Exchange under which pairs are assigned
+
+    :param pairs:
+        Trading pairs that will form this pair universe
     """
 
     chain_id = ChainId(web3.eth.chain_id)

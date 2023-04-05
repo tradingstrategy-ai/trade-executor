@@ -21,7 +21,7 @@ from tradeexecutor.ethereum.execution import get_held_assets
 from tradeexecutor.ethereum.uniswap_v2_execution import get_current_price
 from tradeexecutor.ethereum.universe import create_pair_universe
 from tradeexecutor.ethereum.wallet import sync_reserves
-from tradeexecutor.state.sync import apply_sync_events
+from tradeexecutor.testing.dummy_wallet import  apply_sync_events
 from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeStatus
@@ -209,9 +209,11 @@ def state(portfolio) -> State:
 def pair_universe(web3, weth_usdc_pair, aave_usdc_pair) -> PandasPairUniverse:
     return create_pair_universe(web3, None, [weth_usdc_pair, aave_usdc_pair])
 
+
 @pytest.fixture()
 def ethereum_trader(web3: Web3, uniswap_v2: UniswapV2Deployment, hot_wallet: HotWallet, state: State, pair_universe: PandasPairUniverse) -> UniswapV2TestTrader:
     return UniswapV2TestTrader(web3, uniswap_v2, hot_wallet, state, pair_universe)
+
 
 def test_execute_trade_instructions_buy_weth(
         web3: Web3,
@@ -358,7 +360,6 @@ def test_buy_sell_buy_with_tester(
     assert trade3.executed_quantity == pytest.approx(Decimal('0.293148816143752232'))
 
     # Double check See we can serialise state after all this
-    patch_dataclasses_json()
     dump = state.to_json()
     state2: State = State.from_json(dump)
     assert len(state2.portfolio.closed_positions) == 1

@@ -12,6 +12,7 @@ from typing import List, Callable, Tuple, Set, Optional
 import pandas as pd
 from dataclasses_json import dataclass_json
 
+from .sync import Sync
 from .identifier import AssetIdentifier, TradingPairIdentifier
 from .portfolio import Portfolio
 from .position import TradingPosition
@@ -114,6 +115,8 @@ class State:
     #: to run its internal functions.
     uptime: Uptime = field(default_factory=Uptime)
 
+    sync: Sync = field(default_factory=Sync)
+
     def __repr__(self):
         return f"<State for {self.name}>"
 
@@ -141,6 +144,7 @@ class State:
                      planned_mid_price: Optional[USDollarPrice] = None,
                      price_structure: Optional[TradePricing] = None,
                      position: Optional[TradingPosition] = None,
+                     slippage_tolerance: Optional[float] = None,
                      ) -> Tuple[TradingPosition, TradeExecution, bool]:
         """Creates a request for a new trade.
 
@@ -215,6 +219,11 @@ class State:
         :param notes:
             Human-readable string to show on the trade.
 
+        :param slippage_tolerance:
+            Slippage tolerance for this trade.
+
+            See :py:attr:`tradeexecutor.state.trade.TradeExecution.slippage_tolerance` for details.
+
         :return:
             Tuple of entries
 
@@ -252,6 +261,7 @@ class State:
             planned_mid_price=planned_mid_price,
             price_structure=price_structure,
             position=position,
+            slippage_tolerance=slippage_tolerance,
             notes=notes,
         )
 

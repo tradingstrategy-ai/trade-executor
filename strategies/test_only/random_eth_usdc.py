@@ -8,7 +8,7 @@ import pandas as pd
 
 from tradeexecutor.ethereum.uniswap_v2_execution_v0 import UniswapV2ExecutionModelVersion0
 from tradeexecutor.state.state import State
-from tradeexecutor.state.sync import SyncMethod
+from tradeexecutor.strategy.sync_model import SyncMethodV0
 from tradeexecutor.strategy.approval import ApprovalModel
 from tradeexecutor.strategy.description import StrategyExecutionDescription
 from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
@@ -53,7 +53,7 @@ class DummyAlphaModel(AlphaModel):
 def strategy_factory(
         *ignore,
         execution_model: UniswapV2ExecutionModelVersion0,
-        sync_method: SyncMethod,
+        sync_method: SyncMethodV0,
         pricing_model_factory: PricingModelFactory,
         valuation_model_factory: ValuationModelFactory,
         client,

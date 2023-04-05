@@ -14,7 +14,7 @@ from pathlib import Path
 from tradingstrategy.client import Client
 
 from tradeexecutor.ethereum.routing_data import get_routing_model
-from tradeexecutor.state.sync import SyncMethod
+from tradeexecutor.strategy.sync_model import SyncMethodV0
 from tradeexecutor.strategy.approval import ApprovalModel
 from tradeexecutor.strategy.description import StrategyExecutionDescription
 from tradeexecutor.strategy.execution_context import ExecutionContext
@@ -93,7 +93,7 @@ def make_factory_from_strategy_mod(mod: StrategyModuleInformation) -> StrategyFa
             *ignore,
             execution_model: ExecutionModel,
             execution_context: ExecutionContext,
-            sync_method: SyncMethod,
+            sync_method: SyncMethodV0,
             pricing_model_factory: PricingModelFactory,
             valuation_model_factory: ValuationModelFactory,
             client: Client,
