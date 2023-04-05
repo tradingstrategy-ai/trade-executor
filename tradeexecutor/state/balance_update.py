@@ -67,13 +67,15 @@ class BalanceUpdate:
     #: Chain that updated the balance
     chain_id: int
 
-    #: What was the position balance before update
+    #: What was delta of the asset.
     #:
-    past_quantity: Decimal
+    #: Positive for deposits, negative for redemptions.
+    #:
+    quantity: Decimal
 
-    #: What was the position balance after update
+    #: What was the total of the asset in the position before this event was applied.
     #:
-    new_quantity: Decimal
+    old_balance: Decimal
 
     #: Investor address that the balance update is related to
     #:
@@ -117,7 +119,3 @@ class BalanceUpdate:
         """Return whether this event updates reserve balance or open position balance"""
         return self.position_type == BalanceUpdatePositionType.reserve
 
-    @property
-    def quantity(self) -> Decimal:
-        """How much this event modified the position balance."""
-        return self.new_quantity - self.past_quantity
