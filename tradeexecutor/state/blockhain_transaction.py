@@ -74,7 +74,7 @@ class JSONAssetDelta:
     #: Address of ERC-20
     asset: str
 
-    #: Integer as string serilisation.
+    #: Integer as string serialisation.
     #:
     #: Because JSON cannot handle big ints.
     raw_amount: str
@@ -184,9 +184,11 @@ class BlockchainTransaction:
     #: The transaction revert reason if we manage to extract it
     revert_reason: Optional[str] = None
 
-    #: Solidity stack trace of failure.
+    #: Solidity stack trace of reverted transactions.
     #:
     #: Used in the unit testing environment with Anvil.
+    #:
+    #: See :py:mod:`eth_defi.trace`.
     stack_trace: Optional[str] = None
 
     #: List of assets this transaction touches

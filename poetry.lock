@@ -5287,14 +5287,14 @@ files = [
 
 [[package]]
 name = "web3"
-version = "6.0.0b11"
+version = "6.0.0"
 description = "web3.py"
 category = "main"
 optional = false
 python-versions = ">=3.7.2"
 files = [
-    {file = "web3-6.0.0b11-py3-none-any.whl", hash = "sha256:31947e15dec29d380de10b5429905ac519ae74219dd05379e9854ee44f178d86"},
-    {file = "web3-6.0.0b11.tar.gz", hash = "sha256:810d797bc39f7705029e78303ca4f679fce75f60568faa5c750bc8f54eb70bfc"},
+    {file = "web3-6.0.0-py3-none-any.whl", hash = "sha256:abdeabec4c68e42caf2cc69eb0af026e0e15880ed9c514addfd2c363baae846f"},
+    {file = "web3-6.0.0.tar.gz", hash = "sha256:6b925a19e4a0001337d8b2faa72577d6b7e8f9a8a9a0b98d8834cdf698cfc045"},
 ]
 
 [package.dependencies]
@@ -5324,14 +5324,14 @@ tester = ["eth-tester[py-evm] (==v0.8.0-b.3)", "py-geth (>=3.11.0)"]
 
 [[package]]
 name = "web3-ethereum-defi"
-version = "0.17"
+version = "0.18"
 description = "High level Python APIs for Ethereum-compatible smart contracts, blockchains and protocols like Uniswap, Aave, Enzyme"
 category = "main"
 optional = false
 python-versions = ">=3.10,<3.11"
 files = [
-    {file = "web3_ethereum_defi-0.17-py3-none-any.whl", hash = "sha256:1079e03b28e0cfe7cd8666efaf0b5f310524abc4b6523d605ff61bdf6f2eebee"},
-    {file = "web3_ethereum_defi-0.17.tar.gz", hash = "sha256:9e3aa16e160069dfa69c106dbeabee574e1f63e9962d2f8667081e7e4331d4fb"},
+    {file = "web3_ethereum_defi-0.18-py3-none-any.whl", hash = "sha256:f17fbd62b095b25a793f84dd5cf0322e98ce186f6430b9c15bf5ab0a60f00ccb"},
+    {file = "web3_ethereum_defi-0.18.tar.gz", hash = "sha256:b3cb6d200bc7d516f6ed659b634963c3be9f387de17a9aa1cb2e99fd1518ba3f"},
 ]
 
 [package.dependencies]
@@ -5340,8 +5340,8 @@ evm-trace = ">=0.1.0a17,<0.2.0"
 futureproof = ">=0.3.1,<0.4.0"
 psutil = ">=5.9.0,<6.0.0"
 setuptools = ">=65.6.3,<66.0.0"
-ujson = ">=5.2.0,<6.0.0"
-web3 = {version = "v6.0.0-beta.11", extras = ["tester"]}
+ujson = "5.7.0"
+web3 = {version = "6.0.0", extras = ["tester"]}
 
 [package.extras]
 data = ["gql[requests] (>=3.3.0,<4.0.0)", "jupyter (>=1.0.0,<2.0.0)", "matplotlib (>=3.5.2,<4.0.0)", "pandas (>=1.4.2,<2.0.0)", "plotly (>=5.8.2,<6.0.0)", "pyarrow (>=10.0.1,<11.0.0)", "tqdm (>=4.64.0,<5.0.0)"]
@@ -5828,4 +5828,4 @@ web-server = ["pyramid", "WebTest", "openapi-core", "pyramid-openapi3", "waitres
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.10,<3.11"
-content-hash = "fc2d5d60b6979b2b57ea7d4c23e00b9a8ade1bad048a3a895caa0294a94e83e7"
+content-hash = "2e28bcc5194397a6a418ca8ac6468ba4e9a13af28e8b4439a73ce683a371781a"
