@@ -48,7 +48,7 @@ def test_enzyme_no_deposit(
 
     treasury = state.sync.treasury
     assert treasury.last_block_scanned > 0
-    assert len(treasury.processed_events) == 0
+    assert len(treasury.balance_update_refs) == 0
     assert treasury.last_updated_at is not None
     assert treasury.last_cycle_at is not None
 
@@ -93,7 +93,7 @@ def test_enzyme_single_deposit(
 
     treasury = state.sync.treasury
     assert treasury.last_block_scanned > 0
-    assert len(treasury.processed_events) == 0
+    assert len(treasury.balance_update_refs) == 0
     assert treasury.last_updated_at is not None
     assert treasury.last_cycle_at is not None
 
@@ -109,19 +109,19 @@ def test_enzyme_single_deposit(
     # One deposit detected
     events = sync_model.sync_treasury(cycle, state)
     assert len(events) == 1
+    assert state.portfolio.next_balance_update_id == 2
 
     # Event was correctly translated
     evt = events[0]
     assert evt.asset.token_symbol == "USDC"
     assert evt.asset.internal_id is None
     assert evt.block_mined_at is not None
-    assert evt.past_quantity == Decimal(0)
-    assert evt.new_quantity == Decimal(500)
+    assert evt.old_balance == Decimal(0)
     assert evt.quantity == Decimal(500)
     assert evt.owner_address == user_1
     assert evt.tx_hash is not None
     assert evt.tx_hash is not None
-    assert evt.balance_update_id == 2
+    assert evt.balance_update_id == 1
     assert evt.position_type == BalanceUpdatePositionType.reserve
     assert evt.type == BalanceUpdateType.deposit
 
@@ -129,10 +129,10 @@ def test_enzyme_single_deposit(
     assert treasury.last_cycle_at == cycle
     assert treasury.last_updated_at is not None
     assert treasury.last_block_scanned > 1
-    assert len(treasury.processed_events) == 1
+    assert len(treasury.balance_update_refs) == 1
 
     # We have one deposit
-    assert len(list(treasury.get_deposits())) == 1
+    assert len(treasury.balance_update_refs) == 1
 
     # Strategy has balance
     assert state.portfolio.get_total_equity() == Decimal(500)
@@ -140,7 +140,7 @@ def test_enzyme_single_deposit(
     # See we can serialise the sync state
     dump = state.to_json()
     state2: State = State.from_json(dump)
-    assert len(state2.sync.treasury.processed_events) == 1
+    assert len(state2.sync.treasury.balance_update_refs) == 1
 
 
 def test_enzyme_two_deposits(
@@ -185,7 +185,7 @@ def test_enzyme_two_deposits(
     assert reserve_position.last_pricing_at is not None
     assert reserve_position.quantity == 1200
     assert reserve_position.reserve_token_price == 1
-    assert reserve_position.get_current_value() == 1200
+    assert reserve_position.get_value() == 1200
 
     # Strategy has its reserve balances updated
     assert state.portfolio.get_total_equity() == pytest.approx(1200)

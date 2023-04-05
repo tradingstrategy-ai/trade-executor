@@ -424,7 +424,7 @@ class Portfolio:
 
     def get_current_cash(self) -> USDollarAmount:
         """Get how much reserve stablecoins we have."""
-        return sum([r.get_current_value() for r in self.reserves.values()])
+        return sum([r.get_value() for r in self.reserves.values()])
 
     def get_open_position_equity(self) -> USDollarAmount:
         """Get the value of current trading positions."""
