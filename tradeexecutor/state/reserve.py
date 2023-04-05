@@ -1,14 +1,16 @@
 """Strategy reserve currency management."""
 
 import datetime
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal
-from typing import Optional
+from typing import Optional, Dict, List
 
 from dataclasses_json import dataclass_json
 
+from tradeexecutor.state.balance_update import BalanceUpdate
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.types import USDollarAmount
+from tradeexecutor.utils.accuracy import sum_decimal
 
 
 @dataclass_json
@@ -50,11 +52,31 @@ class ReservePosition:
     #: TODO: Remove optional in future versions.
     initial_deposit_reserve_token_price: Optional[USDollarAmount] = None
 
+    #: BalanceUpdate.id -> BalanceUpdate mapping
+    #:
+    balance_updates: Dict[int, BalanceUpdate] = field(default_factory=dict)
+
     def __post_init__(self):
         assert self.asset.decimals > 0, f"Looks like we have improper reserve asset: {self.asset}"
 
     def get_identifier(self) -> str:
         return self.asset.get_identifier()
 
-    def get_current_value(self) -> USDollarAmount:
+    def get_value(self) -> USDollarAmount:
+        """Approximation of current value of this reserve."""
         return float(self.quantity) * self.reserve_token_price
+
+    def get_total_equity(self) -> USDollarAmount:
+        """Approximation of total equity of this reserve."""
+        return self.get_value()
+
+    def get_balance_update_quantity(self) -> Decimal:
+        """Get quantity of all balance udpdates for this position.
+
+        :return:
+            How much deposit and in-kind redemptions events have affected this position.
+
+            Decimal zero epsilon noted.
+        """
+        return sum_decimal([b.quantity for b in self.balance_updates.values()])
+

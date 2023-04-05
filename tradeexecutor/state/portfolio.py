@@ -24,6 +24,13 @@ class InvalidValuationOutput(Exception):
     """Valuation model did not generate proper price value."""
 
 
+class MultipleOpenPositionsWithAsset(Exception):
+    """Multiple open spot positiosn for a single base asset.
+
+    Cannot determine which one to return.
+    """
+
+
 @dataclass_json
 @dataclass
 class Portfolio:
@@ -45,6 +52,9 @@ class Portfolio:
     #: Each trade gets it unique id as a running counter.
     #: Trade ids are unique across different positions.
     next_trade_id: int = field(default=1)
+
+    #: Each balance update event gets it unique id as a running counter.
+    next_balance_update_id: int = field(default=1)
 
     #: Currently open trading positions
     open_positions: Dict[int, TradingPosition] = field(default_factory=dict)
@@ -142,11 +152,42 @@ class Portfolio:
                 yield p
 
     def get_open_position_for_pair(self, pair: TradingPairIdentifier) -> Optional[TradingPosition]:
+        """Get Open position for a trading pair."""
         assert isinstance(pair, TradingPairIdentifier)
         pos: TradingPosition
         for pos in self.open_positions.values():
             if pos.pair.get_identifier() == pair.get_identifier():
                 return pos
+        return None
+
+    def get_open_position_for_asset(self, asset: AssetIdentifier) -> Optional[TradingPosition]:
+        """Get open position for a trading pair.
+
+        - Check all open positions where asset is a base token
+
+        :return:
+            Tingle open position or None
+
+        :raise MultipleOpenPositionsWithAsset:
+
+            If more than one position is open
+
+        """
+        assert isinstance(asset, AssetIdentifier)
+
+        matches = []
+
+        pos: TradingPosition
+        for pos in self.open_positions.values():
+            if pos.pair.base == asset:
+                matches.append(pos)
+
+        if len(matches) > 1:
+            raise MultipleOpenPositionsWithAsset(f"Querying asset: {asset} - found multipe open positions: {matches}")
+
+        if len(matches) == 1:
+            return matches[0]
+
         return None
 
     def get_open_quantities_by_position_id(self) -> Dict[str, Decimal]:
@@ -383,7 +424,7 @@ class Portfolio:
 
     def get_current_cash(self) -> USDollarAmount:
         """Get how much reserve stablecoins we have."""
-        return sum([r.get_current_value() for r in self.reserves.values()])
+        return sum([r.get_value() for r in self.reserves.values()])
 
     def get_open_position_equity(self) -> USDollarAmount:
         """Get the value of current trading positions."""
@@ -423,7 +464,25 @@ class Portfolio:
         return self.open_positions[trade.position_id]
 
     def get_reserve_position(self, asset: AssetIdentifier) -> ReservePosition:
+        """Get reserves for a certain reserve asset.
+
+        :raise KeyError:
+            If we do not have reserves for the asset
+        """
         return self.reserves[asset.get_identifier()]
+
+    def get_default_reserve_position(self) -> ReservePosition:
+        """Get the default reserve position.
+
+        Assume portfolio has only one reserve asset.
+
+        :raise AssertionError:
+            If there is not exactly one reserve position
+        """
+
+        positions = list(self.reserves.values())
+        assert len(positions) == 1, f"Had {len(positions)} reserve position"
+        return positions[0]
 
     def get_equity_for_pair(self, pair: TradingPairIdentifier) -> Decimal:
         """Return how much equity allocation we have in a certain trading pair."""

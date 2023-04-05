@@ -427,6 +427,10 @@ def test_simulated_uniswap_qstrader_strategy_single_trade(
     assert position.get_value() == pytest.approx(9447.390072492823, rel=APPROX_REL)
     assert len(position.trades) == 1
 
+    # Check get_open_position_for_asset()
+    position_2 = state.portfolio.get_open_position_for_asset(weth_usdc_pair.base)
+    assert position_2 == position
+
     # Check the recorded trade history
     trades = list(state.portfolio.get_all_trades())
     assert len(trades) == 1

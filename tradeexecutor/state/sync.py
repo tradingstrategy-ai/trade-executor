@@ -9,88 +9,14 @@
 - See :py:mod:`tradeexecutor.strategy.sync_model` how to on-chain treasuty
 """
 import datetime
-import enum
-from decimal import Decimal
 from dataclasses import dataclass, field
-from typing import Optional, List, Iterable
+from typing import Optional, List, Iterable, Dict
 
 from dataclasses_json import dataclass_json
 
 from tradingstrategy.chain import ChainId
 
-from tradeexecutor.state.identifier import AssetIdentifier
-
-
-class BalanceUpdateType(enum.Enum):
-    deposit = "deposit"
-    redemption = "redemption"
-    interest = "interest"
-
-
-@dataclass_json
-@dataclass
-class BalanceUpdateEvent:
-    """Processed balance update event."""
-
-    type: BalanceUpdateType
-
-    #: Asset that was updated
-    #:
-    #:
-    asset: AssetIdentifier
-
-    #: When the update happened
-    #:
-    #: The block mined timestamp
-    block_mined_at: datetime.datetime
-
-    #: Chain that updated the balance
-    chain_id: int
-
-    #: What was the position balance before update
-    past_balance: Decimal
-
-    #: What was the position balance after update
-    new_balance: Decimal
-
-    #: Investor address that the balance update is related to
-    #:
-    #:
-    owner_address: Optional[str] = None
-
-    #: Transaction that updated the balance
-    #:
-    #: Set None for interested calculation updates
-    tx_hash: Optional[str] = None
-
-    #: Log that updated the balance
-    #:
-    #: Set None for interest rate updates
-    log_index: Optional[int] = None
-
-    #: If this update was for open position
-    #:
-    #: Set None for reserve updates
-    position_id: Optional[int] = None
-
-    def __eq__(self, other: "BalanceUpdateEvent"):
-        assert isinstance(other, BalanceUpdateEvent), f"Got {other}"
-        match self.type:
-            case BalanceUpdateType.deposit:
-                return self.chain_id == other.chain_id and self.tx_hash == other.tx_hash and self.log_index == other.log_index
-            case _:
-                raise RuntimeError("Unsupported")
-
-    def __hash__(self):
-        match self.type:
-            case BalanceUpdateType.deposit:
-                return hash((self.chain_id, self.tx_hash, self.log_index))
-            case _:
-                raise RuntimeError("Unsupported")
-
-    def is_reserve_update(self) -> bool:
-        """Return whether this event updates reserve balance or open position balance"""
-        return self.position_id is None
+from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdateCause, BalanceUpdatePositionType
 
 
 @dataclass_json
@@ -141,6 +67,22 @@ class Deployment:
 
 @dataclass_json
 @dataclass
+class BalanceEventRef:
+    """Register the balance event in the treasury model."""
+
+    balance_event_id: int
+
+    updated_at: datetime.datetime
+
+    cause: BalanceUpdateCause
+
+    position_type: BalanceUpdatePositionType
+
+    position_id: Optional[int]
+
+
+@dataclass_json
+@dataclass
 class Treasury:
     """State of syncind deposits and redemptions from the chain.
 
@@ -161,13 +103,10 @@ class Treasury:
     #: 0 = not scanned yet
     last_block_scanned: Optional[int] = None
 
-    #: List of Solidity deposit/withdraw events that we have correctly accounted in the strategy balances.
+    #: List of refernces to all balance update events.
     #:
-    #: Contains Solidity event logs for processed transactions
-    processed_events: List[BalanceUpdateEvent] = field(default_factory=list)
-
-    def get_deposits(self) -> Iterable[BalanceUpdateEvent]:
-        return filter(lambda x:x.type == BalanceUpdateType.deposit, self.processed_events)
+    #: The actual balance update content is stored on the position itself.
+    balance_update_refs: List[BalanceEventRef] = field(default_factory=list)
 
 
 @dataclass_json
