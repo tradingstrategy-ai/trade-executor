@@ -807,26 +807,43 @@ def _get_num_detached_indicators(plots: list[Plot]):
     return num_detached_indicators
 
 def _get_subplot_names(plots: list[Plot]):
-    """Get subplot names for detached technical indicators"""
+    """Get subplot names for detached technical indicators. 
+    
+    Overlaid names are appended to the detached plot name."""
+    
     subplot_names = []
+    
+    # for allowing multiple overlays on detached plots
+    # list of detached plot names that already have overlays
+    already_overlaid_names = []
+    detached_without_overlay_count = 0
+    
     for plot in plots:
-        # get subplot names for detached technical indicators without overlay
+        # get subplot names for detached technical indicators without any overlay
         if (plot.kind == PlotKind.technical_indicator_detached) and (plot.name not in [plot.detached_overlay_name for plot in plots if plot.kind == PlotKind.technical_indicator_overlay_on_detached]):
             subplot_names.append(plot.name)
+            detached_without_overlay_count += 1
             
         # get subplot names for detached technical indicators with overlay
         if plot.kind == PlotKind.technical_indicator_overlay_on_detached:
             # check that detached plot exists
             assert plot.detached_overlay_name in [plot.name for plot in plots if plot.kind == PlotKind.technical_indicator_detached]
             
-            # add to list
-            subplot_names.append(plot.name + f"<br> + {plot.detached_overlay_name}")
+            # check if another overlay exists
+            if plot.detached_overlay_name in already_overlaid_names:
+                # add to existing overlay
+                subplot_names[detached_without_overlay_count + already_overlaid_names.index(plot.detached_overlay_name)] += f"<br> + {plot.name}"
+            else:
+                # add to list
+                subplot_names.append(plot.name + f"<br> + {plot.detached_overlay_name}")
+                already_overlaid_names.append(plot.detached_overlay_name)
+                
     return subplot_names
 
 def _get_relative_sizing(plots: list[Plot]):
     """Get list of relative sizes for subplots
     
-    Works since python dicts are now ordered by insertion"""
+    Works since python dicts are now ordered"""
     return [plot.relative_size for plot in plots if plot.kind == PlotKind.technical_indicator_detached]
 
 def _get_start_and_end(
