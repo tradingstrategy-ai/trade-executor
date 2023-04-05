@@ -811,13 +811,13 @@ def _get_subplot_names(plots: list[Plot]):
     subplot_names = []
     for plot in plots:
         # get subplot names for detached technical indicators without overlay
-        if (plot.kind == PlotKind.technical_indicator_detached) and (plot.name not in [plot.detached_overlay_name for plot in state.visualisation.plots.values() if plot.kind == PlotKind.technical_indicator_overlay_on_detached]):
+        if (plot.kind == PlotKind.technical_indicator_detached) and (plot.name not in [plot.detached_overlay_name for plot in plots if plot.kind == PlotKind.technical_indicator_overlay_on_detached]):
             subplot_names.append(plot.name)
             
         # get subplot names for detached technical indicators with overlay
         if plot.kind == PlotKind.technical_indicator_overlay_on_detached:
             # check that detached plot exists
-            assert plot.detached_overlay_name in [plot.name for plot in state.visualisation.plots.values() if plot.kind == PlotKind.technical_indicator_detached]
+            assert plot.detached_overlay_name in [plot.name for plot in plots if plot.kind == PlotKind.technical_indicator_detached]
             
             # add to list
             subplot_names.append(plot.name + f"<br> + {plot.detached_overlay_name}")
