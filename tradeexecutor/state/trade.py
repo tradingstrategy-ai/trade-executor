@@ -522,6 +522,9 @@ class TradeExecution:
         """
         return self.repaired_trade_id is not None
 
+    def is_redemption(self) -> bool:
+        """This trade marks a redemption balance update on a position"""
+
     def get_status(self) -> TradeStatus:
         """Resolve the trade status.
 

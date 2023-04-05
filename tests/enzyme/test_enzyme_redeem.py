@@ -110,6 +110,7 @@ def test_enzyme_redeem_reserve(
     assert redeem_reserve.type == BalanceUpdateType.redemption
     assert redeem_reserve.quantity == -250
     assert redeem_reserve.asset == usdc_asset
+    assert redeem_reserve.owner_address == user_1
 
     # Reserve position has this reflected
     # Deposit + Withdrawal
@@ -118,3 +119,97 @@ def test_enzyme_redeem_reserve(
     assert state.portfolio.get_total_equity() == pytest.approx(250)
 
 
+def test_enzyme_redeem_open_position(
+    web3: Web3,
+    deployer: HexAddress,
+    vault: Vault,
+    usdc: Contract,
+    weth: Contract,
+    usdc_asset: AssetIdentifier,
+    weth_asset: AssetIdentifier,
+    user_1: HexAddress,
+    uniswap_v2: UniswapV2Deployment,
+    weth_usdc_trading_pair: TradingPairIdentifier,
+    pair_universe: PandasPairUniverse,
+    hot_wallet: HotWallet,
+):
+    """Do in-kind redemption for reserves and open positions."""
+
+    reorg_mon = create_reorganisation_monitor(web3)
+
+    tx_hash = vault.vault.functions.addAssetManagers([hot_wallet.address]).transact({"from": user_1})
+    assert_transaction_success_with_explanation(web3, tx_hash)
+
+    sync_model = EnzymeVaultSyncModel(
+        web3,
+        vault.address,
+        reorg_mon,
+    )
+
+    state = State()
+    sync_model.sync_initial(state)
+
+    # Make two deposits from separate parties
+    usdc.functions.transfer(user_1, 500 * 10**6).transact({"from": deployer})
+    usdc.functions.approve(vault.comptroller.address, 500 * 10**6).transact({"from": user_1})
+    vault.comptroller.functions.buyShares(500 * 10**6, 1).transact({"from": user_1})
+
+    # Strategy has its reserve balances updated
+    sync_model.sync_treasury(datetime.datetime.utcnow(), state)
+    assert state.portfolio.get_total_equity() == pytest.approx(500)
+
+    # Create open WETH/USDC position worth of 100
+
+    tx_builder = EnzymeTransactionBuilder(hot_wallet, vault)
+
+    trader = UniswapV2TestTrader(
+        web3,
+        uniswap_v2,
+        hot_wallet=tx_builder.hot_wallet,
+        state=state,
+        pair_universe=pair_universe,
+        tx_builder=tx_builder,
+    )
+
+    position, trade = trader.buy(
+        weth_usdc_trading_pair,
+        Decimal(100),
+        execute=True,
+        slippage_tolerance=0.0125,
+    )
+    assert trade.is_success()
+
+    weth_amount = 0.06228145269583113
+
+    # Check we have balance
+    assert usdc.functions.balanceOf(tx_builder.get_erc_20_balance_address()).call() == 400 * 10**6
+    assert weth.functions.balanceOf(tx_builder.get_erc_20_balance_address()).call() == pytest.approx(weth_amount * 10**18)
+
+    # Redeem 50%
+    # Shares originally = 500
+    # Redeem 250 shares
+    tx_hash = vault.comptroller.functions.redeemSharesInKind(user_1, 250 * 10**18, [], []).transact({"from": user_1})
+    assert_transaction_success_with_explanation(web3, tx_hash)
+
+    # Check we have redeemed
+    assert usdc.functions.balanceOf(tx_builder.get_erc_20_balance_address()).call() == 200 * 10**6
+    assert weth.functions.balanceOf(tx_builder.get_erc_20_balance_address()).call() == pytest.approx(0.031140726347915564 * 10**18)
+
+    # Strategy has its reserve balances updated
+    events = sync_model.sync_treasury(datetime.datetime.utcnow(), state)
+    assert len(events) == 2  # redemption detected for two assts
+
+    # Events looks right
+    redeem_reserve = events[0]
+    assert redeem_reserve.balance_update_id == 2
+    assert redeem_reserve.position_type == BalanceUpdatePositionType.reserve
+    assert redeem_reserve.type == BalanceUpdateType.redemption
+    assert redeem_reserve.quantity == -250
+    assert redeem_reserve.asset == usdc_asset
+
+    # Reserve position has this reflected
+    # Deposit + Withdrawal
+    assert state.portfolio.get_default_reserve_position().balance_updates == [1, 2]
+    assert state.portfolio.open_positions[1].balance_updates == [3]
+
+    assert state.portfolio.get_total_equity() == pytest.approx(250)
