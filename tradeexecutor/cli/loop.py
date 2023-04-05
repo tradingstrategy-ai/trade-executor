@@ -35,7 +35,7 @@ except ImportError:
 from tradeexecutor.backtest.backtest_pricing import BacktestSimplePricingModel
 from tradeexecutor.state.state import State
 from tradeexecutor.state.store import StateStore
-from tradeexecutor.state.sync import SyncMethod
+from tradeexecutor.strategy.sync_model import SyncMethodV0
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.validator import validate_state_serialisation
 from tradeexecutor.statistics.core import update_statistics
@@ -84,7 +84,7 @@ class ExecutionLoop:
             command_queue: Queue,
             execution_model: ExecutionModel,
             execution_context: ExecutionContext,
-            sync_method: SyncMethod,
+            sync_method: SyncMethodV0,
             approval_model: ApprovalModel,
             pricing_model_factory: PricingModelFactory,
             valuation_model_factory: ValuationModelFactory,
@@ -798,6 +798,7 @@ class ExecutionLoop:
 
             run_state.completed_cycle = cycle
             run_state.cycles += 1
+            run_state.frozen_positions = len(state.portfolio.frozen_positions)
             run_state.bumb_refreshed()
 
             # Reset the background watchdog timer

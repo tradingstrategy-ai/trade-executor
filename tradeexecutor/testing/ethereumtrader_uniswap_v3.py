@@ -2,7 +2,7 @@
 
 import datetime
 from decimal import Decimal
-from typing import Tuple, List
+from typing import Tuple, List, Optional
 
 from tradingstrategy.pair import PandasPairUniverse
 from web3 import Web3
@@ -13,7 +13,7 @@ from eth_defi.hotwallet import HotWallet
 from eth_defi.uniswap_v3.deployment import UniswapV3Deployment
 from eth_defi.uniswap_v3.price import UniswapV3PriceHelper
 
-from tradeexecutor.ethereum.tx import TransactionBuilder
+from tradeexecutor.ethereum.tx import HotWalletTransactionBuilder, TransactionBuilder
 from tradeexecutor.ethereum.uniswap_v3_routing import UniswapV3SimpleRoutingModel, UniswapV3RoutingState
 from tradeexecutor.ethereum.uniswap_v3_execution import UniswapV3ExecutionModel
 from tradeexecutor.state.freeze import freeze_position_on_failed_trade
@@ -27,11 +27,27 @@ from tradeexecutor.ethereum.ethereumtrader import EthereumTrader
 class UniswapV3TestTrader(EthereumTrader):
     """Helper class to trade against EthereumTester unit testing network."""
 
-    def __init__(self, web3: Web3, uniswap: UniswapV3Deployment, hot_wallet: HotWallet, state: State, pair_universe: PandasPairUniverse):
+    def __init__(self,
+                 web3: Web3,
+                 uniswap: UniswapV3Deployment,
+                 hot_wallet: HotWallet,
+                 state: State,
+                 pair_universe: PandasPairUniverse,
+                 tx_builder: Optional[TransactionBuilder] = None,
+                 ):
         super().__init__(web3, uniswap, hot_wallet, state, pair_universe)
 
         self.execution_model = UniswapV3ExecutionModel(web3, hot_wallet)
         self.price_helper = UniswapV3PriceHelper(uniswap)
+
+        if tx_builder:
+            self.tx_builder = tx_builder
+        else:
+            self.tx_builder = HotWalletTransactionBuilder(
+                web3,
+                hot_wallet,
+            )
+
 
     def buy(self, pair: TradingPairIdentifier, amount_in_usd: Decimal, execute=True) -> Tuple[TradingPosition, TradeExecution]:
         """Buy token (trading pair) for a certain value."""
@@ -136,11 +152,7 @@ class UniswapV3TestTrader(EthereumTrader):
 
         fees = estimate_gas_fees(web3)
 
-        tx_builder = TransactionBuilder(
-            web3,
-            hot_wallet,
-            fees,
-        )
+        tx_builder = self.tx_builder
 
         reserve_asset, rate = state.portfolio.get_default_reserve_currency()
 
@@ -162,7 +174,6 @@ class UniswapV3TestTrader(EthereumTrader):
         
         execution_model = UniswapV3ExecutionModel(web3, hot_wallet)
         execution_model.broadcast_and_resolve(state, trades, stop_on_execution_failure=stop_on_execution_failure)
-        
 
         # Clean up failed trades
         freeze_position_on_failed_trade(datetime.datetime.utcnow(), state, trades)

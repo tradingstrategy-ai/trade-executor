@@ -252,6 +252,7 @@ class Portfolio:
                      planned_mid_price: Optional[USDollarPrice] = None,
                      price_structure: Optional[TradePricing] = None,
                      position: Optional[TradingPosition] = None,
+                     slippage_tolerance: Optional[float] = None,
                      ) -> Tuple[TradingPosition, TradeExecution, bool]:
         """Create a trade.
 
@@ -313,6 +314,11 @@ class Portfolio:
 
             Use for repair trades.
 
+        :param slippage_tolerance:
+            Slippage tolerance for this trade.
+
+            See :py:attr:`tradeexecutor.state.trade.TradeExecution.slippage_tolerance` for details.
+
         :return:
             Tuple of entries
 
@@ -361,7 +367,8 @@ class Portfolio:
             pair_fee=pair_fee,
             lp_fees_estimated=lp_fees_estimated,
             planned_mid_price=planned_mid_price,
-            price_structure=price_structure
+            price_structure=price_structure,
+            slippage_tolerance=slippage_tolerance,
         )
 
         # Update notes
@@ -526,7 +533,6 @@ class Portfolio:
         :return:
             Tuple (Reserve currency asset, its latest US dollar exchanage rate)
         """
-
         assert len(self.reserves) > 0, "Portfolio has no reserve currencies"
         res_pos = next(iter(self.reserves.values()))
         return res_pos.asset, res_pos.reserve_token_price
@@ -581,3 +587,18 @@ class Portfolio:
             if p.pair not in already_iterated_pairs:
                 already_iterated_pairs.add(p.pair)
                 yield p.pair
+
+    def initialise_reserves(self, asset: AssetIdentifier):
+        """Create the initial reserve currency list.
+
+        Currently we assume there can be only one reserve currency.
+        """
+        assert len(self.reserves) == 0, "Reserves already initialised"
+        self.reserves[asset.address] = ReservePosition(
+            asset=asset,
+            quantity=Decimal(0),
+            last_sync_at=None,
+            reserve_token_price=None,
+            last_pricing_at=None,
+        )
+

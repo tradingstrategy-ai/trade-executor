@@ -32,7 +32,6 @@ def logger(request):
 @pytest.fixture(scope="module")
 def state() -> State:
     """Read a random old data dump."""
-    patch_dataclasses_json()
     f = os.path.join(os.path.dirname(__file__), "legacy-state-dump.json")
     return State.from_json(open(f, "rt").read())
 

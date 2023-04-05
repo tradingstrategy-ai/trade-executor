@@ -1,85 +1,191 @@
-"""Synchrone deposits/withdrawals of the portfolio.
+""""Store information about caught up chain state.
 
-Syncs the external portfolio changes from a (blockchain) source.
-See ethereum/hotwallet_sync.py for details.
+- Treasury understanding is needed in order to reflect on-chain balance changes to the strategy execution
+
+- Most treasury changes are deposits and redemptions
+
+- Interest rate events also change on-chain treasury balances
+
+- See :py:mod:`tradeexecutor.strategy.sync_model` how to on-chain treasuty
 """
-
 import datetime
+import enum
 from decimal import Decimal
-from typing import Callable, List
+from dataclasses import dataclass, field
+from typing import Optional, List, Iterable
 
-from tradeexecutor.ethereum.wallet import ReserveUpdateEvent, logger
-from tradeexecutor.state.portfolio import Portfolio
+from dataclasses_json import dataclass_json
+
+from tradingstrategy.chain import ChainId
+
 from tradeexecutor.state.identifier import AssetIdentifier
-from tradeexecutor.state.reserve import ReservePosition
 
 
-SyncMethod = Callable[[Portfolio, datetime.datetime, List[AssetIdentifier]], List[ReserveUpdateEvent]]
+class BalanceUpdateType(enum.Enum):
+    deposit = "deposit"
+    redemption = "redemption"
+    interest = "interest"
 
 
-class DummmyWalletSyncer:
-    """Simulate a wallet events with a fixed balance set in the beginning."""
+@dataclass_json
+@dataclass
+class BalanceUpdateEvent:
+    """Processed balance update event."""
 
-    def __init__(self, initial_deposit_amount: Decimal = Decimal(0)):
-        assert isinstance(initial_deposit_amount, Decimal)
-        self.initial_deposit_amount = initial_deposit_amount
-        self.initial_deposit_processed_at = None
+    type: BalanceUpdateType
 
-    def __call__(self, portfolio: Portfolio, ts: datetime.datetime, supported_reserves: List[AssetIdentifier]) -> List[ReserveUpdateEvent]:
-        """Process the backtest initial deposit.
+    #: Asset that was updated
+    #:
+    #:
+    asset: AssetIdentifier
 
-        The backtest wallet is credited once at the start.
-        """
+    #: When the update happened
+    #:
+    #: The block mined timestamp
+    block_mined_at: datetime.datetime
 
-        if not self.initial_deposit_processed_at:
-            self.initial_deposit_processed_at = ts
+    #: Chain that updated the balance
+    chain_id: int
 
-            assert len(supported_reserves) == 1
+    #: What was the position balance before update
+    past_balance: Decimal
 
-            reserve_token = supported_reserves[0]
+    #: What was the position balance after update
+    new_balance: Decimal
 
-            # Generate a deposit event
-            evt = ReserveUpdateEvent(
-                asset=reserve_token,
-                past_balance=Decimal(0),
-                new_balance=self.initial_deposit_amount,
-                updated_at=ts
-            )
+    #: Investor address that the balance update is related to
+    #:
+    #:
+    owner_address: Optional[str] = None
 
-            # Update state
-            apply_sync_events(portfolio, [evt])
+    #: Transaction that updated the balance
+    #:
+    #: Set None for interested calculation updates
+    tx_hash: Optional[str] = None
 
-            return [evt]
-        else:
-            return []
+    #: Log that updated the balance
+    #:
+    #: Set None for interest rate updates
+    log_index: Optional[int] = None
+
+    #: If this update was for open position
+    #:
+    #: Set None for reserve updates
+    position_id: Optional[int] = None
+
+    def __eq__(self, other: "BalanceUpdateEvent"):
+        assert isinstance(other, BalanceUpdateEvent), f"Got {other}"
+        match self.type:
+            case BalanceUpdateType.deposit:
+                return self.chain_id == other.chain_id and self.tx_hash == other.tx_hash and self.log_index == other.log_index
+            case _:
+                raise RuntimeError("Unsupported")
+
+    def __hash__(self):
+        match self.type:
+            case BalanceUpdateType.deposit:
+                return hash((self.chain_id, self.tx_hash, self.log_index))
+            case _:
+                raise RuntimeError("Unsupported")
+
+    def is_reserve_update(self) -> bool:
+        """Return whether this event updates reserve balance or open position balance"""
+        return self.position_id is None
 
 
-def apply_sync_events(portfolio: Portfolio, new_reserves: List[ReserveUpdateEvent], default_price=1.0):
-    """Apply deposit and withdraws on reserves in the portfolio.
+@dataclass_json
+@dataclass
+class Deployment:
+    """Information for the strategy deployment.
 
-    :param default_price: Set the reserve currency price for new reserves.
+    - Capture information about the vault deployment in the strategy's persistent state
+
+    - This information can be later used to look up information (e.g deposit transactions)
+
+    - This information can be later used to look up verify data
     """
 
-    for evt in new_reserves:
+    #: Which chain we are deployed
+    chain_id: Optional[ChainId] = None
 
-        res_pos = portfolio.reserves.get(evt.asset.get_identifier())
-        if res_pos is not None:
-            # Update existing
-            res_pos.quantity = evt.new_balance
-            res_pos.last_sync_at = evt.updated_at
-            logger.info("Portfolio reserve synced. Asset: %s", evt.asset)
-        else:
-            # Initialise new reserve position
-            res_pos = ReservePosition(
-                asset=evt.asset,
-                quantity=evt.new_balance,
-                last_sync_at=evt.updated_at,
-                reserve_token_price=default_price,
-                last_pricing_at=evt.updated_at,
-                initial_deposit_reserve_token_price=default_price,
-                initial_deposit=evt.new_balance,
-            )
-            portfolio.reserves[res_pos.get_identifier()] = res_pos
-            logger.info("Portfolio reserve created. Asset: %s", evt.asset)
+    #: Vault smart contract address
+    #:
+    #: For hot wallet execution, the address of the hot wallet
+    address: Optional[str] = None
 
+    #: When the vault was deployed
+    #:
+    #: Not available for hot wallet based strategies
+    block_number: Optional[int] = None
+
+    #: When the vault was deployed
+    #:
+    #: Not available for hot wallet based strategies
+    tx_hash: Optional[str] = None
+
+    #: UTC block timestamp of the vault deployment tx
+    #:
+    #: Not available for hot wallet based strategies
+    block_mined_at: Optional[datetime.datetime] = None
+
+    #: Vault name
+    #:
+    #: Enzyme vault name - same as vault toke name
+    vault_token_name: Optional[str] = None
+
+    #: Vault token symbol
+    #:
+    #: Enzyme vault name - same as vault toke name
+    vault_token_symbol: Optional[str] = None
+
+
+@dataclass_json
+@dataclass
+class Treasury:
+    """State of syncind deposits and redemptions from the chain.
+
+    """
+
+    #: Wall clock time. timestamp for which we run the last sync
+    #:
+    #: Wall clock time, at the beginning on the sync cycle.
+    last_updated_at: Optional[datetime.datetime] = None
+
+    #: The strategy cycle timestamp for which we run the last sync
+    #:
+    #: Wall clock time, at the beginning on the sync cycle.
+    last_cycle_at: Optional[datetime.datetime] = None
+
+    #: What is the last processed block for deposit
+    #:
+    #: 0 = not scanned yet
+    last_block_scanned: Optional[int] = None
+
+    #: List of Solidity deposit/withdraw events that we have correctly accounted in the strategy balances.
+    #:
+    #: Contains Solidity event logs for processed transactions
+    processed_events: List[BalanceUpdateEvent] = field(default_factory=list)
+
+    def get_deposits(self) -> Iterable[BalanceUpdateEvent]:
+        return filter(lambda x:x.type == BalanceUpdateType.deposit, self.processed_events)
+
+
+@dataclass_json
+@dataclass
+class Sync:
+    """On-chain sync state.
+
+    - Store persistent information about the vault on transactions we have synced,
+      so that the strategy knows its available capital
+
+    - Updated before the strategy execution step
+    """
+
+    deployment: Deployment = field(default_factory=Deployment)
+
+    treasury: Treasury = field(default_factory=Treasury)
+
+    def is_initialised(self) -> bool:
+        """Have we scanned the initial deployment event for the sync model."""
+        return self.deployment.block_number is not None
 

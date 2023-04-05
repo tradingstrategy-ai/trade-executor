@@ -1,138 +1,82 @@
-"""EVM transaction construction."""
+"""EVM transaction construction.
+
+- Base class :py:class:`TransactionBuilder` for different transaction building mechanisms
+
+- The default :py:class:`HotWalletTransactionBuilder`
+"""
 import datetime
 import logging
-from typing import List
+from abc import abstractmethod, ABC
+from typing import List, Optional
 
 from eth_account.datastructures import SignedTransaction
 from hexbytes import HexBytes
 from web3 import Web3
-from web3.contract.contract import Contract, ContractFunction
+from web3.contract.contract import ContractFunction, Contract
 
-from eth_defi.gas import GasPriceSuggestion, apply_gas
+from eth_defi.gas import GasPriceSuggestion, apply_gas, estimate_gas_fees
 from eth_defi.hotwallet import HotWallet
+from eth_defi.tx import AssetDelta
 from eth_defi.revert_reason import fetch_transaction_revert_reason
 from eth_defi.confirmation import broadcast_transactions, \
     broadcast_and_wait_transactions_to_complete
 from eth_defi.tx import decode_signed_transaction
-from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
-
-
-#: How many gas units we assume ERC-20 approval takes
-#: TODO: Move to a better model
-APPROVE_GAS_LIMIT = 100_000
-
+from tradeexecutor.state.blockhain_transaction import BlockchainTransaction, JSONAssetDelta
 
 logger = logging.getLogger(__name__)
 
 
-class TransactionBuilder:
-    """Create transactions from the hot wallet and store them in the state.
+class TransactionBuilder(ABC):
+    """Base class for different transaction builders.
 
-    Creates trackable transactions. TransactionHelper is initialised
-    at the start of the each cycle.
+    We can build different transactions depending if we execute them directly from the hot wallet,
+    or through a smart contract:
 
-    Transaction builder can prepare multiple transactions in one batch.
-    For all tranactions, we use the previously prepared gas price information.
+    - Hot wallet based, see :py:class:`HotWalletTransactionBuilder`
+
+    - Vault based, see :py:class:`tradeexecutor.enzyme.tx.EnzymeTransactionBuilder`
+
+    Life cycle:
+
+    - TransactionBuilder is created once at the application startup
+
+    See also :py:meth:`tradeeexecutor.ethereum.routing_state.EthereumRoutingState.create_signed_transaction`.
     """
 
-    def __init__(self,
-                 web3: Web3,
-                 hot_wallet: HotWallet,
-                 gas_fees: GasPriceSuggestion,
-                 ):
-        assert isinstance(gas_fees, GasPriceSuggestion)
-        self.hot_wallet = hot_wallet
+    def __init__(self, web3: Web3):
         self.web3 = web3
-        self.gas_fees = gas_fees
         # Read once at the start, then cache
-        self.chain_id = web3.eth.chain_id
+        self.chain_id: int = web3.eth.chain_id
 
-    def sign_transaction(
-            self,
-            args_bound_func: ContractFunction,
-            gas_limit: int
-    ) -> BlockchainTransaction:
-        """Createa a signed tranaction and set up tx broadcast parameters.
+    def fetch_gas_price_suggestion(self) -> GasPriceSuggestion:
+        """Calculate the suggested gas price based on a policy."""
+        return estimate_gas_fees(self.web3)
 
-        :param args_bound_func:
-            Web3 function thingy
-        :param gas_limit:
-            Max gas per this transaction
-
-        :return:
-            Prepared BlockchainTransaction instance
-        """
-
-        logger.info("Signing transactions using gas fee method %s for %s", self.gas_fees, args_bound_func)
-
-        tx = args_bound_func.build_transaction({
-            "chainId": self.chain_id,
-            "from": self.hot_wallet.address,
-            "gas": gas_limit,
-        })
-
-        apply_gas(tx, self.gas_fees)
-
-        signed_tx = self.hot_wallet.sign_transaction_with_new_nonce(tx)
-        signed_bytes = signed_tx.rawTransaction.hex()
-
-        return BlockchainTransaction(
-            chain_id=self.chain_id,
-            from_address=self.hot_wallet.address,
-            contract_address=args_bound_func.address,
-            function_selector=args_bound_func.fn_name,
-            args=args_bound_func.args,
-            signed_bytes=signed_bytes,
-            tx_hash=signed_tx.hash.hex(),
-            nonce=signed_tx.nonce,
-            details=tx,
-        )
-
-    def create_transaction(
-            self,
-            contract: Contract,
-            function_selector: str,
-            args: tuple,
-            gas_limit: int,
-    ) -> BlockchainTransaction:
-        """Create a trackable transaction for the trade executor state.
-
-        - Sets up the state management for the transaction
-
-        - Creates the signed transaction from the hot wallet
-        """
-        #
-        # tx = token.functions.approve(
-        #     deployment.router.address,
-        #     amount,
-        # ).build_transaction({
-        #     'chainId': web3.eth.chain_id,
-        #     'gas': 100_000,  # Estimate max 100k per approval
-        #     'from': hot_wallet.address,
-        # })
-        contract_func = contract.functions[function_selector]
-        args_bound_func = contract_func(*args)
-        return self.sign_transaction(args_bound_func, gas_limit)
-
-    def broadcast(self, tx: "BlockchainTransaction") -> HexBytes:
+    def broadcast(self, tx: BlockchainTransaction) -> HexBytes:
         """Broadcast the transaction.
 
-        :return: tx_hash
+        Push the transaction to the peer-to-peer network / MEV relay
+        to be includedin the
+
+        Sets the `tx.broadcasted_at` timestamp.
+
+        :return:
+            Transaction hash, or `tx_hash`
         """
-        signed_tx = TransactionBuilder.as_signed_tx(tx)
+        signed_tx = self.serialise_to_broadcast_format(tx)
         tx.broadcasted_at = datetime.datetime.utcnow()
         return broadcast_transactions(self.web3, [signed_tx])[0]
 
     @staticmethod
-    def decode_transaction(tx: "BlockchainTransaction") -> dict:
-        """Get raw transaction data out from the signed tx bytes."""
-        return decode_signed_transaction(tx.signed_bytes)
-
-    @staticmethod
-    def as_signed_tx(tx: "BlockchainTransaction") -> SignedTransaction:
-        """Get a transaction as a format ready to broadcast."""
+    def serialise_to_broadcast_format(tx: "BlockchainTransaction") -> SignedTransaction:
+        """Prepare a transaction as a format ready to broadcast."""
         # TODO: Make hash, r, s, v filled up as well
         return SignedTransaction(rawTransaction=tx.signed_bytes, hash=None, r=0, s=0, v=0)
+
+    @staticmethod
+    def decode_signed_bytes(tx: "BlockchainTransaction") -> dict:
+        """Get raw transaction data out from the signed tx bytes."""
+        return decode_signed_transaction(tx.signed_bytes)
 
     @staticmethod
     def broadcast_and_wait_transactions_to_complete(
@@ -147,6 +91,12 @@ class TransactionBuilder:
 
         Modifies the given transaction objects in-place
         and updates block inclusion and succeed status.
+
+        .. note ::
+
+            This method is designed to be used only in unit testing
+            as a shortcut.
+
         """
 
         # Log what we are doing
@@ -159,7 +109,7 @@ class TransactionBuilder:
         # tx hash -> BlockchainTransaction map
         tx_hashes = {t.tx_hash: t for t in txs}
 
-        signed_txs = [TransactionBuilder.as_signed_tx(t) for t in txs]
+        signed_txs = [HotWalletTransactionBuilder.serialise_to_broadcast_format(t) for t in txs]
 
         now_ = datetime.datetime.utcnow()
         for tx in txs:
@@ -195,3 +145,133 @@ class TransactionBuilder:
                 status,
                 reason
             )
+
+    @abstractmethod
+    def sign_transaction(
+            self,
+            contract: Contract,
+            args_bound_func: ContractFunction,
+            gas_limit: Optional[int] = None,
+            gas_price_suggestion: Optional[GasPriceSuggestion] = None,
+            asset_deltas: Optional[List[AssetDelta]] = None,
+    ) -> BlockchainTransaction:
+        """Createa a signed tranaction and set up tx broadcast parameters.
+
+        :param args_bound_func:
+            A Solidity function with its arguments bound to the function instance.
+
+        :param gas_limit:
+            Max gas limit per this transaction.
+
+            The transaction will fail if the gas limit is exceeded.
+
+            If set to `None` then it is up to the signed to figure it out
+            based on the function hints.
+
+        :param gas_price_suggestion:
+            What gas price will be used.
+
+            Support old-style and London style transactions.
+
+        :param asset_deltas:
+            Expected assets inbound and outbound.
+
+        :return:
+            Prepared BlockchainTransaction instance.
+
+            This transaction object can be stored in the persistent state.
+        """
+
+    @abstractmethod
+    def get_token_delivery_address(self) -> str:
+        """Get the target address for ERC-20 token delivery.
+
+        Where do Uniswap should send the tokens after a swap.
+        """
+
+    @abstractmethod
+    def get_erc_20_balance_address(self) -> str:
+        """Get the address that holds ERC-20 supply"""
+
+    @abstractmethod
+    def get_gas_wallet_address(self) -> str:
+        """Get the address that holds native token for gas fees"""
+
+
+class HotWalletTransactionBuilder(TransactionBuilder):
+    """Create transactions from the hot wallet and store them in the state.
+
+    Creates trackable transactions. TransactionHelper is initialised
+    at the start of the each cycle.
+
+    Transaction builder can prepare multiple transactions in one batch.
+    For all tranactions, we use the previously prepared gas price information.
+    """
+
+    def __init__(self,
+                 web3: Web3,
+                 hot_wallet: HotWallet,
+                 ):
+        super().__init__(web3)
+        self.hot_wallet = hot_wallet
+
+    def get_token_delivery_address(self) -> str:
+        """Get the target address for ERC-20 approve()"""
+        return self.hot_wallet.address
+
+    def get_erc_20_balance_address(self) -> str:
+        """Get the address that holds ERC-20 supply"""
+        return self.hot_wallet.address
+
+    def get_gas_wallet_address(self) -> str:
+        """Get the address that holds native token for gas fees"""
+        return self.hot_wallet.address
+
+
+    def sign_transaction(
+            self,
+            contract: Contract,
+            args_bound_func: ContractFunction,
+            gas_limit: Optional[int] = None,
+            gas_price_suggestion: Optional[GasPriceSuggestion] = None,
+            asset_deltas: Optional[List[AssetDelta]] = None,
+    ) -> BlockchainTransaction:
+        """Sign a transaction with the hot wallet private key."""
+
+        assert isinstance(contract, Contract), f"Expected Contract, got {contract}"
+        assert isinstance(args_bound_func, ContractFunction), f"Expected ContractFunction, got {args_bound_func}"
+
+        if gas_price_suggestion is None:
+            gas_price_suggestion = self.fetch_gas_price_suggestion()
+
+        if gas_limit is None:
+            gas_limit = 500_000
+
+        logger.info("Signing transactions using gas fee method %s for %s", gas_price_suggestion, args_bound_func)
+
+        tx = args_bound_func.build_transaction({
+            "chainId": self.chain_id,
+            "from": self.hot_wallet.address,
+            "gas": gas_limit,
+        })
+
+        apply_gas(tx, gas_price_suggestion)
+
+        signed_tx = self.hot_wallet.sign_transaction_with_new_nonce(tx)
+        signed_bytes = signed_tx.rawTransaction.hex()
+
+        if asset_deltas is None:
+            asset_deltas = []
+
+        return BlockchainTransaction(
+            chain_id=self.chain_id,
+            from_address=self.hot_wallet.address,
+            contract_address=args_bound_func.address,
+            function_selector=args_bound_func.fn_name,
+            args=args_bound_func.args,
+            signed_bytes=signed_bytes,
+            tx_hash=signed_tx.hash.hex(),
+            nonce=signed_tx.nonce,
+            details=tx,
+            asset_deltas=[JSONAssetDelta.from_asset_delta(a) for a in asset_deltas],
+        )

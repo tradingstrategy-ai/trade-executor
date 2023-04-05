@@ -19,8 +19,8 @@ python = ">=3.10,<3.11"
 # web3-ethereum-defi = {path = "deps/web3-ethereum-defi", develop = true}
 # trading-strategy = {path = "deps/trading-strategy", develop = true}
 requests = "^2.27.1"
-web3-ethereum-defi = "0.15.3"
-trading-strategy = "0.13.8"
+web3-ethereum-defi = "0.18"
+trading-strategy = "0.13.9"
 matplotlib = "^3.6.0"
 jupyterlab = "^3.5.0"
 pandas-ta = "^0.3.14-beta.0"
@@ -111,9 +111,12 @@ data = ["web3-ethereum-defi"]
 quantstats = ["quantstats"]
 
 [tool.poetry.dev-dependencies]
-pytest = "^6.2.5"
+pytest = "^7.2.2"
 ipdb = "^0.13.9"
 flaky = "^3.7.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest-reverse = "^1.5.0"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]

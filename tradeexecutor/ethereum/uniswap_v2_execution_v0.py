@@ -18,7 +18,7 @@ from eth_defi.token import fetch_erc20_details
 from eth_defi.trade import TradeSuccess
 from eth_defi.uniswap_v2.deployment import mock_partial_deployment_for_analysis
 from eth_defi.uniswap_v2.analysis import analyse_trade_by_receipt
-from tradeexecutor.ethereum.tx import TransactionBuilder
+from tradeexecutor.ethereum.tx import HotWalletTransactionBuilder
 from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2RoutingState, UniswapV2SimpleRoutingModel
 from tradeexecutor.ethereum.execution import broadcast, wait_trades_to_complete, report_failure, get_swap_transactions, update_confirmation_status
 from tradeexecutor.state.freeze import freeze_position_on_failed_trade
@@ -135,10 +135,9 @@ class UniswapV2ExecutionModelVersion0(ExecutionModel):
 
         fees = estimate_gas_fees(self.web3)
 
-        tx_builder = TransactionBuilder(
+        tx_builder = HotWalletTransactionBuilder(
             self.web3,
             self.hot_wallet,
-            fees,
         )
 
         reserve_asset, rate = state.portfolio.get_default_reserve_currency()

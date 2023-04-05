@@ -434,37 +434,46 @@ class TradeSummary:
         decoder=json_decode_timedelta,
     ))
 
-    average_winning_trade_profit_pc: float
-    average_losing_trade_loss_pc: float
-    biggest_winning_trade_pc: Optional[float]
-    biggest_losing_trade_pc: Optional[float]
+    average_winning_trade_profit_pc: float # position
+    average_losing_trade_loss_pc: float # position
+    biggest_winning_trade_pc: Optional[float] # position
+    biggest_losing_trade_pc: Optional[float] # position
 
     average_duration_of_winning_trades: datetime.timedelta = field(metadata=config(
         encoder=json_encode_timedelta,
         decoder=json_decode_timedelta,
-    ))
+    )) # position
     average_duration_of_losing_trades: datetime.timedelta = field(metadata=config(
         encoder=json_encode_timedelta,
         decoder=json_decode_timedelta,
-    ))
+    )) # position
     time_bucket: Optional[TimeBucket] = None
 
+    # these stats calculate in post-init, so init=False
     total_positions: int = field(init=False)
     win_percent: float = field(init=False)
     return_percent: float = field(init=False)
     annualised_return_percent: float = field(init=False)
     all_stop_loss_percent: float = field(init=False)
+    # (total stop losses)/(lost positions)
+    # can be > 1 if there are more stop losses than lost positions
+    # TODO this is a confusing metric, more intuitive is (losing stop losses)/(total_stop_losses)
+    # and (winning stop losses)/(total_stop_losses)
     lost_stop_loss_percent: float = field(init=False)
 
     all_take_profit_percent: float = field(init=False)
+    # (take profits)/(won positions)
+    # can be > 1 if there are more take profits than won positions
+    # same confusion as lost_stop_loss_percent
+    # TODO add (winning take profits)/(total_take_profits)
+    # and (losing take profits)/(total_take_profits)
     won_take_profit_percent: float = field(init=False)
 
     average_net_profit: USDollarAmount = field(init=False)
     end_value: USDollarAmount = field(init=False)
 
-    # used if raw_timeline is provided as argument to calculate_summary_statistics
-    average_trade: Optional[float] = None
-    median_trade: Optional[float] = None
+    average_trade: Optional[float] = None # position
+    median_trade: Optional[float] = None # position
     max_pos_cons: Optional[int] = None
     max_neg_cons: Optional[int] = None
     max_pullback: Optional[float] = None
@@ -491,7 +500,7 @@ class TradeSummary:
         self.all_take_profit_percent = calculate_percentage(self.take_profits, self.total_positions)
         self.lost_stop_loss_percent = calculate_percentage(self.stop_losses, self.lost)
         self.won_take_profit_percent = calculate_percentage(self.take_profits, self.won)
-        self.average_net_profit = self.realised_profit / self.total_positions if self.total_positions else None
+        self.average_net_profit = calculate_percentage(self.realised_profit, self.total_positions)
         self.end_value = self.open_value + self.uninvested_cash
         initial_cash = self.initial_cash or 0
         self.return_percent = calculate_percentage(self.end_value - initial_cash, initial_cash)
@@ -519,28 +528,28 @@ class TradeSummary:
             "Cash at start": as_dollar(self.initial_cash),
             "Value at end": as_dollar(self.end_value),
             "Trade volume": as_dollar(self.trade_volume),
-            "Trade win percent": as_percent(self.win_percent),
+            "Position win percent": as_percent(self.win_percent),
             "Total positions": as_integer(self.total_positions),
-            "Won trades": as_integer(self.won),
-            "Lost trades": as_integer(self.lost),
+            "Won positions": as_integer(self.won),
+            "Lost positions": as_integer(self.lost),
             "Stop losses triggered": as_integer(self.stop_losses),
             "Stop loss % of all": as_percent(self.all_stop_loss_percent),
             "Stop loss % of lost": as_percent(self.lost_stop_loss_percent),
             "Take profits triggered": as_integer(self.take_profits),
             "Take profit % of all": as_percent(self.all_take_profit_percent),
-            "Take profit % of win": as_percent(self.won_take_profit_percent),
-            "Zero profit trades": as_integer(self.zero_loss),
+            "Take profit % of won": as_percent(self.won_take_profit_percent),
+            "Zero profit positions": as_integer(self.zero_loss),
             "Positions open at the end": as_integer(self.undecided),
             "Realised profit and loss": as_dollar(self.realised_profit),
             "Portfolio unrealised value": as_dollar(self.open_value),
             "Extra returns on lending pool interest": as_dollar(self.extra_return),
             "Cash left at the end": as_dollar(self.uninvested_cash),
-            "Average winning trade profit %": as_percent(self.average_winning_trade_profit_pc),
-            "Average losing trade loss %": as_percent(self.average_losing_trade_loss_pc),
-            "Biggest winning trade %": as_percent(self.biggest_winning_trade_pc),
-            "Biggest losing trade %": as_percent(self.biggest_losing_trade_pc),
-            "Average duration of winning trades": avg_duration_winning,
-            "Average duration of losing trades": avg_duration_losing,
+            "Average winning position profit %": as_percent(self.average_winning_trade_profit_pc),
+            "Average losing position loss %": as_percent(self.average_losing_trade_loss_pc),
+            "Biggest winning position %": as_percent(self.biggest_winning_trade_pc),
+            "Biggest losing position %": as_percent(self.biggest_losing_trade_pc),
+            "Average duration of winning positions": avg_duration_winning,
+            "Average duration of losing positions": avg_duration_losing,
             "LP fees paid": as_dollar(self.lp_fees_paid),
             "LP fees paid % of volume": as_percent(self.lp_fees_average_pc),
         }
@@ -552,10 +561,10 @@ class TradeSummary:
                 else formatter(0)
             )
 
-        add_prop(self.average_trade, 'Average trade:', as_percent)
-        add_prop(self.median_trade, 'Median trade:', as_percent)
-        add_prop(self.max_pos_cons, 'Consecutive wins', as_integer)
-        add_prop(self.max_neg_cons, 'Consecutive losses', as_integer)
+        add_prop(self.average_trade, 'Average position:', as_percent)
+        add_prop(self.median_trade, 'Median position:', as_percent)
+        add_prop(self.max_pos_cons, 'Most consecutive wins', as_integer)
+        add_prop(self.max_neg_cons, 'Most consecutive losses', as_integer)
         add_prop(self.max_realised_loss, 'Biggest realized risk', as_percent)
         add_prop(self.avg_realised_risk, 'Avg realised risk', as_percent)
         add_prop(self.max_pullback, 'Max pullback of total capital', as_percent)

@@ -7,7 +7,7 @@ from eth_typing import HexAddress
 from web3 import Web3
 
 from tradeexecutor.ethereum.wallet import sync_reserves
-from tradeexecutor.state.sync import apply_sync_events
+from tradeexecutor.testing.dummy_wallet import apply_sync_events
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.identifier import AssetIdentifier
 

@@ -108,6 +108,14 @@ class RunState:
     #: How many position revaluations we have completed since the launch
     position_revaluations: int = 0
 
+    #: How many frozen positions the strategy currently has.
+    #:
+    #: - 0 = things look good
+    #:
+    #: > 0 = manual intervention needed
+    #:
+    frozen_positions: int = 0
+
     #: When the executor crashed
     #:
     #: Trade execution main loop was halted by

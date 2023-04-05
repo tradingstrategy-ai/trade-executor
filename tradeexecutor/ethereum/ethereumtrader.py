@@ -45,7 +45,6 @@ class EthereumTrader(ABC):
     def execute_trades_simple(
         self,
         trades: list[TradeExecution],
-        max_slippage=0.01, 
         stop_on_execution_failure=True
     ):
         """Execute trades on web3 instance.

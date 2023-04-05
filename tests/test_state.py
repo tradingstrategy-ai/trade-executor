@@ -159,13 +159,24 @@ def test_single_buy(usdc, weth, weth_usdc, start_ts):
         assumed_price=1700,
         trade_type=TradeType.rebalance,
         reserve_currency=usdc,
-        reserve_currency_price=1.0)
+        reserve_currency_price=1.0,
+        slippage_tolerance=0.01,
+    )
 
     assert trade.get_status() == TradeStatus.planned
     assert trade.planned_reserve == Decimal("170")
     assert trade.planned_quantity == Decimal("0.1")
     assert trade.planned_price == 1700
     assert trade.get_planned_value() == 170
+    assert trade.slippage_tolerance == 0.01
+
+    asset_deltas = trade.calculate_asset_deltas()
+    assert asset_deltas[0].is_spending()
+    assert asset_deltas[0].asset == usdc.address
+    assert asset_deltas[0].raw_amount == -(170 * 10**6)
+    assert asset_deltas[1].asset == weth.address
+    assert asset_deltas[1].is_incoming()
+    assert asset_deltas[1].raw_amount == pytest.approx(98999999999999999)
 
     assert position.has_planned_trades()
     assert state.portfolio.get_current_cash() == 1_000
@@ -237,7 +248,9 @@ def test_single_sell_all(usdc, weth, weth_usdc, start_ts, single_asset_portfolio
         assumed_price=1700,
         trade_type=TradeType.rebalance,
         reserve_currency=usdc,
-        reserve_currency_price=1.0)
+        reserve_currency_price=1.0,
+        slippage_tolerance=0.01,
+    )
 
     # State and position is currently updated
     assert position == state.portfolio.open_positions[1]
@@ -251,6 +264,14 @@ def test_single_sell_all(usdc, weth, weth_usdc, start_ts, single_asset_portfolio
     assert state.portfolio.get_current_cash() == 500
     assert state.portfolio.get_total_equity() == 657.7
 
+    asset_deltas = trade.calculate_asset_deltas()
+    assert asset_deltas[0].is_spending()
+    assert asset_deltas[0].asset == weth.address
+    assert asset_deltas[0].raw_amount == pytest.approx(-0.09500000000000000111022302463 * 10**18)
+    assert asset_deltas[1].asset == usdc.address
+    assert asset_deltas[1].is_incoming()
+    assert asset_deltas[1].raw_amount == pytest.approx(159885000)  # USD 159
+
     # #2 preparation
     txid = "0xffffff"
     nonce = 2
@@ -263,7 +284,6 @@ def test_single_sell_all(usdc, weth, weth_usdc, start_ts, single_asset_portfolio
     assert state.portfolio.open_positions[1].trades[2].started_at == ts
     assert state.portfolio.open_positions[1].trades[2].is_started()
     assert trade.planned_quantity == -eth_quantity
-    assert trade.planned_reserve == 0
     assert trade.reserve_currency_allocated is None
 
     # #3 broadcast
@@ -791,8 +811,6 @@ def test_single_buy_failed(usdc, weth, weth_usdc, start_ts):
 def test_serialize_state(usdc, weth_usdc, start_ts: datetime.datetime):
     """Dump and reload the internal state."""
 
-    patch_dataclasses_json()
-
     state = State()
     state.update_reserves([ReservePosition(
         usdc, 
@@ -834,8 +852,6 @@ def test_serialize_state(usdc, weth_usdc, start_ts: datetime.datetime):
 
 def test_state_summary_without_initial_cash(usdc, weth_usdc, start_ts: datetime.datetime):
     """Backward compat test for reverse without init cash info."""
-    patch_dataclasses_json()
-
     state = State()
     state.update_reserves([ReservePosition(
         usdc, 
@@ -898,8 +914,6 @@ def test_validate_state():
 
 def test_serialise_timedelta():
     """Serialise timedelta, that is part of a TradePricing object."""
-
-    patch_dataclasses_json()
 
     p = TradePricing(
         price=1000.0,
