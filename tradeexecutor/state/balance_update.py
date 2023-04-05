@@ -17,7 +17,7 @@ from dataclasses_json import dataclass_json
 from tradeexecutor.state.identifier import AssetIdentifier
 
 
-class BalanceUpdateType(enum.Enum):
+class BalanceUpdateCause(enum.Enum):
     deposit = "deposit"
     redemption = "redemption"
     interest = "interest"
@@ -41,8 +41,9 @@ class BalanceUpdate:
 
     - Interest payments
 
-    Events are stored in :py:class:`tradeexecutor.sync.Treasury`.
-    They are referred in :py:class:`TradingPosition` and :py:class:`ReservePosition` by their id.
+    Events are stored in :py:class:`TradingPosition` and :py:class:`ReservePosition` by their id.
+
+    Events are referred in :py:class:`tradeexecutor.sync.Treasury`..
     """
 
     #: Allocated from portfolio
@@ -50,8 +51,10 @@ class BalanceUpdate:
     #: This id is referred in :py:class:`tradeexecutor.state.position.TradingPosition` and :py:class:`tradeexecutor.state.reserve.ReservePosition`
     balance_update_id: int
 
-    type: BalanceUpdateType
+    #: What caused the balance update event to happen
+    cause: BalanceUpdateCause
 
+    #: What kind of position this event modified
     position_type: BalanceUpdatePositionType
 
     #: Asset that was updated
@@ -98,19 +101,19 @@ class BalanceUpdate:
 
     def __eq__(self, other: "BalanceUpdate"):
         assert isinstance(other, BalanceUpdate), f"Got {other}"
-        match self.type:
-            case BalanceUpdateType.deposit:
+        match self.cause:
+            case BalanceUpdateCause.deposit:
                 return self.chain_id == other.chain_id and self.tx_hash == other.tx_hash and self.log_index == other.log_index
-            case BalanceUpdateType.redemption:
+            case BalanceUpdateCause.redemption:
                 return self.chain_id == other.chain_id and self.tx_hash == other.tx_hash and self.log_index == other.log_index and self.asset == other.asset
             case _:
                 raise RuntimeError("Unsupported")
 
     def __hash__(self):
-        match self.type:
-            case BalanceUpdateType.deposit:
+        match self.cause:
+            case BalanceUpdateCause.deposit:
                 return hash((self.chain_id, self.tx_hash, self.log_index))
-            case BalanceUpdateType.redemption:
+            case BalanceUpdateCause.redemption:
                 return hash((self.chain_id, self.tx_hash, self.log_index, self.asset.address))
             case _:
                 raise RuntimeError("Unsupported")

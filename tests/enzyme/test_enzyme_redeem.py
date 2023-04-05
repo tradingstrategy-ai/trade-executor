@@ -14,7 +14,7 @@ from eth_defi.trace import assert_transaction_success_with_explanation
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment
 from eth_typing import HexAddress
 
-from tradeexecutor.state.balance_update import BalanceUpdatePositionType, BalanceUpdateType
+from tradeexecutor.state.balance_update import BalanceUpdatePositionType, BalanceUpdateCause
 from tradeexecutor.state.blockhain_transaction import BlockchainTransactionType
 from tradingstrategy.pair import PandasPairUniverse
 from web3 import Web3
@@ -107,7 +107,7 @@ def test_enzyme_redeem_reserve(
     redeem_reserve = events[0]
     assert redeem_reserve.balance_update_id == 2
     assert redeem_reserve.position_type == BalanceUpdatePositionType.reserve
-    assert redeem_reserve.type == BalanceUpdateType.redemption
+    assert redeem_reserve.cause == BalanceUpdateCause.redemption
     assert redeem_reserve.quantity == -250
     assert redeem_reserve.asset == usdc_asset
     assert redeem_reserve.owner_address == user_1
@@ -203,7 +203,7 @@ def test_enzyme_redeem_open_position(
     redeem_reserve = events[0]
     assert redeem_reserve.balance_update_id == 2
     assert redeem_reserve.position_type == BalanceUpdatePositionType.reserve
-    assert redeem_reserve.type == BalanceUpdateType.redemption
+    assert redeem_reserve.cause == BalanceUpdateCause.redemption
     assert redeem_reserve.quantity == -200
     assert redeem_reserve.asset == usdc_asset
     assert redeem_reserve.owner_address == user_1
@@ -211,7 +211,7 @@ def test_enzyme_redeem_open_position(
     redeem_position = events[1]
     assert redeem_position.balance_update_id == 3
     assert redeem_position.position_type == BalanceUpdatePositionType.open_position
-    assert redeem_position.type == BalanceUpdateType.redemption
+    assert redeem_position.cause == BalanceUpdateCause.redemption
     assert redeem_position.quantity == pytest.approx(Decimal('-0.031140726347915564'))
     assert redeem_position.asset == weth_asset
     assert redeem_position.owner_address == user_1

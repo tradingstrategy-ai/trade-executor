@@ -16,7 +16,7 @@ from dataclasses_json import dataclass_json
 
 from tradingstrategy.chain import ChainId
 
-from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdateType, BalanceUpdatePositionType
+from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdateCause, BalanceUpdatePositionType
 
 
 @dataclass_json
@@ -74,7 +74,7 @@ class BalanceEventRef:
 
     updated_at: datetime.datetime
 
-    type: BalanceUpdateType
+    cause: BalanceUpdateCause
 
     position_type: BalanceUpdatePositionType
 

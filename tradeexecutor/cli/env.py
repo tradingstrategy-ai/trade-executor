@@ -34,7 +34,7 @@ def get_available_env_vars() -> List[EnvVarDescription]:
                 EnvVarDescription(
                     envvar,
                     p.help,
-                    p.type,
+                    p.cause,
                 )
             )
 

@@ -18,7 +18,7 @@ from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.state import State
-from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdateType, BalanceUpdatePositionType
+from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdateCause, BalanceUpdatePositionType
 from tradeexecutor.state.sync import BalanceEventRef
 from tradeexecutor.strategy.sync_model import SyncModel
 
@@ -139,7 +139,7 @@ class EnzymeVaultSyncModel(SyncModel):
         evt = BalanceUpdate(
             balance_update_id=event_id,
             position_type=BalanceUpdatePositionType.reserve,
-            type=BalanceUpdateType.deposit,
+            cause=BalanceUpdateCause.deposit,
             asset=asset,
             block_mined_at=event.timestamp,
             chain_id=asset.chain_id,
@@ -196,7 +196,7 @@ class EnzymeVaultSyncModel(SyncModel):
 
             evt = BalanceUpdate(
                 balance_update_id=event_id,
-                type=BalanceUpdateType.redemption,
+                cause=BalanceUpdateCause.redemption,
                 position_type=position_type,
                 asset=asset,
                 block_mined_at=event.timestamp,
@@ -331,7 +331,7 @@ class EnzymeVaultSyncModel(SyncModel):
             ref = BalanceEventRef(
                 balance_event_id=new_event.balance_update_id,
                 updated_at=new_event.block_mined_at,
-                type=new_event.type,
+                cause=new_event.cause,
                 position_type=new_event.position_type,
                 position_id=new_event.position_id,
             )
