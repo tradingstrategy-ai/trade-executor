@@ -170,3 +170,81 @@ def test_enzyme_execute_open_position(
     assert trade.executed_quantity == Decimal('0.310787860635789571')
     assert trade.executed_price == pytest.approx(1608.81444332199)
     assert trade.executed_reserve == pytest.approx(Decimal('499.999999'))
+
+
+def test_enzyme_execute_close_position(
+    web3: Web3,
+    deployer: HexAddress,
+    vault: Vault,
+    usdc: Contract,
+    weth: Contract,
+    usdc_asset: AssetIdentifier,
+    weth_asset: AssetIdentifier,
+    user_1: HexAddress,
+    uniswap_v2: UniswapV2Deployment,
+    weth_usdc_trading_pair: TradingPairIdentifier,
+    pair_universe: PandasPairUniverse,
+    hot_wallet: HotWallet,
+):
+    """Close a simple spot by selling position using Enzyme."""
+
+    reorg_mon = create_reorganisation_monitor(web3)
+
+    tx_hash = vault.vault.functions.addAssetManagers([hot_wallet.address]).transact({"from": user_1})
+    assert_transaction_success_with_explanation(web3, tx_hash)
+
+    sync_model = EnzymeVaultSyncModel(
+        web3,
+        vault.address,
+        reorg_mon,
+    )
+
+    state = State()
+    sync_model.sync_initial(state)
+
+    # Make two deposits from separate parties
+    usdc.functions.transfer(user_1, 500 * 10**6).transact({"from": deployer})
+    usdc.functions.approve(vault.comptroller.address, 500 * 10**6).transact({"from": user_1})
+    vault.comptroller.functions.buyShares(500 * 10**6, 1).transact({"from": user_1})
+
+    # Strategy has its reserve balances updated
+    sync_model.sync_treasury(datetime.datetime.utcnow(), state)
+    assert state.portfolio.get_total_equity() == pytest.approx(500)
+
+    tx_builder = EnzymeTransactionBuilder(hot_wallet, vault)
+
+    # Check we have balance
+    assert usdc.functions.balanceOf(tx_builder.get_erc_20_balance_address()).call() == 500 * 10**6
+
+    # Now make a trade
+    trader = UniswapV2TestTrader(
+        web3,
+        uniswap_v2,
+        hot_wallet=tx_builder.hot_wallet,
+        state=state,
+        pair_universe=pair_universe,
+        tx_builder=tx_builder,
+    )
+
+    position, trade = trader.buy(
+        weth_usdc_trading_pair,
+        Decimal(500),
+        execute=True,
+        slippage_tolerance=0.025,
+    )
+
+    assert position.get_quantity() > 0
+
+    position_2, trade_2 = trader.sell(
+        weth_usdc_trading_pair,
+        position.get_quantity(),
+        execute=True,
+        slippage_tolerance=0.025,
+    )
+
+    assert position == position_2
+
+    assert position.is_closed()
+
+    # Lost some money on fees
+    assert state.portfolio.get_total_equity() == pytest.approx(Decimal(497.011924))
