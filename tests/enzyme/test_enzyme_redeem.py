@@ -97,6 +97,8 @@ def test_enzyme_redeem_reserve(
     tx_hash = vault.comptroller.functions.redeemSharesInKind(user_1, 250 * 10**18, [], []).transact({"from": user_1})
     assert_transaction_success_with_explanation(web3, tx_hash)
 
+    assert usdc.functions.balanceOf(tx_builder.get_erc_20_balance_address()).call() == 250 * 10**6
+
     # Strategy has its reserve balances updated
     events = sync_model.sync_treasury(datetime.datetime.utcnow(), state)
     assert len(events) == 1  # redemption detected
