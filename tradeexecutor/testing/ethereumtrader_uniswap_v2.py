@@ -158,7 +158,7 @@ class UniswapV2TestTrader(EthereumTrader):
         routing_model.execute_trades_internal(pair_universe, routing_state, trades)
 
         if broadcast:
-            self.broadcast(trades, stop_on_execution_failure)
+            self.broadcast_trades(trades, stop_on_execution_failure)
 
     def broadcast_trades(self, trades: List[TradeExecution], stop_on_execution_failure=True):
         """Broadcast prepared trades."""
