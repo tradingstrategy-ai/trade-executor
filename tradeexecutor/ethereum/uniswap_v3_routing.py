@@ -73,7 +73,7 @@ class UniswapV3RoutingState(EthereumRoutingState):
         
         bound_swap_func = swap_with_slippage_protection(
             uniswap,
-            recipient_address=hot_wallet.address,
+            recipient_address=self.tx_builder.get_token_delivery_address(),
             base_token=base_token,
             quote_token=quote_token,
             amount_in=reserve_amount,
@@ -120,7 +120,7 @@ class UniswapV3RoutingState(EthereumRoutingState):
         
         bound_swap_func = swap_with_slippage_protection(
             uniswap,
-            recipient_address=hot_wallet.address,
+            recipient_address=self.tx_builder.get_token_delivery_address(),
             base_token=base_token,
             quote_token=quote_token,
             pool_fees=raw_pool_fees,

@@ -112,24 +112,32 @@ class UniswapV2TestTrader(EthereumTrader):
     def execute_trades_simple(
         self,
         trades: List[TradeExecution],
-        stop_on_execution_failure=True
+        stop_on_execution_failure=True,
+        broadcast=True,
     ) -> Tuple[List[TradeExecution], List[TradeExecution]]:
         """Execute trades on web3 instance.
 
         A testing shortcut
 
-        - Create `BlockchainTransaction` instances
+        - Create `BlockchainTransaction` instances of each gives `TradeExecution`
 
         - Execute them on Web3 test connection (EthereumTester / Ganache)
 
         - Works with single Uniswap test deployment
+
+        :param trades:
+            Trades to be converted to blockchain transactions
+
+        :param stop_on_execution_failure:
+            Raise exception on an error
+
+        :param broadcast:
+            Broadcast trades over web3 connection
         """
 
         pair_universe = self.pair_universe   
-        web3 = self.web3
-        hot_wallet = self.hot_wallet
         uniswap = self.uniswap
-        state = self.state     
+        state = self.state
         
         assert isinstance(pair_universe, PandasPairUniverse)
 
@@ -148,7 +156,17 @@ class UniswapV2TestTrader(EthereumTrader):
         state.start_trades(datetime.datetime.utcnow(), trades)
         routing_state = UniswapV2RoutingState(pair_universe, self.tx_builder)
         routing_model.execute_trades_internal(pair_universe, routing_state, trades)
-        
+
+        if broadcast:
+            self.broadcast(trades, stop_on_execution_failure)
+
+    def broadcast_trades(self, trades: List[TradeExecution], stop_on_execution_failure=True):
+        """Broadcast prepared trades."""
+        web3 = self.web3
+        hot_wallet = self.hot_wallet
+
+        state = self.state
+
         execution_model = UniswapV2ExecutionModel(web3, hot_wallet)
         execution_model.broadcast_and_resolve(state, trades, stop_on_execution_failure=stop_on_execution_failure)
 
@@ -159,4 +177,3 @@ class UniswapV2TestTrader(EthereumTrader):
         failed = [t for t in trades if t.is_failed()]
 
         return success, failed
-    

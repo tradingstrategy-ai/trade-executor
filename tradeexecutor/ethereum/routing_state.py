@@ -137,7 +137,7 @@ class EthereumRoutingState(RoutingState):
     def is_approved_on_chain(self, token_address: str, router_address: str) -> bool:
         erc_20 = get_deployed_contract(self.web3, "ERC20MockDecimals.json", token_address)
         # Assume allowance is always infinity
-        return erc_20.functions.allowance.call(self.tx_builder.get_approve_address(), router_address) > 0
+        return erc_20.functions.allowance.call(self.tx_builder.get_token_delivery_address(), router_address) > 0
 
     def check_has_enough_tokens(
             self,
@@ -186,7 +186,7 @@ class EthereumRoutingState(RoutingState):
         # Set internal state we are approved
         self.mark_router_approved(token_address, router_address)
 
-        approve_address = self.tx_builder.get_approve_address()
+        approve_address = self.tx_builder.get_token_delivery_address()
 
         if erc_20.functions.allowance(approve_address, router_address).call() > 0:
             # already approved in previous execution cycle
@@ -196,7 +196,7 @@ class EthereumRoutingState(RoutingState):
         tx = self.tx_builder.sign_transaction(
             erc_20,
             erc_20.functions.approve(router_address, 2**256-1),
-            gas_limit=100_000,  # For approve, assume it cannot take more than 100k gas
+            gas_limit=None,  # For approve, assume it cannot take more than 100k gas
             gas_price_suggestion=None,
             asset_deltas=[],
         )

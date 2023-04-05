@@ -375,7 +375,10 @@ class TradeExecution:
     def fee_tier(self) -> (float | None):
         """LP fee % recorded before the execution starts.
         
-        returns: float (fee multiplier) or None if no fee was provided"""
+        :return:
+            float (fee multiplier) or None if no fee was provided.
+
+        """
         return self._fee_tier
 
     @property

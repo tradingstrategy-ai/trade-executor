@@ -1,25 +1,18 @@
 """Enzyme's vault transaction construction."""
-import datetime
+
 import logging
 from typing import List, Optional
 
-from eth_account.datastructures import SignedTransaction
-from hexbytes import HexBytes
-from web3 import Web3
 from web3.contract.contract import Contract, ContractFunction
 
 from eth_defi.enzyme.vault import Vault
 from eth_defi.enzyme.vault_controlled_wallet import VaultControlledWallet, EnzymeVaultTransaction
 from eth_defi.gas import GasPriceSuggestion, apply_gas
 from eth_defi.hotwallet import HotWallet
-from eth_defi.revert_reason import fetch_transaction_revert_reason
-from eth_defi.confirmation import broadcast_transactions, \
-    broadcast_and_wait_transactions_to_complete
-from eth_defi.tx import decode_signed_transaction, AssetDelta
+
+from eth_defi.tx import AssetDelta
 from tradeexecutor.ethereum.tx import TransactionBuilder
-from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
-
-
+from tradeexecutor.state.blockhain_transaction import BlockchainTransaction, BlockchainTransactionType, JSONAssetDelta
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +44,7 @@ class EnzymeTransactionBuilder(TransactionBuilder):
         """Get the underlying web3 connection."""
         return self.vault_controlled_wallet.hot_wallet
 
-    def get_approve_address(self) -> str:
+    def get_token_delivery_address(self) -> str:
         """Get the target address for ERC-20 approve()"""
         return self.vault.generic_adapter.address
 
@@ -67,7 +60,7 @@ class EnzymeTransactionBuilder(TransactionBuilder):
             self,
             contract: Contract,
             args_bound_func: ContractFunction,
-            gas_limit: int,
+            gas_limit: Optional[int] = None,
             gas_price_suggestion: Optional[GasPriceSuggestion] = None,
             asset_deltas: Optional[List[AssetDelta]] = None,
     ) -> BlockchainTransaction:
@@ -87,6 +80,9 @@ class EnzymeTransactionBuilder(TransactionBuilder):
 
         assert asset_deltas is not None, f"{args_bound_func.fn_name}() - cannot make Enzyme trades without asset_deltas set. Set to [] for approve()"
 
+        if gas_limit is None:
+            gas_limit = 2_500_000
+
         logger.info("Enzyme tx for %s.%s(%s), gas limit %d, deltas %s",
                     contract.address,
                     args_bound_func.fn_name,
@@ -98,22 +94,25 @@ class EnzymeTransactionBuilder(TransactionBuilder):
             contract,
             args_bound_func,
             gas_limit,
+            asset_deltas=asset_deltas,
         )
 
         gas_price_suggestion = gas_price_suggestion or self.fetch_gas_price_suggestion()
         gas_data = gas_price_suggestion.get_tx_gas_params()
 
-        signed_tx = self.vault_controlled_wallet.sign_transaction_with_new_nonce(enzyme_tx, gas_data)
+        signed_tx, execute_calls_bound_func = self.vault_controlled_wallet.sign_transaction_with_new_nonce(enzyme_tx, gas_data)
         signed_bytes = signed_tx.rawTransaction.hex()
 
         return BlockchainTransaction(
+            type=BlockchainTransactionType.enzyme_vault,
             chain_id=self.chain_id,
             from_address=self.hot_wallet.address,
-            contract_address=args_bound_func.address,
-            function_selector=args_bound_func.fn_name,
-            args=args_bound_func.args,
+            contract_address=self.vault.comptroller.address,
+            function_selector=execute_calls_bound_func.fn_name,
+            args=execute_calls_bound_func.args,
             signed_bytes=signed_bytes,
             tx_hash=signed_tx.hash.hex(),
             nonce=signed_tx.nonce,
             details=enzyme_tx.as_json_friendly_dict(),
+            asset_deltas=[JSONAssetDelta.from_asset_delta(a) for a in asset_deltas],
         )

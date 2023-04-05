@@ -27,7 +27,7 @@ from eth_defi.revert_reason import fetch_transaction_revert_reason
 
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution, TradeStatus
-from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
+from tradeexecutor.state.blockhain_transaction import BlockchainTransaction, BlockchainTransactionType
 from tradeexecutor.state.freeze import freeze_position_on_failed_trade
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2SimpleRoutingModel, UniswapV2RoutingState
@@ -792,14 +792,18 @@ def get_swap_transactions(trade: TradeExecution) -> BlockchainTransaction:
     """Get the swap transaction from multiple transactions associated with the trade"""
     
     for tx in trade.blockchain_transactions:
-        if is_swap_function(tx.function_selector):
-            return tx
+        if tx.type == BlockchainTransactionType.hot_wallet:
+            if is_swap_function(tx.function_selector):
+                return tx
+        elif tx.type == BlockchainTransactionType.enzyme_vault:
+            if is_swap_function(tx.details["function"]):
+                return tx
 
     raise RuntimeError("Should not happen")
 
 
 def get_held_assets(web3: Web3, address: HexAddress, assets: List[AssetIdentifier]) -> Dict[str, Decimal]:
-    """Get list of assets hold by the a wallet."""
+    """Get list of assets hold by the a wallet  ."""
 
     result = {}
     for asset in assets:

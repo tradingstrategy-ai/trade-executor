@@ -150,7 +150,7 @@ def weth_asset(weth: Contract) -> AssetIdentifier:
 def usdc(web3, deployer) -> Contract:
     """Mock USDC token.
 
-    All initial start goes to `deployer`
+    All initial $100M goes to `deployer`
     """
     token = create_token(web3, deployer, "USD Coin", "USDC", 100_000_000 * 10**6, decimals=6)
     return token
@@ -273,7 +273,6 @@ def enzyme_vault_contract(
 
     - user_1 is the owner
     """
-
     comptroller_contract, vault_contract = enzyme_deployment.create_new_vault(
         user_1,
         usdc,
@@ -291,7 +290,6 @@ def vault_comptroller_contract(
     - Needed to process deposits
 
     """
-
     web3 = enzyme_vault_contract.w3
     comptroller_address = enzyme_vault_contract.functions.getAccessor().call()
     comptroller = get_deployed_contract(web3, "enzyme/ComptrollerLib.json", comptroller_address)
@@ -334,7 +332,7 @@ def vault(
 
 @pytest.fixture
 def weth_usdc_trading_pair(uniswap_v2, weth_usdc_uniswap_pair, usdc_asset, weth_asset) -> TradingPairIdentifier:
-    return TradingPairIdentifier(weth_asset, usdc_asset, weth_usdc_uniswap_pair, uniswap_v2.factory.address, fee=0.30)
+    return TradingPairIdentifier(weth_asset, usdc_asset, weth_usdc_uniswap_pair, uniswap_v2.factory.address, fee=0.0030)
 
 
 @pytest.fixture()

@@ -8,12 +8,13 @@
 
 """
 import datetime
+import enum
 from dataclasses import dataclass, field
-from typing import Optional, Any, Dict, Tuple
+from typing import Optional, Any, Dict, Tuple, List
 
 from dataclasses_json import dataclass_json, config
 
-from eth_defi.tx import decode_signed_transaction
+from eth_defi.tx import decode_signed_transaction, AssetDelta
 from tradeexecutor.state.types import JSONHexAddress, JSONHexBytes
 
 
@@ -34,8 +35,54 @@ def solidity_arg_encoder(val: tuple) -> tuple:
     return list(_int_to_string(x) for x in val)
 
 
+class BlockchainTransactionType(enum.Enum):
+    """What kind of transactions we generate."""
+
+    #: Direct trade from a hot wallet
+    #:
+    hot_wallet = "hot_wallet"
+
+    #: A trade tx through Enzyme's vault
+    #:
+    #: - Target address is the comptroller contract of the vault
+    #:
+    #: - The function is ComptrollerLib.callOnExtension()
+    #:
+    #: - The payload is integration manager call for generic adapter
+    #:
+    enzyme_vault = "enzyme_vault"
+
+
 @dataclass_json
-@dataclass
+@dataclass(frozen=True, slots=True)
+class JSONAssetDelta:
+    """JSON serialisable asset delta.
+
+    Used for diagnostics purposes only.
+
+    See :py:class:`eth_defi.tx.AssetDelta` for more information.
+    """
+
+    #: Address of ERC-20
+    asset: str
+
+    #: Integer as string serilisation.
+    #:
+    #: Because JSON cannot handle big ints.
+    raw_amount: str
+
+    @property
+    def int_amount(self) -> int:
+        """Convert token amount back to int."""
+        return int(self.raw_amount)
+
+    @staticmethod
+    def from_asset_delta(source: AssetDelta) -> "JSONAssetDelta":
+        return JSONAssetDelta(str(source.asset), str(source.raw_amount))
+
+
+@dataclass_json
+@dataclass(slots=True)
 class BlockchainTransaction:
     """A stateful blockchain transaction.
 
@@ -57,6 +104,10 @@ class BlockchainTransaction:
 
     4. Confirmation
     """
+
+    #: What kidn of internal type of this transaction is
+    #:
+    type: BlockchainTransactionType = BlockchainTransactionType.hot_wallet
 
     #: Chain id from https://github.com/ethereum-lists/chains
     chain_id: Optional[int] = None
@@ -130,11 +181,24 @@ class BlockchainTransaction:
     #: Used in the unit testing environment with Anvil.
     stack_trace: Optional[str] = None
 
+    #: List of assets this transaction touches
+    #:
+    #: Set in :py:class:`tradeexecutor.tx.TransactionBuilder`
+    asset_deltas: List[JSONAssetDelta] = field(default_factory=list)
+
     def __repr__(self):
         if self.status is True:
             return f"<Tx from:{self.from_address}\n  nonce:{self.nonce}\n  to:{self.contract_address}\n  func:{self.function_selector}\n  args:{self.args}\n  succeed>\n"
         elif self.status is False:
-            return f"<Tx from:{self.from_address}\n  nonce:{self.nonce}\n  to:{self.contract_address}\n  func:{self.function_selector}\n  args:{self.args}\n  fail reason:{self.revert_reason}>\n"
+            return f"<Tx from:{self.from_address}\n" \
+                   f"    nonce:{self.nonce}\n" \
+                   f"    to:{self.contract_address}\n" \
+                   f"    func:{self.function_selector}\n" \
+                   f"    args:{self.args}\n" \
+                   f"    fail reason:{self.revert_reason}\n" \
+                   f"    gas limit:{self.get_gas_limit():,}\n" \
+                   f"    gas spent:{self.realised_gas_units_consumed:,}" \
+                   f"    >"
         else:
             return f"<Tx from:{self.from_address}\n  nonce:{self.nonce}\n  to:{self.contract_address}\n  func:{self.function_selector}\n  args:{self.args}\n  unresolved>\n"
 

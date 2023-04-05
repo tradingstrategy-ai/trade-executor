@@ -21,9 +21,7 @@ from eth_defi.revert_reason import fetch_transaction_revert_reason
 from eth_defi.confirmation import broadcast_transactions, \
     broadcast_and_wait_transactions_to_complete
 from eth_defi.tx import decode_signed_transaction
-from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
-
-
+from tradeexecutor.state.blockhain_transaction import BlockchainTransaction, JSONAssetDelta
 
 logger = logging.getLogger(__name__)
 
@@ -153,7 +151,7 @@ class TransactionBuilder(ABC):
             self,
             contract: Contract,
             args_bound_func: ContractFunction,
-            gas_limit: int,
+            gas_limit: Optional[int] = None,
             gas_price_suggestion: Optional[GasPriceSuggestion] = None,
             asset_deltas: Optional[List[AssetDelta]] = None,
     ) -> BlockchainTransaction:
@@ -165,7 +163,10 @@ class TransactionBuilder(ABC):
         :param gas_limit:
             Max gas limit per this transaction.
 
-            The transaction will fail if the gas limit is exceeded/
+            The transaction will fail if the gas limit is exceeded.
+
+            If set to `None` then it is up to the signed to figure it out
+            based on the function hints.
 
         :param gas_price_suggestion:
             What gas price will be used.
@@ -182,8 +183,11 @@ class TransactionBuilder(ABC):
         """
 
     @abstractmethod
-    def get_approve_address(self) -> str:
-        """Get the target address for ERC-20 approve()"""
+    def get_token_delivery_address(self) -> str:
+        """Get the target address for ERC-20 token delivery.
+
+        Where do Uniswap should send the tokens after a swap.
+        """
 
     @abstractmethod
     def get_erc_20_balance_address(self) -> str:
@@ -211,7 +215,7 @@ class HotWalletTransactionBuilder(TransactionBuilder):
         super().__init__(web3)
         self.hot_wallet = hot_wallet
 
-    def get_approve_address(self) -> str:
+    def get_token_delivery_address(self) -> str:
         """Get the target address for ERC-20 approve()"""
         return self.hot_wallet.address
 
@@ -223,11 +227,12 @@ class HotWalletTransactionBuilder(TransactionBuilder):
         """Get the address that holds native token for gas fees"""
         return self.hot_wallet.address
 
+
     def sign_transaction(
             self,
             contract: Contract,
             args_bound_func: ContractFunction,
-            gas_limit: int,
+            gas_limit: Optional[int] = None,
             gas_price_suggestion: Optional[GasPriceSuggestion] = None,
             asset_deltas: Optional[List[AssetDelta]] = None,
     ) -> BlockchainTransaction:
@@ -238,6 +243,9 @@ class HotWalletTransactionBuilder(TransactionBuilder):
 
         if gas_price_suggestion is None:
             gas_price_suggestion = self.fetch_gas_price_suggestion()
+
+        if gas_limit is None:
+            gas_limit = 500_000
 
         logger.info("Signing transactions using gas fee method %s for %s", gas_price_suggestion, args_bound_func)
 
@@ -262,4 +270,5 @@ class HotWalletTransactionBuilder(TransactionBuilder):
             tx_hash=signed_tx.hash.hex(),
             nonce=signed_tx.nonce,
             details=tx,
+            asset_deltas=[JSONAssetDelta.from_asset_delta(a) for a in asset_deltas],
         )
