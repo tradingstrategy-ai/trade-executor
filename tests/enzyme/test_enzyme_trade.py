@@ -53,6 +53,7 @@ def test_enzyme_execute_open_position(
     deployer: HexAddress,
     vault: Vault,
     usdc: Contract,
+    weth: Contract,
     usdc_asset: AssetIdentifier,
     weth_asset: AssetIdentifier,
     user_1: HexAddress,
@@ -162,3 +163,10 @@ def test_enzyme_execute_open_position(
 
     # Broadcast both transactions
     trader.broadcast_trades([trade], stop_on_execution_failure=True)
+
+    assert weth.functions.balanceOf(vault.vault.address).call() > 0
+
+    assert trade.is_success()
+    assert trade.executed_quantity == Decimal('0.310787860635789571')
+    assert trade.executed_price == pytest.approx(1608.81444332199)
+    assert trade.executed_reserve == pytest.approx(Decimal('499.999999'))

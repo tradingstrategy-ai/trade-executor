@@ -50,7 +50,15 @@ class BlockchainTransactionType(enum.Enum):
     #:
     #: - The payload is integration manager call for generic adapter
     #:
+    #: - The actual trade payload can be read from :py:attr:`BlockchainTransaction.details` field
+    #:
     enzyme_vault = "enzyme_vault"
+
+    #: Simulated transaction
+    #:
+    #: This transaction does not take place on EVM (real blockchain, unit test chain, etc).
+    #: and any field like addresses or transaction hashes may not be real.
+    simulated = "simulated"
 
 
 @dataclass_json
