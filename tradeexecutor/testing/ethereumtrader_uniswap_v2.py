@@ -79,8 +79,14 @@ class UniswapV2TestTrader(EthereumTrader):
 
         return position, trade
 
-    def sell(self, pair: TradingPairIdentifier, quantity: Decimal, execute=True) -> Tuple[TradingPosition, TradeExecution]:
-        """Sell token token (trading pair) for a certain quantity."""
+    def sell(
+            self,
+            pair: TradingPairIdentifier,
+            quantity: Decimal,
+            execute=True,
+            slippage_tolerance: Optional[float] = None,
+    ) -> Tuple[TradingPosition, TradeExecution]:
+        """Sell tokens on an open position for a certain quantity."""
 
         assert isinstance(quantity, Decimal)
 
@@ -102,11 +108,13 @@ class UniswapV2TestTrader(EthereumTrader):
             trade_type=TradeType.rebalance,
             reserve_currency=pair.quote,
             reserve_currency_price=1.0,
-            pair_fee=pair.fee
+            pair_fee=pair.fee,
+            slippage_tolerance=slippage_tolerance,
         )
 
         if execute:
             self.execute_trades_simple([trade])
+
         return position, trade
     
     def execute_trades_simple(
