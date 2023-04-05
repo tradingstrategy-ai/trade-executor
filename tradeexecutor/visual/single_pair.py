@@ -12,6 +12,7 @@ from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
+from tradeexecutor.state.visualisation import Plot
 from tradeexecutor.strategy.trade_pricing import format_fees_dollars
 from tradeexecutor.state.visualisation import PlotKind
 
@@ -542,17 +543,7 @@ def visualise_single_pair(
 
     logger.info("Visualising %s", state)
 
-    if isinstance(start_at, datetime.datetime):
-        start_at = pd.Timestamp(start_at)
-
-    if isinstance(end_at, datetime.datetime):
-        end_at = pd.Timestamp(end_at)
-
-    if start_at is not None:
-        assert isinstance(start_at, pd.Timestamp)
-
-    if end_at is not None:
-        assert isinstance(end_at, pd.Timestamp)
+    start_at, end_at = _get_start_and_end(start_at, end_at)
 
     if isinstance(candle_universe, GroupedCandleUniverse):
         if not pair_id:
@@ -564,7 +555,7 @@ def visualise_single_pair(
         candles = candle_universe
 
     # Get all positions for the trading pair we want to visualise
-    positions = [p for p in state.portfolio.get_all_positions() if p.pair.internal_id == pair_id]
+    positions = _get_all_positions(state, pair_id)
 
     if len(positions) > 0:
         first_trade = positions[0].get_first_trade()
@@ -572,7 +563,7 @@ def visualise_single_pair(
         first_trade = None
 
     if first_trade:
-        pair_name = f"{first_trade.pair.base.token_symbol} - {first_trade.pair.quote.token_symbol}"
+        pair_name = _get_pair_name_from_first_trade(first_trade)
         pair = first_trade.pair
         base_token = pair.base.token_symbol
         quote_token = pair.quote.token_symbol
@@ -605,19 +596,9 @@ def visualise_single_pair(
         end_at,
     )
 
-    if title is True:
-        title_text = state.name
-    elif type(title) == str:
-        title_text = title
-    else:
-        title_text = None
+    title_text = _get_title(state.name, title)
 
-    if axes:
-        axes_text = pair_name
-        volume_text = "Volume USD"
-    else:
-        axes_text = None
-        volume_text = None
+    axes_text, volume_text = _get_axes_and_volume_text(axes, pair_name)
 
     labels = make_candle_labels(
         candles,
@@ -625,28 +606,12 @@ def visualise_single_pair(
         quote_token_name=quote_token,
     )
 
-    num_detached_indicators = sum(
-        plot.kind == PlotKind.technical_indicator_detached
-        for plot in state.visualisation.plots.values()
-    )
+
+    plots = state.visualisation.plots.values()
     
-    # since python dicts are now ordered by insertion
-    relative_sizing = [plot.relative_size for plot in state.visualisation.plots.values() if plot.kind == PlotKind.technical_indicator_detached]
-    
-    subplot_names = []
-    for plot in state.visualisation.plots.values():
-        # get subplot names for detached technical indicators without overlay
-        if (plot.kind == PlotKind.technical_indicator_detached) and (plot.name not in [plot.detached_overlay_name for plot in state.visualisation.plots.values() if plot.kind == PlotKind.technical_indicator_overlay_on_detached]):
-            subplot_names.append(plot.name)
-            
-        # get subplot names for detached technical indicators with overlay
-        if plot.kind == PlotKind.technical_indicator_overlay_on_detached:
-            # check that detached plot exists
-            assert plot.detached_overlay_name in [plot.name for plot in state.visualisation.plots.values() if plot.kind == PlotKind.technical_indicator_detached]
-            
-            # add to list
-            subplot_names.append(plot.name + f"<br> + {plot.detached_overlay_name}")
-    
+    num_detached_indicators = _get_num_detached_indicators(plots)
+    relative_sizing = _get_relative_sizing(plots)
+    subplot_names = _get_subplot_names(plots)
     
     # visualise candles and volume and create empty grid space for technical indicators
     fig = visualise_ohlcv(
@@ -680,7 +645,6 @@ def visualise_single_pair(
 
     return fig
 
-
 def visualise_single_pair_positions_with_duration_and_slippage(
         state: State,
         candles: pd.DataFrame,
@@ -692,6 +656,7 @@ def visualise_single_pair_positions_with_duration_and_slippage(
         title: Union[bool, str] = True,
         theme="plotly_white",
         technical_indicators=True,
+        vertical_spacing = 0.05,
 ) -> go.Figure:
     """Visualise performance of a live trading strategy.
 
@@ -749,17 +714,7 @@ def visualise_single_pair_positions_with_duration_and_slippage(
 
     logger.info("Visualising %s", state)
 
-    if isinstance(start_at, datetime.datetime):
-        start_at = pd.Timestamp(start_at)
-
-    if isinstance(end_at, datetime.datetime):
-        end_at = pd.Timestamp(end_at)
-
-    if start_at is not None:
-        assert isinstance(start_at, pd.Timestamp)
-
-    if end_at is not None:
-        assert isinstance(end_at, pd.Timestamp)
+    start_at, end_at = _get_start_and_end(start_at, end_at)
 
     try:
         first_trade = next(iter(state.portfolio.get_all_trades()))
@@ -767,7 +722,7 @@ def visualise_single_pair_positions_with_duration_and_slippage(
         first_trade = None
 
     if first_trade:
-        pair_name = f"{first_trade.pair.base.token_symbol} - {first_trade.pair.quote.token_symbol}"
+        pair_name = _get_pair_name_from_first_trade(first_trade)
     else:
         pair_name = None
 
@@ -792,26 +747,20 @@ def visualise_single_pair_positions_with_duration_and_slippage(
 
     logger.info(f"Candles are {candle_start_ts} - {candle_end_ts}")
 
-    positions = [p for p in state.portfolio.get_all_positions() if p.pair.internal_id == pair_id]
+    positions = _get_all_positions(state, pair_id)
 
-    if title is True:
-        title_text = state.name
-    elif type(title) == str:
-        title_text = title
-    else:
-        title_text = None
+    title_text = _get_title(state.name, title)
 
-    if axes:
-        axes_text = pair_name
-        volume_text = "Volume USD"
-    else:
-        axes_text = None
-        volume_text = None
+    axes_text, volume_text = _get_axes_and_volume_text(axes, pair_name)
 
-    num_detached_indicators = sum(
-        plot.kind == PlotKind.technical_indicator_detached
-        for plot in state.visualisation.plots.values()
-    )
+    plots = state.visualisation.plots.values()
+    
+    num_detached_indicators = _get_num_detached_indicators(plots)
+    relative_sizing = _get_relative_sizing(plots)
+    subplot_names = _get_subplot_names(plots)
+    
+    # hide volume bar
+    volume_bar_mode = VolumeBarMode.hidden
 
     fig = visualise_ohlcv(
         candles,
@@ -820,8 +769,10 @@ def visualise_single_pair_positions_with_duration_and_slippage(
         chart_name=title_text,
         y_axis_name=axes_text,
         volume_axis_name=None,
-        volume_bar_mode=VolumeBarMode.hidden,
-        num_detached_indicators=num_detached_indicators
+        volume_bar_mode=volume_bar_mode,
+        num_detached_indicators=num_detached_indicators,
+        relative_sizing=relative_sizing,
+        subplot_names=subplot_names
     )
 
     if technical_indicators:
@@ -830,9 +781,86 @@ def visualise_single_pair_positions_with_duration_and_slippage(
             state.visualisation,
             start_at,
             end_at,
+            volume_bar_mode=volume_bar_mode,
         )
 
     # Add trade markers if any trades have been made
     visualise_positions_with_duration_and_slippage(fig, candles, positions)
 
     return fig
+
+def _get_title(name: str, title: str):
+    if title is True:
+        return name
+    elif type(title) == str:
+        return title
+    else:
+        return None
+
+def _get_num_detached_indicators(plots: list[Plot]):
+    """Get the number of detached technical indicators"""
+    num_detached_indicators = sum(
+        plot.kind == PlotKind.technical_indicator_detached
+        for plot in plots
+    )
+    
+    return num_detached_indicators
+
+def _get_subplot_names(plots: list[Plot]):
+    """Get subplot names for detached technical indicators"""
+    subplot_names = []
+    for plot in plots:
+        # get subplot names for detached technical indicators without overlay
+        if (plot.kind == PlotKind.technical_indicator_detached) and (plot.name not in [plot.detached_overlay_name for plot in state.visualisation.plots.values() if plot.kind == PlotKind.technical_indicator_overlay_on_detached]):
+            subplot_names.append(plot.name)
+            
+        # get subplot names for detached technical indicators with overlay
+        if plot.kind == PlotKind.technical_indicator_overlay_on_detached:
+            # check that detached plot exists
+            assert plot.detached_overlay_name in [plot.name for plot in state.visualisation.plots.values() if plot.kind == PlotKind.technical_indicator_detached]
+            
+            # add to list
+            subplot_names.append(plot.name + f"<br> + {plot.detached_overlay_name}")
+    return subplot_names
+
+def _get_relative_sizing(plots: list[Plot]):
+    """Get list of relative sizes for subplots
+    
+    Works since python dicts are now ordered by insertion"""
+    return [plot.relative_size for plot in plots if plot.kind == PlotKind.technical_indicator_detached]
+
+def _get_start_and_end(
+    start_at: pd.Timestamp | datetime.datetime | None, 
+    end_at: pd.Timestamp | datetime.datetime | None
+):
+    """Get and validate start and end timestamps"""
+    if isinstance(start_at, datetime.datetime):
+        start_at = pd.Timestamp(start_at)
+
+    if isinstance(end_at, datetime.datetime):
+        end_at = pd.Timestamp(end_at)
+
+    if start_at is not None:
+        assert isinstance(start_at, pd.Timestamp)
+
+    if end_at is not None:
+        assert isinstance(end_at, pd.Timestamp)
+    return start_at,end_at
+
+def _get_all_positions(state: State, pair_id):
+    """Get all positions for a given pair"""
+    positions = [p for p in state.portfolio.get_all_positions() if p.pair.internal_id == pair_id]
+    return positions
+
+def _get_axes_and_volume_text(axes: bool, pair_name: str | None):
+    """Get axes and volume text"""
+    if axes:
+        axes_text = pair_name
+        volume_text = "Volume USD"
+    else:
+        axes_text = None
+        volume_text = None
+    return axes_text,volume_text
+
+def _get_pair_name_from_first_trade(first_trade: TradeExecution):
+    return f"{first_trade.pair.base.token_symbol} - {first_trade.pair.quote.token_symbol}"
