@@ -19,6 +19,7 @@ from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.state import State
 from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdateType, BalanceUpdatePositionType
+from tradeexecutor.state.sync import BalanceEventRef
 from tradeexecutor.strategy.sync_model import SyncModel
 
 logger = logging.getLogger(__name__)
@@ -99,7 +100,6 @@ class EnzymeVaultSyncModel(SyncModel):
             If we got a redemption event for an asset that does not belong to any of our positions
 
         """
-
         assert len(portfolio.reserves) == 1, "Safety check"
         reserve_position = portfolio.reserves.get(asset.address)
         if reserve_position is not None:
@@ -126,9 +126,7 @@ class EnzymeVaultSyncModel(SyncModel):
             assert asset == reserve_asset
 
         reserve_position = portfolio.get_reserve_position(asset)
-        past_balance = reserve_position.quantity
-        new_balance = reserve_position.quantity + event.investment_amount
-
+        old_balance = reserve_position.quantity
         exchange_rate = self.vault.fetch_denomination_token_usd_exchange_rate()
         reserve_position.reserve_token_price = float(exchange_rate)
         reserve_position.last_pricing_at = datetime.datetime.utcnow()
@@ -138,22 +136,24 @@ class EnzymeVaultSyncModel(SyncModel):
         event_id = portfolio.next_balance_update_id
         portfolio.next_balance_update_id += 1
 
-        reserve_position.balance_updates.append(event_id)
-
-        return BalanceUpdate(
+        evt = BalanceUpdate(
             balance_update_id=event_id,
             position_type=BalanceUpdatePositionType.reserve,
             type=BalanceUpdateType.deposit,
             asset=asset,
             block_mined_at=event.timestamp,
             chain_id=asset.chain_id,
-            past_quantity=past_balance,
-            new_quantity=new_balance,
+            old_balance=old_balance,
+            quantity=event.investment_amount,
             owner_address=event.receiver,
             tx_hash=event.event_data["transactionHash"],
             log_index=event.event_data["logIndex"],
             position_id=None,
         )
+
+        reserve_position.balance_updates[evt.balance_update_id] = evt
+
+        return evt
 
     def process_redemption(self, portfolio: Portfolio, event: Redemption) -> List[BalanceUpdate]:
         """Translate Enzyme SharesBought event to our internal deposit storage format.
@@ -174,27 +174,25 @@ class EnzymeVaultSyncModel(SyncModel):
             position = self.get_related_position(portfolio, asset)
             quantity = asset.convert_to_decimal(raw_amount)
 
+            assert quantity > 0  # Sign flipped later
+
             event_id = portfolio.next_balance_update_id
             portfolio.next_balance_update_id += 1
 
             if isinstance(position, ReservePosition):
                 position_id = None
-                past_balance = position.quantity
+                old_balance = position.quantity
                 position.quantity -= quantity
-                new_balance = position.quantity
                 position_type = BalanceUpdatePositionType.reserve
-                position.balance_updates.append(event_id)
             elif isinstance(position, TradingPosition):
                 position_id = position.position_id
-                past_balance = position.quantity
-                position.quantity -= quantity
-                new_balance = position.quantity
+                old_balance = position.get_quantity()
                 position_type = BalanceUpdatePositionType.open_position
-                position.balance_updates.append(event_id)
             else:
                 raise NotImplementedError()
 
-            assert position.quantity > 0, f"Position went to negative: {position} with token {token_details} and amount {raw_amount}"
+            assert old_balance - quantity >= 0, f"Position went to negative: {position} with token {token_details} and amount {raw_amount}\n" \
+                                                f"Quantity: {quantity}, old balance: {old_balance}"
 
             evt = BalanceUpdate(
                 balance_update_id=event_id,
@@ -203,13 +201,16 @@ class EnzymeVaultSyncModel(SyncModel):
                 asset=asset,
                 block_mined_at=event.timestamp,
                 chain_id=asset.chain_id,
-                past_quantity=past_balance,
-                new_quantity=new_balance,
+                quantity=-quantity,
+                old_balance=old_balance,
                 owner_address=event.redeemer,
                 tx_hash=event.event_data["transactionHash"],
                 log_index=event.event_data["logIndex"],
                 position_id=position_id,
             )
+
+            position.balance_updates[event_id] = evt
+
             events.append(evt)
 
         return events
@@ -324,12 +325,17 @@ class EnzymeVaultSyncModel(SyncModel):
         for chain_event in events_iter:
             events += self.translate_and_apply_event(state, chain_event)
 
-        past_events = set(treasury_sync.processed_events.values())
         # Check that we do not have conflicting events
+        new_event: BalanceUpdate
         for new_event in events:
-            # Use BalanceUpdateEvent.__hash__
-            assert new_event not in past_events, f"Event already processed: {new_event}"
-            treasury_sync.processed_events[new_event.balance_update_id] = new_event
+            ref = BalanceEventRef(
+                balance_event_id=new_event.balance_update_id,
+                updated_at=new_event.block_mined_at,
+                type=new_event.type,
+                position_type=new_event.position_type,
+                position_id=new_event.position_id,
+            )
+            treasury_sync.balance_update_refs.append(ref)
 
         treasury_sync.last_block_scanned = end_block
         treasury_sync.last_updated_at = datetime.datetime.utcnow()

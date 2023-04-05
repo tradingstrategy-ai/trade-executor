@@ -114,7 +114,7 @@ def test_enzyme_redeem_reserve(
 
     # Reserve position has this reflected
     # Deposit + Withdrawal
-    assert state.portfolio.get_default_reserve_position().balance_updates == [1, 2]
+    assert len(state.portfolio.get_default_reserve_position().balance_updates) == 2
 
     assert state.portfolio.get_total_equity() == pytest.approx(250)
 
@@ -204,12 +204,31 @@ def test_enzyme_redeem_open_position(
     assert redeem_reserve.balance_update_id == 2
     assert redeem_reserve.position_type == BalanceUpdatePositionType.reserve
     assert redeem_reserve.type == BalanceUpdateType.redemption
-    assert redeem_reserve.quantity == -250
+    assert redeem_reserve.quantity == -200
     assert redeem_reserve.asset == usdc_asset
+    assert redeem_reserve.owner_address == user_1
+
+    redeem_position = events[1]
+    assert redeem_position.balance_update_id == 3
+    assert redeem_position.position_type == BalanceUpdatePositionType.open_position
+    assert redeem_position.type == BalanceUpdateType.redemption
+    assert redeem_position.quantity == pytest.approx(Decimal('-0.031140726347915564'))
+    assert redeem_position.asset == weth_asset
+    assert redeem_position.owner_address == user_1
 
     # Reserve position has this reflected
-    # Deposit + Withdrawal
-    assert state.portfolio.get_default_reserve_position().balance_updates == [1, 2]
-    assert state.portfolio.open_positions[1].balance_updates == [3]
+    # Deposit + Withdrawal + Withdrawal
+    refs = state.sync.treasury.balance_update_refs
+    assert len(refs) == 3
 
-    assert state.portfolio.get_total_equity() == pytest.approx(250)
+    assert refs[0].position_type == BalanceUpdatePositionType.reserve
+    assert refs[1].position_type == BalanceUpdatePositionType.reserve
+    assert refs[2].position_type == BalanceUpdatePositionType.open_position
+
+    assert len(state.portfolio.get_default_reserve_position().balance_updates) == 2
+    assert len(state.portfolio.open_positions[1].balance_updates) == 1
+
+    reserve = state.portfolio.get_default_reserve_position()
+    assert position.get_value() == pytest.approx(100)
+    assert reserve.get_value() == pytest.approx(200)
+    assert state.portfolio.get_total_equity() == pytest.approx(300)

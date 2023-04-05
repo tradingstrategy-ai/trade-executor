@@ -16,7 +16,7 @@ from dataclasses_json import dataclass_json
 
 from tradingstrategy.chain import ChainId
 
-from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdateType
+from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdateType, BalanceUpdatePositionType
 
 
 @dataclass_json
@@ -67,6 +67,22 @@ class Deployment:
 
 @dataclass_json
 @dataclass
+class BalanceEventRef:
+    """Register the balance event in the treasury model."""
+
+    balance_event_id: int
+
+    updated_at: datetime.datetime
+
+    type: BalanceUpdateType
+
+    position_type: BalanceUpdatePositionType
+
+    position_id: Optional[int]
+
+
+@dataclass_json
+@dataclass
 class Treasury:
     """State of syncind deposits and redemptions from the chain.
 
@@ -87,16 +103,10 @@ class Treasury:
     #: 0 = not scanned yet
     last_block_scanned: Optional[int] = None
 
-    #: List of Solidity deposit/withdraw events that we have correctly accounted in the strategy balances.
+    #: List of refernces to all balance update events.
     #:
-    #: Contains Solidity event logs for processed transactions
-    #:
-    #: `BalanceUpdate.id -> BalanceUpdate` mappings.
-    #:
-    processed_events: Dict[int, BalanceUpdate] = field(default_factory=dict)
-
-    def get_deposits(self) -> Iterable[BalanceUpdate]:
-        return filter(lambda x: x.type == BalanceUpdateType.deposit, self.processed_events.values())
+    #: The actual balance update content is stored on the position itself.
+    balance_update_refs: List[BalanceEventRef] = field(default_factory=list)
 
 
 @dataclass_json
