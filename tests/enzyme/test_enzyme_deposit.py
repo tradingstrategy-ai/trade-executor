@@ -10,6 +10,7 @@ from web3.contract import Contract
 from eth_defi.event_reader.reorganisation_monitor import create_reorganisation_monitor
 from tradeexecutor.ethereum.enzyme.vault import EnzymeVaultSyncModel
 from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
+from tradeexecutor.state.balance_update import BalanceUpdatePositionType, BalanceUpdateType
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.state import State
 
@@ -114,11 +115,15 @@ def test_enzyme_single_deposit(
     assert evt.asset.token_symbol == "USDC"
     assert evt.asset.internal_id is None
     assert evt.block_mined_at is not None
-    assert evt.past_balance == Decimal(0)
-    assert evt.new_balance == Decimal(500)
+    assert evt.past_quantity == Decimal(0)
+    assert evt.new_quantity == Decimal(500)
+    assert evt.quantity == Decimal(500)
     assert evt.owner_address == user_1
     assert evt.tx_hash is not None
     assert evt.tx_hash is not None
+    assert evt.balance_update_id == 2
+    assert evt.position_type == BalanceUpdatePositionType.reserve
+    assert evt.type == BalanceUpdateType.deposit
 
     # Sync stat look correct
     assert treasury.last_cycle_at == cycle

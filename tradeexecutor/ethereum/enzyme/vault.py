@@ -15,11 +15,17 @@ from tradeexecutor.ethereum.token import translate_token_details
 from tradeexecutor.state.portfolio import Portfolio
 
 from tradeexecutor.state.identifier import AssetIdentifier
+from tradeexecutor.state.position import TradingPosition
+from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.state import State
-from tradeexecutor.state.sync import BalanceUpdateEvent, BalanceUpdateType
+from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdateType, BalanceUpdatePositionType
 from tradeexecutor.strategy.sync_model import SyncModel
 
 logger = logging.getLogger(__name__)
+
+
+class UnknownAsset(Exception):
+    """Cannot map redemption asset to any known position"""
 
 
 class EnzymeVaultSyncModel(SyncModel):
@@ -86,7 +92,29 @@ class EnzymeVaultSyncModel(SyncModel):
         assert type(address) == str
         return translate_token_details(token)
 
-    def process_deposit(self, portfolio: Portfolio, event: Deposit) -> BalanceUpdateEvent:
+    def get_related_position(self, portfolio: Portfolio, asset: AssetIdentifier) -> ReservePosition | TradingPosition:
+        """Map a redemption event asset to an underlying position.
+
+        :raise UnknownAsset:
+            If we got a redemption event for an asset that does not belong to any of our positions
+
+        """
+
+        assert len(portfolio.reserves) == 1, "Safety check"
+        reserve_position = portfolio.reserves.get(asset.address)
+        if reserve_position is not None:
+            return reserve_position
+
+        spot_position = portfolio.get_open_position_for_asset(asset)
+        if spot_position:
+            return spot_position
+
+        position_str = ", ".join([str(p) for p in portfolio.get_open_positions()])
+        raise UnknownAsset(f"Asset {asset} does not map to any open position.\n"
+                           f"Reserve: {portfolio.get_default_reserve_currency()}.\n"
+                           f"Open positions: {position_str}")
+
+    def process_deposit(self, portfolio: Portfolio, event: Deposit) -> BalanceUpdate:
         """Translate Enzyme SharesBought event to our internal deposit storage format."""
 
         asset = translate_token_details(event.denomination_token)
@@ -107,27 +135,97 @@ class EnzymeVaultSyncModel(SyncModel):
         reserve_position.last_sync_at = datetime.datetime.utcnow()
         reserve_position.quantity += event.investment_amount
 
-        return BalanceUpdateEvent(
+        event_id = portfolio.next_balance_update_id
+        portfolio.next_balance_update_id += 1
+
+        reserve_position.balance_updates.append(event_id)
+
+        return BalanceUpdate(
+            balance_update_id=event_id,
+            position_type=BalanceUpdatePositionType.reserve,
             type=BalanceUpdateType.deposit,
             asset=asset,
             block_mined_at=event.timestamp,
             chain_id=asset.chain_id,
-            past_balance=past_balance,
-            new_balance=new_balance,
+            past_quantity=past_balance,
+            new_quantity=new_balance,
             owner_address=event.receiver,
             tx_hash=event.event_data["transactionHash"],
             log_index=event.event_data["logIndex"],
             position_id=None,
         )
 
-    def translate_and_apply_event(self, state: State, event: EnzymeBalanceEvent) -> BalanceUpdateEvent:
+    def process_redemption(self, portfolio: Portfolio, event: Redemption) -> List[BalanceUpdate]:
+        """Translate Enzyme SharesBought event to our internal deposit storage format.
+
+        In-kind redemption exchanges user share tokens to underlying
+        assets.
+
+        - User gets whatever strategy reserves there is
+
+        - User gets share of whatever spot positions there are currently open
+        """
+
+        events = []
+
+        for token_details, raw_amount in event.redeemed_assets:
+
+            asset = translate_token_details(token_details)
+            position = self.get_related_position(portfolio, asset)
+            quantity = asset.convert_to_decimal(raw_amount)
+
+            event_id = portfolio.next_balance_update_id
+            portfolio.next_balance_update_id += 1
+
+            if isinstance(position, ReservePosition):
+                position_id = None
+                past_balance = position.quantity
+                position.quantity -= quantity
+                new_balance = position.quantity
+                position_type = BalanceUpdatePositionType.reserve
+                position.balance_updates.append(event_id)
+            elif isinstance(position, TradingPosition):
+                position_id = position.position_id
+                past_balance = position.quantity
+                position.quantity -= quantity
+                new_balance = position.quantity
+                position_type = BalanceUpdatePositionType.open_position
+                position.balance_updates.append(event_id)
+            else:
+                raise NotImplementedError()
+
+            assert position.quantity > 0, f"Position went to negative: {position} with token {token_details} and amount {raw_amount}"
+
+            evt = BalanceUpdate(
+                balance_update_id=event_id,
+                type=BalanceUpdateType.redemption,
+                position_type=position_type,
+                asset=asset,
+                block_mined_at=event.timestamp,
+                chain_id=asset.chain_id,
+                past_quantity=past_balance,
+                new_quantity=new_balance,
+                owner_address=event.redeemer,
+                tx_hash=event.event_data["transactionHash"],
+                log_index=event.event_data["logIndex"],
+                position_id=position_id,
+            )
+            events.append(evt)
+
+        return events
+
+    def translate_and_apply_event(self, state: State, event: EnzymeBalanceEvent) -> List[BalanceUpdate]:
         """Translate on-chain event data to our persistent format."""
         portfolio = state.portfolio
         match event:
             case Deposit():
-                return self.process_deposit(portfolio, event)
+                # Deposit generated only one event
+                event = cast(Deposit, event)
+                return [self.process_deposit(portfolio, event)]
             case Redemption():
-                raise RuntimeError(f"Unsupported event: {event}")
+                # Enzyme in-kind redemption can generate updates for multiple assets
+                event = cast(Redemption, event)
+                return self.process_redemption(portfolio, event)
             case _:
                 raise RuntimeError(f"Unsupported event: {event}")
 
@@ -173,7 +271,7 @@ class EnzymeVaultSyncModel(SyncModel):
     def sync_treasury(self,
                       strategy_cycle_ts: datetime.datetime,
                       state: State,
-                      ) -> List[BalanceUpdateEvent]:
+                      ) -> List[BalanceUpdate]:
         """Apply the balance sync before each strategy cycle.
 
         - Deposits by shareholders
@@ -224,15 +322,15 @@ class EnzymeVaultSyncModel(SyncModel):
 
         events = []
         for chain_event in events_iter:
-            events.append(self.translate_and_apply_event(state, chain_event))
+            events += self.translate_and_apply_event(state, chain_event)
 
-        past_events = set(treasury_sync.processed_events)
+        past_events = set(treasury_sync.processed_events.values())
         # Check that we do not have conflicting events
         for new_event in events:
             # Use BalanceUpdateEvent.__hash__
             assert new_event not in past_events, f"Event already processed: {new_event}"
+            treasury_sync.processed_events[new_event.balance_update_id] = new_event
 
-        treasury_sync.processed_events += events
         treasury_sync.last_block_scanned = end_block
         treasury_sync.last_updated_at = datetime.datetime.utcnow()
         treasury_sync.last_cycle_at = strategy_cycle_ts
