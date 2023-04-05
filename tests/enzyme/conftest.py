@@ -8,6 +8,7 @@
 
 import logging
 import pytest
+from eth_defi.enzyme.vault import Vault
 from pytest import FixtureRequest
 
 from eth_typing import HexAddress
@@ -133,15 +134,23 @@ def user_3(web3) -> HexAddress:
 
 
 @pytest.fixture
-def weth(uniswap_v2):
+def weth(uniswap_v2) -> Contract:
     return uniswap_v2.weth
+
+
+@pytest.fixture()
+def weth_asset(weth: Contract) -> AssetIdentifier:
+    """WETH as a persistent id.
+    """
+    details = fetch_erc20_details(weth.w3, weth.address)
+    return translate_token_details(details)
 
 
 @pytest.fixture()
 def usdc(web3, deployer) -> Contract:
     """Mock USDC token.
 
-    All initial start goes to `deployer`
+    All initial $100M goes to `deployer`
     """
     token = create_token(web3, deployer, "USD Coin", "USDC", 100_000_000 * 10**6, decimals=6)
     return token
@@ -156,13 +165,14 @@ def usdc_asset(usdc: Contract) -> AssetIdentifier:
 
 
 @pytest.fixture()
-def weth_usdc_pair(web3, deployer, uniswap_v2, usdc, weth) -> Contract:
+def weth_usdc_uniswap_pair(web3, deployer, uniswap_v2, usdc, weth) -> HexAddress:
     """Create Uniswap v2 pool for WETH-USDC.
 
     - Add 200k initial liquidity at 1600 ETH/USDC
     """
 
-    deposit = 200_000  # USD
+    deposit = 200_000  # USDC
+    price = 1600
 
     pair = deploy_trading_pair(
         web3,
@@ -171,7 +181,7 @@ def weth_usdc_pair(web3, deployer, uniswap_v2, usdc, weth) -> Contract:
         usdc,
         weth,
         deposit * 10**6,
-        (deposit // 1600) * 10**18,
+        (deposit // price) * 10**18,
     )
 
     return pair
@@ -263,7 +273,6 @@ def enzyme_vault_contract(
 
     - user_1 is the owner
     """
-
     comptroller_contract, vault_contract = enzyme_deployment.create_new_vault(
         user_1,
         usdc,
@@ -279,32 +288,51 @@ def vault_comptroller_contract(
     """Get the comptroller for our test vault.
 
     - Needed to process deposits
-    """
 
+    """
     web3 = enzyme_vault_contract.w3
     comptroller_address = enzyme_vault_contract.functions.getAccessor().call()
     comptroller = get_deployed_contract(web3, "enzyme/ComptrollerLib.json", comptroller_address)
     return comptroller
 
 
-@pytest.fixture
-def weth_usdc_uniswap_pool(web3, deployer, uniswap_v2, weth, usdc) -> HexAddress:
-    """ETH-USDC pool with 1.7M liquidity."""
-    pair_address = deploy_trading_pair(
+@pytest.fixture()
+def generic_adapter(
         web3,
         deployer,
-        uniswap_v2,
-        weth,
-        usdc,
-        1000 * 10**18,  # 1000 ETH liquidity
-        1_700_000 * 10**6,  # 1.7M USDC liquidity
+        enzyme_deployment,
+        enzyme_vault_contract,
+) -> Contract:
+    """Deploy generic adapter that allows the vault to perform our trades."""
+    generic_adapter = deploy_contract(
+        web3,
+        f"VaultSpecificGenericAdapter.json",
+        deployer,
+        enzyme_deployment.contracts.integration_manager.address,
+        enzyme_vault_contract.address,
     )
-    return pair_address
+    return generic_adapter
+
+
+@pytest.fixture()
+def vault(
+        enzyme_deployment,
+        enzyme_vault_contract,
+        vault_comptroller_contract,
+        generic_adapter,
+) -> Vault:
+    """Return the test vault.
+
+    - USDC nominatead
+
+    - user_1 is the owner
+    """
+    return Vault(enzyme_vault_contract, vault_comptroller_contract, enzyme_deployment, generic_adapter)
 
 
 @pytest.fixture
-def weth_usdc_trading_pair(uniswap_v2, weth_usdc_uniswap_pool, usdc_asset, weth_asset) -> TradingPairIdentifier:
-    return TradingPairIdentifier(usdc_asset, weth_asset, weth_usdc_uniswap_pool, uniswap_v2.factory.address, fee=0.30)
+def weth_usdc_trading_pair(uniswap_v2, weth_usdc_uniswap_pair, usdc_asset, weth_asset) -> TradingPairIdentifier:
+    return TradingPairIdentifier(weth_asset, usdc_asset, weth_usdc_uniswap_pair, uniswap_v2.factory.address, fee=0.0030)
 
 
 @pytest.fixture()

@@ -1,9 +1,11 @@
 """Route trades to different Uniswap v2 like exchanges."""
 
 import logging
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 
 from eth_typing import HexAddress
+
+from eth_defi.tx import AssetDelta
 from tradingstrategy.chain import ChainId
 from web3 import Web3
 
@@ -50,7 +52,9 @@ class UniswapV3RoutingState(EthereumRoutingState):
             reserve_asset: AssetIdentifier,
             reserve_amount: int,
             max_slippage: float,
-            check_balances: False):
+            check_balances: False,
+            asset_deltas: Optional[List[AssetDelta]] = None,
+        ):
         """Prepare the actual swap. Same for Uniswap V2 and V3.
 
         :param check_balances:
@@ -69,7 +73,7 @@ class UniswapV3RoutingState(EthereumRoutingState):
         
         bound_swap_func = swap_with_slippage_protection(
             uniswap,
-            recipient_address=hot_wallet.address,
+            recipient_address=self.tx_builder.get_token_delivery_address(),
             base_token=base_token,
             quote_token=quote_token,
             amount_in=reserve_amount,
@@ -77,7 +81,11 @@ class UniswapV3RoutingState(EthereumRoutingState):
             pool_fees=[raw_fee]
         )
         
-        return self.create_signed_transaction(bound_swap_func, self.swap_gas_limit)
+        return self.create_signed_transaction(
+            uniswap.swap_router,
+            bound_swap_func,
+            self.swap_gas_limit,
+            asset_deltas)
 
     def trade_on_router_three_way(self,
             uniswap: UniswapV3Deployment,
@@ -86,7 +94,9 @@ class UniswapV3RoutingState(EthereumRoutingState):
             reserve_asset: AssetIdentifier,
             reserve_amount: int,
             max_slippage: float,
-            check_balances: False):
+            check_balances: False,
+            asset_deltas: Optional[List[AssetDelta]] = None,
+        ):
         """Prepare the actual swap for three way trade.
 
         :param check_balances:
@@ -110,7 +120,7 @@ class UniswapV3RoutingState(EthereumRoutingState):
         
         bound_swap_func = swap_with_slippage_protection(
             uniswap,
-            recipient_address=hot_wallet.address,
+            recipient_address=self.tx_builder.get_token_delivery_address(),
             base_token=base_token,
             quote_token=quote_token,
             pool_fees=raw_pool_fees,
@@ -119,7 +129,11 @@ class UniswapV3RoutingState(EthereumRoutingState):
             intermediate_token=intermediary_token,
         )
         
-        return self.create_signed_transaction(bound_swap_func, self.swap_gas_limit)
+        return self.create_signed_transaction(
+            uniswap.swap_router,
+            bound_swap_func,
+            self.swap_gas_limit,
+            asset_deltas)
 
 
 class UniswapV3SimpleRoutingModel(EthereumRoutingModel):
@@ -206,7 +220,8 @@ class UniswapV3SimpleRoutingModel(EthereumRoutingModel):
         reserve_asset: AssetIdentifier,
         reserve_amount: int,
         max_slippage: float,
-        check_balances=False
+        check_balances=False,
+        asset_deltas: Optional[List[AssetDelta]] = None,
     ) -> list[BlockchainTransaction]:
         
         return super().make_direct_trade(
@@ -216,7 +231,8 @@ class UniswapV3SimpleRoutingModel(EthereumRoutingModel):
             reserve_amount,
             max_slippage,
             self.address_map,
-            check_balances
+            check_balances,
+            asset_deltas=asset_deltas,
         )
     
     def make_multihop_trade(
@@ -227,7 +243,8 @@ class UniswapV3SimpleRoutingModel(EthereumRoutingModel):
         reserve_asset: AssetIdentifier,
         reserve_amount: int,
         max_slippage: float,
-        check_balances=False
+        check_balances=False,
+        asset_deltas: Optional[List[AssetDelta]] = None,
     ) -> list[BlockchainTransaction]:
         
         return super().make_multihop_trade(
@@ -238,7 +255,8 @@ class UniswapV3SimpleRoutingModel(EthereumRoutingModel):
             reserve_amount,
             max_slippage,
             self.address_map,
-            check_balances
+            check_balances,
+            asset_deltas=asset_deltas,
         )
 
 def get_uniswap_for_pair(web3: Web3, address_map: dict, target_pair: TradingPairIdentifier) -> UniswapV3Deployment:

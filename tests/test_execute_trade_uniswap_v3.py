@@ -416,7 +416,6 @@ def test_buy_sell_buy_with_tester(
     assert trade3.executed_quantity == pytest.approx(Decimal('0.293148816843562091'))
 
     # Double check See we can serialise state after all this
-    patch_dataclasses_json()
     dump = state.to_json()
     state2: State = State.from_json(dump)
     assert len(state2.portfolio.closed_positions) == 1

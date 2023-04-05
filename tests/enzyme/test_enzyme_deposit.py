@@ -133,7 +133,6 @@ def test_enzyme_single_deposit(
     assert state.portfolio.get_total_equity() == Decimal(500)
 
     # See we can serialise the sync state
-    patch_dataclasses_json()
     dump = state.to_json()
     state2: State = State.from_json(dump)
     assert len(state2.sync.treasury.processed_events) == 1

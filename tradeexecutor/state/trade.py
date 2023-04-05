@@ -375,7 +375,10 @@ class TradeExecution:
     def fee_tier(self) -> (float | None):
         """LP fee % recorded before the execution starts.
         
-        returns: float (fee multiplier) or None if no fee was provided"""
+        :return:
+            float (fee multiplier) or None if no fee was provided.
+
+        """
         return self._fee_tier
 
     @property
@@ -743,6 +746,9 @@ class TradeExecution:
             List of asset deltas [input, output]
 
         """
+
+        # TODO: slippage tolerance currently ignores multihop trades
+
         assert self.slippage_tolerance is not None, "Slippage tolerance must be set before we can calculate_asset_deltas()"
         assert 0 <= self.slippage_tolerance <= 1.0, f"Slippage tolerance must be 0...1, got {self.slippage_tolerance}"
 

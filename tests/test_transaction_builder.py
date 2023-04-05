@@ -175,6 +175,7 @@ def test_build_erc20_approve(
     )
 
     tx = tx_builder.sign_transaction(
+        usdc_token,
         usdc_token.functions.approve(uniswap_v2.router.address, 2**256-1),
         gas_limit=APPROVE_GAS_LIMIT,
     )
@@ -199,6 +200,7 @@ def test_planned_gas_price(
     )
 
     tx = tx_builder.sign_transaction(
+        usdc_token,
         usdc_token.functions.approve(uniswap_v2.router.address, 2**256-1),
         APPROVE_GAS_LIMIT,
     )

@@ -46,7 +46,12 @@ class UniswapV2TestTrader(EthereumTrader):
                 hot_wallet,
             )
 
-    def buy(self, pair: TradingPairIdentifier, amount_in_usd: Decimal, execute=True) -> Tuple[TradingPosition, TradeExecution]:
+    def buy(self,
+            pair: TradingPairIdentifier,
+            amount_in_usd: Decimal,
+            execute=True,
+            slippage_tolerance: Optional[float] = None,
+            ) -> Tuple[TradingPosition, TradeExecution]:
         """Buy token (trading pair) for a certain value."""
         # Estimate buy price
         
@@ -56,7 +61,7 @@ class UniswapV2TestTrader(EthereumTrader):
         assumed_quantity = Decimal(raw_assumed_quantity) / Decimal(10**pair.base.decimals)
         assumed_price = amount_in_usd / assumed_quantity
 
-        position, trade, created= self.state.create_trade(
+        position, trade, created = self.state.create_trade(
             strategy_cycle_at=self.ts,
             pair=pair,
             quantity=assumed_quantity,
@@ -65,11 +70,13 @@ class UniswapV2TestTrader(EthereumTrader):
             trade_type=TradeType.rebalance,
             reserve_currency=pair.quote,
             reserve_currency_price=1.0,
-            pair_fee=pair.fee
+            pair_fee=pair.fee,
+            slippage_tolerance=slippage_tolerance,
         )
 
         if execute:
             self.execute_trades_simple([trade])
+
         return position, trade
 
     def sell(self, pair: TradingPairIdentifier, quantity: Decimal, execute=True) -> Tuple[TradingPosition, TradeExecution]:
@@ -105,25 +112,32 @@ class UniswapV2TestTrader(EthereumTrader):
     def execute_trades_simple(
         self,
         trades: List[TradeExecution],
-        max_slippage=0.01, 
-        stop_on_execution_failure=True
+        stop_on_execution_failure=True,
+        broadcast=True,
     ) -> Tuple[List[TradeExecution], List[TradeExecution]]:
         """Execute trades on web3 instance.
 
         A testing shortcut
 
-        - Create `BlockchainTransaction` instances
+        - Create `BlockchainTransaction` instances of each gives `TradeExecution`
 
         - Execute them on Web3 test connection (EthereumTester / Ganache)
 
         - Works with single Uniswap test deployment
+
+        :param trades:
+            Trades to be converted to blockchain transactions
+
+        :param stop_on_execution_failure:
+            Raise exception on an error
+
+        :param broadcast:
+            Broadcast trades over web3 connection
         """
 
         pair_universe = self.pair_universe   
-        web3 = self.web3
-        hot_wallet = self.hot_wallet
         uniswap = self.uniswap
-        state = self.state     
+        state = self.state
         
         assert isinstance(pair_universe, PandasPairUniverse)
 
@@ -142,7 +156,17 @@ class UniswapV2TestTrader(EthereumTrader):
         state.start_trades(datetime.datetime.utcnow(), trades)
         routing_state = UniswapV2RoutingState(pair_universe, self.tx_builder)
         routing_model.execute_trades_internal(pair_universe, routing_state, trades)
-        
+
+        if broadcast:
+            self.broadcast_trades(trades, stop_on_execution_failure)
+
+    def broadcast_trades(self, trades: List[TradeExecution], stop_on_execution_failure=True):
+        """Broadcast prepared trades."""
+        web3 = self.web3
+        hot_wallet = self.hot_wallet
+
+        state = self.state
+
         execution_model = UniswapV2ExecutionModel(web3, hot_wallet)
         execution_model.broadcast_and_resolve(state, trades, stop_on_execution_failure=stop_on_execution_failure)
 
@@ -153,4 +177,3 @@ class UniswapV2TestTrader(EthereumTrader):
         failed = [t for t in trades if t.is_failed()]
 
         return success, failed
-    

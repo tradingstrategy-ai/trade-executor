@@ -54,6 +54,7 @@ from tradeexecutor.strategy.trading_strategy_universe import (
     create_pair_universe_from_code,
 )
 from tradeexecutor.testing.pairuniversetrader import PairUniverseTestTrader
+from tradeexecutor.testing.pytest_helpers import is_failed_test
 from tradingstrategy.chain import ChainId
 from tradingstrategy.pair import PandasPairUniverse
 
@@ -83,7 +84,7 @@ def large_usdc_holder() -> HexAddress:
 
 
 @pytest.fixture()
-def anvil_polygon_chain_fork(logger, large_usdc_holder) -> str:
+def anvil_polygon_chain_fork(request, logger, large_usdc_holder) -> str:
     """Create a testable fork of live polygon chain.
 
     :return: JSON-RPC URL for Web3
@@ -95,7 +96,12 @@ def anvil_polygon_chain_fork(logger, large_usdc_holder) -> str:
     try:
         yield launch.json_rpc_url
     finally:
-        launch.close(log_level=logging.INFO)
+        verbose_anvil_exit = is_failed_test(request)
+        stdout, stderr = launch.close()
+
+        if verbose_anvil_exit:
+            print(f"Anvil stdout:\n{stdout.decode('utf-8')}")
+            print(f"Anvil stderr:\n{stderr.decode('utf-8')}")
 
 
 @pytest.fixture
