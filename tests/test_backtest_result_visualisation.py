@@ -4,6 +4,7 @@ from decimal import Decimal
 
 import pandas as pd
 import pytest
+import random
 
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.state.reserve import ReservePosition
@@ -86,14 +87,24 @@ def test_visualise_trades_with_indicator(usdc, weth, weth_usdc):
     pos, trade = trader.sell_with_price_data(weth_usdc, sell_q_1, candle_universe)
     assert trade.is_sell()
     assert pos.get_quantity() == pytest.approx(Decimal('4.949999999999999955591079015'))
+    
     state.visualisation.plot_indicator(trader.ts, "Test indicator", PlotKind.technical_indicator_on_price, 1700, colour="aqua")
+    state.visualisation.plot_indicator(trader.ts, "random 1", PlotKind.technical_indicator_detached, 1000, colour="green")
+    state.visualisation.plot_indicator(trader.ts, "random 2", PlotKind.technical_indicator_detached, 1100, colour="red", horizontal_line=1200, relative_size=0.5)
+    state.visualisation.plot_indicator(trader.ts, "random 3", PlotKind.technical_indicator_overlay_on_detached, 1200, colour="green", detached_overlay_name="random 2")
+    state.visualisation.plot_indicator(trader.ts, "random 4", PlotKind.technical_indicator_overlay_on_detached, 1300, colour="blue", detached_overlay_name="random 2")
 
     # Day 2
     # Sell 5 ETH at 1800 USD/ETH
     trader.time_travel(end_date)
     pos, trade = trader.sell_with_price_data(weth_usdc, sell_q_2, candle_universe)
     assert pos.get_quantity() == 0
+    
     state.visualisation.plot_indicator(trader.ts, "Test indicator", PlotKind.technical_indicator_on_price, 1700, colour="azure")
+    state.visualisation.plot_indicator(trader.ts, "random 1", PlotKind.technical_indicator_detached, 1200, colour="green")
+    state.visualisation.plot_indicator(trader.ts, "random 2", PlotKind.technical_indicator_detached, 1300, colour="red", horizontal_line=1200, relative_size=0.5)
+    state.visualisation.plot_indicator(trader.ts, "random 3", PlotKind.technical_indicator_overlay_on_detached, 1400, colour="green", detached_overlay_name="random 2")
+    state.visualisation.plot_indicator(trader.ts, "random 4", PlotKind.technical_indicator_overlay_on_detached, 1500, colour="blue", detached_overlay_name="random 2")
 
     validate_state_serialisation(state)
 
@@ -108,10 +119,14 @@ def test_visualise_trades_with_indicator(usdc, weth, weth_usdc):
 
     # List of candles, markers 1, markers
     data = fig.to_dict()["data"]
-    assert len(data) == 4
+    assert len(data) == 8
     assert data[1]["name"] == "Test indicator"
-    assert data[2]["name"] == "Buy"
-    assert data[3]["name"] == "Sell"
+    assert data[2]["name"] == "random 1"
+    assert data[3]["name"] == "random 2"
+    assert data[4]["name"] == "random 3"
+    assert data[5]["name"] == "random 4"
+    assert data[6]["name"] == "Buy"
+    assert data[7]["name"] == "Sell"
 
     # Check test indicator data
     # that we have proper timestamps
