@@ -104,7 +104,7 @@ def _add_hline(
 
     horizontal_line_colour = plot.horizontal_line_colour or "grey"
 
-        # Add a horizontal line to the first subplot
+    # Add a horizontal line to the first subplot
     fig.add_shape(
             type="line",
             x0=start_at,
