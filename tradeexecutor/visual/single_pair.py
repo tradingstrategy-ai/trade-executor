@@ -612,7 +612,7 @@ def visualise_single_pair(
     
     num_detached_indicators = _get_num_detached_indicators(plots, volume_bar_mode)
     relative_sizing = _get_relative_sizing(plots, volume_bar_mode)
-    subplot_names = _get_subplot_names(plots, volume_bar_mode)
+    subplot_names = _get_subplot_names(plots, volume_bar_mode, volume_text)
     
     # visualise candles and volume and create empty grid space for technical indicators
     fig = visualise_ohlcv(
@@ -757,12 +757,12 @@ def visualise_single_pair_positions_with_duration_and_slippage(
 
     plots = state.visualisation.plots.values()
     
+    # hide volume bar
+    volume_bar_mode = VolumeBarMode.hidden
+    
     num_detached_indicators = _get_num_detached_indicators(plots, volume_bar_mode)
     relative_sizing = _get_relative_sizing(plots, volume_bar_mode)
     subplot_names = _get_subplot_names(plots, volume_bar_mode)
-    
-    # hide volume bar
-    volume_bar_mode = VolumeBarMode.hidden
 
     fig = visualise_ohlcv(
         candles,
@@ -816,7 +816,7 @@ def _get_num_detached_indicators(plots: list[Plot], volume_bar_mode: VolumeBarMo
     
     return num_detached_indicators
 
-def _get_subplot_names(plots: list[Plot], volume_bar_mode: VolumeBarMode):
+def _get_subplot_names(plots: list[Plot], volume_bar_mode: VolumeBarMode, volume_axis_name: str = "Volume USD"):
     """Get subplot names for detached technical indicators. 
     
     Overlaid names are appended to the detached plot name."""
@@ -824,15 +824,15 @@ def _get_subplot_names(plots: list[Plot], volume_bar_mode: VolumeBarMode):
     
     if volume_bar_mode in {VolumeBarMode.hidden, VolumeBarMode.overlay}:
         subplot_names = []
+        detached_without_overlay_count = 0
     else:
-        subplot_names = ["Volume USD"]
-    
-    
+        subplot_names = [volume_axis_name]
+        detached_without_overlay_count = 1
+
     
     # for allowing multiple overlays on detached plots
     # list of detached plot names that already have overlays
     already_overlaid_names = []
-    detached_without_overlay_count = 0
     
     for plot in plots:
         # get subplot names for detached technical indicators without any overlay
