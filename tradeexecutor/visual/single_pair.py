@@ -490,6 +490,7 @@ def visualise_single_pair(
         theme="plotly_white",
         volume_bar_mode=VolumeBarMode.overlay,
         vertical_spacing = 0.05,
+        subplot_font_size = 11,
 ) -> go.Figure:
     """Visualise single-pair trade execution.
 
@@ -627,6 +628,7 @@ def visualise_single_pair(
         vertical_spacing=vertical_spacing,
         relative_sizing=relative_sizing,
         subplot_names=subplot_names,
+        subplot_font_size=subplot_font_size,
     )
 
     # Draw EMAs etc.
