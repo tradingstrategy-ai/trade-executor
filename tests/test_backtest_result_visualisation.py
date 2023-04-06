@@ -117,6 +117,17 @@ def test_visualise_trades_with_indicator(usdc, weth, weth_usdc):
     #
     fig = visualise_single_pair(state, candle_universe)
 
+    # 3 distinct plot grids
+    assert len(fig._grid_ref) == 3
+    
+    # check the main title
+    assert fig.layout.title.text == "Visualisation test"
+    
+    # check subplot titles
+    subplot_titles = [annotation['text'] for annotation in fig['layout']['annotations']]
+    assert subplot_titles[0] == "random 1"
+    assert subplot_titles[1] == "random 2<br> + random 3<br> + random 4"
+    
     # List of candles, markers 1, markers
     data = fig.to_dict()["data"]
     assert len(data) == 8
