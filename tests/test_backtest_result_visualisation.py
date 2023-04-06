@@ -109,7 +109,9 @@ def test_synthetic_candles_timezone(usdc, weth, weth_usdc):
 
 
 def test_visualise_trades_with_indicator(state_and_candles: tuple[State, pd.DataFrame]):
-    """Do a single token purchase."""
+    """Do a single token purchase.
+    
+    Uses default VolumeBarMode.overlay"""
 
     state, candles = state_and_candles
     candle_universe = GroupedCandleUniverse.create_from_single_pair_dataframe(candles)
@@ -158,7 +160,9 @@ def test_visualise_trades_with_indicator(state_and_candles: tuple[State, pd.Data
 def test_visualise_trades_with_indicator_separate_volume(
     state_and_candles: tuple[State, pd.DataFrame]
 ):
-    """Do a single token purchase."""
+    """Do a single token purchase.
+    
+    Uses VolumeBarMode.separate"""
 
     state, candles = state_and_candles
     candle_universe = GroupedCandleUniverse.create_from_single_pair_dataframe(candles)
@@ -176,21 +180,21 @@ def test_visualise_trades_with_indicator_separate_volume(
         state, candle_universe, volume_bar_mode=VolumeBarMode.separate
     )
 
-    # 3 distinct plot grids
-    assert len(fig._grid_ref) == 4
+    # 5 distinct plot grids
+    assert len(fig._grid_ref) == 5
     
     # check the main title
     assert fig.layout.title.text == "Visualisation test"
     
     # check subplot titles
     subplot_titles = [annotation['text'] for annotation in fig['layout']['annotations']]
-    assert subplot_titles[0] == "random 1"
-    assert subplot_titles[1] == "random 2<br> + random 3<br> + random 4"
-    assert subplot_titles[2] == "Volume"
+    assert subplot_titles[0] == "Volume USD"
+    assert subplot_titles[1] == "random 1"
+    assert subplot_titles[2] == "random 2<br> + random 3<br> + random 4"
     
     # List of candles, indicators, and markers
     data = fig.to_dict()["data"]
-    assert len(data) == 9
+    assert len(data) == 8
     assert data[1]["name"] == "Test indicator"
     assert data[2]["name"] == "random 1"
     assert data[3]["name"] == "random 2"
@@ -198,7 +202,6 @@ def test_visualise_trades_with_indicator_separate_volume(
     assert data[5]["name"] == "random 4"
     assert data[6]["name"] == "Buy"
     assert data[7]["name"] == "Sell"
-    assert data[8]["name"] == "Volume"
 
     # Check test indicator data
     # that we have proper timestamps
@@ -211,7 +214,9 @@ def test_visualise_trades_with_indicator_separate_volume(
 def test_visualise_trades_with_duration_and_slippage(
     weth_usdc, state_and_candles: tuple[State, pd.DataFrame]
 ):
-    """Do a single token purchase."""
+    """Do a single token purchase.
+    
+    Uses VolumeBarMode.hidden"""
     
     state, candles = state_and_candles
 
