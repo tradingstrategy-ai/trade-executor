@@ -21,30 +21,30 @@ from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.charting.candle_chart import VolumeBarMode
 
 
-@pytest.fixture
+@pytest.fixture(scope = "module")
 def mock_exchange_address() -> str:
     """Mock some assets"""
     return "0x1"
 
 
-@pytest.fixture
+@pytest.fixture(scope = "module")
 def usdc() -> AssetIdentifier:
     """Mock some assets"""
     return AssetIdentifier(ChainId.ethereum.value, "0x0", "USDC", 6)
 
 
-@pytest.fixture
+@pytest.fixture(scope = "module")
 def weth() -> AssetIdentifier:
     """Mock some assets"""
     return AssetIdentifier(ChainId.ethereum.value, "0x1", "WETH", 18)
 
 
-@pytest.fixture
+@pytest.fixture(scope = "module")
 def weth_usdc(mock_exchange_address, usdc, weth) -> TradingPairIdentifier:
     """Mock some assets"""
     return TradingPairIdentifier(weth, usdc, "0x4", mock_exchange_address, internal_id=555)
 
-@pytest.fixture
+@pytest.fixture(scope = "module")
 def state_and_candles(usdc, weth, weth_usdc) -> tuple[State, pd.DataFrame]:
     state = State(name="Visualisation test")
 
