@@ -835,7 +835,7 @@ def _get_subplot_names(plots: list[Plot]):
                 subplot_names[detached_without_overlay_count + already_overlaid_names.index(plot.detached_overlay_name)] += f"<br> + {plot.name}"
             else:
                 # add to list
-                subplot_names.append(plot.name + f"<br> + {plot.detached_overlay_name}")
+                subplot_names.append(plot.detached_overlay_name + f"<br> + {plot.name}")
                 already_overlaid_names.append(plot.detached_overlay_name)
                 
     return subplot_names
