@@ -609,9 +609,9 @@ def visualise_single_pair(
 
     plots = state.visualisation.plots.values()
     
-    num_detached_indicators = _get_num_detached_indicators(plots)
-    relative_sizing = _get_relative_sizing(plots)
-    subplot_names = _get_subplot_names(plots)
+    num_detached_indicators = _get_num_detached_indicators(plots, volume_bar_mode)
+    relative_sizing = _get_relative_sizing(plots, volume_bar_mode)
+    subplot_names = _get_subplot_names(plots, volume_bar_mode)
     
     # visualise candles and volume and create empty grid space for technical indicators
     fig = visualise_ohlcv(
@@ -755,9 +755,9 @@ def visualise_single_pair_positions_with_duration_and_slippage(
 
     plots = state.visualisation.plots.values()
     
-    num_detached_indicators = _get_num_detached_indicators(plots)
-    relative_sizing = _get_relative_sizing(plots)
-    subplot_names = _get_subplot_names(plots)
+    num_detached_indicators = _get_num_detached_indicators(plots, volume_bar_mode)
+    relative_sizing = _get_relative_sizing(plots, volume_bar_mode)
+    subplot_names = _get_subplot_names(plots, volume_bar_mode)
     
     # hide volume bar
     volume_bar_mode = VolumeBarMode.hidden
@@ -797,21 +797,35 @@ def _get_title(name: str, title: str):
     else:
         return None
 
-def _get_num_detached_indicators(plots: list[Plot]):
+def _get_num_detached_indicators(plots: list[Plot], volume_bar_mode: VolumeBarMode):
     """Get the number of detached technical indicators"""
+    
     num_detached_indicators = sum(
         plot.kind == PlotKind.technical_indicator_detached
         for plot in plots
     )
     
+    if volume_bar_mode in {VolumeBarMode.hidden, VolumeBarMode.overlay}:
+        pass
+    elif volume_bar_mode == VolumeBarMode.separate:
+        num_detached_indicators += 1
+    else:
+        raise ValueError(f"Unknown volume bar mode {VolumeBarMode}")
+    
     return num_detached_indicators
 
-def _get_subplot_names(plots: list[Plot]):
+def _get_subplot_names(plots: list[Plot], volume_bar_mode: VolumeBarMode):
     """Get subplot names for detached technical indicators. 
     
     Overlaid names are appended to the detached plot name."""
     
-    subplot_names = []
+    
+    if volume_bar_mode in {VolumeBarMode.hidden, VolumeBarMode.overlay}:
+        subplot_names = []
+    else:
+        subplot_names = ["Volume USD"]
+    
+    
     
     # for allowing multiple overlays on detached plots
     # list of detached plot names that already have overlays
@@ -840,11 +854,20 @@ def _get_subplot_names(plots: list[Plot]):
                 
     return subplot_names
 
-def _get_relative_sizing(plots: list[Plot]):
+def _get_relative_sizing(plots: list[Plot], volume_bar_mode: VolumeBarMode):
     """Get list of relative sizes for subplots
     
     Works since python dicts are now ordered"""
-    return [plot.relative_size for plot in plots if plot.kind == PlotKind.technical_indicator_detached]
+    
+    if volume_bar_mode in {VolumeBarMode.hidden, VolumeBarMode.overlay}:
+        relative_sizing = []
+    elif volume_bar_mode == VolumeBarMode.separate:
+        # TODO change to non-hardcoded value
+        relative_sizing = [0.3]
+    else:
+        raise ValueError(f"Unknown volume bar mode {VolumeBarMode}")
+    
+    relative_sizing.extend([plot.relative_size for plot in plots if plot.kind == PlotKind.technical_indicator_detached])
 
 def _get_start_and_end(
     start_at: pd.Timestamp | datetime.datetime | None, 
