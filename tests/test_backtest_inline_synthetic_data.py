@@ -298,7 +298,7 @@ def test_basic_summary_statistics(
     assert summary.lp_fees_average_pc == pytest.approx(0.003004503819031923, rel=APPROX_REL)
     assert summary.lp_fees_paid == pytest.approx(65.79952827646791, rel=APPROX_REL)
 
-    assert summary.average_duration_of_losing_trades == pd.Timedelta('8 days 13:42:51.428571428')
+    assert summary.average_duration_of_losing_trades == pd.Timedelta('8 days 13:42:51.428571')
     assert summary.average_duration_of_winning_trades == pd.Timedelta('19 days 00:00:00')
 
     assert summary.median_trade == pytest.approx(-0.02569303244842014, rel=APPROX_REL)
@@ -359,7 +359,8 @@ def test_advanced_summary_statistics(
 
 def test_timeline(
     analysis: TradeAnalysis,
-    backtest_result: tuple[State, TradingStrategyUniverse, dict]
+    backtest_result: tuple[State, TradingStrategyUniverse, dict],
+    summary: TradeSummary # need to run to get bad_data_issues flag
 ):
     state, universe, debug_dump = backtest_result
 

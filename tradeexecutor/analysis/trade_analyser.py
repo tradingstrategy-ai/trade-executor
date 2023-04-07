@@ -385,24 +385,18 @@ class TradeAnalysis:
         def get_avg_trade_duration(duration_list: List | None, time_bucket: TimeBucket | None):
             if duration_list:
                 if isinstance(time_bucket, TimeBucket):
-                    return np.mean(duration_list)/time_bucket.to_timedelta()
+                    return pd.Timedelta(np.mean(duration_list)/time_bucket.to_timedelta())
                 else:
-                    return np.mean(duration_list)
+                    return pd.Timedelta(np.mean(duration_list))
             else:
-                return datetime.timedelta(0)
+                return pd.Timedelta(datetime.timedelta(0))
 
         def avg(lst: list[int]):
             return sum(lst) / len(lst)
         
-        def max_check(lst):
-            return max(lst) if lst else None
-        def min_check(lst):
-            return min(lst) if lst else None
-        def avg_check(lst):
-            return avg(lst) if lst else None
-        def median_check(lst):
-            return median(lst) if lst else None
-
+        def func_check(lst, func):
+            return func(lst) if lst else None
+        
         initial_cash = self.portfolio.get_initial_deposit()
 
         uninvested_cash = self.portfolio.get_current_cash()
@@ -423,9 +417,7 @@ class TradeAnalysis:
         average_duration_of_losing_trades = datetime.timedelta(0)
         average_duration_of_winning_trades = datetime.timedelta(0)
 
-        first_trade, last_trade = self.portfolio.get_first_and_last_executed_trade()
-        if first_trade and first_trade != last_trade:
-            duration = last_trade.executed_at - first_trade.executed_at
+        strategy_duration = self.portfolio.get_strategy_duration()
 
         won = lost = zero_loss = stop_losses = take_profits = undecided = 0
         open_value: USDollarAmount = 0
@@ -525,20 +517,20 @@ class TradeAnalysis:
                 max_pullback_pct = 0
 
         all_trades = winning_trades + losing_trades + [0 for i in range(zero_loss)]
-        average_trade = avg_check(all_trades)
-        median_trade = median_check(all_trades)
+        average_trade = func_check(all_trades, avg)
+        median_trade = func_check(all_trades, median)
 
         average_winning_trade_profit_pc = get_avg_profit_pct_check(winning_trades)
         average_losing_trade_loss_pc = get_avg_profit_pct_check(losing_trades)
 
-        max_realised_loss = min_check(realised_losses)
-        avg_realised_risk = avg_check(realised_losses)
+        max_realised_loss = func_check(realised_losses, min)
+        avg_realised_risk = func_check(realised_losses, avg)
 
-        max_loss_risk_at_open_pc = max_check(loss_risk_at_open_pc)
+        max_loss_risk_at_open_pc = func_check(loss_risk_at_open_pc, max)
 
-        biggest_winning_trade_pc = max_check(winning_trades)
+        biggest_winning_trade_pc = func_check(winning_trades, max)
 
-        biggest_losing_trade_pc = min_check(losing_trades)
+        biggest_losing_trade_pc = func_check(losing_trades, min)
 
         average_duration_of_winning_trades = get_avg_trade_duration(winning_trades_duration, time_bucket)
         average_duration_of_losing_trades = get_avg_trade_duration(losing_trades_duration, time_bucket)
@@ -557,7 +549,7 @@ class TradeAnalysis:
             uninvested_cash=uninvested_cash,
             initial_cash=initial_cash,
             extra_return=extra_return,
-            duration=duration,
+            duration=strategy_duration,
             average_winning_trade_profit_pc=average_winning_trade_profit_pc,
             average_losing_trade_loss_pc=average_losing_trade_loss_pc,
             biggest_winning_trade_pc=biggest_winning_trade_pc,
@@ -729,7 +721,7 @@ def expand_timeline(
     def expander(row):
         position: TradingPosition = row["position"]
         # timestamp = row.name  # ???
-        pair_id = position.pair_id
+        pair_id = position.pair.internal_id
         pair_info = pair_universe.get_pair_by_id(pair_id)
         exchange = exchange_map.get(pair_info.exchange_id)
         if not exchange:
@@ -746,8 +738,9 @@ def expand_timeline(
         # Not an issue for new strategies.
         if position.has_bad_data_issues():
             remarks += "BAD"
-            
+        
         realised_profit_percent = position.get_realised_profit_percent()
+        duration = position.get_duration()
 
         r = {
             # "timestamp": timestamp,
@@ -759,11 +752,11 @@ def expand_timeline(
             "Base asset": pair_info.base_token_symbol,
             "Quote asset": pair_info.quote_token_symbol,
             "Position max value": format_value(position.get_max_size()),
-            "PnL USD": format_value(realised_profit) if position.is_closed() else np.nan,
+            "PnL USD": format_value(position.get_realised_profit_usd()) if position.is_closed() else np.nan,
             "PnL %": format_percent_2_decimals(realised_profit_percent) if position.is_closed() else np.nan,
             "PnL % raw": realised_profit_percent if position.is_closed() else 0,
-            "Open mid price USD": format_price(position.open_price),
-            "Close mid price USD": format_price(position.close_price) if position.is_closed() else np.nan,
+            "Open mid price USD": format_price(position.get_value_at_open()),
+            "Close mid price USD": format_price(position.get_value_at_close()) if position.is_closed() else np.nan,
             "Trade count": position.get_trade_count(),
             "LP fees": f"${position.get_total_lp_fees_paid():,.2f}"
         }
@@ -810,9 +803,9 @@ def expand_timeline_raw(
             else:
                 remarks = ""
 
-            pnl_usd = realised_profit if position.is_closed() else np.nan
-
+            pnl_usd = position.get_realised_profit_usd() if position.is_closed() else np.nan
             realised_profit_percent = position.get_realised_profit_percent()
+            duration = position.get_duration()
             
             r = {
                 # "timestamp": timestamp,

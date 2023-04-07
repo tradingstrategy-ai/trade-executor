@@ -133,7 +133,12 @@ class Portfolio:
         return chain(self.open_positions.values(), self.closed_positions.values(), self.frozen_positions.values())
     
     def get_all_positions_filtered(self) -> Iterable[TradingPosition]:
-        """Get open, closed and frozen, positions filtered."""
+        """Get open, closed and frozen, positions filtered to remove
+        repaired or failed trades.
+        
+        It also adds bad_data_issues flag to each trade
+        """
+        
         all_positions = self.get_all_positions()
         filtered_positions = []
         
@@ -153,8 +158,6 @@ class Portfolio:
                     continue
                 
                 # Internally negative quantities are for sells
-                # TODO bad_data_issues only used for remark
-                bad_data_issues = False
                 quantity = trade.executed_quantity
 
                 if trade.planned_mid_price not in (0, None):
@@ -163,9 +166,9 @@ class Portfolio:
                     # TODO: Legacy trades.
                     # mid_price is filled to all latest trades
                     price = trade.executed_price
-                    bad_data_issues = True
                     
-                trade.bad_data_issues = bad_data_issues
+                    # bad_data_issues only used for remark
+                    trade.bad_data_issues = True
                     
                 assert quantity != 0, f"Got bad quantity for {trade}"
                 assert (price is not None) and price > 0, f"Got invalid trade {trade.get_full_debug_dump_str()} - price is {price}"
@@ -664,6 +667,15 @@ class Portfolio:
             if t.executed_at and last.executed_at and (t.executed_at > last.executed_at):
                 last = t
         return first, last
+    
+    def get_strategy_duration(self) -> Optional[datetime.timedelta]:
+        """How long did the strategy run for."""
+        first, last = self.get_first_and_last_executed_trade()
+        
+        if first and last:
+            return last.executed_at - first.executed_at
+        else:
+            return None
 
     def get_initial_deposit(self) -> Optional[USDollarAmount]:
         """How much we invested at the beginning of a backtest.

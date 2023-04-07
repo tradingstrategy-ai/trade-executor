@@ -669,6 +669,14 @@ class TradingPosition:
         """
         assert len(self.trades) > 0, "No trades available"
         return self.get_first_trade().get_executed_value()
+    
+    def get_value_at_close(self) -> USDollarAmount:
+        """How much the position had value tied after its close.
+
+        Calculate the value after the last trade
+        """
+        assert len(self.trades) > 0, "No trades available"
+        return self.get_last_trade().get_executed_value()
 
     def get_capital_tied_at_open_pct(self) -> float:
         """Calculate how much portfolio capital was risk when this position was opened.
@@ -726,8 +734,8 @@ class TradingPosition:
         """Calculated life-time profit over this position."""
         
         assert not self.is_open()
-        buy_value = self.buy_value
-        sell_value = self.sell_value
+        buy_value = self.get_buy_value()
+        sell_value = self.get_sell_value()
         return sell_value / buy_value - 1
     
     def get_duration(self) -> datetime.timedelta | None:
@@ -755,11 +763,40 @@ class TradingPosition:
     def get_buy_value(self) -> USDollarAmount:
         """Get the total value of the position when it was bought."""
         
-        return sum(t.get_executed_value() - t.commission for t in self.trades.values() if t.is_buy())
+        return sum(t.get_executed_value() for t in self.trades.values() if t.is_buy())
     
-    def sell_value(self) -> USDollarAmount:
+    def get_sell_value(self) -> USDollarAmount:
         """Get the total value of the position when it was sold."""
-        return sum(t.get_executed_value() - t.commission for t in self.trades.values() if t.is_sell())
+        return sum(t.get_executed_value() for t in self.trades.values() if t.is_sell())
+    
+    def has_bad_data_issues(self) -> bool:
+        """Do we have legacy / incompatible data issues."""
+        
+        for t in self.trades.values():
+            if not hasattr(t, "bad_data_issues"):
+                raise ValueError("Trade does not have bad_data_issues attribute. Run portfolio.get_all_positions_filtered() to add bad_data_issues to all trades.")
+            
+            if t.bad_data_issues:
+                return True
+            
+        return False
+    
+    def get_max_size(self) -> USDollarAmount:
+        """Get the largest size of this position over the time"""
+        cur_size = 0
+        max_size = 0
+
+        if len(self.trades) > 2:
+            logger.warning("Position has %d trades so this method might produce wrong result", self.trades)
+
+        for t in self.trades.values():
+            cur_size = t.get_value()
+            max_size = max(cur_size, max_size)
+        return max_size
+
+    def get_trade_count(self) -> int:
+        """Get the number of trades in this position."""
+        return len(self.trades)
 
 
 class PositionType(enum.Enum):
