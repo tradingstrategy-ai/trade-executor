@@ -11,7 +11,7 @@ import pytest
 import pandas as pd
 from pandas_ta.overlap import ema
 
-from tradeexecutor.analysis.trade_analyser import build_trade_analysis, expand_timeline, TimelineRowStylingMode, TradeAnalysis, TradeSummary
+from tradeexecutor.analysis.trade_analyser import build_trade_analysis, expand_timeline, expand_timeline_raw, TimelineRowStylingMode, TradeAnalysis, TradeSummary
 from tradeexecutor.backtest.backtest_runner import run_backtest_inline
 from tradeexecutor.cli.log import setup_pytest_logging
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
@@ -439,6 +439,57 @@ def test_timeline(
     assert last_row['Close mid price USD'] == '$949.993932'
     assert last_row['Trade count'] == 2
     assert last_row['LP fees'] == '$5.86'
+    
+
+def test_timeline_raw(
+    analysis: TradeAnalysis,
+    backtest_result: tuple[State, TradingStrategyUniverse, dict],
+    summary: TradeSummary # need to run to get bad_data_issues flag
+):
+    state, universe, debug_dump = backtest_result
+
+    timeline = analysis.create_timeline()
+
+    expanded_timeline_raw = expand_timeline_raw(
+        timeline,
+    )
+
+    # Do checks for the first position
+    row = expanded_timeline_raw.iloc[0]
+    assert row['Id'] == 1
+    assert row['Remarks'] == ''
+    assert row['Opened at'] == '2021-07-02'
+    assert row['Duration'] == '8 days      '
+    assert row['position_max_size'] == pytest.approx(1021.094527, rel=1e-4)
+    assert row['pnl_usd'] == pytest.approx(21.094527, rel=1e-4)
+    assert row['pnl_pct_raw'] == pytest.approx(0.021095, rel=1e-4)
+    assert row['open_price_usd'] == pytest.approx(1617.279626, rel=1e-4)
+    assert row['close_price_usd'] == pytest.approx(1651.395374, rel=1e-4)
+    assert row['trade_count'] == 2
+
+    row2 = expanded_timeline_raw.iloc[1]
+    assert row2['Id'] == 2
+    assert row2['Remarks'] == ''
+    assert row2['Opened at'] == '2021-07-11'
+    assert row2['Duration'] == '26 days      '
+    assert row2['position_max_size'] == pytest.approx(1002.109453, rel=1e-4)
+    assert row2['pnl_usd'] == pytest.approx(-142.468065, rel=1e-4)
+    assert row2['pnl_pct_raw'] == pytest.approx(-0.142168, rel=1e-4)
+    assert row2['open_price_usd'] == pytest.approx(1710.914224, rel=1e-4)
+    assert row2['close_price_usd'] == pytest.approx(1467.676683, rel=1e-4)
+    assert row2['trade_count'] == 2
+    
+    last_row = expanded_timeline_raw.iloc[-1]
+    assert last_row['Id'] == 11
+    assert last_row['Remarks'] == ''
+    assert last_row['Opened at'] == '2021-12-23'
+    assert last_row['Duration'] == '7 days      '
+    assert last_row['position_max_size'] == pytest.approx(1000.315069, rel=1e-4)
+    assert last_row['pnl_usd'] == pytest.approx(-50.321138, rel=1e-4)
+    assert last_row['pnl_pct_raw'] == pytest.approx(-0.050305, rel=1e-4)
+    assert last_row['open_price_usd'] == pytest.approx(2004.138663, rel=1e-4)
+    assert last_row['close_price_usd'] == pytest.approx(1903.319891, rel=1e-4)
+    assert last_row['trade_count'] == 2
 
 
 def test_benchmark_synthetic_trading_portfolio(
