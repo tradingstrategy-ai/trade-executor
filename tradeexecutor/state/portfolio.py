@@ -1,6 +1,7 @@
 """Portfolio state management."""
 
 import datetime
+import copy
 from dataclasses import dataclass, field
 from decimal import Decimal
 from itertools import chain
@@ -138,7 +139,8 @@ class Portfolio:
         
         for position in all_positions:
             
-            filtered_position = position
+            # to avoid copying with same reference
+            filtered_position = copy.deepcopy(position)
             filtered_position.trades = {}
             
             for key, trade in position.trades.items():
