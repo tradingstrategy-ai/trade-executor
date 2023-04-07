@@ -46,6 +46,7 @@ from tradingstrategy.utils.format import format_value, format_price, format_dura
     format_percent_2_decimals
 from tradingstrategy.utils.summarydataframe import as_dollar, as_integer, create_summary_table, as_percent, as_duration, as_bars
 
+
 try:
     import quantstats as qs
     HAS_QUANTSTATS = True
@@ -54,364 +55,6 @@ except Exception:
 
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class SpotTrade:
-    """Track spot trades to construct position performance.
-
-    For sells, quantity is negative.
-    """
-
-    #: Internal running counter to uniquely label all trades in trade analysis
-    trade_id: PrimaryKey
-
-    #: Trading pair for this trade
-    pair_id: PrimaryKey
-
-    #: When this trade was made, the backtes simulation thick
-    timestamp: pd.Timestamp
-
-    #: Asset mid-price
-    price: USDollarPrice
-
-    executed_price: USDollarPrice
-
-    #: How much we bought the asset. Negative value for sells.
-    quantity: float
-
-    #: How much fees we paid to the exchange
-    commission: USDollarAmount
-
-    #: How much we lost against the midprice due to the slippage
-    slippage: USDollarAmount
-
-    #: Any hints applied for this trade why it was performed
-    trade_type: Optional[TradeType] = None
-
-    #: Internal state dump of the algorithm when this trade was made.
-    #: This is mostly useful when doing the trade analysis try to understand
-    #: why some trades were made.
-    #: It also allows you to reconstruct the portfolio state over the time.
-    state_details: Optional[Dict] = None
-
-    #: LP fees paid, currency convereted to the USD.
-    #:
-    #: The value is read back from the realised trade.
-    #: LP fee is usually % of the trade. For Uniswap style exchanges
-    #: fees are always taken from `amount in` token
-    #: and directly passed to the LPs as the part of the swap,
-    #: these is no separate fee information.
-    lp_fees_paid: Optional[list[USDollarAmount] | USDollarAmount] = None
-
-    #: Set for legacy trades with legacy data.
-    #:
-    #: Mark that calculations on this trade might be incorrect
-    bad_data_issues: bool = False
-
-    def is_buy(self):
-        return self.quantity > 0
-
-    def is_sell(self):
-        return self.quantity < 0
-
-    @property
-    def value(self) -> USDollarAmount:
-        return abs(self.executed_price * float(self.quantity))
-
-
-@dataclass
-class TradePosition:
-    """How a particular asset traded.
-
-    Each asset can have multiple entries (buys) and exits (sells)
-
-    For a simple strategies there can be only one or two trades per position.
-
-    * Enter (buy)
-
-    * Exit (sell optionally)
-    """
-
-    #: Position id of the trade
-    #: Used to be self.trades[0].trade_id
-    position_id: int
-
-    #: List of all trades done for this position
-    trades: List[SpotTrade] = field(default_factory=list)
-
-    #: Closing the position could be deducted from the trades themselves,
-    #: but we cache it by hand to speed up processing
-    opened_at: Optional[pd.Timestamp] = None
-
-    #: Closing the position could be deducted from the trades themselves,
-    #: but we cache it by hand to speed up processing
-    closed_at: Optional[pd.Timestamp] = None
-
-    #: The total dollar value of the portfolio when the position
-    #: was opened
-    portfolio_value_at_open: Optional[USDollarAmount] = None
-
-    #: What is the maximum risk of this position.
-    #: Risk relative to the portfolio size.
-    loss_risk_at_open_pct: Optional[float] = None
-    
-    #: How much portfolio capital was risk when this position was opened.
-    #: This is based on the opening values, any position adjustment after open is ignored
-    #: Assume capital is tied to the position and we can never release it.
-    #: Assume no stop loss is used, or it cannot be trigged
-    capital_tied_at_open_pct: Optional[float] = None
-
-    #: Trigger a stop loss if this price is reached,
-    #:
-    #: We use mid-price as the trigger price.
-    stop_loss: Optional[USDollarAmount] = None
-
-    #: Related to loss_risk_at_open_pct
-    #: This is the related dollar value for maximum risk of the position
-    maximum_risk: Optional[USDollarAmount] = None
-
-    def __eq__(self, other: "TradePosition"):
-        """Trade positions are unique by opening timestamp and pair id.]
-
-        We assume there cannot be a position opened for the same asset at the same time twice.
-        """
-        return self.position_id == other.position_id
-
-    def __hash__(self):
-        """Allows easily create index (hash map) of all positions"""
-        return hash((self.position_id))
-
-    @property
-    def pair_id(self) -> PrimaryKey:
-        """Position id is the same as the opening trade id."""
-        return self.trades[0].pair_id
-
-    @property
-    def duration(self) -> Optional[datetime.timedelta]:
-        """How long this position was held.
-
-        :return: None if the position is still open
-        """
-        if not self.is_closed():
-            return None
-        return self.closed_at - self.opened_at
-
-    def is_open(self):
-        return self.closed_at is None
-
-    def is_closed(self):
-        return not self.is_open()
-
-    @property
-    def open_quantity(self) -> float:
-        return sum([t.quantity for t in self.trades])
-
-    @property
-    def open_value(self) -> float:
-        """The current value of this open position, with the price at the time of opening."""
-        assert self.is_open()
-        return sum([t.value for t in self.trades])
-
-    @property
-    def open_price(self) -> float:
-        """At what price we opened this position.
-
-        Supports only simple enter/exit positions.
-        """
-        return self.get_first_entry_price()
-
-    def get_first_entry_price(self) -> float:
-        """What was the price when the first entry buy for this position was made.
-        """
-        buys = list(self.buys)
-        return buys[0].price
-
-    def get_last_exit_price(self) -> float:
-        """What was the time when the last sell for this position was executd.
-        """
-        sells = list(self.sells)
-        return sells[-1].price
-
-    @property
-    def close_price(self) -> float:
-        """At what price we exited this position.
-
-        Supports only simple enter/exit positions.
-        """
-        return self.get_last_exit_price()
-
-    @property
-    def buys(self) -> Iterable[SpotTrade]:
-        return [t for t in self.trades if t.is_buy()]
-
-    @property
-    def sells(self) -> Iterable[SpotTrade]:
-        return [t for t in self.trades if t.is_sell()]
-
-    @property
-    def buy_value(self) -> USDollarAmount:
-        return sum([t.value - t.commission for t in self.trades if t.is_buy()])
-
-    @property
-    def sell_value(self) -> USDollarAmount:
-        return sum([t.value - t.commission for t in self.trades if t.is_sell()])
-
-    @property
-    def realised_profit(self) -> USDollarAmount:
-        """Calculated life-time profit over this position."""
-        assert not self.is_open()
-        return -sum([float(t.quantity) * t.executed_price - t.commission for t in self.trades])
-
-    @property
-    def realised_profit_percent(self) -> float:
-        """Calculated life-time profit over this position."""
-        assert not self.is_open()
-        buy_value = self.buy_value
-        sell_value = self.sell_value
-        return sell_value / buy_value - 1
-
-    def is_win(self):
-        """Did we win this trade."""
-        assert not self.is_open()
-        return self.realised_profit > 0
-
-    def is_lose(self):
-        assert not self.is_open()
-        return self.realised_profit < 0
-
-    def is_stop_loss(self) -> bool:
-        """Was stop loss triggered for this position"""
-        for t in self.trades:
-            if t.trade_type == TradeType.stop_loss:
-                return True
-        return False
-
-    def is_take_profit(self) -> bool:
-        """Was trake profit triggered for this position"""
-        for t in self.trades:
-            if t.trade_type == TradeType.take_profit:
-                return True
-        return False
-
-    def add_trade(self, t: SpotTrade):
-        if self.trades:
-            last_trade = self.trades[-1]
-            assert t.timestamp >= last_trade.timestamp, f"Tried to do trades in wrong order. Last: {last_trade}, got {t}"
-        self.trades.append(t)
-
-    def can_trade_close_position(self, t: SpotTrade):
-        assert self.is_open()
-        if not t.is_sell():
-            return False
-        open_quantity = self.open_quantity
-        closing_quantity = -t.quantity
-        assert closing_quantity <= open_quantity, "Cannot sell more than we have in balance sheet"
-        return closing_quantity == open_quantity
-
-    def get_max_size(self) -> USDollarAmount:
-        """Get the largest size of this position over the time"""
-        cur_size = 0
-        max_size = 0
-
-        if len(self.trades) > 2:
-            logger.warning("Position has %d trades so this method might produce wrong result", self.trades)
-
-        for t in self.trades:
-            cur_size = t.value
-            max_size = max(cur_size, max_size)
-        return max_size
-
-    def get_trade_count(self) -> int:
-        """How many individual trades was done to manage this position."""
-        return len(self.trades)
-
-    def get_total_lp_fees_paid(self) -> int:
-        """Get the total amount of swap fees paid in the position. Includes all trades."""
-        lp_fees_paid = 0
-        
-        for trade in self.trades:
-            if type(trade.lp_fees_paid) == list:
-                lp_fees_paid += sum(filter(None,trade.lp_fees_paid))
-            else:
-                lp_fees_paid += trade.lp_fees_paid or 0
-        
-        return lp_fees_paid
-
-    def has_bad_data_issues(self) -> bool:
-        """Do we have legacy / incompatible data issues."""
-        for t in self.trades:
-            if t.bad_data_issues:
-                return True
-        return False
-
-
-
-@dataclass
-class AssetTradeHistory:
-    """How a particular asset traded.
-
-    Each position can have increments or decrements.
-    When position is decreased to zero, it is considered closed, and a new buy open a new position.
-    """
-    positions: List[TradePosition] = field(default_factory=list)
-
-    def get_first_opened_at(self) -> Optional[pd.Timestamp]:
-        if self.positions:
-            return self.positions[0].opened_at
-        return None
-
-    def get_last_closed_at(self) -> Optional[pd.Timestamp]:
-        for position in reversed(self.positions):
-            if not position.is_open():
-                return position.closed_at
-
-        return None
-
-    def add_trade(
-        self, t: SpotTrade, 
-        position_id: int | None,
-        portfolio_value_at_open: USDollarAmount | None,
-        loss_risk_at_open_pct: float | None,
-        capital_tied_at_open_pct: float | None,
-        stop_loss: USDollarAmount | None,
-        maximum_risk: USDollarAmount | None
-    ):
-        """Adds a new trade to the asset history.
-
-        If there is an open position the trade is added against this,
-        otherwise a new position is opened for tracking.
-        """
-        current_position = None
-        if self.positions and self.positions[-1].is_open():
-            current_position = self.positions[-1]
-
-        if current_position:
-            # For live trading
-
-            if current_position.can_trade_close_position(t):
-                # Close the existing position
-                current_position.closed_at = t.timestamp
-                current_position.add_trade(t)
-                assert current_position.open_quantity == 0
-            else:
-                # Add to the existing position
-                current_position.add_trade(t)
-        else:
-            # For backtesting
-            # Open new position
-            assert position_id is not None, "position id must be provided when opening a new position for backtesting"
-            new_position = TradePosition(
-                opened_at=t.timestamp, 
-                position_id=position_id,
-                portfolio_value_at_open=portfolio_value_at_open,
-                loss_risk_at_open_pct=loss_risk_at_open_pct,
-                capital_tied_at_open_pct=capital_tied_at_open_pct,
-                stop_loss=stop_loss,
-                maximum_risk=maximum_risk
-            )
-            new_position.add_trade(t)
-            self.positions.append(new_position)
 
 
 @dataclass_json
@@ -664,37 +307,48 @@ class TradeAnalysis:
 
     portfolio: Portfolio
 
-    #: How a particular asset traded. Asset id -> Asset history mapping
-    asset_histories: Dict[object, AssetTradeHistory] = field(default_factory=dict)
+    filtered_sorted_positions: list[TradingPosition] = field(init=False)
 
+    def __post_init__(self):
+        
+        _filtered_positions = self.portfolio.get_all_positions_filtered()
+        
+        self.filtered_sorted_positions = sorted(_filtered_positions, key=lambda x: x.position_id)
+        
+        assert self.filtered_sorted_positions, "No positions found"
+    
     def get_first_opened_at(self) -> Optional[pd.Timestamp]:
-        def all_opens():
-            for history in self.asset_histories.values():
-                yield history.get_first_opened_at()
-
-        return min(all_opens())
+        """Get the opened_at timestamp of the first position in the portfolio."""
+        
+        return min(
+            position.opened_at for position in self.filtered_sorted_positions
+        )
 
     def get_last_closed_at(self) -> Optional[pd.Timestamp]:
-        def all_closes():
-            for history in self.asset_histories.values():
-                closed = history.get_last_closed_at()
-                if closed:
-                    yield closed
+        """Get the closed_at timestamp of the last position in the portfolio."""
+        
+        return max(
+            position.closed_at for position in self.portfolio.get_all_positions_filtered()
+        )
 
-        return max(all_closes())
+    def get_all_positions(self) -> Iterable[Tuple[PrimaryKey, TradingPosition]]:
+        """Return open and closed positions over all traded assets.
+        
+        Positions are sorted by position_id."""
+        
+        for position in self.filtered_sorted_positions:
+            # pair_id, position
+            yield position.pair.internal_id, position
 
-    def get_all_positions(self) -> Iterable[Tuple[PrimaryKey, TradePosition]]:
-        """Return open and closed positions over all traded assets."""
-        for pair_id, history in self.asset_histories.items():
-            for position in history.positions:
-                yield pair_id, position
-
-    def get_open_positions(self) -> Iterable[Tuple[PrimaryKey, TradePosition]]:
-        """Return open and closed positions over all traded assets."""
-        for pair_id, history in self.asset_histories.items():
-            for position in history.positions:
-                if position.is_open():
-                    yield pair_id, position
+    def get_open_positions(self) -> Iterable[Tuple[PrimaryKey, TradingPosition]]:
+        """Return open positions over all traded assets.
+        
+        Positions are sorted by position_id."""
+        
+        for position in self.filtered_sorted_positions:
+            if position.is_open():
+                # pair_id, position
+                yield position.pair.internal_id, position
 
     def calculate_summary_statistics(
         self, 
@@ -706,6 +360,9 @@ class TradeAnalysis:
             :param time_bucket:
                 Optional, used to display average duration as 'number of bars' instead of 'number of days'.
 
+            :param state:
+                Optional, should be specified if user would like to see advanced statistics
+            
             :return:
                 TradeSummary instance
         """
@@ -734,6 +391,9 @@ class TradeAnalysis:
             else:
                 return datetime.timedelta(0)
 
+        def avg(lst: list[int]):
+            return sum(lst) / len(lst)
+        
         def max_check(lst):
             return max(lst) if lst else None
         def min_check(lst):
@@ -772,16 +432,20 @@ class TradeAnalysis:
         profit: USDollarAmount = 0
         trade_volume = 0
         lp_fees_paid = 0
+        
+        max_pos_cons = 0
+        max_neg_cons = 0
+        max_pullback_pct = 0
+        pos_cons = 0
+        neg_cons = 0
+        pullback = 0
 
-        positions = []
-        position: TradePosition
         for pair_id, position in self.get_all_positions():
             
             lp_fees_paid += position.get_total_lp_fees_paid() or 0
             
             for t in position.trades:
                 trade_volume += abs(float(t.quantity) * t.executed_price)
-
 
             if position.is_open():
                 open_value += position.open_value
@@ -821,8 +485,33 @@ class TradeAnalysis:
                 loss_risk_at_open_pc.append(position.loss_risk_at_open_pct)
             else:
                 loss_risk_at_open_pc.append(position.capital_tied_at_open_pct)
+            
+            # for getting max consecutive wins/losses and max pullback
+            # don't do anything if profit = $0
+            realized_profit = position.realized_profit
+            if(realized_profit > 0):
+                    neg_cons = 0
+                    pullback = 0
+                    pos_cons += 1
+            elif(realized_profit < 0):
+                    pos_cons = 0
+                    neg_cons += 1
+                    pullback += realized_profit
 
-            positions.append(position)
+            if(neg_cons > max_neg_cons):
+                    max_neg_cons = neg_cons
+            if(pos_cons > max_pos_cons):
+                    max_pos_cons = pos_cons
+
+            value_at_open = position.portfolio_value_at_open
+            if value_at_open:
+                pullback_pct = pullback / (value_at_open + realized_profit)
+                if(pullback_pct < max_pullback_pct):
+                        # pull back is in the negative direction
+                        max_pullback_pct = pullback_pct
+            else:
+                # Bad input data / legacy data
+                max_pullback_pct = 0
 
         all_trades = winning_trades + losing_trades + [0 for i in range(zero_loss)]
         average_trade = avg_check(all_trades)
@@ -842,12 +531,6 @@ class TradeAnalysis:
 
         average_duration_of_winning_trades = get_avg_trade_duration(winning_trades_duration, time_bucket)
         average_duration_of_losing_trades = get_avg_trade_duration(losing_trades_duration, time_bucket)
-
-        # sort positions by position id (chronologically)
-        # should be unnecessary to sort since build_trade_analysis sorts same way
-        # but just in case used directly
-        positions.sort(key=lambda x: x.position_id)
-        max_pos_cons, max_neg_cons, max_pullback = self.get_max_consective(positions)
 
         lp_fees_average_pc = lp_fees_paid / trade_volume if trade_volume else 0
 
@@ -874,7 +557,7 @@ class TradeAnalysis:
             median_trade=median_trade,
             max_pos_cons=max_pos_cons,
             max_neg_cons=max_neg_cons,
-            max_pullback=max_pullback,
+            max_pullback=max_pullback_pct,
             max_loss_risk=max_loss_risk_at_open_pc,
             max_realised_loss=max_realised_loss,
             avg_realised_risk=avg_realised_risk,
@@ -900,67 +583,7 @@ class TradeAnalysis:
         df = pd.DataFrame(gen_events(), columns=["position_id", "position"])
         return df
 
-    def get_timeline_stats(self):
-        """create ordered timeline of trades for stats that need it"""
-        timeline = self.create_timeline()
-        raw_timeline = expand_timeline_raw(timeline)
-
-        # Max capital at risk at SL (don't confuse stop_losses and stop_loss_rows)
-        # max_capital_at_risk_sl = None
-        # stop_loss_rows = raw_timeline.loc[raw_timeline['Remarks'] == 'SL']
-        # if (stop_loss_pct is not None) and stop_loss_rows:
-        #     #raise ValueError("Missing argument: if raw_timeline is provided, then stop loss must also be provided")
-        #     max_capital_at_risk_sl = max(((1-stop_loss_pct)*stop_loss_rows['position_max_size'])/stop_loss_rows['opening_capital'])
-
-        return self.get_max_consective(raw_timeline)
-
-    @staticmethod
-    def get_max_consective(positions: List[TradePosition]) -> tuple[int, int ,int] | tuple[None, None, None]:
-        """May be used in calculate_summary_statistics
-
-        :param positions:
-        An list of trading positions, ordered by opened_at time. Note, must be ordered to be correct.
-        """
-
-        if not positions:
-            return None, None, None
-
-        max_pos_cons = 0
-        max_neg_cons = 0
-        max_pullback_pct = 0
-        pos_cons = 0
-        neg_cons = 0
-        pullback = 0
-
-        for position in positions:
-            realized_profit = position.realised_profit
-
-            # don't do anything if profit = $0
-            if(realized_profit > 0):
-                    neg_cons = 0
-                    pullback = 0
-                    pos_cons += 1
-            elif(realized_profit < 0):
-                    pos_cons = 0
-                    neg_cons += 1
-                    pullback += realized_profit
-
-            if(neg_cons > max_neg_cons):
-                    max_neg_cons = neg_cons
-            if(pos_cons > max_pos_cons):
-                    max_pos_cons = pos_cons
-
-            value_at_open = position.portfolio_value_at_open
-            if value_at_open:
-                pullback_pct = pullback / (value_at_open + realized_profit)
-                if(pullback_pct < max_pullback_pct):
-                        # pull back is in the negative direction
-                        max_pullback_pct = pullback_pct
-            else:
-                # Bad input data / legacy data
-                max_pullback_pct = 0
-
-        return max_pos_cons, max_neg_cons, max_pullback_pct
+   
 
 class TimelineRowStylingMode(enum.Enum):
     #: Style using Pandas background_gradient
@@ -1209,107 +832,38 @@ def build_trade_analysis(
     - Create TradeAnalysis instance that can be used to display IPython notebook
       data on the performance
 
-    :param state:
-        optional parameter that should be specified if user would like to see advanced statistics
     """
 
-    histories = {}
-
-    positions = list(portfolio.get_all_positions())
-
-    # Sort positions based on their id
-    # because open, closed and frozen positions might be in a mixed order
-    positions = sorted(positions, key=lambda p: p.position_id)
-
-    # Each Backtrader Trade instance presents a position
-    # Trade instances contain TradeHistory entries that present change to this position
-    # with Order instances attached
-    for position in positions:
-
-        pair = position.pair
-        pair_id = pair.internal_id
-        assert type(pair_id) == int
-
-        trade: TradeExecution
-
-        trades = list(position.trades.values())
-
-        for trade in trades:
-
-            if trade.is_repaired() or trade.is_repair_trade():
-                # These trades have quantity set to zero
-                continue
-
-            history = histories.get(pair_id)
-            if not history:
-                history = histories[pair_id] = AssetTradeHistory()
-
-            # filter out failed trade
-            if trade.executed_at is None:
-                continue
-
-            # Internally negative quantities are for sells
-            bad_data_issues = False
-            quantity = trade.executed_quantity
-            timestamp = pd.Timestamp(trade.executed_at)
-            if trade.planned_mid_price not in (0, None):
-                price = trade.planned_mid_price
-            else:
-                # TODO: Legacy trades.
-                # mid_price is filled to all latest trades
-                price = trade.executed_price
-                bad_data_issues = True
-
-            assert quantity != 0, f"Got bad quantity for {trade}"
-            assert (price is not None) and price > 0, f"Got invalid trade {trade.get_full_debug_dump_str()} - price is {price}"
-
-            spot_trade = SpotTrade(
-                pair_id=pair_id,
-                trade_id=trade.trade_id,
-                timestamp=timestamp,
-                price=price,
-                executed_price=trade.executed_price,
-                quantity=quantity,
-                commission=0,
-                slippage=0,  # TODO
-                trade_type=trade.trade_type,
-                lp_fees_paid=trade.lp_fees_paid,
-                bad_data_issues=bad_data_issues,
-            )
-
-            # used in get_max_consecutive
-            portfolio_value_at_open = position.portfolio_value_at_open
-
-            # used in calculate_summary_statistics()
-            stop_loss = position.stop_loss
-            
-            if position.portfolio_value_at_open:
-                capital_tied_at_open_pct=position.get_capital_tied_at_open_pct()
-            else:
-                capital_tied_at_open_pct=None
-            
-            if stop_loss:
-                maximum_risk = position.get_loss_risk_at_open()
-                loss_risk_at_open_pct = position.get_loss_risk_at_open_pct()
-            else:
-                maximum_risk = None
-                loss_risk_at_open_pct = None
-
-            history.add_trade(
-                spot_trade, 
-                position_id=position.position_id,
-                portfolio_value_at_open=portfolio_value_at_open,
-                loss_risk_at_open_pct=loss_risk_at_open_pct,
-                capital_tied_at_open_pct=capital_tied_at_open_pct,
-                stop_loss=stop_loss,
-                maximum_risk=maximum_risk
-            )
-
     return TradeAnalysis(
-        portfolio, 
-        asset_histories=histories
+        portfolio,
     )
 
+# used in calculate_summary_statistics()
+# stop_loss = position.stop_loss
 
-def avg(lst: list[int]):
-    return sum(lst) / len(lst)
+# used in get_max_consecutive
+# portfolio_value_at_open = position.portfolio_value_at_open
+
+# if position.portfolio_value_at_open:
+#     capital_tied_at_open_pct=position.get_capital_tied_at_open_pct()
+# else:
+#     capital_tied_at_open_pct=None
+
+# if stop_loss:
+#     maximum_risk = position.get_loss_risk_at_open()
+#     loss_risk_at_open_pct = position.get_loss_risk_at_open_pct()
+# else:
+#     maximum_risk = None
+#     loss_risk_at_open_pct = None
+
+
+
+# history.add_trade(
+#     spot_trade, 
+#     position_id=position.position_id,
+#     portfolio_value_at_open=portfolio_value_at_open,
+#     loss_risk_at_open_pct=loss_risk_at_open_pct,
+#     capital_tied_at_open_pct=capital_tied_at_open_pct,
+#     stop_loss=stop_loss,
+#     maximum_risk=maximum_risk
+# )
