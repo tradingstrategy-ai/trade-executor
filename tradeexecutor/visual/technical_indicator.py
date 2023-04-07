@@ -12,7 +12,9 @@ import pandas as pd
 from plotly import graph_objects as go
 
 
-from tradeexecutor.state.visualisation import Visualisation, Plot
+from tradeexecutor.state.visualisation import Visualisation, Plot, PlotKind
+
+from tradingstrategy.charting.candle_chart import VolumeBarMode
 
 
 logger = logging.getLogger(__name__)
@@ -22,7 +24,8 @@ def overlay_all_technical_indicators(
         fig: go.Figure,
         visualisation: Visualisation,
         start_at: Optional[pd.Timestamp] = None,
-        end_at: Optional[pd.Timestamp] = None
+        end_at: Optional[pd.Timestamp] = None,
+        volume_bar_mode: VolumeBarMode = None,
 ):
     """Draw all technical indicators from the visualisation over candle chart.
 
@@ -31,17 +34,97 @@ def overlay_all_technical_indicators(
 
     :param end_at:
         Crop range
+    
+    :param volume_bar_mode:
+        How to draw volume bars e.g. overlay, seperate, hidden
     """
 
+    # get starting row for indicators
+    cur_row = _get_initial_row(volume_bar_mode)
+
     # https://plotly.com/python/graphing-multiple-chart-types/
-    for plot_id, plot in visualisation.plots.items():
+    for plot in visualisation.plots.values():
+        
+        # get trace which is unattached to plot
         trace = visualise_technical_indicator(
             plot,
             start_at,
             end_at,
         )
-        if trace is not None:
-            fig.add_trace(trace)
+        
+        # must have something to draw for plot
+        if trace is None:
+            raise ValueError(f"Unknown plot kind: {plot.plot_kind}")
+        
+        # add trace to plot
+        if plot.kind == PlotKind.technical_indicator_detached:
+            cur_row += 1
+            fig.add_trace(trace, row=cur_row, col=1)
+        elif plot.kind == PlotKind.technical_indicator_on_price:
+            # don't increment current row
+            fig.add_trace(trace, row=1, col=1)
+        elif plot.kind == PlotKind.technical_indicator_overlay_on_detached:
+            # don't increment current row
+            fig.add_trace(trace, row=cur_row, col=1)
+        else:
+            raise ValueError(f"Unknown plot kind: {plot.plot_kind}")
+
+        # add horizontal line if needs be
+        if line_val := plot.horizontal_line:
+            _add_hline(fig, line_val, start_at, end_at, cur_row, plot)
+
+        
+
+def _get_initial_row(volume_bar_mode: VolumeBarMode):
+    """Get first row for plot based on volume bar mode."""
+    if volume_bar_mode in {VolumeBarMode.hidden, VolumeBarMode.overlay}:
+        cur_row = 1
+    elif volume_bar_mode == VolumeBarMode.separate:
+        cur_row = 2
+    else:
+        raise ValueError("Unknown volume bar mode: %s" % volume_bar_mode)
+    return cur_row
+
+def _add_hline(
+    fig: go.Figure, 
+    line_val: float,
+    start_at: pd.Timestamp | None, 
+    end_at: pd.Timestamp | None, 
+    cur_row: int, 
+    plot: Plot,
+):
+    """Add horizontal line to plot"""
+    
+    minimum = min(plot.points.values())
+    maximum = max(plot.points.values())
+    
+    assert minimum < line_val < maximum, f"Horizontal line value must be within range of plot. Plot range: {minimum} - {maximum}"
+    
+    start_at, end_at = _get_start_and_end(start_at, end_at, plot)
+
+    horizontal_line_colour = plot.horizontal_line_colour or "grey"
+
+    # Add a horizontal line to the first subplot
+    fig.add_shape(
+            type="line",
+            x0=start_at,
+            y0=line_val,
+            x1=end_at,
+            y1=line_val,
+            line=dict(color=horizontal_line_colour, width=1),
+            row=cur_row, col=1
+        )
+
+def _get_start_and_end(
+    start_at: pd.Timestamp | None, 
+    end_at: pd.Timestamp | None, 
+    plot: Plot,
+):
+    """Get first and last entry from plot if start_at and end_at are not set."""
+    if not start_at and end_at:
+        start_at = plot.get_first_entry()[0]
+        end_at = plot.get_last_entry()[0]
+    return start_at,end_at
 
 
 def visualise_technical_indicator(
