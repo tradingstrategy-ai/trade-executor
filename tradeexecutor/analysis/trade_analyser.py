@@ -755,8 +755,8 @@ def expand_timeline(
             "PnL USD": format_value(position.get_realised_profit_usd()) if position.is_closed() else np.nan,
             "PnL %": format_percent_2_decimals(realised_profit_percent) if position.is_closed() else np.nan,
             "PnL % raw": realised_profit_percent if position.is_closed() else 0,
-            "Open mid price USD": format_price(position.get_value_at_open()),
-            "Close mid price USD": format_price(position.get_value_at_close()) if position.is_closed() else np.nan,
+            "Open mid price USD": format_price(position.get_opening_price()),
+            "Close mid price USD": format_price(position.get_closing_price()) if position.is_closed() else np.nan,
             "Trade count": position.get_trade_count(),
             "LP fees": f"${position.get_total_lp_fees_paid():,.2f}"
         }
@@ -786,15 +786,17 @@ def expand_timeline(
 def expand_timeline_raw(
         timeline: pd.DataFrame,
         timestamp_format="%Y-%m-%d"
-    ) -> pd.DataFrame:  # sourcery skip: remove-unreachable-code
+    ) -> pd.DataFrame:
         """A simplified version of expand_timeline that does not care about
-        pair info, exchanges, or opening capital, and also provides raw figures"""
+        pair info, exchanges, or opening capital, and also provides raw figures.
+        
+        Unused in codebase, but can be useful for advanced users to use directly"""
 
         # https://stackoverflow.com/a/52363890/315168
         def expander(row):
             position: TradingPosition = row["position"]
             # timestamp = row.name  # ???
-            pair_id = position.pair_id
+            pair_id = position.pair.internal_id
 
             if position.is_stop_loss():
                 remarks = "SL"
@@ -816,8 +818,8 @@ def expand_timeline_raw(
                 "position_max_size": position.get_max_size(),
                 "pnl_usd": pnl_usd,
                 "pnl_pct_raw": realised_profit_percent if position.is_closed() else 0,
-                "open_price_usd": position.open_price,
-                "close_price_usd": position.close_price if position.is_closed() else np.nan,
+                "open_price_usd": position.get_opening_price(),
+                "close_price_usd": position.get_closing_price() if position.is_closed() else np.nan,
                 "trade_count": position.get_trade_count(),
             }
 

@@ -308,6 +308,12 @@ class TradingPosition:
         first_trade = self.get_first_trade()
         return first_trade.executed_price
 
+    def get_closing_price(self) -> USDollarAmount:
+        """Get the price when the position was closed."""
+        assert self.has_executed_trades()
+        last_trade = self.get_last_trade()
+        return last_trade.executed_price
+
     def get_equity_for_position(self) -> Decimal:
         """How many asset units this position tolds."""
         return sum_decimal([t.get_equity_for_position() for t in self.trades.values() if t.is_success()])
