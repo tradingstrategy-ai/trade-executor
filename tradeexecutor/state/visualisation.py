@@ -102,7 +102,7 @@ class Plot:
     relative_size: Optional[float] = 0.2
     
     #: If this plot is overlayed on top of a detached technical indicator, this is the name of the overlay it should be attached to.
-    detached_overlay_name: str | None = None
+    detached_overlay_name: Optional[str]= None
 
     def add_point(self,
                   timestamp: datetime.datetime,
