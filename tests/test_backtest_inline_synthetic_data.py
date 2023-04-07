@@ -400,8 +400,8 @@ def test_timeline(
     assert row['PnL USD'] == '$21.09'
     assert row['PnL %'] == '2.11%'
     assert row['PnL % raw'] == pytest.approx(0.021094526830844895, 1e-6)
-    assert row['Open mid price USD'] == '$1,000.000000'
-    assert row['Close mid price USD'] == '$1,021.094527'
+    assert row['Open mid price USD'] == '$1,617.279626'
+    assert row['Close mid price USD'] == '$1,651.395374'
     assert row['Trade count'] == 2
     assert row['LP fees'] == '$6.07'
 
@@ -418,8 +418,8 @@ def test_timeline(
     assert row2['PnL USD'] == '$-142.47'
     assert row2['PnL %'] == '-14.22%'
     assert row2['PnL % raw'] == pytest.approx(-0.14216816784355246, 1e-6)
-    assert row2['Open mid price USD'] == '$1,002.109453'
-    assert row2['Close mid price USD'] == '$859.641388'
+    assert row2['Open mid price USD'] == '$1,710.914224'
+    assert row2['Close mid price USD'] == '$1,467.676683'
     assert row2['Trade count'] == 2
     assert row2['LP fees'] == '$5.59'
     
@@ -435,8 +435,8 @@ def test_timeline(
     assert last_row['PnL USD'] == '$-50.32'
     assert last_row['PnL %'] == '-5.03%'
     assert last_row['PnL % raw'] == pytest.approx(-0.05030528788437061, 1e-6)
-    assert last_row['Open mid price USD'] == '$1,000.315069'
-    assert last_row['Close mid price USD'] == '$949.993932'
+    assert last_row['Open mid price USD'] == '$2,004.138663'
+    assert last_row['Close mid price USD'] == '$1,903.319891'
     assert last_row['Trade count'] == 2
     assert last_row['LP fees'] == '$5.86'
     
