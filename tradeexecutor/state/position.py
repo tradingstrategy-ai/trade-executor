@@ -738,6 +738,28 @@ class TradingPosition:
             return self.closed_at - self.opened_at  
         else:
             return None
+    
+    def get_total_lp_fees_paid(self) -> int:
+        """Get the total amount of swap fees paid in the position. Includes all trades."""
+        
+        lp_fees_paid = 0
+
+        for trade in self.trades.values():
+            if type(trade.lp_fees_paid) == list:
+                lp_fees_paid += sum(filter(None,trade.lp_fees_paid))
+            else:
+                lp_fees_paid += trade.lp_fees_paid or 0
+
+        return lp_fees_paid
+    
+    def get_buy_value(self) -> USDollarAmount:
+        """Get the total value of the position when it was bought."""
+        
+        return sum(t.get_executed_value() - t.commission for t in self.trades.values() if t.is_buy())
+    
+    def sell_value(self) -> USDollarAmount:
+        """Get the total value of the position when it was sold."""
+        return sum(t.get_executed_value() - t.commission for t in self.trades.values() if t.is_sell())
 
 
 class PositionType(enum.Enum):
