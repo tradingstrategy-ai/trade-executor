@@ -331,6 +331,7 @@ class TradingPosition:
         return [t for t in self.trades.values() if t.is_failed()]
 
     def calculate_value_using_price(self, token_price: USDollarAmount, reserve_price: USDollarAmount) -> USDollarAmount:
+        """Calculate the value of this position using the given prices."""
         token_quantity = sum([t.get_equity_for_position() for t in self.trades.values() if t.is_accounted_for_equity()])
         reserve_quantity = sum([t.get_equity_for_reserve() for t in self.trades.values() if t.is_accounted_for_equity()])
         return float(token_quantity) * token_price + float(reserve_quantity) * reserve_price
@@ -340,7 +341,10 @@ class TradingPosition:
 
         If the position is closed, the value should be zero.
         """
-        return self.calculate_value_using_price(self.last_token_price, self.last_reserve_price)
+        if self.is_closed():
+            return USDollarAmount(0)
+        else:
+            return self.calculate_value_using_price(self.last_token_price, self.last_reserve_price)
 
     def get_trades_by_strategy_cycle(self, timestamp: datetime.datetime) -> Iterable[TradeExecution]:
         """Get all trades made for this position at a specific time.
@@ -717,6 +721,23 @@ class TradingPosition:
         else:
             # Old invalid data
             return 0
+    
+    def get_realised_profit_percent(self) -> float:
+        """Calculated life-time profit over this position."""
+        
+        assert not self.is_open()
+        buy_value = self.buy_value
+        sell_value = self.sell_value
+        return sell_value / buy_value - 1
+    
+    def get_duration(self) -> datetime.timedelta | None:
+        """How long this position was held.
+        :return: None if the position is still open
+        """
+        if self.is_closed():
+            return self.closed_at - self.opened_at  
+        else:
+            return None
 
 
 class PositionType(enum.Enum):

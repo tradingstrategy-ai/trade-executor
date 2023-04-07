@@ -442,13 +442,25 @@ class TradeAnalysis:
 
         for pair_id, position in self.get_all_positions():
             
+            portfolio_value_at_open = position.portfolio_value_at_open
+            
+            capital_tied_at_open_pct = self.get_capital_tied_at_open(position)
+            
+            if position.stop_loss:
+                # TODO use maximum_risk
+                maximum_risk = position.get_loss_risk_at_open()
+                loss_risk_at_open_pc.append(position.get_loss_risk_at_open_pct())
+            else:
+                maximum_risk = None
+                loss_risk_at_open_pc.append(capital_tied_at_open_pct)
+            
             lp_fees_paid += position.get_total_lp_fees_paid() or 0
             
-            for t in position.trades:
-                trade_volume += abs(float(t.quantity) * t.executed_price)
+            for t in position.trades.values():
+                trade_volume += abs(float(t.executed_quantity) * t.executed_price)
 
             if position.is_open():
-                open_value += position.open_value
+                open_value += position.get_value()
                 undecided += 1
                 continue
 
@@ -458,18 +470,22 @@ class TradeAnalysis:
             if position.is_take_profit():
                 take_profits += 1
 
-            if position.is_win():
+            realised_profit_percent = position.get_realised_profit_percent()
+            realised_profit_usd = position.get_realised_profit_usd()
+            duration = position.get_duration()
+            
+            if position.is_profitable():
                 won += 1
-                winning_trades.append(position.realised_profit_percent)
-                winning_trades_duration.append(position.duration)
+                winning_trades.append(realised_profit_percent)
+                winning_trades_duration.append(duration)
 
-            elif position.is_lose():
+            elif position.is_loss():
                 lost += 1
-                losing_trades.append(position.realised_profit_percent)
-                losing_trades_duration.append(position.duration)
+                losing_trades.append(realised_profit_percent)
+                losing_trades_duration.append(duration)
 
-                if position.portfolio_value_at_open:
-                    realised_loss = position.realised_profit / position.portfolio_value_at_open
+                if portfolio_value_at_open := position.portfolio_value_at_open:
+                    realised_loss = realised_profit_usd / portfolio_value_at_open
                 else:
                     # Bad data
                     realised_loss = 0
@@ -479,33 +495,28 @@ class TradeAnalysis:
                 # Any profit exactly balances out loss in slippage and commission
                 zero_loss += 1
 
-            profit += position.realised_profit
-
-            if position.stop_loss:
-                loss_risk_at_open_pc.append(position.loss_risk_at_open_pct)
-            else:
-                loss_risk_at_open_pc.append(position.capital_tied_at_open_pct)
+            profit += realised_profit_usd
+            
             
             # for getting max consecutive wins/losses and max pullback
             # don't do anything if profit = $0
-            realized_profit = position.realized_profit
-            if(realized_profit > 0):
+            
+            if(realised_profit_usd > 0):
                     neg_cons = 0
                     pullback = 0
                     pos_cons += 1
-            elif(realized_profit < 0):
+            elif(realised_profit_usd < 0):
                     pos_cons = 0
                     neg_cons += 1
-                    pullback += realized_profit
+                    pullback += realised_profit_usd
 
             if(neg_cons > max_neg_cons):
                     max_neg_cons = neg_cons
             if(pos_cons > max_pos_cons):
                     max_pos_cons = pos_cons
 
-            value_at_open = position.portfolio_value_at_open
-            if value_at_open:
-                pullback_pct = pullback / (value_at_open + realized_profit)
+            if portfolio_value_at_open:
+                pullback_pct = pullback / (portfolio_value_at_open + realised_profit_usd)
                 if(pullback_pct < max_pullback_pct):
                         # pull back is in the negative direction
                         max_pullback_pct = pullback_pct
@@ -567,6 +578,13 @@ class TradeAnalysis:
             lp_fees_average_pc=lp_fees_average_pc,
             daily_returns=daily_returns
         )
+
+    @staticmethod
+    def get_capital_tied_at_open(position):
+        if position.portfolio_value_at_open:
+            return position.get_capital_tied_at_open_pct()
+        else:
+            return None
 
     def create_timeline(self) -> pd.DataFrame:
         """Create a timeline feed how we traded over a course of time.
@@ -709,7 +727,7 @@ def expand_timeline(
 
     # https://stackoverflow.com/a/52363890/315168
     def expander(row):
-        position: TradePosition = row["position"]
+        position: TradingPosition = row["position"]
         # timestamp = row.name  # ???
         pair_id = position.pair_id
         pair_info = pair_universe.get_pair_by_id(pair_id)
@@ -728,20 +746,22 @@ def expand_timeline(
         # Not an issue for new strategies.
         if position.has_bad_data_issues():
             remarks += "BAD"
+            
+        realised_profit_percent = position.get_realised_profit_percent()
 
         r = {
             # "timestamp": timestamp,
             "Id": position.position_id,
             "Remarks": remarks,
             "Opened at": position.opened_at.strftime(timestamp_format),
-            "Duration": format_duration_days_hours_mins(position.duration) if position.duration else np.nan,
+            "Duration": format_duration_days_hours_mins(duration) if duration else np.nan,
             "Exchange": exchange.name,
             "Base asset": pair_info.base_token_symbol,
             "Quote asset": pair_info.quote_token_symbol,
             "Position max value": format_value(position.get_max_size()),
-            "PnL USD": format_value(position.realised_profit) if position.is_closed() else np.nan,
-            "PnL %": format_percent_2_decimals(position.realised_profit_percent) if position.is_closed() else np.nan,
-            "PnL % raw": position.realised_profit_percent if position.is_closed() else 0,
+            "PnL USD": format_value(realised_profit) if position.is_closed() else np.nan,
+            "PnL %": format_percent_2_decimals(realised_profit_percent) if position.is_closed() else np.nan,
+            "PnL % raw": realised_profit_percent if position.is_closed() else 0,
             "Open mid price USD": format_price(position.open_price),
             "Close mid price USD": format_price(position.close_price) if position.is_closed() else np.nan,
             "Trade count": position.get_trade_count(),
@@ -779,7 +799,7 @@ def expand_timeline_raw(
 
         # https://stackoverflow.com/a/52363890/315168
         def expander(row):
-            position: TradePosition = row["position"]
+            position: TradingPosition = row["position"]
             # timestamp = row.name  # ???
             pair_id = position.pair_id
 
@@ -790,17 +810,19 @@ def expand_timeline_raw(
             else:
                 remarks = ""
 
-            pnl_usd = position.realised_profit if position.is_closed() else np.nan
+            pnl_usd = realised_profit if position.is_closed() else np.nan
 
+            realised_profit_percent = position.get_realised_profit_percent()
+            
             r = {
                 # "timestamp": timestamp,
                 "Id": position.position_id,
                 "Remarks": remarks,
                 "Opened at": position.opened_at.strftime(timestamp_format),
-                "Duration": format_duration_days_hours_mins(position.duration) if position.duration else np.nan,
+                "Duration": format_duration_days_hours_mins(duration) if duration else np.nan,
                 "position_max_size": position.get_max_size(),
                 "pnl_usd": pnl_usd,
-                "pnl_pct_raw": position.realised_profit_percent if position.is_closed() else 0,
+                "pnl_pct_raw": realised_profit_percent if position.is_closed() else 0,
                 "open_price_usd": position.open_price,
                 "close_price_usd": position.close_price if position.is_closed() else np.nan,
                 "trade_count": position.get_trade_count(),
@@ -837,33 +859,3 @@ def build_trade_analysis(
     return TradeAnalysis(
         portfolio,
     )
-
-# used in calculate_summary_statistics()
-# stop_loss = position.stop_loss
-
-# used in get_max_consecutive
-# portfolio_value_at_open = position.portfolio_value_at_open
-
-# if position.portfolio_value_at_open:
-#     capital_tied_at_open_pct=position.get_capital_tied_at_open_pct()
-# else:
-#     capital_tied_at_open_pct=None
-
-# if stop_loss:
-#     maximum_risk = position.get_loss_risk_at_open()
-#     loss_risk_at_open_pct = position.get_loss_risk_at_open_pct()
-# else:
-#     maximum_risk = None
-#     loss_risk_at_open_pct = None
-
-
-
-# history.add_trade(
-#     spot_trade, 
-#     position_id=position.position_id,
-#     portfolio_value_at_open=portfolio_value_at_open,
-#     loss_risk_at_open_pct=loss_risk_at_open_pct,
-#     capital_tied_at_open_pct=capital_tied_at_open_pct,
-#     stop_loss=stop_loss,
-#     maximum_risk=maximum_risk
-# )
