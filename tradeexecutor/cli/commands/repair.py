@@ -12,7 +12,7 @@ import typer
 
 from tradingstrategy.client import Client
 from .app import app
-from ..init import prepare_executor_id, prepare_cache, create_web3_config, create_state_store, \
+from ..bootstrap import prepare_executor_id, prepare_cache, create_web3_config, create_state_store, \
     create_trade_execution_model
 from ..log import setup_logging
 from ...state.repair import repair_trades
@@ -21,7 +21,7 @@ from ...strategy.approval import UncheckedApprovalModel
 from ...strategy.bootstrap import make_factory_from_strategy_mod
 from ...strategy.description import StrategyExecutionDescription
 from ...strategy.execution_context import ExecutionContext, ExecutionMode
-from ...strategy.execution_model import TradeExecutionType
+from ...strategy.execution_model import ExecutionType
 from ...strategy.run_state import RunState
 from ...strategy.strategy_module import read_strategy_module
 from ...strategy.trading_strategy_universe import TradingStrategyUniverseModel

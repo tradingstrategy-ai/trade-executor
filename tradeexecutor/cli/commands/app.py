@@ -3,7 +3,7 @@
 import typer
 import shutil
 
-from tradeexecutor.cli.init import monkey_patch
+from tradeexecutor.cli.bootstrap import monkey_patch
 
 
 # https://github.com/tiangolo/typer/issues/511#issuecomment-1331692007

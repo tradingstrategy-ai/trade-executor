@@ -27,7 +27,7 @@ from tradeexecutor.state.store import JSONFileStore, StateStore
 from tradeexecutor.testing.dummy_wallet import DummyWalletSyncer
 from tradeexecutor.strategy.approval import UncheckedApprovalModel, ApprovalType, ApprovalModel
 from tradeexecutor.strategy.dummy import DummyExecutionModel
-from tradeexecutor.strategy.execution_model import TradeExecutionType
+from tradeexecutor.strategy.execution_model import ExecutionType
 from tradingstrategy.chain import ChainId
 
 logger = logging.getLogger(__name__)
@@ -74,7 +74,7 @@ def create_web3_config(
 
 
 def create_trade_execution_model(
-        execution_type: TradeExecutionType,
+        execution_type: ExecutionType,
         private_key: str,
         web3config: Web3Config,
         confirmation_timeout: datetime.timedelta,
@@ -86,7 +86,7 @@ def create_trade_execution_model(
 
     assert isinstance(confirmation_timeout, datetime.timedelta), f"Got {confirmation_timeout}"
 
-    if execution_type == TradeExecutionType.dummy:
+    if execution_type == ExecutionType.dummy:
         # Used in test_strategy_cycle_trigger.py
         web3 = web3config.get_default()
         execution_model = DummyExecutionModel(web3)
@@ -94,7 +94,7 @@ def create_trade_execution_model(
         valuation_model_factory = uniswap_v2_sell_valuation_factory
         pricing_model_factory = uniswap_v2_live_pricing_factory
         return execution_model, sync_method, valuation_model_factory, pricing_model_factory
-    elif execution_type == TradeExecutionType.uniswap_v2_hot_wallet:
+    elif execution_type == ExecutionType.uniswap_v2_hot_wallet:
         assert private_key, "Private key is needed for live trading"
         web3 = web3config.get_default()
         hot_wallet = HotWallet.from_private_key(private_key)
@@ -117,7 +117,7 @@ def create_trade_execution_model(
                 raise RuntimeError(f"Should not happen: {web3config.gas_price_method}")
 
         return execution_model, sync_method, valuation_model_factory, pricing_model_factory
-    elif execution_type == TradeExecutionType.backtest:
+    elif execution_type == ExecutionType.backtest:
         logger.info("TODO: Command line backtests are always executed with initial deposit of $10,000")
         wallet = SimulatedWallet()
         execution_model = BacktestExecutionModel(wallet, max_slippage=0.01, stop_loss_data_available=True)

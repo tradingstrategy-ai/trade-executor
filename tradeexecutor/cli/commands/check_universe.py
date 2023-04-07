@@ -8,7 +8,7 @@ import typer
 
 from tradingstrategy.client import Client
 from .app import app
-from ..init import prepare_executor_id, prepare_cache
+from ..bootstrap import prepare_executor_id, prepare_cache
 from ..log import setup_logging
 from ...strategy.bootstrap import import_strategy_file
 from ...strategy.description import StrategyExecutionDescription

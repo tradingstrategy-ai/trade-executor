@@ -16,7 +16,7 @@ from tradingstrategy.chain import ChainId
 from tradingstrategy.client import Client
 from tradingstrategy.timebucket import TimeBucket
 from .app import app, TRADE_EXECUTOR_VERSION
-from ..init import prepare_executor_id, prepare_cache, create_web3_config, create_state_store, \
+from ..bootstrap import prepare_executor_id, prepare_cache, create_web3_config, create_state_store, \
     create_trade_execution_model, create_metadata, create_approval_model
 from ..log import setup_logging, setup_discord_logging, setup_logstash_logging, setup_file_logging, \
     setup_custom_log_levels
@@ -29,7 +29,7 @@ from ...strategy.approval import ApprovalType
 from ...strategy.bootstrap import import_strategy_file
 from ...strategy.cycle import CycleDuration
 from ...strategy.execution_context import ExecutionContext, ExecutionMode
-from ...strategy.execution_model import TradeExecutionType
+from ...strategy.execution_model import ExecutionType
 from ...strategy.run_state import RunState
 from ...strategy.strategy_cycle_trigger import StrategyCycleTrigger
 from ...strategy.strategy_module import read_strategy_module, StrategyModuleInformation
@@ -53,7 +53,7 @@ def start(
     strategy_file: Path = typer.Option(..., envvar="STRATEGY_FILE", help="Python strategy file to run"),
 
     # Live trading or backtest
-    execution_type: TradeExecutionType = typer.Option(..., envvar="EXECUTION_TYPE"),
+    execution_type: ExecutionType = typer.Option(..., envvar="EXECUTION_TYPE"),
     trading_strategy_api_key: str = typer.Option(None, envvar="TRADING_STRATEGY_API_KEY", help="Trading Strategy API key"),
 
     # Webhook server options
@@ -126,7 +126,7 @@ def start(
             name = "Unnamed backtest"
 
     if not log_level:
-        if execution_type == TradeExecutionType.backtest:
+        if execution_type == ExecutionType.backtest:
             log_level = logging.WARNING
         else:
             log_level = logging.INFO
@@ -158,7 +158,7 @@ def start(
     try:
 
         if not state_file:
-            if execution_type != TradeExecutionType.backtest:
+            if execution_type != ExecutionType.backtest:
                 state_file = f"state/{id}.json"
 
         # Avoid polluting user caches during test runs,
@@ -171,7 +171,7 @@ def start(
 
         confirmation_timeout = datetime.timedelta(seconds=confirmation_timeout)
 
-        if execution_type in (TradeExecutionType.uniswap_v2_hot_wallet, TradeExecutionType.dummy):
+        if execution_type in (ExecutionType.uniswap_v2_hot_wallet, ExecutionType.dummy):
             web3config = create_web3_config(
                 json_rpc_binance=json_rpc_binance,
                 json_rpc_polygon=json_rpc_polygon,
@@ -227,7 +227,7 @@ def start(
             store = create_state_store(Path(state_file))
         else:
             # Backtests never have persistent state
-            if execution_type == TradeExecutionType.backtest:
+            if execution_type == ExecutionType.backtest:
                 logger.info("This backtest run won't create a state file")
                 store = NoneStore(State())
             else:
@@ -343,7 +343,7 @@ def start(
         loop.run()
 
         # Display summary stats for terminal backtest runs
-        if execution_type == TradeExecutionType.backtest and isinstance(store, NoneStore):
+        if execution_type == ExecutionType.backtest and isinstance(store, NoneStore):
             display_backtesting_results(store.state)
 
     except KeyboardInterrupt as e:

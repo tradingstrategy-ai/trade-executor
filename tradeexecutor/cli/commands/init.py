@@ -1,22 +1,19 @@
-"""console command."""
+"""iniy command"""
+
 import datetime
-from decimal import Decimal
 from pathlib import Path
 from typing import Optional
 
 import typer
+from web3 import Web3
 
-from IPython import embed
-import pandas as pd
-
+from eth_defi.balances import fetch_erc20_balances_by_token_list
+from eth_defi.gas import GasPriceMethod
 from eth_defi.hotwallet import HotWallet
-from tradingstrategy.chain import ChainId
+from eth_defi.token import fetch_erc20_details
 from tradingstrategy.client import Client
-from tradingstrategy.timebucket import TimeBucket
-
 from .app import app
-from ..bootstrap import prepare_executor_id, prepare_cache, create_web3_config, create_trade_execution_model, \
-    create_state_store
+from ..bootstrap import prepare_executor_id, prepare_cache, create_web3_config, create_trade_execution_model
 from ..log import setup_logging
 from ...strategy.approval import UncheckedApprovalModel
 from ...strategy.bootstrap import make_factory_from_strategy_mod
@@ -27,35 +24,16 @@ from ...strategy.run_state import RunState
 from ...strategy.strategy_module import read_strategy_module
 from ...strategy.trading_strategy_universe import TradingStrategyUniverseModel
 from ...strategy.universe_model import UniverseOptions
+from ...utils.fullname import get_object_full_name
 from ...utils.timer import timed_task
 
 
-def launch_console(bindings: dict):
-    """Start IPython session"""
-
-    print('')
-    print('Following classes and objects are available:')
-    for var, val in bindings.items():
-        line = "{key:30}: {value}".format(
-            key=var,
-            value=str(val).replace('\n', ' ').replace('\r', ' ')
-        )
-        print(line)
-    print('')
-
-    embed(user_ns=bindings, colors="Linux")
-
-
 @app.command()
-def console(
+def init(
     id: str = typer.Option(None, envvar="EXECUTOR_ID", help="Executor id used when programmatically referring to this instance. If not given, take the base of --strategy-file."),
-
-    # State
-    state_file: Optional[Path] = typer.Option(None, envvar="STATE_FILE", help="JSON file where we serialise the execution state. If not given defaults to state/{executor-id}.json"),
 
     strategy_file: Path = typer.Option(..., envvar="STRATEGY_FILE"),
     private_key: str = typer.Option(None, envvar="PRIVATE_KEY"),
-    trading_strategy_api_key: str = typer.Option(None, envvar="TRADING_STRATEGY_API_KEY", help="Trading Strategy API key"),
     cache_path: Optional[Path] = typer.Option("cache/", envvar="CACHE_PATH", help="Where to store downloaded datasets"),
 
     # Get minimum gas balance from the env
@@ -68,16 +46,17 @@ def console(
     json_rpc_avalanche: str = typer.Option(None, envvar="JSON_RPC_AVALANCHE", help="Avalanche C-chain JSON-RPC node URL we connect to"),
 
     log_level: str = typer.Option(None, envvar="LOG_LEVEL", help="The Python default logging level. The defaults are 'info' is live execution, 'warning' if backtesting. Set 'disabled' in testing."),
-
-    unit_testing: bool = typer.Option(False, "--unit-testing", envvar="UNIT_TESTING", help="The trade executor is called under the unit testing mode. No caches are purged."),
 ):
-    """Open interactive IPython console.
+    """Initialise a strategy.
 
-    Open an interactive Python prompt where you can inspect and debug the current trade
-    executor state.
+    A strategy initialisation will create its state file.
+    It will also connect to a blockchain and check the vault smart contract is ready.
 
-    Strategy, state and execution state are loaded to the memory for debugging.
+    Vault deployment is still handled separate.
     """
+
+    # To run this from command line with .env file you can do
+    # set -o allexport ; source ~/pancake-eth-usd-sma-final.env ; set +o allexport ;  trade-executor check-wallet
 
     global logger
 
@@ -86,10 +65,6 @@ def console(
     logger = setup_logging(log_level)
 
     mod = read_strategy_module(strategy_file)
-
-    cache_path = prepare_cache(id, cache_path)
-
-    client = Client.create_live_client(trading_strategy_api_key, cache_path=cache_path)
 
     execution_context = ExecutionContext(
         mode=ExecutionMode.preflight_check,
@@ -110,31 +85,10 @@ def console(
     web3config.set_default_chain(mod.chain_id)
     web3config.check_default_chain_id()
 
-    execution_model, sync_method, valuation_model_factory, pricing_model_factory = create_trade_execution_model(
-        execution_type=ExecutionType.uniswap_v2_hot_wallet,
-        private_key=private_key,
-        web3config=web3config,
-        confirmation_timeout=datetime.timedelta(seconds=60),
-        confirmation_block_count=6,
-        max_slippage=0.01,
-        min_balance_threshold=minimum_gas_balance,
-    )
-
     hot_wallet = HotWallet.from_private_key(private_key)
 
     # Set up the strategy engine
     factory = make_factory_from_strategy_mod(mod)
-    run_description: StrategyExecutionDescription = factory(
-        execution_model=execution_model,
-        execution_context=execution_context,
-        timed_task_context_manager=execution_context.timed_task_context_manager,
-        sync_method=sync_method,
-        valuation_model_factory=valuation_model_factory,
-        pricing_model_factory=pricing_model_factory,
-        approval_model=UncheckedApprovalModel(),
-        client=client,
-        run_state=RunState(),
-    )
 
     # We construct the trading universe to know what's our reserve asset
     universe_model: TradingStrategyUniverseModel = run_description.universe_model
@@ -147,6 +101,7 @@ def console(
     # Get all tokens from the universe
     reserve_assets = universe.reserve_assets
     web3 = web3config.get_default()
+    tokens = [Web3.to_checksum_address(a.address) for a in reserve_assets]
 
     logger.info("RPC details")
 
@@ -159,43 +114,34 @@ def console(
     logger.info("  Hot wallet is %s", hot_wallet.address)
     gas_balance = web3.eth.get_balance(hot_wallet.address) / 10**18
     logger.info("  We have %f tokens for gas left", gas_balance)
+    logger.info("  The gas error limit is %f tokens", minimum_gas_balance)
+    balances = fetch_erc20_balances_by_token_list(web3, hot_wallet.address, tokens)
 
-    if not state_file:
-        state_file = f"state/{id}.json"
+    for asset in reserve_assets:
+        logger.info("Reserve asset: %s", asset.token_symbol)
 
-    store = create_state_store(Path(state_file))
+    for address, balance in balances.items():
+        details = fetch_erc20_details(web3, address)
+        logger.info("  Balance of %s (%s): %s %s", details.name, details.address, details.convert_to_decimals(balance), details.symbol)
 
-    if store.is_pristine():
-        state = store.create()
-    else:
-        state = store.load()
-
-    logger.info("State details")
-    logger.info("  Number of positions: %s", len(list(state.portfolio.get_all_positions())))
-    logger.info("  Number of trades: %s", len(list(state.portfolio.get_all_trades())))
-
+    # Check that the routing looks sane
+    # E.g. there is no mismatch between strategy reserve token, wallet and pair universe
     runner = run_description.runner
     routing_state, pricing_model, valuation_method = runner.setup_routing(universe)
+    routing_model = runner.routing_model
 
-    # Set up the default objects
-    # availalbe in the interactive session
-    bindings = {
-        "web3": web3,
-        "client": client,
-        "state": state,
-        "universe": universe,
-        "store": store,
-        "routing_state": routing_state,
-        "pricing_model": pricing_model,
-        "valuation_method": valuation_method,
-        "pd": pd,
-        "cache_path": cache_path,
-        "datetime": datetime,
-        "Decimal": Decimal,
-        "ExecutionMode": ExecutionMode,
-        "ChainId": ChainId,
-        "TimeBucket": TimeBucket,
-    }
+    logger.info("Execution details")
+    logger.info("  Execution model is %s", get_object_full_name(execution_model))
+    logger.info("  Routing model is %s", get_object_full_name(routing_model))
+    logger.info("  Token pricing model is %s", get_object_full_name(pricing_model))
+    logger.info("  Position valuation model is %s", get_object_full_name(valuation_method))
 
-    if not unit_testing:
-        launch_console(bindings)
+    # Check we have enough gas
+    execution_model.preflight_check()
+
+    # Check our routes
+    routing_model.perform_preflight_checks_and_logging(universe.universe.pairs)
+
+    web3config.close()
+
+

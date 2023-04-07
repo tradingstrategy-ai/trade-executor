@@ -119,7 +119,7 @@ class ExecutionModel(abc.ABC):
         """
 
 
-class TradeExecutionType(enum.Enum):
+class ExecutionType(enum.Enum):
     """Default execution options.
 
     What kind of trade instruction execution model the strategy does.
@@ -136,10 +136,4 @@ class TradeExecutionType(enum.Enum):
     uniswap_v2_hot_wallet = "uniswap_v2_hot_wallet"
 
     #: Trading using Enzyme Protocol pool, single oracle mode
-    single_oracle_pooled = "single_oracle_pooled"
-
-    #: Trading using oracle network, oracles form a consensus using a judge smart contract
-    multi_oracle_judged = "multi_oracle_judged"
-
-    #: Simulate execution using backtest data
-    backtest = "backtest"
+    enzyme = "enzyme"
