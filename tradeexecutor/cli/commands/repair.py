@@ -21,7 +21,7 @@ from ...strategy.approval import UncheckedApprovalModel
 from ...strategy.bootstrap import make_factory_from_strategy_mod
 from ...strategy.description import StrategyExecutionDescription
 from ...strategy.execution_context import ExecutionContext, ExecutionMode
-from ...strategy.execution_model import ExecutionType
+from ...strategy.execution_model import AssetManagementMode
 from ...strategy.run_state import RunState
 from ...strategy.strategy_module import read_strategy_module
 from ...strategy.trading_strategy_universe import TradingStrategyUniverseModel
@@ -96,11 +96,8 @@ def repair(
 
     if not state_file:
         state_file = f"state/{id}.json"
-
     store = create_state_store(Path(state_file))
-
     assert not store.is_pristine(), f"State file not found {state_file}"
-
     state = store.load()
 
     # Set up the strategy engine

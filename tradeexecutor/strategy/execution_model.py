@@ -119,7 +119,7 @@ class ExecutionModel(abc.ABC):
         """
 
 
-class ExecutionType(enum.Enum):
+class AssetManagementMode(enum.Enum):
     """Default execution options.
 
     What kind of trade instruction execution model the strategy does.

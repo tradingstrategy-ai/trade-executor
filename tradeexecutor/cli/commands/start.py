@@ -15,6 +15,8 @@ from eth_defi.gas import GasPriceMethod
 from tradingstrategy.chain import ChainId
 from tradingstrategy.client import Client
 from tradingstrategy.timebucket import TimeBucket
+
+from . import shared_options
 from .app import app, TRADE_EXECUTOR_VERSION
 from ..bootstrap import prepare_executor_id, prepare_cache, create_web3_config, create_state_store, \
     create_trade_execution_model, create_metadata, create_approval_model
@@ -29,7 +31,7 @@ from ...strategy.approval import ApprovalType
 from ...strategy.bootstrap import import_strategy_file
 from ...strategy.cycle import CycleDuration
 from ...strategy.execution_context import ExecutionContext, ExecutionMode
-from ...strategy.execution_model import ExecutionType
+from ...strategy.execution_model import AssetManagementMode
 from ...strategy.run_state import RunState
 from ...strategy.strategy_cycle_trigger import StrategyCycleTrigger
 from ...strategy.strategy_module import read_strategy_module, StrategyModuleInformation
@@ -50,10 +52,10 @@ def start(
     short_description: Optional[str] = typer.Option(None, envvar="SHORT_DESCRIPTION", help="Short description for metadata"),
     long_description: Optional[str] = typer.Option(None, envvar="LONG_DESCRIPTION", help="Long description for metadata"),
     icon_url: Optional[str] = typer.Option(None, envvar="ICON_URL", help="Strategy icon for web rendering and Discord avatar"),
-    strategy_file: Path = typer.Option(..., envvar="STRATEGY_FILE", help="Python strategy file to run"),
+    strategy_file: Path = shared_options.strategy_file,
 
     # Live trading or backtest
-    execution_type: ExecutionType = typer.Option(..., envvar="EXECUTION_TYPE"),
+    execution_type: AssetManagementMode = typer.Option(..., envvar="EXECUTION_TYPE"),
     trading_strategy_api_key: str = typer.Option(None, envvar="TRADING_STRATEGY_API_KEY", help="Trading Strategy API key"),
 
     # Webhook server options
@@ -72,7 +74,7 @@ def start(
     gas_price_method: Optional[GasPriceMethod] = typer.Option(None, envvar="GAS_PRICE_METHOD", help="How to set the gas price for Ethereum transactions. After the Berlin hardfork Ethereum mainnet introduced base + tip cost gas model. Leave out to autodetect."),
     confirmation_timeout: int = typer.Option(900, envvar="CONFIRMATION_TIMEOUT", help="How many seconds to wait for transaction batches to confirm"),
     confirmation_block_count: int = typer.Option(2, envvar="CONFIRMATION_BLOCK_COUNT", help="How many blocks we wait before we consider transaction receipt a final"),
-    private_key: Optional[str] = typer.Option(None, envvar="PRIVATE_KEY", help="Ethereum private key to be used as a hot wallet/broadcast wallet"),
+    private_key: Optional[str] = shared_options.private_key,
     minimum_gas_balance: Optional[float] = typer.Option(0.1, envvar="MINUMUM_GAS_BALANCE", help="What is the minimum balance of gas token you need to have in your wallet. If the balance falls below this, abort by crashing and do not attempt to create transactions. Expressed in the native token e.g. ETH."),
 
     # Logging
@@ -126,7 +128,7 @@ def start(
             name = "Unnamed backtest"
 
     if not log_level:
-        if execution_type == ExecutionType.backtest:
+        if execution_type == AssetManagementMode.backtest:
             log_level = logging.WARNING
         else:
             log_level = logging.INFO
@@ -158,7 +160,7 @@ def start(
     try:
 
         if not state_file:
-            if execution_type != ExecutionType.backtest:
+            if execution_type != AssetManagementMode.backtest:
                 state_file = f"state/{id}.json"
 
         # Avoid polluting user caches during test runs,
@@ -171,7 +173,7 @@ def start(
 
         confirmation_timeout = datetime.timedelta(seconds=confirmation_timeout)
 
-        if execution_type in (ExecutionType.uniswap_v2_hot_wallet, ExecutionType.dummy):
+        if execution_type in (AssetManagementMode.uniswap_v2_hot_wallet, AssetManagementMode.dummy):
             web3config = create_web3_config(
                 json_rpc_binance=json_rpc_binance,
                 json_rpc_polygon=json_rpc_polygon,
@@ -227,7 +229,7 @@ def start(
             store = create_state_store(Path(state_file))
         else:
             # Backtests never have persistent state
-            if execution_type == ExecutionType.backtest:
+            if execution_type == AssetManagementMode.backtest:
                 logger.info("This backtest run won't create a state file")
                 store = NoneStore(State())
             else:
@@ -343,7 +345,7 @@ def start(
         loop.run()
 
         # Display summary stats for terminal backtest runs
-        if execution_type == ExecutionType.backtest and isinstance(store, NoneStore):
+        if execution_type == AssetManagementMode.backtest and isinstance(store, NoneStore):
             display_backtesting_results(store.state)
 
     except KeyboardInterrupt as e:

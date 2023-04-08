@@ -105,9 +105,9 @@ def test_enzyme_live_trading_init(
         "STRATEGY_FILE": strategy_path.as_posix(),
         "PRIVATE_KEY": hot_wallet.account.key.hex(),
         "JSON_RPC_ANVIL": anvil.json_rpc_url,
-        "STATE_FILE": state_file
+        "STATE_FILE": state_file,
         "RESET_STATE": "true",
-        "EXECUTION_TYPE": "uniswap_v2_hot_wallet",
+        "ASSET_MANAGEMENT_MODE": "enzyme",
         "UNIT_TESTING": "true",
         "LOG_LEVEL": "disabled",
     }

@@ -3,7 +3,7 @@
 import logging
 import datetime
 from functools import partial
-from typing import cast, Collection, List
+from typing import cast, Collection, List, Optional
 
 from web3 import Web3
 
@@ -54,11 +54,16 @@ class EnzymeVaultSyncModel(SyncModel):
 
             Will call :py:meth:`process_blocks` as the part :py:meth:`sync_treasury`.
         """
+        assert vault_address is not None
         self.web3 = web3
         self.reorg_mon = reorg_mon
         self.vault = Vault.fetch(web3, vault_address)
         self.scan_chunk_size = 10_000
         self.only_chain_listener = only_chain_listener
+
+    def get_vault_address(self) -> Optional[str]:
+        """Get the vault address we are using"""
+        return self.vault.address
 
     def _notify(
             self,

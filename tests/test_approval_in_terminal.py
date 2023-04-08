@@ -21,7 +21,7 @@ from eth_defi.hotwallet import HotWallet
 from eth_defi.token import create_token
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, deploy_trading_pair, deploy_uniswap_v2_like
 from tradeexecutor.cli.approval import CLIApprovalModel
-from tradeexecutor.ethereum.hot_wallet_sync import EthereumHotWalletReserveSyncer
+from tradeexecutor.ethereum.hot_wallet_sync_model import EthereumHotWalletReserveSyncer
 from tradeexecutor.ethereum.uniswap_v2_execution_v0 import UniswapV2ExecutionModelVersion0
 from tradeexecutor.ethereum.uniswap_v2_live_pricing import uniswap_v2_live_pricing_factory
 from tradeexecutor.ethereum.uniswap_v2_valuation import UniswapV2PoolRevaluator, uniswap_v2_sell_valuation_factory

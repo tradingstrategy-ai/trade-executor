@@ -9,7 +9,7 @@ from eth_defi.hotwallet import HotWallet
 from web3 import Web3
 
 from tradeexecutor.cli.loop import ExecutionLoop
-from tradeexecutor.ethereum.hot_wallet_sync import EthereumHotWalletReserveSyncer
+from tradeexecutor.ethereum.hot_wallet_sync_model import EthereumHotWalletReserveSyncer
 from tradeexecutor.state.state import State
 from tradeexecutor.state.store import NoneStore
 from tradeexecutor.strategy.approval import UncheckedApprovalModel
