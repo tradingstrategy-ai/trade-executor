@@ -25,6 +25,7 @@ from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, FOREVER_DEADLINE
 from eth_defi.trade import TradeSuccess, TradeFail
 from eth_defi.revert_reason import fetch_transaction_revert_reason
 
+from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution, TradeStatus
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction, BlockchainTransactionType
@@ -50,8 +51,7 @@ class EthereumExecutionModel(ExecutionModel):
 
     @abstractmethod
     def __init__(self,
-                 web3: Web3,
-                 hot_wallet: HotWallet,
+                 tx_builder: TransactionBuilder,
                  min_balance_threshold=Decimal("0.5"),
                  confirmation_block_count=6,
                  confirmation_timeout=datetime.timedelta(minutes=5),
@@ -59,10 +59,7 @@ class EthereumExecutionModel(ExecutionModel):
                  stop_on_execution_failure=True,
                  swap_gas_fee_limit=2_000_000):
         """
-        :param web3:
-            Web3 connection used for this instance
-
-        :param hot_wallet:
+        :param tx_builder:
             Hot wallet instance used for this execution
 
         :param min_balance_threshold:
@@ -78,17 +75,24 @@ class EthereumExecutionModel(ExecutionModel):
             Raise an exception if any of the trades fail top execute
 
         :param max_slippage:
+
+            TODO: No longer used. Set in `TradeExecution` object.
+
             Max slippage tolerance per trade. 0.01 is 1%.
         """
+        assert isinstance(tx_builder, TransactionBuilder), f"Got {tx_builder} {tx_builder.__class__}"
         assert isinstance(confirmation_timeout, datetime.timedelta), f"Got {confirmation_timeout} {confirmation_timeout.__class__}"
-        self.web3 = web3
-        self.hot_wallet = hot_wallet
+        self.tx_builder = tx_builder
         self.stop_on_execution_failure = stop_on_execution_failure
         self.min_balance_threshold = min_balance_threshold
         self.confirmation_block_count = confirmation_block_count
         self.confirmation_timeout = confirmation_timeout
         self.swap_gas_fee_limit = swap_gas_fee_limit
         self.max_slippage = max_slippage
+
+    @property
+    def web3(self):
+        return self.tx_builder.web3
 
     @property
     def chain_id(self) -> int:
@@ -224,15 +228,15 @@ class EthereumExecutionModel(ExecutionModel):
 
         # Check we have money for gas fees
         if self.min_balance_threshold > 0:
-            balance = self.hot_wallet.get_native_currency_balance(self.web3)
-            assert balance > self.min_balance_threshold, f"At least {self.min_balance_threshold} native currency need, our wallet {self.hot_wallet.address} has {balance:.8f}"
+            balance = self.tx_builder.get_native_currency_balance(self.web3)
+            assert balance > self.min_balance_threshold, f"At least {self.min_balance_threshold} native currency need, our wallet {self.tx_builder.address} has {balance:.8f}"
 
     def initialize(self):
         """Set up the wallet"""
         logger.info("Initialising Uniswap v2 execution model")
-        self.hot_wallet.sync_nonce(self.web3)
-        balance = self.hot_wallet.get_native_currency_balance(self.web3)
-        logger.info("Our hot wallet is %s with nonce %d and balance %s", self.hot_wallet.address, self.hot_wallet.current_nonce, balance)
+        self.tx_builder.sync_nonce(self.web3)
+        balance = self.tx_builder.get_native_currency_balance(self.web3)
+        logger.info("Our hot wallet is %s with nonce %d and balance %s", self.tx_builder.address, self.tx_builder.current_nonce, balance)
         
     def broadcast_and_resolve(
         self,
@@ -317,11 +321,10 @@ class EthereumExecutionModel(ExecutionModel):
         # Clean up failed trades
         freeze_position_on_failed_trade(ts, state, trades)
 
-    
     def get_routing_state_details(self) -> dict:
         return {
             "web3": self.web3,
-            "hot_wallet": self.hot_wallet,
+            "hot_wallet": self.tx_builder,
         }
 
     def update_confirmation_status(

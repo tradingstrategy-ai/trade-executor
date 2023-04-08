@@ -25,7 +25,7 @@ class UniswapV3ExecutionModel(EthereumExecutionModel):
 
     def __init__(self,
                  web3: Web3,
-                 hot_wallet: HotWallet,
+                 tx_builder: HotWallet,
                  min_balance_threshold=Decimal("0.5"),
                  confirmation_block_count=6,
                  confirmation_timeout=datetime.timedelta(minutes=5),
@@ -36,7 +36,7 @@ class UniswapV3ExecutionModel(EthereumExecutionModel):
         :param web3:
             Web3 connection used for this instance
 
-        :param hot_wallet:
+        :param tx_builder:
             Hot wallet instance used for this execution
 
         :param min_balance_threshold:
@@ -56,7 +56,7 @@ class UniswapV3ExecutionModel(EthereumExecutionModel):
         """
         super().__init__(
             web3,
-            hot_wallet,
+            tx_builder,
             min_balance_threshold,
             confirmation_block_count,
             confirmation_timeout,

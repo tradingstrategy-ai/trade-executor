@@ -35,3 +35,5 @@ json_rpc_arbitrum = Option(None, envvar="JSON_RPC_ARBITRUM", help="Arbitrum C-ch
 json_rpc_anvil = Option(None, envvar="JSON_RPC_ANVIL", help="Anvil JSON-RPC url. Anvil from Foundry is only used in local development and is not a readl blockchain.")
 
 state_file = Option(None, envvar="STATE_FILE", help="JSON file where we serialise the execution state. If not given defaults to state/{executor-id}.json")
+
+trading_strategy_api_key = Option(None, envvar="TRADING_STRATEGY_API_KEY", help="Trading Strategy API key"),

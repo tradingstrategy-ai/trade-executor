@@ -120,3 +120,60 @@ def test_enzyme_live_trading_init(
         assert state.sync.deployment.vault_token_name is not None
         assert state.sync.deployment.vault_token_symbol is not None
         assert state.sync.deployment.block_number > 1
+
+
+def test_enzyme_live_trading_run(
+    anvil: AnvilLaunch,
+    deployer: HexAddress,
+    vault: Vault,
+    usdc: Contract,
+    weth: Contract,
+    usdc_asset: AssetIdentifier,
+    weth_asset: AssetIdentifier,
+    user_1: HexAddress,
+    uniswap_v2: UniswapV2Deployment,
+    weth_usdc_trading_pair: TradingPairIdentifier,
+    pair_universe: PandasPairUniverse,
+    hot_wallet: HotWallet,
+    state_file: Path,
+    strategy_file: Path,
+):
+    """Run Enzyme vaulted strategy for few cycles.
+
+    - Set up local Anvil testnet with Uniswap v2 and Enzyme
+
+    - Create a strategy that trade ETH-USDC pair and does few buys and sells
+
+    - Run cycles of this strategy
+
+    - Check that the state file output looks good
+
+    - Check that the chain output looks good
+    """
+
+    # Set up the configuration for the live trader
+    environment = {
+        "EXECUTOR_ID": "test_enzyme_live_trading_init",
+        "NAME": "test_enzyme_live_trading_init",
+        "STRATEGY_FILE": strategy_file.as_posix(),
+        "PRIVATE_KEY": hot_wallet.account.key.hex(),
+        "JSON_RPC_ANVIL": anvil.json_rpc_url,
+        "STATE_FILE": state_file.as_posix(),
+        "RESET_STATE": "true",
+        "ASSET_MANAGEMENT_MODE": "enzyme",
+        "UNIT_TESTING": "true",
+        "LOG_LEVEL": "disabled",
+        "VAULT_ADDRESS": vault.address,
+        "MAX_CYCLES": 10,
+    }
+
+    # Need to be initialised first
+    result = run_init(environment)
+    assert result.exit_code == 0
+
+    runner = CliRunner()
+
+    result = runner.invoke(app, "start", env=environment)
+
+    if result.exception:
+        raise result.exception

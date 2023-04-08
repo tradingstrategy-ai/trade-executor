@@ -35,7 +35,7 @@ except ImportError:
 from tradeexecutor.backtest.backtest_pricing import BacktestSimplePricingModel
 from tradeexecutor.state.state import State
 from tradeexecutor.state.store import StateStore
-from tradeexecutor.strategy.sync_model import SyncMethodV0
+from tradeexecutor.strategy.sync_model import SyncMethodV0, SyncModel
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.validator import validate_state_serialisation
 from tradeexecutor.statistics.core import update_statistics
@@ -84,7 +84,7 @@ class ExecutionLoop:
             command_queue: Queue,
             execution_model: ExecutionModel,
             execution_context: ExecutionContext,
-            sync_method: SyncMethodV0,
+            sync_model: SyncModel,
             approval_model: ApprovalModel,
             pricing_model_factory: PricingModelFactory,
             valuation_model_factory: ValuationModelFactory,
@@ -114,6 +114,9 @@ class ExecutionLoop:
         if ignore:
             # https://www.python.org/dev/peps/pep-3102/
             raise TypeError("Only keyword arguments accepted")
+
+        assert isinstance(sync_model, SyncModel)
+        self.sync_model = sync_model
 
         self.cycle_duration = cycle_duration
         self.stop_loss_check_frequency = stop_loss_check_frequency

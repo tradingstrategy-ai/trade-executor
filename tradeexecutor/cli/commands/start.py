@@ -46,17 +46,19 @@ logger = logging.getLogger(__name__)
 def start(
 
     # Strategy assets
-    id: str = typer.Option(None, envvar="EXECUTOR_ID", help="Executor id used when programmatically referring to this instance. If not given, take the base of --strategy-file."),
-    log_level: str = typer.Option(None, envvar="LOG_LEVEL", help="The Python default logging level. The defaults are 'info' is live execution, 'warning' if backtesting. Set 'disabled' in testing."),
+    id: str = shared_options.id,
+    log_level: str = shared_options.log_level,
     name: Optional[str] = typer.Option(None, envvar="NAME", help="Executor name used in the web interface and notifications"),
     short_description: Optional[str] = typer.Option(None, envvar="SHORT_DESCRIPTION", help="Short description for metadata"),
     long_description: Optional[str] = typer.Option(None, envvar="LONG_DESCRIPTION", help="Long description for metadata"),
     icon_url: Optional[str] = typer.Option(None, envvar="ICON_URL", help="Strategy icon for web rendering and Discord avatar"),
+
     strategy_file: Path = shared_options.strategy_file,
 
     # Live trading or backtest
-    execution_type: AssetManagementMode = typer.Option(..., envvar="EXECUTION_TYPE"),
-    trading_strategy_api_key: str = typer.Option(None, envvar="TRADING_STRATEGY_API_KEY", help="Trading Strategy API key"),
+    asset_management_mode: AssetManagementMode = shared_options.asset_management_mode,
+    vault_address: Optional[str] = shared_options.vault_address,
+    trading_strategy_api_key: str = shared_options.trading_strategy_api_key,
 
     # Webhook server options
     http_enabled: bool = typer.Option(False, envvar="HTTP_ENABLED", help="Enable Webhook server"),
@@ -67,10 +69,13 @@ def start(
     http_wait_good_startup_seconds: int = typer.Option(60, envvar="HTTP_WAIT_GOOD_STARTUP_SECONDS", help="How long we wait befor switching the web server mode where an exception does not bring the web server down"),
 
     # Web3 connection options
-    json_rpc_binance: str = typer.Option(None, envvar="JSON_RPC_BINANCE", help="BNB Chain JSON-RPC node URL we connect to"),
-    json_rpc_polygon: str = typer.Option(None, envvar="JSON_RPC_POLYGON", help="Polygon JSON-RPC node URL we connect to"),
-    json_rpc_ethereum: str = typer.Option(None, envvar="JSON_RPC_ETHEREUM", help="Ethereum JSON-RPC node URL we connect to"),
-    json_rpc_avalanche: str = typer.Option(None, envvar="JSON_RPC_AVALANCHE", help="Avalanche C-chain JSON-RPC node URL we connect to"),
+    json_rpc_binance: Optional[str] = shared_options.json_rpc_binance,
+    json_rpc_polygon: Optional[str] = shared_options.json_rpc_polygon,
+    json_rpc_ethereum: Optional[str] = shared_options.json_rpc_ethereum,
+    json_rpc_avalanche: Optional[str] = shared_options.json_rpc_avalanche,
+    json_rpc_arbitrum: Optional[str] = shared_options.json_rpc_arbitrum,
+    json_rpc_anvil: Optional[str] = shared_options.json_rpc_anvil,
+
     gas_price_method: Optional[GasPriceMethod] = typer.Option(None, envvar="GAS_PRICE_METHOD", help="How to set the gas price for Ethereum transactions. After the Berlin hardfork Ethereum mainnet introduced base + tip cost gas model. Leave out to autodetect."),
     confirmation_timeout: int = typer.Option(900, envvar="CONFIRMATION_TIMEOUT", help="How many seconds to wait for transaction batches to confirm"),
     confirmation_block_count: int = typer.Option(2, envvar="CONFIRMATION_BLOCK_COUNT", help="How many blocks we wait before we consider transaction receipt a final"),
@@ -109,7 +114,7 @@ def start(
     strategy_cycle_trigger: StrategyCycleTrigger = typer.Option("cycle_offset", envvar="STRATEGY_CYCLE_TRIGGER", help="How do decide when to start executing the next live trading strategy cycle"),
 
     # Unsorted options
-    state_file: Optional[Path] = typer.Option(None, envvar="STATE_FILE", help="JSON file where we serialise the execution state. If not given defaults to state/{executor-id}.json"),
+    state_file: Optional[Path] = shared_options.state_file,
     cache_path: Optional[Path] = typer.Option(None, envvar="CACHE_PATH", help="Where to store downloaded datasets. This must be specific to each executor so that there are no write conflicts if multiple executors run on the same server. If not given default to cache/{executor-id}"),
     ):
     """Launch Trade Executor instance."""
@@ -128,7 +133,7 @@ def start(
             name = "Unnamed backtest"
 
     if not log_level:
-        if execution_type == AssetManagementMode.backtest:
+        if asset_management_mode == AssetManagementMode.backtest:
             log_level = logging.WARNING
         else:
             log_level = logging.INFO
@@ -160,7 +165,7 @@ def start(
     try:
 
         if not state_file:
-            if execution_type != AssetManagementMode.backtest:
+            if asset_management_mode != AssetManagementMode.backtest:
                 state_file = f"state/{id}.json"
 
         # Avoid polluting user caches during test runs,
@@ -173,12 +178,14 @@ def start(
 
         confirmation_timeout = datetime.timedelta(seconds=confirmation_timeout)
 
-        if execution_type in (AssetManagementMode.uniswap_v2_hot_wallet, AssetManagementMode.dummy):
+        if asset_management_mode in (AssetManagementMode.hot_wallet, AssetManagementMode.dummy, AssetManagementMode.enzyme):
             web3config = create_web3_config(
                 json_rpc_binance=json_rpc_binance,
                 json_rpc_polygon=json_rpc_polygon,
                 json_rpc_avalanche=json_rpc_avalanche,
                 json_rpc_ethereum=json_rpc_ethereum,
+                json_rpc_anvil=json_rpc_anvil,
+                json_rpc_arbitrum=json_rpc_arbitrum,
                 gas_price_method=gas_price_method,
             )
 
@@ -213,14 +220,15 @@ def start(
             # because likely Ganache has simply crashed on background
             confirmation_timeout = datetime.timedelta(seconds=30)
 
-        execution_model, sync_method, valuation_model_factory, pricing_model_factory = create_trade_execution_model(
-            execution_type,
+        execution_model, sync_model, valuation_model_factory, pricing_model_factory = create_trade_execution_model(
+            asset_management_mode,
             private_key,
             web3config,
             confirmation_timeout,
             confirmation_block_count,
             max_slippage,
             minimum_gas_balance,
+            vault_address,
         )
 
         approval_model = create_approval_model(approval_type)
@@ -229,7 +237,7 @@ def start(
             store = create_state_store(Path(state_file))
         else:
             # Backtests never have persistent state
-            if execution_type == AssetManagementMode.backtest:
+            if asset_management_mode == AssetManagementMode.backtest:
                 logger.info("This backtest run won't create a state file")
                 store = NoneStore(State())
             else:
@@ -318,7 +326,7 @@ def start(
             command_queue=command_queue,
             execution_model=execution_model,
             execution_context=execution_context,
-            sync_method=sync_method,
+            sync_model=sync_model,
             approval_model=approval_model,
             pricing_model_factory=pricing_model_factory,
             valuation_model_factory=valuation_model_factory,
@@ -345,7 +353,7 @@ def start(
         loop.run()
 
         # Display summary stats for terminal backtest runs
-        if execution_type == AssetManagementMode.backtest and isinstance(store, NoneStore):
+        if asset_management_mode == AssetManagementMode.backtest and isinstance(store, NoneStore):
             display_backtesting_results(store.state)
 
     except KeyboardInterrupt as e:

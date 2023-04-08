@@ -6,6 +6,7 @@ from eth_defi.hotwallet import HotWallet
 from tradingstrategy.chain import ChainId
 from web3 import Web3
 
+from tradeexecutor.ethereum.tx import HotWalletTransactionBuilder
 from tradeexecutor.ethereum.wallet import sync_reserves
 from tradeexecutor.state.identifier import AssetIdentifier
 
@@ -53,6 +54,9 @@ class HotWalletSyncModel(SyncModel):
         apply_sync_events(state.portfolio, events)
         return events
 
+    def create_transaction_builder(self) -> HotWalletTransactionBuilder:
+        return HotWalletTransactionBuilder(self.web3, self.hot_wallet)
+
 
 def EthereumHotWalletReserveSyncer(
      strategy_cycle_ts: datetime.datetime,
@@ -64,7 +68,7 @@ def EthereumHotWalletReserveSyncer(
     Do not use.
     """
     raise NotImplementedError()
-    events = sync_reserves(self.web3, strategy_cycle_ts, self.hot_wallet.address, [], supported_reserves)
+    events = sync_reserves(self.web3, strategy_cycle_ts, self.tx_builder.address, [], supported_reserves)
     apply_sync_events(state.portfolio, events)
     return events
 

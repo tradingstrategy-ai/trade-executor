@@ -3,7 +3,7 @@
 import logging
 import datetime
 from functools import partial
-from typing import cast, Collection, List, Optional
+from typing import cast List, Optional
 
 from web3 import Web3
 
@@ -11,6 +11,8 @@ from eth_defi.enzyme.events import fetch_vault_balance_events, EnzymeBalanceEven
 from eth_defi.enzyme.vault import Vault
 from eth_defi.event_reader.reader import read_events, Web3EventReader, extract_events, extract_timestamps_json_rpc
 from eth_defi.event_reader.reorganisation_monitor import ReorganisationMonitor
+
+from tradeexecutor.ethereum.enzyme.tx import EnzymeTransactionBuilder
 from tradeexecutor.ethereum.token import translate_token_details
 from tradeexecutor.state.portfolio import Portfolio
 
@@ -347,3 +349,6 @@ class EnzymeVaultSyncModel(SyncModel):
         treasury_sync.last_cycle_at = strategy_cycle_ts
 
         return events
+
+    def create_transaction_builder(self) -> EnzymeTransactionBuilder:
+        return EnzymeTransactionBuilder(self.hot_wallet, self.vault)

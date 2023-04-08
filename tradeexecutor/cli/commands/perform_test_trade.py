@@ -81,7 +81,7 @@ def perform_test_trade(
     web3config.check_default_chain_id()
 
     execution_model, sync_method, valuation_model_factory, pricing_model_factory = create_trade_execution_model(
-        execution_type=AssetManagementMode.uniswap_v2_hot_wallet,
+        asset_management_mode=AssetManagementMode.hot_wallet,
         private_key=private_key,
         web3config=web3config,
         confirmation_timeout=datetime.timedelta(seconds=60),

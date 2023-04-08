@@ -62,7 +62,7 @@ class UniswapV3RoutingState(EthereumRoutingState):
             and raise exception if not.
         """
 
-        hot_wallet = self.tx_builder.hot_wallet
+        hot_wallet = self.tx_builder.tx_builder
         
         base_token, quote_token = get_base_quote(self.web3, target_pair, reserve_asset)
 
@@ -104,7 +104,7 @@ class UniswapV3RoutingState(EthereumRoutingState):
             and raise exception if not.
         """
 
-        hot_wallet = self.tx_builder.hot_wallet
+        hot_wallet = self.tx_builder.tx_builder
 
         self.validate_pairs(target_pair, intermediary_pair)
         

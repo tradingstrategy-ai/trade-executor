@@ -133,7 +133,15 @@ class AssetManagementMode(enum.Enum):
     dummy = "dummy"
 
     #: Server-side normal Ethereum private eky account
-    uniswap_v2_hot_wallet = "uniswap_v2_hot_wallet"
+    hot_wallet = "hot_wallet"
 
     #: Trading using Enzyme Protocol pool, single oracle mode
     enzyme = "enzyme"
+
+    #: Simulate execution using backtest data
+    #:
+    #: - Does not make any real trades
+    #:
+    #: - Does not connect to any network or blockchain
+    #:
+    backtest = "backtest"
