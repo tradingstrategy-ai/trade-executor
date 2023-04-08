@@ -2,7 +2,7 @@
 
 import os
 import secrets
-import sys
+
 from pathlib import Path
 
 import pytest
@@ -114,6 +114,7 @@ def test_enzyme_live_trading_init(
     result = run_init(environment)
     assert result.exit_code == 0
 
+    # Check the initial state sync set some of the variables
     with state_file.open("rt") as inp:
         state = State.from_json(inp.read())
         assert state.sync.deployment.vault_token_name is not None
