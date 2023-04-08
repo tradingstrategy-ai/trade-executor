@@ -315,7 +315,7 @@ class TradeAnalysis:
         
         self.filtered_sorted_positions = sorted(_filtered_positions, key=lambda x: x.position_id)
         
-        assert self.filtered_sorted_positions, "No positions found"
+        #assert self.filtered_sorted_positions, "No positions found"
     
     def get_first_opened_at(self) -> Optional[pd.Timestamp]:
         """Get the opened_at timestamp of the first position in the portfolio."""
