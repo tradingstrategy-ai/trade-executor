@@ -1,6 +1,7 @@
 """Trading position state info."""
 import datetime
 import enum
+import logging
 from dataclasses import dataclass, field
 from decimal import Decimal
 
@@ -17,6 +18,9 @@ from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.types import USDollarAmount, BPS, USDollarPrice
 from tradeexecutor.strategy.trade_pricing import TradePricing
 from tradeexecutor.utils.accuracy import sum_decimal
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass_json
