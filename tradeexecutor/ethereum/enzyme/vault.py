@@ -54,7 +54,7 @@ class EnzymeVaultSyncModel(SyncModel):
 
             Will call :py:meth:`process_blocks` as the part :py:meth:`sync_treasury`.
         """
-        assert vault_address is not None
+        assert vault_address is not None, "Vault address is not given"
         self.web3 = web3
         self.reorg_mon = reorg_mon
         self.vault = Vault.fetch(web3, vault_address)

@@ -1,38 +1,29 @@
 """Eznyme end-to-end test."""
-import datetime
+
 import os
 import secrets
-from decimal import Decimal
+import sys
 from pathlib import Path
 
 import pytest
-from click.testing import CliRunner, Result
+from click.testing import Result
 from eth_account import Account
 from eth_defi.anvil import AnvilLaunch
 from hexbytes import HexBytes
+from typer.testing import CliRunner
+from web3.contract import Contract
 
-from eth_defi.enzyme.integration_manager import IntegrationManagerActionId
 from eth_defi.enzyme.vault import Vault
 from eth_defi.hotwallet import HotWallet
 from eth_defi.trace import assert_transaction_success_with_explanation
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment
 from eth_typing import HexAddress
 
-from tradeexecutor.cli.commands import app
-from tradeexecutor.state.blockhain_transaction import BlockchainTransactionType
+from tradeexecutor.cli.main import app
 from tradingstrategy.pair import PandasPairUniverse
-from web3 import Web3
-from web3.contract import Contract
-
-from eth_defi.event_reader.reorganisation_monitor import create_reorganisation_monitor
-
-from tradeexecutor.ethereum.enzyme.tx import EnzymeTransactionBuilder
-from tradeexecutor.ethereum.enzyme.vault import EnzymeVaultSyncModel
 
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.state.state import State
-from tradeexecutor.testing.ethereumtrader_uniswap_v2 import UniswapV2TestTrader
-
 
 
 @pytest.fixture
@@ -54,15 +45,21 @@ def hot_wallet(web3, deployer, user_1, usdc: Contract) -> HotWallet:
 
 
 @pytest.fixture()
-def strategy_path() -> Path:
+def strategy_file() -> Path:
     """Where do we load our strategy file."""
     return Path(os.path.dirname(__file__)) / "../../strategies/test_only" / "enzyme_end_to_end.py"
 
 
 @pytest.fixture()
 def state_file() -> Path:
-    """Strategy state file for this test run."""
-    return Path("/tmp/test_enzyme_end_to_end.json")
+    """The state file for the tests.
+
+    Always start with an empty file.
+    """
+    path = Path("/tmp/test_enzyme_end_to_end.json")
+    if path.exists():
+        os.remove(path)
+    return path
 
 
 def run_init(environment: dict) -> Result:
@@ -93,6 +90,7 @@ def test_enzyme_live_trading_init(
     pair_universe: PandasPairUniverse,
     hot_wallet: HotWallet,
     state_file: Path,
+    strategy_file: Path,
 ):
     """Initialize Enzyme vault for live trading.
 
@@ -102,16 +100,22 @@ def test_enzyme_live_trading_init(
     environment = {
         "EXECUTOR_ID": "test_enzyme_live_trading_init",
         "NAME": "test_enzyme_live_trading_init",
-        "STRATEGY_FILE": strategy_path.as_posix(),
+        "STRATEGY_FILE": strategy_file.as_posix(),
         "PRIVATE_KEY": hot_wallet.account.key.hex(),
         "JSON_RPC_ANVIL": anvil.json_rpc_url,
-        "STATE_FILE": state_file,
+        "STATE_FILE": state_file.as_posix(),
         "RESET_STATE": "true",
         "ASSET_MANAGEMENT_MODE": "enzyme",
         "UNIT_TESTING": "true",
         "LOG_LEVEL": "disabled",
+        "VAULT_ADDRESS": vault.address,
     }
 
     result = run_init(environment)
     assert result.exit_code == 0
 
+    with state_file.open("rt") as inp:
+        state = State.from_json(inp.read())
+        assert state.sync.deployment.vault_token_name is not None
+        assert state.sync.deployment.vault_token_symbol is not None
+        assert state.sync.deployment.block_number > 1
