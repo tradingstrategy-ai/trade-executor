@@ -141,7 +141,7 @@ class Portfolio:
         
         all_positions = self.get_all_positions()
         filtered_positions = []
-        
+
         for position in all_positions:
             
             # to avoid copying with same reference
@@ -166,17 +166,21 @@ class Portfolio:
                     # TODO: Legacy trades.
                     # mid_price is filled to all latest trades
                     price = trade.executed_price
-                    
+
                     # bad_data_issues only used for remark
                     trade.bad_data_issues = True
                     
                 assert quantity != 0, f"Got bad quantity for {trade}"
                 assert (price is not None) and price > 0, f"Got invalid trade {trade.get_full_debug_dump_str()} - price is {price}"
-                
+
                 filtered_position.trades[key] = trade
-            
+
+            # if there are no trades, skip this position
+            if not filtered_position.trades:
+                continue
+
             filtered_positions.append(filtered_position)
-        
+
         return filtered_positions
 
     def get_open_positions(self) -> Iterable[TradingPosition]:
