@@ -121,6 +121,7 @@ class ExecutionLoop:
         self.cycle_duration = cycle_duration
         self.stop_loss_check_frequency = stop_loss_check_frequency
         self.strategy_factory = strategy_factory
+        self.reset = reset
 
         args = locals().copy()
         args.pop("self")

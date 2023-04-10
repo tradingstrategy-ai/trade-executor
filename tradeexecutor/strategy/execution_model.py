@@ -9,7 +9,7 @@ Currently supported models
 import abc
 import datetime
 import enum
-from typing import List, Dict, Tuple, TypedDict, Optional, NotRequired
+from typing import List, Dict, Tuple, TypedDict, Optional
 from web3 import Web3
 from hexbytes import HexBytes
 
@@ -36,18 +36,20 @@ class RoutingStateDetails(TypedDict):
     live trading or running some very legacy code.
 
     TODO: API unfinished. Needs to be cleaned up.
+
+    TODO: Mark everything `NotRequired` if Python 3.11 migrated
     """
 
-    tx_builder: NotRequired[TransactionBuilder]
+    tx_builder: TransactionBuilder
 
     #: TODO: Legacy - moved to Txbuilder
-    web3: NotRequired[Web3]
+    web3: Web3
 
     #: TODO: Legacy - moved to Txbuilder
-    wallet: NotRequired[HotWallet]
+    wallet: HotWallet
 
     #: TODO: Legacy - moved to Txbuilder
-    hot_wallet: NotRequired[HotWallet]
+    hot_wallet: HotWallet
 
 
 class ExecutionModel(abc.ABC):

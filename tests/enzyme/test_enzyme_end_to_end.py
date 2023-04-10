@@ -88,10 +88,9 @@ def environment(
         "PRIVATE_KEY": hot_wallet.account.key.hex(),
         "JSON_RPC_ANVIL": anvil.json_rpc_url,
         "STATE_FILE": state_file.as_posix(),
-        "RESET_STATE": "true",
         "ASSET_MANAGEMENT_MODE": "enzyme",
         "UNIT_TESTING": "true",
-        "LOG_LEVEL": "disabled",
+        "LOG_LEVEL": "info",
         "VAULT_ADDRESS": vault.address,
         "TEST_EVM_UNISWAP_V2_ROUTER": uniswap_v2.router.address,
         "TEST_EVM_UNISWAP_V2_FACTORY": uniswap_v2.factory.address,
@@ -136,6 +135,7 @@ def test_enzyme_live_trading_init(
 
 def test_enzyme_live_trading_start(
     environment: dict,
+    state_file: Path,
 ):
     """Run Enzyme vaulted strategy for few cycles.
 
@@ -154,6 +154,12 @@ def test_enzyme_live_trading_start(
     # Need to be initialised first
     result = run_init(environment)
     assert result.exit_code == 0
+
+    with state_file.open("rt") as inp:
+        state = State.from_json(inp.read())
+        assert state.sync.deployment.vault_token_name is not None
+        assert state.sync.deployment.vault_token_symbol is not None
+        assert state.sync.deployment.block_number > 1
 
     runner = CliRunner()
 

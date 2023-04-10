@@ -92,7 +92,7 @@ def start(
     port_mortem_debugging: bool = typer.Option(False, "--post-mortem-debugging", envvar="POST_MORTEM_DEBUGGING", help="Launch ipdb debugger on a main loop crash to debug the exception"),
     clear_caches: bool = typer.Option(False, "--clear-caches", envvar="CLEAR_CACHES", help="Purge any dataset download caches before starting"),
     unit_testing: bool = typer.Option(False, "--unit-testing", envvar="UNIT_TESTING", help="The trade executor is called under the unit testing mode. No caches are purged."),
-    reset_state: bool = typer.Option(False, envvar="RESET_STATE"),
+    reset_state: bool = typer.Option(False, envvar="RESET_STATE", help="Recreate the state file. Used for testing. Same as running trade-executor init command"),
     max_cycles: int = typer.Option(None, envvar="MAX_CYCLES", help="Max main loop cycles run in an automated testing mode"),
     debug_dump_file: Optional[Path] = typer.Option(None, envvar="DEBUG_DUMP_FILE", help="Write Python Pickle dump of all internal debugging states of the strategy run to this file"),
 
@@ -248,7 +248,7 @@ def start(
         if state_file:
             store = create_state_store(Path(state_file))
         else:
-            # Backtests never have persistent state
+            # Backtests do not have persistent state
             if asset_management_mode == AssetManagementMode.backtest:
                 logger.info("This backtest run won't create a state file")
                 store = NoneStore(State())

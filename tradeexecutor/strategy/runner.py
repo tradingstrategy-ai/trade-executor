@@ -100,7 +100,7 @@ class StrategyRunner(abc.ABC):
         """
         return self.execution_context.mode.is_live_trading() or self.execution_context.mode.is_unit_testing()
 
-    def sync_portfolio(self, ts: datetime.datetime, universe: StrategyExecutionUniverse, state: State, debug_details: dict):
+    def sync_portfolio(self, strategy_cycle_ts: datetime.datetime, universe: StrategyExecutionUniverse, state: State, debug_details: dict):
         """Adjust portfolio balances based on the external events.
 
         External events include
@@ -110,13 +110,19 @@ class StrategyRunner(abc.ABC):
         - Token rebases
         """
         assert isinstance(universe, StrategyExecutionUniverse), f"Universe was {universe}"
-        reserve_assets = universe.reserve_assets
+        reserve_assets = list(universe.reserve_assets)
         assert len(reserve_assets) > 0, "No reserve assets available"
         assert len(reserve_assets) == 1, f"We only support strategies with a single reserve asset, got {self.reserve_assets}"
         token = reserve_assets[0]
         assert token.decimals and token.decimals > 0, f"Reserve asset lacked decimals"
-        reserve_update_events = self.sync_model(state.portfolio, ts, reserve_assets)
+        reserve_update_events = self.sync_model.sync_treasury(
+            strategy_cycle_ts,
+            state,
+            supported_reserves=reserve_assets,
+        )
         assert type(reserve_update_events) == list
+
+        # Update the debug data for tests with our events
         debug_details["reserve_update_events"] = reserve_update_events
         debug_details["total_equity_at_start"] = state.portfolio.get_total_equity()
         debug_details["total_cash_at_start"] = state.portfolio.get_current_cash()

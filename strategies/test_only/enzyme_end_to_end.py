@@ -38,10 +38,6 @@ def decide_trades(
         pricing_model: PricingModel,
         cycle_debug_data: Dict) -> List[TradeExecution]:
 
-    assert timestamp.minute == 0
-    assert timestamp.second == 0
-    assert timestamp.hour == 0
-
     # Create a position manager helper class that allows us easily to create
     # opening/closing trades for different positions
     position_manager = PositionManager(timestamp, universe, state, pricing_model)

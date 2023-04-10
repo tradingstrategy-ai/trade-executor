@@ -287,6 +287,7 @@ class EnzymeVaultSyncModel(SyncModel):
     def sync_treasury(self,
                       strategy_cycle_ts: datetime.datetime,
                       state: State,
+                      supported_reserves: Optional[List[AssetIdentifier]] = None,
                       ) -> List[BalanceUpdate]:
         """Apply the balance sync before each strategy cycle.
 
@@ -304,7 +305,7 @@ class EnzymeVaultSyncModel(SyncModel):
 
         web3 = self.web3
         sync = state.sync
-        assert sync.is_initialised(), "Vault sync not initialised"
+        assert sync.is_initialised(), f"Vault sync not initialised: {sync}"
 
         if self.only_chain_listener:
             self.process_blocks()

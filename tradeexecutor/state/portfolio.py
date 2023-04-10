@@ -592,7 +592,7 @@ class Portfolio:
         :return:
             Tuple (Reserve currency asset, its latest US dollar exchanage rate)
         """
-        assert len(self.reserves) > 0, "Portfolio has no reserve currencies"
+        assert len(self.reserves) > 0, "Portfolio has no reserve currencies available"
         res_pos = next(iter(self.reserves.values()))
         return res_pos.asset, res_pos.reserve_token_price
 

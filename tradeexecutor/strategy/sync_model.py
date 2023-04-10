@@ -6,6 +6,7 @@ from typing import Callable, List, Optional
 
 from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.ethereum.wallet import ReserveUpdateEvent
+from tradeexecutor.state.balance_update import BalanceUpdate
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.state import State
@@ -32,7 +33,7 @@ class SyncModel(ABC):
                  strategy_cycle_ts: datetime.datetime,
                  state: State,
                  supported_reserves: Optional[List[AssetIdentifier]] = None
-                 ):
+                 ) -> List[BalanceUpdate]:
         """Apply the balance sync before each strategy cycle.
 
         :param strategy_cycle_ts:
@@ -47,6 +48,14 @@ class SyncModel(ABC):
             List of assets the strategy module wants to use as its reserves.
 
             May be None in testing.
+
+        :return:
+            List of balance updates detected.
+
+            - Deposits
+
+            - Redemptions
+
         """
 
     @abstractmethod
