@@ -228,15 +228,14 @@ class EthereumExecutionModel(ExecutionModel):
 
         # Check we have money for gas fees
         if self.min_balance_threshold > 0:
-            balance = self.tx_builder.get_native_currency_balance(self.web3)
+            balance = self.tx_builder.get_gas_wallet_balance()
             assert balance > self.min_balance_threshold, f"At least {self.min_balance_threshold} native currency need, our wallet {self.tx_builder.address} has {balance:.8f}"
 
     def initialize(self):
         """Set up the wallet"""
-        logger.info("Initialising Uniswap v2 execution model")
-        self.tx_builder.sync_nonce(self.web3)
-        balance = self.tx_builder.get_native_currency_balance(self.web3)
-        logger.info("Our hot wallet is %s with nonce %d and balance %s", self.tx_builder.address, self.tx_builder.current_nonce, balance)
+        logger.info("Initialising %s execution model", self.__class__.__name__)
+        self.tx_builder.init()
+        logger.info("Hot wallet %s has balance %s", self.tx_builder.get_gas_wallet_balance(), self.tx_builder.get_gas_wallet_balance())
         
     def broadcast_and_resolve(
         self,

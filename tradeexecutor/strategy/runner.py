@@ -15,7 +15,7 @@ from tradeexecutor.strategy.approval import ApprovalModel
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.strategy.execution_model import ExecutionModel
-from tradeexecutor.strategy.sync_model import SyncMethodV0
+from tradeexecutor.strategy.sync_model import SyncMethodV0, SyncModel
 from tradeexecutor.strategy.run_state import RunState
 from tradeexecutor.strategy.output import output_positions, DISCORD_BREAK_CHAR, output_trades
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
@@ -57,7 +57,7 @@ class StrategyRunner(abc.ABC):
                  execution_model: ExecutionModel,
                  approval_model: ApprovalModel,
                  valuation_model_factory: ValuationModelFactory,
-                 sync_method: SyncMethodV0,
+                 sync_model: SyncModel,
                  pricing_model_factory: PricingModelFactory,
                  execution_context: ExecutionContext,
                  routing_model: Optional[RoutingModel] = None,
@@ -65,12 +65,13 @@ class StrategyRunner(abc.ABC):
                  ):
 
         assert isinstance(execution_context, ExecutionContext)
+        assert isinstance(sync_model, SyncModel)
 
         self.timed_task_context_manager = timed_task_context_manager
         self.execution_model = execution_model
         self.approval_model = approval_model
         self.valuation_model_factory = valuation_model_factory
-        self.sync_method = sync_method
+        self.sync_model = sync_model
         self.pricing_model_factory = pricing_model_factory
         self.routing_model = routing_model
         self.run_state = run_state
@@ -114,7 +115,7 @@ class StrategyRunner(abc.ABC):
         assert len(reserve_assets) == 1, f"We only support strategies with a single reserve asset, got {self.reserve_assets}"
         token = reserve_assets[0]
         assert token.decimals and token.decimals > 0, f"Reserve asset lacked decimals"
-        reserve_update_events = self.sync_method(state.portfolio, ts, reserve_assets)
+        reserve_update_events = self.sync_model(state.portfolio, ts, reserve_assets)
         assert type(reserve_update_events) == list
         debug_details["reserve_update_events"] = reserve_update_events
         debug_details["total_equity_at_start"] = state.portfolio.get_total_equity()
@@ -347,7 +348,7 @@ class StrategyRunner(abc.ABC):
 
         assert isinstance(strategy_cycle_timestamp, datetime.datetime)
 
-        if cycle_duration not in (CycleDuration.cycle_unknown, None):
+        if cycle_duration not in (CycleDuration.cycle_unknown, CycleDuration.cycle_1s, None):
             assert strategy_cycle_timestamp.second == 0, f"Cycle duration {cycle_duration}: Does not look like a cycle timestamp: {strategy_cycle_timestamp}, should be even minutes"
 
         friendly_cycle_duration = cycle_duration.value if cycle_duration else "-"

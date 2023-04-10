@@ -62,6 +62,44 @@ def state_file() -> Path:
     return path
 
 
+@pytest.fixture()
+def environment(
+    anvil: AnvilLaunch,
+    deployer: HexAddress,
+    vault: Vault,
+    usdc: Contract,
+    weth: Contract,
+    usdc_asset: AssetIdentifier,
+    weth_asset: AssetIdentifier,
+    user_1: HexAddress,
+    uniswap_v2: UniswapV2Deployment,
+    weth_usdc_trading_pair: TradingPairIdentifier,
+    pair_universe: PandasPairUniverse,
+    hot_wallet: HotWallet,
+    state_file: Path,
+    strategy_file: Path,
+    ) -> dict:
+    """Passed to init and start commands as environment variables"""
+    # Set up the configuration for the live trader
+    environment = {
+        "EXECUTOR_ID": "test_enzyme_live_trading_init",
+        "NAME": "test_enzyme_live_trading_init",
+        "STRATEGY_FILE": strategy_file.as_posix(),
+        "PRIVATE_KEY": hot_wallet.account.key.hex(),
+        "JSON_RPC_ANVIL": anvil.json_rpc_url,
+        "STATE_FILE": state_file.as_posix(),
+        "RESET_STATE": "true",
+        "ASSET_MANAGEMENT_MODE": "enzyme",
+        "UNIT_TESTING": "true",
+        "LOG_LEVEL": "disabled",
+        "VAULT_ADDRESS": vault.address,
+        "TEST_EVM_UNISWAP_V2_ROUTER": uniswap_v2.router.address,
+        "TEST_EVM_UNISWAP_V2_FACTORY": uniswap_v2.factory.address,
+        "TEST_EVM_UNISWAP_V2_INIT_CODE_HASH": uniswap_v2.init_code_hash,
+    }
+    return environment
+
+
 def run_init(environment: dict) -> Result:
     """Run vault init command"""
 
@@ -77,39 +115,13 @@ def run_init(environment: dict) -> Result:
 
 
 def test_enzyme_live_trading_init(
-    anvil: AnvilLaunch,
-    deployer: HexAddress,
-    vault: Vault,
-    usdc: Contract,
-    weth: Contract,
-    usdc_asset: AssetIdentifier,
-    weth_asset: AssetIdentifier,
-    user_1: HexAddress,
-    uniswap_v2: UniswapV2Deployment,
-    weth_usdc_trading_pair: TradingPairIdentifier,
-    pair_universe: PandasPairUniverse,
-    hot_wallet: HotWallet,
+    environment: dict,
     state_file: Path,
-    strategy_file: Path,
 ):
     """Initialize Enzyme vault for live trading.
 
     Provide faux chain using Anvil with one pool that a sample strategy is trading.
     """
-    # Set up the configuration for the live trader
-    environment = {
-        "EXECUTOR_ID": "test_enzyme_live_trading_init",
-        "NAME": "test_enzyme_live_trading_init",
-        "STRATEGY_FILE": strategy_file.as_posix(),
-        "PRIVATE_KEY": hot_wallet.account.key.hex(),
-        "JSON_RPC_ANVIL": anvil.json_rpc_url,
-        "STATE_FILE": state_file.as_posix(),
-        "RESET_STATE": "true",
-        "ASSET_MANAGEMENT_MODE": "enzyme",
-        "UNIT_TESTING": "true",
-        "LOG_LEVEL": "disabled",
-        "VAULT_ADDRESS": vault.address,
-    }
 
     result = run_init(environment)
     assert result.exit_code == 0
@@ -122,21 +134,8 @@ def test_enzyme_live_trading_init(
         assert state.sync.deployment.block_number > 1
 
 
-def test_enzyme_live_trading_run(
-    anvil: AnvilLaunch,
-    deployer: HexAddress,
-    vault: Vault,
-    usdc: Contract,
-    weth: Contract,
-    usdc_asset: AssetIdentifier,
-    weth_asset: AssetIdentifier,
-    user_1: HexAddress,
-    uniswap_v2: UniswapV2Deployment,
-    weth_usdc_trading_pair: TradingPairIdentifier,
-    pair_universe: PandasPairUniverse,
-    hot_wallet: HotWallet,
-    state_file: Path,
-    strategy_file: Path,
+def test_enzyme_live_trading_start(
+    environment: dict,
 ):
     """Run Enzyme vaulted strategy for few cycles.
 
@@ -151,21 +150,6 @@ def test_enzyme_live_trading_run(
     - Check that the chain output looks good
     """
 
-    # Set up the configuration for the live trader
-    environment = {
-        "EXECUTOR_ID": "test_enzyme_live_trading_init",
-        "NAME": "test_enzyme_live_trading_init",
-        "STRATEGY_FILE": strategy_file.as_posix(),
-        "PRIVATE_KEY": hot_wallet.account.key.hex(),
-        "JSON_RPC_ANVIL": anvil.json_rpc_url,
-        "STATE_FILE": state_file.as_posix(),
-        "RESET_STATE": "true",
-        "ASSET_MANAGEMENT_MODE": "enzyme",
-        "UNIT_TESTING": "true",
-        "LOG_LEVEL": "disabled",
-        "VAULT_ADDRESS": vault.address,
-        "MAX_CYCLES": 10,
-    }
 
     # Need to be initialised first
     result = run_init(environment)

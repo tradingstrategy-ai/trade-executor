@@ -14,7 +14,7 @@ from pathlib import Path
 from tradingstrategy.client import Client
 
 from tradeexecutor.ethereum.routing_data import get_routing_model
-from tradeexecutor.strategy.sync_model import SyncMethodV0
+from tradeexecutor.strategy.sync_model import SyncMethodV0, SyncModel
 from tradeexecutor.strategy.approval import ApprovalModel
 from tradeexecutor.strategy.description import StrategyExecutionDescription
 from tradeexecutor.strategy.execution_context import ExecutionContext
@@ -93,7 +93,7 @@ def make_factory_from_strategy_mod(mod: StrategyModuleInformation) -> StrategyFa
             *ignore,
             execution_model: ExecutionModel,
             execution_context: ExecutionContext,
-            sync_method: SyncMethodV0,
+            sync_model: SyncModel,
             pricing_model_factory: PricingModelFactory,
             valuation_model_factory: ValuationModelFactory,
             client: Client,
@@ -108,6 +108,9 @@ def make_factory_from_strategy_mod(mod: StrategyModuleInformation) -> StrategyFa
         if ignore:
             # https://www.python.org/dev/peps/pep-3102/
             raise TypeError("Only keyword arguments accepted")
+
+        if sync_model is not None:
+            assert isinstance(sync_model, SyncModel), f"SyncModel not good: {sync_model}"
 
         universe_model = DefaultTradingStrategyUniverseModel(
             client,
@@ -124,7 +127,7 @@ def make_factory_from_strategy_mod(mod: StrategyModuleInformation) -> StrategyFa
             execution_model=execution_model,
             approval_model=approval_model,
             valuation_model_factory=valuation_model_factory,
-            sync_method=sync_method,
+            sync_model=sync_model,
             pricing_model_factory=pricing_model_factory,
             routing_model=routing_model,
             decide_trades=mod_info.decide_trades,

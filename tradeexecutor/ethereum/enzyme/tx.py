@@ -2,6 +2,7 @@
 
 import logging
 from typing import List, Optional
+from decimal import Decimal
 
 from web3.contract.contract import Contract, ContractFunction
 
@@ -44,6 +45,9 @@ class EnzymeTransactionBuilder(TransactionBuilder):
         """Get the underlying web3 connection."""
         return self.vault_controlled_wallet.hot_wallet
 
+    def init(self):
+        self.hot_wallet.sync_nonce(self.web3)
+
     def get_token_delivery_address(self) -> str:
         """Get the target address for ERC-20 approve()"""
         return self.vault.generic_adapter.address
@@ -55,6 +59,13 @@ class EnzymeTransactionBuilder(TransactionBuilder):
     def get_gas_wallet_address(self) -> str:
         """Get the address that holds native token for gas fees"""
         return self.hot_wallet.address
+
+    def get_gas_wallet_balance(self) -> Decimal:
+        """Get the balance of the native currency (ETH, BNB, MATIC) of the wallet.
+
+        Useful to check if you have enough cryptocurrency for the gas fees.
+        """
+        return self.hot_wallet.get_native_currency_balance(self.web3)
 
     def sign_transaction(
             self,

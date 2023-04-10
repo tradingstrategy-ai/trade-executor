@@ -14,6 +14,7 @@ import typer
 from eth_defi.gas import GasPriceMethod
 from tradingstrategy.chain import ChainId
 from tradingstrategy.client import Client
+from tradingstrategy.testing.uniswap_v2_mock_client import UniswapV2MockClient
 from tradingstrategy.timebucket import TimeBucket
 
 from . import shared_options
@@ -100,6 +101,11 @@ def start(
     backtest_end: Optional[datetime.datetime] = typer.Option(None, envvar="BACKTEST_END", help="End timestamp of backesting"),
     backtest_candle_time_frame_override: Optional[TimeBucket] = typer.Option(None, envvar="BACKTEST_CANDLE_TIME_FRAME_OVERRIDE", help="Force backtests to use different candle time frame"),
     backtest_stop_loss_time_frame_override: Optional[TimeBucket] = typer.Option(None, envvar="BACKTEST_STOP_LOSS_TIME_FRAME_OVERRIDE", help="Force backtests to use different candle time frame for stop losses"),
+
+    # Test EMV backend
+    test_evm_uniswap_v2_router: Optional[str] = typer.Option(None, envvar="TEST_EVM_UNISWAP_V2_ROUTER", help="Uniswap v2 instance paramater when doing live trading test against a local dev chain"),
+    test_evm_uniswap_v2_factory: Optional[str] = typer.Option(None, envvar="TEST_EVM_UNISWAP_V2_FACTORY", help="Uniswap v2 instance paramater when doing live trading test against a local dev chain"),
+    test_evm_uniswap_v2_init_code_hash: Optional[str] = typer.Option(None, envvar="TEST_EVM_UNISWAP_V2_INIT_CODE_HASH", help="Uniswap v2 instance paramater when doing live trading test against a local dev chain"),
 
     # Live trading configuration
     max_slippage: float = typer.Option(0.0025, envvar="MAX_SLIPPAGE", help="Max slippage allowed per trade before failing. The default is 0.0025 is 0.25%."),
@@ -204,8 +210,14 @@ def start(
 
             if isinstance(mod, StrategyModuleInformation):
                 # This path is not enabled for legacy strategy modules
-                web3config.set_default_chain(mod.chain_id)
-                web3config.check_default_chain_id()
+                if mod.chain_id:
+                    # Strategy tells what chain to use
+                    web3config.set_default_chain(mod.chain_id)
+                    web3config.check_default_chain_id()
+                else:
+                    # User has configured only one chain, use it
+                    web3config.choose_single_chain()
+
             else:
                 # Legacy unit testing path.
                 # All chain_ids are 56 (BNB Chain)
@@ -269,11 +281,21 @@ def start(
             server = None
 
         # Create our data client
-        if trading_strategy_api_key:
+        if test_evm_uniswap_v2_factory:
+            # Running against a local dev chain
+            client = UniswapV2MockClient(
+                web3config.get_default(),
+                test_evm_uniswap_v2_factory,
+                test_evm_uniswap_v2_router,
+                test_evm_uniswap_v2_init_code_hash,
+            )
+        elif trading_strategy_api_key:
+            # Backtest / real trading
             client = Client.create_live_client(trading_strategy_api_key, cache_path=cache_path)
             if clear_caches:
                 client.clear_caches()
         else:
+            # This run does not need to dowwnload any data
             client = None
 
         # Currently, all actions require us to have a valid API key

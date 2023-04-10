@@ -3,7 +3,7 @@
 import logging
 import datetime
 from functools import partial
-from typing import cast List, Optional
+from typing import cast, List, Optional
 
 from web3 import Web3
 
@@ -11,6 +11,7 @@ from eth_defi.enzyme.events import fetch_vault_balance_events, EnzymeBalanceEven
 from eth_defi.enzyme.vault import Vault
 from eth_defi.event_reader.reader import read_events, Web3EventReader, extract_events, extract_timestamps_json_rpc
 from eth_defi.event_reader.reorganisation_monitor import ReorganisationMonitor
+from eth_defi.hotwallet import HotWallet
 
 from tradeexecutor.ethereum.enzyme.tx import EnzymeTransactionBuilder
 from tradeexecutor.ethereum.token import translate_token_details
@@ -39,6 +40,7 @@ class EnzymeVaultSyncModel(SyncModel):
                  vault_address: str,
                  reorg_mon: ReorganisationMonitor,
                  only_chain_listener=True,
+                 hot_wallet: Optional[HotWallet] = None,
                  ):
         """
 
@@ -55,6 +57,11 @@ class EnzymeVaultSyncModel(SyncModel):
             This is the only adapter using reorg_monn.
 
             Will call :py:meth:`process_blocks` as the part :py:meth:`sync_treasury`.
+
+        :param hot_wallet:
+            Trade executor's hot wallet used to create transactions.
+
+            Only needed when doing trades.
         """
         assert vault_address is not None, "Vault address is not given"
         self.web3 = web3
@@ -62,6 +69,7 @@ class EnzymeVaultSyncModel(SyncModel):
         self.vault = Vault.fetch(web3, vault_address)
         self.scan_chunk_size = 10_000
         self.only_chain_listener = only_chain_listener
+        self.hot_wallet = hot_wallet
 
     def get_vault_address(self) -> Optional[str]:
         """Get the vault address we are using"""
@@ -351,4 +359,5 @@ class EnzymeVaultSyncModel(SyncModel):
         return events
 
     def create_transaction_builder(self) -> EnzymeTransactionBuilder:
+        assert self.hot_wallet, "HotWallet not set - cannot create transaction builder"
         return EnzymeTransactionBuilder(self.hot_wallet, self.vault)

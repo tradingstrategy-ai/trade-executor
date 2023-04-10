@@ -91,7 +91,11 @@ def create_trade_execution_model(
         min_balance_threshold: Optional[Decimal],
         vault_address: Optional[str],
 ):
-    """Set up the execution mode for the command line client."""
+    """Set up the execution mode for the command line client.
+
+    :param max_slippage:
+        Legacy max slippage parameter. Do not used.
+    """
 
     assert isinstance(confirmation_timeout, datetime.timedelta), f"Got {confirmation_timeout}"
 
@@ -227,6 +231,7 @@ def create_sync_model(
                 vault_address,
                 reorg_mon,
                 only_chain_listener=True,
+                hot_wallet=hot_wallet,
             )
         case _:
             raise NotImplementedError()

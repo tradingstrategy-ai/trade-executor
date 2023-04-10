@@ -138,7 +138,7 @@ class Web3Config:
         Most strategies are single chain strategies.
         Set the chain id we expect these strategies to run on.
         """
-        assert isinstance(chain_id, ChainId), f"Got {chain_id}"
+        assert isinstance(chain_id, ChainId), f"Attempt to set null chain as the default: {chain_id}"
         self.default_chain_id = chain_id
 
     def get_connection(self, chain_id: ChainId) -> Optional[Web3]:

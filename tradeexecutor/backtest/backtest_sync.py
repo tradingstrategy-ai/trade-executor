@@ -1,6 +1,6 @@
 import datetime
 from decimal import Decimal
-from typing import List
+from typing import List, Optional
 
 from tradeexecutor.backtest.simulated_wallet import SimulatedWallet
 from tradeexecutor.ethereum.wallet import ReserveUpdateEvent
@@ -89,8 +89,9 @@ class BacktestSyncModel(SyncModel):
 
         portfolio = state.portfolio
 
+        # TODO: Move this code eto sync_initial()
         if not self.initial_deposit_processed_at:
-            self.initial_deposit_processed_at = ts
+            self.initial_deposit_processed_at = strategy_cycle_ts
 
             assert len(supported_reserves) == 1
 

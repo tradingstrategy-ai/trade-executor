@@ -72,12 +72,13 @@ class PandasTraderRunner(StrategyRunner):
             raise PreflightCheckFailed("Pair count zero")
 
         # Don't assume we have candle or liquidity data e.g. for the testing strategies
-        if universe.candles.get_candle_count() > 0:
-            start, end = universe.get_candle_availability()
+        if universe.candles is not None:
+            if universe.candles.get_candle_count() > 0:
+                start, end = universe.get_candle_availability()
 
-            if self.max_data_age is not None:
-                if now_ - end > self.max_data_age:
-                    raise PreflightCheckFailed(f"We do not have up-to-date data for candles. Last candles are at {end}")
+                if self.max_data_age is not None:
+                    if now_ - end > self.max_data_age:
+                        raise PreflightCheckFailed(f"We do not have up-to-date data for candles. Last candles are at {end}")
 
     def report_strategy_thinking(self,
                                  strategy_cycle_timestamp: datetime.datetime,

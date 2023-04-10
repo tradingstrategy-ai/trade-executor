@@ -50,7 +50,7 @@ from tradeexecutor.strategy.cycle import CycleDuration, snap_to_next_tick, snap_
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.strategy.universe_model import UniverseModel, StrategyExecutionUniverse, UniverseOptions
 from tradeexecutor.strategy.valuation import ValuationModelFactory
-from tradingstrategy.client import Client
+from tradingstrategy.client import Client, BaseClient
 from tradingstrategy.timebucket import TimeBucket
 
 
@@ -89,7 +89,7 @@ class ExecutionLoop:
             pricing_model_factory: PricingModelFactory,
             valuation_model_factory: ValuationModelFactory,
             store: StateStore,
-            client: Optional[Client],
+            client: Optional[BaseClient],
             strategy_factory: Optional[StrategyFactory],
             cycle_duration: CycleDuration,
             stats_refresh_frequency: Optional[datetime.timedelta],
@@ -120,6 +120,7 @@ class ExecutionLoop:
 
         self.cycle_duration = cycle_duration
         self.stop_loss_check_frequency = stop_loss_check_frequency
+        self.strategy_factory = strategy_factory
 
         args = locals().copy()
         args.pop("self")
@@ -933,7 +934,7 @@ class ExecutionLoop:
             execution_model=self.execution_model,
             execution_context=self.execution_context,
             timed_task_context_manager=self.timed_task_context_manager,
-            sync_method=self.sync_method,
+            sync_model=self.sync_model,
             valuation_model_factory=self.valuation_model_factory,
             pricing_model_factory=self.pricing_model_factory,
             approval_model=self.approval_model,

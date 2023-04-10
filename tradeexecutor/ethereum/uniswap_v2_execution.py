@@ -24,6 +24,7 @@ from eth_defi.hotwallet import HotWallet
 from eth_defi.uniswap_v2.fees import estimate_sell_price_decimals
 from eth_defi.uniswap_v2.analysis import TradeSuccess, analyse_trade_by_receipt
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, mock_partial_deployment_for_analysis
+from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.state.identifier import TradingPairIdentifier
 
 
@@ -34,8 +35,7 @@ class UniswapV2ExecutionModel(EthereumExecutionModel):
     """Run order execution on a single Uniswap v2 style exchanges."""
 
     def __init__(self,
-                 web3: Web3,
-                 tx_builder: HotWallet,
+                 tx_builder: TransactionBuilder,
                  min_balance_threshold=Decimal("0.5"),
                  confirmation_block_count=6,
                  confirmation_timeout=datetime.timedelta(minutes=5),
@@ -65,14 +65,13 @@ class UniswapV2ExecutionModel(EthereumExecutionModel):
             Max slippage tolerance per trade. 0.01 is 1%.
         """
         super().__init__(
-            web3,
-            tx_builder,
-            min_balance_threshold,
-            confirmation_block_count,
-            confirmation_timeout,
-            max_slippage,
-            stop_on_execution_failure,
-            swap_gas_fee_limit
+            tx_builder=tx_builder,
+            min_balance_threshold=min_balance_threshold,
+            confirmation_block_count=confirmation_block_count,
+            confirmation_timeout=confirmation_timeout,
+            max_slippage=max_slippage,
+            stop_on_execution_failure=stop_on_execution_failure,
+            swap_gas_fee_limit=swap_gas_fee_limit
         )
 
     @staticmethod
