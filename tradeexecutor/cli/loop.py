@@ -15,6 +15,7 @@ from tradeexecutor.cli.watchdog import create_watchdog_registry, register_worker
     WatchdogMode
 from tradeexecutor.statistics.summary import calculate_summary_statistics
 from tradeexecutor.strategy.pandas_trader.decision_trigger import wait_for_universe_data_availability_jsonl
+from tradeexecutor.strategy.routing import RoutingModel
 from tradeexecutor.strategy.run_state import RunState
 from tradeexecutor.strategy.strategy_cycle_trigger import StrategyCycleTrigger
 
@@ -108,6 +109,7 @@ class ExecutionLoop:
             trade_immediately=False,
             run_state: Optional[RunState]=None,
             strategy_cycle_trigger: StrategyCycleTrigger = StrategyCycleTrigger.cycle_offset,
+            routing_model: Optional[RoutingModel] = None,
     ):
         """See main.py for details."""
 
@@ -122,6 +124,7 @@ class ExecutionLoop:
         self.stop_loss_check_frequency = stop_loss_check_frequency
         self.strategy_factory = strategy_factory
         self.reset = reset
+        self.routing_model = routing_model
 
         args = locals().copy()
         args.pop("self")
@@ -940,7 +943,7 @@ class ExecutionLoop:
             pricing_model_factory=self.pricing_model_factory,
             approval_model=self.approval_model,
             client=self.client,
-            routing_model = None,  # Assume strategy factory produces its own routing model
+            routing_model=self.routing_model,
             run_state=self.run_state,
         )
 

@@ -322,7 +322,7 @@ def portfolio(web3, hot_wallet, usdc_asset) -> Portfolio:
     )
     assert len(events) > 0
     apply_sync_events(portfolio, events)
-    reserve_currency, exchange_rate = portfolio.get_default_reserve_currency()
+    reserve_currency, exchange_rate = portfolio.get_default_reserve()
     assert reserve_currency == usdc_asset
     return portfolio
 

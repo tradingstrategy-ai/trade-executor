@@ -167,7 +167,7 @@ def setup_backtest_for_universe(
     state = State()
     events = deposit_syncer(state.portfolio, start_at, universe.reserve_assets)
     assert len(events) == 1
-    token, usd_exchange_rate = state.portfolio.get_default_reserve_currency()
+    token, usd_exchange_rate = state.portfolio.get_default_reserve()
     assert usd_exchange_rate == 1
     assert state.portfolio.get_current_cash() == initial_deposit
 
@@ -311,7 +311,7 @@ def run_backtest(
 
             events = deposit_syncer(state.portfolio, setup.start_at, universe.reserve_assets)
             assert len(events) == 1, f"Did not get 1 initial backtest deposit event, got {len(events)} events.\nMake sure you did not call backtest_setup() twice?"
-            token, usd_exchange_rate = state.portfolio.get_default_reserve_currency()
+            token, usd_exchange_rate = state.portfolio.get_default_reserve()
             assert usd_exchange_rate == 1
             backtest_universe = universe
     else:

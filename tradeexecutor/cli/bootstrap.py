@@ -89,6 +89,7 @@ def create_trade_execution_model(
         max_slippage: float,
         min_balance_threshold: Optional[Decimal],
         vault_address: Optional[str],
+        vault_adapter_address: Optional[str],
 ):
     """Set up the execution mode for the command line client.
 
@@ -111,7 +112,7 @@ def create_trade_execution_model(
         assert private_key, "Private key is needed for live trading"
         web3 = web3config.get_default()
         hot_wallet = HotWallet.from_private_key(private_key)
-        sync_model = create_sync_model(asset_management_mode, web3, hot_wallet, vault_address)
+        sync_model = create_sync_model(asset_management_mode, web3, hot_wallet, vault_address, vault_adapter_address)
         execution_model = UniswapV2ExecutionModel(
             sync_model.create_transaction_builder(),
             confirmation_timeout=confirmation_timeout,
@@ -219,6 +220,7 @@ def create_sync_model(
         web3: Web3,
         hot_wallet: Optional[HotWallet],
         vault_address: Optional[str],
+        vault_adapter_address: Optional[str] = None,
 ) -> SyncModel:
     match asset_management_mode:
         case AssetManagementMode.hot_wallet:
@@ -231,6 +233,7 @@ def create_sync_model(
                 reorg_mon,
                 only_chain_listener=True,
                 hot_wallet=hot_wallet,
+                generic_adapter_address=vault_adapter_address,
             )
         case _:
             raise NotImplementedError()

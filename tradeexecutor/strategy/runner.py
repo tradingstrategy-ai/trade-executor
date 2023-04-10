@@ -104,9 +104,13 @@ class StrategyRunner(abc.ABC):
         """Adjust portfolio balances based on the external events.
 
         External events include
+
         - Deposits
+
         - Withdrawals
+
         - Interest accrued
+
         - Token rebases
         """
         assert isinstance(universe, StrategyExecutionUniverse), f"Universe was {universe}"

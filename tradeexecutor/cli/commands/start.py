@@ -26,13 +26,16 @@ from ..log import setup_logging, setup_discord_logging, setup_logstash_logging, 
 from ..loop import ExecutionLoop
 from ..result import display_backtesting_results
 from ..version_info import VersionInfo
+from ...ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2SimpleRoutingModel
 from ...state.state import State
 from ...state.store import NoneStore
 from ...strategy.approval import ApprovalType
 from ...strategy.bootstrap import import_strategy_file
 from ...strategy.cycle import CycleDuration
+from ...strategy.default_routing_options import TradeRouting
 from ...strategy.execution_context import ExecutionContext, ExecutionMode
 from ...strategy.execution_model import AssetManagementMode
+from ...strategy.routing import RoutingModel
 from ...strategy.run_state import RunState
 from ...strategy.strategy_cycle_trigger import StrategyCycleTrigger
 from ...strategy.strategy_module import read_strategy_module, StrategyModuleInformation
@@ -59,6 +62,7 @@ def start(
     # Live trading or backtest
     asset_management_mode: AssetManagementMode = shared_options.asset_management_mode,
     vault_address: Optional[str] = shared_options.vault_address,
+    vault_adapter_address: Optional[str] = shared_options.vault_adapter_address,
     trading_strategy_api_key: str = shared_options.trading_strategy_api_key,
 
     # Webhook server options
@@ -241,6 +245,7 @@ def start(
             max_slippage,
             minimum_gas_balance,
             vault_address,
+            vault_adapter_address,
         )
 
         approval_model = create_approval_model(approval_type)
@@ -280,6 +285,10 @@ def start(
             logger.info("Web server disabled")
             server = None
 
+        # Routing model comes usually from the strategy and hard-coded blockchain defaults,
+        # but for local dev chains it is dynamically constructed from the deployed contracts
+        routing_model: RoutingModel = None
+
         # Create our data client
         if test_evm_uniswap_v2_factory:
             # Running against a local dev chain
@@ -289,6 +298,14 @@ def start(
                 test_evm_uniswap_v2_router,
                 test_evm_uniswap_v2_init_code_hash,
             )
+
+            if mod.trade_routing == TradeRouting.user_supplied_routing_model:
+                routing_model = UniswapV2SimpleRoutingModel(
+                    factory_router_map={test_evm_uniswap_v2_factory: (test_evm_uniswap_v2_router, test_evm_uniswap_v2_init_code_hash)},
+                    allowed_intermediary_pairs={},
+                    reserve_token_address=client.get_default_quote_token_address(),
+                )
+
         elif trading_strategy_api_key:
             # Backtest / real trading
             client = Client.create_live_client(trading_strategy_api_key, cache_path=cache_path)
@@ -371,6 +388,7 @@ def start(
             position_trigger_check_frequency=position_trigger_check_frequency,
             run_state=run_state,
             strategy_cycle_trigger=strategy_cycle_trigger,
+            routing_model=routing_model,
         )
         loop.run()
 

@@ -583,7 +583,7 @@ class Portfolio:
         except Exception as e:
             raise InvalidValuationOutput(f"Valuation model failed to output proper price: {valuation_method}") from e
 
-    def get_default_reserve_currency(self) -> Tuple[AssetIdentifier, USDollarAmount]:
+    def get_default_reserve(self) -> Tuple[AssetIdentifier, USDollarAmount]:
         """Gets the default reserve currency associated with this state.
 
         For strategies that use only one reserve currency.

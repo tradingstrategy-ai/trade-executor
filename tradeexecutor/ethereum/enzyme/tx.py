@@ -50,6 +50,7 @@ class EnzymeTransactionBuilder(TransactionBuilder):
 
     def get_token_delivery_address(self) -> str:
         """Get the target address for ERC-20 approve()"""
+        assert self.vault.generic_adapter is not None, "GenericAdapter smart contract information for Enzyme vault has not been passed. Cannot make transactions."
         return self.vault.generic_adapter.address
 
     def get_erc_20_balance_address(self) -> str:
@@ -89,7 +90,7 @@ class EnzymeTransactionBuilder(TransactionBuilder):
         assert isinstance(contract, Contract), f"Expected Contract, got {contract}"
         assert isinstance(args_bound_func, ContractFunction), f"Expected ContractFunction, got {args_bound_func}"
 
-        assert asset_deltas is not None, f"{args_bound_func.fn_name}() - cannot make Enzyme trades without asset_deltas set. Set to [] for approve()"
+        assert asset_deltas is not None, f"{args_bound_func.fn_name}() - cannot make Enzyme trades without asset_deltas set. Set to asset_deltas=[] for approve()"
 
         if gas_limit is None:
             gas_limit = 2_500_000
@@ -98,7 +99,7 @@ class EnzymeTransactionBuilder(TransactionBuilder):
                     contract.address,
                     args_bound_func.fn_name,
                     ", ".join([str(a) for a in args_bound_func.args]),
-                    gas_price_suggestion,
+                    gas_limit,
                     asset_deltas)
 
         enzyme_tx = EnzymeVaultTransaction(

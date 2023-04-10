@@ -4,10 +4,13 @@ import os
 import secrets
 
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from click.testing import Result
 from eth_account import Account
+from typer.main import get_command
+
 from eth_defi.anvil import AnvilLaunch
 from hexbytes import HexBytes
 from typer.testing import CliRunner
@@ -40,7 +43,6 @@ def hot_wallet(web3, deployer, user_1, usdc: Contract) -> HotWallet:
     assert_transaction_success_with_explanation(web3, tx_hash)
     tx_hash = usdc.functions.transfer(wallet.address, 500 * 10**6).transact({"from": deployer})
     assert_transaction_success_with_explanation(web3, tx_hash)
-
     return wallet
 
 
@@ -92,6 +94,7 @@ def environment(
         "UNIT_TESTING": "true",
         "LOG_LEVEL": "info",
         "VAULT_ADDRESS": vault.address,
+        "VAULT_ADAPTER_ADDRESS": vault.generic_adapter.address,
         "TEST_EVM_UNISWAP_V2_ROUTER": uniswap_v2.router.address,
         "TEST_EVM_UNISWAP_V2_FACTORY": uniswap_v2.factory.address,
         "TEST_EVM_UNISWAP_V2_INIT_CODE_HASH": uniswap_v2.init_code_hash,
@@ -136,6 +139,9 @@ def test_enzyme_live_trading_init(
 def test_enzyme_live_trading_start(
     environment: dict,
     state_file: Path,
+    usdc: Contract,
+    vault: Vault,
+    deployer: HexAddress,
 ):
     """Run Enzyme vaulted strategy for few cycles.
 
@@ -155,15 +161,16 @@ def test_enzyme_live_trading_start(
     result = run_init(environment)
     assert result.exit_code == 0
 
-    with state_file.open("rt") as inp:
-        state = State.from_json(inp.read())
-        assert state.sync.deployment.vault_token_name is not None
-        assert state.sync.deployment.vault_token_symbol is not None
-        assert state.sync.deployment.block_number > 1
+    # Deposit some money in the vault
+    usdc.functions.approve(vault.comptroller.address, 500 * 10**6).transact({"from": deployer})
+    vault.comptroller.functions.buyShares(500 * 10**6, 1).transact({"from": deployer})
 
-    runner = CliRunner()
-
-    result = runner.invoke(app, "start", env=environment)
+    # Run strategy for few cycles.
+    # Manually call the main() function so that Typer's CliRunner.invoke() does not steal
+    # stdin and we can still set breakpoints
+    cli = get_command(app)
+    with patch.dict(os.environ, environment, clear=True):
+        cli.main(args=["start"])
 
     if result.exception:
         raise result.exception

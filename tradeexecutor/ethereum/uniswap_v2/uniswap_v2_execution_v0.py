@@ -139,7 +139,7 @@ class UniswapV2ExecutionModelVersion0(ExecutionModel):
             self.hot_wallet,
         )
 
-        reserve_asset, rate = state.portfolio.get_default_reserve_currency()
+        reserve_asset, rate = state.portfolio.get_default_reserve()
 
         # We know only about one exchange
         routing_model = UniswapV2SimpleRoutingModel(

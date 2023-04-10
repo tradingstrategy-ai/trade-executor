@@ -159,7 +159,8 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
 
         - ...or without candles
         """
-        return self.universe.pairs.get_count() == 0 or len(self.universe.candles.df) == 0
+        candles = self.universe.candles.df if self.universe.candles else []
+        return self.universe.pairs.get_count() == 0 or len(candles) == 0
 
     def is_single_pair_universe(self) -> bool:
         """Is this trading universe made for a single pair trading.

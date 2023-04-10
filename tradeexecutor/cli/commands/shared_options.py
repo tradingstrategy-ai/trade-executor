@@ -20,6 +20,7 @@ strategy_file = Option(..., envvar="STRATEGY_FILE", help="Python trading strateg
 private_key = Option(None, envvar="PRIVATE_KEY", help="Ethereum private key to be used as a hot wallet for paying transaction broadcasts and gas")
 
 vault_address = Option(None, envvar="VAULT_ADDRESS", help="Deployed strategy vault address")
+vault_adapter_address = Option(None, envvar="VAULT_ADAPTER_ADDRESS", help="Deployed GenericAdapter contract address for the vault")
 
 asset_management_mode = Option(None, envvar="ASSET_MANAGEMENT_MODE", help="How does the asset management happen\n"
                                                                           ""

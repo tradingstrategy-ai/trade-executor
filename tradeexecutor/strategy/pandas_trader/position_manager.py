@@ -136,9 +136,29 @@ class PositionManager:
                  universe: Universe,
                  state: State,
                  pricing_model: PricingModel,
+                 default_slippage_tolerance=0.01,  # Slippage tole
                  ):
 
-        #: TODO: Take valuation model as input
+        """Create a new PositionManager instance.
+        
+        Call within `decide_trades` function.
+        
+        :param timestamp: 
+            The timestamp of the current strategy cycle
+            
+        :param universe: 
+            Trading universe of available assets
+        
+        :param state: 
+            Current state of the trade execution
+            
+        :param pricing_model:
+            The model to estimate prices for any trades
+         
+        :param default_slippage_tolerance: 
+            Slippage tolerance parameter set for any trades if not overriden trade-by-trade basis.
+            
+        """
 
         assert pricing_model, "pricing_model is needed in order to know buy/sell price of new positions"
         assert isinstance(universe, Universe), f"Got {universe} {type(universe)}"
@@ -150,8 +170,9 @@ class PositionManager:
         self.universe = universe
         self.state = state
         self.pricing_model = pricing_model
+        self.default_slippage_tolerance = default_slippage_tolerance
 
-        reserve_currency, reserve_price = state.portfolio.get_default_reserve_currency()
+        reserve_currency, reserve_price = state.portfolio.get_default_reserve()
 
         self.reserve_currency = reserve_currency
 
@@ -270,6 +291,7 @@ class PositionManager:
                      take_profit_pct: Optional[float] = None,
                      stop_loss_pct: Optional[float] = None,
                      notes: Optional[str] = None,
+                     slippage_tolerance: Optional[float] = None,
                      ) -> List[TradeExecution]:
         """Open a long.
 
@@ -302,6 +324,11 @@ class PositionManager:
         :param notes:
             Human readable notes for this trade
 
+        :param slippage_tolerance:
+            Slippage tolerance for this trade.
+
+            Use :py:attr:`default_slippage_tolerance` if not set.
+
         :return:
             A list of new trades.
             Opening a position may general several trades for complex DeFi positions,
@@ -322,7 +349,9 @@ class PositionManager:
 
         price_structure = self.pricing_model.get_buy_price(self.timestamp, executor_pair, value)
 
-        reserve_asset, reserve_price = self.state.portfolio.get_default_reserve_currency()
+        reserve_asset, reserve_price = self.state.portfolio.get_default_reserve()
+
+        slippage_tolerance = slippage_tolerance or self.default_slippage_tolerance
 
         position, trade, created = self.state.create_trade(
             self.timestamp,
@@ -336,7 +365,8 @@ class PositionManager:
             lp_fees_estimated=price_structure.get_total_lp_fees(),
             pair_fee=price_structure.get_fee_percentage(),
             planned_mid_price=price_structure.mid_price,
-            price_structure=price_structure
+            price_structure=price_structure,
+            slippage_tolerance=slippage_tolerance,
         )
 
         assert created, f"There was conflicting open position for pair: {executor_pair}"
@@ -363,6 +393,7 @@ class PositionManager:
                         weight: float,
                         stop_loss: Optional[Percent] = None,
                         take_profit: Optional[Percent] = None,
+                        slippage_tolerance: Optional[float] = None,
                         ) -> List[TradeExecution]:
         """Adjust holdings for a certain position.
 
@@ -400,6 +431,11 @@ class PositionManager:
             Use 0...1 based on the current mid price.
             E.g. 1.02 = 2% take profit over the current mid-price.
 
+        :param slippage_tolerance:
+            Slippage tolerance for this trade.
+
+            Use :py:attr:`default_slippage_tolerance` if not set.
+
         :return:
             List of trades to be executed to get to the desired
             position level.
@@ -426,7 +462,9 @@ class PositionManager:
 
         price = price_structure.price
 
-        reserve_asset, reserve_price = self.state.portfolio.get_default_reserve_currency()
+        reserve_asset, reserve_price = self.state.portfolio.get_default_reserve()
+
+        slippage_tolerance = slippage_tolerance or self.default_slippage_tolerance
 
         if dollar_amount_delta > 0:
             # Buy
@@ -441,7 +479,8 @@ class PositionManager:
                 reserve_currency_price=reserve_price,
                 planned_mid_price=price_structure.mid_price,
                 lp_fees_estimated=price_structure.get_total_lp_fees(),
-                pair_fee=price_structure.get_fee_percentage()
+                pair_fee=price_structure.get_fee_percentage(),
+                slippage_tolerance=slippage_tolerance,
             )
         else:
             # Sell
@@ -469,6 +508,7 @@ class PositionManager:
                 reserve_currency=self.reserve_currency,
                 reserve_currency_price=reserve_price,
                 planned_mid_price=price_structure.mid_price,
+                slippage_tolerance=slippage_tolerance,
             )
 
         # Update stop loss for this position
@@ -488,6 +528,7 @@ class PositionManager:
                        trade_type: TradeType=TradeType.rebalance,
                        notes: Optional[str] = None,
                        trades_as_list=False,
+                       slippage_tolerance: Optional[float] = None,
                        ) -> Optional[TradeExecution] | List[TradeExecution]:
         """Close a single position.
 
@@ -507,6 +548,11 @@ class PositionManager:
         :param trades_as_list:
             A migration parameter for the future signature where we are
             always returning a list of trades.
+
+        :param slippage_tolerance:
+            Slippage tolerance for this trade.
+
+            Use :py:attr:`default_slippage_tolerance` if not set.
 
         :return:
             Get list of trades needed to close this position.
@@ -534,7 +580,9 @@ class PositionManager:
         quantity = quantity_left
         price_structure = self.pricing_model.get_sell_price(self.timestamp, pair, quantity=quantity)
 
-        reserve_asset, reserve_price = self.state.portfolio.get_default_reserve_currency()
+        reserve_asset, reserve_price = self.state.portfolio.get_default_reserve()
+
+        slippage_tolerance = slippage_tolerance or self.default_slippage_tolerance
 
         position2, trade, created = self.state.create_trade(
             self.timestamp,
@@ -550,6 +598,7 @@ class PositionManager:
             lp_fees_estimated=price_structure.get_total_lp_fees(),
             planned_mid_price=price_structure.mid_price,
             position=position,
+            slippage_tolerance=slippage_tolerance,
         )
         assert position == position2, f"Somehow messed up the close_position() trade.\n" \
                                       f"Original position: {position}.\n" \

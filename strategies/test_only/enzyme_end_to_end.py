@@ -26,7 +26,7 @@ from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 
 trading_strategy_engine_version = "0.1"
 trading_strategy_type = StrategyType.managed_positions
-trade_routing = TradeRouting.uniswap_v2_usdc
+trade_routing = TradeRouting.user_supplied_routing_model
 trading_strategy_cycle = CycleDuration.cycle_1s
 reserve_currency = ReserveCurrency.usdc
 
@@ -40,7 +40,7 @@ def decide_trades(
 
     # Create a position manager helper class that allows us easily to create
     # opening/closing trades for different positions
-    position_manager = PositionManager(timestamp, universe, state, pricing_model)
+    position_manager = PositionManager(timestamp, universe, state, pricing_model, default_slippage_tolerance=0.02)
 
     pair = universe.pairs.get_single()
 

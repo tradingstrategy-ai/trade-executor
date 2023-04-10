@@ -41,6 +41,7 @@ class EnzymeVaultSyncModel(SyncModel):
                  reorg_mon: ReorganisationMonitor,
                  only_chain_listener=True,
                  hot_wallet: Optional[HotWallet] = None,
+                 generic_adapter_address: Optional[str] = None,
                  ):
         """
 
@@ -62,11 +63,16 @@ class EnzymeVaultSyncModel(SyncModel):
             Trade executor's hot wallet used to create transactions.
 
             Only needed when doing trades.
+
+        :param generic_adapter_address:
+            The vault specific deployed GenericAdapter smart contract.
+
+            Needed to make trades.
         """
         assert vault_address is not None, "Vault address is not given"
         self.web3 = web3
         self.reorg_mon = reorg_mon
-        self.vault = Vault.fetch(web3, vault_address)
+        self.vault = Vault.fetch(web3, vault_address, generic_adapter_address)
         self.scan_chunk_size = 10_000
         self.only_chain_listener = only_chain_listener
         self.hot_wallet = hot_wallet
@@ -126,7 +132,7 @@ class EnzymeVaultSyncModel(SyncModel):
 
         position_str = ", ".join([str(p) for p in portfolio.get_open_positions()])
         raise UnknownAsset(f"Asset {asset} does not map to any open position.\n"
-                           f"Reserve: {portfolio.get_default_reserve_currency()}.\n"
+                           f"Reserve: {portfolio.get_default_reserve()}.\n"
                            f"Open positions: {position_str}")
 
     def process_deposit(self, portfolio: Portfolio, event: Deposit) -> BalanceUpdate:
@@ -137,7 +143,7 @@ class EnzymeVaultSyncModel(SyncModel):
             # Initial deposit
             portfolio.initialise_reserves(asset)
         else:
-            reserve_asset, reserve_price = portfolio.get_default_reserve_currency()
+            reserve_asset, reserve_price = portfolio.get_default_reserve()
             assert asset == reserve_asset
 
         reserve_position = portfolio.get_reserve_position(asset)
