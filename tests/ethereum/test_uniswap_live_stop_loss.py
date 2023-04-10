@@ -5,7 +5,6 @@ import datetime
 import secrets
 from decimal import Decimal
 from typing import List
-from unittest.mock import patch
 
 import pytest
 import pandas as pd
@@ -25,8 +24,8 @@ from web3.contract import Contract
 from eth_defi.token import create_token
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, deploy_trading_pair, deploy_uniswap_v2_like
 
-from tradeexecutor.ethereum.uniswap_v2_execution import UniswapV2ExecutionModel
-from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2SimpleRoutingModel
+from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_execution import UniswapV2ExecutionModel
+from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2SimpleRoutingModel
 from tradeexecutor.state.state import State, UncleanState
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.cycle import snap_to_previous_tick
@@ -37,7 +36,7 @@ from tradeexecutor.strategy.execution_context import ExecutionMode
 from tradingstrategy.exchange import ExchangeUniverse
 from tradingstrategy.pair import PandasPairUniverse
 
-from tradeexecutor.ethereum.uniswap_v2_live_pricing import UniswapV2LivePricing
+from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_live_pricing import UniswapV2LivePricing
 from tradeexecutor.ethereum.universe import create_exchange_universe, create_pair_universe
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.testing.simulated_execution_loop import set_up_simulated_execution_loop_uniswap_v2

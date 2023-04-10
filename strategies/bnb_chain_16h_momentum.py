@@ -16,13 +16,13 @@
 import datetime
 import logging
 import os
-from collections import Counter, defaultdict
+from collections import Counter
 from contextlib import AbstractContextManager
 from typing import Dict
 
 import pandas as pd
 
-from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2SimpleRoutingModel
+from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2SimpleRoutingModel
 from tradeexecutor.strategy.execution_context import ExecutionMode, ExecutionContext
 from tradingstrategy.client import Client
 from tradingstrategy.candle import GroupedCandleUniverse
@@ -35,7 +35,7 @@ from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.utils.groupeduniverse import filter_for_pairs
 from tradingstrategy.universe import Universe
 
-from tradeexecutor.ethereum.uniswap_v2_execution_v0 import UniswapV2ExecutionModelVersion0
+from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_execution_v0 import UniswapV2ExecutionModelVersion0
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.sync_model import SyncMethodV0
 from tradeexecutor.strategy.approval import ApprovalModel

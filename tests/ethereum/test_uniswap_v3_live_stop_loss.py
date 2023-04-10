@@ -5,7 +5,6 @@ import datetime
 import secrets
 from decimal import Decimal
 from typing import List
-from unittest.mock import patch
 
 import pytest
 import pandas as pd
@@ -26,9 +25,9 @@ from eth_defi.token import create_token
 from eth_defi.uniswap_v3.deployment import UniswapV3Deployment, deploy_pool, deploy_uniswap_v3, add_liquidity
 from eth_defi.uniswap_v3.utils import get_default_tick_range
 
-from tradeexecutor.ethereum.uniswap_v3_execution import UniswapV3ExecutionModel
-from tradeexecutor.ethereum.uniswap_v3_routing import UniswapV3SimpleRoutingModel
-from tradeexecutor.ethereum.uniswap_v3_live_pricing import UniswapV3LivePricing
+from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_execution import UniswapV3ExecutionModel
+from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_routing import UniswapV3SimpleRoutingModel
+from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_live_pricing import UniswapV3LivePricing
 from tradeexecutor.state.state import State, UncleanState
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.cycle import snap_to_previous_tick

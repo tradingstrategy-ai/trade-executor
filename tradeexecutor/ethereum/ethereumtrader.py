@@ -7,7 +7,7 @@ from web3.contract import Contract
 from eth_defi.hotwallet import HotWallet
 from eth_defi.abi import get_deployed_contract
 
-from tradeexecutor.ethereum.uniswap_v2_execution import UniswapV2Deployment
+from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_execution import UniswapV2Deployment
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.identifier import TradingPairIdentifier

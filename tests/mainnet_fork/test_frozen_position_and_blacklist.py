@@ -15,7 +15,6 @@ import datetime
 import logging
 import os
 import secrets
-from decimal import Decimal
 from pathlib import Path
 from typing import List
 
@@ -24,19 +23,16 @@ from eth_account import Account
 from eth_defi.anvil import fork_network_anvil
 from eth_defi.chain import install_chain_middleware
 from eth_defi.confirmation import wait_transactions_to_complete
-from eth_defi.gas import node_default_gas_price_strategy
 from eth_typing import HexAddress, HexStr
 from hexbytes import HexBytes
 
-from eth_defi.utils import is_localhost_port_listening
-from tradeexecutor.ethereum.uniswap_v2_valuation_v0 import UniswapV2PoolValuationMethodV0
+from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_valuation_v0 import UniswapV2PoolValuationMethodV0
 from tradeexecutor.ethereum.universe import create_exchange_universe, create_pair_universe
 from tradeexecutor.strategy.qstrader import HAS_QSTRADER
-from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, TradingStrategyUniverseModel
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.strategy.universe_model import StaticUniverseModel
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId
-from tradingstrategy.client import Client
 from tradingstrategy.exchange import ExchangeUniverse
 from tradingstrategy.liquidity import GroupedLiquidityUniverse
 from tradingstrategy.pair import PandasPairUniverse
@@ -46,17 +42,15 @@ from web3 import Web3, HTTPProvider
 from web3.contract import Contract
 
 from eth_defi.abi import get_deployed_contract
-from eth_defi.ganache import fork_network
 from eth_defi.hotwallet import HotWallet
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, fetch_deployment
 from tradeexecutor.ethereum.hot_wallet_sync_model import EthereumHotWalletReserveSyncer
-from tradeexecutor.ethereum.uniswap_v2_execution_v0 import UniswapV2ExecutionModelVersion0
-from tradeexecutor.ethereum.uniswap_v2_live_pricing import uniswap_v2_live_pricing_factory
-from tradeexecutor.ethereum.uniswap_v2_valuation import UniswapV2PoolRevaluator, uniswap_v2_sell_valuation_factory
+from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_execution_v0 import UniswapV2ExecutionModelVersion0
+from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_live_pricing import uniswap_v2_live_pricing_factory
+from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_valuation import uniswap_v2_sell_valuation_factory
 from tradeexecutor.state.state import State
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.position import TradingPosition
-from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.strategy.approval import UncheckedApprovalModel
 from tradeexecutor.strategy.bootstrap import import_strategy_file

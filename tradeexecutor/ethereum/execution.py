@@ -6,7 +6,7 @@ from collections import Counter
 from decimal import Decimal
 from itertools import chain
 from typing import List, Dict, Set, Tuple
-from abc import ABC, abstractmethod
+from abc import abstractmethod
 
 from eth_account.datastructures import SignedTransaction
 from eth_typing import HexAddress
@@ -31,9 +31,9 @@ from tradeexecutor.state.trade import TradeExecution, TradeStatus
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction, BlockchainTransactionType
 from tradeexecutor.state.freeze import freeze_position_on_failed_trade
 from tradeexecutor.state.identifier import AssetIdentifier
-from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2SimpleRoutingModel, UniswapV2RoutingState
-from tradeexecutor.ethereum.uniswap_v3_routing import UniswapV3SimpleRoutingModel, UniswapV3RoutingState
-from tradeexecutor.strategy.execution_model import ExecutionModel
+from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2SimpleRoutingModel, UniswapV2RoutingState
+from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_routing import UniswapV3SimpleRoutingModel, UniswapV3RoutingState
+from tradeexecutor.strategy.execution_model import ExecutionModel, RoutingStateDetails
 from tradingstrategy.chain import ChainId
 
 logger = logging.getLogger(__name__)
@@ -320,10 +320,9 @@ class EthereumExecutionModel(ExecutionModel):
         # Clean up failed trades
         freeze_position_on_failed_trade(ts, state, trades)
 
-    def get_routing_state_details(self) -> dict:
+    def get_routing_state_details(self) -> RoutingStateDetails:
         return {
-            "web3": self.web3,
-            "hot_wallet": self.tx_builder,
+            "tx_builder": self.tx_builder,
         }
 
     def update_confirmation_status(

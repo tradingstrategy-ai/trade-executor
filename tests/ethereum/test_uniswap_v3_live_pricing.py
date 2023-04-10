@@ -18,8 +18,8 @@ from eth_defi.uniswap_v3.deployment import (
 from eth_defi.uniswap_v3.utils import get_default_tick_range
 from eth_defi.uniswap_v3.pool import fetch_pool_details
 
-from tradeexecutor.ethereum.uniswap_v3_routing import UniswapV3SimpleRoutingModel
-from tradeexecutor.ethereum.uniswap_v3_live_pricing import UniswapV3LivePricing
+from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_routing import UniswapV3SimpleRoutingModel
+from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_live_pricing import UniswapV3LivePricing
 from tradeexecutor.ethereum.universe import create_exchange_universe, create_pair_universe
 from tradeexecutor.strategy.trading_strategy_universe import translate_trading_pair
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier

@@ -16,30 +16,26 @@ from decimal import Decimal
 from pathlib import Path
 from typing import List
 
-import flaky
 import pytest
 from eth_account import Account
 from eth_defi.anvil import fork_network_anvil
 from eth_defi.chain import install_chain_middleware
-from eth_defi.gas import node_default_gas_price_strategy
 from eth_typing import HexAddress, HexStr
 from hexbytes import HexBytes
 
-from eth_defi.utils import is_localhost_port_listening
 from tradeexecutor.strategy.execution_context import ExecutionMode, ExecutionContext
 from tradingstrategy.client import Client
 from web3 import Web3, HTTPProvider
 from web3.contract import Contract
 
 from eth_defi.abi import get_deployed_contract
-from eth_defi.ganache import fork_network
 from eth_defi.hotwallet import HotWallet
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, fetch_deployment
 from tradeexecutor.ethereum.hot_wallet_sync_model import EthereumHotWalletReserveSyncer
-from tradeexecutor.ethereum.uniswap_v2_execution_v0 import UniswapV2ExecutionModelVersion0
-from tradeexecutor.ethereum.uniswap_v2_live_pricing import uniswap_v2_live_pricing_factory
-from tradeexecutor.ethereum.uniswap_v2_valuation import UniswapV2PoolRevaluator, uniswap_v2_sell_valuation_factory
-from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2SimpleRoutingModel
+from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_execution_v0 import UniswapV2ExecutionModelVersion0
+from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_live_pricing import uniswap_v2_live_pricing_factory
+from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_valuation import uniswap_v2_sell_valuation_factory
+from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2SimpleRoutingModel
 from tradeexecutor.state.state import State
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.trade import TradeExecution

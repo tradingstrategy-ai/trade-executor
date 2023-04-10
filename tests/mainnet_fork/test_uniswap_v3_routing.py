@@ -10,7 +10,6 @@ To run these tests, we need to connect to polygon Chain:
 """
 
 import datetime
-import logging
 import os
 from decimal import Decimal
 
@@ -20,7 +19,6 @@ from eth_account import Account
 from eth_defi.anvil import fork_network_anvil
 from eth_defi.chain import install_chain_middleware
 from eth_defi.abi import get_deployed_contract
-from eth_defi.gas import estimate_gas_fees, node_default_gas_price_strategy
 from eth_defi.confirmation import wait_transactions_to_complete
 from eth_typing import HexAddress, HexStr
 from web3 import Web3, HTTPProvider
@@ -33,12 +31,12 @@ from eth_defi.uniswap_v3.deployment import (
 )
 
 from tradeexecutor.ethereum.tx import HotWalletTransactionBuilder
-from tradeexecutor.ethereum.uniswap_v3_routing import (
+from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_routing import (
     UniswapV3RoutingState,
     UniswapV3SimpleRoutingModel,
     OutOfBalance,
 )
-from tradeexecutor.ethereum.uniswap_v3_execution import UniswapV3ExecutionModel
+from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_execution import UniswapV3ExecutionModel
 from tradeexecutor.ethereum.wallet import sync_reserves
 from tradeexecutor.testing.dummy_wallet import apply_sync_events
 from tradeexecutor.state.portfolio import Portfolio

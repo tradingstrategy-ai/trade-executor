@@ -10,7 +10,6 @@ from typing import Tuple
 
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment
 from eth_defi.uniswap_v2.fees import estimate_sell_received_amount_raw
-from tradeexecutor.ethereum.uniswap_v2_live_pricing import UniswapV2LivePricing
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.types import USDollarAmount
 from tradeexecutor.strategy.valuation import ValuationModel
