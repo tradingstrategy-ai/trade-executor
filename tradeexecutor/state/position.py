@@ -783,10 +783,7 @@ class TradingPosition:
         """Do we have legacy / incompatible data issues."""
         
         for t in self.trades.values():
-            if not hasattr(t, "bad_data_issues"):
-                raise ValueError("Trade does not have bad_data_issues attribute. Run portfolio.get_all_positions_filtered() to add bad_data_issues to all trades.")
-            
-            if t.bad_data_issues:
+            if t.planned_mid_price in {0, None}:  # Old data
                 return True
             
         return False

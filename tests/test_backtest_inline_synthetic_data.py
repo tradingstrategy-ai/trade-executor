@@ -360,7 +360,6 @@ def test_advanced_summary_statistics(
 def test_timeline(
     analysis: TradeAnalysis,
     backtest_result: tuple[State, TradingStrategyUniverse, dict],
-    summary: TradeSummary # need to run to get bad_data_issues flag
 ):
     state, universe, debug_dump = backtest_result
 
@@ -444,7 +443,6 @@ def test_timeline(
 def test_timeline_raw(
     analysis: TradeAnalysis,
     backtest_result: tuple[State, TradingStrategyUniverse, dict],
-    summary: TradeSummary # need to run to get bad_data_issues flag
 ):
     state, universe, debug_dump = backtest_result
 

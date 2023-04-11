@@ -136,7 +136,6 @@ class Portfolio:
         """Get open, closed and frozen, positions filtered to remove
         repaired or failed trades.
         
-        It also adds bad_data_issues flag to each trade
         """
         
         all_positions = self.get_all_positions()
@@ -166,9 +165,6 @@ class Portfolio:
                     # TODO: Legacy trades.
                     # mid_price is filled to all latest trades
                     price = trade.executed_price
-
-                    # bad_data_issues only used for remark
-                    trade.bad_data_issues = True
                     
                 assert quantity != 0, f"Got bad quantity for {trade}"
                 assert (price is not None) and price > 0, f"Got invalid trade {trade.get_full_debug_dump_str()} - price is {price}"

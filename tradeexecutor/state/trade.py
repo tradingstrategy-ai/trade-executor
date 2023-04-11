@@ -326,12 +326,6 @@ class TradeExecution:
     #: TradePricing instance can refer to more than one swap
     price_structure: Optional[TradePricing] = None
     
-    #: Set for legacy trades with legacy data.
-    #:
-    #: Mark that calculations on this trade might be incorrect
-    #:
-    #: Currently only used for remark
-    bad_data_issues: bool = False
 
     def __repr__(self):
         if self.is_buy():
