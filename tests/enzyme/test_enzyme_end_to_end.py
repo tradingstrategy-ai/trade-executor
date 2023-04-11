@@ -180,5 +180,10 @@ def test_enzyme_live_trading_start(
     # Check that trades completed
     with state_file.open("rt") as inp:
         state = State.from_json(inp.read())
+
+        if state.portfolio.frozen_positions:
+            for p in state.portfolio.frozen_positions:
+                assert f"Frozen position {p}: {p.get_freeze_reason()}"
+
         assert len(state.portfolio.frozen_positions) == 0
         assert len(state.portfolio.closed_positions) > 0
