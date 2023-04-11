@@ -23,6 +23,8 @@ from eth_defi.uniswap_v2.deployment import UniswapV2Deployment
 from eth_typing import HexAddress
 
 from tradeexecutor.cli.main import app
+from tradeexecutor.state.blockhain_transaction import BlockchainTransactionType
+from tradeexecutor.state.trade import TradeType
 from tradingstrategy.pair import PandasPairUniverse
 
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
@@ -30,7 +32,7 @@ from tradeexecutor.state.state import State
 
 
 @pytest.fixture
-def hot_wallet(web3, deployer, user_1, usdc: Contract) -> HotWallet:
+def hot_wallet(web3, deployer, user_1, usdc: Contract, vault: Vault) -> HotWallet:
     """Create hot wallet for the signing tests.
 
     Top is up with some gas money and 500 USDC.
@@ -43,6 +45,11 @@ def hot_wallet(web3, deployer, user_1, usdc: Contract) -> HotWallet:
     assert_transaction_success_with_explanation(web3, tx_hash)
     tx_hash = usdc.functions.transfer(wallet.address, 500 * 10**6).transact({"from": deployer})
     assert_transaction_success_with_explanation(web3, tx_hash)
+
+    # Promote the hot wallet to the asset manager
+    tx_hash = vault.vault.functions.addAssetManagers([account.address]).transact({"from": user_1})
+    assert_transaction_success_with_explanation(web3, tx_hash)
+
     return wallet
 
 
@@ -92,7 +99,7 @@ def environment(
         "STATE_FILE": state_file.as_posix(),
         "ASSET_MANAGEMENT_MODE": "enzyme",
         "UNIT_TESTING": "true",
-        "LOG_LEVEL": "disabled",  # Set to info to get debug data for the test run
+        "LOG_LEVEL": "info",  # Set to info to get debug data for the test run
         "VAULT_ADDRESS": vault.address,
         "VAULT_ADAPTER_ADDRESS": vault.generic_adapter.address,
         "TEST_EVM_UNISWAP_V2_ROUTER": uniswap_v2.router.address,
@@ -142,6 +149,7 @@ def test_enzyme_live_trading_start(
     environment: dict,
     state_file: Path,
     usdc: Contract,
+    weth: Contract,
     vault: Vault,
     deployer: HexAddress,
 ):
@@ -156,6 +164,12 @@ def test_enzyme_live_trading_start(
     - Check that the state file output looks good
 
     - Check that the chain output looks good
+
+    At the end of 5th cycle we should have
+
+    - 1 open position, id 2
+
+    - 1 closed position, id 1
     """
 
 
@@ -181,9 +195,29 @@ def test_enzyme_live_trading_start(
     with state_file.open("rt") as inp:
         state = State.from_json(inp.read())
 
-        if state.portfolio.frozen_positions:
-            for p in state.portfolio.frozen_positions:
-                assert f"Frozen position {p}: {p.get_freeze_reason()}"
+        # Show tx revert reason if possible
+        if len(state.portfolio.frozen_positions) > 0:
+            for p in state.portfolio.frozen_positions.values():
+                raise AssertionError(f"Frozen position {p}: {p.get_freeze_reason()}")
 
-        assert len(state.portfolio.frozen_positions) == 0
-        assert len(state.portfolio.closed_positions) > 0
+        assert len(state.portfolio.closed_positions) == 1
+        assert len(state.portfolio.open_positions) == 1
+
+        # Pick an example trade to examine
+        p = state.portfolio.open_positions[2]
+        t = p.trades[3]
+        assert t.is_success()
+        assert t.lp_fees_estimated == pytest.approx(0.14991015720000014)
+        assert t.lp_fees_paid == pytest.approx(0.14991015720000014)
+        assert t.trade_type == TradeType.rebalance
+        assert t.slippage_tolerance == 0.02  # Set in enzyme_end_to_end.py strategy module
+
+        tx = t.blockchain_transactions[0]
+        assert tx.type == BlockchainTransactionType.enzyme_vault
+
+    # Check on-chain balances
+    usdc_balance = usdc.functions.balanceOf(vault.vault.address).call()
+    weth_balance = weth.functions.balanceOf(vault.vault.address).call()
+
+    assert usdc_balance == pytest.approx(10**6 * 449.730472)
+    assert weth_balance == pytest.approx(10**18 * 0.03112978758721282)

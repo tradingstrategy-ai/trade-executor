@@ -248,3 +248,68 @@ def test_enzyme_execute_close_position(
 
     # Lost some money on fees
     assert state.portfolio.get_total_equity() == pytest.approx(Decimal(497.011924))
+
+
+def test_enzyme_lp_fees(
+    web3: Web3,
+    deployer: HexAddress,
+    vault: Vault,
+    usdc: Contract,
+    weth: Contract,
+    usdc_asset: AssetIdentifier,
+    weth_asset: AssetIdentifier,
+    user_1: HexAddress,
+    uniswap_v2: UniswapV2Deployment,
+    weth_usdc_trading_pair: TradingPairIdentifier,
+    pair_universe: PandasPairUniverse,
+    hot_wallet: HotWallet,
+):
+    """See LP fees are correctly estimated and realised."""
+
+    reorg_mon = create_reorganisation_monitor(web3)
+
+    tx_hash = vault.vault.functions.addAssetManagers([hot_wallet.address]).transact({"from": user_1})
+    assert_transaction_success_with_explanation(web3, tx_hash)
+
+    sync_model = EnzymeVaultSyncModel(
+        web3,
+        vault.address,
+        reorg_mon,
+    )
+
+    state = State()
+    sync_model.sync_initial(state)
+
+    # Make two deposits from separate parties
+    usdc.functions.transfer(user_1, 500 * 10**6).transact({"from": deployer})
+    usdc.functions.approve(vault.comptroller.address, 500 * 10**6).transact({"from": user_1})
+    vault.comptroller.functions.buyShares(500 * 10**6, 1).transact({"from": user_1})
+
+    # Strategy has its reserve balances updated
+    sync_model.sync_treasury(datetime.datetime.utcnow(), state)
+    assert state.portfolio.get_total_equity() == pytest.approx(500)
+
+    tx_builder = EnzymeTransactionBuilder(hot_wallet, vault)
+
+    # Now make a trade
+    trader = UniswapV2TestTrader(
+        web3,
+        uniswap_v2,
+        hot_wallet=tx_builder.hot_wallet,
+        state=state,
+        pair_universe=pair_universe,
+        tx_builder=tx_builder,
+    )
+
+    position, trade = trader.buy(
+        weth_usdc_trading_pair,
+        Decimal(500),
+        execute=False,
+        slippage_tolerance=0.999,
+    )
+
+    # How much ETH we expect in the trade
+    eth_amount = Decimal(0.310787861255819868)
+    assert trade.fee_tier == 0.0030
+    assert trade.planned_quantity == pytest.approx(eth_amount)
+    assert trade.lp_fees_estimated is not None

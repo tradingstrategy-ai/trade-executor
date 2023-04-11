@@ -34,7 +34,7 @@ class UniswapV2TestTrader(EthereumTrader):
                  ):
         super().__init__(web3, uniswap, hot_wallet, state, pair_universe)
 
-        self.execution_model = UniswapV2ExecutionModel(web3, hot_wallet)
+        self.execution_model = UniswapV2ExecutionModel(tx_builder)
 
         if tx_builder:
             self.tx_builder = tx_builder
@@ -168,12 +168,10 @@ class UniswapV2TestTrader(EthereumTrader):
 
     def broadcast_trades(self, trades: List[TradeExecution], stop_on_execution_failure=True):
         """Broadcast prepared trades."""
-        web3 = self.web3
-        hot_wallet = self.hot_wallet
 
         state = self.state
 
-        execution_model = UniswapV2ExecutionModel(web3, hot_wallet)
+        execution_model = UniswapV2ExecutionModel(self.tx_builder)
         execution_model.broadcast_and_resolve(state, trades, stop_on_execution_failure=stop_on_execution_failure)
 
         # Clean up failed trades
