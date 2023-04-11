@@ -391,11 +391,13 @@ class ExecutionLoop:
             state: State,
     ):
         """Update the summary card statistics for this strategy."""
-        stats = calculate_summary_statistics(
-            state,
-            self.execution_context.mode,
-        )
-        self.run_state.summary_statistics = stats
+
+        if not state.portfolio.is_empty():
+            stats = calculate_summary_statistics(
+                state,
+                self.execution_context.mode,
+            )
+            self.run_state.summary_statistics = stats
 
     def check_position_triggers(self,
                           ts: datetime.datetime,

@@ -302,7 +302,7 @@ class EthereumExecutionModel(ExecutionModel):
         """
         state.start_trades(datetime.datetime.utcnow(), trades, max_slippage=self.max_slippage)
 
-        if self.web3.eth.chain_id != ChainId.ethereum_tester.value:
+        if self.web3.eth.chain_id not in (ChainId.ethereum_tester.value, ChainId.anvil.value):
             assert self.confirmation_block_count > 0, f"confirmation_block_count set to {self.confirmation_block_count} "
 
         routing_model.setup_trades(

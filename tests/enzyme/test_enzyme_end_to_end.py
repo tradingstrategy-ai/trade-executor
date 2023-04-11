@@ -92,12 +92,14 @@ def environment(
         "STATE_FILE": state_file.as_posix(),
         "ASSET_MANAGEMENT_MODE": "enzyme",
         "UNIT_TESTING": "true",
-        "LOG_LEVEL": "info",
+        "LOG_LEVEL": "disabled",  # Set to info to get debug data for the test run
         "VAULT_ADDRESS": vault.address,
         "VAULT_ADAPTER_ADDRESS": vault.generic_adapter.address,
         "TEST_EVM_UNISWAP_V2_ROUTER": uniswap_v2.router.address,
         "TEST_EVM_UNISWAP_V2_FACTORY": uniswap_v2.factory.address,
         "TEST_EVM_UNISWAP_V2_INIT_CODE_HASH": uniswap_v2.init_code_hash,
+        "CONFIRMATION_BLOCK_COUNT": "0",  # Needed for test backend, Anvil
+        "MAX_CYCLES": "5",  # Run decide_trades() 5 times
     }
     return environment
 
@@ -170,7 +172,13 @@ def test_enzyme_live_trading_start(
     # stdin and we can still set breakpoints
     cli = get_command(app)
     with patch.dict(os.environ, environment, clear=True):
-        cli.main(args=["start"])
+        with pytest.raises(SystemExit) as e:
+            cli.main(args=["start"])
 
-    if result.exception:
-        raise result.exception
+        assert e.value.code == 0
+
+    # Check that trades completed
+    with state_file.open("rt") as inp:
+        state = State.from_json(inp.read())
+        assert len(state.portfolio.frozen_positions) == 0
+        assert len(state.portfolio.closed_positions) > 0

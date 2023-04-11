@@ -48,12 +48,12 @@ def decide_trades(
 
     cash = state.portfolio.get_current_cash()
 
-    # https://stackoverflow.com/a/623312/315168
-    day_number = timestamp.to_pydatetime().timetuple().tm_yday
+    cycle_number = cycle_debug_data["cycle"]
 
     trades = []
 
-    if day_number % 2 == 0:
+    # For odd seconds buy, for even seconds sell
+    if cycle_number % 2 == 0:
         # buy on even days
         if not position_manager.is_any_open():
             position_size = 0.10
