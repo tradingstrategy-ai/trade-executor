@@ -509,6 +509,7 @@ class PositionManager:
                 reserve_currency_price=reserve_price,
                 planned_mid_price=price_structure.mid_price,
                 slippage_tolerance=slippage_tolerance,
+                price_structure=price_structure,
             )
 
         # Update stop loss for this position
@@ -599,6 +600,7 @@ class PositionManager:
             planned_mid_price=price_structure.mid_price,
             position=position,
             slippage_tolerance=slippage_tolerance,
+            price_structure=price_structure,
         )
         assert position == position2, f"Somehow messed up the close_position() trade.\n" \
                                       f"Original position: {position}.\n" \
