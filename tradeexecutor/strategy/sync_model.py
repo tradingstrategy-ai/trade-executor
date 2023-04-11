@@ -6,11 +6,11 @@ from typing import Callable, List, Optional
 
 from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.ethereum.wallet import ReserveUpdateEvent
-from tradeexecutor.state.balance_update import BalanceUpdate
+from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdateCause, BalanceUpdatePositionType
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.state import State
-
+from tradeexecutor.state.sync import BalanceEventRef
 
 # Prototype sync method that is not applicable to the future production usage
 SyncMethodV0 = Callable[[Portfolio, datetime.datetime, List[AssetIdentifier]], List[ReserveUpdateEvent]]
@@ -59,8 +59,10 @@ class SyncModel(ABC):
         """
 
     @abstractmethod
-    def create_transaction_builder(self) -> TransactionBuilder:
-        """Creates a transaction bulder instance to make trades against this asset management model.
+    def create_transaction_builder(self) -> Optional[TransactionBuilder]:
+        """Creates a transaction builder instance to make trades against this asset management model.
+
+        Only needed when trades are being executed.
 
         :return:
             Depending on the asset management mode.
@@ -76,8 +78,11 @@ class DummySyncModel(SyncModel):
 
     - There is no integration to external systems
 
-    - Used in backtesting.
+    - Used in unit testing
     """
+
+    def __init__(self):
+        self.fake_sync_done = False
 
     def sync_initial(self, state: State):
         pass
@@ -86,9 +91,14 @@ class DummySyncModel(SyncModel):
                  strategy_cycle_ts: datetime.datetime,
                  state: State,
                  supported_reserves: Optional[List[AssetIdentifier]] = None
-                 ):
-        pass
+                 ) -> List[BalanceUpdate]:
+        if not self.fake_sync_done:
+            state.sync.treasury.last_updated_at = datetime.datetime.utcnow()
+            state.sync.treasury.last_cycle_at = strategy_cycle_ts
+            ref = BalanceEventRef(0, datetime.datetime.utcnow(), BalanceUpdateCause.deposit, BalanceUpdatePositionType.open_position, None)
+            state.sync.treasury.balance_update_refs = [ref]  # TODO: Get rid of the checks in on_clock()
+            return [ref]
+        return []
 
-    @abstractmethod
-    def create_transaction_builder(self) -> TransactionBuilder:
-        pass
+    def create_transaction_builder(self) -> Optional[TransactionBuilder]:
+        return None
