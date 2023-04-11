@@ -281,7 +281,7 @@ class Visualisation:
             If this plot is overlayed on top of a detached technical indicator, this is the name of the overlay it should be attached to.
         """
 
-        assert type(name) == str, "Got name"
+        assert type(name) == str, f"Got name{name} of type {str(type(name))}"
 
         # Convert numpy.float32 and numpy.float64 to serializable float instances,
         # e.g. prices
@@ -293,14 +293,14 @@ class Visualisation:
 
         if relative_size:
             assert kind == PlotKind.technical_indicator_detached, "Relative size is only supported for detached technical indicators"
-        
+
         if detached_overlay_name:
             assert type(detached_overlay_name) is str, "Detached overlay must be a string"
             assert kind == PlotKind.technical_indicator_overlay_on_detached, "Detached overlay must be a PlotKind.technical_indicator_overlay_on_detached"
-        
+
         if kind == PlotKind.technical_indicator_overlay_on_detached:
             assert detached_overlay_name and type(detached_overlay_name) == str, "Detached overlay must be a string for PlotKind.technical_indicator_overlay_on_detached"
-            
+
         plot = self.plots.get(name, Plot(name=name, kind=kind))
 
         plot.add_point(timestamp, value)
@@ -308,13 +308,13 @@ class Visualisation:
         plot.kind = kind
 
         plot.plot_shape = plot_shape
-        
+
         plot.horizontal_line = horizontal_line
-        
+
         plot.horizontal_line_colour = horizontal_line_colour
-        
+
         plot.relative_size = relative_size
-        
+
         plot.detached_overlay_name = detached_overlay_name
 
         if colour:
@@ -382,9 +382,6 @@ def is_crossover(series1: pd.Series, series2: pd.Series) -> bool:
     """
     assert type(series1) == type(series2) == pd.Series, "Series must be pandas.Series"
     
-    assert len(series1) > 1, "Series must have at least 2 values"
-    assert len(series2) > 1, "Series must have at least 2 values"
-    
     s1_latest = series1.iloc[-1]
     s2_latest = series2.iloc[-1]
     
@@ -397,8 +394,7 @@ def is_crossover(series1: pd.Series, series2: pd.Series) -> bool:
     s2_prev = series2.iloc[-2]
 
     return (
-        s1_latest == s2_latest
-        or (s1_latest > s2_latest
+        (s1_latest > s2_latest
         and s1_prev < s2_prev)
         or (s1_latest < s2_latest
         and s1_prev > s2_prev)
