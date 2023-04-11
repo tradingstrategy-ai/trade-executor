@@ -135,9 +135,7 @@ def test_enzyme_execute_open_position(
 
     # Now make a trade
     trader = UniswapV2TestTrader(
-        web3,
         uniswap_v2,
-        hot_wallet=tx_builder.hot_wallet,
         state=state,
         pair_universe=pair_universe,
         tx_builder=tx_builder,
@@ -259,13 +257,12 @@ def test_enzyme_execute_close_position(
 
     # Now make a trade
     trader = UniswapV2TestTrader(
-        web3,
         uniswap_v2,
-        hot_wallet=tx_builder.hot_wallet,
         state=state,
         pair_universe=pair_universe,
         tx_builder=tx_builder,
     )
+
 
     position, trade = trader.buy(
         weth_usdc_trading_pair,
@@ -344,9 +341,7 @@ def test_enzyme_lp_fees(
 
     # Now make a trade
     trader = UniswapV2TestTrader(
-        web3,
         uniswap_v2,
-        hot_wallet=tx_builder.hot_wallet,
         state=state,
         pair_universe=pair_universe,
         tx_builder=tx_builder,
