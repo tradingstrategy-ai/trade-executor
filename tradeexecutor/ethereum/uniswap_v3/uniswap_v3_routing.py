@@ -62,8 +62,6 @@ class UniswapV3RoutingState(EthereumRoutingState):
             and raise exception if not.
         """
 
-        hot_wallet = self.tx_builder.tx_builder
-        
         base_token, quote_token = get_base_quote(self.web3, target_pair, reserve_asset)
 
         if check_balances:
@@ -103,8 +101,6 @@ class UniswapV3RoutingState(EthereumRoutingState):
             Check on-chain balances that the account has enough tokens
             and raise exception if not.
         """
-
-        hot_wallet = self.tx_builder.tx_builder
 
         self.validate_pairs(target_pair, intermediary_pair)
         

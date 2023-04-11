@@ -31,12 +31,10 @@ class UniswapV2TestTrader(EthereumTrader):
     """
 
     def __init__(self,
-                 web3: Web3,
                  uniswap: UniswapV2Deployment,
-                 hot_wallet: HotWallet,
                  state: State,
                  pair_universe: PandasPairUniverse,
-                 tx_builder: Optional[TransactionBuilder] = None,
+                 tx_builder: TransactionBuilder,
                  pricing_model: Optional[UniswapV2LivePricing] = None,
                  ):
         """
@@ -51,18 +49,15 @@ class UniswapV2TestTrader(EthereumTrader):
         :param pricing_model:
             Give if you want to get the lp fees estimated
         """
-        super().__init__(web3, uniswap, hot_wallet, state, pair_universe)
 
+        assert isinstance(uniswap, UniswapV2Deployment)
+        assert isinstance(tx_builder, TransactionBuilder)
+
+        super().__init__(tx_builder, state, pair_universe)
+
+        self.uniswap = uniswap
         self.execution_model = UniswapV2ExecutionModel(tx_builder)
         self.pricing_model = pricing_model
-
-        if tx_builder:
-            self.tx_builder = tx_builder
-        else:
-            self.tx_builder = HotWalletTransactionBuilder(
-                web3,
-                hot_wallet,
-            )
 
     def buy(self,
             pair: TradingPairIdentifier,

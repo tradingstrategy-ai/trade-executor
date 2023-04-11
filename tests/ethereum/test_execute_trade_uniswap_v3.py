@@ -9,6 +9,8 @@ import pytest
 from eth_account import Account
 from eth_typing import HexAddress
 from hexbytes import HexBytes
+
+from tradeexecutor.ethereum.tx import HotWalletTransactionBuilder
 from tradingstrategy.pair import PandasPairUniverse
 from web3 import EthereumTesterProvider, Web3
 from web3.contract import Contract
@@ -259,8 +261,24 @@ def pair_universe(web3, weth_usdc_pair, aave_usdc_pair) -> PandasPairUniverse:
 
 
 @pytest.fixture()
-def ethereum_trader(web3: Web3, uniswap_v3: UniswapV3Deployment, hot_wallet: HotWallet, state: State, pair_universe: PandasPairUniverse) -> UniswapV3TestTrader:
-    return UniswapV3TestTrader(web3, uniswap_v3, hot_wallet, state, pair_universe)
+def tx_builder(web3, hot_wallet) -> HotWalletTransactionBuilder:
+    tx_builder = HotWalletTransactionBuilder(
+        web3,
+        hot_wallet,
+    )
+    return tx_builder
+
+
+@pytest.fixture()
+def ethereum_trader(
+        web3: Web3,
+        uniswap_v3: UniswapV3Deployment,
+        hot_wallet: HotWallet,
+        state: State,
+        pair_universe: PandasPairUniverse,
+        tx_builder: HotWalletTransactionBuilder,
+) -> UniswapV3TestTrader:
+    return UniswapV3TestTrader(uniswap_v3, state, pair_universe, tx_builder)
 
 
 def test_execute_trade_instructions_buy_weth(
@@ -317,7 +335,9 @@ def test_execute_trade_instructions_buy_weth_with_tester(
         hot_wallet: HotWallet,
         pair_universe,
         weth_usdc_pair: TradingPairIdentifier,
-        start_ts: datetime.datetime):
+        start_ts: datetime.datetime,
+        tx_builder
+):
     """Same as above but with the tester class.."""
 
     portfolio = state.portfolio
@@ -327,7 +347,7 @@ def test_execute_trade_instructions_buy_weth_with_tester(
     assert portfolio.get_current_cash() == 10_000
 
     # Buy 500 USDC worth of WETH
-    trader = UniswapV3TestTrader(web3, uniswap_v3, hot_wallet, state, pair_universe)
+    trader = UniswapV3TestTrader(uniswap_v3, state, pair_universe, tx_builder)
     position, trade = trader.buy(weth_usdc_pair, Decimal(500))
 
     assert position.is_open()
@@ -353,7 +373,9 @@ def test_buy_sell_buy_with_tester(
         hot_wallet: HotWallet,
         pair_universe,
         weth_usdc_pair: TradingPairIdentifier,
-        start_ts: datetime.datetime):
+        start_ts: datetime.datetime,
+        tx_builder
+):
     """Execute three trades on a position."""
 
     portfolio = state.portfolio
@@ -366,7 +388,7 @@ def test_buy_sell_buy_with_tester(
     # 1. Buy 500 USDC worth of WETH
     #
 
-    trader = UniswapV3TestTrader(web3, uniswap_v3, hot_wallet, state, pair_universe)
+    trader = UniswapV3TestTrader(uniswap_v3, state, pair_universe, tx_builder)
     position, trade = trader.buy(weth_usdc_pair, Decimal(500))
 
     assert position.is_open()
@@ -427,6 +449,7 @@ def test_buy_buy_sell_sell_tester(
         hot_wallet: HotWallet,
         weth_usdc_pair: TradingPairIdentifier,
         pair_universe,
+        tx_builder,
         start_ts: datetime.datetime):
     """Execute four trades on the same position."""
 
@@ -441,7 +464,7 @@ def test_buy_buy_sell_sell_tester(
     # 2. Buy 500 USDC worth of WETH
     #
 
-    trader = UniswapV3TestTrader(web3, uniswap_v3, hot_wallet, state, pair_universe)
+    trader = UniswapV3TestTrader(uniswap_v3, state, pair_universe, tx_builder)
     position1, trade1 = trader.buy(weth_usdc_pair, Decimal(500))
     position2, trade2 = trader.buy(weth_usdc_pair, Decimal(500))
 
@@ -477,6 +500,7 @@ def test_two_parallel_positions(
         asset_weth,
         asset_usdc,
         pair_universe,
+        tx_builder,
         start_ts: datetime.datetime):
     """Execute four trades on two positions at the same time."""
 
@@ -494,7 +518,7 @@ def test_two_parallel_positions(
     # 2. Buy 500 USDC worth of AAVE at 200 USD
     #
 
-    trader = UniswapV3TestTrader(web3, uniswap_v3, hot_wallet, state, pair_universe)
+    trader = UniswapV3TestTrader(uniswap_v3, state, pair_universe, tx_builder)
     position1, trade1 = trader.buy(weth_usdc_pair, Decimal(500), execute=False)
     position2, trade2 = trader.buy(aave_usdc_pair, Decimal(500), execute=False)
 

@@ -36,7 +36,6 @@ class HotWalletSyncModel(SyncModel):
 
         web3 = self.web3
         deployment = state.sync.deployment
-
         deployment.chain_id = ChainId(web3.eth.chain_id)
         deployment.address = self.hot_wallet.address
         deployment.block_number = web3.eth.block_number
@@ -52,13 +51,27 @@ class HotWalletSyncModel(SyncModel):
                  ):
         """Apply the balance sync before each strategy cycle."""
 
-        # TODO: This code is not production ready - use with case
+        # TODO: This code is not production ready - use with care
+        # Needs legacy cleanup
         events = sync_reserves(self.web3, strategy_cycle_ts, self.hot_wallet.address, [], supported_reserves)
         apply_sync_events(state.portfolio, events)
+        state.sync.treasury.last_updated_at = datetime.datetime.utcnow()
+        state.sync.treasury.last_cycle_at = strategy_cycle_ts
+        state.sync.treasury.last_block_scanned = self.web3.eth.block_number
+        state.sync.treasury.balance_update_refs = events  # Broken - wrong event type
         return events
 
     def create_transaction_builder(self) -> HotWalletTransactionBuilder:
         return HotWalletTransactionBuilder(self.web3, self.hot_wallet)
+
+    def setup_all(self, state: State, supported_reserves: List[AssetIdentifier]):
+        """Make sure we have everything set up and initial test balance synced.
+        
+        A shortcut used in testing.
+        """
+        self.init()
+        self.sync_initial(state)
+        self.sync_treasury(datetime.datetime.utcnow(), state, supported_reserves)
 
 
 def EthereumHotWalletReserveSyncer(

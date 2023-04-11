@@ -10,6 +10,7 @@ import pandas as pd
 from tradeexecutor.cli.discord import post_logging_discord_image
 from tradeexecutor.strategy.pandas_trader.trade_decision import TradeDecider
 from tradeexecutor.strategy.pricing_model import PricingModel
+from tradeexecutor.strategy.sync_model import SyncModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 
 from tradeexecutor.state.state import State
@@ -29,6 +30,11 @@ class PandasTraderRunner(StrategyRunner):
         super().__init__(*args, **kwargs)
         self.decide_trades = decide_trades
         self.max_data_age = max_data_age
+
+        # Legacy assets
+        sync_model = kwargs.get("sync_model")
+        if sync_model is not None:
+            assert isinstance(sync_model, SyncModel)
 
     def on_data_signal(self):
         pass

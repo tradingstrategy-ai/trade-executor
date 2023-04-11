@@ -28,26 +28,18 @@ class UniswapV3TestTrader(EthereumTrader):
     """Helper class to trade against EthereumTester unit testing network."""
 
     def __init__(self,
-                 web3: Web3,
                  uniswap: UniswapV3Deployment,
-                 hot_wallet: HotWallet,
                  state: State,
                  pair_universe: PandasPairUniverse,
                  tx_builder: Optional[TransactionBuilder] = None,
                  ):
-        super().__init__(web3, uniswap, hot_wallet, state, pair_universe)
 
-        self.execution_model = UniswapV3ExecutionModel(web3, hot_wallet)
+        super().__init__(tx_builder, state, pair_universe)
+        self.uniswap = uniswap
+
+        self.execution_model = UniswapV3ExecutionModel(tx_builder)
         self.price_helper = UniswapV3PriceHelper(uniswap)
-
-        if tx_builder:
-            self.tx_builder = tx_builder
-        else:
-            self.tx_builder = HotWalletTransactionBuilder(
-                web3,
-                hot_wallet,
-            )
-
+        self.tx_builder = tx_builder
 
     def buy(self, pair: TradingPairIdentifier, amount_in_usd: Decimal, execute=True) -> Tuple[TradingPosition, TradeExecution]:
         """Buy token (trading pair) for a certain value."""
@@ -144,7 +136,6 @@ class UniswapV3TestTrader(EthereumTrader):
 
         pair_universe = self.pair_universe   
         web3 = self.web3
-        hot_wallet = self.hot_wallet
         uniswap = self.uniswap
         state = self.state   
         
@@ -172,7 +163,7 @@ class UniswapV3TestTrader(EthereumTrader):
         routing_state = UniswapV3RoutingState(pair_universe, tx_builder)
         routing_model.execute_trades_internal(pair_universe, routing_state, trades)
         
-        execution_model = UniswapV3ExecutionModel(web3, hot_wallet)
+        execution_model = UniswapV3ExecutionModel(self.tx_builder)
         execution_model.broadcast_and_resolve(state, trades, stop_on_execution_failure=stop_on_execution_failure)
 
         # Clean up failed trades
