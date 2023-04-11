@@ -3,6 +3,7 @@ import datetime
 from typing import List, Optional
 
 from eth_defi.hotwallet import HotWallet
+from tradeexecutor.state.balance_update import BalanceUpdate
 from tradingstrategy.chain import ChainId
 from web3 import Web3
 
@@ -48,7 +49,7 @@ class HotWalletSyncModel(SyncModel):
                  strategy_cycle_ts: datetime.datetime,
                  state: State,
                  supported_reserves: Optional[List[AssetIdentifier]] = None
-                 ):
+                 ) -> List[BalanceUpdate]:
         """Apply the balance sync before each strategy cycle."""
 
         # TODO: This code is not production ready - use with care
@@ -58,8 +59,8 @@ class HotWalletSyncModel(SyncModel):
         state.sync.treasury.last_updated_at = datetime.datetime.utcnow()
         state.sync.treasury.last_cycle_at = strategy_cycle_ts
         state.sync.treasury.last_block_scanned = self.web3.eth.block_number
-        state.sync.treasury.balance_update_refs = events  # Broken - wrong event type
-        return events
+        state.sync.treasury.balance_update_refs = []  # Broken - wrong event type
+        return []
 
     def create_transaction_builder(self) -> HotWalletTransactionBuilder:
         return HotWalletTransactionBuilder(self.web3, self.hot_wallet)

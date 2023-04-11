@@ -119,9 +119,9 @@ class BacktestSyncModel(SyncModel):
             # Set synced flag
             # TODO: fix - wrong event type
             state.sync.treasury.last_updated_at = strategy_cycle_ts
-            state.sync.treasury.balance_update_refs = [evt]
+            state.sync.treasury.balance_update_refs = []
 
-            return [evt]
+            return []
         else:
             return []
 

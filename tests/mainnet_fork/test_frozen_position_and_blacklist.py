@@ -44,7 +44,7 @@ from web3.contract import Contract
 from eth_defi.abi import get_deployed_contract
 from eth_defi.hotwallet import HotWallet
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, fetch_deployment
-from tradeexecutor.ethereum.hot_wallet_sync_model import EthereumHotWalletReserveSyncer
+from tradeexecutor.ethereum.hot_wallet_sync_model import EthereumHotWalletReserveSyncer, HotWalletSyncModel
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_execution_v0 import UniswapV2ExecutionModelVersion0
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_live_pricing import uniswap_v2_live_pricing_factory
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_valuation import uniswap_v2_sell_valuation_factory
@@ -305,12 +305,13 @@ def runner(
     strategy_factory = import_strategy_file(strategy_path)
     approval_model = UncheckedApprovalModel()
     execution_model = UniswapV2ExecutionModelVersion0(pancakeswap_v2, hot_wallet, confirmation_timeout=datetime.timedelta(minutes=1), stop_on_execution_failure=False)
-    sync_method = EthereumHotWalletReserveSyncer(web3, hot_wallet.address)
+    # sync_method = EthereumHotWalletReserveSyncer(web3, hot_wallet.address)
+    sync_model = HotWalletSyncModel(web3, hot_wallet)
 
     run_description: StrategyExecutionDescription = strategy_factory(
         execution_model=execution_model,
         timed_task_context_manager=timed_task,
-        sync_method=sync_method,
+        sync_model=sync_model,
         valuation_model_factory=uniswap_v2_sell_valuation_factory,
         pricing_model_factory=uniswap_v2_live_pricing_factory,
         approval_model=approval_model,

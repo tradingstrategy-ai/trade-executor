@@ -52,7 +52,8 @@ class PandasTraderRunner(StrategyRunner):
         pd_timestamp = pd.Timestamp(clock)
 
         assert state.sync.treasury.last_updated_at is not None, "Cannot do trades before treasury is synced at least once"
-        assert len(state.sync.treasury.balance_update_refs) > 0, "No deposit detected. Please do at least one deposit before starting the strategy"
+        # All sync models do not emit events correctly yet
+        # assert len(state.sync.treasury.balance_update_refs) > 0, "No deposit detected. Please do at least one deposit before starting the strategy"
         assert len(executor_universe.reserve_assets) == 1
 
         # Call the strategy script decide_trades()

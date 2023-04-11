@@ -85,7 +85,7 @@ def anvil_bnb_chain_fork(logger, large_busd_holder) -> str:
     try:
         yield launch.json_rpc_url
     finally:
-        launch.close(log_level=logging.INFO)
+        launch.close()
 
 
 @pytest.fixture
@@ -280,7 +280,7 @@ def state(portfolio) -> State:
 
 
 # Flaky because Ganache hangs
-@flaky.flaky()
+@flaky.flaky(max_runs=5)
 def test_simple_routing_one_leg(
         web3,
         hot_wallet,

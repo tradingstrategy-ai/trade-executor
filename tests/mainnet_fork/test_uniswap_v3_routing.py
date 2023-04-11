@@ -310,7 +310,8 @@ def routing_model(usdc_asset):
 
 @pytest.fixture()
 def execution_model(web3, hot_wallet) -> UniswapV3ExecutionModel:
-    return UniswapV3ExecutionModel(web3, hot_wallet)
+    tx_builder = HotWalletTransactionBuilder(web3, hot_wallet)
+    return UniswapV3ExecutionModel(tx_builder)
 
 
 @pytest.fixture()

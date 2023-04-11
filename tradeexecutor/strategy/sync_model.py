@@ -97,7 +97,7 @@ class DummySyncModel(SyncModel):
             state.sync.treasury.last_cycle_at = strategy_cycle_ts
             ref = BalanceEventRef(0, datetime.datetime.utcnow(), BalanceUpdateCause.deposit, BalanceUpdatePositionType.open_position, None)
             state.sync.treasury.balance_update_refs = [ref]  # TODO: Get rid of the checks in on_clock()
-            return [ref]
+            return []
         return []
 
     def create_transaction_builder(self) -> Optional[TransactionBuilder]:
