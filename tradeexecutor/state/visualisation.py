@@ -276,6 +276,15 @@ class Visualisation:
 
         :param plot_shape:
             PlotShape enum value e.g. Plotshape.linear or Plotshape.horizontal_vertical
+        
+        :param horizontal_line:
+            Optional horizontal line value
+        
+        :param horizontal_line_colour:
+            Optional horizontal line colour
+        
+        :param relative_size:
+            Optional relative size for technical indicators. Size is relative to the size of the main price chart which has a default reference value of 1.
             
         :param detached_overlay_name:
             If this plot is overlayed on top of a detached technical indicator, this is the name of the overlay it should be attached to.
