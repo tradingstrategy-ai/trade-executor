@@ -321,7 +321,7 @@ class ExecutionLoop:
         if cycle == 1 and self.backtest_setup is not None:
             # The hook to set up backtest initial balance
             logger.info("Performing initial backtest account funding")
-            self.backtest_setup(state, universe, self.sync_method)
+            self.backtest_setup(state, universe, self.sync_model)
 
         # Execute the strategy tick and trades
         self.runner.tick(

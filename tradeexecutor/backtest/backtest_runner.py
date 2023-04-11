@@ -13,7 +13,7 @@ import pandas as pd
 from tradeexecutor.backtest.backtest_execution import BacktestExecutionModel
 from tradeexecutor.backtest.backtest_pricing import BacktestSimplePricingModel
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel
-from tradeexecutor.backtest.backtest_sync import BacktestSyncer
+from tradeexecutor.backtest.backtest_sync import BacktestSyncer, BacktestSyncModel
 from tradeexecutor.backtest.backtest_valuation import BacktestValuationModel
 from tradeexecutor.backtest.simulated_wallet import SimulatedWallet
 from tradeexecutor.cli.log import setup_notebook_logging
@@ -60,7 +60,7 @@ class BacktestSetup:
     pricing_model: Optional[BacktestSimplePricingModel]
     routing_model: Optional[BacktestRoutingModel]
     execution_model: BacktestExecutionModel
-    sync_method: BacktestSyncer
+    sync_model: BacktestSyncModel
 
     trading_strategy_engine_version: str
     trade_routing: TradeRouting
@@ -80,7 +80,7 @@ class BacktestSetup:
             *ignore,
             execution_model: BacktestExecutionModel,
             execution_context: ExecutionContext,
-            sync_method: BacktestSyncer,
+            sync_model: BacktestSyncModel,
             pricing_model_factory: Callable,
             valuation_model_factory: Callable,
             client: Client,
@@ -106,7 +106,7 @@ class BacktestSetup:
             execution_model=execution_model,
             approval_model=approval_model,
             valuation_model_factory=valuation_model_factory,
-            sync_method=sync_method,
+            sync_model=sync_model,
             pricing_model_factory=pricing_model_factory,
             routing_model=routing_model,
             decide_trades=self.decide_trades,
@@ -161,11 +161,12 @@ def setup_backtest_for_universe(
 
     wallet = SimulatedWallet()
 
-    deposit_syncer = BacktestSyncer(wallet, Decimal(initial_deposit))
+    # deposit_syncer = BacktestSyncer(wallet, Decimal(initial_deposit))
+    sync_model = BacktestSyncModel(wallet, Decimal(initial_deposit))
 
     # Create the initial state
     state = State()
-    events = deposit_syncer(state.portfolio, start_at, universe.reserve_assets)
+    events = sync_model.sync_treasury(start_at, state, universe.reserve_assets)
     assert len(events) == 1
     token, usd_exchange_rate = state.portfolio.get_default_reserve()
     assert usd_exchange_rate == 1
@@ -196,7 +197,7 @@ def setup_backtest_for_universe(
         pricing_model=pricing_model,
         execution_model=execution_model,
         routing_model=routing_model,
-        sync_method=deposit_syncer,
+        sync_model=sync_model,
         decide_trades=strategy_module.decide_trades,
         create_trading_universe=None,
         reserve_currency=strategy_module.reserve_currency,
@@ -298,7 +299,7 @@ def run_backtest(
         return BacktestValuationModel(pricing_model)
 
     if not setup.universe:
-        def backtest_setup(state: State, universe: TradingStrategyUniverse, deposit_syncer: BacktestSyncer):
+        def backtest_setup(state: State, universe: TradingStrategyUniverse, sync_model: BacktestSyncModel):
             # Use strategy script create_trading_universe() hook to construct the universe
             # Called on the first cycle. Only if the universe is not predefined.
             # Create the initial state of the execution.
@@ -309,8 +310,12 @@ def run_backtest(
             if universe.has_stop_loss_data():
                 setup.execution_model.stop_loss_data_available = True
 
-            events = deposit_syncer(state.portfolio, setup.start_at, universe.reserve_assets)
+            #events = deposit_syncer(state.portfolio, setup.start_at, universe.reserve_assets)
+            #assert len(events) == 1, f"Did not get 1 initial backtest deposit event, got {len(events)} events.\nMake sure you did not call backtest_setup() twice?"
+
+            events = sync_model.sync_treasury(setup.start_at, state, list(universe.reserve_assets))
             assert len(events) == 1, f"Did not get 1 initial backtest deposit event, got {len(events)} events.\nMake sure you did not call backtest_setup() twice?"
+
             token, usd_exchange_rate = state.portfolio.get_default_reserve()
             assert usd_exchange_rate == 1
             backtest_universe = universe
@@ -329,7 +334,7 @@ def run_backtest(
         command_queue=Queue(),
         execution_model=setup.execution_model,
         execution_context=execution_context,
-        sync_method=setup.sync_method,
+        sync_model=setup.sync_model,
         approval_model=UncheckedApprovalModel(),
         pricing_model_factory=pricing_model_factory,
         valuation_model_factory=valuation_model_factory,
@@ -464,7 +469,8 @@ def run_backtest_inline(
     setup_decimal_accuracy()
 
     wallet = SimulatedWallet()
-    deposit_syncer = BacktestSyncer(wallet, Decimal(initial_deposit))
+    # deposit_syncer = BacktestSyncer(wallet, Decimal(initial_deposit))
+    sync_model = BacktestSyncModel(wallet, Decimal(initial_deposit))
 
     stop_loss_data_available = universe.has_stop_loss_data() if universe else False
 
@@ -507,7 +513,7 @@ def run_backtest_inline(
         pricing_model=pricing_model,  # Will be set up later
         execution_model=execution_model,
         routing_model=routing_model,  # Use given routing model if available
-        sync_method=deposit_syncer,
+        sync_model=sync_model,
         decide_trades=decide_trades,
         create_trading_universe=create_trading_universe,
         reserve_currency=reserve_currency,

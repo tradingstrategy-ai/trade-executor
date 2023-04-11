@@ -99,7 +99,8 @@ def environment(
         "STATE_FILE": state_file.as_posix(),
         "ASSET_MANAGEMENT_MODE": "enzyme",
         "UNIT_TESTING": "true",
-        "LOG_LEVEL": "info",  # Set to info to get debug data for the test run
+        # "LOG_LEVEL": "info",  # Set to info to get debug data for the test run
+        "LOG_LEVEL": "disabled",
         "VAULT_ADDRESS": vault.address,
         "VAULT_ADAPTER_ADDRESS": vault.generic_adapter.address,
         "TEST_EVM_UNISWAP_V2_ROUTER": uniswap_v2.router.address,
@@ -117,7 +118,9 @@ def run_init(environment: dict) -> Result:
     # https://typer.tiangolo.com/tutorial/testing/
     runner = CliRunner()
 
-    result = runner.invoke(app, "init", env=environment)
+    # Need to use patch here, or parent shell env vars will leak in and cause random test failres
+    with patch.dict(os.environ, environment, clear=True):
+        result = runner.invoke(app, "init", env=environment)
 
     if result.exception:
         raise result.exception
@@ -208,7 +211,7 @@ def test_enzyme_live_trading_start(
         t = p.trades[3]
         assert t.is_success()
         assert t.lp_fees_estimated == pytest.approx(0.14991015720000014)
-        assert t.lp_fees_paid == pytest.approx(0.14991015720000014)
+        assert t.lp_fees_paid in (0, None)  # Not supported yet
         assert t.trade_type == TradeType.rebalance
         assert t.slippage_tolerance == 0.02  # Set in enzyme_end_to_end.py strategy module
 

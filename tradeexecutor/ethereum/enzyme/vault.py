@@ -24,6 +24,7 @@ from tradeexecutor.state.state import State
 from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdateCause, BalanceUpdatePositionType
 from tradeexecutor.state.sync import BalanceEventRef
 from tradeexecutor.strategy.sync_model import SyncModel
+from tradingstrategy.chain import ChainId
 
 logger = logging.getLogger(__name__)
 
@@ -289,6 +290,7 @@ class EnzymeVaultSyncModel(SyncModel):
         deployment.block_mined_at = timestamp_dt
         deployment.vault_token_name = self.vault.get_name()
         deployment.vault_token_symbol = self.vault.get_symbol()
+        deployment.chain_id = ChainId(web3.eth.chain_id)
 
     def sync_treasury(self,
                       strategy_cycle_ts: datetime.datetime,

@@ -116,8 +116,6 @@ class UniswapV2RoutingState(EthereumRoutingState):
             and raise exception if not.
         """
 
-        hot_wallet = self.tx_builder.tx_builder
-
         self.validate_pairs(target_pair, intermediary_pair)
 
         self.validate_exchange(target_pair, intermediary_pair)

@@ -58,7 +58,7 @@ def check_universe(
         execution_model=None,
         execution_context=execution_context,
         timed_task_context_manager=timed_task,
-        sync_method=None,
+        sync_model=None,
         valuation_model_factory=None,
         pricing_model_factory=None,
         approval_model=None,

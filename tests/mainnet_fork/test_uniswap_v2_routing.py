@@ -256,7 +256,8 @@ def routing_model(busd_asset):
 
 @pytest.fixture()
 def execution_model(web3, hot_wallet) -> UniswapV2ExecutionModel:
-    return UniswapV2ExecutionModel(web3, hot_wallet)
+    tx_builder = HotWalletTransactionBuilder(web3, hot_wallet)
+    return UniswapV2ExecutionModel(tx_builder)
 
 
 @pytest.fixture()

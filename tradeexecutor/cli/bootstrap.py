@@ -140,7 +140,7 @@ def create_trade_execution_model(
         valuation_model_factory = backtest_valuation_factory
         return execution_model, sync_model, valuation_model_factory, pricing_model_factory
     else:
-        raise NotImplementedError()
+        raise NotImplementedError(f"Unsupported asset management mode: {asset_management_mode}")
 
 
 def create_approval_model(approval_type: ApprovalType) -> ApprovalModel:

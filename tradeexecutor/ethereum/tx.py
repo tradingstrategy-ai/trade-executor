@@ -230,6 +230,9 @@ class HotWalletTransactionBuilder(TransactionBuilder):
         super().__init__(web3)
         self.hot_wallet = hot_wallet
 
+    def init(self):
+        self.hot_wallet.sync_nonce(self.web3)
+
     def get_token_delivery_address(self) -> str:
         """Get the target address for ERC-20 approve()"""
         return self.hot_wallet.address

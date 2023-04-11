@@ -85,7 +85,12 @@ class BacktestSyncModel(SyncModel):
                  state: State,
                  supported_reserves: Optional[List[AssetIdentifier]] = None
                  ):
-        """Apply the balance sync before each strategy cycle."""
+        """Apply the balance sync before each strategy cycle.
+
+        .. warning::
+
+            Old legacy code with wrong return signature compared to the parent class
+        """
 
         portfolio = state.portfolio
 
@@ -102,7 +107,7 @@ class BacktestSyncModel(SyncModel):
                 asset=reserve_token,
                 past_balance=Decimal(0),
                 new_balance=self.initial_deposit_amount,
-                updated_at=ts
+                updated_at=strategy_cycle_ts
             )
 
             # Update wallet
@@ -110,6 +115,11 @@ class BacktestSyncModel(SyncModel):
 
             # Update state
             apply_sync_events(portfolio, [evt])
+
+            # Set synced flag
+            # TODO: fix - wrong event type
+            state.sync.treasury.last_updated_at = strategy_cycle_ts
+            state.sync.treasury.balance_update_refs = [evt]
 
             return [evt]
         else:

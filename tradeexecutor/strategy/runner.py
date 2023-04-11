@@ -57,7 +57,7 @@ class StrategyRunner(abc.ABC):
                  execution_model: ExecutionModel,
                  approval_model: ApprovalModel,
                  valuation_model_factory: ValuationModelFactory,
-                 sync_model: SyncModel,
+                 sync_model: Optional[SyncModel],
                  pricing_model_factory: PricingModelFactory,
                  execution_context: ExecutionContext,
                  routing_model: Optional[RoutingModel] = None,
@@ -65,7 +65,9 @@ class StrategyRunner(abc.ABC):
                  ):
 
         assert isinstance(execution_context, ExecutionContext)
-        assert isinstance(sync_model, SyncModel)
+
+        if sync_model is not None:
+            assert isinstance(sync_model, SyncModel)
 
         self.timed_task_context_manager = timed_task_context_manager
         self.execution_model = execution_model
