@@ -36,7 +36,7 @@ def logger(request):
 @pytest.fixture()
 def strategy_path() -> Path:
     """Where do we load our strategy file."""
-    return Path(os.path.join(os.path.dirname(__file__), "..", "strategies", "ema-crossover-long-only-no-stop-loss.py"))
+    return Path(os.path.join(os.path.dirname(__file__), "../..", "strategies", "ema-crossover-long-only-no-stop-loss.py"))
 
 
 def test_ema_crossover_real_data(

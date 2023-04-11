@@ -33,14 +33,14 @@ def setup_logging(
         Setup in-memory log buffer used to fetch log messages to the frontend.
     """
 
+    setup_custom_log_levels()
+
     if log_level == "disabled":
         # Special unit test marker, don't mess with loggers
         return logging.getLogger()
 
     if isinstance(log_level, str):
         log_level = log_level.upper()
-
-    setup_custom_log_levels()
 
     logger = logging.getLogger()
 

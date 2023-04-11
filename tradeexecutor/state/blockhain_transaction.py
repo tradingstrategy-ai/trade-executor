@@ -27,6 +27,8 @@ def solidity_arg_encoder(val: tuple) -> tuple:
     def _int_to_string(x):
         if type(x) == int:
             return str(x)
+        if type(x) == bytes:
+            return x.hex()
         elif type(x) == float:
             # Smart contracts cannot have float arguents
             raise RuntimeError(f"Cannot encode: {val}")

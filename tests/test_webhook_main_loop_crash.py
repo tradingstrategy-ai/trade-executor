@@ -51,7 +51,8 @@ def test_main_loop_crash(
         "STRATEGY_FILE": strategy_path.as_posix(),  # Pass crash test
         "PRIVATE_KEY": hot_wallet_private_key.hex(),
         "HTTP_ENABLED": "false",
-        "EXECUTION_TYPE": "uniswap_v2_hot_wallet",
+        # "EXECUTION_TYPE": "uniswap_v2_hot_wallet",
+        "ASSET_MANAGEMENT_MODE": "hot_wallet",
         "CACHE_PATH": "/tmp/main_loop_tests",
         "TRADING_STRATEGY_API_KEY": os.environ["TRADING_STRATEGY_API_KEY"],
         "HTTP_PORT": f"{port}",
@@ -61,7 +62,7 @@ def test_main_loop_crash(
         "JSON_RPC_BINANCE": os.environ["BNB_CHAIN_JSON_RPC"],
         "PATH": os.environ["PATH"],
         "HTTP_WAIT_GOOD_STARTUP_SECONDS": "0",
-        "MAX_DATA_DELAY_MINUTES": str(10*60*24*365)  # 10 years or "disabled"
+        "MAX_DATA_DELAY_MINUTES": str(10*60*24*365)  # 10 years or "disabled""
     }
 
     proc = subprocess.Popen(

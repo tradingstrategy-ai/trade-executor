@@ -5,7 +5,7 @@ from decimal import Decimal
 
 from tradingstrategy.universe import Universe
 
-from tradeexecutor.ethereum.hot_wallet_sync import EthereumHotWalletReserveSyncer
+from tradeexecutor.ethereum.hot_wallet_sync_model import EthereumHotWalletReserveSyncer
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager

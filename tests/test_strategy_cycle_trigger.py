@@ -64,7 +64,7 @@ def test_trading_data_availability_based_strategy_cycle_trigger(
         "JSON_RPC_POLYGON": os.environ["JSON_RPC_POLYGON"],
         "STATE_FILE": state_file,
         "RESET_STATE": "true",
-        "EXECUTION_TYPE": "dummy",
+        "ASSET_MANAGEMENT_MODE": "dummy",
         "STRATEGY_CYCLE_TRIGGER": "trading_pair_data_availability",
         "CACHE_PATH": "/tmp/trading_data_availability_based_strategy_cycle_trigger",
         "TRADING_STRATEGY_API_KEY": os.environ["TRADING_STRATEGY_API_KEY"],

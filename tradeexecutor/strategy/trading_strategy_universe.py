@@ -24,7 +24,7 @@ from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifie
 from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse, UniverseModel, DataTooOld, UniverseOptions
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId
-from tradingstrategy.client import Client
+from tradingstrategy.client import Client, BaseClient
 from tradingstrategy.exchange import ExchangeUniverse, Exchange, ExchangeType
 from tradingstrategy.liquidity import GroupedLiquidityUniverse, ResampledLiquidityUniverse
 from tradingstrategy.pair import DEXPair, PandasPairUniverse, resolve_pairs_based_on_ticker, \
@@ -159,7 +159,8 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
 
         - ...or without candles
         """
-        return self.universe.pairs.get_count() == 0 or len(self.universe.candles.df) == 0
+        candles = self.universe.candles.df if self.universe.candles else []
+        return self.universe.pairs.get_count() == 0 or len(candles) == 0
 
     def is_single_pair_universe(self) -> bool:
         """Is this trading universe made for a single pair trading.
@@ -247,9 +248,12 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         )
 
         # Get daily candles as Pandas DataFrame
-        all_candles = dataset.candles
-        filtered_candles = filter_for_pairs(all_candles, pair_universe.df)
-        candle_universe = GroupedCandleUniverse(filtered_candles)
+        if dataset.candles is not None:
+            all_candles = dataset.candles
+            filtered_candles = filter_for_pairs(all_candles, pair_universe.df)
+            candle_universe = GroupedCandleUniverse(filtered_candles)
+        else:
+            candle_universe = None
 
         # Get liquidity candles as Pandas Dataframe
         if dataset.liquidity is not None and not dataset.liquidity.empty:
@@ -810,7 +814,7 @@ class DefaultTradingStrategyUniverseModel(TradingStrategyUniverseModel):
     """
 
     def __init__(self,
-                 client: Optional[Client],
+                 client: Optional[BaseClient],
                  execution_context: ExecutionContext,
                  create_trading_universe: Callable):
         """
@@ -824,7 +828,7 @@ class DefaultTradingStrategyUniverseModel(TradingStrategyUniverseModel):
             Allows to "speedrun" strategies.
 
         """
-        assert isinstance(client, Client) or client is None
+        assert isinstance(client, BaseClient) or client is None
         assert isinstance(execution_context, ExecutionContext), f"Got {execution_context}"
         assert isinstance(create_trading_universe, Callable), f"Got {create_trading_universe}"
         self.client = client
@@ -993,7 +997,7 @@ def create_pair_universe_from_code(chain_id: ChainId, pairs: List[TradingPairIde
 
 
 def load_all_data(
-        client: Client,
+        client: BaseClient,
         time_frame: TimeBucket,
         execution_context: ExecutionContext,
         universe_options: UniverseOptions,
@@ -1011,7 +1015,10 @@ def load_all_data(
         Trading Strategy client instance
 
     :param time_frame:
-        Candle time bucket to load
+        Candle time bucket of which granularity to data to load.
+
+        Set to `TimeBucket.not_applicable` to downlaod only exchange and pair data,
+        as used in unit testing.
 
     :param execution_context:
         Defines if we are live or backtesting
@@ -1035,7 +1042,7 @@ def load_all_data(
         This dataset is big and you need to filter it down for backtests.
     """
 
-    assert isinstance(client, Client)
+    assert isinstance(client, BaseClient)
     assert isinstance(time_frame, TimeBucket)
     assert isinstance(execution_context, ExecutionContext)
 
@@ -1055,19 +1062,20 @@ def load_all_data(
 
         exchanges = client.fetch_exchange_universe()
         pairs = client.fetch_pair_universe().to_pandas()
-        candles = client.fetch_all_candles(time_frame).to_pandas()
 
-        if with_liquidity:
-            if not liquidity_time_frame:
-                liquidity_time_frame = time_frame
-            liquidity = client.fetch_all_liquidity_samples(liquidity_time_frame).to_pandas()
-        else:
-            liquidity = None
+        candles = liquidity = stop_loss_candles = None
 
-        if stop_loss_time_frame:
-            stop_loss_candles = client.fetch_all_candles(stop_loss_time_frame).to_pandas()
-        else:
-            stop_loss_candles = None
+        if time_frame != TimeBucket.not_applicable:
+            candles = client.fetch_all_candles(time_frame).to_pandas()
+
+            if with_liquidity:
+                if not liquidity_time_frame:
+                    liquidity_time_frame = time_frame
+                liquidity = client.fetch_all_liquidity_samples(liquidity_time_frame).to_pandas()
+
+            if stop_loss_time_frame:
+                stop_loss_candles = client.fetch_all_candles(stop_loss_time_frame).to_pandas()
+
 
         return Dataset(
             time_bucket=time_frame,
@@ -1082,7 +1090,7 @@ def load_all_data(
 
 
 def load_pair_data_for_single_exchange(
-        client: Client,
+        client: BaseClient,
         execution_context: ExecutionContext,
         time_bucket: TimeBucket,
         chain_id: ChainId,
@@ -1259,7 +1267,7 @@ def load_pair_data_for_single_exchange(
 
 
 def load_partial_data(
-        client: Client,
+        client: BaseClient,
         execution_context: ExecutionContext,
         time_bucket: TimeBucket,
         pairs: Collection[HumanReadableTradingPairDescription],

@@ -67,28 +67,30 @@ def calculate_summary_statistics(
     start_at = now_ - time_window
 
     stats = state.stats
-    total_equity_time_series = stats.get_portfolio_statistics_dataframe("total_equity")
 
-    if len(total_equity_time_series) > 0:
-        profitability_90_days, time_window = calculate_naive_profitability(total_equity_time_series, look_back=time_window)
-        enough_data = total_equity_time_series.index[0] <= start_at
+    profitability_90_days = None
+    enough_data = False
+    performance_chart_90_days = None
 
-        start_idx = total_equity_time_series.index.get_indexer([start_at], method="nearest")
-        start_val = float(total_equity_time_series.iloc[start_idx])
-        index: pd.Timestamp
+    if len(stats.portfolio) > 0:
+        total_equity_time_series = stats.get_portfolio_statistics_dataframe("total_equity")
 
-        last_90_days_ts = total_equity_time_series.loc[start_at:]
-        performance_chart_90_days = []
-        for index, value in last_90_days_ts.items():
-            ts = index.to_pydatetime()
-            profitability_per_day = (value - start_val) / start_val
-            # Don't let NaNs slip through
-            if not isnan(profitability_per_day):
-                performance_chart_90_days.append((ts, profitability_per_day))
-    else:
-        profitability_90_days = None
-        enough_data = False
-        performance_chart_90_days = None
+        if len(total_equity_time_series) > 0:
+            profitability_90_days, time_window = calculate_naive_profitability(total_equity_time_series, look_back=time_window)
+            enough_data = total_equity_time_series.index[0] <= start_at
+
+            start_idx = total_equity_time_series.index.get_indexer([start_at], method="nearest")
+            start_val = float(total_equity_time_series.iloc[start_idx])
+            index: pd.Timestamp
+
+            last_90_days_ts = total_equity_time_series.loc[start_at:]
+            performance_chart_90_days = []
+            for index, value in last_90_days_ts.items():
+                ts = index.to_pydatetime()
+                profitability_per_day = (value - start_val) / start_val
+                # Don't let NaNs slip through
+                if not isnan(profitability_per_day):
+                    performance_chart_90_days.append((ts, profitability_per_day))
 
     return StrategySummaryStatistics(
         first_trade_at=first_trade_at,

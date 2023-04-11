@@ -6,6 +6,7 @@
 """
 import datetime
 import logging
+from decimal import Decimal
 from abc import abstractmethod, ABC
 from typing import List, Optional
 
@@ -147,6 +148,13 @@ class TransactionBuilder(ABC):
             )
 
     @abstractmethod
+    def init(self):
+        """Initialise the transaction builder.
+
+        Called on application startup.
+        """
+
+    @abstractmethod
     def sign_transaction(
             self,
             contract: Contract,
@@ -197,6 +205,13 @@ class TransactionBuilder(ABC):
     def get_gas_wallet_address(self) -> str:
         """Get the address that holds native token for gas fees"""
 
+    @abstractmethod
+    def get_gas_wallet_balance(self) -> Decimal:
+        """Get the balance of the native currency (ETH, BNB, MATIC) of the wallet.
+
+        Useful to check if you have enough cryptocurrency for the gas fees.
+        """
+
 
 class HotWalletTransactionBuilder(TransactionBuilder):
     """Create transactions from the hot wallet and store them in the state.
@@ -215,6 +230,9 @@ class HotWalletTransactionBuilder(TransactionBuilder):
         super().__init__(web3)
         self.hot_wallet = hot_wallet
 
+    def init(self):
+        self.hot_wallet.sync_nonce(self.web3)
+
     def get_token_delivery_address(self) -> str:
         """Get the target address for ERC-20 approve()"""
         return self.hot_wallet.address
@@ -227,6 +245,12 @@ class HotWalletTransactionBuilder(TransactionBuilder):
         """Get the address that holds native token for gas fees"""
         return self.hot_wallet.address
 
+    def get_gas_wallet_balance(self) -> Decimal:
+        """Get the balance of the native currency (ETH, BNB, MATIC) of the wallet.
+
+        Useful to check if you have enough cryptocurrency for the gas fees.
+        """
+        return self.hot_wallet.get_native_currency_balance(self.web3)
 
     def sign_transaction(
             self,

@@ -2,7 +2,6 @@ import datetime
 from typing import Tuple
 
 from tradeexecutor.backtest.backtest_pricing import BacktestSimplePricingModel
-from tradeexecutor.ethereum.uniswap_v2_live_pricing import UniswapV2LivePricing
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.types import USDollarAmount
 from tradeexecutor.strategy.valuation import ValuationModel

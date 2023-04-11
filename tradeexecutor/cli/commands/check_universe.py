@@ -8,7 +8,7 @@ import typer
 
 from tradingstrategy.client import Client
 from .app import app
-from ..init import prepare_executor_id, prepare_cache
+from ..bootstrap import prepare_executor_id, prepare_cache
 from ..log import setup_logging
 from ...strategy.bootstrap import import_strategy_file
 from ...strategy.description import StrategyExecutionDescription
@@ -58,7 +58,7 @@ def check_universe(
         execution_model=None,
         execution_context=execution_context,
         timed_task_context_manager=timed_task,
-        sync_method=None,
+        sync_model=None,
         valuation_model_factory=None,
         pricing_model_factory=None,
         approval_model=None,

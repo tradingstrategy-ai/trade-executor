@@ -10,6 +10,7 @@ import pandas as pd
 from tradeexecutor.cli.discord import post_logging_discord_image
 from tradeexecutor.strategy.pandas_trader.trade_decision import TradeDecider
 from tradeexecutor.strategy.pricing_model import PricingModel
+from tradeexecutor.strategy.sync_model import SyncModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 
 from tradeexecutor.state.state import State
@@ -30,6 +31,11 @@ class PandasTraderRunner(StrategyRunner):
         self.decide_trades = decide_trades
         self.max_data_age = max_data_age
 
+        # Legacy assets
+        sync_model = kwargs.get("sync_model")
+        if sync_model is not None:
+            assert isinstance(sync_model, SyncModel)
+
     def on_data_signal(self):
         pass
 
@@ -45,6 +51,9 @@ class PandasTraderRunner(StrategyRunner):
         universe = executor_universe.universe
         pd_timestamp = pd.Timestamp(clock)
 
+        assert state.sync.treasury.last_updated_at is not None, "Cannot do trades before treasury is synced at least once"
+        # All sync models do not emit events correctly yet
+        # assert len(state.sync.treasury.balance_update_refs) > 0, "No deposit detected. Please do at least one deposit before starting the strategy"
         assert len(executor_universe.reserve_assets) == 1
 
         # Call the strategy script decide_trades()
@@ -72,12 +81,13 @@ class PandasTraderRunner(StrategyRunner):
             raise PreflightCheckFailed("Pair count zero")
 
         # Don't assume we have candle or liquidity data e.g. for the testing strategies
-        if universe.candles.get_candle_count() > 0:
-            start, end = universe.get_candle_availability()
+        if universe.candles is not None:
+            if universe.candles.get_candle_count() > 0:
+                start, end = universe.get_candle_availability()
 
-            if self.max_data_age is not None:
-                if now_ - end > self.max_data_age:
-                    raise PreflightCheckFailed(f"We do not have up-to-date data for candles. Last candles are at {end}")
+                if self.max_data_age is not None:
+                    if now_ - end > self.max_data_age:
+                        raise PreflightCheckFailed(f"We do not have up-to-date data for candles. Last candles are at {end}")
 
     def report_strategy_thinking(self,
                                  strategy_cycle_timestamp: datetime.datetime,

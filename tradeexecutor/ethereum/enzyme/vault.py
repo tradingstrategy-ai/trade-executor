@@ -3,7 +3,7 @@
 import logging
 import datetime
 from functools import partial
-from typing import cast, Collection, List
+from typing import cast, List, Optional
 
 from web3 import Web3
 
@@ -11,6 +11,9 @@ from eth_defi.enzyme.events import fetch_vault_balance_events, EnzymeBalanceEven
 from eth_defi.enzyme.vault import Vault
 from eth_defi.event_reader.reader import read_events, Web3EventReader, extract_events, extract_timestamps_json_rpc
 from eth_defi.event_reader.reorganisation_monitor import ReorganisationMonitor
+from eth_defi.hotwallet import HotWallet
+
+from tradeexecutor.ethereum.enzyme.tx import EnzymeTransactionBuilder
 from tradeexecutor.ethereum.token import translate_token_details
 from tradeexecutor.state.portfolio import Portfolio
 
@@ -21,6 +24,7 @@ from tradeexecutor.state.state import State
 from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdateCause, BalanceUpdatePositionType
 from tradeexecutor.state.sync import BalanceEventRef
 from tradeexecutor.strategy.sync_model import SyncModel
+from tradingstrategy.chain import ChainId
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +41,8 @@ class EnzymeVaultSyncModel(SyncModel):
                  vault_address: str,
                  reorg_mon: ReorganisationMonitor,
                  only_chain_listener=True,
+                 hot_wallet: Optional[HotWallet] = None,
+                 generic_adapter_address: Optional[str] = None,
                  ):
         """
 
@@ -53,12 +59,28 @@ class EnzymeVaultSyncModel(SyncModel):
             This is the only adapter using reorg_monn.
 
             Will call :py:meth:`process_blocks` as the part :py:meth:`sync_treasury`.
+
+        :param hot_wallet:
+            Trade executor's hot wallet used to create transactions.
+
+            Only needed when doing trades.
+
+        :param generic_adapter_address:
+            The vault specific deployed GenericAdapter smart contract.
+
+            Needed to make trades.
         """
+        assert vault_address is not None, "Vault address is not given"
         self.web3 = web3
         self.reorg_mon = reorg_mon
-        self.vault = Vault.fetch(web3, vault_address)
+        self.vault = Vault.fetch(web3, vault_address, generic_adapter_address)
         self.scan_chunk_size = 10_000
         self.only_chain_listener = only_chain_listener
+        self.hot_wallet = hot_wallet
+
+    def get_vault_address(self) -> Optional[str]:
+        """Get the vault address we are using"""
+        return self.vault.address
 
     def _notify(
             self,
@@ -111,7 +133,7 @@ class EnzymeVaultSyncModel(SyncModel):
 
         position_str = ", ".join([str(p) for p in portfolio.get_open_positions()])
         raise UnknownAsset(f"Asset {asset} does not map to any open position.\n"
-                           f"Reserve: {portfolio.get_default_reserve_currency()}.\n"
+                           f"Reserve: {portfolio.get_default_reserve()}.\n"
                            f"Open positions: {position_str}")
 
     def process_deposit(self, portfolio: Portfolio, event: Deposit) -> BalanceUpdate:
@@ -122,7 +144,7 @@ class EnzymeVaultSyncModel(SyncModel):
             # Initial deposit
             portfolio.initialise_reserves(asset)
         else:
-            reserve_asset, reserve_price = portfolio.get_default_reserve_currency()
+            reserve_asset, reserve_price = portfolio.get_default_reserve()
             assert asset == reserve_asset
 
         reserve_position = portfolio.get_reserve_position(asset)
@@ -268,10 +290,12 @@ class EnzymeVaultSyncModel(SyncModel):
         deployment.block_mined_at = timestamp_dt
         deployment.vault_token_name = self.vault.get_name()
         deployment.vault_token_symbol = self.vault.get_symbol()
+        deployment.chain_id = ChainId(web3.eth.chain_id)
 
     def sync_treasury(self,
                       strategy_cycle_ts: datetime.datetime,
                       state: State,
+                      supported_reserves: Optional[List[AssetIdentifier]] = None,
                       ) -> List[BalanceUpdate]:
         """Apply the balance sync before each strategy cycle.
 
@@ -289,7 +313,7 @@ class EnzymeVaultSyncModel(SyncModel):
 
         web3 = self.web3
         sync = state.sync
-        assert sync.is_initialised(), "Vault sync not initialised"
+        assert sync.is_initialised(), f"Vault sync not initialised: {sync}"
 
         if self.only_chain_listener:
             self.process_blocks()
@@ -342,3 +366,7 @@ class EnzymeVaultSyncModel(SyncModel):
         treasury_sync.last_cycle_at = strategy_cycle_ts
 
         return events
+
+    def create_transaction_builder(self) -> EnzymeTransactionBuilder:
+        assert self.hot_wallet, "HotWallet not set - cannot create transaction builder"
+        return EnzymeTransactionBuilder(self.hot_wallet, self.vault)

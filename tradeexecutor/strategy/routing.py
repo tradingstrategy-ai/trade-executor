@@ -125,7 +125,15 @@ class RoutingModel(abc.ABC):
         """Translate our reserve token address tok an asset description."""
         assert pair_universe is not None, "Pair universe missing"
         reserve_token = pair_universe.get_token(self.reserve_token_address)
-        assert reserve_token, f"Pair universe does not contain our reserve asset {self.reserve_token_address}"
+        # Dump all tokens here into the error message is the number of tokens is suffiently small
+        if reserve_token is None:
+            token_data_msg = f"Universe has {pair_universe.get_count():,} pairs\n"
+            if pair_universe.get_count() < 20:
+                token_data_msg = f"Tokens are:\n"
+                for token in pair_universe.get_all_tokens():
+                    token_data_msg += f"  {token}\n"
+            import ipdb ; ipdb.set_trace()
+            assert reserve_token, f"Pair universe does not contain our reserve asset {self.reserve_token_address}\n{token_data_msg}"
         return translate_token(reserve_token)
      
     def route_pair(self, pair_universe: PandasPairUniverse, trading_pair: TradingPairIdentifier) -> tuple[TradingPairIdentifier, Optional[TradingPairIdentifier]]:

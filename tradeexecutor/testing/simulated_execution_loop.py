@@ -9,7 +9,8 @@ from eth_defi.hotwallet import HotWallet
 from web3 import Web3
 
 from tradeexecutor.cli.loop import ExecutionLoop
-from tradeexecutor.ethereum.hot_wallet_sync import EthereumHotWalletReserveSyncer
+from tradeexecutor.ethereum.hot_wallet_sync_model import EthereumHotWalletReserveSyncer, HotWalletSyncModel
+from tradeexecutor.ethereum.tx import HotWalletTransactionBuilder
 from tradeexecutor.state.state import State
 from tradeexecutor.state.store import NoneStore
 from tradeexecutor.strategy.approval import UncheckedApprovalModel
@@ -20,15 +21,15 @@ from tradeexecutor.strategy.strategy_module import DecideTradesProtocol
 from tradeexecutor.strategy.universe_model import StaticUniverseModel, StrategyExecutionUniverse
 from tradeexecutor.utils.timer import timed_task
 
-from tradeexecutor.ethereum.uniswap_v2_execution import UniswapV2ExecutionModel
-from tradeexecutor.ethereum.uniswap_v2_live_pricing import UniswapV2LivePricing
-from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2SimpleRoutingModel
-from tradeexecutor.ethereum.uniswap_v2_valuation import UniswapV2PoolRevaluator
+from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_execution import UniswapV2ExecutionModel
+from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_live_pricing import UniswapV2LivePricing
+from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2SimpleRoutingModel
+from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_valuation import UniswapV2PoolRevaluator
 
-from tradeexecutor.ethereum.uniswap_v3_execution import UniswapV3ExecutionModel
-from tradeexecutor.ethereum.uniswap_v3_live_pricing import UniswapV3LivePricing
-from tradeexecutor.ethereum.uniswap_v3_routing import UniswapV3SimpleRoutingModel
-from tradeexecutor.ethereum.uniswap_v3_valuation import UniswapV3PoolRevaluator
+from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_execution import UniswapV3ExecutionModel
+from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_live_pricing import UniswapV3LivePricing
+from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_routing import UniswapV3SimpleRoutingModel
+from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_valuation import UniswapV3PoolRevaluator
 
 
 def set_up_simulated_execution_loop_uniswap_v2(
@@ -48,6 +49,9 @@ def set_up_simulated_execution_loop_uniswap_v2(
     strategies to respodn to price action (e.g. stop loss)
 
     See `test_uniswap_live_stop_loss.py` for an example.
+
+    :param wallet_account:
+        A trader account with some deployed money
 
     :return:
         Execution loop you can manually poke forward tick by tick,
@@ -70,15 +74,18 @@ def set_up_simulated_execution_loop_uniswap_v2(
 
     hot_wallet = HotWallet(wallet_account)
 
-    hot_wallet_sync = EthereumHotWalletReserveSyncer(web3, wallet_account.address)
+    # hot_wallet_sync = EthereumHotWalletReserveSyncer(web3, wallet_account.address)
+    sync_model = HotWalletSyncModel(web3, hot_wallet)
+    sync_model.setup_all(state, list(universe.reserve_assets))
 
     cycle_duration = CycleDuration.cycle_unknown
 
     universe_model = StaticUniverseModel(universe)
 
+    tx_builder = HotWalletTransactionBuilder(web3, hot_wallet)
+
     execution_model = UniswapV2ExecutionModel(
-        web3,
-        hot_wallet,
+        tx_builder,
         max_slippage=1.00,
         confirmation_block_count=0,  # Must be zero for the test chain
     )
@@ -99,7 +106,7 @@ def set_up_simulated_execution_loop_uniswap_v2(
         execution_model=execution_model,
         approval_model=UncheckedApprovalModel(),
         valuation_model_factory=valuation_model_factory,
-        sync_method=hot_wallet_sync,
+        sync_model=sync_model,
         pricing_model_factory=pricing_model_factory,
         routing_model=routing_model,
         decide_trades=decide_trades,
@@ -111,7 +118,7 @@ def set_up_simulated_execution_loop_uniswap_v2(
         command_queue=queue.Queue(),
         execution_context=execution_context,
         execution_model=execution_model,
-        sync_method=hot_wallet_sync,
+        sync_model=sync_model,
         pricing_model_factory=pricing_model_factory,
         valuation_model_factory=valuation_model_factory,
         strategy_factory=None,
@@ -170,15 +177,17 @@ def set_up_simulated_execution_loop_uniswap_v3(
 
     hot_wallet = HotWallet(wallet_account)
 
-    hot_wallet_sync = EthereumHotWalletReserveSyncer(web3, wallet_account.address)
+    # hot_wallet_sync = EthereumHotWalletReserveSyncer(web3, wallet_account.address)
+    sync_model = HotWalletSyncModel(web3, hot_wallet)
 
     cycle_duration = CycleDuration.cycle_unknown
 
     universe_model = StaticUniverseModel(universe)
 
+    tx_builder = HotWalletTransactionBuilder(web3, hot_wallet)
+
     execution_model = UniswapV3ExecutionModel(
-        web3,
-        hot_wallet,
+        tx_builder,
         max_slippage=1.00,
         confirmation_block_count=0,  # Must be zero for the test chain
     )
@@ -199,7 +208,7 @@ def set_up_simulated_execution_loop_uniswap_v3(
         execution_model=execution_model,
         approval_model=UncheckedApprovalModel(),
         valuation_model_factory=valuation_model_factory,
-        sync_method=hot_wallet_sync,
+        sync_model=sync_model,
         pricing_model_factory=pricing_model_factory,
         routing_model=routing_model,
         decide_trades=decide_trades,
@@ -211,7 +220,7 @@ def set_up_simulated_execution_loop_uniswap_v3(
         command_queue=queue.Queue(),
         execution_context=execution_context,
         execution_model=execution_model,
-        sync_method=hot_wallet_sync,
+        sync_model=sync_model,
         pricing_model_factory=pricing_model_factory,
         valuation_model_factory=valuation_model_factory,
         strategy_factory=None,
