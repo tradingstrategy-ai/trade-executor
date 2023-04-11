@@ -53,6 +53,11 @@ class PlotShape(enum.Enum):
     #:
     #: See https://plotly.com/python/line-charts/?_ga=2.83222870.1162358725.1672302619-1029023258.1667666588#interpolation-with-line-plots
     horizontal_vertical = "hv"
+    
+    #: Individually specified points.
+    #: 
+    #: Typically used for event indicators e.g. cross over of two lines.
+    marker = "markers"
 
 
 @dataclass_json
@@ -350,4 +355,29 @@ class Visualisation:
     def get_total_points(self) -> int:
         """Get number of data points stored in all plots."""
         return sum([len(p.points) for p in self.plots.values()])
+
+    
+def is_crossover(series1: pd.Series, series2: pd.Series) -> bool:
+    """Detect if two series have crossed over.
+    
+    """
+    assert type(series1) == type(series2) == pd.Series, "Series must be pandas.Series"
+    
+    assert len(series1) > 1, "Series must have at least 2 values"
+    assert len(series2) > 1, "Series must have at least 2 values"
+    
+    s1_latest = series1.iloc[-1]
+    s2_latest = series2.iloc[-1]
+
+    s1_prev = series1.iloc[-2]
+    s2_prev = series2.iloc[-2]
+
+    return (
+        s1_latest == s2_latest
+        or (s1_latest > s2_latest
+        and s1_prev < s2_prev)
+        or (s1_latest < s2_latest
+        and s1_prev > s2_prev)
+    )
+        
 

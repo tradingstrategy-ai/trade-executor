@@ -12,7 +12,9 @@ import pandas as pd
 from plotly import graph_objects as go
 
 
-from tradeexecutor.state.visualisation import Visualisation, Plot, PlotKind
+from tradeexecutor.state.visualisation import (
+    Visualisation, Plot, PlotKind, PlotShape
+)
 
 from tradingstrategy.charting.candle_chart import VolumeBarMode
 
@@ -149,14 +151,25 @@ def visualise_technical_indicator(
     df = export_plot_as_dataframe(plot, start_at, end_at)
 
     if len(df) > 0:
-        return go.Scatter(
-            x=df["timestamp"],
-            y=df["value"],
-            mode="lines",
-            name=plot.name,
-            line=dict(color=plot.colour),
-            line_shape=plot.plot_shape.value
-        )
+        if plot.plot_shape == PlotShape.marker:
+            return go.Scatter(
+                x=df["timestamp"],
+                y=df["value"],
+                mode="markers",
+                name=plot.name,
+                line=dict(color=plot.colour),
+            )
+        elif plot.plot_shape in {PlotShape.linear, PlotShape.horizontal_vertical}:
+            return go.Scatter(
+                x=df["timestamp"],
+                y=df["value"],
+                mode="lines",
+                name=plot.name,
+                line=dict(color=plot.colour),
+                line_shape=plot.plot_shape.value
+            )
+        else:
+            raise ValueError(f"Unknown plot shape: {plot.plot_shape}")
     else:
         return None
 
