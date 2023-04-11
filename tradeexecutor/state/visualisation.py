@@ -368,7 +368,12 @@ def is_crossover(series1: pd.Series, series2: pd.Series) -> bool:
     
     s1_latest = series1.iloc[-1]
     s2_latest = series2.iloc[-1]
-
+    
+    if s1_latest == s2_latest:
+        return True
+    elif len(series1) == 1 or len(series2) == 1:
+        return False
+    
     s1_prev = series1.iloc[-2]
     s2_prev = series2.iloc[-2]
 
