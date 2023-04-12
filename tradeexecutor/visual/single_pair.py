@@ -491,6 +491,7 @@ def visualise_single_pair(
         volume_bar_mode=VolumeBarMode.overlay,
         vertical_spacing = 0.05,
         subplot_font_size = 11,
+        relative_sizing: list[float] = None
 ) -> go.Figure:
     """Visualise single-pair trade execution.
 
@@ -597,49 +598,29 @@ def visualise_single_pair(
         end_at,
     )
 
-    title_text = _get_title(state.name, title)
-
-    axes_text, volume_text = _get_axes_and_volume_text(axes, pair_name)
-
     labels = make_candle_labels(
         candles,
         base_token_name=base_token,
         quote_token_name=quote_token,
     )
 
-
-    plots = state.visualisation.plots.values()
-    
-    num_detached_indicators = _get_num_detached_indicators(plots, volume_bar_mode)
-    relative_sizing = _get_relative_sizing(plots, volume_bar_mode)
-    subplot_names = _get_subplot_names(plots, volume_bar_mode, volume_text)
-    
-    # visualise candles and volume and create empty grid space for technical indicators
-    fig = visualise_ohlcv(
-        candles,
-        height=height,
-        theme=theme,
-        chart_name=title_text,
-        y_axis_name=axes_text,
-        volume_axis_name=volume_text,
-        labels=labels,
-        volume_bar_mode=volume_bar_mode,
-        num_detached_indicators=num_detached_indicators,
-        vertical_spacing=vertical_spacing,
-        relative_sizing=relative_sizing,
-        subplot_names=subplot_names,
-        subplot_font_size=subplot_font_size,
+    fig = _get_figure_grid_with_indicators(
+        state=state, 
+        start_at=start_at, 
+        end_at=end_at, 
+        height=height, 
+        axes=axes, 
+        technical_indicators=technical_indicators, 
+        title=title, 
+        theme=theme, 
+        volume_bar_mode=volume_bar_mode, 
+        vertical_spacing=vertical_spacing, 
+        subplot_font_size=subplot_font_size, 
+        relative_sizing=relative_sizing, 
+        candles=candles,
+        pair_name=pair_name,
+        labels=labels
     )
-
-    # Draw EMAs etc.
-    if technical_indicators:
-        overlay_all_technical_indicators(
-            fig,
-            state.visualisation,
-            start_at,
-            end_at,
-            volume_bar_mode,
-        )
 
     # Add trade markers if any trades have been made
     if len(trades_df) > 0:
@@ -659,6 +640,8 @@ def visualise_single_pair_positions_with_duration_and_slippage(
         theme="plotly_white",
         technical_indicators=True,
         vertical_spacing = 0.05,
+        relative_sizing: list[float] = None,
+        subplot_font_size: int = 11,
 ) -> go.Figure:
     """Visualise performance of a live trading strategy.
 
@@ -712,6 +695,16 @@ def visualise_single_pair_positions_with_duration_and_slippage(
 
     :param theme:
         Plotly colour scheme to use
+    
+    :param vertical_spacing:
+        Vertical spacing between subplots
+    
+    :param relative_sizing:
+        Optional relative sizes of each plot. Starts with first main candle plot, then the volume plot if it is detached, then the other detached technical indicators. 
+        
+        e.g. [1, 0.2, 0.3, 0.3] would mean the second plot is 20% the size of the first, and the third and fourth plots are 30% the size of the first.
+        
+        Remember to account for whether the volume subplot is detached or not. If it is detached, it should take up the second element in the list. 
     """
 
     logger.info("Visualising %s", state)
@@ -750,46 +743,104 @@ def visualise_single_pair_positions_with_duration_and_slippage(
     logger.info(f"Candles are {candle_start_ts} - {candle_end_ts}")
 
     positions = _get_all_positions(state, pair_id)
-
-    title_text = _get_title(state.name, title)
-
-    axes_text, volume_text = _get_axes_and_volume_text(axes, pair_name)
-
-    plots = state.visualisation.plots.values()
     
     # hide volume bar
     volume_bar_mode = VolumeBarMode.hidden
-    
-    num_detached_indicators = _get_num_detached_indicators(plots, volume_bar_mode)
-    relative_sizing = _get_relative_sizing(plots, volume_bar_mode)
-    subplot_names = _get_subplot_names(plots, volume_bar_mode)
 
+    fig = _get_figure_grid_with_indicators(
+        state=state, 
+        start_at=start_at, 
+        end_at=end_at, 
+        height=height, 
+        axes=axes, 
+        technical_indicators=technical_indicators, 
+        title=title, 
+        theme=theme, 
+        volume_bar_mode=volume_bar_mode, 
+        vertical_spacing=vertical_spacing, 
+        subplot_font_size=subplot_font_size, 
+        relative_sizing=relative_sizing, 
+        candles=candles,
+        pair_name=pair_name,
+        labels=None,
+        volume_axis_name=None,
+    )
+
+    # Add trade markers if any trades have been made
+    visualise_positions_with_duration_and_slippage(fig, candles, positions)
+
+    return fig
+
+def _get_figure_grid_with_indicators(
+    *,
+    state: State, 
+    start_at: pd.Timestamp | None, 
+    end_at: pd.Timestamp | None, 
+    height: int, 
+    axes: bool, 
+    technical_indicators: bool, 
+    title: str | bool, 
+    theme: str, 
+    volume_bar_mode: VolumeBarMode, 
+    vertical_spacing: float, 
+    subplot_font_size: int, 
+    relative_sizing: list[float], 
+    candles: pd.DataFrame, 
+    pair_name: str | None, 
+    labels: pd.Series,
+):
+    """Gets figure grid with indicators overlayered already. Main price plot is not yet added"""
+    title_text, axes_text, volume_text = _get_all_text(state.name, axes, title, pair_name)
+
+    plots = state.visualisation.plots.values()
+    
+    num_detached_indicators, subplot_names = _get_num_detached_and_names(plots, volume_bar_mode)
+    
+    # visualise candles and volume and create empty grid space for technical indicators
     fig = visualise_ohlcv(
         candles,
         height=height,
         theme=theme,
         chart_name=title_text,
         y_axis_name=axes_text,
-        volume_axis_name=None,
+        volume_axis_name=volume_text,
+        labels=labels,
         volume_bar_mode=volume_bar_mode,
         num_detached_indicators=num_detached_indicators,
+        vertical_spacing=vertical_spacing,
         relative_sizing=relative_sizing,
-        subplot_names=subplot_names
+        subplot_names=subplot_names,
+        subplot_font_size=subplot_font_size,
     )
 
+    # Draw EMAs etc.
     if technical_indicators:
         overlay_all_technical_indicators(
             fig,
             state.visualisation,
             start_at,
             end_at,
-            volume_bar_mode=volume_bar_mode,
+            volume_bar_mode,
         )
-
-    # Add trade markers if any trades have been made
-    visualise_positions_with_duration_and_slippage(fig, candles, positions)
-
+        
     return fig
+
+def _get_all_text(
+    state_name: str, 
+    axes: bool, 
+    title: str | None, 
+    pair_name: str | None,
+):
+    title_text = _get_title(state_name, title)
+    axes_text, volume_text = _get_axes_and_volume_text(axes, pair_name)
+    
+    return title_text,axes_text,volume_text
+
+def _get_num_detached_and_names(plots, volume_bar_mode):
+    """Get num_detached_indicators and subplot_names"""
+    num_detached_indicators = _get_num_detached_indicators(plots, volume_bar_mode)
+    subplot_names = _get_subplot_names(plots, volume_bar_mode)
+    return num_detached_indicators,subplot_names
 
 def _get_title(name: str, title: str):
     if title is True:
@@ -857,19 +908,11 @@ def _get_subplot_names(plots: list[Plot], volume_bar_mode: VolumeBarMode, volume
     return subplot_names
 
 def _get_relative_sizing(plots: list[Plot], volume_bar_mode: VolumeBarMode):
-    """Get list of relative sizes for subplots
+    """Get list of relative sizes for subplots (not including main price chart or volume chart if separate)
     
     Works since python dicts are now ordered"""
     
-    if volume_bar_mode in {VolumeBarMode.hidden, VolumeBarMode.overlay}:
-        relative_sizing = []
-    elif volume_bar_mode == VolumeBarMode.separate:
-        # TODO change to non-hardcoded value
-        relative_sizing = [0.3]
-    else:
-        raise ValueError(f"Unknown volume bar mode {VolumeBarMode}")
-    
-    relative_sizing.extend([plot.relative_size for plot in plots if plot.kind == PlotKind.technical_indicator_detached])
+    return [plot.relative_size for plot in plots if plot.kind == PlotKind.technical_indicator_detached]
 
 def _get_start_and_end(
     start_at: pd.Timestamp | datetime.datetime | None, 

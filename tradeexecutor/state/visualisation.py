@@ -250,7 +250,7 @@ class Visualisation:
              value: float,
              colour: Optional[str] = None,
              plot_shape: Optional[PlotShape] = PlotShape.linear,
-             relative_size: Optional[float] = default_rel_size,
+             relative_size: Optional[float] = None,
              detached_overlay_name: str | None = None,
              indicator_size: Optional[float] = None,
         ):
@@ -328,7 +328,8 @@ class Visualisation:
 
         plot.detached_overlay_name = detached_overlay_name
 
-        plot.relative_size = relative_size         
+        if relative_size:
+            plot.relative_size = relative_size         
 
         plot.indicator_size = indicator_size
 
