@@ -6,7 +6,7 @@ from collections import Counter
 from decimal import Decimal
 from itertools import chain
 from typing import List, Dict, Set, Tuple
-from abc import ABC, abstractmethod
+from abc import abstractmethod
 
 from eth_account.datastructures import SignedTransaction
 from eth_typing import HexAddress
@@ -25,14 +25,15 @@ from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, FOREVER_DEADLINE
 from eth_defi.trade import TradeSuccess, TradeFail
 from eth_defi.revert_reason import fetch_transaction_revert_reason
 
+from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution, TradeStatus
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction, BlockchainTransactionType
 from tradeexecutor.state.freeze import freeze_position_on_failed_trade
 from tradeexecutor.state.identifier import AssetIdentifier
-from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2SimpleRoutingModel, UniswapV2RoutingState
-from tradeexecutor.ethereum.uniswap_v3_routing import UniswapV3SimpleRoutingModel, UniswapV3RoutingState
-from tradeexecutor.strategy.execution_model import ExecutionModel
+from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2SimpleRoutingModel, UniswapV2RoutingState
+from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_routing import UniswapV3SimpleRoutingModel, UniswapV3RoutingState
+from tradeexecutor.strategy.execution_model import ExecutionModel, RoutingStateDetails
 from tradingstrategy.chain import ChainId
 
 logger = logging.getLogger(__name__)
@@ -50,8 +51,7 @@ class EthereumExecutionModel(ExecutionModel):
 
     @abstractmethod
     def __init__(self,
-                 web3: Web3,
-                 hot_wallet: HotWallet,
+                 tx_builder: TransactionBuilder,
                  min_balance_threshold=Decimal("0.5"),
                  confirmation_block_count=6,
                  confirmation_timeout=datetime.timedelta(minutes=5),
@@ -59,10 +59,7 @@ class EthereumExecutionModel(ExecutionModel):
                  stop_on_execution_failure=True,
                  swap_gas_fee_limit=2_000_000):
         """
-        :param web3:
-            Web3 connection used for this instance
-
-        :param hot_wallet:
+        :param tx_builder:
             Hot wallet instance used for this execution
 
         :param min_balance_threshold:
@@ -78,17 +75,24 @@ class EthereumExecutionModel(ExecutionModel):
             Raise an exception if any of the trades fail top execute
 
         :param max_slippage:
+
+            TODO: No longer used. Set in `TradeExecution` object.
+
             Max slippage tolerance per trade. 0.01 is 1%.
         """
+        assert isinstance(tx_builder, TransactionBuilder), f"Got {tx_builder} {tx_builder.__class__}"
         assert isinstance(confirmation_timeout, datetime.timedelta), f"Got {confirmation_timeout} {confirmation_timeout.__class__}"
-        self.web3 = web3
-        self.hot_wallet = hot_wallet
+        self.tx_builder = tx_builder
         self.stop_on_execution_failure = stop_on_execution_failure
         self.min_balance_threshold = min_balance_threshold
         self.confirmation_block_count = confirmation_block_count
         self.confirmation_timeout = confirmation_timeout
         self.swap_gas_fee_limit = swap_gas_fee_limit
         self.max_slippage = max_slippage
+
+    @property
+    def web3(self):
+        return self.tx_builder.web3
 
     @property
     def chain_id(self) -> int:
@@ -224,15 +228,14 @@ class EthereumExecutionModel(ExecutionModel):
 
         # Check we have money for gas fees
         if self.min_balance_threshold > 0:
-            balance = self.hot_wallet.get_native_currency_balance(self.web3)
-            assert balance > self.min_balance_threshold, f"At least {self.min_balance_threshold} native currency need, our wallet {self.hot_wallet.address} has {balance:.8f}"
+            balance = self.tx_builder.get_gas_wallet_balance()
+            assert balance > self.min_balance_threshold, f"At least {self.min_balance_threshold} native currency need, our wallet {self.tx_builder.address} has {balance:.8f}"
 
     def initialize(self):
         """Set up the wallet"""
-        logger.info("Initialising Uniswap v2 execution model")
-        self.hot_wallet.sync_nonce(self.web3)
-        balance = self.hot_wallet.get_native_currency_balance(self.web3)
-        logger.info("Our hot wallet is %s with nonce %d and balance %s", self.hot_wallet.address, self.hot_wallet.current_nonce, balance)
+        logger.info("Initialising %s execution model", self.__class__.__name__)
+        self.tx_builder.init()
+        logger.info("Hot wallet %s has balance %s", self.tx_builder.get_gas_wallet_balance(), self.tx_builder.get_gas_wallet_balance())
         
     def broadcast_and_resolve(
         self,
@@ -299,7 +302,7 @@ class EthereumExecutionModel(ExecutionModel):
         """
         state.start_trades(datetime.datetime.utcnow(), trades, max_slippage=self.max_slippage)
 
-        if self.web3.eth.chain_id != ChainId.ethereum_tester.value:
+        if self.web3.eth.chain_id not in (ChainId.ethereum_tester.value, ChainId.anvil.value):
             assert self.confirmation_block_count > 0, f"confirmation_block_count set to {self.confirmation_block_count} "
 
         routing_model.setup_trades(
@@ -317,11 +320,9 @@ class EthereumExecutionModel(ExecutionModel):
         # Clean up failed trades
         freeze_position_on_failed_trade(ts, state, trades)
 
-    
-    def get_routing_state_details(self) -> dict:
+    def get_routing_state_details(self) -> RoutingStateDetails:
         return {
-            "web3": self.web3,
-            "hot_wallet": self.hot_wallet,
+            "tx_builder": self.tx_builder,
         }
 
     def update_confirmation_status(

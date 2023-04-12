@@ -15,6 +15,7 @@ from tradeexecutor.cli.watchdog import create_watchdog_registry, register_worker
     WatchdogMode
 from tradeexecutor.statistics.summary import calculate_summary_statistics
 from tradeexecutor.strategy.pandas_trader.decision_trigger import wait_for_universe_data_availability_jsonl
+from tradeexecutor.strategy.routing import RoutingModel
 from tradeexecutor.strategy.run_state import RunState
 from tradeexecutor.strategy.strategy_cycle_trigger import StrategyCycleTrigger
 
@@ -35,7 +36,7 @@ except ImportError:
 from tradeexecutor.backtest.backtest_pricing import BacktestSimplePricingModel
 from tradeexecutor.state.state import State
 from tradeexecutor.state.store import StateStore
-from tradeexecutor.strategy.sync_model import SyncMethodV0
+from tradeexecutor.strategy.sync_model import SyncMethodV0, SyncModel
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.validator import validate_state_serialisation
 from tradeexecutor.statistics.core import update_statistics
@@ -50,7 +51,7 @@ from tradeexecutor.strategy.cycle import CycleDuration, snap_to_next_tick, snap_
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.strategy.universe_model import UniverseModel, StrategyExecutionUniverse, UniverseOptions
 from tradeexecutor.strategy.valuation import ValuationModelFactory
-from tradingstrategy.client import Client
+from tradingstrategy.client import Client, BaseClient
 from tradingstrategy.timebucket import TimeBucket
 
 
@@ -84,12 +85,12 @@ class ExecutionLoop:
             command_queue: Queue,
             execution_model: ExecutionModel,
             execution_context: ExecutionContext,
-            sync_method: SyncMethodV0,
+            sync_model: SyncModel,
             approval_model: ApprovalModel,
             pricing_model_factory: PricingModelFactory,
             valuation_model_factory: ValuationModelFactory,
             store: StateStore,
-            client: Optional[Client],
+            client: Optional[BaseClient],
             strategy_factory: Optional[StrategyFactory],
             cycle_duration: CycleDuration,
             stats_refresh_frequency: Optional[datetime.timedelta],
@@ -108,6 +109,7 @@ class ExecutionLoop:
             trade_immediately=False,
             run_state: Optional[RunState]=None,
             strategy_cycle_trigger: StrategyCycleTrigger = StrategyCycleTrigger.cycle_offset,
+            routing_model: Optional[RoutingModel] = None,
     ):
         """See main.py for details."""
 
@@ -115,8 +117,14 @@ class ExecutionLoop:
             # https://www.python.org/dev/peps/pep-3102/
             raise TypeError("Only keyword arguments accepted")
 
+        assert isinstance(sync_model, SyncModel)
+        self.sync_model = sync_model
+
         self.cycle_duration = cycle_duration
         self.stop_loss_check_frequency = stop_loss_check_frequency
+        self.strategy_factory = strategy_factory
+        self.reset = reset
+        self.routing_model = routing_model
 
         args = locals().copy()
         args.pop("self")
@@ -313,7 +321,7 @@ class ExecutionLoop:
         if cycle == 1 and self.backtest_setup is not None:
             # The hook to set up backtest initial balance
             logger.info("Performing initial backtest account funding")
-            self.backtest_setup(state, universe, self.sync_method)
+            self.backtest_setup(state, universe, self.sync_model)
 
         # Execute the strategy tick and trades
         self.runner.tick(
@@ -383,11 +391,13 @@ class ExecutionLoop:
             state: State,
     ):
         """Update the summary card statistics for this strategy."""
-        stats = calculate_summary_statistics(
-            state,
-            self.execution_context.mode,
-        )
-        self.run_state.summary_statistics = stats
+
+        if not state.portfolio.is_empty():
+            stats = calculate_summary_statistics(
+                state,
+                self.execution_context.mode,
+            )
+            self.run_state.summary_statistics = stats
 
     def check_position_triggers(self,
                           ts: datetime.datetime,
@@ -930,12 +940,12 @@ class ExecutionLoop:
             execution_model=self.execution_model,
             execution_context=self.execution_context,
             timed_task_context_manager=self.timed_task_context_manager,
-            sync_method=self.sync_method,
+            sync_model=self.sync_model,
             valuation_model_factory=self.valuation_model_factory,
             pricing_model_factory=self.pricing_model_factory,
             approval_model=self.approval_model,
             client=self.client,
-            routing_model = None,  # Assume strategy factory produces its own routing model
+            routing_model=self.routing_model,
             run_state=self.run_state,
         )
 

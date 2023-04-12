@@ -10,8 +10,8 @@ from typing import Optional, Dict
 
 from web3 import Web3
 
-from tradeexecutor.ethereum.uniswap_v3_execution import UniswapV3ExecutionModel
-from tradeexecutor.ethereum.uniswap_v3_routing import UniswapV3SimpleRoutingModel, route_tokens, get_uniswap_for_pair
+from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_execution import UniswapV3ExecutionModel
+from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_routing import UniswapV3SimpleRoutingModel, route_tokens, get_uniswap_for_pair
 from tradeexecutor.ethereum.eth_pricing_model import EthereumPricingModel
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.strategy.execution_model import ExecutionModel

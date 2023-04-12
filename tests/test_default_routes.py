@@ -3,7 +3,7 @@ import pytest
 from tradingstrategy.chain import ChainId
 
 from tradeexecutor.ethereum.routing_data import get_routing_model, MismatchReserveCurrency
-from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2SimpleRoutingModel
+from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2SimpleRoutingModel
 from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency

@@ -166,9 +166,7 @@ def test_enzyme_redeem_open_position(
     tx_builder = EnzymeTransactionBuilder(hot_wallet, vault)
 
     trader = UniswapV2TestTrader(
-        web3,
         uniswap_v2,
-        hot_wallet=tx_builder.hot_wallet,
         state=state,
         pair_universe=pair_universe,
         tx_builder=tx_builder,

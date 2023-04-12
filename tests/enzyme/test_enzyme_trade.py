@@ -14,6 +14,8 @@ from eth_defi.trace import assert_transaction_success_with_explanation
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment
 from eth_typing import HexAddress
 
+from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_live_pricing import UniswapV2LivePricing
+from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2SimpleRoutingModel
 from tradeexecutor.state.blockhain_transaction import BlockchainTransactionType
 from tradingstrategy.pair import PandasPairUniverse
 from web3 import Web3
@@ -46,6 +48,45 @@ def hot_wallet(web3, deployer, user_1, usdc: Contract) -> HotWallet:
     assert_transaction_success_with_explanation(web3, tx_hash)
 
     return wallet
+
+
+@pytest.fixture()
+def routing_model(
+        uniswap_v2,
+        usdc_asset,
+        weth_asset,
+        weth_usdc_trading_pair) -> UniswapV2SimpleRoutingModel:
+
+    # Allowed exchanges as factory -> router pairs
+    factory_router_map = {
+        uniswap_v2.factory.address: (uniswap_v2.router.address, uniswap_v2.init_code_hash),
+    }
+
+    # Three way ETH quoted trades are routed thru WETH/USDC pool
+    allowed_intermediary_pairs = {
+        weth_asset.address: weth_usdc_trading_pair.pool_address
+    }
+
+    return UniswapV2SimpleRoutingModel(
+        factory_router_map,
+        allowed_intermediary_pairs,
+        reserve_token_address=usdc_asset.address,
+    )
+
+
+@pytest.fixture()
+def pricing_model(
+        web3,
+        uniswap_v2,
+        pair_universe: PandasPairUniverse,
+        routing_model) -> UniswapV2LivePricing:
+
+    pricing_model = UniswapV2LivePricing(
+        web3,
+        pair_universe,
+        routing_model,
+    )
+    return pricing_model
 
 
 def test_enzyme_execute_open_position(
@@ -94,9 +135,7 @@ def test_enzyme_execute_open_position(
 
     # Now make a trade
     trader = UniswapV2TestTrader(
-        web3,
         uniswap_v2,
-        hot_wallet=tx_builder.hot_wallet,
         state=state,
         pair_universe=pair_universe,
         tx_builder=tx_builder,
@@ -218,13 +257,12 @@ def test_enzyme_execute_close_position(
 
     # Now make a trade
     trader = UniswapV2TestTrader(
-        web3,
         uniswap_v2,
-        hot_wallet=tx_builder.hot_wallet,
         state=state,
         pair_universe=pair_universe,
         tx_builder=tx_builder,
     )
+
 
     position, trade = trader.buy(
         weth_usdc_trading_pair,
@@ -248,3 +286,77 @@ def test_enzyme_execute_close_position(
 
     # Lost some money on fees
     assert state.portfolio.get_total_equity() == pytest.approx(Decimal(497.011924))
+
+
+def test_enzyme_lp_fees(
+    web3: Web3,
+    deployer: HexAddress,
+    vault: Vault,
+    usdc: Contract,
+    weth: Contract,
+    usdc_asset: AssetIdentifier,
+    weth_asset: AssetIdentifier,
+    user_1: HexAddress,
+    uniswap_v2: UniswapV2Deployment,
+    weth_usdc_trading_pair: TradingPairIdentifier,
+    pair_universe: PandasPairUniverse,
+    hot_wallet: HotWallet,
+    routing_model: UniswapV2SimpleRoutingModel,
+    pricing_model: UniswapV2LivePricing,
+):
+    """See LP fees are correctly estimated and realised."""
+
+    reorg_mon = create_reorganisation_monitor(web3)
+
+    tx_hash = vault.vault.functions.addAssetManagers([hot_wallet.address]).transact({"from": user_1})
+    assert_transaction_success_with_explanation(web3, tx_hash)
+
+    sync_model = EnzymeVaultSyncModel(
+        web3,
+        vault.address,
+        reorg_mon,
+    )
+
+    state = State()
+    sync_model.sync_initial(state)
+
+    # Make two deposits from separate parties
+    usdc.functions.transfer(user_1, 500 * 10**6).transact({"from": deployer})
+    usdc.functions.approve(vault.comptroller.address, 500 * 10**6).transact({"from": user_1})
+    vault.comptroller.functions.buyShares(500 * 10**6, 1).transact({"from": user_1})
+
+    # Strategy has its reserve balances updated
+    sync_model.sync_treasury(datetime.datetime.utcnow(), state)
+    assert state.portfolio.get_total_equity() == pytest.approx(500)
+
+    tx_builder = EnzymeTransactionBuilder(hot_wallet, vault)
+
+    # Check we have a good price ETH/USD
+    price_structure = pricing_model.get_buy_price(
+        datetime.datetime.utcnow(),
+        weth_usdc_trading_pair,
+        Decimal(1),
+    )
+    assert price_structure.mid_price == pytest.approx(1600, rel=0.01)
+
+    # Now make a trade
+    trader = UniswapV2TestTrader(
+        uniswap_v2,
+        state=state,
+        pair_universe=pair_universe,
+        tx_builder=tx_builder,
+        pricing_model=pricing_model,
+    )
+
+    position, trade = trader.buy(
+        weth_usdc_trading_pair,
+        Decimal(500),
+        execute=False,
+        slippage_tolerance=0.999,
+    )
+
+    # How much ETH we expect in the trade
+    eth_amount = Decimal(0.310787861255819868)
+    assert trade.fee_tier == 0.0030
+    assert trade.planned_quantity == pytest.approx(eth_amount)
+    assert trade.lp_fees_estimated == pytest.approx(1.5000000000000013)

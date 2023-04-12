@@ -24,6 +24,13 @@ class CycleDuration(enum.Enum):
     See :ref:`strategy cycle` for more information.
     """
 
+    #: Run `decide_trades()` one second
+    #:
+    #: Only used in unit testing.
+    #: See `strategies/test_only_/enzymy_end_to_end.py`.
+    #:
+    cycle_1s = "1s"
+
     #: Run `decide_trades()` every minute
     cycle_1m = "1m"
 
@@ -168,6 +175,7 @@ def snap_to_previous_tick(
 
 
 _TICK_DURATIONS = {
+    CycleDuration.cycle_1s: datetime.timedelta(seconds=1),
     CycleDuration.cycle_1m: datetime.timedelta(minutes=1),
     CycleDuration.cycle_5m: datetime.timedelta(minutes=5),
     CycleDuration.cycle_15m: datetime.timedelta(minutes=15),

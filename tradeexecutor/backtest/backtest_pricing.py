@@ -9,11 +9,11 @@ import pandas as pd
 
 from tradeexecutor.backtest.backtest_execution import BacktestExecutionModel
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel
-from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2SimpleRoutingModel
+from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2SimpleRoutingModel
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.strategy.execution_model import ExecutionModel
 
-from tradeexecutor.state.types import USDollarAmount, USDollarPrice
+from tradeexecutor.state.types import USDollarPrice
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.trade_pricing import TradePricing
 from tradeexecutor.strategy.routing import RoutingModel

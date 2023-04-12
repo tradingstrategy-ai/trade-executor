@@ -9,10 +9,12 @@ Currently supported models
 import abc
 import datetime
 import enum
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, TypedDict, Optional
 from web3 import Web3
 from hexbytes import HexBytes
 
+from eth_defi.hotwallet import HotWallet
+from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.routing import RoutingModel, RoutingState
@@ -25,6 +27,29 @@ class AutoClosingOrderUnsupported(Exception):
     Stop loss handling requires special support from the trade execution engine.
     See :py:meth:`ExecutionModel.is_stop_loss_supported` for more details.
     """
+
+
+class RoutingStateDetails(TypedDict):
+    """Detailts a trade router needs from the execeution mode to set its internal state.
+
+    The content may differ if we are doing backtesting (no live execution objects needed),
+    live trading or running some very legacy code.
+
+    TODO: API unfinished. Needs to be cleaned up.
+
+    TODO: Mark everything `NotRequired` if Python 3.11 migrated
+    """
+
+    tx_builder: TransactionBuilder
+
+    #: TODO: Legacy - moved to Txbuilder
+    web3: Web3
+
+    #: TODO: Legacy - moved to Txbuilder
+    wallet: HotWallet
+
+    #: TODO: Legacy - moved to Txbuilder
+    hot_wallet: HotWallet
 
 
 class ExecutionModel(abc.ABC):
@@ -52,10 +77,8 @@ class ExecutionModel(abc.ABC):
         """
 
     @abc.abstractmethod
-    def get_routing_state_details(self) -> object:
+    def get_routing_state_details(self) -> RoutingStateDetails:
         """Get needed details to establish a routing state.
-
-        TODO: API Unfinished
         """
 
     @abc.abstractmethod
@@ -119,7 +142,7 @@ class ExecutionModel(abc.ABC):
         """
 
 
-class TradeExecutionType(enum.Enum):
+class AssetManagementMode(enum.Enum):
     """Default execution options.
 
     What kind of trade instruction execution model the strategy does.
@@ -133,13 +156,15 @@ class TradeExecutionType(enum.Enum):
     dummy = "dummy"
 
     #: Server-side normal Ethereum private eky account
-    uniswap_v2_hot_wallet = "uniswap_v2_hot_wallet"
+    hot_wallet = "hot_wallet"
 
     #: Trading using Enzyme Protocol pool, single oracle mode
-    single_oracle_pooled = "single_oracle_pooled"
-
-    #: Trading using oracle network, oracles form a consensus using a judge smart contract
-    multi_oracle_judged = "multi_oracle_judged"
+    enzyme = "enzyme"
 
     #: Simulate execution using backtest data
+    #:
+    #: - Does not make any real trades
+    #:
+    #: - Does not connect to any network or blockchain
+    #:
     backtest = "backtest"

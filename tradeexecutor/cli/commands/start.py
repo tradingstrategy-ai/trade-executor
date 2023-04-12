@@ -14,22 +14,28 @@ import typer
 from eth_defi.gas import GasPriceMethod
 from tradingstrategy.chain import ChainId
 from tradingstrategy.client import Client
+from tradingstrategy.testing.uniswap_v2_mock_client import UniswapV2MockClient
 from tradingstrategy.timebucket import TimeBucket
+
+from . import shared_options
 from .app import app, TRADE_EXECUTOR_VERSION
-from ..init import prepare_executor_id, prepare_cache, create_web3_config, create_state_store, \
+from ..bootstrap import prepare_executor_id, prepare_cache, create_web3_config, create_state_store, \
     create_trade_execution_model, create_metadata, create_approval_model
 from ..log import setup_logging, setup_discord_logging, setup_logstash_logging, setup_file_logging, \
     setup_custom_log_levels
 from ..loop import ExecutionLoop
 from ..result import display_backtesting_results
 from ..version_info import VersionInfo
+from ...ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2SimpleRoutingModel
 from ...state.state import State
 from ...state.store import NoneStore
 from ...strategy.approval import ApprovalType
 from ...strategy.bootstrap import import_strategy_file
 from ...strategy.cycle import CycleDuration
+from ...strategy.default_routing_options import TradeRouting
 from ...strategy.execution_context import ExecutionContext, ExecutionMode
-from ...strategy.execution_model import TradeExecutionType
+from ...strategy.execution_model import AssetManagementMode
+from ...strategy.routing import RoutingModel
 from ...strategy.run_state import RunState
 from ...strategy.strategy_cycle_trigger import StrategyCycleTrigger
 from ...strategy.strategy_module import read_strategy_module, StrategyModuleInformation
@@ -44,17 +50,20 @@ logger = logging.getLogger(__name__)
 def start(
 
     # Strategy assets
-    id: str = typer.Option(None, envvar="EXECUTOR_ID", help="Executor id used when programmatically referring to this instance. If not given, take the base of --strategy-file."),
-    log_level: str = typer.Option(None, envvar="LOG_LEVEL", help="The Python default logging level. The defaults are 'info' is live execution, 'warning' if backtesting. Set 'disabled' in testing."),
+    id: str = shared_options.id,
+    log_level: str = shared_options.log_level,
     name: Optional[str] = typer.Option(None, envvar="NAME", help="Executor name used in the web interface and notifications"),
     short_description: Optional[str] = typer.Option(None, envvar="SHORT_DESCRIPTION", help="Short description for metadata"),
     long_description: Optional[str] = typer.Option(None, envvar="LONG_DESCRIPTION", help="Long description for metadata"),
     icon_url: Optional[str] = typer.Option(None, envvar="ICON_URL", help="Strategy icon for web rendering and Discord avatar"),
-    strategy_file: Path = typer.Option(..., envvar="STRATEGY_FILE", help="Python strategy file to run"),
+
+    strategy_file: Path = shared_options.strategy_file,
 
     # Live trading or backtest
-    execution_type: TradeExecutionType = typer.Option(..., envvar="EXECUTION_TYPE"),
-    trading_strategy_api_key: str = typer.Option(None, envvar="TRADING_STRATEGY_API_KEY", help="Trading Strategy API key"),
+    asset_management_mode: AssetManagementMode = shared_options.asset_management_mode,
+    vault_address: Optional[str] = shared_options.vault_address,
+    vault_adapter_address: Optional[str] = shared_options.vault_adapter_address,
+    trading_strategy_api_key: str = shared_options.trading_strategy_api_key,
 
     # Webhook server options
     http_enabled: bool = typer.Option(False, envvar="HTTP_ENABLED", help="Enable Webhook server"),
@@ -65,14 +74,17 @@ def start(
     http_wait_good_startup_seconds: int = typer.Option(60, envvar="HTTP_WAIT_GOOD_STARTUP_SECONDS", help="How long we wait befor switching the web server mode where an exception does not bring the web server down"),
 
     # Web3 connection options
-    json_rpc_binance: str = typer.Option(None, envvar="JSON_RPC_BINANCE", help="BNB Chain JSON-RPC node URL we connect to"),
-    json_rpc_polygon: str = typer.Option(None, envvar="JSON_RPC_POLYGON", help="Polygon JSON-RPC node URL we connect to"),
-    json_rpc_ethereum: str = typer.Option(None, envvar="JSON_RPC_ETHEREUM", help="Ethereum JSON-RPC node URL we connect to"),
-    json_rpc_avalanche: str = typer.Option(None, envvar="JSON_RPC_AVALANCHE", help="Avalanche C-chain JSON-RPC node URL we connect to"),
+    json_rpc_binance: Optional[str] = shared_options.json_rpc_binance,
+    json_rpc_polygon: Optional[str] = shared_options.json_rpc_polygon,
+    json_rpc_ethereum: Optional[str] = shared_options.json_rpc_ethereum,
+    json_rpc_avalanche: Optional[str] = shared_options.json_rpc_avalanche,
+    json_rpc_arbitrum: Optional[str] = shared_options.json_rpc_arbitrum,
+    json_rpc_anvil: Optional[str] = shared_options.json_rpc_anvil,
+
     gas_price_method: Optional[GasPriceMethod] = typer.Option(None, envvar="GAS_PRICE_METHOD", help="How to set the gas price for Ethereum transactions. After the Berlin hardfork Ethereum mainnet introduced base + tip cost gas model. Leave out to autodetect."),
     confirmation_timeout: int = typer.Option(900, envvar="CONFIRMATION_TIMEOUT", help="How many seconds to wait for transaction batches to confirm"),
     confirmation_block_count: int = typer.Option(2, envvar="CONFIRMATION_BLOCK_COUNT", help="How many blocks we wait before we consider transaction receipt a final"),
-    private_key: Optional[str] = typer.Option(None, envvar="PRIVATE_KEY", help="Ethereum private key to be used as a hot wallet/broadcast wallet"),
+    private_key: Optional[str] = shared_options.private_key,
     minimum_gas_balance: Optional[float] = typer.Option(0.1, envvar="MINUMUM_GAS_BALANCE", help="What is the minimum balance of gas token you need to have in your wallet. If the balance falls below this, abort by crashing and do not attempt to create transactions. Expressed in the native token e.g. ETH."),
 
     # Logging
@@ -84,7 +96,7 @@ def start(
     port_mortem_debugging: bool = typer.Option(False, "--post-mortem-debugging", envvar="POST_MORTEM_DEBUGGING", help="Launch ipdb debugger on a main loop crash to debug the exception"),
     clear_caches: bool = typer.Option(False, "--clear-caches", envvar="CLEAR_CACHES", help="Purge any dataset download caches before starting"),
     unit_testing: bool = typer.Option(False, "--unit-testing", envvar="UNIT_TESTING", help="The trade executor is called under the unit testing mode. No caches are purged."),
-    reset_state: bool = typer.Option(False, envvar="RESET_STATE"),
+    reset_state: bool = typer.Option(False, envvar="RESET_STATE", help="Recreate the state file. Used for testing. Same as running trade-executor init command"),
     max_cycles: int = typer.Option(None, envvar="MAX_CYCLES", help="Max main loop cycles run in an automated testing mode"),
     debug_dump_file: Optional[Path] = typer.Option(None, envvar="DEBUG_DUMP_FILE", help="Write Python Pickle dump of all internal debugging states of the strategy run to this file"),
 
@@ -93,6 +105,11 @@ def start(
     backtest_end: Optional[datetime.datetime] = typer.Option(None, envvar="BACKTEST_END", help="End timestamp of backesting"),
     backtest_candle_time_frame_override: Optional[TimeBucket] = typer.Option(None, envvar="BACKTEST_CANDLE_TIME_FRAME_OVERRIDE", help="Force backtests to use different candle time frame"),
     backtest_stop_loss_time_frame_override: Optional[TimeBucket] = typer.Option(None, envvar="BACKTEST_STOP_LOSS_TIME_FRAME_OVERRIDE", help="Force backtests to use different candle time frame for stop losses"),
+
+    # Test EMV backend
+    test_evm_uniswap_v2_router: Optional[str] = typer.Option(None, envvar="TEST_EVM_UNISWAP_V2_ROUTER", help="Uniswap v2 instance paramater when doing live trading test against a local dev chain"),
+    test_evm_uniswap_v2_factory: Optional[str] = typer.Option(None, envvar="TEST_EVM_UNISWAP_V2_FACTORY", help="Uniswap v2 instance paramater when doing live trading test against a local dev chain"),
+    test_evm_uniswap_v2_init_code_hash: Optional[str] = typer.Option(None, envvar="TEST_EVM_UNISWAP_V2_INIT_CODE_HASH", help="Uniswap v2 instance paramater when doing live trading test against a local dev chain"),
 
     # Live trading configuration
     max_slippage: float = typer.Option(0.0025, envvar="MAX_SLIPPAGE", help="Max slippage allowed per trade before failing. The default is 0.0025 is 0.25%."),
@@ -107,7 +124,7 @@ def start(
     strategy_cycle_trigger: StrategyCycleTrigger = typer.Option("cycle_offset", envvar="STRATEGY_CYCLE_TRIGGER", help="How do decide when to start executing the next live trading strategy cycle"),
 
     # Unsorted options
-    state_file: Optional[Path] = typer.Option(None, envvar="STATE_FILE", help="JSON file where we serialise the execution state. If not given defaults to state/{executor-id}.json"),
+    state_file: Optional[Path] = shared_options.state_file,
     cache_path: Optional[Path] = typer.Option(None, envvar="CACHE_PATH", help="Where to store downloaded datasets. This must be specific to each executor so that there are no write conflicts if multiple executors run on the same server. If not given default to cache/{executor-id}"),
     ):
     """Launch Trade Executor instance."""
@@ -126,7 +143,7 @@ def start(
             name = "Unnamed backtest"
 
     if not log_level:
-        if execution_type == TradeExecutionType.backtest:
+        if asset_management_mode == AssetManagementMode.backtest:
             log_level = logging.WARNING
         else:
             log_level = logging.INFO
@@ -158,7 +175,7 @@ def start(
     try:
 
         if not state_file:
-            if execution_type != TradeExecutionType.backtest:
+            if asset_management_mode != AssetManagementMode.backtest:
                 state_file = f"state/{id}.json"
 
         # Avoid polluting user caches during test runs,
@@ -171,12 +188,14 @@ def start(
 
         confirmation_timeout = datetime.timedelta(seconds=confirmation_timeout)
 
-        if execution_type in (TradeExecutionType.uniswap_v2_hot_wallet, TradeExecutionType.dummy):
+        if asset_management_mode in (AssetManagementMode.hot_wallet, AssetManagementMode.dummy, AssetManagementMode.enzyme):
             web3config = create_web3_config(
                 json_rpc_binance=json_rpc_binance,
                 json_rpc_polygon=json_rpc_polygon,
                 json_rpc_avalanche=json_rpc_avalanche,
                 json_rpc_ethereum=json_rpc_ethereum,
+                json_rpc_anvil=json_rpc_anvil,
+                json_rpc_arbitrum=json_rpc_arbitrum,
                 gas_price_method=gas_price_method,
             )
 
@@ -195,8 +214,14 @@ def start(
 
             if isinstance(mod, StrategyModuleInformation):
                 # This path is not enabled for legacy strategy modules
-                web3config.set_default_chain(mod.chain_id)
-                web3config.check_default_chain_id()
+                if mod.chain_id:
+                    # Strategy tells what chain to use
+                    web3config.set_default_chain(mod.chain_id)
+                    web3config.check_default_chain_id()
+                else:
+                    # User has configured only one chain, use it
+                    web3config.choose_single_chain()
+
             else:
                 # Legacy unit testing path.
                 # All chain_ids are 56 (BNB Chain)
@@ -211,14 +236,16 @@ def start(
             # because likely Ganache has simply crashed on background
             confirmation_timeout = datetime.timedelta(seconds=30)
 
-        execution_model, sync_method, valuation_model_factory, pricing_model_factory = create_trade_execution_model(
-            execution_type,
+        execution_model, sync_model, valuation_model_factory, pricing_model_factory = create_trade_execution_model(
+            asset_management_mode,
             private_key,
             web3config,
             confirmation_timeout,
             confirmation_block_count,
             max_slippage,
             minimum_gas_balance,
+            vault_address,
+            vault_adapter_address,
         )
 
         approval_model = create_approval_model(approval_type)
@@ -226,8 +253,8 @@ def start(
         if state_file:
             store = create_state_store(Path(state_file))
         else:
-            # Backtests never have persistent state
-            if execution_type == TradeExecutionType.backtest:
+            # Backtests do not have persistent state
+            if asset_management_mode == AssetManagementMode.backtest:
                 logger.info("This backtest run won't create a state file")
                 store = NoneStore(State())
             else:
@@ -258,12 +285,34 @@ def start(
             logger.info("Web server disabled")
             server = None
 
+        # Routing model comes usually from the strategy and hard-coded blockchain defaults,
+        # but for local dev chains it is dynamically constructed from the deployed contracts
+        routing_model: RoutingModel = None
+
         # Create our data client
-        if trading_strategy_api_key:
+        if test_evm_uniswap_v2_factory:
+            # Running against a local dev chain
+            client = UniswapV2MockClient(
+                web3config.get_default(),
+                test_evm_uniswap_v2_factory,
+                test_evm_uniswap_v2_router,
+                test_evm_uniswap_v2_init_code_hash,
+            )
+
+            if mod.trade_routing == TradeRouting.user_supplied_routing_model:
+                routing_model = UniswapV2SimpleRoutingModel(
+                    factory_router_map={test_evm_uniswap_v2_factory: (test_evm_uniswap_v2_router, test_evm_uniswap_v2_init_code_hash)},
+                    allowed_intermediary_pairs={},
+                    reserve_token_address=client.get_default_quote_token_address(),
+                )
+
+        elif trading_strategy_api_key:
+            # Backtest / real trading
             client = Client.create_live_client(trading_strategy_api_key, cache_path=cache_path)
             if clear_caches:
                 client.clear_caches()
         else:
+            # This run does not need to dowwnload any data
             client = None
 
         # Currently, all actions require us to have a valid API key
@@ -316,7 +365,7 @@ def start(
             command_queue=command_queue,
             execution_model=execution_model,
             execution_context=execution_context,
-            sync_method=sync_method,
+            sync_model=sync_model,
             approval_model=approval_model,
             pricing_model_factory=pricing_model_factory,
             valuation_model_factory=valuation_model_factory,
@@ -339,11 +388,12 @@ def start(
             position_trigger_check_frequency=position_trigger_check_frequency,
             run_state=run_state,
             strategy_cycle_trigger=strategy_cycle_trigger,
+            routing_model=routing_model,
         )
         loop.run()
 
         # Display summary stats for terminal backtest runs
-        if execution_type == TradeExecutionType.backtest and isinstance(store, NoneStore):
+        if asset_management_mode == AssetManagementMode.backtest and isinstance(store, NoneStore):
             display_backtesting_results(store.state)
 
     except KeyboardInterrupt as e:

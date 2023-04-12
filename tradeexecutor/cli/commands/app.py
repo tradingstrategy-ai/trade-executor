@@ -3,13 +3,16 @@
 import typer
 import shutil
 
-from tradeexecutor.cli.init import monkey_patch
+from tradeexecutor.cli.bootstrap import monkey_patch
 
 
 # https://github.com/tiangolo/typer/issues/511#issuecomment-1331692007
-app = typer.Typer(context_settings={
-    "max_content_width": shutil.get_terminal_size().columns
-})
+app = typer.Typer(
+    name="Trade Executor",
+    context_settings={
+        "max_content_width": shutil.get_terminal_size().columns
+    }
+)
 
 
 #: We do not use Python package versions, but Docker image files to track the deployed version

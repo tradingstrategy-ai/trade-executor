@@ -10,11 +10,13 @@ See :py:mod:`strategy_module` instead.
 import logging
 from contextlib import AbstractContextManager
 from pathlib import Path
+from typing import Optional
 
+from tradeexecutor.strategy.routing import RoutingModel
 from tradingstrategy.client import Client
 
 from tradeexecutor.ethereum.routing_data import get_routing_model
-from tradeexecutor.strategy.sync_model import SyncMethodV0
+from tradeexecutor.strategy.sync_model import SyncMethodV0, SyncModel
 from tradeexecutor.strategy.approval import ApprovalModel
 from tradeexecutor.strategy.description import StrategyExecutionDescription
 from tradeexecutor.strategy.execution_context import ExecutionContext
@@ -93,13 +95,14 @@ def make_factory_from_strategy_mod(mod: StrategyModuleInformation) -> StrategyFa
             *ignore,
             execution_model: ExecutionModel,
             execution_context: ExecutionContext,
-            sync_method: SyncMethodV0,
+            sync_model: SyncModel,
             pricing_model_factory: PricingModelFactory,
             valuation_model_factory: ValuationModelFactory,
             client: Client,
             timed_task_context_manager: AbstractContextManager,
             approval_model: ApprovalModel,
             run_state: RunState,
+            routing_model: Optional[RoutingModel]=None,
             **kwargs) -> StrategyExecutionDescription:
 
         # Migration assert
@@ -109,22 +112,30 @@ def make_factory_from_strategy_mod(mod: StrategyModuleInformation) -> StrategyFa
             # https://www.python.org/dev/peps/pep-3102/
             raise TypeError("Only keyword arguments accepted")
 
+        if sync_model is not None:
+            assert isinstance(sync_model, SyncModel), f"SyncModel not good: {sync_model}"
+
         universe_model = DefaultTradingStrategyUniverseModel(
             client,
             execution_context,
             mod_info.create_trading_universe)
 
-        routing_model = get_routing_model(
-            execution_context,
-            mod_info.trade_routing,
-            mod_info.reserve_currency)
+        # Routing model can come with hardcoded Python tables of addresses (see default_routes.py)
+        # or it is dynamically generated for any local dev chain.
+        # If it is not dynamically generated, here set up one of the default routing models from
+        # strategy module's trade_routing var.
+        if routing_model is None:
+            routing_model = get_routing_model(
+                execution_context,
+                mod_info.trade_routing,
+                mod_info.reserve_currency)
 
         runner = PandasTraderRunner(
             timed_task_context_manager=timed_task_context_manager,
             execution_model=execution_model,
             approval_model=approval_model,
             valuation_model_factory=valuation_model_factory,
-            sync_method=sync_method,
+            sync_model=sync_model,
             pricing_model_factory=pricing_model_factory,
             routing_model=routing_model,
             decide_trades=mod_info.decide_trades,

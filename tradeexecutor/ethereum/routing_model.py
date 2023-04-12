@@ -339,23 +339,31 @@ class EthereumRoutingModel(RoutingModel):
         assert universe is not None, "Universe is required"
         assert universe.universe.pairs is not None, "Pairs are required"
 
-        web3 = execution_details["web3"]
 
-        # Hot wallet is not present in dummy execution model
-        hot_wallet = execution_details.get("hot_wallet")
-
-        fees = estimate_gas_fees(web3)
-
-        logger.info("Gas fee estimations for chain %d: %s", web3.eth.chain_id, fees)
-
-        logger.info("Estimated gas fees for chain %d: %s", web3.eth.chain_id, fees)
-        if hot_wallet is not None:
-            tx_builder = HotWalletTransactionBuilder(web3, hot_wallet)
-            routing_state = Routing_State(universe.universe.pairs, tx_builder)
+        tx_builder = execution_details.get("tx_builder")
+        if tx_builder is not None:
+            # Modern code path
+            routing_state = Routing_State(universe.universe.pairs, tx_builder=tx_builder)
         else:
-            routing_state = Routing_State(universe.universe.pairs,
-                                          tx_builder=None,
-                                          web3=web3)
+            # Legacy code path - do not use
+
+            web3 = execution_details["web3"]
+
+            # Hot wallet is not present in dummy execution model
+            hot_wallet = execution_details.get("hot_wallet")
+
+            fees = estimate_gas_fees(web3)
+
+            logger.info("Gas fee estimations for chain %d: %s", web3.eth.chain_id, fees)
+
+            logger.info("Estimated gas fees for chain %d: %s", web3.eth.chain_id, fees)
+            if hot_wallet is not None:
+                tx_builder = HotWalletTransactionBuilder(web3, hot_wallet)
+                routing_state = Routing_State(universe.universe.pairs, tx_builder)
+            else:
+                routing_state = Routing_State(universe.universe.pairs,
+                                              tx_builder=None,
+                                              web3=web3)
 
         return routing_state
     

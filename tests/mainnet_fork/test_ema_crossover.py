@@ -152,7 +152,7 @@ def test_ema_crossover(
         "GAS_PRICE_METHOD": "legacy",
         "STATE_FILE": state_file,
         "RESET_STATE": "true",
-        "EXECUTION_TYPE": "backtest",
+        "ASSET_MANAGEMENT_MODE": "backtest",
         "APPROVAL_TYPE": "unchecked",
         "CACHE_PATH": persistent_test_cache_path,
         "TRADING_STRATEGY_API_KEY": os.environ["TRADING_STRATEGY_API_KEY"],

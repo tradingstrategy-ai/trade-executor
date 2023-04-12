@@ -68,7 +68,7 @@ def test_run_one_live_cycle(
         "JSON_RPC_POLYGON": os.environ["JSON_RPC_POLYGON"],
         "STATE_FILE": state_file,
         "RESET_STATE": "true",
-        "EXECUTION_TYPE": "dummy",
+        "ASSET_MANAGEMENT_MODE": "dummy",
         "STRATEGY_CYCLE_TRIGGER": "cycle_offset",
         "CACHE_PATH": "/tmp/test_run_one_live_cycle",
         "TRADING_STRATEGY_API_KEY": os.environ["TRADING_STRATEGY_API_KEY"],

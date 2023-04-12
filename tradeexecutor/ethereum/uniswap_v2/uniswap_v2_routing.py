@@ -65,8 +65,6 @@ class UniswapV2RoutingState(EthereumRoutingState):
             and raise exception if not.
         """
 
-        hot_wallet = self.tx_builder.hot_wallet
-        
         base_token, quote_token = get_base_quote(self.web3, target_pair, reserve_asset)
 
         if check_balances:
@@ -117,8 +115,6 @@ class UniswapV2RoutingState(EthereumRoutingState):
             Check on-chain balances that the account has enough tokens
             and raise exception if not.
         """
-
-        hot_wallet = self.tx_builder.hot_wallet
 
         self.validate_pairs(target_pair, intermediary_pair)
 
@@ -187,6 +183,8 @@ class UniswapV2SimpleRoutingModel(EthereumRoutingModel):
             Defines router smart contracts to be used with each DEX.
             Each Uniswap v2 is uniquely identified by its factory contract.
             Addresses always lowercase.
+
+            Map of factory address -> (router address, init code hash tuple)
 
         :param allowed_intermediary_pairs:
 

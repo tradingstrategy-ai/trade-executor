@@ -107,7 +107,7 @@ def test_cli_backtest(
         "BACKTEST_STOP_LOSS_TIME_FRAME_OVERRIDE": "1d",
         "BACKTEST_START": "2021-06-01",
         "BACKTEST_END": "2022-07-01",
-        "EXECUTION_TYPE": "backtest",
+        "ASSET_MANAGEMENT_MODE": "backtest",
         "UNIT_TESTING": "true",
         "LOG_LEVEL": "disabled",
     }
@@ -151,7 +151,7 @@ def test_cli_live_trading(
         "CACHE_PATH": unit_test_cache_path,
         "CYCLE_DURATION": "1d",
         "STOP_LOSS_CHECK_FREQUENCY": "1d",
-        "EXECUTION_TYPE": "uniswap_v2_hot_wallet",
+        "ASSET_MANAGEMENT_MODE": "hot_wallet",
         "JSON_RPC_BINANCE": os.environ.get("BNB_CHAIN_JSON_RPC"),
         # Random empty wallet
         "PRIVATE_KEY": "0x111e53aed5e777996f26b4bdb89300bbc05b84743f32028c41be7193c0fe0b83",
