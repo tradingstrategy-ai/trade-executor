@@ -24,6 +24,7 @@ from dataclasses_json import dataclass_json
 
 from tradeexecutor.utils.timestamp import convert_and_validate_timestamp, convert_and_validate_timestamp_as_int
 
+default_rel_size = 0.2
 
 logger = logging.getLogger(__name__)
 
@@ -97,7 +98,7 @@ class Plot:
     #: Size of the indicator plot relative to the price plot.
     #:
     #: The price plot is regarded as 1.0, and the indicator plot default is 0.2
-    relative_size: Optional[float] = 0.2
+    relative_size: Optional[float] = default_rel_size
     
     #: If this plot is overlayed on top of a detached technical indicator, this is the name of the overlay it should be attached to.
     detached_overlay_name: Optional[str]= None
@@ -249,7 +250,7 @@ class Visualisation:
              value: float,
              colour: Optional[str] = None,
              plot_shape: Optional[PlotShape] = PlotShape.linear,
-             relative_size: Optional[float] = None,
+             relative_size: Optional[float] = default_rel_size,
              detached_overlay_name: str | None = None,
              indicator_size: Optional[float] = None,
         ):
@@ -284,8 +285,16 @@ class Visualisation:
         :param indicator_size:
             Optional indicator to determine the size of the indicator. For a line, this is the width of the line. For a marker, this is the size of the marker.
         """
+        
+        def get_helper_message(variable_name: str = None):
+            if not variable_name:
+                return ". Adjust plot_indicator parameters in decide_trades to fix this error."
+            else:
+                return f". Adjust {variable_name} in plot_indicator parameters in decide_trades to fix this error."
 
-        assert type(name) == str, f"Got name{name} of type {str(type(name))}"
+        assert (
+            type(name) == str
+        ), f"Got name{name} of type {str(type(name))}" + get_helper_message("name")
 
         # Convert numpy.float32 and numpy.float64 to serializable float instances,
         # e.g. prices
@@ -293,17 +302,17 @@ class Visualisation:
             try:
                 value = float(value)
             except TypeError as e:
-                raise RuntimeError(f"Could not convert value {value} {value.__class__} to float") from e
+                raise RuntimeError(f"Could not convert value {value} {value.__class__} to float{helper_message}" + get_helper_message("value")) from e
 
         if relative_size:
-            assert kind == PlotKind.technical_indicator_detached, "Relative size is only supported for detached technical indicators"
+            assert kind == PlotKind.technical_indicator_detached, "Relative size is only supported for detached technical indicators" + get_helper_message("relative_size")   
 
         if detached_overlay_name:
-            assert type(detached_overlay_name) is str, "Detached overlay must be a string"
-            assert kind == PlotKind.technical_indicator_overlay_on_detached, "Detached overlay must be a PlotKind.technical_indicator_overlay_on_detached"
+            assert type(detached_overlay_name) is str, "Detached overlay must be a string" + get_helper_message("detached_overlay_name")
+            assert kind == PlotKind.technical_indicator_overlay_on_detached, "Detached overlay must be a PlotKind.technical_indicator_overlay_on_detached" + get_helper_message("kind")
 
         if kind == PlotKind.technical_indicator_overlay_on_detached:
-            assert detached_overlay_name and type(detached_overlay_name) == str, "Detached overlay must be a string for PlotKind.technical_indicator_overlay_on_detached"
+            assert detached_overlay_name and type(detached_overlay_name) == str, "Detached overlay must be a string for PlotKind.technical_indicator_overlay_on_detached" + get_helper_message("detached_overlay_name")
 
         plot = self.plots.get(name, Plot(name=name, kind=kind))
 
@@ -313,10 +322,10 @@ class Visualisation:
 
         plot.plot_shape = plot_shape
 
-        plot.relative_size = relative_size
-
         plot.detached_overlay_name = detached_overlay_name
-        
+
+        plot.relative_size = relative_size         
+
         plot.indicator_size = indicator_size
 
         if colour:
