@@ -94,13 +94,6 @@ class Plot:
     #: See https://plotly.com/python/line-charts/?_ga=2.83222870.1162358725.1672302619-1029023258.1667666588#interpolation-with-line-plots
     plot_shape: Optional[PlotShape] = PlotShape.linear
     
-    #: Horizontal line value.
-    #: Must be between the highest and lowest of the plot points
-    horizontal_line: Optional[float] = None
-    
-    #: Colour of the horizontal line
-    horizontal_line_colour: Optional[str] = None
-    
     #: Size of the indicator plot relative to the price plot.
     #:
     #: The price plot is regarded as 1.0, and the indicator plot default is 0.2
@@ -256,8 +249,6 @@ class Visualisation:
              value: float,
              colour: Optional[str] = None,
              plot_shape: Optional[PlotShape] = PlotShape.linear,
-             horizontal_line: Optional[float] = None,
-             horizontal_line_colour: Optional[str] = None,
              relative_size: Optional[float] = None,
              detached_overlay_name: str | None = None,
              indicator_size: Optional[float] = None,
@@ -283,12 +274,6 @@ class Visualisation:
 
         :param plot_shape:
             PlotShape enum value e.g. Plotshape.linear or Plotshape.horizontal_vertical
-        
-        :param horizontal_line:
-            Optional horizontal line value
-        
-        :param horizontal_line_colour:
-            Optional horizontal line colour
         
         :param relative_size:
             Optional relative size for technical indicators. Size is relative to the size of the main price chart which has a default reference value of 1.
@@ -327,10 +312,6 @@ class Visualisation:
         plot.kind = kind
 
         plot.plot_shape = plot_shape
-
-        plot.horizontal_line = horizontal_line
-
-        plot.horizontal_line_colour = horizontal_line_colour
 
         plot.relative_size = relative_size
 

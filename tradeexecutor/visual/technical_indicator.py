@@ -71,9 +71,6 @@ def overlay_all_technical_indicators(
         else:
             raise ValueError(f"Unknown plot kind: {plot.plot_kind}")
 
-        # add horizontal line if needs be
-        if line_val := plot.horizontal_line:
-            _add_hline(fig, line_val, start_at, end_at, cur_row, plot)
 
         
 
@@ -86,36 +83,6 @@ def _get_initial_row(volume_bar_mode: VolumeBarMode):
     else:
         raise ValueError("Unknown volume bar mode: %s" % volume_bar_mode)
     return cur_row
-
-def _add_hline(
-    fig: go.Figure, 
-    line_val: float,
-    start_at: pd.Timestamp | None, 
-    end_at: pd.Timestamp | None, 
-    cur_row: int, 
-    plot: Plot,
-):
-    """Add horizontal line to plot"""
-    
-    minimum = min(plot.points.values())
-    maximum = max(plot.points.values())
-    
-    assert minimum < line_val < maximum, f"Horizontal line value must be within range of plot. Plot range: {minimum} - {maximum}"
-    
-    start_at, end_at = _get_start_and_end(start_at, end_at, plot)
-
-    horizontal_line_colour = plot.horizontal_line_colour or "grey"
-
-    # Add a horizontal line to the first subplot
-    fig.add_shape(
-            type="line",
-            x0=start_at,
-            y0=line_val,
-            x1=end_at,
-            y1=line_val,
-            line=dict(color=horizontal_line_colour, width=1),
-            row=cur_row, col=1
-        )
 
 def _get_start_and_end(
     start_at: pd.Timestamp | None, 
@@ -153,14 +120,14 @@ def visualise_technical_indicator(
     if len(df) <= 0:
         return None
     
-    _get_plot(df, plot)
+    return _get_plot(df, plot)
 
 def _get_plot(df: pd.DataFrame, plot: Plot):
     """Get plot based on plot shape and plot size."""
     if plot.plot_shape == PlotShape.marker:
-        _get_marker_plot(df, plot)
+        return _get_marker_plot(df, plot)
     elif plot.plot_shape in {PlotShape.linear, PlotShape.horizontal_vertical}:
-        _get_linear_plot(df, plot)
+        return _get_linear_plot(df, plot)
     else:
         raise ValueError(f"Unknown plot shape: {plot.plot_shape}")
 

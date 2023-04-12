@@ -82,7 +82,6 @@ def state_and_candles(usdc, weth, weth_usdc) -> tuple[State, pd.DataFrame]:
     
     state.visualisation.plot_indicator(trader.ts, "Test indicator", PlotKind.technical_indicator_on_price, 1700, colour="aqua")
     state.visualisation.plot_indicator(trader.ts, "random 1", PlotKind.technical_indicator_detached, 1000, colour="green")
-    state.visualisation.plot_indicator(trader.ts, "random 2", PlotKind.technical_indicator_detached, 1100, colour="red", horizontal_line=1200, relative_size=0.5)
     state.visualisation.plot_indicator(trader.ts, "random 3", PlotKind.technical_indicator_overlay_on_detached, 1200, colour="green", detached_overlay_name="random 2")
     state.visualisation.plot_indicator(trader.ts, "random 4", PlotKind.technical_indicator_overlay_on_detached, 1300, colour="blue", detached_overlay_name="random 2")
 
@@ -94,7 +93,6 @@ def state_and_candles(usdc, weth, weth_usdc) -> tuple[State, pd.DataFrame]:
     
     state.visualisation.plot_indicator(trader.ts, "Test indicator", PlotKind.technical_indicator_on_price, 1700, colour="azure")
     state.visualisation.plot_indicator(trader.ts, "random 1", PlotKind.technical_indicator_detached, 1200, colour="green")
-    state.visualisation.plot_indicator(trader.ts, "random 2", PlotKind.technical_indicator_detached, 1300, colour="red", horizontal_line=1200, relative_size=0.5)
     state.visualisation.plot_indicator(trader.ts, "random 3", PlotKind.technical_indicator_overlay_on_detached, 1400, colour="green", detached_overlay_name="random 2")
     state.visualisation.plot_indicator(trader.ts, "random 4", PlotKind.technical_indicator_overlay_on_detached, 1500, colour="blue", detached_overlay_name="random 2")
     
