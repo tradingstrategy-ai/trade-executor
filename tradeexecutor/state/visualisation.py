@@ -365,8 +365,8 @@ class Visualisation:
         """Get number of data points stored in all plots."""
         return sum([len(p.points) for p in self.plots.values()])
 
-def is_crossover_set_value(series: pd.Series, value: float) -> bool:
-    """Detect if a series has crossed over a value."""
+def is_crossover_constant(series: pd.Series, value: float) -> bool:
+    """Detect if a series has crossed over a constant value."""
     assert type(series) == pd.Series, "Series must be pandas.Series"
     assert type(value) in {int, float}, "Value must be int or float"
     
