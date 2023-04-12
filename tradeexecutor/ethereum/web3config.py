@@ -9,6 +9,7 @@ from eth_defi.middleware import http_retry_request_with_sleep_middleware
 from tradingstrategy.chain import ChainId
 from web3 import Web3, HTTPProvider
 from web3.middleware import geth_poa_middleware
+from web3.providers.eth_tester.middleware import default_transaction_fields_middleware, ethereum_tester_middleware
 
 from tradeexecutor.utils.url import get_url_domain
 
@@ -18,6 +19,8 @@ SUPPORTED_CHAINS = [
     ChainId.avalanche,
     ChainId.polygon,
     ChainId.bsc,
+    ChainId.arbitrum,
+    ChainId.anvil
 ]
 
 
@@ -52,13 +55,24 @@ class Web3Config:
             If not given autodetect the method.
         """
 
-        web3 = Web3(HTTPProvider(url))
+        provider = HTTPProvider(url)
+
+        # Web3 6.0 fixes
+        provider.middlewares = (
+            #    attrdict_middleware,
+            # default_transaction_fields_middleware,
+            #ethereum_tester_middleware,
+        )
+
+        web3 = Web3(provider)
+
+        web3.middleware_onion.clear()
 
         # Read numeric chain id from JSON-RPC
         chain_id = web3.eth.chain_id
 
         if gas_price_method is None:
-            if chain_id in (ChainId.ethereum.value, ChainId.ganache.value, ChainId.avalanche.value, ChainId.polygon.value):
+            if chain_id in (ChainId.ethereum.value, ChainId.ganache.value, ChainId.avalanche.value, ChainId.polygon.value, ChainId.anvil.value):
                 # Ethereum supports maxBaseFee method (London hard fork)
                 # Same for Avalanche C-chain https://twitter.com/avalancheavax/status/1389763933448323073
 
@@ -98,6 +112,7 @@ class Web3Config:
             logger.info("Using proof-of-authority web3 middleware for chain %d", chain_id)
             web3.middleware_onion.inject(geth_poa_middleware, layer=0)
 
+        # Set up automatic rqeuest replays in the case of network issues
         web3.middleware_onion.inject(http_retry_request_with_sleep_middleware, layer=0)
 
         return web3
@@ -107,13 +122,23 @@ class Web3Config:
         # Web3.py does not offer close
         pass
 
+    def choose_single_chain(self):
+        """Set the default chain we are connected to.
+
+        Ensure we have exactly 1 JSON-RPC endpoint configured.
+        """
+        assert len(self.connections) == 1, f"Expected a single web3 connection, got JSON-RPC for chains {list(self.connections.keys())}"
+        default_chain_id = next(iter(self.connections.keys()))
+        self.set_default_chain(default_chain_id)
+        self.check_default_chain_id()
+
     def set_default_chain(self, chain_id: ChainId):
         """Set the default chain our strategy runs on.
 
         Most strategies are single chain strategies.
         Set the chain id we expect these strategies to run on.
         """
-        assert isinstance(chain_id, ChainId), f"Got {chain_id}"
+        assert isinstance(chain_id, ChainId), f"Attempt to set null chain as the default: {chain_id}"
         self.default_chain_id = chain_id
 
     def get_connection(self, chain_id: ChainId) -> Optional[Web3]:

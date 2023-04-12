@@ -80,7 +80,7 @@ class ExecutionMode(enum.Enum):
 
 
 @dataclass
-class   ExecutionContext:
+class ExecutionContext:
     """Information about the strategy execution environment.
 
     This is passed to `create_trading_universe` and couple of other

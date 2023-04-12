@@ -12,6 +12,7 @@ from eth_defi.uniswap_v3.deployment import UniswapV3Deployment
 from eth_defi.uniswap_v3.price import UniswapV3PriceHelper
 from eth_defi.uniswap_v3.analysis import analyse_trade_by_receipt
 from eth_defi.uniswap_v3.deployment import mock_partial_deployment_for_analysis
+from tradeexecutor.ethereum.tx import TransactionBuilder
 
 from tradeexecutor.state.identifier import TradingPairIdentifier
 #from tradeexecutor.strategy.execution_model import ExecutionModel
@@ -21,11 +22,10 @@ logger = logging.getLogger(__name__)
 
 
 class UniswapV3ExecutionModel(EthereumExecutionModel):
-    """Run order execution on a single Uniswap v2 style exchanges."""
+    """Run order execution on a single Uniswap v3 style exchanges."""
 
     def __init__(self,
-                 web3: Web3,
-                 hot_wallet: HotWallet,
+                 tx_builder: TransactionBuilder,
                  min_balance_threshold=Decimal("0.5"),
                  confirmation_block_count=6,
                  confirmation_timeout=datetime.timedelta(minutes=5),
@@ -33,10 +33,7 @@ class UniswapV3ExecutionModel(EthereumExecutionModel):
                  stop_on_execution_failure=True,
                  swap_gas_fee_limit=2_000_000):
         """
-        :param web3:
-            Web3 connection used for this instance
-
-        :param hot_wallet:
+        :param tx_builder:
             Hot wallet instance used for this execution
 
         :param min_balance_threshold:
@@ -54,15 +51,14 @@ class UniswapV3ExecutionModel(EthereumExecutionModel):
         :param max_slippage:
             Max slippage tolerance per trade. 0.01 is 1%.
         """
+        assert isinstance(tx_builder, TransactionBuilder), f"Got: {tx_builder}"
         super().__init__(
-            web3,
-            hot_wallet,
+            tx_builder,
             min_balance_threshold,
             confirmation_block_count,
             confirmation_timeout,
             max_slippage,
             stop_on_execution_failure,
-            swap_gas_fee_limit
         )
 
     @staticmethod

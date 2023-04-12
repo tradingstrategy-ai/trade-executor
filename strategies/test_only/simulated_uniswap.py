@@ -8,7 +8,7 @@ import pandas as pd
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
 
-from tradeexecutor.ethereum.uniswap_v2_execution_v0 import UniswapV2ExecutionModelVersion0
+from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_execution_v0 import UniswapV2ExecutionModelVersion0
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.sync_model import SyncMethodV0
 from tradeexecutor.strategy.approval import ApprovalModel
@@ -87,7 +87,7 @@ class SomeTestBuysAlphaModel(AlphaModel):
 def strategy_factory(
         *ignore,
         execution_model: UniswapV2ExecutionModelVersion0,
-        sync_method: SyncMethodV0,
+        sync_model,
         pricing_model_factory: PricingModelFactory,
         valuation_model_factory: ValuationModelFactory,
         client,
@@ -113,7 +113,7 @@ def strategy_factory(
         execution_model=execution_model,
         approval_model=approval_model,
         valuation_model_factory=valuation_model_factory,
-        sync_method=sync_method,
+        sync_model=sync_model,
         pricing_model_factory=pricing_model_factory,
         cash_buffer=cash_buffer,
         routing_model=routing_model,

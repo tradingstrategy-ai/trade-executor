@@ -29,7 +29,7 @@ class SimulatedTestTrader:
         price_structure = self.pricing_model.get_buy_price(ts, pair, amount_in_usd)
         price = price_structure.price
 
-        reserve_currency, exchange_rate = self.state.portfolio.get_default_reserve_currency()
+        reserve_currency, exchange_rate = self.state.portfolio.get_default_reserve()
 
         position, trade, created = self.state.create_trade(
             strategy_cycle_at=datetime.datetime.utcnow(),
@@ -48,7 +48,7 @@ class SimulatedTestTrader:
     def sell(self, pair: TradingPairIdentifier, quantity: Decimal) -> TradeExecution:
         """Sell token token (trading pair) for a certain quantity."""
 
-        reserve_currency, exchange_rate = self.state.portfolio.get_default_reserve_currency()
+        reserve_currency, exchange_rate = self.state.portfolio.get_default_reserve()
 
         position, trade, created = self.state.create_trade(
             strategy_cycle_at=datetime.datetime.utcnow(),

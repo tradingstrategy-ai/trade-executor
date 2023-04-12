@@ -21,11 +21,11 @@ from eth_defi.hotwallet import HotWallet
 from eth_defi.token import create_token
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, deploy_trading_pair, deploy_uniswap_v2_like
 from tradeexecutor.cli.approval import CLIApprovalModel
-from tradeexecutor.ethereum.hot_wallet_sync import EthereumHotWalletReserveSyncer
-from tradeexecutor.ethereum.uniswap_v2_execution_v0 import UniswapV2ExecutionModelVersion0
-from tradeexecutor.ethereum.uniswap_v2_live_pricing import uniswap_v2_live_pricing_factory
-from tradeexecutor.ethereum.uniswap_v2_valuation import UniswapV2PoolRevaluator, uniswap_v2_sell_valuation_factory
-from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2SimpleRoutingModel
+from tradeexecutor.ethereum.hot_wallet_sync_model import EthereumHotWalletReserveSyncer, HotWalletSyncModel
+from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_execution_v0 import UniswapV2ExecutionModelVersion0
+from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_live_pricing import uniswap_v2_live_pricing_factory
+from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_valuation import uniswap_v2_sell_valuation_factory
+from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2SimpleRoutingModel
 from tradeexecutor.ethereum.universe import create_exchange_universe, create_pair_universe
 from tradeexecutor.state.state import State
 from tradeexecutor.state.portfolio import Portfolio
@@ -276,7 +276,9 @@ def test_cli_approve_trades(
     factory = import_strategy_file(strategy_path)
     approval_model = CLIApprovalModel()
     execution_model = UniswapV2ExecutionModelVersion0(uniswap_v2, hot_wallet, confirmation_block_count=0)
-    sync_method = EthereumHotWalletReserveSyncer(web3, hot_wallet.address)
+    # sync_method = EthereumHotWalletReserveSyncer(web3, hot_wallet.address)
+    sync_model = HotWalletSyncModel(web3, hot_wallet)
+
     valuation_model_factory = uniswap_v2_sell_valuation_factory
     pricing_model_factory = uniswap_v2_live_pricing_factory
     executor_universe = TradingStrategyUniverse(universe=universe, reserve_assets=supported_reserves)
@@ -287,7 +289,7 @@ def test_cli_approve_trades(
         execution_model=execution_model,
         approval_model=approval_model,
         valuation_model_factory=valuation_model_factory,
-        sync_method=sync_method,
+        sync_model=sync_model,
         client=None,
         pricing_model_factory=pricing_model_factory,
         routing_model=routing_model,
@@ -330,7 +332,8 @@ def test_cli_disapprove_trades(
     factory = import_strategy_file(strategy_path)
     approval_model = CLIApprovalModel()
     execution_model = UniswapV2ExecutionModelVersion0(uniswap_v2, hot_wallet, confirmation_block_count=0)
-    sync_method = EthereumHotWalletReserveSyncer(web3, hot_wallet.address)
+    # sync_method = EthereumHotWalletReserveSyncer(web3, hot_wallet.address)
+    sync_model = HotWalletSyncModel(web3, hot_wallet)
     valuation_model_factory = uniswap_v2_sell_valuation_factory
     pricing_model_factory = uniswap_v2_live_pricing_factory
     executor_universe = TradingStrategyUniverse(universe=universe, reserve_assets=supported_reserves)
@@ -341,7 +344,7 @@ def test_cli_disapprove_trades(
         execution_model=execution_model,
         approval_model=approval_model,
         valuation_model_factory=valuation_model_factory,
-        sync_method=sync_method,
+        sync_model=sync_model,
         routing_model=routing_model,
         client=None,
         pricing_model_factory=pricing_model_factory,

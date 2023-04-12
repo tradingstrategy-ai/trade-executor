@@ -8,11 +8,12 @@ from .commands.start import start
 from .commands.perform_test_trade import perform_test_trade
 from .commands.version import version
 from .commands.repair import repair
+from .commands.init import init
 
 
 # Dummy export commands even though they are already registered
 # to make the linter happy
-__all__ = [app, check_wallet, check_universe, hello, start, perform_test_trade, version, repair, console]
+__all__ = [app, check_wallet, check_universe, hello, start, perform_test_trade, version, repair, console, init]
 
 
 

@@ -6,7 +6,7 @@ import pandas as pd
 
 from tradeexecutor.strategy.strategy_module import CreateTradingUniverseProtocol
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
-from tradingstrategy.client import Client
+from tradingstrategy.client import Client, BaseClient
 from tradingstrategy.environment.jupyter import download_with_tqdm_progress_bar
 
 from tradeexecutor.strategy.execution_context import ExecutionMode, ExecutionContext
@@ -15,7 +15,7 @@ from tradeexecutor.utils.timer import timed_task
 
 
 def preload_data(
-        client: Client,
+        client: BaseClient,
         create_trading_universe: CreateTradingUniverseProtocol,
         universe_options: UniverseOptions,
 ) -> TradingStrategyUniverse:
@@ -29,7 +29,8 @@ def preload_data(
 
     # Switch to the progress bar downloader
     # TODO: Make this cleaner
-    client.transport.download_func = download_with_tqdm_progress_bar
+    if isinstance(client, Client):
+        client.transport.download_func = download_with_tqdm_progress_bar
 
     execution_context = ExecutionContext(
         mode=ExecutionMode.data_preload,

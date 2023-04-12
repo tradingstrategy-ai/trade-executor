@@ -9,7 +9,7 @@ from contextlib import AbstractContextManager
 
 from tradingstrategy.client import Client
 
-from tradeexecutor.strategy.sync_model import SyncMethodV0
+from tradeexecutor.strategy.sync_model import SyncMethodV0, SyncModel
 from tradeexecutor.strategy.approval import ApprovalModel
 from tradeexecutor.strategy.description import StrategyExecutionDescription
 from tradeexecutor.strategy.execution_model import ExecutionModel
@@ -26,7 +26,7 @@ class StrategyFactory(Protocol):
     def __call__(
         *ignore,
         execution_model: ExecutionModel,
-        sync_method: SyncMethodV0,
+        sync_model: SyncModel,
         pricing_model_factory: PricingModelFactory,
         valuation_model_factory: ValuationModelFactory,
         client: Optional[Client],

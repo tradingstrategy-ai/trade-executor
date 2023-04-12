@@ -19,7 +19,7 @@ from eth_defi.trade import TradeSuccess
 from eth_defi.uniswap_v2.deployment import mock_partial_deployment_for_analysis
 from eth_defi.uniswap_v2.analysis import analyse_trade_by_receipt
 from tradeexecutor.ethereum.tx import HotWalletTransactionBuilder
-from tradeexecutor.ethereum.uniswap_v2_routing import UniswapV2RoutingState, UniswapV2SimpleRoutingModel
+from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2RoutingState, UniswapV2SimpleRoutingModel
 from tradeexecutor.ethereum.execution import broadcast, wait_trades_to_complete, report_failure, get_swap_transactions, update_confirmation_status
 from tradeexecutor.state.freeze import freeze_position_on_failed_trade
 from tradeexecutor.state.state import State
@@ -27,7 +27,6 @@ from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.strategy.routing import RoutingModel, RoutingState
-from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 
 logger = logging.getLogger(__name__)
 
@@ -140,7 +139,7 @@ class UniswapV2ExecutionModelVersion0(ExecutionModel):
             self.hot_wallet,
         )
 
-        reserve_asset, rate = state.portfolio.get_default_reserve_currency()
+        reserve_asset, rate = state.portfolio.get_default_reserve()
 
         # We know only about one exchange
         routing_model = UniswapV2SimpleRoutingModel(

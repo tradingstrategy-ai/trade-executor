@@ -76,7 +76,7 @@ def weth_usdc(mock_exchange, usdc, weth) -> TradingPairIdentifier:
 @pytest.fixture()
 def strategy_path() -> Path:
     """Where do we load our strategy file."""
-    return Path(os.path.join(os.path.dirname(__file__), "..", "strategies", "test_only", "pandas_buy_every_second_day.py"))
+    return Path(os.path.join(os.path.dirname(__file__), "../..", "strategies", "test_only", "pandas_buy_every_second_day.py"))
 
 
 @pytest.fixture()

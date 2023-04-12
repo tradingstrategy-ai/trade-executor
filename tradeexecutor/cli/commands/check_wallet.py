@@ -12,14 +12,15 @@ from eth_defi.gas import GasPriceMethod
 from eth_defi.hotwallet import HotWallet
 from eth_defi.token import fetch_erc20_details
 from tradingstrategy.client import Client
+from . import shared_options
 from .app import app
-from ..init import prepare_executor_id, prepare_cache, create_web3_config, create_trade_execution_model
+from ..bootstrap import prepare_executor_id, prepare_cache, create_web3_config, create_trade_execution_model
 from ..log import setup_logging
 from ...strategy.approval import UncheckedApprovalModel
 from ...strategy.bootstrap import make_factory_from_strategy_mod
 from ...strategy.description import StrategyExecutionDescription
 from ...strategy.execution_context import ExecutionContext, ExecutionMode
-from ...strategy.execution_model import TradeExecutionType
+from ...strategy.execution_model import AssetManagementMode
 from ...strategy.run_state import RunState
 from ...strategy.strategy_module import read_strategy_module
 from ...strategy.trading_strategy_universe import TradingStrategyUniverseModel
@@ -40,11 +41,19 @@ def check_wallet(
     # Get minimum gas balance from the env
     minimum_gas_balance: Optional[float] = typer.Option(0.1, envvar="MINUMUM_GAS_BALANCE", help="What is the minimum balance of gas token you need to have in your wallet. If the balance falls below this, abort by crashing and do not attempt to create transactions. Expressed in the native token e.g. ETH."),
 
+    # Live trading or backtest
+    asset_management_mode: AssetManagementMode = shared_options.asset_management_mode,
+    vault_address: Optional[str] = shared_options.vault_address,
+    vault_adapter_address: Optional[str] = shared_options.vault_adapter_address,
+
+
     # Web3 connection options
-    json_rpc_binance: str = typer.Option(None, envvar="JSON_RPC_BINANCE", help="BNB Chain JSON-RPC node URL we connect to"),
-    json_rpc_polygon: str = typer.Option(None, envvar="JSON_RPC_POLYGON", help="Polygon JSON-RPC node URL we connect to"),
-    json_rpc_ethereum: str = typer.Option(None, envvar="JSON_RPC_ETHEREUM", help="Ethereum JSON-RPC node URL we connect to"),
-    json_rpc_avalanche: str = typer.Option(None, envvar="JSON_RPC_AVALANCHE", help="Avalanche C-chain JSON-RPC node URL we connect to"),
+    json_rpc_binance: Optional[str] = shared_options.json_rpc_binance,
+    json_rpc_polygon: Optional[str] = shared_options.json_rpc_polygon,
+    json_rpc_ethereum: Optional[str] = shared_options.json_rpc_ethereum,
+    json_rpc_avalanche: Optional[str] = shared_options.json_rpc_avalanche,
+    json_rpc_arbitrum: Optional[str] = shared_options.json_rpc_arbitrum,
+    json_rpc_anvil: Optional[str] = shared_options.json_rpc_anvil,
 
     log_level: str = typer.Option(None, envvar="LOG_LEVEL", help="The Python default logging level. The defaults are 'info' is live execution, 'warning' if backtesting. Set 'disabled' in testing."),
 ):
@@ -74,27 +83,29 @@ def check_wallet(
     )
 
     web3config = create_web3_config(
-        gas_price_method=None,
         json_rpc_binance=json_rpc_binance,
         json_rpc_polygon=json_rpc_polygon,
         json_rpc_avalanche=json_rpc_avalanche,
         json_rpc_ethereum=json_rpc_ethereum,
+        json_rpc_anvil=json_rpc_anvil,
+        json_rpc_arbitrum=json_rpc_arbitrum,
     )
-
     assert web3config, "No RPC endpoints given. A working JSON-RPC connection is needed for check-wallet"
 
     # Check that we are connected to the chain strategy assumes
     web3config.set_default_chain(mod.chain_id)
     web3config.check_default_chain_id()
 
-    execution_model, sync_method, valuation_model_factory, pricing_model_factory = create_trade_execution_model(
-        execution_type=TradeExecutionType.uniswap_v2_hot_wallet,
+    execution_model, sync_model, valuation_model_factory, pricing_model_factory = create_trade_execution_model(
+        asset_management_mode=AssetManagementMode.hot_wallet,
         private_key=private_key,
         web3config=web3config,
         confirmation_timeout=datetime.timedelta(seconds=60),
         confirmation_block_count=6,
         max_slippage=0.01,
         min_balance_threshold=minimum_gas_balance,
+        vault_address=vault_address,
+        vault_adapter_address=vault_adapter_address,
     )
 
     hot_wallet = HotWallet.from_private_key(private_key)
@@ -105,7 +116,7 @@ def check_wallet(
         execution_model=execution_model,
         execution_context=execution_context,
         timed_task_context_manager=execution_context.timed_task_context_manager,
-        sync_method=sync_method,
+        sync_model=sync_model,
         valuation_model_factory=valuation_model_factory,
         pricing_model_factory=pricing_model_factory,
         approval_model=UncheckedApprovalModel(),
