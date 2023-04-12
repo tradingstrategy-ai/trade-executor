@@ -150,28 +150,59 @@ def visualise_technical_indicator(
     # Convert data columnar format
     df = export_plot_as_dataframe(plot, start_at, end_at)
 
-    if len(df) > 0:
-        if plot.plot_shape == PlotShape.marker:
-            return go.Scatter(
-                x=df["timestamp"],
-                y=df["value"],
-                mode="markers",
-                name=plot.name,
-                line=dict(color=plot.colour),
-            )
-        elif plot.plot_shape in {PlotShape.linear, PlotShape.horizontal_vertical}:
-            return go.Scatter(
-                x=df["timestamp"],
-                y=df["value"],
-                mode="lines",
-                name=plot.name,
-                line=dict(color=plot.colour),
-                line_shape=plot.plot_shape.value
-            )
-        else:
-            raise ValueError(f"Unknown plot shape: {plot.plot_shape}")
-    else:
+    if len(df) <= 0:
         return None
+    
+    _get_plot(df, plot)
+
+def _get_plot(df: pd.DataFrame, plot: Plot):
+    """Get plot based on plot shape and plot size."""
+    if plot.plot_shape == PlotShape.marker:
+        _get_marker_plot(df, plot)
+    elif plot.plot_shape in {PlotShape.linear, PlotShape.horizontal_vertical}:
+        _get_linear_plot(df, plot)
+    else:
+        raise ValueError(f"Unknown plot shape: {plot.plot_shape}")
+
+def _get_marker_plot(df: pd.DataFrame, plot: Plot) -> go.Scatter:
+    """Get marker plot for event indicators i.e. individual points."""
+    if plot.indicator_size:
+        return go.Scatter(
+            x=df["timestamp"],
+            y=df["value"],
+            mode="markers",
+            name=plot.name,
+            marker=dict(color=plot.colour, size=plot.indicator_size),
+        )
+    else:
+        return go.Scatter(
+            x=df["timestamp"],
+            y=df["value"],
+            mode="markers",
+            name=plot.name,
+            marker=dict(color=plot.colour),
+        )
+
+def _get_linear_plot(df: pd.DataFrame, plot: Plot) -> go.Scatter:
+    """Get linear plot for standard indicators i.e. lines."""    
+    if plot.indicator_size:
+        return go.Scatter(
+            x=df["timestamp"],
+            y=df["value"],
+            mode="lines",
+            name=plot.name,
+            line=dict(color=plot.colour, width=plot.indicator_size),
+            line_shape=plot.plot_shape.value
+        )
+    else:
+        return go.Scatter(
+            x=df["timestamp"],
+            y=df["value"],
+            mode="lines",
+            name=plot.name,
+            line=dict(color=plot.colour),
+            line_shape=plot.plot_shape.value
+        )
 
 
 def export_plot_as_dataframe(

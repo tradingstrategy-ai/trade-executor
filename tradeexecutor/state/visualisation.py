@@ -108,6 +108,13 @@ class Plot:
     
     #: If this plot is overlayed on top of a detached technical indicator, this is the name of the overlay it should be attached to.
     detached_overlay_name: Optional[str]= None
+    
+    #: Optional indicator to determine the size of the indicator. 
+    #: 
+    #: For a line, this is the width of the line. 
+    #:
+    #: For a marker, this is the size of the marker.
+    indicator_size: Optional[float] = None
 
     def add_point(self,
                   timestamp: datetime.datetime,
@@ -253,8 +260,8 @@ class Visualisation:
              horizontal_line_colour: Optional[str] = None,
              relative_size: Optional[float] = None,
              detached_overlay_name: str | None = None,
+             indicator_size: Optional[float] = None,
         ):
-        # sourcery skip: remove-unnecessary-cast
         """Add a value to the output data and diagram.
         
         Plots are stored by their name.
@@ -288,6 +295,9 @@ class Visualisation:
             
         :param detached_overlay_name:
             If this plot is overlayed on top of a detached technical indicator, this is the name of the overlay it should be attached to.
+            
+        :param indicator_size:
+            Optional indicator to determine the size of the indicator. For a line, this is the width of the line. For a marker, this is the size of the marker.
         """
 
         assert type(name) == str, f"Got name{name} of type {str(type(name))}"
@@ -325,6 +335,8 @@ class Visualisation:
         plot.relative_size = relative_size
 
         plot.detached_overlay_name = detached_overlay_name
+        
+        plot.indicator_size = indicator_size
 
         if colour:
             plot.colour = colour
