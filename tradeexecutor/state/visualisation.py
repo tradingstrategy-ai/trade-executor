@@ -286,7 +286,8 @@ class Visualisation:
             Optional indicator to determine the size of the indicator. For a line, this is the width of the line. For a marker, this is the size of the marker.
         """
         
-        def get_helper_message(variable_name: str = None):
+        def _get_helper_message(variable_name: str = None):
+            """Get a helper message to help the user fix the error"""
             if not variable_name:
                 return ". Adjust plot_indicator parameters in decide_trades to fix this error."
             else:
@@ -294,7 +295,7 @@ class Visualisation:
 
         assert (
             type(name) == str
-        ), f"Got name{name} of type {str(type(name))}" + get_helper_message("name")
+        ), f"Got name{name} of type {str(type(name))}" + _get_helper_message("name")
 
         # Convert numpy.float32 and numpy.float64 to serializable float instances,
         # e.g. prices
@@ -302,17 +303,17 @@ class Visualisation:
             try:
                 value = float(value)
             except TypeError as e:
-                raise RuntimeError(f"Could not convert value {value} {value.__class__} to float{helper_message}" + get_helper_message("value")) from e
+                raise RuntimeError(f"Could not convert value {value} {value.__class__} to float" + _get_helper_message("value")) from e
 
         if relative_size:
-            assert kind == PlotKind.technical_indicator_detached, "Relative size is only supported for detached technical indicators" + get_helper_message("relative_size")   
+            assert kind == PlotKind.technical_indicator_detached, "Relative size is only supported for detached technical indicators" + _get_helper_message("relative_size")   
 
         if detached_overlay_name:
-            assert type(detached_overlay_name) is str, "Detached overlay must be a string" + get_helper_message("detached_overlay_name")
-            assert kind == PlotKind.technical_indicator_overlay_on_detached, "Detached overlay must be a PlotKind.technical_indicator_overlay_on_detached" + get_helper_message("kind")
+            assert type(detached_overlay_name) is str, "Detached overlay must be a string" + _get_helper_message("detached_overlay_name")
+            assert kind == PlotKind.technical_indicator_overlay_on_detached, "Detached overlay must be a PlotKind.technical_indicator_overlay_on_detached" + _get_helper_message("kind")
 
         if kind == PlotKind.technical_indicator_overlay_on_detached:
-            assert detached_overlay_name and type(detached_overlay_name) == str, "Detached overlay must be a string for PlotKind.technical_indicator_overlay_on_detached" + get_helper_message("detached_overlay_name")
+            assert detached_overlay_name and type(detached_overlay_name) == str, "Detached overlay must be a string for PlotKind.technical_indicator_overlay_on_detached" + _get_helper_message("detached_overlay_name")
 
         plot = self.plots.get(name, Plot(name=name, kind=kind))
 
