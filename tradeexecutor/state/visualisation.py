@@ -287,7 +287,10 @@ class Visualisation:
         """
         
         def _get_helper_message(variable_name: str = None):
-            """Get a helper message to help the user fix the error"""
+            """Get a helper message to help the user fix the error. 
+            
+            Theses errors show up while running the backtest, so we can point the user directly to decide_trades to fix the error."""
+            
             if not variable_name:
                 return ". You can adjust plot_indicator parameters in decide_trades to fix this error."
             else:
