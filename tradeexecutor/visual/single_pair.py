@@ -905,6 +905,7 @@ def _get_subplot_names(plots: list[Plot], volume_bar_mode: VolumeBarMode, volume
                 subplot_names.append(plot.detached_overlay_name + f"<br> + {plot.name}")
                 already_overlaid_names.append(plot.detached_overlay_name)
     
+    # Insert blank name for main candle chart    
     subplot_names.insert(0, None)
     
     return subplot_names
