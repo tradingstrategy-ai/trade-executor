@@ -289,9 +289,9 @@ class Visualisation:
         def _get_helper_message(variable_name: str = None):
             """Get a helper message to help the user fix the error"""
             if not variable_name:
-                return ". Adjust plot_indicator parameters in decide_trades to fix this error."
+                return ". You can adjust plot_indicator parameters in decide_trades to fix this error."
             else:
-                return f". Adjust {variable_name} in plot_indicator parameters in decide_trades to fix this error."
+                return f". You can adjust {variable_name} in plot_indicator parameters in decide_trades to fix this error."
 
         assert (
             type(name) == str
