@@ -904,7 +904,9 @@ def _get_subplot_names(plots: list[Plot], volume_bar_mode: VolumeBarMode, volume
                 # add to list
                 subplot_names.append(plot.detached_overlay_name + f"<br> + {plot.name}")
                 already_overlaid_names.append(plot.detached_overlay_name)
-                
+    
+    subplot_names.insert(0, None)
+    
     return subplot_names
 
 def _get_relative_sizing(plots: list[Plot], volume_bar_mode: VolumeBarMode):
