@@ -355,49 +355,5 @@ class Visualisation:
     def get_total_points(self) -> int:
         """Get number of data points stored in all plots."""
         return sum([len(p.points) for p in self.plots.values()])
-
-def is_crossover_constant(series: pd.Series, value: float) -> bool:
-    """Detect if a series has crossed over a constant value."""
-    assert type(series) == pd.Series, "Series must be pandas.Series"
-    assert type(value) in {int, float}, "Value must be int or float"
-    
-    latest = series.iloc[-1]
-    
-    if latest == value:
-        return True
-    elif len(series) == 1:
-        return False
-    
-    previous = series.iloc[-2]
-    
-    return (
-        latest == value or
-        latest > value and previous < value
-        or latest < value and previous > value
-    )
-    
-def is_crossover(series1: pd.Series, series2: pd.Series) -> bool:
-    """Detect if two series have crossed over.
-    
-    """
-    assert type(series1) == type(series2) == pd.Series, "Series must be pandas.Series"
-    
-    s1_latest = series1.iloc[-1]
-    s2_latest = series2.iloc[-1]
-    
-    if s1_latest == s2_latest:
-        return True
-    elif len(series1) == 1 or len(series2) == 1:
-        return False
-    
-    s1_prev = series1.iloc[-2]
-    s2_prev = series2.iloc[-2]
-
-    return (
-        (s1_latest > s2_latest
-        and s1_prev < s2_prev)
-        or (s1_latest < s2_latest
-        and s1_prev > s2_prev)
-    )
         
 
