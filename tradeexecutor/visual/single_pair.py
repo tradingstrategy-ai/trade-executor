@@ -556,7 +556,7 @@ def visualise_single_pair(
     :param volume_axis_name:
         Name of the volume axis. Default is "Volume USD".
     """
-
+    
     logger.info("Visualising %s", state)
 
     start_at, end_at = _get_start_and_end(start_at, end_at)
@@ -657,7 +657,6 @@ def visualise_single_pair_positions_with_duration_and_slippage(
         vertical_spacing = 0.05,
         relative_sizing: list[float] = None,
         subplot_font_size: int = 11,
-        volume_axis_name: str = "Volume USD",
 ) -> go.Figure:
     """Visualise performance of a live trading strategy.
 
@@ -716,18 +715,14 @@ def visualise_single_pair_positions_with_duration_and_slippage(
         Vertical spacing between subplots
     
     :param relative_sizing:
-        Optional relative sizes of each plot. Starts with first main candle plot, then the volume plot if it is detached, then the other detached technical indicators. 
+        Optional relative sizes of each plot. Starts with first main candle plot. In this function, there is no volume plot (neither overlayed, hidden, or detached), so the first plot is the candle plot, and the rest are the technical indicator plots.
         
         e.g. [1, 0.2, 0.3, 0.3] would mean the second plot is 20% the size of the first, and the third and fourth plots are 30% the size of the first.
         
-        Remember to account for whether the volume subplot is detached or not. If it is detached, it should take up the second element in the list. 
+        
     
     :param subplot_font_size:
         Font size of the subplot titles
-    
-    :param volume_axis_name:
-        Name of the volume axis. Defaults to "Volume USD"
-        
     """
 
     logger.info("Visualising %s", state)
@@ -786,7 +781,6 @@ def visualise_single_pair_positions_with_duration_and_slippage(
         candles=candles,
         pair_name=pair_name,
         labels=None,
-        volume_axis_name=volume_axis_name,
     )
 
     # Add trade markers if any trades have been made
