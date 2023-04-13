@@ -177,111 +177,6 @@ def test_visualise_trades_with_indicator(state_and_candles: tuple[State, pd.Data
     ts = ts.replace(minute=0, second=0)
     assert ts == pd.Timestamp("2021-1-1 00:00")
 
-@pytest.mark.parametrize("relative_sizing, vertical_spacing, subplot_font_size, title, volume_axis_name, volume_bar_mode", [
-    ([1, 3, 0.2], 0.2, 20, None, None, VolumeBarMode.hidden),
-    ([1, 0.2, 0.2], 0.1, 10, "Test title", "Volume USD", VolumeBarMode.separate),
-    ([100, 0.2, 0.2], 0.3, 250, "Test title 2", None, VolumeBarMode.overlay),
-    (None, None, None, None, None, VolumeBarMode.hidden),
-])
-def test_visualise_no_error(
-    state_and_candles: tuple[State, pd.DataFrame],
-    relative_sizing,
-    vertical_spacing,
-    subplot_font_size,
-    title,
-    volume_axis_name,
-    volume_bar_mode,
-):
-    """Test various arguments for visualise_single_pair and visualise_single_pair_positions_with_duration_and_slippage.
-    
-    These arguments should not raise error"""
-
-    state, candles = state_and_candles
-    candle_universe = GroupedCandleUniverse.create_from_single_pair_dataframe(candles)
-    
-    validate_state_serialisation(state)
-
-    assert len(list(state.portfolio.get_all_trades())) == 3
-    assert len(state.portfolio.open_positions) == 0
-    assert len(state.portfolio.closed_positions) == 1
-    
-    # check no error with different arguments
-    fig = visualise_single_pair(
-        state, 
-        candle_universe,
-        relative_sizing=relative_sizing,
-        vertical_spacing=vertical_spacing, 
-        subplot_font_size=subplot_font_size,
-        title=title,
-        volume_axis_name=volume_axis_name,
-        volume_bar_mode=volume_bar_mode,
-    )
-    
-    fig = visualise_single_pair_positions_with_duration_and_slippage(
-        state=state,
-        candles=candles,
-        relative_sizing=relative_sizing,
-        vertical_spacing=vertical_spacing, 
-        subplot_font_size=subplot_font_size,
-        title=title,
-        volume_axis_name=volume_axis_name,
-        volume_bar_mode=volume_bar_mode,
-    )
-
-@pytest.mark.parametrize("relative_sizing, vertical_spacing, subplot_font_size, title, volume_axis_name, volume_bar_mode", [
-    ([1, 3, 0.2, 0.3], 0.2, 20, None, None, VolumeBarMode.separate),
-    ([1, 0.2, 0.2], 0.1, 10, "Test title", "Volume USD", VolumeBarMode.overlay),
-    ([100, 0.2, 0.2], 0.3, 250, "Test title 2", "Random", VolumeBarMode.hidden),
-    ([1], 0.1, 10, "Test title", "Volume USD", VolumeBarMode.overlay),
-])
-def test_visualise_with_error(
-    state_and_candles: tuple[State, pd.DataFrame],
-    relative_sizing,
-    vertical_spacing,
-    subplot_font_size,
-    title,
-    volume_axis_name,
-    volume_bar_mode,
-):
-    """Test various arguments for visualise_single_pair and visualise_single_pair_positions_with_duration_and_slippage.
-    
-    These arguments should not raise error"""
-
-    state, candles = state_and_candles
-    candle_universe = GroupedCandleUniverse.create_from_single_pair_dataframe(candles)
-    
-    validate_state_serialisation(state)
-
-    assert len(list(state.portfolio.get_all_trades())) == 3
-    assert len(state.portfolio.open_positions) == 0
-    assert len(state.portfolio.closed_positions) == 1
-    
-    # check no error with different arguments
-    with pytest.raises(AssertionError):
-        fig = visualise_single_pair(
-            state, 
-            candle_universe,
-            relative_sizing=relative_sizing,
-            vertical_spacing=vertical_spacing, 
-            subplot_font_size=subplot_font_size,
-            title=title,
-            volume_axis_name=volume_axis_name,
-            volume_bar_mode=volume_bar_mode,
-        )
-        
-    with pytest.raises(AssertionError):
-        fig = visualise_single_pair_positions_with_duration_and_slippage(
-            state=state,
-            candles=candles,
-            relative_sizing=relative_sizing,
-            vertical_spacing=vertical_spacing, 
-            subplot_font_size=subplot_font_size,
-            title=title,
-            volume_axis_name=volume_axis_name,
-            volume_bar_mode=volume_bar_mode,
-        ) 
-    
-
 
 def test_visualise_trades_with_indicator(state_and_candles: tuple[State, pd.DataFrame]):
     """Do a single token purchase.
@@ -334,6 +229,7 @@ def test_visualise_trades_with_indicator(state_and_candles: tuple[State, pd.Data
     ts = df.iloc[0]["timestamp"]
     ts = ts.replace(minute=0, second=0)
     assert ts == pd.Timestamp("2021-1-1 00:00")
+
 
 def test_visualise_trades_with_indicator_separate_volume(
     state_and_candles: tuple[State, pd.DataFrame]
@@ -389,6 +285,7 @@ def test_visualise_trades_with_indicator_separate_volume(
     ts = ts.replace(minute=0, second=0)
     assert ts == pd.Timestamp("2021-1-1 00:00")
 
+
 def test_visualise_trades_with_duration_and_slippage(
     weth_usdc, state_and_candles: tuple[State, pd.DataFrame]
 ):
@@ -413,7 +310,7 @@ def test_visualise_trades_with_duration_and_slippage(
     )
 
     # 3 distinct plot grids
-    assert len(fig._grid_ref) == 4
+    assert len(fig._grid_ref) == 3
     
     # check the main title
     assert fig.layout.title.text == "Visualisation test"
@@ -439,3 +336,138 @@ def test_visualise_trades_with_duration_and_slippage(
     ts = df.iloc[0]["timestamp"]
     ts = ts.replace(minute=0, second=0)
     assert ts == pd.Timestamp("2021-1-1 00:00")
+
+
+@pytest.mark.parametrize("relative_sizing, vertical_spacing, subplot_font_size, title, volume_axis_name, volume_bar_mode", [
+    ([1, 3, 0.2], 0.2, 20, None, None, VolumeBarMode.hidden),
+    ([1, 0.2, 0.2, 0.5], 0.1, 10, "Test title", "Volume USD", VolumeBarMode.separate),
+    ([100, 0.2, 0.2], 0.3, 250, "Test title 2", None, VolumeBarMode.overlay),
+    (None, None, None, None, None, VolumeBarMode.hidden),
+])
+def test_visualise_single_pair_no_error(
+    state_and_candles: tuple[State, pd.DataFrame],
+    relative_sizing,
+    vertical_spacing,
+    subplot_font_size,
+    title,
+    volume_axis_name,
+    volume_bar_mode,
+):
+    """Test various arguments for visualise_single_pair and visualise_single_pair_positions_with_duration_and_slippage.
+    
+    These arguments should not raise error"""
+
+    state, candles = state_and_candles
+    candle_universe = GroupedCandleUniverse.create_from_single_pair_dataframe(candles)
+    
+    validate_state_serialisation(state)
+
+    assert len(list(state.portfolio.get_all_trades())) == 3
+    assert len(state.portfolio.open_positions) == 0
+    assert len(state.portfolio.closed_positions) == 1
+    
+    # check no error with different arguments
+    fig = visualise_single_pair(
+        state, 
+        candle_universe,
+        relative_sizing=relative_sizing,
+        vertical_spacing=vertical_spacing, 
+        subplot_font_size=subplot_font_size,
+        title=title,
+        volume_axis_name=volume_axis_name,
+        volume_bar_mode=volume_bar_mode,
+    )
+
+
+@pytest.mark.parametrize("relative_sizing, vertical_spacing, subplot_font_size, title", [
+    ([1, 3, 0.2], 0.2, 20, None),
+    ([1, 0.2, 0.2,], 0.1, 10, "Test title"),
+    ([100, 0.2, 0.2], 0.3, 250, "Test title 2"),
+    (None, None, None, None),
+])
+def test_visualise_single_pair_with_duration_and_slippage_no_error(
+    state_and_candles: tuple[State, pd.DataFrame],
+    relative_sizing,
+    vertical_spacing,
+    subplot_font_size,
+    title,
+):
+    """Test various arguments for visualise_single_pair and visualise_single_pair_positions_with_duration_and_slippage.
+    
+    These arguments should not raise error"""
+
+    state, candles = state_and_candles
+    
+    assert len(list(state.portfolio.get_all_trades())) == 3
+    assert len(state.portfolio.open_positions) == 0
+    assert len(state.portfolio.closed_positions) == 1
+    
+    fig = visualise_single_pair_positions_with_duration_and_slippage(
+        state=state,
+        candles=candles,
+        relative_sizing=relative_sizing,
+        vertical_spacing=vertical_spacing, 
+        subplot_font_size=subplot_font_size,
+        title=title,
+    )
+
+
+@pytest.mark.parametrize("relative_sizing, vertical_spacing, subplot_font_size, title, volume_axis_name, volume_bar_mode", [
+    ([1, 3, 0.2], 0.2, 20, None, None, VolumeBarMode.separate),
+    ([1, 0.2, 0.2, 0.5], 0.1, 10, "Test title 0", "Volume USD", VolumeBarMode.overlay),
+    ([100, 0.2, 0.2, 0.5], 0.3, 250, "Test title 2", "Volume USD 2", VolumeBarMode.hidden),
+])
+def test_visualise_single_pair_with_error(
+    state_and_candles: tuple[State, pd.DataFrame],
+    relative_sizing,
+    vertical_spacing,
+    subplot_font_size,
+    title,
+    volume_axis_name,
+    volume_bar_mode,
+):
+    """Test various arguments for visualise_single_pair and visualise_single_pair_positions_with_duration_and_slippage.
+    
+    These arguments should not raise error"""
+
+    state, candles = state_and_candles
+    candle_universe = GroupedCandleUniverse.create_from_single_pair_dataframe(candles)
+    
+    # check no error with different arguments
+    with pytest.raises(AssertionError):
+        fig = visualise_single_pair(
+            state, 
+            candle_universe,
+            relative_sizing=relative_sizing,
+            vertical_spacing=vertical_spacing, 
+            subplot_font_size=subplot_font_size,
+            title=title,
+            volume_axis_name=volume_axis_name,
+            volume_bar_mode=volume_bar_mode,
+        )
+        
+
+@pytest.mark.parametrize("relative_sizing, vertical_spacing, subplot_font_size, title", [
+    ([1, 3], None, None, None),
+    ([1, 0.2, 0.2, 0.5], 0.1, 10, "Test title 0"),
+    ([100, 0.2, 0.2, 0.5], 0.3, 250, "Test title 2"),
+])  
+def test_visualise_single_pair_with_duration_and_slippage_with_error(
+    state_and_candles: tuple[State, pd.DataFrame],
+    relative_sizing,
+    vertical_spacing,
+    subplot_font_size,
+    title
+):
+    state, candles = state_and_candles
+    
+    with pytest.raises(AssertionError):
+        fig = visualise_single_pair_positions_with_duration_and_slippage(
+            state=state,
+            candles=candles,
+            relative_sizing=relative_sizing,
+            vertical_spacing=vertical_spacing, 
+            subplot_font_size=subplot_font_size,
+            title=title,
+        ) 
+    
