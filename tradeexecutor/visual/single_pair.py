@@ -491,7 +491,8 @@ def visualise_single_pair(
         volume_bar_mode=VolumeBarMode.overlay,
         vertical_spacing = 0.05,
         subplot_font_size = 11,
-        relative_sizing: list[float] = None
+        relative_sizing: list[float] = None,
+        volume_axis_name: str = "Volume USD",
 ) -> go.Figure:
     """Visualise single-pair trade execution.
 
@@ -541,6 +542,19 @@ def visualise_single_pair(
     
     :param vertical_spacing:
         Vertical spacing between the subplots. Default is 0.05.
+    
+    :param subplot_font_size:
+        Font size of the subplot titles. Default is 11.
+    
+    :param relative_sizing:
+        Optional relative sizes of each plot. Starts with first main candle plot, then the volume plot if it is detached, then the other detached technical indicators. 
+        
+        e.g. [1, 0.2, 0.3, 0.3] would mean the second plot is 20% the size of the first, and the third and fourth plots are 30% the size of the first.
+        
+        Remember to account for whether the volume subplot is detached or not. If it is detached, it should take up the second element in the list. 
+    
+    :param volume_axis_name:
+        Name of the volume axis. Default is "Volume USD".
     """
 
     logger.info("Visualising %s", state)
@@ -619,7 +633,8 @@ def visualise_single_pair(
         relative_sizing=relative_sizing, 
         candles=candles,
         pair_name=pair_name,
-        labels=labels
+        labels=labels,
+        volume_axis_name=volume_axis_name
     )
 
     # Add trade markers if any trades have been made
@@ -642,6 +657,7 @@ def visualise_single_pair_positions_with_duration_and_slippage(
         vertical_spacing = 0.05,
         relative_sizing: list[float] = None,
         subplot_font_size: int = 11,
+        volume_axis_name: str = "Volume USD",
 ) -> go.Figure:
     """Visualise performance of a live trading strategy.
 
@@ -705,6 +721,13 @@ def visualise_single_pair_positions_with_duration_and_slippage(
         e.g. [1, 0.2, 0.3, 0.3] would mean the second plot is 20% the size of the first, and the third and fourth plots are 30% the size of the first.
         
         Remember to account for whether the volume subplot is detached or not. If it is detached, it should take up the second element in the list. 
+    
+    :param subplot_font_size:
+        Font size of the subplot titles
+    
+    :param volume_axis_name:
+        Name of the volume axis. Defaults to "Volume USD"
+        
     """
 
     logger.info("Visualising %s", state)
@@ -763,7 +786,7 @@ def visualise_single_pair_positions_with_duration_and_slippage(
         candles=candles,
         pair_name=pair_name,
         labels=None,
-        volume_axis_name=None,
+        volume_axis_name=volume_axis_name,
     )
 
     # Add trade markers if any trades have been made
@@ -788,13 +811,14 @@ def _get_figure_grid_with_indicators(
     candles: pd.DataFrame, 
     pair_name: str | None, 
     labels: pd.Series,
+    volume_axis_name: str = "Volume USD",
 ):
     """Gets figure grid with indicators overlayered already. Main price plot is not yet added"""
-    title_text, axes_text, volume_text = _get_all_text(state.name, axes, title, pair_name)
+    title_text, axes_text, volume_text = _get_all_text(state.name, axes, title, pair_name, volume_axis_name)
 
     plots = state.visualisation.plots.values()
     
-    num_detached_indicators, subplot_names = _get_num_detached_and_names(plots, volume_bar_mode)
+    num_detached_indicators, subplot_names = _get_num_detached_and_names(plots, volume_bar_mode, volume_axis_name)
     
     # visualise candles and volume and create empty grid space for technical indicators
     fig = visualise_ohlcv(
@@ -846,16 +870,21 @@ def _get_all_text(
     axes: bool, 
     title: str | None, 
     pair_name: str | None,
+    volume_axis_name: str,
 ):
     title_text = _get_title(state_name, title)
-    axes_text, volume_text = _get_axes_and_volume_text(axes, pair_name)
+    axes_text, volume_text = _get_axes_and_volume_text(axes, pair_name, volume_axis_name)
     
     return title_text,axes_text,volume_text
 
-def _get_num_detached_and_names(plots, volume_bar_mode):
+def _get_num_detached_and_names(
+    plots: list[Plot], 
+    volume_bar_mode: VolumeBarMode, 
+    volume_axis_name: str
+):
     """Get num_detached_indicators and subplot_names"""
     num_detached_indicators = _get_num_detached_indicators(plots, volume_bar_mode)
-    subplot_names = _get_subplot_names(plots, volume_bar_mode)
+    subplot_names = _get_subplot_names(plots, volume_bar_mode, volume_axis_name)
     return num_detached_indicators,subplot_names
 
 def _get_title(name: str, title: str):
@@ -949,11 +978,11 @@ def _get_all_positions(state: State, pair_id):
     positions = [p for p in state.portfolio.get_all_positions() if p.pair.internal_id == pair_id]
     return positions
 
-def _get_axes_and_volume_text(axes: bool, pair_name: str | None):
+def _get_axes_and_volume_text(axes: bool, pair_name: str | None, volume_axis_name: str = "Volume USD"):
     """Get axes and volume text"""
     if axes:
         axes_text = pair_name
-        volume_text = "Volume USD"
+        volume_text = volume_axis_name
     else:
         axes_text = None
         volume_text = None
