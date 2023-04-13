@@ -926,13 +926,6 @@ def _get_subplot_names(plots: list[Plot], volume_bar_mode: VolumeBarMode, volume
     
     return subplot_names
 
-def _get_relative_sizing(plots: list[Plot], volume_bar_mode: VolumeBarMode):
-    """Get list of relative sizes for subplots (not including main price chart or volume chart if separate)
-    
-    Works since python dicts are now ordered"""
-    
-    return [plot.relative_size for plot in plots if plot.kind == PlotKind.technical_indicator_detached]
-
 def _get_start_and_end(
     start_at: pd.Timestamp | datetime.datetime | None, 
     end_at: pd.Timestamp | datetime.datetime | None

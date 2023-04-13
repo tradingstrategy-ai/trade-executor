@@ -24,7 +24,6 @@ from dataclasses_json import dataclass_json
 
 from tradeexecutor.utils.timestamp import convert_and_validate_timestamp, convert_and_validate_timestamp_as_int
 
-default_rel_size = 0.2
 
 logger = logging.getLogger(__name__)
 
@@ -94,11 +93,6 @@ class Plot:
     #: Alternative is horizontal-vertical which can be used for stop loss line. 
     #: See https://plotly.com/python/line-charts/?_ga=2.83222870.1162358725.1672302619-1029023258.1667666588#interpolation-with-line-plots
     plot_shape: Optional[PlotShape] = PlotShape.linear
-    
-    #: Size of the indicator plot relative to the price plot.
-    #:
-    #: The price plot is regarded as 1.0, and the indicator plot default is 0.2
-    relative_size: Optional[float] = default_rel_size
     
     #: If this plot is overlayed on top of a detached technical indicator, this is the name of the overlay it should be attached to.
     detached_overlay_name: Optional[str]= None
@@ -250,7 +244,6 @@ class Visualisation:
              value: float,
              colour: Optional[str] = None,
              plot_shape: Optional[PlotShape] = PlotShape.linear,
-             relative_size: Optional[float] = None,
              detached_overlay_name: str | None = None,
              indicator_size: Optional[float] = None,
         ):
@@ -276,9 +269,6 @@ class Visualisation:
         :param plot_shape:
             PlotShape enum value e.g. Plotshape.linear or Plotshape.horizontal_vertical
         
-        :param relative_size:
-            Optional relative size for technical indicators. Size is relative to the size of the main price chart which has a default reference value of 1.
-            
         :param detached_overlay_name:
             If this plot is overlayed on top of a detached technical indicator, this is the name of the overlay it should be attached to.
             
@@ -308,9 +298,6 @@ class Visualisation:
             except TypeError as e:
                 raise RuntimeError(f"Could not convert value {value} {value.__class__} to float" + _get_helper_message("value")) from e
 
-        if relative_size:
-            assert kind == PlotKind.technical_indicator_detached, "Relative size is only supported for detached technical indicators" + _get_helper_message("relative_size")   
-
         if detached_overlay_name:
             assert type(detached_overlay_name) is str, "Detached overlay must be a string" + _get_helper_message("detached_overlay_name")
             assert kind == PlotKind.technical_indicator_overlay_on_detached, "Detached overlay must be a PlotKind.technical_indicator_overlay_on_detached" + _get_helper_message("kind")
@@ -327,9 +314,6 @@ class Visualisation:
         plot.plot_shape = plot_shape
 
         plot.detached_overlay_name = detached_overlay_name
-
-        if relative_size:
-            plot.relative_size = relative_size         
 
         plot.indicator_size = indicator_size
 
