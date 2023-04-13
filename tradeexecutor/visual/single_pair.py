@@ -840,22 +840,6 @@ def _get_figure_grid_with_indicators(
             end_at,
             volume_bar_mode,
         )
-    
-    # moves legend to the top right (below the title)
-    # and makes it horizontal
-    fig.update_layout(
-        title=dict(
-            y=0.95  # Position the title just below the top margin
-        ),
-        legend=dict(
-            x=1,
-            y=1.09,  # Position the legend just above the plot area
-            xanchor='right',
-            yanchor='top',
-            orientation='h'  # Display the legend items horizontally
-        ),
-        margin=dict(t=150)  # Add some extra space at the top for the title and legend
-    )
         
     return fig
 
