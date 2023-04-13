@@ -68,7 +68,16 @@ def state_and_candles(usdc, weth, weth_usdc) -> tuple[State, pd.DataFrame]:
     assert trade.is_buy()
     assert pos.get_quantity() == pytest.approx(start_q)
     assert pos.get_opening_price() == pytest.approx(1716.8437083008298)
+    
     state.visualisation.plot_indicator(trader.ts, "Test indicator", PlotKind.technical_indicator_on_price, 1700)
+    
+    state.visualisation.plot_indicator(trader.ts, "random 1", PlotKind.technical_indicator_detached, 1000, colour="green")
+    
+    state.visualisation.plot_indicator(trader.ts, "random 2", PlotKind.technical_indicator_detached, 1100, colour="yellow")
+    
+    state.visualisation.plot_indicator(trader.ts, "random 3", PlotKind.technical_indicator_overlay_on_detached, 1200, colour="green", detached_overlay_name="random 2")
+    
+    state.visualisation.plot_indicator(trader.ts, "random 4", PlotKind.technical_indicator_overlay_on_detached, 1300, colour="blue", detached_overlay_name="random 2")
 
     sell_q_1 = start_q / 2
     sell_q_2 = start_q - sell_q_1
@@ -81,8 +90,13 @@ def state_and_candles(usdc, weth, weth_usdc) -> tuple[State, pd.DataFrame]:
     assert pos.get_quantity() == pytest.approx(Decimal('4.949999999999999955591079015'))
     
     state.visualisation.plot_indicator(trader.ts, "Test indicator", PlotKind.technical_indicator_on_price, 1700, colour="aqua")
+    
     state.visualisation.plot_indicator(trader.ts, "random 1", PlotKind.technical_indicator_detached, 1000, colour="green")
+    
+    state.visualisation.plot_indicator(trader.ts, "random 2", PlotKind.technical_indicator_detached, 1100, colour="yellow")
+    
     state.visualisation.plot_indicator(trader.ts, "random 3", PlotKind.technical_indicator_overlay_on_detached, 1200, colour="green", detached_overlay_name="random 2")
+    
     state.visualisation.plot_indicator(trader.ts, "random 4", PlotKind.technical_indicator_overlay_on_detached, 1300, colour="blue", detached_overlay_name="random 2")
 
     # Day 2
@@ -92,8 +106,13 @@ def state_and_candles(usdc, weth, weth_usdc) -> tuple[State, pd.DataFrame]:
     assert pos.get_quantity() == 0
     
     state.visualisation.plot_indicator(trader.ts, "Test indicator", PlotKind.technical_indicator_on_price, 1700, colour="azure")
+    
     state.visualisation.plot_indicator(trader.ts, "random 1", PlotKind.technical_indicator_detached, 1200, colour="green")
+    
+    state.visualisation.plot_indicator(trader.ts, "random 2", PlotKind.technical_indicator_detached, 1100, colour="yellow")
+    
     state.visualisation.plot_indicator(trader.ts, "random 3", PlotKind.technical_indicator_overlay_on_detached, 1400, colour="green", detached_overlay_name="random 2")
+    
     state.visualisation.plot_indicator(trader.ts, "random 4", PlotKind.technical_indicator_overlay_on_detached, 1500, colour="blue", detached_overlay_name="random 2")
     
     return state, candles
@@ -104,6 +123,108 @@ def test_synthetic_candles_timezone(usdc, weth, weth_usdc):
     end_date = datetime.datetime(2021, 3, 1)
     candles = generate_ohlcv_candles(TimeBucket.d1, start_date, end_date, pair_id=weth_usdc.internal_id)
     assert candles.iloc[0]["timestamp"] == pd.Timestamp("2021-01-01 00:00:00")
+    
+
+def test_visualise_trades_with_indicator(state_and_candles: tuple[State, pd.DataFrame]):
+    """Do a single token purchase.
+    
+    Uses default VolumeBarMode.overlay"""
+
+    state, candles = state_and_candles
+    candle_universe = GroupedCandleUniverse.create_from_single_pair_dataframe(candles)
+    
+    validate_state_serialisation(state)
+
+    assert len(list(state.portfolio.get_all_trades())) == 3
+    assert len(state.portfolio.open_positions) == 0
+    assert len(state.portfolio.closed_positions) == 1
+    
+    #
+    # Now visualise the events with default arguments
+    #
+    fig = visualise_single_pair(
+        state, 
+        candle_universe,
+    )
+
+    # 3 distinct plot grids
+    assert len(fig._grid_ref) == 3
+    
+    # check the main title
+    assert fig.layout.title.text == "Visualisation test"
+    
+    # check subplot titles
+    subplot_titles = [annotation['text'] for annotation in fig['layout']['annotations']]
+    assert subplot_titles[0] == "random 1"
+    assert subplot_titles[1] == "random 2<br> + random 3<br> + random 4"
+    
+    # List of candles, indicators, and markers
+    data = fig.to_dict()["data"]
+    assert len(data) == 8
+    assert data[1]["name"] == "Test indicator"
+    assert data[2]["name"] == "random 1"
+    assert data[3]["name"] == "random 2"
+    assert data[4]["name"] == "random 3"
+    assert data[5]["name"] == "random 4"
+    assert data[6]["name"] == "Buy"
+    assert data[7]["name"] == "Sell"
+
+    # Check test indicator data
+    # that we have proper timestamps
+    plot = state.visualisation.plots["Test indicator"]
+    df = export_plot_as_dataframe(plot)
+    ts = df.iloc[0]["timestamp"]
+    ts = ts.replace(minute=0, second=0)
+    assert ts == pd.Timestamp("2021-1-1 00:00")
+
+@pytest.mark.parametrize("relative_sizing, vertical_spacing, subplot_font_size, title, volume_axis_name", [
+    ([1, 3, 0.2], 0.2, 20, None, None),
+    ([1, 0.2, 0.2], 0.1, 10, "Test title", "Volume USD"),
+    ([100, 0.2, 0.2], 0.3, 250, "Test title 2", "Random"),
+    (None, None, None, None, None),
+])
+def test_visualise_trades_no_error(
+    state_and_candles: tuple[State, pd.DataFrame],
+    relative_sizing,
+    vertical_spacing,
+    subplot_font_size,
+    title,
+    volume_axis_name,
+):
+    """Do a single token purchase.
+    
+    Uses default VolumeBarMode.overlay"""
+
+    state, candles = state_and_candles
+    candle_universe = GroupedCandleUniverse.create_from_single_pair_dataframe(candles)
+    
+    validate_state_serialisation(state)
+
+    assert len(list(state.portfolio.get_all_trades())) == 3
+    assert len(state.portfolio.open_positions) == 0
+    assert len(state.portfolio.closed_positions) == 1
+    
+    # check no error with different arguments
+    fig = visualise_single_pair(
+        state, 
+        candle_universe,
+        relative_sizing=relative_sizing,
+        vertical_spacing=vertical_spacing, 
+        subplot_font_size=subplot_font_size,
+        title=title,
+        volume_axis_name=volume_axis_name
+    )
+    
+    fig = visualise_single_pair_positions_with_duration_and_slippage(
+        state=state,
+        candles=candles,
+        relative_sizing=relative_sizing,
+        vertical_spacing=vertical_spacing, 
+        subplot_font_size=subplot_font_size,
+        title=title,
+        volume_axis_name=volume_axis_name
+    )
+    
 
 
 def test_visualise_trades_with_indicator(state_and_candles: tuple[State, pd.DataFrame]):
@@ -123,7 +244,10 @@ def test_visualise_trades_with_indicator(state_and_candles: tuple[State, pd.Data
     #
     # Now visualise the events
     #
-    fig = visualise_single_pair(state, candle_universe)
+    fig = visualise_single_pair(
+        state, 
+        candle_universe,
+    )
 
     # 3 distinct plot grids
     assert len(fig._grid_ref) == 3
@@ -171,15 +295,15 @@ def test_visualise_trades_with_indicator_separate_volume(
     assert len(state.portfolio.open_positions) == 0
     assert len(state.portfolio.closed_positions) == 1
 
-    #
-    # Now visualise the events
-    #
     fig = visualise_single_pair(
-        state, candle_universe, volume_bar_mode=VolumeBarMode.separate
+        state, 
+        candle_universe, 
+        volume_bar_mode=VolumeBarMode.separate,
+        relative_sizing=[1, 0.2, 0.2, 0.5],
     )
 
-    # 5 distinct plot grids
-    assert len(fig._grid_ref) == 5
+    # 4 distinct plot grids
+    assert len(fig._grid_ref) == 4
     
     # check the main title
     assert fig.layout.title.text == "Visualisation test"
@@ -233,7 +357,7 @@ def test_visualise_trades_with_duration_and_slippage(
     )
 
     # 3 distinct plot grids
-    assert len(fig._grid_ref) == 3
+    assert len(fig._grid_ref) == 4
     
     # check the main title
     assert fig.layout.title.text == "Visualisation test"
