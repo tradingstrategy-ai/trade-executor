@@ -793,12 +793,15 @@ class TradingPosition:
         cur_size = 0
         max_size = 0
 
-        if len(self.trades) > 2:
-            logger.warning("Position has %d trades so this method might produce wrong result", self.trades)
-
         for t in self.trades.values():
-            cur_size = t.get_value()
-            max_size = max(cur_size, max_size)
+            if t.is_buy():
+                cur_size += t.value
+            else:
+                cur_size -= t.value
+            
+            if cur_size > max_size:
+                max_size = cur_size
+        
         return max_size
 
     def get_trade_count(self) -> int:
