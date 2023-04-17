@@ -109,7 +109,9 @@ def test_defi_bluechip(
     assert isinstance(fig, go.Figure)
 
     weight_analysis = analyse_alpha_model_weights(state, universe)
-    assert len(weight_analysis) == 93
+    assert len(weight_analysis) == 189
 
     pair_weight_summary = create_pair_weight_analysis_summary_table(weight_analysis)
+    assert pair_weight_summary.iloc[0].name == "AAVE-WETH"
+    assert pair_weight_summary.iloc[0]["normalised_weight"]["amax"] == 1.0
     #display(pair_weight_summary)
