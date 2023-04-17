@@ -499,7 +499,7 @@ def test_alpha_model_trades_flip_position(
     # Go all in to AAVE
     alpha_model = AlphaModel()
     alpha_model.set_signal(aave_usdc, 1.0)
-
+    alpha_model.select_top_signals(9999)
     alpha_model.assign_weights()
     alpha_model.normalise_weights()
 
