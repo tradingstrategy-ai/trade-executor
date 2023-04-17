@@ -395,7 +395,7 @@ def test_timeline(
     assert row['Exchange'] == ''
     assert row['Base asset'] == 'WETH'
     assert row['Quote asset'] == 'USDC'
-    assert row['Position max value'] == '$1,021.09'
+    assert row['Position max value'] == '$1,000.00'
     assert row['PnL USD'] == '$21.09'
     assert row['PnL %'] == '2.11%'
     assert row['PnL % raw'] == pytest.approx(0.021094526830844895, 1e-6)
@@ -458,7 +458,7 @@ def test_timeline_raw(
     assert row['Remarks'] == ''
     assert row['Opened at'] == '2021-07-02'
     assert row['Duration'] == '8 days      '
-    assert row['position_max_size'] == pytest.approx(1021.094527, rel=1e-4)
+    assert row['position_max_size'] == pytest.approx(1000.0000000000001, rel=1e-4)
     assert row['pnl_usd'] == pytest.approx(21.094527, rel=1e-4)
     assert row['pnl_pct_raw'] == pytest.approx(0.021095, rel=1e-4)
     assert row['open_price_usd'] == pytest.approx(1617.279626, rel=1e-4)

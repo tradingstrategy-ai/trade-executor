@@ -328,7 +328,7 @@ class TradeAnalysis:
         """Get the closed_at timestamp of the last position in the portfolio."""
         
         return max(
-            position.closed_at for position in self.portfolio.get_all_positions_filtered()
+            position.closed_at for position in self.filtered_sorted_positions
         )
 
     def get_all_positions(self) -> Iterable[Tuple[PrimaryKey, TradingPosition]]:
