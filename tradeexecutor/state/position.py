@@ -795,9 +795,11 @@ class TradingPosition:
 
         for t in self.trades.values():
             if t.is_buy():
-                cur_size += t.value
+                if t.get_executed_value():
+                    cur_size += t.get_executed_value()
             else:
-                cur_size -= t.value
+                if t.get_executed_value():
+                    cur_size -= t.get_executed_value()
             
             if cur_size > max_size:
                 max_size = cur_size
