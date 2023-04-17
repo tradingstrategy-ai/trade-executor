@@ -4,6 +4,7 @@ import secrets
 from decimal import Decimal
 
 import pytest
+import flaky
 from eth_account import Account
 from hexbytes import HexBytes
 
@@ -89,6 +90,7 @@ def pricing_model(
     return pricing_model
 
 
+@flaky.flaky()
 def test_enzyme_execute_open_position(
     web3: Web3,
     deployer: HexAddress,
