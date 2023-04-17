@@ -134,6 +134,12 @@ class TradeSummary:
     #: advanced users can use this property instead of the
     #: provided quantstats helper methods
     daily_returns: Optional[pd.Series] = None
+    
+    winning_stop_losses: Optional[int] = None
+    losing_stop_losses: Optional[int] = None
+    
+    winning_stop_losses_percent: Optional[float] = field(init=False)
+    losing_stop_losses_percent: Optional[float] = field(init=False)
 
     def __post_init__(self):
 
@@ -150,6 +156,8 @@ class TradeSummary:
         self.annualised_return_percent = calculate_percentage(self.return_percent * datetime.timedelta(days=365),
                                                               self.duration) if self.return_percent else None
 
+        self.winning_stop_losses_percent = calculate_percentage(self.winning_stop_losses, self.stop_losses)
+        self.losing_stop_losses_percent = calculate_percentage(self.losing_stop_losses, self.stop_losses)
 
     def to_dataframe(self) -> pd.DataFrame:
         """Convert the data to a human readable summary table.
@@ -178,6 +186,10 @@ class TradeSummary:
             "Stop losses triggered": as_integer(self.stop_losses),
             "Stop loss % of all": as_percent(self.all_stop_loss_percent),
             "Stop loss % of lost": as_percent(self.lost_stop_loss_percent),
+            "Winning stop losses": as_integer(self.winning_stop_losses),
+            "Winning stop losses percent": as_percent(self.winning_stop_losses_percent),
+            "Losing stop losses": as_integer(self.losing_stop_losses),
+            "Losing stop losses percent": as_percent(self.losing_stop_losses_percent),
             "Take profits triggered": as_integer(self.take_profits),
             "Take profit % of all": as_percent(self.all_take_profit_percent),
             "Take profit % of won": as_percent(self.won_take_profit_percent),
@@ -431,6 +443,9 @@ class TradeAnalysis:
         pos_cons = 0
         neg_cons = 0
         pullback = 0
+        
+        winning_stop_losses = 0
+        losing_stop_losses = 0
 
         for pair_id, position in self.get_all_positions():
             
@@ -455,8 +470,10 @@ class TradeAnalysis:
                 open_value += position.get_value()
                 undecided += 1
                 continue
-
-            if position.is_stop_loss():
+            
+            is_stop_loss = position.is_stop_loss()
+            
+            if is_stop_loss:
                 stop_losses += 1
 
             if position.is_take_profit():
@@ -470,6 +487,9 @@ class TradeAnalysis:
                 won += 1
                 winning_trades.append(realised_profit_percent)
                 winning_trades_duration.append(duration)
+                
+                if is_stop_loss:
+                    winning_stop_losses += 1
 
             elif position.is_loss():
                 lost += 1
@@ -482,6 +502,9 @@ class TradeAnalysis:
                     # Bad data
                     realised_loss = 0
                 realised_losses.append(realised_loss)
+                
+                if is_stop_loss:
+                    losing_stop_losses += 1
 
             else:
                 # Any profit exactly balances out loss in slippage and commission
@@ -568,7 +591,9 @@ class TradeAnalysis:
             trade_volume=trade_volume,
             lp_fees_paid=lp_fees_paid,
             lp_fees_average_pc=lp_fees_average_pc,
-            daily_returns=daily_returns
+            daily_returns=daily_returns,
+            winning_stop_losses=winning_stop_losses,
+            losing_stop_losses=losing_stop_losses,
         )
 
     @staticmethod
