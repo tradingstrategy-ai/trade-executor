@@ -575,6 +575,7 @@ def test_alpha_model_flip_position_partially(
     alpha_model = AlphaModel()
     alpha_model.set_signal(aave_usdc, 0.5)
     alpha_model.set_signal(weth_usdc, 0.5)
+    alpha_model.select_top_signals(9999)
     alpha_model.assign_weights(method=weight_passthrouh)
     alpha_model.normalise_weights()
 
