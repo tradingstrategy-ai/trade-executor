@@ -325,6 +325,7 @@ class TradeExecution:
     #:
     #: TradePricing instance can refer to more than one swap
     price_structure: Optional[TradePricing] = None
+    
 
     def __repr__(self):
         if self.is_buy():

@@ -1,6 +1,7 @@
 """Trading position state info."""
 import datetime
 import enum
+import logging
 from dataclasses import dataclass, field
 from decimal import Decimal
 
@@ -17,6 +18,9 @@ from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.types import USDollarAmount, BPS, USDollarPrice
 from tradeexecutor.strategy.trade_pricing import TradePricing
 from tradeexecutor.utils.accuracy import sum_decimal
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass_json
@@ -308,6 +312,12 @@ class TradingPosition:
         first_trade = self.get_first_trade()
         return first_trade.executed_price
 
+    def get_closing_price(self) -> USDollarAmount:
+        """Get the price when the position was closed."""
+        assert self.has_executed_trades()
+        last_trade = self.get_last_trade()
+        return last_trade.executed_price
+
     def get_equity_for_position(self) -> Decimal:
         """How many asset units this position tolds."""
         return sum_decimal([t.get_equity_for_position() for t in self.trades.values() if t.is_success()])
@@ -331,6 +341,7 @@ class TradingPosition:
         return [t for t in self.trades.values() if t.is_failed()]
 
     def calculate_value_using_price(self, token_price: USDollarAmount, reserve_price: USDollarAmount) -> USDollarAmount:
+        """Calculate the value of this position using the given prices."""
         token_quantity = sum([t.get_equity_for_position() for t in self.trades.values() if t.is_accounted_for_equity()])
         reserve_quantity = sum([t.get_equity_for_reserve() for t in self.trades.values() if t.is_accounted_for_equity()])
         return float(token_quantity) * token_price + float(reserve_quantity) * reserve_price
@@ -340,7 +351,10 @@ class TradingPosition:
 
         If the position is closed, the value should be zero.
         """
-        return self.calculate_value_using_price(self.last_token_price, self.last_reserve_price)
+        if self.is_closed():
+            return USDollarAmount(0)
+        else:
+            return self.calculate_value_using_price(self.last_token_price, self.last_reserve_price)
 
     def get_trades_by_strategy_cycle(self, timestamp: datetime.datetime) -> Iterable[TradeExecution]:
         """Get all trades made for this position at a specific time.
@@ -665,6 +679,14 @@ class TradingPosition:
         """
         assert len(self.trades) > 0, "No trades available"
         return self.get_first_trade().get_executed_value()
+    
+    def get_value_at_close(self) -> USDollarAmount:
+        """How much the position had value tied after its close.
+
+        Calculate the value after the last trade
+        """
+        assert len(self.trades) > 0, "No trades available"
+        return self.get_last_trade().get_executed_value()
 
     def get_capital_tied_at_open_pct(self) -> float:
         """Calculate how much portfolio capital was risk when this position was opened.
@@ -717,6 +739,80 @@ class TradingPosition:
         else:
             # Old invalid data
             return 0
+    
+    def get_realised_profit_percent(self) -> float:
+        """Calculated life-time profit over this position."""
+        
+        assert not self.is_open()
+        buy_value = self.get_buy_value()
+        sell_value = self.get_sell_value()
+        return sell_value / buy_value - 1
+    
+    def get_duration(self) -> datetime.timedelta | None:
+        """How long this position was held.
+        :return: None if the position is still open
+        """
+        if self.is_closed():
+            return self.closed_at - self.opened_at  
+        else:
+            return None
+    
+    def get_total_lp_fees_paid(self) -> int:
+        """Get the total amount of swap fees paid in the position. Includes all trades."""
+        
+        lp_fees_paid = 0
+
+        for trade in self.trades.values():
+            if type(trade.lp_fees_paid) == list:
+                lp_fees_paid += sum(filter(None,trade.lp_fees_paid))
+            else:
+                lp_fees_paid += trade.lp_fees_paid or 0
+
+        return lp_fees_paid
+    
+    def get_buy_value(self) -> USDollarAmount:
+        """Get the total value of the position when it was bought."""
+        
+        return sum(t.get_executed_value() for t in self.trades.values() if t.is_buy())
+    
+    def get_sell_value(self) -> USDollarAmount:
+        """Get the total value of the position when it was sold."""
+        return sum(t.get_executed_value() for t in self.trades.values() if t.is_sell())
+    
+    def has_bad_data_issues(self) -> bool:
+        """Do we have legacy / incompatible data issues."""
+        
+        for t in self.trades.values():
+            if t.planned_mid_price in {0, None}:  # Old data
+                return True
+            
+        return False
+    
+    def get_max_size(self) -> USDollarAmount:
+        """Get the largest size of this position over the time"""
+        cur_size = 0
+        max_size = 0
+
+        for t in self.trades.values():
+            executed_value = t.get_executed_value()
+            
+            # skip trade if we don't have the executed value
+            if not executed_value:
+                continue
+            
+            if t.is_buy():
+                cur_size += executed_value
+            else:
+                cur_size -= executed_value
+            
+            if cur_size > max_size:
+                max_size = cur_size
+        
+        return max_size
+
+    def get_trade_count(self) -> int:
+        """Get the number of trades in this position."""
+        return len(self.trades)
 
 
 class PositionType(enum.Enum):
