@@ -74,7 +74,7 @@ def analyse_multipair(state: State) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def forma_multipair_summary(df: pd.DataFrame, sort_column="Total PnL USD", ascending=False) -> pd.DataFrame:
+def format_multipair_summary(df: pd.DataFrame, sort_column="Total PnL USD", ascending=False) -> pd.DataFrame:
     """Format the multipair summary table.
 
     Convert raw numbers to preferred human format.
@@ -85,8 +85,13 @@ def forma_multipair_summary(df: pd.DataFrame, sort_column="Total PnL USD", ascen
         See :py:func:`analyse_pair_trades`.
 
     :return:
-        Raw dataframe.
+        Dataframe with formatted values for each trading pair.
+
+        If there are no trades return empty dataframe.
     """
+
+    if len(df) == 0:
+        return pd.DataFrame()
 
     df = df.sort_values(by=[sort_column], ascending=ascending)
 
