@@ -25,6 +25,22 @@ logger = logging.getLogger(__name__)
 
 @dataclass_json
 @dataclass(slots=True)
+class TriggerPriceUpdate:
+    """A position trigger prices where updated."""
+
+    timestamp: datetime.datetime
+
+    stop_loss_before: Optional[USDollarAmount]
+
+    stop_loss_after: Optional[USDollarAmount]
+
+    take_profit_before: Optional[USDollarAmount]
+
+    take_profit_after: Optional[USDollarAmount]
+
+
+@dataclass_json
+@dataclass(slots=True)
 class TradingPosition:
     """Represents a single trading position.
 
@@ -116,6 +132,11 @@ class TradingPosition:
     #: We use mid-price as the trigger price.
     take_profit: Optional[USDollarAmount] = None
 
+    #: Trailing stop loss
+    #:
+    #:
+    trailing_stop_loss: Optional[USDollarAmount] = None
+
     #: Human readable notes about this trade
     #:
     #: Used to mark test trades from command line.
@@ -129,6 +150,14 @@ class TradingPosition:
     #: BalanceUpdate.id -> BalanceUpdate mapping
     #:
     balance_updates: Dict[int, BalanceUpdate] = field(default_factory=dict)
+
+    #: Trigger price updates.
+    #:
+    #: Every time a trigger price is moved e.g. for a trailing stop loss,
+    #  we make a record here for future analysis.
+    #:
+    #:
+    trigger_updates: List[TriggerPriceUpdate] = field(default_factory=list)
 
     def __repr__(self):
         if self.is_open():
