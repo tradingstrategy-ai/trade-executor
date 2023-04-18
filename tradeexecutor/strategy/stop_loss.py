@@ -10,7 +10,7 @@ from typing import List, Dict
 
 from tradingstrategy.candle import CandleSampleUnavailable
 
-from tradeexecutor.state.position import TradingPosition
+from tradeexecutor.state.position import TradingPosition, TriggerPriceUpdate
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution, TradeType
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
@@ -108,7 +108,31 @@ def check_position_triggers(
             # and any position trigger does not need to be executed.
             continue
 
+        assert type(mid_price) == float, f"Received bad mid-price: {mid_price} {type(mid_price)}"
+
         trigger_type = trigger_price = None
+        stop_loss_before = stop_loss_after = None
+
+        # Check for trailing stop loss updates
+        if p.trailing_stop_loss_pct:
+            new_stop_loss = mid_price * p.trailing_stop_loss_pct
+            if not p.stop_loss or new_stop_loss > p.stop_loss:
+                stop_loss_before = p.stop_loss
+                stop_loss_after = new_stop_loss
+
+        # Update dynamic triggers if needed
+        if stop_loss_after is not None:
+            assert stop_loss_after > 0
+            trigger_update = TriggerPriceUpdate(
+                ts,
+                mid_price,
+                stop_loss_before,
+                stop_loss_after,
+                None,
+                None,
+            )
+            p.trigger_updates.append(trigger_update)
+            p.stop_loss = stop_loss_after
 
         if p.take_profit:
             if mid_price >= p.take_profit:

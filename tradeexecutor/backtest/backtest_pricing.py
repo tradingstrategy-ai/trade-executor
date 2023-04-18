@@ -226,7 +226,7 @@ class BacktestSimplePricingModel(PricingModel):
             tolerance=self.data_delay_tolerance,
             kind=self.candle_timepoint_kind,
         )
-        return price
+        return float(price)
 
     def quantize_base_quantity(self, pair: TradingPairIdentifier, quantity: Decimal, rounding=ROUND_DOWN) -> Decimal:
         """Convert any base token quantity to the native token units by its ERC-20 decimals."""
