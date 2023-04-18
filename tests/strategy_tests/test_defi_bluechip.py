@@ -1,9 +1,10 @@
-"""Run DeFi bluechip momentum strategy for some backtesting cycles to see the code does not break."""
+"""Run DeFi bluechip momentum strategy for some backtesting cycles and see any analysis code does not break.."""
 import datetime
 import logging
 import os
 
 from pathlib import Path
+from typing import Tuple
 
 import pandas as pd
 import pytest
@@ -15,14 +16,20 @@ from tradeexecutor.analysis.alpha_model_analyser import create_alpha_model_timel
 from tradeexecutor.analysis.fee_analyser import analyse_trading_fees, create_pair_trading_fee_summary_table
 from tradeexecutor.backtest.backtest_runner import run_backtest, setup_backtest
 from tradeexecutor.cli.log import setup_pytest_logging
+from tradeexecutor.state.state import State
 from tradeexecutor.statistics.summary import calculate_summary_statistics
 from tradeexecutor.strategy.execution_context import ExecutionMode
 from tradeexecutor.analysis.trade_analyser import build_trade_analysis
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.visual.single_pair import visualise_single_pair, visualise_single_pair_positions_with_duration_and_slippage
 from tradingstrategy.chain import ChainId
 
-# https://docs.pytest.org/en/latest/how-to/skipping.html#skip-all-test-functions-of-a-class-or-module
-pytestmark = pytest.mark.skipif(os.environ.get("TRADING_STRATEGY_API_KEY") is None, reason="Set TRADING_STRATEGY_API_KEY environment variable to run this test")
+
+
+pytestmark = pytest.mark.skipif(
+    (os.environ.get("TRADING_STRATEGY_API_KEY") is None or os.environ.get("SKIP_SLOW_TEST") is not None),
+    reason="Set TRADING_STRATEGY_API_KEY environment variable to run this test, and SKIP_SLOW_TEST must not be set"
+)
 
 
 @pytest.fixture(scope="module")
@@ -31,18 +38,26 @@ def logger(request):
     return setup_pytest_logging(request, mute_requests=False)
 
 
-@pytest.fixture()
+@pytest.fixture(scope="module")
 def strategy_path() -> Path:
     """Where do we load our strategy file."""
     return Path(os.path.join(os.path.dirname(__file__), "..", "..", "strategies", "test_only", "defi-bluechip-momentum.py"))
 
 
-@pytest.mark.skipif(os.environ.get("SKIP_SLOW_TEST"), reason="Slow tests skipping enabled")
-def test_defi_bluechip(
-    strategy_path,
-    logger: logging.Logger,
-    persistent_test_client,
-    ):
+
+@pytest.fixture(scope="module")
+def end_at() -> datetime.datetime:
+    """What's the end of the backtesting date."""
+    return  datetime.datetime(2022, 6, 1)
+
+
+@pytest.fixture(scope="module")
+def backtest_result(
+        logger: logging.Logger,
+        strategy_path: Path,
+        persistent_test_client,
+        end_at,
+) -> Tuple[State, TradingStrategyUniverse, dict]:
     """Runs DeFi blugchip strategy for one day and checks that various analytics functions work on the resulting state.
 
     - Check the strategy does not crash
@@ -50,9 +65,8 @@ def test_defi_bluechip(
     - Run for one year
     """
 
-    client = persistent_test_client
 
-    end_at = datetime.datetime(2022, 6, 1)
+    client = persistent_test_client
 
     # Run backtest over 6 months, daily
     setup = setup_backtest(
@@ -64,6 +78,29 @@ def test_defi_bluechip(
 
     state, universe, debug_dump = run_backtest(setup, client)
 
+    return state, universe, debug_dump
+
+
+@pytest.fixture()
+def state(backtest_result) -> State:
+    return backtest_result[0]
+
+
+@pytest.fixture()
+def universe(backtest_result) -> TradingStrategyUniverse:
+    return backtest_result[1]
+
+
+@pytest.fixture()
+def debug_dump(backtest_result):
+    return backtest_result[2]
+
+
+def test_summary_statistics(
+    state,
+    debug_dump,
+    end_at,
+    ):
     # Do some sanity checks for the data
     assert len(debug_dump) > 25
     assert len(list(state.portfolio.get_all_trades())) > 25
@@ -79,14 +116,23 @@ def test_defi_bluechip(
     # We don't lose all the money
     assert summary.current_value > 1000
 
-    # Create a table where we have per asset column of taken positions,
-    # see that these functions do not crash
+
+def test_alpha_model_timeline(
+    state,
+    universe,
+    ):
+    """Create a table where we have per asset column of taken positions, see that these functions do not crash"""
     df = create_alpha_model_timeline_all_assets(state, universe)
     figure, table = render_alpha_model_plotly_table(df)
     assert figure is not None
     assert table is not None
 
-    # See summary calculations do not crash
+
+def test_trade_analysis(
+    state,
+    universe,
+    ):
+    """See trade analysis calculations do not crash."""
     analysis = build_trade_analysis(state.portfolio)
     summary = analysis.calculate_summary_statistics()
     df = summary.to_dataframe()
@@ -109,6 +155,13 @@ def test_defi_bluechip(
     )
     assert isinstance(fig, go.Figure)
 
+
+def test_alpha_model_weight_analysis(
+    state,
+    universe,
+    ):
+    """See alpha model weight analysis does not crash."""
+
     weight_analysis = analyse_alpha_model_weights(state, universe)
     assert len(weight_analysis) == 189
 
@@ -117,7 +170,12 @@ def test_defi_bluechip(
     assert pair_weight_summary.iloc[0]["normalised_weight"]["amax"] == 1.0
     #display(pair_weight_summary)
 
+
+def test_trading_fee_analysis(
+    state,
+    ):
+    """See trading fee analysis does not crash."""
     fee_analysis = analyse_trading_fees(state)
     pair_fee_summary = create_pair_trading_fee_summary_table(fee_analysis)
-    #display(pair_fee_summary)
+    assert pair_fee_summary.iloc[0].name == ("AAVE-WETH", "buy")
 

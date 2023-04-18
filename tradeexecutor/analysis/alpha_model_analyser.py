@@ -312,6 +312,7 @@ def analyse_alpha_model_weights(
 
     """
 
+    assert isinstance(universe, TradingStrategyUniverse)
     pair_universe = universe.universe.pairs
 
     alpha_model_collection = state.visualisation.calculations
