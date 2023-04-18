@@ -28,7 +28,13 @@ logger = logging.getLogger(__name__)
 class TriggerPriceUpdate:
     """A position trigger prices where updated.
 
-    See :py:attr:`TradingPosition.trailing_stop_loss`.
+    Store the historical changes in trigger prices on :py:class:`TradingPosition`.
+
+    See
+
+    - :py:attr:`TradingPosition.trailing_stop_loss`.
+
+    - :py:attr:`TradingPosition.trigger_updates`.
     """
 
     timestamp: datetime.datetime
@@ -144,6 +150,8 @@ class TradingPosition:
     take_profit: Optional[USDollarAmount] = None
 
     #: Trailing stop loss.
+    #:
+    #: For details see :ref:`Trailing stop loss`.
     #:
     #: Set the trailing stop as the percentage of the market price.
     #: This will update :py:attr:`stop_loss` price if the new resulting

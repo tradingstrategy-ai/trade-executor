@@ -60,15 +60,25 @@ def check_position_triggers(
 
     - Get the real-time price of an assets that are currently hold in the portfolio
 
+    - Update dynamic stop loss/take profits like trailing stop loss
+
     - Use mid-price to check for the trigger price threshold
 
     - Generate stop loss/take profit signals for trades
 
+    See related position attributes
+
+    - :py:attr:`tradeexecutor.state.position.TradingPosition.stop_loss`
+
+    - :py:attr:`tradeexecutor.state.position.TradingPosition.take_profit`
+
+    - :py:attr:`tradeexecutor.state.position.TradingPosition.trailing_stop_loss`
+
     :param position_manager:
         Encapsulates the current state, universe for closing positions
 
-    :param cycle_debug_data:
-        The debug data of previous cycle
+    :return:
+        List of triggered trades for all positions, like market sell on a stop loss triggered.s
     """
 
     ts: datetime.datetime = position_manager.timestamp
@@ -128,18 +138,20 @@ def check_position_triggers(
                 mid_price,
                 stop_loss_before,
                 stop_loss_after,
-                None,
+                None,  # No trailing take profits yet
                 None,
             )
             p.trigger_updates.append(trigger_update)
             p.stop_loss = stop_loss_after
 
+        # Check we need to close position for take profit
         if p.take_profit:
             if mid_price >= p.take_profit:
                 trigger_type = TradeType.take_profit
                 trigger_price = p.take_profit
                 trades.append(position_manager.close_position(p, TradeType.take_profit))
 
+        # Check we need to close position for stop loss
         if p.stop_loss:
             if mid_price <= p.stop_loss:
                 trigger_type = TradeType.stop_loss

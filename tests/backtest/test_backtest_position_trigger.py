@@ -374,8 +374,8 @@ def test_synthetic_data_backtest_stop_loss(
         name="With 95% stop loss",
         start_at=start_at.to_pydatetime(),
         end_at=end_at.to_pydatetime(),
-        client=None,  # None of downloads needed, because we are using synthetic data
-        cycle_duration=CycleDuration.cycle_1d,  # Override to use 24h cycles despite what strategy file says
+        client=None,
+        cycle_duration=CycleDuration.cycle_1d,
         decide_trades=stop_loss_decide_trades,
         create_trading_universe=None,
         universe=synthetic_universe,
@@ -442,8 +442,8 @@ def test_synthetic_data_backtest_take_profit(
         name="No stop loss",
         start_at=start_at.to_pydatetime(),
         end_at=end_at.to_pydatetime(),
-        client=None,  # None of downloads needed, because we are using synthetic data
-        cycle_duration=CycleDuration.cycle_1d,  # Override to use 24h cycles despite what strategy file says
+        client=None,
+        cycle_duration=CycleDuration.cycle_1d,
         decide_trades=take_profit_trades,
         create_trading_universe=None,
         universe=synthetic_universe,
@@ -474,8 +474,8 @@ def test_synthetic_data_backtest_take_profit(
         name="With 95% stop loss",
         start_at=start_at.to_pydatetime(),
         end_at=end_at.to_pydatetime(),
-        client=None,  # None of downloads needed, because we are using synthetic data
-        cycle_duration=CycleDuration.cycle_1d,  # Override to use 24h cycles despite what strategy file says
+        client=None,
+        cycle_duration=CycleDuration.cycle_1d,
         decide_trades=take_profit_trades,
         create_trading_universe=None,
         universe=synthetic_universe,
@@ -536,8 +536,8 @@ def test_synthetic_data_backtest_stop_loss_data_missing(
             name="No stop loss",
             start_at=start_at.to_pydatetime(),
             end_at=end_at.to_pydatetime(),
-            client=None,  # None of downloads needed, because we are using synthetic data
-            cycle_duration=CycleDuration.cycle_1d,  # Override to use 24h cycles despite what strategy file says
+            client=None,
+            cycle_duration=CycleDuration.cycle_1d,
             decide_trades=stop_loss_decide_trades,
             create_trading_universe=None,
             universe=synthetic_universe,
@@ -570,8 +570,8 @@ def test_synthetic_data_backtest_trailing_stop_loss(
         name="No stop loss",
         start_at=start_at.to_pydatetime(),
         end_at=end_at.to_pydatetime(),
-        client=None,  # None of downloads needed, because we are using synthetic data
-        cycle_duration=CycleDuration.cycle_1d,  # Override to use 24h cycles despite what strategy file says
+        client=None,
+        cycle_duration=CycleDuration.cycle_1d,
         decide_trades=stop_loss_decide_trades,
         create_trading_universe=None,
         universe=synthetic_universe,
@@ -607,3 +607,8 @@ def test_synthetic_data_backtest_trailing_stop_loss(
     # Check some of the trailing stop losses ended up for profit
     profitable_trailing_stop_losses = [p for p in trailing_stop_loss_positions if p.is_profitable()]
     assert len(profitable_trailing_stop_losses) == 15
+
+    # Check we do not inject bad state variables
+    dump = state.to_json()
+    state2: State = State.from_json(dump)
+    assert len(state2.portfolio.closed_positions) > 0
