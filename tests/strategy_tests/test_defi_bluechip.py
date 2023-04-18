@@ -65,7 +65,6 @@ def backtest_result(
     - Run for one year
     """
 
-
     client = persistent_test_client
 
     # Run backtest over 6 months, daily

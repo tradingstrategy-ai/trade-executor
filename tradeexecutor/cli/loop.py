@@ -504,10 +504,13 @@ class ExecutionLoop:
         routing_state, pricing_model, valuation_model = self.runner.setup_routing(universe)
         assert pricing_model, "Routing did not provide pricing_model"
 
+        assert isinstance(pricing_model, BacktestSimplePricingModel)
+
         stop_loss_pricing_model = BacktestSimplePricingModel(
             universe.backtest_stop_loss_candles,
             self.runner.routing_model,
-            time_bucket=universe.backtest_stop_loss_time_bucket
+            time_bucket=universe.backtest_stop_loss_time_bucket,
+            allow_missing_fees=pricing_model.allow_missing_fees
         )
 
         # Do stop loss checks for every time point between now and next strategy cycle

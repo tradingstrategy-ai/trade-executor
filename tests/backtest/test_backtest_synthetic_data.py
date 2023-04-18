@@ -161,9 +161,10 @@ def test_synthetic_data_backtest_run(
         initial_deposit=10_000,
         universe=synthetic_universe,
         routing_model=routing_model,
+        allow_missing_fees=True,
     )
 
-    state, universe, debug_dump = run_backtest(setup)
+    state, universe, debug_dump = run_backtest(setup, allow_missing_fees=True)
 
     assert len(debug_dump) == 214
 

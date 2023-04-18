@@ -668,7 +668,7 @@ class PositionManager:
 
         """
         assert dollar_amount, f"Got dollar amount: {dollar_amount}"
-        timesstamp = self.timestamp
+        timestamp = self.timestamp
         pricing_model = self.pricing_model
-        price = pricing_model.get_mid_price(timesstamp, pair)
+        price = pricing_model.get_mid_price(timestamp, pair)
         return (dollar_amount / price)

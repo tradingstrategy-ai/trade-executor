@@ -190,6 +190,7 @@ def test_visualise_strategy_state(
         trade_routing=TradeRouting.user_supplied_routing_model,
         routing_model=routing_model,
         log_level=logging.WARNING,
+        allow_missing_fees=True,
     )
 
     image = draw_single_pair_strategy_state(state, universe)

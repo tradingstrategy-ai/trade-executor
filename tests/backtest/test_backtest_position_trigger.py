@@ -300,6 +300,7 @@ def test_synthetic_data_backtest_stop_loss(
         trade_routing=TradeRouting.user_supplied_routing_model,
         routing_model=routing_model,
         log_level=logging.WARNING,
+        allow_missing_fees=True,
     )
 
     # Expect backtesting for 213 days
@@ -331,6 +332,7 @@ def test_synthetic_data_backtest_stop_loss(
         trade_routing=TradeRouting.user_supplied_routing_model,
         routing_model=routing_model,
         log_level=logging.WARNING,
+        allow_missing_fees=True,
     )
 
     assert universe.backtest_stop_loss_candles
@@ -398,6 +400,7 @@ def test_synthetic_data_backtest_take_profit(
         trade_routing=TradeRouting.user_supplied_routing_model,
         routing_model=routing_model,
         log_level=logging.WARNING,
+        allow_missing_fees=True,
     )
 
     # Expect backtesting for 213 days
@@ -429,6 +432,7 @@ def test_synthetic_data_backtest_take_profit(
         trade_routing=TradeRouting.user_supplied_routing_model,
         routing_model=routing_model,
         log_level=logging.WARNING,
+        allow_missing_fees=True,
     )
 
     assert universe.backtest_stop_loss_candles
@@ -489,4 +493,5 @@ def test_synthetic_data_backtest_stop_loss_data_missing(
             reserve_currency=ReserveCurrency.busd,
             trade_routing=TradeRouting.user_supplied_routing_model,
             routing_model=routing_model,
+            allow_missing_fees=True,
         )
