@@ -671,4 +671,4 @@ class PositionManager:
         timestamp = self.timestamp
         pricing_model = self.pricing_model
         price = pricing_model.get_mid_price(timestamp, pair)
-        return (dollar_amount / price)
+        return float(dollar_amount / price)

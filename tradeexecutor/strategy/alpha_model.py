@@ -133,9 +133,12 @@ class TradingPairSignal:
     #: Used when the position decreases and we need to know
     #: how many units of asset we need to sell to get to the :py:attr:`position_target`.
     #:
-    #: At the momeny always negative and available only when decreasing a position..
+    #: At the momeny always negative and available only when decreasing a position.
     #:
-    position_adjust_quantity: Decimal = 0.0
+    #: Note that this value is not used when closing position (weight=0),
+    #: due to rounding and epsilon errors.
+    #:
+    position_adjust_quantity: float = 0.0
 
     #: Trading position that is controlled by this signal.
     #:
@@ -465,6 +468,7 @@ class AlphaModel:
                 # We might get some minor position size skew here because fees not included
                 # for these transactions
                 s.position_adjust_quantity = position_manager.estimate_asset_quantity(s.pair, s.position_adjust_usd)
+                assert type(s.position_adjust_quantity) == float
 
     def generate_rebalance_trades_and_triggers(
             self,
