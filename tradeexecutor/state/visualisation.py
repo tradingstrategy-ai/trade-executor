@@ -53,6 +53,11 @@ class PlotShape(enum.Enum):
     #:
     #: See https://plotly.com/python/line-charts/?_ga=2.83222870.1162358725.1672302619-1029023258.1667666588#interpolation-with-line-plots
     horizontal_vertical = "hv"
+    
+    #: Individually specified points.
+    #: 
+    #: Typically used for event indicators e.g. cross over of two lines.
+    markers = "markers"
 
 
 @dataclass_json
@@ -89,20 +94,15 @@ class Plot:
     #: See https://plotly.com/python/line-charts/?_ga=2.83222870.1162358725.1672302619-1029023258.1667666588#interpolation-with-line-plots
     plot_shape: Optional[PlotShape] = PlotShape.linear
     
-    #: Horizontal line value.
-    #: Must be between the highest and lowest of the plot points
-    horizontal_line: Optional[float] = None
-    
-    #: Colour of the horizontal line
-    horizontal_line_colour: Optional[str] = None
-    
-    #: Size of the indicator plot relative to the price plot.
-    #:
-    #: The price plot is regarded as 1.0, and the indicator plot default is 0.2
-    relative_size: Optional[float] = 0.2
-    
     #: If this plot is overlayed on top of a detached technical indicator, this is the name of the overlay it should be attached to.
     detached_overlay_name: Optional[str]= None
+    
+    #: Optional indicator to determine the size of the indicator. 
+    #: 
+    #: For a line, this is the width of the line. 
+    #:
+    #: For a marker, this is the size of the marker.
+    indicator_size: Optional[float] = None
 
     def add_point(self,
                   timestamp: datetime.datetime,
@@ -244,12 +244,9 @@ class Visualisation:
              value: float,
              colour: Optional[str] = None,
              plot_shape: Optional[PlotShape] = PlotShape.linear,
-             horizontal_line: Optional[float] = None,
-             horizontal_line_colour: Optional[str] = None,
-             relative_size: Optional[float] = None,
              detached_overlay_name: str | None = None,
+             indicator_size: Optional[float] = None,
         ):
-        # sourcery skip: remove-unnecessary-cast
         """Add a value to the output data and diagram.
         
         Plots are stored by their name.
@@ -271,12 +268,27 @@ class Visualisation:
 
         :param plot_shape:
             PlotShape enum value e.g. Plotshape.linear or Plotshape.horizontal_vertical
-            
+        
         :param detached_overlay_name:
             If this plot is overlayed on top of a detached technical indicator, this is the name of the overlay it should be attached to.
+            
+        :param indicator_size:
+            Optional indicator to determine the size of the indicator. For a line, this is the width of the line. For a marker, this is the size of the marker.
         """
+        
+        def _get_helper_message(variable_name: str = None):
+            """Get a helper message to help the user fix the error. 
+            
+            Theses errors show up while running the backtest, so we can point the user directly to decide_trades to fix the error."""
+            
+            if not variable_name:
+                return ". You can adjust plot_indicator parameters in decide_trades to fix this error."
+            else:
+                return f". You can adjust {variable_name} in plot_indicator parameters in decide_trades to fix this error."
 
-        assert type(name) == str, "Got name"
+        assert (
+            type(name) == str
+        ), f"Got name{name} of type {str(type(name))}" + _get_helper_message("name")
 
         # Convert numpy.float32 and numpy.float64 to serializable float instances,
         # e.g. prices
@@ -284,18 +296,15 @@ class Visualisation:
             try:
                 value = float(value)
             except TypeError as e:
-                raise RuntimeError(f"Could not convert value {value} {value.__class__} to float") from e
+                raise RuntimeError(f"Could not convert value {value} {value.__class__} to float" + _get_helper_message("value")) from e
 
-        if relative_size:
-            assert kind == PlotKind.technical_indicator_detached, "Relative size is only supported for detached technical indicators"
-        
         if detached_overlay_name:
-            assert type(detached_overlay_name) is str, "Detached overlay must be a string"
-            assert kind == PlotKind.technical_indicator_overlay_on_detached, "Detached overlay must be a PlotKind.technical_indicator_overlay_on_detached"
-        
+            assert type(detached_overlay_name) is str, "Detached overlay must be a string" + _get_helper_message("detached_overlay_name")
+            assert kind == PlotKind.technical_indicator_overlay_on_detached, "Detached overlay must be a PlotKind.technical_indicator_overlay_on_detached" + _get_helper_message("kind")
+
         if kind == PlotKind.technical_indicator_overlay_on_detached:
-            assert detached_overlay_name and type(detached_overlay_name) == str, "Detached overlay must be a string for PlotKind.technical_indicator_overlay_on_detached"
-            
+            assert detached_overlay_name and type(detached_overlay_name) == str, "Detached overlay must be a string for PlotKind.technical_indicator_overlay_on_detached" + _get_helper_message("detached_overlay_name")
+
         plot = self.plots.get(name, Plot(name=name, kind=kind))
 
         plot.add_point(timestamp, value)
@@ -303,14 +312,10 @@ class Visualisation:
         plot.kind = kind
 
         plot.plot_shape = plot_shape
-        
-        plot.horizontal_line = horizontal_line
-        
-        plot.horizontal_line_colour = horizontal_line_colour
-        
-        plot.relative_size = relative_size
-        
+
         plot.detached_overlay_name = detached_overlay_name
+
+        plot.indicator_size = indicator_size
 
         if colour:
             plot.colour = colour
@@ -350,4 +355,5 @@ class Visualisation:
     def get_total_points(self) -> int:
         """Get number of data points stored in all plots."""
         return sum([len(p.points) for p in self.plots.values()])
+        
 

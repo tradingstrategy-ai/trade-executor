@@ -12,7 +12,9 @@ import pandas as pd
 from plotly import graph_objects as go
 
 
-from tradeexecutor.state.visualisation import Visualisation, Plot, PlotKind
+from tradeexecutor.state.visualisation import (
+    Visualisation, Plot, PlotKind, PlotShape
+)
 
 from tradingstrategy.charting.candle_chart import VolumeBarMode
 
@@ -69,64 +71,6 @@ def overlay_all_technical_indicators(
         else:
             raise ValueError(f"Unknown plot kind: {plot.plot_kind}")
 
-        # add horizontal line if needs be
-        if line_val := plot.horizontal_line:
-            _add_hline(fig, line_val, start_at, end_at, cur_row, plot)
-
-        
-
-def _get_initial_row(volume_bar_mode: VolumeBarMode):
-    """Get first row for plot based on volume bar mode."""
-    if volume_bar_mode in {VolumeBarMode.hidden, VolumeBarMode.overlay}:
-        cur_row = 1
-    elif volume_bar_mode == VolumeBarMode.separate:
-        cur_row = 2
-    else:
-        raise ValueError("Unknown volume bar mode: %s" % volume_bar_mode)
-    return cur_row
-
-def _add_hline(
-    fig: go.Figure, 
-    line_val: float,
-    start_at: pd.Timestamp | None, 
-    end_at: pd.Timestamp | None, 
-    cur_row: int, 
-    plot: Plot,
-):
-    """Add horizontal line to plot"""
-    
-    minimum = min(plot.points.values())
-    maximum = max(plot.points.values())
-    
-    assert minimum < line_val < maximum, f"Horizontal line value must be within range of plot. Plot range: {minimum} - {maximum}"
-    
-    start_at, end_at = _get_start_and_end(start_at, end_at, plot)
-
-    horizontal_line_colour = plot.horizontal_line_colour or "grey"
-
-    # Add a horizontal line to the first subplot
-    fig.add_shape(
-            type="line",
-            x0=start_at,
-            y0=line_val,
-            x1=end_at,
-            y1=line_val,
-            line=dict(color=horizontal_line_colour, width=1),
-            row=cur_row, col=1
-        )
-
-def _get_start_and_end(
-    start_at: pd.Timestamp | None, 
-    end_at: pd.Timestamp | None, 
-    plot: Plot,
-):
-    """Get first and last entry from plot if start_at and end_at are not set."""
-    if not start_at and end_at:
-        start_at = plot.get_first_entry()[0]
-        end_at = plot.get_last_entry()[0]
-    return start_at,end_at
-
-
 def visualise_technical_indicator(
         plot: Plot,
         start_at: Optional[pd.Timestamp] = None,
@@ -148,18 +92,10 @@ def visualise_technical_indicator(
     # Convert data columnar format
     df = export_plot_as_dataframe(plot, start_at, end_at)
 
-    if len(df) > 0:
-        return go.Scatter(
-            x=df["timestamp"],
-            y=df["value"],
-            mode="lines",
-            name=plot.name,
-            line=dict(color=plot.colour),
-            line_shape=plot.plot_shape.value
-        )
-    else:
+    if len(df) <= 0:
         return None
-
+    
+    return _get_plot(df, plot)
 
 def export_plot_as_dataframe(
         plot: Plot,
@@ -198,3 +134,63 @@ def export_plot_as_dataframe(
     df = pd.DataFrame(data)
     df = df.set_index(pd.DatetimeIndex(df["timestamp"]))
     return df
+
+
+def _get_initial_row(volume_bar_mode: VolumeBarMode):
+    """Get first row for plot based on volume bar mode."""
+    if volume_bar_mode in {VolumeBarMode.hidden, VolumeBarMode.overlay}:
+        cur_row = 1
+    elif volume_bar_mode == VolumeBarMode.separate:
+        cur_row = 2
+    else:
+        raise ValueError("Unknown volume bar mode: %s" % volume_bar_mode)
+    return cur_row
+
+def _get_plot(df: pd.DataFrame, plot: Plot):
+    """Get plot based on plot shape and plot size."""
+    if plot.plot_shape == PlotShape.markers:
+        return _get_marker_plot(df, plot)
+    elif plot.plot_shape in {PlotShape.linear, PlotShape.horizontal_vertical}:
+        return _get_linear_plot(df, plot)
+    else:
+        raise ValueError(f"Unknown plot shape: {plot.plot_shape}")
+
+def _get_marker_plot(df: pd.DataFrame, plot: Plot) -> go.Scatter:
+    """Get marker plot for event indicators i.e. individual points."""
+    if plot.indicator_size:
+        return go.Scatter(
+            x=df["timestamp"],
+            y=df["value"],
+            mode="markers",
+            name=plot.name,
+            marker=dict(color=plot.colour, size=plot.indicator_size),
+        )
+    else:
+        return go.Scatter(
+            x=df["timestamp"],
+            y=df["value"],
+            mode="markers",
+            name=plot.name,
+            marker=dict(color=plot.colour),
+        )
+
+def _get_linear_plot(df: pd.DataFrame, plot: Plot) -> go.Scatter:
+    """Get linear plot for standard indicators i.e. lines."""    
+    if plot.indicator_size:
+        return go.Scatter(
+            x=df["timestamp"],
+            y=df["value"],
+            mode="lines",
+            name=plot.name,
+            line=dict(color=plot.colour, width=plot.indicator_size),
+            line_shape=plot.plot_shape.value
+        )
+    else:
+        return go.Scatter(
+            x=df["timestamp"],
+            y=df["value"],
+            mode="lines",
+            name=plot.name,
+            line=dict(color=plot.colour),
+            line_shape=plot.plot_shape.value
+        )
