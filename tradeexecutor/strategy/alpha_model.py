@@ -6,6 +6,7 @@ from _decimal import Decimal
 
 from dataclasses import dataclass, field
 from io import StringIO
+from types import NoneType
 from typing import Optional, Dict, Iterable, List
 
 import pandas as pd
@@ -76,8 +77,8 @@ class TradingPairSignal:
     #:
     #: 0.98 means 2% stop loss over mid price at open.
     #:
-    #: Set to 0 to disable stop loss.
-    stop_loss: float = 0.0
+    #: Set to `None` to disable stop loss.
+    stop_loss: Optional[float] = None
 
     #: Take profit for this position
     #:
@@ -85,8 +86,8 @@ class TradingPairSignal:
     #:
     #: 1.02 means 2% take profit over mid price at open.
     #:
-    #: Set to 0 to disable stop loss.
-    take_profit: float = 0.0
+    #: Set to `None` to disable stop loss.
+    take_profit: Optional[float] = None
 
     #: Raw portfolio weight
     #:
@@ -289,8 +290,8 @@ class AlphaModel:
             self,
             pair: TradingPairIdentifier,
             alpha: float | np.float32,
-            stop_loss: Percent = 0,
-            take_profit: Percent = 0,
+            stop_loss: Percent | NoneType = None,
+            take_profit: Percent | NoneType = None,
             ):
         """Set trading pair alpha to a value.
 
