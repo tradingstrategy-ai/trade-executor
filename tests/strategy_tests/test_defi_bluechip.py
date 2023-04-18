@@ -12,6 +12,7 @@ from IPython.core.display_functions import display
 
 from tradeexecutor.analysis.alpha_model_analyser import create_alpha_model_timeline_all_assets, render_alpha_model_plotly_table, analyse_alpha_model_weights, \
     create_pair_weight_analysis_summary_table
+from tradeexecutor.analysis.fee_analyser import analyse_trading_fees, create_pair_trading_fee_summary_table
 from tradeexecutor.backtest.backtest_runner import run_backtest, setup_backtest
 from tradeexecutor.cli.log import setup_pytest_logging
 from tradeexecutor.statistics.summary import calculate_summary_statistics
@@ -115,3 +116,8 @@ def test_defi_bluechip(
     assert pair_weight_summary.iloc[0].name == "AAVE-WETH"
     assert pair_weight_summary.iloc[0]["normalised_weight"]["amax"] == 1.0
     #display(pair_weight_summary)
+
+    fee_analysis = analyse_trading_fees(state)
+    pair_fee_summary = create_pair_trading_fee_summary_table(fee_analysis)
+    #display(pair_fee_summary)
+
