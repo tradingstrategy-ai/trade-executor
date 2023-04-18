@@ -135,8 +135,8 @@ class TradeSummary:
     #: provided quantstats helper methods
     daily_returns: Optional[pd.Series] = None
     
-    winning_stop_losses: Optional[int] = None
-    losing_stop_losses: Optional[int] = None
+    winning_stop_losses: Optional[int] = 0
+    losing_stop_losses: Optional[int] = 0
     
     winning_stop_losses_percent: Optional[float] = field(init=False)
     losing_stop_losses_percent: Optional[float] = field(init=False)
