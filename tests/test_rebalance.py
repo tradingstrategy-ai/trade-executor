@@ -80,7 +80,9 @@ def weth_usdc(mock_exchange, usdc, weth) -> TradingPairIdentifier:
         "0x4",
         mock_exchange.address,
         internal_id=1,
-        internal_exchange_id=mock_exchange.exchange_id)
+        internal_exchange_id=mock_exchange.exchange_id,
+        fee=0.0030,
+    )
 
 
 @pytest.fixture
@@ -92,7 +94,8 @@ def aave_usdc(mock_exchange, usdc, aave) -> TradingPairIdentifier:
         "0x5",
         mock_exchange.address,
         internal_id=2,
-        internal_exchange_id=mock_exchange.exchange_id
+        internal_exchange_id=mock_exchange.exchange_id,
+        fee=0.0030,
     )
 
 
@@ -167,7 +170,7 @@ def routing_model(universe) -> BacktestRoutingModel:
 
 @pytest.fixture()
 def pricing_model(routing_model, universe) -> BacktestSimplePricingModel:
-    return BacktestSimplePricingModel(universe.universe.candles, routing_model)
+    return BacktestSimplePricingModel(universe.universe.candles, routing_model, allow_missing_fees=True)
 
 
 @pytest.fixture
@@ -350,16 +353,16 @@ def test_rebalance_trades_flip_position(
     assert t.is_sell()
     assert t.is_planned()
     assert t.pair == weth_usdc
-    assert t.planned_price == 1660
-    assert t.planned_quantity == -weth_quantity
-    assert t.get_planned_value() == 157.7
+    assert t.planned_price == 1664.99
+    assert t.planned_quantity == Decimal('-0.0944311377245508898337078562690294347703456878662109375')
+    assert t.get_planned_value() == pytest.approx(157.2269) # 157.7
 
     # Buy comes next,
     # with approx the same value
     t = trades[1]
     assert t.is_buy()
     assert t.is_planned()
-    assert t.planned_price == 100
+    assert t.planned_price == pytest.approx(100.29999999999998)
     assert t.get_planned_value() ==  157.7
 
 
@@ -412,17 +415,18 @@ def test_rebalance_trades_flip_position_partial(
     assert t.is_sell()
     assert t.is_planned()
     assert t.pair == weth_usdc
-    assert t.planned_price == 1660
+    assert t.planned_price == pytest.approx(1664.99)
     # Sell 30%
-    assert t.planned_quantity == pytest.approx(-(weth_quantity * Decimal(0.3)))
-    assert t.get_planned_value() == 47.31
+    #assert t.planned_quantity == pytest.approx(-(weth_quantity * Decimal(0.3)))
+    assert t.planned_quantity == pytest.approx(Decimal("-0.0283293413173652704195593088343230192549526691436767578125"))
+    assert t.get_planned_value() == pytest.approx(47.16807)
 
     # Buy comes next,
     # with approx the same value
     t = trades[1]
     assert t.is_buy()
     assert t.is_planned()
-    assert t.planned_price == 100
+    assert t.planned_price == pytest.approx(100.29999999999998)
     assert t.get_planned_value() == pytest.approx(47.31)
 
 
@@ -511,7 +515,7 @@ def test_alpha_model_trades_flip_position(
     # based on our total available equity
     portfolio = position_manager.get_current_portfolio()
     portfolio_target_value = portfolio.get_open_position_equity()
-    alpha_model.calculate_target_positions(portfolio_target_value)
+    alpha_model.calculate_target_positions(position_manager, portfolio_target_value)
 
     # Shift portfolio from current positions to target positions
     # determined by the alpha signals (momentum)
@@ -525,16 +529,18 @@ def test_alpha_model_trades_flip_position(
     assert t.is_sell()
     assert t.is_planned()
     assert t.pair == weth_usdc
-    assert t.planned_price == 1660
-    assert t.planned_quantity == -weth_quantity
-    assert t.get_planned_value() == 157.7
+    assert t.planned_price == pytest.approx(1664.99)
+    # assert t.planned_quantity == -weth_quantity
+    # assert t.get_planned_value() == 157.7
+    assert t.planned_quantity == pytest.approx(Decimal('-0.0944311377245508898337078562690294347703456878662109375'))
+    assert t.get_planned_value() == pytest.approx(157.2269)
 
     # Buy comes next,
     # with approx the same value
     t = trades[1]
     assert t.is_buy()
     assert t.is_planned()
-    assert t.planned_price == 100
+    assert t.planned_price == pytest.approx(100.29999999999998)
     assert t.get_planned_value() == 157.7
 
 
@@ -593,11 +599,11 @@ def test_alpha_model_flip_position_partially(
     # based on our total available equity
     portfolio = position_manager.get_current_portfolio()
     portfolio_target_value = portfolio.get_open_position_equity()
-    alpha_model.calculate_target_positions(portfolio_target_value)
+    alpha_model.calculate_target_positions(position_manager, portfolio_target_value)
 
     # Check we have 50% / 50%
-    assert alpha_model.get_signal_by_pair(weth_usdc).position_adjust < 0
-    assert alpha_model.get_signal_by_pair(aave_usdc).position_adjust > 0
+    assert alpha_model.get_signal_by_pair(weth_usdc).position_adjust_usd < 0
+    assert alpha_model.get_signal_by_pair(aave_usdc).position_adjust_usd > 0
 
     # Shift portfolio from current positions to target positions
     # determined by the alpha signals (momentum)
@@ -611,14 +617,16 @@ def test_alpha_model_flip_position_partially(
     assert t.is_sell()
     assert t.is_planned()
     assert t.pair == weth_usdc
-    assert t.planned_price == 1660
-    assert t.planned_quantity == pytest.approx(-weth_quantity / 2)
-    assert t.get_planned_value() == 78.85
+    assert t.planned_price == pytest.approx(1664.99)
+    # assert t.planned_quantity == pytest.approx(-weth_quantity / 2)
+    # assert t.get_planned_value() == 78.85
+    assert t.planned_quantity == pytest.approx(Decimal("-0.04721556886227544491685392813451471738517284393310546875"))
+    assert t.get_planned_value() == pytest.approx(78.61345)
 
     # Buy comes next,
     # buy 50% of AAVE
     t = trades[1]
     assert t.is_buy()
     assert t.is_planned()
-    assert t.planned_price == 100
+    assert t.planned_price == pytest.approx(100.29999999999998)
     assert t.get_planned_value() == 78.85

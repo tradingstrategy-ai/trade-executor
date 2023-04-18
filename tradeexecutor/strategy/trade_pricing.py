@@ -46,6 +46,10 @@ class TradePricing:
     #: How much liquidity provider fees we are going to pay on this trade.
     #:
     #: Set to None if data is not available.
+    #:
+    #: Each trading pair on path will have its own fees.
+    #: The list is the per path fees.
+    #:
     lp_fee: Optional[list[USDollarAmount]] = None
 
     #: What was the LP fee % used as the base of the calculations.
@@ -79,21 +83,22 @@ class TradePricing:
         """
         assert type(self.price) == float
         assert type(self.mid_price) == float
-        
+
+        # Convert legacy single lp_fee model to path based model
         if type(self.lp_fee) != list:
             object.__setattr__(self, 'lp_fee', [self.lp_fee])
         
         if type(self.pair_fee) != list:
             object.__setattr__(self, 'pair_fee', [self.pair_fee])
         
-        assert [type(_lp_fee) in {float, type(None)} for _lp_fee in self.lp_fee], f"lp_fee must be provided as type list with float or NoneType elements. Got Got lp_fee: {self.lp_fee} {type(self.lp_fee)}"
+        assert [type(_lp_fee) == float for _lp_fee in self.lp_fee], f"lp_fee must be provided as type list with float or NoneType elements. Got Got lp_fee: {self.lp_fee} {type(self.lp_fee)}"
         
         assert [type(_pair_fee) in {float, type(None)} for _pair_fee in self.pair_fee], f"pair_fee must be provided as a list with float, int, or NoneType elements. Got fee: {self.pair_fee} {type(self.pair_fee)} "
         
         if self.market_feed_delay is not None:
             assert isinstance(self.market_feed_delay, datetime.timedelta)
 
-        # Do safety checks for the price calculation
+        # Do sanity checks for the price calculation, e.g. in the case there has been a negative price somewhere
         if self.side is not None:
             if self.side:
                 assert self.price >= self.mid_price, f"Got bad buy pricing: {self.price} > {self.mid_price}"
@@ -101,15 +106,15 @@ class TradePricing:
                 assert self.price <= self.mid_price, f"Got bad sell pricing: {self.price} < {self.mid_price}"
                 
         if self.path:
-            assert [type(address) == TradingPairIdentifier for address in self.path], "path must be provided as a list of TradePairIdentifier" 
-    
-    def get_total_lp_fees(self):
+            assert [type(address) == TradingPairIdentifier for address in self.path], "path must be provided as a list of TradePairIdentifier"
+
+    def get_total_lp_fees(self) -> USDollarAmount:
         """Returns the total lp fees paid (dollars) for the trade."""
         if all(self.lp_fee):
             return sum(self.lp_fee)
         
         logger.warning("some trades don't have an associated lp fee")
-        return sum(filter(None,self.lp_fee))
+        return sum(filter(None, self.lp_fee))
     
     def get_fee_percentage(self):
         """Returns a single decimal value for the percentage of fees paid. 

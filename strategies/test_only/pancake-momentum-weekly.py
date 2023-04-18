@@ -299,7 +299,7 @@ def decide_trades(
     # based on our total available equity
     portfolio = position_manager.get_current_portfolio()
     portfolio_target_value = portfolio.get_total_equity() * value_allocated_to_positions
-    alpha_model.calculate_target_positions(portfolio_target_value)
+    alpha_model.calculate_target_positions(position_manager, portfolio_target_value)
 
     # Shift portfolio from current positions to target positions
     # determined by the alpha signals (momentum)

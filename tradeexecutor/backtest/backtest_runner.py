@@ -142,6 +142,7 @@ def setup_backtest_for_universe(
         max_slippage=0.01,
         validate_strategy_module=False,
         candle_time_frame: Optional[TimeBucket]=None,
+        allow_missing_fees=False,
     ):
     """High-level entry point for setting up a single backtest for a predefined universe.
 
@@ -151,6 +152,9 @@ def setup_backtest_for_universe(
 
     :param cycle_duration:
         Override the default strategy cycle duration
+
+    :param allow_missing_fees:
+        Legacy workaround
 
     :param candle_time_frame:
         Override the default strategy candle time bucket
@@ -173,7 +177,7 @@ def setup_backtest_for_universe(
     assert state.portfolio.get_current_cash() == initial_deposit
 
     # Set up execution and pricing
-    pricing_model = BacktestSimplePricingModel(universe.universe.candles, routing_model)
+    pricing_model = BacktestSimplePricingModel(universe.universe.candles, routing_model, allow_missing_fees=allow_missing_fees)
     execution_model = BacktestExecutionModel(wallet, max_slippage)
 
     # Load strategy Python file
@@ -266,11 +270,16 @@ def setup_backtest(
 
 def run_backtest(
         setup: BacktestSetup,
-        client: Optional[Client]=None) -> Tuple[State, TradingStrategyUniverse, dict]:
+        client: Optional[Client]=None,
+        allow_missing_fees=False,
+) -> Tuple[State, TradingStrategyUniverse, dict]:
     """Run a strategy backtest.
 
     Loads strategy file, construct trading universe is real data
     downloaded with Trading Strategy client.
+
+    :param allow_missing_fees:
+        Legacy workaround
 
     :return:
         Tuple(the final state of the backtest, trading universe, debug dump)
@@ -294,6 +303,7 @@ def run_backtest(
             universe,
             routing_model,
             data_delay_tolerance=guess_data_delay_tolerance(universe),
+            allow_missing_fees=allow_missing_fees,
         )
 
     def valuation_model_factory(pricing_model):
@@ -379,6 +389,7 @@ def run_backtest_inline(
     data_preload=True,
     data_delay_tolerance: Optional[pd.Timedelta] = None,
     name: str="backtest",
+    allow_missing_fees=False,
 ) -> Tuple[State, TradingStrategyUniverse, dict]:
     """Run backtests for given decide_trades and create_trading_universe functions.
 
@@ -450,6 +461,11 @@ def run_backtest_inline(
 
         This parameter is passed to :py:class:`tradeexecutor.backtest.backtest_pricing.BacktestSimplePricingModel`.
 
+    :param allow_missing_fees:
+        Allow synthetic data to lack fee information.
+
+        Only set in legacy backtests.
+
     :return:
         tuple (State of a completely executed strategy, trading strategy universe, debug dump dict)
     """
@@ -494,6 +510,7 @@ def run_backtest_inline(
             universe.universe.candles,
             routing_model,
             data_delay_tolerance=data_delay_tolerance,
+            allow_missing_fees=allow_missing_fees,
         )
     else:
         assert create_trading_universe, "Must give create_trading_universe if no universe given"
@@ -524,7 +541,7 @@ def run_backtest_inline(
         data_preload=data_preload,
     )
 
-    return run_backtest(backtest_setup, client)
+    return run_backtest(backtest_setup, client, allow_missing_fees=True)
 
 
 def guess_data_delay_tolerance(universe: TradingStrategyUniverse) -> pd.Timedelta:

@@ -76,7 +76,8 @@ def routing_model(synthetic_universe) -> BacktestRoutingModel:
 def pricing_model(synthetic_universe, routing_model) -> BacktestRoutingModel:
     pricing_model = BacktestSimplePricingModel(
         synthetic_universe.universe.candles,
-        routing_model
+        routing_model,
+        allow_missing_fees=True,
     )
     return pricing_model
 

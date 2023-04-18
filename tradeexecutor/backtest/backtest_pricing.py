@@ -46,7 +46,8 @@ class BacktestSimplePricingModel(PricingModel):
                 data_delay_tolerance=pd.Timedelta("2d"),
                 candle_timepoint_kind="open",
                 very_small_amount=Decimal("0.10"),
-                time_bucket: Optional[TimeBucket]=None,
+                time_bucket: Optional[TimeBucket] = None,
+                allow_missing_fees=False,
         ):
         """
 
@@ -77,6 +78,13 @@ class BacktestSimplePricingModel(PricingModel):
             The granularity of the price data.
 
             Currently used for diagnostics and debug only.
+
+        :param allow_missing_fees:
+            Allow trading pairs with missing fee information.
+
+            All trading pairs should have good fee information by default,
+            unless dealing with legacy tests.
+
         """
 
         # TODO: Remove later - now to support some old code111
@@ -91,6 +99,7 @@ class BacktestSimplePricingModel(PricingModel):
         self.candle_timepoint_kind = candle_timepoint_kind
         self.data_delay_tolerance = data_delay_tolerance
         self.time_bucket = time_bucket
+        self.allow_missing_fees = allow_missing_fees
 
     def __repr__(self):
         return f"<BacktestSimplePricingModel bucket: {self.time_bucket}, candles: {self.candle_universe}>"
@@ -115,6 +124,10 @@ class BacktestSimplePricingModel(PricingModel):
                        ts: datetime.datetime,
                        pair: TradingPairIdentifier,
                        quantity: Optional[Decimal]) -> TradePricing:
+
+        if quantity:
+            assert quantity > 0, f"Cannot sell negative amounts: {quantity} {pair}"
+
         # TODO: Include price impact
         pair_id = pair.internal_id
 
@@ -133,7 +146,13 @@ class BacktestSimplePricingModel(PricingModel):
             # Move price below mid price
             price = mid_price * (1 - pair_fee)
 
+            assert lp_fee > 0, f"Got bad fee: {pair} {quantity}: {lp_fee}"
+
         else:
+            # Fee information not available
+            if not self.allow_missing_fees:
+                raise AssertionError(f"Pair lacks fee information: {pair}")
+
             price = mid_price
             lp_fee = None
 
@@ -151,6 +170,9 @@ class BacktestSimplePricingModel(PricingModel):
                        ts: datetime.datetime,
                        pair: TradingPairIdentifier,
                        reserve: Optional[Decimal]) -> TradePricing:
+        """Get the price for a buy transaction."""
+
+        assert reserve is not None and reserve > 0, f"For a buy estimation, please fill in the allocated reserve amount for: {pair}. Got reserve: {reserve}"
 
         # TODO: Include price impact
         pair_id = pair.internal_id
@@ -171,8 +193,12 @@ class BacktestSimplePricingModel(PricingModel):
 
             # Move price above mid price
             price = mid_price * (1 + pair_fee)
+
+            assert lp_fee > 0, f"Got bad fee: {pair} {reserve}: {lp_fee}"
         else:
             # Fee information not available
+            if not self.allow_missing_fees:
+                raise AssertionError(f"Pair lacks fee information: {pair}")
             lp_fee = None
             price = mid_price
 

@@ -420,7 +420,7 @@ class TradeExecution:
             value = None
         
         # TODO standardize
-        #assert type(value) == float
+        # assert type(value) == float, f"Received lp_fees_estimated: {value} - {type(value)}"
         self._lp_fees_estimated = value
     
     def get_human_description(self) -> str:

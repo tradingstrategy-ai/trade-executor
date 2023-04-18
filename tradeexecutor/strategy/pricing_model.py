@@ -75,7 +75,7 @@ class PricingModel(abc.ABC):
             Trading pair we are intereted in
 
         :param reserve:
-            If the buy token quantity quantity is known,
+            If the buy token quantity is known,
             get the buy price with price impact.
 
         :return:

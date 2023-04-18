@@ -389,7 +389,8 @@ class PositionManager:
 
     def adjust_position(self,
                         pair: TradingPairIdentifier,
-                        dollar_amount_delta: USDollarAmount,
+                        dollar_delta: USDollarAmount,
+                        quantity_delta: Optional[Decimal],
                         weight: float,
                         stop_loss: Optional[Percent] = None,
                         take_profit: Optional[Percent] = None,
@@ -408,11 +409,21 @@ class PositionManager:
 
         This method is called by :py:func:`~tradeexecutor.strategy.pandas_trades.rebalance.rebalance_portfolio`.
 
+        .. warning ::
+
+            Adjust position cannot be used to close an existing position, because
+            epsilons in quantity math. Use :py:meth:`close_position` for this.
+
         :param pair:
             Trading pair which position we adjust
 
-        :param dollar_amount_delta:
-            How much we want to increase/decrease the position
+        :param dollar_delta:
+            How much we want to increase/decrease the position in US dollar terms.
+
+        :param quantity_delta:
+            How much we want to increase/decrease the position in the asset unit terms.
+
+            Used only when decreasing existing positions (selling).
 
         :param weight:
             What is the weight of the asset in the new target portfolio 0....1.
@@ -440,12 +451,16 @@ class PositionManager:
             List of trades to be executed to get to the desired
             position level.
         """
-        assert dollar_amount_delta != 0
+        assert dollar_delta != 0
         assert weight <= 1, f"Target weight cannot be over one: {weight}"
         assert weight >= 0, f"Target weight cannot be negative: {weight}"
 
         try:
-            price_structure = self.pricing_model.get_buy_price(self.timestamp, pair, dollar_amount_delta)
+            if dollar_delta > 0:
+                price_structure = self.pricing_model.get_buy_price(self.timestamp, pair, dollar_delta)
+            else:
+                price_structure = self.pricing_model.get_sell_price(self.timestamp, pair, abs(quantity_delta))
+
         except CandleSampleUnavailable as e:
             # Backtesting cannot fetch price for an asset,
             # probably not enough data and the pair is trading early?
@@ -466,13 +481,13 @@ class PositionManager:
 
         slippage_tolerance = slippage_tolerance or self.default_slippage_tolerance
 
-        if dollar_amount_delta > 0:
+        if dollar_delta > 0:
             # Buy
             position, trade, created = self.state.create_trade(
                 self.timestamp,
                 pair=pair,
                 quantity=None,
-                reserve=Decimal(dollar_amount_delta),
+                reserve=Decimal(dollar_delta),
                 assumed_price=price,
                 trade_type=TradeType.rebalance,
                 reserve_currency=self.reserve_currency,
@@ -485,38 +500,34 @@ class PositionManager:
         else:
             # Sell
             # Convert dollar amount to quantity of the last known price
+
+            assert quantity_delta is not None
+            assert quantity_delta < 0, f"Received non-negative sell quantity {quantity_delta} for {pair}"
+
             position = self.state.portfolio.get_position_by_trading_pair(pair)
-            assert position is not None, f"Assumed {pair} has open position because of attempt sell at {dollar_amount_delta} USD adjust"
-
-            assumed_price = position.get_current_price()
-
-            if weight != 0:
-                quantity_delta = Decimal(dollar_amount_delta / assumed_price)
-                assert quantity_delta < 0
-            else:
-                # Sell the whole position, using precise accounting
-                # amount to avoid collecting dust holdings
-                quantity_delta = -position.get_quantity()
+            assert position is not None, f"Assumed {pair} has open position because of attempt sell at {dollar_delta} USD adjust"
 
             position, trade, created = self.state.create_trade(
                 self.timestamp,
                 pair=pair,
-                quantity=quantity_delta,
+                quantity=Decimal(quantity_delta),
                 reserve=None,
-                assumed_price=assumed_price,
+                assumed_price=price_structure.price,
                 trade_type=TradeType.rebalance,
                 reserve_currency=self.reserve_currency,
                 reserve_currency_price=reserve_price,
                 planned_mid_price=price_structure.mid_price,
+                lp_fees_estimated=price_structure.get_total_lp_fees(),
                 slippage_tolerance=slippage_tolerance,
                 price_structure=price_structure,
             )
+
+        assert trade.lp_fees_estimated > 0, f"LP fees estimated: {trade.lp_fees_estimated} - {trade}"
 
         # Update stop loss for this position
         if stop_loss:
             assert stop_loss < 1, f"Got stop loss {stop_loss}"
             position.stop_loss = price_structure.mid_price * stop_loss
-
 
         if take_profit:
             assert take_profit > 1, f"Got take profit {take_profit}"
@@ -633,3 +644,31 @@ class PositionManager:
 
         return trades
 
+    def estimate_asset_quantity(
+            self,
+            pair: TradingPairIdentifier,
+            dollar_amount: USDollarAmount,
+    ) -> float:
+        """Convert dollar amount to the quantity of a token.
+        
+        Use the market mid-price of the timestamp.
+
+        :param pair:
+            Trading pair of which base pair we estimate.
+
+        :param dollar_amount:
+            Get the asset quantity for this many dollars.
+
+        :return:
+            Asset quantity.
+
+            The sign of the asset quantity is the same as the sign of `dollar_amount` parameter.
+
+            We return as float, because the exact quantity is never known due the price fluctuations and slippage.
+
+        """
+        assert dollar_amount, f"Got dollar amount: {dollar_amount}"
+        timestamp = self.timestamp
+        pricing_model = self.pricing_model
+        price = pricing_model.get_mid_price(timestamp, pair)
+        return float(dollar_amount / price)
