@@ -290,6 +290,9 @@ def test_enzyme_execute_close_position(
     assert state.portfolio.get_total_equity() == pytest.approx(Decimal(497.011924))
 
 
+# Some Anvil flakiness on Github
+# FAILED tests/enzyme/test_enzyme_trade.py::test_enzyme_lp_fees - AssertionError: Timestamp missing for block number 46, hash 0x6186d5d75328e7ebb6fef627fbed2a185448c96c65970135e0b7cf673eadf3a2
+@flaky.flaky()
 def test_enzyme_lp_fees(
     web3: Web3,
     deployer: HexAddress,
