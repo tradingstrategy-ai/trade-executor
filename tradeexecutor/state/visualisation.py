@@ -57,7 +57,7 @@ class PlotShape(enum.Enum):
     #: Individually specified points.
     #: 
     #: Typically used for event indicators e.g. cross over of two lines.
-    marker = "markers"
+    markers = "markers"
 
 
 @dataclass_json

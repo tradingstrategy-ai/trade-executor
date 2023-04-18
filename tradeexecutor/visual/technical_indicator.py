@@ -148,7 +148,7 @@ def _get_initial_row(volume_bar_mode: VolumeBarMode):
 
 def _get_plot(df: pd.DataFrame, plot: Plot):
     """Get plot based on plot shape and plot size."""
-    if plot.plot_shape == PlotShape.marker:
+    if plot.plot_shape == PlotShape.markers:
         return _get_marker_plot(df, plot)
     elif plot.plot_shape in {PlotShape.linear, PlotShape.horizontal_vertical}:
         return _get_linear_plot(df, plot)
