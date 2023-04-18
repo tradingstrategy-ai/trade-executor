@@ -315,7 +315,11 @@ def test_basic_summary_statistics(
     assert summary.max_pos_cons == 1
     assert summary.max_pullback == pytest.approx(-0.01703492069936046, rel=APPROX_REL)
 
+    assert summary.winning_stop_losses == 0
+    assert summary.winning_stop_losses_percent is None
 
+    assert summary.losing_stop_losses == 0
+    assert summary.losing_stop_losses_percent is None
 
 def test_advanced_summary_statistics(
     summary: TradeSummary
