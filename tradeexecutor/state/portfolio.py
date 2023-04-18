@@ -1,10 +1,12 @@
 """Portfolio state management."""
 
 import datetime
+import copy
 from dataclasses import dataclass, field
 from decimal import Decimal
 from itertools import chain
 from typing import Dict, Iterable, Optional, Tuple, List, Callable
+from pandas import Timestamp
 
 from dataclasses_json import dataclass_json
 
@@ -129,6 +131,53 @@ class Portfolio:
     def get_all_positions(self) -> Iterable[TradingPosition]:
         """Get open, closed and frozen, positions."""
         return chain(self.open_positions.values(), self.closed_positions.values(), self.frozen_positions.values())
+    
+    def get_all_positions_filtered(self) -> Iterable[TradingPosition]:
+        """Get open, closed and frozen, positions filtered to remove
+        repaired or failed trades.
+        
+        """
+        
+        all_positions = self.get_all_positions()
+        filtered_positions = []
+
+        for position in all_positions:
+            
+            # to avoid copying with same reference
+            filtered_position = copy.deepcopy(position)
+            filtered_position.trades = {}
+            
+            for key, trade in position.trades.items():
+                if trade.is_repaired() or trade.is_repair_trade():
+                    # These trades have quantity set to zero
+                    continue
+
+                # filter out failed trade
+                if trade.executed_at is None:
+                    continue
+                
+                # Internally negative quantities are for sells
+                quantity = trade.executed_quantity
+
+                if trade.planned_mid_price not in (0, None):
+                    price = trade.planned_mid_price
+                else:
+                    # TODO: Legacy trades.
+                    # mid_price is filled to all latest trades
+                    price = trade.executed_price
+                    
+                assert quantity != 0, f"Got bad quantity for {trade}"
+                assert (price is not None) and price > 0, f"Got invalid trade {trade.get_full_debug_dump_str()} - price is {price}"
+
+                filtered_position.trades[key] = trade
+
+            # if there are no trades, skip this position
+            if not filtered_position.trades:
+                continue
+
+            filtered_positions.append(filtered_position)
+
+        return filtered_positions
 
     def get_open_positions(self) -> Iterable[TradingPosition]:
         """Get currently open positions."""
@@ -618,6 +667,15 @@ class Portfolio:
             if t.executed_at and last.executed_at and (t.executed_at > last.executed_at):
                 last = t
         return first, last
+    
+    def get_strategy_duration(self) -> Optional[datetime.timedelta]:
+        """How long did the strategy run for."""
+        first, last = self.get_first_and_last_executed_trade()
+        
+        if first and last:
+            return last.executed_at - first.executed_at
+        else:
+            return None
 
     def get_initial_deposit(self) -> Optional[USDollarAmount]:
         """How much we invested at the beginning of a backtest.
@@ -660,4 +718,5 @@ class Portfolio:
             reserve_token_price=None,
             last_pricing_at=None,
         )
-
+        
+        

@@ -1,6 +1,7 @@
 """Execute trades using Enzyme vault."""
 import datetime
 import secrets
+import flaky
 from decimal import Decimal
 
 import pytest
@@ -119,6 +120,8 @@ def test_enzyme_redeem_reserve(
     assert state.portfolio.get_total_equity() == pytest.approx(250)
 
 
+# AssertionError: Timestamp missing for block number 46, hash 0xa1069a48792f212348ad4a002fb62807c5101e8a2c1b5f0eb3860da54c80e1a4
+@flaky.flaky()
 def test_enzyme_redeem_open_position(
     web3: Web3,
     deployer: HexAddress,

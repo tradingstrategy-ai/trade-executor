@@ -325,6 +325,7 @@ class TradeExecution:
     #:
     #: TradePricing instance can refer to more than one swap
     price_structure: Optional[TradePricing] = None
+    
 
     def __repr__(self):
         if self.is_buy():
@@ -381,14 +382,6 @@ class TradeExecution:
         """
         return self._fee_tier
 
-    @property
-    def lp_fees_estimated(self) -> float:
-        """LP fees estimated in the USD.
-        This is set before the execution and is mostly useful
-        for backtesting.
-        """
-        return self._lp_fees_estimated
-    
     @fee_tier.setter
     def fee_tier(self, value):
         """Setter for fee_tier.
@@ -408,7 +401,15 @@ class TradeExecution:
             self._fee_tier = self.pair.fee
         else:
             self._fee_tier = value
-    
+
+    @property
+    def lp_fees_estimated(self) -> float:
+        """LP fees estimated in the USD.
+        This is set before the execution and is mostly useful
+        for backtesting.
+        """
+        return self._lp_fees_estimated
+
     @lp_fees_estimated.setter
     def lp_fees_estimated(self, value):
         """Setter for lp_fees_estimated"""

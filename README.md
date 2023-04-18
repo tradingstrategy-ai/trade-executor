@@ -39,6 +39,12 @@ git submodule update --init --recursive
 poetry install -E web-server -E execution -E qstrader -E quantstats
 ``` 
 
+Or with pip:
+
+```shell
+pip install -e ".[web-server,execution,qstrader,quantstats]" 
+```
+
 ## Architecture overview
 
 ![Archiecture overview](docs/deployment-overview.drawio.svg)

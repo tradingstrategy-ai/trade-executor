@@ -61,7 +61,12 @@ class TradingPairSignal:
 
     #: Raw signal
     #:
-    #: E.g. raw value of the momentum
+    #: E.g. raw value of the momentum.
+    #:
+    #: Can be any number between ]-inf, inf[
+    #:
+    #: Set zero for pairs that are discarded, e.g. due to risk assessment.
+    #:
     signal: float
 
     #: Stop loss for this position
@@ -157,7 +162,7 @@ class TradingPairSignal:
             self.signal = float(self.signal)
 
     def __repr__(self):
-        return f"Pair: {self.pair.get_ticker()} old weight: {self.old_weight:.4f} old value: {self.old_value:,} new weight: {self.normalised_weight:.4f} new value: {self.position_target:,} adjust: {self.position_adjust:,}"
+        return f"Pair: {self.pair.get_ticker()} old weight: {self.old_weight:.4f} old value: {self.old_value:,} raw signal:{self.signal:.4f} normalised weight: {self.normalised_weight:.4f} new value: {self.position_target:,} adjust: {self.position_adjust:,}"
 
     def has_trades(self) -> bool:
         """Did/should this signal cause any trades to be executed.
@@ -200,7 +205,25 @@ class AlphaModel:
     #:
     timestamp: Optional[datetime.datetime] = None
 
-    #: Pair internal id -> trading signal data
+    #: Calculated signals for all trading pairs.
+    #:
+    #: Pair internal id -> trading signal data.
+    #:
+    #: For all trading pairs in the model.
+    #:
+    #: Set by :py:meth:`set_signal`
+    #:
+    raw_signals: Dict[PairInternalId, TradingPairSignal] = field(default_factory=dict)
+
+    #: The chosen top signals.
+    #:
+    #: Pair internal id -> trading signal data.
+    #:
+    #: For signals chosen for the rebalance, e.g. top 5 long signals.
+    #:
+    #:
+    #: Set by :py:meth:`select_top_signals`
+    #:
     signals: Dict[PairInternalId, TradingPairSignal] = field(default_factory=dict)
 
     #: How much we can afford to invest on this cycle
@@ -288,8 +311,8 @@ class AlphaModel:
 
         if alpha == 0:
             # Delete so that the pair so that it does not get any further computations
-            if pair.internal_id in self.signals:
-                del self.signals[pair.internal_id]
+            if pair.internal_id in self.raw_signals:
+                del self.raw_signals[pair.internal_id]
 
         else:
             signal = TradingPairSignal(
@@ -298,7 +321,7 @@ class AlphaModel:
                 stop_loss=stop_loss,
                 take_profit=take_profit,
             )
-            self.signals[pair.internal_id] = signal
+            self.raw_signals[pair.internal_id] = signal
 
     def set_old_weight(
             self,
@@ -318,12 +341,35 @@ class AlphaModel:
                 old_value=old_value,
             )
 
-    def select_top_signals(self, count: int):
+    def select_top_signals(self,
+                           count: int,
+                           threshold=0.0,
+                           ):
         """Chooses top long signals.
 
-        Modifies :py:attr:`weights` in-place.
+        Sets :py:attr:`signals` attribute of the model
+
+        Example:
+
+        .. code-block:: python
+
+            alpha_model.select_top_signals(
+                count=5,  # Pick top 5 trading pairs
+                threshold=0.01,  # Need at least 1% signal certainty to be eligible
+            )
+
+        :param count:
+            How many signals to pick
+
+        :param threshold:
+            If the raw signal value is lower than this threshold then don't pick the signal.
+
+            Inclusive.
+
+            `0.01 = 1%` signal strenght.
         """
-        top_signals = heapq.nlargest(count, self.signals.values(), key=lambda s: s.raw_weight)
+        filtered_signals = [s for s in self.raw_signals.values() if s.signal >= threshold]
+        top_signals = heapq.nlargest(count, filtered_signals, key=lambda s: s.raw_weight)
         self.signals = {s.pair.internal_id: s for s in top_signals}
 
     def normalise_weights(self):

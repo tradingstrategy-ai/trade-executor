@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Tuple, Dict, List
 
 import pandas as pd
+import numpy as np
 import plotly.graph_objects as go
 
 from tradeexecutor.state.identifier import TradingPairIdentifier
@@ -281,3 +282,80 @@ def create_alpha_model_timeline_all_assets(
 
     df = pd.DataFrame(rows, columns=headers)
     return df
+
+
+def analyse_alpha_model_weights(
+        state: State,
+        universe: TradingStrategyUniverse,
+) -> pd.DataFrame:
+    """Create overview table of all signals collected over a backtest run.
+
+    Create a human-readable table of alpha model signal development over time.
+    Allows you to inspect what signal strenght each pair received at each point of time.
+
+    :return:
+        DataFrame with the following columns.
+
+        - cycle_number
+
+        - timestamp
+
+        - pair_ticker
+
+        - signal
+
+        - raw_weight
+
+        - normalised_weight
+
+        - profit_before_trades_pct
+
+    """
+
+    pair_universe = universe.universe.pairs
+
+    alpha_model_collection = state.visualisation.calculations
+    assert alpha_model_collection is not None
+
+    rows = []
+
+    for cycle_number, raw_data in alpha_model_collection.items():
+        snapshot: AlphaModel = AlphaModel.from_dict(raw_data)
+        timestamp = snapshot.timestamp
+        for pair_id, signal_data in snapshot.raw_signals.items():
+            dex_pair = pair_universe.get_pair_by_id(pair_id)
+            pair = translate_trading_pair(dex_pair)
+
+            row = {
+                "cycle_number": cycle_number,
+                "timestamp": timestamp,
+                "pair_id": pair.internal_id,
+                "pair_ticker": pair.get_ticker(),
+                "position_id": signal_data.position_id,
+                "signal": signal_data.signal,
+                "raw_weight": signal_data.raw_weight,
+                "normalised_weight": signal_data.normalised_weight,
+                "profit_before_trade_pct": signal_data.profit_before_trades_pct,
+            }
+
+            rows.append(row)
+
+    return pd.DataFrame(rows)
+
+
+def create_pair_weight_analysis_summary_table(analysis: pd.DataFrame) -> pd.DataFrame:
+    """Creates a summary table where we find the signal summaries for each ticker"""
+
+    # https://pandas.pydata.org/docs/reference/api/pandas.pivot_table.html
+
+    agg_funcs = {
+        "signal": [np.max, np.min, np.mean],
+        "normalised_weight": [np.max, np.min, np.mean],
+    }
+
+    return pd.pivot_table(
+        analysis,
+        index=['pair_ticker'],
+        values=['signal', 'normalised_weight'],
+        aggfunc=agg_funcs)
+
