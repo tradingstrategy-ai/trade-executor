@@ -108,10 +108,6 @@ class TradePricing:
         if self.path:
             assert [type(address) == TradingPairIdentifier for address in self.path], "path must be provided as a list of TradePairIdentifier"
 
-        # Catch errors when we create fee objects
-        fees = self.get_total_lp_fees()
-        assert fees > 0, f"The price structure has missing or broken LP fees: {self}, got LP fees {fees} USD"
-    
     def get_total_lp_fees(self) -> USDollarAmount:
         """Returns the total lp fees paid (dollars) for the trade."""
         if all(self.lp_fee):

@@ -124,6 +124,10 @@ class BacktestSimplePricingModel(PricingModel):
                        ts: datetime.datetime,
                        pair: TradingPairIdentifier,
                        quantity: Optional[Decimal]) -> TradePricing:
+
+        if quantity:
+            assert quantity > 0, f"Cannot sell negative amounts: {quantity} {pair}"
+
         # TODO: Include price impact
         pair_id = pair.internal_id
 
@@ -168,7 +172,7 @@ class BacktestSimplePricingModel(PricingModel):
                        reserve: Optional[Decimal]) -> TradePricing:
         """Get the price for a buy transaction."""
 
-        assert reserve is not None and reserve > 0, f"For a buy estimation, please fill in the allocated reserve amount for: {pair}"
+        assert reserve is not None and reserve > 0, f"For a buy estimation, please fill in the allocated reserve amount for: {pair}. Got reserve: {reserve}"
 
         # TODO: Include price impact
         pair_id = pair.internal_id

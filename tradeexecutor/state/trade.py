@@ -417,11 +417,10 @@ class TradeExecution:
         if type(value) is property:
             # hack
             # See comment on this post: https://florimond.dev/en/posts/2018/10/reconciling-dataclasses-and-properties-in-python/
-            import ipdb ; ipdb.set_trace()
             value = None
         
         # TODO standardize
-        assert type(value) == float, f"Received lp_fees_estimated: {value} - {type(value)}"
+        # assert type(value) == float, f"Received lp_fees_estimated: {value} - {type(value)}"
         self._lp_fees_estimated = value
     
     def get_human_description(self) -> str:

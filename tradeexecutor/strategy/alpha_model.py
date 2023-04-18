@@ -2,6 +2,7 @@
 import datetime
 import heapq
 import logging
+from _decimal import Decimal
 
 from dataclasses import dataclass, field
 from io import StringIO
@@ -119,10 +120,22 @@ class TradingPairSignal:
 
     #: How much we are going to increase/decrease the position on this strategy cycle.
     #:
+    #: Used when the position increases and we need to know how
+    #: many dollars we need to spend to buy more.
+    #:
     #: If this is a positive, then we need to make a buy trade for this amount to
     #: reach out target position for this cycle. If negative then we need
     #: to decrease our position.
-    position_adjust: USDollarAmount = 0.0
+    position_adjust_usd: USDollarAmount = 0.0
+
+    #: How much we are going to increase/decrease the position on this strategy cycle.
+    #:
+    #: Used when the position decreases and we need to know
+    #: how many units of asset we need to sell to get to the :py:attr:`position_target`.
+    #:
+    #: At the momeny always negative and available only when decreasing a position..
+    #:
+    position_adjust_quantity: Decimal = 0.0
 
     #: Trading position that is controlled by this signal.
     #:
@@ -162,7 +175,7 @@ class TradingPairSignal:
             self.signal = float(self.signal)
 
     def __repr__(self):
-        return f"Pair: {self.pair.get_ticker()} old weight: {self.old_weight:.4f} old value: {self.old_value:,} raw signal:{self.signal:.4f} normalised weight: {self.normalised_weight:.4f} new value: {self.position_target:,} adjust: {self.position_adjust:,}"
+        return f"Pair: {self.pair.get_ticker()} old weight: {self.old_weight:.4f} old value: {self.old_value:,} raw signal:{self.signal:.4f} normalised weight: {self.normalised_weight:.4f} new value: {self.position_target:,} adjust: {self.position_adjust_usd:,}"
 
     def has_trades(self) -> bool:
         """Did/should this signal cause any trades to be executed.
@@ -436,7 +449,7 @@ class AlphaModel:
 
         return diffs
 
-    def calculate_target_positions(self, investable_equity: USDollarAmount):
+    def calculate_target_positions(self, position_manager: PositionManager, investable_equity: USDollarAmount):
         """Calculate individual dollar amount for each position based on its normalised weight."""
         # dollar_values = {pair_id: weight * investable_equity for pair_id, weight in diffs.items()}
 
@@ -444,7 +457,14 @@ class AlphaModel:
 
         for s in self.iterate_signals():
             s.position_target = s.normalised_weight * investable_equity
-            s.position_adjust = s.position_target - s.old_value
+            s.position_adjust_usd = s.position_target - s.old_value
+
+            if s.position_adjust_usd < 0:
+                # Decreasing positions by selling the token
+                # A lot of options here how to go about this.
+                # We might get some minor position size skew here because fees not included
+                # for these transactions
+                s.position_adjust_quantity = position_manager.estimate_asset_quantity(s.pair, s.position_adjust_usd)
 
     def generate_rebalance_trades_and_triggers(
             self,
@@ -484,7 +504,8 @@ class AlphaModel:
         for signal in self.iterate_signals():
             pair = signal.pair
 
-            dollar_diff = signal.position_adjust
+            dollar_diff = signal.position_adjust_usd
+            quantity_diff = signal.position_adjust_quantity
             value = signal.position_target
 
             # Do backtesting record keeping
@@ -508,6 +529,7 @@ class AlphaModel:
                 position_rebalance_trades = position_manager.adjust_position(
                     pair,
                     dollar_diff,
+                    quantity_diff,
                     signal.normalised_weight,
                     stop_loss=signal.stop_loss,
                     take_profit=signal.take_profit,
