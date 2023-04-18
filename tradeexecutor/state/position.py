@@ -49,9 +49,10 @@ class TriggerPriceUpdate:
 
     take_profit_after: Optional[USDollarAmount]
 
-
     def __post_init__(self):
         # Currently we only support trailing stop loss upwards
+        assert isinstance(self.timestamp, datetime.datetime)
+        assert type(self.mid_price) == float
         if self.stop_loss_before:
             assert self.stop_loss_before < self.stop_loss_after
 
