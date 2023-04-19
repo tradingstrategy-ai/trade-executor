@@ -187,6 +187,7 @@ class TradingPosition:
     #: Every time a trigger price is moved e.g. for a trailing stop loss,
     #  we make a record here for future analysis.
     #:
+    #: Trigger updates are stored oldest first.
     #:
     trigger_updates: List[TriggerPriceUpdate] = field(default_factory=list)
 

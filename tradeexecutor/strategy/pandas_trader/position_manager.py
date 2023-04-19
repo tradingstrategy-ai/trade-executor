@@ -398,10 +398,11 @@ class PositionManager:
     def adjust_position(self,
                         pair: TradingPairIdentifier,
                         dollar_delta: USDollarAmount,
-                        quantity_delta: Optional[Decimal],
+                        quantity_delta: Optional[float],
                         weight: float,
                         stop_loss: Optional[Percent] = None,
                         take_profit: Optional[Percent] = None,
+                        trailing_stop_loss: Optional[Percent] = None,
                         slippage_tolerance: Optional[float] = None,
                         ) -> List[TradeExecution]:
         """Adjust holdings for a certain position.
@@ -536,6 +537,12 @@ class PositionManager:
         if stop_loss:
             assert stop_loss < 1, f"Got stop loss {stop_loss}"
             position.stop_loss = price_structure.mid_price * stop_loss
+
+        if trailing_stop_loss:
+            assert not stop_loss, "Only trailing_stop_loss or stop_loss can be set"
+            assert trailing_stop_loss < 1, f"Got trailing_stop_loss {trailing_stop_loss}"
+            position.stop_loss = price_structure.mid_price * trailing_stop_loss
+            position.trailing_stop_loss_pct = trailing_stop_loss
 
         if take_profit:
             assert take_profit > 1, f"Got take profit {take_profit}"

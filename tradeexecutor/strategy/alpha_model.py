@@ -78,7 +78,7 @@ class TradingPairSignal:
     #: 0.98 means 2% stop loss over mid price at open.
     #:
     #: Set to `None` to disable stop loss.
-    stop_loss: Optional[float] = None
+    stop_loss: Optional[Percent] = None
 
     #: Take profit for this position
     #:
@@ -87,7 +87,13 @@ class TradingPairSignal:
     #: 1.02 means 2% take profit over mid price at open.
     #:
     #: Set to `None` to disable stop loss.
-    take_profit: Optional[float] = None
+    take_profit: Optional[Percent] = None
+
+    #: Trailing stop loss for this position
+    #:
+    #: See :py:attr:`tradeexecutor.state.position.TradingPosition.trailing_stop_loss_pct` for details.
+    #:
+    trailing_stop_loss: Optional[Percent] = None
 
     #: Raw portfolio weight
     #:
@@ -292,6 +298,7 @@ class AlphaModel:
             alpha: float | np.float32,
             stop_loss: Percent | NoneType = None,
             take_profit: Percent | NoneType = None,
+            trailing_stop_loss: Percent | NoneType = None,
             ):
         """Set trading pair alpha to a value.
 
@@ -319,6 +326,13 @@ class AlphaModel:
             As the percentage of the position value.
 
             `1.02` means 2% take profit.
+
+        :param trailing_stop_loss:
+            Trailing stop loss threshold for this pair.
+
+            As the percentage of the position value.
+
+            `0.98` means 2% trailing stop loss.
         """
 
         # Don't let Numpy values beyond this point, as
@@ -337,6 +351,7 @@ class AlphaModel:
                 signal=alpha,
                 stop_loss=stop_loss,
                 take_profit=take_profit,
+                trailing_stop_loss=trailing_stop_loss,
             )
             self.raw_signals[pair.internal_id] = signal
 
@@ -538,6 +553,7 @@ class AlphaModel:
                     signal.normalised_weight,
                     stop_loss=signal.stop_loss,
                     take_profit=signal.take_profit,
+                    trailing_stop_loss=signal.trailing_stop_loss,
                 )
 
                 assert len(position_rebalance_trades) == 1, "Assuming always on trade for rebalacne"
