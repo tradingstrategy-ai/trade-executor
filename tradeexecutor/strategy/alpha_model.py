@@ -25,10 +25,6 @@ from tradeexecutor.strategy.weighting import weight_by_1_slash_n, check_normalis
 logger = logging.getLogger(__name__)
 
 
-#: If position weight is less than 0.5% always close it
-CLOSE_POSITION_WEIGHT_EPSILON = 0.005
-
-
 @dataclass_json
 @dataclass(slots=True)
 class TradingPairSignal:
@@ -255,6 +251,13 @@ class AlphaModel:
 
     #: How much we can afford to invest on this cycle
     investable_equity: Optional[USDollarAmount] = 0.0
+
+    #: Determine the lower threshold for a position weight.
+    #:
+    #: Clean up "dust" by explicitly closing positions if they fall too small.
+    #:
+    #: If position weight is less than 0.5% always close it
+    close_position_weight_epsilon: Percent = 0.005
 
     def __post_init__(self):
         if self.timestamp is not None:
@@ -551,7 +554,7 @@ class AlphaModel:
                 signal.position_adjust_ignored = True
             else:
 
-                if signal.normalised_weight < CLOSE_POSITION_WEIGHT_EPSILON:
+                if signal.normalised_weight < self.close_position_weight_epsilon:
                     # Explicit close to avoid rounding issues
                     position = position_manager.get_current_position_for_pair(signal.pair)
                     if position:
