@@ -99,10 +99,10 @@ class TradingPairSignal:
     #:
     #: Each raw signal is assigned to a weight based on some methodology,
     #: e.g. 1/N where the highest signal gets 50% of portfolio weight.
-    raw_weight: float = 0.0
+    raw_weight: Percent = 0.0
 
     #: Weight 0...1 so that all portfolio weights sum to 1
-    normalised_weight: float = 0.0
+    normalised_weight: Percent = 0.0
 
     #: Old weight of this pair from the previous cycle.
     #:
@@ -111,7 +111,7 @@ class TradingPairSignal:
     #: The old weight is always normalised.
     #:
     #: This can be dynamically calculated from the :py:class:`tradeexecutor.state.portfolio.Portfolio` state.
-    old_weight: float = 0.0
+    old_weight: Percent = 0.0
 
     #: Old US Dollar value of this value from the previous cycle.
     #:
