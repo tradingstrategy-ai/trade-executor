@@ -532,8 +532,8 @@ def test_alpha_model_trades_flip_position(
     assert t.planned_price == pytest.approx(1664.99)
     # assert t.planned_quantity == -weth_quantity
     # assert t.get_planned_value() == 157.7
-    assert t.planned_quantity == pytest.approx(Decimal('-0.0944311377245508898337078562690294347703456878662109375'))
-    assert t.get_planned_value() == pytest.approx(157.2269)
+    assert t.planned_quantity == pytest.approx(Decimal('-0.0950000000000000011102230246'))
+    assert t.get_planned_value() == pytest.approx(158.17405)
 
     # Buy comes next,
     # with approx the same value

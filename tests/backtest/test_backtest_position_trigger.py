@@ -28,6 +28,7 @@ from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel
 from tradeexecutor.backtest.backtest_runner import run_backtest, setup_backtest_for_universe, run_backtest_inline
 from tradeexecutor.cli.log import setup_pytest_logging
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
+from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.cycle import CycleDuration
@@ -156,6 +157,57 @@ def take_profit_decide_trades_factory(take_profit_pct=None):
                     else:
                         # Stop loss inactive
                         trades += position_manager.open_1x_long(pair, cash * 0.1)
+
+        return trades
+
+    return stop_loss_decide_trades
+
+
+def trailing_stop_loss_decide_trades_factory(trailing_stop_loss_pct=None):
+    """Factory allows easily test the strategy with different traikign stop loss parameters."""
+
+    def stop_loss_decide_trades(
+            timestamp: pd.Timestamp,
+            universe: Universe,
+            state: State,
+            pricing_model: PricingModel,
+            cycle_debug_data: Dict) -> List[TradeExecution]:
+        """Keep triggering position stop losses.
+
+        Trading logic
+
+        - On 2 green candles open a position
+
+        - Use 5% stop loss
+
+        - Close the position if we get 4 green candles
+        """
+
+        candles: pd.DataFrame = universe.candles.get_single_pair_data(timestamp, sample_count=4)
+
+        # The pair we are trading
+        pair = universe.pairs.get_single()
+
+        # How much cash we have in the hand
+        cash = state.portfolio.get_current_cash()
+
+        position_manager = PositionManager(timestamp, universe, state, pricing_model)
+
+        trades = []
+
+        if position_manager.is_any_open():
+            # Close position on 4 green candles thru rebalance (take profit)
+            tail = candles.tail(4)
+            if len(tail) >= 4 and all(is_candle_green(c) for idx, c in tail.iterrows()):
+                trades += position_manager.close_all()
+        else:
+            # Open new position if 2 green daily candles
+            tail = candles.tail(2)
+            if len(tail) >= 2:
+                last_candle = tail.iloc[-1]
+                second_last_candle = tail.iloc[-2]
+                if is_candle_green(last_candle) and is_candle_green(second_last_candle):
+                    trades += position_manager.open_1x_long(pair, cash * 0.1, trailing_stop_loss_pct=trailing_stop_loss_pct)
 
         return trades
 
@@ -322,8 +374,8 @@ def test_synthetic_data_backtest_stop_loss(
         name="With 95% stop loss",
         start_at=start_at.to_pydatetime(),
         end_at=end_at.to_pydatetime(),
-        client=None,  # None of downloads needed, because we are using synthetic data
-        cycle_duration=CycleDuration.cycle_1d,  # Override to use 24h cycles despite what strategy file says
+        client=None,
+        cycle_duration=CycleDuration.cycle_1d,
         decide_trades=stop_loss_decide_trades,
         create_trading_universe=None,
         universe=synthetic_universe,
@@ -390,8 +442,8 @@ def test_synthetic_data_backtest_take_profit(
         name="No stop loss",
         start_at=start_at.to_pydatetime(),
         end_at=end_at.to_pydatetime(),
-        client=None,  # None of downloads needed, because we are using synthetic data
-        cycle_duration=CycleDuration.cycle_1d,  # Override to use 24h cycles despite what strategy file says
+        client=None,
+        cycle_duration=CycleDuration.cycle_1d,
         decide_trades=take_profit_trades,
         create_trading_universe=None,
         universe=synthetic_universe,
@@ -422,8 +474,8 @@ def test_synthetic_data_backtest_take_profit(
         name="With 95% stop loss",
         start_at=start_at.to_pydatetime(),
         end_at=end_at.to_pydatetime(),
-        client=None,  # None of downloads needed, because we are using synthetic data
-        cycle_duration=CycleDuration.cycle_1d,  # Override to use 24h cycles despite what strategy file says
+        client=None,
+        cycle_duration=CycleDuration.cycle_1d,
         decide_trades=take_profit_trades,
         create_trading_universe=None,
         universe=synthetic_universe,
@@ -484,8 +536,8 @@ def test_synthetic_data_backtest_stop_loss_data_missing(
             name="No stop loss",
             start_at=start_at.to_pydatetime(),
             end_at=end_at.to_pydatetime(),
-            client=None,  # None of downloads needed, because we are using synthetic data
-            cycle_duration=CycleDuration.cycle_1d,  # Override to use 24h cycles despite what strategy file says
+            client=None,
+            cycle_duration=CycleDuration.cycle_1d,
             decide_trades=stop_loss_decide_trades,
             create_trading_universe=None,
             universe=synthetic_universe,
@@ -495,3 +547,68 @@ def test_synthetic_data_backtest_stop_loss_data_missing(
             routing_model=routing_model,
             allow_missing_fees=True,
         )
+
+
+def test_synthetic_data_backtest_trailing_stop_loss(
+        logger: logging.Logger,
+        strategy_path: Path,
+        synthetic_universe: TradingStrategyUniverse,
+        routing_model: BacktestRoutingModel,
+    ):
+    """Run the strategy with trailing stop losses."""
+
+    assert synthetic_universe.has_stop_loss_data()
+
+    start_at, end_at = synthetic_universe.universe.candles.get_timestamp_range()
+
+    routing_model = generate_simple_routing_model(synthetic_universe)
+
+    stop_loss_decide_trades = trailing_stop_loss_decide_trades_factory(trailing_stop_loss_pct=0.98)
+
+    # Run the test
+    state, universe, debug_dump = run_backtest_inline(
+        name="No stop loss",
+        start_at=start_at.to_pydatetime(),
+        end_at=end_at.to_pydatetime(),
+        client=None,
+        cycle_duration=CycleDuration.cycle_1d,
+        decide_trades=stop_loss_decide_trades,
+        create_trading_universe=None,
+        universe=synthetic_universe,
+        initial_deposit=10_000,
+        reserve_currency=ReserveCurrency.busd,
+        trade_routing=TradeRouting.user_supplied_routing_model,
+        routing_model=routing_model,
+        allow_missing_fees=True,
+    )
+
+    # Expect backtesting for 213 days
+    assert len(debug_dump) == 213
+    assert len(list(state.portfolio.get_all_positions())) == 46
+    assert len(list(state.portfolio.get_all_trades())) == 91
+
+    # Check we got trailing stop losses triggered
+    stop_loss_positions = [p for p in state.portfolio.get_all_positions() if p.is_stop_loss()]
+    trailing_stop_loss_positions = [p for p in state.portfolio.get_all_positions() if p.is_trailing_stop_loss()]
+    assert len(stop_loss_positions) == 45
+    assert len(trailing_stop_loss_positions) == 23
+
+    # Check one trigger update for contents
+    p: TradingPosition
+    p = trailing_stop_loss_positions[0]
+    assert len(p.trigger_updates) > 0
+    tu = p.trigger_updates[0]
+    assert tu.timestamp > datetime.datetime(1970, 1, 1)
+    assert tu.mid_price > 1000.0  # ETH/USD
+    assert tu.stop_loss_before < tu.mid_price
+    assert tu.stop_loss_after < tu.mid_price
+    assert tu.stop_loss_after > tu.stop_loss_before
+
+    # Check some of the trailing stop losses ended up for profit
+    profitable_trailing_stop_losses = [p for p in trailing_stop_loss_positions if p.is_profitable()]
+    assert len(profitable_trailing_stop_losses) == 15
+
+    # Check we do not inject bad state variables
+    dump = state.to_json()
+    state2: State = State.from_json(dump)
+    assert len(state2.portfolio.closed_positions) > 0

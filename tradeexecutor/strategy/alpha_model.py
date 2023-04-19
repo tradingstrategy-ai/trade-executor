@@ -15,7 +15,7 @@ from dataclasses_json import dataclass_json
 
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.portfolio import Portfolio
-from tradeexecutor.state.trade import TradeExecution
+from tradeexecutor.state.trade import TradeExecution, TradeType
 from tradeexecutor.state.types import PairInternalId, USDollarAmount, Percent
 
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
@@ -78,7 +78,7 @@ class TradingPairSignal:
     #: 0.98 means 2% stop loss over mid price at open.
     #:
     #: Set to `None` to disable stop loss.
-    stop_loss: Optional[float] = None
+    stop_loss: Optional[Percent] = None
 
     #: Take profit for this position
     #:
@@ -87,16 +87,22 @@ class TradingPairSignal:
     #: 1.02 means 2% take profit over mid price at open.
     #:
     #: Set to `None` to disable stop loss.
-    take_profit: Optional[float] = None
+    take_profit: Optional[Percent] = None
+
+    #: Trailing stop loss for this position
+    #:
+    #: See :py:attr:`tradeexecutor.state.position.TradingPosition.trailing_stop_loss_pct` for details.
+    #:
+    trailing_stop_loss: Optional[Percent] = None
 
     #: Raw portfolio weight
     #:
     #: Each raw signal is assigned to a weight based on some methodology,
     #: e.g. 1/N where the highest signal gets 50% of portfolio weight.
-    raw_weight: float = 0.0
+    raw_weight: Percent = 0.0
 
     #: Weight 0...1 so that all portfolio weights sum to 1
-    normalised_weight: float = 0.0
+    normalised_weight: Percent = 0.0
 
     #: Old weight of this pair from the previous cycle.
     #:
@@ -105,7 +111,7 @@ class TradingPairSignal:
     #: The old weight is always normalised.
     #:
     #: This can be dynamically calculated from the :py:class:`tradeexecutor.state.portfolio.Portfolio` state.
-    old_weight: float = 0.0
+    old_weight: Percent = 0.0
 
     #: Old US Dollar value of this value from the previous cycle.
     #:
@@ -246,6 +252,13 @@ class AlphaModel:
     #: How much we can afford to invest on this cycle
     investable_equity: Optional[USDollarAmount] = 0.0
 
+    #: Determine the lower threshold for a position weight.
+    #:
+    #: Clean up "dust" by explicitly closing positions if they fall too small.
+    #:
+    #: If position weight is less than 0.5% always close it
+    close_position_weight_epsilon: Percent = 0.005
+
     def __post_init__(self):
         if self.timestamp is not None:
             if isinstance(self.timestamp, pd.Timestamp):
@@ -292,6 +305,7 @@ class AlphaModel:
             alpha: float | np.float32,
             stop_loss: Percent | NoneType = None,
             take_profit: Percent | NoneType = None,
+            trailing_stop_loss: Percent | NoneType = None,
             ):
         """Set trading pair alpha to a value.
 
@@ -319,6 +333,13 @@ class AlphaModel:
             As the percentage of the position value.
 
             `1.02` means 2% take profit.
+
+        :param trailing_stop_loss:
+            Trailing stop loss threshold for this pair.
+
+            As the percentage of the position value.
+
+            `0.98` means 2% trailing stop loss.
         """
 
         # Don't let Numpy values beyond this point, as
@@ -337,6 +358,7 @@ class AlphaModel:
                 signal=alpha,
                 stop_loss=stop_loss,
                 take_profit=take_profit,
+                trailing_stop_loss=trailing_stop_loss,
             )
             self.raw_signals[pair.internal_id] = signal
 
@@ -531,16 +553,30 @@ class AlphaModel:
                 logger.info("Not doing anything, value %f below trade threshold %f", value, min_trade_threshold)
                 signal.position_adjust_ignored = True
             else:
-                position_rebalance_trades = position_manager.adjust_position(
-                    pair,
-                    dollar_diff,
-                    quantity_diff,
-                    signal.normalised_weight,
-                    stop_loss=signal.stop_loss,
-                    take_profit=signal.take_profit,
-                )
 
-                assert len(position_rebalance_trades) == 1, "Assuming always on trade for rebalacne"
+                if signal.normalised_weight < self.close_position_weight_epsilon:
+                    # Explicit close to avoid rounding issues
+                    position = position_manager.get_current_position_for_pair(signal.pair)
+                    if position:
+                        trade = position_manager.close_position(
+                            position,
+                            TradeType.rebalance,
+                        )
+                        position_rebalance_trades = [trade]
+                else:
+                    # Increase or decrease the position.
+                    # Open new position if needed.
+                    position_rebalance_trades = position_manager.adjust_position(
+                        pair,
+                        dollar_diff,
+                        quantity_diff,
+                        signal.normalised_weight,
+                        stop_loss=signal.stop_loss,
+                        take_profit=signal.take_profit,
+                        trailing_stop_loss=signal.trailing_stop_loss,
+                    )
+
+                assert len(position_rebalance_trades) == 1, "Assuming always on trade for rebalance"
 
                 # Connect trading signal to its position
                 first_trade = position_rebalance_trades[0]

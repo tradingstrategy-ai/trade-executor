@@ -15,12 +15,46 @@ from tradeexecutor.state.balance_update import BalanceUpdate
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
 from tradeexecutor.state.trade import TradeType, QUANTITY_EPSILON
 from tradeexecutor.state.trade import TradeExecution
-from tradeexecutor.state.types import USDollarAmount, BPS, USDollarPrice
+from tradeexecutor.state.types import USDollarAmount, BPS, USDollarPrice, Percent
 from tradeexecutor.strategy.trade_pricing import TradePricing
 from tradeexecutor.utils.accuracy import sum_decimal
 
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass_json
+@dataclass(slots=True, frozen=True)
+class TriggerPriceUpdate:
+    """A position trigger prices where updated.
+
+    Store the historical changes in trigger prices on :py:class:`TradingPosition`.
+
+    See
+
+    - :py:attr:`TradingPosition.trailing_stop_loss`.
+
+    - :py:attr:`TradingPosition.trigger_updates`.
+    """
+
+    timestamp: datetime.datetime
+
+    mid_price: USDollarAmount
+
+    stop_loss_before: Optional[USDollarAmount]
+
+    stop_loss_after: Optional[USDollarAmount]
+
+    take_profit_before: Optional[USDollarAmount]
+
+    take_profit_after: Optional[USDollarAmount]
+
+    def __post_init__(self):
+        # Currently we only support trailing stop loss upwards
+        assert isinstance(self.timestamp, datetime.datetime)
+        assert type(self.mid_price) == float
+        if self.stop_loss_before:
+            assert self.stop_loss_before < self.stop_loss_after
 
 
 @dataclass_json
@@ -116,6 +150,24 @@ class TradingPosition:
     #: We use mid-price as the trigger price.
     take_profit: Optional[USDollarAmount] = None
 
+    #: Trailing stop loss.
+    #:
+    #: For details see :ref:`Trailing stop loss`.
+    #:
+    #: Set the trailing stop as the percentage of the market price.
+    #: This will update :py:attr:`stop_loss` price if the new resulting
+    #: :py:attr:`stop_loss` will be higher as the previous one.
+    #:
+    #: Percents as the relative to the the market price,
+    #: e.g. for 10% trailing stop loss set this value for 0.9.
+    #:
+    #: Calculated as `stop_loss = mid_price` trailing_stop_loss_pct.
+    #:
+    #: Updated by :py:func:`tradeexecutor.strategy.stop_loss.check_position_triggers`.
+    #: For any updates you can read :py:attr:`trigger_updates`.
+    #:
+    trailing_stop_loss_pct: Optional[Percent] = None
+
     #: Human readable notes about this trade
     #:
     #: Used to mark test trades from command line.
@@ -129,6 +181,15 @@ class TradingPosition:
     #: BalanceUpdate.id -> BalanceUpdate mapping
     #:
     balance_updates: Dict[int, BalanceUpdate] = field(default_factory=dict)
+
+    #: Trigger price updates.
+    #:
+    #: Every time a trigger price is moved e.g. for a trailing stop loss,
+    #  we make a record here for future analysis.
+    #:
+    #: Trigger updates are stored oldest first.
+    #:
+    trigger_updates: List[TriggerPriceUpdate] = field(default_factory=list)
 
     def __repr__(self):
         if self.is_open():
@@ -158,6 +219,7 @@ class TradingPosition:
         assert isinstance(self.opened_at, datetime.datetime)
         assert not isinstance(self.opened_at, pd.Timestamp)
         assert not isinstance(self.last_token_price, np.float32)
+        assert not isinstance(self.stop_loss, np.float64)
 
     def is_open(self) -> bool:
         """This is an open trading position."""
@@ -211,6 +273,24 @@ class TradingPosition:
         if last_trade:
             return last_trade.is_stop_loss()
         return False
+
+    def is_trailing_stop_loss(self) -> bool:
+        """Was this position ended with a trailing stop loss trade.
+
+        - Position was terminated with a stop loss
+
+        - Trailing stop loss was set
+
+        - Trailing stop loss was updated at least once
+        """
+
+        if self.trailing_stop_loss_pct is None:
+            return False
+
+        if not self.is_stop_loss():
+            return False
+
+        return any([t for t in self.trigger_updates if t.stop_loss_after is not None])
 
     def is_take_profit(self) -> bool:
         """Was this position ended with take profit trade"""
@@ -813,6 +893,27 @@ class TradingPosition:
     def get_trade_count(self) -> int:
         """Get the number of trades in this position."""
         return len(self.trades)
+
+    def get_orignal_stop_loss(self) -> Optional[USDollarPrice]:
+        """Get the original stop loss value when this position was opened.
+
+        Setting :py:attr:`trailing_stop_loss` will cause `stop_loss` to be updated.
+        We can still fetch the original stop loss from :py:attr:`trigger_updates`.
+
+        :return:
+            The original dollar price of the stop loss
+        """
+
+        # Stop loss not used
+        if self.stop_loss is None:
+            return None
+
+        # We have at least 1 dynamic update
+        if self.trigger_updates:
+            return self.trigger_updates[0].stop_loss_before
+
+        # Static stop loss
+        return self.stop_loss
 
 
 class PositionType(enum.Enum):

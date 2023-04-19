@@ -588,7 +588,6 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         pair_ids = {p.pair_id for p in our_pairs}
         exchange_ids = {p.exchange_id for p in our_pairs}
         our_exchanges = {dataset.exchanges.get_by_id(id) for id in exchange_ids}
-
         filtered_pairs_df = dataset.pairs.loc[dataset.pairs["pair_id"].isin(pair_ids)]
 
         # Recreate universe again, now with limited pairs
