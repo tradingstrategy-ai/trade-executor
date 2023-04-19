@@ -15,7 +15,7 @@ from dataclasses_json import dataclass_json
 
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.portfolio import Portfolio
-from tradeexecutor.state.trade import TradeExecution
+from tradeexecutor.state.trade import TradeExecution, TradeType
 from tradeexecutor.state.types import PairInternalId, USDollarAmount, Percent
 
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
@@ -23,6 +23,10 @@ from tradeexecutor.strategy.weighting import weight_by_1_slash_n, check_normalis
 
 
 logger = logging.getLogger(__name__)
+
+
+#: If position weight is less than 0.5% always close it
+CLOSE_POSITION_WEIGHT_EPSILON = 0.005
 
 
 @dataclass_json
@@ -546,17 +550,30 @@ class AlphaModel:
                 logger.info("Not doing anything, value %f below trade threshold %f", value, min_trade_threshold)
                 signal.position_adjust_ignored = True
             else:
-                position_rebalance_trades = position_manager.adjust_position(
-                    pair,
-                    dollar_diff,
-                    quantity_diff,
-                    signal.normalised_weight,
-                    stop_loss=signal.stop_loss,
-                    take_profit=signal.take_profit,
-                    trailing_stop_loss=signal.trailing_stop_loss,
-                )
 
-                assert len(position_rebalance_trades) == 1, "Assuming always on trade for rebalacne"
+                if signal.normalised_weight < CLOSE_POSITION_WEIGHT_EPSILON:
+                    # Explicit close to avoid rounding issues
+                    position = position_manager.get_current_position_for_pair(signal.pair)
+                    if position:
+                        trade = position_manager.close_position(
+                            position,
+                            TradeType.rebalance,
+                        )
+                        position_rebalance_trades = [trade]
+                else:
+                    # Increase or decrease the position.
+                    # Open new position if needed.
+                    position_rebalance_trades = position_manager.adjust_position(
+                        pair,
+                        dollar_diff,
+                        quantity_diff,
+                        signal.normalised_weight,
+                        stop_loss=signal.stop_loss,
+                        take_profit=signal.take_profit,
+                        trailing_stop_loss=signal.trailing_stop_loss,
+                    )
+
+                assert len(position_rebalance_trades) == 1, "Assuming always on trade for rebalance"
 
                 # Connect trading signal to its position
                 first_trade = position_rebalance_trades[0]

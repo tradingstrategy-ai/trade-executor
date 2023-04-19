@@ -126,7 +126,7 @@ def check_position_triggers(
         # Check for trailing stop loss updates
         if p.trailing_stop_loss_pct:
             new_stop_loss = mid_price * p.trailing_stop_loss_pct
-            if not p.stop_loss or new_stop_loss > p.stop_loss:
+            if not p.stop_loss or (new_stop_loss > p.stop_loss):
                 stop_loss_before = p.stop_loss
                 stop_loss_after = new_stop_loss
 
