@@ -40,8 +40,14 @@ class CycleDuration(enum.Enum):
     #: Run `decide_trades()` every 15 minutes
     cycle_15m = "15m"
 
+    #: Run `decide_trades()` every 30 minutes
+    cycle_30m = "30m"
+
     #: Run `decide_trades()` every hour
     cycle_1h = "1h"
+
+    # Run `decide_trades()` every 2 hours
+    cycle_2h = "2h"
 
     #: Run `decide_trades()` every 4 hours
     cycle_4h = "4h"
@@ -179,7 +185,9 @@ _TICK_DURATIONS = {
     CycleDuration.cycle_1m: datetime.timedelta(minutes=1),
     CycleDuration.cycle_5m: datetime.timedelta(minutes=5),
     CycleDuration.cycle_15m: datetime.timedelta(minutes=15),
+    CycleDuration.cycle_30m: datetime.timedelta(minutes=30),
     CycleDuration.cycle_1h: datetime.timedelta(hours=1),
+    CycleDuration.cycle_2h: datetime.timedelta(hours=2),
     CycleDuration.cycle_4h: datetime.timedelta(hours=4),
     CycleDuration.cycle_8h: datetime.timedelta(hours=8),
     CycleDuration.cycle_16h: datetime.timedelta(hours=16),
