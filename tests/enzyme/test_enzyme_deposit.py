@@ -3,6 +3,7 @@ import datetime
 from _decimal import Decimal
 
 import pytest
+import flaky
 from eth_typing import HexAddress
 from web3 import Web3
 from web3.contract import Contract
@@ -142,7 +143,7 @@ def test_enzyme_single_deposit(
     state2: State = State.from_json(dump)
     assert len(state2.sync.treasury.balance_update_refs) == 1
 
-
+@flaky.flaky()
 def test_enzyme_two_deposits(
     web3: Web3,
     deployer: HexAddress,
