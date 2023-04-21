@@ -186,7 +186,7 @@ def visualise_benchmark(
             fig.add_trace(scatter)
 
     if name:
-        fig.update_layout(title=f"{name} portfolio value", height=height)
+        fig.update_layout(title=f"{name}", height=height)
     else:
         fig.update_layout(title=f"Portfolio value", height=height)
 
