@@ -293,7 +293,7 @@ def synthetic_universe(mock_chain_id, mock_exchange, weth_usdc) -> TradingStrate
         end_date,
         pair_id=weth_usdc.internal_id)
 
-    candles = resample_candles(stop_loss_candles, time_bucket)
+    candles = resample_candles(stop_loss_candles, pd.Timedelta(days=1))
 
     assert len(candles) == len(stop_loss_candles) / 24
 

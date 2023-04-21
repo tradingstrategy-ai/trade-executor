@@ -314,7 +314,7 @@ def create_trading_universe(
         TRADING_PAIR[1],
     )
 
-    # logger.trade("Universe created, we have %d pairs", universe.get_pair_count())
+    logger.trade("Universe created, we have %d pairs", universe.get_pair_count())
 
     return universe
 
