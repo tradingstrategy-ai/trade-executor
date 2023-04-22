@@ -45,7 +45,7 @@ PairInternalId: TypeAlias = int
 #:
 #: - starts with 0x
 #:
-AddressAsString: TypeAlias = str
+ZeroExAddress: TypeAlias = str
 
 
 #: Represents percents
@@ -57,3 +57,11 @@ AddressAsString: TypeAlias = str
 #:
 #: See also :py:data:`BPS`.
 Percent: TypeAlias = float
+
+
+#: Block number.
+#:
+#: - Cannot be negative
+#:
+#: - Cannot be zero
+BlockNumber: int

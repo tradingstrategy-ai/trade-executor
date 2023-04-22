@@ -3,6 +3,7 @@ from .commands import console
 from .commands.app import app
 from .commands.check_universe import check_universe
 from .commands.check_wallet import check_wallet
+from .commands.enzyme_asset_list import enzyme_asset_list
 from .commands.hello import hello
 from .commands.start import start
 from .commands.perform_test_trade import perform_test_trade
@@ -13,7 +14,7 @@ from .commands.init import init
 
 # Dummy export commands even though they are already registered
 # to make the linter happy
-__all__ = [app, check_wallet, check_universe, hello, start, perform_test_trade, version, repair, console, init]
+__all__ = [app, check_wallet, check_universe, hello, start, perform_test_trade, version, repair, console, init, enzyme_asset_list]
 
 
 
