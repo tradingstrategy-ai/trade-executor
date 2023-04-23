@@ -1,4 +1,6 @@
 """Perform a grid search ove strategy parameters to find optimal parameters."""
+import itertools
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol, Dict, List, Tuple, Any
@@ -17,19 +19,29 @@ class GridParameter:
     def __post_init__(self):
         pass
 
-    @staticmethod
-    def to_path(value: Any) -> str:
+    def to_path(self) -> str:
         """"""
+        value = self.value
         if type(value) in (float, int, str):
-            return str(value)
-        elif isinstance(value, pd.Timedelta):
-            return value.seconds()  
+            return f"{self.name}={self.value}"
         else:
             raise NotImplementedError(f"We do not support filename conversion for value {type(value)}={value}")
 
 
+@dataclass()
 class GridCombination:
+    """One combination line in grid search."""
+
+    #: Alphabetically sorted list of parameters
     parameters: List[GridParameter]
+
+    def __post_init__(self):
+        """Always sort parameters alphabetically"""
+        self.parameters = sorted(self.parameters, key=lambda p: p.name)
+
+    def get_state_path(self) -> Path:
+        """Get the path where the resulting state file is stored."""
+        return Path(os.path.join(*[p.to_path() for p in self.parameters]))
 
 
 class DecideTradesGridSearchFactory(Protocol):
@@ -45,9 +57,18 @@ class DecideTradesGridSearchFactory(Protocol):
         """
 
 
-def prepare_search_matrix(parameters: Dict[str, List[Any]) -> List[GridCombination]:
+def prepare_grid_combinations(parameters: Dict[str, List[Any]]) -> List[GridCombination]:
     """Get iterable search matrix of all parameter combinations."""
 
+    args_lists: List[list] = []
+    for name, values in parameters.items():
+        args = [GridParameter(name, v) for v in values]
+        args_lists.append(args)
+
+    #
+    combinations = itertools.product(*args_lists)
+
+    return [GridCombination(c) for c in combinations]
 
 
 
