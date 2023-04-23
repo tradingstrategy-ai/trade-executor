@@ -12,7 +12,7 @@ from tradingstrategy.chain import ChainId
 from tradingstrategy.client import Client
 
 from tradeexecutor.state.state import State
-from tradeexecutor.state.types import AddressAsString
+from tradeexecutor.state.types import ZeroExAddress
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradingstrategy.exchange import Exchange
 from tradingstrategy.pair import PandasPairUniverse
@@ -86,7 +86,7 @@ def reverse_trading_universe_from_state(
 
     chains: Set[int] = set()
 
-    pair_addresses: Set[AddressAsString] = set()
+    pair_addresses: Set[ZeroExAddress] = set()
 
     # TODO: Remove pair_id usage here
     pair_ids = set()

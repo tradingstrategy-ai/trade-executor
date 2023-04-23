@@ -1347,7 +1347,6 @@ def load_partial_data(
 
     assert start_at and end_at, "Current implementatation is designed for backtest use only and needs both start_at and end_at timestamps"
 
-    live = execution_context.live_trading
     with execution_context.timed_task_context_manager("load_partial_pair_data", time_bucket=time_bucket.value):
 
         exchange_universe = client.fetch_exchange_universe()
