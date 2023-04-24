@@ -287,10 +287,13 @@ class TradingPosition:
         if self.trailing_stop_loss_pct is None:
             return False
 
+        # Was not terminated at the trailing stop loss
         if not self.is_stop_loss():
             return False
 
-        return any([t for t in self.trigger_updates if t.stop_loss_after is not None])
+        # Did we set trailing stop loss ever
+        trailing_stop_set = any([True for t in self.trigger_updates if t.stop_loss_after is not None])
+        return trailing_stop_set
 
     def is_take_profit(self) -> bool:
         """Was this position ended with take profit trade"""
