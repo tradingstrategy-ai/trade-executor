@@ -764,7 +764,6 @@ def expand_timeline(
         if position.has_bad_data_issues():
             remarks += "BAD"
         
-        realised_profit_percent = position.get_realised_profit_percent()
         duration = position.get_duration()
 
         r = {
@@ -778,8 +777,8 @@ def expand_timeline(
             "Quote asset": pair_info.quote_token_symbol,
             "Position max value": format_value(position.get_max_size()),
             "PnL USD": format_value(position.get_realised_profit_usd()) if position.is_closed() else np.nan,
-            "PnL %": format_percent_2_decimals(realised_profit_percent) if position.is_closed() else np.nan,
-            "PnL % raw": realised_profit_percent if position.is_closed() else 0,
+            "PnL %": format_percent_2_decimals(position.get_realised_profit_percent()) if position.is_closed() else np.nan,
+            "PnL % raw": position.get_realised_profit_percent() if position.is_closed() else 0,
             "Open mid price USD": format_price(position.get_opening_price()),
             "Close mid price USD": format_price(position.get_closing_price()) if position.is_closed() else np.nan,
             "Trade count": position.get_trade_count(),
@@ -831,7 +830,6 @@ def expand_timeline_raw(
                 remarks = ""
 
             pnl_usd = position.get_realised_profit_usd() if position.is_closed() else np.nan
-            realised_profit_percent = position.get_realised_profit_percent()
             duration = position.get_duration()
             
             r = {
@@ -842,7 +840,7 @@ def expand_timeline_raw(
                 "Duration": format_duration_days_hours_mins(duration) if duration else np.nan,
                 "position_max_size": position.get_max_size(),
                 "pnl_usd": pnl_usd,
-                "pnl_pct_raw": realised_profit_percent if position.is_closed() else 0,
+                "pnl_pct_raw": position.get_realised_profit_percent() if position.is_closed() else 0,
                 "open_price_usd": position.get_opening_price(),
                 "close_price_usd": position.get_closing_price() if position.is_closed() else np.nan,
                 "trade_count": position.get_trade_count(),
