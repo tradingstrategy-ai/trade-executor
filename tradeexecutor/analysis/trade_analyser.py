@@ -257,8 +257,11 @@ class TradeSummary:
                 # 1.                
                 # /usr/local/lib/python3.10/site-packages/quantstats/stats.py:968: FutureWarning: In a future version of pandas all arguments of DataFrame.pivot will be keyword-only.
                 # returns = returns.pivot('Year', 'Month', 'Returns').fillna(0)
+                
                 # 2.
                 # findfont: Font family 'Arial' not found.
+                # Unfortunatly, this second warning is not silenced by the following lines. Users can silence it manually. See:
+                # https://stackoverflow.com/questions/42097053/matplotlib-cannot-find-basic-fonts  
 
                 warnings.simplefilter("ignore")
                 result = function(*args, **kwargs)
