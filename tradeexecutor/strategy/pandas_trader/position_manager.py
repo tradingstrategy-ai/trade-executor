@@ -404,6 +404,7 @@ class PositionManager:
                         take_profit: Optional[Percent] = None,
                         trailing_stop_loss: Optional[Percent] = None,
                         slippage_tolerance: Optional[float] = None,
+                        override_stop_loss=False,
                         ) -> List[TradeExecution]:
         """Adjust holdings for a certain position.
 
@@ -445,6 +446,9 @@ class PositionManager:
             Use 0...1 based on the current mid price.
             E.g. 0.98 = 2% stop loss under the current mid price.
 
+            Sets the initial stop loss. If you want to override
+            this for an existing position you need to use `override_stop_loss` parameter.
+
         :param take_profit:
             Set the take profit for the position.
 
@@ -455,6 +459,9 @@ class PositionManager:
             Slippage tolerance for this trade.
 
             Use :py:attr:`default_slippage_tolerance` if not set.
+
+        :param override_stop_loss:
+            If not set and a position has already stop loss set, do not modify it.
 
         :return:
             List of trades to be executed to get to the desired
@@ -535,13 +542,24 @@ class PositionManager:
 
         # Update stop loss for this position
         if stop_loss:
+
             assert stop_loss < 1, f"Got stop loss {stop_loss}"
-            position.stop_loss = price_structure.mid_price * stop_loss
+
+            if position.stop_loss:
+                # Update existing stop loss
+                if override_stop_loss:
+                    position.stop_loss = price_structure.mid_price * stop_loss
+                else:
+                    # Do not override existing stop loss set earlier
+                    pass
+            else:
+                # Set the initial stop loss
+                position.stop_loss = price_structure.mid_price * stop_loss
 
         if trailing_stop_loss:
-            assert not stop_loss, "Only trailing_stop_loss or stop_loss can be set"
             assert trailing_stop_loss < 1, f"Got trailing_stop_loss {trailing_stop_loss}"
-            position.stop_loss = price_structure.mid_price * trailing_stop_loss
+            if not position.stop_loss:
+                position.stop_loss = price_structure.mid_price * trailing_stop_loss
             position.trailing_stop_loss_pct = trailing_stop_loss
 
         if take_profit:

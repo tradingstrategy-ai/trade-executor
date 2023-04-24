@@ -40,6 +40,7 @@ def analyse_pair_trades(pair: TradingPairIdentifier, portfolio: Portfolio) -> di
     losses = sum([1 for p in positions if p.get_total_profit_usd() >= 0])
     take_profits = sum([1 for p in positions if p.is_take_profit()])
     stop_losses = sum([1 for p in positions if p.is_stop_loss()])
+    trailing_stop_losses = sum([1 for p in positions if p.is_trailing_stop_loss()])
 
     return {
         "Trading pair": pair.get_human_description(),
@@ -55,6 +56,7 @@ def analyse_pair_trades(pair: TradingPairIdentifier, portfolio: Portfolio) -> di
         "Losses": losses,
         "Take profits": take_profits,
         "Stop losses": stop_losses,
+        "Trailing stop losses": trailing_stop_losses,
     }
 
 
