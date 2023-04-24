@@ -659,6 +659,18 @@ class PositionManager:
 
         return trades
 
+    def close_current_position(self) -> list[TradeExecution]:
+        """Close the current position.
+
+        :return:
+            Single element list of the trade that will close the current position
+        """
+        
+        trades = self.close_all()
+        assert len(trades) == 1, f"Got more than one trade to close the current position: {trades}"
+
+        return trades
+
     def estimate_asset_quantity(
             self,
             pair: TradingPairIdentifier,
