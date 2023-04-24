@@ -370,7 +370,7 @@ def test_timeline(
     timeline = analysis.create_timeline()
 
     # Test expand timeline both colouring modes
-    df, apply_styles = expand_timeline(
+    expanded_timeline, apply_styles = expand_timeline(
         universe.universe.exchanges,
         universe.universe.pairs,
         timeline,
@@ -379,15 +379,7 @@ def test_timeline(
 
     # Check HTML output does not crash
     # https://github.com/pandas-dev/pandas/issues/19358#issuecomment-359733504
-    apply_styles(df).to_html()
-
-    expanded_timeline, apply_styles = expand_timeline(
-        universe.universe.exchanges,
-        universe.universe.pairs,
-        timeline,
-        row_styling_mode=TimelineRowStylingMode.simple,
-    )
-    apply_styles(df).to_html()
+    apply_styles(expanded_timeline).to_html()
 
     # Do checks for the first position
     # 0    1          2021-07-01   8 days                      WETH        USDC         $2,027.23    $27.23    2.72%   0.027230  $1,617.294181   $1,661.333561            2
@@ -492,7 +484,6 @@ def test_timeline_raw(
     assert last_row['open_price_usd'] == pytest.approx(2004.138663, rel=1e-4)
     assert last_row['close_price_usd'] == pytest.approx(1903.319891, rel=1e-4)
     assert last_row['trade_count'] == 2
-
 
 def test_benchmark_synthetic_trading_portfolio(
     logger: logging.Logger,
