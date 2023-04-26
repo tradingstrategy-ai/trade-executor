@@ -31,8 +31,8 @@ def enzyme_deploy_vault(
     vault_record_file: Optional[str] = Option(..., envvar="VAULT_RECORD_FILE", help="Store vault and comptroller addresses in this JSON file. It's important to write down all contract addresses."),
     fund_name: Optional[str] = Option(..., envvar="FUND_NAME", help="On-chain name for the fund shares"),
     fund_symbol: Optional[str] = Option(..., envvar="FUND_SYMBOL", help="On-chain token symbol for the fund shares"),
-    comptroller_lib: Optional[str] = Option(..., envvar="COMPTROLLER_LIB", help="Enzyme's ComptrollerLib address for custom deployments"),
-    denomination_asset: Optional[str] = Option(..., envvar="DENOMINATION_ASSET", help="Stablecoin asset used for vault denomination"),
+    comptroller_lib: Optional[None] = Option(..., envvar="COMPTROLLER_LIB", help="Enzyme's ComptrollerLib address for custom deployments"),
+    denomination_asset: Optional[None] = Option(..., envvar="DENOMINATION_ASSET", help="Stablecoin asset used for vault denomination"),
 ):
     """Deploy a new Enzyme vault.
 

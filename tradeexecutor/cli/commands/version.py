@@ -7,7 +7,7 @@ from tradeexecutor.cli.version_info import VersionInfo
 
 @app.command()
 def version():
-    """Print out the version information"""
+    """Print out the version information."""
     version_info = VersionInfo.read_docker_version()
     print(f"Version: {version_info.tag}")
     print(f"Commit hash: {version_info.commit_hash}")
