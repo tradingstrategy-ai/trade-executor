@@ -53,7 +53,7 @@ def enzyme_deploy_vault(
     )
 
     if not web3config.has_any_connection():
-        raise RuntimeError("Live trading requires that you pass JSON-RPC connection to one of the networks")
+        raise RuntimeError("Vault deploy requires that you pass JSON-RPC connection to one of the networks")
 
     web3config.choose_single_chain()
 
@@ -95,12 +95,14 @@ def enzyme_deploy_vault(
 
     logger.info("Deploying vault")
     try:
+        # TODO: Fix this later, use create_new_vault() argument
+        enzyme_deployment.deployer = hot_wallet.address
+
         comptroller_contract, vault_contract = enzyme_deployment.create_new_vault(
             hot_wallet.address,
             denomination_asset=denomination_token.contract,
             fund_name=fund_name,
             fund_symbol=fund_symbol,
-            deployer=hot_wallet.account.address,
         )
     except Exception as e:
         raise RuntimeError(f"Deployment failed. Hot wallet: {hot_wallet.address}, denomination asset: {denomination_token.address}") from e
