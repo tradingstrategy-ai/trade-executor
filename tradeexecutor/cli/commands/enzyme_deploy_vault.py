@@ -1,29 +1,21 @@
 """enzyme-asset-list CLi command."""
 import datetime
 import json
-import logging
-import sys
-from typing import Optional, cast
+from typing import Optional
 
 from typer import Option
 
-from eth_defi.chainlink.round_data import fetch_chainlink_round_data
 from eth_defi.deploy import deploy_contract
 from eth_defi.enzyme.deployment import POLYGON_DEPLOYMENT, EnzymeDeployment
-from eth_defi.enzyme.price_feed import fetch_price_feeds, fetch_updated_price_feed
-from eth_defi.event_reader.multithread import MultithreadEventReader
-from eth_defi.event_reader.progress_update import PrintProgressUpdate, TQDMProgressUpdate
 from eth_defi.hotwallet import HotWallet
 from eth_defi.token import fetch_erc20_details
+from tradeexecutor.monkeypatch.web3 import construct_sign_and_send_raw_middleware
 from tradingstrategy.chain import ChainId
-from web3 import HTTPProvider
 
 from tradeexecutor.cli.bootstrap import create_web3_config
 from tradeexecutor.cli.commands import shared_options
 from tradeexecutor.cli.commands.app import app
 from tradeexecutor.cli.log import setup_logging
-from tradeexecutor.cli.version_info import VersionInfo
-from tradeexecutor.ethereum.enzyme.asset import EnzymeAsset
 
 
 @app.command()
@@ -36,9 +28,11 @@ def enzyme_deploy_vault(
     json_rpc_arbitrum: Optional[str] = shared_options.json_rpc_arbitrum,
     json_rpc_anvil: Optional[str] = shared_options.json_rpc_anvil,
     private_key: str = shared_options.private_key,
-    vault_record_file: Optional[str] = Option(None, envvar="VAULT_RECORD_FILE", help="Store vault and comptroller addresses in this JSON file"),
-    fund_name: Optional[str] = Option(None, envvar="FUND_NAME", help="On-chain name for the fund shares"),
-    fund_symbol: Optional[str] = Option(None, envvar="FUND_NAME", help="On-chain token symbol for the fund shares"),
+    vault_record_file: Optional[str] = Option(..., envvar="VAULT_RECORD_FILE", help="Store vault and comptroller addresses in this JSON file. It's important to write down all contract addresses."),
+    fund_name: Optional[str] = Option(..., envvar="FUND_NAME", help="On-chain name for the fund shares"),
+    fund_symbol: Optional[str] = Option(..., envvar="FUND_SYMBOL", help="On-chain token symbol for the fund shares"),
+    comptroller_lib: Optional[str] = Option(..., envvar="COMPTROLLER_LIB", help="Enzyme's ComptrollerLib address for custom deployments"),
+    denomination_asset: Optional[str] = Option(..., envvar="DENOMINATION_ASSET", help="Stablecoin asset used for vault denomination"),
 ):
     """Deploy a new Enzyme vault.
 
@@ -64,10 +58,12 @@ def enzyme_deploy_vault(
     web3config.choose_single_chain()
 
     web3 = web3config.get_default()
-    provider = cast(HTTPProvider, web3.provider)
     chain_id = ChainId(web3.eth.chain_id)
 
     logger.info("Connected to chain %s", chain_id.name)
+
+    hot_wallet = HotWallet.from_private_key(private_key)
+    web3.middleware_onion.add(construct_sign_and_send_raw_middleware(hot_wallet.account))
 
     # No other supported Enzyme deployments
     match chain_id:
@@ -75,15 +71,13 @@ def enzyme_deploy_vault(
             raise NotImplementedError("Not supported yet")
         case ChainId.polygon:
             deployment_info = POLYGON_DEPLOYMENT
+            enzyme_deployment = EnzymeDeployment.fetch_deployment(web3, POLYGON_DEPLOYMENT)
+            denomination_token = fetch_erc20_details(web3, deployment_info["usdc"])
         case _:
-            raise NotImplementedError("Not supported yet")
-
-    assert chain_id in (ChainId.ethereum, ChainId.polygon), f"Unsupported {chain_id}"
-
-    enzyme_deployment = EnzymeDeployment.fetch_deployment(web3, POLYGON_DEPLOYMENT)
-    hot_wallet = HotWallet.from_private_key(private_key)
-
-    usdc_token = fetch_erc20_details(web3, deployment_info["usdc"])
+            assert comptroller_lib, f"You need to give Enzyme's ComptrollerLib address for a chain {chain_id}"
+            assert denomination_asset, f"You need to give denomination_asset for a chain {chain_id}"
+            enzyme_deployment = EnzymeDeployment.fetch_deployment(web3, {"comptroller_lib": comptroller_lib})
+            denomination_token = fetch_erc20_details(web3, denomination_asset)
 
     # Check the chain is online
     logger.info(f"  Chain id is {web3.eth.chain_id:,}")
@@ -96,18 +90,22 @@ def enzyme_deploy_vault(
     logger.info("  We have %f tokens for gas left", gas_balance)
 
     logger.info("Enzyme details")
-    logger.info("  Integration manager deployed at %s", enzyme_deployment.contracts.integration_manager)
-    logger.info("  USDC is %s", usdc_token.address)
+    logger.info("  Integration manager deployed at %s", enzyme_deployment.contracts.integration_manager.address)
+    logger.info("  %s is %s", denomination_token.symbol, denomination_token.address)
 
     logger.info("Deploying vault")
-    comptroller_contract, vault_contract = enzyme_deployment.create_new_vault(
-        hot_wallet.address,
-        denomination_asset=usdc_token.contract,
-        fund_name=fund_name,
-        fund_symbol=fund_symbol,
-    )
+    try:
+        comptroller_contract, vault_contract = enzyme_deployment.create_new_vault(
+            hot_wallet.address,
+            denomination_asset=denomination_token.contract,
+            fund_name=fund_name,
+            fund_symbol=fund_symbol,
+            deployer=hot_wallet.account.address,
+        )
+    except Exception as e:
+        raise RuntimeError(f"Deployment failed. Hot wallet: {hot_wallet.address}, denomination asset: {denomination_token.address}") from e
 
-    logger.info("Deploying GenericAdapter")
+    logger.info("Deploying VaultSpecificGenericAdapter")
     generic_adapter = deploy_contract(
         web3,
         f"VaultSpecificGenericAdapter.json",

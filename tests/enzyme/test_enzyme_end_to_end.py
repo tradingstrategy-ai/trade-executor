@@ -240,7 +240,7 @@ def test_enzyme_deploy_vault(
     deployer: HexAddress,
     enzyme_deployment: EnzymeDeployment,
 ):
-    """Run Enzyme vaulted strategy for few cycles.
+    """Deploy Enzymy vault via CLI.
 
     - Set up local Anvil testnet with Uniswap v2 and Enzyme
 
@@ -252,7 +252,9 @@ def test_enzyme_deploy_vault(
     env = environment.copy()
     env["FUND_NAME"] = "Toholampi Capital"
     env["FUND_SYMBOL"] = "COW"
-    env["VAULT_FILE"] = vault_record_file
+    env["VAULT_RECORD_FILE"] = vault_record_file
+    env["COMPTROLLER_LIB"] = enzyme_deployment.contracts.comptroller_lib.address
+    env["DENOMINATION_ASSET"] = usdc.address
 
     # Run strategy for few cycles.
     # Manually call the main() function so that Typer's CliRunner.invoke() does not steal
