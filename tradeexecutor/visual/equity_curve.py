@@ -1,4 +1,5 @@
 """Equity curve based statistics and visualisations."""
+import warnings
 from typing import List
 
 import pandas as pd
@@ -195,11 +196,18 @@ def visualise_returns_over_time(
         Matplotlit figure
 
     """
-    import quantstats as qs  # Optional dependency
-    fig = qs.plots.monthly_returns(
-        returns,
-        show=False)
-    return fig
+
+
+    # /Users/moo/Library/Caches/pypoetry/virtualenvs/tradingview-defi-strategy-XB2Vkmi1-py3.10/lib/python3.10/site-packages/quantstats/stats.py:968: FutureWarning:
+    #
+    # In a future version of pandas all arguments of DataFrame.pivot will be keyword-only.
+
+    with warnings.catch_warnings():
+        import quantstats as qs  # Optional dependency
+        fig = qs.plots.monthly_returns(
+            returns,
+            show=False)
+        return fig
 
 
 def visualise_returns_distribution(
