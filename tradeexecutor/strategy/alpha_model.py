@@ -259,6 +259,10 @@ class AlphaModel:
     #: If position weight is less than 0.5% always close it
     close_position_weight_epsilon: Percent = 0.005
 
+    #: Allow set_signal() to override stop loss set for the position earlier
+    #:
+    override_stop_loss = False
+
     def __post_init__(self):
         if self.timestamp is not None:
             if isinstance(self.timestamp, pd.Timestamp):
@@ -574,6 +578,7 @@ class AlphaModel:
                         stop_loss=signal.stop_loss,
                         take_profit=signal.take_profit,
                         trailing_stop_loss=signal.trailing_stop_loss,
+                        override_stop_loss=self.override_stop_loss,
                     )
 
                 assert len(position_rebalance_trades) == 1, "Assuming always on trade for rebalance"

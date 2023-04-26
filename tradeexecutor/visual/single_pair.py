@@ -917,7 +917,8 @@ def _get_subplot_names(plots: list[Plot], volume_bar_mode: VolumeBarMode, volume
         # get subplot names for detached technical indicators with overlay
         if plot.kind == PlotKind.technical_indicator_overlay_on_detached:
             # check that detached plot exists
-            assert plot.detached_overlay_name in [plot.name for plot in plots if plot.kind == PlotKind.technical_indicator_detached]
+            detached_plots = [plot.name for plot in plots if plot.kind == PlotKind.technical_indicator_detached]
+            assert plot.detached_overlay_name in detached_plots, f"Overlay name {plot.detached_overlay_name} not in available detached plots {detached_plots}"
             
             # check if another overlay exists
             if plot.detached_overlay_name in already_overlaid_names:

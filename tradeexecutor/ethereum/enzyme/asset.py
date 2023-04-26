@@ -6,8 +6,10 @@
 """
 import datetime
 import enum
+import json
+import os.path
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Dict, List
 
 from dataclasses_json import dataclass_json
 from eth_typing import BlockNumber
@@ -122,4 +124,27 @@ class EnzymeAsset:
             "removed_at": fetch_block_timestamp(web3, feed.removed_block_number) if feed.removed_block_number else None,
         }
         return EnzymeAsset.from_dict(data)
+
+
+def load_enzyme_asset_list(chain_id: ChainId) -> List[EnzymeAsset]:
+    """Load hardcoded asset list for Enzyme.
+    
+    Regenerate asset files with:
+    
+    .. code-block:: shell
+
+        poetry run trade-executor enzyme-asset-list
+
+     
+    :param chain_id: 
+
+    :return:
+        List of tokens
+    """
+    fname = chain_id.get_slug() + "_assets.json"
+    path = os.path.join(os.path.dirname(__file__), fname)
+    with open(path, "rt") as inp:
+        data = json.load(inp)
+        return [EnzymeAsset.from_dict(i) for i in data]
+
 

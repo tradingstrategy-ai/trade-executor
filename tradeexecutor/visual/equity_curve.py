@@ -1,8 +1,9 @@
 """Equity curve based statistics and visualisations."""
+import warnings
 from typing import List
 
 import pandas as pd
-
+from matplotlib.figure import Figure
 
 from tradeexecutor.state.state import State
 from tradeexecutor.state.statistics import Statistics, PortfolioStatistics
@@ -134,3 +135,111 @@ def get_daily_returns(state: State) -> (pd.Series | None):
     
     equity_curve = calculate_equity_curve(state)
     return calculate_aggregate_returns(equity_curve, freq="D")
+
+
+def visualise_equity_curve(
+        returns: pd.Series,
+        title="Equity curve",
+        line_width=1.5,
+) -> Figure:
+    """Draw equity curve, drawdown and daily returns using quantstats.
+
+    `See Quantstats README for more details <https://github.com/ranaroussi/quantstats>`__.
+
+    Example:
+
+    .. code-block:: python
+
+        from tradeexecutor.visual.equity_curve import calculate_equity_curve, calculate_returns
+        from tradeexecutor.visual.equity_curve import visualise_equity_performance
+
+        curve = calculate_equity_curve(state)
+        returns = calculate_returns(curve)
+        fig = visualise_equity_performance(returns)
+        display(fig)
+
+    :return:
+        Matplotlit figure
+
+    """
+    import quantstats as qs  # Optional dependency
+    fig = qs.plots.snapshot(
+        returns,
+        title=title,
+        lw=line_width,
+        show=False)
+    return fig
+
+
+def visualise_returns_over_time(
+        returns: pd.Series,
+) -> Figure:
+    """Draw a grid of returns over time.
+
+    - Currently only monthly breakdown supported
+
+    - `See Quantstats README for more details <https://github.com/ranaroussi/quantstats>`__.
+
+    Example:
+
+    .. code-block:: python
+
+        from tradeexecutor.visual.equity_curve import calculate_equity_curve, calculate_returns
+        from tradeexecutor.visual.equity_curve import visualise_returns_over_time
+
+        curve = calculate_equity_curve(state)
+        returns = calculate_returns(curve)
+        fig = visualise_equity_performance(returns)
+        display(fig)
+
+    :return:
+        Matplotlit figure
+
+    """
+
+
+    # /Users/moo/Library/Caches/pypoetry/virtualenvs/tradingview-defi-strategy-XB2Vkmi1-py3.10/lib/python3.10/site-packages/quantstats/stats.py:968: FutureWarning:
+    #
+    # In a future version of pandas all arguments of DataFrame.pivot will be keyword-only.
+
+    with warnings.catch_warnings():
+        import quantstats as qs  # Optional dependency
+        fig = qs.plots.monthly_returns(
+            returns,
+            show=False)
+        return fig
+
+
+def visualise_returns_distribution(
+        returns: pd.Series,
+) -> Figure:
+    """Breakdown the best day/month/yearly returns
+
+    - `See Quantstats README for more details <https://github.com/ranaroussi/quantstats>`__.
+
+    Example:
+
+    .. code-block:: python
+
+        from tradeexecutor.visual.equity_curve import calculate_equity_curve, calculate_returns
+        from tradeexecutor.visual.equity_curve import visualise_returns_distribution
+
+        curve = calculate_equity_curve(state)
+        returns = calculate_returns(curve)
+        fig = visualise_returns_distribution(returns)
+        display(fig)
+
+    :return:
+        Matplotlit figure
+
+    """
+    import quantstats as qs  # Optional dependency
+    fig = qs.plots.distribution(
+        returns,
+        show=False)
+    return fig
+
+
+
+
+

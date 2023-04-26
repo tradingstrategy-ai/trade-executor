@@ -18,6 +18,7 @@ from typing import List, Dict
 import pytest
 
 import pandas as pd
+from matplotlib.figure import Figure
 
 from tradeexecutor.backtest.backtest_runner import run_backtest_inline
 from tradeexecutor.cli.log import setup_pytest_logging
@@ -28,7 +29,7 @@ from tradeexecutor.testing.synthetic_ethereum_data import generate_random_ethere
 from tradeexecutor.testing.synthetic_exchange_data import generate_exchange, generate_simple_routing_model
 from tradeexecutor.testing.synthetic_price_data import generate_ohlcv_candles
 from tradeexecutor.visual.equity_curve import calculate_equity_curve, calculate_returns, calculate_cumulative_return, \
-    calculate_aggregate_returns
+    calculate_aggregate_returns, visualise_equity_curve, visualise_returns_over_time, visualise_returns_distribution
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.pricing_model import PricingModel
@@ -237,5 +238,25 @@ def test_calculate_aggregated_returns(state: State):
     assert pd.Timestamp("2021-12-31") not in monthly_aggregate
 
 
+def test_visualise_equity_performance(state: State):
+    """Draw equity curve."""
+    curve = calculate_equity_curve(state)
+    returns = calculate_returns(curve)
+    fig = visualise_equity_curve(returns)
+    assert isinstance(fig, Figure)
 
 
+def test_returns_over_time(state: State):
+    """Draw monthly returns grid."""
+    curve = calculate_equity_curve(state)
+    returns = calculate_returns(curve)
+    fig = visualise_returns_over_time(returns)
+    assert isinstance(fig, Figure)
+
+
+def test_returns_distribution(state: State):
+    """Draw return distribution over time."""
+    curve = calculate_equity_curve(state)
+    returns = calculate_returns(curve)
+    fig = visualise_returns_distribution(returns)
+    assert isinstance(fig, Figure)
