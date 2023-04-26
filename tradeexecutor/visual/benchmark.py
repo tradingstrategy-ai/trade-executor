@@ -83,7 +83,7 @@ def visualise_buy_and_hold(
         y=series,
         mode="lines",
         name=f"Buy and hold {buy_and_hold_asset_name}",
-        line=dict(color=colour),
+        # line=dict(color=colour),
     )
 
 
@@ -93,6 +93,7 @@ def visualise_benchmark(
     all_cash: Optional[float] = None,
     buy_and_hold_asset_name: Optional[str] = None,
     buy_and_hold_price_series: Optional[pd.Series] = None,
+    benchmark_indexes: pd.DataFrame = None,
     additional_indicators: Collection[Plot] = None,
     height=1200,
     start_at: Optional[Union[pd.Timestamp, datetime.datetime]] = None,
@@ -115,6 +116,13 @@ def visualise_benchmark(
         Visualise holding all_cash amount in the asset,
         bought at the start.
         This is basically price * all_cash.
+
+    :param benchmark_indexes:
+        List of other asset price series displayed on the timelien besides equity curve.
+
+        DataFrame containing multiple series.
+
+        Asset name is the series name.
 
     :param height:
         Chart height in pixels
@@ -172,12 +180,19 @@ def visualise_benchmark(
         scatter = visualise_all_cash(start_at, end_at, all_cash)
         fig.add_trace(scatter)
 
+    if benchmark_indexes is None:
+        benchmark_indexes = pd.DataFrame()
+
+    # Backwards compatible arguments
     if buy_and_hold_price_series is not None:
+        benchmark_indexes[buy_and_hold_asset_name] = buy_and_hold_price_series
 
-        # Clamp backtest to the strategy range even if we have more candles
+    # Plot all benchmark series
+    for benchmark_name in benchmark_indexes:
+        buy_and_hold_price_series = benchmark_indexes[benchmark_name]
+        # Clip to the backtest time frame
         buy_and_hold_price_series = buy_and_hold_price_series[start_at:end_at]
-
-        scatter = visualise_buy_and_hold(buy_and_hold_asset_name, buy_and_hold_price_series, all_cash)
+        scatter = visualise_buy_and_hold(benchmark_name, buy_and_hold_price_series, all_cash)
         fig.add_trace(scatter)
 
     if additional_indicators:
