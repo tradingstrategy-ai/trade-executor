@@ -1,7 +1,8 @@
 """Eznyme end-to-end test."""
-
+import json
 import os
 import secrets
+import tempfile
 
 from pathlib import Path
 from unittest.mock import patch
@@ -10,12 +11,15 @@ import pytest
 from click.testing import Result
 from eth_account import Account
 from typer.main import get_command
+from web3 import Web3
 
+from eth_defi.abi import get_deployed_contract
 from eth_defi.anvil import AnvilLaunch
 from hexbytes import HexBytes
 from typer.testing import CliRunner
 from web3.contract import Contract
 
+from eth_defi.enzyme.deployment import EnzymeDeployment
 from eth_defi.enzyme.vault import Vault
 from eth_defi.hotwallet import HotWallet
 from eth_defi.trace import assert_transaction_success_with_explanation
@@ -224,3 +228,54 @@ def test_enzyme_live_trading_start(
 
     assert usdc_balance == pytest.approx(10**6 * 449.730472)
     assert weth_balance == pytest.approx(10**18 * 0.03112978758721282)
+
+
+def test_enzyme_deploy_vault(
+    environment: dict,
+    web3: Web3,
+    state_file: Path,
+    usdc: Contract,
+    weth: Contract,
+    vault: Vault,
+    deployer: HexAddress,
+    enzyme_deployment: EnzymeDeployment,
+):
+    """Run Enzyme vaulted strategy for few cycles.
+
+    - Set up local Anvil testnet with Uniswap v2 and Enzyme
+
+    - Deploy a new vault using CLI
+
+    """
+
+    vault_record_file = os.path.join(tempfile.mkdtemp(), 'vault_record.json')
+    env = environment.copy()
+    env["FUND_NAME"] = "Toholampi Capital"
+    env["FUND_SYMBOL"] = "COW"
+    env["VAULT_FILE"] = vault_record_file
+
+    # Run strategy for few cycles.
+    # Manually call the main() function so that Typer's CliRunner.invoke() does not steal
+    # stdin and we can still set breakpoints
+    cli = get_command(app)
+    with patch.dict(os.environ, env, clear=True):
+        with pytest.raises(SystemExit) as e:
+            cli.main(args=["enzyme-deploy-vault"])
+        assert e.value.code == 0
+
+    # Check tat the vault was created
+    with open(vault_record_file, "rt") as inp:
+        vault_record = json.load(inp)
+
+        comptroller_contract, vault_contract = EnzymeDeployment.fetch_vault(enzyme_deployment, vault_record["vault"])
+        generic_adapter_contract = get_deployed_contract(web3, f"VaultSpecificGenericAdapter.json", vault_record["generic_adapter"])
+
+        vault = Vault(
+            vault=vault_contract,
+            comptroller=comptroller_contract,
+            deployment=enzyme_deployment,
+            generic_adapter=generic_adapter_contract,
+        )
+
+        assert vault.get_name() == "Toholampi Capital"
+        assert vault.get_symbol() == "COW"
