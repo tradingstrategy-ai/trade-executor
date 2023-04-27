@@ -104,7 +104,41 @@ def visualise_benchmark(
 
     - Live or backtested strategies
 
-    - Right axis is portfolio value
+    - Benchmark against buy and hold of various assets
+
+    - Benchmark against hold all cash
+
+    Example:
+
+    .. code-block:: python
+
+        from tradeexecutor.visual.benchmark import visualise_benchmark
+
+        TRADING_PAIRS = [
+            (ChainId.avalanche, "trader-joe", "WAVAX", "USDC"), # Avax
+            (ChainId.polygon, "quickswap", "WMATIC", "USDC"),  # Matic
+            (ChainId.ethereum, "uniswap-v2", "WETH", "USDC"),  # Eth
+            (ChainId.ethereum, "uniswap-v2", "WBTC", "USDC"),  # Btc
+        ]
+
+        # Benchmark against all of our assets
+        benchmarks = pd.DataFrame()
+        for pair_description in TRADING_PAIRS:
+            token_symbol = pair_description[2]
+            pair = universe.get_pair_by_human_description(pair_description)
+            benchmarks[token_symbol] = universe.universe.candles.get_candles_by_pair(pair.internal_id)["close"]
+
+        fig = visualise_benchmark(
+            "Bollinger bands example strategy",
+            portfolio_statistics=state.stats.portfolio,
+            all_cash=state.portfolio.get_initial_deposit(),
+            benchmark_indexes=benchmarks,
+            start_at=START_AT,
+            end_at=END_AT,
+            height=800
+        )
+
+        fig.show()
 
     :param portfolio_statistics:
         Portfolio performance record.
@@ -112,13 +146,28 @@ def visualise_benchmark(
     :param all_cash:
         Set a linear line of just holding X amount
 
-    :param buy_and_hold:
+    :param buy_and_hold_asset_name:
+
         Visualise holding all_cash amount in the asset,
         bought at the start.
         This is basically price * all_cash.
 
+        .. note ::
+
+            This is a legacy argument. Use `benchmark_indexes` instead.
+
+    :param buy_and_hold_price_series:
+
+        Visualise holding all_cash amount in the asset,
+        bought at the start.
+        This is basically price * all_cash.
+
+        .. note ::
+
+            This is a legacy argument. Use `benchmark_indexes` instead.
+
     :param benchmark_indexes:
-        List of other asset price series displayed on the timelien besides equity curve.
+        List of other asset price series displayed on the timeline besides equity curve.
 
         DataFrame containing multiple series.
 
@@ -132,13 +181,6 @@ def visualise_benchmark(
 
     :param end_at:
         When the backtest ended
-
-    :param visualisation:
-        Additional technical indicators drawn on this chart.
-
-        List of indicator names.
-
-        The indicators must be plotted earlier using `state.visualisation.plot_indicator()`.
 
     :param additional_indicators:
         Additional technical indicators drawn on this chart.

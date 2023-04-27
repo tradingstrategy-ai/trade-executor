@@ -555,6 +555,7 @@ def visualise_single_pair(
     
     :param volume_axis_name:
         Name of the volume axis. Default is "Volume USD".
+
     """
     
     logger.info("Visualising %s", state)
