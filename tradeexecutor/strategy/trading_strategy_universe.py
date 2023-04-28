@@ -220,19 +220,45 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
 
     def create_single_pair_universe(
         dataset: Dataset,
-        chain_id: ChainId,
-        exchange_slug: str,
-        base_token: str,
-        quote_token: str,
+        chain_id: Optional[ChainId] = None,
+        exchange_slug: Optional[str] = None,
+        base_token: Optional[str] = None,
+        quote_token: Optional[str] = None,
+        pair: Optional[HumanReadableTradingPairDescription] = None
     ) -> "TradingStrategyUniverse":
         """Filters down the dataset for a single trading pair.
 
         This is ideal for strategies that only want to trade a single pair.
 
-        :param reserve_currency:
-            If set use this as a reserve currency,
-            otherwise use quote_token.
+        :param pair:
+            Give the pair we create the universe for
+
+        :param exchange_slug:
+            Legacy.
+
+            This or `pair`.
+
+        :param chain_id:
+            Legacy.
+
+            This or `pair`.
+
+        :param base_token:
+            Legacy.
+
+            This or `pair`.
+
+        :param quote_token:
+            Legacy.
+
+            This or `pair`.
         """
+
+        if pair:
+            chain_id, exchange_slug, base_token, quote_token, *fees = pair
+
+            if len(fees) > 0:
+                raise NotImplementedError("This method still lacks fee filtering")
 
         # We only trade on Pancakeswap v2
         exchange_universe = dataset.exchanges
@@ -1092,12 +1118,12 @@ def load_pair_data_for_single_exchange(
         client: BaseClient,
         execution_context: ExecutionContext,
         time_bucket: TimeBucket,
-        chain_id: ChainId,
-        exchange_slug: str,
-        pair_tickers: Set[Tuple[str, str]],
-        universe_options: UniverseOptions,
+        chain_id: Optional[ChainId] = None,
+        exchange_slug: Optional[str] = None,
+        pair_tickers: Set[Tuple[str, str]] | Collection[HumanReadableTradingPairDescription] | None = None,
+        universe_options: UniverseOptions = None,
         liquidity=False,
-        stop_loss_time_bucket: Optional[TimeBucket]=None,
+        stop_loss_time_bucket: Optional[TimeBucket] = None,
         required_history_period: Optional[datetime.timedelta] = None,
 ) -> Dataset:
     """Load pair data for a single decentralised exchange.
@@ -1116,6 +1142,19 @@ def load_pair_data_for_single_exchange(
     - Live trading purges old data fields and reloads data
 
     Example:
+
+    ... code-block:: python
+
+        TRADING_PAIR = (ChainId.avalanche, "trader-joe", "WAVAX", "USDC")
+
+        dataset = load_pair_data_for_single_exchange(
+            client,
+            pair=TRADING_PAIR,
+            execution_context=execution_context,
+            universe_options=universe_options,
+        )
+
+    Example (old):
 
     .. code-block:: python
 
@@ -1151,13 +1190,19 @@ def load_pair_data_for_single_exchange(
         The candle time frame
 
     :param chain_id:
-        Which blockchain hosts our exchange
+        Which blockchain hosts our exchange.
+
+        Legacy. Give this or `pair`.
 
     :param exchange_slug:
         Which exchange hosts our trading pairs
 
+        Legacy. Give this or `pair`.
+
     :param exchange_slug:
         Which exchange hosts our trading pairs
+
+        Legacy. Give this or `pair`.
 
     :param pair_tickers:
         List of trading pair tickers as base token quote token tuples.
@@ -1186,8 +1231,12 @@ def load_pair_data_for_single_exchange(
     assert isinstance(client, Client)
     assert isinstance(time_bucket, TimeBucket)
     assert isinstance(execution_context, ExecutionContext)
-    assert isinstance(chain_id, ChainId)
-    assert isinstance(exchange_slug, str)
+    if chain_id is not None:
+        assert isinstance(chain_id, ChainId)
+
+    if exchange_slug is not None:
+        assert isinstance(exchange_slug, str)
+
     assert isinstance(universe_options, UniverseOptions)
 
     # Apply overrides
@@ -1212,7 +1261,7 @@ def load_pair_data_for_single_exchange(
             pairs_df,
             chain_id,
             exchange_slug,
-            pair_tickers
+            pair_tickers,
         )
 
         assert len(our_pairs) > 0, f"Pair data not found {chain_id.name}, {exchange_slug}, {pair_tickers}"
