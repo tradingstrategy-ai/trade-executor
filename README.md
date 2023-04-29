@@ -30,6 +30,7 @@ First study the example code
 
 - [Code examples](https://tradingstrategy.ai/docs/programming/code-examples/running.html)
 - [Trading strategy examples](https://tradingstrategy.ai/docs/programming/code-examples/running.html)
+- [See TradingView PineScript porting example](https://tradingstrategy.ai/blog/avalanche-summit-ii-workshop)
 
 ## More information
 
@@ -38,6 +39,9 @@ First study the example code
 - [Join the Discord for any questions](https://tradingstrategy.ai/community)
 
 ## Installation
+
+**Note**: The project is under active development. We recommend any developers to use Github master branch
+for installations.
 
 ```shell
 git clone git@github.com:tradingstrategy-ai/trade-executor.git
@@ -61,7 +65,7 @@ pip install -e ".[web-server,execution,qstrader,quantstats]"
 
 Here is an example of a live trading deployment of a `trade-executor` package.
 
-![Architetcure overview](docs/deployment-overview.drawio.svg)
+![Architecture overview](docs/deployment-overview.drawio.svg)
 
 ## Running tests
 

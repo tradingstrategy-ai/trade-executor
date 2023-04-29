@@ -4200,19 +4200,14 @@ docs = ["Sphinx (>=4.4.0,<5.0.0)", "sphinx-autodoc-typehints[docs] (>=1.16.0,<2.
 
 [[package]]
 name = "python-logstash-tradingstrategy"
-version = "0.5.0"
-description = "Python logging handler for Logstash (forked)."
+version = "0.5.1"
+description = "Python logging handler for Logstash (forked)"
 category = "main"
 optional = false
 python-versions = "*"
-files = []
-develop = false
-
-[package.source]
-type = "git"
-url = "https://github.com/tradingstrategy-ai/python-logstash.git"
-reference = "982dd3e6a374b443f14139508f0c12423193755a"
-resolved_reference = "982dd3e6a374b443f14139508f0c12423193755a"
+files = [
+    {file = "python-logstash-tradingstrategy-0.5.1.tar.gz", hash = "sha256:f98b43ac53adaef0bd4e1da84d2c2ab8e8ceebba76b412a9d63c89c1ea9207a4"},
+]
 
 [[package]]
 name = "pytz"
@@ -5828,4 +5823,4 @@ web-server = ["pyramid", "WebTest", "openapi-core", "pyramid-openapi3", "waitres
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.10,<3.11"
-content-hash = "224966b5373d6f668fb7057515d39ee8e1cbcd0f4256b4d593df9dcd380ed9d8"
+content-hash = "3df00b31fbcce09d972d342c449aea45b9b561dd40f4e67dbf805e36514ca6fc"
