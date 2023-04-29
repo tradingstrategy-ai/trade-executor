@@ -4,10 +4,15 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
+from tradingstrategy.client import Client
 
-from tradeexecutor.backtest.grid_search import prepare_grid_combinations
+from tradeexecutor.backtest.grid_search import prepare_grid_combinations, run_grid_search_backtest, perform_grid_search, GridCombination
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.state.state import State
+from tradeexecutor.state.visualisation import PlotKind
+from tradeexecutor.strategy.cycle import CycleDuration
+from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
+from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, create_pair_universe_from_code
 from tradeexecutor.testing.synthetic_ethereum_data import generate_random_ethereum_address
 from tradeexecutor.testing.synthetic_exchange_data import generate_exchange
@@ -59,8 +64,14 @@ def weth_usdc(mock_exchange, usdc, weth) -> TradingPairIdentifier:
         internal_exchange_id=mock_exchange.exchange_id)
 
 
+@pytest.fixture
+def result_path() -> Path:
+    """Where the grid search data is stored"""
+    return
+
+
 @pytest.fixture()
-def synthetic_universe(mock_chain_id, mock_exchange, weth_usdc) -> TradingStrategyUniverse:
+def universe(mock_chain_id, mock_exchange, weth_usdc) -> TradingStrategyUniverse:
     """Generate synthetic trading data universe for a single trading pair.
 
     - Single mock exchange
@@ -116,13 +127,69 @@ def test_prepare_grid_search_parameters():
 
 
 
-def test_perform_grid_search():
+def test_perform_grid_search(
+        universe: TradingStrategyUniverse,
+        tmp_path,
+):
     """Run a grid search."""
 
+    def grid_search_worker(
+            universe: TradingStrategyUniverse,
+            combination: GridCombination,
+    ):
+
+        stop_loss_pct, slow_ema_candle_count, fast_ema_candle_count = combination.destructure()
+        batch_size = fast_ema_candle_count + 1
+        position_size = 0.50
+
+        def decide_trades(
+            timestamp: pd.Timestamp,
+            universe: Universe,
+            state: State,
+            pricing_model: PricingModel,
+            cycle_debug_data: dict
+        ):
+            # The pair we are trading
+            pair = universe.pairs.get_single()
+            cash = state.portfolio.get_current_cash()
+            candles: pd.DataFrame = universe.candles.get_single_pair_data(sample_count=batch_size)
+            close = candles["close"]
+            slow_ema = close.ewm(span=slow_ema_candle_count).mean().iloc[-1]
+            fast_ema = close.ewm(span=fast_ema_candle_count).mean().iloc[-1]
+            trades = []
+            position_manager = PositionManager(timestamp, universe, state, pricing_model)
+            current_price = close.iloc[-1]
+            if current_price >= slow_ema:
+                if not position_manager.is_any_open():
+                    buy_amount = cash * position_size
+                    trades += position_manager.open_1x_long(pair, buy_amount, stop_loss_pct=stop_loss_pct)
+            elif fast_ema >= slow_ema:
+                if position_manager.is_any_open():
+                    trades += position_manager.close_all()
+            visualisation = state.visualisation
+            visualisation.plot_indicator(timestamp, "Slow EMA", PlotKind.technical_indicator_on_price, slow_ema, colour="forestgreen")
+            visualisation.plot_indicator(timestamp, "Fast EMA", PlotKind.technical_indicator_on_price, fast_ema, colour="limegreen")
+            return trades
+
+        return run_grid_search_backtest(
+            decide_trades,
+            universe,
+            name=f"Backtest slow:{slow_ema_candle_count} fast:{fast_ema_candle_count}",
+        )
+
+
     parameters = {
-        "stop_loss": [0.9, 0.95],
-        "max_asset_amount": [3, 4],
-        "momentum_lookback_days": ["7d", "14d", "21d"]
+        "stop_loss_pct": [0.9, 0.95],
+        "slow_ema_candle_count": [7, 14, 21],
+        "fast_ema_candle_count": [2, 5, 7],
     }
 
     combinations = prepare_grid_combinations(parameters)
+
+    perform_grid_search(
+        grid_search_worker,
+        universe,
+        combinations,
+        tmp_path,
+        max_workers=1,
+    )

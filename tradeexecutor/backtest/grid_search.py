@@ -5,13 +5,19 @@ import logging
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol, Dict, List, Tuple, Any
+from typing import Protocol, Dict, List, Tuple, Any, Optional
+
+import pandas as pd
 
 import futureproof
+from tradingstrategy.client import Client
 
 from tradeexecutor.analysis.trade_analyser import TradeSummary
 from tradeexecutor.backtest.backtest_runner import run_backtest_inline
 from tradeexecutor.state.state import State
+from tradeexecutor.state.types import USDollarAmount
+from tradeexecutor.strategy.cycle import CycleDuration
+from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.strategy_module import DecideTradesProtocol
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 
@@ -70,6 +76,9 @@ class GridCombination:
         """Get as kwargs mapping."""
         return {p.name: p.value for p in self.parameters}
 
+    def destructure(self) -> List[Any]:
+        """Open parameters dict."""
+        return [p.value for p in self.parameters]
 
 
 @dataclass()
@@ -83,12 +92,10 @@ class GridSearchResult:
     summary: TradeSummary
 
 
-
 class GridSearcWorker(Protocol):
     """Define how to create different strategy bodies."""
 
-
-    def __call__(self, universe: TradingStrategyUniverse, **kwargs) -> State:
+    def __call__(self, universe: TradingStrategyUniverse, combination: GridCombination) -> GridSearchResult:
         """Run a new decide_trades() strategy body based over the serach parameters.
 
         :param args:
@@ -120,7 +127,6 @@ def run_grid_combination(
         combination: GridCombination,
         result_path: Path,
 ):
-
     state_file = result_path.joinpath(combination.get_state_path()).joinpath("state.json")
     if state_file.exists():
         with open(state_file, "rt") as inp:
@@ -129,11 +135,7 @@ def run_grid_combination(
     else:
         pass
 
-    state = grid_search_worker(
-        universe,
-        **combination.as_dict())
-
-
+    state = grid_search_worker(universe, combination)
 
 
 def perform_grid_search(
@@ -167,6 +169,7 @@ def perform_grid_search(
     :return
     """
 
+    assert isinstance(result_path, Path), f"Expected Path, got {type(result_path)}"
     assert result_path.exists() and result_path.is_dir(), f"Not a dir: {result_path}"
 
     start = datetime.datetime.utcnow()
@@ -177,7 +180,7 @@ def perform_grid_search(
                 max_workers,
                 )
 
-    task_args = [(decide_trades_factory, universe, c, result_path) for c in combinations]
+    task_args = [(grid_search_worker, universe, c, result_path) for c in combinations]
 
     if max_workers > 1:
 
@@ -208,3 +211,59 @@ def perform_grid_search(
 
     duration = datetime.datetime.utcnow() - start
     logger.info("Grid search finished in %s", duration)
+
+    data = {}
+    for idx, task in enumerate(task_args):
+        combination = task[2]
+        result = results[idx]
+        data[combination] = result
+
+    return data
+
+
+
+def run_grid_search_backtest(
+        decide_trades: DecideTradesProtocol,
+        universe: TradingStrategyUniverse,
+        cycle_duration: Optional[CycleDuration] = None,
+        start_at: Optional[datetime.datetime] = None,
+        end_at: Optional[datetime.datetime] = None,
+        initial_deposit: USDollarAmount = 5000.0,
+        trade_routing: Optional[TradeRouting] = None,
+        data_delay_tolerance: Optional[pd.Timedelta] = None,
+        name: str = "backtest",
+) -> GridSearchResult:
+    assert isinstance(universe, TradingStrategyUniverse)
+
+    universe_range = universe.universe.candles.get_timestamp_range()
+    if not start_at:
+        start_at = universe_range[0]
+
+    if not end_at:
+        end_at = universe_range[1]
+
+    if not cycle_duration:
+        cycle_duration = CycleDuration.from_timebucket(universe.universe.candles.time_bucket)
+    else:
+        assert isinstance(cycle_duration, CycleDuration)
+
+    # Run the test
+    state, universe, debug_dump = run_backtest_inline(
+        name="No stop loss",
+        start_at=start_at.to_pydatetime(),
+        end_at=end_at.to_pydatetime(),
+        client=None,
+        cycle_duration=cycle_duration,
+        decide_trades=decide_trades,
+        create_trading_universe=None,
+        universe=universe,
+        initial_deposit=initial_deposit,
+        reserve_currency=None,
+        trade_routing=TradeRouting.ignore,
+        routing_model=None,
+        allow_missing_fees=True,
+    )
+
+    return GridSearchResult(
+        state=state
+    )
