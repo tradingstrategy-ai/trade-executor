@@ -78,6 +78,7 @@ See [internal development documentation](https://tradingstrategy.ai/docs/program
 - [Blog](https://tradingstrategy.ai/blog)
 - [Twitter](https://twitter.com/TradingProtocol)
 - [Telegram channel](https://t.me/trading_protocol)
+- [Newsletter](https://tradingstrategy.ai/newsletter)
 
 ## License 
 
