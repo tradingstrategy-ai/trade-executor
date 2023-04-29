@@ -1,13 +1,13 @@
 [tool.poetry]
 name = "trade-executor"
 version = "0.2"
-description = "Trading strategy execution and backtesting"
+description = "Algorithmic trading backtesting and execution engine for decentralised finance"
 authors = ["Mikko Ohtamaa <mikko@tradingstrategy.ai>"]
 homepage = "https://tradingstrategy.ai"
 repository = "https://github.com/tradingstrategy-ai/trade-executor"
 license = "APGL"
 readme = "README.md"
-keywords = ["algorithmic trading", "ethereum", "cryptocurrency", "uniswap", "quantitative finance", "binance", "blockchain", "pancakeswap", "polygon", "web3"]
+keywords = ["algorithmic trading", "ethereum", "cryptocurrency", "uniswap", "quantitative finance", "binance", "coinbase", "pancakeswap"]
 packages = [
     { include = "tradeexecutor" },
 ]

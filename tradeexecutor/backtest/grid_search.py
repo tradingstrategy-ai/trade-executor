@@ -180,6 +180,8 @@ def perform_grid_search(
     task_args = [(decide_trades_factory, universe, c, result_path) for c in combinations]
 
     if max_workers > 1:
+
+        logger.info("Doing a multiprocess grid search")
         # Do a parallel scan for the maximum speed
         #
         # Set up a futureproof task manager
@@ -196,7 +198,7 @@ def perform_grid_search(
         results = [task.result for task in tm.as_completed()]
 
     else:
-        print("Doing single thread scan")
+        logger.info("Doing a single thread grid search")
         # Do single thread - good for debuggers like pdb/ipdb
         #
         iter = itertools.starmap(run_grid_combination, task_args)

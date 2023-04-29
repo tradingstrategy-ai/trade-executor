@@ -1,23 +1,35 @@
 [![Automated test suite and Docker image build](https://github.com/tradingstrategy-ai/trade-executor/actions/workflows/test-and-build-image.yml/badge.svg)](https://github.com/tradingstrategy-ai/trade-executor/actions/workflows/test-and-build-image.yml)
 
-# Trade Executor
+# Trade Executor: Algorithmic Trading Engine for DeFi 
 
-Trade Executor is a Python framework for executing algorithmic trading strategies on decentralised exchanges. 
+`trade-executor` is a Python framework for backtesting and live execution of algorithmic trading strategies on decentralised exchanges. 
 
-**Note**: This is early alpha software. Please pop in to the Discord for any questions. 
-
-## Getting started
-
-- [See Running code examples](https://tradingstrategy.ai/docs/programming/code-examples/running.html)
-  in Trading Strategy documentation
+**Note**: This is early beta software. [Please pop in to the Discord for any questions](https://tradingstrategy.ai/community). 
 
 ## Features
 
+- Only trading framework that has been built grounds up for [decentralised finance](https://tradingstrategy.ai/glossary/decentralised-finance)
 - [High quality documentation](https://tradingstrategy.ai/docs/)
-- Support [decentralised markets like Uniswap, PancakeSwap](https://tradingstrategy.ai/docs/overview/supported-markets.html) 
-- [Live trading](https://tradingstrategy.ai/docs/running/live-trading.html) and [backtesting](https://tradingstrategy.ai/docs/running/backtesting.html)  
-- [Webhook web serverPlain](https://tradingstrategy.ai/docs/running/webhook.html) for web and JavaScript integration
-- Run the strategy execution as [Python application or Docker container](https://tradingstrategy.ai/docs/running/cli.html)
+- Support [decentralised markets like Uniswap, PancakeSwap](https://tradingstrategy.ai/docs/overview/supported-markets.html)
+- [Backtesting enginer](https://tradingstrategy.ai/docs/running/backtesting.html)
+- [Live trading](https://tradingstrategy.ai/docs/running/live-trading.html)   
+- [Webhook web server](https://tradingstrategy.ai/docs/running/webhook.html) for JavaScript frontend and monitoring system integration
+- Deploy as [Docker container](https://tradingstrategy.ai/docs/running/cli.html)
+
+## Prerequisites
+
+You need to know
+
+- Basics of Python 
+- Basics of trading
+- [We have collected learning material for developers new to algorithmic trading](https://tradingstrategy.ai/docs/learn/index.html)
+
+## Getting started
+
+First study the example code
+
+- [Code examples](https://tradingstrategy.ai/docs/programming/code-examples/running.html)
+- [Trading strategy examples](https://tradingstrategy.ai/docs/programming/code-examples/running.html)
 
 ## More information
 
@@ -47,45 +59,23 @@ pip install -e ".[web-server,execution,qstrader,quantstats]"
 
 ## Architecture overview
 
-![Archiecture overview](docs/deployment-overview.drawio.svg)
+Here is an example of a live trading deployment of a `trade-executor` package.
+
+![Architetcure overview](docs/deployment-overview.drawio.svg)
 
 ## Running tests
 
-To run the full test suite, multiple blockchain node connections are needed.
-You also need [Trading Strategy API key](https://tradingstrategy.ai/trading-view/backtesting).
-
-```
-# Free and somewhat robust Polygon endpoint
-export JSON_RPC_POLYGON="https://polygon-rpc.com"
-export TRADING_STRATEGY_API_KEY=...
-export BNB_CHAIN_JSON_RPC=...
-
-pytest
-```
-
-Some tests take a long time, because they are checking different real-time timings.
-You can skip the slow tests with 
-
-```sell
-export SKIP_SLOW_TESTS=true
-```
-
-## Development
-
-See [docs](./docs).
+See [internal development documentation](https://tradingstrategy.ai/docs/programming/development.html). 
 
 ## Community
 
-* [Trading Strategy website](https://tradingstrategy.ai)
-
-* [Blog](https://tradingstrategy.ai/blog)
-
-* [Twitter](https://twitter.com/TradingProtocol)
-
-* [Discord](https://tradingstrategy.ai/community#discord) 
-
-* [Telegram channel](https://t.me/trading_protocol)
+- [Trading Strategy website](https://tradingstrategy.ai)
+- [Community Discord server](https://tradingstrategy.ai/community#discord)
+- [Blog](https://tradingstrategy.ai/blog)
+- [Twitter](https://twitter.com/TradingProtocol)
+- [Telegram channel](https://t.me/trading_protocol)
 
 ## License 
 
 - AGPL
+- [Contact for the commercial dual licensing](https://tradingstrategy.ai/about)
