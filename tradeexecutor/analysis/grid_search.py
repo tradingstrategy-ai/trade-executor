@@ -11,7 +11,7 @@ def analyse_combination(r: GridSearchResult) -> dict:
     return {
         "Combination": r.combination.get_label(),
         "Annualised profit": r.summary.annualised_return_percent,
-        "Maximum pullback": r.summary.max_pullback,
+        "Maximum drawdown": r.metrics["Maximum drawdown"][0]
     }
 
 
