@@ -60,7 +60,10 @@ logger = logging.getLogger(__name__)
 @dataclass_json
 @dataclass(slots=True)
 class TradeSummary:
-    """Some generic statistics over all the trades"""
+    """Some generic statistics over all the trades
+
+    TDOO: Cleam this up
+    """
     won: int
     lost: int
     zero_loss: int

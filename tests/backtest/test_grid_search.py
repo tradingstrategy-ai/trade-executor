@@ -6,6 +6,7 @@ import pandas as pd
 import pytest
 from tradingstrategy.client import Client
 
+from tradeexecutor.analysis.grid_search import analyse_grid_search_result
 from tradeexecutor.backtest.grid_search import prepare_grid_combinations, run_grid_search_backtest, perform_grid_search, GridCombination
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.state.state import State
@@ -112,6 +113,52 @@ def universe(mock_chain_id, mock_exchange, weth_usdc) -> TradingStrategyUniverse
         reserve_assets=[weth_usdc.quote])
 
 
+def grid_search_worker(
+        universe: TradingStrategyUniverse,
+        combination: GridCombination,
+) -> State:
+    """Run a backtest for a single grid combination."""
+
+    stop_loss_pct, slow_ema_candle_count, fast_ema_candle_count = combination.destructure()
+    batch_size = fast_ema_candle_count + 1
+    position_size = 0.50
+
+    def decide_trades(
+        timestamp: pd.Timestamp,
+        universe: Universe,
+        state: State,
+        pricing_model: PricingModel,
+        cycle_debug_data: dict
+    ):
+        # The pair we are trading
+        pair = universe.pairs.get_single()
+        cash = state.portfolio.get_current_cash()
+        candles: pd.DataFrame = universe.candles.get_single_pair_data(sample_count=batch_size)
+        close = candles["close"]
+        slow_ema = close.ewm(span=slow_ema_candle_count).mean().iloc[-1]
+        fast_ema = close.ewm(span=fast_ema_candle_count).mean().iloc[-1]
+        trades = []
+        position_manager = PositionManager(timestamp, universe, state, pricing_model)
+        current_price = close.iloc[-1]
+        if current_price >= slow_ema:
+            if not position_manager.is_any_open():
+                buy_amount = cash * position_size
+                trades += position_manager.open_1x_long(pair, buy_amount, stop_loss_pct=stop_loss_pct)
+        elif fast_ema >= slow_ema:
+            if position_manager.is_any_open():
+                trades += position_manager.close_all()
+        visualisation = state.visualisation
+        visualisation.plot_indicator(timestamp, "Slow EMA", PlotKind.technical_indicator_on_price, slow_ema, colour="forestgreen")
+        visualisation.plot_indicator(timestamp, "Fast EMA", PlotKind.technical_indicator_on_price, fast_ema, colour="limegreen")
+        return trades
+
+    return run_grid_search_backtest(
+        combination,
+        decide_trades,
+        universe,
+        name=f"Backtest slow:{slow_ema_candle_count} fast:{fast_ema_candle_count}",
+    )
+
 
 def test_prepare_grid_search_parameters():
     """Prepare grid search parameters."""
@@ -139,64 +186,24 @@ def test_perform_grid_search(
 ):
     """Run a grid search."""
 
-    def grid_search_worker(
-            universe: TradingStrategyUniverse,
-            combination: GridCombination,
-    ):
-
-        stop_loss_pct, slow_ema_candle_count, fast_ema_candle_count = combination.destructure()
-        batch_size = fast_ema_candle_count + 1
-        position_size = 0.50
-
-        def decide_trades(
-            timestamp: pd.Timestamp,
-            universe: Universe,
-            state: State,
-            pricing_model: PricingModel,
-            cycle_debug_data: dict
-        ):
-            # The pair we are trading
-            pair = universe.pairs.get_single()
-            cash = state.portfolio.get_current_cash()
-            candles: pd.DataFrame = universe.candles.get_single_pair_data(sample_count=batch_size)
-            close = candles["close"]
-            slow_ema = close.ewm(span=slow_ema_candle_count).mean().iloc[-1]
-            fast_ema = close.ewm(span=fast_ema_candle_count).mean().iloc[-1]
-            trades = []
-            position_manager = PositionManager(timestamp, universe, state, pricing_model)
-            current_price = close.iloc[-1]
-            if current_price >= slow_ema:
-                if not position_manager.is_any_open():
-                    buy_amount = cash * position_size
-                    trades += position_manager.open_1x_long(pair, buy_amount, stop_loss_pct=stop_loss_pct)
-            elif fast_ema >= slow_ema:
-                if position_manager.is_any_open():
-                    trades += position_manager.close_all()
-            visualisation = state.visualisation
-            visualisation.plot_indicator(timestamp, "Slow EMA", PlotKind.technical_indicator_on_price, slow_ema, colour="forestgreen")
-            visualisation.plot_indicator(timestamp, "Fast EMA", PlotKind.technical_indicator_on_price, fast_ema, colour="limegreen")
-            return trades
-
-        return run_grid_search_backtest(
-            combination,
-            decide_trades,
-            universe,
-            name=f"Backtest slow:{slow_ema_candle_count} fast:{fast_ema_candle_count}",
-        )
-
-
     parameters = {
         "stop_loss_pct": [0.9, 0.95],
-        "slow_ema_candle_count": [7, 14, 21],
-        "fast_ema_candle_count": [2, 5, 7],
+        "slow_ema_candle_count": [7, 9],
+        "fast_ema_candle_count": [2, 3],
     }
 
     combinations = prepare_grid_combinations(parameters)
 
-    perform_grid_search(
+    results = perform_grid_search(
         grid_search_worker,
         universe,
         combinations,
         tmp_path,
         max_workers=1,
     )
+
+    table = analyse_grid_search_result(results.values())
+    assert len(table) == 2 * 2 * 2
+    row = table.iloc[0]
+    assert row.name == "stop_loss_pct: 0.9, slow_ema_candle_count: 7, fast_ema_candle_count: 2"
+    assert row["Annualised profit"] == pytest.approx(0.2604995457916667)

@@ -78,6 +78,10 @@ class GridCombination:
         """Get as kwargs mapping."""
         return {p.name: p.value for p in self.parameters}
 
+    def get_label(self) -> str:
+        """Human readable label for this combination"""
+        return ", ".join([f"{p.name}: {p.value}" for p in self.parameters])
+
     def destructure(self) -> List[Any]:
         """Open parameters dict.
 
@@ -230,6 +234,7 @@ def perform_grid_search(
     for idx, task in enumerate(task_args):
         combination = task[2]
         result = results[idx]
+        assert isinstance(result, GridSearchResult), f"Got {type(result)}"
         data[combination] = result
 
     return data
