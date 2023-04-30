@@ -66,6 +66,10 @@ def visualise_table(df: pd.DataFrame):
 
     # https://stackoverflow.com/a/57152529/315168
 
+    # TODO:
+    # Diverge color gradient around zero
+    # https://stackoverflow.com/a/60654669/315168
+
     formatted = df.style.background_gradient(
         axis = 0,
         subset = VALUE_COLS,
