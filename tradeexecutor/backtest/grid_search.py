@@ -12,6 +12,7 @@ import pandas as pd
 import futureproof
 from tradingstrategy.client import Client
 
+from tradeexecutor.analysis.advanced_metrics import calculate_advanced_metrics
 from tradeexecutor.analysis.trade_analyser import TradeSummary, build_trade_analysis
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingIgnoredModel
 from tradeexecutor.backtest.backtest_runner import run_backtest_inline
@@ -22,6 +23,7 @@ from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.routing import RoutingModel
 from tradeexecutor.strategy.strategy_module import DecideTradesProtocol
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
+from tradeexecutor.visual.equity_curve import calculate_equity_curve, calculate_returns
 
 logger = logging.getLogger(__name__)
 
@@ -184,7 +186,9 @@ def perform_grid_search(
     :param result_path:
         A folder where resulting state files will be stored.
 
-    :return
+    :return:
+        Grid search results for different combinations.
+
     """
 
     assert isinstance(result_path, Path), f"Expected Path, got {type(result_path)}"
@@ -290,6 +294,9 @@ def run_grid_search_backtest(
     )
 
     analysis = build_trade_analysis(state.portfolio)
+    equity = calculate_equity_curve(state)
+    returns = calculate_returns(equity)
+    metrics = calculate_advanced_metrics()
     summary = analysis.calculate_summary_statistics()
 
     return GridSearchResult(
