@@ -61,7 +61,9 @@ def weth_usdc(mock_exchange, usdc, weth) -> TradingPairIdentifier:
         generate_random_ethereum_address(),
         mock_exchange.address,
         internal_id=555,
-        internal_exchange_id=mock_exchange.exchange_id)
+        internal_exchange_id=mock_exchange.exchange_id,
+        fee=0.0030,
+    )
 
 
 @pytest.fixture
@@ -103,7 +105,11 @@ def universe(mock_chain_id, mock_exchange, weth_usdc) -> TradingStrategyUniverse
         liquidity=None
     )
 
-    return TradingStrategyUniverse(universe=universe, reserve_assets=[weth_usdc.quote])
+    return TradingStrategyUniverse(
+        universe=universe,
+        backtest_stop_loss_candles=candle_universe,
+        backtest_stop_loss_time_bucket=time_bucket,
+        reserve_assets=[weth_usdc.quote])
 
 
 
@@ -172,6 +178,7 @@ def test_perform_grid_search(
             return trades
 
         return run_grid_search_backtest(
+            combination,
             decide_trades,
             universe,
             name=f"Backtest slow:{slow_ema_candle_count} fast:{fast_ema_candle_count}",

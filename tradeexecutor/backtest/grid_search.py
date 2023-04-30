@@ -12,12 +12,14 @@ import pandas as pd
 import futureproof
 from tradingstrategy.client import Client
 
-from tradeexecutor.analysis.trade_analyser import TradeSummary
+from tradeexecutor.analysis.trade_analyser import TradeSummary, build_trade_analysis
+from tradeexecutor.backtest.backtest_routing import BacktestRoutingIgnoredModel
 from tradeexecutor.backtest.backtest_runner import run_backtest_inline
 from tradeexecutor.state.state import State
 from tradeexecutor.state.types import USDollarAmount
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.default_routing_options import TradeRouting
+from tradeexecutor.strategy.routing import RoutingModel
 from tradeexecutor.strategy.strategy_module import DecideTradesProtocol
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 
@@ -54,19 +56,19 @@ class GridCombination:
     #: Alphabetically sorted list of parameters
     parameters: Tuple[GridParameter]
 
+    def __post_init__(self):
+        assert len(self.parameters) > 0
+
     def __hash__(self):
         return hash(self.parameters)
 
     def __eq__(self, other):
         return self.parameters == other.parameters
 
-    def __post_init__(self):
-        """Always sort parameters alphabetically"""
-        self.parameters = tuple(sorted(self.parameters, key=lambda p: p.name))
-
     def get_state_path(self) -> Path:
         """Get the path where the resulting state file is stored."""
-        return Path(os.path.join(*[p.to_path() for p in self.parameters]))
+        path_parts = [p.to_path() for p in self.parameters]
+        return Path(os.path.join(*path_parts))
 
     def validate(self):
         """Check arguments can be serialised as fs path."""
@@ -77,7 +79,10 @@ class GridCombination:
         return {p.name: p.value for p in self.parameters}
 
     def destructure(self) -> List[Any]:
-        """Open parameters dict."""
+        """Open parameters dict.
+
+        This will return the arguments in the same order you pass them to :py:func:`prepare_grid_combinations`.
+        """
         return [p.value for p in self.parameters]
 
 
@@ -105,17 +110,25 @@ class GridSearcWorker(Protocol):
 
 
 def prepare_grid_combinations(parameters: Dict[str, List[Any]]) -> List[GridCombination]:
-    """Get iterable search matrix of all parameter combinations."""
+    """Get iterable search matrix of all parameter combinations.
+
+    Make sure we preverse the original order of the grid search parameters.
+    """
 
     args_lists: List[list] = []
     for name, values in parameters.items():
         args = [GridParameter(name, v) for v in values]
         args_lists.append(args)
 
-    #
     combinations = itertools.product(*args_lists)
 
-    combinations = [GridCombination(c) for c in combinations]
+    # Maintain the orignal parameter order over itertools.product()
+    order = tuple(parameters.keys())
+    def sort_by_order(combination: List[GridParameter]):
+        temp = {p.name: p for p in combination}
+        return tuple([temp[o] for o in order])
+
+    combinations = [GridCombination(sort_by_order(c)) for c in combinations]
     for c in combinations:
         c.validate()
     return combinations
@@ -135,7 +148,8 @@ def run_grid_combination(
     else:
         pass
 
-    state = grid_search_worker(universe, combination)
+    result = grid_search_worker(universe, combination)
+    return result
 
 
 def perform_grid_search(
@@ -223,6 +237,7 @@ def perform_grid_search(
 
 
 def run_grid_search_backtest(
+        combination: GridCombination,
         decide_trades: DecideTradesProtocol,
         universe: TradingStrategyUniverse,
         cycle_duration: Optional[CycleDuration] = None,
@@ -232,6 +247,7 @@ def run_grid_search_backtest(
         trade_routing: Optional[TradeRouting] = None,
         data_delay_tolerance: Optional[pd.Timedelta] = None,
         name: str = "backtest",
+        routing_model: Optional[RoutingModel] = None,
 ) -> GridSearchResult:
     assert isinstance(universe, TradingStrategyUniverse)
 
@@ -247,6 +263,9 @@ def run_grid_search_backtest(
     else:
         assert isinstance(cycle_duration, CycleDuration)
 
+    if not routing_model:
+        routing_model = BacktestRoutingIgnoredModel(universe.get_reserve_asset().address)
+
     # Run the test
     state, universe, debug_dump = run_backtest_inline(
         name="No stop loss",
@@ -259,11 +278,17 @@ def run_grid_search_backtest(
         universe=universe,
         initial_deposit=initial_deposit,
         reserve_currency=None,
-        trade_routing=TradeRouting.ignore,
-        routing_model=None,
+        trade_routing=TradeRouting.user_supplied_routing_model,
+        routing_model=routing_model,
         allow_missing_fees=True,
+        data_delay_tolerance=data_delay_tolerance,
     )
 
+    analysis = build_trade_analysis(state.portfolio)
+    summary = analysis.calculate_summary_statistics()
+
     return GridSearchResult(
-        state=state
+        combination=combination,
+        state=state,
+        summary=summary,
     )
