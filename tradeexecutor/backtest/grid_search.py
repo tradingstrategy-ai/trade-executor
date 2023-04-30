@@ -10,9 +10,7 @@ from pathlib import Path
 from typing import Protocol, Dict, List, Tuple, Any, Optional
 
 import pandas as pd
-
 import futureproof
-from tradingstrategy.client import Client
 
 from tradeexecutor.analysis.advanced_metrics import calculate_advanced_metrics
 from tradeexecutor.analysis.trade_analyser import TradeSummary, build_trade_analysis
