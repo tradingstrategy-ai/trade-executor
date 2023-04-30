@@ -12,7 +12,7 @@ from tradingstrategy.exchange import Exchange
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
 
-from tradeexecutor.analysis.grid_search import analyse_grid_search_result
+from tradeexecutor.analysis.grid_search import analyse_grid_search_result, visualise_table, visualise_heatmap_2d
 from tradeexecutor.backtest.grid_search import prepare_grid_combinations, run_grid_search_backtest, perform_grid_search, GridCombination, GridSearchResult
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.state.state import State
@@ -203,12 +203,18 @@ def test_perform_grid_search_single_thread(
         max_workers=1,
     )
 
-    table = analyse_grid_search_result(results)
+    table = analyse_grid_search_result(results, drop_index=True)
     assert len(table) == 2 * 2 * 2
     row = table.iloc[0]
-    assert row["stop_loss_pct"] == 0.9
+    # assert row["stop_loss_pct"] == 0.9
     assert row["Annualised profit"] == pytest.approx(0.2604995457916667)
+    assert row["Positions"] == 2
 
+    visualise_table(table)
+
+    # Remove extra axis by focusing only stop_loss_pct=0.9
+    heatmap_data = table.xs(0.9, level="stop_loss_pct")
+    visualise_heatmap_2d(heatmap_data, "fast_ema_candle_count", "slow_ema_candle_count", "Annualised profit")
 
 
 def test_perform_grid_search_cached(
