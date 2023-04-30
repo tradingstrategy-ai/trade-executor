@@ -7,11 +7,10 @@ from tradeexecutor.backtest.grid_search import GridSearchResult
 
 def analyse_combination(r: GridSearchResult) -> dict:
     """Create a grid search result table row."""
-
     return {
         "Combination": r.combination.get_label(),
         "Annualised profit": r.summary.annualised_return_percent,
-        "Maximum drawdown": r.metrics["Maximum drawdown"][0]
+        "Max drawdown": r.metrics.loc["Max Drawdown"][0]
     }
 
 
@@ -21,4 +20,3 @@ def analyse_grid_search_result(results: Iterable[GridSearchResult]) -> pd.DataFr
     df = pd.DataFrame(rows)
     df = df.set_index("Combination")
     return df
-
