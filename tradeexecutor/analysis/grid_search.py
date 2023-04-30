@@ -102,11 +102,13 @@ def visualise_heatmap_2d(
 ):
     """Draw a heatmap square comparing two different parameters.
 
+    Directly shows the resulting matplotlib figure.
+
     :param parameter_1:
-        X axis
+        Y axis
 
     :param parameter_2:
-        Y axis
+        X axis
 
     :param metric:
         Value to examine
@@ -118,6 +120,13 @@ def visualise_heatmap_2d(
     """
 
     import seaborn as sns
-    df = result.reset_index().pivot(parameter_1, parameter_2, metric)
-    sns.heatmap(df, annot=True)
+    import matplotlib.pyplot as plt
+    df = result.reset_index().pivot(index=parameter_1, columns=parameter_2, values=metric)
+
+    # https://stackoverflow.com/a/32724156/315168
+    ax = plt.axes()
+    # sns.heatmap(data, ax = ax)
+    sns.heatmap(df, annot=True, ax=ax)
+    ax.set_title(metric)
+    plt.show()
 
