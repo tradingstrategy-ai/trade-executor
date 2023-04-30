@@ -16,7 +16,7 @@ def analyse_combination(r: GridSearchResult) -> dict:
         row[param.name] = param.value
 
     row.update({
-        "Combination": r.combination.get_label(),
+        # "Combination": r.combination.get_label(),
         "Annualised profit": r.summary.annualised_return_percent,
         "Max drawdown": r.metrics.loc["Max Drawdown"][0]
     })
@@ -35,7 +35,7 @@ def analyse_grid_search_result(results: List[GridSearchResult]) -> pd.DataFrame:
     df = pd.DataFrame(rows)
     r = results[0]
     param_names = [p.name for p in r.combination.parameters]
-    df = df.set_index(param_names)
+    df = df.set_index(param_names, drop=False)
     return df
 
 

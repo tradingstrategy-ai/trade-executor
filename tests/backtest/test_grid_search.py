@@ -7,7 +7,7 @@ import pytest
 from tradingstrategy.client import Client
 
 from tradeexecutor.analysis.grid_search import analyse_grid_search_result
-from tradeexecutor.backtest.grid_search import prepare_grid_combinations, run_grid_search_backtest, perform_grid_search, GridCombination
+from tradeexecutor.backtest.grid_search import prepare_grid_combinations, run_grid_search_backtest, perform_grid_search, GridCombination, GridSearchResult
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.state.state import State
 from tradeexecutor.state.visualisation import PlotKind
@@ -116,7 +116,7 @@ def universe(mock_chain_id, mock_exchange, weth_usdc) -> TradingStrategyUniverse
 def grid_search_worker(
         universe: TradingStrategyUniverse,
         combination: GridCombination,
-) -> State:
+) -> GridSearchResult:
     """Run a backtest for a single grid combination."""
 
     stop_loss_pct, slow_ema_candle_count, fast_ema_candle_count = combination.destructure()
@@ -179,11 +179,14 @@ def test_prepare_grid_search_parameters(tmp_path):
     assert first.get_relative_result_path() == Path('stop_loss=0.9/max_asset_amount=3/momentum_lookback_days=7d')
 
 
-def test_perform_grid_search(
+def test_perform_grid_search_single_thread(
         universe: TradingStrategyUniverse,
         tmp_path,
 ):
-    """Run a grid search."""
+    """Run a grid search.
+
+    Use the basic single thread mode for better debuggability.
+    """
 
     parameters = {
         "stop_loss_pct": [0.9, 0.95],
@@ -203,7 +206,7 @@ def test_perform_grid_search(
     table = analyse_grid_search_result(results)
     assert len(table) == 2 * 2 * 2
     row = table.iloc[0]
-    assert row.name == "stop_loss_pct: 0.9, slow_ema_candle_count: 7, fast_ema_candle_count: 2"
+    assert row["stop_loss_pct"] == 0.9
     assert row["Annualised profit"] == pytest.approx(0.2604995457916667)
 
 
