@@ -1,4 +1,7 @@
-"""Grid search result analysis."""
+"""Grid search result analysis.
+
+`Useful background on strategy performance metrics here <https://quant.stackexchange.com/a/75378/48108>`__.
+"""
 
 from typing import Iterable, List
 
