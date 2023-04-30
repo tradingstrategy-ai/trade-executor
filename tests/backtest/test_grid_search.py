@@ -4,25 +4,25 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
-from tradingstrategy.client import Client
+
+
+from tradingstrategy.candle import GroupedCandleUniverse
+from tradingstrategy.chain import ChainId
+from tradingstrategy.exchange import Exchange
+from tradingstrategy.timebucket import TimeBucket
+from tradingstrategy.universe import Universe
 
 from tradeexecutor.analysis.grid_search import analyse_grid_search_result
 from tradeexecutor.backtest.grid_search import prepare_grid_combinations, run_grid_search_backtest, perform_grid_search, GridCombination, GridSearchResult
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.state.state import State
 from tradeexecutor.state.visualisation import PlotKind
-from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, create_pair_universe_from_code
 from tradeexecutor.testing.synthetic_ethereum_data import generate_random_ethereum_address
 from tradeexecutor.testing.synthetic_exchange_data import generate_exchange
 from tradeexecutor.testing.synthetic_price_data import generate_ohlcv_candles
-from tradingstrategy.candle import GroupedCandleUniverse
-from tradingstrategy.chain import ChainId
-from tradingstrategy.exchange import Exchange
-from tradingstrategy.timebucket import TimeBucket
-from tradingstrategy.universe import Universe
 
 
 def runner(universe: TradingStrategyUniverse, **kwrags) -> State:
@@ -156,7 +156,6 @@ def grid_search_worker(
         combination,
         decide_trades,
         universe,
-        name=f"Backtest slow:{slow_ema_candle_count} fast:{fast_ema_candle_count}",
     )
 
 
@@ -177,6 +176,7 @@ def test_prepare_grid_search_parameters(tmp_path):
     assert first.parameters[0].value == 0.9
 
     assert first.get_relative_result_path() == Path('stop_loss=0.9/max_asset_amount=3/momentum_lookback_days=7d')
+    assert first.get_label() == "#1, stop_loss=0.9, max_asset_amount=3, momentum_lookback_days=7d"
 
 
 def test_perform_grid_search_single_thread(

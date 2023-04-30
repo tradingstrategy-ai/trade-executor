@@ -4,10 +4,11 @@ import itertools
 import logging
 import os
 import pickle
+import shutil
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol, Dict, List, Tuple, Any, Optional
+from typing import Protocol, Dict, List, Tuple, Any, Optional, Iterable, Collection
 
 import pandas as pd
 import futureproof
@@ -55,6 +56,10 @@ class GridParameter:
 class GridCombination:
     """One combination line in grid search."""
 
+    #: How many of nth grid combinations this is
+    #:
+    index: int
+
     #: In which folder we store the result files of all grid search runs
     #:
     #: Each individual combination will have its subfolder based on its parameter.
@@ -65,7 +70,6 @@ class GridCombination:
 
     def __post_init__(self):
         assert len(self.parameters) > 0
-
         assert isinstance(self.result_path, Path), f"Expected Path, got {type(self.result_path)}"
         assert self.result_path.exists() and self.result_path.is_dir(), f"Not a dir: {self.result_path}"
 
@@ -97,7 +101,7 @@ class GridCombination:
 
     def get_label(self) -> str:
         """Human readable label for this combination"""
-        return ", ".join([f"{p.name}: {p.value}" for p in self.parameters])
+        return f"#{self.index}, " + ", ".join([f"{p.name}={p.value}" for p in self.parameters])
 
     def destructure(self) -> List[Any]:
         """Open parameters dict.
@@ -168,6 +172,7 @@ def prepare_grid_combinations(
         parameters: Dict[str, List[Any]],
         result_path: Path,
         clear_cached_results=False,
+        marker_file="README-GRID-SEARCH.md",
 ) -> List[GridCombination]:
     """Get iterable search matrix of all parameter combinations.
 
@@ -188,6 +193,11 @@ def prepare_grid_combinations(
         the given combination parameters, as the framework will otherwise
         serve you the old cached results.
 
+    :param marker_file:
+        Safety to prevent novice users to nuke their hard disk with this command.
+
+    :return:
+        List of all combinations we need to search through
     """
 
     assert isinstance(result_path, Path)
@@ -196,12 +206,17 @@ def prepare_grid_combinations(
 
     if clear_cached_results:
         if result_path.exists():
-            result_path.rmdir()
+            assert result_path.joinpath(marker_file).exists(), f"{result_path} does not seem to be grid search folder, it lacks {marker_file}"
+            shutil.rmtree(result_path)
 
     result_path.mkdir(parents=True, exist_ok=True)
 
+    with open(result_path.joinpath(marker_file), "wt") as out:
+        print("This is a TradingStrategy.ai grid search result folder", file=out)
+
     args_lists: List[list] = []
     for name, values in parameters.items():
+        assert isinstance(values, Collection), f"Expected list, got: {values}"
         args = [GridParameter(name, v) for v in values]
         args_lists.append(args)
 
@@ -213,7 +228,7 @@ def prepare_grid_combinations(
         temp = {p.name: p for p in combination}
         return tuple([temp[o] for o in order])
 
-    combinations = [GridCombination(parameters=sort_by_order(c), result_path=result_path) for c in combinations]
+    combinations = [GridCombination(index=idx, parameters=sort_by_order(c), result_path=result_path) for idx, c in enumerate(combinations, start=1)]
     for c in combinations:
         c.validate()
     return combinations
@@ -318,15 +333,18 @@ def run_grid_search_backtest(
         decide_trades: DecideTradesProtocol,
         universe: TradingStrategyUniverse,
         cycle_duration: Optional[CycleDuration] = None,
-        start_at: Optional[datetime.datetime] = None,
-        end_at: Optional[datetime.datetime] = None,
+        start_at: Optional[datetime.datetime | pd.Timestamp] = None,
+        end_at: Optional[datetime.datetime | pd.Timestamp] = None,
         initial_deposit: USDollarAmount = 5000.0,
         trade_routing: Optional[TradeRouting] = None,
         data_delay_tolerance: Optional[pd.Timedelta] = None,
-        name: str = "backtest",
+        name: Optional[str] = None,
         routing_model: Optional[RoutingModel] = None,
 ) -> GridSearchResult:
     assert isinstance(universe, TradingStrategyUniverse)
+
+    if name is None:
+        name = combination.get_label()
 
     universe_range = universe.universe.candles.get_timestamp_range()
     if not start_at:
@@ -334,6 +352,12 @@ def run_grid_search_backtest(
 
     if not end_at:
         end_at = universe_range[1]
+
+    if isinstance(start_at, datetime.datetime):
+        start_at = pd.Timestamp(start_at)
+
+    if isinstance(end_at, datetime.datetime):
+        end_at = pd.Timestamp(end_at)
 
     if not cycle_duration:
         cycle_duration = CycleDuration.from_timebucket(universe.universe.candles.time_bucket)
@@ -345,7 +369,7 @@ def run_grid_search_backtest(
 
     # Run the test
     state, universe, debug_dump = run_backtest_inline(
-        name="No stop loss",
+        name=name,
         start_at=start_at.to_pydatetime(),
         end_at=end_at.to_pydatetime(),
         client=None,

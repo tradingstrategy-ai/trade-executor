@@ -53,3 +53,9 @@ def visualise_heatmap_2d(
         Created by :py:func:`analyse_grid_search_result`.
     """
 
+    import seaborn as sns
+    df = pd.DataFrame()
+    df.index = result[parameter_1]
+    df.columns = result[parameter_2]
+    sns.heatmap(df, annot=True)
+
