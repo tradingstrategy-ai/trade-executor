@@ -160,7 +160,7 @@ def grid_search_worker(
     )
 
 
-def test_prepare_grid_search_parameters():
+def test_prepare_grid_search_parameters(tmp_path):
     """Prepare grid search parameters."""
 
     parameters = {
@@ -169,15 +169,14 @@ def test_prepare_grid_search_parameters():
         "momentum_lookback_days": ["7d", "14d", "21d"]
     }
 
-    combinations = prepare_grid_combinations(parameters)
+    combinations = prepare_grid_combinations(parameters, tmp_path)
     assert len(combinations) == 2 * 2 * 3
 
     first = combinations[0]
-    assert first.parameters[0].name == "max_asset_amount"
-    assert first.parameters[0].value == 3
+    assert first.parameters[0].name == "stop_loss"
+    assert first.parameters[0].value == 0.9
 
-    assert first.get_state_path() == Path('max_asset_amount=3/momentum_lookback_days=7d/stop_loss=0.9')
-
+    assert first.get_relative_result_path() == Path('stop_loss=0.9/max_asset_amount=3/momentum_lookback_days=7d')
 
 
 def test_perform_grid_search(
@@ -192,18 +191,53 @@ def test_perform_grid_search(
         "fast_ema_candle_count": [2, 3],
     }
 
-    combinations = prepare_grid_combinations(parameters)
+    combinations = prepare_grid_combinations(parameters, tmp_path)
 
     results = perform_grid_search(
         grid_search_worker,
         universe,
         combinations,
-        tmp_path,
         max_workers=1,
     )
 
-    table = analyse_grid_search_result(results.values())
+    table = analyse_grid_search_result(results)
     assert len(table) == 2 * 2 * 2
     row = table.iloc[0]
     assert row.name == "stop_loss_pct: 0.9, slow_ema_candle_count: 7, fast_ema_candle_count: 2"
     assert row["Annualised profit"] == pytest.approx(0.2604995457916667)
+
+
+
+def test_perform_grid_search_cached(
+        universe: TradingStrategyUniverse,
+        tmp_path,
+):
+    """Run a grid search twice and see we get cached results."""
+
+    parameters = {
+        "stop_loss_pct": [0.9, 0.95],
+        "slow_ema_candle_count": [7],
+        "fast_ema_candle_count": [1],
+    }
+
+    combinations = prepare_grid_combinations(parameters, tmp_path)
+
+    results = perform_grid_search(
+        grid_search_worker,
+        universe,
+        combinations,
+        max_workers=1,
+    )
+
+    for r in results:
+        assert not r.cached
+
+    results_2 = perform_grid_search(
+        grid_search_worker,
+        universe,
+        combinations,
+        max_workers=1,
+    )
+
+    for r in results_2:
+        assert r.cached

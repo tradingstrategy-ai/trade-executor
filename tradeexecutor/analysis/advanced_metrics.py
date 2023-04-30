@@ -3,6 +3,7 @@
 Use :term:`Quantstats` library to calculate various metrics about the strategy performance.
 """
 import enum
+import warnings
 
 import pandas as pd
 
@@ -54,7 +55,9 @@ def calculate_advanced_metrics(returns: pd.Series, mode: AdvancedMetricsMode=Adv
         You can directly display this in your notebook,
         or extract individual metrics.
     """
-    from quantstats.reports import metrics
+    #  DeprecationWarning: Importing display from IPython.core.display is deprecated since IPython 7.14, please import from IPython display
+    with warnings.catch_warnings():
+        from quantstats.reports import metrics
     result = metrics(returns, display=False, periods_per_year=365, mode=mode.value)
     return result
 
@@ -86,7 +89,9 @@ def visualise_advanced_metrics(returns: pd.Series, mode: AdvancedMetricsMode=Adv
         See :py:`tradeeexecutor.visual.equity_curve.calculate_returns`.
 
     """
-    from quantstats.reports import metrics
+    #  DeprecationWarning: Importing display from IPython.core.display is deprecated since IPython 7.14, please import from IPython display
+    with warnings.catch_warnings():
+        from quantstats.reports import metrics
     # Internal sets the flag for percent output
     df = metrics(returns, periods_per_year=365, mode=mode.value, internal=True, display=False)
     return df
