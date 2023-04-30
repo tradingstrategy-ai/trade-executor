@@ -11,6 +11,13 @@ import pytest
 
 import pandas as pd
 
+from tradingstrategy.candle import GroupedCandleUniverse
+from tradingstrategy.chain import ChainId
+from tradingstrategy.exchange import Exchange
+from tradingstrategy.timebucket import TimeBucket
+from tradingstrategy.universe import Universe
+
+from tradeexecutor.analysis.advanced_metrics import calculate_advanced_metrics
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel
 from tradeexecutor.backtest.backtest_runner import run_backtest, setup_backtest_for_universe
 from tradeexecutor.cli.log import setup_pytest_logging
@@ -25,11 +32,8 @@ from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniv
 from tradeexecutor.testing.synthetic_ethereum_data import generate_random_ethereum_address
 from tradeexecutor.testing.synthetic_exchange_data import generate_exchange, generate_simple_routing_model
 from tradeexecutor.testing.synthetic_price_data import generate_ohlcv_candles
-from tradingstrategy.candle import GroupedCandleUniverse
-from tradingstrategy.chain import ChainId
-from tradingstrategy.exchange import Exchange
-from tradingstrategy.timebucket import TimeBucket
-from tradingstrategy.universe import Universe
+
+from tradeexecutor.visual.equity_curve import calculate_equity_curve, calculate_returns
 
 
 @pytest.fixture(scope="module")
@@ -246,3 +250,16 @@ def test_calculate_all_summary_statistics(state: State):
     # Make sure we do not output anything that is not JSON'able
     data = summary.to_dict()
     validate_nested_state_dict(data)
+
+
+def test_advanced_metrics(state: State):
+    """Quantstats metrics calculations."""
+
+    equity = calculate_equity_curve(state)
+    returns = calculate_returns(equity)
+    metrics = calculate_advanced_metrics(returns)
+
+    # Each metric as a series. Index 0 is our performance,
+    # index 1 is the benchmark.
+    sharpe = metrics.loc["Sharpe"][0]
+    assert sharpe == pytest.approx(-2.09)

@@ -4,10 +4,16 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
+from tradingstrategy.client import Client
 
-from tradeexecutor.backtest.grid_search import prepare_grid_combinations
+from tradeexecutor.analysis.grid_search import analyse_grid_search_result
+from tradeexecutor.backtest.grid_search import prepare_grid_combinations, run_grid_search_backtest, perform_grid_search, GridCombination, GridSearchResult
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.state.state import State
+from tradeexecutor.state.visualisation import PlotKind
+from tradeexecutor.strategy.cycle import CycleDuration
+from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
+from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, create_pair_universe_from_code
 from tradeexecutor.testing.synthetic_ethereum_data import generate_random_ethereum_address
 from tradeexecutor.testing.synthetic_exchange_data import generate_exchange
@@ -56,11 +62,19 @@ def weth_usdc(mock_exchange, usdc, weth) -> TradingPairIdentifier:
         generate_random_ethereum_address(),
         mock_exchange.address,
         internal_id=555,
-        internal_exchange_id=mock_exchange.exchange_id)
+        internal_exchange_id=mock_exchange.exchange_id,
+        fee=0.0030,
+    )
+
+
+@pytest.fixture
+def result_path() -> Path:
+    """Where the grid search data is stored"""
+    return
 
 
 @pytest.fixture()
-def synthetic_universe(mock_chain_id, mock_exchange, weth_usdc) -> TradingStrategyUniverse:
+def universe(mock_chain_id, mock_exchange, weth_usdc) -> TradingStrategyUniverse:
     """Generate synthetic trading data universe for a single trading pair.
 
     - Single mock exchange
@@ -92,11 +106,61 @@ def synthetic_universe(mock_chain_id, mock_exchange, weth_usdc) -> TradingStrate
         liquidity=None
     )
 
-    return TradingStrategyUniverse(universe=universe, reserve_assets=[weth_usdc.quote])
+    return TradingStrategyUniverse(
+        universe=universe,
+        backtest_stop_loss_candles=candle_universe,
+        backtest_stop_loss_time_bucket=time_bucket,
+        reserve_assets=[weth_usdc.quote])
 
 
+def grid_search_worker(
+        universe: TradingStrategyUniverse,
+        combination: GridCombination,
+) -> GridSearchResult:
+    """Run a backtest for a single grid combination."""
 
-def test_prepare_grid_search_parameters():
+    stop_loss_pct, slow_ema_candle_count, fast_ema_candle_count = combination.destructure()
+    batch_size = fast_ema_candle_count + 1
+    position_size = 0.50
+
+    def decide_trades(
+        timestamp: pd.Timestamp,
+        universe: Universe,
+        state: State,
+        pricing_model: PricingModel,
+        cycle_debug_data: dict
+    ):
+        # The pair we are trading
+        pair = universe.pairs.get_single()
+        cash = state.portfolio.get_current_cash()
+        candles: pd.DataFrame = universe.candles.get_single_pair_data(sample_count=batch_size)
+        close = candles["close"]
+        slow_ema = close.ewm(span=slow_ema_candle_count).mean().iloc[-1]
+        fast_ema = close.ewm(span=fast_ema_candle_count).mean().iloc[-1]
+        trades = []
+        position_manager = PositionManager(timestamp, universe, state, pricing_model)
+        current_price = close.iloc[-1]
+        if current_price >= slow_ema:
+            if not position_manager.is_any_open():
+                buy_amount = cash * position_size
+                trades += position_manager.open_1x_long(pair, buy_amount, stop_loss_pct=stop_loss_pct)
+        elif fast_ema >= slow_ema:
+            if position_manager.is_any_open():
+                trades += position_manager.close_all()
+        visualisation = state.visualisation
+        visualisation.plot_indicator(timestamp, "Slow EMA", PlotKind.technical_indicator_on_price, slow_ema, colour="forestgreen")
+        visualisation.plot_indicator(timestamp, "Fast EMA", PlotKind.technical_indicator_on_price, fast_ema, colour="limegreen")
+        return trades
+
+    return run_grid_search_backtest(
+        combination,
+        decide_trades,
+        universe,
+        name=f"Backtest slow:{slow_ema_candle_count} fast:{fast_ema_candle_count}",
+    )
+
+
+def test_prepare_grid_search_parameters(tmp_path):
     """Prepare grid search parameters."""
 
     parameters = {
@@ -105,24 +169,104 @@ def test_prepare_grid_search_parameters():
         "momentum_lookback_days": ["7d", "14d", "21d"]
     }
 
-    combinations = prepare_grid_combinations(parameters)
+    combinations = prepare_grid_combinations(parameters, tmp_path)
     assert len(combinations) == 2 * 2 * 3
 
     first = combinations[0]
-    assert first.parameters[0].name == "max_asset_amount"
-    assert first.parameters[0].value == 3
+    assert first.parameters[0].name == "stop_loss"
+    assert first.parameters[0].value == 0.9
 
-    assert first.get_state_path() == Path('max_asset_amount=3/momentum_lookback_days=7d/stop_loss=0.9')
+    assert first.get_relative_result_path() == Path('stop_loss=0.9/max_asset_amount=3/momentum_lookback_days=7d')
 
 
+def test_perform_grid_search_single_thread(
+        universe: TradingStrategyUniverse,
+        tmp_path,
+):
+    """Run a grid search.
 
-def test_perform_grid_search():
-    """Run a grid search."""
+    Use the basic single thread mode for better debuggability.
+    """
 
     parameters = {
-        "stop_loss": [0.9, 0.95],
-        "max_asset_amount": [3, 4],
-        "momentum_lookback_days": ["7d", "14d", "21d"]
+        "stop_loss_pct": [0.9, 0.95],
+        "slow_ema_candle_count": [7, 9],
+        "fast_ema_candle_count": [2, 3],
     }
 
-    combinations = prepare_grid_combinations(parameters)
+    combinations = prepare_grid_combinations(parameters, tmp_path)
+
+    results = perform_grid_search(
+        grid_search_worker,
+        universe,
+        combinations,
+        max_workers=1,
+    )
+
+    table = analyse_grid_search_result(results)
+    assert len(table) == 2 * 2 * 2
+    row = table.iloc[0]
+    assert row["stop_loss_pct"] == 0.9
+    assert row["Annualised profit"] == pytest.approx(0.2604995457916667)
+
+
+
+def test_perform_grid_search_cached(
+        universe: TradingStrategyUniverse,
+        tmp_path,
+):
+    """Run a grid search twice and see we get cached results."""
+
+    parameters = {
+        "stop_loss_pct": [0.9, 0.95],
+        "slow_ema_candle_count": [7],
+        "fast_ema_candle_count": [1],
+    }
+
+    combinations = prepare_grid_combinations(parameters, tmp_path)
+
+    results = perform_grid_search(
+        grid_search_worker,
+        universe,
+        combinations,
+        max_workers=1,
+    )
+
+    for r in results:
+        assert not r.cached
+
+    results_2 = perform_grid_search(
+        grid_search_worker,
+        universe,
+        combinations,
+        max_workers=1,
+    )
+
+    for r in results_2:
+        assert r.cached
+
+
+def test_perform_grid_search_threaded(
+        universe: TradingStrategyUniverse,
+        tmp_path,
+):
+    """Run a grid search using multiple threads."""
+
+    parameters = {
+        "stop_loss_pct": [0.9, 0.95],
+        "slow_ema_candle_count": [7],
+        "fast_ema_candle_count": [1],
+    }
+
+    combinations = prepare_grid_combinations(parameters, tmp_path)
+
+    results = perform_grid_search(
+        grid_search_worker,
+        universe,
+        combinations,
+        max_workers=4,
+    )
+
+    # Check we got results back
+    for r in results:
+        assert r.metrics.loc["Sharpe"][0] != 0

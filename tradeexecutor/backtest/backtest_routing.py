@@ -154,6 +154,10 @@ class BacktestRoutingIgnoredModel(BacktestRoutingModel):
     def __init__(self, reserve_token_address: str):
         RoutingModel.__init__(self, dict(), reserve_token_address)
 
+    @property
+    def trading_fee(self):
+        raise AssertionError("This should not be called. Ensure your pair data have trading fees set.")
+
     def trade(self,
               routing_state: BacktestRoutingState, # TODO remove
               target_pair: TradingPairIdentifier,

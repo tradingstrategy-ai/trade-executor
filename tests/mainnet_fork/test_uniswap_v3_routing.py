@@ -785,7 +785,7 @@ def test_three_leg_buy_sell_twice(
 
 
 # Flaky becaues Ganache hangs
-@flaky.flaky()
+@flaky.flaky(max_runs=5)
 def test_stateful_routing_three_legs(
     web3,
     pair_universe,
