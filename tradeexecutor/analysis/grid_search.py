@@ -39,9 +39,10 @@ def analyse_combination(
     """
 
     row = {}
-
+    param_names = []
     for param in r.combination.parameters:
         row[param.name] = param.value
+        param_names.append(param.name)
 
     def clean(x):
         if x == "-":
@@ -69,7 +70,7 @@ def analyse_combination(
     # Clear all values except position count if this is not a good trade series
     if r.summary.total_positions < min_positions_threshold:
         for k in row.keys():
-            if k != "Positions":
+            if k != "Positions" and k not in param_names:
                 row[k] = np.NaN
 
     return row
