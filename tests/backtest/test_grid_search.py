@@ -228,18 +228,18 @@ def test_perform_grid_search_single_thread(
     sample = pick_best_grid_search_result(results)
     assert sample is not None
 
-    table = analyse_grid_search_result(results, drop_index=True)
+    table = analyse_grid_search_result(results, min_positions_threshold=0)
     assert len(table) == 2 * 2 * 2
     row = table.iloc[0]
     # assert row["stop_loss_pct"] == 0.9
-    assert row["Return"] == pytest.approx(0.0356848692865151)
+    assert row["Annualised return"] == pytest.approx(0.06771955893113946)
     assert row["Positions"] == 2
 
     visualise_table(table)
 
     # Remove extra axis by focusing only stop_loss_pct=0.9
     heatmap_data = table.xs(0.9, level="stop_loss_pct")
-    fig = visualise_heatmap_2d(heatmap_data, "fast_ema_candle_count", "slow_ema_candle_count", "Return")
+    fig = visualise_heatmap_2d(heatmap_data, "fast_ema_candle_count", "slow_ema_candle_count", "Annualised return")
     assert isinstance(fig, Figure)
 
 

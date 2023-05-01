@@ -23,10 +23,19 @@ VALUE_COLS = ["Annualised return", "Max drawdown", "Sharpe", "Sortino", "Average
 PERCENT_COLS = ["Annualised return", "Max drawdown", "Average position", "Median position"]
 
 
-def analyse_combination(r: GridSearchResult) -> dict:
+def analyse_combination(
+        r: GridSearchResult,
+        min_positions_threshold: int,
+) -> dict:
     """Create a grid search result table row.
 
     - Create columns we can use to compare different grid search combinations
+
+    :param min_positions_threshold:
+        If we did less positions than this amount, do not consider this a proper strategy.
+
+        Filter out one position outliers.
+
     """
 
     row = {}
@@ -49,17 +58,27 @@ def analyse_combination(r: GridSearchResult) -> dict:
         # "Return": r.summary.return_percent,
         # "Return2": r.summary.annualised_return_percent,
         #"Annualised profit": clean(r.metrics.loc["Expected Yearly"][0]),
-        "Annualised return": clean(r.metrics.loc["All-time (ann.)"][0]),
+        "Annualised return": clean(r.metrics.loc["Annualised return (raw)"][0]),
         "Max drawdown": clean(r.metrics.loc["Max Drawdown"][0]),
         "Sharpe": clean(r.metrics.loc["Sharpe"][0]),
         "Sortino": clean(r.metrics.loc["Sortino"][0]),
         "Average position": r.summary.average_trade,
         "Median position": r.summary.median_trade,
     })
+
+    # Clear all values except position count if this is not a good trade series
+    if r.summary.total_positions < min_positions_threshold:
+        for k in row.keys():
+            if k != "Positions":
+                row[k] = np.NaN
+
     return row
 
 
-def analyse_grid_search_result(results: List[GridSearchResult], drop_index=True) -> pd.DataFrame:
+def analyse_grid_search_result(
+        results: List[GridSearchResult],
+        min_positions_threshold: int = 5,
+) -> pd.DataFrame:
     """Create aa table showing grid search result of each combination.
 
     - Each row have labeled parameters of its combination
@@ -71,15 +90,20 @@ def analyse_grid_search_result(results: List[GridSearchResult], drop_index=True)
     :param results:
         Output from :py:meth:`tradeexecutor.backtest.grid_search.perform_grid_search`.
 
+    :param min_positions_threshold:
+        If we did less positions than this amount, do not consider this a proper strategy.
+
+        Filter out one position outliers.
+
     :return:
         Table of grid search combinations
     """
     assert len(results) > 0, "No results"
-    rows = [analyse_combination(r) for r in results]
+    rows = [analyse_combination(r, min_positions_threshold) for r in results]
     df = pd.DataFrame(rows)
     r = results[0]
     param_names = [p.name for p in r.combination.parameters]
-    df = df.set_index(param_names, drop=drop_index)
+    df = df.set_index(param_names)
     df = df.sort_index()
     return df
 

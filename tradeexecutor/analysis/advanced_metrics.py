@@ -18,6 +18,7 @@ import enum
 import warnings
 
 import pandas as pd
+from quantstats import stats
 
 
 class AdvancedMetricsMode(enum.Enum):
@@ -77,6 +78,9 @@ def calculate_advanced_metrics(
     with warnings.catch_warnings():
         from quantstats.reports import metrics
     result = metrics(returns, display=False, periods_per_year=365, mode=mode.value)
+
+    # Hack - see analyse_combination()
+    result.loc["Annualised return (raw)"] = [stats.cagr(returns, 0., compounded=True)]
     return result
 
 
