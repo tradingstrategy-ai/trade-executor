@@ -4,6 +4,7 @@ We have a custom level `logging.TRADE` that we use to log trade execution to Dis
 """
 
 import logging
+import sys
 from logging import Logger
 from os import PathLike
 from typing import Optional, List
@@ -145,7 +146,7 @@ def setup_pytest_logging(request=None, mute_requests=True) -> logging.Logger:
     return logging.getLogger("test")
 
 
-def setup_notebook_logging(log_level=logging.WARNING) -> logging.Logger:
+def setup_notebook_logging(log_level: str | int=logging.WARNING) -> logging.Logger:
     """Setup logger in notebook / backtesting environments."""
 
     logger = logging.getLogger()
@@ -158,6 +159,14 @@ def setup_notebook_logging(log_level=logging.WARNING) -> logging.Logger:
     # how to add native HTML log output
     # Use colored logging output for console
     # coloredlogs.install(level=log_level, fmt=fmt, logger=logger)
+
+    if isinstance(log_level, str):
+        log_level = log_level.upper()
+
+    logger = logging.getLogger()
+
+    logging.basicConfig(stream=sys.stdout, level=log_level)
+    #logger.setLevel(log_level)
 
     setup_custom_log_levels()
 

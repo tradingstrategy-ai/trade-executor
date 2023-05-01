@@ -762,6 +762,8 @@ def visualise_single_pair_positions_with_duration_and_slippage(
     logger.info(f"Candles are {candle_start_ts} - {candle_end_ts}")
 
     positions = _get_all_positions(state, pair_id)
+
+    logging.info("State has %d positions for pair id %d", len(positions), pair_id)
     
     # hide volume bar
     volume_bar_mode = VolumeBarMode.hidden
@@ -955,6 +957,7 @@ def _get_start_and_end(
 
 def _get_all_positions(state: State, pair_id):
     """Get all positions for a given pair"""
+    assert type(pair_id) == int
     positions = [p for p in state.portfolio.get_all_positions() if p.pair.internal_id == pair_id]
     return positions
 
