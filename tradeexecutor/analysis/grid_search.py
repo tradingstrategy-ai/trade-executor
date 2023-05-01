@@ -6,6 +6,9 @@ import numpy as np
 import pandas as pd
 from IPython.core.display_functions import display
 
+import plotly.express as px
+from plotly.graph_objs import Figure
+
 from tradeexecutor.backtest.grid_search import GridSearchResult
 
 
@@ -103,7 +106,8 @@ def visualise_heatmap_2d(
         parameter_1: str,
         parameter_2: str,
         metric: str,
-):
+        color_continuous_scale='Bluered_r'
+) -> Figure:
     """Draw a heatmap square comparing two different parameters.
 
     Directly shows the resulting matplotlib figure.
@@ -123,14 +127,26 @@ def visualise_heatmap_2d(
         Created by :py:func:`analyse_grid_search_result`.
     """
 
-    import seaborn as sns
-    import matplotlib.pyplot as plt
+
     df = result.reset_index().pivot(index=parameter_1, columns=parameter_2, values=metric)
 
-    # https://stackoverflow.com/a/32724156/315168
-    ax = plt.axes()
-    # sns.heatmap(data, ax = ax)
-    sns.heatmap(df, annot=True, ax=ax)
-    ax.set_title(metric)
-    plt.show()
+    if metric in PERCENT_COLS:
+        text = df.applymap(lambda x: f"{x * 100:,.2f}%")
+    else:
+        text = df.applymap(lambda x: f"{x:,.2f}%")
 
+    fig = px.imshow(
+        df,
+        labels=dict(x=parameter_2, y=parameter_1, color=metric),
+        aspect="auto",
+        title=metric,
+        color_continuous_scale=color_continuous_scale,
+    )
+
+    fig.update_traces(text=text, texttemplate="%{text}")
+
+    fig.update_layout(
+        title={"text": metric},
+        height=600,
+    )
+    return fig

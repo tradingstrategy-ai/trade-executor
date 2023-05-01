@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
-
+from plotly.graph_objs import Figure
 
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId
@@ -214,7 +214,8 @@ def test_perform_grid_search_single_thread(
 
     # Remove extra axis by focusing only stop_loss_pct=0.9
     heatmap_data = table.xs(0.9, level="stop_loss_pct")
-    visualise_heatmap_2d(heatmap_data, "fast_ema_candle_count", "slow_ema_candle_count", "Annualised profit")
+    fig = visualise_heatmap_2d(heatmap_data, "fast_ema_candle_count", "slow_ema_candle_count", "Annualised profit")
+    assert isinstance(fig, Figure)
 
 
 def test_perform_grid_search_cached(
