@@ -1,6 +1,12 @@
-"""Grid search result analysis."""
+"""Grid search result analysis.
 
-from typing import Iterable, List
+- Breaddown of performance of different grid search combinations
+
+- Heatmap and other comparison methods
+
+"""
+
+from typing import List
 
 import numpy as np
 import pandas as pd
@@ -18,7 +24,10 @@ PERCENT_COLS = ["Annualised profit", "Max drawdown", "Average position", "Median
 
 
 def analyse_combination(r: GridSearchResult) -> dict:
-    """Create a grid search result table row."""
+    """Create a grid search result table row.
+
+    - Create columns we can use to compare different grid search combinations
+    """
 
     row = {}
 
@@ -50,6 +59,14 @@ def analyse_grid_search_result(results: List[GridSearchResult], drop_index=True)
     - Each row have labeled parameters of its combination
 
     - Each row has some metrics extracted from the results by :py:func:`analyse_combination`
+
+    See also :py:func:`analyse_combination`.
+
+    :param results:
+        Output from :py:meth:`tradeexecutor.backtest.grid_search.perform_grid_search`.
+
+    :return:
+        Table of grid search combinations
     """
     assert len(results) > 0, "No results"
     rows = [analyse_combination(r) for r in results]
@@ -65,6 +82,7 @@ def visualise_table(df: pd.DataFrame):
     """Render a grid search combination table to notebook output.
 
     - Highlight winners and losers
+
     """
 
     # https://stackoverflow.com/a/57152529/315168
@@ -125,8 +143,10 @@ def visualise_heatmap_2d(
         Grid search results as a DataFrame.
 
         Created by :py:func:`analyse_grid_search_result`.
-    """
 
+    :return:
+        Plotly Figure object
+    """
 
     df = result.reset_index().pivot(index=parameter_1, columns=parameter_2, values=metric)
 
