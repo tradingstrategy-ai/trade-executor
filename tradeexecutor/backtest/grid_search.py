@@ -320,6 +320,13 @@ def perform_grid_search(
     :param stats:
         If passed, collect run-time and unit testing statistics to this dictionary.
 
+    :param multiprocess:
+        Perform the search using multiple CPUs and Python's multiprocessing.
+
+        If not set, use threaded approach.
+
+        Scales much better, but disabled by default, as it does not work with Jupyter Notebooks very well.
+
     :return:
         Grid search results for different combinations.
 
@@ -358,7 +365,7 @@ def perform_grid_search(
 
             # Set up a signal handler to stop child processes on quit
             _process_pool_executor = executor._executor
-            signal.signal(signal.SIGTERM, handle_sigterm)
+            signal.signal(signal.SIGTERM, _handle_sigterm)
 
             # Run the tasks
             tm.map(run_grid_combination_multiprocess, task_args)
@@ -402,7 +409,6 @@ def perform_grid_search(
     logger.info("Grid search finished in %s", duration)
 
     return results
-
 
 
 def run_grid_search_backtest(
@@ -487,10 +493,10 @@ def _process_init(pickled_universe):
     _universe = pickle.loads(pickled_universe)
 
 
-def handle_sigterm(*args):
-    #print('Terminating...', file=sys.stderr, flush=True)
+def _handle_sigterm(*args):
+    # TODO: Despite all the effort, this does not seem to work with Visual Studio Code's Interrupt Kernel button
     processes: List[Process] = list(_process_pool._processes.values())
     _process_pool.shutdown()
     for p in processes:
-        p.terminate()
+        p.kill()
     sys.exit(1)
