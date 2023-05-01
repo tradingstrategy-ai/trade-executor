@@ -133,7 +133,7 @@ def visualise_heatmap_2d(
     if metric in PERCENT_COLS:
         text = df.applymap(lambda x: f"{x * 100:,.2f}%")
     else:
-        text = df.applymap(lambda x: f"{x:,.2f}%")
+        text = df.applymap(lambda x: f"{x:,.2f}")
 
     fig = px.imshow(
         df,
