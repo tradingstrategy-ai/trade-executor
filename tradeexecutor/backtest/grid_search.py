@@ -1,17 +1,29 @@
 """Perform a grid search ove strategy parameters to find optimal parameters."""
+import concurrent
 import datetime
 import itertools
 import logging
 import os
 import pickle
 import shutil
+import signal
+import sys
 from collections import Counter
 from dataclasses import dataclass
+from multiprocessing import Process
 from pathlib import Path
 from typing import Protocol, Dict, List, Tuple, Any, Optional, Iterable, Collection
+import concurrent.futures.process
 
 import pandas as pd
 import futureproof
+
+try:
+    from tqdm_loggable.auto import tqdm
+except ImportError:
+    # tqdm_loggable is only available at the live execution,
+    # but fallback to normal TQDM auto mode
+    from tqdm.auto import tqdm
 
 from tradeexecutor.analysis.advanced_metrics import calculate_advanced_metrics
 from tradeexecutor.analysis.trade_analyser import TradeSummary, build_trade_analysis
@@ -130,6 +142,11 @@ class GridSearchResult:
 
     #: Was this result read from the earlier run save
     cached: bool = False
+
+    #: Child process that created this result.
+    #:
+    #: Only applicable to multiprocessing
+    process_id: int = None
 
     @staticmethod
     def has_result(combination: GridCombination):
@@ -251,6 +268,28 @@ def run_grid_combination(
     return result
 
 
+def run_grid_combination_multiprocess(
+        grid_search_worker: GridSearchWorker,
+        combination: GridCombination,
+):
+    global _universe
+
+    universe = _universe
+
+    if GridSearchResult.has_result(combination):
+        result = GridSearchResult.load(combination)
+        return result
+
+    result = grid_search_worker(universe, combination)
+
+    result.process_id = os.getpid()
+
+    # Cache result for the future runs
+    result.save()
+
+    return result
+
+
 def perform_grid_search(
         grid_search_worker: GridSearchWorker,
         universe: TradingStrategyUniverse,
@@ -258,6 +297,7 @@ def perform_grid_search(
         max_workers=16,
         clear_cached_results=False,
         stats: Optional[Counter] = None,
+        multiprocess=False,
 ) -> List[GridSearchResult]:
     """Search different strategy parameters over a grid.
 
@@ -285,6 +325,8 @@ def perform_grid_search(
 
     """
 
+    global _process_pool_executor
+
     start = datetime.datetime.utcnow()
 
     logger.info("Performing a grid search over %s combinations, with %d threads",
@@ -292,30 +334,65 @@ def perform_grid_search(
                 max_workers,
                 )
 
-    task_args = [(grid_search_worker, universe, c) for c in combinations]
-
     if max_workers > 1:
 
-        logger.info("Doing a multiprocess grid search")
         # Do a parallel scan for the maximum speed
         #
         # Set up a futureproof task manager
         #
         # For futureproof usage see
         # https://github.com/yeraydiazdiaz/futureproof
-        executor = futureproof.ThreadPoolExecutor(max_workers=max_workers)
-        tm = futureproof.TaskManager(executor, error_policy=futureproof.ErrorPolicyEnum.RAISE)
 
-        # Run the checks parallel using the thread pool
-        tm.map(run_grid_combination, task_args)
+        if multiprocess:
+            #
+            # Run individual searchers in child processes
+            #
 
-        # Extract results from the parallel task queue
-        results = [task.result for task in tm.as_completed()]
+            # Copy universe data to child processes
+            pickled_universe = pickle.dumps(universe)
+            logger.info("Doing a multiprocess grid search, picked universe is %d bytes", len(pickled_universe))
+            # Do a parallel scan for the maximum speed
+            executor = futureproof.ProcessPoolExecutor(max_workers=max_workers, initializer=_process_init, initargs=(pickled_universe,))
+            tm = futureproof.TaskManager(executor, error_policy=futureproof.ErrorPolicyEnum.RAISE)
+            task_args = [(grid_search_worker, c) for c in combinations]
+
+            # Set up a signal handler to stop child processes on quit
+            _process_pool_executor = executor._executor
+            signal.signal(signal.SIGTERM, handle_sigterm)
+
+            # Run the tasks
+            tm.map(run_grid_combination_multiprocess, task_args)
+
+            results = []
+            label = ", ".join(p.name for p in combinations[0].parameters)
+            with tqdm(total=len(task_args), desc=f"Grid searching using {max_workers} processes: {label}") as progress_bar:
+                # Extract results from the parallel task queue
+                for task in tm.as_completed():
+                    results.append(task.result)
+                    progress_bar.update()
+
+        else:
+            #
+            # Run individual searchers threads
+            #
+
+            task_args = [(grid_search_worker, universe, c) for c in combinations]
+            logger.info("Doing a multithread grid search")
+            executor = futureproof.ThreadPoolExecutor(max_workers=max_workers)
+            tm = futureproof.TaskManager(executor, error_policy=futureproof.ErrorPolicyEnum.RAISE)
+
+            # Run the checks parallel using the thread pool
+            tm.map(run_grid_combination, task_args)
+
+            # Extract results from the parallel task queue
+            results = [task.result for task in tm.as_completed()]
 
     else:
-        logger.info("Doing a single thread grid search")
         # Do single thread - good for debuggers like pdb/ipdb
         #
+
+        logger.info("Doing a single thread grid search")
+        task_args = [(grid_search_worker, universe, c) for c in combinations]
         iter = itertools.starmap(run_grid_combination, task_args)
 
         # Force workers to finish
@@ -397,3 +474,23 @@ def run_grid_search_backtest(
         summary=summary,
         metrics=metrics,
     )
+
+
+#: Process global stored universe for multiprocess workers
+_universe: Optional[TradingStrategyUniverse] = None
+
+_process_pool: concurrent.futures.process.ProcessPoolExecutor | None = None
+
+def _process_init(pickled_universe):
+    """Child worker process initialiser."""
+    global _universe
+    _universe = pickle.loads(pickled_universe)
+
+
+def handle_sigterm(*args):
+    #print('Terminating...', file=sys.stderr, flush=True)
+    processes: List[Process] = list(_process_pool._processes.values())
+    _process_pool.shutdown()
+    for p in processes:
+        p.terminate()
+    sys.exit(1)

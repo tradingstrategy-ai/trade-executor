@@ -277,3 +277,33 @@ def test_perform_grid_search_threaded(
     # Check we got results back
     for r in results:
         assert r.metrics.loc["Sharpe"][0] != 0
+
+
+def test_perform_grid_search_multiprocess(
+        universe: TradingStrategyUniverse,
+        tmp_path,
+):
+    """Run a grid search using multiple threads."""
+
+    parameters = {
+        "stop_loss_pct": [0.9, 0.95],
+        "slow_ema_candle_count": [7],
+        "fast_ema_candle_count": [1, 2],
+    }
+
+    combinations = prepare_grid_combinations(parameters, tmp_path)
+
+    results = perform_grid_search(
+        grid_search_worker,
+        universe,
+        combinations,
+        max_workers=4,
+        multiprocess=True,
+    )
+
+    assert len(results) == 4
+
+    # Check we got results back
+    for r in results:
+        assert r.metrics.loc["Sharpe"][0] != 0
+        assert r.process_id > 1
