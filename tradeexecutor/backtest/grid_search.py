@@ -12,9 +12,10 @@ from collections import Counter
 from dataclasses import dataclass
 from multiprocessing import Process
 from pathlib import Path
-from typing import Protocol, Dict, List, Tuple, Any, Optional, Iterable, Collection
+from typing import Protocol, Dict, List, Tuple, Any, Optional, Iterable, Collection, Callable
 import concurrent.futures.process
 
+import numpy as np
 import pandas as pd
 import futureproof
 
@@ -355,10 +356,12 @@ def perform_grid_search(
             # Run individual searchers in child processes
             #
 
-            # Copy universe data to child processes
+            # Copy universe data to child processes only once when the child process is created
+            #
             pickled_universe = pickle.dumps(universe)
             logger.info("Doing a multiprocess grid search, picked universe is %d bytes", len(pickled_universe))
-            # Do a parallel scan for the maximum speed
+
+            # Set up a process pool executing structure
             executor = futureproof.ProcessPoolExecutor(max_workers=max_workers, initializer=_process_init, initargs=(pickled_universe,))
             tm = futureproof.TaskManager(executor, error_policy=futureproof.ErrorPolicyEnum.RAISE)
             task_args = [(grid_search_worker, c) for c in combinations]
@@ -370,6 +373,7 @@ def perform_grid_search(
             # Run the tasks
             tm.map(run_grid_combination_multiprocess, task_args)
 
+            # Track the child process completion using tqdm progress bar
             results = []
             label = ", ".join(p.name for p in combinations[0].parameters)
             with tqdm(total=len(task_args), desc=f"Grid searching using {max_workers} processes: {label}") as progress_bar:
@@ -480,6 +484,104 @@ def run_grid_search_backtest(
         summary=summary,
         metrics=metrics,
     )
+
+
+def pick_grid_search_result(results: List[GridSearchResult], **kwargs) -> Optional[GridSearchResult]:
+    """Pick one combination in the results.
+
+    Example:
+
+    .. code-block:: python
+
+        # Pick a result of a single grid search combination
+        # and examine its trading metrics
+        sample = pick_grid_search_result(
+            results,
+            stop_loss_pct=0.9,
+            slow_ema_candle_count=7,
+            fast_ema_candle_count=2)
+        assert sample.summary.total_positions == 2
+
+    :param result:
+        Output from :py:func:`perform_grid_search`
+
+    :param kwargs:
+        Grid parameters to match
+
+    :return:
+        The grid search result with the matching parameters or None if not found
+
+    """
+
+    for r in results:
+        # Check if this result matches all the parameters
+        match = all([p.value == kwargs[p.name] for p in r.combination.parameters])
+        if match:
+            return r
+
+    return None
+
+
+def pick_best_grid_search_result(
+        results: List[GridSearchResult],
+            key: Callable=lambda x: x.summary.annualised_return_percent,
+        highest=True,
+) -> Optional[GridSearchResult]:
+    """Pick the best combination in the results based on one metric.
+
+    Use trading metrics or performance metrics for the selection.
+
+    Example:
+
+
+    .. code-block:: python
+
+        sample = pick_best_grid_search_result(
+            results,
+            key=lambda r: r.metrics.loc["Max Drawdown"][0])
+            assert sample is not None
+
+    :param result:
+        Output from :py:func:`perform_grid_search`
+
+    :param key:
+        Lambda function to extract the value to compare from the data.
+
+        If not given use annualised return.
+
+    :param highest:
+        If true pick the highest value, otherwise lowest.
+
+    :return:
+        The grid search result with the matching parameters or None if not found
+
+    :return:
+        The grid search result with the matching parameters or None if not found
+
+    """
+
+    current_best = -10**27 if highest else 10**27
+    match = None
+
+    for r in results:
+        # Check if this result matches all the parameters
+        value = key(r)
+
+        if value in (None, np.NaN):
+            # No result for this combination
+            continue
+
+        if highest:
+            if value > current_best:
+                match = r
+                current_best = value
+        else:
+            if value < current_best:
+                match = r
+                current_best = value
+
+    return match
+
 
 
 #: Process global stored universe for multiprocess workers

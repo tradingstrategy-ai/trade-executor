@@ -18,7 +18,7 @@ from plotly.graph_objs import Figure
 from tradeexecutor.backtest.grid_search import GridSearchResult
 
 
-VALUE_COLS = ["Annualised profit", "Max drawdown", "Sharpe", "Average position", "Median position"]
+VALUE_COLS = ["Annualised profit", "Max drawdown", "Sharpe", "Sortino", "Average position", "Median position"]
 
 PERCENT_COLS = ["Annualised profit", "Max drawdown", "Average position", "Median position"]
 
@@ -47,6 +47,7 @@ def analyse_combination(r: GridSearchResult) -> dict:
         "Annualised profit": r.summary.annualised_return_percent,
         "Max drawdown": clean(r.metrics.loc["Max Drawdown"][0]),
         "Sharpe": clean(r.metrics.loc["Sharpe"][0]),
+        "Sortino": clean(r.metrics.loc["Sortino"][0]),
         "Average position": r.summary.average_trade,
         "Median position": r.summary.median_trade,
     })
@@ -96,6 +97,10 @@ def visualise_table(df: pd.DataFrame):
         subset = VALUE_COLS,
     ).highlight_min(
         color = 'pink',
+        axis = 0,
+        subset = VALUE_COLS,
+    ).highlight_max(
+        color = 'darkgreen',
         axis = 0,
         subset = VALUE_COLS,
     ).format(
@@ -170,3 +175,5 @@ def visualise_heatmap_2d(
         height=600,
     )
     return fig
+
+

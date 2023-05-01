@@ -13,7 +13,8 @@ from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
 
 from tradeexecutor.analysis.grid_search import analyse_grid_search_result, visualise_table, visualise_heatmap_2d
-from tradeexecutor.backtest.grid_search import prepare_grid_combinations, run_grid_search_backtest, perform_grid_search, GridCombination, GridSearchResult
+from tradeexecutor.backtest.grid_search import prepare_grid_combinations, run_grid_search_backtest, perform_grid_search, GridCombination, GridSearchResult, \
+    pick_grid_search_result, pick_best_grid_search_result
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.state.state import State
 from tradeexecutor.state.visualisation import PlotKind
@@ -202,6 +203,30 @@ def test_perform_grid_search_single_thread(
         combinations,
         max_workers=1,
     )
+
+    # Pick a result of a single grid search combination
+    # and examine its trading metrics
+    sample = pick_grid_search_result(
+        results,
+        stop_loss_pct=0.9,
+        slow_ema_candle_count=7,
+        fast_ema_candle_count=2)
+    assert sample.summary.total_positions == 2
+
+    sample = pick_grid_search_result(
+        results,
+        stop_loss_pct=1.0,
+        slow_ema_candle_count=7,
+        fast_ema_candle_count=2)
+    assert sample is None
+
+    sample = pick_best_grid_search_result(
+        results,
+        key=lambda r: r.metrics.loc["Max Drawdown"][0])
+    assert sample is not None
+
+    sample = pick_best_grid_search_result(results)
+    assert sample is not None
 
     table = analyse_grid_search_result(results, drop_index=True)
     assert len(table) == 2 * 2 * 2
