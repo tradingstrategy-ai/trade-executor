@@ -26,7 +26,7 @@ except ImportError:
     # but fallback to normal TQDM auto mode
     from tqdm.auto import tqdm
 
-from tradeexecutor.analysis.advanced_metrics import calculate_advanced_metrics
+from tradeexecutor.analysis.advanced_metrics import calculate_advanced_metrics, AdvancedMetricsMode
 from tradeexecutor.analysis.trade_analyser import TradeSummary, build_trade_analysis
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingIgnoredModel
 from tradeexecutor.backtest.backtest_runner import run_backtest_inline
@@ -475,7 +475,7 @@ def run_grid_search_backtest(
     analysis = build_trade_analysis(state.portfolio)
     equity = calculate_equity_curve(state)
     returns = calculate_returns(equity)
-    metrics = calculate_advanced_metrics(returns)
+    metrics = calculate_advanced_metrics(returns, mode=AdvancedMetricsMode.full)
     summary = analysis.calculate_summary_statistics()
 
     return GridSearchResult(
@@ -524,7 +524,7 @@ def pick_grid_search_result(results: List[GridSearchResult], **kwargs) -> Option
 
 def pick_best_grid_search_result(
         results: List[GridSearchResult],
-            key: Callable=lambda x: x.summary.annualised_return_percent,
+        key: Callable=lambda r: r.summary.return_percent,
         highest=True,
 ) -> Optional[GridSearchResult]:
     """Pick the best combination in the results based on one metric.
@@ -547,7 +547,7 @@ def pick_best_grid_search_result(
     :param key:
         Lambda function to extract the value to compare from the data.
 
-        If not given use annualised return.
+        If not given use cumulative return.
 
     :param highest:
         If true pick the highest value, otherwise lowest.

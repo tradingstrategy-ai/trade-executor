@@ -30,7 +30,10 @@ class AdvancedMetricsMode(enum.Enum):
     full = "full"
 
 
-def calculate_advanced_metrics(returns: pd.Series, mode: AdvancedMetricsMode=AdvancedMetricsMode.basic) -> pd.DataFrame:
+def calculate_advanced_metrics(
+        returns: pd.Series,
+        mode: AdvancedMetricsMode=AdvancedMetricsMode.basic,
+) -> pd.DataFrame:
     """Calculate advanced strategy performance statistics using Quantstats.
 
     Calculates multiple metrics used to benchmark strategies for :term:`risk-adjusted returns`

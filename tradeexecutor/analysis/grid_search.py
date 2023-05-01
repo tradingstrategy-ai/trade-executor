@@ -18,9 +18,9 @@ from plotly.graph_objs import Figure
 from tradeexecutor.backtest.grid_search import GridSearchResult
 
 
-VALUE_COLS = ["Annualised profit", "Max drawdown", "Sharpe", "Sortino", "Average position", "Median position"]
+VALUE_COLS = ["Return", "Max drawdown", "Sharpe", "Sortino", "Average position", "Median position"]
 
-PERCENT_COLS = ["Annualised profit", "Max drawdown", "Average position", "Median position"]
+PERCENT_COLS = ["Return", "Max drawdown", "Average position", "Median position"]
 
 
 def analyse_combination(r: GridSearchResult) -> dict:
@@ -44,7 +44,9 @@ def analyse_combination(r: GridSearchResult) -> dict:
     row.update({
         # "Combination": r.combination.get_label(),
         "Positions": r.summary.total_positions,
-        "Annualised profit": r.summary.annualised_return_percent,
+        "Return": r.summary.return_percent,
+        #"Annualised profit": clean(r.metrics.loc["Expected Yearly"][0]),
+        # "Annualised return": clean(r.metrics.loc["Expected Yearly"][0]),
         "Max drawdown": clean(r.metrics.loc["Max Drawdown"][0]),
         "Sharpe": clean(r.metrics.loc["Sharpe"][0]),
         "Sortino": clean(r.metrics.loc["Sortino"][0]),
