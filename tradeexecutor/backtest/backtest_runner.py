@@ -37,7 +37,8 @@ from tradeexecutor.utils.accuracy import setup_decimal_accuracy
 from tradeexecutor.utils.timer import timed_task
 from tradingstrategy.client import Client
 from tradingstrategy.timebucket import TimeBucket
-
+from tradingstrategy.exchange import ExchangeValidation, Exchange
+from tradingstrategy.chain import ChainId
 
 @dataclass
 class BacktestSetup:
@@ -267,6 +268,37 @@ def setup_backtest(
         trading_strategy_engine_version=strategy_module.trading_strategy_engine_version,
     )
 
+class StrategyParamError(Exception):
+    """Raises when the strategy params are invalid"""
+
+def validate_strategy_params(chains: set[ChainId], exchanges: set[Exchange], trade_routing: TradeRouting):
+    
+    exchange: dict
+    # slug -> str
+    # chain_id -> ChainId
+    # trade_routing -> set of possible trade routing string values
+
+    for _exchange in ExchangeValidation:
+        
+        exchange = _exchange.value
+
+        if trade_routing.value in exchange["trade_routing"]:
+            
+            # validate chain id
+            if exchange["chain_id"] not in chains:
+                raise StrategyParamError(f"The chain id(s) you specified for your strategy are {[chain.name for chain in chains]}, but the chain you specified by trade_routing is {exchange['chain_id'].name}")
+
+            # validate exchange slug
+            slugs = [exchange.exchange_slug for exchange in exchanges]
+            if exchange["slug"] not in slugs:
+                raise StrategyParamError(f"The exchange slug(s) you specified by for your strategy are {[exchange.exchange_slug for exchange in exchanges]}, but the exchange slug specified by your trade_routing is '{exchange['slug']}'")
+
+            # if no assertion error raised, return
+            return
+
+    # if no exchange found, raise error
+    raise ValueError(f"Trade routing {trade_routing} not supported by any exchange. Dev note: check that new exchanges or trade routing options are added to ExchangeValidation enum")
+
 
 def run_backtest(
         setup: BacktestSetup,
@@ -284,6 +316,13 @@ def run_backtest(
     :return:
         Tuple(the final state of the backtest, trading universe, debug dump)
     """
+
+    # validate strategy
+    if hasattr(setup, "universe") and hasattr(setup.universe, "universe"):
+        exchanges = setup.universe.universe.exchanges
+        chains = setup.universe.universe.chains
+        trade_routing = setup.trade_routing
+        validate_strategy_params(chains, exchanges, trade_routing)
 
     # State is pristine and not used yet
     assert len(list(setup.state.portfolio.get_all_trades())) == 0
