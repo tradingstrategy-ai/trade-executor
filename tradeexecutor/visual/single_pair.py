@@ -572,7 +572,10 @@ def visualise_single_pair(
         candles = candle_universe
 
     # Get all positions for the trading pair we want to visualise
-    positions = _get_all_positions(state, pair_id)
+    if pair_id:
+        positions = _get_all_positions(state, pair_id)
+    else:
+        positions = []
 
     if len(positions) > 0:
         first_trade = positions[0].get_first_trade()
@@ -757,7 +760,7 @@ def visualise_single_pair_positions_with_duration_and_slippage(
     candles = candles.loc[candles["timestamp"].between(start_at, end_at)]
 
     if not pair_id:
-        pair_id = candles.iloc[0]["pair_id"]
+        pair_id = int(candles.iloc[0]["pair_id"])
 
     logger.info(f"Candles are {candle_start_ts} - {candle_end_ts}")
 
