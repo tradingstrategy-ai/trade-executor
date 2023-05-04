@@ -209,11 +209,14 @@ def visualise_benchmark(
     if end_at is not None:
         assert isinstance(end_at, pd.Timestamp)
 
-    if not start_at:
-        start_at = pd.Timestamp(portfolio_statistics[0].calculated_at)
+    first_portfolio_timestamp = pd.Timestamp(portfolio_statistics[0].calculated_at)
+    last_portfolio_timestamp = pd.Timestamp(portfolio_statistics[-1].calculated_at)
 
-    if not end_at:
-        end_at = pd.Timestamp(portfolio_statistics[-1].calculated_at)
+    if not start_at or start_at < first_portfolio_timestamp:
+        start_at = first_portfolio_timestamp
+
+    if not end_at or end_at > last_portfolio_timestamp:
+        end_at = last_portfolio_timestamp
 
     scatter = visualise_portfolio_equity_curve(name, portfolio_statistics)
     fig.add_trace(scatter)
