@@ -20,7 +20,7 @@ from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniv
 from tradeexecutor.strategy.trade_pricing import TradePricing
 from tradingstrategy.pair import PandasPairUniverse
 
-from eth_defi.uniswap_v3.price import UniswapV3PriceHelper
+from eth_defi.uniswap_v3.price import UniswapV3PriceHelper, estimate_sell_received_amount, estimate_buy_received_amount
 from eth_defi.uniswap_v3.deployment import UniswapV3Deployment
 
 logger = logging.getLogger(__name__)
@@ -104,7 +104,6 @@ class UniswapV3LivePricing(EthereumPricingModel):
         # In three token trades, be careful to use the correct reserve token
         quantity_raw = target_pair.base.convert_to_raw_amount(quantity)
 
-        # See eth_defi.uniswap_v2.fees.estimate_sell_received_amount_raw
         if intermediate_pair:
             path = [base_addr, intermediate_addr, quote_addr] 
             fees = [intermediate_pair.fee, target_pair.fee]
@@ -114,15 +113,15 @@ class UniswapV3LivePricing(EthereumPricingModel):
             fees = [target_pair.fee]
             total_fee_pct = 1 - (1-fees[0])
                         
-        raw_fees = [int(fee * 1_000_000) for fee in fees]
-        
-        price_helper = self.get_price_helper(target_pair)
-        received_raw = price_helper.get_amount_out(
-            amount_in=quantity_raw,
-            path=path,
-            fees=raw_fees
-        ) 
-
+        received_raw = estimate_sell_received_amount(
+            uniswap=self.get_uniswap(target_pair),
+            base_token_address=base_addr,
+            quote_token_address=quote_addr,
+            quantity=quantity_raw,
+            target_pair_fee=int(target_pair.fee * 1_000_000),
+            intermediate_token_address=intermediate_addr,
+            intermediate_pair_fee=int(intermediate_pair.fee * 1_000_000) if intermediate_pair else None,
+        )
         
         if intermediate_pair:
             received = intermediate_pair.quote.convert_to_decimal(received_raw)
@@ -200,14 +199,14 @@ class UniswapV3LivePricing(EthereumPricingModel):
             
             total_fee_pct = 1 - (1 - fees[0])
 
-        raw_fees = [int(fee * 1_000_000) for fee in fees]
-
-        # See eth_defi.uniswap_v2.fees.estimate_buy_received_amount_raw
-        price_helper = self.get_price_helper(target_pair)
-        token_raw_received = price_helper.get_amount_out(
-            amount_in=reserve_raw,
-            path=path,
-            fees=raw_fees
+        token_raw_received = estimate_buy_received_amount(
+            uniswap=self.get_uniswap(target_pair),
+            base_token_address=base_addr,
+            quote_token_address=quote_addr,
+            quantity=reserve_raw,
+            target_pair_fee=int(target_pair.fee * 1_000_000),
+            intermediate_token_address=intermediate_addr,
+            intermediate_pair_fee=int(intermediate_pair.fee * 1_000_000) if intermediate_pair else None,
         )
 
         token_received = target_pair.base.convert_to_decimal(token_raw_received)

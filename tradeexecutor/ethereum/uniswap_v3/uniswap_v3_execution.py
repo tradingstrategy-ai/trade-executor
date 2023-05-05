@@ -9,7 +9,7 @@ from web3 import Web3
 from eth_defi.hotwallet import HotWallet
 from eth_defi.uniswap_v2.analysis import TradeSuccess, TradeFail
 from eth_defi.uniswap_v3.deployment import UniswapV3Deployment
-from eth_defi.uniswap_v3.price import UniswapV3PriceHelper
+from eth_defi.uniswap_v3.price import UniswapV3PriceHelper, estimate_sell_received_amount
 from eth_defi.uniswap_v3.analysis import analyse_trade_by_receipt
 from eth_defi.uniswap_v3.deployment import mock_partial_deployment_for_analysis
 from tradeexecutor.ethereum.tx import TransactionBuilder
@@ -87,24 +87,21 @@ class UniswapV3ExecutionModel(EthereumExecutionModel):
 
 def get_current_price(web3: Web3, uniswap: UniswapV3Deployment, pair: TradingPairIdentifier, quantity=Decimal(1)) -> float:
     """Get a price from Uniswap v3 pool, assuming you are selling 1 unit of base token.
-    See see eth_defi.uniswap_v2.fees.estimate_sell_price_decimals
     
     Does decimal adjustment.
+    
     :return: Price in quote token.
     """
     
     quantity_raw = pair.base.convert_to_raw_amount(quantity)
     
-    path = [pair.base.checksum_address,  pair.quote.checksum_address] 
-    raw_fees = [int(pair.fee * 1_000_000)]
-    assert raw_fees, "no fees in pair"        
-        
-    price_helper = UniswapV3PriceHelper(uniswap)
-    out_raw = price_helper.get_amount_out(
-        amount_in=quantity_raw,
-        path=path,
-        fees=raw_fees
+    out_raw = estimate_sell_received_amount(
+        uniswap=uniswap,
+        base_token_address=pair.base.checksum_address,
+        quote_token_address=pair.quote.checksum_address,
+        quantity=quantity_raw,
+        target_pair_fee=int(pair.fee * 1_000_000),        
     )
-    
+
     return float(pair.quote.convert_to_decimal(out_raw))
 
