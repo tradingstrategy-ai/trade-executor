@@ -109,6 +109,7 @@ def perform_test_trade(
         test_evm_uniswap_v2_init_code_hash=test_evm_uniswap_v2_init_code_hash,
         clear_caches=False,
     )
+    assert client is not None, "You need to give details for TradingStrategy.ai client"
 
     if not state_file:
         state_file = f"state/{id}.json"
@@ -131,6 +132,7 @@ def perform_test_trade(
         pricing_model_factory=pricing_model_factory,
         approval_model=UncheckedApprovalModel(),
         client=client,
+        routing_model=routing_model,
         run_state=RunState(),
     )
 
