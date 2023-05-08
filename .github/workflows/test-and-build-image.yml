@@ -29,12 +29,8 @@ jobs:
         with:
           path: .venv
           key: venv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('**/poetry.lock') }}
-      - name: Install Anvil
-        run: |
-          curl -L https://foundry.paradigm.xyz | bash
-          PATH=~/.foundry/bin:$PATH
-          foundryup
-          anvil --version
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
       - name: Install dependencies
         if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
         # We don't install -E qstrader and run legacy tests on CI as they
@@ -43,7 +39,6 @@ jobs:
           poetry install --no-interaction -E web-server -E execution -E quantstats
       - name: Run test scripts
         run: |
-          PATH=~/.foundry/bin:$PATH
           poetry run pytest --tb=native
         env:
           TRADING_STRATEGY_API_KEY: ${{ secrets.TRADING_STRATEGY_API_KEY }}
