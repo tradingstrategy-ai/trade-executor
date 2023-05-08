@@ -4,7 +4,16 @@ Quick local dev example:
 
 .. code-block:: shell
 
-     poetry run trade-executor init
+    # Set up JSON_RPC_POLYGON
+    source env/local-test.env
+
+    # Set up hto wallet private key
+    export PRIVATE_KEY=...
+
+    poetry run trade-executor init \
+        --id=vault-init-test \
+        --vault-address=0x6E321256BE0ABd2726A234E8dBFc4d3caf255AE0
+
 
 """
 

@@ -240,7 +240,7 @@ def test_enzyme_deploy_vault(
     deployer: HexAddress,
     enzyme_deployment: EnzymeDeployment,
 ):
-    """Deploy Enzymy vault via CLI.
+    """Deploy Enzymeß vault via CLI.
 
     - Set up local Anvil testnet with Uniswap v2 and Enzyme
 
@@ -281,3 +281,48 @@ def test_enzyme_deploy_vault(
 
         assert vault.get_name() == "Toholampi Capital"
         assert vault.get_symbol() == "COW"
+
+
+def test_enzyme_perform_test_trade(
+    environment: dict,
+    web3: Web3,
+    state_file: Path,
+    usdc: Contract,
+    weth: Contract,
+    vault: Vault,
+    deployer: HexAddress,
+    enzyme_deployment: EnzymeDeployment,
+):
+    """Perform a test trade on Enzymy vault via CLI.
+
+    - Deploy a new vault using CLI
+
+    - Perform a test trade on this fault
+    """
+
+    vault_record_file = os.path.join(tempfile.mkdtemp(), 'vault_record.json')
+    env = environment.copy()
+    env["FUND_NAME"] = "Toholampi Capital"
+    env["FUND_SYMBOL"] = "COW"
+    env["VAULT_RECORD_FILE"] = vault_record_file
+    env["COMPTROLLER_LIB"] = enzyme_deployment.contracts.comptroller_lib.address
+    env["DENOMINATION_ASSET"] = usdc.address
+
+    # Run strategy for few cycles.
+    # Manually call the main() function so that Typer's CliRunner.invoke() does not steal
+    # stdin and we can still set breakpoints
+    cli = get_command(app)
+    with patch.dict(os.environ, env, clear=True):
+        with pytest.raises(SystemExit) as e:
+            cli.main(args=["enzyme-deploy-vault"])
+        assert e.value.code == 0
+
+    with patch.dict(os.environ, env, clear=True):
+        with pytest.raises(SystemExit) as e:
+            cli.main(args=["init"])
+        assert e.value.code == 0
+
+    with patch.dict(os.environ, env, clear=True):
+        with pytest.raises(SystemExit) as e:
+            cli.main(args=["perform-test-trade"])
+        assert e.value.code == 0
