@@ -1,4 +1,12 @@
-"""iniy command"""
+"""init command.
+
+Quick local dev example:
+
+.. code-block:: shell
+
+     poetry run trade-executor init
+
+"""
 
 from pathlib import Path
 from typing import Optional
@@ -39,16 +47,11 @@ def init(
     Vault deployment is still handled separate.
     """
 
-    # To run this from command line with .env file you can do
-    # set -o allexport ; source ~/pancake-eth-usd-sma-final.env ; set +o allexport ;  trade-executor check-wallet
-
     global logger
 
     id = prepare_executor_id(id, strategy_file)
 
     logger = setup_logging(log_level)
-
-    logger.trade("test")
 
     web3config = create_web3_config(
         gas_price_method=None,
