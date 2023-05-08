@@ -30,6 +30,9 @@ from tradeexecutor.ethereum.universe import create_pair_universe
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 
 
+logger = logging.getLogger(__name__)
+
+
 @pytest.fixture()
 def anvil(request: FixtureRequest) -> AnvilLaunch:
     """Launch Anvil for the test backend.
@@ -103,6 +106,7 @@ def uniswap_v2(web3: Web3, deployer: HexAddress) -> UniswapV2Deployment:
     """Deploy Uniswap, WETH token."""
     assert web3.eth.get_balance(deployer) > 0
     deployment = deploy_uniswap_v2_like(web3, deployer, give_weth=500)  # Will also deploy WETH9 and give the deployer this many WETH tokens
+    logger.info("Uni v2 factory deployed at %s", deployment.factory.address)
     return deployment
 
 
@@ -183,6 +187,8 @@ def weth_usdc_uniswap_pair(web3, deployer, uniswap_v2, usdc, weth) -> HexAddress
         deposit * 10**6,
         (deposit // price) * 10**18,
     )
+
+    logger.info("%s-%s pair is at %s", weth.address, usdc.address, pair)
 
     return pair
 

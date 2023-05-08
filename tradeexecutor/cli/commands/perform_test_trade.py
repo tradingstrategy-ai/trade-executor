@@ -49,8 +49,8 @@ def perform_test_trade(
     max_slippage: float = shared_options.max_slippage,
 
     # Test EVM backend when running e2e tests
-    test_evm_uniswap_v2_router: Optional[str] = shared_options.test_evm_uniswap_v2_factory,
-    test_evm_uniswap_v2_factory: Optional[str] = shared_options.test_evm_uniswap_v2_router,
+    test_evm_uniswap_v2_router: Optional[str] = shared_options.test_evm_uniswap_v2_router,
+    test_evm_uniswap_v2_factory: Optional[str] = shared_options.test_evm_uniswap_v2_factory,
     test_evm_uniswap_v2_init_code_hash: Optional[str] = shared_options.test_evm_uniswap_v2_init_code_hash,
 ):
     """Perform a small test swap.

@@ -174,7 +174,7 @@ def prepare_cache(executor_id: str, cache_path: Optional[Path]) -> Path:
     if not cache_path:
         cache_path = Path("cache").joinpath(executor_id)
 
-    logger.info("Dataset cache is %s", cache_path)
+    logger.info("Dataset cache is %s", os.path.realpath(cache_path))
 
     os.makedirs(cache_path, exist_ok=True)
 
@@ -254,9 +254,9 @@ def create_client(
     test_evm_uniswap_v2_init_code_hash: Optional[str],
     clear_caches: bool,
 ) -> Tuple[BaseClient | None, RoutingModel | None]:
-    """Create a Trading Strategy client.
+    """Create a Trading Strategy client instance.
 
-    - Read ENV inputs
+    - Read env inputs to determine which kind of enviroment/client we need to have
 
     - May create mock client if we run e2e tests
 
