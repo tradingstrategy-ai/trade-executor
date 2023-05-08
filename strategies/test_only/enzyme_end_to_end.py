@@ -73,7 +73,7 @@ def create_trading_universe(
         execution_context: ExecutionContext,
         universe_options: UniverseOptions,
 ):
-    assert isinstance(client, UniswapV2MockClient), "Looks like we are not running on EVM testing backend"
+    assert isinstance(client, UniswapV2MockClient), f"Looks like we are not running on EVM testing backend. Got: {client}"
 
     # Load exchange and pair data for a single pair
     dataset = load_all_data(

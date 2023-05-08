@@ -550,9 +550,13 @@ def validate_reserve_currency(
     }:
         if reserve_currency != ReserveCurrency.dai:
             raise MismatchReserveCurrency(f"Got {routing_type} with {reserve_currency}")
+    elif routing_type == TradeRouting.user_supplied_routing_model:
+        # Unit tests.
+        # Do nothing
+        pass
     # else
     else:
-        raise NotImplementedError("Unknown routing type")
+        raise NotImplementedError(f"Unknown routing type: {routing_type}")
 
 
 def get_backtest_routing_model(

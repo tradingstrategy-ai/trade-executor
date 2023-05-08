@@ -103,7 +103,7 @@ def check_wallet(
         confirmation_timeout=datetime.timedelta(seconds=60),
         confirmation_block_count=6,
         max_slippage=0.01,
-        min_balance_threshold=minimum_gas_balance,
+        min_gas_balance=minimum_gas_balance,
         vault_address=vault_address,
         vault_adapter_address=vault_adapter_address,
     )

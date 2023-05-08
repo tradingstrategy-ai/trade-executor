@@ -10,7 +10,7 @@ import typer
 from tradingstrategy.client import Client
 from .app import app
 from ..bootstrap import prepare_executor_id, prepare_cache, create_web3_config, create_state_store, \
-    create_trade_execution_model
+    create_trade_execution_model, create_client
 from ..log import setup_logging
 from ..testtrade import make_test_trade
 from ...strategy.approval import UncheckedApprovalModel
@@ -23,24 +23,36 @@ from ...strategy.strategy_module import read_strategy_module
 from ...strategy.trading_strategy_universe import TradingStrategyUniverseModel
 from ...strategy.universe_model import UniverseOptions
 from ...utils.timer import timed_task
+from tradeexecutor.cli.commands import shared_options
 
 
 @app.command()
 def perform_test_trade(
-    id: str = typer.Option(None, envvar="EXECUTOR_ID", help="Executor id used when programmatically referring to this instance. If not given, take the base of --strategy-file."),
-    log_level: str = typer.Option(None, envvar="LOG_LEVEL", help="The Python default logging level. The defaults are 'info' is live execution, 'warning' if backtesting. Set 'disabled' in testing."),
+    id: str = shared_options.id,
 
-    strategy_file: Path = typer.Option(..., envvar="STRATEGY_FILE"),
-    private_key: str = typer.Option(None, envvar="PRIVATE_KEY"),
-    trading_strategy_api_key: str = typer.Option(None, envvar="TRADING_STRATEGY_API_KEY", help="Trading Strategy API key"),
-    state_file: Optional[Path] = typer.Option(None, envvar="STATE_FILE", help="JSON file where we serialise the execution state. If not given defaults to state/{executor-id}.json"),
-    cache_path: Optional[Path] = typer.Option("cache/", envvar="CACHE_PATH", help="Where to store downloaded datasets"),
+    strategy_file: Path = shared_options.strategy_file,
+    trading_strategy_api_key: str = shared_options.trading_strategy_api_key,
+    state_file: Optional[Path] = shared_options.state_file,
+    cache_path: Optional[Path] = shared_options.cache_path,
 
-    # Web3 connection options
-    json_rpc_binance: str = typer.Option(None, envvar="JSON_RPC_BINANCE", help="BNB Chain JSON-RPC node URL we connect to"),
-    json_rpc_polygon: str = typer.Option(None, envvar="JSON_RPC_POLYGON", help="Polygon JSON-RPC node URL we connect to"),
-    json_rpc_ethereum: str = typer.Option(None, envvar="JSON_RPC_ETHEREUM", help="Ethereum JSON-RPC node URL we connect to"),
-    json_rpc_avalanche: str = typer.Option(None, envvar="JSON_RPC_AVALANCHE", help="Avalanche C-chain JSON-RPC node URL we connect to"),
+    log_level: str = shared_options.log_level,
+    json_rpc_binance: Optional[str] = shared_options.json_rpc_binance,
+    json_rpc_polygon: Optional[str] = shared_options.json_rpc_polygon,
+    json_rpc_avalanche: Optional[str] = shared_options.json_rpc_avalanche,
+    json_rpc_ethereum: Optional[str] = shared_options.json_rpc_ethereum,
+    json_rpc_arbitrum: Optional[str] = shared_options.json_rpc_arbitrum,
+    json_rpc_anvil: Optional[str] = shared_options.json_rpc_anvil,
+    private_key: str = shared_options.private_key,
+
+    vault_address: Optional[str] = shared_options.vault_address,
+    vault_adapter_address: Optional[str] = shared_options.vault_adapter_address,
+    min_gas_balance: Optional[float] = shared_options.min_gas_balance,
+    max_slippage: float = shared_options.max_slippage,
+
+    # Test EVM backend when running e2e tests
+    test_evm_uniswap_v2_router: Optional[str] = shared_options.test_evm_uniswap_v2_factory,
+    test_evm_uniswap_v2_factory: Optional[str] = shared_options.test_evm_uniswap_v2_router,
+    test_evm_uniswap_v2_init_code_hash: Optional[str] = shared_options.test_evm_uniswap_v2_init_code_hash,
 ):
     """Perform a small test swap.
 
@@ -49,7 +61,6 @@ def perform_test_trade(
 
     The trade will be recorded on the state as a position.
     """
-    global logger
 
     id = prepare_executor_id(id, strategy_file)
 
@@ -58,8 +69,6 @@ def perform_test_trade(
     mod = read_strategy_module(strategy_file)
 
     cache_path = prepare_cache(id, cache_path)
-
-    client = Client.create_live_client(trading_strategy_api_key, cache_path=cache_path)
 
     execution_context = ExecutionContext(
         mode=ExecutionMode.preflight_check,
@@ -71,23 +80,35 @@ def perform_test_trade(
         json_rpc_polygon=json_rpc_polygon,
         json_rpc_avalanche=json_rpc_avalanche,
         json_rpc_ethereum=json_rpc_ethereum,
-        gas_price_method=None,
+        json_rpc_anvil=json_rpc_anvil,
+        json_rpc_arbitrum=json_rpc_arbitrum,
     )
 
-    assert web3config, "No RPC endpoints given. A working JSON-RPC connection is needed for check-wallet"
+    if not web3config.has_any_connection():
+        raise RuntimeError("Vault deploy requires that you pass JSON-RPC connection to one of the networks")
 
-    # Check that we are connected to the chain strategy assumes
-    web3config.set_default_chain(mod.chain_id)
-    web3config.check_default_chain_id()
+    web3config.choose_single_chain()
 
-    execution_model, sync_method, valuation_model_factory, pricing_model_factory = create_trade_execution_model(
+    execution_model, sync_model, valuation_model_factory, pricing_model_factory = create_trade_execution_model(
         asset_management_mode=AssetManagementMode.hot_wallet,
         private_key=private_key,
         web3config=web3config,
         confirmation_timeout=datetime.timedelta(seconds=60),
         confirmation_block_count=2,
-        max_slippage=2.50,
-        min_balance_threshold=0,
+        min_gas_balance=min_gas_balance,
+        max_slippage=max_slippage,
+        vault_address=vault_address,
+        vault_adapter_address=vault_adapter_address,
+    )
+    client, routing_model = create_client(
+        mod=mod,
+        web3config=web3config,
+        trading_strategy_api_key=trading_strategy_api_key,
+        cache_path=cache_path,
+        test_evm_uniswap_v2_factory=test_evm_uniswap_v2_factory,
+        test_evm_uniswap_v2_router=test_evm_uniswap_v2_router,
+        test_evm_uniswap_v2_init_code_hash=test_evm_uniswap_v2_init_code_hash,
+        clear_caches=False,
     )
 
     if not state_file:
@@ -106,7 +127,7 @@ def perform_test_trade(
         execution_model=execution_model,
         execution_context=execution_context,
         timed_task_context_manager=execution_context.timed_task_context_manager,
-        sync_method=sync_method,
+        sync_model=sync_model,
         valuation_model_factory=valuation_model_factory,
         pricing_model_factory=pricing_model_factory,
         approval_model=UncheckedApprovalModel(),

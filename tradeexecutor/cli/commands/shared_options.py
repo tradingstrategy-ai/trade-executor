@@ -38,3 +38,16 @@ json_rpc_anvil = Option(None, envvar="JSON_RPC_ANVIL", help="Anvil JSON-RPC url.
 state_file = Option(None, envvar="STATE_FILE", help="JSON file where we serialise the execution state. If not given defaults to state/{executor-id}.json")
 
 trading_strategy_api_key = Option(None, envvar="TRADING_STRATEGY_API_KEY", help="Trading Strategy API key")
+
+cache_path = Option("cache/", envvar="CACHE_PATH", help="Where to cache downloaded datasets on a local filesystem")
+
+max_slippage = Option(0.0025, envvar="MAX_SLIPPAGE", help="Max slippage allowed per trade before failing. The default 0.0025 is 0.25% or 25 BPS.")
+
+min_gas_balance = Option(0.1, envvar="MINIMUM_GAS_BALANCE", help="What is the minimum balance of gas token you need to have in your wallet. If the balance falls below this, abort by crashing and do not attempt to create transactions. Expressed in the native token e.g. ETH. The default option 0.1 means that if your hot wallet account is less than 0.1 ETH the trade executor aborts via crash.")
+
+test_evm_uniswap_v2_router: Optional[str] = Option(None, envvar="TEST_EVM_UNISWAP_V2_ROUTER",
+                                                         help="Uniswap v2 instance paramater when doing live trading test against a local dev chain")
+test_evm_uniswap_v2_factory: Optional[str] = Option(None, envvar="TEST_EVM_UNISWAP_V2_FACTORY",
+                                                          help="Uniswap v2 instance paramater when doing live trading test against a local dev chain")
+test_evm_uniswap_v2_init_code_hash: Optional[str] = Option(None, envvar="TEST_EVM_UNISWAP_V2_INIT_CODE_HASH",
+                                                                 help="Uniswap v2 instance paramater when doing live trading test against a local dev chain")
