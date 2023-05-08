@@ -292,6 +292,7 @@ def test_enzyme_perform_test_trade(
     vault: Vault,
     deployer: HexAddress,
     enzyme_deployment: EnzymeDeployment,
+    weth_usdc_trading_pair: TradingPairIdentifier,
 ):
     """Perform a test trade on Enzymy vault via CLI.
 

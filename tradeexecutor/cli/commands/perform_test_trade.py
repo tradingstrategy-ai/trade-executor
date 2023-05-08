@@ -7,7 +7,6 @@ from typing import Optional
 
 import typer
 
-from tradingstrategy.client import Client
 from .app import app
 from ..bootstrap import prepare_executor_id, prepare_cache, create_web3_config, create_state_store, \
     create_trade_execution_model, create_client
@@ -149,7 +148,7 @@ def perform_test_trade(
     make_test_trade(
         execution_model,
         pricing_model,
-        sync_method,
+        sync_model,
         state,
         universe,
         runner.routing_model,
@@ -159,3 +158,4 @@ def perform_test_trade(
     # Store the test trade data in the strategy history
     store.sync(state)
 
+    logger.info("All ok")
