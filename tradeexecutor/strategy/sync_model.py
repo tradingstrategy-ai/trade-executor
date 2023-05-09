@@ -4,6 +4,7 @@ import datetime
 from abc import ABC, abstractmethod
 from typing import Callable, List, Optional
 
+from eth_defi.hotwallet import HotWallet
 from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.ethereum.wallet import ReserveUpdateEvent
 from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdateCause, BalanceUpdatePositionType
@@ -20,7 +21,19 @@ class SyncModel(ABC):
     """Abstract class for syncing on-chain fund movements event to the strategy treasury."""
 
     def get_vault_address(self) -> Optional[str]:
-        """Get the vault address we are using"""
+        """Get the vault address we are using.
+
+        :return:
+            None if the strategy is not vaulted
+        """
+        return None
+
+    def get_hot_wallet(self) -> Optional[HotWallet]:
+        """Get the vault address we are using.
+
+        :return:
+            None if the executor is not using hot wallet (dummy, backtesting, etc.)
+        """
         return None
 
     @abstractmethod

@@ -82,6 +82,9 @@ class EnzymeVaultSyncModel(SyncModel):
         """Get the vault address we are using"""
         return self.vault.address
 
+    def get_hot_wallet(self) -> Optional[HotWallet]:
+        return self.hot_wallet
+
     def _notify(
             self,
             current_block: int,

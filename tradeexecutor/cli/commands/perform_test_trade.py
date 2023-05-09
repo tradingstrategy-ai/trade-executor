@@ -43,6 +43,7 @@ def perform_test_trade(
     json_rpc_anvil: Optional[str] = shared_options.json_rpc_anvil,
     private_key: str = shared_options.private_key,
 
+    asset_management_mode: AssetManagementMode = shared_options.asset_management_mode,
     vault_address: Optional[str] = shared_options.vault_address,
     vault_adapter_address: Optional[str] = shared_options.vault_adapter_address,
     min_gas_balance: Optional[float] = shared_options.min_gas_balance,
@@ -91,7 +92,7 @@ def perform_test_trade(
     web3config.choose_single_chain()
 
     execution_model, sync_model, valuation_model_factory, pricing_model_factory = create_trade_execution_model(
-        asset_management_mode=AssetManagementMode.hot_wallet,
+        asset_management_mode=asset_management_mode,
         private_key=private_key,
         web3config=web3config,
         confirmation_timeout=datetime.timedelta(seconds=60),
@@ -101,6 +102,7 @@ def perform_test_trade(
         vault_address=vault_address,
         vault_adapter_address=vault_adapter_address,
     )
+
     client, routing_model = create_client(
         mod=mod,
         web3config=web3config,
@@ -150,6 +152,7 @@ def perform_test_trade(
     routing_state, pricing_model, valuation_method = runner.setup_routing(universe)
 
     make_test_trade(
+        web3config.get_default(),
         execution_model,
         pricing_model,
         sync_model,

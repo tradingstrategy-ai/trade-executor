@@ -268,7 +268,6 @@ def test_enzyme_deploy_vault(
     # Check tat the vault was created
     with open(vault_record_file, "rt") as inp:
         vault_record = json.load(inp)
-
         comptroller_contract, vault_contract = EnzymeDeployment.fetch_vault(enzyme_deployment, vault_record["vault"])
         generic_adapter_contract = get_deployed_contract(web3, f"VaultSpecificGenericAdapter.json", vault_record["generic_adapter"])
 
@@ -317,6 +316,22 @@ def test_enzyme_perform_test_trade(
         with pytest.raises(SystemExit) as e:
             cli.main(args=["enzyme-deploy-vault"])
         assert e.value.code == 0
+
+    # After vault has been deployed, we got its address and GenericAdapter address
+    with open(vault_record_file, "rt") as inp:
+        vault_record = json.load(inp)
+        comptroller_contract, vault_contract = EnzymeDeployment.fetch_vault(enzyme_deployment, vault_record["vault"])
+        generic_adapter_contract = get_deployed_contract(web3, f"VaultSpecificGenericAdapter.json", vault_record["generic_adapter"])
+
+        env["VAULT_ADDRESS"] = vault_contract.address
+        env["VAULT_ADAPTER_ADDRESS"] = generic_adapter_contract.address
+
+    # Deposit some USDC to start
+    tx_hash = usdc.functions.approve(vault.comptroller.address, 500 * 10**6).transact({"from": deployer})
+    assert_transaction_success_with_explanation(web3, tx_hash)
+    tx_hash = vault.comptroller.functions.buyShares(500 * 10**6, 1).transact({"from": deployer})
+    assert_transaction_success_with_explanation(web3, tx_hash)
+    assert usdc.functions.balanceOf(vault.address).call() > 0
 
     with patch.dict(os.environ, env, clear=True):
         with pytest.raises(SystemExit) as e:

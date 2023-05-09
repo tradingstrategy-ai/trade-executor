@@ -4,6 +4,8 @@ import datetime
 from decimal import Decimal
 from typing import Union
 
+from web3 import Web3
+
 from tradeexecutor.strategy.sync_model import SyncModel
 from tradingstrategy.universe import Universe
 
@@ -19,9 +21,10 @@ logger = logging.getLogger(__name__)
 
 
 def make_test_trade(
+        web3: Web3,
         execution_model: ExecutionModel,
         pricing_model: PricingModel,
-        sync_model: Union[EthereumHotWalletReserveSyncer, SyncModel],
+        sync_model: SyncModel,
         state: State,
         universe: TradingStrategyUniverse,
         routing_model: RoutingModel,
@@ -33,6 +36,8 @@ def make_test_trade(
     Buy and sell 1 token worth for 1 USD to check that
     our trade routing works.
     """
+
+    assert isinstance(sync_model, SyncModel)
 
     ts = datetime.datetime.utcnow()
 
@@ -63,21 +68,31 @@ def make_test_trade(
                 reserve_asset.token_symbol,
                 )
 
+    logger.info("Sync model is %s", sync_model)
+    logger.info("Trading university reserve asset is %s", universe.get_reserve_asset())
+
     # Sync any incoming stablecoin transfers
     # that have not been synced yet
-    if isinstance(sync_model, SyncModel):
-        sync_model.sync_treasury(
-            ts,
-            state,
-            list(universe.reserve_assets),
-        )
-    else:
-        # Legacy code path
-        sync_model(
-            state.portfolio,
-            ts,
-            universe.reserve_assets,
-        )
+    balance_updates = sync_model.sync_treasury(
+        ts,
+        state,
+        list(universe.reserve_assets),
+    )
+
+    logger.info("We received balance update events: %s", balance_updates)
+
+    vault_address = sync_model.get_vault_address()
+    hot_wallet = sync_model.get_hot_wallet()
+    gas_at_start = hot_wallet.get_native_currency_balance(web3)
+    reserve_currency, reserve_currency_at_start = state.portfolio.get_default_reserve()
+
+    logger.info("Account data before test trade")
+    logger.info("  Vault address: %s", vault_address)
+    logger.info("  Hot wallet address: %s", hot_wallet.address)
+    logger.info("  Hot wallet balance: %s", gas_at_start)
+    logger.info("  Reserve currency balance: %s %s", reserve_currency_at_start, reserve_currency)
+
+    assert reserve_currency_at_start > 0, f"No deposits available to trade. Vault at {vault_address}"
 
     # Create PositionManager helper class
     # that helps open and close positions
@@ -86,7 +101,6 @@ def make_test_trade(
         universe.universe,
         state,
         pricing_model,
-
     )
 
     # The message left on the test positions and trades
@@ -145,7 +159,9 @@ def make_test_trade(
             routing_state,
         )
 
-    logger.info("All ok")
+    gas_at_end = hot_wallet.get_native_currency_balance(web3)
+    reserve_currency, reserve_currency_at_end = state.portfolio.get_default_reserve()
 
-
-
+    logger.info("Final report")
+    logger.info("  Gas spent %s", gas_at_start - gas_at_end)
+    logger.info("  Reserve currency spent: %s %s", reserve_currency_at_start - reserve_currency_at_end, reserve_currency)

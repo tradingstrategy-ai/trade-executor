@@ -632,7 +632,7 @@ class Portfolio:
         except Exception as e:
             raise InvalidValuationOutput(f"Valuation model failed to output proper price: {valuation_method}: {e}") from e
 
-    def get_default_reserve(self) -> Tuple[AssetIdentifier, USDollarAmount]:
+    def get_default_reserve(self) -> Tuple[Optional[AssetIdentifier], Optional[USDollarAmount]]:
         """Gets the default reserve currency associated with this state.
 
         For strategies that use only one reserve currency.
@@ -640,8 +640,12 @@ class Portfolio:
 
         :return:
             Tuple (Reserve currency asset, its latest US dollar exchanage rate)
+
+            Return (None, 0) if the strategy has not seen any deposits yet.
         """
-        assert len(self.reserves) > 0, "Portfolio has no reserve currencies available"
+        if len(self.reserves) == 0:
+            return None, 0
+
         res_pos = next(iter(self.reserves.values()))
         return res_pos.asset, res_pos.reserve_token_price
 
