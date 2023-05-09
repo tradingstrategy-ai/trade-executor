@@ -1,6 +1,7 @@
 """Strategy deposit and withdrawal syncing."""
 
 import datetime
+from _decimal import Decimal
 from abc import ABC, abstractmethod
 from typing import Callable, List, Optional
 

@@ -84,7 +84,8 @@ def make_test_trade(
     vault_address = sync_model.get_vault_address()
     hot_wallet = sync_model.get_hot_wallet()
     gas_at_start = hot_wallet.get_native_currency_balance(web3)
-    reserve_currency, reserve_currency_at_start = state.portfolio.get_default_reserve()
+    reserve_currency= state.portfolio.get_default_reserve_position().asset.token_symbol
+    reserve_currency_at_start = state.portfolio.get_default_reserve_position().get_value()
 
     logger.info("Account data before test trade")
     logger.info("  Vault address: %s", vault_address)
@@ -160,8 +161,10 @@ def make_test_trade(
         )
 
     gas_at_end = hot_wallet.get_native_currency_balance(web3)
-    reserve_currency, reserve_currency_at_end = state.portfolio.get_default_reserve()
+    reserve_currency_at_end = state.portfolio.get_default_reserve_position().get_value()
 
     logger.info("Final report")
-    logger.info("  Gas spent %s", gas_at_start - gas_at_end)
+    logger.info("  Gas spent: %s", gas_at_start - gas_at_end)
+    logger.info("  Trades done currently: %d", len(list(state.portfolio.get_all_trades())))
+    logger.info("  Reserves currently: %s %s", reserve_currency_at_end, reserve_currency)
     logger.info("  Reserve currency spent: %s %s", reserve_currency_at_start - reserve_currency_at_end, reserve_currency)

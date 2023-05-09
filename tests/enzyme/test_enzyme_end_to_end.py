@@ -299,15 +299,14 @@ def test_enzyme_perform_test_trade(
 ):
     """Perform a test trade on Enzymy vault via CLI.
 
-    - Deploy a new vault using CLI
+    - Use a vault deployed by the test fixtures
+
+    - Initialise the strategy to use this vault
 
     - Perform a test trade on this fault
     """
 
-    vault_record_file = os.path.join(tempfile.mkdtemp(), 'vault_record.json')
     env = environment.copy()
-    env["COMPTROLLER_LIB"] = enzyme_deployment.contracts.comptroller_lib.address
-    env["DENOMINATION_ASSET"] = usdc.address
     env["VAULT_ADDRESS"] = vault.address
     env["VAULT_ADAPTER_ADDRESS"] = vault.generic_adapter.address
 
@@ -339,3 +338,11 @@ def test_enzyme_perform_test_trade(
 
     assert usdc.functions.balanceOf(vault.address).call() < deposit_amount, "No deposits where spent; trades likely did not happen"
 
+    # Check the resulting state and see we made some trade for trading fee losses
+    with state_file.open("rt") as inp:
+        state: State = State.from_json(inp.read())
+
+        assert len(list(state.portfolio.get_all_trades())) == 2
+
+        reserve_value = state.portfolio.get_default_reserve_position().get_value()
+        assert reserve_value == pytest.approx(499.994009)

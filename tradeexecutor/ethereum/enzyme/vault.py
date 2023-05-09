@@ -372,6 +372,10 @@ class EnzymeVaultSyncModel(SyncModel):
         treasury_sync.last_updated_at = datetime.datetime.utcnow()
         treasury_sync.last_cycle_at = strategy_cycle_ts
 
+        # Update the reserve position value
+        # TODO: Add USDC/USD price feed
+        # state.portfolio.get_default_reserve_position().update_value(exchange_rate=1.0)
+
         return events
 
     def create_transaction_builder(self) -> EnzymeTransactionBuilder:

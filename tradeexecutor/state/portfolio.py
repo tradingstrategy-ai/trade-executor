@@ -2,6 +2,7 @@
 
 import datetime
 import copy
+import warnings
 from dataclasses import dataclass, field
 from decimal import Decimal
 from itertools import chain
@@ -528,7 +529,6 @@ class Portfolio:
         :raise AssertionError:
             If there is not exactly one reserve position
         """
-
         positions = list(self.reserves.values())
         assert len(positions) == 1, f"Had {len(positions)} reserve position"
         return positions[0]
@@ -537,7 +537,7 @@ class Portfolio:
         """Return how much equity allocation we have in a certain trading pair."""
         position = self.get_position_by_trading_pair(pair)
         if position is None:
-            return 0
+            return Decimal(0)
         return position.get_equity_for_position()
 
     def adjust_reserves(self, asset: AssetIdentifier, amount: Decimal):
@@ -641,10 +641,12 @@ class Portfolio:
         :return:
             Tuple (Reserve currency asset, its latest US dollar exchanage rate)
 
-            Return (None, 0) if the strategy has not seen any deposits yet.
+            Return (None, 1.0) if the strategy has not seen any deposits yet.
         """
+
+        # Legacy path
         if len(self.reserves) == 0:
-            return None, 0
+            return None, 1.0
 
         res_pos = next(iter(self.reserves.values()))
         return res_pos.asset, res_pos.reserve_token_price
