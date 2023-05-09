@@ -19,19 +19,20 @@ from eth_defi.anvil import AnvilLaunch
 from hexbytes import HexBytes
 from typer.testing import CliRunner
 from web3.contract import Contract
+from eth_typing import HexAddress
 
 from eth_defi.enzyme.deployment import EnzymeDeployment
 from eth_defi.enzyme.vault import Vault
 from eth_defi.hotwallet import HotWallet
 from eth_defi.trace import assert_transaction_success_with_explanation
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment
-from eth_typing import HexAddress
+
+from tradingstrategy.pair import PandasPairUniverse
+
 
 from tradeexecutor.cli.main import app
 from tradeexecutor.state.blockhain_transaction import BlockchainTransactionType
 from tradeexecutor.state.trade import TradeType
-from tradingstrategy.pair import PandasPairUniverse
-
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.state.state import State
 

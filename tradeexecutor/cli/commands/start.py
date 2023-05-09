@@ -85,7 +85,7 @@ def start(
     confirmation_timeout: int = typer.Option(900, envvar="CONFIRMATION_TIMEOUT", help="How many seconds to wait for transaction batches to confirm"),
     confirmation_block_count: int = shared_options.confirmation_block_count,
     private_key: Optional[str] = shared_options.private_key,
-    minimum_gas_balance: Optional[float] = shared_options.min_gas_balance,
+    min_gas_balance: Optional[float] = shared_options.min_gas_balance,
 
     # Logging
     discord_webhook_url: Optional[str] = typer.Option(None, envvar="DISCORD_WEBHOOK_URL", help="Discord webhook URL for notifications"),
@@ -228,8 +228,8 @@ def start(
                 logger.warning("Legacy strategy module: makes assumption of BNB Chain")
                 web3config.set_default_chain(ChainId.bsc)
 
-        if minimum_gas_balance:
-            minimum_gas_balance = Decimal(minimum_gas_balance)
+        if min_gas_balance:
+            min_gas_balance = Decimal(min_gas_balance)
 
         if unit_testing:
             # Do not let Ganache to wait for too long
@@ -237,15 +237,15 @@ def start(
             confirmation_timeout = datetime.timedelta(seconds=30)
 
         execution_model, sync_model, valuation_model_factory, pricing_model_factory = create_trade_execution_model(
-            asset_management_mode,
-            private_key,
-            web3config,
-            confirmation_timeout,
-            confirmation_block_count,
-            max_slippage,
-            minimum_gas_balance,
-            vault_address,
-            vault_adapter_address,
+            asset_management_mode=asset_management_mode,
+            private_key=private_key,
+            web3config=web3config,
+            confirmation_timeout=confirmation_timeout,
+            confirmation_block_count=confirmation_block_count,
+            max_slippage=max_slippage,
+            min_gas_balance=min_gas_balance,
+            vault_address=vault_address,
+            vault_adapter_address=vault_adapter_address,
         )
 
         approval_model = create_approval_model(approval_type)
