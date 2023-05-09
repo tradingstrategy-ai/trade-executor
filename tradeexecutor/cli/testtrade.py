@@ -2,7 +2,9 @@
 import logging
 import datetime
 from decimal import Decimal
+from typing import Union
 
+from tradeexecutor.strategy.sync_model import SyncModel
 from tradingstrategy.universe import Universe
 
 from tradeexecutor.ethereum.hot_wallet_sync_model import EthereumHotWalletReserveSyncer
@@ -19,7 +21,7 @@ logger = logging.getLogger(__name__)
 def make_test_trade(
         execution_model: ExecutionModel,
         pricing_model: PricingModel,
-        reserve_syncer: EthereumHotWalletReserveSyncer,
+        sync_model: Union[EthereumHotWalletReserveSyncer, SyncModel],
         state: State,
         universe: TradingStrategyUniverse,
         routing_model: RoutingModel,
@@ -46,7 +48,7 @@ def make_test_trade(
     pair = translate_trading_pair(raw_pair)
 
     # Get estimated price for the asset we are going to buy
-    assumed_price = pricing_model.get_buy_price(
+    assumed_price_structure = pricing_model.get_buy_price(
         ts,
         pair,
         amount,
@@ -56,24 +58,32 @@ def make_test_trade(
                 pair,
                 amount,
                 reserve_asset.token_symbol,
-                assumed_price,
+                assumed_price_structure.mid_price,
                 pair.base.token_symbol,
                 reserve_asset.token_symbol,
                 )
 
     # Sync any incoming stablecoin transfers
     # that have not been synced yet
-    reserve_syncer(
-        state.portfolio,
-        ts,
-        universe.reserve_assets,
-    )
+    if isinstance(sync_model, SyncModel):
+        sync_model.sync_treasury(
+            ts,
+            state,
+            list(universe.reserve_assets),
+        )
+    else:
+        # Legacy code path
+        sync_model(
+            state.portfolio,
+            ts,
+            universe.reserve_assets,
+        )
 
     # Create PositionManager helper class
     # that helps open and close positions
     position_manager = PositionManager(
         ts,
-        universe,
+        universe.universe,
         state,
         pricing_model,
 
