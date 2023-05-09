@@ -3,6 +3,7 @@ import json
 import os
 import secrets
 import tempfile
+import logging
 
 from pathlib import Path
 from unittest.mock import patch
@@ -33,6 +34,9 @@ from tradingstrategy.pair import PandasPairUniverse
 
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.state.state import State
+
+
+logger = logging.getLogger(__name__)
 
 
 @pytest.fixture
@@ -332,6 +336,7 @@ def test_enzyme_perform_test_trade(
     tx_hash = vault.comptroller.functions.buyShares(500 * 10**6, 1).transact({"from": deployer})
     assert_transaction_success_with_explanation(web3, tx_hash)
     assert usdc.functions.balanceOf(vault.address).call() > 0
+    logger.info("Deposited %s", usdc.address)
 
     with patch.dict(os.environ, env, clear=True):
         with pytest.raises(SystemExit) as e:
