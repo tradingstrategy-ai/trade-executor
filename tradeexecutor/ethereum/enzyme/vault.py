@@ -56,7 +56,7 @@ class EnzymeVaultSyncModel(SyncModel):
             How to deal with block updates
 
         :param only_chain_listerer:
-            This is the only adapter using reorg_monn.
+            This is the only adapter using reorg_mon.
 
             Will call :py:meth:`process_blocks` as the part :py:meth:`sync_treasury`.
 
@@ -77,6 +77,9 @@ class EnzymeVaultSyncModel(SyncModel):
         self.scan_chunk_size = 10_000
         self.only_chain_listener = only_chain_listener
         self.hot_wallet = hot_wallet
+
+    def __repr__(self):
+        return f"<EnzymeVaultSyncModel for vault {self.vault.address} using hot wallet {self.hot_wallet.address}>"
 
     def get_vault_address(self) -> Optional[str]:
         """Get the vault address we are using"""
@@ -318,6 +321,8 @@ class EnzymeVaultSyncModel(SyncModel):
         sync = state.sync
         assert sync.is_initialised(), f"Vault sync not initialised: {sync}"
 
+        logger.info("Starting sync for vault %s, comptroller %s", self.vault.address, self.vault.comptroller.address)
+
         if self.only_chain_listener:
             self.process_blocks()
 
@@ -330,7 +335,6 @@ class EnzymeVaultSyncModel(SyncModel):
         else:
             start_block = sync.deployment.block_number
 
-        # TODO:
         end_block = web3.eth.block_number
 
         # Set up the reader interface for fetch_deployment_event()

@@ -306,37 +306,26 @@ def test_enzyme_perform_test_trade(
 
     vault_record_file = os.path.join(tempfile.mkdtemp(), 'vault_record.json')
     env = environment.copy()
-    env["FUND_NAME"] = "Toholampi Capital"
-    env["FUND_SYMBOL"] = "COW"
-    env["VAULT_RECORD_FILE"] = vault_record_file
     env["COMPTROLLER_LIB"] = enzyme_deployment.contracts.comptroller_lib.address
     env["DENOMINATION_ASSET"] = usdc.address
+    env["VAULT_ADDRESS"] = vault.address
+    env["VAULT_ADAPTER_ADDRESS"] = vault.generic_adapter.address
 
-    # Run strategy for few cycles.
-    # Manually call the main() function so that Typer's CliRunner.invoke() does not steal
-    # stdin and we can still set breakpoints
     cli = get_command(app)
-    with patch.dict(os.environ, env, clear=True):
-        with pytest.raises(SystemExit) as e:
-            cli.main(args=["enzyme-deploy-vault"])
-        assert e.value.code == 0
-
-    # After vault has been deployed, we got its address and GenericAdapter address
-    with open(vault_record_file, "rt") as inp:
-        vault_record = json.load(inp)
-        comptroller_contract, vault_contract = EnzymeDeployment.fetch_vault(enzyme_deployment, vault_record["vault"])
-        generic_adapter_contract = get_deployed_contract(web3, f"VaultSpecificGenericAdapter.json", vault_record["generic_adapter"])
-
-        env["VAULT_ADDRESS"] = vault_contract.address
-        env["VAULT_ADAPTER_ADDRESS"] = generic_adapter_contract.address
 
     # Deposit some USDC to start
-    tx_hash = usdc.functions.approve(vault.comptroller.address, 500 * 10**6).transact({"from": deployer})
+    deposit_amount = 500 * 10**6
+    tx_hash = usdc.functions.approve(vault.comptroller.address, deposit_amount).transact({"from": deployer})
     assert_transaction_success_with_explanation(web3, tx_hash)
-    tx_hash = vault.comptroller.functions.buyShares(500 * 10**6, 1).transact({"from": deployer})
+    tx_hash = vault.comptroller.functions.buyShares(deposit_amount, 1).transact({"from": deployer})
     assert_transaction_success_with_explanation(web3, tx_hash)
-    assert usdc.functions.balanceOf(vault.address).call() > 0
-    logger.info("Deposited %s", usdc.address)
+    assert usdc.functions.balanceOf(vault.address).call() == deposit_amount
+    logger.info("Deposited %d %s at block %d", deposit_amount, usdc.address, web3.eth.block_number)
+
+    # Check we have a deposit event
+    logs = vault.comptroller.events.SharesBought.get_logs()
+    logger.info("Got logs %s", logs)
+    assert len(logs) == 1
 
     with patch.dict(os.environ, env, clear=True):
         with pytest.raises(SystemExit) as e:
@@ -347,3 +336,6 @@ def test_enzyme_perform_test_trade(
         with pytest.raises(SystemExit) as e:
             cli.main(args=["perform-test-trade"])
         assert e.value.code == 0
+
+    assert usdc.functions.balanceOf(vault.address).call() < deposit_amount, "No deposits where spent; trades likely did not happen"
+
