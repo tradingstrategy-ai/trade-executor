@@ -51,3 +51,6 @@ test_evm_uniswap_v2_factory: Optional[str] = Option(None, envvar="TEST_EVM_UNISW
                                                           help="Uniswap v2 instance paramater when doing live trading test against a local dev chain")
 test_evm_uniswap_v2_init_code_hash: Optional[str] = Option(None, envvar="TEST_EVM_UNISWAP_V2_INIT_CODE_HASH",
                                                                  help="Uniswap v2 instance paramater when doing live trading test against a local dev chain")
+
+
+confirmation_block_count = Option(2, envvar="CONFIRMATION_BLOCK_COUNT", help="How many blocks we wait before we consider transaction receipt a final. Set to zero for automining testing backends (EthereumTester, Anvil).")

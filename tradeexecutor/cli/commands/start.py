@@ -83,7 +83,7 @@ def start(
 
     gas_price_method: Optional[GasPriceMethod] = typer.Option(None, envvar="GAS_PRICE_METHOD", help="How to set the gas price for Ethereum transactions. After the Berlin hardfork Ethereum mainnet introduced base + tip cost gas model. Leave out to autodetect."),
     confirmation_timeout: int = typer.Option(900, envvar="CONFIRMATION_TIMEOUT", help="How many seconds to wait for transaction batches to confirm"),
-    confirmation_block_count: int = typer.Option(2, envvar="CONFIRMATION_BLOCK_COUNT", help="How many blocks we wait before we consider transaction receipt a final"),
+    confirmation_block_count: int = shared_options.confirmation_block_count,
     private_key: Optional[str] = shared_options.private_key,
     minimum_gas_balance: Optional[float] = shared_options.min_gas_balance,
 

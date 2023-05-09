@@ -127,7 +127,7 @@ def make_test_trade(
     ts = datetime.datetime.utcnow()
     position_manager = PositionManager(
         ts,
-        universe,
+        universe.universe,
         state,
         pricing_model,
     )
