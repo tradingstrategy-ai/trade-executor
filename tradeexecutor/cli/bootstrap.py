@@ -4,7 +4,7 @@ import logging
 import os
 from decimal import Decimal
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
 
 from eth_defi.event_reader.reorganisation_monitor import create_reorganisation_monitor
 from eth_defi.gas import GasPriceMethod
@@ -21,17 +21,23 @@ from tradeexecutor.ethereum.enzyme.vault import EnzymeVaultSyncModel
 from tradeexecutor.ethereum.hot_wallet_sync_model import HotWalletSyncModel
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_execution import UniswapV2ExecutionModel
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_live_pricing import uniswap_v2_live_pricing_factory
+from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2SimpleRoutingModel
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_valuation import uniswap_v2_sell_valuation_factory
 from tradeexecutor.ethereum.web3config import Web3Config
 from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
 from tradeexecutor.state.metadata import Metadata
 from tradeexecutor.state.store import JSONFileStore, StateStore
+from tradeexecutor.strategy.default_routing_options import TradeRouting
+from tradeexecutor.strategy.routing import RoutingModel
+from tradeexecutor.strategy.strategy_module import StrategyModuleInformation
 from tradeexecutor.strategy.sync_model import SyncModel, DummySyncModel
 from tradeexecutor.testing.dummy_wallet import DummyWalletSyncer
 from tradeexecutor.strategy.approval import UncheckedApprovalModel, ApprovalType, ApprovalModel
 from tradeexecutor.strategy.dummy import DummyExecutionModel
 from tradeexecutor.strategy.execution_model import AssetManagementMode
 from tradingstrategy.chain import ChainId
+from tradingstrategy.client import BaseClient, Client
+from tradingstrategy.testing.uniswap_v2_mock_client import UniswapV2MockClient
 
 logger = logging.getLogger(__name__)
 
@@ -87,7 +93,7 @@ def create_trade_execution_model(
         confirmation_timeout: datetime.timedelta,
         confirmation_block_count: int,
         max_slippage: float,
-        min_balance_threshold: Optional[Decimal],
+        min_gas_balance: Optional[Decimal],
         vault_address: Optional[str],
         vault_adapter_address: Optional[str],
 ):
@@ -118,7 +124,7 @@ def create_trade_execution_model(
             confirmation_timeout=confirmation_timeout,
             confirmation_block_count=confirmation_block_count,
             max_slippage=max_slippage,
-            min_balance_threshold=min_balance_threshold,
+            min_balance_threshold=min_gas_balance,
         )
         valuation_model_factory = uniswap_v2_sell_valuation_factory
         pricing_model_factory = uniswap_v2_live_pricing_factory
@@ -168,7 +174,7 @@ def prepare_cache(executor_id: str, cache_path: Optional[Path]) -> Path:
     if not cache_path:
         cache_path = Path("cache").joinpath(executor_id)
 
-    logger.info("Dataset cache is %s", cache_path)
+    logger.info("Dataset cache is %s", os.path.realpath(cache_path))
 
     os.makedirs(cache_path, exist_ok=True)
 
@@ -214,7 +220,6 @@ def monkey_patch():
     patch_dataclasses_json()
 
 
-
 def create_sync_model(
         asset_management_mode: AssetManagementMode,
         web3: Web3,
@@ -238,3 +243,54 @@ def create_sync_model(
         case _:
             raise NotImplementedError()
 
+
+def create_client(
+    mod: StrategyModuleInformation,
+    web3config: Web3Config,
+    trading_strategy_api_key: Optional[str],
+    cache_path: Optional[Path],
+    test_evm_uniswap_v2_factory: Optional[str],
+    test_evm_uniswap_v2_router: Optional[str],
+    test_evm_uniswap_v2_init_code_hash: Optional[str],
+    clear_caches: bool,
+) -> Tuple[BaseClient | None, RoutingModel | None]:
+    """Create a Trading Strategy client instance.
+
+    - Read env inputs to determine which kind of enviroment/client we need to have
+
+    - May create mock client if we run e2e tests
+
+    - Otherwise create a real client
+    """
+
+    client = None
+    routing_model = None
+
+    # Create our data client
+    if test_evm_uniswap_v2_factory:
+        # Running against a local dev chain
+        client = UniswapV2MockClient(
+            web3config.get_default(),
+            test_evm_uniswap_v2_factory,
+            test_evm_uniswap_v2_router,
+            test_evm_uniswap_v2_init_code_hash,
+        )
+
+        if mod.trade_routing == TradeRouting.user_supplied_routing_model:
+            routing_model = UniswapV2SimpleRoutingModel(
+                factory_router_map={
+                    test_evm_uniswap_v2_factory: (test_evm_uniswap_v2_router, test_evm_uniswap_v2_init_code_hash)},
+                allowed_intermediary_pairs={},
+                reserve_token_address=client.get_default_quote_token_address(),
+            )
+
+    elif trading_strategy_api_key:
+        # Backtest / real trading
+        client = Client.create_live_client(trading_strategy_api_key, cache_path=cache_path)
+        if clear_caches:
+            client.clear_caches()
+    else:
+        # This run does not need to download any data
+        pass
+
+    return client, routing_model

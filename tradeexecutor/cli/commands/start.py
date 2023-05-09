@@ -20,7 +20,7 @@ from tradingstrategy.timebucket import TimeBucket
 from . import shared_options
 from .app import app, TRADE_EXECUTOR_VERSION
 from ..bootstrap import prepare_executor_id, prepare_cache, create_web3_config, create_state_store, \
-    create_trade_execution_model, create_metadata, create_approval_model
+    create_trade_execution_model, create_metadata, create_approval_model, create_client
 from ..log import setup_logging, setup_discord_logging, setup_logstash_logging, setup_file_logging, \
     setup_custom_log_levels
 from ..loop import ExecutionLoop
@@ -83,9 +83,9 @@ def start(
 
     gas_price_method: Optional[GasPriceMethod] = typer.Option(None, envvar="GAS_PRICE_METHOD", help="How to set the gas price for Ethereum transactions. After the Berlin hardfork Ethereum mainnet introduced base + tip cost gas model. Leave out to autodetect."),
     confirmation_timeout: int = typer.Option(900, envvar="CONFIRMATION_TIMEOUT", help="How many seconds to wait for transaction batches to confirm"),
-    confirmation_block_count: int = typer.Option(2, envvar="CONFIRMATION_BLOCK_COUNT", help="How many blocks we wait before we consider transaction receipt a final"),
+    confirmation_block_count: int = shared_options.confirmation_block_count,
     private_key: Optional[str] = shared_options.private_key,
-    minimum_gas_balance: Optional[float] = typer.Option(0.1, envvar="MINUMUM_GAS_BALANCE", help="What is the minimum balance of gas token you need to have in your wallet. If the balance falls below this, abort by crashing and do not attempt to create transactions. Expressed in the native token e.g. ETH."),
+    min_gas_balance: Optional[float] = shared_options.min_gas_balance,
 
     # Logging
     discord_webhook_url: Optional[str] = typer.Option(None, envvar="DISCORD_WEBHOOK_URL", help="Discord webhook URL for notifications"),
@@ -106,13 +106,13 @@ def start(
     backtest_candle_time_frame_override: Optional[TimeBucket] = typer.Option(None, envvar="BACKTEST_CANDLE_TIME_FRAME_OVERRIDE", help="Force backtests to use different candle time frame"),
     backtest_stop_loss_time_frame_override: Optional[TimeBucket] = typer.Option(None, envvar="BACKTEST_STOP_LOSS_TIME_FRAME_OVERRIDE", help="Force backtests to use different candle time frame for stop losses"),
 
-    # Test EMV backend
-    test_evm_uniswap_v2_router: Optional[str] = typer.Option(None, envvar="TEST_EVM_UNISWAP_V2_ROUTER", help="Uniswap v2 instance paramater when doing live trading test against a local dev chain"),
-    test_evm_uniswap_v2_factory: Optional[str] = typer.Option(None, envvar="TEST_EVM_UNISWAP_V2_FACTORY", help="Uniswap v2 instance paramater when doing live trading test against a local dev chain"),
-    test_evm_uniswap_v2_init_code_hash: Optional[str] = typer.Option(None, envvar="TEST_EVM_UNISWAP_V2_INIT_CODE_HASH", help="Uniswap v2 instance paramater when doing live trading test against a local dev chain"),
+    # Test EVM backend when running e2e tests
+    test_evm_uniswap_v2_router: Optional[str] = shared_options.test_evm_uniswap_v2_router,
+    test_evm_uniswap_v2_factory: Optional[str] = shared_options.test_evm_uniswap_v2_factory,
+    test_evm_uniswap_v2_init_code_hash: Optional[str] = shared_options.test_evm_uniswap_v2_init_code_hash,
 
     # Live trading configuration
-    max_slippage: float = typer.Option(0.0025, envvar="MAX_SLIPPAGE", help="Max slippage allowed per trade before failing. The default is 0.0025 is 0.25%."),
+    max_slippage: float = shared_options.max_slippage,
     approval_type: ApprovalType = typer.Option("unchecked", envvar="APPROVAL_TYPE", help="Set a manual approval flow for trades"),
     stop_loss_check_frequency: Optional[TimeBucket] = typer.Option(None, envvar="STOP_LOSS_CYCLE_DURATION", help="Override live/backtest stop loss check frequency. If not given read from the strategy module."),
     cycle_offset_minutes: int = typer.Option(8, envvar="CYCLE_OFFSET_MINUTES", help="How many minutes we wait after the tick before executing the tick step"),
@@ -228,8 +228,8 @@ def start(
                 logger.warning("Legacy strategy module: makes assumption of BNB Chain")
                 web3config.set_default_chain(ChainId.bsc)
 
-        if minimum_gas_balance:
-            minimum_gas_balance = Decimal(minimum_gas_balance)
+        if min_gas_balance:
+            min_gas_balance = Decimal(min_gas_balance)
 
         if unit_testing:
             # Do not let Ganache to wait for too long
@@ -237,15 +237,15 @@ def start(
             confirmation_timeout = datetime.timedelta(seconds=30)
 
         execution_model, sync_model, valuation_model_factory, pricing_model_factory = create_trade_execution_model(
-            asset_management_mode,
-            private_key,
-            web3config,
-            confirmation_timeout,
-            confirmation_block_count,
-            max_slippage,
-            minimum_gas_balance,
-            vault_address,
-            vault_adapter_address,
+            asset_management_mode=asset_management_mode,
+            private_key=private_key,
+            web3config=web3config,
+            confirmation_timeout=confirmation_timeout,
+            confirmation_block_count=confirmation_block_count,
+            max_slippage=max_slippage,
+            min_gas_balance=min_gas_balance,
+            vault_address=vault_address,
+            vault_adapter_address=vault_adapter_address,
         )
 
         approval_model = create_approval_model(approval_type)
@@ -289,31 +289,16 @@ def start(
         # but for local dev chains it is dynamically constructed from the deployed contracts
         routing_model: RoutingModel = None
 
-        # Create our data client
-        if test_evm_uniswap_v2_factory:
-            # Running against a local dev chain
-            client = UniswapV2MockClient(
-                web3config.get_default(),
-                test_evm_uniswap_v2_factory,
-                test_evm_uniswap_v2_router,
-                test_evm_uniswap_v2_init_code_hash,
-            )
-
-            if mod.trade_routing == TradeRouting.user_supplied_routing_model:
-                routing_model = UniswapV2SimpleRoutingModel(
-                    factory_router_map={test_evm_uniswap_v2_factory: (test_evm_uniswap_v2_router, test_evm_uniswap_v2_init_code_hash)},
-                    allowed_intermediary_pairs={},
-                    reserve_token_address=client.get_default_quote_token_address(),
-                )
-
-        elif trading_strategy_api_key:
-            # Backtest / real trading
-            client = Client.create_live_client(trading_strategy_api_key, cache_path=cache_path)
-            if clear_caches:
-                client.clear_caches()
-        else:
-            # This run does not need to dowwnload any data
-            client = None
+        client, routing_model = create_client(
+            mod=mod,
+            web3config=web3config,
+            trading_strategy_api_key=trading_strategy_api_key,
+            cache_path=cache_path,
+            test_evm_uniswap_v2_factory=test_evm_uniswap_v2_factory,
+            test_evm_uniswap_v2_router=test_evm_uniswap_v2_router,
+            test_evm_uniswap_v2_init_code_hash=test_evm_uniswap_v2_init_code_hash,
+            clear_caches=clear_caches,
+        )
 
         # Currently, all actions require us to have a valid API key
         # might change in the future

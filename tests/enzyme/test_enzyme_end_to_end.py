@@ -3,6 +3,7 @@ import json
 import os
 import secrets
 import tempfile
+import logging
 
 from pathlib import Path
 from unittest.mock import patch
@@ -18,21 +19,25 @@ from eth_defi.anvil import AnvilLaunch
 from hexbytes import HexBytes
 from typer.testing import CliRunner
 from web3.contract import Contract
+from eth_typing import HexAddress
 
 from eth_defi.enzyme.deployment import EnzymeDeployment
 from eth_defi.enzyme.vault import Vault
 from eth_defi.hotwallet import HotWallet
 from eth_defi.trace import assert_transaction_success_with_explanation
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment
-from eth_typing import HexAddress
+
+from tradingstrategy.pair import PandasPairUniverse
+
 
 from tradeexecutor.cli.main import app
 from tradeexecutor.state.blockhain_transaction import BlockchainTransactionType
 from tradeexecutor.state.trade import TradeType
-from tradingstrategy.pair import PandasPairUniverse
-
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.state.state import State
+
+
+logger = logging.getLogger(__name__)
 
 
 @pytest.fixture
@@ -240,7 +245,7 @@ def test_enzyme_deploy_vault(
     deployer: HexAddress,
     enzyme_deployment: EnzymeDeployment,
 ):
-    """Deploy Enzymy vault via CLI.
+    """Deploy Enzymeß vault via CLI.
 
     - Set up local Anvil testnet with Uniswap v2 and Enzyme
 
@@ -268,7 +273,6 @@ def test_enzyme_deploy_vault(
     # Check tat the vault was created
     with open(vault_record_file, "rt") as inp:
         vault_record = json.load(inp)
-
         comptroller_contract, vault_contract = EnzymeDeployment.fetch_vault(enzyme_deployment, vault_record["vault"])
         generic_adapter_contract = get_deployed_contract(web3, f"VaultSpecificGenericAdapter.json", vault_record["generic_adapter"])
 
@@ -281,3 +285,65 @@ def test_enzyme_deploy_vault(
 
         assert vault.get_name() == "Toholampi Capital"
         assert vault.get_symbol() == "COW"
+
+
+def test_enzyme_perform_test_trade(
+    environment: dict,
+    web3: Web3,
+    state_file: Path,
+    usdc: Contract,
+    weth: Contract,
+    vault: Vault,
+    deployer: HexAddress,
+    enzyme_deployment: EnzymeDeployment,
+    weth_usdc_trading_pair: TradingPairIdentifier,
+):
+    """Perform a test trade on Enzymy vault via CLI.
+
+    - Use a vault deployed by the test fixtures
+
+    - Initialise the strategy to use this vault
+
+    - Perform a test trade on this fault
+    """
+
+    env = environment.copy()
+    env["VAULT_ADDRESS"] = vault.address
+    env["VAULT_ADAPTER_ADDRESS"] = vault.generic_adapter.address
+
+    cli = get_command(app)
+
+    # Deposit some USDC to start
+    deposit_amount = 500 * 10**6
+    tx_hash = usdc.functions.approve(vault.comptroller.address, deposit_amount).transact({"from": deployer})
+    assert_transaction_success_with_explanation(web3, tx_hash)
+    tx_hash = vault.comptroller.functions.buyShares(deposit_amount, 1).transact({"from": deployer})
+    assert_transaction_success_with_explanation(web3, tx_hash)
+    assert usdc.functions.balanceOf(vault.address).call() == deposit_amount
+    logger.info("Deposited %d %s at block %d", deposit_amount, usdc.address, web3.eth.block_number)
+
+    # Check we have a deposit event
+    logs = vault.comptroller.events.SharesBought.get_logs()
+    logger.info("Got logs %s", logs)
+    assert len(logs) == 1
+
+    with patch.dict(os.environ, env, clear=True):
+        with pytest.raises(SystemExit) as e:
+            cli.main(args=["init"])
+        assert e.value.code == 0
+
+    with patch.dict(os.environ, env, clear=True):
+        with pytest.raises(SystemExit) as e:
+            cli.main(args=["perform-test-trade"])
+        assert e.value.code == 0
+
+    assert usdc.functions.balanceOf(vault.address).call() < deposit_amount, "No deposits where spent; trades likely did not happen"
+
+    # Check the resulting state and see we made some trade for trading fee losses
+    with state_file.open("rt") as inp:
+        state: State = State.from_json(inp.read())
+
+        assert len(list(state.portfolio.get_all_trades())) == 2
+
+        reserve_value = state.portfolio.get_default_reserve_position().get_value()
+        assert reserve_value == pytest.approx(499.994009)

@@ -80,3 +80,22 @@ class ReservePosition:
         """
         return sum_decimal([b.quantity for b in self.balance_updates.values()])
 
+    def update_value(self,
+             exchange_rate: float = 1,
+             ):
+        """Updated portfolio's reserve balance.
+
+        Read all balance update events and sets the current denormalised value of the reserves.
+
+        This is read in :py:meth:`tradeeexecutor.state.portfolio.Portfolio.get_default_reserve`
+        and used by strategy in various positions.
+
+        :param exchange_rate:
+            USD exchange rate of the reserve asset
+        """
+        quantity = self.get_balance_update_quantity()
+        self.quantity = quantity
+        self.reserve_token_price = exchange_rate
+        self.last_pricing_at = datetime.datetime.utcnow()
+        self.last_sync_at = datetime.datetime.utcnow()
+

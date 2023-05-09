@@ -212,7 +212,7 @@ class EthereumExecutionModel(ExecutionModel):
             repaired.append(t)
 
         return repaired
-    
+
     def is_live_trading(self) -> bool:
         return True
 
@@ -229,14 +229,14 @@ class EthereumExecutionModel(ExecutionModel):
         # Check we have money for gas fees
         if self.min_balance_threshold > 0:
             balance = self.tx_builder.get_gas_wallet_balance()
-            assert balance > self.min_balance_threshold, f"At least {self.min_balance_threshold} native currency need, our wallet {self.tx_builder.address} has {balance:.8f}"
+            assert balance > self.min_balance_threshold, f"At least {self.min_balance_threshold} native currency need, our wallet {self.tx_builder.get_gas_wallet_address()} has {balance:.8f}"
 
     def initialize(self):
         """Set up the wallet"""
         logger.info("Initialising %s execution model", self.__class__.__name__)
         self.tx_builder.init()
         logger.info("Hot wallet %s has balance %s", self.tx_builder.get_gas_wallet_balance(), self.tx_builder.get_gas_wallet_balance())
-        
+
     def broadcast_and_resolve(
         self,
         state: State,

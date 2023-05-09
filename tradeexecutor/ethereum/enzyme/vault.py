@@ -56,7 +56,7 @@ class EnzymeVaultSyncModel(SyncModel):
             How to deal with block updates
 
         :param only_chain_listerer:
-            This is the only adapter using reorg_monn.
+            This is the only adapter using reorg_mon.
 
             Will call :py:meth:`process_blocks` as the part :py:meth:`sync_treasury`.
 
@@ -78,9 +78,15 @@ class EnzymeVaultSyncModel(SyncModel):
         self.only_chain_listener = only_chain_listener
         self.hot_wallet = hot_wallet
 
+    def __repr__(self):
+        return f"<EnzymeVaultSyncModel for vault {self.vault.address} using hot wallet {self.hot_wallet.address if self.hot_wallet else '(not set)'}>"
+
     def get_vault_address(self) -> Optional[str]:
         """Get the vault address we are using"""
         return self.vault.address
+
+    def get_hot_wallet(self) -> Optional[HotWallet]:
+        return self.hot_wallet
 
     def _notify(
             self,
@@ -315,6 +321,8 @@ class EnzymeVaultSyncModel(SyncModel):
         sync = state.sync
         assert sync.is_initialised(), f"Vault sync not initialised: {sync}"
 
+        logger.info("Starting sync for vault %s, comptroller %s", self.vault.address, self.vault.comptroller.address)
+
         if self.only_chain_listener:
             self.process_blocks()
 
@@ -327,7 +335,6 @@ class EnzymeVaultSyncModel(SyncModel):
         else:
             start_block = sync.deployment.block_number
 
-        # TODO:
         end_block = web3.eth.block_number
 
         # Set up the reader interface for fetch_deployment_event()
@@ -364,6 +371,10 @@ class EnzymeVaultSyncModel(SyncModel):
         treasury_sync.last_block_scanned = end_block
         treasury_sync.last_updated_at = datetime.datetime.utcnow()
         treasury_sync.last_cycle_at = strategy_cycle_ts
+
+        # Update the reserve position value
+        # TODO: Add USDC/USD price feed
+        # state.portfolio.get_default_reserve_position().update_value(exchange_rate=1.0)
 
         return events
 

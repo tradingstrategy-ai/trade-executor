@@ -5,11 +5,16 @@ import secrets
 import subprocess
 import time
 from pathlib import Path
+import logging
+from unittest.mock import patch
+
 import flaky
 import pytest
 import requests
 from hexbytes import HexBytes
-import logging
+from typer.main import get_command
+
+from tradeexecutor.cli.main import app
 
 
 logger = logging.getLogger(__name__)
@@ -28,6 +33,39 @@ def hot_wallet_private_key() -> HexBytes:
     Does not need to have balance.
     """
     return HexBytes(secrets.token_bytes(32))
+
+
+def test_main_loop_crash_with_catch(
+    strategy_path,
+    hot_wallet_private_key
+):
+    """Same as below, but run inline and print out the traceback.
+
+    Allows to debug the code without launching a hard-to-debug subprocess.
+    """
+
+    # Set up the configuration for the live trader
+    env = {
+        "STRATEGY_FILE": strategy_path.as_posix(),  # Pass crash test
+        "PRIVATE_KEY": hot_wallet_private_key.hex(),
+        "HTTP_ENABLED": "false",
+        "ASSET_MANAGEMENT_MODE": "hot_wallet",
+        "CACHE_PATH": "/tmp/main_loop_tests",
+        "TRADING_STRATEGY_API_KEY": os.environ["TRADING_STRATEGY_API_KEY"],
+        "HTTP_ENABLED": "false",
+        "MIN_GAS_BALANCE": "0",
+        "TRADE_IMMEDIATELY": "true",
+        "JSON_RPC_BINANCE": os.environ["BNB_CHAIN_JSON_RPC"],
+        "PATH": os.environ["PATH"],
+        "HTTP_WAIT_GOOD_STARTUP_SECONDS": "0",
+        "MAX_DATA_DELAY_MINUTES": str(10*60*24*365)  # 10 years or "disabled""
+    }
+
+    cli = get_command(app)
+    with patch.dict(os.environ, env, clear=True):
+        with pytest.raises(Exception) as e:
+            cli.main(args=["start"])
+        assert str(e.value) == "Boom"
 
 
 @flaky.flaky()
@@ -57,7 +95,7 @@ def test_main_loop_crash(
         "TRADING_STRATEGY_API_KEY": os.environ["TRADING_STRATEGY_API_KEY"],
         "HTTP_PORT": f"{port}",
         "HTTP_ENABLED": "true",
-        "MINUMUM_GAS_BALANCE": "0",
+        "MIN_GAS_BALANCE": "0",
         "TRADE_IMMEDIATELY": "true",
         "JSON_RPC_BINANCE": os.environ["BNB_CHAIN_JSON_RPC"],
         "PATH": os.environ["PATH"],

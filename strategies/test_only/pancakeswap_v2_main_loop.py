@@ -302,7 +302,11 @@ class OurUniverseModel(TradingStrategyUniverseModel):
             # Get daily candles as Pandas DataFrame
             all_candles = dataset.candles
             filtered_candles = filter_for_pairs(all_candles, pairs_df)
-            candle_universe = GroupedCandleUniverse(prepare_candles_for_qstrader(filtered_candles), timestamp_column="Date")
+            candle_universe = GroupedCandleUniverse(
+                prepare_candles_for_qstrader(filtered_candles),
+                timestamp_column="Date",
+                fix_wick_threshold=None,
+            )
 
             # Get liquidity candles as Pandas Dataframe
             all_liquidity = dataset.liquidity

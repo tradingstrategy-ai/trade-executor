@@ -161,7 +161,7 @@ class PositionManager:
         """
 
         assert pricing_model, "pricing_model is needed in order to know buy/sell price of new positions"
-        assert isinstance(universe, Universe), f"Got {universe} {type(universe)}"
+        assert isinstance(universe, Universe), f"Expected Universe(), got {universe} {type(universe)}"
 
         if isinstance(timestamp, pd.Timestamp):
             timestamp = timestamp.to_pydatetime().replace(tzinfo=None)

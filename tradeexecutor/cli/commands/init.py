@@ -1,4 +1,21 @@
-"""iniy command"""
+"""init command.
+
+Quick local dev example:
+
+.. code-block:: shell
+
+    # Set up JSON_RPC_POLYGON
+    source env/local-test.env
+
+    # Set up hto wallet private key
+    export PRIVATE_KEY=...
+
+    poetry run trade-executor init \
+        --id=vault-init-test \
+        --vault-address=0x6E321256BE0ABd2726A234E8dBFc4d3caf255AE0
+
+
+"""
 
 from pathlib import Path
 from typing import Optional
@@ -39,16 +56,11 @@ def init(
     Vault deployment is still handled separate.
     """
 
-    # To run this from command line with .env file you can do
-    # set -o allexport ; source ~/pancake-eth-usd-sma-final.env ; set +o allexport ;  trade-executor check-wallet
-
     global logger
 
     id = prepare_executor_id(id, strategy_file)
 
     logger = setup_logging(log_level)
-
-    logger.trade("test")
 
     web3config = create_web3_config(
         gas_price_method=None,
