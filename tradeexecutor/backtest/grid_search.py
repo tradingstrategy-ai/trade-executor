@@ -8,6 +8,7 @@ import pickle
 import shutil
 import signal
 import sys
+import warnings
 from collections import Counter
 from dataclasses import dataclass
 from multiprocessing import Process
@@ -290,7 +291,29 @@ def run_grid_combination_multiprocess(
 
     return result
 
+def hide_warnings(func):
+    """wrap func to suppress warnings"""
 
+    # Hidden warnings include:
+    
+    # In perform_grid_search:
+    # /home/.cache/pypoetry/virtualenvs/trade-executor-xSh0vQvh-py3.10/lib/python3.10/site-packages/numpy/lib/function_base.py:2854: 
+    # RuntimeWarning: invalid value encountered in divide
+    # c /= stddev[:, None]
+
+    # In perform_grid_search:
+    # /home/alex/.cache/pypoetry/virtualenvs/trade-executor-xSh0vQvh-py3.10/lib/python3.10/site-packages/scipy/stats/_distn_infrastructure.py:2351: 
+    # RuntimeWarning: invalid value encountered in multiply
+    # lower_bound = _a * scale + loc
+
+    def wrapper(*args, **kwargs):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            return func(*args, **kwargs)
+
+    return wrapper
+
+@hide_warnings
 def perform_grid_search(
         grid_search_worker: GridSearchWorker,
         universe: TradingStrategyUniverse,
