@@ -229,7 +229,10 @@ class BlockchainTransaction:
 
     #: Legacy compatibility field.
     #:
-    #: Use :py:attr:`transction_args` and :py:meth:`get_actual_function_input_args` instead.
+    #: "Somewhat" human-readable encoded Solidity args to be displayed in the frontend.
+    #: Arguments cannot be decoded for programmatic use.
+    #:
+    #: Use :py:attr:`transaction_args` and :py:meth:`get_actual_function_input_args` instead.
     args: Optional[Tuple[Any]] = field(
         default=None,
         metadata=config(

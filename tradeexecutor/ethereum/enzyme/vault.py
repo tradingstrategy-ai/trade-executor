@@ -116,9 +116,9 @@ class EnzymeVaultSyncModel(SyncModel):
             Range to scan for the events
         """
         range_start = self.reorg_mon.last_block_read
-        self.reorg_mon.figure_reorganisation_and_new_blocks()
+        reorg_resolution = self.reorg_mon.update_chain()
         range_end = self.reorg_mon.last_block_read
-        return range_start, range_end
+        return reorg_resolution.get_read_range()
 
     def fetch_vault_reserve_asset(self) -> AssetIdentifier:
         """Read the reserve asset from the vault data."""
@@ -366,11 +366,11 @@ class EnzymeVaultSyncModel(SyncModel):
 
             if not known_block_count:
                 logger.info("Loading initial block data, skipping reorg mon to to block %s, reorg mon has %d entries", skip_to_block, known_block_count)
-                range_start = skip_to_block
-                self.reorg_mon.load_initial_block_headers(start_block=skip_to_block)
+                range_start = max(skip_to_block - self.reorg_mon.check_depth, 1)
+                self.reorg_mon.load_initial_block_headers(start_block=range_start)
                 range_end = self.reorg_mon.last_block_read
             else:
-                logger.info("Loading more block data, reorg mon has %d entries",known_block_count)
+                logger.info("Loading more block data, reorg mon has %d entries", known_block_count)
                 range_start, range_end = self.process_blocks()
 
             logger.info("Reorg mon has %d block headers", len(self.reorg_mon.block_map))

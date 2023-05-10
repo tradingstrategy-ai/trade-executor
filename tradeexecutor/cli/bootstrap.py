@@ -103,7 +103,9 @@ def create_execution_model(
 
     Choose between Uniswap v2 and v3 trade routing.
     """
-    if routing_hint is None or routing_hint.is_uniswap_v2():
+
+    # TODO: user_supplied_routing_model can be uni v3 as well
+    if routing_hint is None or routing_hint.is_uniswap_v2() or routing_hint == TradeRouting.user_supplied_routing_model:
         execution_model = UniswapV2ExecutionModel(
             tx_builder,
             confirmation_timeout=confirmation_timeout,
