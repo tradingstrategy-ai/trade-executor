@@ -255,23 +255,33 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         """
 
         if pair:
-            chain_id, exchange_slug, base_token, quote_token, *fees = pair
+            # Create trading pair database
+            pair_universe = PandasPairUniverse.create_pair_universe(
+                dataset.pairs,
+                pairs=[pair],
+            )
 
-            if len(fees) > 0:
-                raise NotImplementedError("This method still lacks fee filtering")
+            chain_id = pair[0]
+            exchange_slug = pair[1]
 
-        # We only trade on Pancakeswap v2
-        exchange_universe = dataset.exchanges
-        exchange = exchange_universe.get_by_chain_and_slug(chain_id, exchange_slug)
-        assert exchange, f"No exchange {exchange_slug} found on chain {chain_id.name}"
+            # We only trade on Pancakeswap v2
+            exchange_universe = dataset.exchanges
+            exchange = exchange_universe.get_by_chain_and_slug(chain_id, exchange_slug)
+            assert exchange, f"No exchange {exchange_slug} found on chain {chain_id.name}"
 
-        # Create trading pair database
-        pair_universe = PandasPairUniverse.create_single_pair_universe(
-            dataset.pairs,
-            exchange,
-            base_token,
-            quote_token,
-        )
+        else:
+            # We only trade on Pancakeswap v2
+            exchange_universe = dataset.exchanges
+            exchange = exchange_universe.get_by_chain_and_slug(chain_id, exchange_slug)
+            assert exchange, f"No exchange {exchange_slug} found on chain {chain_id.name}"
+
+            # Create trading pair database
+            pair_universe = PandasPairUniverse.create_single_pair_universe(
+                dataset.pairs,
+                exchange,
+                base_token,
+                quote_token,
+            )
 
         # Get daily candles as Pandas DataFrame
         if dataset.candles is not None:
@@ -1231,6 +1241,7 @@ def load_pair_data_for_single_exchange(
     assert isinstance(client, Client)
     assert isinstance(time_bucket, TimeBucket)
     assert isinstance(execution_context, ExecutionContext)
+
     if chain_id is not None:
         assert isinstance(chain_id, ChainId)
 
@@ -1264,7 +1275,7 @@ def load_pair_data_for_single_exchange(
             pair_tickers,
         )
 
-        assert len(our_pairs) > 0, f"Pair data not found {chain_id.name}, {exchange_slug}, {pair_tickers}"
+        assert len(our_pairs) > 0, f"Pair data not found chain: {chain_id}, exchange: {exchange_slug}, tickers: {pair_tickers}"
 
         assert len(our_pairs) == len(pair_tickers), f"Pair resolution failed. Wanted to have {len(pair_tickers)} pairs, but after pair id resolution ended up with {len(our_pairs)} pairs"
 

@@ -50,14 +50,6 @@ def anvil(request: FixtureRequest) -> AnvilLaunch:
         (HTTP read timeout) and this is currently cured by letting Anvil reset itself.
     """
 
-    # Peak into pytest logging level to help with Anvil output
-    log_cli_level = request.config.getoption("--log-cli-level")
-    log_level = None
-    if log_cli_level:
-        log_cli_level = logging.getLevelName(log_cli_level.upper())
-        if log_cli_level <= logging.INFO:
-            log_level = log_cli_level
-
     # London hardfork will enable EIP-1559 style gas fees
     anvil = launch_anvil(
         hardfork="london",
@@ -71,7 +63,7 @@ def anvil(request: FixtureRequest) -> AnvilLaunch:
         # assert snapshot_id == "0x0"
         yield anvil
     finally:
-        anvil.close(log_level=log_level)
+        anvil.close()
 
 
 @pytest.fixture()

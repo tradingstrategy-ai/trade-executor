@@ -15,7 +15,18 @@ from typing import Optional, Any, Dict, Tuple, List
 from dataclasses_json import dataclass_json, config
 
 from eth_defi.tx import decode_signed_transaction, AssetDelta
+from tradeexecutor.state.pickle_over_json import encode_pickle_over_json, decode_pickle_over_json
 from tradeexecutor.state.types import JSONHexAddress, JSONHexBytes
+
+
+def _clean_print_args(val: tuple):
+    """Clean Solidity argument blobs for stdout printing"""
+    if type(val) in (list, tuple):
+        return list(_clean_print_args(x) for x in val)
+    elif type(val) == bytes:
+        return val.hex()
+    else:
+        return val
 
 
 def solidity_arg_encoder(val: tuple) -> tuple:
@@ -129,18 +140,36 @@ class BlockchainTransaction:
     contract_address: Optional[JSONHexAddress] = None
 
     #: Function we called
+    #:
+    #: This is Solidity function entry point from the transaction data payload
+    #:
     function_selector: Optional[str] = None
 
-    #: Arguments we passed to the smart contract function
+    #: Arguments we passed to the smart contract entry function.
     #:
     #: This is not JSON serialisable because
     #: individual arguments may contain values that are token amounts
     #: and thus outside the maximum int of JavaScript.
     #:
-    args: Optional[Tuple[Any]] = field(
+    transaction_args: Optional[Tuple[Any]] = field(
         default=None,
         metadata=config(
-            encoder=solidity_arg_encoder,
+            encoder=encode_pickle_over_json,
+            decoder=decode_pickle_over_json,
+        )
+    )
+
+    #: Arguments that execute the actual trade.
+    #:
+    #: In the case of Enzyme's vaults, we need to store the underlying smart contract function call,
+    #: so that we can analyse the slippage later on, because we need the swap function input args
+    #: for the slippage analysis.
+    #:
+    wrapped_args: Optional[Tuple[Any]] = field(
+        default=None,
+        metadata=config(
+            encoder=encode_pickle_over_json,
+            decoder=decode_pickle_over_json,
         )
     )
 
@@ -198,21 +227,54 @@ class BlockchainTransaction:
     #: Set in :py:class:`tradeexecutor.tx.TransactionBuilder`
     asset_deltas: List[JSONAssetDelta] = field(default_factory=list)
 
+    #: Legacy compatibility field.
+    #:
+    #: "Somewhat" human-readable encoded Solidity args to be displayed in the frontend.
+    #: Arguments cannot be decoded for programmatic use.
+    #:
+    #: Use :py:attr:`transaction_args` and :py:meth:`get_actual_function_input_args` instead.
+    args: Optional[Tuple[Any]] = field(
+        default=None,
+        metadata=config(
+            encoder=solidity_arg_encoder,
+        )
+    )
+
     def __repr__(self):
         if self.status is True:
-            return f"<Tx from:{self.from_address}\n  nonce:{self.nonce}\n  to:{self.contract_address}\n  func:{self.function_selector}\n  args:{self.args}\n  succeed>\n"
-        elif self.status is False:
-            return f"<Tx from:{self.from_address}\n" \
+            return f"<Tx \n" \
+                   f"    from:{self.from_address}\n" \
                    f"    nonce:{self.nonce}\n" \
                    f"    to:{self.contract_address}\n" \
                    f"    func:{self.function_selector}\n" \
-                   f"    args:{self.args}\n" \
+                   f"    args:{_clean_print_args(self.transaction_args)}\n" \
+                   f"    wrapped args:{_clean_print_args(self.wrapped_args)}\n" \
+                   f"    gas limit:{self.get_gas_limit():,}\n" \
+                   f"    gas spent:{self.realised_gas_units_consumed:,}\n" \
+                   f"    success\n" \
+                   f"    >"
+        elif self.status is False:
+            return f"<Tx \n" \
+                   f"    from:{self.from_address}\n" \
+                   f"    nonce:{self.nonce}\n" \
+                   f"    to:{self.contract_address}\n" \
+                   f"    func:{self.function_selector}\n" \
+                   f"    args:{_clean_print_args(self.transaction_args)}\n" \
+                   f"    wrapped args:{_clean_print_args(self.wrapped_args)}\n" \
                    f"    fail reason:{self.revert_reason}\n" \
                    f"    gas limit:{self.get_gas_limit():,}\n" \
-                   f"    gas spent:{self.realised_gas_units_consumed:,}" \
+                   f"    gas spent:{self.realised_gas_units_consumed:,}\n" \
                    f"    >"
         else:
-            return f"<Tx from:{self.from_address}\n  nonce:{self.nonce}\n  to:{self.contract_address}\n  func:{self.function_selector}\n  args:{self.args}\n  unresolved>\n"
+            return f"<Tx \n" \
+                   f"    from:{self.from_address}\n" \
+                   f"    nonce:{self.nonce}\n" \
+                   f"    to:{self.contract_address}\n" \
+                   f"    func:{self.function_selector}\n" \
+                   f"    args:{_clean_print_args(self.transaction_args)}\n" \
+                   f"    wrapped args:{_clean_print_args(self.wrapped_args)}\n" \
+                   f"    unresolved\n" \
+                   f"    >"
 
     def get_transaction(self) -> dict:
         """Return the transaction object as it would be in web3.py.
@@ -238,7 +300,7 @@ class BlockchainTransaction:
         self.chain_id = chain_id
         self.contract_address = contract_address
         self.function_selector = function_selector
-        self.args = args
+        self.transaction_args = args
         self.details = details
 
     def set_broadcast_information(self, nonce: int, tx_hash: str, signed_bytes: str):
@@ -297,3 +359,15 @@ class BlockchainTransaction:
         """
         assert self.details, "Details not set, cannot know the gas price"
         return self.details.get("gas", 0)
+
+    def get_actual_function_input_args(self) -> tuple:
+        """Get the Solidity function input args this transaction was calling.
+
+        - For any wrapped vault transaction this returns the real function that was called,
+          instead of the proxy function.
+
+        - Otherwise return the args in the transaction payload.
+        """
+        if self.wrapped_args is not None:
+            return self.wrapped_args
+        return self.transaction_args

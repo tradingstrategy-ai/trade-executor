@@ -947,8 +947,8 @@ def test_validate_state_with_nan():
 def test_blockchain_transaction_params():
     """Blockchain transactions must be able encode very large numbers."""
     args = (2**80,)
-    bt = BlockchainTransaction(args=args)
+    bt = BlockchainTransaction(transaction_args=args)
     data = bt.to_dict()
-    assert data["args"] == ['1208925819614629174706176']
+    assert data["transaction_args"] == "80049510000000000000008a0b000000000000000000000185942e"
     validate_nested_state_dict(data)
     bt.to_json()

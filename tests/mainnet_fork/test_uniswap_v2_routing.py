@@ -515,7 +515,7 @@ def test_three_leg_buy_sell(
 
     # # Check for three legs
     buy_tx = txs[1]
-    path = buy_tx.args[2]
+    path = buy_tx.transaction_args[2]
     assert len(path) == 3
 
     # Execute
@@ -547,7 +547,7 @@ def test_three_leg_buy_sell(
 
     # Check for three legs
     sell_tx = txs[1]
-    path = sell_tx.args[2]
+    path = sell_tx.transaction_args[2]
     assert len(path) == 3, f"Bad sell tx {sell_tx}"
 
     # Execute

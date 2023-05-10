@@ -57,7 +57,9 @@ class EthereumExecutionModel(ExecutionModel):
                  confirmation_timeout=datetime.timedelta(minutes=5),
                  max_slippage: float = 0.01,
                  stop_on_execution_failure=True,
-                 swap_gas_fee_limit=2_000_000):
+                 swap_gas_fee_limit=2_000_000,
+                 mainnet_fork=False,
+                 ):
         """
         :param tx_builder:
             Hot wallet instance used for this execution
@@ -79,6 +81,9 @@ class EthereumExecutionModel(ExecutionModel):
             TODO: No longer used. Set in `TradeExecution` object.
 
             Max slippage tolerance per trade. 0.01 is 1%.
+
+        :param mainnet_fork:
+            Is this Anvil in automining mainnet fork mode
         """
         assert isinstance(tx_builder, TransactionBuilder), f"Got {tx_builder} {tx_builder.__class__}"
         assert isinstance(confirmation_timeout, datetime.timedelta), f"Got {confirmation_timeout} {confirmation_timeout.__class__}"
@@ -89,6 +94,7 @@ class EthereumExecutionModel(ExecutionModel):
         self.confirmation_timeout = confirmation_timeout
         self.swap_gas_fee_limit = swap_gas_fee_limit
         self.max_slippage = max_slippage
+        self.mainnet_fork = mainnet_fork
 
     @property
     def web3(self):
@@ -113,26 +119,25 @@ class EthereumExecutionModel(ExecutionModel):
             assert isinstance(routing_state, UniswapV3RoutingState), "Incorrect routing_state specified"
         else:
             raise ValueError("Incorrect routing model specified")
-    
-    @staticmethod
+
     @abstractmethod
     def analyse_trade_by_receipt(
+        self,
         web3: Web3, 
         uniswap: UniswapV2Deployment, 
         tx: dict, 
         tx_hash: str,
-        tx_receipt: dict
+        tx_receipt: dict,
+        input_args: tuple | None,
     ) -> (TradeSuccess | TradeFail):
         """Links to either uniswap v2 or v3 implementation in eth_defi"""
-    
-    @staticmethod
+
     @abstractmethod
-    def mock_partial_deployment_for_analysis():
+    def mock_partial_deployment_for_analysis(self):
         """Links to either uniswap v2 or v3 implementation in eth_defi"""
-    
-    @staticmethod
+
     @abstractmethod 
-    def is_v3():
+    def is_v3(self):
         """Returns true if instance is related to Uniswap V3, else false. 
         Kind of a hack to be able to share resolve trades function amongst v2 and v3."""
     
@@ -303,7 +308,8 @@ class EthereumExecutionModel(ExecutionModel):
         state.start_trades(datetime.datetime.utcnow(), trades, max_slippage=self.max_slippage)
 
         if self.web3.eth.chain_id not in (ChainId.ethereum_tester.value, ChainId.anvil.value):
-            assert self.confirmation_block_count > 0, f"confirmation_block_count set to {self.confirmation_block_count} "
+            if not self.mainnet_fork:
+                assert self.confirmation_block_count > 0, f"confirmation_block_count set to {self.confirmation_block_count} "
 
         routing_model.setup_trades(
             routing_state,
@@ -373,9 +379,17 @@ class EthereumExecutionModel(ExecutionModel):
             tx_dict = swap_tx.get_transaction()
             receipt = receipts[HexBytes(swap_tx.tx_hash)]
 
-            result = self.analyse_trade_by_receipt(web3, uniswap, tx_dict, swap_tx.tx_hash, receipt)
+            input_args = swap_tx.get_actual_function_input_args()
+            result = self.analyse_trade_by_receipt(
+                web3,
+                uniswap,
+                tx_dict,
+                swap_tx.tx_hash,
+                receipt,
+                input_args=input_args,
+            )
 
-            if is_v3 := self.is_v3():
+            if uni_v3 := self.is_v3():
                 price = result.price
 
             if isinstance(result, TradeSuccess):
@@ -386,7 +400,7 @@ class EthereumExecutionModel(ExecutionModel):
                 if trade.is_buy():
                     assert path[0] == reserve.address, f"Was expecting the route path to start with reserve token {reserve}, got path {result.path}"
 
-                    if not is_v3:
+                    if not uni_v3:
                         price = 1 / result.price
 
                     executed_reserve = result.amount_in / Decimal(10**quote_token_details.decimals)
@@ -396,7 +410,7 @@ class EthereumExecutionModel(ExecutionModel):
                     assert path[0] == base_token_details.address.lower(), f"Path is {path}, base token is {base_token_details}"
                     assert path[-1] == reserve.address
                     
-                    if not is_v3:
+                    if not uni_v3:
                         price = result.price
                     
                     executed_amount = -result.amount_in / Decimal(10**base_token_details.decimals)
@@ -746,7 +760,7 @@ def broadcast(
             # Only SignedTransaction.rawTransaction attribute is intresting in this point
             signed_tx = SignedTransaction(rawTransaction=tx.signed_bytes, hash=None, r=0, s=0, v=0)
             broadcast_batch.append(signed_tx)
-            logger.info("Broadcasting %s", tx)
+            logger.info("Broadcasting:\n %s", tx)
         t.mark_broadcasted(datetime.datetime.utcnow())
 
     try:

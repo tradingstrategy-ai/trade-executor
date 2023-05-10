@@ -280,7 +280,7 @@ class StrategyRunner(abc.ABC):
             Dict of random debug stuff
         """
 
-    def setup_routing(self, universe: StrategyExecutionUniverse) -> Tuple[RoutingState, PricingModel, ValuationModel]:
+    def     setup_routing(self, universe: StrategyExecutionUniverse) -> Tuple[RoutingState, PricingModel, ValuationModel]:
         """Setups routing state for this cycle.
 
         :param universe:

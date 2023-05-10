@@ -167,3 +167,22 @@ class TradeRouting(enum.Enum):
     #: The order routing is ignored. We use backtest estimations for trading
     #: fees and assume all pairs are tradeable.
     ignore = "ignore"
+
+    def is_uniswap_v2(self) -> bool:
+        """Do we neeed Uniswap v2 routing model"""
+
+        # TODO: Complete the list
+        return self in (
+            TradeRouting.pancakeswap_busd,
+            TradeRouting.trader_joe_usdc,
+            TradeRouting.quickswap_usdc
+        )
+
+    def is_uniswap_v3(self) -> bool:
+        """Do we neeed Uniswap v3 routing model"""
+
+        # TODO: Complete the list
+        return self in (
+            TradeRouting.uniswap_v3_usdc_poly,
+            TradeRouting.uniswap_v3_usdc,
+        )

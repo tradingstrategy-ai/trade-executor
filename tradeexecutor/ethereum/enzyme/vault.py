@@ -3,7 +3,7 @@
 import logging
 import datetime
 from functools import partial
-from typing import cast, List, Optional
+from typing import cast, List, Optional, Tuple
 
 from web3 import Web3
 
@@ -105,14 +105,20 @@ class EnzymeVaultSyncModel(SyncModel):
             done = (current_block - start_block) / (end_block - start_block)
             logger.info(f"EnzymeVaultSyncMode: Scanning blocks {current_block:,} - {current_block + chunk_size:,}, done {done * 100:.1f}%")
 
-    def process_blocks(self):
+    def process_blocks(self) -> Tuple[int, int]:
         """Process the reorgsanisation monitor blocks.
 
         :raise ChainReorganisationDetected:
             When any if the block data in our internal buffer
             does not match those provided by events.
+
+        :return:
+            Range to scan for the events
         """
-        self.reorg_mon.figure_reorganisation_and_new_blocks()
+        range_start = self.reorg_mon.last_block_read
+        reorg_resolution = self.reorg_mon.update_chain()
+        range_end = self.reorg_mon.last_block_read
+        return reorg_resolution.get_read_range()
 
     def fetch_vault_reserve_asset(self) -> AssetIdentifier:
         """Read the reserve asset from the vault data."""
@@ -258,10 +264,22 @@ class EnzymeVaultSyncModel(SyncModel):
             case _:
                 raise RuntimeError(f"Unsupported event: {event}")
 
-    def sync_initial(self, state: State):
+    def sync_initial(self, state: State, **kwargs):
         """Get the deployment event by scanning the whole chain from the start.
 
         Updates `state.sync.deployment` structure.
+
+        .. note::
+
+            You need to give `start_block` hint of the scanning will take too long because
+            Ethereum design flaws.
+
+        Example:
+
+        .. code-block:: python
+
+            sync_model.sync_initial(state, start_block=35_123_123)
+
         """
         sync = state.sync
         assert not sync.is_initialised(), "Initialisation twice is not allowed"
@@ -277,7 +295,11 @@ class EnzymeVaultSyncModel(SyncModel):
             partial(read_events, notify=self._notify, chunk_size=self.scan_chunk_size, extract_timestamps=None)
         )
 
-        deployment_event = self.vault.fetch_deployment_event(reader=extract_events)
+        start_block = kwargs.get("start_block")
+        if not start_block:
+            start_block = 1
+
+        deployment_event = self.vault.fetch_deployment_event(reader=extract_events, start_block=start_block)
 
         # Check that we got good event data
         block_number = deployment_event["blockNumber"]
@@ -321,11 +343,6 @@ class EnzymeVaultSyncModel(SyncModel):
         sync = state.sync
         assert sync.is_initialised(), f"Vault sync not initialised: {sync}"
 
-        logger.info("Starting sync for vault %s, comptroller %s", self.vault.address, self.vault.comptroller.address)
-
-        if self.only_chain_listener:
-            self.process_blocks()
-
         vault = self.vault
 
         treasury_sync = sync.treasury
@@ -337,6 +354,31 @@ class EnzymeVaultSyncModel(SyncModel):
 
         end_block = web3.eth.block_number
 
+        logger.info(f"Starting sync for vault %s, comptroller %s, looking block range {start_block:,} - {end_block:,}", self.vault.address, self.vault.comptroller.address)
+
+        # Feed block headers for the listeners
+        # to get the timestamps of the blocks
+        if self.only_chain_listener:
+
+            skip_to_block = treasury_sync.last_block_scanned or sync.deployment.block_number
+
+            known_block_count = len(self.reorg_mon.block_map)
+
+            if not known_block_count:
+                logger.info("Loading initial block data, skipping reorg mon to to block %s, reorg mon has %d entries", skip_to_block, known_block_count)
+                range_start = max(skip_to_block - self.reorg_mon.check_depth, 1)
+                self.reorg_mon.load_initial_block_headers(start_block=range_start)
+                range_end = self.reorg_mon.last_block_read
+            else:
+                logger.info("Loading more block data, reorg mon has %d entries", known_block_count)
+                range_start, range_end = self.process_blocks()
+
+            logger.info("Reorg mon has %d block headers", len(self.reorg_mon.block_map))
+            treasury_sync.last_block_scanned = range_end
+        else:
+            range_start = start_block
+            range_end = end_block
+
         # Set up the reader interface for fetch_deployment_event()
         # extract_timestamp is disabled to speed up the event reading,
         # we handle it separately
@@ -347,9 +389,9 @@ class EnzymeVaultSyncModel(SyncModel):
 
         events_iter = fetch_vault_balance_events(
             vault,
-            start_block,
-            end_block,
-            reader,
+            start_block=range_start,
+            end_block=range_end,
+            read_events=reader,
         )
 
         events = []

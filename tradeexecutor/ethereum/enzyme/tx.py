@@ -115,15 +115,15 @@ class EnzymeTransactionBuilder(TransactionBuilder):
         signed_tx, execute_calls_bound_func = self.vault_controlled_wallet.sign_transaction_with_new_nonce(enzyme_tx, gas_data)
         signed_bytes = signed_tx.rawTransaction.hex()
 
-
-
         return BlockchainTransaction(
             type=BlockchainTransactionType.enzyme_vault,
             chain_id=self.chain_id,
             from_address=self.hot_wallet.address,
             contract_address=self.vault.comptroller.address,
             function_selector=execute_calls_bound_func.fn_name,
+            transaction_args=execute_calls_bound_func.args,
             args=execute_calls_bound_func.args,
+            wrapped_args=args_bound_func.arguments,
             signed_bytes=signed_bytes,
             tx_hash=signed_tx.hash.hex(),
             nonce=signed_tx.nonce,

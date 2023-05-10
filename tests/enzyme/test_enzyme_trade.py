@@ -175,9 +175,9 @@ def test_enzyme_execute_open_position(
     # The EOA hot wallet transaction needs to be send to comptroller contract
     assert approve_tx.contract_address == vault.comptroller.address
     # IntegrationManager.callOnExtension() API
-    assert approve_tx.args[0] == vault.deployment.contracts.integration_manager.address
-    assert approve_tx.args[1] == IntegrationManagerActionId.CallOnIntegration.value
-    assert len(approve_tx.args[2]) > 0  # Solidity ABI encode packed
+    assert approve_tx.transaction_args[0] == vault.deployment.contracts.integration_manager.address
+    assert approve_tx.transaction_args[1] == IntegrationManagerActionId.CallOnIntegration.value
+    assert len(approve_tx.transaction_args[2]) > 0  # Solidity ABI encode packed
 
     # This is the payload of the tx the vault performs
     assert approve_tx.details["contract"] == usdc.address
@@ -190,8 +190,8 @@ def test_enzyme_execute_open_position(
     assert swap_tx.broadcasted_at is None
     assert swap_tx.nonce == 1
     assert swap_tx.contract_address == vault.comptroller.address
-    assert swap_tx.args[0] == vault.deployment.contracts.integration_manager.address
-    assert swap_tx.args[1] == IntegrationManagerActionId.CallOnIntegration.value
+    assert swap_tx.transaction_args[0] == vault.deployment.contracts.integration_manager.address
+    assert swap_tx.transaction_args[1] == IntegrationManagerActionId.CallOnIntegration.value
     assert swap_tx.details["contract"] == uniswap_v2.router.address
     assert swap_tx.details["function"] == "swapExactTokensForTokens"
 

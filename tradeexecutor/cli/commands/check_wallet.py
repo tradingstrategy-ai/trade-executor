@@ -14,7 +14,7 @@ from eth_defi.token import fetch_erc20_details
 from tradingstrategy.client import Client
 from . import shared_options
 from .app import app
-from ..bootstrap import prepare_executor_id, prepare_cache, create_web3_config, create_trade_execution_model
+from ..bootstrap import prepare_executor_id, prepare_cache, create_web3_config, create_execution_and_sync_model
 from ..log import setup_logging
 from ...strategy.approval import UncheckedApprovalModel
 from ...strategy.bootstrap import make_factory_from_strategy_mod
@@ -96,7 +96,7 @@ def check_wallet(
     web3config.set_default_chain(mod.chain_id)
     web3config.check_default_chain_id()
 
-    execution_model, sync_model, valuation_model_factory, pricing_model_factory = create_trade_execution_model(
+    execution_model, sync_model, valuation_model_factory, pricing_model_factory = create_execution_and_sync_model(
         asset_management_mode=AssetManagementMode.hot_wallet,
         private_key=private_key,
         web3config=web3config,

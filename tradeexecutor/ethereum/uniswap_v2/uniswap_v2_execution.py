@@ -41,7 +41,9 @@ class UniswapV2ExecutionModel(EthereumExecutionModel):
                  confirmation_timeout=datetime.timedelta(minutes=5),
                  max_slippage: float = 0.01,
                  stop_on_execution_failure=True,
-                 swap_gas_fee_limit=2_000_000):
+                 swap_gas_fee_limit=2_000_000,
+                 mainnet_fork=False,
+                 ):
         """
         :param web3:
             Web3 connection used for this instance
@@ -71,28 +73,29 @@ class UniswapV2ExecutionModel(EthereumExecutionModel):
             confirmation_timeout=confirmation_timeout,
             max_slippage=max_slippage,
             stop_on_execution_failure=stop_on_execution_failure,
-            swap_gas_fee_limit=swap_gas_fee_limit
+            swap_gas_fee_limit=swap_gas_fee_limit,
+            mainnet_fork=mainnet_fork,
         )
 
-    @staticmethod
     def analyse_trade_by_receipt(
+        self,
         web3: Web3, 
         uniswap: UniswapV2Deployment, 
         tx: dict, 
         tx_hash: str,
-        tx_receipt: dict
+        tx_receipt: dict,
+        input_args: tuple | None,
     ) -> (TradeSuccess | TradeFail):
         return analyse_trade_by_receipt(web3, uniswap, tx, tx_hash, tx_receipt)
-    
-    @staticmethod
+
     def mock_partial_deployment_for_analysis(
+        self,
         web3: Web3,
         router_address: str
     ) -> UniswapV2Deployment:
         return mock_partial_deployment_for_analysis(web3, router_address)
-    
-    @staticmethod
-    def is_v3() -> bool:
+
+    def is_v3(self) -> bool:
         """Returns true if instance is related to Uniswap V3, else false. 
         Kind of a hack to be able to share resolve trades function amongst v2 and v3."""
         return False

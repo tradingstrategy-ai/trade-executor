@@ -2,7 +2,7 @@
 
 import logging
 from dataclasses import field, dataclass
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple, Set, List
 
 from eth_defi.gas import GasPriceMethod, node_default_gas_price_strategy
 from eth_defi.middleware import http_retry_request_with_sleep_middleware
@@ -21,6 +21,12 @@ SUPPORTED_CHAINS = [
     ChainId.bsc,
     ChainId.arbitrum,
     ChainId.anvil
+]
+
+#: Funny chain ids used. e.g. with mainnet forks
+TEST_CHAIN_IDS: List[ChainId] = [
+    ChainId.ethereum_tester,
+    ChainId.anvil,
 ]
 
 
@@ -164,7 +170,9 @@ class Web3Config:
 
         assert self.default_chain_id, "default_chain_id not set"
         web3 = self.get_default()
-        assert web3.eth.chain_id == self.default_chain_id.value, f"Expected chain id {self.default_chain_id}, got {web3.eth.chain_id}"
+
+        if self.default_chain_id not in TEST_CHAIN_IDS:
+            assert web3.eth.chain_id == self.default_chain_id.value, f"Expected chain id {self.default_chain_id}, got {web3.eth.chain_id}"
 
     @classmethod
     def setup_from_environment(cls, gas_price_method: Optional[GasPriceMethod], **kwargs) -> "Web3Config":
@@ -195,3 +203,7 @@ class Web3Config:
 
     def has_any_connection(self):
         return len(self.connections) > 0
+
+    def is_mainnet_fork(self) -> bool:
+        """Is this connection a testing fork of a mainnet."""
+        return len(self.connections) and self.connections.get(ChainId.anvil.value) is not None

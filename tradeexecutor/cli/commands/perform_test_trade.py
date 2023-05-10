@@ -9,7 +9,7 @@ import typer
 
 from .app import app
 from ..bootstrap import prepare_executor_id, prepare_cache, create_web3_config, create_state_store, \
-    create_trade_execution_model, create_client
+    create_execution_and_sync_model, create_client
 from ..log import setup_logging
 from ..testtrade import make_test_trade
 from ...strategy.approval import UncheckedApprovalModel
@@ -18,7 +18,7 @@ from ...strategy.description import StrategyExecutionDescription
 from ...strategy.execution_context import ExecutionContext, ExecutionMode
 from ...strategy.execution_model import AssetManagementMode
 from ...strategy.run_state import RunState
-from ...strategy.strategy_module import read_strategy_module
+from ...strategy.strategy_module import read_strategy_module, StrategyModuleInformation
 from ...strategy.trading_strategy_universe import TradingStrategyUniverseModel
 from ...strategy.universe_model import UniverseOptions
 from ...utils.timer import timed_task
@@ -68,7 +68,7 @@ def perform_test_trade(
 
     logger = setup_logging(log_level=log_level)
 
-    mod = read_strategy_module(strategy_file)
+    mod: StrategyModuleInformation = read_strategy_module(strategy_file)
 
     cache_path = prepare_cache(id, cache_path)
 
@@ -91,7 +91,7 @@ def perform_test_trade(
 
     web3config.choose_single_chain()
 
-    execution_model, sync_model, valuation_model_factory, pricing_model_factory = create_trade_execution_model(
+    execution_model, sync_model, valuation_model_factory, pricing_model_factory = create_execution_and_sync_model(
         asset_management_mode=asset_management_mode,
         private_key=private_key,
         web3config=web3config,
@@ -101,6 +101,7 @@ def perform_test_trade(
         max_slippage=max_slippage,
         vault_address=vault_address,
         vault_adapter_address=vault_adapter_address,
+        routing_hint=mod.trade_routing,
     )
 
     client, routing_model = create_client(
