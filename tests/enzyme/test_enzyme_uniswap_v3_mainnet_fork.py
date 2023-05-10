@@ -38,12 +38,20 @@ logger = logging.getLogger(__name__)
 
 
 @pytest.fixture()
-def anvil() -> AnvilLaunch:
+def usdc_whale() -> HexAddress:
+    """A random account picked from Polygon that holds a lot of USDC."""
+    # https://polygonscan.com/token/0x2791bca1f2de4661ed88a30c99a7a9449aa84174#balances
+    return HexAddress("0x72a53cdbbcc1b9efa39c834a540550e23463aacb")
+
+
+@pytest.fixture()
+def anvil(usdc_whale) -> AnvilLaunch:
     """Launch Polygon fork."""
     rpc_url = os.environ["JSON_RPC_POLYGON"]
 
     anvil = launch_anvil(
         fork_url=rpc_url,
+        unlocked_addresses=[usdc_whale],
     )
     try:
         yield anvil
@@ -198,6 +206,7 @@ def hot_wallet(
         deployer,
         user_1,
         usdc: TokenDetails,
+        usdc_whale,
         vault: Vault) -> HotWallet:
     """Create hot wallet for the signing tests.
 
@@ -209,7 +218,7 @@ def hot_wallet(
     wallet.sync_nonce(web3)
     tx_hash = web3.eth.send_transaction({"to": wallet.address, "from": user_1, "value": 15 * 10**18})
     assert_transaction_success_with_explanation(web3, tx_hash)
-    tx_hash = usdc.contract.functions.transfer(wallet.address, 500 * 10**6).transact({"from": deployer})
+    tx_hash = usdc.contract.functions.transfer(wallet.address, 500 * 10**6).transact({"from": usdc_whale})
     assert_transaction_success_with_explanation(web3, tx_hash)
 
     # Promote the hot wallet to the asset manager
