@@ -337,8 +337,6 @@ class EnzymeVaultSyncModel(SyncModel):
         sync = state.sync
         assert sync.is_initialised(), f"Vault sync not initialised: {sync}"
 
-        logger.info("Starting sync for vault %s, comptroller %s", self.vault.address, self.vault.comptroller.address)
-
         if self.only_chain_listener:
             self.process_blocks()
 
@@ -352,6 +350,8 @@ class EnzymeVaultSyncModel(SyncModel):
             start_block = sync.deployment.block_number
 
         end_block = web3.eth.block_number
+
+        logger.info(f"Starting sync for vault %s, comptroller %s, looking block range {start_block:,} - {end_block:,}", self.vault.address, self.vault.comptroller.address)
 
         # Set up the reader interface for fetch_deployment_event()
         # extract_timestamp is disabled to speed up the event reading,

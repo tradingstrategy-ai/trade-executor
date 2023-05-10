@@ -19,10 +19,14 @@ from tradeexecutor.backtest.simulated_wallet import SimulatedWallet
 from tradeexecutor.cli.approval import CLIApprovalModel
 from tradeexecutor.ethereum.enzyme.vault import EnzymeVaultSyncModel
 from tradeexecutor.ethereum.hot_wallet_sync_model import HotWalletSyncModel
+from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_execution import UniswapV2ExecutionModel
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_live_pricing import uniswap_v2_live_pricing_factory
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2SimpleRoutingModel
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_valuation import uniswap_v2_sell_valuation_factory
+from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_execution import UniswapV3ExecutionModel
+from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_live_pricing import uniswap_v3_live_pricing_factory
+from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_valuation import uniswap_v3_sell_valuation_factory
 from tradeexecutor.ethereum.web3config import Web3Config
 from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
 from tradeexecutor.state.metadata import Metadata
@@ -86,7 +90,44 @@ def create_web3_config(
     return web3config
 
 
-def create_trade_execution_model(
+def create_execution_model(
+    routing_hint: Optional[TradeRouting],
+    tx_builder: Optional[TransactionBuilder],
+    confirmation_timeout: datetime.timedelta,
+    confirmation_block_count: int,
+    max_slippage: float,
+    min_gas_balance: Optional[Decimal],
+):
+    """Set up the code transaction building logic.
+
+    Choose between Uniswap v2 and v3 trade routing.
+    """
+    if routing_hint is None or routing_hint.is_uniswap_v2():
+        execution_model = UniswapV2ExecutionModel(
+            tx_builder,
+            confirmation_timeout=confirmation_timeout,
+            confirmation_block_count=confirmation_block_count,
+            max_slippage=max_slippage,
+            min_balance_threshold=min_gas_balance,
+        )
+        valuation_model_factory = uniswap_v2_sell_valuation_factory
+        pricing_model_factory = uniswap_v2_live_pricing_factory
+    elif routing_hint.is_uniswap_v3():
+        execution_model = UniswapV3ExecutionModel(
+            tx_builder,
+            confirmation_timeout=confirmation_timeout,
+            confirmation_block_count=confirmation_block_count,
+            max_slippage=max_slippage,
+            min_balance_threshold=min_gas_balance,
+        )
+        valuation_model_factory = uniswap_v3_sell_valuation_factory
+        pricing_model_factory = uniswap_v3_live_pricing_factory
+    else:
+        raise RuntimeError(f"Does not know how to route: {routing_hint}")
+
+    return execution_model, valuation_model_factory, pricing_model_factory
+
+def create_execution_and_sync_model(
         asset_management_mode: AssetManagementMode,
         private_key: str,
         web3config: Web3Config,
@@ -96,12 +137,9 @@ def create_trade_execution_model(
         min_gas_balance: Optional[Decimal],
         vault_address: Optional[str],
         vault_adapter_address: Optional[str],
+        routing_hint: Optional[TradeRouting] = None,
 ):
-    """Set up the execution mode for the command line client.
-
-    :param max_slippage:
-        Legacy max slippage parameter. Do not used.
-    """
+    """Set up the wallet sync and execution mode for the command line client."""
 
     assert isinstance(confirmation_timeout, datetime.timedelta), f"Got {confirmation_timeout}"
 
@@ -109,7 +147,6 @@ def create_trade_execution_model(
         # Used in test_strategy_cycle_trigger.py
         web3 = web3config.get_default()
         execution_model = DummyExecutionModel(web3)
-        sync_method = DummyWalletSyncer()
         valuation_model_factory = uniswap_v2_sell_valuation_factory
         pricing_model_factory = uniswap_v2_live_pricing_factory
         sync_model = DummySyncModel()
@@ -119,22 +156,15 @@ def create_trade_execution_model(
         web3 = web3config.get_default()
         hot_wallet = HotWallet.from_private_key(private_key)
         sync_model = create_sync_model(asset_management_mode, web3, hot_wallet, vault_address, vault_adapter_address)
-        execution_model = UniswapV2ExecutionModel(
-            sync_model.create_transaction_builder(),
+
+        execution_model, valuation_model_factory, pricing_model_factory = create_execution_model(
+            routing_hint=routing_hint,
+            tx_builder=sync_model.create_transaction_builder(),
             confirmation_timeout=confirmation_timeout,
             confirmation_block_count=confirmation_block_count,
             max_slippage=max_slippage,
-            min_balance_threshold=min_gas_balance,
+            min_gas_balance=min_gas_balance,
         )
-        valuation_model_factory = uniswap_v2_sell_valuation_factory
-        pricing_model_factory = uniswap_v2_live_pricing_factory
-
-        # TODO: Temporary fix to prevent connections elsewhere
-        # Make sure this never happens even though it should not happen
-        if ChainId.bsc in web3config.connections or ChainId.polygon in web3config.connections or ChainId.avalanche in web3config.connections:
-            if web3config.gas_price_method == GasPriceMethod.london:
-                raise RuntimeError(f"Should not happen: {web3config.gas_price_method}")
-
         return execution_model, sync_model, valuation_model_factory, pricing_model_factory
 
     elif asset_management_mode == AssetManagementMode.backtest:

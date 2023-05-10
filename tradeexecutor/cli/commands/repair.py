@@ -13,7 +13,7 @@ import typer
 from tradingstrategy.client import Client
 from .app import app
 from ..bootstrap import prepare_executor_id, prepare_cache, create_web3_config, create_state_store, \
-    create_trade_execution_model
+    create_execution_and_sync_model
 from ..log import setup_logging
 from ...state.repair import repair_trades
 from ...state.state import UncleanState

@@ -20,7 +20,7 @@ from tradingstrategy.timebucket import TimeBucket
 from . import shared_options
 from .app import app, TRADE_EXECUTOR_VERSION
 from ..bootstrap import prepare_executor_id, prepare_cache, create_web3_config, create_state_store, \
-    create_trade_execution_model, create_metadata, create_approval_model, create_client
+    create_execution_and_sync_model, create_metadata, create_approval_model, create_client
 from ..log import setup_logging, setup_discord_logging, setup_logstash_logging, setup_file_logging, \
     setup_custom_log_levels
 from ..loop import ExecutionLoop
@@ -236,7 +236,7 @@ def start(
             # because likely Ganache has simply crashed on background
             confirmation_timeout = datetime.timedelta(seconds=30)
 
-        execution_model, sync_model, valuation_model_factory, pricing_model_factory = create_trade_execution_model(
+        execution_model, sync_model, valuation_model_factory, pricing_model_factory = create_execution_and_sync_model(
             asset_management_mode=asset_management_mode,
             private_key=private_key,
             web3config=web3config,

@@ -11,11 +11,9 @@ from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.strategy.pricing_model import PricingModel
-from tradeexecutor.strategy.trading_strategy_universe import load_all_data, TradingStrategyUniverse, load_pair_data_for_single_exchange
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, load_pair_data_for_single_exchange
 from tradeexecutor.strategy.universe_model import UniverseOptions
-from tradingstrategy.client import Client, BaseClient
-from tradingstrategy.pair import DEXPair
-from tradingstrategy.testing.uniswap_v2_mock_client import UniswapV2MockClient
+from tradingstrategy.client import Client
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
 
