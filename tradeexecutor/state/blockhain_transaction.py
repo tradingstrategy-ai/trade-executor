@@ -20,6 +20,7 @@ from tradeexecutor.state.types import JSONHexAddress, JSONHexBytes
 
 
 def _clean_print_args(val: tuple):
+    """Clean Solidity argument blobs for stdout printing"""
     if type(val) in (list, tuple):
         return list(_clean_print_args(x) for x in val)
     elif type(val) == bytes:
@@ -150,7 +151,7 @@ class BlockchainTransaction:
     #: individual arguments may contain values that are token amounts
     #: and thus outside the maximum int of JavaScript.
     #:
-    args: Optional[Tuple[Any]] = field(
+    transaction_args: Optional[Tuple[Any]] = field(
         default=None,
         metadata=config(
             encoder=encode_pickle_over_json,
@@ -226,6 +227,16 @@ class BlockchainTransaction:
     #: Set in :py:class:`tradeexecutor.tx.TransactionBuilder`
     asset_deltas: List[JSONAssetDelta] = field(default_factory=list)
 
+    #: Legacy compatibility field.
+    #:
+    #: Use :py:attr:`transction_args` and :py:meth:`get_actual_function_input_args` instead.
+    args: Optional[Tuple[Any]] = field(
+        default=None,
+        metadata=config(
+            encoder=solidity_arg_encoder,
+        )
+    )
+
     def __repr__(self):
         if self.status is True:
             return f"<Tx \n" \
@@ -233,7 +244,7 @@ class BlockchainTransaction:
                    f"    nonce:{self.nonce}\n" \
                    f"    to:{self.contract_address}\n" \
                    f"    func:{self.function_selector}\n" \
-                   f"    args:{_clean_print_args(self.args)}\n" \
+                   f"    args:{_clean_print_args(self.transaction_args)}\n" \
                    f"    wrapped args:{_clean_print_args(self.wrapped_args)}\n" \
                    f"    gas limit:{self.get_gas_limit():,}\n" \
                    f"    gas spent:{self.realised_gas_units_consumed:,}\n" \
@@ -245,7 +256,7 @@ class BlockchainTransaction:
                    f"    nonce:{self.nonce}\n" \
                    f"    to:{self.contract_address}\n" \
                    f"    func:{self.function_selector}\n" \
-                   f"    args:{_clean_print_args(self.args)}\n" \
+                   f"    args:{_clean_print_args(self.transaction_args)}\n" \
                    f"    wrapped args:{_clean_print_args(self.wrapped_args)}\n" \
                    f"    fail reason:{self.revert_reason}\n" \
                    f"    gas limit:{self.get_gas_limit():,}\n" \
@@ -257,7 +268,7 @@ class BlockchainTransaction:
                    f"    nonce:{self.nonce}\n" \
                    f"    to:{self.contract_address}\n" \
                    f"    func:{self.function_selector}\n" \
-                   f"    args:{_clean_print_args(self.args)}\n" \
+                   f"    args:{_clean_print_args(self.transaction_args)}\n" \
                    f"    wrapped args:{_clean_print_args(self.wrapped_args)}\n" \
                    f"    unresolved\n" \
                    f"    >"
@@ -286,7 +297,7 @@ class BlockchainTransaction:
         self.chain_id = chain_id
         self.contract_address = contract_address
         self.function_selector = function_selector
-        self.args = args
+        self.transaction_args = args
         self.details = details
 
     def set_broadcast_information(self, nonce: int, tx_hash: str, signed_bytes: str):
@@ -356,4 +367,4 @@ class BlockchainTransaction:
         """
         if self.wrapped_args is not None:
             return self.wrapped_args
-        return self.args
+        return self.transaction_args

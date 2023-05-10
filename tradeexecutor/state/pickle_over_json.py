@@ -14,6 +14,8 @@ def encode_pickle_over_json(v: any):
 
 
 def decode_pickle_over_json(v: str) -> any:
+    if v is None:
+        return None
     bin = bytearray.fromhex(v)
     unpickled = pickle.loads(bin)
     return unpickled

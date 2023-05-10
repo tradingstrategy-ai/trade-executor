@@ -121,6 +121,7 @@ class EnzymeTransactionBuilder(TransactionBuilder):
             from_address=self.hot_wallet.address,
             contract_address=self.vault.comptroller.address,
             function_selector=execute_calls_bound_func.fn_name,
+            transaction_args=execute_calls_bound_func.args,
             args=execute_calls_bound_func.args,
             wrapped_args=args_bound_func.arguments,
             signed_bytes=signed_bytes,
