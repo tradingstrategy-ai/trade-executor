@@ -31,7 +31,7 @@ trade_routing = TradeRouting.uniswap_v3_usdc_poly
 trading_strategy_cycle = CycleDuration.cycle_1s
 reserve_currency = ReserveCurrency.usdc
 candle_time_bucket = TimeBucket.d7
-trading_pair = (ChainId.polygon, "uniswap-v3", "WMATIC", "WUSD", 0.0005)
+trading_pair = (ChainId.polygon, "uniswap-v3", "WMATIC", "USDC", 0.0005)
 
 
 def decide_trades(
@@ -72,13 +72,13 @@ def decide_trades(
 
 def create_trading_universe(
         ts: datetime.datetime,
-        client: BaseClient,
+        client: Client,
         execution_context: ExecutionContext,
         universe_options: UniverseOptions,
 ):
-    assert isinstance(client, UniswapV2MockClient), f"Looks like we are not running on EVM testing backend. Got: {client}"
+    assert isinstance(client, Client), f"Looks like we are not running on the real data. Got: {client}"
 
-    # Fetch backtesting datasets from the server
+    # Download live data from the oracle
     dataset = load_pair_data_for_single_exchange(
         client,
         time_bucket=candle_time_bucket,

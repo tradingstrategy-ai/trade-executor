@@ -1231,6 +1231,7 @@ def load_pair_data_for_single_exchange(
     assert isinstance(client, Client)
     assert isinstance(time_bucket, TimeBucket)
     assert isinstance(execution_context, ExecutionContext)
+
     if chain_id is not None:
         assert isinstance(chain_id, ChainId)
 
@@ -1264,7 +1265,7 @@ def load_pair_data_for_single_exchange(
             pair_tickers,
         )
 
-        assert len(our_pairs) > 0, f"Pair data not found {chain_id.name}, {exchange_slug}, {pair_tickers}"
+        assert len(our_pairs) > 0, f"Pair data not found chain: {chain_id}, exchange: {exchange_slug}, tickers: {pair_tickers}"
 
         assert len(our_pairs) == len(pair_tickers), f"Pair resolution failed. Wanted to have {len(pair_tickers)} pairs, but after pair id resolution ended up with {len(our_pairs)} pairs"
 

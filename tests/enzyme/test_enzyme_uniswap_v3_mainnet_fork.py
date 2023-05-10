@@ -33,7 +33,7 @@ from tradeexecutor.monkeypatch.web3 import construct_sign_and_send_raw_middlewar
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.state.state import State
 
-pytestmark = pytest.mark.skipif(not os.environ.get("JSON_RPC_POLYGON"), reason="Set POLYGON_JSON_RPC environment variable to run this test")
+pytestmark = pytest.mark.skipif(not os.environ.get("JSON_RPC_POLYGON") or not os.environ.get("TRADING_STRATEGY_API_KEY"), reason="Set POLYGON_JSON_RPC and TRADING_STRATEGY_API_KEY environment variables to run this test")
 
 
 logger = logging.getLogger(__name__)
@@ -286,6 +286,7 @@ def environment(
         "CONFIRMATION_BLOCK_COUNT": "0",  # Needed for test backend, Anvil
         "MAX_CYCLES": "5",  # Run decide_trades() 5 times
         "VAULT_DEPLOYMENT_BLOCK_NUMBER": str(start_block),
+        "TRADING_STRATEGY_API_KEY": os.environ["TRADING_STRATEGY_API_KEY"],
     }
     return environment
 
@@ -312,7 +313,7 @@ def test_enzyme_uniswap_v3_test_trade(
 
     cli = get_command(app)
 
-    # Deposit some USDC to start
+    # Deposit some USDC to the vault to start
     deposit_amount = 500 * 10**6
     tx_hash = usdc.contract.functions.approve(vault.comptroller.address, deposit_amount).transact({"from": hot_wallet.address})
     assert_transaction_success_with_explanation(web3, tx_hash)
@@ -333,13 +334,18 @@ def test_enzyme_uniswap_v3_test_trade(
             cli.main(args=["init"])
         assert e.value.code == 0
 
-    # assert usdc.contract.functions.balanceOf(vault.address).call() < deposit_amount, "No deposits where spent; trades likely did not happen"
-    #
-    # # Check the resulting state and see we made some trade for trading fee losses
-    # with state_file.open("rt") as inp:
-    #     state: State = State.from_json(inp.read())
-    #
-    #     assert len(list(state.portfolio.get_all_trades())) == 2
-    #
-    #     reserve_value = state.portfolio.get_default_reserve_position().get_value()
-    #     assert reserve_value == pytest.approx(499.994009)
+    with patch.dict(os.environ, env, clear=True):
+        with pytest.raises(SystemExit) as e:
+            cli.main(args=["perform-test-trade"])
+        assert e.value.code == 0
+
+    assert usdc.functions.balanceOf(vault.address).call() < deposit_amount, "No deposits where spent; trades likely did not happen"
+
+    # Check the resulting state and see we made some trade for trading fee losses
+    with state_file.open("rt") as inp:
+        state: State = State.from_json(inp.read())
+
+        assert len(list(state.portfolio.get_all_trades())) == 2
+
+        reserve_value = state.portfolio.get_default_reserve_position().get_value()
+        assert reserve_value == pytest.approx(499.994009)
