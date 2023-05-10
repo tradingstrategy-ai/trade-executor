@@ -203,3 +203,7 @@ class Web3Config:
 
     def has_any_connection(self):
         return len(self.connections) > 0
+
+    def is_mainnet_fork(self) -> bool:
+        """Is this connection a testing fork of a mainnet."""
+        return len(self.connections) and self.connections.get(ChainId.anvil.value) is not None

@@ -31,7 +31,9 @@ class UniswapV3ExecutionModel(EthereumExecutionModel):
                  confirmation_timeout=datetime.timedelta(minutes=5),
                  max_slippage: float = 0.01,
                  stop_on_execution_failure=True,
-                 swap_gas_fee_limit=2_000_000):
+                 swap_gas_fee_limit=2_000_000,
+                 mainnet_fork=False,
+                 ):
         """
         :param tx_builder:
             Hot wallet instance used for this execution
@@ -59,6 +61,7 @@ class UniswapV3ExecutionModel(EthereumExecutionModel):
             confirmation_timeout,
             max_slippage,
             stop_on_execution_failure,
+            mainnet_fork=mainnet_fork,
         )
 
     @staticmethod

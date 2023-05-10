@@ -97,6 +97,7 @@ def create_execution_model(
     confirmation_block_count: int,
     max_slippage: float,
     min_gas_balance: Optional[Decimal],
+    mainnet_fork=False,
 ):
     """Set up the code transaction building logic.
 
@@ -109,6 +110,7 @@ def create_execution_model(
             confirmation_block_count=confirmation_block_count,
             max_slippage=max_slippage,
             min_balance_threshold=min_gas_balance,
+            mainnet_fork=mainnet_fork,
         )
         valuation_model_factory = uniswap_v2_sell_valuation_factory
         pricing_model_factory = uniswap_v2_live_pricing_factory
@@ -119,6 +121,7 @@ def create_execution_model(
             confirmation_block_count=confirmation_block_count,
             max_slippage=max_slippage,
             min_balance_threshold=min_gas_balance,
+            mainnet_fork=mainnet_fork,
         )
         valuation_model_factory = uniswap_v3_sell_valuation_factory
         pricing_model_factory = uniswap_v3_live_pricing_factory
@@ -164,6 +167,7 @@ def create_execution_and_sync_model(
             confirmation_block_count=confirmation_block_count,
             max_slippage=max_slippage,
             min_gas_balance=min_gas_balance,
+            mainnet_fork=web3config.is_mainnet_fork(),
         )
         return execution_model, sync_model, valuation_model_factory, pricing_model_factory
 

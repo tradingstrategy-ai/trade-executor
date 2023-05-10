@@ -57,7 +57,9 @@ class EthereumExecutionModel(ExecutionModel):
                  confirmation_timeout=datetime.timedelta(minutes=5),
                  max_slippage: float = 0.01,
                  stop_on_execution_failure=True,
-                 swap_gas_fee_limit=2_000_000):
+                 swap_gas_fee_limit=2_000_000,
+                 mainnet_fork=False,
+                 ):
         """
         :param tx_builder:
             Hot wallet instance used for this execution
@@ -79,6 +81,9 @@ class EthereumExecutionModel(ExecutionModel):
             TODO: No longer used. Set in `TradeExecution` object.
 
             Max slippage tolerance per trade. 0.01 is 1%.
+
+        :param mainnet_fork:
+            Is this Anvil in automining mainnet fork mode
         """
         assert isinstance(tx_builder, TransactionBuilder), f"Got {tx_builder} {tx_builder.__class__}"
         assert isinstance(confirmation_timeout, datetime.timedelta), f"Got {confirmation_timeout} {confirmation_timeout.__class__}"
@@ -89,6 +94,7 @@ class EthereumExecutionModel(ExecutionModel):
         self.confirmation_timeout = confirmation_timeout
         self.swap_gas_fee_limit = swap_gas_fee_limit
         self.max_slippage = max_slippage
+        self.mainnet_fork = mainnet_fork
 
     @property
     def web3(self):
@@ -303,7 +309,8 @@ class EthereumExecutionModel(ExecutionModel):
         state.start_trades(datetime.datetime.utcnow(), trades, max_slippage=self.max_slippage)
 
         if self.web3.eth.chain_id not in (ChainId.ethereum_tester.value, ChainId.anvil.value):
-            assert self.confirmation_block_count > 0, f"confirmation_block_count set to {self.confirmation_block_count} "
+            if not self.mainnet_fork:
+                assert self.confirmation_block_count > 0, f"confirmation_block_count set to {self.confirmation_block_count} "
 
         routing_model.setup_trades(
             routing_state,
