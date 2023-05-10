@@ -110,7 +110,7 @@ def init(
         logger.info("  Vault is %s", vault_address)
         if vault_deployment_block_number:
             start_block = vault_deployment_block_number
-            logger.info("  Vault deploment block number %d", start_block)
+            logger.info("  Vault deployment block number is %d", start_block)
 
     if not state_file:
         state_file = f"state/{id}.json"
