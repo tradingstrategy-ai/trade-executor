@@ -38,8 +38,14 @@ class SyncModel(ABC):
         return None
 
     @abstractmethod
-    def sync_initial(self, state: State):
-        """Initialize the vault connection."""
+    def sync_initial(self, state: State, **kwargs):
+        """Initialize the vault connection.
+
+        :param kwargs:
+            Extra hints for the initial sync.
+
+            Because reading event from Ethereum blockchain is piss poor mess.
+        """
         pass
 
     @abstractmethod

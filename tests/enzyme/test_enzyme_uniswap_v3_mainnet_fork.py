@@ -10,11 +10,10 @@ import pytest
 from eth_account import Account
 from eth_typing import HexAddress
 from hexbytes import HexBytes
-from tradingstrategy.pair import PandasPairUniverse
+
 from typer.main import get_command
 from web3 import Web3, HTTPProvider
 from web3.contract import Contract
-from web3.middleware import geth_poa_middleware
 
 from eth_defi.abi import get_deployed_contract
 from eth_defi.anvil import AnvilLaunch, launch_anvil
@@ -25,9 +24,12 @@ from eth_defi.enzyme.vault import Vault
 from eth_defi.hotwallet import HotWallet
 from eth_defi.token import TokenDetails, fetch_erc20_details
 from eth_defi.trace import assert_transaction_success_with_explanation
-from tradeexecutor.cli.commands import app
 
+from tradingstrategy.pair import PandasPairUniverse
+
+from tradeexecutor.cli.main import app
 from tradeexecutor.ethereum.token import translate_token_details
+from tradeexecutor.monkeypatch.web3 import construct_sign_and_send_raw_middleware
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.state.state import State
 
@@ -41,7 +43,7 @@ logger = logging.getLogger(__name__)
 def usdc_whale() -> HexAddress:
     """A random account picked from Polygon that holds a lot of USDC."""
     # https://polygonscan.com/token/0x2791bca1f2de4661ed88a30c99a7a9449aa84174#balances
-    return HexAddress("0x72a53cdbbcc1b9efa39c834a540550e23463aacb")
+    return HexAddress("0x72A53cDBBcc1b9efa39c834A540550e23463AAcB")
 
 
 @pytest.fixture()
@@ -71,6 +73,13 @@ def web3(anvil) -> Web3:
     install_chain_middleware(web3)
     assert web3.eth.block_number > 1
     return web3
+
+
+@pytest.fixture()
+def start_block(web3) -> int:
+    """Vault deployment start block hint.
+    """
+    return web3.eth.block_number
 
 
 @pytest.fixture()
@@ -225,13 +234,16 @@ def hot_wallet(
     tx_hash = vault.vault.functions.addAssetManagers([account.address]).transact({"from": user_1})
     assert_transaction_success_with_explanation(web3, tx_hash)
 
+    # Add to the local signer chain
+    web3.middleware_onion.add(construct_sign_and_send_raw_middleware(account))
+
     return wallet
 
 
 @pytest.fixture()
 def strategy_file() -> Path:
     """Where do we load our strategy file."""
-    return Path(os.path.dirname(__file__)) / "../../strategies/test_only" / "enzyme_end_to_end.py"
+    return Path(os.path.dirname(__file__)) / ".." / ".." / "strategies" / "test_only" / "enzyme_polygon_fork_uniswap_v3.py"
 
 
 @pytest.fixture()
@@ -253,6 +265,7 @@ def environment(
     hot_wallet: HotWallet,
     state_file: Path,
     strategy_file: Path,
+    start_block: int,
     ) -> dict:
     """Passed to init and start commands as environment variables"""
     # Set up the configuration for the live trader
@@ -271,6 +284,7 @@ def environment(
         "VAULT_ADAPTER_ADDRESS": vault.generic_adapter.address,
         "CONFIRMATION_BLOCK_COUNT": "0",  # Needed for test backend, Anvil
         "MAX_CYCLES": "5",  # Run decide_trades() 5 times
+        "VAULT_DEPLOYMENT_BLOCK_NUMBER": str(start_block),
     }
     return environment
 
@@ -281,6 +295,7 @@ def test_enzyme_uniswap_v3_test_trade(
     state_file: Path,
     usdc: TokenDetails,
     vault: Vault,
+    hot_wallet: HotWallet,
     enzyme_deployment: EnzymeDeployment):
     """Perform a test trade on Enzymy vault via CLI.
 

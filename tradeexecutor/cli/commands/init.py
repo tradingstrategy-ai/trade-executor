@@ -20,6 +20,8 @@ Quick local dev example:
 from pathlib import Path
 from typing import Optional
 
+from typer import Option
+
 from eth_defi.hotwallet import HotWallet
 
 from .app import app
@@ -39,6 +41,7 @@ def init(
 
     asset_management_mode: AssetManagementMode = shared_options.asset_management_mode,
     vault_address: Optional[str] = shared_options.vault_address,
+    vault_deployment_block_number: Optional[int] = Option(None, envvar="VAULT_DEPLOYMENT_BLOCK_NUMBER", help="When the vault was deployed: a block number before the deployment."),
 
     json_rpc_binance: Optional[str] = shared_options.json_rpc_binance,
     json_rpc_polygon: Optional[str] = shared_options.json_rpc_polygon,
@@ -102,8 +105,12 @@ def init(
     logger.info("  Hot wallet is %s", hot_wallet.address)
 
     vault_address =  sync_model.get_vault_address()
+    start_block = None
     if vault_address:
         logger.info("  Vault is %s", vault_address)
+        if vault_deployment_block_number:
+            start_block = vault_deployment_block_number
+            logger.info("  Vault deploment block number %d", start_block)
 
     if not state_file:
         state_file = f"state/{id}.json"
@@ -114,7 +121,7 @@ def init(
     state = store.create(strategy_file.name)
 
     logger.info("Syncing initial strategy chain state")
-    sync_model.sync_initial(state)
+    sync_model.sync_initial(state, start_block=start_block)
 
     store.sync(state)
 

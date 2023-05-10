@@ -258,10 +258,22 @@ class EnzymeVaultSyncModel(SyncModel):
             case _:
                 raise RuntimeError(f"Unsupported event: {event}")
 
-    def sync_initial(self, state: State):
+    def sync_initial(self, state: State, **kwargs):
         """Get the deployment event by scanning the whole chain from the start.
 
         Updates `state.sync.deployment` structure.
+
+        .. note::
+
+            You need to give `start_block` hint of the scanning will take too long because
+            Ethereum design flaws.
+
+        Example:
+
+        .. code-block:: python
+
+            sync_model.sync_initial(state, start_block=35_123_123)
+
         """
         sync = state.sync
         assert not sync.is_initialised(), "Initialisation twice is not allowed"
@@ -277,7 +289,11 @@ class EnzymeVaultSyncModel(SyncModel):
             partial(read_events, notify=self._notify, chunk_size=self.scan_chunk_size, extract_timestamps=None)
         )
 
-        deployment_event = self.vault.fetch_deployment_event(reader=extract_events)
+        start_block = kwargs.get("start_block")
+        if not start_block:
+            start_block = 1
+
+        deployment_event = self.vault.fetch_deployment_event(reader=extract_events, start_block=start_block)
 
         # Check that we got good event data
         block_number = deployment_event["blockNumber"]
