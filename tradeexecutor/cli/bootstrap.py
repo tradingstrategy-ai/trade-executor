@@ -32,13 +32,15 @@ from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
 from tradeexecutor.state.metadata import Metadata
 from tradeexecutor.state.store import JSONFileStore, StateStore
 from tradeexecutor.strategy.default_routing_options import TradeRouting
+from tradeexecutor.strategy.pricing_model import PricingModelFactory
 from tradeexecutor.strategy.routing import RoutingModel
 from tradeexecutor.strategy.strategy_module import StrategyModuleInformation
 from tradeexecutor.strategy.sync_model import SyncModel, DummySyncModel
+from tradeexecutor.strategy.valuation import ValuationModelFactory
 from tradeexecutor.testing.dummy_wallet import DummyWalletSyncer
 from tradeexecutor.strategy.approval import UncheckedApprovalModel, ApprovalType, ApprovalModel
 from tradeexecutor.strategy.dummy import DummyExecutionModel
-from tradeexecutor.strategy.execution_model import AssetManagementMode
+from tradeexecutor.strategy.execution_model import AssetManagementMode, ExecutionModel
 from tradingstrategy.chain import ChainId
 from tradingstrategy.client import BaseClient, Client
 from tradingstrategy.testing.uniswap_v2_mock_client import UniswapV2MockClient
@@ -143,7 +145,7 @@ def create_execution_and_sync_model(
         vault_address: Optional[str],
         vault_adapter_address: Optional[str],
         routing_hint: Optional[TradeRouting] = None,
-):
+) -> Tuple[ExecutionModel, SyncModel, ValuationModelFactory, PricingModelFactory]:
     """Set up the wallet sync and execution mode for the command line client."""
 
     assert isinstance(confirmation_timeout, datetime.timedelta), f"Got {confirmation_timeout}"

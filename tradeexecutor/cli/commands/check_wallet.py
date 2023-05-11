@@ -108,6 +108,7 @@ def check_wallet(
         min_gas_balance=minimum_gas_balance,
         vault_address=vault_address,
         vault_adapter_address=vault_adapter_address,
+        routing_hint=mod.trade_routing,
     )
 
     hot_wallet = HotWallet.from_private_key(private_key)
@@ -145,17 +146,21 @@ def check_wallet(
     logger.info(f"  Chain id is {web3.eth.chain_id:,}")
     logger.info(f"  Latest block is {web3.eth.block_number:,}")
 
+    tx_builder = sync_model
+
     # Check balances
+    reserve_address = sync_model.get_vault_address() or sync_model.get_hot_wallet().address
     logger.info("Balance details")
-    logger.info("  Hot wallet is %s", hot_wallet.address)
+    logger.info("  Hot wallet is %s", sync_model.get_hot_wallet())
     gas_balance = web3.eth.get_balance(hot_wallet.address) / 10**18
+    logger.info("  Vault address is %s", reserve_address)
     logger.info("  We have %f tokens for gas left", gas_balance)
     logger.info("  The gas error limit is %f tokens", minimum_gas_balance)
-    logger.info("  The configured strategy reserve tokens are %s", reserve_assets)
-    balances = fetch_erc20_balances_by_token_list(web3, hot_wallet.address, tokens)
 
     for asset in reserve_assets:
-        logger.info("Reserve asset: %s", asset.token_symbol)
+        logger.info("  Reserve asset: %s (%s)", asset.token_symbol, asset.address)
+
+    balances = fetch_erc20_balances_by_token_list(web3, reserve_address, tokens)
 
     for address, balance in balances.items():
         details = fetch_erc20_details(web3, address)
