@@ -71,7 +71,7 @@ def create_web3_config(
     json_rpc_arbitrum,
     json_rpc_anvil,
     gas_price_method: Optional[GasPriceMethod]=None,
-) -> Optional[Web3Config]:
+) -> Web3Config:
     """Create Web3 connection to the live node we are executing against.
 
     :return web3:

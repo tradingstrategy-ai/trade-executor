@@ -128,6 +128,10 @@ class Web3Config:
         # Web3.py does not offer close
         pass
 
+    def has_chain_configured(self) -> bool:
+        """Do we have one or more chains configured."""
+        return len(self.connections) > 0
+
     def choose_single_chain(self):
         """Set the default chain we are connected to.
 

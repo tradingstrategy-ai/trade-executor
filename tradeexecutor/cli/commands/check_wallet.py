@@ -90,14 +90,14 @@ def check_wallet(
         json_rpc_anvil=json_rpc_anvil,
         json_rpc_arbitrum=json_rpc_arbitrum,
     )
-    assert web3config, "No RPC endpoints given. A working JSON-RPC connection is needed for check-wallet"
+    assert web3config.has_chain_configured(), "No RPC endpoints given. A working JSON-RPC connection is needed for running this command. Check your JSON-RPC configuration."
 
     # Check that we are connected to the chain strategy assumes
     web3config.set_default_chain(mod.chain_id)
     web3config.check_default_chain_id()
 
     execution_model, sync_model, valuation_model_factory, pricing_model_factory = create_execution_and_sync_model(
-        asset_management_mode=AssetManagementMode.hot_wallet,
+        asset_management_mode=asset_management_mode,
         private_key=private_key,
         web3config=web3config,
         confirmation_timeout=datetime.timedelta(seconds=60),
