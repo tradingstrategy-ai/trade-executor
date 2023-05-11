@@ -104,7 +104,7 @@ class EnzymeVaultSyncModel(SyncModel):
     ):
         """Log notifier used in Enzyme event reading"""
         # Because the code is only run once ever,
-        # we show the progress by
+        # we show the progress by printing
         if end_block - start_block > 0:
             done = (current_block - start_block) / (end_block - start_block)
             logger.info(f"EnzymeVaultSyncMode: Scanning blocks {current_block:,} - {current_block + chunk_size:,}, done {done * 100:.1f}%")
@@ -304,7 +304,7 @@ class EnzymeVaultSyncModel(SyncModel):
             start_block = 1
 
         logger.info("Starting event scan at the block %d, chunk size is %d", start_block, self.scan_chunk_size)
-        deployment_event = self.vault.fetch_deployment_event(reader=extract_events, start_block=start_block)
+        deployment_event = self.vault.fetch_deployment_event(reader=reader, start_block=start_block)
 
         # Check that we got good event data
         block_number = deployment_event["blockNumber"]
