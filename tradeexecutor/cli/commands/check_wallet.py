@@ -92,6 +92,8 @@ def check_wallet(
     )
     assert web3config.has_chain_configured(), "No RPC endpoints given. A working JSON-RPC connection is needed for running this command. Check your JSON-RPC configuration."
 
+    assert mod.chain_id, f"The strategy module {strategy_file} does not have a chain configured where it is going to trade"
+
     # Check that we are connected to the chain strategy assumes
     web3config.set_default_chain(mod.chain_id)
     web3config.check_default_chain_id()
