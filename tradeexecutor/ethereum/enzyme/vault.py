@@ -341,7 +341,7 @@ class EnzymeVaultSyncModel(SyncModel):
 
         web3 = self.web3
         sync = state.sync
-        assert sync.is_initialised(), f"Vault sync not initialised: {sync}"
+        assert sync.is_initialised(), f"Vault sync not initialised: {sync}\nPlease run trade-executor init command"
 
         vault = self.vault
 
