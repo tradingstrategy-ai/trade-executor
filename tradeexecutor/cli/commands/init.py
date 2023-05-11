@@ -122,7 +122,10 @@ def init(
 
     state = store.create(name)
 
-    logger.info("Syncing initial strategy chain state")
+    logger.info("Syncing initial strategy chain state.")
+    logger.info("For Enzyme vaults this may take a long time as the sync will go through all the blocks in the chain.")
+    logger.info("To speed up process use --vault_deployment_block_number hint as a command line argument.")
+    logger.info(f"Vault deployment block number hint is {start_block or 0:,}.")
     sync_model.sync_initial(state, start_block=start_block)
 
     store.sync(state)
