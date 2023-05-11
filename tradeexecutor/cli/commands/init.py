@@ -34,6 +34,8 @@ from . import shared_options
 @app.command()
 def init(
     id: str = shared_options.id,
+    name: str = shared_options.name,
+
     strategy_file: Path = shared_options.strategy_file,
     state_file: Optional[Path] = shared_options.state_file,
     private_key: Optional[str] = shared_options.private_key,
@@ -118,7 +120,7 @@ def init(
     store = create_state_store(Path(state_file))
     assert store.is_pristine(), f"State file already exists: {state_file}"
 
-    state = store.create(strategy_file.name)
+    state = store.create(name)
 
     logger.info("Syncing initial strategy chain state")
     sync_model.sync_initial(state, start_block=start_block)
