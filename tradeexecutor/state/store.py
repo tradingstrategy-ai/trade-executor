@@ -109,7 +109,7 @@ class JSONFileStore(StateStore):
         shutil.move(temp.name, self.path)
 
     def create(self, name: str) -> State:
-        logger.info("Created new state for %s", self.path)
+        logger.info("Created new state for the strategy %s at %s", name, os.path.realpath(self.path))
         return super().create(name)
 
 
