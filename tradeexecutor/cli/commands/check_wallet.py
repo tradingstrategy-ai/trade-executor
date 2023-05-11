@@ -187,4 +187,6 @@ def check_wallet(
 
     web3config.close()
 
+    logger.info("All ok")
+
 
