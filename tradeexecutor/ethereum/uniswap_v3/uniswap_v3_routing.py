@@ -202,10 +202,10 @@ class UniswapV3SimpleRoutingModel(EthereumRoutingModel):
         """
 
         logger.info("Routing details")
-        logger.info("  Factory: ", self.address_map["factory"])
-        logger.info("  Router: ", self.address_map["router"])
-        logger.info("  Position Manager: ", self.address_map["position_manager"])
-        logger.info("  Quoter: ", self.address_map["quoter"])
+        logger.info("  Factory: %s", self.address_map["factory"])
+        logger.info("  Router: %s", self.address_map["router"])
+        logger.info("  Position Manager: %s", self.address_map["position_manager"])
+        logger.info("  Quoter: %s", self.address_map["quoter"])
 
         self.reserve_asset_logging(pair_universe)
         

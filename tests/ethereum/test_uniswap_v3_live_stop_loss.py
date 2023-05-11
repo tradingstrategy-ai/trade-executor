@@ -360,6 +360,9 @@ def test_live_stop_loss(
     weth_usdc = pair_universe.get_one_pair_from_pandas_universe(exchange.exchange_id, "WETH", "USDC")
     pair = translate_trading_pair(weth_usdc)
 
+    # Check that our preflight checks pass
+    routing_model.perform_preflight_checks_and_logging(pair_universe)
+
     price_structure = pricing_method.get_buy_price(datetime.datetime.utcnow(), pair, None)
     assert price_structure.price == pytest.approx(1705.12, rel=APPROX_REL)
 
