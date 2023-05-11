@@ -321,6 +321,12 @@ def start(
         logger.trade("%s: trade execution starting", name)
 
         if backtest_start:
+
+            assert asset_management_mode == AssetManagementMode.backtest, f"Expected backtest mode, got {asset_management_mode}"
+
+            # We cannot have real-time triggered trades when doing backtestin
+            strategy_cycle_trigger = StrategyCycleTrigger.cycle_offset
+
             # Running as a backtest
             execution_context = ExecutionContext(
                 mode=ExecutionMode.backtesting,
