@@ -43,6 +43,7 @@ class EnzymeVaultSyncModel(SyncModel):
                  only_chain_listener=True,
                  hot_wallet: Optional[HotWallet] = None,
                  generic_adapter_address: Optional[str] = None,
+                 scan_chunk_size=10_000,
                  ):
         """
 
@@ -69,12 +70,15 @@ class EnzymeVaultSyncModel(SyncModel):
             The vault specific deployed GenericAdapter smart contract.
 
             Needed to make trades.
+
+        :param scan_chunk_size:
+            Ethereum eth_getLogs JSON-RPC workaround for a horrible blockchain APIs.
         """
         assert vault_address is not None, "Vault address is not given"
         self.web3 = web3
         self.reorg_mon = reorg_mon
         self.vault = Vault.fetch(web3, vault_address, generic_adapter_address)
-        self.scan_chunk_size = 10_000
+        self.scan_chunk_size = scan_chunk_size
         self.only_chain_listener = only_chain_listener
         self.hot_wallet = hot_wallet
 
@@ -299,6 +303,7 @@ class EnzymeVaultSyncModel(SyncModel):
         if not start_block:
             start_block = 1
 
+        logger.info("Starting event scan at the block %d, chunk size is %d", start_block, self.scan_chunk_size)
         deployment_event = self.vault.fetch_deployment_event(reader=extract_events, start_block=start_block)
 
         # Check that we got good event data

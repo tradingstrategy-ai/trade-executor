@@ -277,6 +277,7 @@ def create_sync_model(
                 only_chain_listener=True,
                 hot_wallet=hot_wallet,
                 generic_adapter_address=vault_adapter_address,
+                scan_chunk_size=50_000,
             )
         case _:
             raise NotImplementedError()
