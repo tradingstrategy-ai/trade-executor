@@ -13,6 +13,8 @@ id = Option(None, envvar="EXECUTOR_ID", help="Executor id used when programmatic
                                                   "\n"
                                                   "If not given, take the base of --strategy-file.")
 
+name = Option(None, envvar="NAME", help="Executor name used in the web interface and notifications")
+
 log_level = Option(None, envvar="LOG_LEVEL", help="The Python default logging level. The defaults are 'info' is live execution, 'warning' if backtesting. Set 'disabled' in testing.")
 
 strategy_file = Option(..., envvar="STRATEGY_FILE", help="Python trading strategy module to use for running the strategy")

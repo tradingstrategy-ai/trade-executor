@@ -28,6 +28,7 @@ from tradeexecutor.cli.commands import shared_options
 @app.command()
 def perform_test_trade(
     id: str = shared_options.id,
+    name: Optional[str] = shared_options.name,
 
     strategy_file: Path = shared_options.strategy_file,
     trading_strategy_api_key: str = shared_options.trading_strategy_api_key,
@@ -122,7 +123,8 @@ def perform_test_trade(
     store = create_state_store(Path(state_file))
 
     if store.is_pristine():
-        state = store.create()
+        assert name, "Strategy state file has not been createad. You must pass strategy name to create."
+        state = store.create(name)
     else:
         state = store.load()
 
