@@ -74,6 +74,12 @@ def setup_logging(
     # https://ddtrace.readthedocs.io/en/stable/basic_usage.html
     logging.getLogger("ddtrace").setLevel(logging.INFO)
 
+    # GraphQL library
+    # Writes very noisy and long Introspection query to logs
+    # everytime graphql endpoint is read
+    logging.getLogger("graphql").setLevel(logging.WARNING)
+    logging.getLogger("gql").setLevel(logging.WARNING)
+
     if in_memory_buffer:
         setup_in_memory_logging(logger)
 
