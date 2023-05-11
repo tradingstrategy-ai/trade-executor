@@ -19,7 +19,7 @@ python = ">=3.10,<3.11"
 # web3-ethereum-defi = {path = "deps/web3-ethereum-defi", develop = true}
 # trading-strategy = {path = "deps/trading-strategy", develop = true}
 requests = "^2.27.1"
-web3-ethereum-defi = "0.19.1"
+web3-ethereum-defi = {version="0.19.1", extras=["data"]}
 trading-strategy = "0.15"
 matplotlib = "^3.6.0"
 jupyterlab = "^3.5.0"
