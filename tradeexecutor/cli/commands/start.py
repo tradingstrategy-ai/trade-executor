@@ -26,6 +26,7 @@ from ..log import setup_logging, setup_discord_logging, setup_logstash_logging, 
 from ..loop import ExecutionLoop
 from ..result import display_backtesting_results
 from ..version_info import VersionInfo
+from ...ethereum.enzyme.vault import EnzymeVaultSyncModel
 from ...ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2SimpleRoutingModel
 from ...state.state import State
 from ...state.store import NoneStore
@@ -261,7 +262,19 @@ def start(
             else:
                 raise RuntimeError("Does not know how to set up a state file for this run")
 
-        metadata = create_metadata(name, short_description, long_description, icon_url)
+        if isinstance(sync_model, EnzymeVaultSyncModel):
+            vault = sync_model.vault
+        else:
+            vault = None
+
+        metadata = create_metadata(
+            name,
+            short_description,
+            long_description,
+            icon_url,
+            asset_management_mode,
+            vault=vault,
+        )
 
         # Start the queue that relays info from the web server to the strategy executor
         command_queue = Queue()

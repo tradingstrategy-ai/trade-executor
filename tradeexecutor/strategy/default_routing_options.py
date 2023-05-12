@@ -174,6 +174,7 @@ class TradeRouting(enum.Enum):
         # TODO: Complete the list
         return self in (
             TradeRouting.pancakeswap_busd,
+            TradeRouting.pancakeswap_usdc,
             TradeRouting.trader_joe_usdc,
             TradeRouting.quickswap_usdc
         )

@@ -6,6 +6,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Optional, Tuple
 
+from eth_defi.enzyme.vault import Vault
 from eth_defi.event_reader.reorganisation_monitor import create_reorganisation_monitor
 from eth_defi.gas import GasPriceMethod
 from eth_defi.hotwallet import HotWallet
@@ -29,7 +30,7 @@ from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_live_pricing import uniswap_v3
 from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_valuation import uniswap_v3_sell_valuation_factory
 from tradeexecutor.ethereum.web3config import Web3Config
 from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
-from tradeexecutor.state.metadata import Metadata
+from tradeexecutor.state.metadata import Metadata, OnChainData
 from tradeexecutor.state.store import JSONFileStore, StateStore
 from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.pricing_model import PricingModelFactory
@@ -134,6 +135,7 @@ def create_execution_model(
 
     return execution_model, valuation_model_factory, pricing_model_factory
 
+
 def create_execution_and_sync_model(
         asset_management_mode: AssetManagementMode,
         private_key: str,
@@ -222,16 +224,38 @@ def prepare_cache(executor_id: str, cache_path: Optional[Path]) -> Path:
     return cache_path
 
 
-def create_metadata(name, short_description, long_description, icon_url) -> Metadata:
+def create_metadata(
+        name,
+        short_description,
+        long_description,
+        icon_url,
+        asset_management_mode: AssetManagementMode,
+        vault: Optional[Vault],
+) -> Metadata:
     """Create metadata object from the configuration variables."""
-    return Metadata(
+
+    on_chain_data = OnChainData(asset_management_mode=asset_management_mode)
+
+    if vault:
+        on_chain_data.smart_contracts.update(vault.deployment.contracts.get_all_addresses())
+
+        on_chain_data.smart_contracts.update({
+            "vault": vault.vault.address,
+            "comptroller": vault.comptroller.address,
+            "generic_adapter": vault.generic_adapter.address
+        })
+
+    metadata = Metadata(
         name,
         short_description,
         long_description,
         icon_url,
         datetime.datetime.utcnow(),
         executor_running=True,
+        on_chain_data=on_chain_data,
     )
+
+    return metadata
 
 
 def prepare_executor_id(id: Optional[str], strategy_file: Path) -> str:

@@ -5143,14 +5143,14 @@ tqdm = ">=4.64.1,<5.0.0"
 
 [[package]]
 name = "trading-strategy"
-version = "0.15"
+version = "0.15.1"
 description = "DEX and cryptocurrency trading data for Python - OHCLV, Uniswap, others"
 category = "main"
 optional = false
 python-versions = ">=3.10,<3.11"
 files = [
-    {file = "trading_strategy-0.15-py3-none-any.whl", hash = "sha256:76020d485a055833b41a4ee1b102a74193d8893644931f6381092bb7407fdd2f"},
-    {file = "trading_strategy-0.15.tar.gz", hash = "sha256:b26e8318d9c1488c3943c0c57c6d57aa5fab701db3af5056b53a63633f2657c7"},
+    {file = "trading_strategy-0.15.1-py3-none-any.whl", hash = "sha256:ca61d5ec1cf42e6aa814537247f39ca68615ffe5776884b7994115903b95461a"},
+    {file = "trading_strategy-0.15.1.tar.gz", hash = "sha256:480e7f8b91a54d5952e076f6c81c122af25a111313ca45db7476ce0e3b186248"},
 ]
 
 [package.dependencies]
@@ -5524,14 +5524,14 @@ tester = ["eth-tester[py-evm] (==v0.8.0-b.3)", "py-geth (>=3.11.0)"]
 
 [[package]]
 name = "web3-ethereum-defi"
-version = "0.19.1"
+version = "0.19.2"
 description = "Python library for Uniswap, Aave, ChainLink, Enzyme and other protocols on BNB Chain, Polygon, Ethereum and other blockchains"
 category = "main"
 optional = false
 python-versions = ">=3.10,<3.11"
 files = [
-    {file = "web3_ethereum_defi-0.19.1-py3-none-any.whl", hash = "sha256:dcdac86b5f9fb95f8fc4ac664a7d944b7ca239907d85e2544b6b9de401dce8f0"},
-    {file = "web3_ethereum_defi-0.19.1.tar.gz", hash = "sha256:ca5d430b01d5e734c88609128e555872e6e86c8985fa248732e669c061677a38"},
+    {file = "web3_ethereum_defi-0.19.2-py3-none-any.whl", hash = "sha256:8c297cad7a695f5cda27f08e09a38d0ba67669bbd5a0050d2df20f5d20c3e35f"},
+    {file = "web3_ethereum_defi-0.19.2.tar.gz", hash = "sha256:b4b334595a23bef2fa352eecb431631b61484f13ebefedec0f554fd1b831bd9a"},
 ]
 
 [package.dependencies]
@@ -6036,4 +6036,4 @@ web-server = ["pyramid", "WebTest", "openapi-core", "pyramid-openapi3", "waitres
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.10,<3.11"
-content-hash = "03a5dff891172fc04b3d08c4b21c059911c78373d491b7c097891d07cb83c79c"
+content-hash = "3b9a7400c0cd46f26ad06e6c28b4f05fa55f312fab436906e4dd38bc4309de77"

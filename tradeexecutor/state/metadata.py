@@ -4,10 +4,66 @@ Metadata is not stored as the part of the state, but configured
 on the executor start up.
 """
 import datetime
-from dataclasses import dataclass
-from typing import Optional
+from dataclasses import dataclass, field
+from typing import Optional, Dict, TypedDict
 
 from dataclasses_json import dataclass_json
+
+from tradeexecutor.state.types import ZeroExAddress
+from tradeexecutor.strategy.execution_model import AssetManagementMode
+
+
+class EnzymeSmartContracts(TypedDict):
+    """Various smart contract addresses associated with Enzyme.
+
+    - Vault specific contracts
+
+    - Enzyme chain specific contracts
+
+    See :py:class:`eth_defi.enzyme.deployment.EnzymeContracts` for the full list of protocol specific contracts.
+    """
+
+    #: Vault address
+    vault: ZeroExAddress
+
+    #: Comptroller proxy contract for vault
+    comptroller: ZeroExAddress
+
+    #: Generic adapter doing asset management transactions
+    generic_adapter: ZeroExAddress
+
+    #: Enzyme contract
+    gas_relay_paymaster_lib: ZeroExAddress
+
+    #: Enzyme contract
+    gas_relay_paymaster_factory: ZeroExAddress
+
+    #: Enzyme contract
+    integration_manager: ZeroExAddress
+
+    #: Calculate values for various positions
+    #:
+    #: See https://github.com/enzymefinance/protocol/blob/v4/contracts/persistent/off-chain/fund-value-calculator/IFundValueCalculator.sol
+    fund_value_calculator: ZeroExAddress
+
+
+@dataclass_json
+@dataclass
+class OnChainData:
+    """Smart contract information for a strategy.
+
+    Needed for frontend deposit/redemptions/etc.
+    """
+
+    #: Is this s hot wallet strategy or vaulted strategy
+    #:
+    asset_management_mode: AssetManagementMode = field(default=AssetManagementMode.dummy)
+
+    #: Smart contracts configured for this strategy.
+    #:
+    #: Depend on the vault backend.
+    #:
+    smart_contracts: EnzymeSmartContracts = field(default_factory=dict)
 
 
 @dataclass_json
@@ -37,6 +93,10 @@ class Metadata:
     #: Not really a part of metadata, but added here to make frontend
     #: queries faster. See also :py:class:`tradeexecutor.state.executor_state.ExecutorState`.
     executor_running: bool
+
+    #: List of smart contracts and related web3 interaction information for this strategy.
+    #:
+    on_chain_data: OnChainData = field(default_factory=OnChainData)
 
     @staticmethod
     def create_dummy() -> "Metadata":

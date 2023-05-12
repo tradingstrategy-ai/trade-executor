@@ -744,6 +744,12 @@ class TradingPosition:
         t = self.get_last_trade()
         if not t:
             return None
+
+        # TODO: Not sure what is going on here
+        if len(t.blockchain_transactions) == 0:
+            logger.warning("Trade does not have transactions: %s", self)
+            return None
+
         return t.blockchain_transactions[-1].tx_hash
 
     def set_revaluation_data(self, last_pricing_at: datetime.datetime, last_token_price: float):
