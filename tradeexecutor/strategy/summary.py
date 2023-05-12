@@ -5,6 +5,7 @@ from typing import Optional, List, Tuple
 
 from dataclasses_json import dataclass_json
 
+from tradeexecutor.state.metadata import OnChainData
 from tradeexecutor.state.types import USDollarAmount
 
 
@@ -85,6 +86,10 @@ class StrategySummary:
 
     #: For <img src>
     icon_url: Optional[str]
+
+    #: List of smart contracts and related web3 interaction information for this strategy.
+    #:
+    on_chain_data: OnChainData 
 
     #: When the instance was started last time
     #:
