@@ -135,6 +135,7 @@ def create_execution_model(
 
     return execution_model, valuation_model_factory, pricing_model_factory
 
+
 def create_execution_and_sync_model(
         asset_management_mode: AssetManagementMode,
         private_key: str,

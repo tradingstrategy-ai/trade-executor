@@ -32,6 +32,9 @@ class HotWalletSyncModel(SyncModel):
     def init(self):
         self.hot_wallet.sync_nonce(self.web3)
 
+    def get_hot_wallet(self) -> Optional[HotWallet]:
+        return self.hot_wallet
+
     def sync_initial(self, state: State):
         """Set u[ initial sync details."""
 
