@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from typing import Optional, Dict, TypedDict
 
 from dataclasses_json import dataclass_json
+from tradingstrategy.chain import ChainId
 
 from tradeexecutor.state.types import ZeroExAddress
 from tradeexecutor.strategy.execution_model import AssetManagementMode
@@ -54,6 +55,9 @@ class OnChainData:
 
     Needed for frontend deposit/redemptions/etc.
     """
+
+    #: On which this strategy runs on
+    chain_id: ChainId = field(default=ChainId.unknown)
 
     #: Is this s hot wallet strategy or vaulted strategy
     #:

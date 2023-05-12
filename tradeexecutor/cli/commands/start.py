@@ -273,6 +273,7 @@ def start(
             long_description,
             icon_url,
             asset_management_mode,
+            chain_id=mod.chain_id,
             vault=vault,
         )
 

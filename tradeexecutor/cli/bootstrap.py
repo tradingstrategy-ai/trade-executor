@@ -230,11 +230,12 @@ def create_metadata(
         long_description,
         icon_url,
         asset_management_mode: AssetManagementMode,
+        chain_id: ChainId,
         vault: Optional[Vault],
 ) -> Metadata:
     """Create metadata object from the configuration variables."""
 
-    on_chain_data = OnChainData(asset_management_mode=asset_management_mode)
+    on_chain_data = OnChainData(asset_management_mode=asset_management_mode, chain_id=chain_id)
 
     if vault:
         on_chain_data.smart_contracts.update(vault.deployment.contracts.get_all_addresses())

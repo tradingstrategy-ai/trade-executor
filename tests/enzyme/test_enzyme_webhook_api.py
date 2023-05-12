@@ -46,6 +46,7 @@ def server_url(store, vault):
         "Long desc",
         "https://place-puppy.com/300x300",
         asset_management_mode=AssetManagementMode.enzyme,
+        chain_id=ChainId.polygon,
         vault=vault)
     server = create_webhook_server("127.0.0.1", 5000, "test", "test", queue, store, metadata, execution_state)
     server_url = "http://test:test@127.0.0.1:5000"
@@ -63,6 +64,7 @@ def test_enzyme_metadata(logger, server_url, vault: Vault):
     assert data["icon_url"] == "https://place-puppy.com/300x300"
     assert data["executor_running"] == True
     assert data["on_chain_data"]["asset_management_mode"] == "enzyme"
+    assert data["on_chain_data"]["chain_id"] == "polygon"
     assert data["on_chain_data"]["smart_contracts"]["vault"] == vault.vault.address
     assert data["on_chain_data"]["smart_contracts"]["comptroller"] == vault.comptroller.address
     assert data["on_chain_data"]["smart_contracts"]["generic_adapter"] == vault.generic_adapter.address
