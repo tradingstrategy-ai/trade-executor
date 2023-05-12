@@ -7,6 +7,8 @@ import requests
 
 from eth_defi.enzyme.deployment import POLYGON_DEPLOYMENT
 from eth_defi.enzyme.vault import Vault
+from tradingstrategy.chain import ChainId
+
 from tradeexecutor.cli.bootstrap import create_metadata
 from tradeexecutor.cli.log import setup_in_memory_logging, get_ring_buffer_handler
 from tradeexecutor.state.metadata import Metadata
@@ -64,7 +66,7 @@ def test_enzyme_metadata(logger, server_url, vault: Vault):
     assert data["icon_url"] == "https://place-puppy.com/300x300"
     assert data["executor_running"] == True
     assert data["on_chain_data"]["asset_management_mode"] == "enzyme"
-    assert data["on_chain_data"]["chain_id"] == "polygon"
+    assert data["on_chain_data"]["chain_id"] == 137
     assert data["on_chain_data"]["smart_contracts"]["vault"] == vault.vault.address
     assert data["on_chain_data"]["smart_contracts"]["comptroller"] == vault.comptroller.address
     assert data["on_chain_data"]["smart_contracts"]["generic_adapter"] == vault.generic_adapter.address
