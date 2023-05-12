@@ -5524,14 +5524,14 @@ tester = ["eth-tester[py-evm] (==v0.8.0-b.3)", "py-geth (>=3.11.0)"]
 
 [[package]]
 name = "web3-ethereum-defi"
-version = "0.19.1"
+version = "0.19.2"
 description = "Python library for Uniswap, Aave, ChainLink, Enzyme and other protocols on BNB Chain, Polygon, Ethereum and other blockchains"
 category = "main"
 optional = false
 python-versions = ">=3.10,<3.11"
 files = [
-    {file = "web3_ethereum_defi-0.19.1-py3-none-any.whl", hash = "sha256:dcdac86b5f9fb95f8fc4ac664a7d944b7ca239907d85e2544b6b9de401dce8f0"},
-    {file = "web3_ethereum_defi-0.19.1.tar.gz", hash = "sha256:ca5d430b01d5e734c88609128e555872e6e86c8985fa248732e669c061677a38"},
+    {file = "web3_ethereum_defi-0.19.2-py3-none-any.whl", hash = "sha256:8c297cad7a695f5cda27f08e09a38d0ba67669bbd5a0050d2df20f5d20c3e35f"},
+    {file = "web3_ethereum_defi-0.19.2.tar.gz", hash = "sha256:b4b334595a23bef2fa352eecb431631b61484f13ebefedec0f554fd1b831bd9a"},
 ]
 
 [package.dependencies]
@@ -6036,4 +6036,4 @@ web-server = ["pyramid", "WebTest", "openapi-core", "pyramid-openapi3", "waitres
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.10,<3.11"
-content-hash = "03a5dff891172fc04b3d08c4b21c059911c78373d491b7c097891d07cb83c79c"
+content-hash = "3622060f3c2557e549e8542a5369f997d4d2066d8efd7adce9128558eb5ad98a"
