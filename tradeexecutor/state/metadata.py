@@ -20,7 +20,7 @@ class EnzymeSmartContracts(TypedDict):
 
     - Enzyme chain specific contracts
 
-    See :py:class:`eth_defi.enzyme.deployment.EnzymeContracts` for more protocol specific contracts.
+    See :py:class:`eth_defi.enzyme.deployment.EnzymeContracts` for the full list of protocol specific contracts.
     """
 
     #: Vault address
@@ -32,12 +32,19 @@ class EnzymeSmartContracts(TypedDict):
     #: Generic adapter doing asset management transactions
     generic_adapter: ZeroExAddress
 
+    #: Enzyme contract
     gas_relay_paymaster_lib: ZeroExAddress
 
+    #: Enzyme contract
     gas_relay_paymaster_factory: ZeroExAddress
 
+    #: Enzyme contract
     integration_manager: ZeroExAddress
 
+    #: Calculate values for various positions
+    #:
+    #: See https://github.com/enzymefinance/protocol/blob/v4/contracts/persistent/off-chain/fund-value-calculator/IFundValueCalculator.sol
+    fund_value_calculator: ZeroExAddress
 
 
 @dataclass_json
