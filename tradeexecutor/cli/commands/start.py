@@ -246,6 +246,7 @@ def start(
             min_gas_balance=min_gas_balance,
             vault_address=vault_address,
             vault_adapter_address=vault_adapter_address,
+            routing_hint=mod.trade_routing,
         )
 
         approval_model = create_approval_model(approval_type)
