@@ -76,6 +76,7 @@ def test_cli_check_wallet(
         "MINUMUM_GAS_BALANCE": "0",
         "UNIT_TESTING": "true",
         "LOG_LEVEL": "disabled",
+        "ASSET_MANAGEMENT_MODE": "hot_wallet",
     }
 
     runner = CliRunner()
@@ -162,6 +163,7 @@ def test_cli_live_trading(
 
         "UNIT_TESTING": "true",
         "LOG_LEVEL": "disabled",
+        "ASSET_MANAGEMENT_MODE": "hot_wallet",
     }
 
     runner = CliRunner()
