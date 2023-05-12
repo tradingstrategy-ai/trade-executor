@@ -23,7 +23,7 @@ latest_version=${latest_tag:1}
 
 latest_commit=`git log --oneline -1`
 
-build_url="https://github.com/$REPO/pkgs/container/oracle"
+build_url="https://github.com/$REPO/pkgs/container/trade-executor"
 
 # https://ryanstutorials.net/bash-scripting-tutorial/bash-arithmetic.php
 let "new_version = $latest_version + 1"
