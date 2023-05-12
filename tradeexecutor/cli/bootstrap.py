@@ -246,6 +246,13 @@ def create_metadata(
             "generic_adapter": vault.generic_adapter.address
         })
 
+        if vault.deployment.contracts.fund_value_calculator is None:
+            # Hot fix for Polygon
+            # TODO: Fix properly
+           on_chain_data.smart_contracts.update({
+                "fund_value_calculator": "0xcdf038Dd3b66506d2e5378aee185b2f0084B7A33",
+            })
+
     metadata = Metadata(
         name,
         short_description,
