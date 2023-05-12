@@ -264,6 +264,10 @@ def start(
 
         if isinstance(sync_model, EnzymeVaultSyncModel):
             vault = sync_model.vault
+            if vault.deployment.contracts.fund_value_calculator is None:
+                # Hot fix for Polygon
+                # TODO: Fix properly
+                vault.deployment.contracts.fund_value_calculator = "0xcdf038Dd3b66506d2e5378aee185b2f0084B7A33"
         else:
             vault = None
 
