@@ -179,6 +179,9 @@ def visualise_heatmap_2d(
 
         Created by :py:func:`analyse_grid_search_result`.
 
+    :param color_continuous_scale:
+        The name of Plotly gradient used for the colour scale.
+
     :return:
         Plotly Figure object
     """
