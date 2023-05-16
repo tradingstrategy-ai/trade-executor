@@ -50,7 +50,7 @@ def has_crossover_occurred(
 
     # trim series2 to the same length as series1 (using latest values)
     if len(series2) > len(series1):
-        series2 = series2[-len(series1):]
+        series2 = series2.iloc[-len(series1):]
 
     _validate_args(
         series1, 
@@ -67,12 +67,12 @@ def has_crossover_occurred(
         if i == 0:
             continue
 
-        if (series1[i-1] <= series2[i-1] and x > series2[i]):
+        if (series1.iloc[i-1] <= series2.iloc[i-1] and x > series2.iloc[i]):
             # cross_index will be first index after the crossover
             cross_index = i
 
             # cross value if value of second series directly after the crossover
-            cross_value = series2[i]
+            cross_value = series2.iloc[i]
 
             # to avoid division by zero
             if cross_value == 0:
@@ -83,33 +83,33 @@ def has_crossover_occurred(
     if not cross_index:
         return False
 
-    after_cross1 = series1[cross_index-1:]
-    # min_values_above_cross
-    if len(after_cross1) < min_values_above_cross:
-        return False
+    after_cross1 = series1.iloc[cross_index:]
+    
     # buffer_above_percent
     if not (max(after_cross1) - cross_value)/cross_value >= buffer_above_percent:
         return False
 
     # min_values_above_cross
-    after_cross1_cut = after_cross1[:min_values_above_cross]
-    if any(x <= series2[cross_index] for x in after_cross1_cut):
+    if len(after_cross1) < min_values_above_cross:
+        return False
+    after_cross1_cut = after_cross1.iloc[:min_values_above_cross]
+    if any(x <= cross_value for x in after_cross1_cut):
         return False
 
-    before_cross1 = series1[:cross_index-1]
+    before_cross1 = series1.iloc[:cross_index]
     # make sure there are values below the cross
     if not any(x < cross_value for x in before_cross1):
         return False
-    # min_values_below_cross
-    if len(series1[:-cross_index]) < min_values_below_cross:
-        return False
-    # buffer_below_percent
-    if not (cross_value - min(before_cross1))/cross_value >= buffer_below_percent:
-        return False
 
     # min_values_below_cross
-    before_cross1_cut = before_cross1[-min_values_below_cross:]
-    if any(x >= series2[cross_index] for x in before_cross1_cut):
+    if len(before_cross1) < min_values_below_cross:
+        return False
+    before_cross1_cut = before_cross1.iloc[-min_values_below_cross:]
+    if any(x > cross_value for x in before_cross1_cut):
+        return False
+    
+    # buffer_below_percent
+    if not (cross_value - min(before_cross1))/cross_value >= buffer_below_percent:
         return False
 
     # min_gradient
@@ -163,7 +163,7 @@ def has_crossunder_occurred(
 
     # trim series2 to the same length as series1 (using latest values)
     if len(series2) > len(series1):
-        series2 = series2[-len(series1):]
+        series2 = series2.iloc[-len(series1):]
 
     _validate_args(
         series1, 
@@ -180,11 +180,11 @@ def has_crossunder_occurred(
         if i == 0:
             continue
 
-        if (series1[i-1] >= series2[i-1] and x < series2[i]):
+        if (series1.iloc[i-1] >= series2.iloc[i-1] and x < series2.iloc[i]):
             cross_index = i
 
             # cross value is value of second series directly after the crossunder
-            cross_value = series2[i]
+            cross_value = series2.iloc[i]
 
             # to avoid division by zero
             if cross_value == 0:
@@ -193,27 +193,27 @@ def has_crossunder_occurred(
     if not cross_index:
         return False
 
-    after_cross1 = series1[cross_index-1:]
+    after_cross1 = series1.iloc[cross_index:]
     if len(after_cross1) < min_values_below_cross:
         return False
     if not (cross_value - min(after_cross1))/cross_value >= buffer_below_percent:
         return False
 
-    after_cross1_cut = after_cross1[:min_values_below_cross]
-    if any(x >= series2[cross_index] for x in after_cross1_cut):
+    after_cross1_cut = after_cross1.iloc[:min_values_below_cross]
+    if any(x > cross_value for x in after_cross1_cut):
         return False
 
-    before_cross1 = series1[:cross_index-1]
+    before_cross1 = series1.iloc[:cross_index]
     # make sure there are values above the cross
     if not any(x > cross_value for x in before_cross1):
         return False
-    if len(series1[:-cross_index]) < min_values_above_cross:
+    if len(series1.iloc[:-cross_index]) < min_values_above_cross:
         return False
     if not (max(before_cross1) - cross_value)/cross_value >= buffer_above_percent:
         return False
 
-    before_cross1_cut = before_cross1[-min_values_above_cross:]
-    if any(x <= series2[cross_index] for x in before_cross1_cut):
+    before_cross1_cut = before_cross1.iloc[-min_values_above_cross:]
+    if any(x < cross_value for x in before_cross1_cut):
         return False
 
     # min_gradient
@@ -230,8 +230,10 @@ def has_crossunder_occurred(
 
 
 def _convert_list_to_series(series):
+    
     if isinstance(series, list):
-        series = pd.Series(series)
+        return pd.Series(series)
+    
     return series
 
 
