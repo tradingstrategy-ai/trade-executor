@@ -76,7 +76,7 @@ def has_crossover_occurred(
         
         if (series1.iloc[i-1] <= series2.iloc[i-1] and x > series2.iloc[i]):
             # cross_index will be first index after the crossover
-            cross_index = i
+            cross_index = -(len(series1) - i)
 
             # cross value if value of second series directly after the crossover
             cross_value = series2.iloc[i]
@@ -196,7 +196,7 @@ def has_crossunder_occurred(
             continue
 
         if (series1.iloc[i-1] >= series2.iloc[i-1] and x < series2.iloc[i]):
-            cross_index = i
+            cross_index = -(len(series1) - i)
 
             # cross value is value of second series directly after the crossunder
             cross_value = series2.iloc[i]
@@ -250,6 +250,10 @@ def _get_return_value(
         cross_index: int | None,
     ) -> bool:
     """Return the correct return value based on the value of return_cross_index."""
+    
+    if return_value == False:
+        cross_index = None
+
     if return_cross_index:
         return return_value, cross_index
     else:
