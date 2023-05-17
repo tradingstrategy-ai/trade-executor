@@ -7,7 +7,7 @@
 import pandas as pd
     
     
-def has_crossed_over(
+def crossover(
         series1: pd.Series, 
         series2: pd.Series,
         lookback_period: int = 2,
@@ -20,6 +20,12 @@ def has_crossed_over(
         
     :param series2:
         A pandas.Series object.
+
+    :lookback_period:
+        The number of periods to look back to detect a crossover.
+    
+    :param must_return_index:
+        If True, also returns the index of the crossover.
         
     :returns:
         bool. True if the series has crossed over the other series in the latest iteration, False otherwise.
@@ -56,7 +62,7 @@ def has_crossed_over(
         return has_crossed
 
 
-def has_crossed_under(
+def crossunder(
         series1: pd.Series, 
         series2: pd.Series,
         lookback_period: int = 2,
@@ -69,6 +75,12 @@ def has_crossed_under(
         
     :param series2:
         A pandas.Series object.
+
+    :lookback_period:
+        The number of periods to look back to detect a crossover.
+    
+    :param must_return_index:
+        If True, also returns the index of the crossover.
         
     :returns:
         bool. True if the series has crossed over the other series in the latest iteration, False otherwise.
