@@ -5,7 +5,8 @@
 """
 
 import pandas as pd
-    
+import operator
+
     
 def crossover(
         series1: pd.Series, 
@@ -32,34 +33,7 @@ def crossover(
         
     """
 
-    assert type(series1) == type(series2) == pd.Series, "Series must be pandas.Series"
-    
-    if len(series1) == 1 or len(series2) == 1:
-        return False
-    
-    lookback1 = series1.iloc[-lookback_period:]
-    lookback2 = series2.iloc[-lookback_period:]
-
-    # get index of cross
-    cross_index = None
-    has_crossed = False
-    locked = True
-    for i, (x,y) in enumerate(zip(lookback1, lookback2)):
-        
-        if x > y and not locked:
-            has_crossed = True
-            cross_index = -(len(lookback1) - i)
-            locked = True
-            # don't break since we want to get the latest cross
-        
-        # x must be below y before we can cross
-        if x < y:
-            locked = False
-
-    if must_return_index:
-        return has_crossed, cross_index
-    else:
-        return has_crossed
+    return _crossover_check(series1, series2, lookback_period, must_return_index, operator.gt, operator.lt)
 
 
 def crossunder(
@@ -87,31 +61,54 @@ def crossunder(
         
     """
 
+    return _crossover_check(series1, series2, lookback_period, must_return_index, operator.lt, operator.gt)
+
+
+def _crossover_check(
+    series1, 
+    series2, 
+    lookback_period, 
+    must_return_index, 
+    comparison_operator,
+    unlock_operator,
+):
+    
     assert type(series1) == type(series2) == pd.Series, "Series must be pandas.Series"
+    assert comparison_operator != unlock_operator, "comparison_operator and unlock_operator must be different"
     
-    assert len(series1) >= lookback_period, "Series must be longer than or equal to the lookback period"
-    assert len(series2) >= lookback_period, "Series must be longer than or equal to the lookback period"
-    
-    lookback1 = series1.iloc[-lookback_period:]
-    lookback2 = series2.iloc[-lookback_period:]
+    lookback1, lookback2 = _get_lookback(series1, series2, lookback_period)
 
     # get index of cross
     cross_index = None
     has_crossed = False
     locked = True
+    
     for i, (x,y) in enumerate(zip(lookback1, lookback2)):
         
-        if x < y and not locked:
-            has_crossed = True
-            cross_index = -(len(lookback1) - i)
-            locked = True
-            # don't break since we want to get the latest cross
-        
-        # x must be below y before we can cross
-        if x > y:
-            locked = False
+            if comparison_operator(x, y) and not locked:
+                has_crossed = True
+                cross_index = -(len(lookback1) - i)
+                locked = True
+                # don't break since we want to get the latest cross
+            
+            
+            if unlock_operator(x, y):
+                locked = False
 
     if must_return_index:
         return has_crossed, cross_index
     else:
         return has_crossed
+    
+
+def _get_lookback(series1, series2, lookback_period):
+    
+    if len(series1) < lookback_period or len(series2) < lookback_period:
+        lookback_period = min(len(series1), len(series2))
+    
+    lookback1 = series1.iloc[-lookback_period:]
+    lookback2 = series2.iloc[-lookback_period:]
+
+    return lookback1,lookback2
+
+    
