@@ -7,7 +7,12 @@
 import pandas as pd
     
     
-def is_crossover(series1: pd.Series, series2: pd.Series) -> bool:
+def has_crossed_over(
+        series1: pd.Series, 
+        series2: pd.Series,
+        lookback_period: int = 2,
+        must_return_index: bool = False,
+) -> bool:
     """Detect if two series have cross over. To be used in decide_trades() 
     
     :param series1:
@@ -19,33 +24,44 @@ def is_crossover(series1: pd.Series, series2: pd.Series) -> bool:
     :returns:
         bool. True if the series has crossed over the other series in the latest iteration, False otherwise.
         
-    E.g. 
-    
-    decide_trades(...)
-        ...
-        if is_crossover(fast_ema_series, slow_ema_series):
-            visualisation.plot_indicator(timestamp, "Crossover 1", PlotKind.technical_indicator_overlay_on_detached, fast_ema_latest, colour="blue", detached_overlay_name="Fast EMA", plot_shape=PlotShape.marker)
-        ...
     """
 
     assert type(series1) == type(series2) == pd.Series, "Series must be pandas.Series"
     
-    s1_latest = series1.iloc[-1]
-    s2_latest = series2.iloc[-1]
-    
     if len(series1) == 1 or len(series2) == 1:
         return False
     
-    s1_prev = series1.iloc[-2]
-    s2_prev = series2.iloc[-2]
+    lookback1 = series1.iloc[-lookback_period:]
+    lookback2 = series2.iloc[-lookback_period:]
 
-    if s1_latest > s2_latest and s1_prev <= s2_prev:
-        return True
+    # get index of cross
+    cross_index = None
+    has_crossed = False
+    locked = True
+    for i, (x,y) in enumerate(zip(lookback1, lookback2)):
+        
+        if x > y and not locked:
+            has_crossed = True
+            cross_index = -(len(lookback1) - i)
+            locked = True
+            # don't break since we want to get the latest cross
+        
+        # x must be below y before we can cross
+        if x < y:
+            locked = False
+
+    if must_return_index:
+        return has_crossed, cross_index
     else:
-        return False
-    
+        return has_crossed
 
-def is_crossunder(series1: pd.Series, series2: pd.Series) -> bool:
+
+def has_crossed_under(
+        series1: pd.Series, 
+        series2: pd.Series,
+        lookback_period: int = 2,
+        must_return_index: bool = False,
+) -> bool:
     """Detect if two series have cross over. To be used in decide_trades() 
     
     :param series1:
@@ -57,26 +73,33 @@ def is_crossunder(series1: pd.Series, series2: pd.Series) -> bool:
     :returns:
         bool. True if the series has crossed over the other series in the latest iteration, False otherwise.
         
-    E.g. 
-    
-    decide_trades(...)
-        ...
-        if is_crossover(fast_ema_series, slow_ema_series):
-            visualisation.plot_indicator(timestamp, "Crossover 1", PlotKind.technical_indicator_overlay_on_detached, fast_ema_latest, colour="blue", detached_overlay_name="Fast EMA", plot_shape=PlotShape.marker)
-        ...
     """
+
     assert type(series1) == type(series2) == pd.Series, "Series must be pandas.Series"
     
-    s1_latest = series1.iloc[-1]
-    s2_latest = series2.iloc[-1]
+    assert len(series1) >= lookback_period, "Series must be longer than or equal to the lookback period"
+    assert len(series2) >= lookback_period, "Series must be longer than or equal to the lookback period"
     
-    if len(series1) == 1 or len(series2) == 1:
-        return False
-    
-    s1_prev = series1.iloc[-2]
-    s2_prev = series2.iloc[-2]
+    lookback1 = series1.iloc[-lookback_period:]
+    lookback2 = series2.iloc[-lookback_period:]
 
-    if s1_latest < s2_latest and s1_prev >= s2_prev:
-        return True
+    # get index of cross
+    cross_index = None
+    has_crossed = False
+    locked = True
+    for i, (x,y) in enumerate(zip(lookback1, lookback2)):
+        
+        if x < y and not locked:
+            has_crossed = True
+            cross_index = -(len(lookback1) - i)
+            locked = True
+            # don't break since we want to get the latest cross
+        
+        # x must be below y before we can cross
+        if x > y:
+            locked = False
+
+    if must_return_index:
+        return has_crossed, cross_index
     else:
-        return False
+        return has_crossed
