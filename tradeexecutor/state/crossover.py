@@ -8,7 +8,7 @@ import pandas as pd
 import operator
 
     
-def crossover(
+def contains_cross_over(
         series1: pd.Series, 
         series2: pd.Series,
         lookback_period: int = 2,
@@ -30,13 +30,14 @@ def crossover(
         
     :returns:
         bool. True if the series has crossed over the other series in the latest iteration, False otherwise.
+        If must_return_index is True, also returns the index of the crossover. Note the index is a negative index e.g. -1 is the latest index, -2 is the second latest etc.
         
     """
 
-    return _crossover_check(series1, series2, lookback_period, must_return_index, operator.gt, operator.lt)
+    return _cross_check(series1, series2, lookback_period, must_return_index, operator.gt, operator.lt)
 
 
-def crossunder(
+def contains_cross_under(
         series1: pd.Series, 
         series2: pd.Series,
         lookback_period: int = 2,
@@ -56,15 +57,15 @@ def crossunder(
     :param must_return_index:
         If True, also returns the index of the crossover.
         
-    :returns:
-        bool. True if the series has crossed over the other series in the latest iteration, False otherwise.
+    bool. True if the series has crossed under the other series in the latest iteration, False otherwise.
+        If must_return_index is True, also returns the index of the crossover. Note the index is a negative index e.g. -1 is the latest index, -2 is the second latest etc.
         
     """
 
-    return _crossover_check(series1, series2, lookback_period, must_return_index, operator.lt, operator.gt)
+    return _cross_check(series1, series2, lookback_period, must_return_index, operator.lt, operator.gt)
 
 
-def _crossover_check(
+def _cross_check(
     series1, 
     series2, 
     lookback_period, 
