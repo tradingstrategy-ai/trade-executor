@@ -14,7 +14,7 @@ def contains_cross_over(
         lookback_period: int = 2,
         must_return_index: bool = False,
 ) -> bool:
-    """Detect if two series have cross over. To be used in decide_trades() 
+    """Detect if the first series has crossed over the second. To be used in decide_trades() 
     
     :param series1:
         A pandas.Series object.
@@ -43,7 +43,7 @@ def contains_cross_under(
         lookback_period: int = 2,
         must_return_index: bool = False,
 ) -> bool:
-    """Detect if two series have cross over. To be used in decide_trades() 
+    """Detect if the first series has crossed under the second. To be used in decide_trades() 
     
     :param series1:
         A pandas.Series object.
@@ -74,7 +74,13 @@ def _cross_check(
     unlock_operator,
 ):
     
-    assert type(series1) == type(series2) == pd.Series, "Series must be pandas.Series"
+    assert type(series1) == pd.Series, "Series must be pandas.Series"
+    assert type(series2) == pd.Series, "Series must be pandas.Series"
+    assert type(lookback_period) == int, "lookback_period must be int"
+    assert type(must_return_index) == bool, "must_return_index must be bool"
+    assert lookback_period >= 2, "lookback_period must be at least 2"
+    assert len(series1) >= 2, "Series must have at least 2 elements"
+    assert len(series2) >= 2, "Series must have at least 2 elements"
     assert comparison_operator != unlock_operator, "comparison_operator and unlock_operator must be different"
     
     lookback1, lookback2 = _get_lookback(series1, series2, lookback_period)
