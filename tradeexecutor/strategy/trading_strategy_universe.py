@@ -1159,7 +1159,7 @@ def load_pair_data_for_single_exchange(
 
         dataset = load_pair_data_for_single_exchange(
             client,
-            pair=TRADING_PAIR,
+            pair_tickers=[TRADING_PAIR],
             execution_context=execution_context,
             universe_options=universe_options,
         )
