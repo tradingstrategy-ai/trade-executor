@@ -62,6 +62,8 @@ class GridParameter:
         value = self.value
         if type(value) in (float, int, str):
             return f"{self.name}={self.value}"
+        if value is None:
+            return f"{self.name}=none"
         else:
             raise NotImplementedError(f"We do not support filename conversion for value {type(value)}={value}")
 

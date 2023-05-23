@@ -1238,9 +1238,9 @@ def load_pair_data_for_single_exchange(
         Depends on the strategy. Defaults to load all data.
     """
 
-    assert isinstance(client, Client)
-    assert isinstance(time_bucket, TimeBucket)
-    assert isinstance(execution_context, ExecutionContext)
+    assert isinstance(client, Client), f"Expected Client, got {type(client)}"
+    assert isinstance(time_bucket, TimeBucket), f"Expected TimeBucket, got {type(time_bucket)}"
+    assert isinstance(execution_context, ExecutionContext), f"Expected ExecutionContext, got {type(execution_context)}"
 
     if chain_id is not None:
         assert isinstance(chain_id, ChainId)
