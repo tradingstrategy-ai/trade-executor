@@ -252,7 +252,7 @@ def create_metadata(
             "vault": vault.vault.address,
             "comptroller": vault.comptroller.address,
             "generic_adapter": vault.generic_adapter.address,
-            "payment_forwarder": vault.payment_forwarder.address
+            "payment_forwarder": vault.payment_forwarder.address if vault.payment_forwarder else None,
         })
 
         if vault.deployment.contracts.fund_value_calculator is None:
