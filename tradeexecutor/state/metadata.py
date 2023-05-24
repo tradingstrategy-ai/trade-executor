@@ -47,6 +47,10 @@ class EnzymeSmartContracts(TypedDict):
     #: See https://github.com/enzymefinance/protocol/blob/v4/contracts/persistent/off-chain/fund-value-calculator/IFundValueCalculator.sol
     fund_value_calculator: ZeroExAddress
 
+    #: VaultUSDCPaymentForwarder.sol
+    #:
+    payment_forwarder: ZeroExAddress
+
 
 @dataclass_json
 @dataclass

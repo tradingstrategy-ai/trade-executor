@@ -251,7 +251,8 @@ def create_metadata(
         on_chain_data.smart_contracts.update({
             "vault": vault.vault.address,
             "comptroller": vault.comptroller.address,
-            "generic_adapter": vault.generic_adapter.address
+            "generic_adapter": vault.generic_adapter.address,
+            "payment_forwarder": vault.payment_forwarder.address
         })
 
         if vault.deployment.contracts.fund_value_calculator is None:

@@ -71,4 +71,6 @@ def test_enzyme_metadata(logger, server_url, vault: Vault):
     assert data["on_chain_data"]["smart_contracts"]["comptroller"] == vault.comptroller.address
     assert data["on_chain_data"]["smart_contracts"]["generic_adapter"] == vault.generic_adapter.address
     assert data["on_chain_data"]["smart_contracts"]["fund_value_calculator"] == vault.deployment.contracts.fund_value_calculator.address
+    # TODO: Not covered in tests yet
+    assert data["on_chain_data"]["smart_contracts"]["payment_forwarder"] == None
 
