@@ -64,6 +64,7 @@ def start(
     asset_management_mode: AssetManagementMode = shared_options.asset_management_mode,
     vault_address: Optional[str] = shared_options.vault_address,
     vault_adapter_address: Optional[str] = shared_options.vault_adapter_address,
+    vault_payment_forwarder_address: Optional[str] = shared_options.vault_payment_forwarder,
     trading_strategy_api_key: str = shared_options.trading_strategy_api_key,
 
     # Webhook server options
@@ -247,6 +248,7 @@ def start(
             min_gas_balance=min_gas_balance,
             vault_address=vault_address,
             vault_adapter_address=vault_adapter_address,
+            vault_payment_forwarder_address=vault_payment_forwarder_address,
             routing_hint=mod.trade_routing,
         )
 

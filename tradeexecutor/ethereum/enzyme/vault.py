@@ -43,6 +43,7 @@ class EnzymeVaultSyncModel(SyncModel):
                  only_chain_listener=True,
                  hot_wallet: Optional[HotWallet] = None,
                  generic_adapter_address: Optional[str] = None,
+                 vault_payment_forwarder_address: Optional[str] = None,
                  scan_chunk_size=10_000,
                  ):
         """
@@ -77,7 +78,12 @@ class EnzymeVaultSyncModel(SyncModel):
         assert vault_address is not None, "Vault address is not given"
         self.web3 = web3
         self.reorg_mon = reorg_mon
-        self.vault = Vault.fetch(web3, vault_address, generic_adapter_address)
+        self.vault = Vault.fetch(
+            web3,
+            vault_address,
+            generic_adapter_address,
+            payment_forwarder=vault_payment_forwarder_address,
+        )
         self.scan_chunk_size = scan_chunk_size
         self.only_chain_listener = only_chain_listener
         self.hot_wallet = hot_wallet
