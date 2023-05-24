@@ -23,6 +23,7 @@ private_key = Option(None, envvar="PRIVATE_KEY", help="Ethereum private key to b
 
 vault_address = Option(None, envvar="VAULT_ADDRESS", help="Deployed strategy vault address")
 vault_adapter_address = Option(None, envvar="VAULT_ADAPTER_ADDRESS", help="Deployed GenericAdapter contract address for the vault")
+vault_payment_forwarder = Option(None, envvar="VAULT_PAYMENT_FORWARDER_ADDRESS", help="USDC EIP-3009 payment forwarder contract for the Enzyme vault")
 
 asset_management_mode = Option(None, envvar="ASSET_MANAGEMENT_MODE", help="How does the asset management happen\n"
                                                                           ""

@@ -85,7 +85,19 @@ class ExecutionContext:
 
     This is passed to `create_trading_universe` and couple of other
     functions and they can determine and take action based
-    the mode of strategy execution.
+    the mode of strategy execution. For example,
+    we may load pair and candle data differently in live trading.
+
+    Example how to create for backtests:
+
+    .. code-block:: python
+
+        from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
+
+        execution_context = ExecutionContext(
+            mode=ExecutionMode.backtesting,
+        )
+
     """
 
     #: What is the current mode of the execution.

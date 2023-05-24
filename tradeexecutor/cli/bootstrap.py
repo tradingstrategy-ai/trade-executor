@@ -146,6 +146,7 @@ def create_execution_and_sync_model(
         min_gas_balance: Optional[Decimal],
         vault_address: Optional[str],
         vault_adapter_address: Optional[str],
+        vault_payment_forwarder_address: Optional[str],
         routing_hint: Optional[TradeRouting] = None,
 ) -> Tuple[ExecutionModel, SyncModel, ValuationModelFactory, PricingModelFactory]:
     """Set up the wallet sync and execution mode for the command line client."""
@@ -164,7 +165,14 @@ def create_execution_and_sync_model(
         assert private_key, "Private key is needed for live trading"
         web3 = web3config.get_default()
         hot_wallet = HotWallet.from_private_key(private_key)
-        sync_model = create_sync_model(asset_management_mode, web3, hot_wallet, vault_address, vault_adapter_address)
+        sync_model = create_sync_model(
+            asset_management_mode,
+            web3,
+            hot_wallet,
+            vault_address,
+            vault_adapter_address,
+            vault_payment_forwarder_address,
+        )
 
         execution_model, valuation_model_factory, pricing_model_factory = create_execution_model(
             routing_hint=routing_hint,
@@ -243,7 +251,8 @@ def create_metadata(
         on_chain_data.smart_contracts.update({
             "vault": vault.vault.address,
             "comptroller": vault.comptroller.address,
-            "generic_adapter": vault.generic_adapter.address
+            "generic_adapter": vault.generic_adapter.address,
+            "payment_forwarder": vault.payment_forwarder.address if vault.payment_forwarder else None,
         })
 
         if vault.deployment.contracts.fund_value_calculator is None:
@@ -296,6 +305,7 @@ def create_sync_model(
         hot_wallet: Optional[HotWallet],
         vault_address: Optional[str],
         vault_adapter_address: Optional[str] = None,
+        vault_payment_forwarder_address: Optional[str] = None,
 ) -> SyncModel:
     match asset_management_mode:
         case AssetManagementMode.hot_wallet:
@@ -309,6 +319,7 @@ def create_sync_model(
                 only_chain_listener=True,
                 hot_wallet=hot_wallet,
                 generic_adapter_address=vault_adapter_address,
+                vault_payment_forwarder_address=vault_payment_forwarder_address,
                 scan_chunk_size=50_000,
             )
         case _:

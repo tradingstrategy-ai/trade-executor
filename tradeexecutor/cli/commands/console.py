@@ -74,6 +74,7 @@ def console(
     asset_management_mode: AssetManagementMode = shared_options.asset_management_mode,
     vault_address: Optional[str] = shared_options.vault_address,
     vault_adapter_address: Optional[str] = shared_options.vault_adapter_address,
+    vault_payment_forwarder_address: Optional[str] = shared_options.vault_payment_forwarder,
 
     log_level: str = typer.Option(None, envvar="LOG_LEVEL", help="The Python default logging level. The defaults are 'info' is live execution, 'warning' if backtesting. Set 'disabled' in testing."),
 
@@ -129,6 +130,7 @@ def console(
         min_gas_balance=minimum_gas_balance,
         vault_address=vault_address,
         vault_adapter_address=vault_adapter_address,
+        vault_payment_forwarder_address=vault_payment_forwarder_address,
     )
 
     hot_wallet = HotWallet.from_private_key(private_key)

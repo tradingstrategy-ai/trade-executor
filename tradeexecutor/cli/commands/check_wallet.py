@@ -45,7 +45,7 @@ def check_wallet(
     asset_management_mode: AssetManagementMode = shared_options.asset_management_mode,
     vault_address: Optional[str] = shared_options.vault_address,
     vault_adapter_address: Optional[str] = shared_options.vault_adapter_address,
-
+    vault_payment_forwarder_address: Optional[str] = shared_options.vault_payment_forwarder,
 
     # Web3 connection options
     json_rpc_binance: Optional[str] = shared_options.json_rpc_binance,
@@ -108,6 +108,7 @@ def check_wallet(
         min_gas_balance=minimum_gas_balance,
         vault_address=vault_address,
         vault_adapter_address=vault_adapter_address,
+        vault_payment_forwarder_address=vault_payment_forwarder_address,
         routing_hint=mod.trade_routing,
     )
 

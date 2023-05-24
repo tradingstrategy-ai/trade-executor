@@ -47,6 +47,7 @@ def perform_test_trade(
     asset_management_mode: AssetManagementMode = shared_options.asset_management_mode,
     vault_address: Optional[str] = shared_options.vault_address,
     vault_adapter_address: Optional[str] = shared_options.vault_adapter_address,
+    vault_payment_forwarder_address: Optional[str] = shared_options.vault_payment_forwarder,
     min_gas_balance: Optional[float] = shared_options.min_gas_balance,
     max_slippage: float = shared_options.max_slippage,
 
@@ -102,6 +103,7 @@ def perform_test_trade(
         max_slippage=max_slippage,
         vault_address=vault_address,
         vault_adapter_address=vault_adapter_address,
+        vault_payment_forwarder_address=vault_payment_forwarder_address,
         routing_hint=mod.trade_routing,
     )
 
