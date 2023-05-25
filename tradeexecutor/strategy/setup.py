@@ -109,9 +109,9 @@ class StrategySetup:
             raise UnexpectedStrategyInput(f"version missing in the module")
 
         if self.version != "0.3":
-            raise UnexpectedStrategyInput(f"Only version 0.1 supported for now, got {self.trading_strategy_engine_version}")
+            raise UnexpectedStrategyInput(f"Only version 0.3 supported for now, got {self.version}")
 
-        result.version = version
+        result.version = self.version
 
         if not self.type:
             raise UnexpectedStrategyInput(f"trading_strategy_type missing in the module")
