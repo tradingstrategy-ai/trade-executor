@@ -5,7 +5,7 @@ Describe input variables for a strategy.
 import datetime
 from dataclasses import field, dataclass
 from enum import Enum
-from typing import TypedDict, List, Union, Type
+from typing import TypedDict, List, Union, Type, Optional
 
 import pandas as pd
 
@@ -92,8 +92,15 @@ class StrategySetup:
     #:
     reserve_currency: ReserveCurrency | None = None
 
-    def parse_enum(self, enum_type: Type[Enum], name: str) -> Enum:
+    def parse_enum(self, enum_type: Type[Enum], name: str, require=True) -> Optional[Enum]:
+
         value = getattr(self, name, None)
+
+        if value is None:
+            if require:
+                raise UnexpectedStrategyInput(f"Needs to have {name} set")
+            return None
+
         try:
             return enum_type(value)
         except Exception as e:
@@ -113,13 +120,8 @@ class StrategySetup:
 
         result.version = self.version
 
-        if not self.type:
-            raise UnexpectedStrategyInput(f"trading_strategy_type missing in the module")
-
         result.type = self.parse_enum(StrategyType, type)
-
-        if not isinstance(self.trading_strategy_cycle, CycleDuration):
-            raise StrategyModuleNotValid(f"trading_strategy_cycle not CycleDuration instance, got {self.trading_strategy_cycle}")
+        result.decision_time_frame = self.parse_enum(CycleDuration, "decision_time_frame")
 
         if self.trade_routing is None:
             raise StrategyModuleNotValid(f"trade_routing missing on the strategy")
