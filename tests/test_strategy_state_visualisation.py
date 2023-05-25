@@ -36,6 +36,7 @@ from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.visual.strategy_state import draw_single_pair_strategy_state
 from tradeexecutor.visual.image_output import render_plotly_figure_as_image_file
+from tradingstrategy.utils.groupeduniverse import NoDataAvailable
 
 
 def decide_trades(
@@ -69,7 +70,10 @@ def decide_trades(
     # We could have candles for multiple trading pairs in a different strategy,
     # but this strategy only operates on single pair candle.
     # We also limit our sample size to N latest candles to speed up calculations.
-    candles: pd.DataFrame = universe.candles.get_single_pair_data(timestamp, sample_count=batch_size)
+    try:
+        candles: pd.DataFrame = universe.candles.get_single_pair_data(timestamp, sample_count=batch_size)
+    except NoDataAvailable:
+        return []  # Cannot amke trades yet
 
     # We have data for open, high, close, etc.
     # We only operate using candle close values in this strategy.

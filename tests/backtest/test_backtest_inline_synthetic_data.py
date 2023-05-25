@@ -73,7 +73,7 @@ def decide_trades(
     # We could have candles for multiple trading pairs in a different strategy,
     # but this strategy only operates on single pair candle.
     # We also limit our sample size to N latest candles to speed up calculations.
-    candles: pd.DataFrame = universe.candles.get_single_pair_data(timestamp, sample_count=batch_size)
+    candles: pd.DataFrame = universe.candles.get_single_pair_data(timestamp, sample_count=batch_size, raise_on_not_enough_data=False)
 
     # We have data for open, high, close, etc.
     # We only operate using candle close values in this strategy.
@@ -183,7 +183,13 @@ def test_ema_on_universe(universe: TradingStrategyUniverse):
     """Calculate exponential moving average on single pair candle universe."""
     start_timestamp = pd.Timestamp("2021-6-1")
     batch_size = 20
-    candles = universe.universe.candles.get_single_pair_data(start_timestamp, sample_count=batch_size, allow_current=True)
+
+    candles = universe.universe.candles.get_single_pair_data(
+        start_timestamp,
+        sample_count=batch_size,
+        allow_current=True,
+        raise_on_not_enough_data=False,
+    )
     assert len(candles) == 1
 
     # Not enough data to calculate EMA - we haave only 1 sample

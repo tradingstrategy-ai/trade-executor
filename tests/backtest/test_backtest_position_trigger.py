@@ -70,7 +70,7 @@ def stop_loss_decide_trades_factory(stop_loss_pct=None):
         - Close the position if we get 4 green candles
         """
 
-        candles: pd.DataFrame = universe.candles.get_single_pair_data(timestamp, sample_count=4)
+        candles: pd.DataFrame = universe.candles.get_single_pair_data(timestamp, sample_count=4, raise_on_not_enough_data=False)
 
         # The pair we are trading
         pair = universe.pairs.get_single()
@@ -126,7 +126,7 @@ def take_profit_decide_trades_factory(take_profit_pct=None):
         - Close the position if we get 4 green candles
         """
 
-        candles: pd.DataFrame = universe.candles.get_single_pair_data(timestamp, sample_count=4)
+        candles: pd.DataFrame = universe.candles.get_single_pair_data(timestamp, sample_count=4, raise_on_not_enough_data=False)
 
         # The pair we are trading
         pair = universe.pairs.get_single()
@@ -183,7 +183,7 @@ def trailing_stop_loss_decide_trades_factory(trailing_stop_loss_pct=None):
         - Close the position if we get 4 green candles
         """
 
-        candles: pd.DataFrame = universe.candles.get_single_pair_data(timestamp, sample_count=4)
+        candles: pd.DataFrame = universe.candles.get_single_pair_data(timestamp, sample_count=4, raise_on_not_enough_data=False)
 
         # The pair we are trading
         pair = universe.pairs.get_single()

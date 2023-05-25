@@ -63,6 +63,7 @@ from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradingstrategy.client import Client
 
 from tradeexecutor.strategy.universe_model import UniverseOptions
+from tradingstrategy.utils.groupeduniverse import NoDataAvailable
 
 # Tell what trade execution engine version this strategy needs to use
 # NOTE: this setting has currently no effect
@@ -180,7 +181,10 @@ def decide_trades(
     # We could have candles for multiple trading pairs in a different strategy,
     # but this strategy only operates on single pair candle.
     # We also limit our sample size to N latest candles to speed up calculations.
-    candles: pd.DataFrame = universe.candles.get_single_pair_data(timestamp, sample_count=BATCH_SIZE)
+    try:
+        candles: pd.DataFrame = universe.candles.get_single_pair_data(timestamp, sample_count=BATCH_SIZE)
+    except NoDataAvailable:
+        return []  # Cannot amke trades yet
 
     # We have data for open, high, close, etc.
     # We only operate using candle close values in this strategy.

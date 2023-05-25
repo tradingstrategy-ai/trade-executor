@@ -145,7 +145,7 @@ def test_ema_on_universe(universe: TradingStrategyUniverse):
     """Calculate exponential moving average on single pair candle universe."""
     start_timestamp = pd.Timestamp("2021-6-1")
     batch_size = 20
-    candles = universe.universe.candles.get_single_pair_data(start_timestamp, sample_count=batch_size, allow_current=True)
+    candles = universe.universe.candles.get_single_pair_data(start_timestamp, sample_count=batch_size, allow_current=True, raise_on_not_enough_data=False)
     assert len(candles) == 1
 
     # Not enough data to calculate EMA - we haave only 1 sample
@@ -153,7 +153,7 @@ def test_ema_on_universe(universe: TradingStrategyUniverse):
     assert ema_20_series is None
 
     end_timestamp = pd.Timestamp("2021-12-31")
-    candles = universe.universe.candles.get_single_pair_data(end_timestamp, sample_count=batch_size, allow_current=True)
+    candles = universe.universe.candles.get_single_pair_data(end_timestamp, sample_count=batch_size, allow_current=True, raise_on_not_enough_data=False)
     assert len(candles) == batch_size
 
     ema_20_series = ema(candles["close"], length=20)
