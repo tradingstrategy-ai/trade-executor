@@ -44,7 +44,7 @@ def draw_single_pair_strategy_state(
 
     if start_at is None and end_at is None:
         # Get
-        target_pair_candles = universe.universe.candles.get_single_pair_data(sample_count=candle_count)
+        target_pair_candles = universe.universe.candles.get_single_pair_data(sample_count=candle_count, raise_on_not_enough_data=False)
         start_at = target_pair_candles.iloc[0]["timestamp"]
         end_at = target_pair_candles.iloc[-1]["timestamp"]
     else:
