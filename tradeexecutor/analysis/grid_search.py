@@ -204,7 +204,7 @@ def visualise_heatmap_2d(
 
     # setting all column values to string will hint
     # Plotly to make all boxes same size regardless of value
-    if continuous_scale:
+    if not continuous_scale:
         df[parameter_1] = df[parameter_1].astype(str)
         df[parameter_2] = df[parameter_2].astype(str)
 
