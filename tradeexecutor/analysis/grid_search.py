@@ -159,7 +159,8 @@ def visualise_heatmap_2d(
         parameter_1: str,
         parameter_2: str,
         metric: str,
-        color_continuous_scale='Bluered_r'
+        color_continuous_scale='Bluered_r',
+        continuous_scale: bool | None = None,
 ) -> Figure:
     """Draw a heatmap square comparing two different parameters.
 
@@ -182,12 +183,34 @@ def visualise_heatmap_2d(
     :param color_continuous_scale:
         The name of Plotly gradient used for the colour scale.
 
+    :param continuous_scale:
+        Are the X and Y scales continuous.
+
+        X and Y scales cannot be continuous if they contain values like None or NaN.
+        This will stretch the scale to infinity or zero.
+
+        Set `True` to force continuous, `False` to force discreet steps, `None` to autodetect.
+
     :return:
         Plotly Figure object
     """
 
-    df = result.reset_index().pivot(index=parameter_1, columns=parameter_2, values=metric)
+    # Reset multi-index so we can work with parameter 1 and 2 as series
+    df = result.reset_index()
 
+    # Detect any non-number values on axes
+    if continuous_scale is None:
+        continuous_scale = df[parameter_1].isna() or df[parameter_2].isna()
+
+    # setting all column values to string will hint
+    # Plotly to make all boxes same size regardless of value
+    if continuous_scale:
+        df[parameter_1] = df[parameter_1].astype(str)
+        df[parameter_2] = df[parameter_2].astype(str)
+
+    df = df.pivot(index=parameter_1, columns=parameter_2, values=metric)
+
+    # Format percents inside the cells and mouse hovers
     if metric in PERCENT_COLS:
         text = df.applymap(lambda x: f"{x * 100:,.2f}%")
     else:
