@@ -200,7 +200,7 @@ def visualise_heatmap_2d(
 
     # Detect any non-number values on axes
     if continuous_scale is None:
-        continuous_scale = df[parameter_1].isna() or df[parameter_2].isna()
+        continuous_scale = not(df[parameter_1].isna() or df[parameter_2].isna())
 
     # setting all column values to string will hint
     # Plotly to make all boxes same size regardless of value
