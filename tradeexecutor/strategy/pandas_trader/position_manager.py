@@ -377,11 +377,13 @@ class PositionManager:
         if take_profit_pct:
             position.take_profit = price_structure.mid_price * take_profit_pct
 
-        if stop_loss_pct:
+        if stop_loss_pct is not None:
+            assert 0 <= stop_loss_pct <= 1, f"stop_loss_pct must be 0..1, got {stop_loss_pct}"
             position.stop_loss = price_structure.mid_price * stop_loss_pct
 
         if trailing_stop_loss_pct:
             assert stop_loss_pct is None, "You cannot give both stop_loss_pct and trailing_stop_loss_pct"
+            assert 0 <= trailing_stop_loss_pct <= 1, f"trailing_stop_loss_pct must be 0..1, got {trailing_stop_loss_pct}"
             position.stop_loss = price_structure.mid_price * trailing_stop_loss_pct
             position.trailing_stop_loss_pct = trailing_stop_loss_pct
 
