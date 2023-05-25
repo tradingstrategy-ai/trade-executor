@@ -1052,6 +1052,11 @@ def load_all_data(
 
     - Live trading purges old data fields and reloads data
 
+    .. warning::
+
+        Does not work in low memory environments due to high amount of trading pairs.
+        Use :py:func:`tradeexecutor.strategy.trading_strategy_universe.load_partial_data`.
+
     :param client:
         Trading Strategy client instance
 
@@ -1341,11 +1346,55 @@ def load_partial_data(
         end_at: Optional[datetime.datetime] = None,
         name: Optional[str] = None,
 ) -> Dataset:
-    """Load pair data for named trading pairs.a
+    """Load pair data for given trading pairs.
 
     A loading function designed to load data for 2-20 pairs.
     Instead of loading all pair data over Parquet datasets,
     load only specific pair data from their corresponding JSONL endpoints.
+
+    This function works in low memory environments unlike :py:func:`tradeexecutor.strategy.trading_strategy_universe.load_all_data`.
+
+    Example:
+
+    ... code-block:: python
+
+        TRADING_PAIRS = [
+            (ChainId.avalanche, "trader-joe", "WAVAX", "USDC"), # Avax
+            (ChainId.polygon, "quickswap", "WMATIC", "USDC"),  # Matic
+            (ChainId.ethereum, "uniswap-v2", "WETH", "USDC"),  # Eth
+            (ChainId.ethereum, "uniswap-v2", "WBTC", "USDC"),  # Btc
+        ]
+
+        def create_trading_universe(
+                ts: datetime.datetime,
+                client: Client,
+                execution_context: ExecutionContext,
+                universe_options: UniverseOptions,
+        ) -> TradingStrategyUniverse:
+
+            assert not execution_context.mode.is_live_trading(), \
+                f"Only strategy backtesting supported, got {execution_context.mode}"
+
+            # Load data for our trading pair whitelist
+            dataset = load_partial_data(
+                client=client,
+                time_bucket=CANDLE_TIME_BUCKET,
+                pairs=TRADING_PAIRS,
+                execution_context=execution_context,
+                universe_options=universe_options,
+                stop_loss_time_bucket=STOP_LOSS_TIME_BUCKET,
+                start_at=START_AT,
+                end_at=END_AT,
+            )
+
+            # Filter down the dataset to the pairs we specified
+            universe = TradingStrategyUniverse.create_multichain_universe_by_pair_descriptions(
+                dataset,
+                TRADING_PAIRS,
+                reserve_token_symbol="USDC"  # Pick any USDC - does not matter as we do not route
+            )
+
+            return universe
 
     :param client:
         Trading Strategy client instance
