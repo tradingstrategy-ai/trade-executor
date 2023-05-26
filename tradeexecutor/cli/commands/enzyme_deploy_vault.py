@@ -134,7 +134,7 @@ def enzyme_deploy_vault(
                 "comptroller": comptroller_contract.address,
                 "generic_adapter": generic_adapter.address,
                 "block_number": block_number,
-                "usdc_payment_forwarder": usdc_payment_forwarder,
+                "usdc_payment_forwarder": usdc_payment_forwarder.address,
             }
             json.dump(vault_record, out)
 
