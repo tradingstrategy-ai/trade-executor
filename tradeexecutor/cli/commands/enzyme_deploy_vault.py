@@ -120,6 +120,7 @@ def enzyme_deploy_vault(
     usdc_payment_forwarder = deploy_contract(
         web3,
         f"VaultUSDCPaymentForwarder.json",
+        hot_wallet.address,
         denomination_token.address,
         comptroller_contract.address,
     )
