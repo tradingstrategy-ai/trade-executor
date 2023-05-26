@@ -261,6 +261,7 @@ def test_enzyme_deploy_vault(
     env["COMPTROLLER_LIB"] = enzyme_deployment.contracts.comptroller_lib.address
     env["DENOMINATION_ASSET"] = usdc.address
 
+
     # Run strategy for few cycles.
     # Manually call the main() function so that Typer's CliRunner.invoke() does not steal
     # stdin and we can still set breakpoints
@@ -275,16 +276,19 @@ def test_enzyme_deploy_vault(
         vault_record = json.load(inp)
         comptroller_contract, vault_contract = EnzymeDeployment.fetch_vault(enzyme_deployment, vault_record["vault"])
         generic_adapter_contract = get_deployed_contract(web3, f"VaultSpecificGenericAdapter.json", vault_record["generic_adapter"])
+        payment_forwarder_contract = get_deployed_contract(web3, f"VaultUSDCPaymentForwarder.json", vault_record["usdc_payment_forwarder"])
 
         vault = Vault(
             vault=vault_contract,
             comptroller=comptroller_contract,
             deployment=enzyme_deployment,
             generic_adapter=generic_adapter_contract,
+            payment_forwarder=payment_forwarder_contract,
         )
 
         assert vault.get_name() == "Toholampi Capital"
         assert vault.get_symbol() == "COW"
+        assert vault.payment_forwarder.functions.amountProxied().call() == 0
 
 
 def test_enzyme_perform_test_trade(
