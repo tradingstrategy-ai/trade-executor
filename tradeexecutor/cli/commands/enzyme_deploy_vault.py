@@ -116,6 +116,15 @@ def enzyme_deploy_vault(
         vault_contract.address,
     )
 
+    logger.info("Deploying VaultUSDCPaymentForwarder")
+    usdc_payment_forwarder = deploy_contract(
+        web3,
+        f"VaultUSDCPaymentForwarder.json",
+        hot_wallet.address,
+        denomination_token.address,
+        comptroller_contract.address,
+    )
+
     block_number = web3.eth.block_number
 
     if vault_record_file:
@@ -125,6 +134,7 @@ def enzyme_deploy_vault(
                 "comptroller": comptroller_contract.address,
                 "generic_adapter": generic_adapter.address,
                 "block_number": block_number,
+                "usdc_payment_forwarder": usdc_payment_forwarder.address,
             }
             json.dump(vault_record, out)
 
@@ -132,4 +142,5 @@ def enzyme_deploy_vault(
     logger.info("  Vault at %s", vault_contract.address)
     logger.info("  Comptroller at %s", comptroller_contract.address)
     logger.info("  GenericAdapter at %s", generic_adapter.address)
+    logger.info("  VaultUSDCPaymentForwarder at %s", usdc_payment_forwarder.address)
     logger.info("  Deployment block number is %d", block_number)
