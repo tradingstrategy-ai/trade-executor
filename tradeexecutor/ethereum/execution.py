@@ -241,7 +241,7 @@ class EthereumExecutionModel(ExecutionModel):
         """Set up the wallet"""
         logger.info("Initialising %s execution model", self.__class__.__name__)
         self.tx_builder.init()
-        logger.info("Hot wallet %s has balance %s", self.tx_builder.get_gas_wallet_balance(), self.tx_builder.get_gas_wallet_balance())
+        logger.info("Hot wallet %s has balance %s", self.tx_builder.get_gas_wallet_address(), self.tx_builder.get_gas_wallet_balance())
 
     def broadcast_and_resolve(
         self,
