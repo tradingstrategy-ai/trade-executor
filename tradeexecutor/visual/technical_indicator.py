@@ -56,7 +56,7 @@ def overlay_all_technical_indicators(
         
         # must have something to draw for plot
         if trace is None:
-            raise ValueError(f"Unknown plot kind: {plot.plot_kind}")
+            raise NotImplementedError(f"Unknown plot kind: {plot.plot_kind}")
         
         # add trace to plot
         if plot.kind == PlotKind.technical_indicator_detached:
@@ -69,7 +69,8 @@ def overlay_all_technical_indicators(
             # don't increment current row
             fig.add_trace(trace, row=cur_row, col=1)
         else:
-            raise ValueError(f"Unknown plot kind: {plot.plot_kind}")
+            raise NotImplementedError(f"Unknown plot kind: {plot.plot_kind}")
+
 
 def visualise_technical_indicator(
         plot: Plot,
@@ -96,6 +97,7 @@ def visualise_technical_indicator(
         return None
     
     return _get_plot(df, plot)
+
 
 def export_plot_as_dataframe(
         plot: Plot,

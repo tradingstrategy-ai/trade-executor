@@ -641,11 +641,13 @@ def visualise_single_pair(
         volume_axis_name=volume_axis_name
     )
 
+
     # Add trade markers if any trades have been made
     if len(trades_df) > 0:
         visualise_trades(fig, candles, trades_df)
 
     return fig
+
 
 def visualise_single_pair_positions_with_duration_and_slippage(
         state: State,
@@ -722,11 +724,12 @@ def visualise_single_pair_positions_with_duration_and_slippage(
         Optional relative sizes of each plot. Starts with first main candle plot. In this function, there is no volume plot (neither overlayed, hidden, or detached), so the first plot is the candle plot, and the rest are the technical indicator plots.
         
         e.g. [1, 0.2, 0.3, 0.3] would mean the second plot is 20% the size of the first, and the third and fourth plots are 30% the size of the first.
-        
-        
-    
+
     :param subplot_font_size:
         Font size of the subplot titles
+
+    :return:
+        Plotly figure
     """
 
     logger.info("Visualising %s", state)
@@ -794,6 +797,7 @@ def visualise_single_pair_positions_with_duration_and_slippage(
 
     return fig
 
+
 def _get_figure_grid_with_indicators(
     *,
     state: State, 
@@ -848,6 +852,7 @@ def _get_figure_grid_with_indicators(
         )
         
     return fig
+
 
 def _get_all_text(
     state_name: str, 

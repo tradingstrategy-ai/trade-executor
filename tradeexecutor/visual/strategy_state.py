@@ -18,15 +18,18 @@ from tradeexecutor.visual.single_pair import visualise_single_pair
 
 import plotly.graph_objects as go
 
+from tradingstrategy.charting.candle_chart import VolumeBarMode
+
 
 def draw_single_pair_strategy_state(
         state: State,
         universe: TradingStrategyUniverse,
         width=512,
         height=512,
-        candle_count=32,
+        candle_count=64,
         start_at: Optional[datetime.datetime] = None,
         end_at: Optional[datetime.datetime] = None,
+        technical_indicators=True,
 ) -> go.Figure:
     """Draw a mini price chart image.
 
@@ -70,6 +73,8 @@ def draw_single_pair_strategy_state(
         height=height,
         title=False,
         axes=False,
+        technical_indicators=technical_indicators,
+        volume_bar_mode=VolumeBarMode.hidden,  # TODO: Might be needed in the future strats
     )
 
     return figure
