@@ -389,10 +389,11 @@ class EthereumExecutionModel(ExecutionModel):
                 input_args=input_args,
             )
 
-            if uni_v3 := self.is_v3():
-                price = result.price
-
             if isinstance(result, TradeSuccess):
+
+                uni_v3 = self.is_v3()
+
+                price = result.price
                 
                 # v3 path includes fee (int) as well
                 path = [a.lower() for a in result.path if type(a) == str]

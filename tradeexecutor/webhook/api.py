@@ -150,6 +150,8 @@ def web_visulisation(request: Request):
     """/visualisation endpoint.
 
     Return strategy images.
+
+    See :py:func:`tradeexecutor.strategy.pandas_trader.report_strategy_thinking` for more information.
     """
     execution_state: RunState = request.registry["run_state"]
 

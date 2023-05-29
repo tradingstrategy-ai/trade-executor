@@ -102,6 +102,9 @@ class PandasTraderRunner(StrategyRunner):
 
         - Draw the single pair strategy visualisation.
 
+        To manually test the visualisation see:
+
+
         :param strategy_cycle_timestamp:
             real time lock
 
