@@ -306,6 +306,7 @@ class EthereumExecutionModel(ExecutionModel):
 
         :return: Tuple List of succeeded trades, List of failed trades
         """
+
         state.start_trades(datetime.datetime.utcnow(), trades, max_slippage=self.max_slippage)
 
         if self.web3.eth.chain_id not in (ChainId.ethereum_tester.value, ChainId.anvil.value):

@@ -91,6 +91,9 @@ class EnzymeVaultSyncModel(SyncModel):
     def __repr__(self):
         return f"<EnzymeVaultSyncModel for vault {self.vault.address} using hot wallet {self.hot_wallet.address if self.hot_wallet else '(not set)'}>"
 
+    def resync_nonce(self):
+        self.hot_wallet.sync_nonce(self.web3)
+
     def get_vault_address(self) -> Optional[str]:
         """Get the vault address we are using"""
         return self.vault.address
