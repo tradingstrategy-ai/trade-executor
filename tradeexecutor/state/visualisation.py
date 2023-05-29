@@ -104,6 +104,9 @@ class Plot:
     #: For a marker, this is the size of the marker.
     indicator_size: Optional[float] = None
 
+    def __repr__(self):
+        return f"<Plot name:{self.name} kind:{self.kind.name} with {len(self.points)} points>"
+
     def add_point(self,
                   timestamp: datetime.datetime,
                   value: float,
