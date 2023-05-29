@@ -963,11 +963,13 @@ def _get_start_and_end(
         assert isinstance(end_at, pd.Timestamp)
     return start_at,end_at
 
+
 def _get_all_positions(state: State, pair_id):
     """Get all positions for a given pair"""
     assert type(pair_id) == int
     positions = [p for p in state.portfolio.get_all_positions() if p.pair.internal_id == pair_id]
     return positions
+
 
 def _get_axes_and_volume_text(axes: bool, pair_name: str | None, volume_axis_name: str = "Volume USD"):
     """Get axes and volume text"""
@@ -978,6 +980,7 @@ def _get_axes_and_volume_text(axes: bool, pair_name: str | None, volume_axis_nam
         axes_text = None
         volume_text = None
     return axes_text,volume_text
+
 
 def _get_pair_name_from_first_trade(first_trade: TradeExecution):
     return f"{first_trade.pair.base.token_symbol} - {first_trade.pair.quote.token_symbol}"
