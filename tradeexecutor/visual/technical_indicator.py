@@ -53,10 +53,11 @@ def overlay_all_technical_indicators(
             start_at,
             end_at,
         )
-        
-        # must have something to draw for plot
+
         if trace is None:
-            raise NotImplementedError(f"Could not create trace for: {plot}")
+            # Likely zero data points
+            logger.info("Did not receive trace for %s", plot)
+            return
         
         # add trace to plot
         if plot.kind == PlotKind.technical_indicator_detached:
