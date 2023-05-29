@@ -69,7 +69,7 @@ def overlay_all_technical_indicators(
             # don't increment current row
             fig.add_trace(trace, row=cur_row, col=1)
         else:
-            raise NotImplementedError(f"Unknown plot kind: {plot.plot_kind}")
+            raise NotImplementedError(f"Unknown plot kind: {plot.kind}")
 
 
 def visualise_technical_indicator(
