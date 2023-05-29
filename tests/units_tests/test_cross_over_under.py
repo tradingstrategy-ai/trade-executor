@@ -1,5 +1,5 @@
 import pandas as pd
-from tradeexecutor.state.crossover import contains_cross_over, contains_cross_under
+from tradeexecutor.utils.crossover import contains_cross_over, contains_cross_under
 
 def test_crossover_positive():
     series1 = pd.Series([1, 2, 3, 4, 5])
