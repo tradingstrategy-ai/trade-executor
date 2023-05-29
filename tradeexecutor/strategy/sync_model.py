@@ -37,6 +37,13 @@ class SyncModel(ABC):
         """
         return None
 
+    def resync_nonce(self):
+        """Re-read hot wallet nonce before trade execution.
+
+        Ensures that if the private key is used outside the trade executor,
+        we are not getting wrong nonce error when broadcasting the transaction.
+        """
+
     @abstractmethod
     def sync_initial(self, state: State, **kwargs):
         """Initialize the vault connection.

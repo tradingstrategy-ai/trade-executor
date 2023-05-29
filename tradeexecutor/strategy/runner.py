@@ -428,6 +428,9 @@ class StrategyRunner(abc.ABC):
                 # Unit tests can turn this flag to make it easier to see why trades fail
                 check_balances = debug_details.get("check_balances", False)
 
+                # Make sure our hot wallet nonce is up to date
+                self.sync_model.resync_nonce()
+
                 self.execution_model.execute_trades(
                     strategy_cycle_timestamp,
                     state,
