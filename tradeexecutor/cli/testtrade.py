@@ -109,8 +109,10 @@ def make_test_trade(
 
     # Open the test position only if there isn't position already open
     # on the previous run
+
     position = state.portfolio.get_position_by_trading_pair(pair)
 
+    buy_trade = None
     if position is None:
         # Create trades to open the position
         trades = position_manager.open_1x_long(
@@ -120,6 +122,7 @@ def make_test_trade(
         )
 
         trade = trades[0]
+        buy_trade = trade
 
         # Compose the trades as approve() + swapTokenExact(),
         # broadcast them to the blockchain network and
@@ -151,6 +154,7 @@ def make_test_trade(
         position,
         notes=notes,
     )
+    sell_trade = trade
 
     execution_model.execute_trades(
             ts,
@@ -168,3 +172,6 @@ def make_test_trade(
     logger.info("  Trades done currently: %d", len(list(state.portfolio.get_all_trades())))
     logger.info("  Reserves currently: %s %s", reserve_currency_at_end, reserve_currency)
     logger.info("  Reserve currency spent: %s %s", reserve_currency_at_start - reserve_currency_at_end, reserve_currency)
+    if buy_trade:
+        logger.info("  Buy trade price, expected: %s, actual: %s (%s)", buy_trade.planned_price, buy_trade.executed_price, position.pair.get_ticker())
+    logger.info("  Sell trade price, expected: %s, actual: %s (%s)", sell_trade.planned_price, sell_trade.executed_price, position.pair.get_ticker())

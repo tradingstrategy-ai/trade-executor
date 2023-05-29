@@ -39,7 +39,7 @@ state_blob = resp.content
 
 print(f"Downloaded {len(state_blob):,} bytes state data")
 
-state = State.from_json(state_blob)
+state: State = State.from_json(state_blob)
 pair = state.portfolio.get_single_pair()
 
 # Add some data margin around our
@@ -63,4 +63,10 @@ small_figure = draw_single_pair_strategy_state(
 )
 
 # Open a web browser pop up
-small_figure.show()
+#small_figure.show()
+
+for p in state.portfolio.get_all_positions():
+    print(f"Position #{p.position_id}: {p.get_opening_price()} {p.pair.get_ticker()}")
+
+for t in state.portfolio.get_all_trades():
+    print(f"Trade {t.trade_id}, assumed price: {t.planned_price}, executed price: {t.executed_price}")

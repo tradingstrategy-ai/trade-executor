@@ -45,6 +45,7 @@ routing_states = UniswapV2RoutingState | UniswapV3RoutingState # TODO create enu
 class TradeExecutionFailed(Exception):
     """Our Uniswap trade reverted"""
 
+
 # TODO check with tradeexuctor.strategy.execution ExecutionModel
 class EthereumExecutionModel(ExecutionModel):
     """Run order execution on a single Uniswap v2 style exchanges."""
@@ -391,17 +392,15 @@ class EthereumExecutionModel(ExecutionModel):
 
             if isinstance(result, TradeSuccess):
 
-                uni_v3 = self.is_v3()
-
-                price = result.price
-                
                 # v3 path includes fee (int) as well
                 path = [a.lower() for a in result.path if type(a) == str]
                 
                 if trade.is_buy():
                     assert path[0] == reserve.address, f"Was expecting the route path to start with reserve token {reserve}, got path {result.path}"
 
-                    if not uni_v3:
+                    if self.is_v3():
+                        price = result.get_human_price(quote_token_details.address == result.token0.address)
+                    else:
                         price = 1 / result.price
 
                     executed_reserve = result.amount_in / Decimal(10**quote_token_details.decimals)
@@ -410,8 +409,10 @@ class EthereumExecutionModel(ExecutionModel):
                     # Ordered other way around
                     assert path[0] == base_token_details.address.lower(), f"Path is {path}, base token is {base_token_details}"
                     assert path[-1] == reserve.address
-                    
-                    if not uni_v3:
+
+                    if self.is_v3():
+                        price = result.get_human_price(quote_token_details.address == result.token0.address)
+                    else:
                         price = result.price
                     
                     executed_amount = -result.amount_in / Decimal(10**base_token_details.decimals)
