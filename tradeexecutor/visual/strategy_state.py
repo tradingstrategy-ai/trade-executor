@@ -30,6 +30,12 @@ def draw_single_pair_strategy_state(
 ) -> go.Figure:
     """Draw a mini price chart image.
 
+    See also
+
+    - `manual-visualisation-test.py`
+
+    - :py:meth:`tradeeexecutor.strategy.pandas_runner.PandasTraderRunner.report_strategy_thinking`.
+
     :param candle_count:
         Draw N latest candles
 
@@ -38,6 +44,9 @@ def draw_single_pair_strategy_state(
 
     :param end_at:
         Draw by a given time range
+
+    :return:
+        The strategy state visualisation as Plotly figure
     """
 
     assert universe.is_single_pair_universe(), "This visualisation can be done only for single pair trading"

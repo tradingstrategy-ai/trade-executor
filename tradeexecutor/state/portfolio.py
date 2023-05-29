@@ -34,6 +34,13 @@ class MultipleOpenPositionsWithAsset(Exception):
     """
 
 
+class NotSinglePair(Exception):
+    """Raised when there is zero or two plus pairs when single expected.
+
+    See :py:meth:`Portfolio.get_single_pair`.
+    """
+
+
 @dataclass_json
 @dataclass
 class Portfolio:
@@ -724,5 +731,21 @@ class Portfolio:
             reserve_token_price=None,
             last_pricing_at=None,
         )
-        
-        
+
+    def get_single_pair(self) -> TradingPairIdentifier:
+        """Return the only trading pair a single pair strategy has been trading.
+
+        :raise NotSinglePair:
+
+            This may happen when
+
+            - Strategy has not traded yet
+
+            - Strategy has traded multiple pairs
+        """
+        pairs = {p for p in self.get_all_traded_pairs()}
+        if len(pairs) != 1:
+            raise NotSinglePair(f"We have {len(pairs)} trading pairs, one expected")
+
+        (pair,) = pairs
+        return pair
