@@ -231,8 +231,8 @@ class ExecutionLoop:
     def init_live_run_state(self, run_description: StrategyExecutionDescription):
         """Initialise run-state object.
 
-        Do this before we open the webhook ports, so that any run state
-        we serve is already valid.
+        We do need to do these updates only once on the startup,
+        as there run-state variables do not change over the process lifetime.
         """
 
         # Expose source code to webhook
@@ -832,6 +832,9 @@ class ExecutionLoop:
 
                 # Post execution, update our statistics
                 try:
+                    # TODO: Visualisations are internally refreshed by runner
+                    # this is somewhat bad architecture and refreshing run state should be a responsibility
+                    # of a single component
                     self.refresh_live_run_state(state)
                 except Exception as e:
                     # Failing to do the performance statistics is not fatal,
