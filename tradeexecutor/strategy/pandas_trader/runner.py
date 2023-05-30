@@ -91,13 +91,13 @@ class PandasTraderRunner(StrategyRunner):
 
     def refresh_visualisations(self, state: State, universe: TradingStrategyUniverse):
 
-        logger.info("Refreshing strategy visualisations: %s", self.run_state.visualisation)
-
         if not self.run_state:
             # This strategy is not maintaining a run-state
             # Backtest, simulation, etc.
             logger.info("Could not update strategy thinking image data, self.run_state not available")
             return
+
+        logger.info("Refreshing strategy visualisations: %s", self.run_state.visualisation)
 
         if universe.is_empty():
             # TODO: Not sure how we end up here
