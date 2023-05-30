@@ -97,6 +97,8 @@ class PandasTraderRunner(StrategyRunner):
             logger.info("Could not update strategy thinking image data, self.run_state not available")
             return
 
+        logger.info("Refreshing strategy visualisations: %s", self.run_state.visualisation)
+
         if universe.is_empty():
             # TODO: Not sure how we end up here
             logger.info("Strategy universe is empty - nothing to report")
@@ -111,8 +113,6 @@ class PandasTraderRunner(StrategyRunner):
 
             small_figure.update_layout(template="plotly_dark")
             small_image_dark = render_plotly_figure_as_image_file(small_figure, width=512, height=512, format="png")
-
-            post_logging_discord_image(small_image)
 
             if self.run_state:
 
@@ -200,6 +200,9 @@ class PandasTraderRunner(StrategyRunner):
                 print(f"  {name}: {value}", file=buf)
 
             logger.trade(buf.getvalue())
+
+            small_image = self.run_state.visualisation.small_image
+            post_logging_discord_image(small_image)
 
         else:
             raise NotImplementedError("Reporting of strategy thinking of multipair universes not supported yet")
