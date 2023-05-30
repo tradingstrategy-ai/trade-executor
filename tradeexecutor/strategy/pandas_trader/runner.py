@@ -112,7 +112,7 @@ class PandasTraderRunner(StrategyRunner):
             small_image = render_plotly_figure_as_image_file(small_figure, width=768, height=512, format="png")
 
             small_figure.update_layout(template="plotly_dark")
-            small_image_dark = render_plotly_figure_as_image_file(small_figure, width=512, height=512, format="png")a
+            small_image_dark = render_plotly_figure_as_image_file(small_figure, width=512, height=512, format="png")
 
             if self.run_state:
 
