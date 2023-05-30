@@ -523,6 +523,8 @@ class StrategyRunner(abc.ABC):
     def refresh_visualisations(self, state: State, universe: TradingStrategyUniverse):
         """Update the visualisations in the run state.
 
+        This will update `RunState.visualisations` for the current strategy.
+
         - In-process memory charts are served by webhook
 
         - In-process memory charts are posted to Discord, etc.
