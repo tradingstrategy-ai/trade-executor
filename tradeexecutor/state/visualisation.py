@@ -195,6 +195,11 @@ class Visualisation:
     #:
     plots: Dict[str, Plot] = field(default_factory=dict)
 
+    def __repr__(self) -> str:
+        plot_count = len(self.plots)
+        point_count = sum([len(p.points) for p in self.plots.values()])
+        return f"<Visualisation with {plot_count} plots and {point_count} data points>"
+
     def add_message(self,
                     timestamp: datetime.datetime,
                     content: str):
