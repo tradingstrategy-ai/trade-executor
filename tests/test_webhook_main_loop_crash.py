@@ -59,6 +59,7 @@ def test_main_loop_crash_with_catch(
         "PATH": os.environ["PATH"],
         "HTTP_WAIT_GOOD_STARTUP_SECONDS": "0",
         "MAX_DATA_DELAY_MINUTES": str(10*60*24*365)  # 10 years or "disabled""
+        "LOG_LEVEL": "disabled",
     }
 
     cli = get_command(app)
