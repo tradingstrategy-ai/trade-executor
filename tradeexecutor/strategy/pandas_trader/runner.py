@@ -89,41 +89,13 @@ class PandasTraderRunner(StrategyRunner):
                     if now_ - end > self.max_data_age:
                         raise PreflightCheckFailed(f"We do not have up-to-date data for candles. Last candles are at {end}")
 
-    def report_strategy_thinking(self,
-                                 strategy_cycle_timestamp: datetime.datetime,
-                                 cycle: int,
-                                 universe: TradingStrategyUniverse,
-                                 state: State,
-                                 trades: List[TradeExecution],
-                                 debug_details: dict):
-        """Strategy admin helpers to understand a live running strategy.
+    def refresh_visualisations(self, state: State, universe: TradingStrategyUniverse):
 
-        - Post latest variables
-
-        - Draw the single pair strategy visualisation.
-
-        To manually test the visualisation see: `manual-visualisation-test.py`.
-
-        :param strategy_cycle_timestamp:
-            real time lock
-
-        :param cycle:
-            Cycle number
-
-        :param universe:
-            Currnet trading universe
-
-        :param trades:
-            Trades executed on this cycle
-
-        :param state:
-            Current execution state
-
-        :param debug_details:
-            Dict of random debug stuff
-        """
-
-        visualisation = state.visualisation
+        if not self.run_state:
+            # This strategy is not maintaining a run-state
+            # Backtest, simulation, etc.
+            logger.info("Could not update strategy thinking image data, self.run_state not available")
+            return
 
         if universe.is_empty():
             # TODO: Not sure how we end up here
@@ -160,9 +132,54 @@ class PandasTraderRunner(StrategyRunner):
                     small_image_dark,
                     large_image_dark,
                 )
-            else:
-                logger.info("Coudl not update strategy thinking image data, self.execution_state not available")
+        else:
+            logger.warning("Charts not yet available for this strategy type")
 
+    def report_strategy_thinking(self,
+                                 strategy_cycle_timestamp: datetime.datetime,
+                                 cycle: int,
+                                 universe: TradingStrategyUniverse,
+                                 state: State,
+                                 trades: List[TradeExecution],
+                                 debug_details: dict):
+        """Strategy admin helpers to understand a live running strategy.
+
+        - Post latest variables
+
+        - Draw the single pair strategy visualisation.
+
+        To manually test the visualisation see: `manual-visualisation-test.py`.
+
+        :param strategy_cycle_timestamp:
+            real time lock
+
+        :param cycle:
+            Cycle number
+
+        :param universe:
+            Currnet trading universe
+
+        :param trades:
+            Trades executed on this cycle
+
+        :param state:
+            Current execution state
+
+        :param debug_details:
+            Dict of random debug stuff
+        """
+
+        # Update charts
+        self.refresh_visualisations(state, universe)
+
+        visualisation = state.visualisation
+
+        if universe.is_empty():
+            # TODO: Not sure how we end up here
+            logger.info("Strategy universe is empty - nothing to report")
+            return
+
+        if universe.is_single_pair_universe():
             # Log state
             buf = StringIO()
 

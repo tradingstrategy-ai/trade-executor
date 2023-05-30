@@ -1,4 +1,11 @@
-"""Trade executor main loop."""
+"""Trade executor main loop.
+
+TODO: This execution loop needs to be re-architect to two separate subclasses,
+
+- One for backtesting
+
+- One for live execution
+"""
 
 import logging
 import datetime
@@ -125,6 +132,7 @@ class ExecutionLoop:
         self.strategy_factory = strategy_factory
         self.reset = reset
         self.routing_model = routing_model
+        self.execution_model = execution_model
 
         args = locals().copy()
         args.pop("self")
@@ -219,6 +227,57 @@ class ExecutionLoop:
         self.init_execution_model()
         self.universe_model = universe_model
         self.runner = runner
+
+    def init_live_run_state(self, run_description: StrategyExecutionDescription):
+        """Initialise run-state object.
+
+        We do need to do these updates only once on the startup,
+        as there run-state variables do not change over the process lifetime.
+        """
+
+        # Expose source code to webhook
+        if self.run_state:
+            self.run_state.source_code = run_description.source_code
+
+    def refresh_live_run_state(
+            self,
+            state: State,
+            visualisation=False,
+            universe: TradingStrategyUniverse=None,
+    ):
+        """Update the in-process strategy context which we serve over the webhook.
+
+        .. note::
+
+            There is still a gap between be able to serve the full run state and the webhook startup.
+            This is because for the full run state, we need to have visualisations
+            and we do not have those availble until we have loaded the trading universe data,
+            which may take some time.
+
+        :param visualisation:
+            Also update technical charts
+        """
+
+        run_state = self.run_state
+
+        # Strategy statistics
+        if not state.portfolio.is_empty():
+            stats = calculate_summary_statistics(
+                state,
+                self.execution_context.mode,
+            )
+            self.run_state.summary_statistics = stats
+
+        # Frozen positions is needed for fault checking hooks
+        run_state.frozen_positions = len(state.portfolio.frozen_positions)
+
+        # Strategy charts
+        if visualisation:
+            assert universe, "Candle data must be available to update visualisations"
+            self.runner.refresh_visualisations(state, universe)
+
+        # Mark last refreshed
+        run_state.bumb_refreshed()
 
     def tick(self,
              unrounded_timestamp: datetime.datetime,
@@ -385,19 +444,6 @@ class ExecutionLoop:
 
         # Store the current state to disk
         self.store.sync(state)
-
-    def update_summary_statistics(
-            self,
-            state: State,
-    ):
-        """Update the summary card statistics for this strategy."""
-
-        if not state.portfolio.is_empty():
-            stats = calculate_summary_statistics(
-                state,
-                self.execution_context.mode,
-            )
-            self.run_state.summary_statistics = stats
 
     def check_position_triggers(self,
                           ts: datetime.datetime,
@@ -709,7 +755,7 @@ class ExecutionLoop:
         universe = self.warm_up_live_trading()
 
         # Store summary statistics in memory before doing anything else
-        self.update_summary_statistics(state)
+        self.refresh_live_run_state(state, visualisation=True, universe=universe)
 
         # The first trade will be execute immediately, despite the time offset or tick
         if self.trade_immediately:
@@ -786,11 +832,14 @@ class ExecutionLoop:
 
                 # Post execution, update our statistics
                 try:
-                    self.update_summary_statistics(state)
+                    # TODO: Visualisations are internally refreshed by runner
+                    # this is somewhat bad architecture and refreshing run state should be a responsibility
+                    # of a single component
+                    self.refresh_live_run_state(state)
                 except Exception as e:
                     # Failing to do the performance statistics is not fatal,
                     # because this does not contain any state changing events
-                    logger.warning("update_summary_statistics() failed in the live cycle: %s", e)
+                    logger.warning("refresh_live_run_state() failed in the live cycle: %s", e)
                     logger.exception(e)
                     pass
 
@@ -811,8 +860,7 @@ class ExecutionLoop:
 
             run_state.completed_cycle = cycle
             run_state.cycles += 1
-            run_state.frozen_positions = len(state.portfolio.frozen_positions)
-            run_state.bumb_refreshed()
+            self.refresh_live_run_state(state)
 
             # Reset the background watchdog timer
             mark_alive(watchdog_registry, "live_cycle")
@@ -832,7 +880,7 @@ class ExecutionLoop:
 
                 self.update_position_valuations(ts, state, universe, execution_context.mode)
 
-                self.update_summary_statistics(state)
+                self.refresh_live_run_state(state)
             except Exception as e:
                 die(e)
 
@@ -937,6 +985,7 @@ class ExecutionLoop:
         """
 
         state = self.init_state()
+        
         self.init_execution_model()
 
         run_description: StrategyExecutionDescription = self.strategy_factory(
@@ -952,9 +1001,7 @@ class ExecutionLoop:
             run_state=self.run_state,
         )
 
-        # Expose source code to webhook
-        if self.run_state:
-            self.run_state.source_code = run_description.source_code
+        self.init_live_run_state(run_description)
 
         # Deconstruct strategy input
         self.runner: StrategyRunner = run_description.runner
