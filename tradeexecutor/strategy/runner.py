@@ -503,7 +503,6 @@ class StrategyRunner(abc.ABC):
 
             return approved_trades
 
-
     def repair_state(self, state: State) -> List[TradeExecution]:
         """Repair unclean state issues.
 
@@ -520,3 +519,18 @@ class StrategyRunner(abc.ABC):
         repaired = []
         repaired += self.execution_model.repair_unconfirmed_trades(state)
         return repaired
+
+    def refresh_visualisations(self, state: State, universe: TradingStrategyUniverse):
+        """Update the visualisations in the run state.
+
+        - In-process memory charts are served by webhook
+
+        - In-process memory charts are posted to Discord, etc.
+
+        - This is called on the startup, so that we have immediately good visualisation
+          to show over the webhook when the web server boots up
+
+        - This is called after each strategy thinking cycle is complete.
+
+        The function is overridden by the child class for actual strategy runner specific implementation.
+        """
