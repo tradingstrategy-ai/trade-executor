@@ -4,6 +4,12 @@
 
 - Can be used as a part of Docker image
 
+To start a console in shell with `docker-compose.yml` set up:
+
+.. code-block:: shell
+
+     docker-compose run $YOUR_CONTAINER_NAME console
+
 """
 import datetime
 from decimal import Decimal
@@ -42,7 +48,7 @@ def launch_console(bindings: dict):
     """Start IPython session"""
 
     print('')
-    print('Following classes and objects are available:')
+    print('Following classes and objects are added to the interactive interpreter without import:')
     for var, val in bindings.items():
         line = "{key:30}: {value}".format(
             key=var,
@@ -106,11 +112,10 @@ def console(
     logger = setup_logging(log_level)
 
     version_info = VersionInfo.read_docker_version()
-    logger.info(f"Version: {version_info.tag}")
+    logger.info(f"Docker image version: {version_info.tag}")
     logger.info(f"Commit hash: {version_info.commit_hash}")
     logger.info(f"Commit message: {version_info.commit_message}")
     logger.info("")
-    logger.info("Version information is only available within Docker image.")
 
     mod = read_strategy_module(strategy_file)
 
