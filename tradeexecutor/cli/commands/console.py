@@ -205,7 +205,7 @@ def console(
     store = create_state_store(Path(state_file))
 
     if store.is_pristine():
-        state = store.create()
+        state = store.create(id)
     else:
         state = store.load()
 
@@ -215,6 +215,10 @@ def console(
 
     runner = run_description.runner
     routing_state, pricing_model, valuation_model = runner.setup_routing(universe)
+
+    # TODO: Make construction of routing model cleaner
+    if routing_model is None:
+        routing_model = runner.routing_model
 
     # Set up the default objects
     # availalbe in the interactive session
@@ -228,9 +232,10 @@ def console(
         "routing_state": routing_state,
         "pricing_model": pricing_model,
         "valuation_model": valuation_model,
+        "routing_model": routing_model,
         "sync_model": sync_model,
         "pd": pd,
-        "cache_path": cache_path,
+        "cache_path": cache_path.absolute(),
         "datetime": datetime,
         "Decimal": Decimal,
         "ExecutionMode": ExecutionMode,

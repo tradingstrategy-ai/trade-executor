@@ -343,6 +343,12 @@ def create_client(
     - May create mock client if we run e2e tests
 
     - Otherwise create a real client
+
+    :return:
+        Client, routing model tuple.
+
+        Routing  model is only returned if a test EVM routing set up is used (smart contracts
+        deployed in the test).
     """
 
     client = None
