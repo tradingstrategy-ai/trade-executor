@@ -25,6 +25,7 @@ from .app import app
 from ..bootstrap import prepare_executor_id, prepare_cache, create_web3_config, create_execution_and_sync_model, \
     create_state_store, create_client
 from ..log import setup_logging
+from ..version_info import VersionInfo
 from ...strategy.approval import UncheckedApprovalModel
 from ...strategy.bootstrap import make_factory_from_strategy_mod
 from ...strategy.description import StrategyExecutionDescription
@@ -103,6 +104,13 @@ def console(
     id = prepare_executor_id(id, strategy_file)
 
     logger = setup_logging(log_level)
+
+    version_info = VersionInfo.read_docker_version()
+    logger.info(f"Version: {version_info.tag}")
+    logger.info(f"Commit hash: {version_info.commit_hash}")
+    logger.info(f"Commit message: {version_info.commit_message}")
+    logger.info("")
+    logger.info("Version information is only available within Docker image.")
 
     mod = read_strategy_module(strategy_file)
 
