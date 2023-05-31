@@ -140,6 +140,9 @@ def console(
         trading_strategy_api_key=trading_strategy_api_key,
         cache_path=cache_path,
         clear_caches=False,
+        test_evm_uniswap_v2_factory=None,
+        test_evm_uniswap_v2_router=None,
+        test_evm_uniswap_v2_init_code_hash=None,
     )
     assert client is not None, "You need to give details for TradingStrategy.ai client"
 
@@ -147,7 +150,7 @@ def console(
         asset_management_mode=asset_management_mode,
         private_key=private_key,
         web3config=web3config,
-        confirmation_timeout=5*60,
+        confirmation_timeout=datetime.timedelta(seconds=5*60),
         confirmation_block_count=5,
         max_slippage=0.02,
         min_gas_balance=0,
