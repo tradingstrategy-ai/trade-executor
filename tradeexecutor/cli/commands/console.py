@@ -58,12 +58,12 @@ def console(
     id: str = typer.Option(None, envvar="EXECUTOR_ID", help="Executor id used when programmatically referring to this instance. If not given, take the base of --strategy-file."),
 
     # State
-    state_file: Optional[Path] = typer.Option(None, envvar="STATE_FILE", help="JSON file where we serialise the execution state. If not given defaults to state/{executor-id}.json"),
+    state_file: Optional[Path] = shared_options.state_file,
 
-    strategy_file: Path = typer.Option(..., envvar="STRATEGY_FILE"),
-    private_key: str = typer.Option(None, envvar="PRIVATE_KEY"),
-    trading_strategy_api_key: str = typer.Option(None, envvar="TRADING_STRATEGY_API_KEY", help="Trading Strategy API key"),
-    cache_path: Optional[Path] = typer.Option("cache/", envvar="CACHE_PATH", help="Where to store downloaded datasets"),
+    strategy_file: Path = shared_options.strategy_file,
+    private_key: str = shared_options.private_key,
+    trading_strategy_api_key: str = shared_options.trading_strategy_api_key,
+    cache_path: Optional[Path] = shared_options.cache_path,
 
     # Get minimum gas balance from the env
     minimum_gas_balance: Optional[float] = typer.Option(0.1, envvar="MINUMUM_GAS_BALANCE", help="What is the minimum balance of gas token you need to have in your wallet. If the balance falls below this, abort by crashing and do not attempt to create transactions. Expressed in the native token e.g. ETH."),
@@ -82,9 +82,9 @@ def console(
     vault_adapter_address: Optional[str] = shared_options.vault_adapter_address,
     vault_payment_forwarder_address: Optional[str] = shared_options.vault_payment_forwarder,
 
-    log_level: str = typer.Option(None, envvar="LOG_LEVEL", help="The Python default logging level. The defaults are 'info' is live execution, 'warning' if backtesting. Set 'disabled' in testing."),
+    log_level: str = shared_options.log_level,
 
-    unit_testing: bool = typer.Option(False, "--unit-testing", envvar="UNIT_TESTING", help="The trade executor is called under the unit testing mode. No caches are purged."),
+    unit_testing: bool = shared_options.unit_testing,
 ):
     """Open interactive IPython console to explore state.
 

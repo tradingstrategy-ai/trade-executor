@@ -121,7 +121,7 @@ def create_execution_model(
         valuation_model_factory = uniswap_v2_sell_valuation_factory
         pricing_model_factory = uniswap_v2_live_pricing_factory
     elif routing_hint.is_uniswap_v3():
-        logger.info("Uniswap v like exchange. Routing hint is %s", routing_hint)
+        logger.info("Uniswap v3 like exchange. Routing hint is %s", routing_hint)
         execution_model = UniswapV3ExecutionModel(
             tx_builder,
             confirmation_timeout=confirmation_timeout,
