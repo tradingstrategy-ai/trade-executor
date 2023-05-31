@@ -143,6 +143,7 @@ def console(
         confirmation_timeout=5*60,
         confirmation_block_count=5,
         max_slippage=0.02,
+        min_gas_balance=0,
         vault_address=vault_address,
         vault_adapter_address=vault_adapter_address,
         vault_payment_forwarder_address=vault_payment_forwarder_address,
