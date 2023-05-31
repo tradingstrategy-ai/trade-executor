@@ -109,6 +109,7 @@ def create_execution_model(
 
     # TODO: user_supplied_routing_model can be uni v3 as well
     if routing_hint is None or routing_hint.is_uniswap_v2() or routing_hint == TradeRouting.user_supplied_routing_model:
+        logger.info("Uniswap v2 like exchange. Routing hint is %s", routing_hint)
         execution_model = UniswapV2ExecutionModel(
             tx_builder,
             confirmation_timeout=confirmation_timeout,
@@ -120,6 +121,7 @@ def create_execution_model(
         valuation_model_factory = uniswap_v2_sell_valuation_factory
         pricing_model_factory = uniswap_v2_live_pricing_factory
     elif routing_hint.is_uniswap_v3():
+        logger.info("Uniswap v like exchange. Routing hint is %s", routing_hint)
         execution_model = UniswapV3ExecutionModel(
             tx_builder,
             confirmation_timeout=confirmation_timeout,
