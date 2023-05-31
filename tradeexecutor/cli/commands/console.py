@@ -103,6 +103,11 @@ def console(
     Assumes you have a strategy deployed as a Docker container,
     environment variabels and such are set up, then you want to diagnose
     or modify the strategy environment after it has been taken offline.
+
+    For an example console command you can read the hot wallet balance by:
+
+        >>> web3.eth.get_balance(hot_wallet.address) / 10**18
+
     """
 
     global logger
