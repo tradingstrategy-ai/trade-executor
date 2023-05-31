@@ -160,6 +160,8 @@ def console(
         routing_hint=mod.trade_routing,
     )
 
+    logger.info("Valuation model factory is %s, pricing model factory is %s", valuation_model_factory, pricing_model_factory)
+
     # Set up the strategy engine
     factory = make_factory_from_strategy_mod(mod)
     run_description: StrategyExecutionDescription = factory(

@@ -174,6 +174,8 @@ def create_execution_and_sync_model(
             vault_payment_forwarder_address,
         )
 
+        logger.info("Creating execution model. Asset management mode is %s, routing hint is %s", asset_management_mode.value, routing_hint.value)
+
         execution_model, valuation_model_factory, pricing_model_factory = create_execution_model(
             routing_hint=routing_hint,
             tx_builder=sync_model.create_transaction_builder(),
