@@ -23,7 +23,7 @@ from . import shared_options
 
 from .app import app
 from ..bootstrap import prepare_executor_id, prepare_cache, create_web3_config, create_execution_and_sync_model, \
-    create_state_store
+    create_state_store, create_client
 from ..log import setup_logging
 from ...strategy.approval import UncheckedApprovalModel
 from ...strategy.bootstrap import make_factory_from_strategy_mod
@@ -108,8 +108,6 @@ def console(
 
     cache_path = prepare_cache(id, cache_path)
 
-    client = Client.create_live_client(trading_strategy_api_key, cache_path=cache_path)
-
     execution_context = ExecutionContext(
         mode=ExecutionMode.preflight_check,
         timed_task_context_manager=timed_task
@@ -136,6 +134,15 @@ def console(
         # Add to Python console singing
         web3config.add_hot_wallet_signing(hot_wallet)
 
+    client, routing_model = create_client(
+        mod=mod,
+        web3config=web3config,
+        trading_strategy_api_key=trading_strategy_api_key,
+        cache_path=cache_path,
+        clear_caches=False,
+    )
+    assert client is not None, "You need to give details for TradingStrategy.ai client"
+
     execution_model, sync_model, valuation_model_factory, pricing_model_factory = create_execution_and_sync_model(
         asset_management_mode=asset_management_mode,
         private_key=private_key,
@@ -161,6 +168,7 @@ def console(
         pricing_model_factory=pricing_model_factory,
         approval_model=UncheckedApprovalModel(),
         client=client,
+        routing_model=routing_model,
         run_state=RunState(),
     )
 

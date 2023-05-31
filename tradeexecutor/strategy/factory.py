@@ -7,7 +7,7 @@ from typing import Protocol, Optional
 
 from contextlib import AbstractContextManager
 
-from tradingstrategy.client import Client
+from tradingstrategy.client import Client, BaseClient
 
 from tradeexecutor.strategy.sync_model import SyncMethodV0, SyncModel
 from tradeexecutor.strategy.approval import ApprovalModel
@@ -29,7 +29,7 @@ class StrategyFactory(Protocol):
         sync_model: SyncModel,
         pricing_model_factory: PricingModelFactory,
         valuation_model_factory: ValuationModelFactory,
-        client: Optional[Client],
+        client: Optional[BaseClient],
         timed_task_context_manager: AbstractContextManager,
         approval_model: ApprovalModel,
         routing_model: Optional[RoutingModel] = None,
