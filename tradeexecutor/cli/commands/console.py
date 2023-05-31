@@ -1,4 +1,10 @@
-"""console command."""
+"""console command.
+
+- Open interactive IPython session within the trade-executor
+
+- Can be used as a part of Docker image
+
+"""
 import datetime
 from decimal import Decimal
 from pathlib import Path
@@ -127,16 +133,16 @@ def console(
         web3config.add_hot_wallet_signing(hot_wallet)
 
     execution_model, sync_model, valuation_model_factory, pricing_model_factory = create_execution_and_sync_model(
-        asset_management_mode=AssetManagementMode.hot_wallet,
+        asset_management_mode=asset_management_mode,
         private_key=private_key,
         web3config=web3config,
-        confirmation_timeout=datetime.timedelta(seconds=60),
-        confirmation_block_count=6,
-        max_slippage=0.01,
-        min_gas_balance=minimum_gas_balance,
+        confirmation_timeout=5*60,
+        confirmation_block_count=5,
+        max_slippage=0.02,
         vault_address=vault_address,
         vault_adapter_address=vault_adapter_address,
         vault_payment_forwarder_address=vault_payment_forwarder_address,
+        routing_hint=mod.trade_routing,
     )
 
     # Set up the strategy engine
