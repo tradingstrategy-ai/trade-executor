@@ -116,9 +116,15 @@ def console(
 
     assert web3config, "No RPC endpoints given. A working JSON-RPC connection is needed for check-wallet"
 
+    hot_wallet = HotWallet.from_private_key(private_key)
+
     # Check that we are connected to the chain strategy assumes
     web3config.set_default_chain(mod.chain_id)
     web3config.check_default_chain_id()
+
+    if hot_wallet:
+        # Add to Python console singing
+        web3config.add_hot_wallet_signing(hot_wallet)
 
     execution_model, sync_model, valuation_model_factory, pricing_model_factory = create_execution_and_sync_model(
         asset_management_mode=AssetManagementMode.hot_wallet,
@@ -132,8 +138,6 @@ def console(
         vault_adapter_address=vault_adapter_address,
         vault_payment_forwarder_address=vault_payment_forwarder_address,
     )
-
-    hot_wallet = HotWallet.from_private_key(private_key)
 
     # Set up the strategy engine
     factory = make_factory_from_strategy_mod(mod)
@@ -188,7 +192,7 @@ def console(
     logger.info("  Number of trades: %s", len(list(state.portfolio.get_all_trades())))
 
     runner = run_description.runner
-    routing_state, pricing_model, valuation_method = runner.setup_routing(universe)
+    routing_state, pricing_model, valuation_model = runner.setup_routing(universe)
 
     # Set up the default objects
     # availalbe in the interactive session
@@ -198,9 +202,11 @@ def console(
         "state": state,
         "universe": universe,
         "store": store,
+        "hot_wallet": hot_wallet,
         "routing_state": routing_state,
         "pricing_model": pricing_model,
-        "valuation_method": valuation_method,
+        "valuation_model": valuation_model,
+        "sync_model": sync_model,
         "pd": pd,
         "cache_path": cache_path,
         "datetime": datetime,

@@ -5,10 +5,11 @@ from dataclasses import field, dataclass
 from typing import Dict, Optional, Tuple, Set, List
 
 from eth_defi.gas import GasPriceMethod, node_default_gas_price_strategy
+from eth_defi.hotwallet import HotWallet
 from eth_defi.middleware import http_retry_request_with_sleep_middleware
 from tradingstrategy.chain import ChainId
 from web3 import Web3, HTTPProvider
-from web3.middleware import geth_poa_middleware
+from web3.middleware import geth_poa_middleware, construct_sign_and_send_raw_middleware
 from web3.providers.eth_tester.middleware import default_transaction_fields_middleware, ethereum_tester_middleware
 
 from tradeexecutor.utils.url import get_url_domain
@@ -211,3 +212,10 @@ class Web3Config:
     def is_mainnet_fork(self) -> bool:
         """Is this connection a testing fork of a mainnet."""
         return len(self.connections) and self.connections.get(ChainId.anvil.value) is not None
+
+    def add_hot_wallet_signing(self, hot_wallet: HotWallet):
+        """Make web3.py native signing available in the console."""
+        assert isinstance(hot_wallet, HotWallet)
+        for web3 in self.connections.values():
+            web3.middleware_onion.add(construct_sign_and_send_raw_middleware(hot_wallet.account))
+            hot_wallet.sync_nonce(web3)
