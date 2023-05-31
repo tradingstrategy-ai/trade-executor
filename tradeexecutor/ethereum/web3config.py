@@ -7,9 +7,10 @@ from typing import Dict, Optional, List
 from eth_defi.gas import GasPriceMethod, node_default_gas_price_strategy
 from eth_defi.hotwallet import HotWallet
 from eth_defi.middleware import http_retry_request_with_sleep_middleware
+from tradeexecutor.monkeypatch.web3 import construct_sign_and_send_raw_middleware
 from tradingstrategy.chain import ChainId
 from web3 import Web3, HTTPProvider
-from web3.middleware import geth_poa_middleware, construct_sign_and_send_raw_middleware
+from web3.middleware import geth_poa_middleware
 
 from tradeexecutor.utils.url import get_url_domain
 
