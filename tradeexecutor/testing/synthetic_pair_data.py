@@ -14,7 +14,7 @@ def generate_pair(
     decimals1: int = 18, 
     fee: float = 0.0005,
     internal_id = random.randint(1, 1000)
-):
+) -> TradingPairIdentifier:
     token1 = AssetIdentifier(ChainId.osmosis.value, generate_random_ethereum_address(), symbol0, decimals0, 1)
     token2 = AssetIdentifier(ChainId.osmosis.value, generate_random_ethereum_address(), symbol1, decimals1, 2)
     pair = TradingPairIdentifier(
