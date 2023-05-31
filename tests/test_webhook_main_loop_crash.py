@@ -116,7 +116,7 @@ def test_main_loop_crash(
 
     try:
         # First check the server comes up
-        deadline = time.time() + 10
+        deadline = time.time() + 25  # TODO: Depends on Github CI?
         last_exception = None
         server_up = False
         resp = None
