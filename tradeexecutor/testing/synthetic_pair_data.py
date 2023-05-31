@@ -15,6 +15,31 @@ def generate_pair(
     fee: float = 0.0005,
     internal_id = random.randint(1, 1000)
 ) -> TradingPairIdentifier:
+    """Generate a random pair.
+    
+    :param exchange:
+        Exchange to use for the pair
+    
+    :param symbol0:
+        Symbol for the first token
+        
+    :param symbol1:
+        Symbol for the second token
+    
+    :param decimals0:
+        Decimals for the first token
+    
+    :param decimals1:
+        Decimals for the second token
+    
+    :param fee:
+        Fee for the pair
+    
+    :param internal_id:
+        Internal ID for the pair
+    """
+
+
     token1 = AssetIdentifier(ChainId.osmosis.value, generate_random_ethereum_address(), symbol0, decimals0, 1)
     token2 = AssetIdentifier(ChainId.osmosis.value, generate_random_ethereum_address(), symbol1, decimals1, 2)
     pair = TradingPairIdentifier(
