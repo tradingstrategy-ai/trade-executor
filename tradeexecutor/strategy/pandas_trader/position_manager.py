@@ -620,7 +620,7 @@ class PositionManager:
         if quantity_left == 0:
             # We have already generated closing trades for this position
             # earlier
-            logger.warning("Tried to close position that has enough selling trades to sent it to zero: %s", position)
+            logger.warning("Tried to close position that is already closed: %s", position)
             return None
 
         pair = position.pair
