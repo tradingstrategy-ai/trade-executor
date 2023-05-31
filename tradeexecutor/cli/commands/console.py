@@ -92,6 +92,10 @@ def console(
     executor state.
 
     Strategy, state and execution state are loaded to the memory for debugging.
+
+    Assumes you have a strategy deployed as a Docker container,
+    environment variabels and such are set up, then you want to diagnose
+    or modify the strategy environment after it has been taken offline.
     """
 
     global logger
