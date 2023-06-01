@@ -574,7 +574,7 @@ class PositionManager:
                        position: TradingPosition,
                        trade_type: TradeType=TradeType.rebalance,
                        notes: Optional[str] = None,
-                       trades_as_list=False,
+                       trades_as_list=True,
                        slippage_tolerance: Optional[float] = None,
                        ) -> Optional[TradeExecution] | List[TradeExecution]:
         """Close a single position.
