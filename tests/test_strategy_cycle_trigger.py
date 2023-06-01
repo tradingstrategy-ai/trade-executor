@@ -47,7 +47,7 @@ def test_trading_data_availability_based_strategy_cycle_trigger(
 
     - Uses live oracle for the data
 
-    - Does not do any trades or need keys - uses DummyExecution model
+    - Does not do any trades or need private keys - uses DummyExecution model
 
     - Web3 connection is still needed as it is used for the tested WMATIC-USDC
       asset live pricing
