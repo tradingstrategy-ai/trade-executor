@@ -599,11 +599,7 @@ class PositionManager:
         :return:
             Get list of trades needed to close this position.
 
-            If `trades_as_list` is `False`.
-            A trade that will close the position fully.
-            If there is nothing left to close, return None.
-
-            Otherwise return list of trades.
+            return list of trades.
 
         """
 
