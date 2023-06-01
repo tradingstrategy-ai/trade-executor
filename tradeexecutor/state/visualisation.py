@@ -60,6 +60,43 @@ class PlotShape(enum.Enum):
     markers = "markers"
 
 
+class RecordingTime(enum.Enum):
+    """At what timestamp this data is being recorded.
+
+    Are we avoiding look ahead bias or not.
+
+    All decisions are made on a candle open. During the decision,
+    we can access previous candle close that is more or less equivalent
+    of the current candle open. But we cannot access the current candle high,
+    low, or close values because those have not happened yet.
+
+    When the data is recorded by `decide_trades` it is recording
+    the previous cycle data used in the decision making. For daily candles, a decision today
+    is based on the data of yesterday. Thus this data does not represent
+    technical indicator calculations over time series, but decision making inputs.
+    This is to avoid look ahead bias.
+
+    This causes one decision making cycle lag charts when comparing charts
+    with market analysis charts, because those charts operate on
+
+    Because decision making visualisation is uncommon and causes confusion,
+    we will later correct this in :py:mod:`tradeexecutor.visual.techical_indicator`,
+    so that plots are shifted to match their market occurence timestamps.
+    """
+
+    #: The plot value was recorded for decision making.
+    #:
+    #: Shift data to match market timestamps.
+    decision_making_time = "decision_making_time"
+
+    #: The plot value represents technical indicator at the time of the market.
+    #:
+    #: Accessing the latest item in this plot cannot be used
+    #: for decision making, but charts are natively sync
+    #: with other market analysis charts.
+    market_time = "market_time"
+
+
 @dataclass_json
 @dataclass
 class Plot:
@@ -103,6 +140,12 @@ class Plot:
     #:
     #: For a marker, this is the size of the marker.
     indicator_size: Optional[float] = None
+
+    #: What is the recording time for this plot.
+    #:
+    #: Are we adjusted for look ahead bias or not.
+    #:
+    recording_time: RecordingTime = RecordingTime.decision_making_time
 
     def __repr__(self):
         return f"<Plot name:{self.name} kind:{self.kind.name} with {len(self.points)} points>"
