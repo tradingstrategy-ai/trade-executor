@@ -160,7 +160,7 @@ def make_test_trade(
     execution_model.execute_trades(
             ts,
             state,
-            [trade],
+            trade,
             routing_model,
             routing_state,
         )

@@ -77,14 +77,14 @@ def decide_trades(
         if position is None:
             trades += position_manager.open_1x_long(asset_1, cash * 0.25)
         else:
-            trades += position_manager.close_position(position, trades_as_list=True)
+            trades += position_manager.close_position(position)
 
     if timestamp.day % 5 == 0:
         position = position_manager.get_current_position_for_pair(asset_2)
         if position is None:
             trades += position_manager.open_1x_long(asset_2, cash * 0.25)
         else:
-            trades += position_manager.close_position(position, trades_as_list=True)
+            trades += position_manager.close_position(position)
 
     return trades
 
