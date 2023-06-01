@@ -16,6 +16,34 @@ def create_synthetic_single_pair_universe(
     time_bucket: TimeBucket,
     pair: TradingPairIdentifier,
 ) -> TradingStrategyUniverse:
+    """Creates a synthetic universe with a single pair and a single chain.
+    
+    :param candles:
+        A pandas DataFrame containing the candles for the pair.
+        
+        Must have the following columns:
+            - timestamp
+            - open
+            - high
+            - low
+            - close
+            - pair_id
+    
+        Can be generated using `generate_ohlcv_candles` from `tradeexecutor/testing/synthetic_price_data.py`.
+    
+    :param chain_id:
+        Chain ID to use for the universe.
+
+    :param exchange:
+        Exchange to use for the universe. Can be generated using `generate_exchange` from `tradeexecutor/testing/synthetic_exchange_data.py`.
+    
+    :param time_bucket:
+        Time bucket to use for the universe.
+
+    :param pair:
+        Pair to use for the universe.
+    """
+
 
     assert type(candles) == pd.DataFrame, "candles must be a pandas DataFrame"
     assert type(chain_id) == ChainId, "chain_id must be of type ChainId"
