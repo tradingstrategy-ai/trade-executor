@@ -13,7 +13,7 @@ from plotly import graph_objects as go
 
 
 from tradeexecutor.state.visualisation import (
-    Visualisation, Plot, PlotKind, PlotShape
+    Visualisation, Plot, PlotKind, PlotShape, RecordingTime
 )
 
 from tradingstrategy.charting.candle_chart import VolumeBarMode
@@ -104,6 +104,7 @@ def export_plot_as_dataframe(
         plot: Plot,
         start_at: Optional[pd.Timestamp] = None,
         end_at: Optional[pd.Timestamp] = None,
+        correct_look_ahead_bias=True,
 ) -> pd.DataFrame:
     """Convert visualisation state to Plotly friendly df.
 
@@ -115,6 +116,11 @@ def export_plot_as_dataframe(
 
     :param end_at:
         Crop range
+
+    :param correct_look_ahead_bias:
+        How many candles to shift the data if the source plot was adjusted for the look ahead bias.
+
+        See :py:class:`tradeexecutor.state.visualisation.RecordingTime` for more information.
     """
     data = []
     for time, value in plot.points.items():
@@ -136,6 +142,13 @@ def export_plot_as_dataframe(
     # Convert timestamp to pd.Timestamp column
     df = pd.DataFrame(data)
     df = df.set_index(pd.DatetimeIndex(df["timestamp"]))
+
+    # TODO: Not a perfect implementation, will
+    # fix this later
+    if correct_look_ahead_bias:
+        if plot.recording_time == RecordingTime.decision_making_time:
+            df = df.shift(-1)
+
     return df
 
 
