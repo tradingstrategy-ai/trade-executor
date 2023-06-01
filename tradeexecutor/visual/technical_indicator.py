@@ -151,8 +151,9 @@ def export_plot_as_dataframe(
             # We cannot use timestamp as a column anymore, because it is now out of sync,
             # use index only
             df = df.drop(labels=["timestamp"], axis="columns")
-            # TODO: Is anyone consuming timestamp as a column?
-            # df["timestamp"] = df.index
+            # TODO: Some functions consume timestamp column,
+            # when they should use index
+            df["timestamp"] = df.index
 
     return df
 
