@@ -291,6 +291,7 @@ class PositionManager:
                      take_profit_pct: Optional[float] = None,
                      stop_loss_pct: Optional[float] = None,
                      trailing_stop_loss_pct: Optional[float] = None,
+                     stop_loss_usd: Optional[USDollarAmount] = None,
                      notes: Optional[str] = None,
                      slippage_tolerance: Optional[float] = None,
                      ) -> List[TradeExecution]:
@@ -386,6 +387,15 @@ class PositionManager:
             assert 0 <= trailing_stop_loss_pct <= 1, f"trailing_stop_loss_pct must be 0..1, got {trailing_stop_loss_pct}"
             position.stop_loss = price_structure.mid_price * trailing_stop_loss_pct
             position.trailing_stop_loss_pct = trailing_stop_loss_pct
+        
+        if stop_loss_usd:
+            assert not stop_loss_pct, "You cannot give both stop_loss_pct and stop_loss_usd"
+            assert not trailing_stop_loss_pct, "You cannot give both trailing_stop_loss_pct and stop_loss_usd"
+            assert stop_loss_usd < price_structure.mid_price, f"stop_loss_usd must be less than mid_price got {stop_loss_usd} >= {price_structure.mid_price}"
+            
+            position.stop_loss = stop_loss_usd
+
+            
 
         if notes:
             position.notes = notes
