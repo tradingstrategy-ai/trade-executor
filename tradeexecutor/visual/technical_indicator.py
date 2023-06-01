@@ -104,7 +104,7 @@ def export_plot_as_dataframe(
         plot: Plot,
         start_at: Optional[pd.Timestamp] = None,
         end_at: Optional[pd.Timestamp] = None,
-        correct_look_ahead_bias=True,
+        correct_look_ahead_bias_negation=True,
 ) -> pd.DataFrame:
     """Convert visualisation state to Plotly friendly df.
 
@@ -117,7 +117,7 @@ def export_plot_as_dataframe(
     :param end_at:
         Crop range
 
-    :param correct_look_ahead_bias:
+    :param correct_look_ahead_bias_negation:
         How many candles to shift the data if the source plot was adjusted for the look ahead bias.
 
         See :py:class:`tradeexecutor.state.visualisation.RecordingTime` for more information.
@@ -144,10 +144,15 @@ def export_plot_as_dataframe(
     df = df.set_index(pd.DatetimeIndex(df["timestamp"]))
 
     # TODO: Not a perfect implementation, will
-    # fix this later
-    if correct_look_ahead_bias:
+    # fix this later, as currently we are not recording the decision making cycle on plots
+    if correct_look_ahead_bias_negation:
         if plot.recording_time == RecordingTime.decision_making_time:
-            df = df.shift(-1)
+            df = df.shift(periods=-1)
+            # We cannot use timestamp as a column anymore, because it is now out of sync,
+            # use index only
+            df = df.drop(labels=["timestamp"], axis="columns")
+            # TODO: Is anyone consuming timestamp as a column?
+            # df["timestamp"] = df.index
 
     return df
 
