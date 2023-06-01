@@ -562,11 +562,10 @@ class AlphaModel:
                     # Explicit close to avoid rounding issues
                     position = position_manager.get_current_position_for_pair(signal.pair)
                     if position:
-                        trade = position_manager.close_position(
+                        position_rebalance_trades = position_manager.close_position(
                             position,
                             TradeType.rebalance,
                         )
-                        position_rebalance_trades = [trade]
                 else:
                     # Increase or decrease the position.
                     # Open new position if needed.

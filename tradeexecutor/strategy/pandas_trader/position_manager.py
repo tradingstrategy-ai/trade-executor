@@ -574,7 +574,6 @@ class PositionManager:
                        position: TradingPosition,
                        trade_type: TradeType=TradeType.rebalance,
                        notes: Optional[str] = None,
-                       trades_as_list=True,
                        slippage_tolerance: Optional[float] = None,
                        ) -> Optional[TradeExecution] | List[TradeExecution]:
         """Close a single position.
@@ -591,10 +590,6 @@ class PositionManager:
 
         :param notes:
             Human readable notes for this trade
-
-        :param trades_as_list:
-            A migration parameter for the future signature where we are
-            always returning a list of trades.
 
         :param slippage_tolerance:
             Slippage tolerance for this trade.
@@ -656,11 +651,7 @@ class PositionManager:
                                       f"Price structure: {price_structure}\n" \
                                       f"Reserve asset: {reserve_asset}\n"
 
-        if trades_as_list:
-            return [trade]
-        else:
-            # TODO: Old path - will be removed in the future versions
-            return trade
+        return [trade]
 
     def close_all(self) -> List[TradeExecution]:
         """Close all open positions.
@@ -675,7 +666,7 @@ class PositionManager:
         for position in self.state.portfolio.open_positions.values():
             trade = self.close_position(position)
             if trade:
-                trades.append(trade)
+                trades.extend(trade)
 
         return trades
 
