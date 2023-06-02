@@ -27,8 +27,8 @@ logger = logging.getLogger(__name__)
 class BacktestSimplePricingModel(PricingModel):
     """Look up the historical prices.
 
-    - Open price of the price candle at the timestamp,
-      or closest earlier timestamp is used
+    - By default, assume we can get buy/sell at
+      open price of the timestamp
 
     - Different pricing model can be used for rebalances (more coarse)
       and stop losses (more granular)
