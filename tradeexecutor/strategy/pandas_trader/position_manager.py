@@ -323,6 +323,14 @@ class PositionManager:
             If asset opening price is $1000, stop_loss_pct=0.95
             will sell the asset when price reaches 950.
 
+        :param trailing_stop_loss_pct:
+            If set, set the position to trigger trailing stop loss relative to
+            the current market price. Cannot be used with stop_loss_pct or stop_loss_usd.
+
+        :param stop_loss_usd:
+            If set, set the position to trigger stop loss at the given dollar price.
+            Cannot be used with stop_loss_pct or trailing_stop_loss_pct.
+
         :param notes:
             Human readable notes for this trade
 
