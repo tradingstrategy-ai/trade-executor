@@ -154,12 +154,13 @@ def make_test_trade(
         position,
         notes=notes,
     )
-    sell_trade = trade
+    assert len(trade) == 1
+    sell_trade = trade[0]
 
     execution_model.execute_trades(
             ts,
             state,
-            [trade],
+            trade,
             routing_model,
             routing_state,
         )
