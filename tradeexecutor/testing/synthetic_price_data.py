@@ -27,6 +27,36 @@ def generate_ohlcv_candles(
     """Generate some sample time series data.
 
     The output candles are deterministic: the same input parameters result to the same output parameters.
+
+    :param bucket: 
+        Time bucket to use for the candles
+
+    :param start: 
+        Start time for the candles
+
+    :param end: 
+        End time for the candles
+
+    :param start_price: 
+        Starting price for the candles
+
+    :param daily_drift: 
+        Tuple of (min, max) daily drift for the candles
+
+    :param high_drift: 
+        High drift for the candles
+
+    :param low_drift: 
+        Low drift for the candles
+
+    :param random_seed: 
+        Random seed to use for the candles
+
+    :param pair_id: 
+        Pair ID to use for the candles
+
+    :param exchange_id: 
+        Exchange ID to use for the candles
     """
 
     random_gen = random.Random(random_seed)
