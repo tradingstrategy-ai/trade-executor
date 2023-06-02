@@ -1361,14 +1361,14 @@ test = ["hypothesis (>=4.43.0,<5.0.0)", "pytest (>=6.2.5,<7)", "pytest-xdist", "
 
 [[package]]
 name = "ethpm-types"
-version = "0.5.1"
+version = "0.5.2"
 description = "ethpm_types: Implementation of EIP-2678"
 category = "main"
 optional = false
 python-versions = ">=3.8,<4"
 files = [
-    {file = "ethpm-types-0.5.1.tar.gz", hash = "sha256:a27ceed908a24dfb5b01da51b01d90acb6f742468996f049c91b6b7c4a8c4fb2"},
-    {file = "ethpm_types-0.5.1-py3-none-any.whl", hash = "sha256:7f5637ab33e9c9895732354f632cee595cfc4ce3362bc95e9ac8a7a37cce1e9e"},
+    {file = "ethpm-types-0.5.2.tar.gz", hash = "sha256:5e848d26b1250c1c076b17b2eada0bc2d04543766dfcb96d790fd5d2bb771c1e"},
+    {file = "ethpm_types-0.5.2-py3-none-any.whl", hash = "sha256:a1d17d7f8474948c91ce5628e1de098eae4dffaa5792a0eb585294288046d4c3"},
 ]
 
 [package.dependencies]
@@ -1846,14 +1846,14 @@ test = ["flaky", "ipyparallel", "pre-commit", "pytest (>=7.0)", "pytest-asyncio"
 
 [[package]]
 name = "ipython"
-version = "8.13.2"
+version = "8.14.0"
 description = "IPython: Productive Interactive Computing"
 category = "main"
 optional = false
 python-versions = ">=3.9"
 files = [
-    {file = "ipython-8.13.2-py3-none-any.whl", hash = "sha256:ffca270240fbd21b06b2974e14a86494d6d29290184e788275f55e0b55914926"},
-    {file = "ipython-8.13.2.tar.gz", hash = "sha256:7dff3fad32b97f6488e02f87b970f309d082f758d7b7fc252e3b19ee0e432dbb"},
+    {file = "ipython-8.14.0-py3-none-any.whl", hash = "sha256:248aca623f5c99a6635bc3857677b7320b9b8039f99f070ee0d20a5ca5a8e6bf"},
+    {file = "ipython-8.14.0.tar.gz", hash = "sha256:1d197b907b6ba441b692c48cf2a3a2de280dc0ac91a3405b39349a50272ca0a1"},
 ]
 
 [package.dependencies]
@@ -5175,14 +5175,14 @@ tqdm = ">=4.64.1,<5.0.0"
 
 [[package]]
 name = "trading-strategy"
-version = "0.16.1"
+version = "0.17"
 description = "Algorithmic trading, token and cryptocurrency DEX trading data, for Uniswap, Aave, PancakeSwap, Sushi, Trader Joe, others"
 category = "main"
 optional = false
 python-versions = ">=3.10,<3.11"
 files = [
-    {file = "trading_strategy-0.16.1-py3-none-any.whl", hash = "sha256:c94e3ffd0a11cbaf8c41952b28df8b5af5e159dc802118d8f1bccf47dca570fe"},
-    {file = "trading_strategy-0.16.1.tar.gz", hash = "sha256:2a81f315ec413cb930985d27798a0e93d1bd7b2461ee15b58755c0d584240e53"},
+    {file = "trading_strategy-0.17-py3-none-any.whl", hash = "sha256:fe827484fad2618c2dbc7e89ed93e6fe0b9c4794444e04783474ba2d57e1264e"},
+    {file = "trading_strategy-0.17.tar.gz", hash = "sha256:7e67a8afca709aa51438a407bdf7efb61dd478d307950f61d124d76e0b6eb451"},
 ]
 
 [package.dependencies]
@@ -5298,14 +5298,14 @@ test = ["black (>=22.3.0,<23.0.0)", "coverage (>=5.2,<6.0)", "isort (>=5.0.6,<6.
 
 [[package]]
 name = "typing-extensions"
-version = "4.6.2"
+version = "4.6.3"
 description = "Backported and Experimental Type Hints for Python 3.7+"
 category = "main"
 optional = false
 python-versions = ">=3.7"
 files = [
-    {file = "typing_extensions-4.6.2-py3-none-any.whl", hash = "sha256:3a8b36f13dd5fdc5d1b16fe317f5668545de77fa0b8e02006381fd49d731ab98"},
-    {file = "typing_extensions-4.6.2.tar.gz", hash = "sha256:06006244c70ac8ee83fa8282cb188f697b8db25bc8b4df07be1873c43897060c"},
+    {file = "typing_extensions-4.6.3-py3-none-any.whl", hash = "sha256:88a4153d8505aabbb4e13aacb7c486c2b4a33ca3b3f807914a9b4c844c471c26"},
+    {file = "typing_extensions-4.6.3.tar.gz", hash = "sha256:d91d5919357fe7f681a9f2b5b4cb2a5f1ef0a1e9f59c4d8ff0d3491e05c0ffd5"},
 ]
 
 [[package]]
@@ -6067,4 +6067,4 @@ web-server = ["WebTest", "openapi-core", "pyramid", "pyramid-openapi3", "waitres
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.10,<3.11"
-content-hash = "f8f1f1ee5e8d4c6b44d44b798c8091ed0d5bdba046c3c045afc4d610e21114c5"
+content-hash = "344b31408824741d4841d2e11c7324c6948597a6218f197f3f337a46e39d14f3"
