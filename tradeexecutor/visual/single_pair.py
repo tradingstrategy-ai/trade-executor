@@ -493,6 +493,7 @@ def visualise_single_pair(
         subplot_font_size = 11,
         relative_sizing: list[float] = None,
         volume_axis_name: str = "Volume USD",
+        candle_decimals: int = 4,
 ) -> go.Figure:
     """Visualise single-pair trade execution.
 
@@ -555,6 +556,9 @@ def visualise_single_pair(
     
     :param volume_axis_name:
         Name of the volume axis. Default is "Volume USD".
+    
+    :param candle_decimals:
+        Number of decimal places to round the candlesticks to. Default is 4.
 
     """
     
@@ -620,6 +624,7 @@ def visualise_single_pair(
         candles,
         base_token_name=base_token,
         quote_token_name=quote_token,
+        candle_decimals=candle_decimals
     )
 
     fig = _get_figure_grid_with_indicators(
