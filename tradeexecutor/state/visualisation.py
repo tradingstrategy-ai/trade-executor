@@ -327,6 +327,9 @@ class Visualisation:
             
         :param indicator_size:
             Optional indicator to determine the size of the indicator. For a line, this is the width of the line. For a marker, this is the size of the marker.
+
+        :param recording_time:
+            Optional recording time to determine when the plot should be recorded. For example, if you want to record the plot at the decision making time, you can set this to RecordingTime.decision_making_time. Default is RecordingTime.decision_making_time.
         """
         
         def _get_helper_message(variable_name: str = None):
