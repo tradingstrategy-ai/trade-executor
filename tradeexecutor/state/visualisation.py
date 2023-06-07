@@ -295,7 +295,7 @@ class Visualisation:
              value: float,
              colour: Optional[str] = None,
              plot_shape: Optional[PlotShape] = PlotShape.linear,
-             detached_overlay_name: str | None = None,
+             detached_overlay_name: Optional[str] = None,
              indicator_size: Optional[float] = None,
         ):
         """Add a value to the output data and diagram.
