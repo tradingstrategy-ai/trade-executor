@@ -77,7 +77,8 @@ class RecordingTime(enum.Enum):
     This is to avoid look ahead bias.
 
     This causes one decision making cycle lag charts when comparing charts
-    with market analysis charts, because those charts operate on
+    with market analysis charts, because those charts operate on the current
+    candle open, high, low, close values.
 
     Because decision making visualisation is uncommon and causes confusion,
     we will later correct this in :py:mod:`tradeexecutor.visual.techical_indicator`,
@@ -297,6 +298,7 @@ class Visualisation:
              plot_shape: Optional[PlotShape] = PlotShape.linear,
              detached_overlay_name: Optional[str] = None,
              indicator_size: Optional[float] = None,
+             recording_time: Optional[RecordingTime] = RecordingTime.decision_making_time,
         ):
         """Add a value to the output data and diagram.
         
@@ -370,6 +372,8 @@ class Visualisation:
 
         if colour:
             plot.colour = colour
+
+        plot.recording_time = recording_time
 
         self.plots[name] = plot
 
