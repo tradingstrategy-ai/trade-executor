@@ -139,6 +139,34 @@ class Statistics:
 
     def get_latest_portfolio_stats(self) -> PortfolioStatistics:
         return self.portfolio[-1]
+    
+    def get_earliest_portfolio_stats(self) -> PortfolioStatistics:
+        return self.portfolio[0]
+    
+    def get_equity_series(self) -> pd.Series:
+        """Get the time series of portfolio equity.
+
+        :return: Pandas Series with timestamps as index and equity as values.
+        """
+        return pd.Series(
+            [ps.total_equity for ps in self.portfolio],
+            index=[ps.calculated_at for ps in self.portfolio],
+            name="equity"
+        )
+    
+    def get_small_equity_series(self) -> pd.Series:
+        """Get the time series of portfolio equity that only contains the first and last entry.
+
+        :return: Pandas Series with timestamps as index and equity as values.
+        """
+        
+        _portfolio = [self.get_earliest_portfolio_stats(), self.get_latest_portfolio_stats()]
+
+        return pd.Series(
+            [ps.total_equity for ps in _portfolio],
+            index=[ps.calculated_at for ps in _portfolio],
+            name="equity"
+        )
 
     def get_latest_position_stats(self, position_id: int) -> PositionStatistics:
         return self.positions[position_id][-1]
@@ -195,6 +223,19 @@ class Statistics:
         # Convert data to daily if we have to
         assert resampling_method == "max", f"Unsupported resamping method {resampling_method}"
         return s.resample(resampling_time).max()
+    
+    def get_naive_rolling_pnl_pct(self) -> float:
+        """Get the naive rolling PnL percentage.
+
+        :return: Rolling PnL percentage.
+        """
+
+        if len(self.portfolio) < 2:
+            return 0.0
+
+        small_series = self.get_small_equity_series()
+
+        return calculate_naive_profitability(small_series, start_at=small_series.index[0], end_at=small_series.index[-1])[0]
 
 
 def calculate_naive_profitability(
@@ -216,7 +257,7 @@ def calculate_naive_profitability(
         (None, None) if we cannot calculate anything yet.
     """
 
-    if len(total_equity_series) == 0:
+    if len(total_equity_series) < 2:
         return None, None
 
     if look_back:
@@ -227,6 +268,8 @@ def calculate_naive_profitability(
 
         # We cannot look back data we do not have
         start_at = max(total_equity_series.index[0], start_at)
+    else:
+        assert start_at and end_at, "Give either look_back or range"
 
 
     # https://stackoverflow.com/a/42266376/315168

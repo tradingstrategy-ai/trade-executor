@@ -640,6 +640,7 @@ class ExecutionLoop:
                         "cycles": cycle,
                         "TPs": take_profits,
                         "SLs": stop_losses,
+                        "Est PnL": f"{state.stats.get_naive_rolling_pnl_pct()*100:.2f}%",
                     })
                     last_progress_update = datetime.datetime.utcnow()
                     if last_update_ts:
