@@ -44,8 +44,14 @@ docker run -ti --entrypoint /bin/bash ghcr.io/tradingstrategy-ai/trade-executor:
 Build the Docker image from the local source code and tags it as `latest` for your local usage:
 
 ```shell
-docker build -t ghcr.io/tradingstrategy-ai/trade-executo/trade-executor:latest .
+docker build -t ghcr.io/tradingstrategy-ai/trade-executor:latest .
 docker run ghcr.io/tradingstrategy-ai/trade-executor:latest --help 
+```
+
+To pop open a Bash shell:
+
+```shell
+docker run -it --entrypoint /bin/bash ghcr.io/tradingstrategy-ai/trade-executor:latest --
 ```
 
 This image is referred in `docker-container.yml`.
