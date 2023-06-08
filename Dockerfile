@@ -37,6 +37,7 @@ EXPOSE 3456
 # Use --quiet to supress Skipping virtualenv creation, as specified in config file.
 # use --directory so we can use -w and -v switches with Docker run
 # https://stackoverflow.com/questions/74564601/poetry-echos-skipping-virtualenv-creation-as-specified-in-config-file-when-r
-CMD ["poetry", "run", "--directory=/usr/src/trade-executor", "--quiet", "trade-executor"]
+# https://github.com/python-poetry/poetry/issues/8077
+CMD ["poetry", "run", "--quiet", "--directory", "/usr/src/trade-executor", "trade-executor"]
 
 ENTRYPOINT ["/usr/src/trade-executor/scripts/docker-entrypoint.sh"]
