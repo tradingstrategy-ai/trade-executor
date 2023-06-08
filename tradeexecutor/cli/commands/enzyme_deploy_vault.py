@@ -2,6 +2,7 @@
 
 import json
 import os.path
+from pathlib import Path
 from typing import Optional
 
 from typer import Option
