@@ -4,6 +4,7 @@ The whole application date can be dumped and loaded as JSON.
 
 Any datetime must be naive, without timezone, and is assumed to be UTC.
 """
+import json
 from dataclasses import dataclass, field
 import datetime
 from decimal import Decimal
@@ -11,6 +12,7 @@ from typing import List, Callable, Tuple, Set, Optional
 
 import pandas as pd
 from dataclasses_json import dataclass_json
+from dataclasses_json.core import _ExtendedEncoder
 
 from .sync import Sync
 from .identifier import AssetIdentifier, TradingPairIdentifier
@@ -421,5 +423,33 @@ class State:
             for t in p.trades.values():
                 if t.is_unfinished():
                     raise UncleanState(f"Position {p}, trade {t} is unfinished")
+
+    def to_json_safe(self) -> str:
+        """Serialise to JSON format with helpful validation and error messages.
+
+        Extra validation adds performance overhead.
+
+        :return:
+            The full strategy execution state as JSON string.
+
+            The strategy can be saved on a disk, resumed,
+            or server to the web frontend using this JSON blob.
+        """
+
+        # TODO: Avoid circular imports, refactor modules
+        from tradeexecutor.state.validator import validate_nested_state_dict
+
+        # Make timedelta handling
+        from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
+
+        patch_dataclasses_json()
+
+        # Insert special validation logic here to have
+        # friendly error messages for the JSON serialisation errors
+        data = self.to_dict(encode_json=False)
+        validate_nested_state_dict(data)
+
+        txt = json.dumps(data, cls=_ExtendedEncoder)
+        return txt
 
 

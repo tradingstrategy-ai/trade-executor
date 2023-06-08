@@ -849,6 +849,11 @@ def test_serialize_state(usdc, weth_usdc, start_ts: datetime.datetime):
     assert isinstance(summary.average_duration_of_winning_trades, datetime.timedelta)
     assert isinstance(summary.average_duration_of_losing_trades, datetime.timedelta)
 
+    # test restore from dump using different method
+    dump = state.to_json_safe()
+    state3 = State.from_json(dump)
+    state3.perform_integrity_check()
+
 
 def test_state_summary_without_initial_cash(usdc, weth_usdc, start_ts: datetime.datetime):
     """Backward compat test for reverse without init cash info."""
