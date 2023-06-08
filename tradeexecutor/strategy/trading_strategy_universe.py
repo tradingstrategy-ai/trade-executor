@@ -282,11 +282,9 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             assert exchange, f"No exchange {exchange_slug} found on chain {chain_id.name}"
 
             # Create trading pair database
-            pair_universe = PandasPairUniverse.create_single_pair_universe(
+            pair_universe = PandasPairUniverse.create_pair_universe(
                 dataset.pairs,
-                exchange,
-                base_token,
-                quote_token,
+                [(exchange.chain_id, exchange_slug, base_token, quote_token)],
             )
 
         # Get daily candles as Pandas DataFrame
