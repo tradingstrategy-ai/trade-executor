@@ -29,13 +29,14 @@ RUN echo $GIT_VERSION_HASH > GIT_VERSION_HASH.txt
 COPY . .
 
 RUN poetry config virtualenvs.create false
-RUN poetry install --no-dev --no-interaction --no-ansi -E web-server -E execution
+RUN poetry install --no-dev --no-interaction --no-ansi -E web-server -E execution -E quantstats
 
 # Pyramid HTTP server for webhooks at port 3456
 EXPOSE 3456
 
 # Use --quiet to supress Skipping virtualenv creation, as specified in config file.
+# use --directory so we can use -w and -v switches with Docker run
 # https://stackoverflow.com/questions/74564601/poetry-echos-skipping-virtualenv-creation-as-specified-in-config-file-when-r
-CMD ["poetry", "run", "--quiet", "trade-executor"]
+CMD ["poetry", "run", "--directory=/usr/src/trade-executor", "--quiet", "trade-executor"]
 
 ENTRYPOINT ["/usr/src/trade-executor/scripts/docker-entrypoint.sh"]
