@@ -15,7 +15,7 @@ ENV PYTHONDONTWRITEBYTECODE 1 \
 
 RUN apt-get update \
     && apt-get install curl -y \
-    && curl -sSL https://install.python-poetry.org | python - --version 1.2.2
+    && curl -sSL https://install.python-poetry.org | python - --version 1.4.2
 
 ENV PATH="/root/.local/bin:$PATH"
 
