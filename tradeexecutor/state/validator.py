@@ -11,6 +11,7 @@ from decimal import Decimal
 from enum import Enum
 from json.encoder import INFINITY
 from types import NoneType
+from typing import Type
 
 import pandas as pd
 import numpy as np
@@ -21,6 +22,11 @@ from tradeexecutor.state.state import State
 class BadStateData(Exception):
     """Having something we do not support in the state."""
 
+ALLOWED_KEY_TYPES = (
+    float,
+    int,
+    str
+)
 
 #: Types we know we can safely pass to JSON serialisation
 ALLOWED_VALUE_TYPES = (
@@ -39,9 +45,12 @@ ALLOWED_VALUE_TYPES = (
 #: We especially do not want to see these in serialisation.
 #: We need to do negative test, because Pandas types to some base class
 #: magic.
+#:
+#: For Pandas float serialisation discussion see https://stackoverflow.com/questions/27098529/numpy-float64-vs-python-float and https://stackoverflow.com/questions/27098529/numpy-float64-vs-python-float
+#:
 BAD_VALUE_TYPES = (
-    np.float32,
-    np.float64,
+    # np.float32,
+    # np.float64,
     pd.Timedelta,
     pd.Timestamp,
 )
@@ -59,7 +68,6 @@ def validate_state_value(name: str | int, val: object):
 
     if type(val) in (int, float):
         # JavaScript number compatibility check
-
         o = val
         if o != o:
             text = 'NaN'
@@ -84,7 +92,7 @@ def validate_state_value(name: str | int, val: object):
         raise BadStateData(f"{name}: {val} ({type(val)} - value type is not in supported serialisable types")
 
 
-def walk(name: str | int, val: dict | list | object):
+def walk(name: str | int, val: dict | list | object, key_type: Type):
     """Raise hierarchical exceptions to locate the bad key-value pair in nested data.
 
     :raise BadStateData:
@@ -94,11 +102,13 @@ def walk(name: str | int, val: dict | list | object):
     try:
         if isinstance(val, dict):
             for k, v in val.items():
-                walk(k, v)
+                walk(k, v, type(k))
         elif isinstance(val, list):
             for idx, val in enumerate(val):
-                walk(idx, val)
+                walk(idx, val, type(idx))
         else:
+            if key_type not in ALLOWED_KEY_TYPES:
+                raise BadStateData(f"'{name}' bad key type: {key_type}, allowed {ALLOWED_KEY_TYPES}")
             validate_state_value(name, val)
     except BadStateData as e:
         raise BadStateData(f"'{name}' ({val.__class__}) key has errors") from e
@@ -113,7 +123,7 @@ def validate_nested_state_dict(d: dict | list | object):
         In the case we have sneaked something into the state
         that does not belong there.
     """
-    walk("state", d)
+    walk("state", d, type(d))
 
 
 def validate_state_serialisation(state: State):
