@@ -68,10 +68,10 @@ def universe(request, persistent_test_client, execution_context) -> TradingStrat
     exchange_slug = "pancakeswap-v2"
 
     # Which trading pair we are trading
-    trading_pairs = {
+    trading_pairs = [
         ("WBNB", "BUSD"),
         ("Cake", "WBNB"),
-    }
+    ]
 
     # Load all datas we can get for our candle time bucket
     dataset = load_pair_data_for_single_exchange(
@@ -85,12 +85,9 @@ def universe(request, persistent_test_client, execution_context) -> TradingStrat
     )
 
     # Filter down to the single pair we are interested in
-    universe = TradingStrategyUniverse.create_limited_pair_universe(
+    universe = TradingStrategyUniverse.create_pair_universe(
         dataset,
-        chain_id,
-        exchange_slug,
-        trading_pairs,
-        reserve_asset_pair_ticker=("WBNB", "BUSD")
+        [(chain_id, exchange_slug, trading_pairs[0][0], trading_pairs[0][1]), (chain_id, exchange_slug, trading_pairs[1][0], trading_pairs[1][1])],
     )
 
     assert universe.reserve_assets[0].token_symbol == "BUSD"
