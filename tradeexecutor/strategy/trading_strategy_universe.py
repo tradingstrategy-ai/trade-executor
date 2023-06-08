@@ -216,7 +216,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
 
             Highest volume trading pair if multiple matches.
 
-        :raise NoPairFound:
+        :raise PairNotFoundError:
             In the case input data cannot be resolved.
 
         """
