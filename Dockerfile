@@ -31,7 +31,7 @@ COPY . .
 RUN poetry config virtualenvs.create false
 RUN poetry install --no-dev --no-interaction --no-ansi -E web-server -E execution
 
-# Webhook port 3456
+# Pyramid HTTP server for webhooks at port 3456
 EXPOSE 3456
 
 # Use --quiet to supress Skipping virtualenv creation, as specified in config file.
