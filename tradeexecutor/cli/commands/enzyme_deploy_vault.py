@@ -137,7 +137,7 @@ def enzyme_deploy_vault(
                 "block_number": block_number,
                 "usdc_payment_forwarder": usdc_payment_forwarder.address,
             }
-            json.dump(vault_record, out)
+            json.dump(vault_record, out, indent=4)
         logger.info("Wrote %s for vault details", os.path.abspath(vault_record_file))
 
     logger.info("Vault details")
