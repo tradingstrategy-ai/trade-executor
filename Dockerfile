@@ -38,4 +38,4 @@ EXPOSE 3456
 # https://stackoverflow.com/questions/74564601/poetry-echos-skipping-virtualenv-creation-as-specified-in-config-file-when-r
 CMD ["poetry", "run", "--quiet", "trade-executor"]
 
-ENTRYPOINT ["scripts/docker-entrypoint.sh"]
+ENTRYPOINT ["/usr/src/trade-executor/scripts/docker-entrypoint.sh"]
