@@ -73,12 +73,9 @@ def universe(request, persistent_test_client, execution_context) -> TradingStrat
     dataset = load_all_data(client, candle_time_bucket, execution_context, UniverseOptions())
 
     # Filter down to the single pair we are interested in
-    universe = TradingStrategyUniverse.create_single_pair_universe(
+    universe = TradingStrategyUniverse.create_pair_universe(
         dataset,
-        chain_id,
-        exchange_slug,
-        trading_pair[0],
-        trading_pair[1],
+        [(chain_id, exchange_slug, trading_pair[0], trading_pair[1])],
     )
 
     return universe

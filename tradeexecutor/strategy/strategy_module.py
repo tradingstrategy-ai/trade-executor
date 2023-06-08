@@ -194,12 +194,9 @@ class CreateTradingUniverseProtocol(Protocol):
                 )
 
             # Filter down to the single pair we are interested in
-            universe = TradingStrategyUniverse.create_single_pair_universe(
+            universe = TradingStrategyUniverse.create_pair_universe(
                 dataset,
-                chain_id,
-                exchange_slug,
-                trading_pair_ticker[0],
-                trading_pair_ticker[1],
+                [(chain_id, exchange_slug, trading_pair_ticker[0], trading_pair_ticker[1])]
             )
 
             return universe

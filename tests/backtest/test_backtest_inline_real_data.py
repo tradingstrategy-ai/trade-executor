@@ -164,12 +164,9 @@ def create_trading_universe(
     dataset = load_all_data(client, candle_time_frame, execution_context, universe_options)
 
     # Filter down to the single pair we are interested in
-    universe = TradingStrategyUniverse.create_single_pair_universe(
+    universe = TradingStrategyUniverse.create_pair_universe(
         dataset,
-        chain_id,
-        exchange_slug,
-        trading_pair[0],
-        trading_pair[1],
+        [(chain_id, exchange_slug, trading_pair[0], trading_pair[1])],
     )
 
     return universe
