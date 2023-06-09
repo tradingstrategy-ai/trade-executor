@@ -23,6 +23,7 @@ from ...strategy.trading_strategy_universe import TradingStrategyUniverseModel
 from ...strategy.universe_model import UniverseOptions
 from ...utils.timer import timed_task
 from tradeexecutor.cli.commands import shared_options
+from tradingstrategy.pair import HumanReadableTradingPairDescription
 
 
 @app.command()
@@ -57,6 +58,9 @@ def perform_test_trade(
     test_evm_uniswap_v2_router: Optional[str] = shared_options.test_evm_uniswap_v2_router,
     test_evm_uniswap_v2_factory: Optional[str] = shared_options.test_evm_uniswap_v2_factory,
     test_evm_uniswap_v2_init_code_hash: Optional[str] = shared_options.test_evm_uniswap_v2_init_code_hash,
+
+    # for multipair strategies
+    pair: Optional[HumanReadableTradingPairDescription] = None,
 ):
     """Perform a small test swap.
 
@@ -165,6 +169,7 @@ def perform_test_trade(
         universe,
         runner.routing_model,
         routing_state,
+        pair=pair,
     )
 
     # Store the test trade data in the strategy history
