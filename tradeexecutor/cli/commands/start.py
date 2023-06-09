@@ -401,7 +401,7 @@ def start(
         loop.run()
 
         # Display summary stats for terminal backtest runs
-        if asset_management_mode == AssetManagementMode.backtest and isinstance(store, NoneStore):
+        if backtest_start:
             display_backtesting_results(store.state)
 
     except KeyboardInterrupt as e:
