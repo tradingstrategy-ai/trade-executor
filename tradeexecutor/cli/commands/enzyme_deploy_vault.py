@@ -95,6 +95,8 @@ def enzyme_deploy_vault(
     logger.info("  Integration manager deployed at %s", enzyme_deployment.contracts.integration_manager.address)
     logger.info("  %s is %s", denomination_token.symbol, denomination_token.address)
 
+    block_number = web3.eth.block_number
+
     logger.info("Deploying vault")
     try:
         # TODO: Fix this later, use create_new_vault() argument
@@ -127,9 +129,8 @@ def enzyme_deploy_vault(
         comptroller_contract.address,
     )
 
-    block_number = web3.eth.block_number
-
     if vault_record_file:
+        # Make a small file, mostly used to communicate with unit tests
         with open(vault_record_file, "wt") as out:
             vault_record = {
                 "vault": vault_contract.address,
