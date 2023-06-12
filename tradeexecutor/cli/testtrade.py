@@ -143,6 +143,11 @@ def make_test_trade(
         position_id = trade.position_id
         position = state.portfolio.get_position_by_id(position_id)
 
+        if not trade.is_success():
+            logger.error("Test buy failed: %s", trade)
+            logger.error("Trade dump:\n%s", trade.get_full_debug_dump_str())
+            raise AssertionError("Test buy failed")
+
     logger.info("Position %s open. Now closing the position.", position)
 
     # Recreate the position manager for the new timestamp,
@@ -155,20 +160,25 @@ def make_test_trade(
         pricing_model,
     )
 
-    trade = position_manager.close_position(
+    trades = position_manager.close_position(
         position,
         notes=notes,
     )
-    assert len(trade) == 1
-    sell_trade = trade[0]
+    assert len(trades) == 1
+    sell_trade = trades[0]
 
     execution_model.execute_trades(
             ts,
             state,
-            trade,
+            [sell_trade],
             routing_model,
             routing_state,
         )
+
+    if not sell_trade.is_success():
+        logger.error("Test sell failed: %s", sell_trade)
+        logger.error("Trade dump:\n%s", sell_trade.get_full_debug_dump_str())
+        raise AssertionError("Test sell failed")
 
     gas_at_end = hot_wallet.get_native_currency_balance(web3)
     reserve_currency_at_end = state.portfolio.get_default_reserve_position().get_value()
