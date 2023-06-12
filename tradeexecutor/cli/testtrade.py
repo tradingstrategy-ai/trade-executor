@@ -170,10 +170,15 @@ def make_test_trade(
     execution_model.execute_trades(
             ts,
             state,
-            trade,
+            [sell_trade],
             routing_model,
             routing_state,
         )
+
+    if not sell_trade.is_success():
+        logger.error("Test sell failed: %s", sell_trade)
+        logger.error("Trade dump:\n%s", sell_trade.get_full_debug_dump_str())
+        raise AssertionError("Test sell failed")
 
     gas_at_end = hot_wallet.get_native_currency_balance(web3)
     reserve_currency_at_end = state.portfolio.get_default_reserve_position().get_value()
