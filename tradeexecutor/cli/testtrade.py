@@ -84,13 +84,18 @@ def make_test_trade(
     vault_address = sync_model.get_vault_address()
     hot_wallet = sync_model.get_hot_wallet()
     gas_at_start = hot_wallet.get_native_currency_balance(web3)
-    reserve_currency= state.portfolio.get_default_reserve_position().asset.token_symbol
-    reserve_currency_at_start = state.portfolio.get_default_reserve_position().get_value()
 
     logger.info("Account data before test trade")
     logger.info("  Vault address: %s", vault_address)
     logger.info("  Hot wallet address: %s", hot_wallet.address)
     logger.info("  Hot wallet balance: %s", gas_at_start)
+
+    if len(state.portfolio.reserves) == 0:
+        raise RuntimeError("No reserves detected for the strategy. Does your wallet/vault have USDC deposited for trading?")
+
+    reserve_currency = state.portfolio.get_default_reserve_position().asset.token_symbol
+    reserve_currency_at_start = state.portfolio.get_default_reserve_position().get_value()
+
     logger.info("  Reserve currency balance: %s %s", reserve_currency_at_start, reserve_currency)
 
     assert reserve_currency_at_start > 0, f"No deposits available to trade. Vault at {vault_address}"
