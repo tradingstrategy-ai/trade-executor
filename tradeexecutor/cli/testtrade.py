@@ -143,6 +143,11 @@ def make_test_trade(
         position_id = trade.position_id
         position = state.portfolio.get_position_by_id(position_id)
 
+        if not trade.is_success():
+            logger.error("Test buy failed: %s", trade)
+            logger.error("Trade dump:\n%s", trade.get_full_debug_dump_str())
+            raise AssertionError("Test buy failed")
+
     logger.info("Position %s open. Now closing the position.", position)
 
     # Recreate the position manager for the new timestamp,
