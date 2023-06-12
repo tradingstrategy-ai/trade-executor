@@ -60,7 +60,7 @@ def perform_test_trade(
     test_evm_uniswap_v2_init_code_hash: Optional[str] = shared_options.test_evm_uniswap_v2_init_code_hash,
 
     # for multipair strategies
-    pair: Optional[HumanReadableTradingPairDescription] = None,
+    pair: Optional[str] = shared_options.pair,
 ):
     """Perform a small test swap.
 
