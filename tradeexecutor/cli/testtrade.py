@@ -155,12 +155,12 @@ def make_test_trade(
         pricing_model,
     )
 
-    trade = position_manager.close_position(
+    trades = position_manager.close_position(
         position,
         notes=notes,
     )
-    assert len(trade) == 1
-    sell_trade = trade[0]
+    assert len(trades) == 1
+    sell_trade = trades[0]
 
     execution_model.execute_trades(
             ts,
