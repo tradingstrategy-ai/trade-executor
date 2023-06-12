@@ -6,6 +6,7 @@ from typing import Union
 
 from web3 import Web3
 
+from tradeexecutor.ethereum.enzyme.vault import EnzymeVaultSyncModel
 from tradeexecutor.strategy.sync_model import SyncModel
 from tradingstrategy.universe import Universe
 
@@ -89,6 +90,12 @@ def make_test_trade(
     logger.info("  Vault address: %s", vault_address)
     logger.info("  Hot wallet address: %s", hot_wallet.address)
     logger.info("  Hot wallet balance: %s", gas_at_start)
+
+    # TODO: Move to SyncModel
+    if isinstance(sync_model, EnzymeVaultSyncModel):
+        # Check if the vault was properly set up
+        vault = sync_model.vault
+        assert vault.vault.functions.isAssetManager(hot_wallet.address).call(), f"Address is not set up as Enzyme asset manager: {hot_wallet.address}"
 
     if len(state.portfolio.reserves) == 0:
         raise RuntimeError("No reserves detected for the strategy. Does your wallet/vault have USDC deposited for trading?")
