@@ -145,6 +145,8 @@ def make_test_trade(
 
         if not trade.is_success():
             logger.error("Test buy failed: %s", trade)
+            logger.error("Tx hash: %s", trade.blockchain_transactions[-1].tx_hash)
+            logger.error("Revert reason: %s", trade.blockchain_transactions[-1].revert_reason)
             logger.error("Trade dump:\n%s", trade.get_full_debug_dump_str())
             raise AssertionError("Test buy failed")
 
