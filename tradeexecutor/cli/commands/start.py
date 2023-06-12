@@ -402,7 +402,13 @@ def start(
 
         # Display summary stats for terminal backtest runs
         if backtest_start:
-            display_backtesting_results(store.state)
+            # TODO: Hack. Refactor Backtest to its own command / class,
+            # Confusion how state should be passed from the execution loop to here
+            if hasattr(store, "state"):
+                display_backtesting_results(store.state)
+            else:
+                state = store.load()
+                display_backtesting_results(state)
 
     except KeyboardInterrupt as e:
         # CTRL+C shutdown
