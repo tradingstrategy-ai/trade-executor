@@ -116,7 +116,7 @@ def enzyme_deploy_vault(
         web3,
         f"VaultSpecificGenericAdapter.json",
         hot_wallet.address,
-        enzyme_deployment.contracts.integration_manager.address,
+            enzyme_deployment.contracts.integration_manager.address,
         vault_contract.address,
     )
 

@@ -1202,7 +1202,7 @@ def load_partial_data(
         Trading Strategy client instance
 
     :param time_bucket:
-        The candle time frame
+        The candle time frame.
 
     :param chain_id:
         Which blockchain hosts our exchange

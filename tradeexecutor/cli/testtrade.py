@@ -97,6 +97,8 @@ def make_test_trade(
         vault = sync_model.vault
         assert vault.vault.functions.isAssetManager(hot_wallet.address).call(), f"Address is not set up as Enzyme asset manager: {hot_wallet.address}"
 
+        logger.info("  Vault owner: %s", vault.vault.functions.getOwner().call())
+
     if len(state.portfolio.reserves) == 0:
         raise RuntimeError("No reserves detected for the strategy. Does your wallet/vault have USDC deposited for trading?")
 
