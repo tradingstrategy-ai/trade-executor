@@ -117,6 +117,43 @@ def environment(
     return environment
 
 
+@pytest.fixture()
+def environment_single_pair(
+    anvil: AnvilLaunch,
+    deployer: HexAddress,
+    vault: Vault,
+    user_1: HexAddress,
+    uniswap_v2: UniswapV2Deployment,
+    pair_universe: PandasPairUniverse,
+    hot_wallet: HotWallet,
+    state_file: Path,
+    strategy_file: Path,
+    ) -> dict:
+    """Passed to init and start commands as environment variables"""
+    # Set up the configuration for the live trader
+    environment = {
+        "EXECUTOR_ID": "test_enzyme_live_trading_init",
+        "NAME": "test_enzyme_live_trading_init",
+        "STRATEGY_FILE": strategy_file.as_posix(),
+        "PRIVATE_KEY": hot_wallet.account.key.hex(),
+        "JSON_RPC_ANVIL": anvil.json_rpc_url,
+        "STATE_FILE": state_file.as_posix(),
+        "ASSET_MANAGEMENT_MODE": "enzyme",
+        "UNIT_TESTING": "true",
+        # "LOG_LEVEL": "info",  # Set to info to get debug data for the test run
+        "LOG_LEVEL": "disabled",
+        "VAULT_ADDRESS": vault.address,
+        "VAULT_ADAPTER_ADDRESS": vault.generic_adapter.address,
+        "TEST_EVM_UNISWAP_V2_ROUTER": uniswap_v2.router.address,
+        "TEST_EVM_UNISWAP_V2_FACTORY": uniswap_v2.factory.address,
+        "TEST_EVM_UNISWAP_V2_INIT_CODE_HASH": uniswap_v2.init_code_hash,
+        "CONFIRMATION_BLOCK_COUNT": "0",  # Needed for test backend, Anvil
+        "MAX_CYCLES": "5",  # Run decide_trades() 5 times
+        "PAIR": '(ChainId.anvil, "UniswapV2MockClient", "WETH", "USDC", 0.003)',
+    }
+    return environment
+
+
 def run_init(environment: dict) -> Result:
     """Run vault init command"""
 
@@ -154,7 +191,7 @@ def test_enzyme_live_trading_init(
 
 
 def test_enzyme_live_trading_start(
-    environment: dict,
+    environment_single_pair: dict,
     state_file: Path,
     usdc: Contract,
     weth: Contract,
@@ -182,7 +219,7 @@ def test_enzyme_live_trading_start(
 
 
     # Need to be initialised first
-    result = run_init(environment)
+    result = run_init(environment_single_pair)
     assert result.exit_code == 0
 
     # Deposit some money in the vault
@@ -193,7 +230,7 @@ def test_enzyme_live_trading_start(
     # Manually call the main() function so that Typer's CliRunner.invoke() does not steal
     # stdin and we can still set breakpoints
     cli = get_command(app)
-    with patch.dict(os.environ, environment, clear=True):
+    with patch.dict(os.environ, environment_single_pair, clear=True):
         with pytest.raises(SystemExit) as e:
             cli.main(args=["start"])
 
