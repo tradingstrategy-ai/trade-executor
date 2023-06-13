@@ -378,8 +378,12 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
 
         # Get daily candles as Pandas DataFrame
         all_candles = dataset.candles
-        filtered_candles = filter_for_pairs(all_candles, pair_universe.df)
-        candle_universe = GroupedCandleUniverse(filtered_candles)
+
+        if all_candles is not None:
+            filtered_candles = filter_for_pairs(all_candles, pair_universe.df)
+            candle_universe = GroupedCandleUniverse(filtered_candles)
+        else:
+            candle_universe = None
 
         # Get liquidity candles as Pandas Dataframe
         if dataset.liquidity:
@@ -1202,7 +1206,7 @@ def load_partial_data(
         Trading Strategy client instance
 
     :param time_bucket:
-        The candle time frame
+        The candle time frame.
 
     :param chain_id:
         Which blockchain hosts our exchange
