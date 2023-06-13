@@ -7,6 +7,7 @@ from typing import Optional
 
 from eth import Chain
 from tradingstrategy.chain import ChainId
+from tradingstrategy.pair import HumanReadableTradingPairDescription
 from typer import Option
 
 id = Option(None, envvar="EXECUTOR_ID", help="Executor id used when programmatically referring to this instance.\n"
@@ -59,3 +60,5 @@ test_evm_uniswap_v2_init_code_hash: Optional[str] = Option(None, envvar="TEST_EV
 confirmation_block_count = Option(2, envvar="CONFIRMATION_BLOCK_COUNT", help="How many blocks we wait before we consider transaction receipt a final. Set to zero for automining testing backends (EthereumTester, Anvil).")
 
 unit_testing = Option(False, "--unit-testing", envvar="UNIT_TESTING", help="The trade executor is called under the unit testing mode. No caches are purged.")
+
+pair: Optional[str] = Option(None, "--pair", envvar="PAIR", help="Must be specified for a multipair universe.")

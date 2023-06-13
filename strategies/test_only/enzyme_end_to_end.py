@@ -13,7 +13,7 @@ from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.trading_strategy_universe import load_all_data, TradingStrategyUniverse
 from tradeexecutor.strategy.universe_model import UniverseOptions
 from tradingstrategy.client import Client, BaseClient
-from tradingstrategy.pair import DEXPair
+from tradingstrategy.pair import DEXPair, HumanReadableTradingPairDescription
 from tradingstrategy.testing.uniswap_v2_mock_client import UniswapV2MockClient
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
@@ -84,15 +84,32 @@ def create_trading_universe(
     )
 
     # Create a trading universe for our test EVM backend Uniswap v2 deployment
-    assert len(dataset.pairs) == 1
+    # assert len(dataset.pairs) == 1
+    # use chain id and exchange slug from the first pair
     pair_data = dataset.pairs.iloc[0]
     pair: DEXPair = DEXPair.from_dict(pair_data.to_dict())
 
-    universe = TradingStrategyUniverse.create_single_pair_universe(
+    # gets list of pair tickers and also reserve asset pair ticker
+    reserve_asset_address = client.get_default_quote_token_address()
+    reserve_asset_pair_ticker = None
+    pairs: HumanReadableTradingPairDescription = []
+    for row in dataset.pairs.itertuples():
+        assert row.chain_id == pair.chain_id, "All pairs must be on the same chain"
+        assert row.exchange_slug == pair.exchange_slug, "All pairs must be on the same exchange"
+        
+        pairs.append([row.base_token_symbol, row.quote_token_symbol])
+
+        # find reserve asset ticker
+        if reserve_asset_address in {row.token0_address, row.token1_address}:
+            reserve_asset_pair_ticker = (row.base_token_symbol, row.quote_token_symbol)
+
+    assert reserve_asset_pair_ticker is not None, "Could not find reserve asset ticker"
+
+    universe = TradingStrategyUniverse.create_limited_pair_universe(
         dataset,
         pair.chain_id,
         pair.exchange_slug,
-        pair.base_token_symbol,
-        pair.quote_token_symbol,
+        pairs,
+        reserve_asset_pair_ticker,
     )
     return universe

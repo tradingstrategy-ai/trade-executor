@@ -9,6 +9,7 @@ from web3 import Web3
 from tradeexecutor.ethereum.enzyme.vault import EnzymeVaultSyncModel
 from tradeexecutor.strategy.sync_model import SyncModel
 from tradingstrategy.universe import Universe
+from tradingstrategy.pair import HumanReadableTradingPairDescription
 
 from tradeexecutor.ethereum.hot_wallet_sync_model import EthereumHotWalletReserveSyncer
 from tradeexecutor.state.state import State
@@ -31,6 +32,7 @@ def make_test_trade(
         routing_model: RoutingModel,
         routing_state: RoutingState,
         amount=Decimal("1.0"),
+        pair: HumanReadableTradingPairDescription | None = None,
 ):
     """Perform a test trade.
 
@@ -49,8 +51,14 @@ def make_test_trade(
 
     reserve_asset = universe.get_reserve_asset()
 
-    # TODO: Supports single pair universes only for now
-    raw_pair = data_universe.pairs.get_single()
+    if data_universe.pairs.get_count() > 1 and not pair:
+        raise RuntimeError("You are using a multipair universe. Provide pair argument to perform a test trade on a specific pair.")
+    
+    if pair:
+        raw_pair = data_universe.pairs.get_pair(*pair)
+    else:
+        raw_pair = data_universe.pairs.get_single()
+    
     pair = translate_trading_pair(raw_pair)
 
     # Get estimated price for the asset we are going to buy
