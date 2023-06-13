@@ -246,7 +246,11 @@ def wait_for_universe_data_availability_jsonl(
         # Move any pairs with new complete data to the completed set
         pairs_to_move = set()
         for p in incompleted_pairs:
-            latest_timestamp = avail_map[p.pair_id]["last_candle_at"]
+            try:
+                latest_timestamp = avail_map[p.pair_id]["last_candle_at"]
+            except Exception as e:
+                import ipdb ; ipdb.set_trace()
+                raise
 
             last_timestamps_log[p.get_ticker()] = latest_timestamp
 

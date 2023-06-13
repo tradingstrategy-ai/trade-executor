@@ -72,7 +72,7 @@ def multipair_universe(execution_context, persistent_test_client) -> TradingStra
     dataset = load_partial_data(
         client=client,
         pairs=trading_pairs,
-        time_bucket=TimeBucket.d7,
+        time_bucket=TimeBucket.d1,
         execution_context=execution_context,
         universe_options=UniverseOptions(),
         start_at=datetime.datetime(2023, 1, 1),
@@ -117,10 +117,8 @@ def test_decision_trigger_ready_data(persistent_test_client, universe):
     )
 
 
-def test_decision_trigger_multipair(persistent_test_client, multipair_universe):
-    """Wait for the multipair decision trigger to be ready.
-
-    """
+def test_decision_trigger_multipair(persistent_test_client, multipair_universe: TradingStrategyUniverse):
+    """Wait for the multipair decision trigger to be ready."""
 
     universe = multipair_universe
 
@@ -132,17 +130,17 @@ def test_decision_trigger_multipair(persistent_test_client, multipair_universe):
         universe,
     )
 
-    assert updated_universe_result.ready_at <=  datetime.datetime.utcnow()
+    assert updated_universe_result.ready_at <= datetime.datetime.utcnow()
     assert updated_universe_result.poll_cycles == 1
 
-    pair = updated_universe_result.updated_universe.universe.pairs.get_single()
-    candles = updated_universe_result.updated_universe.universe.candles.get_candles_by_pair(pair.pair_id)
+    for pair in universe.universe.pairs.iterate_pairs():
+        candles = updated_universe_result.updated_universe.universe.candles.get_candles_by_pair(pair.pair_id)
 
-    last_possible_timestamp = timestamp -  TimeBucket.d1.to_timedelta()
+        last_possible_timestamp = timestamp - TimeBucket.d1.to_timedelta()
 
-    validate_latest_candles(
-        {pair},
-        candles,
-        last_possible_timestamp
-    )
+        validate_latest_candles(
+            {pair},
+            candles,
+            last_possible_timestamp
+        )
 
