@@ -379,7 +379,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         # Get daily candles as Pandas DataFrame
         all_candles = dataset.candles
 
-        if all_candles:
+        if not all_candles.empty:
             filtered_candles = filter_for_pairs(all_candles, pair_universe.df)
             candle_universe = GroupedCandleUniverse(filtered_candles)
         else:
