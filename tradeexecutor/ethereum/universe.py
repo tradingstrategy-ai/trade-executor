@@ -54,7 +54,14 @@ def create_pair_universe(web3: Web3, exchange: Optional[Exchange], pairs: List[T
         )
         data.append(dex_pair.to_dict())
     df = pd.DataFrame(data)
-    return PandasPairUniverse(df)
+
+    # Need exchange universe in order to use `get_pair`
+    if exchange:
+        exchange_universe = ExchangeUniverse.from_collection([exchange])
+    else:
+        exchange_universe = None
+
+    return PandasPairUniverse(df, exchange_universe=exchange_universe)
 
 
 def create_exchange_universe(web3: Web3, uniswaps: List[UniswapV2Deployment]) -> ExchangeUniverse:
