@@ -13,8 +13,6 @@ from pytest import FixtureRequest
 
 from eth_typing import HexAddress
 from tradingstrategy.pair import PandasPairUniverse
-from tradingstrategy.exchange import Exchange, ExchangeType
-from tradingstrategy.chain import ChainId
 from web3 import Web3, HTTPProvider
 from web3.contract import Contract
 
@@ -131,9 +129,6 @@ def user_3(web3) -> HexAddress:
     return web3.eth.accounts[3]
 
 
-# Create tokens
-
-# WETH
 @pytest.fixture
 def weth(uniswap_v2) -> Contract:
     return uniswap_v2.weth
@@ -146,7 +141,7 @@ def weth_asset(weth: Contract) -> AssetIdentifier:
     details = fetch_erc20_details(weth.w3, weth.address)
     return translate_token_details(details)
 
-# USDC
+
 @pytest.fixture()
 def usdc(web3, deployer) -> Contract:
     """Mock USDC token.
@@ -165,85 +160,6 @@ def usdc_asset(usdc: Contract) -> AssetIdentifier:
     return translate_token_details(details)
 
 
-# BOB
-@pytest.fixture()
-def bob(web3, deployer) -> Contract:
-    """Mock BOB token. 
-    
-    All initial $50M goes to `deployer`
-    """
-    token = create_token(web3, deployer, "Bob Token", "BOB", 50_000_000 * 10**18, decimals=18)
-    return token
-
-
-@pytest.fixture()
-def bob_asset(bob: Contract) -> AssetIdentifier:
-    """BOB as a persistent id.
-    """
-    details = fetch_erc20_details(bob.w3, bob.address)
-    return translate_token_details(details)
-
-
-# PEPE
-@pytest.fixture()
-def pepe(web3, deployer) -> Contract:
-    """Mock PEPE token. 
-    
-    All initial $25M goes to `deployer`
-    """
-    token = create_token(web3, deployer, "Pepe Token", "PEPE", 25_000_000 * 10**18, decimals=18)
-    return token
-
-
-@pytest.fixture()
-def pepe_asset(pepe: Contract) -> AssetIdentifier:
-    """PEPE as a persistent id.
-    """
-    details = fetch_erc20_details(pepe.w3, pepe.address)
-    return translate_token_details(details)
-
-
-# BIAO  
-@pytest.fixture()
-def biao(web3, deployer) -> Contract:
-    """Mock BIAO token. 
-    
-    All initial $50M goes to `deployer`
-    """
-    token = create_token(web3, deployer, "Biao Token", "BIAO", 50_000_000 * 10**18, decimals=18)
-    return token
-
-@pytest.fixture()
-def biao_asset(biao: Contract) -> AssetIdentifier:
-    """BIAO as a persistent id.
-    """
-    details = fetch_erc20_details(biao.w3, biao.address)
-    return translate_token_details(details)
-
-
-# USDT
-@pytest.fixture()
-def usdt(web3, deployer) -> Contract:
-    """Mock USDT token. 
-    
-    All initial $50M goes to `deployer`
-    """
-    token = create_token(web3, deployer, "Tether USD", "USDT", 50_000_000 * 10**6, decimals=6)
-    return token
-
-
-@pytest.fixture()
-def usdt_asset(usdt: Contract) -> AssetIdentifier:
-    """USDT as a persistent id.
-    """
-    details = fetch_erc20_details(usdt.w3, usdt.address)
-    return translate_token_details(details)
-
-
-# Trading pairs
-
-
-# WETH-USDC
 @pytest.fixture()
 def weth_usdc_uniswap_pair(web3, deployer, uniswap_v2, usdc, weth) -> HexAddress:
     """Create Uniswap v2 pool for WETH-USDC.
@@ -265,83 +181,6 @@ def weth_usdc_uniswap_pair(web3, deployer, uniswap_v2, usdc, weth) -> HexAddress
     )
 
     logger.info("%s-%s pair is at %s", weth.address, usdc.address, pair)
-
-    return pair
-
-# BOB-USDC
-@pytest.fixture()
-def bob_usdc_uniswap_pair(web3, deployer, uniswap_v2, usdc, bob) -> HexAddress:
-    """Create Uniswap v2 pool for BOB-USDC.
-
-    - Add 200k initial liquidity at 1000 BOB/USDC
-    """
-
-    deposit = 200_000  # USDC
-    price = 1000
-
-    pair = deploy_trading_pair(
-        web3,
-        deployer,
-        uniswap_v2,
-        usdc,
-        bob,
-        deposit * 10**6,
-        (deposit // price) * 10**18,
-    )
-
-    logger.info("%s-%s pair is at %s", bob.address, usdc.address, pair)
-
-    return pair
-
-
-# PEPE-USDC
-@pytest.fixture()
-def pepe_usdc_uniswap_pair(web3, deployer, uniswap_v2, usdc, pepe) -> HexAddress:
-    """Create Uniswap v2 pool for PEPE-USDC.
-
-    - Add 200k initial liquidity at 300 PEPE/USDC
-    """
-
-    deposit = 200_000  # USDC
-    price = 300
-
-    pair = deploy_trading_pair(
-        web3,
-        deployer,
-        uniswap_v2,
-        usdc,
-        pepe,
-        deposit * 10**6,
-        (deposit // price) * 10**18,
-    )
-
-    logger.info("%s-%s pair is at %s", pepe.address, usdc.address, pair)
-
-    return pair
-
-
-# BIAO-USDT
-@pytest.fixture()
-def biao_usdt_uniswap_pair(web3, deployer, uniswap_v2, usdt, biao) -> HexAddress:
-    """Create Uniswap v2 pool for BIAO-USDT.
-
-    - Add 200k initial liquidity at 2300 PEPE/USDT
-    """
-
-    deposit = 200_000  # USDC
-    price = 2300
-
-    pair = deploy_trading_pair(
-        web3,
-        deployer,
-        uniswap_v2,
-        usdt,
-        biao,
-        deposit * 10**6,
-        (deposit // price) * 10**18,
-    )
-
-    logger.info("%s-%s pair is at %s", biao.address, usdt.address, pair)
 
     return pair
 
@@ -489,58 +328,11 @@ def vault(
     return Vault(enzyme_vault_contract, vault_comptroller_contract, enzyme_deployment, generic_adapter)
 
 
-# Trading pair identifiers
-
-
 @pytest.fixture
 def weth_usdc_trading_pair(uniswap_v2, weth_usdc_uniswap_pair, usdc_asset, weth_asset) -> TradingPairIdentifier:
     return TradingPairIdentifier(weth_asset, usdc_asset, weth_usdc_uniswap_pair, uniswap_v2.factory.address, fee=0.0030)
 
 
 @pytest.fixture()
-def pepe_usdc_trading_pair(uniswap_v2, pepe_usdc_uniswap_pair, usdc_asset, pepe_asset) -> TradingPairIdentifier:
-    return TradingPairIdentifier(pepe_asset, usdc_asset, pepe_usdc_uniswap_pair, uniswap_v2.factory.address, fee=0.0030)
-
-
-@pytest.fixture()
-def bob_usdc_trading_pair(uniswap_v2, bob_usdc_uniswap_pair, usdc_asset, bob_asset) -> TradingPairIdentifier:
-    return TradingPairIdentifier(bob_asset, usdc_asset, bob_usdc_uniswap_pair, uniswap_v2.factory.address, fee=0.0030)
-
-
-@pytest.fixture()
-def biao_usdt_trading_pair(uniswap_v2, biao_usdt_uniswap_pair, usdt_asset, biao_asset) -> TradingPairIdentifier:
-    return TradingPairIdentifier(biao_asset, usdt_asset, biao_usdt_uniswap_pair, uniswap_v2.factory.address, fee=0.0030)
-
-
-# Exchange
-
-
-@pytest.fixture()
-def uniswap_v2_exchange(uniswap_v2: UniswapV2Deployment) -> Exchange:
-    return Exchange(
-        chain_id=ChainId.anvil,
-        chain_slug="tester",
-        exchange_id=int(uniswap_v2.factory.address, 16),
-        exchange_slug="UniswapV2MockClient",
-        address=uniswap_v2.factory.address,
-        exchange_type=ExchangeType.uniswap_v2,
-        pair_count=99999,
-    )
-
-
-# pair universes
-
-
-@pytest.fixture()
 def pair_universe(web3, weth_usdc_trading_pair) -> PandasPairUniverse:
     return create_pair_universe(web3, None, [weth_usdc_trading_pair])
-
-
-@pytest.fixture()
-def pairs(weth_usdc_trading_pair, pepe_usdc_trading_pair, bob_usdc_trading_pair, biao_usdt_trading_pair) -> list[TradingPairIdentifier]:
-    return [weth_usdc_trading_pair, pepe_usdc_trading_pair, bob_usdc_trading_pair, biao_usdt_trading_pair]
-
-
-@pytest.fixture()
-def multipair_universe(web3, uniswap_v2_exchange, pairs) -> PandasPairUniverse:
-    return create_pair_universe(web3, uniswap_v2_exchange, pairs)
