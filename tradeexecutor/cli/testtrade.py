@@ -51,7 +51,7 @@ def make_test_trade(
     reserve_asset = universe.get_reserve_asset()
 
     if data_universe.pairs.get_count() > 1 and not pair:
-        raise RuntimeError("Test trade can only be performed on a universe with a single pair. \n\n Provide pair argument to perform a test trade on a specific pair.")
+        raise RuntimeError("You are using a multipair universe. Provide pair argument to perform a test trade on a specific pair.")
     
     if pair:
         raw_pair = data_universe.pairs.get_pair(*pair)
