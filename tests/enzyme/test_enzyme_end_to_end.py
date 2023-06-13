@@ -28,7 +28,7 @@ from eth_defi.trace import assert_transaction_success_with_explanation
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment
 
 from tradingstrategy.pair import PandasPairUniverse
-
+from tradingstrategy.chain import ChainId
 
 from tradeexecutor.cli.main import app
 from tradeexecutor.state.blockhain_transaction import BlockchainTransactionType
@@ -85,14 +85,9 @@ def environment(
     anvil: AnvilLaunch,
     deployer: HexAddress,
     vault: Vault,
-    usdc: Contract,
-    weth: Contract,
-    usdc_asset: AssetIdentifier,
-    weth_asset: AssetIdentifier,
     user_1: HexAddress,
     uniswap_v2: UniswapV2Deployment,
-    weth_usdc_trading_pair: TradingPairIdentifier,
-    pair_universe: PandasPairUniverse,
+    multipair_universe: PandasPairUniverse,
     hot_wallet: HotWallet,
     state_file: Path,
     strategy_file: Path,
@@ -117,6 +112,7 @@ def environment(
         "TEST_EVM_UNISWAP_V2_INIT_CODE_HASH": uniswap_v2.init_code_hash,
         "CONFIRMATION_BLOCK_COUNT": "0",  # Needed for test backend, Anvil
         "MAX_CYCLES": "5",  # Run decide_trades() 5 times
+        "PAIR": '(ChainId.anvil, "UniswapV2MockClient", "WETH", "USDC", 0.003)',
     }
     return environment
 
@@ -290,6 +286,12 @@ def test_enzyme_deploy_vault(
         assert vault.payment_forwarder.functions.amountProxied().call() == 0
 
 
+@pytest.fixture()
+def pair_address(weth_usdc_trading_pair: TradingPairIdentifier) -> HexAddress:
+    """
+    """
+
+
 def test_enzyme_perform_test_trade(
     environment: dict,
     web3: Web3,
@@ -299,7 +301,6 @@ def test_enzyme_perform_test_trade(
     vault: Vault,
     deployer: HexAddress,
     enzyme_deployment: EnzymeDeployment,
-    weth_usdc_trading_pair: TradingPairIdentifier,
 ):
     """Perform a test trade on Enzymy vault via CLI.
 
@@ -308,11 +309,22 @@ def test_enzyme_perform_test_trade(
     - Initialise the strategy to use this vault
 
     - Perform a test trade on this fault
+
+    :param weth_usdc_trading_pair: Trading pair to use for the test trade
+
+    Can choose from 
+    
+    - weth_usdc_trading_pair
+    - bob_usdc_trading_pair
+    - pepe_usdc_trading_pair
+    - biao_usdt_trading_pair
     """
 
     env = environment.copy()
     env["VAULT_ADDRESS"] = vault.address
     env["VAULT_ADAPTER_ADDRESS"] = vault.generic_adapter.address
+
+
 
     cli = get_command(app)
 
