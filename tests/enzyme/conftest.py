@@ -13,6 +13,8 @@ from pytest import FixtureRequest
 
 from eth_typing import HexAddress
 from tradingstrategy.pair import PandasPairUniverse
+from tradingstrategy.exchange import Exchange, ExchangeType
+from tradingstrategy.chain import ChainId
 from web3 import Web3, HTTPProvider
 from web3.contract import Contract
 
@@ -510,6 +512,22 @@ def biao_usdt_trading_pair(uniswap_v2, biao_usdt_uniswap_pair, usdt_asset, biao_
     return TradingPairIdentifier(biao_asset, usdt_asset, biao_usdt_uniswap_pair, uniswap_v2.factory.address, fee=0.0030)
 
 
+# Exchange
+
+
+@pytest.fixture()
+def uniswap_v2_exchange(uniswap_v2: UniswapV2Deployment) -> Exchange:
+    return Exchange(
+        chain_id=ChainId.anvil,
+        chain_slug="tester",
+        exchange_id=int(uniswap_v2.factory.address, 16),
+        exchange_slug="UniswapV2MockClient",
+        address=uniswap_v2.factory.address,
+        exchange_type=ExchangeType.uniswap_v2,
+        pair_count=99999,
+    )
+
+
 # pair universes
 
 
@@ -524,5 +542,5 @@ def pairs(weth_usdc_trading_pair, pepe_usdc_trading_pair, bob_usdc_trading_pair,
 
 
 @pytest.fixture()
-def multipair_universe(web3, pairs) -> PandasPairUniverse:
-    return create_pair_universe(web3, None, pairs)
+def multipair_universe(web3, uniswap_v2_exchange, pairs) -> PandasPairUniverse:
+    return create_pair_universe(web3, uniswap_v2_exchange, pairs)
