@@ -124,7 +124,7 @@ def environment_single_pair(
     vault: Vault,
     user_1: HexAddress,
     uniswap_v2: UniswapV2Deployment,
-    pair_universe: PandasPairUniverse,
+    multipair_universe: PandasPairUniverse,
     hot_wallet: HotWallet,
     state_file: Path,
     strategy_file: Path,
