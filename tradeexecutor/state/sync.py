@@ -64,6 +64,10 @@ class Deployment:
     #: Enzyme vault name - same as vault toke name
     vault_token_symbol: Optional[str] = None
 
+    #: When the initialisation was complete
+    #:
+    initialised_at: Optional[datetime.datetime] = None
+
 
 @dataclass_json
 @dataclass

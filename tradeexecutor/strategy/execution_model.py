@@ -148,8 +148,6 @@ class AssetManagementMode(enum.Enum):
     What kind of trade instruction execution model the strategy does.
 
     Give options for command line parameters and such.
-
-    TODO: Clean up unused options.
     """
 
     #: Does not make any trades, just captures and logs them
