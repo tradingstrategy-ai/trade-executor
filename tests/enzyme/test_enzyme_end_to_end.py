@@ -355,6 +355,9 @@ def test_enzyme_perform_test_trade(
 def test_enzyme_live_trading_reinit(
     environment: dict,
     state_file: Path,
+    vault,
+    deployer,
+    usdc,
 ):
     """Reinitialize Enzyme vault for live trading.
 
@@ -366,6 +369,10 @@ def test_enzyme_live_trading_reinit(
 
     cli = get_command(app)
 
+    # Deposit some money in the vault
+    usdc.functions.approve(vault.comptroller.address, 500 * 10**6).transact({"from": deployer})
+    vault.comptroller.functions.buyShares(500 * 10**6, 1).transact({"from": deployer})
+
     with patch.dict(os.environ, environment, clear=True):
         with pytest.raises(SystemExit) as e:
             cli.main(args=["reinit"])
@@ -376,3 +383,11 @@ def test_enzyme_live_trading_reinit(
         state: State = State.from_json(inp.read())
         reserve_position = state.portfolio.get_default_reserve_position()
         assert reserve_position.quantity == 500
+
+        treasury = state.sync.treasury
+        deployment = state.sync.deployment
+        assert deployment.initialised_at
+        assert treasury.last_block_scanned > 1
+        assert treasury.last_updated_at
+        assert len(treasury.balance_update_refs) == 1
+        assert len(reserve_position.balance_updates) == 1

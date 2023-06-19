@@ -487,6 +487,10 @@ class EnzymeVaultSyncModel(SyncModel):
 
         See :py:mod:`tradeexexcutor.cli.commands.reinit` for details.
 
+        .. note::
+
+            Currently quite a test code. Make support all positions, different sync models.
+
         :param state:
             Empty state
 
@@ -521,6 +525,11 @@ class EnzymeVaultSyncModel(SyncModel):
         portfolio.initialise_reserves(asset)
 
         reserve_position = portfolio.get_reserve_position(asset)
+
+        reserve_position.reserve_token_price = float(1)
+        reserve_position.last_pricing_at = datetime.datetime.utcnow()
+        reserve_position.last_sync_at = datetime.datetime.utcnow()
+        reserve_position.quantity = reserve_current_balance.balance
 
         event_id = portfolio.next_balance_update_id
         portfolio.next_balance_update_id += 1
