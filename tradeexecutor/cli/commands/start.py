@@ -403,7 +403,11 @@ def start(
     )
 
     # Crash gracefully at the start up if our main loop cannot set itself up
-    state = loop.setup()
+    try:
+        state = loop.setup()
+    except Exception as e:
+        logger.error("trade-executor crashed on initialisation: %s", e)
+        raise e
 
     try:
         loop.run_with_state(state)
