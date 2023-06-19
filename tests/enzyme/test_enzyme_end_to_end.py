@@ -261,7 +261,6 @@ def test_enzyme_deploy_vault(
     env["COMPTROLLER_LIB"] = enzyme_deployment.contracts.comptroller_lib.address
     env["DENOMINATION_ASSET"] = usdc.address
 
-
     # Run strategy for few cycles.
     # Manually call the main() function so that Typer's CliRunner.invoke() does not steal
     # stdin and we can still set breakpoints
