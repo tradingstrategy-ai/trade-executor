@@ -43,7 +43,7 @@ def init(
 
     asset_management_mode: AssetManagementMode = shared_options.asset_management_mode,
     vault_address: Optional[str] = shared_options.vault_address,
-    vault_deployment_block_number: Optional[int] = Option(None, envvar="VAULT_DEPLOYMENT_BLOCK_NUMBER", help="When the vault was deployed: a block number before the deployment."),
+    vault_deployment_block_number: Optional[int] = shared_options.vault_deployment_block_number,
 
     json_rpc_binance: Optional[str] = shared_options.json_rpc_binance,
     json_rpc_polygon: Optional[str] = shared_options.json_rpc_polygon,
