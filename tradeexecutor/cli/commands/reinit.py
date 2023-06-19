@@ -129,6 +129,6 @@ def reinit(
 
     logger.info("Reserve balance is %s", reserve_position)
 
-    assert reserve_position.quantity > 0, f"Reinitialisation did not see any deposits in vault: {sync_model.vault}"
+    assert reserve_position.quantity > 0, f"Reinitialisation did not see any deposits in vault: {sync_model.vault}, reserve position is {reserve_position}"
 
     logger.info("All done: State deployment info is %s", state.sync.deployment)

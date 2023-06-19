@@ -56,6 +56,9 @@ class ReservePosition:
     #:
     balance_updates: Dict[int, BalanceUpdate] = field(default_factory=dict)
 
+    def __repr__(self) -> str:
+        return f"<ReservePosition {self.asset} at {self.quantity}>"
+
     def __post_init__(self):
         assert self.asset.decimals > 0, f"Looks like we have improper reserve asset: {self.asset}"
 
