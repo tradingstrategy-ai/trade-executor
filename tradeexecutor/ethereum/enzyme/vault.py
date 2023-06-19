@@ -230,8 +230,6 @@ class EnzymeVaultSyncModel(SyncModel):
             try:
                 position = self.get_related_position(portfolio, asset)
             except UnknownAsset as e:
-                # Something has gone wrong in accounting, as we cannot match the redeemed asset to any open position.
-                # This is very tricky situation to figure out, so we be verbose with error messages.
                 open_positions = "\n".join([str(p) for p in portfolio.get_open_positions()])
                 msg = f"Redemption failure because redeemed asset does not match our internal accounting.\n" \
                       f"Do not know how to recover. You need to stop trade-executor and run accounting correction.\n" \
@@ -287,7 +285,6 @@ class EnzymeVaultSyncModel(SyncModel):
     def translate_and_apply_event(self, state: State, event: EnzymeBalanceEvent) -> List[BalanceUpdate]:
         """Translate on-chain event data to our persistent format."""
         portfolio = state.portfolio
-
         match event:
             case Deposit():
                 # Deposit generated only one event
@@ -296,17 +293,6 @@ class EnzymeVaultSyncModel(SyncModel):
             case Redemption():
                 # Enzyme in-kind redemption can generate updates for multiple assets
                 event = cast(Redemption, event)
-
-                # Sanity check: Make sure there has not been redemptions from the vault before the strategy was initialised.
-                # Make sure we do not get events that are from the time before
-                # the state was initialised
-                first_allowed_ts = state.sync.deployment.initialised_at
-                if first_allowed_ts is not None:
-                    assert event.timestamp > first_allowed_ts, f"Vault has a redemption from the time before trade execution was initialised\n" \
-                                                               f"Initialised at: {state.sync.deployment.initialised_at}\n" \
-                                                               f"Event:\n" \
-                                                               f"{_dump_enzyme_event(event)}" \
-
                 return self.process_redemption(portfolio, event)
             case _:
                 raise RuntimeError(f"Unsupported event: {event}")
@@ -367,7 +353,6 @@ class EnzymeVaultSyncModel(SyncModel):
         deployment.vault_token_name = self.vault.get_name()
         deployment.vault_token_symbol = self.vault.get_symbol()
         deployment.chain_id = ChainId(web3.eth.chain_id)
-        deployment.initialised_at = datetime.datetime.utcnow()
 
     def sync_treasury(self,
                       strategy_cycle_ts: datetime.datetime,

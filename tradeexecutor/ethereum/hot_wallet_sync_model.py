@@ -49,7 +49,6 @@ class HotWalletSyncModel(SyncModel):
         deployment.block_mined_at = datetime.datetime.utcnow()
         deployment.vault_token_name = None
         deployment.vault_token_symbol = None
-        deployment.initialised_at = datetime.datetime.utcnow()
 
     def sync_treasury(self,
                  strategy_cycle_ts: datetime.datetime,

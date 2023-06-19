@@ -136,10 +136,7 @@ def test_enzyme_redeem_open_position(
     pair_universe: PandasPairUniverse,
     hot_wallet: HotWallet,
 ):
-    """Do in-kind redemption for reserves and open positions.
-
-    - Redeem from one open WETH position
-    """
+    """Do in-kind redemption for reserves and open positions."""
 
     reorg_mon = create_reorganisation_monitor(web3)
 
