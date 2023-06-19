@@ -1036,7 +1036,7 @@ class ExecutionLoop:
             Any exception thrown from this function should be considered as live execution error,
             not a start up error.
         """
-        # TODO: Refactore
+        # TODO: Refactor
         if self.is_backtest():
             # Walk through backtesting range
             return self.run_backtest(state)
@@ -1050,7 +1050,7 @@ class ExecutionLoop:
 
             Legacy entry point
         """
-        # TODO: Refactore
+        # TODO: Refactor
         state = self.setup()
         return self.run_with_state(state)
 

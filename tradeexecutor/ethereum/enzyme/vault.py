@@ -2,6 +2,7 @@
 
 import logging
 import datetime
+import pprint
 from functools import partial
 from typing import cast, List, Optional, Tuple
 
@@ -30,6 +31,10 @@ logger = logging.getLogger(__name__)
 
 
 class UnknownAsset(Exception):
+    """Cannot map redemption asset to any known position"""
+
+
+class RedemptionFailure(Exception):
     """Cannot map redemption asset to any known position"""
 
 
@@ -222,7 +227,18 @@ class EnzymeVaultSyncModel(SyncModel):
         for token_details, raw_amount in event.redeemed_assets:
 
             asset = translate_token_details(token_details)
-            position = self.get_related_position(portfolio, asset)
+            try:
+                position = self.get_related_position(portfolio, asset)
+            except UnknownAsset as e:
+                open_positions = "\n".join([str(p) for p in portfolio.get_open_positions()])
+                msg = f"Redemption failure because redeemed asset does not match our internal accounting.\n" \
+                      f"Do not know how to recover. You need to stop trade-executor and run accounting correction.\n" \
+                      f"Could not process redemption event:\n" \
+                      f"{_dump_enzyme_event(event)}\n" \
+                      f"Current open positions at trade-executor state are:\n" \
+                      f"{open_positions}"
+                raise RedemptionFailure(msg) from e
+
             quantity = asset.convert_to_decimal(raw_amount)
 
             assert quantity > 0  # Sign flipped later
@@ -441,3 +457,9 @@ class EnzymeVaultSyncModel(SyncModel):
     def create_transaction_builder(self) -> EnzymeTransactionBuilder:
         assert self.hot_wallet, "HotWallet not set - cannot create transaction builder"
         return EnzymeTransactionBuilder(self.hot_wallet, self.vault)
+
+
+def _dump_enzyme_event(e: EnzymeBalanceEvent) -> str:
+    """Format enzyme events in the error / log output."""
+    # Dump internal JSON-RPC JSON
+    return pprint.pformat(e.event_data, indent=2)
