@@ -6,13 +6,12 @@ import shutil
 from pathlib import Path
 from typing import Optional
 
-from typer import Option
-
 from eth_defi.hotwallet import HotWallet
 
 from .app import app
 from ..bootstrap import prepare_executor_id, create_web3_config, create_sync_model, create_state_store
 from ..log import setup_logging
+from ...ethereum.enzyme.vault import EnzymeVaultSyncModel
 from ...strategy.execution_model import AssetManagementMode
 from . import shared_options
 
@@ -108,8 +107,8 @@ def reinit(
     assert not store.is_pristine(), f"State does not exists yet: {state_file}"
 
     # Make a backup
-    shutil.copy(state_file, state_file.replace(".json", ".reinit-backup.json"))
-    os.remove(state_file)
+    # https://stackoverflow.com/a/47528275/315168
+    state_file.rename(state_file.with_suffix(".reinit-backup.json"))
 
     state = store.create(name)
 
@@ -117,10 +116,19 @@ def reinit(
     logger.info("For Enzyme vaults this may take a long time as the sync will go through all the blocks in the chain.")
     logger.info("To speed up process use --vault_deployment_block_number hint as a command line argument.")
     logger.info(f"Vault deployment block number hint is {start_block or 0:,}.")
+
+    assert isinstance(sync_model, EnzymeVaultSyncModel), f"reinit currently only supports EnzymeVaultSyncModel, got {sync_model}"
+
     sync_model.sync_reinit(state, start_block=start_block)
 
     store.sync(state)
 
     web3config.close()
+
+    reserve_position = state.portfolio.get_default_reserve_position()
+
+    logger.info("Reserve balance is %s", reserve_position)
+
+    assert reserve_position.quantity > 0, f"Reinitialisation did not see any deposits in vault: {sync_model.vault}"
 
     logger.info("All done: State deployment info is %s", state.sync.deployment)
