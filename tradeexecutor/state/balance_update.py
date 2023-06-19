@@ -99,6 +99,10 @@ class BalanceUpdate:
     #: Set None for reserve updates
     position_id: Optional[int] = None
 
+    #: Human-readable notes regarding this event
+    #:
+    notes: Optional[str] = None
+
     def __eq__(self, other: "BalanceUpdate"):
         assert isinstance(other, BalanceUpdate), f"Got {other}"
         match self.cause:
