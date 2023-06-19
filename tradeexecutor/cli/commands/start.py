@@ -406,7 +406,7 @@ def start(
     state = loop.setup()
 
     try:
-        loop.run(state)
+        loop.run_with_state(state)
 
         # Display summary stats for terminal backtest runs
         if backtest_start:

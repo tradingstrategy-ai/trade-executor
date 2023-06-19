@@ -993,7 +993,8 @@ class ExecutionLoop:
         state = self.init_state()
 
         if not self.is_backtest():
-            assert self.sync_model.is_ready_for_live_trading(), f"{self.sync_model} not initialised for live trading"
+            if not self.sync_model.is_ready_for_live_trading(state):
+                raise RuntimeError(f"{self.sync_model} not initialised for live trading - run trade-executor init command first")
 
         self.init_execution_model()
 
@@ -1025,7 +1026,7 @@ class ExecutionLoop:
 
         return state
 
-    def run(self, state: State):
+    def run_with_state(self, state: State) -> dict:
         """Start the execution.
 
         :return:
@@ -1035,10 +1036,21 @@ class ExecutionLoop:
             Any exception thrown from this function should be considered as live execution error,
             not a start up error.
         """
-
+        # TODO: Refactore
         if self.is_backtest():
             # Walk through backtesting range
             return self.run_backtest(state)
         else:
             return self.run_live(state)
+
+    def run(self):
+        """Start the execution.
+
+        .. note::
+
+            Legacy entry point
+        """
+        # TODO: Refactore
+        state = self.setup()
+        return self.run_with_state(state)
 
