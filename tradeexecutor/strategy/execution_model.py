@@ -168,3 +168,10 @@ class AssetManagementMode(enum.Enum):
     #: - Does not connect to any network or blockchain
     #:
     backtest = "backtest"
+
+    def is_live_trading(self) -> bool:
+        """Is this a live trading setup.
+
+        Are we executing against a blockchain (including test chains).
+        """
+        return self in (AssetManagementMode.hot_wallet, AssetManagementMode.enzyme,)

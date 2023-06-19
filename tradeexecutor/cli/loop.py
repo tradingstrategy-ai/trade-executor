@@ -163,6 +163,10 @@ class ExecutionLoop:
             stop_loss_time_bucket_override=self.backtest_stop_loss_time_frame_override,
         )
 
+    def is_backtest(self) -> bool:
+        """Are we doing a backtest execution."""
+        return self.backtest_start is not None
+
     def is_live_trading_unit_test(self) -> bool:
         """Are we attempting to test live trading functionality in unit tests.
 
@@ -971,8 +975,8 @@ class ExecutionLoop:
 
         return self.debug_dump_state
 
-    def run(self) -> dict:
-        """The main loop of trade executor.
+    def setup(self) -> State:
+        """Set up the main loop of trade executor.
 
         Main entry point to the loop.
 
@@ -983,11 +987,14 @@ class ExecutionLoop:
         - Sets up strategy runner
 
         :return:
-            Debug state where each key is the cycle number
+            Loaded execution state
         """
 
         state = self.init_state()
-        
+
+        if not self.is_backtest():
+            assert self.sync_model.is_ready_for_live_trading(), f"{self.sync_model} not initialised for live trading"
+
         self.init_execution_model()
 
         run_description: StrategyExecutionDescription = self.strategy_factory(
@@ -1016,7 +1023,20 @@ class ExecutionLoop:
 
         assert self.cycle_duration is not None, "Did not get strategy cycle duration from constructor or strategy run description"
 
-        if self.backtest_start:
+        return state
+
+    def run(self, state: State):
+        """Start the execution.
+
+        :return:
+            Debug state where each key is the cycle number
+
+        :raise:
+            Any exception thrown from this function should be considered as live execution error,
+            not a start up error.
+        """
+
+        if self.is_backtest():
             # Walk through backtesting range
             return self.run_backtest(state)
         else:
