@@ -44,6 +44,11 @@ class SyncModel(ABC):
         we are not getting wrong nonce error when broadcasting the transaction.
         """
 
+    def is_ready_for_live_trading(self, state: State) -> bool:
+        """Check that the state and sync model is ready for live trading."""
+        # By default not any checks are needed
+        return True
+
     @abstractmethod
     def sync_initial(self, state: State, **kwargs):
         """Initialize the vault connection.
