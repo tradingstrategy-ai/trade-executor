@@ -1,22 +1,8 @@
 """Reinitialise a strategy state.
 
-Quick local dev example:
-
-.. code-block:: shell
-
-    # Set up JSON_RPC_POLYGON
-    source env/local-test.env
-
-    # Set up hto wallet private key
-    export PRIVATE_KEY=...
-
-    poetry run trade-executor init \
-        --id=vault-init-test \
-        --vault-address=0x6E321256BE0ABd2726A234E8dBFc4d3caf255AE0
-
-
 """
-
+import os
+import shutil
 from pathlib import Path
 from typing import Optional
 
@@ -43,7 +29,7 @@ def reinit(
 
     asset_management_mode: AssetManagementMode = shared_options.asset_management_mode,
     vault_address: Optional[str] = shared_options.vault_address,
-    vault_deployment_block_number: Optional[int] = Option(None, envvar="VAULT_DEPLOYMENT_BLOCK_NUMBER", help="When the vault was deployed: a block number before the deployment."),
+    vault_deployment_block_number: Optional[int] = shared_options.vault_deployment_block_number,
 
     json_rpc_binance: Optional[str] = shared_options.json_rpc_binance,
     json_rpc_polygon: Optional[str] = shared_options.json_rpc_polygon,
@@ -119,7 +105,11 @@ def reinit(
         state_file = f"state/{id}.json"
 
     store = create_state_store(Path(state_file))
-    assert store.is_pristine(), f"State file already exists: {state_file}"
+    assert not store.is_pristine(), f"State does not exists yet: {state_file}"
+
+    # Make a backup
+    shutil.copy(state_file, state_file.replace(".json", ".reinit-backup.json"))
+    os.remove(state_file)
 
     state = store.create(name)
 
@@ -127,7 +117,7 @@ def reinit(
     logger.info("For Enzyme vaults this may take a long time as the sync will go through all the blocks in the chain.")
     logger.info("To speed up process use --vault_deployment_block_number hint as a command line argument.")
     logger.info(f"Vault deployment block number hint is {start_block or 0:,}.")
-    sync_model.sync_initial(state, start_block=start_block)
+    sync_model.sync_reinit(state, start_block=start_block)
 
     store.sync(state)
 
