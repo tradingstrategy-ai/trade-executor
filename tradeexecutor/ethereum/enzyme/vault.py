@@ -235,12 +235,16 @@ class EnzymeVaultSyncModel(SyncModel):
                 # Something has gone wrong in accounting, as we cannot match the redeemed asset to any open position.
                 # This is very tricky situation to figure out, so we be verbose with error messages.
                 open_positions = "\n".join([str(p) for p in portfolio.get_open_positions()])
+                assets_msg = "\n".join([f"{r}: {amount}" for r, amount in event.redeemed_assets])
                 msg = f"Redemption failure because redeemed asset does not match our internal accounting.\n" \
                       f"Do not know how to recover. You need to stop trade-executor and run accounting correction.\n" \
-                      f"Could not process redemption event:\n" \
+                      f"Could not process redemption event.\n" \
+                      f"Redeemed assets:\n" \
+                      f"{assets_msg}\n" \
+                      f"EVM event data:\n" \
                       f"{_dump_enzyme_event(event)}\n" \
-                      f"Current open positions at trade-executor state are:\n" \
-                      f"{open_positions}"
+                      f"Open positions currently in the state:\n" \
+                      f"{open_positions or '-'}"
                 raise RedemptionFailure(msg) from e
 
             quantity = asset.convert_to_decimal(raw_amount)
