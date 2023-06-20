@@ -109,20 +109,19 @@ class PandasTraderRunner(StrategyRunner):
 
             small_image, small_image_dark = self.get_small_images(small_figure)
 
-            if self.run_state:
-                logger.info("Updating strategy thinking image data")
+            logger.info("Updating strategy thinking image data")
 
-                    # Draw the inline plot and expose them tot he web server
-                    # TODO: SVGs here are not very readable, have them as a stop gap solution
-                large_figure = draw_single_pair_strategy_state(state, universe, height=1024)
-                large_image, large_image_dark = self.get_large_images(large_figure)
+                # Draw the inline plot and expose them tot he web server
+                # TODO: SVGs here are not very readable, have them as a stop gap solution
+            large_figure = draw_single_pair_strategy_state(state, universe, height=1024)
+            large_image, large_image_dark = self.get_large_images(large_figure)
 
-                self.run_state.visualisation.update_image_data(
-                        small_image,
-                        large_image,
-                        small_image_dark,
-                        large_image_dark,
-                    )
+            self.run_state.visualisation.update_image_data(
+                    small_image,
+                    large_image,
+                    small_image_dark,
+                    large_image_dark,
+                )
 
         elif 1 < universe.get_pair_count() <= 3:
             
@@ -136,14 +135,14 @@ class PandasTraderRunner(StrategyRunner):
                 small_image, small_image_dark = self.get_small_images(small_figure)
                 large_image, large_image_dark = self.get_large_images(large_figure)
 
-                if self.run_state:
-                    logger.info("Updating strategy thinking image data")
-                    self.run_state.visualisation.update_image_data(
-                        small_image,
-                        large_image,
-                        small_image_dark,
-                        large_image_dark,
-                    )
+                logger.info("Updating strategy thinking image data")
+                
+                self.run_state.visualisation.update_image_data(
+                    small_image,
+                    large_image,
+                    small_image_dark,
+                    large_image_dark,
+                )
 
         else:
             logger.warning("Charts not yet available for this strategy type. Pair count: %s", universe.get_pair_count())
