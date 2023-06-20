@@ -111,17 +111,17 @@ class PandasTraderRunner(StrategyRunner):
 
             logger.info("Updating strategy thinking image data")
 
-                # Draw the inline plot and expose them tot he web server
-                # TODO: SVGs here are not very readable, have them as a stop gap solution
+            # Draw the inline plot and expose them tot he web server
+            # TODO: SVGs here are not very readable, have them as a stop gap solution
             large_figure = draw_single_pair_strategy_state(state, universe, height=1024)
             large_image, large_image_dark = self.get_large_images(large_figure)
 
             self.run_state.visualisation.update_image_data(
-                    small_image,
-                    large_image,
-                    small_image_dark,
-                    large_image_dark,
-                )
+                small_image,
+                large_image,
+                small_image_dark,
+                large_image_dark,
+            )
 
         elif 1 < universe.get_pair_count() <= 3:
             
