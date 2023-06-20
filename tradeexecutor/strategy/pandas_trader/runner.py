@@ -17,7 +17,7 @@ from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.runner import StrategyRunner, PreflightCheckFailed
 from tradeexecutor.visual.image_output import render_plotly_figure_as_image_file
-from tradeexecutor.visual.strategy_state import draw_single_pair_strategy_state
+from tradeexecutor.visual.strategy_state import draw_single_pair_strategy_state, draw_multi_pair_strategy_state
 
 
 logger = logging.getLogger(__name__)
@@ -105,35 +105,65 @@ class PandasTraderRunner(StrategyRunner):
             return
 
         if universe.is_single_pair_universe():
-            # Single pair thinking
-
-            # Post strategy thinking image to Discord
             small_figure = draw_single_pair_strategy_state(state, universe, height=512)
-            small_image = render_plotly_figure_as_image_file(small_figure, width=768, height=512, format="png")
 
-            small_figure.update_layout(template="plotly_dark")
-            small_image_dark = render_plotly_figure_as_image_file(small_figure, width=512, height=512, format="png")
+            small_image, small_image_dark = self.get_small_images(small_figure)
 
             if self.run_state:
-
                 logger.info("Updating strategy thinking image data")
 
-                # Draw the inline plot and expose them tot he web server
-                # TODO: SVGs here are not very readable, have them as a stop gap solution
+                    # Draw the inline plot and expose them tot he web server
+                    # TODO: SVGs here are not very readable, have them as a stop gap solution
                 large_figure = draw_single_pair_strategy_state(state, universe, height=1024)
-                large_image = render_plotly_figure_as_image_file(large_figure, width=1024, height=1024, format="svg")
-
-                large_figure.update_layout(template="plotly_dark")
-                large_image_dark = render_plotly_figure_as_image_file(large_figure, width=1024, height=1024, format="svg")
+                large_image, large_image_dark = self.get_large_images(large_figure)
 
                 self.run_state.visualisation.update_image_data(
-                    small_image,
-                    large_image,
-                    small_image_dark,
-                    large_image_dark,
-                )
+                        small_image,
+                        large_image,
+                        small_image_dark,
+                        large_image_dark,
+                    )
+
+        elif 1 < universe.get_pair_count() <= 3:
+            
+            small_figures = draw_multi_pair_strategy_state(state, universe, height=512)
+            large_figures = draw_multi_pair_strategy_state(state, universe, height=1024)
+
+            assert len(small_figures) == len(large_figures), "Small and large figure count mismatch. Safety check, this should not happen"
+
+            for small_figure, large_figure in zip(small_figures, large_figures):
+                
+                small_image, small_image_dark = self.get_small_images(small_figure)
+                large_image, large_image_dark = self.get_large_images(large_figure)
+
+                if self.run_state:
+                    logger.info("Updating strategy thinking image data")
+                    self.run_state.visualisation.update_image_data(
+                        small_image,
+                        large_image,
+                        small_image_dark,
+                        large_image_dark,
+                    )
+
         else:
-            logger.warning("Charts not yet available for this strategy type")
+            logger.warning("Charts not yet available for this strategy type. Pair count: %s", universe.get_pair_count())
+
+    def get_small_images(self, small_figure):
+        small_image = render_plotly_figure_as_image_file(small_figure, width=768, height=512, format="png")
+
+        small_figure.update_layout(template="plotly_dark")
+        small_image_dark = render_plotly_figure_as_image_file(small_figure, width=512, height=512, format="png")
+
+        return small_image, small_image_dark
+    
+    def get_large_images(self, large_figure):
+        
+        large_image = render_plotly_figure_as_image_file(large_figure, width=1024, height=1024, format="svg")
+
+        large_figure.update_layout(template="plotly_dark")
+        large_image_dark = render_plotly_figure_as_image_file(large_figure, width=1024, height=1024, format="svg")
+
+        return large_image,large_image_dark
 
     def report_strategy_thinking(self,
                                  strategy_cycle_timestamp: datetime.datetime,
