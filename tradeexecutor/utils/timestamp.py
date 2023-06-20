@@ -58,12 +58,20 @@ def convert_and_validate_timestamp_as_float(timestamp: Union[pd.Timestamp, datet
 
 
 
-def json_encode_timedelta(val: datetime.timedelta) -> float:
+def json_encode_timedelta(val: datetime.timedelta | None) -> float | None:
     """Encode timestamp objects as number of seconds passed"""
+
+    if val is None:
+        return None
+
     return val.total_seconds()
 
 
-def json_decode_timedelta(val: float) -> datetime.timedelta:
+def json_decode_timedelta(val: float | None) -> datetime.timedelta | None:
     """Decode timestamp objects as number of seconds passed"""
+
+    if val is None:
+        return None
+
     return datetime.timedelta(seconds=val)
     

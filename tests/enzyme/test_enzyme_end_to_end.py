@@ -261,7 +261,6 @@ def test_enzyme_deploy_vault(
     env["COMPTROLLER_LIB"] = enzyme_deployment.contracts.comptroller_lib.address
     env["DENOMINATION_ASSET"] = usdc.address
 
-
     # Run strategy for few cycles.
     # Manually call the main() function so that Typer's CliRunner.invoke() does not steal
     # stdin and we can still set breakpoints
@@ -351,3 +350,44 @@ def test_enzyme_perform_test_trade(
 
         reserve_value = state.portfolio.get_default_reserve_position().get_value()
         assert reserve_value == pytest.approx(499.994009)
+
+
+def test_enzyme_live_trading_reinit(
+    environment: dict,
+    state_file: Path,
+    vault,
+    deployer,
+    usdc,
+):
+    """Reinitialize Enzyme vault for live trading.
+
+    Check that reinitialise works and accounting information is read from the chain state.
+    """
+
+    result = run_init(environment)
+    assert result.exit_code == 0
+
+    cli = get_command(app)
+
+    # Deposit some money in the vault
+    usdc.functions.approve(vault.comptroller.address, 500 * 10**6).transact({"from": deployer})
+    vault.comptroller.functions.buyShares(500 * 10**6, 1).transact({"from": deployer})
+
+    with patch.dict(os.environ, environment, clear=True):
+        with pytest.raises(SystemExit) as e:
+            cli.main(args=["reinit"])
+        assert e.value.code == 0
+
+    # See that the reinitialised state looks correct
+    with state_file.open("rt") as inp:
+        state: State = State.from_json(inp.read())
+        reserve_position = state.portfolio.get_default_reserve_position()
+        assert reserve_position.quantity == 500
+
+        treasury = state.sync.treasury
+        deployment = state.sync.deployment
+        assert deployment.initialised_at
+        assert treasury.last_block_scanned > 1
+        assert treasury.last_updated_at
+        assert len(treasury.balance_update_refs) == 1
+        assert len(reserve_position.balance_updates) == 1

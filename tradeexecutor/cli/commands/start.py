@@ -1,4 +1,7 @@
-"""start command"""
+"""start command
+
+TODO: Restructure and move backtesting related functionality to a separate command
+"""
 
 import datetime
 import logging
@@ -335,7 +338,7 @@ def start(
         logger.info("Loading strategy file %s", strategy_file)
         strategy_factory = import_strategy_file(strategy_file)
 
-        logger.trade("%s: trade execution starting", name)
+        logger.trade("%s (%s): trade execution starting", name, id)
 
         if backtest_start:
 
@@ -360,6 +363,7 @@ def start(
                     mode=ExecutionMode.real_trading,
                     timed_task_context_manager=timed_task,
                 )
+
     except Exception as e:
         # Logging is set up is in this point, so we can log this exception that
         # caused the start up to fail
@@ -367,38 +371,46 @@ def start(
         logger.exception(e)
         raise
 
+    loop = ExecutionLoop(
+        name=name,
+        command_queue=command_queue,
+        execution_model=execution_model,
+        execution_context=execution_context,
+        sync_model=sync_model,
+        approval_model=approval_model,
+        pricing_model_factory=pricing_model_factory,
+        valuation_model_factory=valuation_model_factory,
+        store=store,
+        client=client,
+        strategy_factory=strategy_factory,
+        reset=reset_state,
+        max_cycles=max_cycles,
+        debug_dump_file=debug_dump_file,
+        backtest_start=backtest_start,
+        backtest_end=backtest_end,
+        backtest_stop_loss_time_frame_override=backtest_stop_loss_time_frame_override,
+        backtest_candle_time_frame_override=backtest_candle_time_frame_override,
+        stop_loss_check_frequency=stop_loss_check_frequency,
+        cycle_duration=cycle_duration,
+        tick_offset=tick_offset,
+        max_data_delay=max_data_delay,
+        trade_immediately=trade_immediately,
+        stats_refresh_frequency=stats_refresh_frequency,
+        position_trigger_check_frequency=position_trigger_check_frequency,
+        run_state=run_state,
+        strategy_cycle_trigger=strategy_cycle_trigger,
+        routing_model=routing_model,
+    )
+
+    # Crash gracefully at the start up if our main loop cannot set itself up
     try:
-        loop = ExecutionLoop(
-            name=name,
-            command_queue=command_queue,
-            execution_model=execution_model,
-            execution_context=execution_context,
-            sync_model=sync_model,
-            approval_model=approval_model,
-            pricing_model_factory=pricing_model_factory,
-            valuation_model_factory=valuation_model_factory,
-            store=store,
-            client=client,
-            strategy_factory=strategy_factory,
-            reset=reset_state,
-            max_cycles=max_cycles,
-            debug_dump_file=debug_dump_file,
-            backtest_start=backtest_start,
-            backtest_end=backtest_end,
-            backtest_stop_loss_time_frame_override=backtest_stop_loss_time_frame_override,
-            backtest_candle_time_frame_override=backtest_candle_time_frame_override,
-            stop_loss_check_frequency=stop_loss_check_frequency,
-            cycle_duration=cycle_duration,
-            tick_offset=tick_offset,
-            max_data_delay=max_data_delay,
-            trade_immediately=trade_immediately,
-            stats_refresh_frequency=stats_refresh_frequency,
-            position_trigger_check_frequency=position_trigger_check_frequency,
-            run_state=run_state,
-            strategy_cycle_trigger=strategy_cycle_trigger,
-            routing_model=routing_model,
-        )
-        loop.run()
+        state = loop.setup()
+    except Exception as e:
+        logger.error("trade-executor crashed on initialisation: %s", e)
+        raise e
+
+    try:
+        loop.run_with_state(state)
 
         # Display summary stats for terminal backtest runs
         if backtest_start:
