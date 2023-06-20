@@ -228,7 +228,14 @@ class EnzymeVaultSyncModel(SyncModel):
 
         for token_details, raw_amount in event.redeemed_assets:
 
+            if raw_amount == 0:
+                # Enzyme reports zero redemptions for some reason?
+                # enzyme-polygon-matic-usdc  | <USD Coin (PoS) (USDC) at 0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174, 6 decimals, on chain 137>: 999324
+                # enzyme-polygon-matic-usdc  | <Wrapped Matic (WMATIC) at 0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270, 18 decimals, on chain 137>: 0
+                continue
+
             asset = translate_token_details(token_details)
+
             try:
                 position = self.get_related_position(portfolio, asset)
             except UnknownAsset as e:
