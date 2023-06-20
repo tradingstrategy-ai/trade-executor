@@ -3,12 +3,14 @@
 import logging
 import datetime
 import pprint
+from _decimal import Decimal
 from functools import partial
 from typing import cast, List, Optional, Tuple
 
 from web3 import Web3
 
-from eth_defi.enzyme.events import fetch_vault_balance_events, EnzymeBalanceEvent, Deposit, Redemption
+from eth_defi.chain import fetch_block_timestamp
+from eth_defi.enzyme.events import fetch_vault_balance_events, EnzymeBalanceEvent, Deposit, Redemption, fetch_vault_balances
 from eth_defi.enzyme.vault import Vault
 from eth_defi.event_reader.reader import read_events, Web3EventReader, extract_events, extract_timestamps_json_rpc
 from eth_defi.event_reader.reorganisation_monitor import ReorganisationMonitor
@@ -233,12 +235,16 @@ class EnzymeVaultSyncModel(SyncModel):
                 # Something has gone wrong in accounting, as we cannot match the redeemed asset to any open position.
                 # This is very tricky situation to figure out, so we be verbose with error messages.
                 open_positions = "\n".join([str(p) for p in portfolio.get_open_positions()])
+                assets_msg = "\n".join([f"{r}: {amount}" for r, amount in event.redeemed_assets])
                 msg = f"Redemption failure because redeemed asset does not match our internal accounting.\n" \
                       f"Do not know how to recover. You need to stop trade-executor and run accounting correction.\n" \
-                      f"Could not process redemption event:\n" \
+                      f"Could not process redemption event.\n" \
+                      f"Redeemed assets:\n" \
+                      f"{assets_msg}\n" \
+                      f"EVM event data:\n" \
                       f"{_dump_enzyme_event(event)}\n" \
-                      f"Current open positions at trade-executor state are:\n" \
-                      f"{open_positions}"
+                      f"Open positions currently in the state:\n" \
+                      f"{open_positions or '-'}"
                 raise RedemptionFailure(msg) from e
 
             quantity = asset.convert_to_decimal(raw_amount)
@@ -468,6 +474,105 @@ class EnzymeVaultSyncModel(SyncModel):
         # state.portfolio.get_default_reserve_position().update_value(exchange_rate=1.0)
 
         return events
+
+    def sync_reinit(self, state: State, **kwargs):
+        """Reinitiliase the vault.
+
+        Fixes broken accounting. Only needs to be used if internal state and blockchain
+        state have somehow managed to get out of sync: internal state has closed positions
+        that are not in blockchain state or vice versa.
+
+        - Makes any token balances in the internal state to match the blockchain state.
+
+        - Assumes all positions are closed (currently artificial limitation).
+
+        - All position history is deleted, because we do not know whether positions closed for
+          profit or loss.
+
+        See :py:mod:`tradeexexcutor.cli.commands.reinit` for details.
+
+        .. note::
+
+            Currently quite a test code. Make support all positions, different sync models.
+
+        :param state:
+            Empty state
+
+        :param kwargs:
+            Initial sync hints.
+
+            Passed to :py:meth:`sync_initial`.
+        """
+
+        # First set the vault creation date etc.
+        self.sync_initial(state, **kwargs)
+
+        # Then proceed to construct the balacnes from the EVM state
+        web3 = self.web3
+        vault = self.vault
+        sync = state.sync
+        portfolio = state.portfolio
+        treasury_sync = sync.treasury
+
+        current_block = web3.eth.block_number
+        timestamp = fetch_block_timestamp(web3, current_block)
+
+        balances = list(fetch_vault_balances(vault, block_identifier=current_block))
+        assert len(balances) == 1, f"reinit cannot be done if the vault has positions other than reserve currencies, got {balances}"
+        reserve_current_balance = balances[0]
+
+        asset = translate_token_details(reserve_current_balance.token)
+
+        assert len(portfolio.reserves) == 0
+
+        # Initial deposit
+        portfolio.initialise_reserves(asset)
+
+        reserve_position = portfolio.get_reserve_position(asset)
+
+        reserve_position.reserve_token_price = float(1)
+        reserve_position.last_pricing_at = datetime.datetime.utcnow()
+        reserve_position.last_sync_at = datetime.datetime.utcnow()
+        reserve_position.quantity = reserve_current_balance.balance
+
+        event_id = portfolio.next_balance_update_id
+        portfolio.next_balance_update_id += 1
+
+        master_event = BalanceUpdate(
+            balance_update_id=event_id,
+            position_type=BalanceUpdatePositionType.reserve,
+            cause=BalanceUpdateCause.deposit,
+            asset=asset,
+            block_mined_at=timestamp,
+            chain_id=asset.chain_id,
+            old_balance=Decimal(0),
+            quantity=reserve_current_balance.balance,
+            owner_address=None,
+            tx_hash=None,
+            log_index=None,
+            position_id=None,
+            notes=f"reinit() at block {current_block}"
+        )
+
+        reserve_position.balance_updates[master_event.balance_update_id] = master_event
+
+        events = [master_event]
+
+        # Check that we do not have conflicting events
+        new_event: BalanceUpdate
+        for new_event in events:
+            ref = BalanceEventRef(
+                balance_event_id=new_event.balance_update_id,
+                updated_at=new_event.block_mined_at,
+                cause=new_event.cause,
+                position_type=new_event.position_type,
+                position_id=new_event.position_id,
+            )
+            treasury_sync.balance_update_refs.append(ref)
+
+        treasury_sync.last_block_scanned = current_block
+        treasury_sync.last_updated_at = datetime.datetime.utcnow()
+        treasury_sync.last_cycle_at = None
 
     def create_transaction_builder(self) -> EnzymeTransactionBuilder:
         assert self.hot_wallet, "HotWallet not set - cannot create transaction builder"
