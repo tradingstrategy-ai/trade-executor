@@ -191,6 +191,8 @@ class EnzymeVaultSyncModel(SyncModel):
         reserve_position.last_sync_at = datetime.datetime.utcnow()
         reserve_position.quantity += event.investment_amount
 
+        usd_value = float(exchange_rate) * float(event.investment_amount)
+
         event_id = portfolio.next_balance_update_id
         portfolio.next_balance_update_id += 1
 
@@ -202,6 +204,7 @@ class EnzymeVaultSyncModel(SyncModel):
             block_mined_at=event.timestamp,
             chain_id=asset.chain_id,
             old_balance=old_balance,
+            usd_value=usd_value,
             quantity=event.investment_amount,
             owner_address=event.receiver,
             tx_hash=event.event_data["transactionHash"],
@@ -256,6 +259,8 @@ class EnzymeVaultSyncModel(SyncModel):
 
             quantity = asset.convert_to_decimal(raw_amount)
 
+            usd_value = position.calculate_quantity_usd_value(quantity)
+
             assert quantity > 0  # Sign flipped later
 
             event_id = portfolio.next_balance_update_id
@@ -289,6 +294,7 @@ class EnzymeVaultSyncModel(SyncModel):
                 tx_hash=event.event_data["transactionHash"],
                 log_index=event.event_data["logIndex"],
                 position_id=position_id,
+                usd_value=usd_value,
             )
 
             position.balance_updates[event_id] = evt
@@ -469,6 +475,7 @@ class EnzymeVaultSyncModel(SyncModel):
                 cause=new_event.cause,
                 position_type=new_event.position_type,
                 position_id=new_event.position_id,
+                usd_value=new_event.usd_value,
             )
             treasury_sync.balance_update_refs.append(ref)
 

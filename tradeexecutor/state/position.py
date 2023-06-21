@@ -924,6 +924,13 @@ class TradingPosition:
         # Static stop loss
         return self.stop_loss
 
+    def calculate_quantity_usd_value(self, quantity: Decimal) -> USDollarAmount:
+        """Calculate value of asset amount using the latest known price."""
+        if quantity == 0:
+            return 0
+        assert self.last_token_price, f"Asset price not available when calculating price for quantity: {quantity}"
+        return float(quantity) * self.last_token_price
+
 
 class PositionType(enum.Enum):
     token_hold = "token_hold"

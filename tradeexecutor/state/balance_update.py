@@ -15,6 +15,7 @@ from typing import Optional
 from dataclasses_json import dataclass_json
 
 from tradeexecutor.state.identifier import AssetIdentifier
+from tradingstrategy.types import USDollarAmount
 
 
 class BalanceUpdateCause(enum.Enum):
@@ -79,6 +80,13 @@ class BalanceUpdate:
     #: What was the total of the asset in the position before this event was applied.
     #:
     old_balance: Decimal
+
+    #: How much this deposit/redemption was worth
+    #:
+    #: Used for deposit/redemption inflow/outflow calculation.
+    #: This is the asset value from our internal price keeping at the time of the event.
+    #:
+    usd_value: USDollarAmount
 
     #: Investor address that the balance update is related to
     #:

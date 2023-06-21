@@ -21,6 +21,12 @@ logger = logging.getLogger(__name__)
 @dataclass_json
 @dataclasses.dataclass
 class ReserveUpdateEvent:
+    """A legacy reserve update event.
+
+    Maintained for old code compatibility.
+
+    See :py:mod:`tradeeexecutor.state.sync` for the current approach.
+    """
     asset: AssetIdentifier
     updated_at: datetime.datetime
     past_balance: Decimal

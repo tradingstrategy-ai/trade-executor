@@ -14,6 +14,7 @@ from typing import Optional, List, Iterable, Dict
 
 from dataclasses_json import dataclass_json
 
+from tradeexecutor.state.types import USDollarAmount
 from tradingstrategy.chain import ChainId
 
 from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdateCause, BalanceUpdatePositionType
@@ -74,15 +75,27 @@ class Deployment:
 class BalanceEventRef:
     """Register the balance event in the treasury model."""
 
+    #: Balance event id we are referring to
     balance_event_id: int
 
+    #: When this update was made
     updated_at: datetime.datetime
 
+    #: Cause of the event
     cause: BalanceUpdateCause
 
+    #: Reserve currency or underlying position
     position_type: BalanceUpdatePositionType
 
+    #: Which trading positions were affected
     position_id: Optional[int]
+
+    #: How much this deposit/redemption was worth
+    #:
+    #: Used for deposit/redemption inflow/outflow calculation.
+    #: This is the asset value from our internal price keeping at the time of the event.
+    #:
+    usd_value: Optional[USDollarAmount]
 
 
 @dataclass_json
