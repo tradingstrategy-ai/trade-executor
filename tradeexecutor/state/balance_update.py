@@ -111,6 +111,12 @@ class BalanceUpdate:
     #:
     notes: Optional[str] = None
 
+    def __post_init__(self):
+        assert self.quantity != 0, "Balance update cannot be zero: {self}"
+
+    def __repr__(self):
+        return f"<BalanceUpdate #{self.balance_update_id} {self.cause.name} {self.quantity} for position {self.position_id}>"
+
     def __eq__(self, other: "BalanceUpdate"):
         assert isinstance(other, BalanceUpdate), f"Got {other}"
         match self.cause:

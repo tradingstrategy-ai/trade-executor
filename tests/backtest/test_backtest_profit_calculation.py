@@ -7,12 +7,10 @@
 import datetime
 import logging
 import os
-from _decimal import Decimal
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
-
-import pandas as pd
 
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel
 from tradeexecutor.backtest.backtest_runner import run_backtest, setup_backtest_for_universe
@@ -26,10 +24,10 @@ from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniv
 from tradeexecutor.testing.synthetic_ethereum_data import generate_random_ethereum_address
 from tradeexecutor.testing.synthetic_exchange_data import generate_exchange, generate_simple_routing_model
 from tradeexecutor.testing.synthetic_price_data import generate_ohlcv_candles
+from tradeexecutor.visual.equity_curve import calculate_investment_flow, calculate_realised_profitability
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId
-from tradingstrategy.exchange import Exchange, ExchangeUniverse
-from tradingstrategy.pair import PandasPairUniverse, DEXPair
+from tradingstrategy.exchange import Exchange
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
 
@@ -48,6 +46,10 @@ class DepositSimulator(ExecutionTestHook):
             state: State,
             sync_model: BacktestSyncModel
     ):
+        # Make sure we have some money in the bank on the first day
+        if cycle == 1:
+            sync_model.simulate_funding(datetime.datetime.utcnow(), Decimal(15))
+
         if cycle % 3 == 0:
             sync_model.simulate_funding(datetime.datetime.utcnow(), Decimal(100))
 
@@ -169,7 +171,7 @@ def backtest_result(
         end_at=datetime.datetime(2022, 1, 1),
         cycle_duration=CycleDuration.cycle_1d,  # Override to use 24h cycles despite what strategy file says
         candle_time_frame=TimeBucket.d1,  # Override to use 24h cycles despite what strategy file says
-        initial_deposit=10_000,
+        initial_deposit=0,
         universe=synthetic_universe,
         routing_model=routing_model,
         allow_missing_fees=True,
@@ -182,13 +184,30 @@ def backtest_result(
         execution_test_hook=deposit_simulator,
     )
 
+    # Some smoke checks we generated good data
     assert deposit_simulator.deposit_callbacks_done > 10, "No deposit/redemption activity detected"
+
+    all_positions = list(state.portfolio.get_all_positions())
+    assert len(all_positions) == 107
+
     return state
 
 
 def test_calculate_funding_flow(backtest_result: State):
     """Calculate funding flow for test deposits/redemptions."""
-
     state = backtest_result
-    all_positions = list(state.portfolio.get_all_positions())
-    assert len(all_positions) == 107
+    flow = calculate_investment_flow(state)
+    assert max(flow) == 100, "Deposit simulation did not work out"
+    assert min(flow) == -90, "Redemption simulation did not work out"
+    deposits = flow[flow > 0]  # https://stackoverflow.com/a/28272238/315168
+    redemptions = flow[flow < 0]
+    assert sum(deposits) == 7115.0
+    assert sum(redemptions) == -3780.0
+
+
+def test_calculate_realised_trading_profitability(backtest_result: State):
+    """Calculate the realised trading profitability."""
+    state = backtest_result
+    profitability = calculate_realised_profitability(state)
+    assert 0.04 < max(profitability) < 0.06
+    assert -0.06 < min(profitability) < -0.04

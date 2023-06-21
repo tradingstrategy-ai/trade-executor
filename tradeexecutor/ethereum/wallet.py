@@ -34,6 +34,7 @@ class ReserveUpdateEvent:
     past_balance: Decimal
     new_balance: Decimal
 
+
     @property
     def change(self) -> Decimal:
         return self.new_balance - self.past_balance

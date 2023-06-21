@@ -13,7 +13,8 @@ import pandas as pd
 from tradeexecutor.backtest.backtest_execution import BacktestExecutionModel
 from tradeexecutor.backtest.backtest_pricing import BacktestSimplePricingModel
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel
-from tradeexecutor.backtest.backtest_sync import BacktestSyncer, BacktestSyncModel
+from tradeexecutor.backtest.backtest_sync import BacktestSyncModel
+from tradeexecutor.backtest.legacy_backtest_sync import BacktestSyncer
 from tradeexecutor.backtest.backtest_valuation import BacktestValuationModel
 from tradeexecutor.backtest.simulated_wallet import SimulatedWallet
 from tradeexecutor.cli.log import setup_notebook_logging
@@ -161,7 +162,7 @@ def setup_backtest_for_universe(
 
     """
 
-    assert initial_deposit > 0
+    assert initial_deposit >= 0, f"Got initial deposit amount: {initial_deposit}"
 
     wallet = SimulatedWallet()
 

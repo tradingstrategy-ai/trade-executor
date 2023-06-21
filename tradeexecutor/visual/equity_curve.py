@@ -241,12 +241,9 @@ def visualise_returns_distribution(
 
 
 def calculate_investment_flow(
-        state: State,
+    state: State,
 ) -> pd.Series:
     """Calculate deposit/redemption i nflows/outflows of a strategy.
-
-    :param attribute_name:
-        Calculate equity curve based on this attribute of :py:class:`
 
     :return:
         Pandas series (timestamp, usd deposits/redemptions)
@@ -254,6 +251,22 @@ def calculate_investment_flow(
 
     treasury = state.sync.treasury
     balance_updates = treasury.balance_update_refs
-    index = [e.block_mined_at for e in balance_updates]
+    index = [e.updated_at for e in balance_updates]
     values = [e.usd_value for e in balance_updates]
     return pd.Series(values, index)
+
+
+def calculate_realised_profitability(
+    state: State,
+) -> pd.Series:
+    """Calculate realised profitability of closed trading positions.
+
+    This function returns the :term:`profitability` of individually
+    closed trading positions.
+
+    :return:
+        Pandas series (timestamp, % profit)
+    """
+    data = [(p.closed_at, p.get_realised_profit_percent()) for p in state.portfolio.closed_positions.values()]
+    # https://stackoverflow.com/a/66772284/315168
+    return pd.DataFrame(data).set_index(0)[1]

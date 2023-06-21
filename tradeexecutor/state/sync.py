@@ -88,7 +88,10 @@ class BalanceEventRef:
     #: Balance event id we are referring to
     balance_event_id: int
 
-    #: When this update was made
+    #: When this update was made.
+    #:
+    #: Block timestamp for live trading.
+    #:
     updated_at: datetime.datetime
 
     #: Cause of the event
