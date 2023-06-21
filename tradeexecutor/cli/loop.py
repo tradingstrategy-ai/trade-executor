@@ -73,6 +73,19 @@ class LiveSchedulingTaskFailed(Exception):
     """
 
 
+class ExecutionTestHook:
+    """A test helper to allow to hook into backtest execution to inject events.
+
+    Mostly used to simulate deposits/redemptions.
+    """
+
+    def on_before_cycle(self, cycle: int, state: State):
+        """Called before entering the strategy tick."""
+
+    def on_after_cycle(self, cycle: int, state: State):
+        """Called after the strategy tick."""
+
+
 class ExecutionLoop:
     """Live or backtesting trade execution loop.
 
@@ -117,6 +130,7 @@ class ExecutionLoop:
             run_state: Optional[RunState]=None,
             strategy_cycle_trigger: StrategyCycleTrigger = StrategyCycleTrigger.cycle_offset,
             routing_model: Optional[RoutingModel] = None,
+            execution_test_hook: Optional[ExecutionTestHook] = None,
     ):
         """See main.py for details."""
 
@@ -133,6 +147,7 @@ class ExecutionLoop:
         self.reset = reset
         self.routing_model = routing_model
         self.execution_model = execution_model
+        self.execution_test_hook = execution_test_hook
 
         args = locals().copy()
         args.pop("self")
@@ -621,6 +636,8 @@ class ExecutionLoop:
 
         assert backtest_step != CycleDuration.cycle_unknown
 
+        execution_test_hook =  self.execution_test_hook or ExecutionTestHook()
+
         # Throttle TQDM updates to 1 per second because
         # otherwise we crash PyCharm
         # https://stackoverflow.com/q/43288550/315168
@@ -634,6 +651,7 @@ class ExecutionLoop:
 
             while True:
                 ts = snap_to_previous_tick(ts, backtest_step)
+
                 # Bump progress bar forward and update backtest status
                 if datetime.datetime.utcnow() - last_progress_update > progress_update_threshold:
                     friedly_ts = ts.strftime(ts_format)
@@ -653,6 +671,8 @@ class ExecutionLoop:
                         passed_seconds = (ts - last_update_ts).total_seconds()
                         progress_bar.update(int(passed_seconds))
                     last_update_ts = ts
+
+                execution_test_hook.on_before_cycle(cycle, state)
 
                 # Decide trades and everything for this cycle
                 universe: TradingStrategyUniverse = self.tick(
@@ -683,6 +703,8 @@ class ExecutionLoop:
                     passed_seconds = (ts - last_update_ts).total_seconds()
                     progress_bar.update(int(passed_seconds))
                     break
+
+                execution_test_hook.on_after_cycle(cycle, state)
 
                 # If we have stop loss checks enabled on a separate price feed,
                 # run backtest stop loss checks until the next time

@@ -23,11 +23,14 @@ class BacktestSyncer:
         self.initial_deposit_amount = initial_deposit_amount
         self.initial_deposit_processed_at = None
 
-    def __call__(self, portfolio: Portfolio, ts: datetime.datetime, supported_reserves: List[AssetIdentifier]) -> List[ReserveUpdateEvent]:
+    def __call__(self, state: State, ts: datetime.datetime, supported_reserves: List[AssetIdentifier]) -> List[ReserveUpdateEvent]:
         """Process the backtest initial deposit.
 
         The backtest wallet is credited once at the start.
         """
+        assert isinstance(state, State)
+
+        portfolio = state.portfolio
 
         if not self.initial_deposit_processed_at:
             self.initial_deposit_processed_at = ts
@@ -48,7 +51,7 @@ class BacktestSyncer:
             self.wallet.update_balance(reserve_token.address, self.initial_deposit_amount)
 
             # Update state
-            apply_sync_events(portfolio, [evt])
+            apply_sync_events(state, [evt])
 
             return [evt]
         else:

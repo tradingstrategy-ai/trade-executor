@@ -17,7 +17,7 @@ from tradeexecutor.backtest.backtest_sync import BacktestSyncer, BacktestSyncMod
 from tradeexecutor.backtest.backtest_valuation import BacktestValuationModel
 from tradeexecutor.backtest.simulated_wallet import SimulatedWallet
 from tradeexecutor.cli.log import setup_notebook_logging
-from tradeexecutor.cli.loop import ExecutionLoop
+from tradeexecutor.cli.loop import ExecutionLoop, ExecutionTestHook
 from tradeexecutor.ethereum.routing_data import get_routing_model, get_backtest_routing_model
 from tradeexecutor.state.state import State
 from tradeexecutor.state.store import NoneStore
@@ -272,6 +272,7 @@ def run_backtest(
         setup: BacktestSetup,
         client: Optional[Client]=None,
         allow_missing_fees=False,
+        execution_test_hook: Optional[ExecutionTestHook] = None,
 ) -> Tuple[State, TradingStrategyUniverse, dict]:
     """Run a strategy backtest.
 
@@ -363,6 +364,7 @@ def run_backtest(
         backtest_candle_time_frame_override=setup.universe_options.candle_time_bucket_override,
         tick_offset=datetime.timedelta(seconds=1),
         trade_immediately=True,
+        execution_test_hook=execution_test_hook,
     )
 
     debug_dump = main_loop.run()
