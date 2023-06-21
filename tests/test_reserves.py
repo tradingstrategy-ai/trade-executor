@@ -11,6 +11,7 @@ from web3.contract import Contract
 
 from eth_defi.token import create_token
 from tradeexecutor.ethereum.wallet import sync_reserves
+from tradeexecutor.state.state import State
 from tradeexecutor.testing.dummy_wallet import  apply_sync_events
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.identifier import AssetIdentifier
@@ -106,14 +107,15 @@ def test_update_reserves_one_deposit(web3, usdc_token, deployer, start_ts, hot_w
 def test_update_reserves_no_change(web3, usdc_token, deployer, start_ts, hot_wallet: HexAddress, supported_reserves):
     """Do not generate deposit events if there has not been changes."""
 
-    portfolio = Portfolio()
+    state = State()
+    portfolio = state.portfolio
 
     # Deposit 500 usd
     usdc_token.functions.transfer(hot_wallet, 500 * 10**6).transact({"from": deployer})
     events = sync_reserves(web3, start_ts, hot_wallet, [], supported_reserves)
     assert len(events) == 1
 
-    apply_sync_events(portfolio, events)
+    apply_sync_events(state, events)
 
     events = sync_reserves(web3, start_ts, hot_wallet, portfolio.reserves.values(), supported_reserves)
     assert len(events) == 0
@@ -122,14 +124,15 @@ def test_update_reserves_no_change(web3, usdc_token, deployer, start_ts, hot_wal
 def test_update_reserves_twice(web3, usdc_token, deployer, start_ts, hot_wallet: HexAddress, supported_reserves):
     """Sync reserves from one deposit."""
 
-    portfolio = Portfolio()
+    state = State()
+    portfolio = state.portfolio
 
     # Deposit 500 usd
     usdc_token.functions.transfer(hot_wallet, 500 * 10**6).transact({"from": deployer})
     events = sync_reserves(web3, start_ts, hot_wallet, [], supported_reserves)
     assert len(events) == 1
 
-    apply_sync_events(portfolio, events)
+    apply_sync_events(state, events)
 
     address = usdc_token.address.lower()
     assert portfolio.reserves[address].quantity == Decimal(500)
@@ -146,6 +149,6 @@ def test_update_reserves_twice(web3, usdc_token, deployer, start_ts, hot_wallet:
     assert evt.new_balance == 700
     assert evt.past_balance == 500
 
-    apply_sync_events(portfolio, events)
+    apply_sync_events(state, events)
 
     assert portfolio.reserves[address].quantity == Decimal(700)

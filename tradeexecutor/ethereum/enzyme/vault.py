@@ -550,6 +550,9 @@ class EnzymeVaultSyncModel(SyncModel):
         reserve_position.last_sync_at = datetime.datetime.utcnow()
         reserve_position.quantity = reserve_current_balance.balance
 
+        # TODO: Assume USD stablecoins are 1:1 USD
+        usd_value = float(reserve_position.quantity)
+
         event_id = portfolio.next_balance_update_id
         portfolio.next_balance_update_id += 1
 
@@ -566,6 +569,7 @@ class EnzymeVaultSyncModel(SyncModel):
             tx_hash=None,
             log_index=None,
             position_id=None,
+            usd_value=usd_value,
             notes=f"reinit() at block {current_block}"
         )
 
@@ -582,6 +586,7 @@ class EnzymeVaultSyncModel(SyncModel):
                 cause=new_event.cause,
                 position_type=new_event.position_type,
                 position_id=new_event.position_id,
+                usd_value=new_event.usd_value,
             )
             treasury_sync.balance_update_refs.append(ref)
 
