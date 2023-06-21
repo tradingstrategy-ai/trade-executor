@@ -241,5 +241,53 @@ def visualise_returns_distribution(
 
 
 
+def calculate_flow_independent_returns(
+        state: State,
+) -> pd.Series:
+    """Calculate strategy profitability accounting for any deposit/redemption flow.
+
+    Translate the portfolio internal :py:attr:`Statistics.portfolio`
+    to :py:class:`pd.Series` that allows easy equity curve calculations.
+
+    :param attribute_name:
+        Calculate equity curve based on this attribute of :py:class:`
+
+    :return:
+        Pandas series (timestamp, profit % over the first timestamp)
+    """
+
+    stats: Statistics = state.stats
+
+    portfolio_stats: List[PortfolioStatistics] = stats.portfolio
+    index = [stat.calculated_at for stat in portfolio_stats]
+
+    assert len(index) >= 2, "Cannot calculate equity curve because there are no portfolio.stats.portfolio entries"
+
+    values = [getattr(stat, attribute_name) for stat in portfolio_stats]
+    return pd.Series(values, index)
 
 
+def calculate_investment_flow(
+        state: State,
+) -> pd.Series:
+    """Calculate deposit/redemption inflows/outflows of a strategy.
+
+
+
+
+    :param attribute_name:
+        Calculate equity curve based on this attribute of :py:class:`
+
+    :return:
+        Pandas series (timestamp, profit % over the first timestamp)
+    """
+
+    stats: Statistics = state.stats
+
+    portfolio_stats: List[PortfolioStatistics] = stats.portfolio
+    index = [stat.calculated_at for stat in portfolio_stats]
+
+    assert len(index) >= 2, "Cannot calculate equity curve because there are no portfolio.stats.portfolio entries"
+
+    values = [getattr(stat, attribute_name) for stat in portfolio_stats]
+    return pd.Series(values, index)
