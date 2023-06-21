@@ -259,8 +259,6 @@ class EnzymeVaultSyncModel(SyncModel):
 
             quantity = asset.convert_to_decimal(raw_amount)
 
-            usd_value = position.calculate_quantity_usd_value(quantity)
-
             assert quantity > 0  # Sign flipped later
 
             event_id = portfolio.next_balance_update_id
@@ -271,10 +269,13 @@ class EnzymeVaultSyncModel(SyncModel):
                 old_balance = position.quantity
                 position.quantity -= quantity
                 position_type = BalanceUpdatePositionType.reserve
+                # TODO: USD stablecoin hardcoded to 1:1 with USD
+                usd_value = float(quantity)
             elif isinstance(position, TradingPosition):
                 position_id = position.position_id
                 old_balance = position.get_quantity()
                 position_type = BalanceUpdatePositionType.open_position
+                usd_value = position.calculate_quantity_usd_value(quantity)
             else:
                 raise NotImplementedError()
 

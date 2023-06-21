@@ -127,7 +127,14 @@ class DummySyncModel(SyncModel):
         if not self.fake_sync_done:
             state.sync.treasury.last_updated_at = datetime.datetime.utcnow()
             state.sync.treasury.last_cycle_at = strategy_cycle_ts
-            ref = BalanceEventRef(0, datetime.datetime.utcnow(), BalanceUpdateCause.deposit, BalanceUpdatePositionType.open_position, None)
+            ref = BalanceEventRef(
+                0,
+                datetime.datetime.utcnow(),
+                BalanceUpdateCause.deposit,
+                BalanceUpdatePositionType.open_position,
+                None,
+                None,
+            )
             state.sync.treasury.balance_update_refs = [ref]  # TODO: Get rid of the checks in on_clock()
             return []
         return []

@@ -73,7 +73,17 @@ class Deployment:
 @dataclass_json
 @dataclass
 class BalanceEventRef:
-    """Register the balance event in the treasury model."""
+    """Register the balance event in the treasury model.
+
+    Balance updates can happen for
+
+    - Treasury
+
+    - Open trading positions
+
+    We maintain a list of balance update references across all positions using :py:class:`BalanceEventRef`.
+    This allows us quickly to calculate net inflow/outflow.
+    """
 
     #: Balance event id we are referring to
     balance_event_id: int

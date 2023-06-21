@@ -32,6 +32,10 @@ class ReserveUpdateEvent:
     past_balance: Decimal
     new_balance: Decimal
 
+    @property
+    def change(self) -> Decimal:
+        return self.new_balance - self.past_balance
+
 
 def update_wallet_balances(web3: Web3, address: HexAddress, tokens: List[HexAddress]) -> Dict[HexAddress, DecimalisedHolding]:
     """Get raw balances of ERC-20 tokens."""

@@ -61,7 +61,7 @@ class HotWalletSyncModel(SyncModel):
         # TODO: This code is not production ready - use with care
         # Needs legacy cleanup
         events = sync_reserves(self.web3, strategy_cycle_ts, self.hot_wallet.address, [], supported_reserves)
-        apply_sync_events(state.portfolio, events)
+        apply_sync_events(state, events)
         state.sync.treasury.last_updated_at = datetime.datetime.utcnow()
         state.sync.treasury.last_cycle_at = strategy_cycle_ts
         state.sync.treasury.last_block_scanned = self.web3.eth.block_number

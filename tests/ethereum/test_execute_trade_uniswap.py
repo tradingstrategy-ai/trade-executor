@@ -190,20 +190,21 @@ def supported_reserves(asset_usdc) -> List[AssetIdentifier]:
 
 
 @pytest.fixture()
-def portfolio(web3, hot_wallet, start_ts, supported_reserves) -> Portfolio:
+def portfolio() -> Portfolio:
     """A portfolio loaded with the initial cash.
 
     We start with 10,000 USDC.
     """
     portfolio = Portfolio()
-    events = sync_reserves(web3, start_ts, hot_wallet.address, [], supported_reserves)
-    apply_sync_events(portfolio, events)
     return portfolio
 
 
 @pytest.fixture()
-def state(portfolio) -> State:
-    return State(portfolio=portfolio)
+def state(portfolio, web3, hot_wallet, start_ts, supported_reserves) -> State:
+    state = State(portfolio=portfolio)
+    events = sync_reserves(web3, start_ts, hot_wallet.address, [], supported_reserves)
+    apply_sync_events(state, events)
+    return state
 
 
 @pytest.fixture()

@@ -92,8 +92,6 @@ class BacktestSyncModel(SyncModel):
             Old legacy code with wrong return signature compared to the parent class
         """
 
-        portfolio = state.portfolio
-
         # TODO: Move this code eto sync_initial()
         if not self.initial_deposit_processed_at:
             self.initial_deposit_processed_at = strategy_cycle_ts
@@ -114,12 +112,7 @@ class BacktestSyncModel(SyncModel):
             self.wallet.update_balance(reserve_token.address, self.initial_deposit_amount)
 
             # Update state
-            apply_sync_events(portfolio, [evt])
-
-            # Set synced flag
-            # TODO: fix - wrong event type
-            state.sync.treasury.last_updated_at = strategy_cycle_ts
-            state.sync.treasury.balance_update_refs = []
+            apply_sync_events(state, [evt])
 
             return []
         else:

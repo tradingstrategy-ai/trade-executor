@@ -9,9 +9,12 @@ from decimal import Decimal
 from typing import List
 
 from tradeexecutor.ethereum.wallet import ReserveUpdateEvent, logger
+from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdatePositionType, BalanceUpdateCause
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.reserve import ReservePosition
+from tradeexecutor.state.state import State
+from tradeexecutor.state.sync import BalanceEventRef
 
 
 class DummyWalletSyncer:
@@ -51,8 +54,14 @@ class DummyWalletSyncer:
             return []
 
 
-def apply_sync_events(portfolio: Portfolio, new_reserves: List[ReserveUpdateEvent], default_price=1.0):
+def apply_sync_events(state: State, new_reserves: List[ReserveUpdateEvent], default_price=1.0):
     """Apply deposit and withdraws on reserves in the portfolio.
+
+    - Updates :yp:class:`ReservePosition` instance to reflect the latest available balance
+
+    - Generates balance update events needed to calculate inflows/outflows
+
+    - Marks the last treasury updated at
 
     .. note ::
 
@@ -60,6 +69,11 @@ def apply_sync_events(portfolio: Portfolio, new_reserves: List[ReserveUpdateEven
 
     :param default_price: Set the reserve currency price for new reserves.
     """
+
+    assert isinstance(state, State)
+
+    portfolio = state.portfolio
+    treasury_sync = state.sync.treasury
 
     for evt in new_reserves:
 
@@ -82,5 +96,43 @@ def apply_sync_events(portfolio: Portfolio, new_reserves: List[ReserveUpdateEven
             )
             portfolio.reserves[res_pos.get_identifier()] = res_pos
             logger.info("Portfolio reserve created. Asset: %s", evt.asset)
+
+        # Generate related balance events
+        event_id = portfolio.next_balance_update_id
+        portfolio.next_balance_update_id += 1
+
+        asset = evt.asset
+        quantity = evt.change
+        cause = BalanceUpdateCause.deposit if quantity > 0 else BalanceUpdateCause.redemption
+
+        # TODO: Assume stablecoins are 1:1 with dollar
+        usd_value = float(quantity)
+
+        bu = BalanceUpdate(
+            balance_update_id=event_id,
+            position_type=BalanceUpdatePositionType.reserve,
+            cause=cause,
+            asset=asset,
+            block_mined_at=datetime.datetime.utcnow(),
+            chain_id=asset.chain_id,
+            old_balance=evt.past_balance,
+            usd_value=usd_value,
+            quantity=quantity,
+            position_id=None,
+        )
+        res_pos.balance_updates[bu.balance_update_id] = bu
+        ref = BalanceEventRef(
+            balance_event_id=bu.balance_update_id,
+            updated_at=bu.block_mined_at,
+            cause=bu.cause,
+            position_type=bu.position_type,
+            position_id=bu.position_id,
+            usd_value=bu.usd_value,
+        )
+
+        treasury_sync.balance_update_refs.append(ref)
+
+    treasury_sync.last_updated_at = datetime.datetime.utcnow()
+
 
 
