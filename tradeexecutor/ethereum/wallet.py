@@ -26,6 +26,8 @@ class ReserveUpdateEvent:
     Maintained for old code compatibility.
 
     See :py:mod:`tradeeexecutor.state.sync` for the current approach.
+
+    TODO: This should be removed as is partially part of old treasury sync code.
     """
     asset: AssetIdentifier
     updated_at: datetime.datetime

@@ -54,7 +54,7 @@ class DummyWalletSyncer:
             return []
 
 
-def apply_sync_events(state: State, new_reserves: List[ReserveUpdateEvent], default_price=1.0):
+def apply_sync_events(state: State, new_reserves: List[ReserveUpdateEvent], default_price=1.0) -> List[BalanceUpdate]:
     """Apply deposit and withdraws on reserves in the portfolio.
 
     - Updates :yp:class:`ReservePosition` instance to reflect the latest available balance
@@ -63,9 +63,7 @@ def apply_sync_events(state: State, new_reserves: List[ReserveUpdateEvent], defa
 
     - Marks the last treasury updated at
 
-    .. note ::
-
-        This is only used with deprecated :py:data:`tradeexecutor.strategy.sync_model.SyncMethodV0`
+    TODO: This needs to be refactored as is partially the old treasury sync code.
 
     :param default_price: Set the reserve currency price for new reserves.
     """
@@ -74,6 +72,7 @@ def apply_sync_events(state: State, new_reserves: List[ReserveUpdateEvent], defa
 
     portfolio = state.portfolio
     treasury_sync = state.sync.treasury
+    balance_update_events = []
 
     for evt in new_reserves:
 
@@ -130,9 +129,8 @@ def apply_sync_events(state: State, new_reserves: List[ReserveUpdateEvent], defa
             usd_value=bu.usd_value,
         )
 
+        balance_update_events.append(bu)
         treasury_sync.balance_update_refs.append(ref)
 
     treasury_sync.last_updated_at = datetime.datetime.utcnow()
-
-
-
+    return balance_update_events

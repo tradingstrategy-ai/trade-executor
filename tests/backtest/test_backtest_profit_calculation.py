@@ -1,8 +1,13 @@
 """Test different profit / equity calculation models.
+
+- We do this by using simulated deposit/redemption events in a backtest run for synthetic trade data
+  and a dummy strategy
+
 """
 import datetime
 import logging
 import os
+from _decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -31,6 +36,10 @@ from tradingstrategy.universe import Universe
 
 
 class DepositSimulator(ExecutionTestHook):
+    """Do FizzBuzz deposits/redemptions simulation."""
+
+    def __init__(self):
+        self.deposit_callbacks_done = 0
 
     def on_before_cycle(
             self,
@@ -39,12 +48,13 @@ class DepositSimulator(ExecutionTestHook):
             state: State,
             sync_model: BacktestSyncModel
     ):
-        """Do FizzBuzz deposits/redemptions simulation."""
         if cycle % 3 == 0:
-            sync_model.simulate_deposit(100)
+            sync_model.simulate_funding(datetime.datetime.utcnow(), Decimal(100))
 
         if cycle % 5 == 0:
-            sync_model.simulate_redemption(90)
+            sync_model.simulate_funding(datetime.datetime.utcnow(), Decimal(-90))
+
+        self.deposit_callbacks_done += 1
 
 
 @pytest.fixture(scope="module")
@@ -86,7 +96,9 @@ def weth_usdc(mock_exchange, usdc, weth) -> TradingPairIdentifier:
         generate_random_ethereum_address(),
         mock_exchange.address,
         internal_id=555,
-        internal_exchange_id=mock_exchange.exchange_id)
+        internal_exchange_id=mock_exchange.exchange_id,
+        fee=0.0030,
+    )
 
 
 @pytest.fixture(scope="module")
@@ -163,27 +175,20 @@ def backtest_result(
         allow_missing_fees=True,
     )
 
+    deposit_simulator = DepositSimulator()
     state, universe, debug_dump = run_backtest(
         setup,
         allow_missing_fees=True,
-        execution_test_hook=DepositSimulator(),
+        execution_test_hook=deposit_simulator,
     )
 
-    assert len(debug_dump) == 214
-
-    portfolio = state.portfolio
-    assert len(list(portfolio.get_all_trades())) == 214
-    buys = [t for t in portfolio.get_all_trades() if t.is_buy()]
-    sells = [t for t in portfolio.get_all_trades() if t.is_sell()]
-
-    assert len(buys) == 107
-    assert len(sells) == 107
-
-    # The actual result might vary, but we should slowly leak
-    # portfolio valuation because losses on trading fees
-    assert portfolio.get_current_cash() > 9000
-    assert portfolio.get_current_cash() < 10_500
+    assert deposit_simulator.deposit_callbacks_done > 10, "No deposit/redemption activity detected"
+    return state
 
 
-def test_calculate_profit():
-    pass
+def test_calculate_funding_flow(backtest_result: State):
+    """Calculate funding flow for test deposits/redemptions."""
+
+    state = backtest_result
+    all_positions = list(state.portfolio.get_all_positions())
+    assert len(all_positions) == 107

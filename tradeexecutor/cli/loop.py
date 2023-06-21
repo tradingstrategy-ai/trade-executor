@@ -401,7 +401,8 @@ class ExecutionLoop:
         self.runner.pretick_check(ts, universe)
 
         if cycle == 1 and self.backtest_setup is not None:
-            # The hook to set up backtest initial balance
+            # The hook to set up backtest initial balance.
+            # TODO: Legacy - remove.
             logger.info("Performing initial backtest account funding")
             self.backtest_setup(state, universe, self.sync_model)
 

@@ -1,9 +1,11 @@
 import datetime
+from dataclasses import dataclass
 from decimal import Decimal
 from typing import List, Optional
 
 from tradeexecutor.backtest.simulated_wallet import SimulatedWallet
 from tradeexecutor.ethereum.wallet import ReserveUpdateEvent
+from tradeexecutor.state.balance_update import BalanceUpdate
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.state import State
@@ -65,6 +67,21 @@ class BacktestSyncer:
             return []
 
 
+@dataclass
+class FundFlowEvent:
+    """One simulated deposit/redemption in backtest.
+
+    - Events can be triggered any time with :py:meth:`BacktestSyncModel.simulate_funding`
+
+    - Fund flow is added to the reserves during :py:meth:`BacktestSyncModel.sync_treasury`
+      as it would be with live trading
+    """
+
+
+    timestamp: datetime.datetime
+
+    amount: Decimal
+
 
 class BacktestSyncModel(SyncModel):
     """Backtest sync model.
@@ -74,14 +91,18 @@ class BacktestSyncModel(SyncModel):
     def __init__(self, wallet: SimulatedWallet, initial_deposit_amount: Decimal):
         assert isinstance(initial_deposit_amount, Decimal)
         self.wallet = wallet
-        self.initial_deposit_amount = initial_deposit_amount
-        self.initial_deposit_processed_at = None
+
+        #: Simulated deposit/redemption events pending to be processed
+        self.fund_flow_queue: List[FundFlowEvent] = [
+            FundFlowEvent(datetime.datetime.utcnow(), initial_deposit_amount)
+        ]
 
     def sync_initial(self, state: State):
-        """Set u[ initial sync details."""
+        """Set up the initial sync details.
 
+        For backtesting these are irrelevant.
+        """
         deployment = state.sync.deployment
-
         deployment.chain_id = None
         deployment.address = None
         deployment.block_number = None
@@ -94,7 +115,7 @@ class BacktestSyncModel(SyncModel):
                  strategy_cycle_ts: datetime.datetime,
                  state: State,
                  supported_reserves: Optional[List[AssetIdentifier]] = None
-                 ):
+                 ) -> List[BalanceUpdate]:
         """Apply the balance sync before each strategy cycle.
 
         .. warning::
@@ -102,51 +123,44 @@ class BacktestSyncModel(SyncModel):
             Old legacy code with wrong return signature compared to the parent class
         """
 
-        # TODO: Move this code eto sync_initial()
-        if not self.initial_deposit_processed_at:
-            self.initial_deposit_processed_at = strategy_cycle_ts
+        assert len(supported_reserves) == 1
+        reserve_token = supported_reserves[0]
+        balance_update_events = []
 
-            assert len(supported_reserves) == 1
-            reserve_token = supported_reserves[0]
+        for funding_event in self.fund_flow_queue:
+
+            # Update wallet
+            self.wallet.update_balance(reserve_token.address, funding_event.amount)
 
             # Generate a deposit event
             evt = ReserveUpdateEvent(
                 asset=reserve_token,
                 past_balance=Decimal(0),
-                new_balance=self.initial_deposit_amount,
+                new_balance=self.wallet.get_balance(reserve_token.address),
                 updated_at=strategy_cycle_ts
             )
-
-            # Update wallet
-            self.wallet.update_balance(reserve_token.address, self.initial_deposit_amount)
-
             # Update state
-            apply_sync_events(state, [evt])
+            balance_update_events = apply_sync_events(state, [evt])
 
-            return []
-        else:
-            return []
+        # Clear our pending funding simulation events
+        self.fund_flow_queue = []
 
-    def make_balance_update(self, amount: USDollarAmount):
-        """Simulate deposit of funds."""
+        return balance_update_events
 
-        assert len(supported_reserves) == 1
-        reserve_token = supported_reserves[0]
+    def simulate_funding(self, timestamp: datetime.datetime, amount: Decimal):
+        """Simulate a funding flow event.
 
-        # Generate a deposit event
-        evt = ReserveUpdateEvent(
-            asset=reserve_token,
-            past_balance=Decimal(0),
-            new_balance=self.initial_deposit_amount,
-            updated_at=strategy_cycle_ts
+        Call for the test to cause deposit or redemption for the backtest.
+        The event goes to a queue and is processed in next `tick()`
+        through `sync_portfolio()`.
+
+        :param amount:
+            Positive for deposit, negative for redemption
+
+        """
+        self.fund_flow_queue.append(
+            FundFlowEvent(timestamp, amount)
         )
 
-        # Update wallet
-        self.wallet.update_balance(reserve_token.address, self.initial_deposit_amount)
-
-        # Update state
-        apply_sync_events(state, [evt])
-
-
     def create_transaction_builder(self) -> None:
-        return None
+        """Backtesting does not need to care about how to build blockchain transactions."""
