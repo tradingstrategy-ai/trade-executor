@@ -245,8 +245,10 @@ def calculate_investment_flow(
 ) -> pd.Series:
     """Calculate deposit/redemption i nflows/outflows of a strategy.
 
+    See :ref:`profitability` for more information.
+
     :return:
-        Pandas series (timestamp, usd deposits/redemptions)
+        Pandas series (DatetimeIndex, usd deposits/redemptions)
     """
 
     treasury = state.sync.treasury
@@ -264,9 +266,40 @@ def calculate_realised_profitability(
     This function returns the :term:`profitability` of individually
     closed trading positions.
 
+    See :ref:`profitability` for more information.
+
     :return:
-        Pandas series (timestamp, % profit)
+        Pandas series (DatetimeIndex, % profit)
     """
-    data = [(p.closed_at, p.get_realised_profit_percent()) for p in state.portfolio.closed_positions.values()]
+    data = [(p.closed_at, p.get_realised_profit_percent()) for p in state.portfolio.closed_positions.values() if p.is_closed()]
     # https://stackoverflow.com/a/66772284/315168
     return pd.DataFrame(data).set_index(0)[1]
+
+
+def calculate_deposit_adjusted_returns(
+    state: State,
+    freq: pd.DateOffset = pd.offsets.MonthBegin(),
+) -> pd.Series:
+    """Calculate daily/monthly/returns on capital.
+z
+    See :ref:`profitability` for more information
+
+    - This is `Total equity - net deposits`
+
+    - This result is compounding
+
+    - The result is resampled to a timeframe
+
+    :param freq:
+        Which sampling frequency we use for the resulting series.
+
+    :return:
+        Pandas series (DatetimeIndex, USD figure)
+    """
+    equity = calculate_equity_curve(state)
+    flow = calculate_investment_flow(state)
+
+    equity = equity.resample(freq).max()
+    flow = flow.resample(freq).sum()
+
+    return equity - flow

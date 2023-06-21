@@ -24,7 +24,7 @@ from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniv
 from tradeexecutor.testing.synthetic_ethereum_data import generate_random_ethereum_address
 from tradeexecutor.testing.synthetic_exchange_data import generate_exchange, generate_simple_routing_model
 from tradeexecutor.testing.synthetic_price_data import generate_ohlcv_candles
-from tradeexecutor.visual.equity_curve import calculate_investment_flow, calculate_realised_profitability
+from tradeexecutor.visual.equity_curve import calculate_investment_flow, calculate_realised_profitability, calculate_deposit_adjusted_returns
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId
 from tradingstrategy.exchange import Exchange
@@ -197,6 +197,7 @@ def test_calculate_funding_flow(backtest_result: State):
     """Calculate funding flow for test deposits/redemptions."""
     state = backtest_result
     flow = calculate_investment_flow(state)
+    assert isinstance(flow.index, pd.DatetimeIndex)
     assert max(flow) == 100, "Deposit simulation did not work out"
     assert min(flow) == -90, "Redemption simulation did not work out"
     deposits = flow[flow > 0]  # https://stackoverflow.com/a/28272238/315168
@@ -211,3 +212,12 @@ def test_calculate_realised_trading_profitability(backtest_result: State):
     profitability = calculate_realised_profitability(state)
     assert 0.04 < max(profitability) < 0.06
     assert -0.06 < min(profitability) < -0.04
+    assert isinstance(profitability.index, pd.DatetimeIndex)
+
+
+def test_calculate_deposit_adjusted_returns(backtest_result: State):
+    """Calculate the realised trading profitability."""
+    state = backtest_result
+    returns = calculate_deposit_adjusted_returns(state)
+    import ipdb ; ipdb.set_trace()
+
