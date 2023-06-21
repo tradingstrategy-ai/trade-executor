@@ -18,6 +18,7 @@ from typing import Optional, Callable, List, cast, Tuple
 import pandas as pd
 from apscheduler.events import EVENT_JOB_ERROR
 
+from tradeexecutor.backtest.backtest_sync import BacktestSyncModel
 from tradeexecutor.cli.watchdog import create_watchdog_registry, register_worker, mark_alive, start_background_watchdog, \
     WatchdogMode
 from tradeexecutor.statistics.summary import calculate_summary_statistics
@@ -79,11 +80,14 @@ class ExecutionTestHook:
     Mostly used to simulate deposits/redemptions.
     """
 
-    def on_before_cycle(self, cycle: int, state: State):
+    def on_before_cycle(
+            self,
+            cycle: int,
+            cycle_st: datetime.datetime,
+            state: State,
+            sync_model: SyncModel,
+    ):
         """Called before entering the strategy tick."""
-
-    def on_after_cycle(self, cycle: int, state: State):
-        """Called after the strategy tick."""
 
 
 class ExecutionLoop:
@@ -672,7 +676,12 @@ class ExecutionLoop:
                         progress_bar.update(int(passed_seconds))
                     last_update_ts = ts
 
-                execution_test_hook.on_before_cycle(cycle, state)
+                execution_test_hook.on_before_cycle(
+                    cycle,
+                    ts,
+                    state,
+                    self.sync_model,
+                )
 
                 # Decide trades and everything for this cycle
                 universe: TradingStrategyUniverse = self.tick(
@@ -703,8 +712,6 @@ class ExecutionLoop:
                     passed_seconds = (ts - last_update_ts).total_seconds()
                     progress_bar.update(int(passed_seconds))
                     break
-
-                execution_test_hook.on_after_cycle(cycle, state)
 
                 # If we have stop loss checks enabled on a separate price feed,
                 # run backtest stop loss checks until the next time

@@ -11,6 +11,7 @@ import pandas as pd
 
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel
 from tradeexecutor.backtest.backtest_runner import run_backtest, setup_backtest_for_universe
+from tradeexecutor.backtest.backtest_sync import BacktestSyncModel
 from tradeexecutor.cli.log import setup_pytest_logging
 from tradeexecutor.cli.loop import ExecutionTestHook
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
@@ -31,11 +32,19 @@ from tradingstrategy.universe import Universe
 
 class DepositSimulator(ExecutionTestHook):
 
-    def on_before_cycle(self, cycle: int, state: State):
-        """Called before entering the strategy tick."""
+    def on_before_cycle(
+            self,
+            cycle: int,
+            cycle_st: datetime.datetime,
+            state: State,
+            sync_model: BacktestSyncModel
+    ):
+        """Do FizzBuzz deposits/redemptions simulation."""
+        if cycle % 3 == 0:
+            sync_model.simulate_deposit(100)
 
-    def on_after_cycle(self, cycle: int, state: State):
-        """Called after the strategy tick."""
+        if cycle % 5 == 0:
+            sync_model.simulate_redemption(90)
 
 
 @pytest.fixture(scope="module")

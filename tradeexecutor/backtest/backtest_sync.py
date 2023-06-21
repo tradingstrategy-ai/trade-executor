@@ -7,6 +7,7 @@ from tradeexecutor.ethereum.wallet import ReserveUpdateEvent
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.state import State
+from tradeexecutor.state.types import USDollarAmount
 from tradeexecutor.strategy.sync_model import SyncModel
 
 from tradeexecutor.testing.dummy_wallet import apply_sync_events
@@ -15,7 +16,13 @@ from tradeexecutor.testing.dummy_wallet import apply_sync_events
 class BacktestSyncer:
     """LEGACY backtest sync model.
 
-    Simulate deposit events to the backtest wallet."""
+    Simulate deposit events to the backtest wallet.
+
+    .. warning::
+
+        Does not correctly fire any balance update events.
+        Can be used to backtest with a fixed initial amount only.
+    """
 
     def __init__(self, wallet: SimulatedWallet, initial_deposit_amount: Decimal):
         assert isinstance(initial_deposit_amount, Decimal)
@@ -100,7 +107,6 @@ class BacktestSyncModel(SyncModel):
             self.initial_deposit_processed_at = strategy_cycle_ts
 
             assert len(supported_reserves) == 1
-
             reserve_token = supported_reserves[0]
 
             # Generate a deposit event
@@ -120,6 +126,27 @@ class BacktestSyncModel(SyncModel):
             return []
         else:
             return []
+
+    def make_balance_update(self, amount: USDollarAmount):
+        """Simulate deposit of funds."""
+
+        assert len(supported_reserves) == 1
+        reserve_token = supported_reserves[0]
+
+        # Generate a deposit event
+        evt = ReserveUpdateEvent(
+            asset=reserve_token,
+            past_balance=Decimal(0),
+            new_balance=self.initial_deposit_amount,
+            updated_at=strategy_cycle_ts
+        )
+
+        # Update wallet
+        self.wallet.update_balance(reserve_token.address, self.initial_deposit_amount)
+
+        # Update state
+        apply_sync_events(state, [evt])
+
 
     def create_transaction_builder(self) -> None:
         return None
