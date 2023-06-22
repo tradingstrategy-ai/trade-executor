@@ -216,17 +216,29 @@ def test_calculate_realised_trading_profitability(backtest_result: State):
     """Calculate the realised trading profitability."""
     state = backtest_result
     profitability = calculate_realised_profitability(state)
+    assert isinstance(profitability, pd.Series)
     assert 0.04 < max(profitability) < 0.06
     assert -0.06 < min(profitability) < -0.04
     assert isinstance(profitability.index, pd.DatetimeIndex)
 
     compounded_profitability = calculate_compounding_realised_profitability(state)
+    assert isinstance(compounded_profitability, pd.Series)
     assert -0.05 < compounded_profitability.iloc[0] < 0.01
     assert compounded_profitability.iloc[-1] < 0.70  # Down 30%
 
 
+def test_calculate_realised_trading_profitability_no_trades():
+    """Do not crash when calculating realised trading profitability if there are no trades."""
+    state = State()
+    profitability = calculate_realised_profitability(state)
+    assert len(profitability) == 0
+
+    compounded_profitability = calculate_compounding_realised_profitability(state)
+    assert len(compounded_profitability) == 0
+
+
 def test_calculate_deposit_adjusted_returns(backtest_result: State):
-    """Calculate the realised trading profitability."""
+    """Calculate the deposit adjusted returns."""
     state = backtest_result
 
     returns = calculate_deposit_adjusted_returns(state)
@@ -237,3 +249,9 @@ def test_calculate_deposit_adjusted_returns(backtest_result: State):
     assert -20 < max(returns) < 0
     assert -150 < min(returns) < -100
 
+
+def test_calculate_deposit_adjusted_returns_no_trades():
+    """Do not crash calculating the deposit adjusted returns if there are no trades."""
+    state = State()
+    returns = calculate_deposit_adjusted_returns(state)
+    assert len(returns) == 0

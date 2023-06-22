@@ -1,4 +1,7 @@
-"""Equity curve based statistics and visualisations."""
+"""Equity curve based statistics and visualisations.
+
+For more information see the narrative documentation on :ref:`profitability`.
+"""
 import warnings
 from typing import List
 
@@ -19,22 +22,29 @@ def calculate_equity_curve(
     Translate the portfolio internal :py:attr:`Statistics.portfolio`
     to :py:class:`pd.Series` that allows easy equity curve calculations.
 
+    This reads :py:class:`tradeexecutor.state.stats.PortfolioStatistics`
+
     :param attribute_name:
         Calculate equity curve based on this attribute of :py:class:`
 
     :return:
-        Pandas series (timestamp, equity value)
+        Pandas series (timestamp, equity value).
+
+        Indxe is DatetimeIndex.
+
     """
 
     stats: Statistics = state.stats
 
     portfolio_stats: List[PortfolioStatistics] = stats.portfolio
-    index = [stat.calculated_at for stat in portfolio_stats]
 
-    assert len(index) >= 2, "Cannot calculate equity curve because there are no portfolio.stats.portfolio entries"
+    data = [(s.calculated_at, getattr(s, attribute_name)) for s in portfolio_stats]
 
-    values = [getattr(stat, attribute_name) for stat in portfolio_stats]
-    return pd.Series(values, index)
+    if len(data) == 0:
+        return pd.Series([], index=pd.to_datetime([]))
+
+    # https://stackoverflow.com/a/66772284/315168
+    return pd.DataFrame(data).set_index(0)[1]
 
 
 def calculate_returns(equity_curve: pd.Series) -> pd.Series:
@@ -255,6 +265,10 @@ def calculate_investment_flow(
     balance_updates = treasury.balance_update_refs
     index = [e.strategy_cycle_included_at for e in balance_updates]
     values = [e.usd_value for e in balance_updates]
+
+    if len(index) == 0:
+        return pd.Series([], index=pd.to_datetime([]))
+
     return pd.Series(values, index)
 
 
@@ -269,9 +283,15 @@ def calculate_realised_profitability(
     See :ref:`profitability` for more information.
 
     :return:
-        Pandas series (DatetimeIndex, % profit)
+        Pandas series (DatetimeIndex, % profit).
+
+        Empty series if there are no trades.
     """
     data = [(p.closed_at, p.get_realised_profit_percent()) for p in state.portfolio.closed_positions.values() if p.is_closed()]
+
+    if len(data) == 0:
+        return pd.Series()
+
     # https://stackoverflow.com/a/66772284/315168
     return pd.DataFrame(data).set_index(0)[1]
 

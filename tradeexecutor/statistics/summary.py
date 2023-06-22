@@ -17,7 +17,7 @@ def calculate_summary_statistics(
         time_window = pd.Timedelta(days=90),
         now_: Optional[pd.Timestamp | datetime.datetime] = None
 ) -> StrategySummaryStatistics:
-    """Preprocess the strategy statistics for the summary card.
+    """Preprocess the strategy statistics for the summary card in the web frontend.
 
     To test out in the :ref:`console`:
 
