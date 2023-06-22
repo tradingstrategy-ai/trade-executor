@@ -78,7 +78,7 @@ def draw_multi_pair_strategy_state(
         start_at: Optional[datetime.datetime] = None,
         end_at: Optional[datetime.datetime] = None,
         technical_indicators=True,
-) -> go.Figure:
+) -> list[go.Figure]:
     """Draw mini price chart images for multiple pairs.
 
     See also
