@@ -49,7 +49,8 @@ class BacktestSyncer:
                 asset=reserve_token,
                 past_balance=Decimal(0),
                 new_balance=self.initial_deposit_amount,
-                updated_at=ts
+                updated_at=ts,
+                mined_at=ts,
             )
 
             # Update wallet

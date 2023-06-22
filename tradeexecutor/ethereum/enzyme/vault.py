@@ -564,6 +564,7 @@ class EnzymeVaultSyncModel(SyncModel):
             cause=BalanceUpdateCause.deposit,
             asset=asset,
             block_mined_at=timestamp,
+            strategy_cycle_included_at=timestamp,
             chain_id=asset.chain_id,
             old_balance=Decimal(0),
             quantity=reserve_current_balance.balance,
