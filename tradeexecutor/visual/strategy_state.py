@@ -79,13 +79,25 @@ def draw_multi_pair_strategy_state(
         end_at: Optional[datetime.datetime] = None,
         technical_indicators=True,
 ) -> go.Figure:
-    """Draw a mini price chart image.
+    """Draw mini price chart images for multiple pairs.
 
     See also
 
     - `manual-visualisation-test.py`
 
     - :py:meth:`tradeeexecutor.strategy.pandas_runner.PandasTraderRunner.report_strategy_thinking`.
+
+    :param state:
+        The strategy state
+
+    :param universe:
+        The trading strategy universe
+
+    :param width:
+        The width of the image
+
+    :param height:
+        The height of the image
 
     :param candle_count:
         Draw N latest candles
@@ -96,8 +108,11 @@ def draw_multi_pair_strategy_state(
     :param end_at:
         Draw by a given time range
 
+    :param technical_indicators:
+        Whether to draw technical indicators or not
+
     :return:
-        The strategy state visualisation as Plotly figure
+        The strategy state visualisation as a list of Plotly figures
     """
 
     assert universe.get_pair_count() <= 3, "This visualisation can be done only for less than 3 pairs"
@@ -109,6 +124,11 @@ def draw_multi_pair_strategy_state(
         if start_at is None and end_at is None:
             # Get
             target_pair_candles = data
+
+            # Do candle count clip
+            if candle_count:
+                target_pair_candles = target_pair_candles.iloc[-candle_count:]
+
             start_at = target_pair_candles.iloc[0]["timestamp"]
             end_at = target_pair_candles.iloc[-1]["timestamp"]
         else:
