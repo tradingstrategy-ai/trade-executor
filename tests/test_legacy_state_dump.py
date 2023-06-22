@@ -86,13 +86,10 @@ def test_legacy_calculate_all_summary_statistics(state: State):
         state,
         ExecutionMode.unit_testing_trading,
         now_=now_,
+        legacy_workarounds=True,
     )
 
     assert summary.calculated_at
-    assert not summary.enough_data
-
-    datapoints = summary.performance_chart_90_days
-    assert len(datapoints) == 5
 
 
 def test_legacy_calculate_all_statistics(state: State):

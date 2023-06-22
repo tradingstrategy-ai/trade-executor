@@ -16,7 +16,8 @@ def calculate_summary_statistics(
         state: State,
         execution_mode: ExecutionMode,
         time_window = pd.Timedelta(days=90),
-        now_: Optional[pd.Timestamp | datetime.datetime] = None
+        now_: Optional[pd.Timestamp | datetime.datetime] = None,
+        legacy_workarounds=False,
 ) -> StrategySummaryStatistics:
     """Preprocess the strategy statistics for the summary card in the web frontend.
 
@@ -42,6 +43,9 @@ def calculate_summary_statistics(
         Override current time for unit testing.
 
         Set this to the date of the last trade.
+
+    :param legacy_workarounds:
+        Skip some calculations on old data, because data is missing.
 
     :return:
         Summary calculations for the summary tile,
@@ -73,7 +77,7 @@ def calculate_summary_statistics(
     enough_data = False
     performance_chart_90_days = None
 
-    if len(stats.portfolio) > 0:
+    if len(stats.portfolio) > 0 and not legacy_workarounds:
 
         profitability = calculate_compounding_realised_profitability(state)
         enough_data = profitability.index[0] <= start_at

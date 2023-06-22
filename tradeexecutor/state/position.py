@@ -792,7 +792,7 @@ class TradingPosition:
         :return:
             Percent of the portfolio value
         """
-        assert self.portfolio_value_at_open, "Portfolio value at position open was not recorded"
+        assert self.portfolio_value_at_open, f"Portfolio value at position open was not recorded for {self}"
         return self.get_value_at_open() / self.portfolio_value_at_open
 
     def get_loss_risk_at_open(self) -> USDollarAmount:
@@ -852,6 +852,9 @@ class TradingPosition:
         Calculate how many percent this profit made profit,
         adjusted to the position size compared to the available
         strategy equity at the opening of the position.
+
+        This is mostly useful to calculate the strategy performance
+        independent of funding deposits and redemptions.
 
         See :ref:`profitability` for more details.
 
