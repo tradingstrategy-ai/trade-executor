@@ -248,12 +248,12 @@ def calculate_investment_flow(
     See :ref:`profitability` for more information.
 
     :return:
-        Pandas series (DatetimeIndex, usd deposits/redemptions)
+        Pandas series (DatetimeIndex by the timestamp when the strategy treasury included the flow event, usd deposits/redemption amount)
     """
 
     treasury = state.sync.treasury
     balance_updates = treasury.balance_update_refs
-    index = [e.updated_at for e in balance_updates]
+    index = [e.strategy_cycle_included_at for e in balance_updates]
     values = [e.usd_value for e in balance_updates]
     return pd.Series(values, index)
 
@@ -294,12 +294,15 @@ z
         Which sampling frequency we use for the resulting series.
 
     :return:
-        Pandas series (DatetimeIndex, USD figure)
+        Pandas series (DatetimeIndex by the the start timestamp fo the frequency, USD amount)
     """
     equity = calculate_equity_curve(state)
     flow = calculate_investment_flow(state)
 
-    equity = equity.resample(freq).max()
-    flow = flow.resample(freq).sum()
+    # https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#resampling
+    equity_resampled = equity.resample(freq)
+    equity_delta = equity_resampled.last() - equity_resampled.first()
 
-    return equity - flow
+    flow_delta = flow.resample(freq).sum()
+
+    return equity_delta - flow_delta

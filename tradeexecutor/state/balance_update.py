@@ -63,10 +63,20 @@ class BalanceUpdate:
     #:
     asset: AssetIdentifier
 
-    #: When the update happened
+    #: When the balance event was generated
     #:
     #: The block mined timestamp
     block_mined_at: datetime.datetime
+
+    #: When balance event was included to the strategy's treasury.
+    #:
+    #: The strategy cycle timestamp.
+    #:
+    #:
+    #: It might be outside the cycle frequency if treasuries were processed
+    #: in a cron job outside the cycle for slow moving strategies.
+    #:
+    strategy_cycle_included_at: datetime.datetime
 
     #: Chain that updated the balance
     chain_id: int

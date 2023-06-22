@@ -11,6 +11,7 @@ from decimal import Decimal
 from pathlib import Path
 
 import pytest
+import pandas as pd
 
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel
 from tradeexecutor.backtest.backtest_runner import run_backtest, setup_backtest_for_universe
@@ -45,16 +46,20 @@ class DepositSimulator(ExecutionTestHook):
             cycle_st: datetime.datetime,
             state: State,
             sync_model: BacktestSyncModel
+
     ):
+        # Assume the deposit was made 5 minutes before the strategy cycle
+        fund_event_ts = cycle_st - datetime.timedelta(minutes=5)
+
         # Make sure we have some money in the bank on the first day
         if cycle == 1:
-            sync_model.simulate_funding(datetime.datetime.utcnow(), Decimal(15))
+            sync_model.simulate_funding(fund_event_ts, Decimal(15))
 
         if cycle % 3 == 0:
-            sync_model.simulate_funding(datetime.datetime.utcnow(), Decimal(100))
+            sync_model.simulate_funding(fund_event_ts, Decimal(100))
 
         if cycle % 5 == 0:
-            sync_model.simulate_funding(datetime.datetime.utcnow(), Decimal(-90))
+            sync_model.simulate_funding(fund_event_ts, Decimal(-90))
 
         self.deposit_callbacks_done += 1
 
@@ -218,6 +223,12 @@ def test_calculate_realised_trading_profitability(backtest_result: State):
 def test_calculate_deposit_adjusted_returns(backtest_result: State):
     """Calculate the realised trading profitability."""
     state = backtest_result
+
     returns = calculate_deposit_adjusted_returns(state)
-    import ipdb ; ipdb.set_trace()
+
+    # Dollar based profitability,
+    # the strategy is not profitable but loses constantly
+    # money on fees
+    assert -20 < max(returns) < 0
+    assert -150 < min(returns) < -100
 

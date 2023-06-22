@@ -87,7 +87,8 @@ class BacktestSyncModel(SyncModel):
                     asset=reserve_token,
                     past_balance=past_balance,
                     new_balance=self.wallet.get_balance(reserve_token.address),
-                    updated_at=strategy_cycle_ts
+                    updated_at=strategy_cycle_ts,
+                    mined_at=funding_event.timestamp,
                 )
             )
 

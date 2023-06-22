@@ -172,7 +172,7 @@ class EnzymeVaultSyncModel(SyncModel):
                            f"Reserve: {portfolio.get_default_reserve()}.\n"
                            f"Open positions: {position_str}")
 
-    def process_deposit(self, portfolio: Portfolio, event: Deposit) -> BalanceUpdate:
+    def process_deposit(self, portfolio: Portfolio, event: Deposit, strategy_cycle_ts: datetime.datetime) -> BalanceUpdate:
         """Translate Enzyme SharesBought event to our internal deposit storage format."""
 
         asset = translate_token_details(event.denomination_token)
@@ -216,7 +216,7 @@ class EnzymeVaultSyncModel(SyncModel):
 
         return evt
 
-    def process_redemption(self, portfolio: Portfolio, event: Redemption) -> List[BalanceUpdate]:
+    def process_redemption(self, portfolio: Portfolio, event: Redemption, strategy_cycle_ts: datetime.datetime) -> List[BalanceUpdate]:
         """Translate Enzyme SharesBought event to our internal deposit storage format.
 
         In-kind redemption exchanges user share tokens to underlying
@@ -288,6 +288,7 @@ class EnzymeVaultSyncModel(SyncModel):
                 position_type=position_type,
                 asset=asset,
                 block_mined_at=event.timestamp,
+                strategy_cycle_included_at=strategy_cycle_ts,
                 chain_id=asset.chain_id,
                 quantity=-quantity,
                 old_balance=old_balance,
@@ -304,7 +305,7 @@ class EnzymeVaultSyncModel(SyncModel):
 
         return events
 
-    def translate_and_apply_event(self, state: State, event: EnzymeBalanceEvent) -> List[BalanceUpdate]:
+    def translate_and_apply_event(self, state: State, event: EnzymeBalanceEvent, strategy_cycle_ts: datetime.datetime) -> List[BalanceUpdate]:
         """Translate on-chain event data to our persistent format."""
         portfolio = state.portfolio
 
@@ -312,7 +313,7 @@ class EnzymeVaultSyncModel(SyncModel):
             case Deposit():
                 # Deposit generated only one event
                 event = cast(Deposit, event)
-                return [self.process_deposit(portfolio, event)]
+                return [self.process_deposit(portfolio, event, strategy_cycle_ts)]
             case Redemption():
                 # Enzyme in-kind redemption can generate updates for multiple assets
                 event = cast(Redemption, event)
@@ -327,7 +328,7 @@ class EnzymeVaultSyncModel(SyncModel):
                                                                f"Event:\n" \
                                                                f"{_dump_enzyme_event(event)}" \
 
-                return self.process_redemption(portfolio, event)
+                return self.process_redemption(portfolio, event, strategy_cycle_ts)
             case _:
                 raise RuntimeError(f"Unsupported event: {event}")
 
@@ -465,7 +466,7 @@ class EnzymeVaultSyncModel(SyncModel):
 
         events = []
         for chain_event in events_iter:
-            events += self.translate_and_apply_event(state, chain_event)
+            events += self.translate_and_apply_event(state, chain_event, strategy_cycle_ts)
 
         # Check that we do not have conflicting events
         new_event: BalanceUpdate
@@ -582,7 +583,7 @@ class EnzymeVaultSyncModel(SyncModel):
         for new_event in events:
             ref = BalanceEventRef(
                 balance_event_id=new_event.balance_update_id,
-                updated_at=new_event.block_mined_at,
+                strategy_cycle_included_at=new_event.strategy_cycle_included_at,
                 cause=new_event.cause,
                 position_type=new_event.position_type,
                 position_id=new_event.position_id,

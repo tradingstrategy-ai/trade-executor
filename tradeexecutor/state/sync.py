@@ -90,9 +90,13 @@ class BalanceEventRef:
 
     #: When this update was made.
     #:
-    #: Block timestamp for live trading.
+    #: Strategy cycle timestamp when the deposit/redemption was included
+    #: in the strategy treasury.
     #:
-    updated_at: datetime.datetime
+    #: It might be outside the cycle frequency if treasuries were processed
+    #: in a cron job outside the cycle for slow moving strategies.
+    #:
+    strategy_cycle_included_at: datetime.datetime
 
     #: Cause of the event
     cause: BalanceUpdateCause

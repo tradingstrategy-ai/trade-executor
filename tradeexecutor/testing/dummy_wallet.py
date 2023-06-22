@@ -112,7 +112,8 @@ def apply_sync_events(state: State, new_reserves: List[ReserveUpdateEvent], defa
             position_type=BalanceUpdatePositionType.reserve,
             cause=cause,
             asset=asset,
-            block_mined_at=datetime.datetime.utcnow(),
+            block_mined_at=evt.mined_at,  # There is
+            strategy_cycle_included_at=evt.updated_at,
             chain_id=asset.chain_id,
             old_balance=evt.past_balance,
             usd_value=usd_value,
@@ -122,7 +123,7 @@ def apply_sync_events(state: State, new_reserves: List[ReserveUpdateEvent], defa
         res_pos.balance_updates[bu.balance_update_id] = bu
         ref = BalanceEventRef(
             balance_event_id=bu.balance_update_id,
-            updated_at=bu.block_mined_at,
+            strategy_cycle_included_at=bu.strategy_cycle_included_at,
             cause=bu.cause,
             position_type=bu.position_type,
             position_id=bu.position_id,

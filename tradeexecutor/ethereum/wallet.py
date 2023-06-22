@@ -30,6 +30,11 @@ class ReserveUpdateEvent:
     TODO: This should be removed as is partially part of old treasury sync code.
     """
     asset: AssetIdentifier
+
+    #: Transfer timestamp (if known)
+    mined_at: datetime.datetime
+
+    #: Strategy cycle timestamp
     updated_at: datetime.datetime
     past_balance: Decimal
     new_balance: Decimal
