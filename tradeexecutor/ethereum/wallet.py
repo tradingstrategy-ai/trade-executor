@@ -92,7 +92,8 @@ def sync_reserves(
                 asset=currency,
                 past_balance=current_value,
                 new_balance=decimal_holding.value,
-                updated_at=clock
+                updated_at=clock,
+                mined_at=clock,  # TODO: We do not have logic to get actual block_mined_at of Transfer() here
             )
             events.append(evt)
             logger.info("Reserve currency update detected. Asset: %s, past: %s, new: %s", evt.asset, evt.past_balance, evt.new_balance)

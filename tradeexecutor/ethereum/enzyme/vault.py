@@ -202,6 +202,7 @@ class EnzymeVaultSyncModel(SyncModel):
             cause=BalanceUpdateCause.deposit,
             asset=asset,
             block_mined_at=event.timestamp,
+            strategy_cycle_included_at=strategy_cycle_ts,
             chain_id=asset.chain_id,
             old_balance=old_balance,
             usd_value=usd_value,
@@ -473,7 +474,7 @@ class EnzymeVaultSyncModel(SyncModel):
         for new_event in events:
             ref = BalanceEventRef(
                 balance_event_id=new_event.balance_update_id,
-                updated_at=new_event.block_mined_at,
+                strategy_cycle_included_at=new_event.strategy_cycle_included_at,
                 cause=new_event.cause,
                 position_type=new_event.position_type,
                 position_id=new_event.position_id,
