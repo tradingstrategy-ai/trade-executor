@@ -276,6 +276,35 @@ def calculate_realised_profitability(
     return pd.DataFrame(data).set_index(0)[1]
 
 
+def calculate_compounding_realised_profitability(
+    state: State,
+) -> pd.Series:
+    """Calculate realised profitability of closed trading positions, with the compounding effect.
+
+    Assume the profits from the previous PnL are used in the next one.
+
+    This function returns the :term:`profitability` of individually
+    closed trading positions.
+
+    - See :py:func:`calculate_realised_profitability` for more information
+
+    - See :ref:`profitability` for more information.
+
+    :return:
+        Pandas series (DatetimeIndex, cumulative % profit).
+
+        Cumulative profit is 0% if there is no market action.
+        Cumulative profit is 1 (100%) if the equity has doubled during the period.
+
+        The last value of the series is the total trading profitability
+        of the strategy over its lifetime.
+    """
+    realised_profitability = calculate_realised_profitability(state)
+    # https://stackoverflow.com/a/42672553/315168
+    compounded = realised_profitability.add(1).cumprod().sub(1)
+    return compounded
+
+
 def calculate_deposit_adjusted_returns(
     state: State,
     freq: pd.DateOffset = pd.offsets.MonthBegin(),

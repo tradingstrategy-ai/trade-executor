@@ -25,7 +25,8 @@ from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniv
 from tradeexecutor.testing.synthetic_ethereum_data import generate_random_ethereum_address
 from tradeexecutor.testing.synthetic_exchange_data import generate_exchange, generate_simple_routing_model
 from tradeexecutor.testing.synthetic_price_data import generate_ohlcv_candles
-from tradeexecutor.visual.equity_curve import calculate_investment_flow, calculate_realised_profitability, calculate_deposit_adjusted_returns
+from tradeexecutor.visual.equity_curve import calculate_investment_flow, calculate_realised_profitability, calculate_deposit_adjusted_returns, \
+    calculate_compounding_realised_profitability
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId
 from tradingstrategy.exchange import Exchange
@@ -218,6 +219,10 @@ def test_calculate_realised_trading_profitability(backtest_result: State):
     assert 0.04 < max(profitability) < 0.06
     assert -0.06 < min(profitability) < -0.04
     assert isinstance(profitability.index, pd.DatetimeIndex)
+
+    compounded_profitability = calculate_compounding_realised_profitability(state)
+    assert -0.05 < compounded_profitability.iloc[0] < 0.01
+    assert compounded_profitability.iloc[-1] < 0.70  # Down 30%
 
 
 def test_calculate_deposit_adjusted_returns(backtest_result: State):
