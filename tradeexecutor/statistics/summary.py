@@ -9,6 +9,7 @@ from tradeexecutor.state.state import State
 from tradeexecutor.state.statistics import calculate_naive_profitability
 from tradeexecutor.strategy.execution_context import ExecutionMode
 from tradeexecutor.strategy.summary import StrategySummaryStatistics
+from tradeexecutor.visual.equity_curve import calculate_compounding_realised_profitability
 
 
 def calculate_summary_statistics(
@@ -73,24 +74,15 @@ def calculate_summary_statistics(
     performance_chart_90_days = None
 
     if len(stats.portfolio) > 0:
-        total_equity_time_series = stats.get_portfolio_statistics_dataframe("total_equity")
 
-        if len(total_equity_time_series) > 0:
-            profitability_90_days, time_window = calculate_naive_profitability(total_equity_time_series, look_back=time_window)
-            enough_data = total_equity_time_series.index[0] <= start_at
-
-            start_idx = total_equity_time_series.index.get_indexer([start_at], method="nearest")
-            start_val = float(total_equity_time_series.iloc[start_idx])
-            index: pd.Timestamp
-
-            last_90_days_ts = total_equity_time_series.loc[start_at:]
-            performance_chart_90_days = []
-            for index, value in last_90_days_ts.items():
-                ts = index.to_pydatetime()
-                profitability_per_day = (value - start_val) / start_val
-                # Don't let NaNs slip through
-                if not isnan(profitability_per_day):
-                    performance_chart_90_days.append((ts, profitability_per_day))
+        profitability = calculate_compounding_realised_profitability(state)
+        enough_data = profitability.index[0] <= start_at
+        profitability_time_windowed = profitability[start_at:]
+        profitability_daily = profitability_time_windowed.resample(pd.offsets.Day()).max()
+        # We do not generate entry for dates without trades so forward fill from the previous day
+        profitability_daily = profitability_daily.ffill()
+        profitability_90_days = profitability_daily[-1]
+        performance_chart_90_days = [(index.to_pydatetime(), value) for index, value in profitability_daily.iteritems()]
 
     return StrategySummaryStatistics(
         first_trade_at=first_trade_at,

@@ -30,7 +30,9 @@ def calculate_equity_curve(
     :return:
         Pandas series (timestamp, equity value).
 
-        Indxe is DatetimeIndex.
+        Index is DatetimeIndex.
+
+        Empty series is returned if there is no data.
 
     """
 

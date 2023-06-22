@@ -92,7 +92,7 @@ def test_legacy_calculate_all_summary_statistics(state: State):
     assert not summary.enough_data
 
     datapoints = summary.performance_chart_90_days
-    assert len(datapoints) == 7
+    assert len(datapoints) == 5
 
 
 def test_legacy_calculate_all_statistics(state: State):
