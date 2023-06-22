@@ -284,8 +284,7 @@ def universe() -> TradingStrategyUniverse:
     
     # limited to use same quote token for all pairs
     # because of generate_simple_routing_model
-    # see
-    
+    # see https://github.com/tradingstrategy-ai/trade-executor/blob/fc1868b1369671b2c76238f5b334a1af4b339b66/tradeexecutor/testing/synthetic_exchange_data.py#L31
     usdc = AssetIdentifier(ChainId.ethereum.value, generate_random_ethereum_address(), "USDC", 6, 1)
     weth = AssetIdentifier(ChainId.ethereum.value, generate_random_ethereum_address(), "WETH", 18, 2)
     weth_usdc = TradingPairIdentifier(
