@@ -340,7 +340,7 @@ def test_visualise_strategy_state(
         logger: logging.Logger,
         universe: TradingStrategyUniverse,
     ):
-    """Visualise strategy state as an inline image."""
+    """Visualise strategy state as a bunch inline images."""
 
     start_at, end_at = universe.universe.candles.get_timestamp_range()
 
