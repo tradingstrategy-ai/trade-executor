@@ -2,7 +2,7 @@
 
 import pandas as pd
 
-def on_balance_volume(_close_prices: pd.Series, volume: pd.Series) -> pd.Series:
+def calculate_on_balance_volume(close_prices: pd.Series, volume: pd.Series) -> pd.Series:
     """Calculates the on balance volume from the close prices
     
     Logic for obv is as follows:
@@ -12,19 +12,21 @@ def on_balance_volume(_close_prices: pd.Series, volume: pd.Series) -> pd.Series:
         - If the current close price is lower than the previous close price, then OBV = previous OBV - Volume. 
         - If the current close price is equal to the previous close price, then OBV = previous OBV.
     """
-    assert len(_close_prices) == len(volume), "close prices and volume must have same length"
-    assert [item > 0 for item in volume], "volume must be list of positive values representing total volume for each candle"
+    assert len(close_prices) == len(volume), "close prices and volume must have same length"
+    assert all(
+        item > 0 for item in volume
+    ), "volume must be list of positive values representing total volume for each candle"
 
     obv = []
-    for i in range(len(_close_prices)):
+    for i in range(len(close_prices)):
         if i == 0:
             obv.append(volume[i])
             continue
-        
+
         obv_latest = obv[-1]
-        close_current = _close_prices[i]
-        close_prev = _close_prices[i-1]
-        
+        close_current = close_prices[i]
+        close_prev = close_prices[i-1]
+
         volume_current = volume[i]
 
         if close_current > close_prev:
@@ -33,5 +35,5 @@ def on_balance_volume(_close_prices: pd.Series, volume: pd.Series) -> pd.Series:
             obv.append(obv_latest - volume_current)
         else:
             obv.append(obv_latest)
-    
+
     return obv
