@@ -91,9 +91,9 @@ class TradePricing:
         if type(self.pair_fee) != list:
             object.__setattr__(self, 'pair_fee', [self.pair_fee])
         
-        assert all([type(_lp_fee) == float for _lp_fee in self.lp_fee]), f"lp_fee must be provided as type list with float or NoneType elements. Got Got lp_fee: {self.lp_fee} {type(self.lp_fee)}"
+        assert all([type(_lp_fee) in {float, type(None)} for _lp_fee in self.lp_fee]), f"lp_fee must be provided as type list with float or NoneType elements. Got Got lp_fee: {self.lp_fee} {type(self.lp_fee)}"
         
-        assert all([type(_pair_fee) in {float, type(None)} for _pair_fee in self.pair_fee]), f"pair_fee must be provided as a list with float, int, or NoneType elements. Got fee: {self.pair_fee} {type(self.pair_fee)} "
+        assert all([type(_pair_fee) in {float, type(None)} for _pair_fee in self.pair_fee]), f"pair_fee must be provided as a list with float or NoneType elements. Got fee: {self.pair_fee} {type(self.pair_fee)} "
         
         if self.market_feed_delay is not None:
             assert isinstance(self.market_feed_delay, datetime.timedelta)
