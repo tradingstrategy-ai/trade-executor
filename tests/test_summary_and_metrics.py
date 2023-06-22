@@ -238,8 +238,8 @@ def test_calculate_all_summary_statistics(state: State):
     assert summary.enough_data
     assert summary.first_trade_at == datetime.datetime(2021, 6, 1, 0, 0)
     assert summary.last_trade_at == datetime.datetime(2021, 12, 31, 0, 0)
-    assert summary.profitability_90_days == pytest.approx(-0.019484747529770786)
     assert summary.current_value == pytest.approx(9541.619532761046)
+    assert summary.profitability_90_days == pytest.approx(-0.019484747529770786)
 
     datapoints = summary.performance_chart_90_days
     assert len(datapoints) == 91

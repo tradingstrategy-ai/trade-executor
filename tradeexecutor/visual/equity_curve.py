@@ -298,6 +298,30 @@ def calculate_realised_profitability(
     return pd.DataFrame(data).set_index(0)[1]
 
 
+def calculate_size_relative_realised_profitability(
+    state: State,
+) -> pd.Series:
+    """Calculate realised profitability of closed trading positions relative to the portfolio size..
+
+    This function returns the :term:`profitability` of individually
+    closed trading positions.
+
+    See :ref:`profitability` for more information.
+
+    :return:
+        Pandas series (DatetimeIndex, % profit).
+
+        Empty series if there are no trades.
+    """
+    data = [(p.closed_at, p.get_size_relative_realised_profit_percent()) for p in state.portfolio.closed_positions.values() if p.is_closed()]
+
+    if len(data) == 0:
+        return pd.Series()
+
+    # https://stackoverflow.com/a/66772284/315168
+    return pd.DataFrame(data).set_index(0)[1]
+
+
 def calculate_compounding_realised_profitability(
     state: State,
 ) -> pd.Series:
@@ -306,7 +330,7 @@ def calculate_compounding_realised_profitability(
     Assume the profits from the previous PnL are used in the next one.
 
     This function returns the :term:`profitability` of individually
-    closed trading positions.
+    closed trading positions, relative to the portfolio total equity.
 
     - See :py:func:`calculate_realised_profitability` for more information
 
@@ -321,7 +345,7 @@ def calculate_compounding_realised_profitability(
         The last value of the series is the total trading profitability
         of the strategy over its lifetime.
     """
-    realised_profitability = calculate_realised_profitability(state)
+    realised_profitability = calculate_size_relative_realised_profitability(state)
     # https://stackoverflow.com/a/42672553/315168
     compounded = realised_profitability.add(1).cumprod().sub(1)
     return compounded

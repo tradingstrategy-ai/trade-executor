@@ -777,7 +777,7 @@ class TradingPosition:
         assert len(self.trades) > 0, "No trades available"
         return self.get_last_trade().get_executed_value()
 
-    def get_capital_tied_at_open_pct(self) -> float:
+    def get_capital_tied_at_open_pct(self) -> Percent:
         """Calculate how much portfolio capital was risk when this position was opened.
 
         - This is based on the opening values,
@@ -813,7 +813,7 @@ class TradingPosition:
         risked_value = price_diff * float(self.get_quantity_at_open())
         return risked_value
 
-    def get_loss_risk_at_open_pct(self) -> float:
+    def get_loss_risk_at_open_pct(self) -> Percent:
         """What is the maximum risk of this position.
 
         Risk relative to the portfolio size.
@@ -828,15 +828,38 @@ class TradingPosition:
         else:
             # Old invalid data
             return 0
-    
-    def get_realised_profit_percent(self) -> float:
-        """Calculated life-time profit over this position."""
+
+    def get_realised_profit_percent(self) -> Percent:
+        """Calculated life-time profit over this position.
+
+        Calculate how many percent profit this position made,
+        relative to all trades taken over the life time of the position.
+
+        See :ref:`profitability` for more details.
+
+        :return:
+            If the position made 1% profit returns 1.01.
+        """
         
         assert not self.is_open()
         buy_value = self.get_buy_value()
         sell_value = self.get_sell_value()
         return sell_value / buy_value - 1
-    
+
+    def get_size_relative_realised_profit_percent(self) -> Percent:
+        """Calculated life-time profit over this position.
+
+        Calculate how many percent this profit made profit,
+        adjusted to the position size compared to the available
+        strategy equity at the opening of the position.
+
+        See :ref:`profitability` for more details.
+
+        :return:
+            If the position made 1% profit returns 1.01.
+        """
+        return self.get_realised_profit_percent() * self.get_capital_tied_at_open_pct()
+
     def get_duration(self) -> datetime.timedelta | None:
         """How long this position was held.
         :return: None if the position is still open
@@ -846,7 +869,7 @@ class TradingPosition:
         else:
             return None
     
-    def get_total_lp_fees_paid(self) -> int:
+    def get_total_lp_fees_paid(self) -> USDollarAmount:
         """Get the total amount of swap fees paid in the position. Includes all trades."""
         
         lp_fees_paid = 0
