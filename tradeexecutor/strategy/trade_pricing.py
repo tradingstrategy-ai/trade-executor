@@ -91,9 +91,9 @@ class TradePricing:
         if type(self.pair_fee) != list:
             object.__setattr__(self, 'pair_fee', [self.pair_fee])
         
-        assert [type(_lp_fee) == float for _lp_fee in self.lp_fee], f"lp_fee must be provided as type list with float or NoneType elements. Got Got lp_fee: {self.lp_fee} {type(self.lp_fee)}"
+        assert all([type(_lp_fee) == float for _lp_fee in self.lp_fee]), f"lp_fee must be provided as type list with float or NoneType elements. Got Got lp_fee: {self.lp_fee} {type(self.lp_fee)}"
         
-        assert [type(_pair_fee) in {float, type(None)} for _pair_fee in self.pair_fee], f"pair_fee must be provided as a list with float, int, or NoneType elements. Got fee: {self.pair_fee} {type(self.pair_fee)} "
+        assert all([type(_pair_fee) in {float, type(None)} for _pair_fee in self.pair_fee]), f"pair_fee must be provided as a list with float, int, or NoneType elements. Got fee: {self.pair_fee} {type(self.pair_fee)} "
         
         if self.market_feed_delay is not None:
             assert isinstance(self.market_feed_delay, datetime.timedelta)
@@ -106,7 +106,7 @@ class TradePricing:
                 assert self.price <= self.mid_price, f"Got bad sell pricing: {self.price} < {self.mid_price}"
                 
         if self.path:
-            assert [type(address) == TradingPairIdentifier for address in self.path], "path must be provided as a list of TradePairIdentifier"
+            assert all([type(address) == TradingPairIdentifier for address in self.path]), "path must be provided as a list of TradePairIdentifier"
 
     def get_total_lp_fees(self) -> USDollarAmount:
         """Returns the total lp fees paid (dollars) for the trade."""
@@ -133,7 +133,7 @@ class TradePricing:
                 assert self.pair_fee[0] < 1
                 return self.pair_fee[0]
             elif len(self.pair_fee) == 2:
-                assert [0 <= fee < 1 for fee in self.pair_fee]
+                assert all([0 <= fee < 1 for fee in self.pair_fee])
                 return 1 - (1 - self.pair_fee[0])(1 - self.pair_fee[1])
             else:
                 raise ValueError("Swap involves fees from more than two pairs")
