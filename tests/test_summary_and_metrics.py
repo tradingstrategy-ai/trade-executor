@@ -220,6 +220,20 @@ def test_calculate_profitability_empty():
     assert profitability_90_days is None
 
 
+def test_calculate_all_summary_statistics_empty():
+    """Calculate all summary statistics on empty state.
+
+    """
+    # Set "last 90 days" to the end of backtest data
+    now_ = pd.Timestamp(datetime.datetime(2021, 12, 31, 0, 0))
+
+    state = State()
+    calculate_summary_statistics(
+        state,
+        ExecutionMode.unit_testing_trading,
+        now_=now_,
+    )
+
 def test_calculate_all_summary_statistics(state: State):
     """Calculate all summary statistics.
 

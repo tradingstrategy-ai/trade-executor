@@ -78,15 +78,17 @@ def calculate_summary_statistics(
     performance_chart_90_days = None
 
     if len(stats.portfolio) > 0 and not legacy_workarounds:
-
         profitability = calculate_compounding_realised_profitability(state)
-        enough_data = profitability.index[0] <= start_at
+        enough_data = len(profitability.index) > 1 and profitability.index[0] <= start_at
         profitability_time_windowed = profitability[start_at:]
         profitability_daily = profitability_time_windowed.resample(pd.offsets.Day()).max()
         # We do not generate entry for dates without trades so forward fill from the previous day
         profitability_daily = profitability_daily.ffill()
-        profitability_90_days = profitability_daily[-1]
-        performance_chart_90_days = [(index.to_pydatetime(), value) for index, value in profitability_daily.iteritems()]
+        if len(profitability_daily) > 0:
+            profitability_90_days = profitability_daily[-1]
+            performance_chart_90_days = [(index.to_pydatetime(), value) for index, value in profitability_daily.iteritems()]
+        else:
+            profitability_90_days = None
 
     return StrategySummaryStatistics(
         first_trade_at=first_trade_at,
