@@ -103,12 +103,20 @@ def reinit(
     if not state_file:
         state_file = f"state/{id}.json"
 
-    store = create_state_store(Path(state_file))
+    state_file = Path(state_file)
+    store = create_state_store(state_file)
     assert not store.is_pristine(), f"State does not exists yet: {state_file}"
 
     # Make a backup
     # https://stackoverflow.com/a/47528275/315168
-    state_file.rename(state_file.with_suffix(".reinit-backup.json"))
+    for i in range(1, 20):
+        try:
+            backup_file = state_file.with_suffix(".reinit-backup-{i}.json")
+            state_file.rename(backup_file)
+        except Exception as e:
+            raise RuntimeError(f"Could not create backup {backup_file}") from e
+
+    logger.info("Old state backed up as %s", backup_file)
 
     state = store.create(name)
 
