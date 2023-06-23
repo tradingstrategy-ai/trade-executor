@@ -1,12 +1,52 @@
 """Strategy status summary."""
 import datetime
+import enum
 from dataclasses import dataclass, field
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, Dict
 
 from dataclasses_json import dataclass_json
 
 from tradeexecutor.state.metadata import OnChainData
 from tradeexecutor.state.types import USDollarAmount
+
+
+class KeyMetricKind(enum.Enum):
+    """What key metrics we have available on a strategy summary card.
+
+    All othe metrics will be available as well, but we do not
+    cache them for the quick frontend rendering.
+    """
+    sharpe = "shape"
+    sortino = "sortino"
+    max_drawdown = "max_drawdown"
+    age = "age"
+
+
+class KeyMetricSource(enum.Enum):
+    """Did we calcualte a key metric based on backtesting data or live trading data."""
+    backtesting = "backtesting"
+    live_trading = "live_trading"
+
+
+@dataclass_json
+@dataclass(frozen=True)
+class KeyMetric:
+    """One of available key metrics on the summary card."""
+
+    #: What is this metric
+    kind: KeyMetricKind
+
+    #: Did we calculate this metric based on live trading or backtesting data
+    source: KeyMetricSource
+
+    #: What's the time period for which this metric was calculated
+    value: float | datetime.datetime | datetime.timedelta
+
+    #: What's the time period for which this metric was calculated
+    calculation_window_start_at: datetime.datetime
+
+    #: What's the time period for which this metric was calculated
+    calculation_window_end_at: datetime.timedelta
 
 
 @dataclass_json
@@ -57,6 +97,12 @@ class StrategySummaryStatistics:
     #: Note that we might have 90 or 91 points because date ranges
     #: are inclusive.
     performance_chart_90_days: Optional[List[Tuple[datetime.datetime, float]]] = None
+
+    #: Strategy performance metrics to be displayed on the summary card
+    #:
+    #: We use :py:class:`KeyMetricKind` value as the key.
+    #:
+    key_metrics: Dict[str, KeyMetric] = field(default_factory=dict)
 
 
 @dataclass_json
