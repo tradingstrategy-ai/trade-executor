@@ -86,9 +86,9 @@ def calculate_summary_statistics(
         profitability_daily = profitability_daily.ffill()
         if len(profitability_daily) > 0:
             profitability_90_days = profitability_daily[-1]
-            performance_chart_90_days = [(index.to_pydatetime(), value) for index, value in profitability_daily.iteritems()]
         else:
             profitability_90_days = None
+        performance_chart_90_days = [(index.to_pydatetime(), value) for index, value in profitability_daily.iteritems()]
 
     return StrategySummaryStatistics(
         first_trade_at=first_trade_at,
