@@ -21,10 +21,28 @@ logger = logging.getLogger(__name__)
 @dataclass_json
 @dataclasses.dataclass
 class ReserveUpdateEvent:
+    """A legacy reserve update event.
+
+    Maintained for old code compatibility.
+
+    See :py:mod:`tradeeexecutor.state.sync` for the current approach.
+
+    TODO: This should be removed as is partially part of old treasury sync code.
+    """
     asset: AssetIdentifier
+
+    #: Transfer timestamp (if known)
+    mined_at: datetime.datetime
+
+    #: Strategy cycle timestamp
     updated_at: datetime.datetime
     past_balance: Decimal
     new_balance: Decimal
+
+
+    @property
+    def change(self) -> Decimal:
+        return self.new_balance - self.past_balance
 
 
 def update_wallet_balances(web3: Web3, address: HexAddress, tokens: List[HexAddress]) -> Dict[HexAddress, DecimalisedHolding]:
@@ -74,7 +92,8 @@ def sync_reserves(
                 asset=currency,
                 past_balance=current_value,
                 new_balance=decimal_holding.value,
-                updated_at=clock
+                updated_at=clock,
+                mined_at=clock,  # TODO: We do not have logic to get actual block_mined_at of Transfer() here
             )
             events.append(evt)
             logger.info("Reserve currency update detected. Asset: %s, past: %s, new: %s", evt.asset, evt.past_balance, evt.new_balance)

@@ -245,9 +245,11 @@ def calculate_naive_profitability(
         end_at: Optional[pd.Timestamp] = None) -> Tuple[Optional[float], Optional[pd.Timedelta]]:
     """Calculate the profitability as value at end - value at start.
 
-    This formula ignores any deposits and withdraws from the strategy.
+    .. warning::
 
-    TODO: This needs to include gas fee costs
+        This method assumes there are no deposits or redemptions.
+        See :py:mod:`tradeexecutor.visual.equity_curve` for more advanced
+        profit calculations.
 
     :param total_equity:
         As received from get_portfolio_statistics_dataframe()

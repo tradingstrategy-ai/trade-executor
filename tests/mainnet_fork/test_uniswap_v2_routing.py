@@ -260,22 +260,18 @@ def execution_model(web3, hot_wallet) -> UniswapV2ExecutionModel:
     return UniswapV2ExecutionModel(tx_builder)
 
 
-@pytest.fixture()
-def portfolio(web3, hot_wallet, busd_asset) -> Portfolio:
-    """A portfolio synced to the hot wallet, starting with 10_000 BUSD."""
-    portfolio = Portfolio()
-    events = sync_reserves(web3, datetime.datetime.utcnow(), hot_wallet.address, [], [busd_asset])
-    assert len(events) > 0
-    apply_sync_events(portfolio, events)
-    reserve_currency, exchange_rate = portfolio.get_default_reserve()
-    assert reserve_currency == busd_asset
-    return portfolio
-
-
 @pytest.fixture
-def state(portfolio) -> State:
+def state(web3, hot_wallet, busd_asset) -> State:
     """State used in the tests."""
-    state = State(portfolio=portfolio)
+    state = State()
+
+    events = sync_reserves(
+        web3, datetime.datetime.utcnow(), hot_wallet.address, [], [busd_asset]
+    )
+    assert len(events) > 0
+    apply_sync_events(state, events)
+    reserve_currency, exchange_rate = state.portfolio.get_default_reserve()
+    assert reserve_currency == busd_asset
     return state
 
 

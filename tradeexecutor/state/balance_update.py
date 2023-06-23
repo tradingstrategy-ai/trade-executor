@@ -15,6 +15,7 @@ from typing import Optional
 from dataclasses_json import dataclass_json
 
 from tradeexecutor.state.identifier import AssetIdentifier
+from tradingstrategy.types import USDollarAmount
 
 
 class BalanceUpdateCause(enum.Enum):
@@ -62,10 +63,20 @@ class BalanceUpdate:
     #:
     asset: AssetIdentifier
 
-    #: When the update happened
+    #: When the balance event was generated
     #:
     #: The block mined timestamp
     block_mined_at: datetime.datetime
+
+    #: When balance event was included to the strategy's treasury.
+    #:
+    #: The strategy cycle timestamp.
+    #:
+    #:
+    #: It might be outside the cycle frequency if treasuries were processed
+    #: in a cron job outside the cycle for slow moving strategies.
+    #:
+    strategy_cycle_included_at: datetime.datetime
 
     #: Chain that updated the balance
     chain_id: int
@@ -79,6 +90,13 @@ class BalanceUpdate:
     #: What was the total of the asset in the position before this event was applied.
     #:
     old_balance: Decimal
+
+    #: How much this deposit/redemption was worth
+    #:
+    #: Used for deposit/redemption inflow/outflow calculation.
+    #: This is the asset value from our internal price keeping at the time of the event.
+    #:
+    usd_value: USDollarAmount
 
     #: Investor address that the balance update is related to
     #:
@@ -102,6 +120,12 @@ class BalanceUpdate:
     #: Human-readable notes regarding this event
     #:
     notes: Optional[str] = None
+
+    def __post_init__(self):
+        assert self.quantity != 0, "Balance update cannot be zero: {self}"
+
+    def __repr__(self):
+        return f"<BalanceUpdate #{self.balance_update_id} {self.cause.name} {self.quantity} for position {self.position_id}>"
 
     def __eq__(self, other: "BalanceUpdate"):
         assert isinstance(other, BalanceUpdate), f"Got {other}"

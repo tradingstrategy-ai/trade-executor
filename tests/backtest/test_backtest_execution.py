@@ -18,7 +18,7 @@ from tradingstrategy.timebucket import TimeBucket
 from tradeexecutor.backtest.backtest_execution import BacktestExecutionModel
 from tradeexecutor.backtest.backtest_pricing import BacktestSimplePricingModel
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel
-from tradeexecutor.backtest.backtest_sync import BacktestSyncer
+from tradeexecutor.backtest.legacy_backtest_sync import BacktestSyncer
 from tradeexecutor.backtest.backtest_valuation import BacktestValuationModel
 from tradeexecutor.backtest.simulated_wallet import SimulatedWallet
 from tradeexecutor.cli.log import setup_pytest_logging
@@ -134,7 +134,7 @@ def deposit_syncer(wallet) -> BacktestSyncer:
 def state(universe: TradingStrategyUniverse, deposit_syncer: BacktestSyncer) -> State:
     """Start with 10,000 USD cash in the portfolio."""
     state = State()
-    events = deposit_syncer(state.portfolio, datetime.datetime(1970, 1, 1), universe.reserve_assets)
+    events = deposit_syncer(state, datetime.datetime(1970, 1, 1), universe.reserve_assets)
     assert len(events) == 1
     token, usd_exchange_rate = state.portfolio.get_default_reserve()
     assert token.token_symbol == "BUSD"
