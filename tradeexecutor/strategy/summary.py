@@ -19,7 +19,7 @@ class KeyMetricKind(enum.Enum):
     sharpe = "shape"
     sortino = "sortino"
     max_drawdown = "max_drawdown"
-    age = "age"
+    started_at = "started_at"
 
 
 class KeyMetricSource(enum.Enum):
@@ -43,10 +43,10 @@ class KeyMetric:
     value: float | datetime.datetime | datetime.timedelta
 
     #: What's the time period for which this metric was calculated
-    calculation_window_start_at: datetime.datetime
+    calculation_window_start_at: datetime.datetime | None = None
 
     #: What's the time period for which this metric was calculated
-    calculation_window_end_at: datetime.timedelta
+    calculation_window_end_at: datetime.timedelta | None = None
 
 
 @dataclass_json
