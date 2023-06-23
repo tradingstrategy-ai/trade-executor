@@ -109,34 +109,34 @@ def reinit(
 
     # Make a backup
     # https://stackoverflow.com/a/47528275/315168
-    for i in range(1, 20):
-        try:
-            backup_file = state_file.with_suffix(".reinit-backup-{i}.json")
-            state_file.rename(backup_file)
-        except Exception as e:
-            raise RuntimeError(f"Could not create backup {backup_file}") from e
+    backup_file = None
+    for i in range(1, 20):  # Try 20 different iterateive backup filenames
+        backup_file = state_file.with_suffix(f".reinit-backup-{i}.json")
+        if os.path.exists(backup_file):
+            continue
+
+        state_file.rename(backup_file)
+        break
+
+    else:
+        raise RuntimeError(f"Could not create backup {backup_file}")
 
     logger.info("Old state backed up as %s", backup_file)
 
     state = store.create(name)
 
-    logger.info("Syncing initial strategy chain state.")
-    logger.info("For Enzyme vaults this may take a long time as the sync will go through all the blocks in the chain.")
-    logger.info("To speed up process use --vault_deployment_block_number hint as a command line argument.")
+    logger.info("Syncing initial strategy chain state: %s", name)
     logger.info(f"Vault deployment block number hint is {start_block or 0:,}.")
 
     assert isinstance(sync_model, EnzymeVaultSyncModel), f"reinit currently only supports EnzymeVaultSyncModel, got {sync_model}"
 
+    # Perform reconstruction of state
     sync_model.sync_reinit(state, start_block=start_block)
-
     store.sync(state)
-
     web3config.close()
 
     reserve_position = state.portfolio.get_default_reserve_position()
-
     logger.info("Reserve balance is %s", reserve_position)
-
     assert reserve_position.quantity > 0, f"Reinitialisation did not see any deposits in vault: {sync_model.vault}, reserve position is {reserve_position}"
 
     logger.info("All done: State deployment info is %s", state.sync.deployment)

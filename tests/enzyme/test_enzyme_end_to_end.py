@@ -364,8 +364,13 @@ def test_enzyme_live_trading_reinit(
     Check that reinitialise works and accounting information is read from the chain state.
     """
 
+    if os.path.exists("/tmp/test_enzyme_end_to_end.reinit-backup-1.json"):
+        os.remove("/tmp/test_enzyme_end_to_end.reinit-backup-1.json")
+
     result = run_init(environment)
     assert result.exit_code == 0
+
+    assert os.path.exists("/tmp/test_enzyme_end_to_end.json")
 
     cli = get_command(app)
 
@@ -377,6 +382,8 @@ def test_enzyme_live_trading_reinit(
         with pytest.raises(SystemExit) as e:
             cli.main(args=["reinit"])
         assert e.value.code == 0
+
+    assert os.path.exists("/tmp/test_enzyme_end_to_end.reinit-backup-1.json")
 
     # See that the reinitialised state looks correct
     with state_file.open("rt") as inp:
