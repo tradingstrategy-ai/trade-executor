@@ -534,7 +534,9 @@ class EnzymeVaultSyncModel(SyncModel):
         current_block = web3.eth.block_number
         timestamp = fetch_block_timestamp(web3, current_block)
 
-        balances = list(fetch_vault_balances(vault, block_identifier=current_block))
+        # Get all non-zero balances from Enzyme
+        balances = [b for b in fetch_vault_balances(vault, block_identifier=current_block) if b.balance > 0]
+
         assert len(balances) == 1, f"reinit cannot be done if the vault has positions other than reserve currencies, got {balances}"
         reserve_current_balance = balances[0]
 
