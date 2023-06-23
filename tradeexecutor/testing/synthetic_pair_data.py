@@ -16,6 +16,8 @@ def generate_pair(
     internal_id = random.randint(1, 1000)
 ) -> TradingPairIdentifier:
     """Generate a random pair.
+
+    .. note:: Don't use this function for multipair strategies with the same tokens since the addresses are randomly generated.
     
     :param exchange:
         Exchange to use for the pair

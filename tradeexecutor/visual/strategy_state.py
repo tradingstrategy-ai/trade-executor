@@ -65,6 +65,115 @@ def draw_single_pair_strategy_state(
         assert universe.universe.candles.get_pair_count() == 1
         target_pair_candles = universe.universe.candles.df.loc[pd.Timestamp(start_at):pd.Timestamp(end_at)]
 
+    return visualise_single_pair_strategy_state(state, target_pair_candles, start_at, end_at, technical_indicators=technical_indicators)
+
+
+
+def draw_multi_pair_strategy_state(
+        state: State,
+        universe: TradingStrategyUniverse,
+        width=512,
+        height=512,
+        candle_count=64,
+        start_at: Optional[datetime.datetime] = None,
+        end_at: Optional[datetime.datetime] = None,
+        technical_indicators=True,
+) -> list[go.Figure]:
+    """Draw mini price chart images for multiple pairs.
+
+    See also
+
+    - `manual-visualisation-test.py`
+
+    - :py:meth:`tradeeexecutor.strategy.pandas_runner.PandasTraderRunner.report_strategy_thinking`.
+
+    :param state:
+        The strategy state
+
+    :param universe:
+        The trading strategy universe
+
+    :param width:
+        The width of the image
+
+    :param height:
+        The height of the image
+
+    :param candle_count:
+        Draw N latest candles
+
+    :param start_at:
+        Draw by a given time range
+
+    :param end_at:
+        Draw by a given time range
+
+    :param technical_indicators:
+        Whether to draw technical indicators or not
+
+    :return:
+        The strategy state visualisation as a list of Plotly figures
+    """
+
+    assert universe.get_pair_count() <= 3, "This visualisation can be done only for less than 3 pairs"
+
+    figures = []
+
+    for pair_id, data in universe.universe.candles.get_all_pairs():
+        
+        if start_at is None and end_at is None:
+            # Get
+            target_pair_candles = data
+
+            # Do candle count clip
+            if candle_count:
+                target_pair_candles = target_pair_candles.iloc[-candle_count:]
+
+            start_at = target_pair_candles.iloc[0]["timestamp"]
+            end_at = target_pair_candles.iloc[-1]["timestamp"]
+        else:
+            assert start_at, "Must have start_at with end_at"
+            assert end_at, "Must have start_at with end_at"
+            target_pair_candles = data.loc[pd.Timestamp(start_at):pd.Timestamp(end_at)]
+
+        figure = visualise_single_pair_strategy_state(state, target_pair_candles, start_at, end_at, technical_indicators=technical_indicators)
+
+        figures.append(figure)
+
+    return figures
+
+
+def visualise_single_pair_strategy_state(
+        state: State,
+        target_pair_candles,
+        start_at: Optional[datetime.datetime] = None,
+        end_at: Optional[datetime.datetime] = None,
+        height=512,
+        technical_indicators=True
+) -> go.Figure:
+    """Produces a visualisation of the strategy state for a single pair.
+    
+    :param state:
+        The strategy state
+    
+    :param target_pair_candles:
+        The candles for the pair
+        
+    :param start_at:
+        Draw by a given time range
+    
+    :param end_at:
+        Draw by a given time range
+        
+    :param height:
+        The height of the image
+        
+    :param technical_indicators:
+        Whether to draw technical indicators or not
+    
+    :return:
+        The strategy state visualisation as Plotly figure
+    """
     figure = visualise_single_pair(
         state,
         target_pair_candles,
