@@ -8,6 +8,7 @@ import json
 from dataclasses import dataclass, field
 import datetime
 from decimal import Decimal
+from pathlib import Path
 from typing import List, Callable, Tuple, Set, Optional
 
 import pandas as pd
@@ -130,6 +131,10 @@ class State:
         """Check if the trading pair is blacklisted."""
         assert isinstance(pair, TradingPairIdentifier), f"Expected TradingPairIdentifier, got {type(pair)}: {pair}"
         return (pair.base.get_identifier() not in self.asset_blacklist) and (pair.quote.get_identifier() not in self.asset_blacklist)
+
+    def has_trading_history(self) -> bool:
+        """Does this state have trading history"""
+        return not self.is_empty()
 
     def create_trade(self,
                      strategy_cycle_at: datetime.datetime,
@@ -439,7 +444,7 @@ class State:
         # TODO: Avoid circular imports, refactor modules
         from tradeexecutor.state.validator import validate_nested_state_dict
 
-        # Make timedelta handling
+        # Fix timedelta handling
         from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
 
         patch_dataclasses_json()
@@ -452,4 +457,16 @@ class State:
         txt = json.dumps(data, cls=_ExtendedEncoder)
         return txt
 
+    @staticmethod
+    def read_json_file(path: Path) -> "State":
+        """Read state from the JSO file."""
 
+        assert isinstance(path, Path)
+
+        # Run in any monkey-patches we need for JSON decoding
+        from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
+
+        patch_dataclasses_json()
+
+        with open(path, "rt") as inp:
+            return State.from_json(inp.read())

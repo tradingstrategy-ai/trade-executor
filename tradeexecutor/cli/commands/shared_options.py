@@ -41,6 +41,8 @@ json_rpc_anvil = Option(None, envvar="JSON_RPC_ANVIL", help="Anvil JSON-RPC url.
 
 state_file = Option(None, envvar="STATE_FILE", help="JSON file where we serialise the execution state. If not given defaults to state/{executor-id}.json")
 
+backtest_file = Option(None, envvar="BACKTEST_FILE", help="JSON file that contains the results of the backtest. Needed for the web server to display backtest information. If not given defaults to state/{executor-id}-backtest.json")
+
 trading_strategy_api_key = Option(None, envvar="TRADING_STRATEGY_API_KEY", help="Trading Strategy API key")
 
 cache_path = Option("cache/", envvar="CACHE_PATH", help="Where to cache downloaded datasets on a local filesystem")

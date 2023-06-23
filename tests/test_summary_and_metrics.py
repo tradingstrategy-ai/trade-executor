@@ -25,6 +25,7 @@ from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifie
 from tradeexecutor.state.state import State
 from tradeexecutor.state.statistics import Statistics, calculate_naive_profitability
 from tradeexecutor.state.validator import validate_nested_state_dict
+from tradeexecutor.statistics.key_metric import calculate_key_metrics
 from tradeexecutor.statistics.summary import calculate_summary_statistics
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.execution_context import ExecutionMode
@@ -279,3 +280,11 @@ def test_advanced_metrics(state: State):
     # index 1 is the benchmark.
     sharpe = metrics.loc["Sharpe"][0]
     assert sharpe == pytest.approx(-2.09)
+
+
+def test_calculate_key_metrics():
+    """Calculate web frontend key metric for an empty state and no backtest."""
+
+    state = State()
+    metrics = {m.kind.value: m for m in calculate_key_metrics(state)}
+    import ipdb ; ipdb.set_trace()

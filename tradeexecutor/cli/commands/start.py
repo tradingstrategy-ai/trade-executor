@@ -131,6 +131,7 @@ def start(
 
     # Unsorted options
     state_file: Optional[Path] = shared_options.state_file,
+    backtest_file: Optional[Path] = shared_options.backtest_file,
     cache_path: Optional[Path] = shared_options.cache_path,
     ):
     """Launch Trade Executor instance."""
@@ -183,6 +184,9 @@ def start(
         if not state_file:
             if asset_management_mode != AssetManagementMode.backtest:
                 state_file = f"state/{id}.json"
+
+        if not backtest_file:
+            backtest_file = f"state/{id}-backtest.json"
 
         # Avoid polluting user caches during test runs,
         # so we use different default

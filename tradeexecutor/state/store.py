@@ -77,8 +77,7 @@ class JSONFileStore(StateStore):
 
     def load(self) -> State:
         logger.info("Loaded state from %s", self.path)
-        with open(self.path, "rt") as inp:
-            return State.from_json(inp.read())
+        return State.read_json_file(self.path)
 
     def sync(self, state: State):
         """Write new JSON state dump using Linux atomic file replacement."""

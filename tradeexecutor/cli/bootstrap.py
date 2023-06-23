@@ -31,6 +31,7 @@ from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_valuation import uniswap_v3_se
 from tradeexecutor.ethereum.web3config import Web3Config
 from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
 from tradeexecutor.state.metadata import Metadata, OnChainData
+from tradeexecutor.state.state import State
 from tradeexecutor.state.store import JSONFileStore, StateStore
 from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.pricing_model import PricingModelFactory
@@ -244,6 +245,7 @@ def create_metadata(
         asset_management_mode: AssetManagementMode,
         chain_id: ChainId,
         vault: Optional[Vault],
+        backtest_file: Optional[Path],
 ) -> Metadata:
     """Create metadata object from the configuration variables."""
 
@@ -266,6 +268,11 @@ def create_metadata(
                 "fund_value_calculator": "0xcdf038Dd3b66506d2e5378aee185b2f0084B7A33",
             })
 
+    if backtest_file is not None:
+        backtest_state = State.read_json_file(backtest_file)
+    else:
+        backtest_state = None
+
     metadata = Metadata(
         name,
         short_description,
@@ -274,6 +281,7 @@ def create_metadata(
         datetime.datetime.utcnow(),
         executor_running=True,
         on_chain_data=on_chain_data,
+        backtest_state=backtest_state,
     )
 
     return metadata

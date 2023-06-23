@@ -10,6 +10,7 @@ from typing import Optional, Dict, TypedDict
 from dataclasses_json import dataclass_json
 from tradingstrategy.chain import ChainId
 
+from tradeexecutor.state.state import State
 from tradeexecutor.state.types import ZeroExAddress
 from tradeexecutor.strategy.execution_model import AssetManagementMode
 
@@ -105,6 +106,12 @@ class Metadata:
     #: List of smart contracts and related web3 interaction information for this strategy.
     #:
     on_chain_data: OnChainData = field(default_factory=OnChainData)
+
+    #: The previous backtest run results for this strategy.
+    #:
+    #: Used in the web frontend to display the backtested values.
+    #:
+    backtest_state: Optional[State] = None
 
     @staticmethod
     def create_dummy() -> "Metadata":

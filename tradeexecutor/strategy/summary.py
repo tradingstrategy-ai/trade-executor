@@ -26,10 +26,11 @@ class KeyMetricSource(enum.Enum):
     """Did we calcualte a key metric based on backtesting data or live trading data."""
     backtesting = "backtesting"
     live_trading = "live_trading"
+    missing = "missing"
 
 
 @dataclass_json
-@dataclass(frozen=True)
+@dataclass(slots=True, frozen=True)
 class KeyMetric:
     """One of available key metrics on the summary card."""
 
@@ -39,14 +40,38 @@ class KeyMetric:
     #: Did we calculate this metric based on live trading or backtesting data
     source: KeyMetricSource
 
-    #: What's the time period for which this metric was calculated
-    value: float | datetime.datetime | datetime.timedelta
+    #: What's the time period for which this metric was calculated.
+    #:
+    #: Different Python value types supported,
+    #: but everything is serialised to JavaScript Number type
+    #: in for JSON.
+    #:
+    #: Set to `None` when unavailable.
+    #:
+    value: float | datetime.datetime | datetime.timedelta | None
 
     #: What's the time period for which this metric was calculated
     calculation_window_start_at: datetime.datetime | None = None
 
     #: What's the time period for which this metric was calculated
     calculation_window_end_at: datetime.timedelta | None = None
+
+    #: Unavaiability reason.
+    #:
+    #: Human readable error message why this metric is not available.
+    #: Useful for tooltips.
+    #:
+    unavailability_reason: str | None = None
+
+    @staticmethod
+    def create_na(kind: KeyMetricKind, reason: str) -> "KeyMetric":
+        """Create missing value placeholder."""
+        return KeyMetric(
+            kind,
+            KeyMetricSource.missing,
+            None,
+            unavailability_reason=reason,
+        )
 
 
 @dataclass_json
