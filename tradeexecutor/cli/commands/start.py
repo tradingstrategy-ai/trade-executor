@@ -423,11 +423,23 @@ def start(
                 display_backtesting_results(state)
 
     except KeyboardInterrupt as e:
-        # CTRL+C shutdown
-        logger.trade("Trade Executor %s shut down by CTRL+C requested: %s", name, e)
+
+        # CTRL+C shutdown or watch dog crash
+        # Watchdog detected a process has hung: Watched worker live_cycle did not report back in time. Threshold seconds 4500.0, but it has been 4503.594225645065 seconds. Shutting down.
+        logger.error("trade-executor %s killed by watchdog or CTRL+C requested: %s. Shutting down.", id, e)
+        logger.error("If you are runnign manually press CTRL+C again to quit")
+
+        # Unwind the traceback and notify the webserver about the failure
+        run_state.set_fail()
+
+        logger.exception(e)
+
+        # Spend the rest of the time idling
+        time.sleep(3600*24*365)
+
     except Exception as e:
 
-        logger.error("trade-executor execution loop crashed")
+        logger.error("trade-executor %d execution loop crashed", id)
 
         # Unwind the traceback and notify the webserver about the failure
         run_state.set_fail()
@@ -447,7 +459,7 @@ def start(
             logger.error("Raising the error and crashing away, running time was %s", running_time)
             raise
         else:
-            # Execution is dea  d.
+            # Execution is dead.
             # Sleep forever, let the webhook still serve the requests.
             logger.error("Main loop terminated. Entering to the web server wait mode.")
             time.sleep(3600*24*365)
