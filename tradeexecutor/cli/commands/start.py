@@ -439,7 +439,7 @@ def start(
 
     except Exception as e:
 
-        logger.error("trade-executor %d execution loop crashed", id)
+        logger.error("trade-executor %s execution loop crashed", id)
 
         # Unwind the traceback and notify the webserver about the failure
         run_state.set_fail()
