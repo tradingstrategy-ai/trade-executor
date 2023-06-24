@@ -427,7 +427,7 @@ def start(
         # CTRL+C shutdown or watch dog crash
         # Watchdog detected a process has hung: Watched worker live_cycle did not report back in time. Threshold seconds 4500.0, but it has been 4503.594225645065 seconds. Shutting down.
         logger.error("trade-executor %s killed by watchdog or CTRL+C requested: %s. Shutting down.", id, e)
-        logger.error("If you are runnign manually press CTRL+C again to quit")
+        logger.error("If you are running manually press CTRL+C again to quit")
 
         # Unwind the traceback and notify the webserver about the failure
         run_state.set_fail()

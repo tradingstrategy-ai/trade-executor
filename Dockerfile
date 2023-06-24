@@ -13,8 +13,9 @@ ARG GIT_VERSION_HASH=unspecified
 ENV PYTHONDONTWRITEBYTECODE 1 \
     PYTHONUNBUFFERED 1
 
+# curl and jq needed for the health checks
 RUN apt-get update \
-    && apt-get install curl -y \
+    && apt-get install curl jq -y \
     && curl -sSL https://install.python-poetry.org | python - --version 1.4.2
 
 ENV PATH="/root/.local/bin:$PATH"
