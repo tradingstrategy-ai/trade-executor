@@ -234,4 +234,4 @@ class PandasTraderRunner(StrategyRunner):
             post_logging_discord_image(small_image)
 
         else:
-            raise NotImplementedError("Reporting of strategy thinking of multipair universes not supported yet")
+            logger.warning("Reporting of strategy thinking of multipair universes not supported yet")
