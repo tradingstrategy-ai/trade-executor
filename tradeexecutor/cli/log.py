@@ -74,6 +74,14 @@ def setup_logging(
     # https://ddtrace.readthedocs.io/en/stable/basic_usage.html
     logging.getLogger("ddtrace").setLevel(logging.INFO)
 
+    # Because we are running a single threaded worker,
+    # the position trigger check task can be blocked by trade decision task, or vice versa.
+    # Because the position trigger check task is very quick, this should not be an issue in practice.
+    # However apscheduler spews logs with WARN on this and we do not want it as
+    # warning, as it is a planned scenario.
+    # enzyme-polygon-eth-usdc  | 2023-06-23 13:00:05 apscheduler.executors.default                      WARNING  Run time of job "ExecutionLoop.run_live.<locals>.live_positions (trigger: interval[1:00:00], next run at: 2023-06-23 14:00:00 UTC)" was missed by 0:00:05.324013
+    logging.getLogger("apscheduler.executors.default").setLevel(logging.ERROR)
+
     # GraphQL library
     # Writes very noisy and long Introspection query to logs
     # everytime graphql endpoint is read
