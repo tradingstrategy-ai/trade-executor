@@ -29,6 +29,7 @@ from ..log import setup_logging, setup_discord_logging, setup_logstash_logging, 
 from ..loop import ExecutionLoop
 from ..result import display_backtesting_results
 from ..version_info import VersionInfo
+from ..watchdog import stop_watchdog
 from ...ethereum.enzyme.vault import EnzymeVaultSyncModel
 from ...ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2SimpleRoutingModel
 from ...state.state import State
@@ -434,6 +435,8 @@ def start(
 
         logger.exception(e)
 
+        stop_watchdog()
+
         # Spend the rest of the time idling
         time.sleep(3600*24*365)
 
@@ -444,12 +447,14 @@ def start(
         # Unwind the traceback and notify the webserver about the failure
         run_state.set_fail()
 
+        stop_watchdog()
+
+        logger.exception(e)
+
         # Debug exceptions in production
         if port_mortem_debugging:
             import ipdb
             ipdb.post_mortem()
-
-        logger.exception(e)
 
         running_time = datetime.datetime.utcnow() - started_at
 
