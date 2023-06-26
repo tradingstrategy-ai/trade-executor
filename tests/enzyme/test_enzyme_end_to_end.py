@@ -28,7 +28,7 @@ from eth_defi.trace import assert_transaction_success_with_explanation
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment
 
 from tradingstrategy.pair import PandasPairUniverse
-from tradingstrategy.chain import ChainId
+
 
 from tradeexecutor.cli.main import app
 from tradeexecutor.state.blockhain_transaction import BlockchainTransactionType
@@ -85,8 +85,13 @@ def environment(
     anvil: AnvilLaunch,
     deployer: HexAddress,
     vault: Vault,
+    usdc: Contract,
+    weth: Contract,
+    usdc_asset: AssetIdentifier,
+    weth_asset: AssetIdentifier,
     user_1: HexAddress,
     uniswap_v2: UniswapV2Deployment,
+    weth_usdc_trading_pair: TradingPairIdentifier,
     pair_universe: PandasPairUniverse,
     hot_wallet: HotWallet,
     state_file: Path,
@@ -294,6 +299,7 @@ def test_enzyme_perform_test_trade(
     vault: Vault,
     deployer: HexAddress,
     enzyme_deployment: EnzymeDeployment,
+    weth_usdc_trading_pair: TradingPairIdentifier,
 ):
     """Perform a test trade on Enzymy vault via CLI.
 
@@ -302,20 +308,11 @@ def test_enzyme_perform_test_trade(
     - Initialise the strategy to use this vault
 
     - Perform a test trade on this fault
-
-    You can edit the environment to choose from 
-    
-    - weth_usdc_trading_pair (ChainId.anvil, "UniswapV2MockClient", "WETH", "USDC", 0.003)
-    - bob_usdc_trading_pair (ChainId.anvil, "UniswapV2MockClient", "BOB", "USDC", 0.003)
-    - pepe_usdc_trading_pair (ChainId.anvil, "UniswapV2MockClient", "PEPE", "USDC", 0.003)
-    - biao_usdc_trading_pair (ChainId.anvil, "UniswapV2MockClient", "BIAO", "USDC", 0.003)
     """
 
     env = environment.copy()
     env["VAULT_ADDRESS"] = vault.address
     env["VAULT_ADAPTER_ADDRESS"] = vault.generic_adapter.address
-
-
 
     cli = get_command(app)
 
