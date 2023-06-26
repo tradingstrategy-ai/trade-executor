@@ -245,7 +245,7 @@ def create_metadata(
         asset_management_mode: AssetManagementMode,
         chain_id: ChainId,
         vault: Optional[Vault],
-        backtest_file: Optional[Path],
+        backtest_file: Optional[Path]=None,
 ) -> Metadata:
     """Create metadata object from the configuration variables."""
 
