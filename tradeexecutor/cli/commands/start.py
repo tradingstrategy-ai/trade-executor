@@ -33,7 +33,7 @@ from ..watchdog import stop_watchdog
 from ...ethereum.enzyme.vault import EnzymeVaultSyncModel
 from ...ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2SimpleRoutingModel
 from ...state.state import State
-from ...state.store import NoneStore
+from ...state.store import NoneStore, JSONFileStore
 from ...strategy.approval import ApprovalType
 from ...strategy.bootstrap import import_strategy_file
 from ...strategy.cycle import CycleDuration
@@ -436,6 +436,9 @@ def start(
             else:
                 state = store.load()
                 display_backtesting_results(state)
+
+            if isinstance(store, JSONFileStore):
+                logger.info("Wrote backtest result to %s", store.path.absolute())
 
     except KeyboardInterrupt as e:
 
