@@ -288,7 +288,6 @@ def test_calculate_key_metrics_empty():
     """Key metrics calculations with empty state."""
     state = State()
     metrics = {m.kind.value: m for m in calculate_key_metrics(state)}
-    assert len(metrics) == 4
     assert metrics["sharpe"].value is None
     assert metrics["sortino"].value is None
     assert metrics["max_drawdown"].value is None
@@ -308,9 +307,10 @@ def test_calculate_key_metrics_live(state: State):
     # returns = calculate_compounding_realised_profitability(state)
 
     metrics = {m.kind.value: m for m in calculate_key_metrics(state)}
-    assert len(metrics) == 4
+    assert len(metrics) == 5
     assert metrics["sharpe"].value == pytest.approx(-2.1464509890620724)
     assert metrics["sortino"].value == pytest.approx(-2.720957242817309)
+    assert metrics["profitability"].value == pytest.approx(-0.045838046723895576)
     assert metrics["max_drawdown"].value == pytest.approx(-0.04780138378916754)
     assert metrics["max_drawdown"].source == KeyMetricSource.live_trading
     assert metrics["max_drawdown"].calculation_window_start_at == datetime.datetime(2021, 6, 1, 0, 0)

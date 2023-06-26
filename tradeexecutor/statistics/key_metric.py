@@ -10,7 +10,7 @@ import pandas as pd
 from tradeexecutor.state.state import State
 from tradeexecutor.state.types import Percent
 from tradeexecutor.strategy.summary import KeyMetric, KeyMetricKind, KeyMetricSource
-from tradeexecutor.visual.equity_curve import calculate_deposit_adjusted_returns, calculate_size_relative_realised_trading_returns
+from tradeexecutor.visual.equity_curve import calculate_size_relative_realised_trading_returns
 
 
 def calculate_sharpe(returns: pd.Series, periods=365) -> float:
@@ -75,6 +75,25 @@ def calculate_max_drawdown(returns: pd.Series) -> Percent:
     from quantstats.stats import to_drawdown_series
     dd = to_drawdown_series(returns)
     return dd.min()
+
+
+
+def calculate_profitability(returns: pd.Series) -> Percent:
+    """Calculate annualised profitability.
+
+    Internally uses quantstats.
+
+    See :term:`profitability`.
+
+    :param returns:
+        Returns series
+
+    :return:
+        Value -1...inf
+
+    """
+    compounded = returns.add(1).cumprod().sub(1)
+    return compounded[-1]
 
 
 def calculate_key_metrics(
@@ -151,6 +170,9 @@ def calculate_key_metrics(
         max_drawdown = calculate_max_drawdown(returns)
         yield KeyMetric.create_metric(KeyMetricKind.max_drawdown, source, max_drawdown, calculation_window_start_at, calculation_window_end_at)
 
+        profitability = calculate_profitability(returns)
+        yield KeyMetric.create_metric(KeyMetricKind.profitability, source, profitability, calculation_window_start_at, calculation_window_end_at)
+
     else:
         # No live or backtesting data available,
         # mark all metrics N/A
@@ -161,6 +183,7 @@ def calculate_key_metrics(
         yield KeyMetric.create_na(KeyMetricKind.sharpe, reason)
         yield KeyMetric.create_na(KeyMetricKind.sortino, reason)
         yield KeyMetric.create_na(KeyMetricKind.max_drawdown, reason)
+        yield KeyMetric.create_na(KeyMetricKind.profitability, reason)
 
     # The age of the trading history is made available always
     yield KeyMetric(

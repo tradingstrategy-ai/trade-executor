@@ -30,6 +30,9 @@ class KeyMetricKind(enum.Enum):
     #: UNIX timestamp when the first trade was executd
     started_at = "started_at"
 
+    #: Annualised profitability
+    profitability = "profitability"
+
 
 class KeyMetricSource(enum.Enum):
     """Did we calcualte a key metric based on backtesting data or live trading data."""
@@ -226,4 +229,5 @@ _KEY_METRIC_HELP = {
    KeyMetricKind.sharpe: "https://tradingstrategy.ai/glossary/sharpe",
    KeyMetricKind.sortino: "https://tradingstrategy.ai/glossary/sortino",
    KeyMetricKind.max_drawdown: "https://tradingstrategy.ai/glossary/maximum-drawdown",
+   KeyMetricKind.profitability: "https://tradingstrategy.ai/glossary/profitability",
 }
