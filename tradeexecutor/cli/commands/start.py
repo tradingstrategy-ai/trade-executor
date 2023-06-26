@@ -184,6 +184,10 @@ def start(
         if not state_file:
             if asset_management_mode != AssetManagementMode.backtest:
                 state_file = f"state/{id}.json"
+            else:
+                # TODO: Avoid legacy unit test issues
+                if os.path.exists("state"):
+                    state_file = f"state/{id}-backtest.json"
 
         # Avoid polluting user caches during test runs,
         # so we use different default
