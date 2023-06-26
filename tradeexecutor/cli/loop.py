@@ -21,6 +21,7 @@ from apscheduler.events import EVENT_JOB_ERROR
 from tradeexecutor.backtest.backtest_sync import BacktestSyncModel
 from tradeexecutor.cli.watchdog import create_watchdog_registry, register_worker, mark_alive, start_background_watchdog, \
     WatchdogMode
+from tradeexecutor.state.metadata import Metadata
 from tradeexecutor.statistics.summary import calculate_summary_statistics
 from tradeexecutor.strategy.pandas_trader.decision_trigger import wait_for_universe_data_availability_jsonl
 from tradeexecutor.strategy.routing import RoutingModel
@@ -135,6 +136,7 @@ class ExecutionLoop:
             strategy_cycle_trigger: StrategyCycleTrigger = StrategyCycleTrigger.cycle_offset,
             routing_model: Optional[RoutingModel] = None,
             execution_test_hook: Optional[ExecutionTestHook] = None,
+            metadata: Optional[Metadata] = None
     ):
         """See main.py for details."""
 
@@ -152,6 +154,7 @@ class ExecutionLoop:
         self.routing_model = routing_model
         self.execution_model = execution_model
         self.execution_test_hook = execution_test_hook
+        self.metadata = metadata
 
         args = locals().copy()
         args.pop("self")
@@ -288,6 +291,7 @@ class ExecutionLoop:
             stats = calculate_summary_statistics(
                 state,
                 self.execution_context.mode,
+                backtested_state=self.metadata.backtested_state,
             )
             self.run_state.summary_statistics = stats
 

@@ -245,7 +245,7 @@ def create_metadata(
         asset_management_mode: AssetManagementMode,
         chain_id: ChainId,
         vault: Optional[Vault],
-        backtest_file: Optional[Path]=None,
+        backtest_result: Optional[Path]=None,
 ) -> Metadata:
     """Create metadata object from the configuration variables."""
 
@@ -268,10 +268,10 @@ def create_metadata(
                 "fund_value_calculator": "0xcdf038Dd3b66506d2e5378aee185b2f0084B7A33",
             })
 
-    if backtest_file is not None:
-        backtest_state = State.read_json_file(backtest_file)
+    if backtest_result is not None:
+        backtested_state = State.read_json_file(backtest_result)
     else:
-        backtest_state = None
+        backtested_state = None
 
     metadata = Metadata(
         name,
@@ -281,7 +281,7 @@ def create_metadata(
         datetime.datetime.utcnow(),
         executor_running=True,
         on_chain_data=on_chain_data,
-        backtest_state=backtest_state,
+        backtested_state=backtested_state,
     )
 
     return metadata

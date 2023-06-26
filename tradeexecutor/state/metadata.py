@@ -111,7 +111,7 @@ class Metadata:
     #:
     #: Used in the web frontend to display the backtested values.
     #:
-    backtest_state: Optional[State] = None
+    backtested_state: Optional[State] = None
 
     @staticmethod
     def create_dummy() -> "Metadata":
