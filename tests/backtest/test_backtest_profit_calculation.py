@@ -26,7 +26,7 @@ from tradeexecutor.testing.synthetic_ethereum_data import generate_random_ethere
 from tradeexecutor.testing.synthetic_exchange_data import generate_exchange, generate_simple_routing_model
 from tradeexecutor.testing.synthetic_price_data import generate_ohlcv_candles
 from tradeexecutor.visual.equity_curve import calculate_investment_flow, calculate_realised_profitability, calculate_deposit_adjusted_returns, \
-    calculate_compounding_realised_profitability, calculate_size_relative_realised_profitability
+    calculate_compounding_realised_trading_profitability, calculate_size_relative_realised_trading_returns
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId
 from tradingstrategy.exchange import Exchange
@@ -221,10 +221,10 @@ def test_calculate_realised_trading_profitability(backtest_result: State):
     assert -0.06 < min(profitability) < -0.04
     assert isinstance(profitability.index, pd.DatetimeIndex)
 
-    sized_profitability = calculate_size_relative_realised_profitability(state)
+    sized_profitability = calculate_size_relative_realised_trading_returns(state)
     assert sized_profitability[0] == pytest.approx(profitability[0] / 10, rel=0.01)  # 10% position size is used
 
-    compounded_profitability = calculate_compounding_realised_profitability(state)
+    compounded_profitability = calculate_compounding_realised_trading_profitability(state)
     assert isinstance(compounded_profitability, pd.Series)
     assert -0.05 < compounded_profitability.iloc[0] < 0.01
     assert compounded_profitability.iloc[-1] == pytest.approx(-0.04583804672389613)  # Strategy has destroyed 4.5% of capital
@@ -236,7 +236,7 @@ def test_calculate_realised_trading_profitability_no_trades():
     profitability = calculate_realised_profitability(state)
     assert len(profitability) == 0
 
-    compounded_profitability = calculate_compounding_realised_profitability(state)
+    compounded_profitability = calculate_compounding_realised_trading_profitability(state)
     assert len(compounded_profitability) == 0
 
 

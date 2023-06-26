@@ -9,7 +9,7 @@ from tradeexecutor.state.state import State
 from tradeexecutor.state.statistics import calculate_naive_profitability
 from tradeexecutor.strategy.execution_context import ExecutionMode
 from tradeexecutor.strategy.summary import StrategySummaryStatistics
-from tradeexecutor.visual.equity_curve import calculate_compounding_realised_profitability
+from tradeexecutor.visual.equity_curve import calculate_compounding_realised_trading_profitability
 
 
 def calculate_summary_statistics(
@@ -78,7 +78,7 @@ def calculate_summary_statistics(
     performance_chart_90_days = None
 
     if len(stats.portfolio) > 0 and not legacy_workarounds:
-        profitability = calculate_compounding_realised_profitability(state)
+        profitability = calculate_compounding_realised_trading_profitability(state)
         enough_data = len(profitability.index) > 1 and profitability.index[0] <= start_at
         profitability_time_windowed = profitability[start_at:]
         if len(profitability_time_windowed) > 0:

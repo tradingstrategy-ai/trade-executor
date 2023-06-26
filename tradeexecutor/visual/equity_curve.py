@@ -298,7 +298,7 @@ def calculate_realised_profitability(
     return pd.DataFrame(data).set_index(0)[1]
 
 
-def calculate_size_relative_realised_profitability(
+def calculate_size_relative_realised_trading_returns(
     state: State,
 ) -> pd.Series:
     """Calculate realised profitability of closed trading positions relative to the portfolio size..
@@ -322,7 +322,7 @@ def calculate_size_relative_realised_profitability(
     return pd.DataFrame(data).set_index(0)[1]
 
 
-def calculate_compounding_realised_profitability(
+def calculate_compounding_realised_trading_profitability(
     state: State,
 ) -> pd.Series:
     """Calculate realised profitability of closed trading positions, with the compounding effect.
@@ -345,7 +345,7 @@ def calculate_compounding_realised_profitability(
         The last value of the series is the total trading profitability
         of the strategy over its lifetime.
     """
-    realised_profitability = calculate_size_relative_realised_profitability(state)
+    realised_profitability = calculate_size_relative_realised_trading_returns(state)
     # https://stackoverflow.com/a/42672553/315168
     compounded = realised_profitability.add(1).cumprod().sub(1)
     return compounded

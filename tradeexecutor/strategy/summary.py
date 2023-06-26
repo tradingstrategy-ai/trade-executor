@@ -17,9 +17,17 @@ class KeyMetricKind(enum.Enum):
     All othe metrics will be available as well, but we do not
     cache them for the quick frontend rendering.
     """
+
+    #: Sharpe ratio for the execution
     sharpe = "sharpe"
+
+    #: Sortino ratio for the execution
     sortino = "sortino"
+
+    #: Negative value 0...-1
     max_drawdown = "max_drawdown"
+
+    #: UNIX timestamp when the first trade was executd
     started_at = "started_at"
 
 
@@ -47,7 +55,8 @@ class KeyMetric:
     #: but everything is serialised to JavaScript Number type
     #: in for JSON.
     #:
-    #: Set to `None` when unavailable.
+    #: Set to `None` when unavailable. In this case this should be
+    #: presented as "N/A" in the frontend.
     #:
     value: float | datetime.datetime | datetime.timedelta | None
 
@@ -81,6 +90,7 @@ class KeyMetric:
             KeyMetricSource.missing,
             None,
             unavailability_reason=reason,
+            help_link=_KEY_METRIC_HELP.get(kind),
         )
 
     @staticmethod
@@ -215,4 +225,5 @@ class StrategySummary:
 _KEY_METRIC_HELP = {
    KeyMetricKind.sharpe: "https://tradingstrategy.ai/glossary/sharpe",
    KeyMetricKind.sortino: "https://tradingstrategy.ai/glossary/sortino",
+   KeyMetricKind.max_drawdown: "https://tradingstrategy.ai/glossary/maximum-drawdown",
 }

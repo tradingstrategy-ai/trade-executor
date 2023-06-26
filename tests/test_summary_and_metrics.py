@@ -29,12 +29,13 @@ from tradeexecutor.statistics.key_metric import calculate_key_metrics
 from tradeexecutor.statistics.summary import calculate_summary_statistics
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.execution_context import ExecutionMode
+from tradeexecutor.strategy.summary import KeyMetricSource
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, create_pair_universe_from_code
 from tradeexecutor.testing.synthetic_ethereum_data import generate_random_ethereum_address
 from tradeexecutor.testing.synthetic_exchange_data import generate_exchange, generate_simple_routing_model
 from tradeexecutor.testing.synthetic_price_data import generate_ohlcv_candles
 
-from tradeexecutor.visual.equity_curve import calculate_equity_curve, calculate_returns
+from tradeexecutor.visual.equity_curve import calculate_equity_curve, calculate_returns, calculate_deposit_adjusted_returns
 
 
 @pytest.fixture(scope="module")
@@ -303,8 +304,39 @@ def test_calculate_key_metrics_live(state: State):
     # our metrics are calculable
     assert state.portfolio.get_trading_history_duration() > datetime.timedelta(days=90)
 
+    # Check our returns calculationsn look sane
+    # returns = calculate_compounding_realised_profitability(state)
+
     metrics = {m.kind.value: m for m in calculate_key_metrics(state)}
     assert len(metrics) == 4
-    assert metrics["sharpe"].value == pytest.approx(-1.3059890798301164)
-    assert metrics["sortino"].value == pytest.approx(-1.3059890798301164)
-    assert metrics["max_drawdown"].value is None
+    assert metrics["sharpe"].value == pytest.approx(-2.1464509890620724)
+    assert metrics["sortino"].value == pytest.approx(-2.720957242817309)
+    assert metrics["max_drawdown"].value == pytest.approx(-0.04780138378916754)
+    assert metrics["max_drawdown"].source == KeyMetricSource.live_trading
+    assert metrics["max_drawdown"].calculation_window_start_at == datetime.datetime(2021, 6, 1, 0, 0)
+    assert metrics["max_drawdown"].calculation_window_end_at == datetime.datetime(2021, 12, 31, 0, 0)
+    assert metrics["max_drawdown"].help_link == "https://tradingstrategy.ai/glossary/maximum-drawdown"
+
+
+def test_calculate_key_metrics_live_and_backtesting(state: State):
+    """Calculate web frontend key metric when we do not have enough live trading history but have backtesting data available.
+
+    """
+
+    empty_state = State()
+
+    # Make sure we have enough history to make sure
+    # our metrics are calculable
+    assert state.portfolio.get_trading_history_duration() > datetime.timedelta(days=90)
+
+    # Check our returns calculationsn look sane
+    # returns = calculate_compounding_realised_profitability(state)
+
+    metrics = {m.kind.value: m for m in calculate_key_metrics(live_state=empty_state, backtested_state=state)}
+    assert metrics["max_drawdown"].value == pytest.approx(-0.04780138378916754)
+    assert metrics["max_drawdown"].source == KeyMetricSource.backtesting
+    assert metrics["max_drawdown"].calculation_window_start_at == datetime.datetime(2021, 6, 1, 0, 0)
+    assert metrics["max_drawdown"].calculation_window_end_at == datetime.datetime(2021, 12, 31, 0, 0)
+
+    assert metrics["started_at"].source == KeyMetricSource.live_trading
+    assert metrics["started_at"].value >= datetime.datetime(2023, 1, 1, 0, 0)
