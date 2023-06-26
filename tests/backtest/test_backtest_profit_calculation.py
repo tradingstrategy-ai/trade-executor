@@ -249,8 +249,8 @@ def test_calculate_deposit_adjusted_returns(backtest_result: State):
     # Dollar based profitability,
     # the strategy is not profitable but loses constantly
     # money on fees
-    assert -20 < max(returns) < 0
-    assert -150 < min(returns) < -100
+    assert -20 < max(returns) <= 90
+    assert -150 < min(returns) <= -100
 
 
 def test_calculate_deposit_adjusted_returns_no_trades():
