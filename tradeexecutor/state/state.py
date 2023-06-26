@@ -132,10 +132,6 @@ class State:
         assert isinstance(pair, TradingPairIdentifier), f"Expected TradingPairIdentifier, got {type(pair)}: {pair}"
         return (pair.base.get_identifier() not in self.asset_blacklist) and (pair.quote.get_identifier() not in self.asset_blacklist)
 
-    def has_trading_history(self) -> bool:
-        """Does this state have trading history"""
-        return not self.is_empty()
-
     def create_trade(self,
                      strategy_cycle_at: datetime.datetime,
                      pair: TradingPairIdentifier,

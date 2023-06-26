@@ -282,9 +282,29 @@ def test_advanced_metrics(state: State):
     assert sharpe == pytest.approx(-2.09)
 
 
-def test_calculate_key_metrics():
-    """Calculate web frontend key metric for an empty state and no backtest."""
 
+def test_calculate_key_metrics_empty():
+    """Key metrics calculations with empty state."""
     state = State()
     metrics = {m.kind.value: m for m in calculate_key_metrics(state)}
-    import ipdb ; ipdb.set_trace()
+    assert len(metrics) == 4
+    assert metrics["sharpe"].value is None
+    assert metrics["sortino"].value is None
+    assert metrics["max_drawdown"].value is None
+    assert metrics["started_at"].value > datetime.datetime(1970, 1, 1)
+
+
+def test_calculate_key_metrics_live(state: State):
+    """Calculate web frontend key metric for an empty state and no backtest.
+
+    """
+
+    # Make sure we have enough history to make sure
+    # our metrics are calculable
+    assert state.portfolio.get_trading_history_duration() > datetime.timedelta(days=90)
+
+    metrics = {m.kind.value: m for m in calculate_key_metrics(state)}
+    assert len(metrics) == 4
+    assert metrics["sharpe"].value == pytest.approx(-1.3059890798301164)
+    assert metrics["sortino"].value == pytest.approx(-1.3059890798301164)
+    assert metrics["max_drawdown"].value is None

@@ -2,12 +2,13 @@
 import datetime
 import enum
 from dataclasses import dataclass, field
-from typing import Optional, List, Tuple, Dict
+from typing import Optional, List, Tuple, Dict, Any
 
 from dataclasses_json import dataclass_json
 
 from tradeexecutor.state.metadata import OnChainData
 from tradeexecutor.state.types import USDollarAmount
+
 
 
 class KeyMetricKind(enum.Enum):
@@ -16,7 +17,7 @@ class KeyMetricKind(enum.Enum):
     All othe metrics will be available as well, but we do not
     cache them for the quick frontend rendering.
     """
-    sharpe = "shape"
+    sharpe = "sharpe"
     sortino = "sortino"
     max_drawdown = "max_drawdown"
     started_at = "started_at"
@@ -63,6 +64,15 @@ class KeyMetric:
     #:
     unavailability_reason: str | None = None
 
+    #: Help link
+    #:
+    #: Read more link.
+    #:
+    #: Does not need to be part of the state,
+    #: but we make the frontend dev life easy.
+    #:
+    help_link: str | None = None
+
     @staticmethod
     def create_na(kind: KeyMetricKind, reason: str) -> "KeyMetric":
         """Create missing value placeholder."""
@@ -73,6 +83,25 @@ class KeyMetric:
             unavailability_reason=reason,
         )
 
+    @staticmethod
+    def create_metric(
+            kind: KeyMetricKind,
+            source: KeyMetricSource,
+            value: Any,
+            calculation_window_start_at: datetime.datetime,
+            calculation_window_end_at: datetime.datetime) -> "KeyMetric":
+        """Create a metric value.
+
+        Automatically fill in the help text link from our hardcoded mapping.
+        """
+        return KeyMetric(
+            kind,
+            source,
+            value,
+            calculation_window_start_at=calculation_window_start_at,
+            calculation_window_end_at=calculation_window_end_at,
+            help_link=_KEY_METRIC_HELP.get(kind),
+        )
 
 @dataclass_json
 @dataclass(frozen=True)
@@ -181,3 +210,9 @@ class StrategySummary:
     summary_statistics: StrategySummaryStatistics = field(default_factory=StrategySummaryStatistics)
 
 
+
+#: Help links for different metrics
+_KEY_METRIC_HELP = {
+   KeyMetricKind.sharpe: "https://tradingstrategy.ai/glossary/sharpe",
+   KeyMetricKind.sortino: "https://tradingstrategy.ai/glossary/sortino",
+}

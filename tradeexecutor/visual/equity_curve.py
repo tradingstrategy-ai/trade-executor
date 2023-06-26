@@ -353,7 +353,7 @@ def calculate_compounding_realised_profitability(
 
 def calculate_deposit_adjusted_returns(
     state: State,
-    freq: pd.DateOffset = pd.offsets.MonthBegin(),
+    freq: pd.DateOffset = pd.offsets.Day(),
 ) -> pd.Series:
     """Calculate daily/monthly/returns on capital.
 z
@@ -367,6 +367,8 @@ z
 
     :param freq:
         Which sampling frequency we use for the resulting series.
+
+        By default resample the results for daily timeframe.
 
     :return:
         Pandas series (DatetimeIndex by the the start timestamp fo the frequency, USD amount)

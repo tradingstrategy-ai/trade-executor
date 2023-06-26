@@ -5,19 +5,66 @@ Calculate key metrics used in the web frontend summary cards.
 import datetime
 from typing import List, Iterable
 
+import pandas as pd
+
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.summary import KeyMetric, KeyMetricKind, KeyMetricSource
+from tradeexecutor.visual.equity_curve import calculate_deposit_adjusted_returns
+
+
+
+def calculate_sharpe(returns: pd.Series, periods=365):
+    """Calculate annualised sharpe ratio.
+
+    Internally uses quantstats.
+
+    See :term:`sharpe`.
+
+    :param returns:
+        Returns series
+
+    :param periods:
+        How many periods per year returns series has
+
+    """
+    # Lazy import to allow optional dependency
+    from quantstats.stats import sharpe
+    return sharpe(
+        returns,
+        periods=periods,
+    )
+
+
+def calculate_sortino(returns: pd.Series, periods=365):
+    """Calculate annualised share ratio.
+
+    Internally uses quantstats.
+
+    See :term:`sortino`.
+
+    :param returns:
+        Returns series
+
+    :param periods:
+        How many periods per year returns series has
+
+    """
+    # Lazy import to allow optional dependency
+    from quantstats.stats import sortino
+    return sortino(
+        returns,
+        periods=periods,
+    )
 
 
 def calculate_key_metrics(
         live_state: State,
         backtested_state: State | None = None,
         required_history = datetime.timedelta(days=90),
-        now_: datetime.datetime | None = None,
 ) -> Iterable[KeyMetric]:
     """Calculate summary metrics to be displayed on the web frontend.
 
-    - Metrics are calcualted either based live trading data or backtested data,
+    - Metrics are calculated either based live trading data or backtested data,
       whichever makes more sense
 
     - Live execution state is used if it has enough history
@@ -41,26 +88,34 @@ def calculate_key_metrics(
 
     assert isinstance(live_state, State)
 
-    if not now_:
-        now_ = datetime.datetime.utcnow()
+    source_state = None
+    source = None
 
     # Live history is calculated from the
-    live_history = now_ - live_state.created_at
+    live_history = live_state.portfolio.get_trading_history_duration()
     if live_history >= required_history:
         source_state = live_state
         source = KeyMetricSource.live_trading
     else:
         if backtested_state:
-            source_state = backtested_state
-            source = KeyMetricSource.backtesting
-        else:
-            source_state = None
+            if backtested_state.portfolio.get_trading_history_duration():
+                source_state = backtested_state
+                source = KeyMetricSource.backtesting
 
-    if source_state and source_state.has_trading_history():
+    if source_state:
         # We have one state based on which we can calculate metrics
         first_trade, last_trade = source_state.portfolio.get_first_and_last_executed_trade()
         calculation_window_start_at = first_trade.executed_at
         calculation_window_end_at = last_trade.executed_at
+
+        # Use deposit/redemption flow adjusted equity curve
+        returns = calculate_deposit_adjusted_returns(source_state)
+
+        sharpe = calculate_sharpe(returns, periods=365)
+        yield KeyMetric.create_metric(KeyMetricKind.sharpe, source, sharpe, calculation_window_start_at, calculation_window_end_at)
+
+        sortino = calculate_sortino(returns, periods=365)
+        yield KeyMetric.create_metric(KeyMetricKind.sortino, source, sortino, calculation_window_start_at, calculation_window_end_at)
 
     else:
         reason = "Not enough live trading or backtesting data available"
