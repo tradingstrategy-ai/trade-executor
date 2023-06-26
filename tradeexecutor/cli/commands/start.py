@@ -131,6 +131,7 @@ def start(
 
     # Unsorted options
     state_file: Optional[Path] = shared_options.state_file,
+    backtest_result: Optional[Path] = shared_options.backtest_result,
     cache_path: Optional[Path] = shared_options.cache_path,
     ):
     """Launch Trade Executor instance."""
@@ -273,6 +274,16 @@ def start(
         else:
             vault = None
 
+        if http_enabled:
+            # We need to have the results from the previous backtest run
+            # to be used with the web frontend
+            if asset_management_mode.is_live_trading() and not unit_testing:
+                if not backtest_result:
+                    backtest_result = Path(f"state/{id}-backtest.json")
+
+                assert backtest_result.exists(), f"Previous backtest results are needed to have the live webhook server.\n" \
+                                                 f"The BACKTEST_RESULT file {backtest_result.absolute()} does not exist."
+
         metadata = create_metadata(
             name,
             short_description,
@@ -281,6 +292,7 @@ def start(
             asset_management_mode,
             chain_id=mod.chain_id,
             vault=vault,
+            backtest_result=backtest_result,
         )
 
         # Start the queue that relays info from the web server to the strategy executor
@@ -292,6 +304,7 @@ def start(
 
         # Create our webhook server
         if http_enabled:
+
             server = create_webhook_server(
                 http_host,
                 http_port,
@@ -401,6 +414,7 @@ def start(
         run_state=run_state,
         strategy_cycle_trigger=strategy_cycle_trigger,
         routing_model=routing_model,
+        metadata=metadata,
     )
 
     # Crash gracefully at the start up if our main loop cannot set itself up

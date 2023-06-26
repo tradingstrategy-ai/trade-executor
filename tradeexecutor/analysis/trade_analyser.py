@@ -435,7 +435,7 @@ class TradeAnalysis:
         average_duration_of_losing_trades = datetime.timedelta(0)
         average_duration_of_winning_trades = datetime.timedelta(0)
 
-        strategy_duration = self.portfolio.get_strategy_duration()
+        strategy_duration = self.portfolio.get_trading_history_duration()
 
         won = lost = zero_loss = stop_losses = take_profits = undecided = 0
         open_value: USDollarAmount = 0
