@@ -398,3 +398,4 @@ def test_enzyme_live_trading_reinit(
         assert treasury.last_updated_at
         assert len(treasury.balance_update_refs) == 1
         assert len(reserve_position.balance_updates) == 1
+        
