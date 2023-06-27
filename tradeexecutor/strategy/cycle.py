@@ -104,6 +104,7 @@ class CycleDuration(enum.Enum):
         This metric is used to calculate Sharpe, other metrics.
 
         See :py:func:`tradeexecutor.analysis.advanced_metrics.calculate_advanced_metrics`
+        for more information.
         """
         return pd.Timedelta(days=365.0) / self.to_timedelta()
 
