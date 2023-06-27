@@ -202,8 +202,6 @@ def parse_pair_data(s: str):
         # Split elements and remove leading/trailing whitespaces
         elements = [e.strip() for e in tuple_str.split(',')]
 
-        assert 4 <= len(elements) <= 5, f'Invalid pair data: {s}. Tuple must have 4 or 5 elements. Must be in the format of: (chain_id, exchange_slug, base_token, quote_token, fee), where fee is optional'
-
         # Process elements
         chain_id = getattr(ChainId, elements[0].split('.')[-1])
         exchange_slug = elements[1].strip('"')
