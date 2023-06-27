@@ -20,12 +20,12 @@ def strategy_path():
 
 
 @pytest.fixture(scope="session")
-def unit_test_cache_path():
-    """Where unit tests  cache files.
+def unit_test_cache_path(downloads__="""Where unit tests  cache files.
 
     We have special path for CLI tests to make sure CLI tests
     always do fresh downloads.
-    """
+    """):
+    downloads__
     path = os.path.join(os.path.dirname(__file__), "/tmp/cli_tests")
     os.makedirs(path, exist_ok=True)
     return path

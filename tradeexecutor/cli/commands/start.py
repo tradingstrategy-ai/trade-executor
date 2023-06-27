@@ -186,7 +186,7 @@ def start(
                 state_file = f"state/{id}.json"
             else:
                 # TODO: Avoid legacy unit test issues
-                if os.path.exists("state"):
+                if not unit_testing:
                     state_file = f"state/{id}-backtest.json"
 
         # Avoid polluting user caches during test runs,
