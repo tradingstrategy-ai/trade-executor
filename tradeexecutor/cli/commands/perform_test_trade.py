@@ -187,19 +187,31 @@ def parse_pair_data(s: str):
     :param s:
         String in the format of: [(chain_id, exchange_slug, base_token, quote_token, fee)])], 
         
-        where rate is optional."""
+        where rate is optional.
+
+    :raises ValueError:
+        If the string is not in the correct format.
     
-    # Extract the tuple
-    tuple_str = re.search(r'\((.*?)\)', s)[1]
+    :return:
+        Tuple of (chain_id, exchange_slug, base_token, quote_token, fee)"""
+    
+    try: 
+        # Extract the tuple
+        tuple_str = re.search(r'\((.*?)\)', s)[1]
 
-    # Split elements and remove leading/trailing whitespaces
-    elements = [e.strip() for e in tuple_str.split(',')]
+        # Split elements and remove leading/trailing whitespaces
+        elements = [e.strip() for e in tuple_str.split(',')]
 
-    # Process elements
-    chain_id = getattr(ChainId, elements[0].split('.')[-1])
-    exchange_slug = elements[1].strip('"')
-    base_token = elements[2].strip('"')
-    quote_token = elements[3].strip('"')
-    fee = float(elements[4]) if len(elements) > 4 else None
+        assert 4 <= len(elements) <= 5, f'Invalid pair data: {s}. Tuple must have 4 or 5 elements. Must be in the format of: (chain_id, exchange_slug, base_token, quote_token, fee), where fee is optional'
+
+        # Process elements
+        chain_id = getattr(ChainId, elements[0].split('.')[-1])
+        exchange_slug = elements[1].strip('"')
+        base_token = elements[2].strip('"')
+        quote_token = elements[3].strip('"')
+        fee = float(elements[4]) if len(elements) > 4 else None
+
+    except:
+        raise ValueError(f'Invalid pair data: {s}. Tuple must be in the format of: (chain_id, exchange_slug, base_token, quote_token, fee), where fee is optional')
 
     return (chain_id, exchange_slug, base_token, quote_token, fee)
