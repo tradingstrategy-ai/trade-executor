@@ -40,7 +40,34 @@ from tradeexecutor.strategy.strategy_module import DecideTradesProtocol
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.visual.equity_curve import calculate_equity_curve, calculate_returns
 
+
 logger = logging.getLogger(__name__)
+
+
+def _hide_warnings(func):
+    """Function wrapper to suppress warnings caused by quantstats and numpy functions.
+
+    Otherwise these warnings pollute notebook output.
+    """
+
+    # Hidden warnings include:
+
+    # In perform_grid_search:
+    # /home/.cache/pypoetry/virtualenvs/trade-executor-xSh0vQvh-py3.10/lib/python3.10/site-packages/numpy/lib/function_base.py:2854:
+    # RuntimeWarning: invalid value encountered in divide
+    # c /= stddev[:, None]
+
+    # In perform_grid_search:
+    # /home/alex/.cache/pypoetry/virtualenvs/trade-executor-xSh0vQvh-py3.10/lib/python3.10/site-packages/scipy/stats/_distn_infrastructure.py:2351:
+    # RuntimeWarning: invalid value encountered in multiply
+    # lower_bound = _a * scale + loc
+
+    def wrapper(*args, **kwargs):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            return func(*args, **kwargs)
+
+    return wrapper
 
 
 @dataclass
@@ -480,7 +507,11 @@ def run_grid_search_backtest(
     analysis = build_trade_analysis(state.portfolio)
     equity = calculate_equity_curve(state)
     returns = calculate_returns(equity)
-    metrics = calculate_advanced_metrics(returns, mode=AdvancedMetricsMode.full)
+    metrics = calculate_advanced_metrics(
+        returns,
+        mode=AdvancedMetricsMode.full,
+        periods_per_year=cycle_duration.get_yearly_periods(),
+    )
     summary = analysis.calculate_summary_statistics()
 
     return GridSearchResult(
@@ -610,24 +641,3 @@ def _handle_sigterm(*args):
     sys.exit(1)
 
 
-def _hide_warnings(func):
-    """wrap func to suppress warnings"""
-
-    # Hidden warnings include:
-
-    # In perform_grid_search:
-    # /home/.cache/pypoetry/virtualenvs/trade-executor-xSh0vQvh-py3.10/lib/python3.10/site-packages/numpy/lib/function_base.py:2854:
-    # RuntimeWarning: invalid value encountered in divide
-    # c /= stddev[:, None]
-
-    # In perform_grid_search:
-    # /home/alex/.cache/pypoetry/virtualenvs/trade-executor-xSh0vQvh-py3.10/lib/python3.10/site-packages/scipy/stats/_distn_infrastructure.py:2351:
-    # RuntimeWarning: invalid value encountered in multiply
-    # lower_bound = _a * scale + loc
-
-    def wrapper(*args, **kwargs):
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            return func(*args, **kwargs)
-
-    return wrapper
