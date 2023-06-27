@@ -40,7 +40,9 @@ json_rpc_avalanche = Option(None, envvar="JSON_RPC_AVALANCHE", help="Avalanche C
 json_rpc_arbitrum = Option(None, envvar="JSON_RPC_ARBITRUM", help="Arbitrum C-chain JSON-RPC node URL we connect to")
 json_rpc_anvil = Option(None, envvar="JSON_RPC_ANVIL", help="Anvil JSON-RPC url. Anvil from Foundry is only used in local development and is not a readl blockchain.")
 
-state_file = Option(None, envvar="STATE_FILE", help="JSON file where we serialise the execution state. If not given defaults to state/{executor-id}.json")
+state_file = Option(None, envvar="STATE_FILE", help="JSON file where we serialise the execution state. If not given defaults to state/{executor-id}.json for live trade execution, state/{executor-id}-backtest.json for the backtest results.")
+
+backtest_result = Option(None, envvar="BACKTEST_RESULT", help="JSON file that contains the results of an earlier backtest run. Needed for the web server to display backtest information. If not given defaults to state/{executor-id}-backtest.json is assumed when the webhook server is started.")
 
 trading_strategy_api_key = Option(None, envvar="TRADING_STRATEGY_API_KEY", help="Trading Strategy API key")
 

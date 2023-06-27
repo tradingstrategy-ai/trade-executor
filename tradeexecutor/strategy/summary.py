@@ -1,13 +1,120 @@
 """Strategy status summary."""
 import datetime
+import enum
 from dataclasses import dataclass, field
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, Dict, Any
 
 from dataclasses_json import dataclass_json
 
 from tradeexecutor.state.metadata import OnChainData
 from tradeexecutor.state.types import USDollarAmount
 
+
+
+class KeyMetricKind(enum.Enum):
+    """What key metrics we have available on a strategy summary card.
+
+    All othe metrics will be available as well, but we do not
+    cache them for the quick frontend rendering.
+    """
+
+    #: Sharpe ratio for the execution
+    sharpe = "sharpe"
+
+    #: Sortino ratio for the execution
+    sortino = "sortino"
+
+    #: Negative value 0...-1
+    max_drawdown = "max_drawdown"
+
+    #: UNIX timestamp when the first trade was executd
+    started_at = "started_at"
+
+    #: Annualised profitability
+    profitability = "profitability"
+
+
+class KeyMetricSource(enum.Enum):
+    """Did we calcualte a key metric based on backtesting data or live trading data."""
+    backtesting = "backtesting"
+    live_trading = "live_trading"
+    missing = "missing"
+
+
+@dataclass_json
+@dataclass(slots=True, frozen=True)
+class KeyMetric:
+    """One of available key metrics on the summary card."""
+
+    #: What is this metric
+    kind: KeyMetricKind
+
+    #: Did we calculate this metric based on live trading or backtesting data
+    source: KeyMetricSource
+
+    #: What's the time period for which this metric was calculated.
+    #:
+    #: Different Python value types supported,
+    #: but everything is serialised to JavaScript Number type
+    #: in for JSON.
+    #:
+    #: Set to `None` when unavailable. In this case this should be
+    #: presented as "N/A" in the frontend.
+    #:
+    value: float | datetime.datetime | datetime.timedelta | None
+
+    #: What's the time period for which this metric was calculated
+    calculation_window_start_at: datetime.datetime | None = None
+
+    #: What's the time period for which this metric was calculated
+    calculation_window_end_at: datetime.timedelta | None = None
+
+    #: Unavaiability reason.
+    #:
+    #: Human readable error message why this metric is not available.
+    #: Useful for tooltips.
+    #:
+    unavailability_reason: str | None = None
+
+    #: Help link
+    #:
+    #: Read more link.
+    #:
+    #: Does not need to be part of the state,
+    #: but we make the frontend dev life easy.
+    #:
+    help_link: str | None = None
+
+    @staticmethod
+    def create_na(kind: KeyMetricKind, reason: str) -> "KeyMetric":
+        """Create missing value placeholder."""
+        return KeyMetric(
+            kind,
+            KeyMetricSource.missing,
+            None,
+            unavailability_reason=reason,
+            help_link=_KEY_METRIC_HELP.get(kind),
+        )
+
+    @staticmethod
+    def create_metric(
+            kind: KeyMetricKind,
+            source: KeyMetricSource,
+            value: Any,
+            calculation_window_start_at: datetime.datetime,
+            calculation_window_end_at: datetime.datetime) -> "KeyMetric":
+        """Create a metric value.
+
+        Automatically fill in the help text link from our hardcoded mapping.
+        """
+        return KeyMetric(
+            kind,
+            source,
+            value,
+            calculation_window_start_at=calculation_window_start_at,
+            calculation_window_end_at=calculation_window_end_at,
+            help_link=_KEY_METRIC_HELP.get(kind),
+        )
 
 @dataclass_json
 @dataclass(frozen=True)
@@ -57,6 +164,12 @@ class StrategySummaryStatistics:
     #: Note that we might have 90 or 91 points because date ranges
     #: are inclusive.
     performance_chart_90_days: Optional[List[Tuple[datetime.datetime, float]]] = None
+
+    #: Strategy performance metrics to be displayed on the summary card
+    #:
+    #: We use :py:class:`KeyMetricKind` value as the key.
+    #:
+    key_metrics: Dict[str, KeyMetric] = field(default_factory=dict)
 
 
 @dataclass_json
@@ -110,3 +223,11 @@ class StrategySummary:
     summary_statistics: StrategySummaryStatistics = field(default_factory=StrategySummaryStatistics)
 
 
+
+#: Help links for different metrics
+_KEY_METRIC_HELP = {
+   KeyMetricKind.sharpe: "https://tradingstrategy.ai/glossary/sharpe",
+   KeyMetricKind.sortino: "https://tradingstrategy.ai/glossary/sortino",
+   KeyMetricKind.max_drawdown: "https://tradingstrategy.ai/glossary/maximum-drawdown",
+   KeyMetricKind.profitability: "https://tradingstrategy.ai/glossary/profitability",
+}
