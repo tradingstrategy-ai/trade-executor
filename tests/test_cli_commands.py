@@ -1,9 +1,10 @@
 """Test additional main CLI commands."""
 
 import os
-
+from unittest.mock import patch
 
 import pytest
+from typer.main import get_command
 from typer.testing import CliRunner
 
 from tradeexecutor.cli.main import app
@@ -125,6 +126,36 @@ def test_cli_backtest(
         for line in result.stdout.split('\n'):
             print(line)
         raise AssertionError("runner launch failed")
+
+
+def test_cli_backtest_no_wrap(
+        logger,
+        strategy_path: str,
+        unit_test_cache_path: str,
+    ):
+    """start backtest command works.
+
+    Don't use Typer CLI wrapper, because it prevents using debuggeres.
+    """
+
+    environment = {
+        "TRADING_STRATEGY_API_KEY": os.environ["TRADING_STRATEGY_API_KEY"],
+        "STRATEGY_FILE": strategy_path,
+        "CACHE_PATH": unit_test_cache_path,
+        "BACKTEST_CANDLE_TIME_FRAME_OVERRIDE": "1d",
+        "BACKTEST_STOP_LOSS_TIME_FRAME_OVERRIDE": "1d",
+        "BACKTEST_START": "2021-06-01",
+        "BACKTEST_END": "2022-07-01",
+        "ASSET_MANAGEMENT_MODE": "backtest",
+        "UNIT_TESTING": "true",
+        "LOG_LEVEL": "disabled",
+    }
+
+    cli = get_command(app)
+    with patch.dict(os.environ, environment, clear=True):
+        with pytest.raises(SystemExit) as e:
+            cli.main(args=["start"])
+        assert e.value.code == 0
 
 
 @pytest.mark.skipif(os.environ.get("BNB_CHAIN_JSON_RPC") is None, reason="Set BNB_CHAIN_JSON_RPC environment variable to Binance Smart Chain node to run this test")

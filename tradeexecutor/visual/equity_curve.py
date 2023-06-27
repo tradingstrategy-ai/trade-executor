@@ -91,7 +91,7 @@ def calculate_cumulative_return(returns: pd.Series) -> pd.Series:
     #return np.exp(np.log(1 + returns).cumsum())[-1] - 1
 
 
-def calculate_aggregate_returns(equity_curve: pd.Series, freq: str = "BM") -> pd.Series:
+def calculate_aggregate_returns(equity_curve: pd.Series, freq: str | pd.DateOffset = "BM") -> pd.Series:
     """Calculate strategy aggregatd results over different timespans.
 
     Good to calculate
@@ -139,14 +139,25 @@ def calculate_aggregate_returns(equity_curve: pd.Series, freq: str = "BM") -> pd
     return sampled.pct_change()
 
 
-def get_daily_returns(state: State) -> (pd.Series | None):
-    """Used for advanced statistics
+def calculate_daily_returns(state: State, freq: pd.DateOffset | str= "D") -> (pd.Series | None):
+    """Calculate daily returns of a backtested results.
+
+    Used for advanced statistics.
+
+    .. warning::
+
+        Uses equity curve to calculate profits. This does not correctly
+        handle deposit/redemptions. Use in backtesting only.
+
+    :param freq:
+        Frequency of the binned data.
 
     :returns:
         If valid state provided, returns are returned as calendar day (D) frequency, else None"""
     
     equity_curve = calculate_equity_curve(state)
-    return calculate_aggregate_returns(equity_curve, freq="D")
+    returns = calculate_aggregate_returns(equity_curve, freq=freq)
+    return returns
 
 
 def visualise_equity_curve(

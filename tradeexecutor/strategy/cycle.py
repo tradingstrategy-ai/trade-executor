@@ -6,6 +6,7 @@ import datetime
 import enum
 from typing import Optional
 
+import pandas as pd
 from tradingstrategy.timebucket import TimeBucket
 
 
@@ -96,6 +97,16 @@ class CycleDuration(enum.Enum):
         Unlike TimeBucket, CycleDuration may have "unknown" value that is presented by None
         """
         return TimeBucket(self.value) if self  != CycleDuration.cycle_unknown else None
+
+    def get_yearly_periods(self) -> float:
+        """How many decision cycle periods a year has.
+
+        This metric is used to calculate Sharpe, other metrics.
+
+        See :py:func:`tradeexecutor.analysis.advanced_metrics.calculate_advanced_metrics`
+        for more information.
+        """
+        return pd.Timedelta(days=365.0) / self.to_timedelta()
 
     @staticmethod
     def from_timebucket(bucket: TimeBucket) -> Optional["CycleDuration"]:

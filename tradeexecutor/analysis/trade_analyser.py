@@ -323,21 +323,24 @@ class TradeSummary:
 class TradeAnalysis:
     """Analysis of trades in a portfolio."""
 
+    #: The portfolio we analysed
     portfolio: Portfolio
 
+    #: All taken positions sorted by the position id, or when they were opened
     filtered_sorted_positions: list[TradingPosition] = field(init=False)
 
+    #: Decision cycle frequency is needed to calculate some performance metrics like sharpe, etc.
+    #:
+    #: If not given assume daily for the legacy compatibilty
+    decision_cycle_frequency: pd.DateOffset = field(default_factory=pd.offsets.Day)
+
     def __post_init__(self):
-        
         _filtered_positions = self.portfolio.get_all_positions_filtered()
-        
         self.filtered_sorted_positions = sorted(_filtered_positions, key=lambda x: x.position_id)
-        
         #assert self.filtered_sorted_positions, "No positions found"
     
     def get_first_opened_at(self) -> Optional[pd.Timestamp]:
         """Get the opened_at timestamp of the first position in the portfolio."""
-        
         return min(
             position.opened_at for position in self.filtered_sorted_positions
         )
@@ -391,11 +394,10 @@ class TradeAnalysis:
         # for advanced statistics
         # import here to avoid circular import error
         if state is not None and HAS_QUANTSTATS:
-            from tradeexecutor.visual.equity_curve import get_daily_returns
-            daily_returns = get_daily_returns(state)
+            from tradeexecutor.visual.equity_curve import calculate_daily_returns
+            daily_returns = calculate_daily_returns(state, freq="D")
         else:
             daily_returns = None
-
 
         def get_avg_profit_pct_check(trades: List | None):
             return float(np.mean(trades)) if trades else None
@@ -517,8 +519,7 @@ class TradeAnalysis:
                 zero_loss += 1
 
             profit += realised_profit_usd
-            
-            
+
             # for getting max consecutive wins/losses and max pullback
             # don't do anything if profit = $0
             
