@@ -22,15 +22,12 @@ def test_parse_data_raises_value_error():
     with pytest.raises(ValueError):
         s = '(ChainId.ethereum, "uniswap-v2", "WETH", "USDC", 0.003'
         data = parse_pair_data(s)
-    
 
-def test_parse_data_raises_assertion_error():
-    """Test that the pair data with a bad format is parsed correctly from string to tuple."""
-    
-    with pytest.raises(AssertionError):
+    with pytest.raises(ValueError):
         s = '(ChainId.ethereum, "uniswap-v2", "WETH")'
         data = parse_pair_data(s)
     
-    with pytest.raises(AssertionError):
+    with pytest.raises(ValueError):
         s = '(ChainId.ethereum, "uniswap-v2", "WETH", "USDC", 0.003, 0.004)'
         data = parse_pair_data(s)
+    

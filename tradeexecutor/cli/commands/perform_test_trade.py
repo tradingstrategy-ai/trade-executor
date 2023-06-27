@@ -202,6 +202,9 @@ def parse_pair_data(s: str):
         # Split elements and remove leading/trailing whitespaces
         elements = [e.strip() for e in tuple_str.split(',')]
 
+        if len(elements) not in {4, 5}:
+            raise ValueError()
+
         # Process elements
         chain_id = getattr(ChainId, elements[0].split('.')[-1])
         exchange_slug = elements[1].strip('"')
