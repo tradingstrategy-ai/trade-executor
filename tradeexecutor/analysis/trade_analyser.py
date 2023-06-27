@@ -394,8 +394,8 @@ class TradeAnalysis:
         # for advanced statistics
         # import here to avoid circular import error
         if state is not None and HAS_QUANTSTATS:
-            from tradeexecutor.visual.equity_curve import get_daily_returns
-            daily_returns = get_daily_returns(state, freq="D")
+            from tradeexecutor.visual.equity_curve import calculate_daily_returns
+            daily_returns = calculate_daily_returns(state, freq="D")
         else:
             daily_returns = None
 

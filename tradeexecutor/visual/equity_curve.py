@@ -139,10 +139,15 @@ def calculate_aggregate_returns(equity_curve: pd.Series, freq: str | pd.DateOffs
     return sampled.pct_change()
 
 
-def get_daily_returns(state: State, freq: pd.DateOffset | str="D") -> (pd.Series | None):
-    """Bin returns by a tiemframe.
+def calculate_daily_returns(state: State, freq: pd.DateOffset | str= "D") -> (pd.Series | None):
+    """Calculate daily returns of a backtested results.
 
     Used for advanced statistics.
+
+    .. warning::
+
+        Uses equity curve to calculate profits. This does not correctly
+        handle deposit/redemptions. Use in backtesting only.
 
     :param freq:
         Frequency of the binned data.
