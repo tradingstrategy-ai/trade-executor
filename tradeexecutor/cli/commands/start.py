@@ -161,13 +161,15 @@ def start(
     # log_level is "disabled"
     logger = setup_logging(log_level, in_memory_buffer=True)
 
-    if discord_webhook_url:
+    if discord_webhook_url and asset_management_mode.is_live_trading():
+        # TODO: Move backtesting to its own console command
         setup_discord_logging(
             name,
             webhook_url=discord_webhook_url,
             avatar_url=icon_url)
 
-    if logstash_server:
+    if logstash_server and asset_management_mode.is_live_trading():
+        # TODO: Move backtesting to its own console command
         setup_logstash_logging(
             logstash_server,
             f"executor-{id}",  # Always prefix logged with executor id
@@ -185,9 +187,12 @@ def start(
             if asset_management_mode != AssetManagementMode.backtest:
                 state_file = f"state/{id}.json"
             else:
+                # Backtest generates a state file for the web frontend
                 # TODO: Avoid legacy unit test issues
                 if not unit_testing:
-                    state_file = f"state/{id}-backtest.json"
+                    state_file = Path(f"state/{id}-backtest.json")
+                    if state_file.exists():
+                        os.remove(state_file)
 
         # Avoid polluting user caches during test runs,
         # so we use different default
