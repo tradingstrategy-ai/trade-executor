@@ -173,6 +173,17 @@ def calculate_key_metrics(
         profitability = calculate_profitability(returns)
         yield KeyMetric.create_metric(KeyMetricKind.profitability, source, profitability, calculation_window_start_at, calculation_window_end_at)
 
+        total_equity = source_state.portfolio.get_total_equity()
+
+        # The total equity is made available always
+        yield KeyMetric(
+            KeyMetricKind.total_equity,
+            KeyMetricSource.live_trading,
+            total_equity,
+            calculation_window_start_at=calculation_window_start_at,
+            calculation_window_end_at=calculation_window_end_at,
+        )
+
     else:
         # No live or backtesting data available,
         # mark all metrics N/A
@@ -184,6 +195,7 @@ def calculate_key_metrics(
         yield KeyMetric.create_na(KeyMetricKind.sortino, reason)
         yield KeyMetric.create_na(KeyMetricKind.max_drawdown, reason)
         yield KeyMetric.create_na(KeyMetricKind.profitability, reason)
+        yield KeyMetric.create_na(KeyMetricKind.total_equity, reason)
 
     # The age of the trading history is made available always
     yield KeyMetric(
@@ -193,3 +205,4 @@ def calculate_key_metrics(
         calculation_window_start_at=calculation_window_start_at,
         calculation_window_end_at=calculation_window_end_at,
     )
+
