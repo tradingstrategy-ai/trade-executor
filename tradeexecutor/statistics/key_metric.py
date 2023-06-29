@@ -173,16 +173,17 @@ def calculate_key_metrics(
         profitability = calculate_profitability(returns)
         yield KeyMetric.create_metric(KeyMetricKind.profitability, source, profitability, calculation_window_start_at, calculation_window_end_at)
 
-        total_equity = source_state.portfolio.get_total_equity()
+        if live_state:
+            total_equity = live_state.portfolio.get_total_equity()
 
-        # The total equity is made available always
-        yield KeyMetric(
-            KeyMetricKind.total_equity,
-            KeyMetricSource.live_trading,
-            total_equity,
-            calculation_window_start_at=calculation_window_start_at,
-            calculation_window_end_at=calculation_window_end_at,
-        )
+            # The total equity is made available always
+            yield KeyMetric(
+                KeyMetricKind.total_equity,
+                KeyMetricSource.live_trading,
+                total_equity,
+                calculation_window_start_at=calculation_window_start_at,
+                calculation_window_end_at=calculation_window_end_at,
+            )
 
     else:
         # No live or backtesting data available,
