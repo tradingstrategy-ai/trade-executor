@@ -694,9 +694,10 @@ class Portfolio:
         first, last = self.get_first_and_last_executed_trade()
         
         if first and last:
-            return last.executed_at - first.executed_at
-        else:
-            return None
+            if first.executed_at and last.executed_at:
+                return last.executed_at - first.executed_at
+
+        return None
 
     def get_initial_deposit(self) -> Optional[USDollarAmount]:
         """How much we invested at the beginning of a backtest.
