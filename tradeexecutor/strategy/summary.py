@@ -33,6 +33,9 @@ class KeyMetricKind(enum.Enum):
     #: Annualised profitability
     profitability = "profitability"
 
+    #: Total equity
+    total_equity = "total_equity"
+
 
 class KeyMetricSource(enum.Enum):
     """Did we calcualte a key metric based on backtesting data or live trading data."""
@@ -230,4 +233,5 @@ _KEY_METRIC_HELP = {
    KeyMetricKind.sortino: "https://tradingstrategy.ai/glossary/sortino",
    KeyMetricKind.max_drawdown: "https://tradingstrategy.ai/glossary/maximum-drawdown",
    KeyMetricKind.profitability: "https://tradingstrategy.ai/glossary/profitability",
+   KeyMetricKind.total_equity: "https://tradingstrategy.ai/glossary/total-equity",
 }
