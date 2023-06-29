@@ -219,6 +219,11 @@ class TradeExecution:
     failed_at: Optional[datetime.datetime] = None
 
     #: What was the actual price we received
+    #:
+    #: This may be `None` for even if :py:attr:`closed_at` is set.
+    #: This is because invalid trades (execution failed) may be marked
+    #: close.
+    #:
     executed_price: Optional[USDollarPrice] = None
 
     #: How much underlying token we traded, the actual realised amount.
