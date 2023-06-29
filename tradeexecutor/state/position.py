@@ -844,6 +844,11 @@ class TradingPosition:
         assert not self.is_open()
         buy_value = self.get_buy_value()
         sell_value = self.get_sell_value()
+
+        if buy_value == 0:
+            # Repaired trade
+            return 0
+
         return sell_value / buy_value - 1
 
     def get_size_relative_realised_profit_percent(self) -> Percent:

@@ -15,7 +15,7 @@ from tradeexecutor.visual.equity_curve import calculate_compounding_realised_tra
 
 def calculate_summary_statistics(
         state: State,
-        execution_mode: ExecutionMode,
+        execution_mode: ExecutionMode = ExecutionMode.one_off,
         time_window = pd.Timedelta(days=90),
         now_: Optional[pd.Timestamp | datetime.datetime] = None,
         legacy_workarounds=False,
@@ -36,7 +36,7 @@ def calculate_summary_statistics(
         Strategy state from which we calculate the summary
 
     :param execution_mode:
-        If we need to skip calculations during backtesting
+        If we need to skip calculations during backtesting.
 
     :param time_window:
         How long we look back for the summary statistics
@@ -94,7 +94,7 @@ def calculate_summary_statistics(
             # We do not generate entry for dates without trades so forward fill from the previous day
             profitability_daily = profitability_daily.ffill()
             profitability_90_days = profitability_daily[-1]
-            performance_chart_90_days = [(index.to_pydatetime(), value) for index, value in profitability_daily.iteritems()]
+            performance_chart_90_days = [(index.to_pydatetime(), value) for index, value in profitability_daily.items()]
         else:
             profitability_90_days = None
             performance_chart_90_days = None
