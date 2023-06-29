@@ -557,6 +557,8 @@ class TradeExecution:
 
         - USD exchange rate known at the time of the execution
         """
+        # self.executed_price can be zero for frozen positions,
+        # but the position may still be closed (self.closed_at set)
         return abs(float(self.executed_quantity) * self.executed_price or 0)
 
     def get_planned_value(self) -> USDollarAmount:
