@@ -220,6 +220,9 @@ class StrategySummary:
     #: queries faster. See also :py:class:`tradeexecutor.state.executor_state.ExecutorState`.
     executor_running: bool
 
+    #: Number of frozen positions this strategy has and need to manual intervention
+    frozen_positions: int
+
     #: Strategy statistics for summary tiles
     #:
     #: Helps rendering the web tiles.
