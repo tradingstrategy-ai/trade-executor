@@ -240,4 +240,5 @@ _KEY_METRIC_HELP = {
    KeyMetricKind.max_drawdown: "https://tradingstrategy.ai/glossary/maximum-drawdown",
    KeyMetricKind.profitability: "https://tradingstrategy.ai/glossary/profitability",
    KeyMetricKind.total_equity: "https://tradingstrategy.ai/glossary/total-equity",
+   KeyMetricKind.started_at: "https://tradingstrategy.ai/glossary/strategy-age",
 }
