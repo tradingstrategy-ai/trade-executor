@@ -42,6 +42,10 @@ class LatestStateVisualisation:
     #: Dark theme version
     large_image_dark: Optional[bytes] = None
 
+    def __repr__(self) -> str:
+        """Don't dump binary"""
+        return f"<LatestStateVisualisation at {self.last_refreshed_at}>"
+
     def update_image_data(self,
                           small_image,
                           large_image,

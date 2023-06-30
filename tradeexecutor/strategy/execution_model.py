@@ -148,8 +148,6 @@ class AssetManagementMode(enum.Enum):
     What kind of trade instruction execution model the strategy does.
 
     Give options for command line parameters and such.
-
-    TODO: Clean up unused options.
     """
 
     #: Does not make any trades, just captures and logs them
@@ -168,3 +166,10 @@ class AssetManagementMode(enum.Enum):
     #: - Does not connect to any network or blockchain
     #:
     backtest = "backtest"
+
+    def is_live_trading(self) -> bool:
+        """Is this a live trading setup.
+
+        Are we executing against a blockchain (including test chains).
+        """
+        return self in (AssetManagementMode.hot_wallet, AssetManagementMode.enzyme,)

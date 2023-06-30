@@ -4,7 +4,7 @@ import datetime
 import logging
 from pathlib import Path
 from typing import Optional
-
+import re
 import typer
 
 from .app import app
@@ -23,6 +23,7 @@ from ...strategy.trading_strategy_universe import TradingStrategyUniverseModel
 from ...strategy.universe_model import UniverseOptions
 from ...utils.timer import timed_task
 from tradeexecutor.cli.commands import shared_options
+from tradingstrategy.chain import ChainId
 
 
 @app.command()
@@ -57,6 +58,9 @@ def perform_test_trade(
     test_evm_uniswap_v2_router: Optional[str] = shared_options.test_evm_uniswap_v2_router,
     test_evm_uniswap_v2_factory: Optional[str] = shared_options.test_evm_uniswap_v2_factory,
     test_evm_uniswap_v2_init_code_hash: Optional[str] = shared_options.test_evm_uniswap_v2_init_code_hash,
+
+    # for multipair strategies
+    pair: Optional[str] = shared_options.pair,
 ):
     """Perform a small test swap.
 
@@ -65,6 +69,9 @@ def perform_test_trade(
 
     The trade will be recorded on the state as a position.
     """
+
+    if pair:
+        pair = parse_pair_data(pair)
 
     id = prepare_executor_id(id, strategy_file)
 
@@ -165,9 +172,47 @@ def perform_test_trade(
         universe,
         runner.routing_model,
         routing_state,
+        pair=pair,
     )
 
     # Store the test trade data in the strategy history
     store.sync(state)
 
     logger.info("All ok")
+
+
+def parse_pair_data(s: str):
+    """Extract pair data from string.
+    
+    :param s:
+        String in the format of: [(chain_id, exchange_slug, base_token, quote_token, fee)])], 
+        
+        where rate is optional.
+
+    :raises ValueError:
+        If the string is not in the correct format.
+    
+    :return:
+        Tuple of (chain_id, exchange_slug, base_token, quote_token, fee)"""
+    
+    try: 
+        # Extract the tuple
+        tuple_str = re.search(r'\((.*?)\)', s)[1]
+
+        # Split elements and remove leading/trailing whitespaces
+        elements = [e.strip() for e in tuple_str.split(',')]
+
+        if len(elements) not in {4, 5}:
+            raise ValueError()
+
+        # Process elements
+        chain_id = getattr(ChainId, elements[0].split('.')[-1])
+        exchange_slug = elements[1].strip('"')
+        base_token = elements[2].strip('"')
+        quote_token = elements[3].strip('"')
+        fee = float(elements[4]) if len(elements) > 4 else None
+
+    except:
+        raise ValueError(f'Invalid pair data: {s}. Tuple must be in the format of: (chain_id, exchange_slug, base_token, quote_token, fee), where fee is optional')
+
+    return (chain_id, exchange_slug, base_token, quote_token, fee)

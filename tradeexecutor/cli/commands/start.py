@@ -1,4 +1,7 @@
-"""start command"""
+"""start command
+
+TODO: Restructure and move backtesting related functionality to a separate command
+"""
 
 import datetime
 import logging
@@ -26,10 +29,11 @@ from ..log import setup_logging, setup_discord_logging, setup_logstash_logging, 
 from ..loop import ExecutionLoop
 from ..result import display_backtesting_results
 from ..version_info import VersionInfo
+from ..watchdog import stop_watchdog
 from ...ethereum.enzyme.vault import EnzymeVaultSyncModel
 from ...ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2SimpleRoutingModel
 from ...state.state import State
-from ...state.store import NoneStore
+from ...state.store import NoneStore, JSONFileStore
 from ...strategy.approval import ApprovalType
 from ...strategy.bootstrap import import_strategy_file
 from ...strategy.cycle import CycleDuration
@@ -127,6 +131,7 @@ def start(
 
     # Unsorted options
     state_file: Optional[Path] = shared_options.state_file,
+    backtest_result: Optional[Path] = shared_options.backtest_result,
     cache_path: Optional[Path] = shared_options.cache_path,
     ):
     """Launch Trade Executor instance."""
@@ -156,13 +161,15 @@ def start(
     # log_level is "disabled"
     logger = setup_logging(log_level, in_memory_buffer=True)
 
-    if discord_webhook_url:
+    if discord_webhook_url and asset_management_mode.is_live_trading():
+        # TODO: Move backtesting to its own console command
         setup_discord_logging(
             name,
             webhook_url=discord_webhook_url,
             avatar_url=icon_url)
 
-    if logstash_server:
+    if logstash_server and asset_management_mode.is_live_trading():
+        # TODO: Move backtesting to its own console command
         setup_logstash_logging(
             logstash_server,
             f"executor-{id}",  # Always prefix logged with executor id
@@ -179,6 +186,13 @@ def start(
         if not state_file:
             if asset_management_mode != AssetManagementMode.backtest:
                 state_file = f"state/{id}.json"
+            else:
+                # Backtest generates a state file for the web frontend
+                # TODO: Avoid legacy unit test issues
+                if not unit_testing:
+                    state_file = Path(f"state/{id}-backtest.json")
+                    if state_file.exists():
+                        os.remove(state_file)
 
         # Avoid polluting user caches during test runs,
         # so we use different default
@@ -269,6 +283,16 @@ def start(
         else:
             vault = None
 
+        if http_enabled:
+            # We need to have the results from the previous backtest run
+            # to be used with the web frontend
+            if asset_management_mode.is_live_trading() and not unit_testing:
+                if not backtest_result:
+                    backtest_result = Path(f"state/{id}-backtest.json")
+
+                assert backtest_result.exists(), f"Previous backtest results are needed to have the live webhook server.\n" \
+                                                 f"The BACKTEST_RESULT file {backtest_result.absolute()} does not exist."
+
         metadata = create_metadata(
             name,
             short_description,
@@ -277,6 +301,7 @@ def start(
             asset_management_mode,
             chain_id=mod.chain_id,
             vault=vault,
+            backtest_result=backtest_result,
         )
 
         # Start the queue that relays info from the web server to the strategy executor
@@ -288,6 +313,7 @@ def start(
 
         # Create our webhook server
         if http_enabled:
+
             server = create_webhook_server(
                 http_host,
                 http_port,
@@ -335,7 +361,7 @@ def start(
         logger.info("Loading strategy file %s", strategy_file)
         strategy_factory = import_strategy_file(strategy_file)
 
-        logger.trade("%s: trade execution starting", name)
+        logger.trade("%s (%s): trade execution starting", name, id)
 
         if backtest_start:
 
@@ -360,6 +386,7 @@ def start(
                     mode=ExecutionMode.real_trading,
                     timed_task_context_manager=timed_task,
                 )
+
     except Exception as e:
         # Logging is set up is in this point, so we can log this exception that
         # caused the start up to fail
@@ -367,59 +394,93 @@ def start(
         logger.exception(e)
         raise
 
+    loop = ExecutionLoop(
+        name=name,
+        command_queue=command_queue,
+        execution_model=execution_model,
+        execution_context=execution_context,
+        sync_model=sync_model,
+        approval_model=approval_model,
+        pricing_model_factory=pricing_model_factory,
+        valuation_model_factory=valuation_model_factory,
+        store=store,
+        client=client,
+        strategy_factory=strategy_factory,
+        reset=reset_state,
+        max_cycles=max_cycles,
+        debug_dump_file=debug_dump_file,
+        backtest_start=backtest_start,
+        backtest_end=backtest_end,
+        backtest_stop_loss_time_frame_override=backtest_stop_loss_time_frame_override,
+        backtest_candle_time_frame_override=backtest_candle_time_frame_override,
+        stop_loss_check_frequency=stop_loss_check_frequency,
+        cycle_duration=cycle_duration,
+        tick_offset=tick_offset,
+        max_data_delay=max_data_delay,
+        trade_immediately=trade_immediately,
+        stats_refresh_frequency=stats_refresh_frequency,
+        position_trigger_check_frequency=position_trigger_check_frequency,
+        run_state=run_state,
+        strategy_cycle_trigger=strategy_cycle_trigger,
+        routing_model=routing_model,
+        metadata=metadata,
+    )
+
+    # Crash gracefully at the start up if our main loop cannot set itself up
     try:
-        loop = ExecutionLoop(
-            name=name,
-            command_queue=command_queue,
-            execution_model=execution_model,
-            execution_context=execution_context,
-            sync_model=sync_model,
-            approval_model=approval_model,
-            pricing_model_factory=pricing_model_factory,
-            valuation_model_factory=valuation_model_factory,
-            store=store,
-            client=client,
-            strategy_factory=strategy_factory,
-            reset=reset_state,
-            max_cycles=max_cycles,
-            debug_dump_file=debug_dump_file,
-            backtest_start=backtest_start,
-            backtest_end=backtest_end,
-            backtest_stop_loss_time_frame_override=backtest_stop_loss_time_frame_override,
-            backtest_candle_time_frame_override=backtest_candle_time_frame_override,
-            stop_loss_check_frequency=stop_loss_check_frequency,
-            cycle_duration=cycle_duration,
-            tick_offset=tick_offset,
-            max_data_delay=max_data_delay,
-            trade_immediately=trade_immediately,
-            stats_refresh_frequency=stats_refresh_frequency,
-            position_trigger_check_frequency=position_trigger_check_frequency,
-            run_state=run_state,
-            strategy_cycle_trigger=strategy_cycle_trigger,
-            routing_model=routing_model,
-        )
-        loop.run()
+        state = loop.setup()
+    except Exception as e:
+        logger.error("trade-executor crashed on initialisation: %s", e)
+        raise e
+
+    try:
+        loop.run_with_state(state)
 
         # Display summary stats for terminal backtest runs
-        if asset_management_mode == AssetManagementMode.backtest and isinstance(store, NoneStore):
-            display_backtesting_results(store.state)
+        if backtest_start:
+            # TODO: Hack. Refactor Backtest to its own command / class,
+            # Confusion how state should be passed from the execution loop to here
+            if hasattr(store, "state"):
+                display_backtesting_results(store.state)
+            else:
+                state = store.load()
+                display_backtesting_results(state)
+
+            if isinstance(store, JSONFileStore):
+                logger.info("Wrote backtest result to %s", store.path.absolute())
 
     except KeyboardInterrupt as e:
-        # CTRL+C shutdown
-        logger.trade("Trade Executor %s shut down by CTRL+C requested: %s", name, e)
-    except Exception as e:
 
-        logger.error("trade-executor execution loop crashed")
+        # CTRL+C shutdown or watch dog crash
+        # Watchdog detected a process has hung: Watched worker live_cycle did not report back in time. Threshold seconds 4500.0, but it has been 4503.594225645065 seconds. Shutting down.
+        logger.error("trade-executor %s killed by watchdog or CTRL+C requested: %s. Shutting down.", id, e)
+        logger.error("If you are running manually press CTRL+C again to quit")
 
         # Unwind the traceback and notify the webserver about the failure
         run_state.set_fail()
+
+        logger.exception(e)
+
+        stop_watchdog()
+
+        # Spend the rest of the time idling
+        time.sleep(3600*24*365)
+
+    except Exception as e:
+
+        logger.error("trade-executor %s execution loop crashed", id)
+
+        # Unwind the traceback and notify the webserver about the failure
+        run_state.set_fail()
+
+        stop_watchdog()
+
+        logger.exception(e)
 
         # Debug exceptions in production
         if port_mortem_debugging:
             import ipdb
             ipdb.post_mortem()
-
-        logger.exception(e)
 
         running_time = datetime.datetime.utcnow() - started_at
 
@@ -429,7 +490,7 @@ def start(
             logger.error("Raising the error and crashing away, running time was %s", running_time)
             raise
         else:
-            # Execution is dea  d.
+            # Execution is dead.
             # Sleep forever, let the webhook still serve the requests.
             logger.error("Main loop terminated. Entering to the web server wait mode.")
             time.sleep(3600*24*365)

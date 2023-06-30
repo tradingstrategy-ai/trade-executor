@@ -8,6 +8,7 @@ import json
 from dataclasses import dataclass, field
 import datetime
 from decimal import Decimal
+from pathlib import Path
 from typing import List, Callable, Tuple, Set, Optional
 
 import pandas as pd
@@ -439,7 +440,7 @@ class State:
         # TODO: Avoid circular imports, refactor modules
         from tradeexecutor.state.validator import validate_nested_state_dict
 
-        # Make timedelta handling
+        # Fix timedelta handling
         from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
 
         patch_dataclasses_json()
@@ -452,4 +453,16 @@ class State:
         txt = json.dumps(data, cls=_ExtendedEncoder)
         return txt
 
+    @staticmethod
+    def read_json_file(path: Path) -> "State":
+        """Read state from the JSO file."""
 
+        assert isinstance(path, Path)
+
+        # Run in any monkey-patches we need for JSON decoding
+        from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
+
+        patch_dataclasses_json()
+
+        with open(path, "rt") as inp:
+            return State.from_json(inp.read())

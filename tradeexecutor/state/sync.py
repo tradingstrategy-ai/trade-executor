@@ -14,6 +14,7 @@ from typing import Optional, List, Iterable, Dict
 
 from dataclasses_json import dataclass_json
 
+from tradeexecutor.state.types import USDollarAmount
 from tradingstrategy.chain import ChainId
 
 from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdateCause, BalanceUpdatePositionType
@@ -64,21 +65,54 @@ class Deployment:
     #: Enzyme vault name - same as vault toke name
     vault_token_symbol: Optional[str] = None
 
+    #: When the initialisation was complete
+    #:
+    initialised_at: Optional[datetime.datetime] = None
+
 
 @dataclass_json
 @dataclass
 class BalanceEventRef:
-    """Register the balance event in the treasury model."""
+    """Register the balance event in the treasury model.
 
+    Balance updates can happen for
+
+    - Treasury
+
+    - Open trading positions
+
+    We maintain a list of balance update references across all positions using :py:class:`BalanceEventRef`.
+    This allows us quickly to calculate net inflow/outflow.
+    """
+
+    #: Balance event id we are referring to
     balance_event_id: int
 
-    updated_at: datetime.datetime
+    #: When this update was made.
+    #:
+    #: Strategy cycle timestamp when the deposit/redemption was included
+    #: in the strategy treasury.
+    #:
+    #: It might be outside the cycle frequency if treasuries were processed
+    #: in a cron job outside the cycle for slow moving strategies.
+    #:
+    strategy_cycle_included_at: datetime.datetime
 
+    #: Cause of the event
     cause: BalanceUpdateCause
 
+    #: Reserve currency or underlying position
     position_type: BalanceUpdatePositionType
 
+    #: Which trading positions were affected
     position_id: Optional[int]
+
+    #: How much this deposit/redemption was worth
+    #:
+    #: Used for deposit/redemption inflow/outflow calculation.
+    #: This is the asset value from our internal price keeping at the time of the event.
+    #:
+    usd_value: Optional[USDollarAmount]
 
 
 @dataclass_json

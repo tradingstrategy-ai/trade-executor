@@ -1,38 +1,23 @@
-"""init command.
-
-Quick local dev example:
-
-.. code-block:: shell
-
-    # Set up JSON_RPC_POLYGON
-    source env/local-test.env
-
-    # Set up hto wallet private key
-    export PRIVATE_KEY=...
-
-    poetry run trade-executor init \
-        --id=vault-init-test \
-        --vault-address=0x6E321256BE0ABd2726A234E8dBFc4d3caf255AE0
-
+"""Reinitialise a strategy state.
 
 """
-
+import os
+import shutil
 from pathlib import Path
 from typing import Optional
-
-from typer import Option
 
 from eth_defi.hotwallet import HotWallet
 
 from .app import app
 from ..bootstrap import prepare_executor_id, create_web3_config, create_sync_model, create_state_store
 from ..log import setup_logging
+from ...ethereum.enzyme.vault import EnzymeVaultSyncModel
 from ...strategy.execution_model import AssetManagementMode
 from . import shared_options
 
 
 @app.command()
-def init(
+def reinit(
     id: str = shared_options.id,
     name: str = shared_options.name,
 
@@ -53,12 +38,13 @@ def init(
     json_rpc_anvil: Optional[str] = shared_options.json_rpc_anvil,
 
 ):
-    """Initialise a strategy.
+    """Reinitialise a strategy state.
 
-    A strategy initialisation will create its state file.
-    It will also connect to a blockchain and check the vault smart contract is ready.
+    Deletes all the state history of a state and starts tracking the strategy again.
 
-    Vault deployment is still handled separate.
+    This command will fix any accounting divergences between a vault and a strategy state.
+    The strategy must not have any open positions to be reinitialised, because those open
+    positions cannot carry over with the current event based tracking logic.
     """
 
     global logger
@@ -117,19 +103,40 @@ def init(
     if not state_file:
         state_file = f"state/{id}.json"
 
-    store = create_state_store(Path(state_file))
-    assert store.is_pristine(), f"State file already exists: {state_file}"
+    state_file = Path(state_file)
+    store = create_state_store(state_file)
+    assert not store.is_pristine(), f"State does not exists yet: {state_file}"
+
+    # Make a backup
+    # https://stackoverflow.com/a/47528275/315168
+    backup_file = None
+    for i in range(1, 20):  # Try 20 different iterateive backup filenames
+        backup_file = state_file.with_suffix(f".reinit-backup-{i}.json")
+        if os.path.exists(backup_file):
+            continue
+
+        state_file.rename(backup_file)
+        break
+
+    else:
+        raise RuntimeError(f"Could not create backup {backup_file}")
+
+    logger.info("Old state backed up as %s", backup_file)
 
     state = store.create(name)
 
-    logger.info("Syncing initial strategy chain state.")
-    logger.info("For Enzyme vaults this may take a long time as the sync will go through all the blocks in the chain.")
-    logger.info("To speed up process use --vault_deployment_block_number hint as a command line argument.")
+    logger.info("Syncing initial strategy chain state: %s", name)
     logger.info(f"Vault deployment block number hint is {start_block or 0:,}.")
-    sync_model.sync_initial(state, start_block=start_block)
 
+    assert isinstance(sync_model, EnzymeVaultSyncModel), f"reinit currently only supports EnzymeVaultSyncModel, got {sync_model}"
+
+    # Perform reconstruction of state
+    sync_model.sync_reinit(state, start_block=start_block)
     store.sync(state)
-
     web3config.close()
+
+    reserve_position = state.portfolio.get_default_reserve_position()
+    logger.info("Reserve balance is %s", reserve_position)
+    assert reserve_position.quantity > 0, f"Reinitialisation did not see any deposits in vault: {sync_model.vault}, reserve position is {reserve_position}"
 
     logger.info("All done: State deployment info is %s", state.sync.deployment)

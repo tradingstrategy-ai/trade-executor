@@ -1,6 +1,8 @@
 """enzyme-asset-list CLi command."""
 
 import json
+import os.path
+from pathlib import Path
 from typing import Optional
 
 from typer import Option
@@ -28,7 +30,7 @@ def enzyme_deploy_vault(
     json_rpc_arbitrum: Optional[str] = shared_options.json_rpc_arbitrum,
     json_rpc_anvil: Optional[str] = shared_options.json_rpc_anvil,
     private_key: str = shared_options.private_key,
-    vault_record_file: Optional[str] = Option(..., envvar="VAULT_RECORD_FILE", help="Store vault and comptroller addresses in this JSON file. It's important to write down all contract addresses."),
+    vault_record_file: Optional[Path] = Option(..., envvar="VAULT_RECORD_FILE", help="Store vault and comptroller addresses in this JSON file. It's important to write down all contract addresses."),
     fund_name: Optional[str] = Option(..., envvar="FUND_NAME", help="On-chain name for the fund shares"),
     fund_symbol: Optional[str] = Option(..., envvar="FUND_SYMBOL", help="On-chain token symbol for the fund shares"),
     comptroller_lib: Optional[str] = Option(None, envvar="COMPTROLLER_LIB", help="Enzyme's ComptrollerLib address for custom deployments"),
@@ -93,6 +95,8 @@ def enzyme_deploy_vault(
     logger.info("  Integration manager deployed at %s", enzyme_deployment.contracts.integration_manager.address)
     logger.info("  %s is %s", denomination_token.symbol, denomination_token.address)
 
+    block_number = web3.eth.block_number
+
     logger.info("Deploying vault")
     try:
         # TODO: Fix this later, use create_new_vault() argument
@@ -112,7 +116,7 @@ def enzyme_deploy_vault(
         web3,
         f"VaultSpecificGenericAdapter.json",
         hot_wallet.address,
-        enzyme_deployment.contracts.integration_manager.address,
+            enzyme_deployment.contracts.integration_manager.address,
         vault_contract.address,
     )
 
@@ -125,9 +129,8 @@ def enzyme_deploy_vault(
         comptroller_contract.address,
     )
 
-    block_number = web3.eth.block_number
-
     if vault_record_file:
+        # Make a small file, mostly used to communicate with unit tests
         with open(vault_record_file, "wt") as out:
             vault_record = {
                 "vault": vault_contract.address,
@@ -135,12 +138,14 @@ def enzyme_deploy_vault(
                 "generic_adapter": generic_adapter.address,
                 "block_number": block_number,
                 "usdc_payment_forwarder": usdc_payment_forwarder.address,
+                "deployer": hot_wallet.address,
+                "denomination_token": denomination_token.address,
             }
-            json.dump(vault_record, out)
+            json.dump(vault_record, out, indent=4)
+        logger.info("Wrote %s for vault details", os.path.abspath(vault_record_file))
 
-    logger.info("Vault details")
-    logger.info("  Vault at %s", vault_contract.address)
-    logger.info("  Comptroller at %s", comptroller_contract.address)
-    logger.info("  GenericAdapter at %s", generic_adapter.address)
-    logger.info("  VaultUSDCPaymentForwarder at %s", usdc_payment_forwarder.address)
-    logger.info("  Deployment block number is %d", block_number)
+    logger.info("Vault environment variables for trade-executor init command:")
+    logger.info("  VAULT_ADDRESS=%s", vault_contract.address)
+    logger.info("  VAULT_ADAPTER_ADDRESS=%s", generic_adapter.address)
+    logger.info("  VAULT_PAYMENT_FORWARDER_ADDRESS=%s", usdc_payment_forwarder.address)
+    logger.info("  VAULT_DEPLOYMENT_BLOCK_NUMBER=%d", block_number)

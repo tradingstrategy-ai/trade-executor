@@ -26,6 +26,12 @@ WatchdogRegistry: TypeAlias = DictProxy | dict
 _manager: Optional[Manager] = None
 
 
+#: Is the watchdog stopped?
+#:
+#: Will be stopped in a shutdown / after receiving an exception.
+stopped = False
+
+
 class WatchedWorkerDidNotReport(Exception):
     """Raised when a watched process/thread/loop fails to report in time."""
 
@@ -175,7 +181,7 @@ def start_background_watchdog(watchdog_registry: WatchdogRegistry):
 
         last_report = 0
 
-        while True:
+        while True and not stopped:
 
             # Ping logs we are still alive
             if time.time() - last_report > 1800:
@@ -205,3 +211,13 @@ def suicide():
     https://stackoverflow.com/a/7099229/315168
     """
     os.kill(os.getpid(), signal.SIGINT)
+
+
+def stop_watchdog():
+    """Stop making watchdog checks.
+
+    Called in a shutdown / stop sequence, after
+    a crash.
+    """
+    global stopped
+    stopped = True

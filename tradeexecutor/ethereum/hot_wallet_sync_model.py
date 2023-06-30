@@ -49,6 +49,7 @@ class HotWalletSyncModel(SyncModel):
         deployment.block_mined_at = datetime.datetime.utcnow()
         deployment.vault_token_name = None
         deployment.vault_token_symbol = None
+        deployment.initialised_at = datetime.datetime.utcnow()
 
     def sync_treasury(self,
                  strategy_cycle_ts: datetime.datetime,
@@ -60,7 +61,7 @@ class HotWalletSyncModel(SyncModel):
         # TODO: This code is not production ready - use with care
         # Needs legacy cleanup
         events = sync_reserves(self.web3, strategy_cycle_ts, self.hot_wallet.address, [], supported_reserves)
-        apply_sync_events(state.portfolio, events)
+        apply_sync_events(state, events)
         state.sync.treasury.last_updated_at = datetime.datetime.utcnow()
         state.sync.treasury.last_cycle_at = strategy_cycle_ts
         state.sync.treasury.last_block_scanned = self.web3.eth.block_number

@@ -1,4 +1,7 @@
-"""Equity curve based statistics and visualisations."""
+"""Equity curve based statistics and visualisations.
+
+For more information see the narrative documentation on :ref:`profitability`.
+"""
 import warnings
 from typing import List
 
@@ -19,22 +22,31 @@ def calculate_equity_curve(
     Translate the portfolio internal :py:attr:`Statistics.portfolio`
     to :py:class:`pd.Series` that allows easy equity curve calculations.
 
+    This reads :py:class:`tradeexecutor.state.stats.PortfolioStatistics`
+
     :param attribute_name:
         Calculate equity curve based on this attribute of :py:class:`
 
     :return:
-        Pandas series (timestamp, equity value)
+        Pandas series (timestamp, equity value).
+
+        Index is DatetimeIndex.
+
+        Empty series is returned if there is no data.
+
     """
 
     stats: Statistics = state.stats
 
     portfolio_stats: List[PortfolioStatistics] = stats.portfolio
-    index = [stat.calculated_at for stat in portfolio_stats]
 
-    assert len(index) >= 2, "Cannot calculate equity curve because there are no portfolio.stats.portfolio entries"
+    data = [(s.calculated_at, getattr(s, attribute_name)) for s in portfolio_stats]
 
-    values = [getattr(stat, attribute_name) for stat in portfolio_stats]
-    return pd.Series(values, index)
+    if len(data) == 0:
+        return pd.Series([], index=pd.to_datetime([]))
+
+    # https://stackoverflow.com/a/66772284/315168
+    return pd.DataFrame(data).set_index(0)[1]
 
 
 def calculate_returns(equity_curve: pd.Series) -> pd.Series:
@@ -79,7 +91,7 @@ def calculate_cumulative_return(returns: pd.Series) -> pd.Series:
     #return np.exp(np.log(1 + returns).cumsum())[-1] - 1
 
 
-def calculate_aggregate_returns(equity_curve: pd.Series, freq: str = "BM") -> pd.Series:
+def calculate_aggregate_returns(equity_curve: pd.Series, freq: str | pd.DateOffset = "BM") -> pd.Series:
     """Calculate strategy aggregatd results over different timespans.
 
     Good to calculate
@@ -127,14 +139,25 @@ def calculate_aggregate_returns(equity_curve: pd.Series, freq: str = "BM") -> pd
     return sampled.pct_change()
 
 
-def get_daily_returns(state: State) -> (pd.Series | None):
-    """Used for advanced statistics
+def calculate_daily_returns(state: State, freq: pd.DateOffset | str= "D") -> (pd.Series | None):
+    """Calculate daily returns of a backtested results.
+
+    Used for advanced statistics.
+
+    .. warning::
+
+        Uses equity curve to calculate profits. This does not correctly
+        handle deposit/redemptions. Use in backtesting only.
+
+    :param freq:
+        Frequency of the binned data.
 
     :returns:
         If valid state provided, returns are returned as calendar day (D) frequency, else None"""
     
     equity_curve = calculate_equity_curve(state)
-    return calculate_aggregate_returns(equity_curve, freq="D")
+    returns = calculate_aggregate_returns(equity_curve, freq=freq)
+    return returns
 
 
 def visualise_equity_curve(
@@ -240,6 +263,134 @@ def visualise_returns_distribution(
     return fig
 
 
+def calculate_investment_flow(
+    state: State,
+) -> pd.Series:
+    """Calculate deposit/redemption i nflows/outflows of a strategy.
+
+    See :ref:`profitability` for more information.
+
+    :return:
+        Pandas series (DatetimeIndex by the timestamp when the strategy treasury included the flow event, usd deposits/redemption amount)
+    """
+
+    treasury = state.sync.treasury
+    balance_updates = treasury.balance_update_refs
+    index = [e.strategy_cycle_included_at for e in balance_updates]
+    values = [e.usd_value for e in balance_updates]
+
+    if len(index) == 0:
+        return pd.Series([], index=pd.to_datetime([]))
+
+    return pd.Series(values, index)
 
 
+def calculate_realised_profitability(
+    state: State,
+) -> pd.Series:
+    """Calculate realised profitability of closed trading positions.
 
+    This function returns the :term:`profitability` of individually
+    closed trading positions.
+
+    See :ref:`profitability` for more information.
+
+    :return:
+        Pandas series (DatetimeIndex, % profit).
+
+        Empty series if there are no trades.
+    """
+    data = [(p.closed_at, p.get_realised_profit_percent()) for p in state.portfolio.closed_positions.values() if p.is_closed()]
+
+    if len(data) == 0:
+        return pd.Series()
+
+    # https://stackoverflow.com/a/66772284/315168
+    return pd.DataFrame(data).set_index(0)[1]
+
+
+def calculate_size_relative_realised_trading_returns(
+    state: State,
+) -> pd.Series:
+    """Calculate realised profitability of closed trading positions relative to the portfolio size..
+
+    This function returns the :term:`profitability` of individually
+    closed trading positions.
+
+    See :ref:`profitability` for more information.
+
+    :return:
+        Pandas series (DatetimeIndex, % profit).
+
+        Empty series if there are no trades.
+    """
+    data = [(p.closed_at, p.get_size_relative_realised_profit_percent()) for p in state.portfolio.closed_positions.values() if p.is_closed()]
+
+    if len(data) == 0:
+        return pd.Series()
+
+    # https://stackoverflow.com/a/66772284/315168
+    return pd.DataFrame(data).set_index(0)[1]
+
+
+def calculate_compounding_realised_trading_profitability(
+    state: State,
+) -> pd.Series:
+    """Calculate realised profitability of closed trading positions, with the compounding effect.
+
+    Assume the profits from the previous PnL are used in the next one.
+
+    This function returns the :term:`profitability` of individually
+    closed trading positions, relative to the portfolio total equity.
+
+    - See :py:func:`calculate_realised_profitability` for more information
+
+    - See :ref:`profitability` for more information.
+
+    :return:
+        Pandas series (DatetimeIndex, cumulative % profit).
+
+        Cumulative profit is 0% if there is no market action.
+        Cumulative profit is 1 (100%) if the equity has doubled during the period.
+
+        The last value of the series is the total trading profitability
+        of the strategy over its lifetime.
+    """
+    realised_profitability = calculate_size_relative_realised_trading_returns(state)
+    # https://stackoverflow.com/a/42672553/315168
+    compounded = realised_profitability.add(1).cumprod().sub(1)
+    return compounded
+
+
+def calculate_deposit_adjusted_returns(
+    state: State,
+    freq: pd.DateOffset = pd.offsets.Day(),
+) -> pd.Series:
+    """Calculate daily/monthly/returns on capital.
+z
+    See :ref:`profitability` for more information
+
+    - This is `Total equity - net deposits`
+
+    - This result is compounding
+
+    - The result is resampled to a timeframe
+
+    :param freq:
+        Which sampling frequency we use for the resulting series.
+
+        By default resample the results for daily timeframe.
+
+    :return:
+        Pandas series (DatetimeIndex by the the start timestamp fo the frequency, USD amount)
+    """
+    equity = calculate_equity_curve(state)
+    flow = calculate_investment_flow(state)
+
+    # https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#resampling
+    equity_resampled = equity.resample(freq)
+    equity_delta = equity_resampled.last() - equity_resampled.first()
+
+    flow_delta = flow.resample(freq).sum()
+
+    return equity_delta - flow_delta

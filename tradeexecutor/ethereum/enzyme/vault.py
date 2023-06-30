@@ -2,12 +2,15 @@
 
 import logging
 import datetime
+import pprint
+from _decimal import Decimal
 from functools import partial
 from typing import cast, List, Optional, Tuple
 
 from web3 import Web3
 
-from eth_defi.enzyme.events import fetch_vault_balance_events, EnzymeBalanceEvent, Deposit, Redemption
+from eth_defi.chain import fetch_block_timestamp
+from eth_defi.enzyme.events import fetch_vault_balance_events, EnzymeBalanceEvent, Deposit, Redemption, fetch_vault_balances
 from eth_defi.enzyme.vault import Vault
 from eth_defi.event_reader.reader import read_events, Web3EventReader, extract_events, extract_timestamps_json_rpc
 from eth_defi.event_reader.reorganisation_monitor import ReorganisationMonitor
@@ -30,6 +33,10 @@ logger = logging.getLogger(__name__)
 
 
 class UnknownAsset(Exception):
+    """Cannot map redemption asset to any known position"""
+
+
+class RedemptionFailure(Exception):
     """Cannot map redemption asset to any known position"""
 
 
@@ -101,6 +108,10 @@ class EnzymeVaultSyncModel(SyncModel):
     def get_hot_wallet(self) -> Optional[HotWallet]:
         return self.hot_wallet
 
+    def is_ready_for_live_trading(self, state: State) -> bool:
+        """Have we run init command on the vault."""
+        return state.sync.deployment.block_number is not None
+
     def _notify(
             self,
             current_block: int,
@@ -161,7 +172,7 @@ class EnzymeVaultSyncModel(SyncModel):
                            f"Reserve: {portfolio.get_default_reserve()}.\n"
                            f"Open positions: {position_str}")
 
-    def process_deposit(self, portfolio: Portfolio, event: Deposit) -> BalanceUpdate:
+    def process_deposit(self, portfolio: Portfolio, event: Deposit, strategy_cycle_ts: datetime.datetime) -> BalanceUpdate:
         """Translate Enzyme SharesBought event to our internal deposit storage format."""
 
         asset = translate_token_details(event.denomination_token)
@@ -180,6 +191,8 @@ class EnzymeVaultSyncModel(SyncModel):
         reserve_position.last_sync_at = datetime.datetime.utcnow()
         reserve_position.quantity += event.investment_amount
 
+        usd_value = float(exchange_rate) * float(event.investment_amount)
+
         event_id = portfolio.next_balance_update_id
         portfolio.next_balance_update_id += 1
 
@@ -189,8 +202,10 @@ class EnzymeVaultSyncModel(SyncModel):
             cause=BalanceUpdateCause.deposit,
             asset=asset,
             block_mined_at=event.timestamp,
+            strategy_cycle_included_at=strategy_cycle_ts,
             chain_id=asset.chain_id,
             old_balance=old_balance,
+            usd_value=usd_value,
             quantity=event.investment_amount,
             owner_address=event.receiver,
             tx_hash=event.event_data["transactionHash"],
@@ -202,7 +217,7 @@ class EnzymeVaultSyncModel(SyncModel):
 
         return evt
 
-    def process_redemption(self, portfolio: Portfolio, event: Redemption) -> List[BalanceUpdate]:
+    def process_redemption(self, portfolio: Portfolio, event: Redemption, strategy_cycle_ts: datetime.datetime) -> List[BalanceUpdate]:
         """Translate Enzyme SharesBought event to our internal deposit storage format.
 
         In-kind redemption exchanges user share tokens to underlying
@@ -217,8 +232,32 @@ class EnzymeVaultSyncModel(SyncModel):
 
         for token_details, raw_amount in event.redeemed_assets:
 
+            if raw_amount == 0:
+                # Enzyme reports zero redemptions for some reason?
+                # enzyme-polygon-matic-usdc  | <USD Coin (PoS) (USDC) at 0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174, 6 decimals, on chain 137>: 999324
+                # enzyme-polygon-matic-usdc  | <Wrapped Matic (WMATIC) at 0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270, 18 decimals, on chain 137>: 0
+                continue
+
             asset = translate_token_details(token_details)
-            position = self.get_related_position(portfolio, asset)
+
+            try:
+                position = self.get_related_position(portfolio, asset)
+            except UnknownAsset as e:
+                # Something has gone wrong in accounting, as we cannot match the redeemed asset to any open position.
+                # This is very tricky situation to figure out, so we be verbose with error messages.
+                open_positions = "\n".join([str(p) for p in portfolio.get_open_positions()])
+                assets_msg = "\n".join([f"{r}: {amount}" for r, amount in event.redeemed_assets])
+                msg = f"Redemption failure because redeemed asset does not match our internal accounting.\n" \
+                      f"Do not know how to recover. You need to stop trade-executor and run accounting correction.\n" \
+                      f"Could not process redemption event.\n" \
+                      f"Redeemed assets:\n" \
+                      f"{assets_msg}\n" \
+                      f"EVM event data:\n" \
+                      f"{_dump_enzyme_event(event)}\n" \
+                      f"Open positions currently in the state:\n" \
+                      f"{open_positions or '-'}"
+                raise RedemptionFailure(msg) from e
+
             quantity = asset.convert_to_decimal(raw_amount)
 
             assert quantity > 0  # Sign flipped later
@@ -231,10 +270,13 @@ class EnzymeVaultSyncModel(SyncModel):
                 old_balance = position.quantity
                 position.quantity -= quantity
                 position_type = BalanceUpdatePositionType.reserve
+                # TODO: USD stablecoin hardcoded to 1:1 with USD
+                usd_value = float(quantity)
             elif isinstance(position, TradingPosition):
                 position_id = position.position_id
                 old_balance = position.get_quantity()
                 position_type = BalanceUpdatePositionType.open_position
+                usd_value = position.calculate_quantity_usd_value(quantity)
             else:
                 raise NotImplementedError()
 
@@ -247,6 +289,7 @@ class EnzymeVaultSyncModel(SyncModel):
                 position_type=position_type,
                 asset=asset,
                 block_mined_at=event.timestamp,
+                strategy_cycle_included_at=strategy_cycle_ts,
                 chain_id=asset.chain_id,
                 quantity=-quantity,
                 old_balance=old_balance,
@@ -254,6 +297,7 @@ class EnzymeVaultSyncModel(SyncModel):
                 tx_hash=event.event_data["transactionHash"],
                 log_index=event.event_data["logIndex"],
                 position_id=position_id,
+                usd_value=usd_value,
             )
 
             position.balance_updates[event_id] = evt
@@ -262,18 +306,30 @@ class EnzymeVaultSyncModel(SyncModel):
 
         return events
 
-    def translate_and_apply_event(self, state: State, event: EnzymeBalanceEvent) -> List[BalanceUpdate]:
+    def translate_and_apply_event(self, state: State, event: EnzymeBalanceEvent, strategy_cycle_ts: datetime.datetime) -> List[BalanceUpdate]:
         """Translate on-chain event data to our persistent format."""
         portfolio = state.portfolio
+
         match event:
             case Deposit():
                 # Deposit generated only one event
                 event = cast(Deposit, event)
-                return [self.process_deposit(portfolio, event)]
+                return [self.process_deposit(portfolio, event, strategy_cycle_ts)]
             case Redemption():
                 # Enzyme in-kind redemption can generate updates for multiple assets
                 event = cast(Redemption, event)
-                return self.process_redemption(portfolio, event)
+
+                # Sanity check: Make sure there has not been redemptions from the vault before the strategy was initialised.
+                # Make sure we do not get events that are from the time before
+                # the state was initialised
+                first_allowed_ts = state.sync.deployment.initialised_at
+                if first_allowed_ts is not None:
+                    assert event.timestamp > first_allowed_ts, f"Vault has a redemption from the time before trade execution was initialised\n" \
+                                                               f"Initialised at: {state.sync.deployment.initialised_at}\n" \
+                                                               f"Event:\n" \
+                                                               f"{_dump_enzyme_event(event)}" \
+
+                return self.process_redemption(portfolio, event, strategy_cycle_ts)
             case _:
                 raise RuntimeError(f"Unsupported event: {event}")
 
@@ -333,6 +389,7 @@ class EnzymeVaultSyncModel(SyncModel):
         deployment.vault_token_name = self.vault.get_name()
         deployment.vault_token_symbol = self.vault.get_symbol()
         deployment.chain_id = ChainId(web3.eth.chain_id)
+        deployment.initialised_at = datetime.datetime.utcnow()
 
     def sync_treasury(self,
                       strategy_cycle_ts: datetime.datetime,
@@ -410,17 +467,18 @@ class EnzymeVaultSyncModel(SyncModel):
 
         events = []
         for chain_event in events_iter:
-            events += self.translate_and_apply_event(state, chain_event)
+            events += self.translate_and_apply_event(state, chain_event, strategy_cycle_ts)
 
         # Check that we do not have conflicting events
         new_event: BalanceUpdate
         for new_event in events:
             ref = BalanceEventRef(
                 balance_event_id=new_event.balance_update_id,
-                updated_at=new_event.block_mined_at,
+                strategy_cycle_included_at=new_event.strategy_cycle_included_at,
                 cause=new_event.cause,
                 position_type=new_event.position_type,
                 position_id=new_event.position_id,
+                usd_value=new_event.usd_value,
             )
             treasury_sync.balance_update_refs.append(ref)
 
@@ -434,6 +492,119 @@ class EnzymeVaultSyncModel(SyncModel):
 
         return events
 
+    def sync_reinit(self, state: State, **kwargs):
+        """Reinitiliase the vault.
+
+        Fixes broken accounting. Only needs to be used if internal state and blockchain
+        state have somehow managed to get out of sync: internal state has closed positions
+        that are not in blockchain state or vice versa.
+
+        - Makes any token balances in the internal state to match the blockchain state.
+
+        - Assumes all positions are closed (currently artificial limitation).
+
+        - All position history is deleted, because we do not know whether positions closed for
+          profit or loss.
+
+        See :py:mod:`tradeexexcutor.cli.commands.reinit` for details.
+
+        .. note::
+
+            Currently quite a test code. Make support all positions, different sync models.
+
+        :param state:
+            Empty state
+
+        :param kwargs:
+            Initial sync hints.
+
+            Passed to :py:meth:`sync_initial`.
+        """
+
+        # First set the vault creation date etc.
+        self.sync_initial(state, **kwargs)
+
+        # Then proceed to construct the balacnes from the EVM state
+        web3 = self.web3
+        vault = self.vault
+        sync = state.sync
+        portfolio = state.portfolio
+        treasury_sync = sync.treasury
+
+        current_block = web3.eth.block_number
+        timestamp = fetch_block_timestamp(web3, current_block)
+
+        # Get all non-zero balances from Enzyme
+        balances = [b for b in fetch_vault_balances(vault, block_identifier=current_block) if b.balance > 0]
+
+        assert len(balances) == 1, f"reinit cannot be done if the vault has positions other than reserve currencies, got {balances}"
+        reserve_current_balance = balances[0]
+
+        asset = translate_token_details(reserve_current_balance.token)
+
+        assert len(portfolio.reserves) == 0
+
+        # Initial deposit
+        portfolio.initialise_reserves(asset)
+
+        reserve_position = portfolio.get_reserve_position(asset)
+
+        reserve_position.reserve_token_price = float(1)
+        reserve_position.last_pricing_at = datetime.datetime.utcnow()
+        reserve_position.last_sync_at = datetime.datetime.utcnow()
+        reserve_position.quantity = reserve_current_balance.balance
+
+        # TODO: Assume USD stablecoins are 1:1 USD
+        usd_value = float(reserve_position.quantity)
+
+        event_id = portfolio.next_balance_update_id
+        portfolio.next_balance_update_id += 1
+
+        master_event = BalanceUpdate(
+            balance_update_id=event_id,
+            position_type=BalanceUpdatePositionType.reserve,
+            cause=BalanceUpdateCause.deposit,
+            asset=asset,
+            block_mined_at=timestamp,
+            strategy_cycle_included_at=timestamp,
+            chain_id=asset.chain_id,
+            old_balance=Decimal(0),
+            quantity=reserve_current_balance.balance,
+            owner_address=None,
+            tx_hash=None,
+            log_index=None,
+            position_id=None,
+            usd_value=usd_value,
+            notes=f"reinit() at block {current_block}"
+        )
+
+        reserve_position.balance_updates[master_event.balance_update_id] = master_event
+
+        events = [master_event]
+
+        # Check that we do not have conflicting events
+        new_event: BalanceUpdate
+        for new_event in events:
+            ref = BalanceEventRef(
+                balance_event_id=new_event.balance_update_id,
+                strategy_cycle_included_at=new_event.strategy_cycle_included_at,
+                cause=new_event.cause,
+                position_type=new_event.position_type,
+                position_id=new_event.position_id,
+                usd_value=new_event.usd_value,
+            )
+            treasury_sync.balance_update_refs.append(ref)
+
+        treasury_sync.last_block_scanned = current_block
+        treasury_sync.last_updated_at = datetime.datetime.utcnow()
+        treasury_sync.last_cycle_at = None
+
     def create_transaction_builder(self) -> EnzymeTransactionBuilder:
         assert self.hot_wallet, "HotWallet not set - cannot create transaction builder"
         return EnzymeTransactionBuilder(self.hot_wallet, self.vault)
+
+
+def _dump_enzyme_event(e: EnzymeBalanceEvent) -> str:
+    """Format enzyme events in the error / log output."""
+    # Dump internal JSON-RPC JSON
+    return pprint.pformat(e.event_data, indent=2)

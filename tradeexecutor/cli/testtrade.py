@@ -6,8 +6,10 @@ from typing import Union
 
 from web3 import Web3
 
+from tradeexecutor.ethereum.enzyme.vault import EnzymeVaultSyncModel
 from tradeexecutor.strategy.sync_model import SyncModel
 from tradingstrategy.universe import Universe
+from tradingstrategy.pair import HumanReadableTradingPairDescription
 
 from tradeexecutor.ethereum.hot_wallet_sync_model import EthereumHotWalletReserveSyncer
 from tradeexecutor.state.state import State
@@ -30,6 +32,7 @@ def make_test_trade(
         routing_model: RoutingModel,
         routing_state: RoutingState,
         amount=Decimal("1.0"),
+        pair: HumanReadableTradingPairDescription | None = None,
 ):
     """Perform a test trade.
 
@@ -48,8 +51,14 @@ def make_test_trade(
 
     reserve_asset = universe.get_reserve_asset()
 
-    # TODO: Supports single pair universes only for now
-    raw_pair = data_universe.pairs.get_single()
+    if data_universe.pairs.get_count() > 1 and not pair:
+        raise RuntimeError("You are using a multipair universe. Provide pair argument to perform a test trade on a specific pair.")
+    
+    if pair:
+        raw_pair = data_universe.pairs.get_pair(*pair)
+    else:
+        raw_pair = data_universe.pairs.get_single()
+    
     pair = translate_trading_pair(raw_pair)
 
     # Get estimated price for the asset we are going to buy
@@ -84,13 +93,26 @@ def make_test_trade(
     vault_address = sync_model.get_vault_address()
     hot_wallet = sync_model.get_hot_wallet()
     gas_at_start = hot_wallet.get_native_currency_balance(web3)
-    reserve_currency= state.portfolio.get_default_reserve_position().asset.token_symbol
-    reserve_currency_at_start = state.portfolio.get_default_reserve_position().get_value()
 
     logger.info("Account data before test trade")
     logger.info("  Vault address: %s", vault_address)
     logger.info("  Hot wallet address: %s", hot_wallet.address)
     logger.info("  Hot wallet balance: %s", gas_at_start)
+
+    # TODO: Move to SyncModel
+    if isinstance(sync_model, EnzymeVaultSyncModel):
+        # Check if the vault was properly set up
+        vault = sync_model.vault
+        assert vault.vault.functions.isAssetManager(hot_wallet.address).call(), f"Address is not set up as Enzyme asset manager: {hot_wallet.address}"
+
+        logger.info("  Vault owner: %s", vault.vault.functions.getOwner().call())
+
+    if len(state.portfolio.reserves) == 0:
+        raise RuntimeError("No reserves detected for the strategy. Does your wallet/vault have USDC deposited for trading?")
+
+    reserve_currency = state.portfolio.get_default_reserve_position().asset.token_symbol
+    reserve_currency_at_start = state.portfolio.get_default_reserve_position().get_value()
+
     logger.info("  Reserve currency balance: %s %s", reserve_currency_at_start, reserve_currency)
 
     assert reserve_currency_at_start > 0, f"No deposits available to trade. Vault at {vault_address}"
@@ -138,6 +160,13 @@ def make_test_trade(
         position_id = trade.position_id
         position = state.portfolio.get_position_by_id(position_id)
 
+        if not trade.is_success():
+            logger.error("Test buy failed: %s", trade)
+            logger.error("Tx hash: %s", trade.blockchain_transactions[-1].tx_hash)
+            logger.error("Revert reason: %s", trade.blockchain_transactions[-1].revert_reason)
+            logger.error("Trade dump:\n%s", trade.get_full_debug_dump_str())
+            raise AssertionError("Test buy failed")
+
     logger.info("Position %s open. Now closing the position.", position)
 
     # Recreate the position manager for the new timestamp,
@@ -150,20 +179,25 @@ def make_test_trade(
         pricing_model,
     )
 
-    trade = position_manager.close_position(
+    trades = position_manager.close_position(
         position,
         notes=notes,
     )
-    assert len(trade) == 1
-    sell_trade = trade[0]
+    assert len(trades) == 1
+    sell_trade = trades[0]
 
     execution_model.execute_trades(
             ts,
             state,
-            trade,
+            [sell_trade],
             routing_model,
             routing_state,
         )
+
+    if not sell_trade.is_success():
+        logger.error("Test sell failed: %s", sell_trade)
+        logger.error("Trade dump:\n%s", sell_trade.get_full_debug_dump_str())
+        raise AssertionError("Test sell failed")
 
     gas_at_end = hot_wallet.get_native_currency_balance(web3)
     reserve_currency_at_end = state.portfolio.get_default_reserve_position().get_value()

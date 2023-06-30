@@ -121,15 +121,16 @@ class StrategyRunner(abc.ABC):
         assert len(reserve_assets) == 1, f"We only support strategies with a single reserve asset, got {self.reserve_assets}"
         token = reserve_assets[0]
         assert token.decimals and token.decimals > 0, f"Reserve asset lacked decimals"
-        reserve_update_events = self.sync_model.sync_treasury(
+
+        balance_update_events = self.sync_model.sync_treasury(
             strategy_cycle_ts,
             state,
             supported_reserves=reserve_assets,
         )
-        assert type(reserve_update_events) == list
+        assert type(balance_update_events) == list
 
         # Update the debug data for tests with our events
-        debug_details["reserve_update_events"] = reserve_update_events
+        debug_details["reserve_update_events"] = balance_update_events
         debug_details["total_equity_at_start"] = state.portfolio.get_total_equity()
         debug_details["total_cash_at_start"] = state.portfolio.get_current_cash()
 

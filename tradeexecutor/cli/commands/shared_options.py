@@ -7,6 +7,7 @@ from typing import Optional
 
 from eth import Chain
 from tradingstrategy.chain import ChainId
+from tradingstrategy.pair import HumanReadableTradingPairDescription
 from typer import Option
 
 id = Option(None, envvar="EXECUTOR_ID", help="Executor id used when programmatically referring to this instance.\n"
@@ -24,6 +25,7 @@ private_key = Option(None, envvar="PRIVATE_KEY", help="Ethereum private key to b
 vault_address = Option(None, envvar="VAULT_ADDRESS", help="Deployed strategy vault address")
 vault_adapter_address = Option(None, envvar="VAULT_ADAPTER_ADDRESS", help="Deployed GenericAdapter contract address for the vault")
 vault_payment_forwarder = Option(None, envvar="VAULT_PAYMENT_FORWARDER_ADDRESS", help="USDC EIP-3009 payment forwarder contract for the Enzyme vault")
+vault_deployment_block_number = Option(None, envvar="VAULT_DEPLOYMENT_BLOCK_NUMBER", help="When the vault was deployed: a block number before the deployment.")
 
 asset_management_mode = Option(None, envvar="ASSET_MANAGEMENT_MODE", help="How does the asset management happen\n"
                                                                           ""
@@ -38,7 +40,9 @@ json_rpc_avalanche = Option(None, envvar="JSON_RPC_AVALANCHE", help="Avalanche C
 json_rpc_arbitrum = Option(None, envvar="JSON_RPC_ARBITRUM", help="Arbitrum C-chain JSON-RPC node URL we connect to")
 json_rpc_anvil = Option(None, envvar="JSON_RPC_ANVIL", help="Anvil JSON-RPC url. Anvil from Foundry is only used in local development and is not a readl blockchain.")
 
-state_file = Option(None, envvar="STATE_FILE", help="JSON file where we serialise the execution state. If not given defaults to state/{executor-id}.json")
+state_file = Option(None, envvar="STATE_FILE", help="JSON file where we serialise the execution state. If not given defaults to state/{executor-id}.json for live trade execution, state/{executor-id}-backtest.json for the backtest results.")
+
+backtest_result = Option(None, envvar="BACKTEST_RESULT", help="JSON file that contains the results of an earlier backtest run. Needed for the web server to display backtest information. If not given defaults to state/{executor-id}-backtest.json is assumed when the webhook server is started.")
 
 trading_strategy_api_key = Option(None, envvar="TRADING_STRATEGY_API_KEY", help="Trading Strategy API key")
 
@@ -59,3 +63,5 @@ test_evm_uniswap_v2_init_code_hash: Optional[str] = Option(None, envvar="TEST_EV
 confirmation_block_count = Option(2, envvar="CONFIRMATION_BLOCK_COUNT", help="How many blocks we wait before we consider transaction receipt a final. Set to zero for automining testing backends (EthereumTester, Anvil).")
 
 unit_testing = Option(False, "--unit-testing", envvar="UNIT_TESTING", help="The trade executor is called under the unit testing mode. No caches are purged.")
+
+pair: Optional[str] = Option(None, "--pair", envvar="PAIR", help="Must be specified for a multipair universe.")

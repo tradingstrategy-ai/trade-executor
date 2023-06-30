@@ -593,7 +593,7 @@ class PositionManager:
                        trade_type: TradeType=TradeType.rebalance,
                        notes: Optional[str] = None,
                        slippage_tolerance: Optional[float] = None,
-                       ) -> Optional[TradeExecution] | List[TradeExecution]:
+                       ) -> List[TradeExecution]:
         """Close a single position.
 
         The position may already have piled up selling trades.
@@ -630,7 +630,7 @@ class PositionManager:
             # We have already generated closing trades for this position
             # earlier
             logger.warning("Tried to close position that is likely already closed, as there are no tokens to sell: %s", position)
-            return None
+            return []
 
         pair = position.pair
         quantity = quantity_left

@@ -13,9 +13,10 @@ ARG GIT_VERSION_HASH=unspecified
 ENV PYTHONDONTWRITEBYTECODE 1 \
     PYTHONUNBUFFERED 1
 
+# curl and jq needed for the health checks
 RUN apt-get update \
-    && apt-get install curl -y \
-    && curl -sSL https://install.python-poetry.org | python - --version 1.2.2
+    && apt-get install curl jq -y \
+    && curl -sSL https://install.python-poetry.org | python - --version 1.4.2
 
 ENV PATH="/root/.local/bin:$PATH"
 
@@ -29,13 +30,15 @@ RUN echo $GIT_VERSION_HASH > GIT_VERSION_HASH.txt
 COPY . .
 
 RUN poetry config virtualenvs.create false
-RUN poetry install --no-dev --no-interaction --no-ansi -E web-server -E execution
+RUN poetry install --no-dev --no-interaction --no-ansi -E web-server -E execution -E quantstats
 
-# Webhook port 3456
+# Pyramid HTTP server for webhooks at port 3456
 EXPOSE 3456
 
 # Use --quiet to supress Skipping virtualenv creation, as specified in config file.
+# use --directory so we can use -w and -v switches with Docker run
 # https://stackoverflow.com/questions/74564601/poetry-echos-skipping-virtualenv-creation-as-specified-in-config-file-when-r
-CMD ["poetry", "run", "--quiet", "trade-executor"]
+# https://github.com/python-poetry/poetry/issues/8077
+CMD ["poetry", "run", "--quiet", "--directory", "/usr/src/trade-executor", "trade-executor"]
 
-ENTRYPOINT ["scripts/docker-entrypoint.sh"]
+ENTRYPOINT ["/usr/src/trade-executor/scripts/docker-entrypoint.sh"]

@@ -9,8 +9,10 @@ from tradeexecutor.cli.version_info import VersionInfo
 def version():
     """Print out the version information."""
     version_info = VersionInfo.read_docker_version()
-    print(f"Version: {version_info.tag}")
-    print(f"Commit hash: {version_info.commit_hash}")
-    print(f"Commit message: {version_info.commit_message}")
-    print("")
-    print("Version information is only available within Docker image.")
+    if version_info.tag:
+        print(f"Version: {version_info.tag}")
+        print(f"Commit hash: {version_info.commit_hash}")
+        print(f"Commit message: {version_info.commit_message}")
+    else:
+        print("Version information is only available within Docker image.")
+

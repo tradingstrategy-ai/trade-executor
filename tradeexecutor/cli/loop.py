@@ -18,8 +18,10 @@ from typing import Optional, Callable, List, cast, Tuple
 import pandas as pd
 from apscheduler.events import EVENT_JOB_ERROR
 
+from tradeexecutor.backtest.backtest_sync import BacktestSyncModel
 from tradeexecutor.cli.watchdog import create_watchdog_registry, register_worker, mark_alive, start_background_watchdog, \
     WatchdogMode
+from tradeexecutor.state.metadata import Metadata
 from tradeexecutor.statistics.summary import calculate_summary_statistics
 from tradeexecutor.strategy.pandas_trader.decision_trigger import wait_for_universe_data_availability_jsonl
 from tradeexecutor.strategy.routing import RoutingModel
@@ -73,6 +75,22 @@ class LiveSchedulingTaskFailed(Exception):
     """
 
 
+class ExecutionTestHook:
+    """A test helper to allow to hook into backtest execution to inject events.
+
+    Mostly used to simulate deposits/redemptions.
+    """
+
+    def on_before_cycle(
+            self,
+            cycle: int,
+            cycle_st: datetime.datetime,
+            state: State,
+            sync_model: SyncModel,
+    ):
+        """Called before entering the strategy tick."""
+
+
 class ExecutionLoop:
     """Live or backtesting trade execution loop.
 
@@ -117,6 +135,8 @@ class ExecutionLoop:
             run_state: Optional[RunState]=None,
             strategy_cycle_trigger: StrategyCycleTrigger = StrategyCycleTrigger.cycle_offset,
             routing_model: Optional[RoutingModel] = None,
+            execution_test_hook: Optional[ExecutionTestHook] = None,
+            metadata: Optional[Metadata] = None
     ):
         """See main.py for details."""
 
@@ -133,6 +153,8 @@ class ExecutionLoop:
         self.reset = reset
         self.routing_model = routing_model
         self.execution_model = execution_model
+        self.execution_test_hook = execution_test_hook
+        self.metadata = metadata
 
         args = locals().copy()
         args.pop("self")
@@ -162,6 +184,10 @@ class ExecutionLoop:
             candle_time_bucket_override=self.backtest_candle_time_frame_override,
             stop_loss_time_bucket_override=self.backtest_stop_loss_time_frame_override,
         )
+
+    def is_backtest(self) -> bool:
+        """Are we doing a backtest execution."""
+        return self.backtest_start is not None
 
     def is_live_trading_unit_test(self) -> bool:
         """Are we attempting to test live trading functionality in unit tests.
@@ -265,6 +291,7 @@ class ExecutionLoop:
             stats = calculate_summary_statistics(
                 state,
                 self.execution_context.mode,
+                backtested_state=self.metadata.backtested_state,
             )
             self.run_state.summary_statistics = stats
 
@@ -378,7 +405,8 @@ class ExecutionLoop:
         self.runner.pretick_check(ts, universe)
 
         if cycle == 1 and self.backtest_setup is not None:
-            # The hook to set up backtest initial balance
+            # The hook to set up backtest initial balance.
+            # TODO: Legacy - remove.
             logger.info("Performing initial backtest account funding")
             self.backtest_setup(state, universe, self.sync_model)
 
@@ -617,6 +645,8 @@ class ExecutionLoop:
 
         assert backtest_step != CycleDuration.cycle_unknown
 
+        execution_test_hook =  self.execution_test_hook or ExecutionTestHook()
+
         # Throttle TQDM updates to 1 per second because
         # otherwise we crash PyCharm
         # https://stackoverflow.com/q/43288550/315168
@@ -630,6 +660,7 @@ class ExecutionLoop:
 
             while True:
                 ts = snap_to_previous_tick(ts, backtest_step)
+
                 # Bump progress bar forward and update backtest status
                 if datetime.datetime.utcnow() - last_progress_update > progress_update_threshold:
                     friedly_ts = ts.strftime(ts_format)
@@ -649,6 +680,13 @@ class ExecutionLoop:
                         passed_seconds = (ts - last_update_ts).total_seconds()
                         progress_bar.update(int(passed_seconds))
                     last_update_ts = ts
+
+                execution_test_hook.on_before_cycle(
+                    cycle,
+                    ts,
+                    state,
+                    self.sync_model,
+                )
 
                 # Decide trades and everything for this cycle
                 universe: TradingStrategyUniverse = self.tick(
@@ -971,8 +1009,8 @@ class ExecutionLoop:
 
         return self.debug_dump_state
 
-    def run(self) -> dict:
-        """The main loop of trade executor.
+    def setup(self) -> State:
+        """Set up the main loop of trade executor.
 
         Main entry point to the loop.
 
@@ -983,11 +1021,15 @@ class ExecutionLoop:
         - Sets up strategy runner
 
         :return:
-            Debug state where each key is the cycle number
+            Loaded execution state
         """
 
         state = self.init_state()
-        
+
+        if not self.is_backtest():
+            if not self.sync_model.is_ready_for_live_trading(state):
+                raise RuntimeError(f"{self.sync_model} not initialised for live trading - run trade-executor init command first")
+
         self.init_execution_model()
 
         run_description: StrategyExecutionDescription = self.strategy_factory(
@@ -1016,9 +1058,33 @@ class ExecutionLoop:
 
         assert self.cycle_duration is not None, "Did not get strategy cycle duration from constructor or strategy run description"
 
-        if self.backtest_start:
+        return state
+
+    def run_with_state(self, state: State) -> dict:
+        """Start the execution.
+
+        :return:
+            Debug state where each key is the cycle number
+
+        :raise:
+            Any exception thrown from this function should be considered as live execution error,
+            not a start up error.
+        """
+        # TODO: Refactor
+        if self.is_backtest():
             # Walk through backtesting range
             return self.run_backtest(state)
         else:
             return self.run_live(state)
+
+    def run(self):
+        """Start the execution.
+
+        .. note::
+
+            Legacy entry point
+        """
+        # TODO: Refactor
+        state = self.setup()
+        return self.run_with_state(state)
 

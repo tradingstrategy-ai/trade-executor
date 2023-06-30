@@ -1,9 +1,12 @@
 [submodule "spec"]
 	path = spec
 	url = https://github.com/tradingstrategy-ai/spec.git
+	ignore = dirty
 [submodule "deps/trading-strategy"]
 	path = deps/trading-strategy
 	url = https://github.com/tradingstrategy-ai/trading-strategy.git
+	ignore = dirty
 [submodule "deps/web3-ethereum-defi"]
 	path = deps/web3-ethereum-defi
 	url = https://github.com/tradingstrategy-ai/web3-ethereum-defi.git
+	ignore = dirty

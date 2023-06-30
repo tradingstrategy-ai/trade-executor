@@ -219,6 +219,11 @@ class TradeExecution:
     failed_at: Optional[datetime.datetime] = None
 
     #: What was the actual price we received
+    #:
+    #: This may be `None` for even if :py:attr:`closed_at` is set.
+    #: This is because invalid trades (execution failed) may be marked
+    #: close.
+    #:
     executed_price: Optional[USDollarPrice] = None
 
     #: How much underlying token we traded, the actual realised amount.
@@ -549,7 +554,17 @@ class TradeExecution:
             return TradeStatus.planned
 
     def get_executed_value(self) -> USDollarAmount:
-        return abs(float(self.executed_quantity) * self.executed_price)
+        """Estimate the USD value of this trade.
+
+        Based on the
+
+        - Exact quantity and exact crypto price we got executed at
+
+        - USD exchange rate known at the time of the execution
+        """
+        # self.executed_price can be zero for frozen positions,
+        # but the position may still be closed (self.closed_at set)
+        return abs(float(self.executed_quantity) * (self.executed_price or 0))
 
     def get_planned_value(self) -> USDollarAmount:
         return abs(self.planned_price * float(abs(self.planned_quantity)))

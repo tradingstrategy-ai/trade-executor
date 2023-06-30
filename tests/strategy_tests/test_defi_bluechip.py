@@ -166,7 +166,13 @@ def test_alpha_model_weight_analysis(
 
     pair_weight_summary = create_pair_weight_analysis_summary_table(weight_analysis)
     assert pair_weight_summary.iloc[0].name == "AAVE-WETH"
-    assert pair_weight_summary.iloc[0]["normalised_weight"]["amax"] == 1.0
+    # normalised_weight  max     1.000000
+    #                    mean    0.097497
+    #                    min     0.000000
+    # signal             max     0.469029
+    #                    mean    0.135494
+    #                    min     0.004682
+    assert pair_weight_summary.iloc[0]["normalised_weight"]["max"] == 1.0
     #display(pair_weight_summary)
 
 

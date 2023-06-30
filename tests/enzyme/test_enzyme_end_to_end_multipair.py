@@ -28,7 +28,7 @@ from eth_defi.trace import assert_transaction_success_with_explanation
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment
 
 from tradingstrategy.pair import PandasPairUniverse
-
+from tradingstrategy.chain import ChainId
 
 from tradeexecutor.cli.main import app
 from tradeexecutor.state.blockhain_transaction import BlockchainTransactionType
@@ -65,7 +65,7 @@ def hot_wallet(web3, deployer, user_1, usdc: Contract, vault: Vault) -> HotWalle
 @pytest.fixture()
 def strategy_file() -> Path:
     """Where do we load our strategy file."""
-    return Path(os.path.dirname(__file__)) / "../../strategies/test_only" / "enzyme_end_to_end.py"
+    return Path(os.path.dirname(__file__)) / "../../strategies/test_only" / "enzyme_end_to_end_multipair.py"
 
 
 @pytest.fixture()
@@ -74,32 +74,27 @@ def state_file() -> Path:
 
     Always start with an empty file.
     """
-    path = Path("/tmp/test_enzyme_end_to_end.json")
+    path = Path("/tmp/test_enzyme_end_to_end_multipair.json")
     if path.exists():
         os.remove(path)
     return path
 
 
 @pytest.fixture()
-def environment(
+def multipair_environment(
     anvil: AnvilLaunch,
     deployer: HexAddress,
     vault: Vault,
-    usdc: Contract,
-    weth: Contract,
-    usdc_asset: AssetIdentifier,
-    weth_asset: AssetIdentifier,
     user_1: HexAddress,
     uniswap_v2: UniswapV2Deployment,
-    weth_usdc_trading_pair: TradingPairIdentifier,
-    pair_universe: PandasPairUniverse,
+    multipair_universe: PandasPairUniverse,
     hot_wallet: HotWallet,
     state_file: Path,
     strategy_file: Path,
     ) -> dict:
-    """Passed to init and start commands as environment variables"""
+    """Passed to init and start commands as multipair_environment variables"""
     # Set up the configuration for the live trader
-    environment = {
+    multipair_environment = {
         "EXECUTOR_ID": "test_enzyme_live_trading_init",
         "NAME": "test_enzyme_live_trading_init",
         "STRATEGY_FILE": strategy_file.as_posix(),
@@ -117,19 +112,20 @@ def environment(
         "TEST_EVM_UNISWAP_V2_INIT_CODE_HASH": uniswap_v2.init_code_hash,
         "CONFIRMATION_BLOCK_COUNT": "0",  # Needed for test backend, Anvil
         "MAX_CYCLES": "5",  # Run decide_trades() 5 times
+        "PAIR": '(ChainId.anvil, "UniswapV2MockClient", "WETH", "USDC", 0.003)',
     }
-    return environment
+    return multipair_environment
 
 
-def run_init(environment: dict) -> Result:
+def run_init(multipair_environment: dict) -> Result:
     """Run vault init command"""
 
     # https://typer.tiangolo.com/tutorial/testing/
     runner = CliRunner()
 
     # Need to use patch here, or parent shell env vars will leak in and cause random test failres
-    with patch.dict(os.environ, environment, clear=True):
-        result = runner.invoke(app, "init", env=environment)
+    with patch.dict(os.environ, multipair_environment, clear=True):
+        result = runner.invoke(app, "init", env=multipair_environment)
 
     if result.exception:
         raise result.exception
@@ -138,7 +134,7 @@ def run_init(environment: dict) -> Result:
 
 
 def test_enzyme_live_trading_init(
-    environment: dict,
+    multipair_environment: dict,
     state_file: Path,
 ):
     """Initialize Enzyme vault for live trading.
@@ -146,7 +142,7 @@ def test_enzyme_live_trading_init(
     Provide faux chain using Anvil with one pool that a sample strategy is trading.
     """
 
-    result = run_init(environment)
+    result = run_init(multipair_environment)
     assert result.exit_code == 0
 
     # Check the initial state sync set some of the variables
@@ -158,7 +154,7 @@ def test_enzyme_live_trading_init(
 
 
 def test_enzyme_live_trading_start(
-    environment: dict,
+    multipair_environment: dict,
     state_file: Path,
     usdc: Contract,
     weth: Contract,
@@ -186,7 +182,7 @@ def test_enzyme_live_trading_start(
 
 
     # Need to be initialised first
-    result = run_init(environment)
+    result = run_init(multipair_environment)
     assert result.exit_code == 0
 
     # Deposit some money in the vault
@@ -197,7 +193,7 @@ def test_enzyme_live_trading_start(
     # Manually call the main() function so that Typer's CliRunner.invoke() does not steal
     # stdin and we can still set breakpoints
     cli = get_command(app)
-    with patch.dict(os.environ, environment, clear=True):
+    with patch.dict(os.environ, multipair_environment, clear=True):
         with pytest.raises(SystemExit) as e:
             cli.main(args=["start"])
 
@@ -235,63 +231,8 @@ def test_enzyme_live_trading_start(
     assert weth_balance == pytest.approx(10**18 * 0.03112978758721282)
 
 
-def test_enzyme_deploy_vault(
-    environment: dict,
-    web3: Web3,
-    state_file: Path,
-    usdc: Contract,
-    weth: Contract,
-    vault: Vault,
-    deployer: HexAddress,
-    enzyme_deployment: EnzymeDeployment,
-):
-    """Deploy Enzymeß vault via CLI.
-
-    - Set up local Anvil testnet with Uniswap v2 and Enzyme
-
-    - Deploy a new vault using CLI
-
-    """
-
-    vault_record_file = os.path.join(tempfile.mkdtemp(), 'vault_record.json')
-    env = environment.copy()
-    env["FUND_NAME"] = "Toholampi Capital"
-    env["FUND_SYMBOL"] = "COW"
-    env["VAULT_RECORD_FILE"] = vault_record_file
-    env["COMPTROLLER_LIB"] = enzyme_deployment.contracts.comptroller_lib.address
-    env["DENOMINATION_ASSET"] = usdc.address
-
-    # Run strategy for few cycles.
-    # Manually call the main() function so that Typer's CliRunner.invoke() does not steal
-    # stdin and we can still set breakpoints
-    cli = get_command(app)
-    with patch.dict(os.environ, env, clear=True):
-        with pytest.raises(SystemExit) as e:
-            cli.main(args=["enzyme-deploy-vault"])
-        assert e.value.code == 0
-
-    # Check tat the vault was created
-    with open(vault_record_file, "rt") as inp:
-        vault_record = json.load(inp)
-        comptroller_contract, vault_contract = EnzymeDeployment.fetch_vault(enzyme_deployment, vault_record["vault"])
-        generic_adapter_contract = get_deployed_contract(web3, f"VaultSpecificGenericAdapter.json", vault_record["generic_adapter"])
-        payment_forwarder_contract = get_deployed_contract(web3, f"VaultUSDCPaymentForwarder.json", vault_record["usdc_payment_forwarder"])
-
-        vault = Vault(
-            vault=vault_contract,
-            comptroller=comptroller_contract,
-            deployment=enzyme_deployment,
-            generic_adapter=generic_adapter_contract,
-            payment_forwarder=payment_forwarder_contract,
-        )
-
-        assert vault.get_name() == "Toholampi Capital"
-        assert vault.get_symbol() == "COW"
-        assert vault.payment_forwarder.functions.amountProxied().call() == 0
-
-
 def test_enzyme_perform_test_trade(
-    environment: dict,
+    multipair_environment: dict,
     web3: Web3,
     state_file: Path,
     usdc: Contract,
@@ -299,7 +240,6 @@ def test_enzyme_perform_test_trade(
     vault: Vault,
     deployer: HexAddress,
     enzyme_deployment: EnzymeDeployment,
-    weth_usdc_trading_pair: TradingPairIdentifier,
 ):
     """Perform a test trade on Enzymy vault via CLI.
 
@@ -308,11 +248,20 @@ def test_enzyme_perform_test_trade(
     - Initialise the strategy to use this vault
 
     - Perform a test trade on this fault
+
+    You can edit the multipair_environment to choose from 
+    
+    - weth_usdc_trading_pair (ChainId.anvil, "UniswapV2MockClient", "WETH", "USDC", 0.003)
+    - bob_usdc_trading_pair (ChainId.anvil, "UniswapV2MockClient", "BOB", "USDC", 0.003)
+    - pepe_usdc_trading_pair (ChainId.anvil, "UniswapV2MockClient", "PEPE", "USDC", 0.003)
+    - biao_usdc_trading_pair (ChainId.anvil, "UniswapV2MockClient", "BIAO", "USDC", 0.003)
     """
 
-    env = environment.copy()
+    env = multipair_environment.copy()
     env["VAULT_ADDRESS"] = vault.address
     env["VAULT_ADAPTER_ADDRESS"] = vault.generic_adapter.address
+
+
 
     cli = get_command(app)
 
@@ -353,7 +302,7 @@ def test_enzyme_perform_test_trade(
 
 
 def test_enzyme_live_trading_reinit(
-    environment: dict,
+    multipair_environment: dict,
     state_file: Path,
     vault,
     deployer,
@@ -364,13 +313,13 @@ def test_enzyme_live_trading_reinit(
     Check that reinitialise works and accounting information is read from the chain state.
     """
 
-    if os.path.exists("/tmp/test_enzyme_end_to_end.reinit-backup-1.json"):
-        os.remove("/tmp/test_enzyme_end_to_end.reinit-backup-1.json")
+    if os.path.exists("/tmp/test_enzyme_end_to_end_multipair.reinit-backup-1.json"):
+        os.remove("/tmp/test_enzyme_end_to_end_multipair.reinit-backup-1.json")
 
-    result = run_init(environment)
+    result = run_init(multipair_environment)
     assert result.exit_code == 0
 
-    assert os.path.exists("/tmp/test_enzyme_end_to_end.json")
+    assert os.path.exists("/tmp/test_enzyme_end_to_end_multipair.json")
 
     cli = get_command(app)
 
@@ -378,12 +327,12 @@ def test_enzyme_live_trading_reinit(
     usdc.functions.approve(vault.comptroller.address, 500 * 10**6).transact({"from": deployer})
     vault.comptroller.functions.buyShares(500 * 10**6, 1).transact({"from": deployer})
 
-    with patch.dict(os.environ, environment, clear=True):
+    with patch.dict(os.environ, multipair_environment, clear=True):
         with pytest.raises(SystemExit) as e:
             cli.main(args=["reinit"])
         assert e.value.code == 0
 
-    assert os.path.exists("/tmp/test_enzyme_end_to_end.reinit-backup-1.json")
+    assert os.path.exists("/tmp/test_enzyme_end_to_end_multipair.reinit-backup-1.json")
 
     # See that the reinitialised state looks correct
     with state_file.open("rt") as inp:
@@ -398,3 +347,4 @@ def test_enzyme_live_trading_reinit(
         assert treasury.last_updated_at
         assert len(treasury.balance_update_refs) == 1
         assert len(reserve_position.balance_updates) == 1
+        

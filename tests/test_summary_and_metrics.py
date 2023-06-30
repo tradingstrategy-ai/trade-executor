@@ -25,15 +25,17 @@ from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifie
 from tradeexecutor.state.state import State
 from tradeexecutor.state.statistics import Statistics, calculate_naive_profitability
 from tradeexecutor.state.validator import validate_nested_state_dict
+from tradeexecutor.statistics.key_metric import calculate_key_metrics
 from tradeexecutor.statistics.summary import calculate_summary_statistics
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.execution_context import ExecutionMode
+from tradeexecutor.strategy.summary import KeyMetricSource
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, create_pair_universe_from_code
 from tradeexecutor.testing.synthetic_ethereum_data import generate_random_ethereum_address
 from tradeexecutor.testing.synthetic_exchange_data import generate_exchange, generate_simple_routing_model
 from tradeexecutor.testing.synthetic_price_data import generate_ohlcv_candles
 
-from tradeexecutor.visual.equity_curve import calculate_equity_curve, calculate_returns
+from tradeexecutor.visual.equity_curve import calculate_equity_curve, calculate_returns, calculate_deposit_adjusted_returns
 
 
 @pytest.fixture(scope="module")
@@ -220,6 +222,20 @@ def test_calculate_profitability_empty():
     assert profitability_90_days is None
 
 
+def test_calculate_all_summary_statistics_empty():
+    """Calculate all summary statistics on empty state.
+
+    """
+    # Set "last 90 days" to the end of backtest data
+    now_ = pd.Timestamp(datetime.datetime(2021, 12, 31, 0, 0))
+
+    state = State()
+    calculate_summary_statistics(
+        state,
+        ExecutionMode.unit_testing_trading,
+        now_=now_,
+    )
+
 def test_calculate_all_summary_statistics(state: State):
     """Calculate all summary statistics.
 
@@ -238,14 +254,16 @@ def test_calculate_all_summary_statistics(state: State):
     assert summary.enough_data
     assert summary.first_trade_at == datetime.datetime(2021, 6, 1, 0, 0)
     assert summary.last_trade_at == datetime.datetime(2021, 12, 31, 0, 0)
-    assert summary.profitability_90_days == pytest.approx(-0.019484747529770786)
     assert summary.current_value == pytest.approx(9541.619532761046)
+    true_profitability = 9541.619532761046 / 10_000 - 1
+    assert true_profitability == pytest.approx(-0.045838046723895465)
+    assert summary.profitability_90_days == pytest.approx(-0.045838046723895465)
 
     datapoints = summary.performance_chart_90_days
     assert len(datapoints) == 91
 
-    assert datapoints[0] == (datetime.datetime(2021, 10, 2, 0, 0), 0.0)
-    assert datapoints[-1] == (datetime.datetime(2021, 12, 31, 0, 0), -0.019484747529770786)
+    assert datapoints[0] == (datetime.datetime(2021, 10, 2, 0, 0), -0.02687699056973558)
+    assert datapoints[-1] == (datetime.datetime(2021, 12, 31, 0, 0), -0.045838046723895576)
 
     # Make sure we do not output anything that is not JSON'able
     data = summary.to_dict()
@@ -263,3 +281,63 @@ def test_advanced_metrics(state: State):
     # index 1 is the benchmark.
     sharpe = metrics.loc["Sharpe"][0]
     assert sharpe == pytest.approx(-2.09)
+
+
+
+def test_calculate_key_metrics_empty():
+    """Key metrics calculations with empty state."""
+    state = State()
+    metrics = {m.kind.value: m for m in calculate_key_metrics(state)}
+    assert metrics["sharpe"].value is None
+    assert metrics["sortino"].value is None
+    assert metrics["max_drawdown"].value is None
+    assert metrics["started_at"].value > datetime.datetime(1970, 1, 1)
+
+
+def test_calculate_key_metrics_live(state: State):
+    """Calculate web frontend key metric for an empty state and no backtest.
+
+    """
+
+    # Make sure we have enough history to make sure
+    # our metrics are calculable
+    assert state.portfolio.get_trading_history_duration() > datetime.timedelta(days=90)
+
+    # Check our returns calculationsn look sane
+    # returns = calculate_compounding_realised_profitability(state)
+
+    metrics = {m.kind.value: m for m in calculate_key_metrics(state)}
+    assert len(metrics) == 6
+    assert metrics["sharpe"].value == pytest.approx(-2.1464509890620724)
+    assert metrics["sortino"].value == pytest.approx(-2.720957242817309)
+    assert metrics["profitability"].value == pytest.approx(-0.045838046723895576)
+    assert metrics["total_equity"].value == pytest.approx(9541.619532761046)
+    assert metrics["max_drawdown"].value == pytest.approx(-0.04780138378916754)
+    assert metrics["max_drawdown"].source == KeyMetricSource.live_trading
+    assert metrics["max_drawdown"].calculation_window_start_at == datetime.datetime(2021, 6, 1, 0, 0)
+    assert metrics["max_drawdown"].calculation_window_end_at == datetime.datetime(2021, 12, 31, 0, 0)
+    assert metrics["max_drawdown"].help_link == "https://tradingstrategy.ai/glossary/maximum-drawdown"
+
+
+def test_calculate_key_metrics_live_and_backtesting(state: State):
+    """Calculate web frontend key metric when we do not have enough live trading history but have backtesting data available.
+
+    """
+
+    empty_state = State()
+
+    # Make sure we have enough history to make sure
+    # our metrics are calculable
+    assert state.portfolio.get_trading_history_duration() > datetime.timedelta(days=90)
+
+    # Check our returns calculationsn look sane
+    # returns = calculate_compounding_realised_profitability(state)
+
+    metrics = {m.kind.value: m for m in calculate_key_metrics(live_state=empty_state, backtested_state=state)}
+    assert metrics["max_drawdown"].value == pytest.approx(-0.04780138378916754)
+    assert metrics["max_drawdown"].source == KeyMetricSource.backtesting
+    assert metrics["max_drawdown"].calculation_window_start_at == datetime.datetime(2021, 6, 1, 0, 0)
+    assert metrics["max_drawdown"].calculation_window_end_at == datetime.datetime(2021, 12, 31, 0, 0)
+
+    assert metrics["started_at"].source == KeyMetricSource.live_trading
+    assert metrics["started_at"].value >= datetime.datetime(2023, 1, 1, 0, 0)

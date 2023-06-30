@@ -680,15 +680,24 @@ class Portfolio:
             if t.executed_at and last.executed_at and (t.executed_at > last.executed_at):
                 last = t
         return first, last
-    
-    def get_strategy_duration(self) -> Optional[datetime.timedelta]:
-        """How long did the strategy run for."""
+
+    def get_trading_history_duration(self) -> Optional[datetime.timedelta]:
+        """How long this portfolio has trading history.
+
+        Calculated as the difference between first and last executed trade.
+
+        :return:
+            None if there has been any trades.
+
+            Zero seconds period if there is only a single trade.
+        """
         first, last = self.get_first_and_last_executed_trade()
         
         if first and last:
-            return last.executed_at - first.executed_at
-        else:
-            return None
+            if first.executed_at and last.executed_at:
+                return last.executed_at - first.executed_at
+
+        return None
 
     def get_initial_deposit(self) -> Optional[USDollarAmount]:
         """How much we invested at the beginning of a backtest.

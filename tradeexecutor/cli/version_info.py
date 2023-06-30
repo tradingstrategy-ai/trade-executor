@@ -39,9 +39,15 @@ class VersionInfo:
 
     @staticmethod
     def read_docker_version() -> "VersionInfo":
-        """Read version information burnt within Docker file-system during image building."""
+        """Read version information burnt within Docker file-system during image building.
+
+        :return:
+            Populated version info or `None` for every field
+            if it does not look like we are inside a Docker container.
+        """
         return VersionInfo(
             tag=VersionInfo.read_version_file("GIT_VERSION_TAG.txt"),
             commit_message=VersionInfo.read_version_file("GIT_COMMIT_MESSAGE.txt"),
             commit_hash=VersionInfo.read_version_file("GIT_VERSION_HASH.txt"),
         )
+

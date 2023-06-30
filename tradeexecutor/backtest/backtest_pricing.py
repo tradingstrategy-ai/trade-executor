@@ -172,7 +172,8 @@ class BacktestSimplePricingModel(PricingModel):
                        reserve: Optional[Decimal]) -> TradePricing:
         """Get the price for a buy transaction."""
 
-        assert reserve is not None and reserve > 0, f"For a buy estimation, please fill in the allocated reserve amount for: {pair}. Got reserve: {reserve}"
+        assert reserve is not None and reserve > 0, f"Tried to make a buy price estimation for zero amount.\n" \
+                                                    f"For a buy estimation, please fill in the allocated reserve amount for: {pair}. Got reserve: {reserve}"
 
         # TODO: Include price impact
         pair_id = pair.internal_id
