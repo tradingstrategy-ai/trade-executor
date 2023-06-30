@@ -225,6 +225,9 @@ class StrategySummary:
     #: Helps rendering the web tiles.
     summary_statistics: StrategySummaryStatistics = field(default_factory=StrategySummaryStatistics)
 
+    #: Number of currently frozen positions that need manual intervention
+    #:
+    frozen_positions: int = 0
 
 
 #: Help links for different metrics
