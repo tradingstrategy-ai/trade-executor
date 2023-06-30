@@ -228,6 +228,10 @@ class StrategySummary:
     #: Helps rendering the web tiles.
     summary_statistics: StrategySummaryStatistics = field(default_factory=StrategySummaryStatistics)
 
+    #: Exception message from the run-time loop
+    #:
+    error_message: str | None = None
+
 
 #: Help links for different metrics
 _KEY_METRIC_HELP = {

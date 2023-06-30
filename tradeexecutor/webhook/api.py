@@ -64,6 +64,7 @@ def web_metadata(request: Request):
         summary_statistics=execution_state.summary_statistics,
         on_chain_data=metadata.on_chain_data,
         frozen_positions=execution_state.frozen_positions,
+        error_message=execution_state.exception.get("exception_message") if execution_state.exception else None,
     )
 
     # Catch NaN's and other data JavaScript cannot eat
