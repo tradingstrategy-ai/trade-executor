@@ -56,7 +56,6 @@ def start(
 
     # Strategy assets
     id: str = shared_options.id,
-    log_level: str = shared_options.log_level,
     name: Optional[str] = shared_options.name,
     short_description: Optional[str] = typer.Option(None, envvar="SHORT_DESCRIPTION", help="Short description for metadata"),
     long_description: Optional[str] = typer.Option(None, envvar="LONG_DESCRIPTION", help="Long description for metadata"),
@@ -133,6 +132,7 @@ def start(
     state_file: Optional[Path] = shared_options.state_file,
     backtest_result: Optional[Path] = shared_options.backtest_result,
     cache_path: Optional[Path] = shared_options.cache_path,
+    log_level: str = shared_options.log_level,
     ):
     """Launch Trade Executor instance."""
     global logger
