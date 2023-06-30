@@ -168,7 +168,7 @@ def calculate_key_metrics(
         yield KeyMetric.create_metric(KeyMetricKind.sortino, source, sortino, calculation_window_start_at, calculation_window_end_at)
 
         # Flip the sign of the max drawdown
-        -max_drawdown = calculate_max_drawdown(returns)
+        max_drawdown = -calculate_max_drawdown(returns)
         yield KeyMetric.create_metric(KeyMetricKind.max_drawdown, source, max_drawdown, calculation_window_start_at, calculation_window_end_at)
 
         profitability = calculate_profitability(returns)
