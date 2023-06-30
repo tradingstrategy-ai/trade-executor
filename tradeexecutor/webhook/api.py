@@ -63,7 +63,6 @@ def web_metadata(request: Request):
         executor_running=execution_state.executor_running,
         summary_statistics=execution_state.summary_statistics,
         on_chain_data=metadata.on_chain_data,
-        frozen_positions=execution_state.frozen_positions,
     )
 
     # Catch NaN's and other data JavaScript cannot eat
