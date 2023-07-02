@@ -18,6 +18,7 @@ from tradingstrategy.chain import ChainId
 from tradingstrategy.client import Client
 from tradingstrategy.testing.uniswap_v2_mock_client import UniswapV2MockClient
 from tradingstrategy.timebucket import TimeBucket
+from typer import Option
 
 from . import shared_options
 from .app import app, TRADE_EXECUTOR_VERSION
@@ -29,6 +30,7 @@ from ..loop import ExecutionLoop
 from ..result import display_backtesting_results
 from ..version_info import VersionInfo
 from ..watchdog import stop_watchdog
+from ...backtest.backtest_runner import setup_backtest, run_backtest
 from ...ethereum.enzyme.vault import EnzymeVaultSyncModel
 from ...ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2SimpleRoutingModel
 from ...state.state import State
@@ -65,8 +67,11 @@ def backtest(
     unit_testing: bool = shared_options.unit_testing,
 
     # Unsorted options
-    state_file: Optional[Path] = shared_options.state_file,
+    backtest_result: Optional[Path] = shared_options.backtest_result,
     cache_path: Optional[Path] = shared_options.cache_path,
+
+    notebook_report: Optional[Path] = Option(None, envvar="NOTEBOOK_REPORT", help="Jupyter Notebook file where the store the notebook results. If not given defaults to state/{executor-id}-backtest.ipynb."),
+    html_report: Optional[Path] = Option(None, envvar="HTML_REPORT", help="HTML file where the store the notebook results. If not given defaults to state/{executor-id}-backtest.html."),
     ):
     """Backtest a given strategy module.
 
@@ -113,79 +118,39 @@ def backtest(
 
     cache_path = prepare_cache(id, cache_path)
 
+    if not html_report:
+        html_report = Path(f"state/{id}-backtest.html")
+
+    if not notebook_report:
+        notebook_report = Path(f"state/{id}-backtest.ipynb")
+
+    if not backtest_result:
+        backtest_result = Path(f"state/{id}-backtest.json")
+
     # TODO: This strategy file is reloaded again in ExecutionLoop.run()
     # We do an extra hop here, because we need to know chain_id associated with the strategy,
     # because there is an inversion of control issue for passing web3 connection around.
     # Clean this up in the future versions, by changing the order of initialzation.
     mod = read_strategy_module(strategy_file)
 
-    execution_model, sync_model, valuation_model_factory, pricing_model_factory = create_execution_and_sync_model(
-        asset_management_mode=asset_management_mode,
-        private_key=private_key,
-        web3config=web3config,
-        confirmation_timeout=confirmation_timeout,
-        confirmation_block_count=confirmation_block_count,
-        max_slippage=max_slippage,
-        min_gas_balance=min_gas_balance,
-        vault_address=vault_address,
-        vault_adapter_address=vault_adapter_address,
-        vault_payment_forwarder_address=vault_payment_forwarder_address,
-        routing_hint=mod.trade_routing,
+    client = Client.create_live_client(trading_strategy_api_key, cache_path=cache_path)
+
+    backtest_setup = setup_backtest(
+        strategy_file,
+        start_at=mod.backtest_start,
+        end_at=mod.backtest_end,
+        initial_deposit=mod.initial_cash,
+        strategy_module=mod,
     )
 
-    if state_file:
-        store = create_state_store(Path(state_file))
-    else:
-        # Backtests do not have persistent state
-        if asset_management_mode == AssetManagementMode.backtest:
-            logger.info("This backtest run won't create a state file")
-            store = NoneStore(State())
-        else:
-            raise RuntimeError("Does not know how to set up a state file for this run")
-
-    client = client = Client.create_live_client(trading_strategy_api_key, cache_path=cache_path)
-
-    # We cannot have real-time triggered trades when doing backtesting
-    strategy_cycle_trigger = StrategyCycleTrigger.cycle_offset
-
-    # Running as a backtest
-    execution_context = ExecutionContext(
-        mode=ExecutionMode.backtesting,
-        timed_task_context_manager=timed_task,
-    )
-
-    loop = ExecutionLoop(
-        name=name,
-        command_queue=command_queue,
-        execution_model=execution_model,
-        execution_context=execution_context,
-        sync_model=sync_model,
-        approval_model=approval_model,
-        pricing_model_factory=pricing_model_factory,
-        valuation_model_factory=valuation_model_factory,
-        store=store,
+    state, universe, debug_data = run_backtest(
+        backtest_setup,
         client=client,
-        strategy_factory=strategy_factory,
-        reset=reset_state,
-        max_cycles=max_cycles,
-        debug_dump_file=debug_dump_file,
-        backtest_start=backtest_start,
-        backtest_end=backtest_end,
-        backtest_stop_loss_time_frame_override=backtest_stop_loss_time_frame_override,
-        backtest_candle_time_frame_override=backtest_candle_time_frame_override,
-        stop_loss_check_frequency=stop_loss_check_frequency,
-        cycle_duration=cycle_duration,
-        tick_offset=tick_offset,
-        max_data_delay=max_data_delay,
-        trade_immediately=trade_immediately,
-        stats_refresh_frequency=stats_refresh_frequency,
-        position_trigger_check_frequency=position_trigger_check_frequency,
-        run_state=run_state,
-        strategy_cycle_trigger=strategy_cycle_trigger,
-        routing_model=routing_model,
-        metadata=metadata,
     )
 
-    state = loop.setup()
-    loop.run_with_state(state)
-    display_backtesting_results(store.state)
+    display_backtesting_results(state)
+
+    state.write_json_file(backtest_result)
+
+
+
