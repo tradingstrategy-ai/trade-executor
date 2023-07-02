@@ -40,7 +40,7 @@ DEFAULT_CUSTOM_CSS = """
 }
 
 #notebook-container {
-    padding: 0;
+    padding: 0 !important;
     box-shadow: none;
 }
 """
@@ -56,7 +56,13 @@ class BacktestReportRunFailed(Exception):
 class BacktestReporter:
     """Shared between host environment and IPython report notebook.
 
-    A singleton instance used to communicate to IPython notebook.
+    - A helper class to pass data in the notebook report generation context
+      using temporary files.
+
+    - Files are written by the host system after running the backtest
+
+    - Files are passed as absolute paths in the first notebook cell
+      that is modified before the notebook is executed
     """
 
     def __init__(self, state: State, universe: TradingStrategyUniverse):
@@ -78,10 +84,6 @@ class BacktestReporter:
         return self.universe
 
     @classmethod
-    def setup_host(cls, state):
-        cls._singleton = BacktestReporter(state)
-
-    @classmethod
     def setup_report(cls, parameters) -> "BacktestReporter":
         """Set-up notebook side reporting.
 
@@ -89,7 +91,17 @@ class BacktestReporter:
 
         - Reading data from the host instance
         """
+
         setup_charting_and_output()
+
+        # By default matplotlib exports text as 2d curves to make sure
+        # SVG renders correctly. However this will result to massive file sizes.
+        # Here we hint matplotlib to export SVG labels as text.
+        # Furthermore SVG labels do not show in the static HTML output otherwise.
+        # https://stackoverflow.com/questions/34387893/output-matplotlib-figure-to-svg-with-text-as-text-not-curves
+        # https://matplotlib.org/stable/users/explain/fonts.html#fonts-in-svg
+        import matplotlib.pyplot as plt
+        plt.rcParams['svg.fonttype'] = 'none'
 
         state_file = parameters["state_file"]
         universe_file = parameters["universe_file"]
@@ -182,10 +194,12 @@ def export_backtest_report(
         except CellExecutionError as e:
             raise BacktestReportRunFailed(f"Could not run backtest reporter for {name}") from e
 
+        # Write ipynb file that contains output cells created in place
         if output_notebook is not None:
             with open(output_notebook, 'w', encoding='utf-8') as f:
                 nbformat.write(nb, f)
 
+        # Write a static HTML file based on the notebook
         if output_html is not None:
 
             html_exporter = HTMLExporter(
