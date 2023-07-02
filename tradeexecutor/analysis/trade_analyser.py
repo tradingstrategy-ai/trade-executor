@@ -28,6 +28,7 @@ from typing import List, Dict, Iterable, Optional, Tuple, Callable, Set
 import numpy as np
 import pandas as pd
 from IPython.core.display_functions import display
+from IPython.display import HTML
 from dataclasses_json import dataclass_json, config
 from statistics import median
 
@@ -231,6 +232,81 @@ class TradeSummary:
         df = create_summary_table(human_data)
         return df
 
+    def display(self):
+        """Create human readable summary tables and display them in IPython notebook."""
+
+        data1 = {
+            "Annualised return %": as_percent(self.annualised_return_percent),
+            "Lifetime return %": as_percent(self.return_percent),
+            "Realised PnL": as_dollar(self.realised_profit),
+            'Trade period': as_duration(self.duration),
+        }
+        
+        df1 = create_summary_table(data1)
+
+        data2 = {
+            "Total assets": as_dollar(self.end_value),
+            "Cash left": as_dollar(self.uninvested_cash),
+            "Open position value": as_dollar(self.open_value),
+            "Open positions": as_integer(self.undecided),
+        }
+
+        df2 = create_summary_table(data2)
+
+        data3 = {
+            'Number of positions': [as_integer(self.won), as_integer(self.lost)],
+            '% of total': [as_percent(self.win_percent), as_percent(1 - self.win_percent)],
+            'Average PnL %': [as_percent(self.average_winning_trade_profit_pc), as_percent(self.average_losing_trade_loss_pc)],
+            'Median PnL %': [as_percent(0), as_percent(0)],
+            'Biggest PnL %': [as_percent(0), as_percent(0)],
+            'Average duration': [as_duration(self.average_duration_of_winning_trades), as_duration(self.average_duration_of_losing_trades)],
+            'Max consecutive streak': [as_integer(self.max_pos_cons), as_integer(self.max_neg_cons)],
+            'Max runup / drawdown': [as_percent(0), as_percent(self.max_pullback)],
+        }
+
+        df3 = create_summary_table(data3)
+
+        data4 = {
+            'Triggered exits': [as_integer(self.stop_losses), as_integer(self.take_profits)],
+            'Percent winning of all won': [as_percent(self.winning_stop_losses_percent), as_percent(self.won_take_profit_percent)],
+            'Percent losing of all lost': [as_percent(self.losing_stop_losses_percent), as_percent(self.lost_stop_loss_percent)],
+            'Percent of total': [as_percent(self.all_stop_loss_percent), as_percent(self.all_take_profit_percent)],
+        }
+
+        df4 = create_summary_table(data4)
+
+        data5 = {
+            'Biggest realized risk': as_percent(self.max_loss_risk),
+            'Average realized risk': as_percent(self.avg_realised_risk),
+            'Max pullback of capital': as_percent(self.max_pullback),
+            'Sharpe Ratio': as_percent(0),
+            'Sortino Ratio': as_percent(0),
+            'Profit Factor': as_percent(0),
+        }
+
+        df5 = create_summary_table(data5)
+        
+        display(self.single_column_dfs(df1, df2, df3, df4, df5))
+
+    @staticmethod
+    def single_column_dfs(*dfs):
+        html = '<div style="display:flex; flex-direction:column">'
+        for df in dfs:
+            html += '<div style="margin-bottom: 2em">'
+            html += df.to_html()
+            html += '</div>'
+        html += '</div>'
+        return HTML(html)
+
+
+
+
+
+
+
+
+    # TODO delete/deprecate the remaining methods below
+     
     def show(self):
         """Render a summary table in IPython notebook."""
         self.show_custom(self.to_dataframe())
@@ -410,9 +486,6 @@ class TradeAnalysis:
                     return pd.Timedelta(np.mean(duration_list))
             else:
                 return pd.Timedelta(datetime.timedelta(0))
-
-        def avg(lst: list[int]):
-            return sum(lst) / len(lst)
         
         def func_check(lst, func):
             return func(lst) if lst else None
@@ -884,3 +957,7 @@ def build_trade_analysis(
     return TradeAnalysis(
         portfolio,
     )
+
+
+def avg(lst: list[int]):
+    return sum(lst) / len(lst)
