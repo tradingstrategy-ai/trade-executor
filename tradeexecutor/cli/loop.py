@@ -43,7 +43,7 @@ except ImportError:
     from tqdm.auto import tqdm
 
 from tradeexecutor.backtest.backtest_pricing import BacktestSimplePricingModel
-from tradeexecutor.state.state import State
+from tradeexecutor.state.state import State, BacktestData
 from tradeexecutor.state.store import StateStore
 from tradeexecutor.strategy.sync_model import SyncMethodV0, SyncModel
 from tradeexecutor.state.trade import TradeExecution
@@ -644,6 +644,12 @@ class ExecutionLoop:
         cycle_name = backtest_step.value
 
         assert backtest_step != CycleDuration.cycle_unknown
+
+        state.backtest_data = BacktestData(
+            start_at=self.backtest_start,
+            end_at=self.backtest_end,
+            decision_cycle_duration=backtest_step,
+        )
 
         execution_test_hook =  self.execution_test_hook or ExecutionTestHook()
 

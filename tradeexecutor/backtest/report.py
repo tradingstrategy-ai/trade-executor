@@ -19,6 +19,7 @@ from nbconvert.preprocessors import ExecutePreprocessor
 from nbformat import NotebookNode
 
 from tradeexecutor.state.state import State
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradingstrategy.client import BaseClient
 
 from tradeexecutor.backtest.notebook import setup_charting_and_output
@@ -58,11 +59,23 @@ class BacktestReporter:
     A singleton instance used to communicate to IPython notebook.
     """
 
-    def __init__(self, state: State):
+    def __init__(self, state: State, universe: TradingStrategyUniverse):
+        """To write a report we need to inputs
+
+        :param state:
+            State that is the resulting trades that were made
+
+        :param universe:
+            Trading universe where the results where traded
+        """
         self.state = state
+        self.universe = universe
 
     def get_state(self) -> State:
         return self.state
+
+    def get_universe(self) -> TradingStrategyUniverse:
+        return self.universe
 
     @classmethod
     def setup_host(cls, state):
@@ -79,14 +92,18 @@ class BacktestReporter:
         setup_charting_and_output()
 
         state_file = parameters["state_file"]
+        universe_file = parameters["universe_file"]
         state = State.read_json_file(Path(state_file))
+        universe = TradingStrategyUniverse.read_pickle_dangerous(Path(universe_file))
         return BacktestReporter(
             state=state,
+            universe=universe,
         )
 
 
 def export_backtest_report(
         state: State,
+        universe: TradingStrategyUniverse,
         report_template: Path | None = None,
         output_notebook: Path | None = None,
         output_html: Path | None = None,
@@ -131,10 +148,14 @@ def export_backtest_report(
     assert report_template.exists(), f"Does not exist: {report_template}"
 
     # Pass over the state to the notebook as JSON file dump
-    with NamedTemporaryFile(suffix='.json', prefix=os.path.basename(__file__)) as state_temp:
-        state_path = Path(state_temp.name).absolute()
+    with NamedTemporaryFile(suffix='.json', prefix=os.path.basename(__file__)) as state_temp, \
+        NamedTemporaryFile(suffix='.pickle', prefix=os.path.basename(__file__)) as universe_temp:
 
+        state_path = Path(state_temp.name).absolute()
         state.write_json_file(state_path)
+
+        universe_path = Path(universe_temp.name).absolute()
+        universe.write_pickle(universe_path)
 
         # https://nbconvert.readthedocs.io/en/latest/execute_api.html
         with open(report_template) as f:
@@ -148,7 +169,10 @@ def export_backtest_report(
         cell = nb.cells[0]
         assert cell.cell_type == "code", f"Assumed first cell is parameter cell, got {cell}"
         assert "parameters =" in cell.source, f"Did not see parameters = definition in the cell source: {cell.source}"
-        cell.source = f"""parameters = {{"state_file": "{state_path}"}} """
+        cell.source = f"""parameters = {{
+            "state_file": "{state_path}",
+            "universe_file": "{universe_path}", 
+        }} """
 
         # Run the notebook
         ep = ExecutePreprocessor(timeout=600, kernel_name='python3')

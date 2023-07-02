@@ -162,22 +162,24 @@ def state(
     return state
 
 @pytest.fixture(scope="module")
-def notebook(state) -> NotebookNode:
+def notebook(state, synthetic_universe) -> NotebookNode:
     with NamedTemporaryFile(suffix='.ipynb', prefix=os.path.basename(__file__)) as temp:
         nb = export_backtest_report(
             state,
+            synthetic_universe,
             output_notebook=Path(temp.name),
         )
         return nb
 
 
 @pytest.fixture(scope="module")
-def html_report(state) -> Path:
+def html_report(state, synthetic_universe) -> Path:
     with NamedTemporaryFile(suffix='.ipynb', prefix=os.path.basename(__file__)) as temp_notebook, \
         NamedTemporaryFile(suffix='.html', prefix=os.path.basename(__file__)) as temp_html:
         html_report = Path(temp_html.name)
         nb = export_backtest_report(
             state,
+            synthetic_universe,
             output_notebook=Path(temp_notebook.name),
             output_html=html_report
         )
