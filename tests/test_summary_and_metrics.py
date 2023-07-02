@@ -341,3 +341,4 @@ def test_calculate_key_metrics_live_and_backtesting(state: State):
 
     assert metrics["started_at"].source == KeyMetricSource.live_trading
     assert metrics["started_at"].value >= datetime.datetime(2023, 1, 1, 0, 0)
+
