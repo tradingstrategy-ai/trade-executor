@@ -1,4 +1,10 @@
-"""Create Jupyter Notebook based report."""
+"""Create Jupyter Notebook based report.
+
+Further reading
+
+- `Export notebook HTML with embedded images <https://jupyter-contrib-nbextensions.readthedocs.io/en/latest/nbextensions/export_embedded/readme.html>`__
+"""
+
 import logging
 import os.path
 from pathlib import Path
@@ -6,6 +12,9 @@ from tempfile import NamedTemporaryFile
 from typing import Optional
 
 import nbformat
+from bs4 import BeautifulSoup
+from nbclient.exceptions import CellExecutionError
+from nbconvert import HTMLExporter
 from nbconvert.preprocessors import ExecutePreprocessor
 from nbformat import NotebookNode
 
@@ -17,6 +26,30 @@ from tradeexecutor.strategy.strategy_module import StrategyModuleInformation
 
 
 logger = logging.getLogger(__name__)
+
+
+
+#: The default custom CSS overrides for the notebook HTML export
+#:
+DEFAULT_CUSTOM_CSS = """
+/* trade-executor backtest report generator custom CSS */
+
+.prompt {
+    display: none !important;
+}
+
+#notebook-container {
+    padding: 0;
+    box-shadow: none;
+}
+"""
+
+
+class BacktestReportRunFailed(Exception):
+    """Generating a backtest report failed.
+
+    See the wrapped :py:class:`nbclient.exceptions.CellExecutionError` for more information.
+    """
 
 
 class BacktestReporter:
@@ -56,6 +89,9 @@ def export_backtest_report(
         state: State,
         report_template: Path | None = None,
         output_notebook: Path | None = None,
+        output_html: Path | None = None,
+        show_code=False,
+        custom_css: str | None=DEFAULT_CUSTOM_CSS,
 ) -> NotebookNode:
     """Creates the backtest visual report.
 
@@ -71,13 +107,23 @@ def export_backtest_report(
 
     - Writes the output HTML file if specified
 
+    :param show_code:
+        For the HTML report, should we hide the code cells.
+
+    :param custom_css:
+        CSS code to inject to the resulting HTML file to override styles.
+
     :return:
         Returns the executed notebook contents
+
+    :raise BacktestReportRunFailed:
+        In the case the notebook had a run-time exception and Python code could not complete.
     """
 
     assert isinstance(state, State), f"Expected State, got {state}"
 
-    logger.info("Creating backtest result report for %s", state.name)
+    name = state.name
+    logger.info("Creating backtest result report for %s", name)
 
     if report_template is None:
         report_template = Path(os.path.join(os.path.dirname(__file__), "backtest_report_template.ipynb"))
@@ -106,14 +152,38 @@ def export_backtest_report(
 
         # Run the notebook
         ep = ExecutePreprocessor(timeout=600, kernel_name='python3')
-        ep.preprocess(nb, {'metadata': {'path': '.'}})
+
+        try:
+            ep.preprocess(nb, {'metadata': {'path': '.'}})
+        except CellExecutionError as e:
+            raise BacktestReportRunFailed(f"Could not run backtest reporter for {name}") from e
 
         if output_notebook is not None:
             with open(output_notebook, 'w', encoding='utf-8') as f:
                 nbformat.write(nb, f)
 
-        return nb
+        if output_html is not None:
 
+            html_exporter = HTMLExporter(
+                template_name='classic',
+                embed_images=True,
+                exclude_input=show_code is False,
+                exclude_input_prompt=True,
+                exclude_output_prompt=True,
+            )
+            # Image are inlined in the output
+            html_content, resources = html_exporter.from_notebook_node(nb)
+
+            # Inject our custom css
+            if custom_css is not None:
+                html_content = _inject_custom_css(html_content, custom_css)
+
+            with open(output_html, 'w', encoding='utf-8') as f:
+                f.write(html_content)
+
+            logger.info("Wrote HTML report to %s, total %d bytes", output_html, len(html_content))
+
+        return nb
 
 
 def run_backtest_and_report(
@@ -121,3 +191,28 @@ def run_backtest_and_report(
     client: BaseClient,
 ):
     pass
+
+
+def _inject_custom_css(html: str, css_code: str) -> str:
+    """Injects new <style> tag to HTML code.
+
+    Use BeautifulSoup to parse HTMl, inject new <style> tag, reassemble.
+
+    The resulting HTML looks like:
+
+    .. code-block:: text
+
+        <html>
+            <head>
+                ...
+                <style id="trade-executor-css-inject">
+                    ...
+    """
+    assert css_code
+    soup = BeautifulSoup(html)
+    head = soup.head
+    # Add a style tag class for better diagnostics
+    tag = soup.new_tag('style', attrs={"id": "trade-executor-css-inject"}, type='text/css')
+    head.append(tag)
+    tag.append(css_code)
+    return str(soup)

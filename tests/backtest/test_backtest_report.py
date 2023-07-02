@@ -3,6 +3,8 @@
 import datetime
 import logging
 import os
+import time
+import webbrowser
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Tuple, Any
@@ -169,11 +171,17 @@ def notebook(state) -> NotebookNode:
         return nb
 
 
-def test_generate_backtest_pass_state(notebook: NotebookNode):
-    """We can convert any of our statistics to dataframes"""
-    # We filled in parameter cell correctly
-    parameter_cell = notebook.cells[0]
-    assert ".json" in parameter_cell.source  # Check for generated .json file path
+@pytest.fixture(scope="module")
+def html_report(state) -> Path:
+    with NamedTemporaryFile(suffix='.ipynb', prefix=os.path.basename(__file__)) as temp_notebook, \
+        NamedTemporaryFile(suffix='.html', prefix=os.path.basename(__file__)) as temp_html:
+        html_report = Path(temp_html.name)
+        nb = export_backtest_report(
+            state,
+            output_notebook=Path(temp_notebook.name),
+            output_html=html_report
+        )
+        yield html_report
 
 
 def test_generate_backtest_pass_state(notebook: NotebookNode):
@@ -183,5 +191,25 @@ def test_generate_backtest_pass_state(notebook: NotebookNode):
     assert ".json" in parameter_cell.source  # Check for generated .json file path
 
 
+def test_generate_html_report(html_report: Path):
+    """We can generate a HTML report"""
+    assert os.path.exists(html_report), f"Did not create: {html_report}"
+
+    # Check we injected CSS correctly
+    html_content = html_report.open("rt").read()
+    assert "/* trade-executor backtest report generator custom CSS */" in html_content
+
+
+@pytest.mark.skipif(os.environ.get("SHOW_REPORT_IN_BROWSER") is None, reason="Manual web browser based test")
+def test_show_backtest_report(html_report: Path):
+    """Manual test to view the result.
+
+    To run
+
+        SHOW_REPORT_IN_BROWSER=true pytest -k test_show_backtest_report
+
+    """
+    webbrowser.open(f"file://{html_report}")
+    time.sleep(5)  # Give it time to open it before /tmp autodelete triggers in
 
 

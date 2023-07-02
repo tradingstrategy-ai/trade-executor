@@ -80,6 +80,7 @@ quantstats = {version="^0.0.59", optional = true}
 #
 tqdm = "^4.64.1"
 tblib = "^1.7.0"
+beautifulsoup4 = "^4.12.2"
 [tool.poetry.extras]
 
 # Legacy strats
