@@ -39,6 +39,7 @@ from tradeexecutor.state.types import USDollarPrice, Percent
 from tradeexecutor.utils.format import calculate_percentage
 from tradeexecutor.utils.timestamp import json_encode_timedelta, json_decode_timedelta
 from tradingstrategy.timebucket import TimeBucket
+from tradeexecutor.statistics.native_advanced_metrics import calculate_sharpe_ratio
 
 from tradingstrategy.exchange import Exchange
 from tradingstrategy.pair import PandasPairUniverse
@@ -150,6 +151,8 @@ class TradeSummary:
 
     overall_avg_duration: Optional[pd.Timedelta] = field(init=False)
 
+    sharpe_ratio: Optional[float] = field(init=False)
+
     def __post_init__(self):
 
         self.total_positions = self.won + self.lost + self.zero_loss
@@ -171,6 +174,9 @@ class TradeSummary:
         # TODO get from calculate_summary_stats 
         # to include zero profit trades for greater accuracy
         self.overall_avg_duration = avg_timedelta([self.average_duration_of_winning_trades, self.average_duration_of_losing_trades])
+
+        if self.daily_returns is not None:
+            self.sharpe_ratio = calculate_sharpe_ratio(self.daily_returns)
 
     def to_dataframe(self) -> pd.DataFrame:
         """Convert the data to a human readable summary table.
@@ -243,6 +249,8 @@ class TradeSummary:
 
     def display(self):
         """Create human readable summary tables and display them in IPython notebook."""
+
+        assert self.daily_returns is not None, "No daily returns data available. Remember to add state argument to py:meth:`TradeAnalysis.calculate_summary_statistics`."
 
         data1 = {
             "Annualised return %": as_percent(self.annualised_return_percent),
@@ -326,12 +334,11 @@ class TradeSummary:
         }
 
         df4 = create_summary_table(data4, ["Stop losses", "Take profits"], "Position Exits")
-
         data5 = {
             'Biggest realized risk': as_percent(self.max_loss_risk),
             'Average realized risk': as_percent(self.avg_realised_risk),
             'Max pullback of capital': as_percent(self.max_pullback),
-            'Sharpe Ratio': as_percent(0), # TODO
+            'Sharpe Ratio': as_percent(self.sharpe_ratio),
             'Sortino Ratio': as_percent(0), # TODO
             'Profit Factor': as_percent(0), # TODO
         }
@@ -515,11 +522,9 @@ class TradeAnalysis:
 
         # for advanced statistics
         # import here to avoid circular import error
-        if state is not None and HAS_QUANTSTATS:
+        if state is not None:
             from tradeexecutor.visual.equity_curve import calculate_daily_returns
             daily_returns = calculate_daily_returns(state, freq="D")
-        else:
-            daily_returns = None
 
         def get_avg_profit_pct_check(trades: List | None):
             return float(np.mean(trades)) if trades else None
