@@ -145,6 +145,11 @@ class TradeSummary:
     winning_stop_losses_percent: Optional[float] = field(init=False)
     losing_stop_losses_percent: Optional[float] = field(init=False)
 
+    median_win: Optional[float] = None
+    median_loss: Optional[float] = None
+
+    overall_avg_duration: Optional[pd.Timedelta] = field(init=False)
+
     def __post_init__(self):
 
         self.total_positions = self.won + self.lost + self.zero_loss
@@ -162,6 +167,10 @@ class TradeSummary:
 
         self.winning_stop_losses_percent = calculate_percentage(self.winning_stop_losses, self.stop_losses)
         self.losing_stop_losses_percent = calculate_percentage(self.losing_stop_losses, self.stop_losses)
+        
+        # TODO get from calculate_summary_stats 
+        # to include zero profit trades for greater accuracy
+        self.overall_avg_duration = avg_timedelta([self.average_duration_of_winning_trades, self.average_duration_of_losing_trades])
 
     def to_dataframe(self) -> pd.DataFrame:
         """Convert the data to a human readable summary table.
@@ -242,7 +251,7 @@ class TradeSummary:
             'Trade period': as_duration(self.duration),
         }
         
-        df1 = create_summary_table(data1)
+        df1 = create_summary_table(data1, "", "Returns")
 
         data2 = {
             "Total assets": as_dollar(self.end_value),
@@ -251,40 +260,83 @@ class TradeSummary:
             "Open positions": as_integer(self.undecided),
         }
 
-        df2 = create_summary_table(data2)
+        df2 = create_summary_table(data2, "", "Holdings")
 
         data3 = {
-            'Number of positions': [as_integer(self.won), as_integer(self.lost)],
-            '% of total': [as_percent(self.win_percent), as_percent(1 - self.win_percent)],
-            'Average PnL %': [as_percent(self.average_winning_trade_profit_pc), as_percent(self.average_losing_trade_loss_pc)],
-            'Median PnL %': [as_percent(0), as_percent(0)],
-            'Biggest PnL %': [as_percent(0), as_percent(0)],
-            'Average duration': [as_duration(self.average_duration_of_winning_trades), as_duration(self.average_duration_of_losing_trades)],
-            'Max consecutive streak': [as_integer(self.max_pos_cons), as_integer(self.max_neg_cons)],
-            'Max runup / drawdown': [as_percent(0), as_percent(self.max_pullback)],
+            'Number of positions': [
+                as_integer(self.won), 
+                as_integer(self.lost), 
+                as_integer(self.total_positions)
+            ],
+            '% of total': [
+                as_percent(self.win_percent), 
+                as_percent(1 - self.win_percent), 
+                as_percent(1)
+            ],
+            'Average PnL %': [
+                as_percent(self.average_winning_trade_profit_pc), 
+                as_percent(self.average_losing_trade_loss_pc),
+                as_percent(self.average_trade)
+            ],
+            'Median PnL %': [
+                as_percent(self.median_win), 
+                as_percent(self.median_loss), 
+                as_percent(self.median_trade)],
+            'Biggest PnL %': [
+                as_percent(self.biggest_winning_trade_pc), 
+                as_percent(self.biggest_losing_trade_pc), 
+                as_percent(0) # TODO
+            ],
+            'Average duration': [
+                as_duration(self.average_duration_of_winning_trades), 
+                as_duration(self.average_duration_of_losing_trades), 
+                as_duration(self.overall_avg_duration)
+            ],
+            'Max consecutive streak': [
+                as_integer(self.max_pos_cons), 
+                as_integer(self.max_neg_cons), 
+                as_percent(0) # TODO
+            ],
+            'Max runup / drawdown': [
+                as_percent(0), 
+                as_percent(self.max_pullback), 
+                as_percent(0) # TODO
+            ],
         }
 
-        df3 = create_summary_table(data3)
+        df3 = create_summary_table(data3, ["Winning", "Losing", "Total"], "Closed Positions")
 
         data4 = {
-            'Triggered exits': [as_integer(self.stop_losses), as_integer(self.take_profits)],
-            'Percent winning of all won': [as_percent(self.winning_stop_losses_percent), as_percent(self.won_take_profit_percent)],
-            'Percent losing of all lost': [as_percent(self.losing_stop_losses_percent), as_percent(self.lost_stop_loss_percent)],
-            'Percent of total': [as_percent(self.all_stop_loss_percent), as_percent(self.all_take_profit_percent)],
+            'Triggered exits': [
+                as_integer(self.stop_losses), 
+                as_integer(self.take_profits)
+            ],
+            'Percent winning of all won': [
+                as_percent(self.winning_stop_losses_percent), 
+                as_percent(self.won_take_profit_percent)
+            ],
+            'Percent losing of all lost': [
+                as_percent(self.losing_stop_losses_percent), 
+                as_percent(self.lost_stop_loss_percent)
+            ],
+            'Percent of total': [
+                as_percent(self.all_stop_loss_percent), 
+                as_percent(self.all_take_profit_percent)
+            ],
         }
 
-        df4 = create_summary_table(data4)
+        df4 = create_summary_table(data4, ["Stop losses", "Take profits"], "Position Exits")
 
         data5 = {
             'Biggest realized risk': as_percent(self.max_loss_risk),
             'Average realized risk': as_percent(self.avg_realised_risk),
             'Max pullback of capital': as_percent(self.max_pullback),
-            'Sharpe Ratio': as_percent(0),
-            'Sortino Ratio': as_percent(0),
-            'Profit Factor': as_percent(0),
+            'Sharpe Ratio': as_percent(0), # TODO
+            'Sortino Ratio': as_percent(0), # TODO
+            'Profit Factor': as_percent(0), # TODO
         }
 
-        df5 = create_summary_table(data5)
+        df5 = create_summary_table(data5, "", "Risk Analysis")
         
         display(self.single_column_dfs(df1, df2, df3, df4, df5))
 
@@ -299,13 +351,7 @@ class TradeSummary:
         return HTML(html)
 
 
-
-
-
-
-
-
-    # TODO delete/deprecate the remaining methods below
+    # TODO delete/deprecate the remaining methods below in this class
      
     def show(self):
         """Render a summary table in IPython notebook."""
@@ -622,6 +668,8 @@ class TradeAnalysis:
         all_trades = winning_trades + losing_trades + [0 for i in range(zero_loss)]
         average_trade = func_check(all_trades, avg)
         median_trade = func_check(all_trades, median)
+        median_win = func_check(winning_trades, median)
+        median_loss = func_check(losing_trades, median)
 
         average_winning_trade_profit_pc = get_avg_profit_pct_check(winning_trades)
         average_losing_trade_loss_pc = get_avg_profit_pct_check(losing_trades)
@@ -661,6 +709,8 @@ class TradeAnalysis:
             average_duration_of_losing_trades=average_duration_of_losing_trades,
             average_trade=average_trade,
             median_trade=median_trade,
+            median_win=median_win,
+            median_loss=median_loss,
             max_pos_cons=max_pos_cons,
             max_neg_cons=max_neg_cons,
             max_pullback=max_pullback_pct,
@@ -961,3 +1011,6 @@ def build_trade_analysis(
 
 def avg(lst: list[int]):
     return sum(lst) / len(lst)
+
+def avg_timedelta(lst: list[pd.Timedelta]):
+    return pd.Series(lst).mean()
