@@ -455,14 +455,27 @@ class State:
 
     @staticmethod
     def read_json_file(path: Path) -> "State":
-        """Read state from the JSO file."""
+        """Read state from the JSON file.
+
+        - Deal with all serialisation quirks
+        """
 
         assert isinstance(path, Path)
+
+        with open(path, "rt") as inp:
+            return State.read_json_blob(inp.read())
+
+    @staticmethod
+    def read_json_blob(text: str) -> "State":
+        """Parse state from JSON blob.
+
+        - Deal with all serialisation quirks
+        """
+
+        assert isinstance(text, str)
 
         # Run in any monkey-patches we need for JSON decoding
         from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
 
         patch_dataclasses_json()
-
-        with open(path, "rt") as inp:
-            return State.from_json(inp.read())
+        return State.from_json(text)
