@@ -731,7 +731,14 @@ class TradingPosition:
         Get the revert reason of the last blockchain transaction, assumed to be swap,
         for this trade.
         """
-        assert self.is_frozen()
+        assert self.is_frozen(), f"Asked for freeze reason, but position not frozen: {self}"
+
+        if len(self.get_last_trade().blockchain_transactions) == 0:
+            logger.warning("Position frozen: Last trade did not have any blockchain transactions: %s", self)
+            for t in self.trades.values():
+                logger.warning("Trade #%d: %s", t.trade_id, t)
+            return "Could not extract freeze reason"
+
         return self.get_last_trade().blockchain_transactions[-1].revert_reason
 
     def get_last_tx_hash(self) -> Optional[str]:
