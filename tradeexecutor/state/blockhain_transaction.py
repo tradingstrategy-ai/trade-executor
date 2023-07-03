@@ -240,6 +240,11 @@ class BlockchainTransaction:
         )
     )
 
+    #: Any other metadata associated with this transaction.
+    #:
+    #: Currently used for `vault_slippage_tolerance`.
+    other: dict = field(default_factory=dict)
+
     def __repr__(self):
         if self.status is True:
             return f"<Tx \n" \
