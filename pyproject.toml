@@ -19,7 +19,7 @@ python = ">=3.10,<3.11"
 # web3-ethereum-defi = {path = "deps/web3-ethereum-defi", develop = true}
 # trading-strategy = {path = "deps/trading-strategy", develop = true}
 requests = "^2.27.1"
-web3-ethereum-defi = {version="0.21.1", extras=["data"]}
+web3-ethereum-defi = {version="0.21.2", extras=["data"]}
 trading-strategy = "^0.17.5"
 matplotlib = "^3.6.0"
 jupyterlab = "^3.5.0"
@@ -107,8 +107,6 @@ web-server = [
     "pyramid-openapi3",
     "waitress"
 ]
-
-data = ["web3-ethereum-defi"]
 
 # for generating advanced statistical reports
 quantstats = ["quantstats"]
