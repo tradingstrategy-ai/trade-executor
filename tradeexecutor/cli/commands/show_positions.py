@@ -19,7 +19,7 @@ from . import shared_options
 def show_positions(
     id: str = shared_options.id,
     state_file: Optional[Path] = shared_options.state_file,
-    strategy_file: Path = shared_options.strategy_file,
+    strategy_file: Optional[Path] = shared_options.strategy_file,
 ):
     """Display trading positions from a state file.
 
