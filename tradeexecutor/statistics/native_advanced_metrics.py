@@ -1,4 +1,4 @@
-"""Aims to be our own native implementation of the advanced statistics for which we currently use quantstats."""
+"""Aims to be our own native implementation of the advanced statistics for which we currently use quantstats. Code is based on quantstats."""
 
 import pandas as pd
 import numpy as np
