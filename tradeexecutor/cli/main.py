@@ -7,24 +7,14 @@ from .commands.close_all import close_all
 from .commands.enzyme_asset_list import enzyme_asset_list
 from .commands.hello import hello
 from .commands.reinit import reinit
+from .commands.show_positions import show_positions
 from .commands.start import start
 from .commands.perform_test_trade import perform_test_trade
 from .commands.version import version
 from .commands.repair import repair
 from .commands.init import init
 
-
 # Dummy export commands even though they are already registered
 # to make the linter happy
-__all__ = [app, check_wallet, check_universe, hello, start, perform_test_trade, version, repair, console, init, reinit, enzyme_asset_list, enzyme_deploy_vault, close_all]
-
-
-
-
-
-
-
-
-
-
-
+__all__ = [app, check_wallet, check_universe, hello, start, perform_test_trade, version, repair, console, init, reinit, enzyme_asset_list, enzyme_deploy_vault,
+           close_all, show_positions]

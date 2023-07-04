@@ -1,6 +1,8 @@
 """Test additional main CLI commands."""
 
 import os
+import tempfile
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -8,7 +10,7 @@ from typer.main import get_command
 from typer.testing import CliRunner
 
 from tradeexecutor.cli.main import app
-
+from tradeexecutor.state.state import State
 
 pytestmark = pytest.mark.skipif(os.environ.get("TRADING_STRATEGY_API_KEY") is None, reason="Set TRADING_STRATEGY_API_KEY environment variable to run this test module")
 
@@ -16,7 +18,7 @@ pytestmark = pytest.mark.skipif(os.environ.get("TRADING_STRATEGY_API_KEY") is No
 @pytest.fixture(scope="session")
 def strategy_path():
     """We use pancake-eth-usd-sma.py as the strategy module input for these tests."""
-    return os.path.join(os.path.dirname(__file__), "../strategies", "pancake-eth-usd-sma.py")
+    return os.path.join(os.path.dirname(__file__), "..", "..", "strategies", "pancake-eth-usd-sma.py")
 
 
 @pytest.fixture(scope="session")
@@ -270,3 +272,29 @@ def test_cli_console(
         for line in result.stdout.split('\n'):
             print(line)
         raise AssertionError("runner launch failed")
+
+
+def test_cli_show_positions(
+        logger,
+        strategy_path: str,
+        unit_test_cache_path: str,
+    ):
+    """show-positions command works.
+
+    Run against an empty state file.
+    """
+
+    path = Path(tempfile.mkdtemp()) / "test-cli-show-positions-state.json"
+    state = State()
+    with path.open("wt") as out:
+        out.write(state.to_json_safe())
+
+    environment = {
+        "STATE_FILE": path.as_posix(),
+    }
+
+    cli = get_command(app)
+    with patch.dict(os.environ, environment, clear=True):
+        with pytest.raises(SystemExit) as e:
+            cli.main(args=["show-positions"])
+        assert e.value.code == 0

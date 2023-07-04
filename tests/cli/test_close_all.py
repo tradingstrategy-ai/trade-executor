@@ -228,9 +228,17 @@ def test_close_all(
     environment: dict,
     state_file: Path,
 ):
-    """Initialize Enzyme vault for live trading.
+    """Perform close-all command
 
-    Provide faux chain using Anvil with one pool that a sample strategy is trading.
+    - End-to-end high level test for the command
+
+    - Create test EVM trading environment
+
+    - Initialise strategy command
+
+    - Perform buy only test trade command
+
+    - Perform close all command
     """
 
     # trade-executor init
