@@ -3,25 +3,7 @@
 import pandas as pd
 import numpy as np
 
-
-def _ratio_decorator(ratio_func):
-    """Decorator for the ratio functions. It prepares the returns and annualizes the result if necessary.
     
-    :param ratio_func:
-        The ratio function to decorate.
-        
-    :return:
-        The decorated function.
-    """
-    def wrapper(returns: pd.Series, risk_free_rate: float = 0, periods = 365, annualize: bool = True) -> float:
-        assert risk_free_rate >= 0, "Risk free rate must be positive."
-        prepared_returns = _prepare_returns(returns, risk_free_rate)
-        result = ratio_func(prepared_returns, risk_free_rate, periods, annualize)
-        return _annualize_result(result, periods, annualize) if annualize else result
-    return wrapper
-    
-
-@_ratio_decorator
 def calculate_sharpe_ratio(returns: pd.Series, risk_free_rate: float = 0, periods = 365, annualize: bool = True) -> float:
     """Calculate the Sharpe ratio for the given returns.
 
@@ -37,11 +19,19 @@ def calculate_sharpe_ratio(returns: pd.Series, risk_free_rate: float = 0, period
         Sharpe ratio.
     """
 
-    return returns.mean() / returns.std(ddof=1)
+    _validate(risk_free_rate, periods)
+
+    prepared_returns = _prepare_returns(returns, risk_free_rate)
+
+    result = prepared_returns.mean() / prepared_returns.std(ddof=1)
+
+    if annualize: 
+        return _annualize_result(result, periods)  
+    else:
+        return result
 
     
-@_ratio_decorator
-def calculate_sortino_ratio(returns: pd.Series, risk_free_rate: float = 0, periods = 365, annualize: bool = True) -> float:
+def calculate_sortino_ratio(returns: pd.Series, risk_free_rate: float = 0, periods:int = 365, annualize: bool = True) -> float:
     """Calculate the Sortino ratio for the given returns.
     
     See https://www.investopedia.com/terms/s/sortinoratio.asp
@@ -56,10 +46,18 @@ def calculate_sortino_ratio(returns: pd.Series, risk_free_rate: float = 0, perio
         Sortino ratio.
     """
 
-    downside = np.sqrt((returns[returns < 0] ** 2).sum() / len(returns))
+    _validate(risk_free_rate, periods)
 
-    return returns.mean() / downside
+    prepared_returns = _prepare_returns(returns, risk_free_rate)
 
+    downside = np.sqrt((prepared_returns[prepared_returns < 0] ** 2).sum() / len(prepared_returns))
+
+    result = returns.mean() / downside
+
+    if annualize: 
+        return _annualize_result(result, periods)  
+    else:
+        return result
 
 
 def calculate_profit_factor(returns: pd.Series) -> float:
@@ -73,7 +71,24 @@ def calculate_profit_factor(returns: pd.Series) -> float:
     return abs(returns[returns >= 0].sum() / returns[returns < 0].sum())
 
 
-def _prepare_returns(returns: pd.Series, risk_free_rate: float = 0) -> pd.Series:
+def _validate(risk_free_rate: float, periods: int) -> None:
+    """
+    Validate the given parameters.
+
+    :param risk_free_rate:
+        Risk free rate of return. Currently using a default of zero.
+
+    :param periods:
+        Periods to annualize.
+    
+    :raises:
+        AssertionError if the parameters are not valid.
+    """
+    assert risk_free_rate >= 0, "Risk free rate must be positive."
+    assert periods > 0 and type(periods) == int, "Periods must be a positive integer."
+
+
+def _prepare_returns(returns: pd.Series, risk_free_rate: float = 0, periods: int = 365) -> pd.Series:
     """Get the returns corrected for the risk free rate.
 
     :param returns:
@@ -86,13 +101,17 @@ def _prepare_returns(returns: pd.Series, risk_free_rate: float = 0) -> pd.Series
         Corrected returns.
     """
 
-    if risk_free_rate > 0:
-        return returns - risk_free_rate
+    if periods is not None:
+        # deannualize
+        rf = np.power(1 + risk_free_rate, 1 / periods) - 1
+
+    if rf > 0:
+        return returns - rf
     else:
         return returns
     
 
-def _annualize_result(result: float, periods: int, annualize: bool) -> float:
+def _annualize_result(result: float, periods: int | None = None) -> float:
     """Annualize the given periods if necessary.
 
     :param result:
@@ -107,7 +126,7 @@ def _annualize_result(result: float, periods: int, annualize: bool) -> float:
     :return:
         Annualized periods.
     """
-    return result * np.sqrt(1 if annualize else periods)
+    return result * np.sqrt(1 if periods is None else periods)
 
 
 
