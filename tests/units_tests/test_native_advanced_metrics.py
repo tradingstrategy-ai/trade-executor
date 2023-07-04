@@ -1,8 +1,17 @@
+"""Tests that the native advanced metrics are the same as quantstats."""
+
 import pytest
 import pandas as pd
 import numpy as np
-from tradeexecutor.statistics.native_advanced_metrics import calculate_sharpe_ratio, calculate_sortino_ratio, calculate_profit_factor, _prepare_returns, _annualize_result
+import quantstats.stats as qs
 
+from tradeexecutor.statistics.native_advanced_metrics import (
+    calculate_sharpe_ratio,
+    calculate_sortino_ratio,
+    calculate_profit_factor,
+    _prepare_returns,
+    _annualize_result,
+)
 
 
 @pytest.fixture(scope="module")
@@ -13,16 +22,22 @@ def returns():
 
 def test_calculate_sharpe_ratio(returns):
     sharpe_ratio = calculate_sharpe_ratio(returns)
+    qs_sharpe_ratio = qs.sharpe(returns, periods=365)
+    assert sharpe_ratio == pytest.approx(qs_sharpe_ratio)
     assert sharpe_ratio == pytest.approx(-0.24084014183815203)
 
 
 def test_calculate_sortino_ratio(returns):
     sortino_ratio = calculate_sortino_ratio(returns)
+    qs_sortino_ratio = qs.sortino(returns, periods=365)
+    assert sortino_ratio == pytest.approx(qs_sortino_ratio)
     assert sortino_ratio == pytest.approx(-0.3444346032029643)
 
 
 def test_calculate_profit_factor(returns):
     profit_factor = calculate_profit_factor(returns)
+    qs_profit_factor = qs.profit_factor(returns)
+    assert profit_factor == pytest.approx(qs_profit_factor)
     assert profit_factor == pytest.approx(0.9692944238568301)
 
 
@@ -38,22 +53,32 @@ def test__prepare_returns_with_rf(returns):
     risk_free_rate = 0.05
     prepared_returns_with_risk_free_rate = _prepare_returns(returns, risk_free_rate)
     rf = np.power(1 + risk_free_rate, 1 / 365) - 1
-    assert prepared_returns_with_risk_free_rate.equals(returns - rf), "Returns should be corrected by risk free rate."
+    assert prepared_returns_with_risk_free_rate.equals(
+        returns - rf
+    ), "Returns should be corrected by risk free rate."
 
 
 def test__prepare_returns_with_rf_and_periods(returns):
     risk_free_rate = 0.01
     periods = 252
-    prepared_returns_with_risk_free_rate = _prepare_returns(returns, risk_free_rate, periods)
+    prepared_returns_with_risk_free_rate = _prepare_returns(
+        returns, risk_free_rate, periods
+    )
     rf = np.power(1 + risk_free_rate, 1 / periods) - 1
-    assert prepared_returns_with_risk_free_rate.equals(returns - rf), "Returns should be corrected by risk free rate."
+    assert prepared_returns_with_risk_free_rate.equals(
+        returns - rf
+    ), "Returns should be corrected by risk free rate."
 
 
 def test__annualize_result():
     result = np.random.rand()
     annualized = _annualize_result(result)
     assert isinstance(annualized, float), "Return type should be float."
-    assert annualized == result * np.sqrt(1), "Annualization should not change the result when annualize=True."
+    assert annualized == result * np.sqrt(
+        1
+    ), "Annualization should not change the result when annualize=True."
 
     not_annualized = _annualize_result(result, 365)
-    assert not_annualized == result * np.sqrt(365), "Result should be scaled by sqrt of periods when annualize=False."
+    assert not_annualized == result * np.sqrt(
+        365
+    ), "Result should be scaled by sqrt of periods when annualize=False."
