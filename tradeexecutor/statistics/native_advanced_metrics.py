@@ -3,8 +3,10 @@
 import pandas as pd
 import numpy as np
 
-    
-def calculate_sharpe_ratio(returns: pd.Series, risk_free_rate: float = 0, periods = 365, annualize: bool = True) -> float:
+
+def calculate_sharpe_ratio(
+    returns: pd.Series, risk_free_rate: float = 0, periods=365, annualize: bool = True
+) -> float:
     """Calculate the Sharpe ratio for the given returns.
 
     See https://www.investopedia.com/terms/s/sharperatio.asp
@@ -25,15 +27,20 @@ def calculate_sharpe_ratio(returns: pd.Series, risk_free_rate: float = 0, period
 
     result = prepared_returns.mean() / prepared_returns.std(ddof=1)
 
-    if annualize: 
-        return _annualize_result(result, periods)  
+    if annualize:
+        return _annualize_result(result, periods)
     else:
         return result
 
-    
-def calculate_sortino_ratio(returns: pd.Series, risk_free_rate: float = 0, periods:int = 365, annualize: bool = True) -> float:
+
+def calculate_sortino_ratio(
+    returns: pd.Series,
+    risk_free_rate: float = 0,
+    periods: int = 365,
+    annualize: bool = True,
+) -> float:
     """Calculate the Sortino ratio for the given returns.
-    
+
     See https://www.investopedia.com/terms/s/sortinoratio.asp
 
     :param Returns:
@@ -50,22 +57,24 @@ def calculate_sortino_ratio(returns: pd.Series, risk_free_rate: float = 0, perio
 
     prepared_returns = _prepare_returns(returns, risk_free_rate)
 
-    downside = np.sqrt((prepared_returns[prepared_returns < 0] ** 2).sum() / len(prepared_returns))
+    downside = np.sqrt(
+        (prepared_returns[prepared_returns < 0] ** 2).sum() / len(prepared_returns)
+    )
 
     result = returns.mean() / downside
 
-    if annualize: 
-        return _annualize_result(result, periods)  
+    if annualize:
+        return _annualize_result(result, periods)
     else:
         return result
 
 
 def calculate_profit_factor(returns: pd.Series) -> float:
     """Measures the profit ratio (wins/loss). Does not have to be daily returns.
-    
+
     :param returns:
         Returns of the strategy. Does not have to be daily returns.
-        
+
     :return:
         Profit factor."""
     return abs(returns[returns >= 0].sum() / returns[returns < 0].sum())
@@ -80,7 +89,7 @@ def _validate(risk_free_rate: float, periods: int) -> None:
 
     :param periods:
         Periods to annualize.
-    
+
     :raises:
         AssertionError if the parameters are not valid.
     """
@@ -88,7 +97,9 @@ def _validate(risk_free_rate: float, periods: int) -> None:
     assert periods > 0 and type(periods) == int, "Periods must be a positive integer."
 
 
-def _prepare_returns(returns: pd.Series, risk_free_rate: float = 0, periods: int = 365) -> pd.Series:
+def _prepare_returns(
+    returns: pd.Series, risk_free_rate: float = 0, periods: int = 365
+) -> pd.Series:
     """Get the returns corrected for the risk free rate.
 
     :param returns:
@@ -109,7 +120,7 @@ def _prepare_returns(returns: pd.Series, risk_free_rate: float = 0, periods: int
         return returns - rf
     else:
         return returns
-    
+
 
 def _annualize_result(result: float, periods: int | None = None) -> float:
     """Annualize the given periods if necessary.
@@ -127,7 +138,3 @@ def _annualize_result(result: float, periods: int | None = None) -> float:
         Annualized periods.
     """
     return result * np.sqrt(1 if periods is None else periods)
-
-
-
-
