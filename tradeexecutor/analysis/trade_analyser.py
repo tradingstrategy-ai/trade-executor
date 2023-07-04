@@ -577,11 +577,11 @@ class TradeAnalysis:
             realised_profit=profit + extra_return,
             open_value=open_value,
             uninvested_cash=uninvested_cash,
-            initial_cash=initial_cash,
+            initial_cash=initial_cash or 0,  # Do not pass None for serialisation for live strategies
             extra_return=extra_return,
-            duration=strategy_duration,
-            average_winning_trade_profit_pc=average_winning_trade_profit_pc,
-            average_losing_trade_loss_pc=average_losing_trade_loss_pc,
+            duration=strategy_duration or datetime.timedelta(seconds=0),  # Do not pass None for serialisation for live strategies
+            average_winning_trade_profit_pc=average_winning_trade_profit_pc or 0,  # Do not pass None for serialisation for live strategies
+            average_losing_trade_loss_pc=average_losing_trade_loss_pc or 0,  # Do not pass None for serialisation for live strategies
             biggest_winning_trade_pc=biggest_winning_trade_pc,
             biggest_losing_trade_pc=biggest_losing_trade_pc,
             average_duration_of_winning_trades=average_duration_of_winning_trades,

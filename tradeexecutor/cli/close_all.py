@@ -8,6 +8,7 @@ import textwrap
 from decimal import Decimal
 from typing import Union
 
+from tabulate import tabulate
 from web3 import Web3
 
 from tradeexecutor.analysis.position import display_positions
@@ -82,11 +83,12 @@ def close_all(
 
     # TODO: Move to SyncModel
     if isinstance(sync_model, EnzymeVaultSyncModel):
-        # Check if the vault was properly set up
         vault = sync_model.vault
-        assert vault.vault.functions.isAssetManager(hot_wallet.address).call(), f"Address is not set up as Enzyme asset manager: {hot_wallet.address}"
-
+        logger.info("  Comptroller address: %s", vault.comptroller.address)
         logger.info("  Vault owner: %s", vault.vault.functions.getOwner().call())
+        # Check if the vault was properly set up
+        # TODO: Move this check internal on EnzymeVaultSyncModel
+        assert vault.vault.functions.isAssetManager(hot_wallet.address).call(), f"Address is not set up as Enzyme asset manager: {hot_wallet.address}"
 
     if len(state.portfolio.reserves) == 0:
         raise RuntimeError("No reserves detected for the strategy. Does your wallet/vault have USDC deposited for trading?")
@@ -166,5 +168,7 @@ def close_all(
     logger.info("  Reserves currently: %s %s", reserve_currency_at_end, reserve_currency)
     logger.info("  Reserve currency spent: %s %s", reserve_currency_at_start - reserve_currency_at_end, reserve_currency)
 
-    position_info = textwrap.indent(str(display_positions(open_positions)), prefix="  ")
+    df = display_positions(state.portfolio.frozen_positions.values())
+    position_info = tabulate(df, headers='keys', tablefmt='rounded_outline')
+
     logger.info("Position data for positions that were closed:\n%s", position_info)
