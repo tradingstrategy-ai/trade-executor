@@ -136,7 +136,7 @@ class EnzymeTransactionBuilder(TransactionBuilder):
         else:
             vault_asset_deltas = asset_deltas
 
-        logger.info("Vault slippage tolerance %f, new asset deltas %s", vault_asset_deltas)
+        logger.info("Vault slippage tolerance %f, new asset deltas %s", self.vault_slippage_tolerance, vault_asset_deltas)
 
         enzyme_tx = EnzymeVaultTransaction(
             contract,
