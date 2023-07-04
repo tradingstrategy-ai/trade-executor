@@ -36,7 +36,12 @@ def server_url(store):
     execution_state.version.commit_message = "Foobar"
 
     queue = Queue()
+
     metadata = Metadata("Foobar", "Short desc", "Long desc", None, datetime.datetime.utcnow(), True)
+
+    # Inject some fake files
+    backtest_notebook =
+
     server = create_webhook_server("127.0.0.1", 5000, "test", "test", queue, store, metadata, execution_state)
     server_url = "http://test:test@127.0.0.1:5000"
     yield server_url

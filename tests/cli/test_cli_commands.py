@@ -286,9 +286,14 @@ def test_cli_backtest(
     - Run backtest command
 
     - Check for the resulting files that should have been generated
+
+    .. note ::
+
+        This test is somewhat slow due to high number of charts generated.
+        But no way to speed it up.
     """
 
-    strategy_path = os.path.join(os.path.dirname(__file__), "../strategies", "test_only", "backtest-cli-command.py")
+    strategy_path = os.path.join(os.path.dirname(__file__), "..", "..", "strategies", "test_only", "backtest-cli-command.py")
 
     backtest_result = os.path.join(tempfile.mkdtemp(), 'test_cli_backtest.json')
     notebook_result = os.path.join(tempfile.mkdtemp(), 'test_cli_backtest.ipynb')
@@ -314,7 +319,7 @@ def test_cli_backtest(
 
     # Check generated state file is good
     state = State.read_json_file(Path(backtest_result))
-    assert len(state.portfolio.closed_position) > 0
+    assert len(state.portfolio.closed_positions) > 0
 
     # Check generated HTML file is good
     html = Path(html_result).open("rt").read()

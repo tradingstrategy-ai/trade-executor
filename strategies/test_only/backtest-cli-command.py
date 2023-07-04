@@ -46,11 +46,10 @@ TRADING_PAIR = ("WAVAX", "USDC")
 
 POSITION_SIZE = 0.70
 
-BATCH_SIZE = 90
+BATCH_SIZE = 10
 
-SLOW_EMA_CANDLE_COUNT = 10
-FAST_EMA_CANDLE_COUNT = 3
-
+SLOW_EMA_CANDLE_COUNT = 5
+FAST_EMA_CANDLE_COUNT = 2
 
 BACKTEST_START = datetime.datetime(2022, 1, 1)
 
@@ -122,18 +121,14 @@ def decide_trades(
         # We buy if we just crossed over the slow EMA or if this is a very first
         # trading cycle and the price is already above the slow EMA.
 
-        logger.trade("Starting a new trade")
-
         if (
                 slow_ema_crossunder
-                or price_latest < slow_ema_latest and timestamp == START_AT
+                or price_latest < slow_ema_latest and timestamp == BACKTEST_START
         ):
             buy_amount = cash * POSITION_SIZE
             new_trades = position_manager.open_1x_long(pair, buy_amount, stop_loss_pct=STOP_LOSS_PCT)
             trades.extend(new_trades)
     else:
-
-        logger.trade("Checking for close")
 
         # We have an open position, decide if SELL in this cycle.
         # We do that if we fall below any of the two moving averages.
@@ -180,7 +175,5 @@ def create_trading_universe(
         TRADING_PAIR[0],
         TRADING_PAIR[1],
     )
-
-    logger.warning("Universe created, we have %d pairs", universe.get_pair_count())
 
     return universe
