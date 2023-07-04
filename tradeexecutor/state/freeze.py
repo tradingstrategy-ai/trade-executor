@@ -45,7 +45,7 @@ def freeze_position_on_failed_trade(ts: datetime.datetime, state: State, trades:
             if position.notes is None:
                 position.notes = ""
 
-            position.notes += f"Frozen at {datetime.datetime.utcnow()} due to trade {t.trade_id} failing\n"
+            position.add_notes_message(f"Frozen at {datetime.datetime.utcnow()} due to trade {t.trade_id} failing")
 
             # Mark assets automatically blacklisted so no future trades
             state.blacklist_asset(position.pair.base)

@@ -172,6 +172,8 @@ class TradingPosition:
     #:
     #: Special case; not worth to display unless the field is filled in.
     #:
+    #: - May contain multiple newline separated messages
+    #:
     #: - Used to mark test trades from command line.
     #:
     #: - Used to add log information abotu frozen and unfrozen positions
@@ -979,6 +981,17 @@ class TradingPosition:
             return 0
         assert self.last_token_price, f"Asset price not available when calculating price for quantity: {quantity}"
         return float(quantity) * self.last_token_price
+
+    def add_notes_message(self, msg: str):
+        """Add a new message to the notes field.
+
+        Messages are newline separated.
+        """
+        if self.notes is None:
+            self.notes = ""
+
+        self.notes += msg
+        self.notes += "\n"
 
 
 class PositionType(enum.Enum):

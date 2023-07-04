@@ -27,6 +27,10 @@ from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniv
 logger = logging.getLogger(__name__)
 
 
+class CloseAllAborted(Exception):
+    """Interactively chosen to cancel"""
+
+
 def close_all(
         web3: Web3,
         execution_model: ExecutionModel,
@@ -36,13 +40,15 @@ def close_all(
         universe: TradingStrategyUniverse,
         routing_model: RoutingModel,
         routing_state: RoutingState,
-        amount=Decimal("1.0"),
-        pair: HumanReadableTradingPairDescription | None = None,
+        interactive=True,
 ):
-    """Perform a test trade.
+    """Close all positions.
 
-    Buy and sell 1 token worth for 1 USD to check that
-    our trade routing works.
+    - Sync reserves before starting
+
+    - Close any open positions
+
+    - Display trade execution and position report afterwards
     """
 
     assert isinstance(sync_model, SyncModel)
@@ -51,33 +57,6 @@ def close_all(
 
     # Sync nonce for the hot wallet
     execution_model.initialize()
-
-    data_universe: Universe = universe.universe
-
-    reserve_asset = universe.get_reserve_asset()
-
-    if pair:
-        raw_pair = data_universe.pairs.get_pair(*pair)
-    else:
-        raw_pair = data_universe.pairs.get_single()
-
-    pair = translate_trading_pair(raw_pair)
-
-    # Get estimated price for the asset we are going to buy
-    assumed_price_structure = pricing_model.get_buy_price(
-        ts,
-        pair,
-        amount,
-    )
-
-    logger.info("Making a test trade on pair: %s, for %f %s price is %f %s/%s",
-                pair,
-                amount,
-                reserve_asset.token_symbol,
-                assumed_price_structure.mid_price,
-                pair.base.token_symbol,
-                reserve_asset.token_symbol,
-                )
 
     logger.info("Sync model is %s", sync_model)
     logger.info("Trading university reserve asset is %s", universe.get_reserve_asset())
@@ -128,14 +107,24 @@ def close_all(
         pricing_model,
     )
 
-    # The message left on the test positions and trades
-    notes = f"Closed with close-all command at {datetime.datetime.utcnow()}"
+    # The message left on the positions that were closed
+    note = f"Closed with close-all command at {datetime.datetime.utcnow()}"
 
     # Open the test position only if there isn't position already open
     # on the previous run
 
     open_positions = list(state.portfolio.open_positions.values())
-    logger.info("Currently having %d open positions", len(open_positions))
+    logger.info("Performing close-all for %d open positions", len(open_positions))
+
+    assert len(open_positions) > 0, "Strategy does not have any open positions to close"
+
+    for p in open_positions:
+        logger.info("  Position: %s", p)
+
+    if interactive:
+        confirmation = input("Attempt to cloes positions [y/n]").lower()
+        if confirmation != "y":
+            raise CloseAllAborted()
 
     for p in open_positions:
         # Create trades to open the position
@@ -162,6 +151,11 @@ def close_all(
             logger.error("Revert reason: %s", trade.blockchain_transactions[-1].revert_reason)
             logger.error("Trade dump:\n%s", trade.get_full_debug_dump_str())
             raise AssertionError("Trade to close position failed")
+
+        if p.notes is None:
+            p.notes = ""
+
+        p.add_notes_message(note)
 
     gas_at_end = hot_wallet.get_native_currency_balance(web3)
     reserve_currency_at_end = state.portfolio.get_default_reserve_position().get_value()

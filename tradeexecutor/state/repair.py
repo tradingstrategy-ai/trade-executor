@@ -205,7 +205,7 @@ def unfreeze_position(portfolio: Portfolio, position: TradingPosition) -> bool:
     if position.notes is None:
         position.notes = ""
 
-    position.notes += f"Unfrozen at {datetime.datetime.utcnow()}\n"
+    position.add_notes_message(f"Unfrozen at {datetime.datetime.utcnow()}")
 
     return True
 
