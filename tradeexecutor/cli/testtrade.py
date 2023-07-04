@@ -33,6 +33,7 @@ def make_test_trade(
         routing_state: RoutingState,
         amount=Decimal("1.0"),
         pair: HumanReadableTradingPairDescription | None = None,
+        buy_only: bool = False,
 ):
     """Perform a test trade.
 
@@ -169,35 +170,39 @@ def make_test_trade(
 
     logger.info("Position %s open. Now closing the position.", position)
 
-    # Recreate the position manager for the new timestamp,
-    # as time has passed
-    ts = datetime.datetime.utcnow()
-    position_manager = PositionManager(
-        ts,
-        universe.universe,
-        state,
-        pricing_model,
-    )
-
-    trades = position_manager.close_position(
-        position,
-        notes=notes,
-    )
-    assert len(trades) == 1
-    sell_trade = trades[0]
-
-    execution_model.execute_trades(
+    if not buy_only:
+        # Recreate the position manager for the new timestamp,
+        # as time has passed
+        ts = datetime.datetime.utcnow()
+        position_manager = PositionManager(
             ts,
+            universe.universe,
             state,
-            [sell_trade],
-            routing_model,
-            routing_state,
+            pricing_model,
         )
 
-    if not sell_trade.is_success():
-        logger.error("Test sell failed: %s", sell_trade)
-        logger.error("Trade dump:\n%s", sell_trade.get_full_debug_dump_str())
-        raise AssertionError("Test sell failed")
+        trades = position_manager.close_position(
+            position,
+            notes=notes,
+        )
+        assert len(trades) == 1
+        sell_trade = trades[0]
+
+        execution_model.execute_trades(
+                ts,
+                state,
+                [sell_trade],
+                routing_model,
+                routing_state,
+            )
+
+        if not sell_trade.is_success():
+            logger.error("Test sell failed: %s", sell_trade)
+            logger.error("Trade dump:\n%s", sell_trade.get_full_debug_dump_str())
+            raise AssertionError("Test sell failed")
+
+    else:
+        sell_trade = None
 
     gas_at_end = hot_wallet.get_native_currency_balance(web3)
     reserve_currency_at_end = state.portfolio.get_default_reserve_position().get_value()
@@ -209,4 +214,5 @@ def make_test_trade(
     logger.info("  Reserve currency spent: %s %s", reserve_currency_at_start - reserve_currency_at_end, reserve_currency)
     if buy_trade:
         logger.info("  Buy trade price, expected: %s, actual: %s (%s)", buy_trade.planned_price, buy_trade.executed_price, position.pair.get_ticker())
-    logger.info("  Sell trade price, expected: %s, actual: %s (%s)", sell_trade.planned_price, sell_trade.executed_price, position.pair.get_ticker())
+    if sell_trade:
+        logger.info("  Sell trade price, expected: %s, actual: %s (%s)", sell_trade.planned_price, sell_trade.executed_price, position.pair.get_ticker())

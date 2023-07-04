@@ -38,7 +38,7 @@ class HotWalletSyncModel(SyncModel):
     def resync_nonce(self):
         self.hot_wallet.sync_nonce(self.web3)
 
-    def sync_initial(self, state: State):
+    def sync_initial(self, state: State, **kwargs):
         """Set u[ initial sync details."""
         web3 = self.web3
         deployment = state.sync.deployment

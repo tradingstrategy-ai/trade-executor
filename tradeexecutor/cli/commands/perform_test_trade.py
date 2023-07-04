@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Optional
 import re
 import typer
+from typer import Option
 
 from .app import app
 from ..bootstrap import prepare_executor_id, prepare_cache, create_web3_config, create_state_store, \
@@ -61,6 +62,8 @@ def perform_test_trade(
 
     # for multipair strategies
     pair: Optional[str] = shared_options.pair,
+
+    buy_only: bool = Option(None, "--buy-only", envvar="BUY_ONLY", help="Only perform the buy side of the test trade - leave position open.")
 ):
     """Perform a small test swap.
 
@@ -173,6 +176,7 @@ def perform_test_trade(
         runner.routing_model,
         routing_state,
         pair=pair,
+        buy_only=buy_only,
     )
 
     # Store the test trade data in the strategy history

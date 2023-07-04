@@ -54,6 +54,8 @@ def close_all(
     test_evm_uniswap_v2_factory: Optional[str] = shared_options.test_evm_uniswap_v2_factory,
     test_evm_uniswap_v2_init_code_hash: Optional[str] = shared_options.test_evm_uniswap_v2_init_code_hash,
 
+    unit_testing: bool = shared_options.unit_testing,
+
 ):
     """Close all open positions.
 
@@ -157,6 +159,7 @@ def close_all(
         universe,
         runner.routing_model,
         routing_state,
+        interactive=not unit_testing,
     )
 
     # Store the test trade data in the strategy history
