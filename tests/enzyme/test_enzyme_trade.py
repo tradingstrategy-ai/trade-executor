@@ -47,7 +47,6 @@ def hot_wallet(web3, deployer, user_1, usdc: Contract) -> HotWallet:
     assert_transaction_success_with_explanation(web3, tx_hash)
     tx_hash = usdc.functions.transfer(wallet.address, 500 * 10**6).transact({"from": deployer})
     assert_transaction_success_with_explanation(web3, tx_hash)
-
     return wallet
 
 

@@ -237,6 +237,11 @@ class TradingPosition:
         """This position was frozen, but its trades were successfully repaired."""
         return self.unfrozen_at is not None
 
+
+    def is_repaired(self) -> bool:
+        """This position was frozen, but its trades were successfully repaired."""
+        return self.is_unfrozen()
+
     def has_automatic_close(self) -> bool:
         """This position has stop loss/take profit set."""
         return (self.stop_loss is not None) or (self.take_profit is not None)
