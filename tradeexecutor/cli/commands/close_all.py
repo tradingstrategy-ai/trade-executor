@@ -1,18 +1,13 @@
-"""perform-test-trade command"""
+"""close-all command"""
 
 import datetime
-import logging
 from pathlib import Path
 from typing import Optional
-import re
-import typer
-from typer import Option
 
 from .app import app
 from ..bootstrap import prepare_executor_id, prepare_cache, create_web3_config, create_state_store, \
     create_execution_and_sync_model, create_client
 from ..log import setup_logging
-from ..testtrade import make_test_trade
 from ...strategy.approval import UncheckedApprovalModel
 from ...strategy.bootstrap import make_factory_from_strategy_mod
 from ...strategy.description import StrategyExecutionDescription
@@ -24,13 +19,12 @@ from ...strategy.trading_strategy_universe import TradingStrategyUniverseModel
 from ...strategy.universe_model import UniverseOptions
 from ...utils.timer import timed_task
 from tradeexecutor.cli.commands import shared_options
-from tradingstrategy.chain import ChainId
+from tradeexecutor.cli.close_all import close_all as _close_all
 
 
 @app.command()
-def perform_test_trade(
+def close_all(
     id: str = shared_options.id,
-    name: Optional[str] = shared_options.name,
 
     strategy_file: Path = shared_options.strategy_file,
     trading_strategy_api_key: str = shared_options.trading_strategy_api_key,
@@ -60,22 +54,15 @@ def perform_test_trade(
     test_evm_uniswap_v2_factory: Optional[str] = shared_options.test_evm_uniswap_v2_factory,
     test_evm_uniswap_v2_init_code_hash: Optional[str] = shared_options.test_evm_uniswap_v2_init_code_hash,
 
-    # for multipair strategies
-    pair: Optional[str] = shared_options.pair,
+    unit_testing: bool = shared_options.unit_testing,
 
-    buy_only: bool = Option(None, "--buy-only", envvar="BUY_ONLY", help="Only perform the buy side of the test trade - leave position open.")
 ):
-    """Perform a small test swap.
+    """Close all open positions.
 
-    Tests that the private wallet and the exchange can trade by making 1 USD trade using
-    the routing configuration from the strategy.
+    - Syncs the latest reserve deposits and redemptions
 
-    The trade will be recorded on the state as a position.
+    - Closes any position that's open currently
     """
-
-    if pair:
-        pair = parse_pair_data(pair)
-
     id = prepare_executor_id(id, strategy_file)
 
     logger = setup_logging(log_level=log_level)
@@ -134,11 +121,8 @@ def perform_test_trade(
 
     store = create_state_store(Path(state_file))
 
-    if store.is_pristine():
-        assert name, "Strategy state file has not been createad. You must pass strategy name to create."
-        state = store.create(name)
-    else:
-        state = store.load()
+    assert not store.is_pristine(), f"Strategy state file does not exist: {state_file}"
+    state = store.load()
 
     # Set up the strategy engine
     factory = make_factory_from_strategy_mod(mod)
@@ -166,7 +150,7 @@ def perform_test_trade(
     runner = run_description.runner
     routing_state, pricing_model, valuation_method = runner.setup_routing(universe)
 
-    make_test_trade(
+    _close_all(
         web3config.get_default(),
         execution_model,
         pricing_model,
@@ -175,48 +159,10 @@ def perform_test_trade(
         universe,
         runner.routing_model,
         routing_state,
-        pair=pair,
-        buy_only=buy_only,
+        interactive=not unit_testing,
     )
 
     # Store the test trade data in the strategy history
     store.sync(state)
 
     logger.info("All ok")
-
-
-def parse_pair_data(s: str):
-    """Extract pair data from string.
-    
-    :param s:
-        String in the format of: [(chain_id, exchange_slug, base_token, quote_token, fee)])], 
-        
-        where rate is optional.
-
-    :raises ValueError:
-        If the string is not in the correct format.
-    
-    :return:
-        Tuple of (chain_id, exchange_slug, base_token, quote_token, fee)"""
-    
-    try: 
-        # Extract the tuple
-        tuple_str = re.search(r'\((.*?)\)', s)[1]
-
-        # Split elements and remove leading/trailing whitespaces
-        elements = [e.strip() for e in tuple_str.split(',')]
-
-        if len(elements) not in {4, 5}:
-            raise ValueError()
-
-        # Process elements
-        chain_id = getattr(ChainId, elements[0].split('.')[-1])
-        exchange_slug = elements[1].strip('"')
-        base_token = elements[2].strip('"')
-        quote_token = elements[3].strip('"')
-        fee = float(elements[4]) if len(elements) > 4 else None
-
-    except:
-        raise ValueError(f'Invalid pair data: {s}. Tuple must be in the format of: (chain_id, exchange_slug, base_token, quote_token, fee), where fee is optional')
-
-    return (chain_id, exchange_slug, base_token, quote_token, fee)

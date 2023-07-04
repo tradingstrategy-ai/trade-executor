@@ -4,28 +4,17 @@ This command does not have automatic test coverage,
 as it is pretty hard to drive to the test point.
 """
 
-import datetime
 from pathlib import Path
 from typing import Optional
 
 import typer
 
-from tradingstrategy.client import Client
 from .app import app
-from ..bootstrap import prepare_executor_id, prepare_cache, create_web3_config, create_state_store, \
-    create_execution_and_sync_model
+from ..bootstrap import prepare_executor_id, create_state_store, create_execution_and_sync_model
 from ..log import setup_logging
 from ...state.repair import repair_trades
-from ...state.state import UncleanState
-from ...strategy.approval import UncheckedApprovalModel
-from ...strategy.bootstrap import make_factory_from_strategy_mod
-from ...strategy.description import StrategyExecutionDescription
 from ...strategy.execution_context import ExecutionContext, ExecutionMode
-from ...strategy.execution_model import AssetManagementMode
-from ...strategy.run_state import RunState
 from ...strategy.strategy_module import read_strategy_module
-from ...strategy.trading_strategy_universe import TradingStrategyUniverseModel
-from ...strategy.universe_model import UniverseOptions
 from ...utils.timer import timed_task
 
 

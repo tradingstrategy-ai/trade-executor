@@ -13,6 +13,7 @@ def _ftime(v: datetime.datetime) -> str:
         return ""
     return v.strftime('%Y-%m-%d %H:%M')
 
+
 def display_positions(positions: Iterable[TradingPosition]) -> pd.DataFrame:
     """Format trading positions for Jupyter Notebook table output.
 
@@ -21,6 +22,9 @@ def display_positions(positions: Iterable[TradingPosition]) -> pd.DataFrame:
     - All positions
 
     - Their underlying trades
+
+    :return:
+        DataFrame containing positions and trades, values as string formatted
     """
 
     items = []
