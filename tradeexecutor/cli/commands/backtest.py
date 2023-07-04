@@ -71,8 +71,8 @@ def backtest(
     backtest_result: Optional[Path] = shared_options.backtest_result,
     cache_path: Optional[Path] = shared_options.cache_path,
 
-    notebook_report: Optional[Path] = Option(None, envvar="NOTEBOOK_REPORT", help="Jupyter Notebook file where the store the notebook results. If not given defaults to state/{executor-id}-backtest.ipynb."),
-    html_report: Optional[Path] = Option(None, envvar="HTML_REPORT", help="HTML file where the store the notebook results. If not given defaults to state/{executor-id}-backtest.html."),
+    notebook_report: Optional[Path] = shared_options.notebook_report,
+    html_report: Optional[Path] = shared_options.html_report,
     ):
     """Backtest a given strategy module.
 

@@ -128,11 +128,15 @@ def start(
     trade_immediately: bool = typer.Option(False, "--trade-immediately", envvar="TRADE_IMMEDIATELY", help="Perform the first rebalance immediately, do not wait for the next trading universe refresh"),
     strategy_cycle_trigger: StrategyCycleTrigger = typer.Option("cycle_offset", envvar="STRATEGY_CYCLE_TRIGGER", help="How do decide when to start executing the next live trading strategy cycle"),
 
-    # Unsorted options
+    # Logging
+    log_level: str = shared_options.log_level,
+
+    # Various file configurations
     state_file: Optional[Path] = shared_options.state_file,
     backtest_result: Optional[Path] = shared_options.backtest_result,
+    notebook_report: Optional[Path] = shared_options.notebook_report,
+    html_report: Optional[Path] = shared_options.html_report,
     cache_path: Optional[Path] = shared_options.cache_path,
-    log_level: str = shared_options.log_level,
     ):
     """Launch Trade Executor instance."""
     global logger
@@ -293,6 +297,12 @@ def start(
                 assert backtest_result.exists(), f"Previous backtest results are needed to have the live webhook server.\n" \
                                                  f"The BACKTEST_RESULT file {backtest_result.absolute()} does not exist."
 
+        if not html_report:
+            html_report = Path(f"state/{id}-backtest.html")
+
+        if not notebook_report:
+            notebook_report = Path(f"state/{id}-backtest.ipynb")
+
         metadata = create_metadata(
             name,
             short_description,
@@ -302,6 +312,8 @@ def start(
             chain_id=mod.chain_id,
             vault=vault,
             backtest_result=backtest_result,
+            backtest_notebook=notebook_report,
+            backtest_html=html_report,
         )
 
         # Start the queue that relays info from the web server to the strategy executor

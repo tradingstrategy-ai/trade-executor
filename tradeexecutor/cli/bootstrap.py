@@ -246,6 +246,8 @@ def create_metadata(
         chain_id: ChainId,
         vault: Optional[Vault],
         backtest_result: Optional[Path]=None,
+        backtest_notebook: Optional[Path]=None,
+        backtest_html: Optional[Path]=None,
 ) -> Metadata:
     """Create metadata object from the configuration variables."""
 
@@ -282,6 +284,8 @@ def create_metadata(
         executor_running=True,
         on_chain_data=on_chain_data,
         backtested_state=backtested_state,
+        backtest_notebook=backtest_notebook,
+        backtest_html=backtest_html,
     )
 
     return metadata
