@@ -224,13 +224,6 @@ def export_backtest_report(
         return nb
 
 
-def run_backtest_and_report(
-    mod: StrategyModuleInformation,
-    client: BaseClient,
-):
-    pass
-
-
 def _inject_custom_css(html: str, css_code: str) -> str:
     """Injects new <style> tag to HTML code.
 

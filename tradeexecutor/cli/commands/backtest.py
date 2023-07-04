@@ -31,6 +31,7 @@ from ..result import display_backtesting_results
 from ..version_info import VersionInfo
 from ..watchdog import stop_watchdog
 from ...backtest.backtest_runner import setup_backtest, run_backtest
+from ...backtest.report import export_backtest_report
 from ...ethereum.enzyme.vault import EnzymeVaultSyncModel
 from ...ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2SimpleRoutingModel
 from ...state.state import State
@@ -89,12 +90,9 @@ def backtest(
     # Guess id from the strategy file
     id = prepare_executor_id(id, strategy_file)
 
-    # We always need a name-*-
+    # We always need a name
     if not name:
-        if strategy_file:
-            name = os.path.basename(strategy_file)
-        else:
-            name = "Unnamed backtest"
+        name = f"{id} backtest"
 
     if not log_level:
         log_level = logging.WARNING
@@ -115,8 +113,8 @@ def backtest(
     if not cache_path:
         if unit_testing:
             cache_path = Path("/tmp/trading-strategy-tests")
-
-    cache_path = prepare_cache(id, cache_path)
+        else:
+            cache_path = prepare_cache(id, cache_path)
 
     if not html_report:
         html_report = Path(f"state/{id}-backtest.html")
@@ -127,10 +125,6 @@ def backtest(
     if not backtest_result:
         backtest_result = Path(f"state/{id}-backtest.json")
 
-    # TODO: This strategy file is reloaded again in ExecutionLoop.run()
-    # We do an extra hop here, because we need to know chain_id associated with the strategy,
-    # because there is an inversion of control issue for passing web3 connection around.
-    # Clean this up in the future versions, by changing the order of initialzation.
     mod = read_strategy_module(strategy_file)
 
     client = Client.create_live_client(trading_strategy_api_key, cache_path=cache_path)
@@ -150,7 +144,14 @@ def backtest(
 
     display_backtesting_results(state)
 
+    logger.info("Writing backtest state to %s", backtest_result)
     state.write_json_file(backtest_result)
 
-
+    logger.info("Exporting report, notebook: %s, HTML: %s", notebook_report, html_report)
+    export_backtest_report(
+        state,
+        universe,
+        output_notebook=notebook_report,
+        output_html=html_report,
+    )
 
