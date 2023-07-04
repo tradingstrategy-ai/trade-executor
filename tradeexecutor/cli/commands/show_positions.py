@@ -19,6 +19,7 @@ from . import shared_options
 def show_positions(
     id: str = shared_options.id,
     state_file: Optional[Path] = shared_options.state_file,
+    strategy_file: Path = shared_options.strategy_file,
 ):
     """Display trading positions from a state file.
 
@@ -30,10 +31,12 @@ def show_positions(
     """
 
     if not state_file:
+        # Guess id from the strategy file
+        id = prepare_executor_id(id, strategy_file)
         assert id, "Executor id must be given if not absolute state file path is given"
-        state_file = f"state/{id}.json"
+        state_file = Path(f"state/{id}.json")
 
-    store = create_state_store(Path(state_file))
+    store = create_state_store(state_file)
     assert not store.is_pristine(), f"State file does not exists: {state_file}"
 
     state = State.read_json_file(state_file)
