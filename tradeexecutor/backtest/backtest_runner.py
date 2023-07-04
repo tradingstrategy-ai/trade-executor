@@ -221,6 +221,7 @@ def setup_backtest(
         cycle_duration: Optional[CycleDuration]=None,
         candle_time_frame: Optional[TimeBucket]=None,
         strategy_module: Optional[StrategyModuleInformation]=None,
+        name: Optional[str] = None,
     ) -> BacktestSetup:
     """High-level entry point for setting up a backtest from a strategy module.
 
@@ -262,6 +263,9 @@ def setup_backtest(
 
     universe_options = UniverseOptions(candle_time_bucket_override=candle_time_frame)
 
+    if not name:
+        name = f"Backtest for {strategy_module.path.stem}"
+
     return BacktestSetup(
         start_at,
         end_at,
@@ -279,6 +283,7 @@ def setup_backtest(
         reserve_currency=strategy_module.reserve_currency,
         trade_routing=strategy_module.trade_routing,
         trading_strategy_engine_version=strategy_module.trading_strategy_engine_version,
+        name=name,
     )
 
 

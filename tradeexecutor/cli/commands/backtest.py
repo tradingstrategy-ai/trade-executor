@@ -108,13 +108,8 @@ def backtest(
         if state_file.exists():
             os.remove(state_file)
 
-    # Avoid polluting user caches during test runs,
-    # so we use different default
     if not cache_path:
-        if unit_testing:
-            cache_path = Path("/tmp/trading-strategy-tests")
-        else:
-            cache_path = prepare_cache(id, cache_path)
+        cache_path = prepare_cache(id, cache_path)
 
     if not html_report:
         html_report = Path(f"state/{id}-backtest.html")

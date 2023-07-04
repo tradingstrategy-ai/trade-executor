@@ -301,10 +301,10 @@ class StrategyModuleInformation:
 
 
     #: Only needed for backtests
-    backtest_start: Optional[pd.Timestamp] = None
+    backtest_start: Optional[datetime.datetime] = None
 
     #: Only needed for backtests
-    backtest_end: Optional[pd.Timestamp] = None
+    backtest_end: Optional[datetime.datetime] = None
 
     #: Only needed for backtests
     initial_cash: Optional[float] = None
@@ -400,8 +400,8 @@ def parse_strategy_module(
         python_module_exports.get("decide_trades"),
         python_module_exports.get("create_trading_universe"),
         python_module_exports.get("chain_id"),
-        python_module_exports.get("backtest_start"),
-        python_module_exports.get("backtest_end"),
+        _ensure_dt(python_module_exports.get("backtest_start")),
+        _ensure_dt(python_module_exports.get("backtest_end")),
         python_module_exports.get("initial_cash"),
     )
 
@@ -449,3 +449,10 @@ def read_strategy_module(path: Path) -> Union[StrategyModuleInformation, Strateg
     mod_info.validate()
 
     return mod_info
+
+
+def _ensure_dt(v: datetime.datetime | pd.Timestamp | None) -> datetime.datetime | None:
+    """Allow pd.Timestamp in a file but use datetime internally"""
+    if isinstance(v, pd.Timestamp):
+        return v.to_pydatetime()
+    return v
