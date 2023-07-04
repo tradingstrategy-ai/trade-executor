@@ -100,13 +100,11 @@ def make_test_trade(
     logger.info("  Hot wallet address: %s", hot_wallet.address)
     logger.info("  Hot wallet balance: %s", gas_at_start)
 
-    # TODO: Move to SyncModel
     if isinstance(sync_model, EnzymeVaultSyncModel):
-        # Check if the vault was properly set up
         vault = sync_model.vault
-        assert vault.vault.functions.isAssetManager(hot_wallet.address).call(), f"Address is not set up as Enzyme asset manager: {hot_wallet.address}"
-
+        logger.info("  Comptroller address: %s", vault.comptroller.address)
         logger.info("  Vault owner: %s", vault.vault.functions.getOwner().call())
+        sync_model.check_ownership()
 
     if len(state.portfolio.reserves) == 0:
         raise RuntimeError("No reserves detected for the strategy. Does your wallet/vault have USDC deposited for trading?")

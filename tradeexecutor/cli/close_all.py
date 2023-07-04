@@ -81,14 +81,11 @@ def close_all(
     logger.info("  Hot wallet address: %s", hot_wallet.address)
     logger.info("  Hot wallet balance: %s", gas_at_start)
 
-    # TODO: Move to SyncModel
     if isinstance(sync_model, EnzymeVaultSyncModel):
         vault = sync_model.vault
         logger.info("  Comptroller address: %s", vault.comptroller.address)
         logger.info("  Vault owner: %s", vault.vault.functions.getOwner().call())
-        # Check if the vault was properly set up
-        # TODO: Move this check internal on EnzymeVaultSyncModel
-        assert vault.vault.functions.isAssetManager(hot_wallet.address).call(), f"Address is not set up as Enzyme asset manager: {hot_wallet.address}"
+        sync_model.check_ownership()
 
     if len(state.portfolio.reserves) == 0:
         raise RuntimeError("No reserves detected for the strategy. Does your wallet/vault have USDC deposited for trading?")

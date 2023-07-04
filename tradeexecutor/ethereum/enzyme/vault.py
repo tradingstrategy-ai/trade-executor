@@ -603,6 +603,27 @@ class EnzymeVaultSyncModel(SyncModel):
         assert self.hot_wallet, "HotWallet not set - cannot create transaction builder"
         return EnzymeTransactionBuilder(self.hot_wallet, self.vault)
 
+    def check_ownership(self):
+        """Check that the hot wallet has the correct ownership rights to make trades through the vault.
+
+        Hot wallet must be registered either as
+
+        - Vault owner
+
+        - Vault asset manager
+
+        :raise AssertionError:
+            If the hot wallet cannot perform trades for the vault
+        """
+
+        # TODO: Move this check internal on EnzymeVaultSyncModel
+        hot_wallet = self.get_hot_wallet()
+        vault = self.vault
+
+        owner = vault.vault.functions.getOwner().call()
+        if owner != hot_wallet.address:
+            assert vault.vault.functions.isAssetManager(hot_wallet.address).call(), f"Address is not set up as Enzyme asset manager: {hot_wallet.address}"
+
 
 def _dump_enzyme_event(e: EnzymeBalanceEvent) -> str:
     """Format enzyme events in the error / log output."""
