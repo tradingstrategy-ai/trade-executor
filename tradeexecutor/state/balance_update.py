@@ -126,7 +126,7 @@ class BalanceUpdate:
 
     def __repr__(self):
         if self.position_id:
-            position_name = f"position #{self.position_id"
+            position_name = f"position #{self.position_id}"
         else:
             position_name = "strategy reserves"
 
