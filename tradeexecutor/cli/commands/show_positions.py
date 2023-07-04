@@ -20,7 +20,7 @@ def show_positions(
     id: str = shared_options.id,
     state_file: Optional[Path] = shared_options.state_file,
 ):
-    """Display positions from a state file.
+    """Display trading positions from a state file.
 
     - Dumps all open and historical positions from the state file
       for debug inspection
@@ -40,6 +40,8 @@ def show_positions(
 
     print("Open positions")
     df = display_positions(state.portfolio.open_positions.values())
+    # https://pypi.org/project/tabulate/
+    # https://stackoverflow.com/a/31885295/315168
     print(tabulate(df, headers='keys', tablefmt='rounded_outline'))
 
     print()
