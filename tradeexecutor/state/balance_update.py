@@ -125,7 +125,12 @@ class BalanceUpdate:
         assert self.quantity != 0, "Balance update cannot be zero: {self}"
 
     def __repr__(self):
-        return f"<BalanceUpdate #{self.balance_update_id} {self.cause.name} {self.quantity} for position {self.position_id} at block {self.block_mined_at and self.block_mined_at:,}>"
+        if self.position_id:
+            position_name = f"position #{self.position_id"
+        else:
+            position_name = "strategy reserves"
+
+        return f"<BalanceUpdate #{self.balance_update_id} {self.cause.name} {self.quantity} for {position_name} at block {self.block_mined_at and self.block_mined_at:,}>"
 
     def __eq__(self, other: "BalanceUpdate"):
         assert isinstance(other, BalanceUpdate), f"Got {other}"
