@@ -39,7 +39,7 @@ from tradeexecutor.state.types import USDollarPrice, Percent
 from tradeexecutor.utils.format import calculate_percentage
 from tradeexecutor.utils.timestamp import json_encode_timedelta, json_decode_timedelta
 from tradingstrategy.timebucket import TimeBucket
-from tradeexecutor.statistics.native_advanced_metrics import calculate_sharpe_ratio
+from tradeexecutor.statistics.native_advanced_metrics import calculate_sharpe_ratio, calculate_sortino_ratio, calculate_profit_factor
 
 from tradingstrategy.exchange import Exchange
 from tradingstrategy.pair import PandasPairUniverse
@@ -142,9 +142,15 @@ class TradeSummary:
     
     winning_stop_losses: Optional[int] = 0
     losing_stop_losses: Optional[int] = 0
+
+    winning_take_profits: Optional[int] = 0
+    losing_take_profits: Optional[int] = 0
     
     winning_stop_losses_percent: Optional[float] = field(init=False)
     losing_stop_losses_percent: Optional[float] = field(init=False)
+    
+    winning_take_profits_percent: Optional[float] = field(init=False)
+    losing_take_profits_percent: Optional[float] = field(init=False)
 
     median_win: Optional[float] = None
     median_loss: Optional[float] = None
@@ -152,6 +158,8 @@ class TradeSummary:
     overall_avg_duration: Optional[pd.Timedelta] = field(init=False)
 
     sharpe_ratio: Optional[float] = field(init=False)
+    sortino_ratio: Optional[float] = field(init=False)
+    profit_factor: Optional[float] = field(init=False)
 
     def __post_init__(self):
 
@@ -170,6 +178,9 @@ class TradeSummary:
 
         self.winning_stop_losses_percent = calculate_percentage(self.winning_stop_losses, self.stop_losses)
         self.losing_stop_losses_percent = calculate_percentage(self.losing_stop_losses, self.stop_losses)
+
+        self.winning_take_profits_percent = calculate_percentage(self.winning_take_profits, self.take_profits)
+        self.losing_take_profits_percent = calculate_percentage(self.losing_take_profits, self.take_profits)
         
         # TODO get from calculate_summary_stats 
         # to include zero profit trades for greater accuracy
@@ -177,6 +188,8 @@ class TradeSummary:
 
         if self.daily_returns is not None:
             self.sharpe_ratio = calculate_sharpe_ratio(self.daily_returns)
+            self.sortino_ratio = calculate_sortino_ratio(self.daily_returns)
+            self.profit_factor = calculate_profit_factor(self.daily_returns)
 
     def to_dataframe(self) -> pd.DataFrame:
         """Convert the data to a human readable summary table.
@@ -293,7 +306,7 @@ class TradeSummary:
             'Biggest PnL %': [
                 as_percent(self.biggest_winning_trade_pc), 
                 as_percent(self.biggest_losing_trade_pc), 
-                as_percent(0) # TODO
+                as_percent(None)
             ],
             'Average duration': [
                 as_duration(self.average_duration_of_winning_trades), 
@@ -303,12 +316,12 @@ class TradeSummary:
             'Max consecutive streak': [
                 as_integer(self.max_pos_cons), 
                 as_integer(self.max_neg_cons), 
-                as_percent(0) # TODO
+                as_percent(None)
             ],
             'Max runup / drawdown': [
-                as_percent(0), 
+                as_percent(0), # TODO
                 as_percent(self.max_pullback), 
-                as_percent(0) # TODO
+                as_percent(None)
             ],
         }
 
@@ -319,13 +332,13 @@ class TradeSummary:
                 as_integer(self.stop_losses), 
                 as_integer(self.take_profits)
             ],
-            'Percent winning of all won': [
+            'Percent winning': [
                 as_percent(self.winning_stop_losses_percent), 
-                as_percent(self.won_take_profit_percent)
+                as_percent(self.winning_take_profits_percent)
             ],
-            'Percent losing of all lost': [
+            'Percent losing': [
                 as_percent(self.losing_stop_losses_percent), 
-                as_percent(self.lost_stop_loss_percent)
+                as_percent(self.losing_take_profits_percent)
             ],
             'Percent of total': [
                 as_percent(self.all_stop_loss_percent), 
@@ -334,13 +347,14 @@ class TradeSummary:
         }
 
         df4 = create_summary_table(data4, ["Stop losses", "Take profits"], "Position Exits")
+        
         data5 = {
             'Biggest realized risk': as_percent(self.max_loss_risk),
             'Average realized risk': as_percent(self.avg_realised_risk),
             'Max pullback of capital': as_percent(self.max_pullback),
             'Sharpe Ratio': as_percent(self.sharpe_ratio),
-            'Sortino Ratio': as_percent(0), # TODO
-            'Profit Factor': as_percent(0), # TODO
+            'Sortino Ratio': as_percent(self.sortino_ratio),
+            'Profit Factor': as_percent(self.profit_factor),
         }
 
         df5 = create_summary_table(data5, "", "Risk Analysis")
@@ -525,6 +539,8 @@ class TradeAnalysis:
         if state is not None:
             from tradeexecutor.visual.equity_curve import calculate_daily_returns
             daily_returns = calculate_daily_returns(state, freq="D")
+        else:
+            daily_returns = None
 
         def get_avg_profit_pct_check(trades: List | None):
             return float(np.mean(trades)) if trades else None
@@ -578,6 +594,8 @@ class TradeAnalysis:
         
         winning_stop_losses = 0
         losing_stop_losses = 0
+        winning_take_profits = 0
+        losing_take_profits = 0
 
         for pair_id, position in self.get_all_positions():
             
@@ -604,11 +622,12 @@ class TradeAnalysis:
                 continue
             
             is_stop_loss = position.is_stop_loss()
-            
+            is_take_profit = position.is_take_profit()
+
             if is_stop_loss:
                 stop_losses += 1
 
-            if position.is_take_profit():
+            if is_take_profit:
                 take_profits += 1
 
             realised_profit_percent = position.get_realised_profit_percent()
@@ -622,6 +641,9 @@ class TradeAnalysis:
                 
                 if is_stop_loss:
                     winning_stop_losses += 1
+                
+                if is_take_profit:
+                    winning_take_profits += 1
 
             elif position.is_loss():
                 lost += 1
@@ -637,6 +659,9 @@ class TradeAnalysis:
                 
                 if is_stop_loss:
                     losing_stop_losses += 1
+
+                if is_take_profit:
+                    losing_take_profits += 1
 
             else:
                 # Any profit exactly balances out loss in slippage and commission
@@ -729,6 +754,8 @@ class TradeAnalysis:
             daily_returns=daily_returns,
             winning_stop_losses=winning_stop_losses,
             losing_stop_losses=losing_stop_losses,
+            winning_take_profits=winning_take_profits,
+            losing_take_profits=losing_take_profits,
         )
 
     @staticmethod
