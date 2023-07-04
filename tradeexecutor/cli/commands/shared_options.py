@@ -19,6 +19,7 @@ name = Option(None, envvar="NAME", help="Executor name used in the web interface
 log_level = Option(None, envvar="LOG_LEVEL", help="The Python default logging level. The defaults are 'info' is live execution, 'warning' if backtesting. Set 'disabled' in testing.")
 
 strategy_file = Option(..., envvar="STRATEGY_FILE", help="Python trading strategy module to use for running the strategy")
+optional_strategy_file = Option(None, envvar="STRATEGY_FILE", help="Python trading strategy module to use for running the strategy")
 
 private_key = Option(None, envvar="PRIVATE_KEY", help="Ethereum private key to be used as a hot wallet for paying transaction broadcasts and gas")
 

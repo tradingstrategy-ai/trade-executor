@@ -2,6 +2,8 @@
 
 import os
 import tempfile
+from contextlib import redirect_stdout
+from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
 
@@ -296,5 +298,7 @@ def test_cli_show_positions(
     cli = get_command(app)
     with patch.dict(os.environ, environment, clear=True):
         with pytest.raises(SystemExit) as e:
-            cli.main(args=["show-positions"])
+            f = StringIO()
+            with redirect_stdout(f):
+                cli.main(args=["show-positions"])
         assert e.value.code == 0

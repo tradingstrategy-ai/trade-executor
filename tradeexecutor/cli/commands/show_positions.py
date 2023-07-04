@@ -19,7 +19,7 @@ from . import shared_options
 def show_positions(
     id: str = shared_options.id,
     state_file: Optional[Path] = shared_options.state_file,
-    strategy_file: Optional[Path] = shared_options.strategy_file,
+    strategy_file: Optional[Path] = shared_options.optional_strategy_file,
 ):
     """Display trading positions from a state file.
 
@@ -40,6 +40,9 @@ def show_positions(
     assert not store.is_pristine(), f"State file does not exists: {state_file}"
 
     state = State.read_json_file(state_file)
+
+    print(f"Displaying positions and trades for state {state.name}")
+    print(f"State last updated: {state.last_updated_at}")
 
     print("Open positions")
     df = display_positions(state.portfolio.open_positions.values())
