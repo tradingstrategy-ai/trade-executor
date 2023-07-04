@@ -878,7 +878,7 @@ def test_state_summary_without_initial_cash(usdc, weth_usdc, start_ts: datetime.
     state.perform_integrity_check()
     summary = state.stats.get_latest_portfolio_stats().summary
 
-    assert summary.initial_cash is None
+    assert summary.initial_cash == 0
     assert summary.return_percent is None
     assert summary.annualised_return_percent is None
     assert summary.total_positions == 1

@@ -48,7 +48,9 @@ from tradingstrategy.utils.summarydataframe import as_dollar, as_integer, create
 
 
 try:
-    import quantstats as qs
+    #  DeprecationWarning: Importing display from IPython.core.display is deprecated since IPython 7.14, please import from IPython display
+    with warnings.catch_warnings():
+        import quantstats as qs
     HAS_QUANTSTATS = True
 except Exception:
     HAS_QUANTSTATS = False
