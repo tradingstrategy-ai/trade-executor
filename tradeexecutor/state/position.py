@@ -170,8 +170,12 @@ class TradingPosition:
 
     #: Human readable notes about this trade
     #:
-    #: Used to mark test trades from command line.
     #: Special case; not worth to display unless the field is filled in.
+    #:
+    #: - Used to mark test trades from command line.
+    #:
+    #: - Used to add log information abotu frozen and unfrozen positions
+    #:
     notes: Optional[str] = None
 
     #: All balance updates that have touched this reserve position.
@@ -237,9 +241,11 @@ class TradingPosition:
         """This position was frozen, but its trades were successfully repaired."""
         return self.unfrozen_at is not None
 
-
     def is_repaired(self) -> bool:
-        """This position was frozen, but its trades were successfully repaired."""
+        """This position was frozen, but its trades were successfully repaired.
+
+        Alias for :py:meth:`is_unfrozen`.
+        """
         return self.is_unfrozen()
 
     def has_automatic_close(self) -> bool:
@@ -853,7 +859,7 @@ class TradingPosition:
             If the position made 1% profit returns 1.01.
         """
         
-        assert not self.is_open()
+        assert not self.is_open(), "Cannot calculate realised profit for open positions"
         buy_value = self.get_buy_value()
         sell_value = self.get_sell_value()
 
