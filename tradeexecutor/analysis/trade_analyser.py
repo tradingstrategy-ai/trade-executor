@@ -95,6 +95,14 @@ class TradeSummary:
         encoder=json_encode_timedelta,
         decoder=json_decode_timedelta,
     )) # position
+    average_duration_of_zero_loss_trades: datetime.timedelta = field(metadata=config(
+        encoder=json_encode_timedelta,
+        decoder=json_decode_timedelta,
+    )) # position
+    average_duration_of_all_trades: datetime.timedelta = field(metadata=config(
+        encoder=json_encode_timedelta,
+        decoder=json_decode_timedelta,
+    )) # position
     time_bucket: Optional[TimeBucket] = None
 
     # these stats calculate in post-init, so init=False
@@ -155,8 +163,6 @@ class TradeSummary:
     median_win: Optional[float] = None
     median_loss: Optional[float] = None
 
-    overall_avg_duration: Optional[pd.Timedelta] = field(init=False)
-
     sharpe_ratio: Optional[float] = field(init=False)
     sortino_ratio: Optional[float] = field(init=False)
     profit_factor: Optional[float] = field(init=False)
@@ -182,10 +188,6 @@ class TradeSummary:
         self.winning_take_profits_percent = calculate_percentage(self.winning_take_profits, self.take_profits)
         self.losing_take_profits_percent = calculate_percentage(self.losing_take_profits, self.take_profits)
         
-        # TODO get from calculate_summary_stats 
-        # to include zero profit trades for greater accuracy
-        self.overall_avg_duration = avg_timedelta([self.average_duration_of_winning_trades, self.average_duration_of_losing_trades])
-
         if self.daily_returns is not None:
             self.sharpe_ratio = calculate_sharpe_ratio(self.daily_returns)
             self.sortino_ratio = calculate_sortino_ratio(self.daily_returns)
@@ -311,7 +313,7 @@ class TradeSummary:
             'Average duration': [
                 as_duration(self.average_duration_of_winning_trades), 
                 as_duration(self.average_duration_of_losing_trades), 
-                as_duration(self.overall_avg_duration)
+                as_duration(self.average_duration_of_all_trades)
             ],
             'Max consecutive streak': [
                 as_integer(self.max_pos_cons), 
@@ -570,12 +572,14 @@ class TradeAnalysis:
         losing_trades = []
         winning_trades_duration = []
         losing_trades_duration = []
+        zero_loss_trades_duration = []
         loss_risk_at_open_pc = []
         realised_losses = []
         biggest_winning_trade_pc = None
         biggest_losing_trade_pc = None
         average_duration_of_losing_trades = datetime.timedelta(0)
         average_duration_of_winning_trades = datetime.timedelta(0)
+        average_duration_of_zero_loss_trades = datetime.timedelta(0)
 
         strategy_duration = self.portfolio.get_trading_history_duration()
 
@@ -666,6 +670,7 @@ class TradeAnalysis:
             else:
                 # Any profit exactly balances out loss in slippage and commission
                 zero_loss += 1
+                zero_loss_trades_duration.append(duration)
 
             profit += realised_profit_usd
 
@@ -713,8 +718,11 @@ class TradeAnalysis:
 
         biggest_losing_trade_pc = func_check(losing_trades, min)
 
+        all_durations = winning_trades_duration + losing_trades_duration + zero_loss_trades_duration
+        average_duration_of_all_trades = get_avg_trade_duration(all_durations, time_bucket)
         average_duration_of_winning_trades = get_avg_trade_duration(winning_trades_duration, time_bucket)
         average_duration_of_losing_trades = get_avg_trade_duration(losing_trades_duration, time_bucket)
+        average_duration_of_zero_loss_trades = get_avg_trade_duration(zero_loss_trades_duration, time_bucket)
 
         lp_fees_average_pc = lp_fees_paid / trade_volume if trade_volume else 0
 
@@ -737,6 +745,8 @@ class TradeAnalysis:
             biggest_losing_trade_pc=biggest_losing_trade_pc,
             average_duration_of_winning_trades=average_duration_of_winning_trades,
             average_duration_of_losing_trades=average_duration_of_losing_trades,
+            average_duration_of_zero_loss_trades=average_duration_of_zero_loss_trades,
+            average_duration_of_all_trades=average_duration_of_all_trades,
             average_trade=average_trade,
             median_trade=median_trade,
             median_win=median_win,
