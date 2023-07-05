@@ -39,7 +39,8 @@ jobs:
           poetry install --no-interaction -E web-server -E execution -E quantstats
       - name: Run test scripts
         run: |
-          poetry run pytest --tb=native
+          # Run tests and print 20 slowest
+          poetry run pytest --tb=native --durations=20 "not slow_test_group"
         env:
           TRADING_STRATEGY_API_KEY: ${{ secrets.TRADING_STRATEGY_API_KEY }}
           BNB_CHAIN_JSON_RPC: ${{ secrets.BNB_CHAIN_JSON_RPC }}      

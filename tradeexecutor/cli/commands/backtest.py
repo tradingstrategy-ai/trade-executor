@@ -130,6 +130,7 @@ def backtest(
         end_at=mod.backtest_end,
         initial_deposit=mod.initial_cash,
         strategy_module=mod,
+        name=name,
     )
 
     state, universe, debug_data = run_backtest(

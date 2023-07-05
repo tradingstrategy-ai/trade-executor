@@ -186,6 +186,7 @@ def html_report(state, synthetic_universe) -> Path:
         yield html_report
 
 
+@pytest.mark.slow_test_group
 def test_generate_backtest_pass_state(notebook: NotebookNode):
     """We can convert any of our statistics to dataframes"""
     # We filled in parameter cell correctly
@@ -193,6 +194,7 @@ def test_generate_backtest_pass_state(notebook: NotebookNode):
     assert ".json" in parameter_cell.source  # Check for generated .json file path
 
 
+@pytest.mark.slow_test_group
 def test_generate_html_report(html_report: Path):
     """We can generate a HTML report"""
     assert os.path.exists(html_report), f"Did not create: {html_report}"
@@ -202,6 +204,7 @@ def test_generate_html_report(html_report: Path):
     assert "/* trade-executor backtest report generator custom CSS */" in html_content
 
 
+@pytest.mark.slow_test_group
 @pytest.mark.skipif(os.environ.get("SHOW_REPORT_IN_BROWSER") is None, reason="Manual web browser based test")
 def test_show_backtest_report(html_report: Path):
     """Manual test to view the result.
