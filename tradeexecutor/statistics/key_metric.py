@@ -57,6 +57,22 @@ def calculate_sortino(returns: pd.Series, periods=365) -> float:
     )
 
 
+def calculate_profit_factor(returns: pd.Series) -> float:
+    """Calculate profit factor.
+
+    Internally uses quantstats.
+
+    See :term:`profit factor`.
+
+    :param returns:
+        Returns series
+
+    """
+    # Lazy import to allow optional dependency
+    from quantstats.stats import profit_factor
+    return profit_factor(returns)
+
+
 def calculate_max_drawdown(returns: pd.Series) -> Percent:
     """Calculate maximum drawdown.
 
