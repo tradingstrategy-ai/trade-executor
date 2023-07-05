@@ -39,7 +39,6 @@ from tradeexecutor.state.types import USDollarPrice, Percent
 from tradeexecutor.utils.format import calculate_percentage
 from tradeexecutor.utils.timestamp import json_encode_timedelta, json_decode_timedelta
 from tradingstrategy.timebucket import TimeBucket
-from tradeexecutor.statistics.native_advanced_metrics import calculate_sharpe_ratio, calculate_sortino_ratio, calculate_profit_factor
 
 from tradingstrategy.exchange import Exchange
 from tradingstrategy.pair import PandasPairUniverse
@@ -164,9 +163,9 @@ class TradeSummary:
     median_win: Optional[float] = None
     median_loss: Optional[float] = None
 
-    sharpe_ratio: Optional[float] = field(init=False)
-    sortino_ratio: Optional[float] = field(init=False)
-    profit_factor: Optional[float] = field(init=False)
+    sharpe_ratio: Optional[float] = None
+    sortino_ratio: Optional[float] = None
+    profit_factor: Optional[float] = None
 
     def __post_init__(self):
 
@@ -189,11 +188,6 @@ class TradeSummary:
 
         self.winning_take_profits_percent = calculate_percentage(self.winning_take_profits, self.take_profits)
         self.losing_take_profits_percent = calculate_percentage(self.losing_take_profits, self.take_profits)
-        
-        if self.daily_returns is not None:
-            self.sharpe_ratio = calculate_sharpe_ratio(self.daily_returns)
-            self.sortino_ratio = calculate_sortino_ratio(self.daily_returns)
-            self.profit_factor = calculate_profit_factor(self.daily_returns)
 
     def to_dataframe(self) -> pd.DataFrame:
         """Convert the data to a human readable summary table.
@@ -541,10 +535,13 @@ class TradeAnalysis:
         # for advanced statistics
         # import here to avoid circular import error
         if state is not None:
-            from tradeexecutor.visual.equity_curve import calculate_daily_returns
+            from tradeexecutor.visual.equity_curve import calculate_daily_returns, calculate_returns, calculate_equity_curve
             daily_returns = calculate_daily_returns(state, freq="D")
+            equity_curve = calculate_equity_curve(state)
+            original_returns = calculate_returns(equity_curve)
         else:
             daily_returns = None
+            original_returns = None
 
         def get_avg_profit_pct_check(trades: List | None):
             return float(np.mean(trades)) if trades else None
@@ -727,6 +724,17 @@ class TradeAnalysis:
         average_duration_of_zero_loss_trades = get_avg_trade_duration(zero_loss_trades_duration, time_bucket)
 
         lp_fees_average_pc = lp_fees_paid / trade_volume if trade_volume else 0
+        
+        # to avoid circular import error
+        from tradeexecutor.statistics.key_metric import calculate_sharpe, calculate_sortino, calculate_profit_factor
+        
+        if daily_returns is not None:
+            sharpe_ratio = calculate_sharpe(daily_returns)
+            sortino_ratio = calculate_sortino(daily_returns)
+
+        # as profit factor is not annualised, better to calculate it on the original returns
+        if original_returns is not None:
+            profit_factor = calculate_profit_factor(original_returns)
 
         return TradeSummary(
             won=won,
@@ -768,6 +776,9 @@ class TradeAnalysis:
             losing_stop_losses=losing_stop_losses,
             winning_take_profits=winning_take_profits,
             losing_take_profits=losing_take_profits,
+            sharpe_ratio=sharpe_ratio,
+            sortino_ratio=sortino_ratio,
+            profit_factor=profit_factor,
         )
 
     @staticmethod
