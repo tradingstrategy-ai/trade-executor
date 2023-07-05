@@ -124,6 +124,10 @@ class Metadata:
     #:
     backtest_html: Optional[Path] = None
 
+    #: How many days live data is collected until key metrics are switched from backtest to live trading based
+    #:
+    key_metrics_backtest_cut_off: datetime.timedelta = datetime.timedelta(days=90)
+
     @staticmethod
     def create_dummy() -> "Metadata":
         return Metadata(

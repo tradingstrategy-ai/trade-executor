@@ -25,6 +25,8 @@ def calculate_summary_statistics(
         now_: Optional[pd.Timestamp | datetime.datetime] = None,
         legacy_workarounds=False,
         backtested_state: State | None = None,
+        time_window = pd.Timedelta(days=90),
+        key_metrics_backtest_cut_off = datetime.timedelta(days=90),
 ) -> StrategySummaryStatistics:
     """Preprocess the strategy statistics for the summary card in the web frontend.
 
@@ -59,6 +61,9 @@ def calculate_summary_statistics(
 
         The live web server needs to show backtested metrics on the side of
         live trading metrics. This state is used to calculate them.
+
+    :param key_metrics_backtest_cut_off:
+        How many days live data is collected until key metrics are switched from backtest to live trading based,
 
     :return:
         Summary calculations for the summary tile,
@@ -103,7 +108,7 @@ def calculate_summary_statistics(
             profitability_90_days = None
             performance_chart_90_days = None
 
-    key_metrics = {m.kind.value: m for m in calculate_key_metrics(state, backtested_state)}
+    key_metrics = {m.kind.value: m for m in calculate_key_metrics(state, backtested_state, required_history=key_metrics_backtest_cut_off)}
 
     logger.info("calculate_summary_statistics() finished, took %s seconds", perf_counter() - func_started_at)
 

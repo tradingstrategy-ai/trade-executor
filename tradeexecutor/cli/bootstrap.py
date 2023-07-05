@@ -248,6 +248,7 @@ def create_metadata(
         backtest_result: Optional[Path]=None,
         backtest_notebook: Optional[Path]=None,
         backtest_html: Optional[Path]=None,
+        key_metrics_backtest_cut_off_days: float = 90,
 ) -> Metadata:
     """Create metadata object from the configuration variables."""
 
@@ -286,6 +287,7 @@ def create_metadata(
         backtested_state=backtested_state,
         backtest_notebook=backtest_notebook,
         backtest_html=backtest_html,
+        key_metrics_backtest_cut_off=datetime.timedelta(days=key_metrics_backtest_cut_off_days),
     )
 
     return metadata
