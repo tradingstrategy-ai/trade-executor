@@ -1,4 +1,4 @@
-"""bacltest command
+"""backtest CLI command
 
 """
 
