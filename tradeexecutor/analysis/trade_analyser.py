@@ -108,6 +108,7 @@ class TradeSummary:
     # these stats calculate in post-init, so init=False
     total_positions: int = field(init=False)
     win_percent: float = field(init=False)
+    lost_percent: float = field(init=False)
     return_percent: float = field(init=False)
     annualised_return_percent: float = field(init=False)
     all_stop_loss_percent: float = field(init=False)
@@ -171,6 +172,7 @@ class TradeSummary:
 
         self.total_positions = self.won + self.lost + self.zero_loss
         self.win_percent = calculate_percentage(self.won, self.total_positions)
+        self.lost_percent = calculate_percentage(self.lost, self.total_positions)
         self.all_stop_loss_percent = calculate_percentage(self.stop_losses, self.total_positions)
         self.all_take_profit_percent = calculate_percentage(self.take_profits, self.total_positions)
         self.lost_stop_loss_percent = calculate_percentage(self.stop_losses, self.lost)
@@ -293,8 +295,8 @@ class TradeSummary:
             ],
             '% of total': [
                 as_percent(self.win_percent), 
-                as_percent(1 - self.win_percent), 
-                as_percent(1)
+                as_percent(self.lost_percent), 
+                as_percent((self.won + self.lost)/self.total_positions)
             ],
             'Average PnL %': [
                 as_percent(self.average_winning_trade_profit_pc), 
