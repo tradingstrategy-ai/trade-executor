@@ -174,6 +174,12 @@ class StrategySummaryStatistics:
     #:
     key_metrics: Dict[str, KeyMetric] = field(default_factory=dict)
 
+    #: After which period the default metrics will switch from backtested data to live data.
+    #:
+    #: This mostly affects strategy summary tiles.
+    #:
+    backtest_metrics_cut_off_period: Optional[datetime.timedelta] = None
+
 
 @dataclass_json
 @dataclass(frozen=True)
