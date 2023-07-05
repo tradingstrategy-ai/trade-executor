@@ -119,4 +119,5 @@ def calculate_summary_statistics(
         profitability_90_days=profitability_90_days,
         performance_chart_90_days=performance_chart_90_days,
         key_metrics=key_metrics,
+        launched_at=state.created_at,
     )

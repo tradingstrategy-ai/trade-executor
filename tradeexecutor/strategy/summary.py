@@ -150,6 +150,11 @@ class StrategySummaryStatistics:
     #:
     calculated_at: datetime.datetime = field(default_factory=datetime.datetime.utcnow)
 
+    #: When this trade executor was launched first time.
+    #:
+    #: If the trade-executor needs reset, this value is reset as well.
+    launched_at: Optional[datetime.datetime] = None
+
     #: When this strategy truly started.
     #:
     #: We mark the time of the first trade when the strategy
