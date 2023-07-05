@@ -1,6 +1,8 @@
 """Summary statistics are displayed on the summary tiles of the strategies."""
 import datetime
+from time import perf_counter
 from typing import Optional
+import logging
 
 import pandas as pd
 from numpy import isnan
@@ -11,6 +13,9 @@ from tradeexecutor.statistics.key_metric import calculate_key_metrics
 from tradeexecutor.strategy.execution_context import ExecutionMode
 from tradeexecutor.strategy.summary import StrategySummaryStatistics
 from tradeexecutor.visual.equity_curve import calculate_compounding_realised_trading_profitability
+
+
+logger = logging.getLogger(__name__)
 
 
 def calculate_summary_statistics(
@@ -60,19 +65,18 @@ def calculate_summary_statistics(
         or empty `StrategySummaryStatistics` if cannot be calculated.
     """
 
+    logger.info("calculate_summary_statistics() for %s", state.name)
+    func_started_at = perf_counter()
+
     portfolio = state.portfolio
 
     # We can alway get the current value even if there are no trades
     current_value = portfolio.get_total_equity()
 
     first_trade, last_trade = portfolio.get_first_and_last_executed_trade()
-    if first_trade is None:
-        # No trades
-        # Cannot calculate anything
-        return StrategySummaryStatistics(current_value=current_value)
 
-    first_trade_at = first_trade.executed_at
-    last_trade_at = last_trade.executed_at
+    first_trade_at = first_trade.executed_at if first_trade else None
+    last_trade_at = last_trade.executed_at if last_trade else None
 
     if not now_:
         now_ = pd.Timestamp.utcnow().tz_localize(None)
@@ -100,6 +104,8 @@ def calculate_summary_statistics(
             performance_chart_90_days = None
 
     key_metrics = {m.kind.value: m for m in calculate_key_metrics(state, backtested_state)}
+
+    logger.info("calculate_summary_statistics() finished, took %s seconds", perf_counter() - func_started_at)
 
     return StrategySummaryStatistics(
         first_trade_at=first_trade_at,
