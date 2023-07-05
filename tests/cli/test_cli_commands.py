@@ -277,6 +277,7 @@ def test_cli_console(
         raise AssertionError("runner launch failed")
 
 
+@pytest.mark.slow_test_group
 def test_cli_backtest(
         logger,
         unit_test_cache_path: str,

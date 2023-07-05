@@ -1,4 +1,4 @@
-name: Automated test suite and Docker image build
+name: Test suite and Docker image
 on:
   push:
     branches: [ master ]
