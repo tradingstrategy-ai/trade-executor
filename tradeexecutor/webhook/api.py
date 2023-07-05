@@ -4,6 +4,7 @@ import os
 import logging
 import time
 from importlib.metadata import version
+from typing import cast
 
 from pyramid.request import Request
 from pyramid.response import Response, FileResponse
@@ -192,3 +193,29 @@ def web_visulisation(request: Request):
         # Use 501 Not implemented error code
         return exception_response(501, detail=f"Not implemented. Unknown type {type}")
 
+
+@view_config(route_name='web_file', permission='view')
+def web_file(request: Request):
+    """/file endpoint.
+
+    Serve some trading strategy related files.
+    """
+    metadata = cast(Metadata, request.registry["metadata"])
+
+    type = request.params.get("type")
+    match type:
+        case "notebook":
+            path = metadata.backtest_notebook
+            # https://docs.jupyter.org/en/latest/reference/mimetype.html
+            content_type = "application/x-ipynb+json"
+        case "html":
+            path = metadata.backtest_html
+            content_type = "text/html"
+        case _:
+            return exception_response(501, detail=f"Not implemented. Unknown type {type}")
+
+    if not path or not path.exists():
+        return exception_response(404, detail=f"Backtest data not available for {type}")
+
+    r = FileResponse(path.as_posix(), content_type=content_type)
+    return r

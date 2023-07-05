@@ -173,7 +173,7 @@ def backtest_result(
     # Run the test
     state, universe, debug_dump = run_backtest_inline(
         start_at=start_at.to_pydatetime(),
-        end_at=end_at,
+        end_at=end_at.to_pydatetime(),
         client=None,  # None of downloads needed, because we are using synthetic data
         cycle_duration=CycleDuration.cycle_1d,  # Override to use 24h cycles despite what strategy file says
         decide_trades=decide_trades,

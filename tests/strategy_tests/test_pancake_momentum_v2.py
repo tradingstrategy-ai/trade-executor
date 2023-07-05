@@ -30,6 +30,7 @@ def strategy_path() -> Path:
     return Path(os.path.join(os.path.dirname(__file__), "..", "..", "strategies", "test_only", "pancake-momentum-weekly.py"))
 
 
+@pytest.mark.slow_test_group
 @pytest.mark.skipif(os.environ.get("SKIP_SLOW_TEST"), reason="Slow tests skipping enabled")
 def test_pancake_momentum_v2(
     strategy_path,

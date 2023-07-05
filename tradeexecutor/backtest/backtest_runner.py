@@ -22,13 +22,14 @@ from tradeexecutor.cli.loop import ExecutionLoop, ExecutionTestHook
 from tradeexecutor.ethereum.routing_data import get_routing_model, get_backtest_routing_model
 from tradeexecutor.state.state import State
 from tradeexecutor.state.store import NoneStore
+from tradeexecutor.state.types import USDollarAmount
 from tradeexecutor.strategy.approval import UncheckedApprovalModel, ApprovalModel
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.description import StrategyExecutionDescription
 from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
 from tradeexecutor.strategy.pandas_trader.runner import PandasTraderRunner
-from tradeexecutor.strategy.strategy_module import parse_strategy_module,  \
-    DecideTradesProtocol, CreateTradingUniverseProtocol, CURRENT_ENGINE_VERSION
+from tradeexecutor.strategy.strategy_module import parse_strategy_module, \
+    DecideTradesProtocol, CreateTradingUniverseProtocol, CURRENT_ENGINE_VERSION, StrategyModuleInformation
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse,  \
@@ -183,7 +184,7 @@ def setup_backtest_for_universe(
 
     # Load strategy Python file
     strategy_mod_exports: dict = runpy.run_path(strategy_path)
-    strategy_module = parse_strategy_module(strategy_mod_exports)
+    strategy_module = parse_strategy_module(strategy_path, strategy_mod_exports)
 
     if validate_strategy_module:
         # Allow partial strategies to be used in unit testing
@@ -215,21 +216,29 @@ def setup_backtest(
         strategy_path: Path,
         start_at: datetime.datetime,
         end_at: datetime.datetime,
-        initial_deposit: int,
+        initial_deposit: USDollarAmount,
         max_slippage=0.01,
         cycle_duration: Optional[CycleDuration]=None,
         candle_time_frame: Optional[TimeBucket]=None,
-    ):
+        strategy_module: Optional[StrategyModuleInformation]=None,
+        name: Optional[str] = None,
+    ) -> BacktestSetup:
     """High-level entry point for setting up a backtest from a strategy module.
 
     This function is useful for running backtests for strategies in
     notebooks and tests.
+
+    :param max_slippage:
+        Legacy
 
     :param cycle_duration:
         Override the default strategy cycle duration
 
     :param candle_time_frame:
         Override the default strategy candle time bucket
+
+    :param strategy_module:
+        If strategy module was previously loaded
     """
 
     assert isinstance(strategy_path, Path), f"Got {strategy_path}"
@@ -242,12 +251,20 @@ def setup_backtest(
     execution_model = BacktestExecutionModel(wallet, max_slippage)
 
     # Load strategy Python file
-    strategy_mod_exports: dict = runpy.run_path(strategy_path)
-    strategy_module = parse_strategy_module(strategy_mod_exports)
+    if strategy_module is None:
+        strategy_mod_exports: dict = runpy.run_path(strategy_path)
+        strategy_module = parse_strategy_module(strategy_path, strategy_mod_exports)
 
-    strategy_module.validate()
+    if strategy_module.is_version_greater_or_equal_than(0, 2, 0):
+        # Backtest variables were injected later in the development
+        strategy_module.validate_backtest()
+    else:
+        strategy_module.validate()
 
     universe_options = UniverseOptions(candle_time_bucket_override=candle_time_frame)
+
+    if not name:
+        name = f"Backtest for {strategy_module.path.stem}"
 
     return BacktestSetup(
         start_at,
@@ -266,6 +283,7 @@ def setup_backtest(
         reserve_currency=strategy_module.reserve_currency,
         trade_routing=strategy_module.trade_routing,
         trading_strategy_engine_version=strategy_module.trading_strategy_engine_version,
+        name=name,
     )
 
 

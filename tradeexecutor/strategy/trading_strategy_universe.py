@@ -8,11 +8,13 @@ See :ref:`trading universe` for more information.
 
 import contextlib
 import datetime
+import pickle
 import textwrap
 from abc import abstractmethod
 from dataclasses import dataclass
 import logging
 from math import isnan
+from pathlib import Path
 from typing import List, Optional, Callable, Tuple, Set, Dict, Iterable, Collection
 
 import pandas as pd
@@ -154,6 +156,27 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             reserve_assets=self.reserve_assets,
             required_history_period=self.required_history_period,
         )
+
+    def write_pickle(self, path: Path):
+        """Write a pickled ouput of this universe"""
+        assert isinstance(path, Path)
+        with path.open("wb") as out:
+            pickle.dump(self, out)
+
+    @staticmethod
+    def read_pickle_dangerous(path: Path) -> "TradingStrategyUniverse":
+        """Write a pickled ouput of this universe.
+
+        .. warning::
+
+            Only use for trusted input. Python pickle issue.
+
+        """
+        assert isinstance(path, Path)
+        with path.open("rb") as inp:
+            item = pickle.load(inp)
+            assert isinstance(item, TradingStrategyUniverse)
+            return item
 
     def get_pair_count(self) -> int:
         return self.universe.pairs.get_count()

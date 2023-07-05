@@ -45,6 +45,9 @@ state_file = Option(None, envvar="STATE_FILE", help="JSON file where we serialis
 
 backtest_result = Option(None, envvar="BACKTEST_RESULT", help="JSON file that contains the results of an earlier backtest run. Needed for the web server to display backtest information. If not given defaults to state/{executor-id}-backtest.json is assumed when the webhook server is started.")
 
+notebook_report = Option(None, envvar="NOTEBOOK_REPORT", help="Jupyter Notebook file where the store the notebook results. If not given defaults to state/{executor-id}-backtest.ipynb.")
+html_report = Option(None, envvar="HTML_REPORT", help="HTML file where the store the notebook results. If not given defaults to state/{executor-id}-backtest.html.")
+
 trading_strategy_api_key = Option(None, envvar="TRADING_STRATEGY_API_KEY", help="Trading Strategy API key")
 
 cache_path = Option("cache/", envvar="CACHE_PATH", help="Where to cache downloaded datasets on a local filesystem")
