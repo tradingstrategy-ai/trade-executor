@@ -135,23 +135,26 @@ def calculate_key_metrics(
 
     source_state = None
     source = None
+    calculation_window_start_at = None
+    calculation_window_end_at = None
 
     # Live history is calculated from the
     live_history = live_state.portfolio.get_trading_history_duration()
     if live_history is not None and live_history >= required_history:
         source_state = live_state
         source = KeyMetricSource.live_trading
+        calculation_window_start_at = source_state.created_at
+        calculation_window_end_at = datetime.datetime.utcnow()
     else:
         if backtested_state:
             if backtested_state.portfolio.get_trading_history_duration():
                 source_state = backtested_state
                 source = KeyMetricSource.backtesting
+                first_trade, last_trade = source_state.portfolio.get_first_and_last_executed_trade()
+                calculation_window_start_at = first_trade.executed_at
+                calculation_window_end_at = last_trade.executed_at
 
     if source_state:
-        # We have one state based on which we can calculate metrics
-        first_trade, last_trade = source_state.portfolio.get_first_and_last_executed_trade()
-        calculation_window_start_at = first_trade.executed_at
-        calculation_window_end_at = last_trade.executed_at
 
         # Use trading profitability instead of the fund performance
         # as the base for calculations to ensure
