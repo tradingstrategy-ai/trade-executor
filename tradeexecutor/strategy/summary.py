@@ -36,6 +36,9 @@ class KeyMetricKind(enum.Enum):
     #: Total equity
     total_equity = "total_equity"
 
+    def get_help_link(self) -> Optional[str]:
+        return _KEY_METRIC_HELP[self]
+
 
 class KeyMetricSource(enum.Enum):
     """Did we calcualte a key metric based on backtesting data or live trading data."""

@@ -188,6 +188,7 @@ def calculate_key_metrics(
                 calculation_window_start_at=calculation_window_start_at,
                 calculation_window_end_at=calculation_window_end_at,
                 calculation_method=KeyMetricCalculationMethod.latest_value,
+                help_link=KeyMetricKind.total_equity.get_help_link(),
             )
 
     else:
@@ -211,5 +212,6 @@ def calculate_key_metrics(
         calculation_window_start_at=calculation_window_start_at,
         calculation_window_end_at=calculation_window_end_at,
         calculation_method=KeyMetricCalculationMethod.latest_value,
+        help_link=KeyMetricKind.started_at.get_help_link(),
     )
 
