@@ -103,7 +103,7 @@ def calculate_summary_statistics(
             # Use 1-based chart for performance
             # E.g. 1.8% profit is 1.018
             # Let's see if this makes frontend charting Y-axis scaling issues less severe
-            performance_chart_90_days = [(index.to_pydatetime(), value) for index, value + 1.0 in profitability_daily.items()]
+            performance_chart_90_days = [(index.to_pydatetime(), value + 1) for index, value in profitability_daily.items()]
         else:
             profitability_90_days = None
             performance_chart_90_days = None
