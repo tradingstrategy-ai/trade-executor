@@ -10,6 +10,7 @@ from tblib import Traceback
 
 from tradeexecutor.cli.version_info import VersionInfo
 from tradeexecutor.strategy.summary import StrategySummaryStatistics
+from tradeexecutor.state.identifier import TradingPairIdentifier
 
 
 class ExceptionData(TypedDict):
@@ -27,37 +28,66 @@ class ExceptionData(TypedDict):
 class LatestStateVisualisation:
     """The last visualisation of the strategy state."""
 
-    #: When the execution state was updated last time
-    last_refreshed_at: datetime.datetime = field(default_factory=datetime.datetime.utcnow)
-
-    #: 512 x 512 image PNG
-    small_images: list[bytes] | None = None
-
-    #: Dark theme version
-    small_images_dark: list[bytes] | None = None
-
-    #: 1920 x 1920 image SVG
-    large_images: list[bytes] | None = None
-
-    #: Dark theme version
-    large_images_dark: list[bytes] | None = None
+    #: Dict of pair visualisations
+    #:
+    #: Key is the pair internal id
+    #:
+    pair_visualisations: dict = field(default_factory=dict)
 
     def __repr__(self) -> str:
         """Don't dump binary"""
         return f"<LatestStateVisualisation at {self.last_refreshed_at}>"
 
     def update_image_data(self,
-                          small_images,
-                          large_images,
-                          small_images_dark,
-                          large_images_dark,
+                          small_image: bytes,
+                          large_image: bytes,
+                          small_image_dark: bytes,
+                          large_image_dark: bytes,
+                          pair_id: int
                           ):
+        """Update the visualisation image data for a pair.
         
-        self.small_images = small_images
-        self.small_images_dark = small_images_dark
-        self.large_images = large_images
-        self.large_images_dark = large_images_dark
-        self.last_refreshed_at = datetime.datetime.utcnow()
+        Assumes only one pair visualisation per pair. Can be updated in the future.
+
+        :param small_image: 512 x 512 image PNG
+        :param large_image: 1024 x 512 image SVG
+        :param small_image_dark: Dark theme version
+        :param large_image_dark: Dark theme version
+        :param pair_id: The id of the pair this visualisation is for
+        """
+
+        self.pair_visualisation[pair_id] = LatestPairVisualisation(
+            last_refreshed_at=datetime.datetime.now(datetime.timezone.utc),
+            small_image=small_image,
+            large_image=large_image,
+            small_image_dark=small_image_dark,
+            large_image_dark=large_image_dark,
+            pair_id=pair_id,
+        )
+
+
+@dataclass_json
+@dataclass
+class LatestPairVisualisation:
+    """The last visualisation of the strategy state for a specific pair."""
+    
+    #: When the execution state was updated last time
+    last_refreshed_at: datetime.datetime = field(default_factory=datetime.datetime.utcnow)
+
+    #: 512 x 512 image PNG
+    small_image: Optional[bytes] = None
+
+    #: Dark theme version
+    small_image_dark: Optional[bytes] = None
+
+    #: 1920 x 1920 image SVG
+    large_image: Optional[bytes] = None
+
+    #: Dark theme version
+    large_image_dark: Optional[bytes] = None
+
+    #: The id of the pair this visualisation is for
+    pair_id: Optional[int] = None
 
 
 @dataclass_json

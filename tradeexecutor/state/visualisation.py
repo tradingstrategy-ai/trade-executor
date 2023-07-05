@@ -23,7 +23,7 @@ import logging
 from dataclasses_json import dataclass_json
 
 from tradeexecutor.utils.timestamp import convert_and_validate_timestamp, convert_and_validate_timestamp_as_int
-
+from tradeexecutor.state.identifier import TradingPairIdentifier
 
 logger = logging.getLogger(__name__)
 
@@ -147,6 +147,12 @@ class Plot:
     #: Are we adjusted for look ahead bias or not.
     #:
     recording_time: RecordingTime = RecordingTime.decision_making_time
+
+    #: The trading pair this plot is for.
+    #:
+    #: Plots are not necessarily restricted to a single trading pair, so this is optional.
+    #:
+    pair: Optional[TradingPairIdentifier] = None
 
     def __repr__(self):
         return f"<Plot name:{self.name} kind:{self.kind.name} with {len(self.points)} points>"

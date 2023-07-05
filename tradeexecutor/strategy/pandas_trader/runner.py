@@ -18,6 +18,7 @@ from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.runner import StrategyRunner, PreflightCheckFailed
 from tradeexecutor.visual.image_output import render_plotly_figure_as_image_file
 from tradeexecutor.visual.strategy_state import draw_single_pair_strategy_state, draw_multi_pair_strategy_state
+from tradeexecutor.state.visualisation import Visualisation
 
 
 logger = logging.getLogger(__name__)
@@ -105,6 +106,8 @@ class PandasTraderRunner(StrategyRunner):
             return
 
         if universe.is_single_pair_universe():
+            pair_id = universe.get_single_pair().internal_id
+
             small_figure = draw_single_pair_strategy_state(state, universe, height=512)
 
             small_image, small_image_dark = self.get_small_images(small_figure)
@@ -117,44 +120,37 @@ class PandasTraderRunner(StrategyRunner):
             large_image, large_image_dark = self.get_large_images(large_figure)
 
             self.run_state.visualisation.update_image_data(
-                [small_image],
-                [large_image],
-                [small_image_dark],
-                [large_image_dark],
+                small_image,
+                large_image,
+                small_image_dark,
+                large_image_dark,
+                pair_id
             )
 
         elif 1 < universe.get_pair_count() <= 3:
             
-            small_figures = draw_multi_pair_strategy_state(state, universe, height=512)
-            large_figures = draw_multi_pair_strategy_state(state, universe, height=1024)
+            small_figures_dict = draw_multi_pair_strategy_state(state, universe, height=512)
+            large_figures_dict = draw_multi_pair_strategy_state(state, universe, height=1024)
 
-            assert len(small_figures) == len(large_figures), "Small and large figure count mismatch. Safety check, this should not happen"
+            logger.info("Updating strategy thinking image data")
 
-            images = {
-                "small": [],
-                "small_dark": [],
-                "large": [],
-                "large_dark": [],
-            }
-
-            for small_figure, large_figure in zip(small_figures, large_figures):
+            for pair_id, small_figure in small_figures_dict.items():
                 
+                try:
+                    large_figure = large_figures_dict[pair_id]
+                except KeyError:
+                    raise KeyError(f"Pair_id {pair_id} not found in large_figures_dict. Safety check, this should not happen")
+
                 small_image, small_image_dark = self.get_small_images(small_figure)
                 large_image, large_image_dark = self.get_large_images(large_figure)
 
-                images["small"].append(small_image)
-                images["small_dark"].append(small_image_dark)
-                images["large"].append(large_image)
-                images["large_dark"].append(large_image_dark)
-
-            logger.info("Updating strategy thinking image data")
-                
-            self.run_state.visualisation.update_image_data(
-                images["small"],
-                images["large"],
-                images["small_dark"],
-                images["large_dark"],
-            )
+                self.run_state.visualisation.update_image_data(
+                    small_image,
+                    large_image,
+                    small_image_dark,
+                    large_image_dark,
+                    pair_id
+                )
 
         else:
             logger.warning("Charts not yet available for this strategy type. Pair count: %s", universe.get_pair_count())
@@ -242,7 +238,7 @@ class PandasTraderRunner(StrategyRunner):
 
             logger.trade(buf.getvalue())
 
-            small_image = self.run_state.visualisation.small_image
+            small_image = self.run_state.visualisation.pair_visualisations[pair.internal_id].small_image
             post_logging_discord_image(small_image)
 
         elif 1 <= universe.get_pair_count() <= 3:
@@ -264,12 +260,16 @@ class PandasTraderRunner(StrategyRunner):
 
                 # Draw indicators
                 for name, plot in visualisation.plots.items():
+                    
+                    if plot.pair.internal_id != pair_id:
+                        continue
+
                     value = plot.get_last_value()
                     print(f"  {name}: {value}", file=buf)
 
                 logger.trade(buf.getvalue())
 
-                small_image = self.run_state.visualisation.small_image
+                small_image = self.run_state.visualisation.pair_visualisations[pair_id].small_image
                 post_logging_discord_image(small_image)
 
         else:   

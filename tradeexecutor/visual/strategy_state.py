@@ -117,7 +117,7 @@ def draw_multi_pair_strategy_state(
 
     assert universe.get_pair_count() <= 3, "This visualisation can be done only for less than 3 pairs"
 
-    figures = []
+    figures = {}
 
     for pair_id, data in universe.universe.candles.get_all_pairs():
         
@@ -138,7 +138,7 @@ def draw_multi_pair_strategy_state(
 
         figure = visualise_single_pair_strategy_state(state, target_pair_candles, start_at, end_at, technical_indicators=technical_indicators)
 
-        figures.append(figure)
+        figures[pair_id] = figure
 
     return figures
 
