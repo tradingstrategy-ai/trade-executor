@@ -117,10 +117,10 @@ class PandasTraderRunner(StrategyRunner):
             large_image, large_image_dark = self.get_large_images(large_figure)
 
             self.run_state.visualisation.update_image_data(
-                small_image,
-                large_image,
-                small_image_dark,
-                large_image_dark,
+                [small_image],
+                [large_image],
+                [small_image_dark],
+                [large_image_dark],
             )
 
         elif 1 < universe.get_pair_count() <= 3:
@@ -130,19 +130,31 @@ class PandasTraderRunner(StrategyRunner):
 
             assert len(small_figures) == len(large_figures), "Small and large figure count mismatch. Safety check, this should not happen"
 
+            images = {
+                "small": [],
+                "small_dark": [],
+                "large": [],
+                "large_dark": [],
+            }
+
             for small_figure, large_figure in zip(small_figures, large_figures):
                 
                 small_image, small_image_dark = self.get_small_images(small_figure)
                 large_image, large_image_dark = self.get_large_images(large_figure)
 
-                logger.info("Updating strategy thinking image data")
+                images["small"].append(small_image)
+                images["small_dark"].append(small_image_dark)
+                images["large"].append(large_image)
+                images["large_dark"].append(large_image_dark)
+
+            logger.info("Updating strategy thinking image data")
                 
-                self.run_state.visualisation.update_image_data(
-                    small_image,
-                    large_image,
-                    small_image_dark,
-                    large_image_dark,
-                )
+            self.run_state.visualisation.update_image_data(
+                images["small"],
+                images["large"],
+                images["small_dark"],
+                images["large_dark"],
+            )
 
         else:
             logger.warning("Charts not yet available for this strategy type. Pair count: %s", universe.get_pair_count())
@@ -233,5 +245,32 @@ class PandasTraderRunner(StrategyRunner):
             small_image = self.run_state.visualisation.small_image
             post_logging_discord_image(small_image)
 
-        else:
+        elif 1 <= universe.get_pair_count() <= 3:
+            
+             # Log state
+            buf = StringIO()
+
+            print("Strategy thinking", file=buf)
+            print("", file=buf)
+            print(f"  Strategy cycle #{cycle}: {strategy_cycle_timestamp} UTC, now is {datetime.datetime.utcnow()}", file=buf)
+
+            for pair_id, candles in universe.universe.candles.get_all_pairs():
+                
+                last_candle = candles.iloc[-1]
+                lag = pd.Timestamp.utcnow().tz_localize(None) - last_candle["timestamp"]
+                
+                print(f"  Last candle at: {last_candle['timestamp']} UTC, market data and action lag: {lag}", file=buf)
+                print(f"  Price open:{last_candle['open']} close:{last_candle['close']} {pair.base.token_symbol} / {pair.quote.token_symbol}", file=buf)
+
+                # Draw indicators
+                for name, plot in visualisation.plots.items():
+                    value = plot.get_last_value()
+                    print(f"  {name}: {value}", file=buf)
+
+                logger.trade(buf.getvalue())
+
+                small_image = self.run_state.visualisation.small_image
+                post_logging_discord_image(small_image)
+
+        else:   
             logger.warning("Reporting of strategy thinking of multipair universes not supported yet")
