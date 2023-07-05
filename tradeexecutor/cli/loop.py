@@ -290,13 +290,16 @@ class ExecutionLoop:
         run_state = self.run_state
 
         # Strategy statistics
-        if not state.portfolio.is_empty():
-            stats = calculate_summary_statistics(
-                state,
-                self.execution_context.mode,
-                backtested_state=self.metadata.backtested_state,
-            )
-            self.run_state.summary_statistics = stats
+        # Even if the strategy has no action yet (deposits, trades)
+        # we need to calculate these statistics, as this will
+        # calculate the backtested metrics using in strategy summary tiles
+        logger.info("refresh_live_run_state() - calculating summary statistics")
+        stats = calculate_summary_statistics(
+            state,
+            self.execution_context.mode,
+            backtested_state=self.metadata.backtested_state,
+        )
+        self.run_state.summary_statistics = stats
 
         # Frozen positions is needed for fault checking hooks
         run_state.frozen_positions = len(state.portfolio.frozen_positions)
