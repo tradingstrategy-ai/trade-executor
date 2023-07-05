@@ -25,7 +25,6 @@ def calculate_summary_statistics(
         now_: Optional[pd.Timestamp | datetime.datetime] = None,
         legacy_workarounds=False,
         backtested_state: State | None = None,
-        time_window = pd.Timedelta(days=90),
         key_metrics_backtest_cut_off = datetime.timedelta(days=90),
 ) -> StrategySummaryStatistics:
     """Preprocess the strategy statistics for the summary card in the web frontend.

@@ -298,7 +298,7 @@ class ExecutionLoop:
             state,
             self.execution_context.mode,
             backtested_state=self.metadata.backtested_state,
-            self.metadata.key_metrics_backtest_cut_off,
+            key_metrics_backtest_cut_off=self.metadata.key_metrics_backtest_cut_off,
         )
         self.run_state.summary_statistics = stats
 
