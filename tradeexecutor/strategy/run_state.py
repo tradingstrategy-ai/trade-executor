@@ -56,7 +56,7 @@ class LatestStateVisualisation:
         :param pair_id: The id of the pair this visualisation is for
         """
 
-        self.pair_visualisation[pair_id] = LatestPairVisualisation(
+        self.pair_visualisations[pair_id] = LatestPairVisualisation(
             last_refreshed_at=datetime.datetime.now(datetime.timezone.utc),
             small_image=small_image,
             large_image=large_image,
