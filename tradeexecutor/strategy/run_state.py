@@ -31,31 +31,32 @@ class LatestStateVisualisation:
     last_refreshed_at: datetime.datetime = field(default_factory=datetime.datetime.utcnow)
 
     #: 512 x 512 image PNG
-    small_image: Optional[bytes] = None
+    small_images: list[bytes] | None = None
 
     #: Dark theme version
-    small_image_dark: Optional[bytes] = None
+    small_images_dark: list[bytes] | None = None
 
     #: 1920 x 1920 image SVG
-    large_image: Optional[bytes] = None
+    large_images: list[bytes] | None = None
 
     #: Dark theme version
-    large_image_dark: Optional[bytes] = None
+    large_images_dark: list[bytes] | None = None
 
     def __repr__(self) -> str:
         """Don't dump binary"""
         return f"<LatestStateVisualisation at {self.last_refreshed_at}>"
 
     def update_image_data(self,
-                          small_image,
-                          large_image,
-                          small_image_dark,
-                          large_image_dark,
+                          small_images,
+                          large_images,
+                          small_images_dark,
+                          large_images_dark,
                           ):
-        self.small_image = small_image
-        self.small_image_dark = small_image_dark
-        self.large_image = large_image
-        self.large_image_dark = large_image_dark
+        
+        self.small_images = small_images
+        self.small_images_dark = small_images_dark
+        self.large_images = large_images
+        self.large_images_dark = large_images_dark
         self.last_refreshed_at = datetime.datetime.utcnow()
 
 
