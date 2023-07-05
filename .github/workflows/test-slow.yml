@@ -7,8 +7,8 @@ on:
     branches: [ master ]
 
 jobs:
-  automated-test-suite:
-    timeout-minutes: 20
+  slow-test-suite:
+    timeout-minutes: 30
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
