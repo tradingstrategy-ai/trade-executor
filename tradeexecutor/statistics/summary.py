@@ -1,6 +1,8 @@
 """Summary statistics are displayed on the summary tiles of the strategies."""
 import datetime
+from time import perf_counter
 from typing import Optional
+import logging
 
 import pandas as pd
 from numpy import isnan
@@ -13,6 +15,9 @@ from tradeexecutor.strategy.summary import StrategySummaryStatistics
 from tradeexecutor.visual.equity_curve import calculate_compounding_realised_trading_profitability
 
 
+logger = logging.getLogger(__name__)
+
+
 def calculate_summary_statistics(
         state: State,
         execution_mode: ExecutionMode = ExecutionMode.one_off,
@@ -20,6 +25,7 @@ def calculate_summary_statistics(
         now_: Optional[pd.Timestamp | datetime.datetime] = None,
         legacy_workarounds=False,
         backtested_state: State | None = None,
+        key_metrics_backtest_cut_off = datetime.timedelta(days=90),
 ) -> StrategySummaryStatistics:
     """Preprocess the strategy statistics for the summary card in the web frontend.
 
@@ -55,10 +61,16 @@ def calculate_summary_statistics(
         The live web server needs to show backtested metrics on the side of
         live trading metrics. This state is used to calculate them.
 
+    :param key_metrics_backtest_cut_off:
+        How many days live data is collected until key metrics are switched from backtest to live trading based,
+
     :return:
         Summary calculations for the summary tile,
         or empty `StrategySummaryStatistics` if cannot be calculated.
     """
+
+    logger.info("calculate_summary_statistics() for %s", state.name)
+    func_started_at = perf_counter()
 
     portfolio = state.portfolio
 
@@ -66,13 +78,9 @@ def calculate_summary_statistics(
     current_value = portfolio.get_total_equity()
 
     first_trade, last_trade = portfolio.get_first_and_last_executed_trade()
-    if first_trade is None:
-        # No trades
-        # Cannot calculate anything
-        return StrategySummaryStatistics(current_value=current_value)
 
-    first_trade_at = first_trade.executed_at
-    last_trade_at = last_trade.executed_at
+    first_trade_at = first_trade.executed_at if first_trade else None
+    last_trade_at = last_trade.executed_at if last_trade else None
 
     if not now_:
         now_ = pd.Timestamp.utcnow().tz_localize(None)
@@ -99,7 +107,9 @@ def calculate_summary_statistics(
             profitability_90_days = None
             performance_chart_90_days = None
 
-    key_metrics = {m.kind.value: m for m in calculate_key_metrics(state, backtested_state)}
+    key_metrics = {m.kind.value: m for m in calculate_key_metrics(state, backtested_state, required_history=key_metrics_backtest_cut_off)}
+
+    logger.info("calculate_summary_statistics() finished, took %s seconds", perf_counter() - func_started_at)
 
     return StrategySummaryStatistics(
         first_trade_at=first_trade_at,
