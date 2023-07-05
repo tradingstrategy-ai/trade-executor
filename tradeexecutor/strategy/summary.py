@@ -44,6 +44,20 @@ class KeyMetricSource(enum.Enum):
     missing = "missing"
 
 
+class KeyMetricCalculationMethod(enum.Enum):
+    """How this key metric is calculated.
+
+    Will have effect on the frontend displaying of the value.
+    """
+
+    #: We just take the latest value e.g. for total assets
+    latest_value = "latest_value"
+
+    #: We calculae over the period of time
+    historical_data = "historical_data"
+
+
+
 @dataclass_json
 @dataclass(slots=True, frozen=True)
 class KeyMetric:
@@ -71,6 +85,11 @@ class KeyMetric:
 
     #: What's the time period for which this metric was calculated
     calculation_window_end_at: datetime.timedelta | None = None
+
+    #: How this key metric is calculated
+    #:
+    #: Hint for the frontend
+    calculation_method: KeyMetricCalculationMethod | None = None
 
     #: Unavaiability reason.
     #:
@@ -105,7 +124,9 @@ class KeyMetric:
             source: KeyMetricSource,
             value: Any,
             calculation_window_start_at: datetime.datetime,
-            calculation_window_end_at: datetime.datetime) -> "KeyMetric":
+            calculation_window_end_at: datetime.datetime,
+            method: KeyMetricCalculationMethod,
+    ) -> "KeyMetric":
         """Create a metric value.
 
         Automatically fill in the help text link from our hardcoded mapping.
@@ -117,6 +138,7 @@ class KeyMetric:
             calculation_window_start_at=calculation_window_start_at,
             calculation_window_end_at=calculation_window_end_at,
             help_link=_KEY_METRIC_HELP.get(kind),
+            calculation_method=method,
         )
 
 @dataclass_json

@@ -9,7 +9,7 @@ import pandas as pd
 
 from tradeexecutor.state.state import State
 from tradeexecutor.state.types import Percent
-from tradeexecutor.strategy.summary import KeyMetric, KeyMetricKind, KeyMetricSource
+from tradeexecutor.strategy.summary import KeyMetric, KeyMetricKind, KeyMetricSource, KeyMetricCalculationMethod
 from tradeexecutor.visual.equity_curve import calculate_size_relative_realised_trading_returns
 
 
@@ -162,17 +162,17 @@ def calculate_key_metrics(
         periods = pd.Timedelta(days=365) / freq_base
 
         sharpe = calculate_sharpe(returns, periods=periods)
-        yield KeyMetric.create_metric(KeyMetricKind.sharpe, source, sharpe, calculation_window_start_at, calculation_window_end_at)
+        yield KeyMetric.create_metric(KeyMetricKind.sharpe, source, sharpe, calculation_window_start_at, calculation_window_end_at, KeyMetricCalculationMethod.historical_data)
 
         sortino = calculate_sortino(returns, periods=periods)
-        yield KeyMetric.create_metric(KeyMetricKind.sortino, source, sortino, calculation_window_start_at, calculation_window_end_at)
+        yield KeyMetric.create_metric(KeyMetricKind.sortino, source, sortino, calculation_window_start_at, calculation_window_end_at, KeyMetricCalculationMethod.historical_data)
 
         # Flip the sign of the max drawdown
         max_drawdown = -calculate_max_drawdown(returns)
-        yield KeyMetric.create_metric(KeyMetricKind.max_drawdown, source, max_drawdown, calculation_window_start_at, calculation_window_end_at)
+        yield KeyMetric.create_metric(KeyMetricKind.max_drawdown, source, max_drawdown, calculation_window_start_at, calculation_window_end_at, KeyMetricCalculationMethod.historical_data)
 
         profitability = calculate_profitability(returns)
-        yield KeyMetric.create_metric(KeyMetricKind.profitability, source, profitability, calculation_window_start_at, calculation_window_end_at)
+        yield KeyMetric.create_metric(KeyMetricKind.profitability, source, profitability, calculation_window_start_at, calculation_window_end_at, KeyMetricCalculationMethod.historical_data)
 
         if live_state:
             total_equity = live_state.portfolio.get_total_equity()
@@ -184,6 +184,7 @@ def calculate_key_metrics(
                 total_equity,
                 calculation_window_start_at=calculation_window_start_at,
                 calculation_window_end_at=calculation_window_end_at,
+                calculation_method=KeyMetricCalculationMethod.latest_value,
             )
 
     else:
@@ -206,5 +207,6 @@ def calculate_key_metrics(
         live_state.created_at,
         calculation_window_start_at=calculation_window_start_at,
         calculation_window_end_at=calculation_window_end_at,
+        calculation_method=KeyMetricCalculationMethod.latest_value,
     )
 
