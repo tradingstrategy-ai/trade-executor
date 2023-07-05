@@ -5,10 +5,8 @@ from typing import Optional
 import logging
 
 import pandas as pd
-from numpy import isnan
 
 from tradeexecutor.state.state import State
-from tradeexecutor.state.statistics import calculate_naive_profitability
 from tradeexecutor.statistics.key_metric import calculate_key_metrics
 from tradeexecutor.strategy.execution_context import ExecutionMode
 from tradeexecutor.strategy.summary import StrategySummaryStatistics
@@ -120,4 +118,5 @@ def calculate_summary_statistics(
         performance_chart_90_days=performance_chart_90_days,
         key_metrics=key_metrics,
         launched_at=state.created_at,
+        backtest_metrics_cut_off_period=key_metrics_backtest_cut_off,
     )
