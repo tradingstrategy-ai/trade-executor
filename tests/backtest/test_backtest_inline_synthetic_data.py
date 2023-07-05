@@ -287,6 +287,7 @@ def test_basic_summary_statistics(
     assert summary.open_value == pytest.approx(0, rel=APPROX_REL)
     assert summary.end_value == pytest.approx(9952.829556143553, rel=APPROX_REL)
     assert summary.win_percent == pytest.approx(0.36363636363636365, rel=APPROX_REL)
+    assert summary.lost_percent == pytest.approx(0.6363636363636364, rel=APPROX_REL)
     assert summary.duration == datetime.timedelta(days=181)
     assert summary.trade_volume == pytest.approx(21900.29776619458, rel=APPROX_REL)
     assert summary.uninvested_cash == pytest.approx(9952.829556143553, rel=APPROX_REL)
@@ -323,9 +324,14 @@ def test_basic_summary_statistics(
 
     assert summary.winning_stop_losses == 0
     assert summary.winning_stop_losses_percent is None
-
     assert summary.losing_stop_losses == 0
     assert summary.losing_stop_losses_percent is None
+    assert summary.winning_take_profits == 0
+    assert summary.winning_take_profits_percent is None
+
+    assert summary.sharpe_ratio == pytest.approx(-0.16440603545590504, rel=APPROX_REL)
+    assert summary.sortino_ratio == pytest.approx(-0.23988078508533023, rel=APPROX_REL)
+    assert summary.profit_factor == pytest.approx(0.9754583954173234, rel=APPROX_REL)
 
 def test_advanced_summary_statistics(
     summary: TradeSummary
