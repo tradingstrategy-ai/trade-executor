@@ -268,6 +268,11 @@ class StrategySummary:
     #:
     error_message: str | None = None
 
+    #: Can the server server backtest files
+    #:
+    #:
+    backtest_available: bool = False
+
 
 #: Help links for different metrics
 _KEY_METRIC_HELP = {

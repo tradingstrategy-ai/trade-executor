@@ -138,3 +138,7 @@ class Metadata:
             started_at=datetime.datetime.utcnow(),
             executor_running=True,
         )
+
+    def has_backtest_data(self) -> bool:
+        """Does this strategy have backtest data available on the file system?"""
+        return (self.backtest_notebook and self.backtest_notebook.exists()) and (self.backtest_html and self.backtest_html.exists())

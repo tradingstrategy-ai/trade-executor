@@ -122,6 +122,8 @@ def backtest(
 
     mod = read_strategy_module(strategy_file)
 
+    assert mod.is_version_greater_or_equal_than(0, 2, 0), f"trading_strategy_engine_version must be 0.2.0 or newer for {strategy_file}"
+
     client = Client.create_live_client(trading_strategy_api_key, cache_path=cache_path)
 
     backtest_setup = setup_backtest(
