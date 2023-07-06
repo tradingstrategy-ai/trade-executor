@@ -79,7 +79,7 @@ def draw_multi_pair_strategy_state(
         end_at: Optional[datetime.datetime] = None,
         technical_indicators=True,
 ) -> list[go.Figure]:
-    """Draw mini price chart images for multiple pairs.
+    """Draw mini price chart images for multiple pairs. Returns a dict.
 
     See also
 
@@ -112,7 +112,7 @@ def draw_multi_pair_strategy_state(
         Whether to draw technical indicators or not
 
     :return:
-        The strategy state visualisation as a list of Plotly figures
+        The strategy state visualisation as a dict of Plotly figures with the pair_id as the key for each figure
     """
 
     assert universe.get_pair_count() <= 3, "This visualisation can be done only for less than 3 pairs"
