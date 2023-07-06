@@ -258,7 +258,7 @@ class TradeSummary:
     def display(self):
         """Create human readable summary tables and display them in IPython notebook."""
 
-        assert self.daily_returns is not None, "No daily returns data available. Remember to add state argument to py:meth:`TradeAnalysis.calculate_summary_statistics`."
+        assert self.daily_returns is not None, "No daily returns data available. Remember to add state argument to calculate_summary_statistics() i.e. summary.calculate_summary_statistics(state=state). \n Otherwise you can display the old summary table with display(summary.to_dataframe())"
 
         data1 = {
             "Annualised return %": as_percent(self.annualised_return_percent),
