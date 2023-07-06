@@ -94,14 +94,6 @@ class TradeSummary:
         encoder=json_encode_timedelta,
         decoder=json_decode_timedelta,
     )) # position
-    average_duration_of_zero_loss_trades: datetime.timedelta = field(metadata=config(
-        encoder=json_encode_timedelta,
-        decoder=json_decode_timedelta,
-    )) # position
-    average_duration_of_all_trades: datetime.timedelta = field(metadata=config(
-        encoder=json_encode_timedelta,
-        decoder=json_decode_timedelta,
-    )) # position
     time_bucket: Optional[TimeBucket] = None
 
     # these stats calculate in post-init, so init=False
@@ -166,6 +158,9 @@ class TradeSummary:
     sharpe_ratio: Optional[float] = None
     sortino_ratio: Optional[float] = None
     profit_factor: Optional[float] = None
+
+    average_duration_of_zero_loss_trades: Optional[datetime.timedelta] = None
+    average_duration_of_all_trades: Optional[datetime.timedelta] = None
 
     def __post_init__(self):
 
