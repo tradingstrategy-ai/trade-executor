@@ -31,9 +31,31 @@ class EnzymeTransactionBuilder(TransactionBuilder):
     def __init__(self,
                  hot_wallet: HotWallet,
                  vault: Vault,
+                 vault_slippage_tolerance: float = 0.9999,
                  ):
+        """
+
+        :param hot_wallet:
+            Hot wallet the trade-executor uses to sign the transactions
+
+        :param vault:
+            Enzyme vault high-level wrapper
+
+        :param vault_slippage_tolerance:
+            How much we drop the slippage tolerance for the vault specific
+            slippage tolerance checks (vs. DEX checks) to avoid slippage
+            tolerance failures because of rounding errors.
+
+            Default to 1 BPS.
+
+            Set `1` to disable.
+
+            Applies to :py:class:`eth_defi.tx.AssetDelta`.
+        """
         super().__init__(vault.web3)
         self.vault_controlled_wallet = VaultControlledWallet(vault, hot_wallet)
+        assert vault_slippage_tolerance <= 1, f"{vault_slippage_tolerance =}. Cannot expect more incoming assets than we trade."
+        self.vault_slippage_tolerance = vault_slippage_tolerance
 
     @property
     def vault(self) -> Vault:
@@ -80,8 +102,14 @@ class EnzymeTransactionBuilder(TransactionBuilder):
 
         :param args_bound_func:
             Web3 function thingy
+
         :param gas_limit:
             Max gas per this transaction
+
+        :param asset_deltas:
+            Expected asset deltas (how much of incoming tokens we are going to give out and receive).
+
+            Calculated in :py:meth:`tradeexecutor.ethereum.routing_model.EthereumRoutingModel.execute_trades_internal`
 
         :return:
             Prepared BlockchainTransaction instance
@@ -102,11 +130,19 @@ class EnzymeTransactionBuilder(TransactionBuilder):
                     gas_limit,
                     asset_deltas)
 
+        if self.vault_slippage_tolerance != 1:
+            # Apply rounding reduction for expected incomign assets
+            vault_asset_deltas = [d * self.vault_slippage_tolerance if d.is_incoming() else d for d in asset_deltas]
+        else:
+            vault_asset_deltas = asset_deltas
+
+        logger.info("Vault slippage tolerance %f, new asset deltas %s", self.vault_slippage_tolerance, vault_asset_deltas)
+
         enzyme_tx = EnzymeVaultTransaction(
             contract,
             args_bound_func,
             gas_limit,
-            asset_deltas=asset_deltas,
+            asset_deltas=vault_asset_deltas,
         )
 
         gas_price_suggestion = gas_price_suggestion or self.fetch_gas_price_suggestion()
@@ -128,5 +164,6 @@ class EnzymeTransactionBuilder(TransactionBuilder):
             tx_hash=signed_tx.hash.hex(),
             nonce=signed_tx.nonce,
             details=enzyme_tx.as_json_friendly_dict(),
-            asset_deltas=[JSONAssetDelta.from_asset_delta(a) for a in asset_deltas],
+            asset_deltas=[JSONAssetDelta.from_asset_delta(a) for a in vault_asset_deltas],
+            other={"vault_slippage_tolerance": self.vault_slippage_tolerance}
         )

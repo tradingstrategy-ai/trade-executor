@@ -43,7 +43,7 @@ except ImportError:
     from tqdm.auto import tqdm
 
 from tradeexecutor.backtest.backtest_pricing import BacktestSimplePricingModel
-from tradeexecutor.state.state import State
+from tradeexecutor.state.state import State, BacktestData
 from tradeexecutor.state.store import StateStore
 from tradeexecutor.strategy.sync_model import SyncMethodV0, SyncModel
 from tradeexecutor.state.trade import TradeExecution
@@ -155,6 +155,9 @@ class ExecutionLoop:
         self.execution_model = execution_model
         self.execution_test_hook = execution_test_hook
         self.metadata = metadata
+
+        self.backtest_start = backtest_start
+        self.backtest_end = backtest_end
 
         args = locals().copy()
         args.pop("self")
@@ -287,13 +290,17 @@ class ExecutionLoop:
         run_state = self.run_state
 
         # Strategy statistics
-        if not state.portfolio.is_empty():
-            stats = calculate_summary_statistics(
-                state,
-                self.execution_context.mode,
-                backtested_state=self.metadata.backtested_state,
-            )
-            self.run_state.summary_statistics = stats
+        # Even if the strategy has no action yet (deposits, trades)
+        # we need to calculate these statistics, as this will
+        # calculate the backtested metrics using in strategy summary tiles
+        logger.info("refresh_live_run_state() - calculating summary statistics")
+        stats = calculate_summary_statistics(
+            state,
+            self.execution_context.mode,
+            backtested_state=self.metadata.backtested_state,
+            key_metrics_backtest_cut_off=self.metadata.key_metrics_backtest_cut_off,
+        )
+        self.run_state.summary_statistics = stats
 
         # Frozen positions is needed for fault checking hooks
         run_state.frozen_positions = len(state.portfolio.frozen_positions)
@@ -615,7 +622,6 @@ class ExecutionLoop:
         if self.backtest_end or self.backtest_start:
             assert self.backtest_start and self.backtest_end, f"If backtesting both start and end must be given, we have {self.backtest_start} - {self.backtest_end}"
 
-        assert self.backtest_start < self.backtest_end
 
         ts = self.backtest_start
 
@@ -644,6 +650,18 @@ class ExecutionLoop:
         cycle_name = backtest_step.value
 
         assert backtest_step != CycleDuration.cycle_unknown
+
+        assert isinstance(self.backtest_start, datetime.datetime)
+        assert not isinstance(self.backtest_start, pd.Timestamp)
+        assert not isinstance(self.backtest_end, pd.Timestamp)
+        assert isinstance(self.backtest_end, datetime.datetime)
+        assert self.backtest_start < self.backtest_end
+
+        state.backtest_data = BacktestData(
+            start_at=self.backtest_start,
+            end_at=self.backtest_end,
+            decision_cycle_duration=backtest_step,
+        )
 
         execution_test_hook =  self.execution_test_hook or ExecutionTestHook()
 
@@ -736,12 +754,12 @@ class ExecutionLoop:
 
                 cycle += 1
 
-            # Validate the backtest state at the end.
-            # We want to avoid situation where we have stored
-            # non-serialisable types in the state
-            validate_state_serialisation(state)
+        # Validate the backtest state at the end.
+        # We want to avoid situation where we have stored
+        # non-serialisable types in the state
+        validate_state_serialisation(state)
 
-            return self.debug_dump_state
+        return self.debug_dump_state
 
     def run_live(self, state: State):
         """Run live trading cycle.

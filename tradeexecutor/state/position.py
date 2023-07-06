@@ -170,8 +170,14 @@ class TradingPosition:
 
     #: Human readable notes about this trade
     #:
-    #: Used to mark test trades from command line.
     #: Special case; not worth to display unless the field is filled in.
+    #:
+    #: - May contain multiple newline separated messages
+    #:
+    #: - Used to mark test trades from command line.
+    #:
+    #: - Used to add log information abotu frozen and unfrozen positions
+    #:
     notes: Optional[str] = None
 
     #: All balance updates that have touched this reserve position.
@@ -236,6 +242,13 @@ class TradingPosition:
     def is_unfrozen(self) -> bool:
         """This position was frozen, but its trades were successfully repaired."""
         return self.unfrozen_at is not None
+
+    def is_repaired(self) -> bool:
+        """This position was frozen, but its trades were successfully repaired.
+
+        Alias for :py:meth:`is_unfrozen`.
+        """
+        return self.is_unfrozen()
 
     def has_automatic_close(self) -> bool:
         """This position has stop loss/take profit set."""
@@ -731,7 +744,14 @@ class TradingPosition:
         Get the revert reason of the last blockchain transaction, assumed to be swap,
         for this trade.
         """
-        assert self.is_frozen()
+        assert self.is_frozen(), f"Asked for freeze reason, but position not frozen: {self}"
+
+        if len(self.get_last_trade().blockchain_transactions) == 0:
+            logger.warning("Position frozen: Last trade did not have any blockchain transactions: %s", self)
+            for t in self.trades.values():
+                logger.warning("Trade #%d: %s", t.trade_id, t)
+            return "Could not extract freeze reason"
+
         return self.get_last_trade().blockchain_transactions[-1].revert_reason
 
     def get_last_tx_hash(self) -> Optional[str]:
@@ -841,7 +861,7 @@ class TradingPosition:
             If the position made 1% profit returns 1.01.
         """
         
-        assert not self.is_open()
+        assert not self.is_open(), "Cannot calculate realised profit for open positions"
         buy_value = self.get_buy_value()
         sell_value = self.get_sell_value()
 
@@ -961,6 +981,17 @@ class TradingPosition:
             return 0
         assert self.last_token_price, f"Asset price not available when calculating price for quantity: {quantity}"
         return float(quantity) * self.last_token_price
+
+    def add_notes_message(self, msg: str):
+        """Add a new message to the notes field.
+
+        Messages are newline separated.
+        """
+        if self.notes is None:
+            self.notes = ""
+
+        self.notes += msg
+        self.notes += "\n"
 
 
 class PositionType(enum.Enum):

@@ -244,6 +244,8 @@ class EthereumRoutingModel(RoutingModel):
                 # Old path that does not slippage tolerances for trades
                 asset_deltas = None
 
+            logger.info("Slippage tolerance is: %f, expected asset deltas: %s", t.slippage_tolerance, asset_deltas)
+
             target_pair, intermediary_pair = self.route_trade(pair_universe, t)
 
             if intermediary_pair is None:

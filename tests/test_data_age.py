@@ -33,6 +33,7 @@ def universe_model(persistent_test_client: Client) -> DataAgeTestUniverseModel:
     return DataAgeTestUniverseModel(persistent_test_client, timed_task)
 
 
+@pytest.mark.slow_test_group
 def test_data_fresh(universe_model: DataAgeTestUniverseModel):
     """Fresh data passes our data check."""
     # d1 data is used by other tests and cached

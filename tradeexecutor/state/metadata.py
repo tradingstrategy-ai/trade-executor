@@ -5,6 +5,7 @@ on the executor start up.
 """
 import datetime
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Optional, Dict, TypedDict
 
 from dataclasses_json import dataclass_json
@@ -112,6 +113,20 @@ class Metadata:
     #: Used in the web frontend to display the backtested values.
     #:
     backtested_state: Optional[State] = None
+
+    #: Backtest notebook .ipynb file
+    #:
+    #:
+    backtest_notebook: Optional[Path] = None
+
+    #: Backtest notebook .html file
+    #:
+    #:
+    backtest_html: Optional[Path] = None
+
+    #: How many days live data is collected until key metrics are switched from backtest to live trading based
+    #:
+    key_metrics_backtest_cut_off: datetime.timedelta = datetime.timedelta(days=90)
 
     @staticmethod
     def create_dummy() -> "Metadata":

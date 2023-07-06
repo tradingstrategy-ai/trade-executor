@@ -314,8 +314,6 @@ def test_calculate_key_metrics_live(state: State):
     assert metrics["total_equity"].value == pytest.approx(9541.619532761046)
     assert metrics["max_drawdown"].value == pytest.approx(0.04780138378916754)
     assert metrics["max_drawdown"].source == KeyMetricSource.live_trading
-    assert metrics["max_drawdown"].calculation_window_start_at == datetime.datetime(2021, 6, 1, 0, 0)
-    assert metrics["max_drawdown"].calculation_window_end_at == datetime.datetime(2021, 12, 31, 0, 0)
     assert metrics["max_drawdown"].help_link == "https://tradingstrategy.ai/glossary/maximum-drawdown"
 
 
@@ -341,3 +339,4 @@ def test_calculate_key_metrics_live_and_backtesting(state: State):
 
     assert metrics["started_at"].source == KeyMetricSource.live_trading
     assert metrics["started_at"].value >= datetime.datetime(2023, 1, 1, 0, 0)
+

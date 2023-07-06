@@ -19,8 +19,8 @@ python = ">=3.10,<3.11"
 # web3-ethereum-defi = {path = "deps/web3-ethereum-defi", develop = true}
 # trading-strategy = {path = "deps/trading-strategy", develop = true}
 requests = "^2.27.1"
-web3-ethereum-defi = {version="0.21.1", extras=["data"]}
-trading-strategy = "^0.17.5"
+web3-ethereum-defi = {version="0.21.3", extras=["data"]}
+trading-strategy = "^0.17.6"
 matplotlib = "^3.6.0"
 jupyterlab = "^3.5.0"
 pandas-ta = "^0.3.14-beta.0"
@@ -80,6 +80,7 @@ quantstats = {version="^0.0.59", optional = true}
 #
 tqdm = "^4.64.1"
 tblib = "^1.7.0"
+beautifulsoup4 = "^4.12.2"
 [tool.poetry.extras]
 
 # Legacy strats
@@ -107,8 +108,6 @@ web-server = [
     "pyramid-openapi3",
     "waitress"
 ]
-
-data = ["web3-ethereum-defi"]
 
 # for generating advanced statistical reports
 quantstats = ["quantstats"]
