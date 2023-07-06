@@ -1,5 +1,8 @@
 """Check API endpoints."""
 import datetime
+import os
+import tempfile
+from pathlib import Path
 from queue import Queue
 
 import pytest
@@ -36,7 +39,17 @@ def server_url(store):
     execution_state.version.commit_message = "Foobar"
 
     queue = Queue()
+
     metadata = Metadata("Foobar", "Short desc", "Long desc", None, datetime.datetime.utcnow(), True)
+
+    # Inject some fake files for the backtest content
+    notebook_result = Path(tempfile.mkdtemp()) / 'test_cli_backtest.ipynb'
+    notebook_result.open("wt").write("Foo")
+    html_result = Path(tempfile.mkdtemp()) / 'test_cli_backtest.html'
+    html_result.open("wt").write("Bar")
+    metadata.backtest_notebook = notebook_result
+    metadata.backtest_html = html_result
+
     server = create_webhook_server("127.0.0.1", 5000, "test", "test", queue, store, metadata, execution_state)
     server_url = "http://test:test@127.0.0.1:5000"
     yield server_url
@@ -150,3 +163,16 @@ def test_run_state(logger, server_url):
     assert data["version"]["tag"] == "v1"
     assert data["version"]["commit_message"] == "Foobar"
 
+
+def test_download_backtest_notebook(logger, server_url):
+    """Download the backtest notebook."""
+    resp = requests.get(f"{server_url}/file", {"type": "notebook"})
+    assert resp.status_code == 200
+    assert resp.content == b"Foo"
+
+
+def test_download_backtest_html(logger, server_url):
+    """Download the backtest HTML report."""
+    resp = requests.get(f"{server_url}/file", {"type": "html"})
+    assert resp.status_code == 200
+    assert resp.content == b"Bar"

@@ -362,17 +362,16 @@ def test_visualise_strategy_state(
         allow_missing_fees=True,
     )
 
-    image_dict= draw_multi_pair_strategy_state(state, universe)
+    image= draw_multi_pair_strategy_state(state, universe)
     
-    for pair_id, image in image_dict.items():
-        png_data = render_plotly_figure_as_image_file(image)
+    png_data = render_plotly_figure_as_image_file(image)
 
-        # Test the image on a local screen
-        # using a web brower
-        if os.environ.get("SHOW_IMAGE"):
-            # https://stackoverflow.com/a/74619515/315168
-            path = Path("/tmp/test-image.png")
-            with open(path, "wb") as out:
-                out.write(png_data)
+    # Test the image on a local screen
+    # using a web brower
+    if os.environ.get("SHOW_IMAGE"):
+        # https://stackoverflow.com/a/74619515/315168
+        path = Path("/tmp/test-image.png")
+        with open(path, "wb") as out:
+            out.write(png_data)
 
-            webbrowser.open(f"file://{path.as_posix()}")
+        webbrowser.open(f"file://{path.as_posix()}")
