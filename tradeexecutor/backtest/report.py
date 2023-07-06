@@ -46,6 +46,27 @@ DEFAULT_CUSTOM_CSS = """
 """
 
 
+# Iframe height hack
+# https://stackoverflow.com/a/44547866/315168
+DEFAULT_CUSTOM_JS = """
+console.log("Dynamic iframe resizer loaded");
+window.addEventListener("load", function(){
+    if(window.self === window.top) return; // if w.self === w.top, we are not in an iframe 
+    send_height_to_parent_function = function(){
+        var height = document.getElementsByTagName("html")[0].clientHeight;
+        console.log("Sending height as " + height + "px");
+        parent.postMessage({"iframeContentHeight" : height }, "*");
+    }
+    // send message to parent about height updates
+    send_height_to_parent_function(); //whenever the page is loaded
+    window.addEventListener("resize", send_height_to_parent_function); // whenever the page is resized
+    var observer = new MutationObserver(send_height_to_parent_function);           // whenever DOM changes PT1
+    var config = { attributes: true, childList: true, characterData: true, subtree:true}; // PT2
+    observer.observe(window.document, config);                                            // PT3 
+});
+"""
+
+
 class BacktestReportRunFailed(Exception):
     """Generating a backtest report failed.
 
@@ -121,6 +142,7 @@ def export_backtest_report(
         output_html: Path | None = None,
         show_code=False,
         custom_css: str | None=DEFAULT_CUSTOM_CSS,
+        custom_js: str | None=DEFAULT_CUSTOM_JS,
 ) -> NotebookNode:
     """Creates the backtest visual report.
 
@@ -141,6 +163,9 @@ def export_backtest_report(
 
     :param custom_css:
         CSS code to inject to the resulting HTML file to override styles.
+
+    :param custom_js:
+        JS code to inject to the resulting HTML file to support iframe embedding.
 
     :return:
         Returns the executed notebook contents
@@ -214,7 +239,7 @@ def export_backtest_report(
 
             # Inject our custom css
             if custom_css is not None:
-                html_content = _inject_custom_css(html_content, custom_css)
+                html_content = _inject_custom_css_and_js(html_content, custom_css, custom_js)
 
             with open(output_html, 'w', encoding='utf-8') as f:
                 f.write(html_content)
@@ -224,7 +249,7 @@ def export_backtest_report(
         return nb
 
 
-def _inject_custom_css(html: str, css_code: str) -> str:
+def _inject_custom_css_and_js(html: str, css_code: str, js_code: str) -> str:
     """Injects new <style> tag to HTML code.
 
     Use BeautifulSoup to parse HTMl, inject new <style> tag, reassemble.
@@ -246,4 +271,9 @@ def _inject_custom_css(html: str, css_code: str) -> str:
     tag = soup.new_tag('style', attrs={"id": "trade-executor-css-inject"}, type='text/css')
     head.append(tag)
     tag.append(css_code)
+
+    tag = soup.new_tag('script', attrs={"id": "trade-executor-js-inject"})
+    head.append(tag)
+    tag.append(js_code)
+
     return str(soup)
