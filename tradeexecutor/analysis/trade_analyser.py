@@ -727,14 +727,11 @@ class TradeAnalysis:
         
         # to avoid circular import error
         from tradeexecutor.statistics.key_metric import calculate_sharpe, calculate_sortino, calculate_profit_factor
-        
-        if daily_returns is not None:
-            sharpe_ratio = calculate_sharpe(daily_returns)
-            sortino_ratio = calculate_sortino(daily_returns)
+        sharpe_ratio = calculate_sharpe(daily_returns) if daily_returns is not None else None
+        sortino_ratio = calculate_sortino(daily_returns) if daily_returns is not None else None
 
         # as profit factor is not annualised, better to calculate it on the original returns
-        if original_returns is not None:
-            profit_factor = calculate_profit_factor(original_returns)
+        profit_factor = calculate_profit_factor(original_returns) if original_returns is not None else None
 
         return TradeSummary(
             won=won,
