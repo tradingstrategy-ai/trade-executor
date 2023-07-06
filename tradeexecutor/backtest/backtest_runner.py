@@ -272,7 +272,7 @@ def setup_backtest(
         cycle_duration=cycle_duration or strategy_module.trading_strategy_cycle,  # Pick overridden cycle duration if provided
         universe_options=universe_options,
         wallet=wallet,
-        state=State(),
+        state=State(name=name),
         universe=None,
         pricing_model=None,  # Will be set up later
         execution_model=execution_model,
