@@ -575,7 +575,8 @@ class TradeAnalysis:
         biggest_losing_trade_pc = None
         average_duration_of_losing_trades = datetime.timedelta(0)
         average_duration_of_winning_trades = datetime.timedelta(0)
-        average_duration_of_zero_loss_trades = datetime.timedelta(0)
+        average_duration_of_zero_loss_trades = None
+        average_duration_of_all_trades = None
 
         strategy_duration = self.portfolio.get_trading_history_duration()
 
@@ -715,10 +716,13 @@ class TradeAnalysis:
         biggest_losing_trade_pc = func_check(losing_trades, min)
 
         all_durations = winning_trades_duration + losing_trades_duration + zero_loss_trades_duration
-        average_duration_of_all_trades = get_avg_trade_duration(all_durations, time_bucket)
         average_duration_of_winning_trades = get_avg_trade_duration(winning_trades_duration, time_bucket)
         average_duration_of_losing_trades = get_avg_trade_duration(losing_trades_duration, time_bucket)
-        average_duration_of_zero_loss_trades = get_avg_trade_duration(zero_loss_trades_duration, time_bucket)
+        if zero_loss_trades_duration:
+            average_duration_of_zero_loss_trades = get_avg_trade_duration(zero_loss_trades_duration, time_bucket)
+        if all_durations:
+            average_duration_of_all_trades = get_avg_trade_duration(all_durations, time_bucket)
+        
 
         lp_fees_average_pc = lp_fees_paid / trade_volume if trade_volume else 0
         
