@@ -362,9 +362,9 @@ def test_visualise_strategy_state(
         allow_missing_fees=True,
     )
 
-    images= draw_multi_pair_strategy_state(state, universe)
+    image_dict= draw_multi_pair_strategy_state(state, universe)
     
-    for image in images:
+    for pair_id, image in image_dict.items():
         png_data = render_plotly_figure_as_image_file(image)
 
         # Test the image on a local screen
