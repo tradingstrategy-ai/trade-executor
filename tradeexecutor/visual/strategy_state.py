@@ -17,6 +17,7 @@ from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniv
 from tradeexecutor.visual.single_pair import visualise_single_pair
 
 import plotly.graph_objects as go
+import plotly.subplots as sp
 
 from tradingstrategy.charting.candle_chart import VolumeBarMode
 
@@ -79,7 +80,7 @@ def draw_multi_pair_strategy_state(
         end_at: Optional[datetime.datetime] = None,
         technical_indicators=True,
 ) -> list[go.Figure]:
-    """Draw mini price chart images for multiple pairs.
+    """Draw mini price chart images for multiple pairs. Returns a single figure with multiple subplots.
 
     See also
 
@@ -112,7 +113,7 @@ def draw_multi_pair_strategy_state(
         Whether to draw technical indicators or not
 
     :return:
-        The strategy state visualisation as a list of Plotly figures
+        The strategy state visualisation as a single Plotly figure with multiple subplots
     """
 
     assert universe.get_pair_count() <= 3, "This visualisation can be done only for less than 3 pairs"
@@ -140,7 +141,20 @@ def draw_multi_pair_strategy_state(
 
         figures.append(figure)
 
-    return figures
+    combined_image = combine_images(figures, width, height)
+
+    return combined_image
+
+
+def combine_images(figures, width, height):
+    """Combine multiple Plotly Figures into one image."""
+
+    combined_image = sp.make_subplots(rows=len(figures), cols=1, shared_xaxes=True, vertical_spacing=0.02)
+
+    for i, figure in enumerate(figures):
+        combined_image.add_trace(figure.data[0], row=i + 1, col=1)
+
+    return combined_image
 
 
 def visualise_single_pair_strategy_state(

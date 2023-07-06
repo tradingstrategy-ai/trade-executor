@@ -106,71 +106,57 @@ class PandasTraderRunner(StrategyRunner):
             return
 
         if universe.is_single_pair_universe():
-            pair_id = universe.get_single_pair().internal_id
 
             small_figure = draw_single_pair_strategy_state(state, universe, height=512)
-
-            small_image, small_image_dark = self.get_small_images(small_figure)
-
-            logger.info("Updating strategy thinking image data")
-
             # Draw the inline plot and expose them tot he web server
             # TODO: SVGs here are not very readable, have them as a stop gap solution
             large_figure = draw_single_pair_strategy_state(state, universe, height=1024)
-            large_image, large_image_dark = self.get_large_images(large_figure)
 
-            self.run_state.visualisation.update_image_data(
-                small_image,
-                large_image,
-                small_image_dark,
-                large_image_dark,
-                pair_id
-            )
+            self.update_strategy_thinking_image_data(small_figure, large_figure)
 
         elif 1 < universe.get_pair_count() <= 3:
             
-            small_figures_dict = draw_multi_pair_strategy_state(state, universe, height=512)
-            large_figures_dict = draw_multi_pair_strategy_state(state, universe, height=1024)
+            small_figures_combined = draw_multi_pair_strategy_state(state, universe, height=512)
+            large_figure_combined = draw_multi_pair_strategy_state(state, universe, height=1024)
 
-            logger.info("Updating strategy thinking image data")
-
-            for pair_id, small_figure in small_figures_dict.items():
-                
-                try:
-                    large_figure = large_figures_dict[pair_id]
-                except KeyError:
-                    raise KeyError(f"Pair_id {pair_id} not found in large_figures_dict. Safety check, this should not happen")
-
-                small_image, small_image_dark = self.get_small_images(small_figure)
-                large_image, large_image_dark = self.get_large_images(large_figure)
-
-                self.run_state.visualisation.update_image_data(
-                    small_image,
-                    large_image,
-                    small_image_dark,
-                    large_image_dark,
-                    pair_id
-                )
+            self.update_strategy_thinking_image_data(small_figures_combined, large_figure_combined)
 
         else:
             logger.warning("Charts not yet available for this strategy type. Pair count: %s", universe.get_pair_count())
+    
+    def update_strategy_thinking_image_data(self, small_image, large_image):
+        """Update the strategy thinking image data with small, small dark theme, large, and large dark theme images.
+        
+        :param small_image: 512 x 512 image PNG
+        :param large_image: 1920 x 1920 image SVG
+        """
+
+        small_image, small_image_dark = self.get_small_images(small_image)
+        large_image, large_image_dark = self.get_large_images(large_image)
+        
+        self.run_state.visualisation.update_image_data(
+            small_image,
+            large_image,
+            small_image_dark,
+            large_image_dark,
+        )
 
     def get_small_images(self, small_figure):
-        small_image = render_plotly_figure_as_image_file(small_figure, width=768, height=512, format="png")
-
-        small_figure.update_layout(template="plotly_dark")
-        small_image_dark = render_plotly_figure_as_image_file(small_figure, width=512, height=512, format="png")
-
-        return small_image, small_image_dark
+        """Gets the png image of the figure and the dark theme png image. Images are 512 x 512."""
+        return self.get_image_and_dark_image(small_figure, width=512, height=512)
     
     def get_large_images(self, large_figure):
+        """Gets the png image of the figure and the dark theme png image. Images are 1024 x 1024."""
+        return self.get_image_and_dark_image(large_figure, width=1024, height=1024)
+    
+    def get_image_and_dark_image(self, figure, width, height):
+        """Renders the figure as a PNG image and a dark theme PNG image."""
+        image = render_plotly_figure_as_image_file(figure, width=width, height=height, format="png")
         
-        large_image = render_plotly_figure_as_image_file(large_figure, width=1024, height=1024, format="svg")
+        figure.update_layout(template="plotly_dark")
+        image_dark = render_plotly_figure_as_image_file(figure, width=width, height=height, format="png")
 
-        large_figure.update_layout(template="plotly_dark")
-        large_image_dark = render_plotly_figure_as_image_file(large_figure, width=1024, height=1024, format="svg")
-
-        return large_image,large_image_dark
+        return image, image_dark 
 
     def report_strategy_thinking(self,
                                  strategy_cycle_timestamp: datetime.datetime,
@@ -238,7 +224,7 @@ class PandasTraderRunner(StrategyRunner):
 
             logger.trade(buf.getvalue())
 
-            small_image = self.run_state.visualisation.pair_visualisations[pair.internal_id].small_image
+            small_image = self.run_state.visualisation.small_image
             post_logging_discord_image(small_image)
 
         elif 1 <= universe.get_pair_count() <= 3:
@@ -252,6 +238,8 @@ class PandasTraderRunner(StrategyRunner):
 
             for pair_id, candles in universe.universe.candles.get_all_pairs():
                 
+                print("", file=buf)
+
                 last_candle = candles.iloc[-1]
                 lag = pd.Timestamp.utcnow().tz_localize(None) - last_candle["timestamp"]
                 
@@ -266,11 +254,11 @@ class PandasTraderRunner(StrategyRunner):
 
                     value = plot.get_last_value()
                     print(f"  {name}: {value}", file=buf)
+                
+            logger.trade(buf.getvalue())
 
-                logger.trade(buf.getvalue())
-
-                small_image = self.run_state.visualisation.pair_visualisations[pair_id].small_image
-                post_logging_discord_image(small_image)
+            small_image = self.run_state.visualisation.small_image
+            post_logging_discord_image(small_image)
 
         else:   
             logger.warning("Reporting of strategy thinking of multipair universes not supported yet")
