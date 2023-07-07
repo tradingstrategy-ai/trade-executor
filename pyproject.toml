@@ -82,7 +82,6 @@ quantstats = {version="^0.0.59", optional = true}
 tqdm = "^4.64.1"
 tblib = "^1.7.0"
 
-
 [tool.poetry.extras]
 
 # Legacy strats
@@ -101,6 +100,7 @@ execution = [
     "setuptools",
     "kaleido",
     "beautifulsoup4",
+    "web3-ethereum-defi",
 ]
 
 # These dependencies are not neededon the client side code
