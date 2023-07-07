@@ -81,6 +81,9 @@ def format_value(v_instance: Value) -> str:
     formatter = FORMATTERS[v_instance.format]
     if v_instance.v is not None:
         # TODO: Remove the hack
+        if v_instance.format == Format.num_bars:
+            return formatter.format(v=v_instance.v)
+
         if isinstance(v_instance.v, datetime.timedelta):
             return formatter.format(days=v_instance.v.days, hours=v_instance.v.seconds // 3600, minutes=(v_instance.v.seconds // 60) % 60)
         else:
