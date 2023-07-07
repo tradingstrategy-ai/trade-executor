@@ -63,7 +63,9 @@ def as_duration(v: datetime.timedelta) -> Value:
         return Value(v, Format.duration_hours_minutes)
 
 def as_bars(v: float) -> Value:
-    """Format value as number of bars"""
+    """Format value as number of bars. Rounds down so we only use the number of
+    fully completed bars."""
+    v = int(v)
     return Value(v, Format.num_bars)
 
 def as_missing() -> Value:
