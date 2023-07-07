@@ -51,7 +51,7 @@ class WebChart:
     data: List[Tuple[float, float]]
 
     #: Chart description
-    description: str
+    title: str
 
     #: Help link "Learn more"
     help_link: str
@@ -104,7 +104,7 @@ def export_time_series(series: pd.Series) -> List[Tuple[float, float]]:
 
 def _export_chart(
         series: pd.Series,
-        description: str,
+        title: str,
         help_link: str,
         source: WebChartSource,
 ) -> WebChart:
@@ -112,7 +112,7 @@ def _export_chart(
     data = export_time_series(series)
     return WebChart(
         data,
-        description,
+        title,
         help_link,
         source=source,
     )

@@ -272,7 +272,7 @@ def test_web_compounding_realised_profit_export(state: State):
     )
 
     assert chart.help_link == 'https://tradingstrategy.ai/glossary/profitability'
-    assert chart.description == 'Compounded realised trading position % profit'
+    assert chart.title == 'Compounded realised trading position % profit'
 
     first_tuple = chart.data[0]
     assert first_tuple[0] == 1622937600
