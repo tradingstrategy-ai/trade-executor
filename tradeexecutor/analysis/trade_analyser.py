@@ -187,17 +187,7 @@ class TradeSummary:
         self.losing_take_profits_percent = calculate_percentage(self.losing_take_profits, self.take_profits)
 
     def to_dataframe(self) -> pd.DataFrame:
-        """Convert the data to a human readable summary table.
-
-        """
-        if(self.time_bucket is not None):
-            avg_duration_winning = as_bars(self.average_duration_of_winning_trades)
-            avg_duration_losing = as_bars(self.average_duration_of_losing_trades)
-        else:
-            avg_duration_winning = as_duration(self.average_duration_of_winning_trades)
-            avg_duration_losing = as_duration(self.average_duration_of_losing_trades)
-
-        """Creates a human-readable Pandas dataframe table from the object."""
+        """Creates a human-readable Pandas dataframe summary table from the object."""
 
         human_data = {
             "Trading period length": as_duration(self.duration),
@@ -230,8 +220,8 @@ class TradeSummary:
             "Average losing position loss %": as_percent(self.average_losing_trade_loss_pc),
             "Biggest winning position %": as_percent(self.biggest_winning_trade_pc),
             "Biggest losing position %": as_percent(self.biggest_losing_trade_pc),
-            "Average duration of winning positions": avg_duration_winning,
-            "Average duration of losing positions": avg_duration_losing,
+            "Average duration of winning positions": self.format_duration(self.average_duration_of_winning_trades),
+            "Average duration of losing positions": self.format_duration(self.average_duration_of_losing_trades),
             "LP fees paid": as_dollar(self.lp_fees_paid),
             "LP fees paid % of volume": as_percent(self.lp_fees_average_pc),
         }
@@ -304,9 +294,9 @@ class TradeSummary:
                 as_percent(None)
             ],
             'Average duration': [
-                as_duration(self.average_duration_of_winning_trades), 
-                as_duration(self.average_duration_of_losing_trades), 
-                as_duration(self.average_duration_of_all_trades)
+                self.format_duration(self.average_duration_of_winning_trades), 
+                self.format_duration(self.average_duration_of_losing_trades), 
+                self.format_duration(self.average_duration_of_all_trades)
             ],
             'Max consecutive streak': [
                 as_integer(self.max_pos_cons), 
@@ -355,6 +345,12 @@ class TradeSummary:
         df5 = create_summary_table(data5, "", "Risk Analysis")
         
         display(self.single_column_dfs(df1, df2, df3, df4, df5))
+
+    def format_duration(self, duration_timedelta):
+        if self.time_bucket is not None:
+            return as_bars(duration_timedelta/self.time_bucket.to_timedelta())
+        else:
+            return as_duration(duration_timedelta)
 
     @staticmethod
     def single_column_dfs(*dfs):
@@ -543,15 +539,12 @@ class TradeAnalysis:
         def get_avg_profit_pct_check(trades: List | None):
             return float(np.mean(trades)) if trades else None
 
-        def get_avg_trade_duration(duration_list: List | None, time_bucket: TimeBucket | None):
+        def get_avg_trade_duration(duration_list: List | None):
             if duration_list:
-                if isinstance(time_bucket, TimeBucket):
-                    return pd.Timedelta(np.mean(duration_list)/time_bucket.to_timedelta())
-                else:
-                    return pd.Timedelta(np.mean(duration_list))
+                return pd.Timedelta(np.mean(duration_list))
             else:
                 return pd.Timedelta(datetime.timedelta(0))
-        
+            
         def func_check(lst, func):
             return func(lst) if lst else None
         
@@ -716,13 +709,12 @@ class TradeAnalysis:
         biggest_losing_trade_pc = func_check(losing_trades, min)
 
         all_durations = winning_trades_duration + losing_trades_duration + zero_loss_trades_duration
-        average_duration_of_winning_trades = get_avg_trade_duration(winning_trades_duration, time_bucket)
-        average_duration_of_losing_trades = get_avg_trade_duration(losing_trades_duration, time_bucket)
+        average_duration_of_winning_trades = get_avg_trade_duration(winning_trades_duration)
+        average_duration_of_losing_trades = get_avg_trade_duration(losing_trades_duration)
         if zero_loss_trades_duration:
-            average_duration_of_zero_loss_trades = get_avg_trade_duration(zero_loss_trades_duration, time_bucket)
+            average_duration_of_zero_loss_trades = get_avg_trade_duration(zero_loss_trades_duration)
         if all_durations:
-            average_duration_of_all_trades = get_avg_trade_duration(all_durations, time_bucket)
-        
+            average_duration_of_all_trades = get_avg_trade_duration(all_durations)
 
         lp_fees_average_pc = lp_fees_paid / trade_volume if trade_volume else 0
         
