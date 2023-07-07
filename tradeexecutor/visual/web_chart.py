@@ -8,7 +8,7 @@ from dataclasses_json import dataclass_json
 from eth_defi.utils import to_unix_timestamp
 
 from tradeexecutor.state.state import State
-from tradeexecutor.visual.equity_curve import calculate_compounding_realised_trading_profitability
+from tradeexecutor.visual.equity_curve import calculate_compounding_realised_trading_profitability, calculate_equity_curve
 
 
 class WebChartType(enum.Enum):
@@ -77,6 +77,10 @@ def render_web_chart(
             df = calculate_compounding_realised_trading_profitability(state)
             description = "Compounded realised trading position % profit"
             help_link = "https://tradingstrategy.ai/glossary/profitability"
+        case WebChartType.total_equity:
+            df = calculate_equity_curve(state)
+            description = "Total equity"
+            help_link = "https://tradingstrategy.ai/glossary/total-equity"
         case _:
             raise NotImplementedError(f"{type}")
 

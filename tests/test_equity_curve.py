@@ -263,7 +263,7 @@ def test_returns_distribution(state: State):
     assert isinstance(fig, Figure)
 
 
-def test_compounding_realised_profit_export_web(state: State):
+def test_web_compounding_realised_profit_export(state: State):
     """Export profit % to the web."""
     chart = render_web_chart(
         state,
@@ -273,6 +273,21 @@ def test_compounding_realised_profit_export_web(state: State):
 
     assert chart.help_link == 'https://tradingstrategy.ai/glossary/profitability'
     assert chart.description == 'Compounded realised trading position % profit'
+
+    first_tuple = chart.data[0]
+    assert first_tuple[0] == 1622937600
+    assert first_tuple[1] == -0.0033223057702593817
+
+
+def test_web_equity_curve(state: State):
+    """Export equity curve the web."""
+    chart = render_web_chart(
+        state,
+        WebChartType.total_equity,
+        WebChartSource.backtest,
+    )
+
+    assert chart.help_link == 'https://tradingstrategy.ai/glossary/total-equity'
 
     first_tuple = chart.data[0]
     assert first_tuple[0] == 1622937600
