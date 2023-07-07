@@ -1,11 +1,26 @@
 """Jupyter notebook utilities for backtesting."""
+import enum
 import logging
 
 
 import matplotlib_inline
 
 
-def setup_charting_and_output():
+class OutputMode(enum.Enum):
+    """What is the output mode for the notebook visualisations.
+
+    Interactive visualisations work only on the HTML pages
+    that are able to load Plotly.js JavaScripts.
+    """
+
+    #: Output charts as static images
+    static = "static"
+
+    #: Output charts as interactive Plotly.js visualisations
+    interactive = "interactive"
+
+
+def setup_charting_and_output(mode: OutputMode=OutputMode.interactive):
     """Sets up Jupyter Notebook based charting.
 
     - `Set Quantstats chart to SVG output and for high-resolution screens <https://stackoverflow.com/questions/74721731/how-to-generate-svg-images-using-python-quantstat-library>`__
@@ -19,6 +34,10 @@ def setup_charting_and_output():
         # Set Jupyter Notebook output mode parameters
         from tradeexecutor.backtest.notebook import setup_charting_and_output
         setup_charting_and_output()
+
+    :param mode:
+        What kind of viewing context we have for this notebook output
+
     """
 
     # Get rid of findfont: Font family 'Arial' not found.
@@ -30,4 +49,19 @@ def setup_charting_and_output():
     # https://stackoverflow.com/questions/74721731/how-to-generate-svg-images-using-python-quantstat-library
     matplotlib_inline.backend_inline.set_matplotlib_formats('svg')
 
+    # Set Plotly to offline (static image mode)
+    if mode == OutputMode.static:
 
+         # https://stackoverflow.com/a/52956402/315168
+        from plotly.offline import init_notebook_mode
+        init_notebook_mode()
+
+        # https://stackoverflow.com/a/74609837/315168
+        import plotly.io as pio
+        pio.kaleido.scope.default_format = "svg"
+
+        # https://plotly.com/python/renderers/#overriding-the-default-renderer
+        import plotly.io as pio
+        pio.renderers.default = "svg"
+        svg_renderer = pio.renderers["svg"]
+        svg_renderer.width = 1200

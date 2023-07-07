@@ -36,12 +36,29 @@ class KeyMetricKind(enum.Enum):
     #: Total equity
     total_equity = "total_equity"
 
+    def get_help_link(self) -> Optional[str]:
+        return _KEY_METRIC_HELP[self]
+
 
 class KeyMetricSource(enum.Enum):
     """Did we calcualte a key metric based on backtesting data or live trading data."""
     backtesting = "backtesting"
     live_trading = "live_trading"
     missing = "missing"
+
+
+class KeyMetricCalculationMethod(enum.Enum):
+    """How this key metric is calculated.
+
+    Will have effect on the frontend displaying of the value.
+    """
+
+    #: We just take the latest value e.g. for total assets
+    latest_value = "latest_value"
+
+    #: We calculae over the period of time
+    historical_data = "historical_data"
+
 
 
 @dataclass_json
@@ -71,6 +88,11 @@ class KeyMetric:
 
     #: What's the time period for which this metric was calculated
     calculation_window_end_at: datetime.timedelta | None = None
+
+    #: How this key metric is calculated
+    #:
+    #: Hint for the frontend
+    calculation_method: KeyMetricCalculationMethod | None = None
 
     #: Unavaiability reason.
     #:
@@ -105,7 +127,9 @@ class KeyMetric:
             source: KeyMetricSource,
             value: Any,
             calculation_window_start_at: datetime.datetime,
-            calculation_window_end_at: datetime.datetime) -> "KeyMetric":
+            calculation_window_end_at: datetime.datetime,
+            method: KeyMetricCalculationMethod,
+    ) -> "KeyMetric":
         """Create a metric value.
 
         Automatically fill in the help text link from our hardcoded mapping.
@@ -117,6 +141,7 @@ class KeyMetric:
             calculation_window_start_at=calculation_window_start_at,
             calculation_window_end_at=calculation_window_end_at,
             help_link=_KEY_METRIC_HELP.get(kind),
+            calculation_method=method,
         )
 
 @dataclass_json
@@ -127,6 +152,11 @@ class StrategySummaryStatistics:
     #: When these stats where calculated
     #:
     calculated_at: datetime.datetime = field(default_factory=datetime.datetime.utcnow)
+
+    #: When this trade executor was launched first time.
+    #:
+    #: If the trade-executor needs reset, this value is reset as well.
+    launched_at: Optional[datetime.datetime] = None
 
     #: When this strategy truly started.
     #:
@@ -173,6 +203,12 @@ class StrategySummaryStatistics:
     #: We use :py:class:`KeyMetricKind` value as the key.
     #:
     key_metrics: Dict[str, KeyMetric] = field(default_factory=dict)
+
+    #: After which period the default metrics will switch from backtested data to live data.
+    #:
+    #: This mostly affects strategy summary tiles.
+    #:
+    backtest_metrics_cut_off_period: Optional[datetime.timedelta] = None
 
 
 @dataclass_json
@@ -231,6 +267,11 @@ class StrategySummary:
     #: Exception message from the run-time loop
     #:
     error_message: str | None = None
+
+    #: Can the server server backtest files
+    #:
+    #:
+    backtest_available: bool = False
 
 
 #: Help links for different metrics

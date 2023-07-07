@@ -5,6 +5,7 @@ on the executor start up.
 """
 import datetime
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Optional, Dict, TypedDict
 
 from dataclasses_json import dataclass_json
@@ -113,6 +114,20 @@ class Metadata:
     #:
     backtested_state: Optional[State] = None
 
+    #: Backtest notebook .ipynb file
+    #:
+    #:
+    backtest_notebook: Optional[Path] = None
+
+    #: Backtest notebook .html file
+    #:
+    #:
+    backtest_html: Optional[Path] = None
+
+    #: How many days live data is collected until key metrics are switched from backtest to live trading based
+    #:
+    key_metrics_backtest_cut_off: datetime.timedelta = datetime.timedelta(days=90)
+
     @staticmethod
     def create_dummy() -> "Metadata":
         return Metadata(
@@ -123,3 +138,7 @@ class Metadata:
             started_at=datetime.datetime.utcnow(),
             executor_running=True,
         )
+
+    def has_backtest_data(self) -> bool:
+        """Does this strategy have backtest data available on the file system?"""
+        return (self.backtest_notebook and self.backtest_notebook.exists()) and (self.backtest_html and self.backtest_html.exists())

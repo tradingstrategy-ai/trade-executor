@@ -1,6 +1,7 @@
 """Command-line entry point for the daemon build on the top of Typer."""
 from .commands import console, enzyme_deploy_vault
 from .commands.app import app
+from .commands.backtest import backtest
 from .commands.check_universe import check_universe
 from .commands.check_wallet import check_wallet
 from .commands.close_all import close_all
@@ -17,4 +18,4 @@ from .commands.init import init
 # Dummy export commands even though they are already registered
 # to make the linter happy
 __all__ = [app, check_wallet, check_universe, hello, start, perform_test_trade, version, repair, console, init, reinit, enzyme_asset_list, enzyme_deploy_vault,
-           close_all, show_positions]
+           close_all, show_positions, backtest]

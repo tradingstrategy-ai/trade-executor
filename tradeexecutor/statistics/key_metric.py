@@ -9,7 +9,7 @@ import pandas as pd
 
 from tradeexecutor.state.state import State
 from tradeexecutor.state.types import Percent
-from tradeexecutor.strategy.summary import KeyMetric, KeyMetricKind, KeyMetricSource
+from tradeexecutor.strategy.summary import KeyMetric, KeyMetricKind, KeyMetricSource, KeyMetricCalculationMethod
 from tradeexecutor.visual.equity_curve import calculate_size_relative_realised_trading_returns
 
 
@@ -135,23 +135,26 @@ def calculate_key_metrics(
 
     source_state = None
     source = None
+    calculation_window_start_at = None
+    calculation_window_end_at = None
 
     # Live history is calculated from the
     live_history = live_state.portfolio.get_trading_history_duration()
     if live_history is not None and live_history >= required_history:
         source_state = live_state
         source = KeyMetricSource.live_trading
+        calculation_window_start_at = source_state.created_at
+        calculation_window_end_at = datetime.datetime.utcnow()
     else:
         if backtested_state:
             if backtested_state.portfolio.get_trading_history_duration():
                 source_state = backtested_state
                 source = KeyMetricSource.backtesting
+                first_trade, last_trade = source_state.portfolio.get_first_and_last_executed_trade()
+                calculation_window_start_at = first_trade.executed_at
+                calculation_window_end_at = last_trade.executed_at
 
     if source_state:
-        # We have one state based on which we can calculate metrics
-        first_trade, last_trade = source_state.portfolio.get_first_and_last_executed_trade()
-        calculation_window_start_at = first_trade.executed_at
-        calculation_window_end_at = last_trade.executed_at
 
         # Use trading profitability instead of the fund performance
         # as the base for calculations to ensure
@@ -162,17 +165,17 @@ def calculate_key_metrics(
         periods = pd.Timedelta(days=365) / freq_base
 
         sharpe = calculate_sharpe(returns, periods=periods)
-        yield KeyMetric.create_metric(KeyMetricKind.sharpe, source, sharpe, calculation_window_start_at, calculation_window_end_at)
+        yield KeyMetric.create_metric(KeyMetricKind.sharpe, source, sharpe, calculation_window_start_at, calculation_window_end_at, KeyMetricCalculationMethod.historical_data)
 
         sortino = calculate_sortino(returns, periods=periods)
-        yield KeyMetric.create_metric(KeyMetricKind.sortino, source, sortino, calculation_window_start_at, calculation_window_end_at)
+        yield KeyMetric.create_metric(KeyMetricKind.sortino, source, sortino, calculation_window_start_at, calculation_window_end_at, KeyMetricCalculationMethod.historical_data)
 
         # Flip the sign of the max drawdown
         max_drawdown = -calculate_max_drawdown(returns)
-        yield KeyMetric.create_metric(KeyMetricKind.max_drawdown, source, max_drawdown, calculation_window_start_at, calculation_window_end_at)
+        yield KeyMetric.create_metric(KeyMetricKind.max_drawdown, source, max_drawdown, calculation_window_start_at, calculation_window_end_at, KeyMetricCalculationMethod.historical_data)
 
         profitability = calculate_profitability(returns)
-        yield KeyMetric.create_metric(KeyMetricKind.profitability, source, profitability, calculation_window_start_at, calculation_window_end_at)
+        yield KeyMetric.create_metric(KeyMetricKind.profitability, source, profitability, calculation_window_start_at, calculation_window_end_at, KeyMetricCalculationMethod.historical_data)
 
         if live_state:
             total_equity = live_state.portfolio.get_total_equity()
@@ -184,6 +187,8 @@ def calculate_key_metrics(
                 total_equity,
                 calculation_window_start_at=calculation_window_start_at,
                 calculation_window_end_at=calculation_window_end_at,
+                calculation_method=KeyMetricCalculationMethod.latest_value,
+                help_link=KeyMetricKind.total_equity.get_help_link(),
             )
 
     else:
@@ -206,5 +211,7 @@ def calculate_key_metrics(
         live_state.created_at,
         calculation_window_start_at=calculation_window_start_at,
         calculation_window_end_at=calculation_window_end_at,
+        calculation_method=KeyMetricCalculationMethod.latest_value,
+        help_link=KeyMetricKind.started_at.get_help_link(),
     )
 

@@ -27,10 +27,27 @@ from .uptime import Uptime
 from .visualisation import Visualisation
 
 from tradeexecutor.strategy.trade_pricing import TradePricing
+from ..strategy.cycle import CycleDuration
 
 
 class UncleanState(Exception):
     """State containst trades that need manual intervention."""
+
+
+@dataclass_json
+@dataclass
+class BacktestData:
+    """Miscancellous data needed only for backtests."""
+
+    #: The start of backtest period
+    start_at: datetime. datetime
+
+    #: The end of backtest period
+    end_at: datetime.datetime
+
+    #: What has the decision cycle duratino
+    #:
+    decision_cycle_duration: CycleDuration
 
 
 @dataclass_json
@@ -119,6 +136,12 @@ class State:
     uptime: Uptime = field(default_factory=Uptime)
 
     sync: Sync = field(default_factory=Sync)
+
+    #: Backtest data related to this backtest result
+    #:
+    #: Data that is relevant only for backtest results,
+    #: not live trading.
+    backtest_data: BacktestData | None = None
 
     def __repr__(self):
         return f"<State for {self.name}>"
@@ -453,6 +476,18 @@ class State:
         txt = json.dumps(data, cls=_ExtendedEncoder)
         return txt
 
+    def write_json_file(self, path: Path):
+        """Write JSON to a file.
+
+        - Validates state before writing it out
+
+        - Work around any serialisation quirks
+        """
+        assert isinstance(path, Path)
+        txt = self.to_json_safe()
+        with path.open("wt") as out:
+            out.write(txt)
+
     @staticmethod
     def read_json_file(path: Path) -> "State":
         """Read state from the JSON file.
@@ -460,7 +495,7 @@ class State:
         - Deal with all serialisation quirks
         """
 
-        assert isinstance(path, Path)
+        assert isinstance(path, Path), f"Expected Path, got {path.__class__}"
 
         with open(path, "rt") as inp:
             return State.read_json_blob(inp.read())

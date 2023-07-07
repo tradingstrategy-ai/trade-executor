@@ -8,11 +8,13 @@ See :ref:`trading universe` for more information.
 
 import contextlib
 import datetime
+import pickle
 import textwrap
 from abc import abstractmethod
 from dataclasses import dataclass
 import logging
 from math import isnan
+from pathlib import Path
 from typing import List, Optional, Callable, Tuple, Set, Dict, Iterable, Collection
 
 import pandas as pd
@@ -154,6 +156,27 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             reserve_assets=self.reserve_assets,
             required_history_period=self.required_history_period,
         )
+
+    def write_pickle(self, path: Path):
+        """Write a pickled ouput of this universe"""
+        assert isinstance(path, Path)
+        with path.open("wb") as out:
+            pickle.dump(self, out)
+
+    @staticmethod
+    def read_pickle_dangerous(path: Path) -> "TradingStrategyUniverse":
+        """Write a pickled ouput of this universe.
+
+        .. warning::
+
+            Only use for trusted input. Python pickle issue.
+
+        """
+        assert isinstance(path, Path)
+        with path.open("rb") as inp:
+            item = pickle.load(inp)
+            assert isinstance(item, TradingStrategyUniverse)
+            return item
 
     def get_pair_count(self) -> int:
         return self.universe.pairs.get_count()
@@ -1505,14 +1528,17 @@ def load_pair_data_for_single_exchange(
         )
 
         if stop_loss_time_bucket:
-            stop_loss_desc = f"Loading granular price data for stop loss/take profit for {exchange_slug}"
-            stop_loss_candles = client.fetch_candles_by_pair_ids(
-                our_pair_ids,
-                stop_loss_time_bucket,
-                progress_bar_description=stop_loss_desc,
-                start_time=start_time,
-                end_time=end_time,
-            )
+            if execution_context.live_trading:
+                logger.info(f"Loading granular price data for stop loss/take profit skipped in live trading as live price events from the JSON-RPC endpoint are used")
+            else:
+                stop_loss_desc = f"Loading granular price data for stop loss/take profit for {exchange_slug}"
+                stop_loss_candles = client.fetch_candles_by_pair_ids(
+                    our_pair_ids,
+                    stop_loss_time_bucket,
+                    progress_bar_description=stop_loss_desc,
+                    start_time=start_time,
+                    end_time=end_time,
+                )
         else:
             stop_loss_candles = None
 
