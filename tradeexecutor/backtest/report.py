@@ -35,16 +35,25 @@ logger = logging.getLogger(__name__)
 DEFAULT_CUSTOM_CSS = """
 /* trade-executor backtest report generator custom CSS */
 body {
-    
+    padding: 0;   
 }
 
 .prompt {
     display: none !important;
 }
 
+#notebook {
+    padding-top: 0 !important;
+}
+
 #notebook-container {
     padding: 0 !important;
     box-shadow: none;
+    width: auto;
+}
+
+.code_cell {
+    padding: 0;
 }
 """
 
