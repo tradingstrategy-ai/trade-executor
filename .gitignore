@@ -27,3 +27,6 @@ logs/*
 
 # Stash your local test environment variables here
 env/local-test.env
+
+# See scripts/pyodide/README.md
+*.whl
