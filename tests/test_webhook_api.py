@@ -179,9 +179,9 @@ def test_download_backtest_html(logger, server_url):
 
 
 def test_web_chart(logger, server_url):
-    """Export chart data for visualisation."""
-    resp = requests.get(f"{server_url}/chart", {"type": "compounding_realised_profitability"})
-    assert resp.status_code == 200
+    """Export live chart data for visualisation."""
+    resp = requests.get(f"{server_url}/chart", {"type": "compounding_realised_profitability", "source": "live_trading"})
+    resp.raise_for_status()
     data = resp.json()
 
     assert data["data"] == []
@@ -192,4 +192,4 @@ def test_web_chart(logger, server_url):
 def test_web_chart_backtest(logger, server_url):
     """Export backtest chart data for visualisation."""
     resp = requests.get(f"{server_url}/chart", {"type": "compounding_realised_profitability", "source": "backtest"})
-    assert resp.status_code == 401  # Backtest data is not available on the webhook test server
+    assert resp.status_code == 404  # Backtest data is not available on the webhook test server

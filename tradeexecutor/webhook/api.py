@@ -256,7 +256,9 @@ def web_chart(request: Request):
         metadata = cast(Metadata, request.registry["metadata"])
         state = metadata.backtested_state
         if not state or state.is_empty():
-            return exception_response(401, detail=f"Backtest data not available")
+            return exception_response(404, detail=f"Backtest data not available")
 
     data = render_web_chart(state, type, source)
-    return data.to_dict()
+    r = Response(content_type="application/json")
+    r.text = data.to_json()
+    return r

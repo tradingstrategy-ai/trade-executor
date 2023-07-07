@@ -104,7 +104,7 @@ def _export_chart(
         help_link: str,
         source: WebChartSource,
 ) -> WebChart:
-    """Convert to our time-indexed series to JSON/frontend friendly format."""
+    """Convert to our time-indexed series to JSON/frontend f riendly format."""
     data = export_time_series(series)
     return WebChart(
         data,

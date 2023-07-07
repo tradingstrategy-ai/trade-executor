@@ -290,5 +290,5 @@ def test_web_equity_curve(state: State):
     assert chart.help_link == 'https://tradingstrategy.ai/glossary/total-equity'
 
     first_tuple = chart.data[0]
-    assert first_tuple[0] == 1622937600
-    assert first_tuple[1] == -0.0033223057702593817
+    assert first_tuple[0] == 1622505600.0
+    assert first_tuple[1] == 10000.0  # Initial deposit
