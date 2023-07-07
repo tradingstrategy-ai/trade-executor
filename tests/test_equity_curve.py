@@ -292,3 +292,18 @@ def test_web_equity_curve(state: State):
     first_tuple = chart.data[0]
     assert first_tuple[0] == 1622505600.0
     assert first_tuple[1] == 10000.0  # Initial deposit
+
+
+def test_web_netflow(state: State):
+    """Netflow curve the web."""
+    chart = render_web_chart(
+        state,
+        WebChartType.netflow,
+        WebChartSource.backtest,
+    )
+
+    assert chart.help_link == 'https://tradingstrategy.ai/glossary/netflow'
+
+    first_tuple = chart.data[0]
+    assert first_tuple[0] == 1622505600.0
+    assert first_tuple[1] == 10000.0  # Initial deposit
