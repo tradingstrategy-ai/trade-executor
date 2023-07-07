@@ -220,3 +220,17 @@ def web_file(request: Request):
 
     r = FileResponse(path.as_posix(), content_type=content_type)
     return r
+
+
+@view_config(route_name='web_chart', permission='view')
+def web_chart(request: Request):
+    """/chart endpoint.
+
+    Return chart data.
+
+    Unlike other endpoints, this endpoint does processing, albeit light.
+    Under wrong circumstances
+
+    See :py:func:`tradeexecutor.strategy.pandas_trader.report_strategy_thinking` for more information.
+    """
+    raise NotImplementedError()
