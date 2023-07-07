@@ -34,6 +34,9 @@ logger = logging.getLogger(__name__)
 #:
 DEFAULT_CUSTOM_CSS = """
 /* trade-executor backtest report generator custom CSS */
+body {
+    
+}
 
 .prompt {
     display: none !important;
@@ -50,10 +53,21 @@ DEFAULT_CUSTOM_CSS = """
 # https://stackoverflow.com/a/44547866/315168
 DEFAULT_CUSTOM_JS = """
 console.log("Dynamic iframe resizer loaded");
+
+function getDocHeight(doc) {
+    // stackoverflow.com/questions/1145850/
+    var body = doc.body, html = doc.documentElement;
+    var height = Math.max( body.scrollHeight, body.offsetHeight, 
+        html.clientHeight, html.scrollHeight, html.offsetHeight );
+    return height;
+}
+
 window.addEventListener("load", function(){
     if(window.self === window.top) return; // if w.self === w.top, we are not in an iframe 
     send_height_to_parent_function = function(){
-        var height = document.getElementsByTagName("html")[0].clientHeight;
+        //var height = document.getElementsByTagName("html")[0].clientHeight;
+        //var height= document.getElementById('wrapper').offsetHeight;
+        const height = getDocHeight(document);
         console.log("Sending height as " + height + "px");
         parent.postMessage({"iframeContentHeight" : height }, "*");
     }
