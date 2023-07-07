@@ -187,3 +187,9 @@ def test_web_chart(logger, server_url):
     assert data["data"] == []
     assert data["help_link"] == 'https://tradingstrategy.ai/glossary/profitability'
     assert data["description"] == 'Compounded realised trading position % profit'
+
+
+def test_web_chart_backtest(logger, server_url):
+    """Export backtest chart data for visualisation."""
+    resp = requests.get(f"{server_url}/chart", {"type": "compounding_realised_profitability", "source": "backtest"})
+    assert resp.status_code == 401  # Backtest data is not available on the webhook test server

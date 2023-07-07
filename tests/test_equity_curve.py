@@ -41,6 +41,7 @@ from tradingstrategy.timebucket import TimeBucket
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.default_routing_options import TradeRouting
+from tradeexecutor.visual.web_chart import render_web_chart, WebChartType, WebChartSource
 
 
 def decide_trades(
@@ -260,3 +261,19 @@ def test_returns_distribution(state: State):
     returns = calculate_returns(curve)
     fig = visualise_returns_distribution(returns)
     assert isinstance(fig, Figure)
+
+
+def test_compounding_realised_profit_export_web(state: State):
+    """Export profit % to the web."""
+    chart = render_web_chart(
+        state,
+        WebChartType.compounding_realised_profitability,
+        WebChartSource.backtest,
+    )
+
+    assert chart.help_link == 'https://tradingstrategy.ai/glossary/profitability'
+    assert chart.description == 'Compounded realised trading position % profit'
+
+    first_tuple = chart.data[0]
+    assert first_tuple[0] == 1622937600
+    assert first_tuple[1] == -0.0033223057702593817

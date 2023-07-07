@@ -16,7 +16,7 @@ from tradeexecutor.state.store import JSONFileStore
 from tradeexecutor.state.validator import validate_state_serialisation, validate_nested_state_dict
 from tradeexecutor.strategy.summary import StrategySummary
 from tradeexecutor.strategy.run_state import RunState
-from tradeexecutor.visual.web_chart import WebChartType, render_web_chart
+from tradeexecutor.visual.web_chart import WebChartType, render_web_chart, WebChartSource
 from tradeexecutor.webhook.error import exception_response
 
 
@@ -234,17 +234,29 @@ def web_chart(request: Request):
     """
 
     type_str = request.params.get("type")
+    source_str = request.params.get("source")
 
     try:
         type = WebChartType(type_str)
     except:
-        return exception_response(501, detail=f"Not implemented. Unknown kind {type_str}")
+        return exception_response(501, detail=f"Not implemented. Unknown chart type {type_str}")
 
-    store: JSONFileStore = request.registry["store"]
+    try:
+        source = WebChartSource(source_str)
+    except:
+        return exception_response(501, detail=f"Not implemented. Unknown source {source_str}")
 
-    #: We load from the disk to prevent any
-    #: modify in place issues.... slow
-    state = store.load()
+    if source == WebChartSource.live_trading:
+        store: JSONFileStore = request.registry["store"]
 
-    data = render_web_chart(state, type)
+        #: We load from the disk to prevent any
+        #: modify in place issues.... slow
+        state = store.load()
+    else:
+        metadata = cast(Metadata, request.registry["metadata"])
+        state = metadata.backtested_state
+        if not state or state.is_empty():
+            return exception_response(401, detail=f"Backtest data not available")
+
+    data = render_web_chart(state, type, source)
     return data.to_dict()

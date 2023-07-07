@@ -27,6 +27,13 @@ class WebChartType(enum.Enum):
     total_equity = "total_equity"
 
 
+class WebChartSource(enum.Enum):
+    """Are we rendering backtest or live trading"""
+    live_trading = "live_trading"
+    backtest = "backtest"
+
+
+
 class TimeWindow:
     """If frontend asks for a specific history period."""
     all = "all"
@@ -52,10 +59,13 @@ class WebChart:
     #: Time window for this was generated
     time_window = TimeWindow.all
 
+    source: WebChartSource = WebChartSource.live_trading
+
 
 def render_web_chart(
     state: State,
     type: WebChartType,
+    source: WebChartSource,
 ) -> WebChart:
     """Render one of various web charts.
 
@@ -71,7 +81,7 @@ def render_web_chart(
             raise NotImplementedError(f"{type}")
 
     # Convert
-    return _export_chart(df, description, help_link)
+    return _export_chart(df, description, help_link, source)
 
 
 def export_time_series(series: pd.Series) -> List[Tuple[float, float]]:
@@ -81,14 +91,14 @@ def export_time_series(series: pd.Series) -> List[Tuple[float, float]]:
         return []
 
     assert isinstance(series.index, pd.DatetimeIndex), f"Got index: {series.index.__class__}"
-    # https://stackoverflow.com/a/15203886/315168
-    return [(index / 10 ** 9, value) for index, value in series.items()]
+    return [(index.timestamp(), value) for index, value in series.items()]
 
 
 def _export_chart(
         series: pd.Series,
         description: str,
         help_link: str,
+        source: WebChartSource,
 ) -> WebChart:
     """Convert to our time-indexed series to JSON/frontend friendly format."""
     data = export_time_series(series)
@@ -96,5 +106,6 @@ def _export_chart(
         data,
         description,
         help_link,
+        source=source,
     )
 
