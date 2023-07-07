@@ -176,3 +176,14 @@ def test_download_backtest_html(logger, server_url):
     resp = requests.get(f"{server_url}/file", {"type": "html"})
     assert resp.status_code == 200
     assert resp.content == b"Bar"
+
+
+def test_web_chart(logger, server_url):
+    """Export chart data for visualisation."""
+    resp = requests.get(f"{server_url}/chart", {"type": "compounding_realised_profitability"})
+    assert resp.status_code == 200
+    data = resp.json()
+
+    assert data["data"] == []
+    assert data["help_link"] == 'https://tradingstrategy.ai/glossary/profitability'
+    assert data["description"] == 'Compounded realised trading position % profit'

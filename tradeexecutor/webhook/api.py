@@ -16,6 +16,7 @@ from tradeexecutor.state.store import JSONFileStore
 from tradeexecutor.state.validator import validate_state_serialisation, validate_nested_state_dict
 from tradeexecutor.strategy.summary import StrategySummary
 from tradeexecutor.strategy.run_state import RunState
+from tradeexecutor.visual.web_chart import WebChartType, render_web_chart
 from tradeexecutor.webhook.error import exception_response
 
 
@@ -222,7 +223,7 @@ def web_file(request: Request):
     return r
 
 
-@view_config(route_name='web_chart', permission='view')
+@view_config(route_name='web_chart', permission='view', renderer="json")
 def web_chart(request: Request):
     """/chart endpoint.
 
@@ -230,7 +231,20 @@ def web_chart(request: Request):
 
     Unlike other endpoints, this endpoint does processing, albeit light.
     Under wrong circumstances
-
-    See :py:func:`tradeexecutor.strategy.pandas_trader.report_strategy_thinking` for more information.
     """
-    raise NotImplementedError()
+
+    type_str = request.params.get("type")
+
+    try:
+        type = WebChartType(type_str)
+    except:
+        return exception_response(501, detail=f"Not implemented. Unknown kind {type_str}")
+
+    store: JSONFileStore = request.registry["store"]
+
+    #: We load from the disk to prevent any
+    #: modify in place issues.... slow
+    state = store.load()
+
+    data = render_web_chart(state, type)
+    return data.to_dict()
