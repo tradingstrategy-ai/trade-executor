@@ -4,18 +4,26 @@ Designed for strategies trading > 5 assets.
 """
 import numpy as np
 import pandas as pd
+from IPython.display import HTML
 
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.state import State
-from tradingstrategy.utils.format import format_percent, format_value, format_percent_2_decimals
-
+from tradingstrategy.utils.format import (
+    format_percent,
+    format_value,
+    format_percent_2_decimals,
+)
 
 
 def _format_value(v: float) -> str:
-    """Format US dollar value, no dollar sign.
-    """
+    """Format US dollar value, no dollar sign."""
     return f"{v:,.2f}"
+
+
+def make_clickable(text, url):
+    """Format a value as a clickable link."""
+    return '<a href="{}">{}</a>'.format(url, text)
 
 
 def analyse_pair_trades(pair: TradingPairIdentifier, portfolio: Portfolio) -> dict:
@@ -30,7 +38,7 @@ def analyse_pair_trades(pair: TradingPairIdentifier, portfolio: Portfolio) -> di
     trades = [t for t in portfolio.get_all_trades() if t.pair == pair]
 
     profits = [p.get_total_profit_percent() for p in positions]
-    best= max(profits)
+    best = max(profits)
     worst = min(profits)
     mean = float(np.mean(profits))
     median = float(np.median(profits))
@@ -76,7 +84,9 @@ def analyse_multipair(state: State) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def format_multipair_summary(df: pd.DataFrame, sort_column="Total PnL USD", ascending=False) -> pd.DataFrame:
+def format_multipair_summary(
+    df: pd.DataFrame, sort_column="Total PnL USD", ascending=False, format_columns=True
+) -> pd.DataFrame:
     """Format the multipair summary table.
 
     Convert raw numbers to preferred human format.
@@ -85,6 +95,9 @@ def format_multipair_summary(df: pd.DataFrame, sort_column="Total PnL USD", asce
         Input table.
 
         See :py:func:`analyse_pair_trades`.
+
+    :param format_columns:
+        If True, format columns with clickable links. Provided as option since some users may want to export the tables without html markup.
 
     :return:
         Dataframe with formatted values for each trading pair.
@@ -111,10 +124,39 @@ def format_multipair_summary(df: pd.DataFrame, sort_column="Total PnL USD", asce
         "Losses": str,
         "Take profits": str,
         "Stop losses": str,
+        "Trailing stop losses": str,
     }
 
     for col, format_func in formatters.items():
         df[col] = df[col].apply(format_func)
 
-    return df
+    if format_columns:
+        df.columns = [
+            make_clickable(
+                "Trading pair", "https://tradingstrategy.ai/glossary/trading-pair"
+            ),
+            make_clickable("Positions", "https://tradingstrategy.ai/glossary/position"),
+            make_clickable("Trades", "https://tradingstrategy.ai/glossary/swap"),
+            "Total PnL USD",
+            "Best",
+            "Worst",
+            "Avg",
+            "Median",
+            "Volume",
+            "Wins",
+            "Losses",
+            make_clickable(
+                "Take profits", "https://tradingstrategy.ai/glossary/take-profit"
+            ),
+            make_clickable(
+                "Stop losses", "https://tradingstrategy.ai/glossary/stop-loss"
+            ),
+            make_clickable(
+                "Trailing stop losses",
+                "https://tradingstrategy.ai/glossary/trailing-stop-loss",
+            ),
+        ]
 
+        return HTML(df.to_html(escape=False))
+
+    return df
