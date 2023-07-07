@@ -5,11 +5,11 @@
     
 # Example
 
-Prepare a wheel distribution for Pyodide:
+Build a wheel distribution for Pyodide to load:
 
 ```shell
 poetry build
-co dist/
+cp dist/trade_executor-0.3-py3-none-any.whl scripts/pyodide/
 ```
 
 Start the web server:

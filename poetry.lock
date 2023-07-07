@@ -15,7 +15,7 @@ files = [
 name = "aiohttp"
 version = "3.8.4"
 description = "Async http client/server framework (asyncio)"
-optional = false
+optional = true
 python-versions = ">=3.6"
 files = [
     {file = "aiohttp-3.8.4-cp310-cp310-macosx_10_9_universal2.whl", hash = "sha256:5ce45967538fb747370308d3145aa68a074bdecb4f3a300869590f725ced69c1"},
@@ -123,7 +123,7 @@ speedups = ["Brotli", "aiodns", "cchardet"]
 name = "aiosignal"
 version = "1.3.1"
 description = "aiosignal: a list of registered asynchronous callbacks"
-optional = false
+optional = true
 python-versions = ">=3.7"
 files = [
     {file = "aiosignal-1.3.1-py3-none-any.whl", hash = "sha256:f8376fb07dd1e86a584e4fcdec80b36b7f81aac666ebc724e2c090300dd83b17"},
@@ -311,7 +311,7 @@ test = ["astroid", "pytest"]
 name = "async-timeout"
 version = "4.0.2"
 description = "Timeout context manager for asyncio programs"
-optional = false
+optional = true
 python-versions = ">=3.6"
 files = [
     {file = "async-timeout-4.0.2.tar.gz", hash = "sha256:2163e1640ddb52b7a8c80d0a67a08587e5d245cc9c553a74a847056bc2976b15"},
@@ -362,7 +362,7 @@ files = [
 name = "backoff"
 version = "2.2.1"
 description = "Function decoration for backoff and retry"
-optional = false
+optional = true
 python-versions = ">=3.7,<4.0"
 files = [
     {file = "backoff-2.2.1-py3-none-any.whl", hash = "sha256:63579f9a0628e06278f7e47b7d7d5b6ce20dc65c5e96a6f3ca99a6adca0396e8"},
@@ -373,7 +373,7 @@ files = [
 name = "base58"
 version = "1.0.3"
 description = "Base58 and Base58Check implementation"
-optional = false
+optional = true
 python-versions = "*"
 files = [
     {file = "base58-1.0.3-py2-none-any.whl", hash = "sha256:1e42993c0628ed4f898c03b522b26af78fb05115732549b21a028bc4633d19ab"},
@@ -403,7 +403,7 @@ lxml = ["lxml"]
 name = "bitarray"
 version = "2.7.6"
 description = "efficient arrays of booleans -- C extension"
-optional = false
+optional = true
 python-versions = "*"
 files = [
     {file = "bitarray-2.7.6-cp310-cp310-macosx_10_9_universal2.whl", hash = "sha256:82816e361303817ac79d6870d51a3c7f1f343e816a0b1d885b713389d9bba425"},
@@ -532,7 +532,7 @@ css = ["tinycss2 (>=1.1.0,<1.2)"]
 name = "cached-property"
 version = "1.5.2"
 description = "A decorator for caching properties in classes."
-optional = false
+optional = true
 python-versions = "*"
 files = [
     {file = "cached-property-1.5.2.tar.gz", hash = "sha256:9fa5755838eecbb2d234c3aa390bd80fbd3ac6b6869109bfc1b499f7bd89a130"},
@@ -712,13 +712,13 @@ files = [
 
 [[package]]
 name = "click"
-version = "8.1.3"
+version = "8.1.4"
 description = "Composable command line interface toolkit"
 optional = true
 python-versions = ">=3.7"
 files = [
-    {file = "click-8.1.3-py3-none-any.whl", hash = "sha256:bb4d8133cb15a609f44e8213d9b391b0809795062913b383c62be0ee95b1db48"},
-    {file = "click-8.1.3.tar.gz", hash = "sha256:7682dc8afb30297001674575ea00d1814d808d6a36af415a82bd481d37ba7b8e"},
+    {file = "click-8.1.4-py3-none-any.whl", hash = "sha256:2739815aaa5d2c986a88f1e9230c55e17f0caad3d958a5e13ad0797c166db9e3"},
+    {file = "click-8.1.4.tar.gz", hash = "sha256:b97d0c74955da062a7d4ef92fadb583806a585b2ea81958a81bd72726cbb8e37"},
 ]
 
 [package.dependencies]
@@ -844,7 +844,7 @@ files = [
 name = "cytoolz"
 version = "0.12.1"
 description = "Cython implementation of Toolz: High performance functional utilities"
-optional = false
+optional = true
 python-versions = ">=3.6"
 files = [
     {file = "cytoolz-0.12.1-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:5c59bb4ca88e1c69931468bf21f91c8f64d8bf1999eb163b7a2df336f60c304a"},
@@ -1042,7 +1042,7 @@ async = ["httpx (>=0.23.0,<0.24.0)"]
 name = "eth-abi"
 version = "4.1.0"
 description = "eth_abi: Python utilities for working with Ethereum ABI definitions, especially encoding and decoding"
-optional = false
+optional = true
 python-versions = ">=3.7.2, <4"
 files = [
     {file = "eth_abi-4.1.0-py3-none-any.whl", hash = "sha256:15f9870ca054c09a8e474d2d7e81aff0c32421aebdac896193183fc143e31b50"},
@@ -1065,7 +1065,7 @@ tools = ["hypothesis (>=4.18.2,<5.0.0)"]
 name = "eth-account"
 version = "0.9.0"
 description = "eth-account: Sign Ethereum transactions and messages with local private keys"
-optional = false
+optional = true
 python-versions = ">=3.7, <4"
 files = [
     {file = "eth-account-0.9.0.tar.gz", hash = "sha256:5f66ecb7bc52569924dfaf4a9add501b1c2a4901eec74e3c0598cd26d0971777"},
@@ -1092,7 +1092,7 @@ test = ["coverage", "hypothesis (>=4.18.0,<5)", "pytest (>=7.0.0)", "pytest-xdis
 name = "eth-bloom"
 version = "2.0.0"
 description = "Python implementation of the Ethereum Trie structure"
-optional = false
+optional = true
 python-versions = ">=3.7, <4"
 files = [
     {file = "eth-bloom-2.0.0.tar.gz", hash = "sha256:73576828dff7566b9216403e0898966912f370bae5734241dd3f50ce5664a825"},
@@ -1112,7 +1112,7 @@ test = ["hypothesis (>=3.31.2)", "pytest (>=6.2.5)", "tox (>=2.6.0)"]
 name = "eth-hash"
 version = "0.5.2"
 description = "eth-hash: The Ethereum hashing function, keccak256, sometimes (erroneously) called sha3"
-optional = false
+optional = true
 python-versions = ">=3.7, <4"
 files = [
     {file = "eth-hash-0.5.2.tar.gz", hash = "sha256:1b5f10eca7765cc385e1430eefc5ced6e2e463bb18d1365510e2e539c1a6fe4e"},
@@ -1135,7 +1135,7 @@ test = ["pytest (>=7.0.0)", "pytest-xdist (>=2.4.0)"]
 name = "eth-keyfile"
 version = "0.6.1"
 description = "A library for handling the encrypted keyfiles used to store ethereum private keys."
-optional = false
+optional = true
 python-versions = "*"
 files = [
     {file = "eth-keyfile-0.6.1.tar.gz", hash = "sha256:471be6e5386fce7b22556b3d4bde5558dbce46d2674f00848027cb0a20abdc8c"},
@@ -1157,7 +1157,7 @@ test = ["pytest (>=6.2.5,<7)"]
 name = "eth-keys"
 version = "0.4.0"
 description = "Common API for Ethereum key operations."
-optional = false
+optional = true
 python-versions = "*"
 files = [
     {file = "eth-keys-0.4.0.tar.gz", hash = "sha256:7d18887483bc9b8a3fdd8e32ddcb30044b9f08fcb24a380d93b6eee3a5bb3216"},
@@ -1179,7 +1179,7 @@ test = ["asn1tools (>=0.146.2,<0.147)", "eth-hash[pycryptodome]", "eth-hash[pysh
 name = "eth-rlp"
 version = "0.3.0"
 description = "eth-rlp: RLP definitions for common Ethereum objects in Python"
-optional = false
+optional = true
 python-versions = ">=3.7, <4"
 files = [
     {file = "eth-rlp-0.3.0.tar.gz", hash = "sha256:f3263b548df718855d9a8dbd754473f383c0efc82914b0b849572ce3e06e71a6"},
@@ -1201,7 +1201,7 @@ test = ["eth-hash[pycryptodome]", "pytest (>=6.2.5,<7)", "pytest-xdist", "tox (=
 name = "eth-tester"
 version = "0.8.0b3"
 description = "Tools for testing Ethereum applications."
-optional = false
+optional = true
 python-versions = ">=3.6.8,<4"
 files = [
     {file = "eth-tester-0.8.0b3.tar.gz", hash = "sha256:44a21e8c9c2fa98a5723e3bcd63c174bc2e92cbadd894b75ccae34cea0245e6c"},
@@ -1233,7 +1233,7 @@ test = ["eth-hash[pycryptodome] (>=0.1.4,<1.0.0)", "pytest (>=6.2.5,<7)", "pytes
 name = "eth-typing"
 version = "3.4.0"
 description = "eth-typing: Common type annotations for ethereum python packages"
-optional = false
+optional = true
 python-versions = ">=3.7.2, <4"
 files = [
     {file = "eth-typing-3.4.0.tar.gz", hash = "sha256:7f49610469811ee97ac43eaf6baa294778ce74042d41e61ecf22e5ebe385590f"},
@@ -1250,7 +1250,7 @@ test = ["pytest (>=7.0.0)", "pytest-xdist (>=2.4.0)"]
 name = "eth-utils"
 version = "2.1.1"
 description = "eth-utils: Common utility functions for python code that interacts with Ethereum"
-optional = false
+optional = true
 python-versions = ">=3.7,<4"
 files = [
     {file = "eth-utils-2.1.1.tar.gz", hash = "sha256:7cccfb0b0749431d0d001e327e9a7289bf07308316a73850ae3895020e5682f4"},
@@ -1273,7 +1273,7 @@ test = ["hypothesis (>=4.43.0)", "mypy (==0.971)", "pytest (>=7.0.0)", "pytest-x
 name = "ethpm-types"
 version = "0.5.3"
 description = "ethpm_types: Implementation of EIP-2678"
-optional = false
+optional = true
 python-versions = ">=3.8,<4"
 files = [
     {file = "ethpm-types-0.5.3.tar.gz", hash = "sha256:a5b7045f67ead1dbfa98ad3ee169a382722e21dd0acd600961782d32c27aca02"},
@@ -1298,7 +1298,7 @@ test = ["PyGithub (>=1.54,<2.0)", "hypothesis (>=6.2.0,<7.0)", "hypothesis-jsons
 name = "evm-trace"
 version = "0.1.0a19"
 description = "evm-trace: Ethereum Virtual Machine transaction tracing tool"
-optional = false
+optional = true
 python-versions = ">=3.8,<4"
 files = [
     {file = "evm-trace-0.1.0a19.tar.gz", hash = "sha256:354b8b7ebdffeff8c04d24a9b6755057a1f37125a5e489865c4da1dc4b38b383"},
@@ -1489,7 +1489,7 @@ files = [
 name = "frozenlist"
 version = "1.3.3"
 description = "A list-like structure which implements collections.abc.MutableSequence"
-optional = false
+optional = true
 python-versions = ">=3.7"
 files = [
     {file = "frozenlist-1.3.3-cp310-cp310-macosx_10_9_universal2.whl", hash = "sha256:ff8bf625fe85e119553b5383ba0fb6aa3d0ec2ae980295aaefa552374926b3f4"},
@@ -1572,7 +1572,7 @@ files = [
 name = "futureproof"
 version = "0.3.1"
 description = "Bulletproof concurrent.futures"
-optional = false
+optional = true
 python-versions = "*"
 files = [
     {file = "futureproof-0.3.1-py2.py3-none-any.whl", hash = "sha256:849d664cc201c39eb4503e1aa35d81b437e89e99cf34c3960ed106d7bbf6f154"},
@@ -1591,7 +1591,7 @@ tests = ["coverage", "pytest-mock", "pytest-timeout"]
 name = "gql"
 version = "3.4.1"
 description = "GraphQL client for Python"
-optional = false
+optional = true
 python-versions = "*"
 files = [
     {file = "gql-3.4.1-py2.py3-none-any.whl", hash = "sha256:315624ca0f4d571ef149d455033ebd35e45c1a13f18a059596aeddcea99135cf"},
@@ -1620,7 +1620,7 @@ websockets = ["websockets (>=10,<11)", "websockets (>=9,<10)"]
 name = "graphql-core"
 version = "3.2.3"
 description = "GraphQL implementation for Python, a port of GraphQL.js, the JavaScript reference implementation for GraphQL."
-optional = false
+optional = true
 python-versions = ">=3.6,<4"
 files = [
     {file = "graphql-core-3.2.3.tar.gz", hash = "sha256:06d2aad0ac723e35b1cb47885d3e5c45e956a53bc1b209a9fc5369007fe46676"},
@@ -1631,7 +1631,7 @@ files = [
 name = "hexbytes"
 version = "0.3.1"
 description = "hexbytes: Python `bytes` subclass that decodes hex, with a readable console output"
-optional = false
+optional = true
 python-versions = ">=3.7, <4"
 files = [
     {file = "hexbytes-0.3.1-py3-none-any.whl", hash = "sha256:383595ad75026cf00abd570f44b368c6cdac0c6becfae5c39ff88829877f8a59"},
@@ -1987,7 +1987,7 @@ requests = ">=2.31.0,<3.0.0"
 name = "jupyter"
 version = "1.0.0"
 description = "Jupyter metapackage. Install all the Jupyter components in one go."
-optional = false
+optional = true
 python-versions = "*"
 files = [
     {file = "jupyter-1.0.0-py2.py3-none-any.whl", hash = "sha256:5b290f93b98ffbc21c0c7e749f054b3267782166d72fa5e3ed1ed4eaf34a2b78"},
@@ -2029,7 +2029,7 @@ test = ["coverage", "ipykernel (>=6.14)", "mypy", "paramiko", "pre-commit", "pyt
 name = "jupyter-console"
 version = "6.6.3"
 description = "Jupyter terminal console"
-optional = false
+optional = true
 python-versions = ">=3.7"
 files = [
     {file = "jupyter_console-6.6.3-py3-none-any.whl", hash = "sha256:309d33409fcc92ffdad25f0bcdf9a4a9daa61b6f341177570fdac03de5352485"},
@@ -2420,7 +2420,7 @@ files = [
 name = "lru-dict"
 version = "1.2.0"
 description = "An Dict like LRU container."
-optional = false
+optional = true
 python-versions = "*"
 files = [
     {file = "lru-dict-1.2.0.tar.gz", hash = "sha256:13c56782f19d68ddf4d8db0170041192859616514c706b126d0df2ec72a11bd7"},
@@ -2524,6 +2524,7 @@ files = [
     {file = "lxml-4.9.3-cp27-cp27mu-manylinux_2_5_x86_64.manylinux1_x86_64.whl", hash = "sha256:cef2502e7e8a96fe5ad686d60b49e1ab03e438bd9123987994528febd569868e"},
     {file = "lxml-4.9.3-cp310-cp310-macosx_11_0_x86_64.whl", hash = "sha256:b86164d2cff4d3aaa1f04a14685cbc072efd0b4f99ca5708b2ad1b9b5988a991"},
     {file = "lxml-4.9.3-cp310-cp310-manylinux_2_12_i686.manylinux2010_i686.manylinux_2_24_i686.whl", hash = "sha256:42871176e7896d5d45138f6d28751053c711ed4d48d8e30b498da155af39aebd"},
+    {file = "lxml-4.9.3-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.manylinux_2_24_x86_64.whl", hash = "sha256:ae8b9c6deb1e634ba4f1930eb67ef6e6bf6a44b6eb5ad605642b2d6d5ed9ce3c"},
     {file = "lxml-4.9.3-cp310-cp310-manylinux_2_28_aarch64.whl", hash = "sha256:411007c0d88188d9f621b11d252cce90c4a2d1a49db6c068e3c16422f306eab8"},
     {file = "lxml-4.9.3-cp310-cp310-manylinux_2_28_x86_64.whl", hash = "sha256:cd47b4a0d41d2afa3e58e5bf1f62069255aa2fd6ff5ee41604418ca925911d76"},
     {file = "lxml-4.9.3-cp310-cp310-musllinux_1_1_aarch64.whl", hash = "sha256:0e2cb47860da1f7e9a5256254b74ae331687b9672dfa780eed355c4c9c3dbd23"},
@@ -2532,6 +2533,7 @@ files = [
     {file = "lxml-4.9.3-cp310-cp310-win_amd64.whl", hash = "sha256:97047f0d25cd4bcae81f9ec9dc290ca3e15927c192df17331b53bebe0e3ff96d"},
     {file = "lxml-4.9.3-cp311-cp311-macosx_11_0_universal2.whl", hash = "sha256:1f447ea5429b54f9582d4b955f5f1985f278ce5cf169f72eea8afd9502973dd5"},
     {file = "lxml-4.9.3-cp311-cp311-manylinux_2_12_i686.manylinux2010_i686.manylinux_2_24_i686.whl", hash = "sha256:57d6ba0ca2b0c462f339640d22882acc711de224d769edf29962b09f77129cbf"},
+    {file = "lxml-4.9.3-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.manylinux_2_24_x86_64.whl", hash = "sha256:9767e79108424fb6c3edf8f81e6730666a50feb01a328f4a016464a5893f835a"},
     {file = "lxml-4.9.3-cp311-cp311-manylinux_2_28_aarch64.whl", hash = "sha256:71c52db65e4b56b8ddc5bb89fb2e66c558ed9d1a74a45ceb7dcb20c191c3df2f"},
     {file = "lxml-4.9.3-cp311-cp311-manylinux_2_28_x86_64.whl", hash = "sha256:d73d8ecf8ecf10a3bd007f2192725a34bd62898e8da27eb9d32a58084f93962b"},
     {file = "lxml-4.9.3-cp311-cp311-musllinux_1_1_aarch64.whl", hash = "sha256:0a3d3487f07c1d7f150894c238299934a2a074ef590b583103a45002035be120"},
@@ -2551,6 +2553,7 @@ files = [
     {file = "lxml-4.9.3-cp36-cp36m-macosx_11_0_x86_64.whl", hash = "sha256:64f479d719dc9f4c813ad9bb6b28f8390360660b73b2e4beb4cb0ae7104f1c12"},
     {file = "lxml-4.9.3-cp36-cp36m-manylinux_2_12_i686.manylinux2010_i686.manylinux_2_24_i686.whl", hash = "sha256:dd708cf4ee4408cf46a48b108fb9427bfa00b9b85812a9262b5c668af2533ea5"},
     {file = "lxml-4.9.3-cp36-cp36m-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:5c31c7462abdf8f2ac0577d9f05279727e698f97ecbb02f17939ea99ae8daa98"},
+    {file = "lxml-4.9.3-cp36-cp36m-manylinux_2_17_x86_64.manylinux2014_x86_64.manylinux_2_24_x86_64.whl", hash = "sha256:e3cd95e10c2610c360154afdc2f1480aea394f4a4f1ea0a5eacce49640c9b190"},
     {file = "lxml-4.9.3-cp36-cp36m-manylinux_2_28_x86_64.whl", hash = "sha256:4930be26af26ac545c3dffb662521d4e6268352866956672231887d18f0eaab2"},
     {file = "lxml-4.9.3-cp36-cp36m-manylinux_2_5_i686.manylinux1_i686.whl", hash = "sha256:4aec80cde9197340bc353d2768e2a75f5f60bacda2bab72ab1dc499589b3878c"},
     {file = "lxml-4.9.3-cp36-cp36m-manylinux_2_5_x86_64.manylinux1_x86_64.whl", hash = "sha256:14e019fd83b831b2e61baed40cab76222139926b1fb5ed0e79225bc0cae14584"},
@@ -2560,6 +2563,7 @@ files = [
     {file = "lxml-4.9.3-cp36-cp36m-win_amd64.whl", hash = "sha256:bef4e656f7d98aaa3486d2627e7d2df1157d7e88e7efd43a65aa5dd4714916cf"},
     {file = "lxml-4.9.3-cp37-cp37m-manylinux_2_12_i686.manylinux2010_i686.manylinux_2_24_i686.whl", hash = "sha256:46f409a2d60f634fe550f7133ed30ad5321ae2e6630f13657fb9479506b00601"},
     {file = "lxml-4.9.3-cp37-cp37m-manylinux_2_17_aarch64.manylinux2014_aarch64.manylinux_2_24_aarch64.whl", hash = "sha256:4c28a9144688aef80d6ea666c809b4b0e50010a2aca784c97f5e6bf143d9f129"},
+    {file = "lxml-4.9.3-cp37-cp37m-manylinux_2_17_x86_64.manylinux2014_x86_64.manylinux_2_24_x86_64.whl", hash = "sha256:141f1d1a9b663c679dc524af3ea1773e618907e96075262726c7612c02b149a4"},
     {file = "lxml-4.9.3-cp37-cp37m-manylinux_2_28_x86_64.whl", hash = "sha256:53ace1c1fd5a74ef662f844a0413446c0629d151055340e9893da958a374f70d"},
     {file = "lxml-4.9.3-cp37-cp37m-manylinux_2_5_i686.manylinux1_i686.whl", hash = "sha256:17a753023436a18e27dd7769e798ce302963c236bc4114ceee5b25c18c52c693"},
     {file = "lxml-4.9.3-cp37-cp37m-manylinux_2_5_x86_64.manylinux1_x86_64.whl", hash = "sha256:7d298a1bd60c067ea75d9f684f5f3992c9d6766fadbc0bcedd39750bf344c2f4"},
@@ -2569,6 +2573,7 @@ files = [
     {file = "lxml-4.9.3-cp37-cp37m-win_amd64.whl", hash = "sha256:120fa9349a24c7043854c53cae8cec227e1f79195a7493e09e0c12e29f918e52"},
     {file = "lxml-4.9.3-cp38-cp38-manylinux_2_12_i686.manylinux2010_i686.manylinux_2_24_i686.whl", hash = "sha256:4d2d1edbca80b510443f51afd8496be95529db04a509bc8faee49c7b0fb6d2cc"},
     {file = "lxml-4.9.3-cp38-cp38-manylinux_2_17_aarch64.manylinux2014_aarch64.manylinux_2_24_aarch64.whl", hash = "sha256:8d7e43bd40f65f7d97ad8ef5c9b1778943d02f04febef12def25f7583d19baac"},
+    {file = "lxml-4.9.3-cp38-cp38-manylinux_2_17_x86_64.manylinux2014_x86_64.manylinux_2_24_x86_64.whl", hash = "sha256:71d66ee82e7417828af6ecd7db817913cb0cf9d4e61aa0ac1fde0583d84358db"},
     {file = "lxml-4.9.3-cp38-cp38-manylinux_2_28_x86_64.whl", hash = "sha256:6fc3c450eaa0b56f815c7b62f2b7fba7266c4779adcf1cece9e6deb1de7305ce"},
     {file = "lxml-4.9.3-cp38-cp38-manylinux_2_5_i686.manylinux1_i686.whl", hash = "sha256:65299ea57d82fb91c7f019300d24050c4ddeb7c5a190e076b5f48a2b43d19c42"},
     {file = "lxml-4.9.3-cp38-cp38-manylinux_2_5_x86_64.manylinux1_x86_64.whl", hash = "sha256:eadfbbbfb41b44034a4c757fd5d70baccd43296fb894dba0295606a7cf3124aa"},
@@ -2578,6 +2583,7 @@ files = [
     {file = "lxml-4.9.3-cp38-cp38-win_amd64.whl", hash = "sha256:92af161ecbdb2883c4593d5ed4815ea71b31fafd7fd05789b23100d081ecac96"},
     {file = "lxml-4.9.3-cp39-cp39-macosx_11_0_x86_64.whl", hash = "sha256:9bb6ad405121241e99a86efff22d3ef469024ce22875a7ae045896ad23ba2340"},
     {file = "lxml-4.9.3-cp39-cp39-manylinux_2_12_i686.manylinux2010_i686.manylinux_2_24_i686.whl", hash = "sha256:8ed74706b26ad100433da4b9d807eae371efaa266ffc3e9191ea436087a9d6a7"},
+    {file = "lxml-4.9.3-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.manylinux_2_24_x86_64.whl", hash = "sha256:fbf521479bcac1e25a663df882c46a641a9bff6b56dc8b0fafaebd2f66fb231b"},
     {file = "lxml-4.9.3-cp39-cp39-manylinux_2_28_aarch64.whl", hash = "sha256:303bf1edce6ced16bf67a18a1cf8339d0db79577eec5d9a6d4a80f0fb10aa2da"},
     {file = "lxml-4.9.3-cp39-cp39-manylinux_2_28_x86_64.whl", hash = "sha256:5515edd2a6d1a5a70bfcdee23b42ec33425e405c5b351478ab7dc9347228f96e"},
     {file = "lxml-4.9.3-cp39-cp39-manylinux_2_5_i686.manylinux1_i686.whl", hash = "sha256:690dafd0b187ed38583a648076865d8c229661ed20e48f2335d68e2cf7dc829d"},
@@ -2588,13 +2594,16 @@ files = [
     {file = "lxml-4.9.3-cp39-cp39-win_amd64.whl", hash = "sha256:4dd9a263e845a72eacb60d12401e37c616438ea2e5442885f65082c276dfb2b2"},
     {file = "lxml-4.9.3-pp310-pypy310_pp73-manylinux_2_28_x86_64.whl", hash = "sha256:6689a3d7fd13dc687e9102a27e98ef33730ac4fe37795d5036d18b4d527abd35"},
     {file = "lxml-4.9.3-pp37-pypy37_pp73-manylinux_2_12_i686.manylinux2010_i686.manylinux_2_24_i686.whl", hash = "sha256:f6bdac493b949141b733c5345b6ba8f87a226029cbabc7e9e121a413e49441e0"},
+    {file = "lxml-4.9.3-pp37-pypy37_pp73-manylinux_2_17_x86_64.manylinux2014_x86_64.manylinux_2_24_x86_64.whl", hash = "sha256:05186a0f1346ae12553d66df1cfce6f251589fea3ad3da4f3ef4e34b2d58c6a3"},
     {file = "lxml-4.9.3-pp37-pypy37_pp73-manylinux_2_28_x86_64.whl", hash = "sha256:c2006f5c8d28dee289f7020f721354362fa304acbaaf9745751ac4006650254b"},
     {file = "lxml-4.9.3-pp38-pypy38_pp73-macosx_11_0_x86_64.whl", hash = "sha256:5c245b783db29c4e4fbbbfc9c5a78be496c9fea25517f90606aa1f6b2b3d5f7b"},
     {file = "lxml-4.9.3-pp38-pypy38_pp73-manylinux_2_12_i686.manylinux2010_i686.manylinux_2_24_i686.whl", hash = "sha256:4fb960a632a49f2f089d522f70496640fdf1218f1243889da3822e0a9f5f3ba7"},
+    {file = "lxml-4.9.3-pp38-pypy38_pp73-manylinux_2_17_x86_64.manylinux2014_x86_64.manylinux_2_24_x86_64.whl", hash = "sha256:50670615eaf97227d5dc60de2dc99fb134a7130d310d783314e7724bf163f75d"},
     {file = "lxml-4.9.3-pp38-pypy38_pp73-manylinux_2_28_x86_64.whl", hash = "sha256:9719fe17307a9e814580af1f5c6e05ca593b12fb7e44fe62450a5384dbf61b4b"},
     {file = "lxml-4.9.3-pp38-pypy38_pp73-win_amd64.whl", hash = "sha256:3331bece23c9ee066e0fb3f96c61322b9e0f54d775fccefff4c38ca488de283a"},
     {file = "lxml-4.9.3-pp39-pypy39_pp73-macosx_11_0_x86_64.whl", hash = "sha256:ed667f49b11360951e201453fc3967344d0d0263aa415e1619e85ae7fd17b4e0"},
     {file = "lxml-4.9.3-pp39-pypy39_pp73-manylinux_2_12_i686.manylinux2010_i686.manylinux_2_24_i686.whl", hash = "sha256:8b77946fd508cbf0fccd8e400a7f71d4ac0e1595812e66025bac475a8e811694"},
+    {file = "lxml-4.9.3-pp39-pypy39_pp73-manylinux_2_17_x86_64.manylinux2014_x86_64.manylinux_2_24_x86_64.whl", hash = "sha256:e4da8ca0c0c0aea88fd46be8e44bd49716772358d648cce45fe387f7b92374a7"},
     {file = "lxml-4.9.3-pp39-pypy39_pp73-manylinux_2_28_x86_64.whl", hash = "sha256:fe4bda6bd4340caa6e5cf95e73f8fea5c4bfc55763dd42f1b50a94c1b4a2fbd4"},
     {file = "lxml-4.9.3-pp39-pypy39_pp73-win_amd64.whl", hash = "sha256:f3df3db1d336b9356dd3112eae5f5c2b8b377f3bc826848567f10bfddfee77e9"},
     {file = "lxml-4.9.3.tar.gz", hash = "sha256:48628bd53a426c9eb9bc066a923acaa0878d1e86129fd5359aee99285f4eed9c"},
@@ -2800,7 +2809,7 @@ files = [
 name = "morphys"
 version = "1.0"
 description = "Smart conversions between unicode and bytes types for common cases"
-optional = false
+optional = true
 python-versions = "*"
 files = [
     {file = "morphys-1.0-py2.py3-none-any.whl", hash = "sha256:76d6dbaa4d65f597e59d332c81da786d83e4669387b9b2a750cfec74e7beec20"},
@@ -2810,7 +2819,7 @@ files = [
 name = "msgspec"
 version = "0.16.0"
 description = "A fast serialization and validation library, with builtin support for JSON, MessagePack, YAML, and TOML."
-optional = false
+optional = true
 python-versions = ">=3.8"
 files = [
     {file = "msgspec-0.16.0-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:f06692e976bbb89d1c1eb95109679195a4ec172fbec73dee5027af1450f46b59"},
@@ -2855,7 +2864,7 @@ yaml = ["pyyaml"]
 name = "multidict"
 version = "6.0.4"
 description = "multidict implementation"
-optional = false
+optional = true
 python-versions = ">=3.7"
 files = [
     {file = "multidict-6.0.4-cp310-cp310-macosx_10_9_universal2.whl", hash = "sha256:0b1a97283e0c85772d613878028fec909f003993e1007eafa715b24b377cb9b8"},
@@ -3338,7 +3347,7 @@ files = [
 name = "parsimonious"
 version = "0.9.0"
 description = "(Soon to be) the fastest pure-Python PEG parser I could muster"
-optional = false
+optional = true
 python-versions = "*"
 files = [
     {file = "parsimonious-0.9.0.tar.gz", hash = "sha256:b2ad1ae63a2f65bd78f5e0a8ac510a98f3607a43f1db2a8d46636a5d9e4a30c1"},
@@ -3516,13 +3525,13 @@ testing = ["pytest", "pytest-cov"]
 
 [[package]]
 name = "platformdirs"
-version = "3.8.0"
+version = "3.8.1"
 description = "A small Python package for determining appropriate platform-specific dirs, e.g. a \"user data dir\"."
 optional = false
 python-versions = ">=3.7"
 files = [
-    {file = "platformdirs-3.8.0-py3-none-any.whl", hash = "sha256:ca9ed98ce73076ba72e092b23d3c93ea6c4e186b3f1c3dad6edd98ff6ffcca2e"},
-    {file = "platformdirs-3.8.0.tar.gz", hash = "sha256:b0cabcb11063d21a0b261d557acb0a9d2126350e63b70cdf7db6347baea456dc"},
+    {file = "platformdirs-3.8.1-py3-none-any.whl", hash = "sha256:cec7b889196b9144d088e4c57d9ceef7374f6c39694ad1577a0aab50d27ea28c"},
+    {file = "platformdirs-3.8.1.tar.gz", hash = "sha256:f87ca4fcff7d2b0f81c6a748a77973d7af0f4d526f98f308477c3c436c74d528"},
 ]
 
 [package.extras]
@@ -3589,24 +3598,24 @@ wcwidth = "*"
 
 [[package]]
 name = "protobuf"
-version = "4.23.3"
+version = "4.23.4"
 description = ""
-optional = false
+optional = true
 python-versions = ">=3.7"
 files = [
-    {file = "protobuf-4.23.3-cp310-abi3-win32.whl", hash = "sha256:514b6bbd54a41ca50c86dd5ad6488afe9505901b3557c5e0f7823a0cf67106fb"},
-    {file = "protobuf-4.23.3-cp310-abi3-win_amd64.whl", hash = "sha256:cc14358a8742c4e06b1bfe4be1afbdf5c9f6bd094dff3e14edb78a1513893ff5"},
-    {file = "protobuf-4.23.3-cp37-abi3-macosx_10_9_universal2.whl", hash = "sha256:2991f5e7690dab569f8f81702e6700e7364cc3b5e572725098215d3da5ccc6ac"},
-    {file = "protobuf-4.23.3-cp37-abi3-manylinux2014_aarch64.whl", hash = "sha256:08fe19d267608d438aa37019236db02b306e33f6b9902c3163838b8e75970223"},
-    {file = "protobuf-4.23.3-cp37-abi3-manylinux2014_x86_64.whl", hash = "sha256:3b01a5274ac920feb75d0b372d901524f7e3ad39c63b1a2d55043f3887afe0c1"},
-    {file = "protobuf-4.23.3-cp37-cp37m-win32.whl", hash = "sha256:aca6e86a08c5c5962f55eac9b5bd6fce6ed98645d77e8bfc2b952ecd4a8e4f6a"},
-    {file = "protobuf-4.23.3-cp37-cp37m-win_amd64.whl", hash = "sha256:0149053336a466e3e0b040e54d0b615fc71de86da66791c592cc3c8d18150bf8"},
-    {file = "protobuf-4.23.3-cp38-cp38-win32.whl", hash = "sha256:84ea0bd90c2fdd70ddd9f3d3fc0197cc24ecec1345856c2b5ba70e4d99815359"},
-    {file = "protobuf-4.23.3-cp38-cp38-win_amd64.whl", hash = "sha256:3bcbeb2bf4bb61fe960dd6e005801a23a43578200ea8ceb726d1f6bd0e562ba1"},
-    {file = "protobuf-4.23.3-cp39-cp39-win32.whl", hash = "sha256:5cb9e41188737f321f4fce9a4337bf40a5414b8d03227e1d9fbc59bc3a216e35"},
-    {file = "protobuf-4.23.3-cp39-cp39-win_amd64.whl", hash = "sha256:29660574cd769f2324a57fb78127cda59327eb6664381ecfe1c69731b83e8288"},
-    {file = "protobuf-4.23.3-py3-none-any.whl", hash = "sha256:447b9786ac8e50ae72cae7a2eec5c5df6a9dbf9aa6f908f1b8bda6032644ea62"},
-    {file = "protobuf-4.23.3.tar.gz", hash = "sha256:7a92beb30600332a52cdadbedb40d33fd7c8a0d7f549c440347bc606fb3fe34b"},
+    {file = "protobuf-4.23.4-cp310-abi3-win32.whl", hash = "sha256:5fea3c64d41ea5ecf5697b83e41d09b9589e6f20b677ab3c48e5f242d9b7897b"},
+    {file = "protobuf-4.23.4-cp310-abi3-win_amd64.whl", hash = "sha256:7b19b6266d92ca6a2a87effa88ecc4af73ebc5cfde194dc737cf8ef23a9a3b12"},
+    {file = "protobuf-4.23.4-cp37-abi3-macosx_10_9_universal2.whl", hash = "sha256:8547bf44fe8cec3c69e3042f5c4fb3e36eb2a7a013bb0a44c018fc1e427aafbd"},
+    {file = "protobuf-4.23.4-cp37-abi3-manylinux2014_aarch64.whl", hash = "sha256:fee88269a090ada09ca63551bf2f573eb2424035bcf2cb1b121895b01a46594a"},
+    {file = "protobuf-4.23.4-cp37-abi3-manylinux2014_x86_64.whl", hash = "sha256:effeac51ab79332d44fba74660d40ae79985901ac21bca408f8dc335a81aa597"},
+    {file = "protobuf-4.23.4-cp37-cp37m-win32.whl", hash = "sha256:c3e0939433c40796ca4cfc0fac08af50b00eb66a40bbbc5dee711998fb0bbc1e"},
+    {file = "protobuf-4.23.4-cp37-cp37m-win_amd64.whl", hash = "sha256:9053df6df8e5a76c84339ee4a9f5a2661ceee4a0dab019e8663c50ba324208b0"},
+    {file = "protobuf-4.23.4-cp38-cp38-win32.whl", hash = "sha256:e1c915778d8ced71e26fcf43c0866d7499891bca14c4368448a82edc61fdbc70"},
+    {file = "protobuf-4.23.4-cp38-cp38-win_amd64.whl", hash = "sha256:351cc90f7d10839c480aeb9b870a211e322bf05f6ab3f55fcb2f51331f80a7d2"},
+    {file = "protobuf-4.23.4-cp39-cp39-win32.whl", hash = "sha256:6dd9b9940e3f17077e820b75851126615ee38643c2c5332aa7a359988820c720"},
+    {file = "protobuf-4.23.4-cp39-cp39-win_amd64.whl", hash = "sha256:0a5759f5696895de8cc913f084e27fd4125e8fb0914bb729a17816a33819f474"},
+    {file = "protobuf-4.23.4-py3-none-any.whl", hash = "sha256:e9d0be5bf34b275b9f87ba7407796556abeeba635455d036c7351f7c183ef8ff"},
+    {file = "protobuf-4.23.4.tar.gz", hash = "sha256:ccd9430c0719dce806b93f89c91de7977304729e55377f872a92465d548329a9"},
 ]
 
 [[package]]
@@ -3664,7 +3673,7 @@ tests = ["pytest"]
 name = "py-cid"
 version = "0.3.0"
 description = "Self-describing content-addressed identifiers for distributed systems"
-optional = false
+optional = true
 python-versions = "*"
 files = [
     {file = "py-cid-0.3.0.tar.gz", hash = "sha256:22f432cc6fb68d12a9c35dbdc92c95484fc49e31dfcb9e0efb0082233c5394e3"},
@@ -3682,7 +3691,7 @@ py-multihash = ">=0.2.0,<1.0.0"
 name = "py-ecc"
 version = "6.0.0"
 description = "Elliptic curve crypto in python including secp256k1 and alt_bn128"
-optional = false
+optional = true
 python-versions = ">=3.6, <4"
 files = [
     {file = "py_ecc-6.0.0-py3-none-any.whl", hash = "sha256:54e8aa4c30374fa62d582c599a99f352c153f2971352171318bd6910a643be0b"},
@@ -3704,7 +3713,7 @@ test = ["pytest (==6.2.5)", "pytest-xdist (==1.26.0)"]
 name = "py-evm"
 version = "0.6.1a2"
 description = "Python implementation of the Ethereum Virtual Machine"
-optional = false
+optional = true
 python-versions = "*"
 files = [
     {file = "py-evm-0.6.1a2.tar.gz", hash = "sha256:42e375ee5a9fcfffa2be804d951b0c46b028a9a1fe1f3ce34d279003dc0677a5"},
@@ -3737,7 +3746,7 @@ test = ["factory-boy (==2.11.1)", "hypothesis (>=5,<6)", "importlib-metadata (<5
 name = "py-geth"
 version = "3.13.0"
 description = "py-geth: Run Go-Ethereum as a subprocess"
-optional = false
+optional = true
 python-versions = ">=3.7, <4"
 files = [
     {file = "py-geth-3.13.0.tar.gz", hash = "sha256:f3563e2de8e78599cb9c69ee5bf3bded858ac6cf59891a04177f2353c425fdb7"},
@@ -3757,7 +3766,7 @@ test = ["flaky (>=3.2.0)", "pytest (>=7.0.0)", "pytest-xdist (>=2.4.0)"]
 name = "py-multibase"
 version = "1.0.3"
 description = "Multibase implementation for Python"
-optional = false
+optional = true
 python-versions = "*"
 files = [
     {file = "py-multibase-1.0.3.tar.gz", hash = "sha256:d28a20efcbb61eec28f55827a0bf329c7cea80fffd933aecaea6ae8431267fe4"},
@@ -3773,7 +3782,7 @@ six = ">=1.10.0,<2.0"
 name = "py-multicodec"
 version = "0.2.1"
 description = "Multicodec implementation in Python"
-optional = false
+optional = true
 python-versions = "*"
 files = [
     {file = "py-multicodec-0.2.1.tar.gz", hash = "sha256:83021ffe8c0e272d19b5b86bc5b39efa67c8e9f4735ce6cafdbc1ace767ec647"},
@@ -3789,7 +3798,7 @@ varint = ">=1.0.2,<2.0.0"
 name = "py-multihash"
 version = "0.2.3"
 description = "Multihash implementation in Python"
-optional = false
+optional = true
 python-versions = "*"
 files = [
     {file = "py-multihash-0.2.3.tar.gz", hash = "sha256:f0ade4de820afdc4b4aaa40464ec86c9da5cae3a4578cda2daab4b0eb7e5b18d"},
@@ -3854,7 +3863,7 @@ files = [
 name = "pycryptodome"
 version = "3.18.0"
 description = "Cryptographic library for Python"
-optional = false
+optional = true
 python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*, !=3.4.*"
 files = [
     {file = "pycryptodome-3.18.0-cp27-cp27m-macosx_10_9_x86_64.whl", hash = "sha256:d1497a8cd4728db0e0da3c304856cb37c0c4e3d0b36fcbabcc1600f18504fc54"},
@@ -3895,7 +3904,7 @@ files = [
 name = "pydantic"
 version = "1.10.11"
 description = "Data validation and settings management using python type hints"
-optional = false
+optional = true
 python-versions = ">=3.7"
 files = [
     {file = "pydantic-1.10.11-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:ff44c5e89315b15ff1f7fdaf9853770b810936d6b01a7bcecaa227d2f8fe444f"},
@@ -3947,7 +3956,7 @@ email = ["email-validator (>=1.0.3)"]
 name = "pyethash"
 version = "0.1.27"
 description = "Python wrappers for ethash, the ethereum proof of workhashing function"
-optional = false
+optional = true
 python-versions = "*"
 files = [
     {file = "pyethash-0.1.27.tar.gz", hash = "sha256:ff66319ce26b9d77df1f610942634dac9742e216f2c27b051c0a2c2dec9c2818"},
@@ -4109,7 +4118,7 @@ pytest = "*"
 name = "python-baseconv"
 version = "1.2.2"
 description = "Convert numbers from base 10 integers to base X strings and back again."
-optional = false
+optional = true
 python-versions = "*"
 files = [
     {file = "python-baseconv-1.2.2.tar.gz", hash = "sha256:0539f8bd0464013b05ad62e0a1673f0ac9086c76b43ebf9f833053527cd9931b"},
@@ -4372,7 +4381,7 @@ cffi = {version = "*", markers = "implementation_name == \"pypy\""}
 name = "qtconsole"
 version = "5.4.3"
 description = "Jupyter Qt console"
-optional = false
+optional = true
 python-versions = ">= 3.7"
 files = [
     {file = "qtconsole-5.4.3-py3-none-any.whl", hash = "sha256:35fd6e87b1f6d1fd41801b07e69339f8982e76afd4fa8ef35595bc6036717189"},
@@ -4398,7 +4407,7 @@ test = ["flaky", "pytest", "pytest-qt"]
 name = "qtpy"
 version = "2.3.1"
 description = "Provides an abstraction layer on top of the various Qt bindings (PyQt5/6 and PySide2/6)."
-optional = false
+optional = true
 python-versions = ">=3.7"
 files = [
     {file = "QtPy-2.3.1-py3-none-any.whl", hash = "sha256:5193d20e0b16e4d9d3bc2c642d04d9f4e2c892590bd1b9c92bfe38a95d5a2e12"},
@@ -4436,7 +4445,7 @@ yfinance = ">=0.1.70"
 name = "regex"
 version = "2023.6.3"
 description = "Alternative regular expression module, to replace re."
-optional = false
+optional = true
 python-versions = ">=3.6"
 files = [
     {file = "regex-2023.6.3-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:824bf3ac11001849aec3fa1d69abcb67aac3e150a933963fb12bda5151fe1bfd"},
@@ -4554,7 +4563,7 @@ use-chardet-on-py3 = ["chardet (>=3.0.2,<6)"]
 name = "requests-toolbelt"
 version = "0.10.1"
 description = "A utility belt for advanced users of python-requests"
-optional = false
+optional = true
 python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*"
 files = [
     {file = "requests-toolbelt-0.10.1.tar.gz", hash = "sha256:62e09f7ff5ccbda92772a29f394a49c3ad6cb181d568b1337626b2abb628a63d"},
@@ -4593,7 +4602,7 @@ files = [
 name = "rlp"
 version = "3.0.0"
 description = "A package for Recursive Length Prefix encoding and decoding"
-optional = false
+optional = true
 python-versions = "*"
 files = [
     {file = "rlp-3.0.0-py2.py3-none-any.whl", hash = "sha256:d2a963225b3f26795c5b52310e0871df9824af56823d739511583ef459895a7d"},
@@ -4614,7 +4623,7 @@ test = ["hypothesis (==5.19.0)", "pytest (>=6.2.5,<7)", "tox (>=2.9.1,<3)"]
 name = "safe-pysha3"
 version = "1.0.4"
 description = "SHA-3 (Keccak) for Python 3.9 - 3.11"
-optional = false
+optional = true
 python-versions = "*"
 files = [
     {file = "safe-pysha3-1.0.4.tar.gz", hash = "sha256:e429146b1edd198b2ca934a2046a65656c5d31b0ec894bbd6055127f4deaff17"},
@@ -4681,7 +4690,7 @@ stats = ["scipy (>=1.3)", "statsmodels (>=0.10)"]
 name = "semantic-version"
 version = "2.10.0"
 description = "A library implementing the 'SemVer' scheme."
-optional = false
+optional = true
 python-versions = ">=2.7"
 files = [
     {file = "semantic_version-2.10.0-py2.py3-none-any.whl", hash = "sha256:de78a3b8e0feda74cabc54aab2da702113e33ac9d9eb9d2389bcf1f58b7d9177"},
@@ -4712,7 +4721,7 @@ win32 = ["pywin32"]
 name = "setuptools"
 version = "65.7.0"
 description = "Easily download, build, install, upgrade, and uninstall Python packages"
-optional = false
+optional = true
 python-versions = ">=3.7"
 files = [
     {file = "setuptools-65.7.0-py3-none-any.whl", hash = "sha256:8ab4f1dbf2b4a65f7eec5ad0c620e84c34111a68d3349833494b9088212214dd"},
@@ -4750,7 +4759,7 @@ files = [
 name = "sortedcontainers"
 version = "2.4.0"
 description = "Sorted Containers -- Sorted List, Sorted Dict, Sorted Set"
-optional = false
+optional = true
 python-versions = "*"
 files = [
     {file = "sortedcontainers-2.4.0-py2.py3-none-any.whl", hash = "sha256:a163dcaede0f1c021485e957a39245190e74249897e2ae4b2aa38595db237ee0"},
@@ -4879,7 +4888,7 @@ files = [
 name = "toolz"
 version = "0.12.0"
 description = "List processing tools and functional utilities"
-optional = false
+optional = true
 python-versions = ">=3.5"
 files = [
     {file = "toolz-0.12.0-py3-none-any.whl", hash = "sha256:2059bd4148deb1884bb0eb770a3cde70e7f954cfbbdc2285f1f2de01fd21eb6f"},
@@ -5018,7 +5027,7 @@ docs = ["Sphinx (>=1.3.1)", "docutils", "pylons-sphinx-themes"]
 name = "trie"
 version = "2.1.1"
 description = "Python implementation of the Ethereum Trie structure"
-optional = false
+optional = true
 python-versions = ">=3.7,<4"
 files = [
     {file = "trie-2.1.1-py3-none-any.whl", hash = "sha256:c1a5fc17b37a75008a4517e4f297ad8026dce777eb0eed63ee6335c66d7437b7"},
@@ -5116,7 +5125,7 @@ devenv = ["black", "check-manifest", "flake8", "pyroma", "pytest (>=4.3)", "pyte
 name = "ujson"
 version = "5.7.0"
 description = "Ultra fast JSON encoder and decoder for Python"
-optional = false
+optional = true
 python-versions = ">=3.7"
 files = [
     {file = "ujson-5.7.0-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:5eba5e69e4361ac3a311cf44fa71bc619361b6e0626768a494771aacd1c2f09b"},
@@ -5220,7 +5229,7 @@ socks = ["PySocks (>=1.5.6,!=1.5.7,<2.0)"]
 name = "varint"
 version = "1.0.2"
 description = "Simple python varint implementation"
-optional = false
+optional = true
 python-versions = "*"
 files = [
     {file = "varint-1.0.2.tar.gz", hash = "sha256:a6ecc02377ac5ee9d65a6a8ad45c9ff1dac8ccee19400a5950fb51d594214ca5"},
@@ -5271,7 +5280,7 @@ files = [
 name = "web3"
 version = "6.0.0"
 description = "web3.py"
-optional = false
+optional = true
 python-versions = ">=3.7.2"
 files = [
     {file = "web3-6.0.0-py3-none-any.whl", hash = "sha256:abdeabec4c68e42caf2cc69eb0af026e0e15880ed9c514addfd2c363baae846f"},
@@ -5307,7 +5316,7 @@ tester = ["eth-tester[py-evm] (==v0.8.0-b.3)", "py-geth (>=3.11.0)"]
 name = "web3-ethereum-defi"
 version = "0.21.3"
 description = "Python library for Uniswap, Aave, ChainLink, Enzyme and other protocols on BNB Chain, Polygon, Ethereum and other blockchains"
-optional = false
+optional = true
 python-versions = ">=3.10,<3.11"
 files = [
     {file = "web3_ethereum_defi-0.21.3-py3-none-any.whl", hash = "sha256:3292c0b4f19a4ab42645956eaf01368c914cb41571fba708c0ea9e21a61ac7df"},
@@ -5396,7 +5405,7 @@ test = ["websockets"]
 name = "websockets"
 version = "11.0.3"
 description = "An implementation of the WebSocket Protocol (RFC 6455 & 7692)"
-optional = false
+optional = true
 python-versions = ">=3.7"
 files = [
     {file = "websockets-11.0.3-cp310-cp310-macosx_10_9_universal2.whl", hash = "sha256:3ccc8a0c387629aec40f2fc9fdcb4b9d5431954f934da3eaf16cdc94f67dbfac"},
@@ -5601,7 +5610,7 @@ files = [
 name = "yarl"
 version = "1.9.2"
 description = "Yet another URL library"
-optional = false
+optional = true
 python-versions = ">=3.7"
 files = [
     {file = "yarl-1.9.2-cp310-cp310-macosx_10_9_universal2.whl", hash = "sha256:8c2ad583743d16ddbdf6bb14b5cd76bf43b0d0006e918809d5d4ddf7bde8dd82"},
@@ -5800,4 +5809,4 @@ web-server = ["WebTest", "openapi-core", "pyramid", "pyramid-openapi3", "waitres
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.10,<3.11"
-content-hash = "9c8584b5458ef3863c04c3625f209053d167fef34195092f2e594a65b3a22afc"
+content-hash = "f50baaa40201b98b4bea9c52e21ac2af37a86bc65b2ad79da7e3487769df0c96"

@@ -11,7 +11,10 @@
 
         await pyodide.loadPackage("micropip");
         const micropip = pyodide.pyimport("micropip");
-        await micropip.install('http://localhost:9000/');
+        await micropip.install.callKwargs(
+            'http://localhost:9000/trade_executor-0.3-py3-none-any.whl',
+            {keep_going: true}
+        )
 
         pyodide.runPython(`
           import snowballstemmer
