@@ -61,7 +61,7 @@ def setup_charting_and_output(mode: OutputMode=OutputMode.interactive):
         pio.kaleido.scope.default_format = "svg"
 
         # https://plotly.com/python/renderers/#overriding-the-default-renderer
-        import plotly.io as pio
         pio.renderers.default = "svg"
         svg_renderer = pio.renderers["svg"]
+        # Have SVGs default 1200 pixel with
         svg_renderer.width = 1200

@@ -262,8 +262,11 @@ def test_calculate_all_summary_statistics(state: State):
     datapoints = summary.performance_chart_90_days
     assert len(datapoints) == 91
 
-    assert datapoints[0] == (datetime.datetime(2021, 10, 2, 0, 0), -0.02687699056973558)
-    assert datapoints[-1] == (datetime.datetime(2021, 12, 31, 0, 0), -0.045838046723895576)
+    #assert datapoints[0] == (datetime.datetime(2021, 10, 2, 0, 0), -0.02687699056973558)
+    #assert datapoints[-1] == (datetime.datetime(2021, 12, 31, 0, 0), -0.045838046723895576)
+
+    assert datapoints[0] == (1633132800.0, -0.02687699056973558)
+    assert datapoints[-1] == (1640908800.0, -0.045838046723895576)
 
     # Make sure we do not output anything that is not JSON'able
     data = summary.to_dict()
@@ -281,7 +284,6 @@ def test_advanced_metrics(state: State):
     # index 1 is the benchmark.
     sharpe = metrics.loc["Sharpe"][0]
     assert sharpe == pytest.approx(-2.09)
-
 
 
 def test_calculate_key_metrics_empty():

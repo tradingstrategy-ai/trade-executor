@@ -11,7 +11,7 @@ from tradeexecutor.statistics.key_metric import calculate_key_metrics
 from tradeexecutor.strategy.execution_context import ExecutionMode
 from tradeexecutor.strategy.summary import StrategySummaryStatistics
 from tradeexecutor.visual.equity_curve import calculate_compounding_realised_trading_profitability
-
+from tradeexecutor.visual.web_chart import export_time_series
 
 logger = logging.getLogger(__name__)
 
@@ -100,7 +100,7 @@ def calculate_summary_statistics(
             # We do not generate entry for dates without trades so forward fill from the previous day
             profitability_daily = profitability_daily.ffill()
             profitability_90_days = profitability_daily[-1]
-            performance_chart_90_days = [(index.to_pydatetime(), value) for index, value in profitability_daily.items()]
+            performance_chart_90_days = export_time_series(profitability_daily)
         else:
             profitability_90_days = None
             performance_chart_90_days = None

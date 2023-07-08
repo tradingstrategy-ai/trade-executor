@@ -196,7 +196,7 @@ class StrategySummaryStatistics:
     #: One point per day.
     #: Note that we might have 90 or 91 points because date ranges
     #: are inclusive.
-    performance_chart_90_days: Optional[List[Tuple[datetime.datetime, float]]] = None
+    performance_chart_90_days: Optional[List[Tuple[float, float]]] = None
 
     #: Strategy performance metrics to be displayed on the summary card
     #:
