@@ -30,6 +30,10 @@ web3-ethereum-defi = {version="0.21.3", extras=["data"]}
 # https://github.com/microsoft/vscode-jupyter/issues/11014
 ipywidgets = ">=7.0,<8.0"
 
+# https://github.com/apache/arrow/pull/35412
+# Last checked 2023-07, still broken
+urllib3 = "<2"
+
 #
 # Execution deps
 #
