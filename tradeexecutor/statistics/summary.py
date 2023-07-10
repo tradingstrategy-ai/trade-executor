@@ -99,7 +99,7 @@ def calculate_summary_statistics(
             profitability_daily = profitability_time_windowed.resample(pd.offsets.Day()).max()
             # We do not generate entry for dates without trades so forward fill from the previous day
             profitability_daily = profitability_daily.ffill()
-            profitability_90_days = profitability_daily[-1]
+            profitability_90_days = profitability_daily.iloc[-1]
             performance_chart_90_days = export_time_series(profitability_daily)
         else:
             profitability_90_days = None

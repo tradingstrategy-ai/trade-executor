@@ -155,6 +155,18 @@ class State:
         assert isinstance(pair, TradingPairIdentifier), f"Expected TradingPairIdentifier, got {type(pair)}: {pair}"
         return (pair.base.get_identifier() not in self.asset_blacklist) and (pair.quote.get_identifier() not in self.asset_blacklist)
 
+    def get_strategy_time_range(self) -> Tuple[datetime.datetime, datetime.datetime]:
+        """Get the time range for which the strategy should have data.
+
+        - If this is a backtest, return backtesting range
+
+        - If this is a live execution, return created - last updated
+        """
+        if self.backtest_data and self.backtest_data.start_at:
+            return self.backtest_data.start_at, self.backtest_data.end_at
+        else:
+            return self.created_at, self.last_updated_at
+
     def create_trade(self,
                      strategy_cycle_at: datetime.datetime,
                      pair: TradingPairIdentifier,
