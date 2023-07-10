@@ -274,7 +274,7 @@ def test_web_compounding_realised_profit_export(state: State):
     assert chart.help_link == 'https://tradingstrategy.ai/glossary/profitability'
     assert chart.title == 'Compounded realised trading position % profit'
 
-    second_tuple = chart.data[1]
+    second_tuple = chart.data[1]  # See calculate_compounding_realised_trading_profitability(fill_current_time_gap)
     assert second_tuple[0] == 1622937600
     assert second_tuple[1] == -0.0033223057702593817
 
