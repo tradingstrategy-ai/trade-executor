@@ -161,6 +161,7 @@ class TradeSummary:
     sortino_ratio: Optional[float] = None
     profit_factor: Optional[float] = None
     max_drawdown: Optional[float] = None
+    max_runup: Optional[float] = None
 
     average_duration_of_zero_loss_trades: Optional[datetime.timedelta] = None
     average_duration_of_all_trades: Optional[datetime.timedelta] = None
@@ -307,7 +308,7 @@ class TradeSummary:
                 as_percent(None)
             ],
             'Max runup / drawdown': [
-                as_percent(0), # TODO
+                as_percent(self.max_runup),
                 as_percent(self.max_drawdown), 
                 as_percent(None)
             ],
@@ -533,7 +534,7 @@ class TradeAnalysis:
             # for advanced statistics
             # import here to avoid circular import error
             from tradeexecutor.visual.equity_curve import calculate_daily_returns, calculate_returns, calculate_equity_curve
-            from tradeexecutor.statistics.key_metric import calculate_sharpe, calculate_sortino, calculate_profit_factor, calculate_max_drawdown
+            from tradeexecutor.statistics.key_metric import calculate_sharpe, calculate_sortino, calculate_profit_factor, calculate_max_drawdown, calculate_max_runup
 
             daily_returns = calculate_daily_returns(state, freq="D")
             equity_curve = calculate_equity_curve(state)
@@ -541,8 +542,11 @@ class TradeAnalysis:
 
             sharpe_ratio = calculate_sharpe(daily_returns)
             sortino_ratio = calculate_sortino(daily_returns)
-            profit_factor = calculate_profit_factor(original_returns)  # as profit factor is not annualised, better to calculate it on the original returns
-            max_drawdown = calculate_max_drawdown(equity_curve)
+
+            # these stats not annualised, so better to calculate it on the original returns
+            profit_factor = calculate_profit_factor(original_returns)  
+            max_drawdown = calculate_max_drawdown(original_returns)
+            max_runup = calculate_max_runup(original_returns)
         else:
             daily_returns = None
             original_returns = None
@@ -550,6 +554,7 @@ class TradeAnalysis:
             sortino_ratio = None
             profit_factor = None
             max_drawdown = None
+            max_runup = None
 
         def get_avg_profit_pct_check(trades: List | None):
             return float(np.mean(trades)) if trades else None
@@ -762,6 +767,7 @@ class TradeAnalysis:
             max_neg_cons=max_neg_cons,
             max_pullback=max_pullback_pct,
             max_drawdown=max_drawdown,
+            max_runup=max_runup,
             max_loss_risk=max_loss_risk_at_open_pc,
             max_realised_loss=max_realised_loss,
             avg_realised_risk=avg_realised_risk,
