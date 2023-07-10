@@ -83,8 +83,8 @@ class TradeSummary:
         decoder=json_decode_timedelta,
     ))
 
-    average_winning_trade_profit_pc: float # position
-    average_losing_trade_loss_pc: float # position
+    average_winning_trade_profit_pc: Optional[float] # position
+    average_losing_trade_loss_pc: Optional[float] # position
     biggest_winning_trade_pc: Optional[float] # position
     biggest_losing_trade_pc: Optional[float] # position
 
