@@ -16,6 +16,7 @@ from tradeexecutor.state.statistics import Statistics, PortfolioStatistics
 def calculate_equity_curve(
         state: State,
         attribute_name="total_equity",
+        fill_time_gaps=False,
 ) -> pd.Series:
     """Calculate equity curve for the portfolio.
 
@@ -26,6 +27,14 @@ def calculate_equity_curve(
 
     :param attribute_name:
         Calculate equity curve based on this attribute of :py:class:`
+
+    :param fill_time_gaps:
+        Insert a faux book keeping entries at start and end.
+
+        If not set, only renders the chart when there was some activate
+        deposits and ignores non-activity gaps at start and end.
+
+        See :py:meth:`tradeexecutor.state.state.State.get_strategy_time_range`.
 
     :return:
         Pandas series (timestamp, equity value).
@@ -44,6 +53,16 @@ def calculate_equity_curve(
 
     if len(data) == 0:
         return pd.Series([], index=pd.to_datetime([]))
+
+    if fill_time_gaps:
+        start, end = state.get_strategy_time_range()
+        end_val = data[-1][1]
+
+        if data[0][0] != start:
+            data = [(start, 0)] + data
+
+        if end != end_val:
+            data.append((end, end_val))
 
     # https://stackoverflow.com/a/66772284/315168
     return pd.DataFrame(data).set_index(0)[1]
@@ -335,7 +354,7 @@ def calculate_size_relative_realised_trading_returns(
 
 def calculate_compounding_realised_trading_profitability(
     state: State,
-    fill_current_time_gap=True,
+    fill_time_gaps=True,
 ) -> pd.Series:
     """Calculate realised profitability of closed trading positions, with the compounding effect.
 
@@ -348,8 +367,8 @@ def calculate_compounding_realised_trading_profitability(
 
     - See :ref:`profitability` for more information.
 
-    :param fill_current_time_gap:
-        Insert a faux entry at the last execution update.
+    :param fill_time_gaps:
+        Insert a faux book keeping entries at star tand end.
 
         There chart ends at the last profitable trade.
         However, we want to render the chart all the way up to the current date.
@@ -372,7 +391,7 @@ def calculate_compounding_realised_trading_profitability(
     # https://stackoverflow.com/a/42672553/315168
     compounded = realised_profitability.add(1).cumprod().sub(1)
 
-    if fill_current_time_gap and len(compounded) > 0:
+    if fill_time_gaps and len(compounded) > 0:
 
         started_at, last_ts = state.get_strategy_time_range()
         last_value = compounded.iloc[-1]

@@ -219,6 +219,21 @@ def test_calculate_equity_curve(state: State):
     assert curve[pd.Timestamp("2021-12-30")] == pytest.approx(8605.74)
 
 
+def test_calculate_equity_time_gapped(state: State):
+    """Get the backtest equity curve with time gaps filler."""
+
+    # Check that our trades look correct
+    assert len(list(state.portfolio.get_all_trades())) > 10
+
+    curve = calculate_equity_curve(state, fill_time_gaps=True)
+    assert type(curve) == pd.Series
+
+    # Check begin and end values of portfolio look correct
+    assert state.portfolio.get_total_equity() == pytest.approx(8605.74)
+    assert curve[pd.Timestamp("2021-06-01")] == 10_000
+    assert curve[pd.Timestamp("2021-12-30")] == pytest.approx(8605.74)
+
+
 def test_calculate_aggregated_returns(state: State):
     """Calculate monthly returns."""
 

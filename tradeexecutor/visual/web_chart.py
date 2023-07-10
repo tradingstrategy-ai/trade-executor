@@ -78,7 +78,7 @@ def render_web_chart(
             description = "Compounded realised trading position % profit"
             help_link = "https://tradingstrategy.ai/glossary/profitability"
         case WebChartType.total_equity:
-            df = calculate_equity_curve(state)
+            df = calculate_equity_curve(state, fill_time_gaps=True)
             description = "Total equity"
             help_link = "https://tradingstrategy.ai/glossary/total-equity"
         case WebChartType.netflow:
