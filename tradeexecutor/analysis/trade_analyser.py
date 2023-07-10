@@ -160,6 +160,7 @@ class TradeSummary:
     sharpe_ratio: Optional[float] = None
     sortino_ratio: Optional[float] = None
     profit_factor: Optional[float] = None
+    max_drawdown: Optional[float] = None
 
     average_duration_of_zero_loss_trades: Optional[datetime.timedelta] = None
     average_duration_of_all_trades: Optional[datetime.timedelta] = None
@@ -307,7 +308,7 @@ class TradeSummary:
             ],
             'Max runup / drawdown': [
                 as_percent(0), # TODO
-                as_percent(self.max_pullback), 
+                as_percent(self.max_drawdown), 
                 as_percent(None)
             ],
         }
@@ -527,16 +528,28 @@ class TradeAnalysis:
         if(time_bucket is not None):
             assert isinstance(time_bucket, TimeBucket), "Not a valid time bucket"
 
-        # for advanced statistics
-        # import here to avoid circular import error
+        
         if state is not None:
+            # for advanced statistics
+            # import here to avoid circular import error
             from tradeexecutor.visual.equity_curve import calculate_daily_returns, calculate_returns, calculate_equity_curve
+            from tradeexecutor.statistics.key_metric import calculate_sharpe, calculate_sortino, calculate_profit_factor, calculate_max_drawdown
+
             daily_returns = calculate_daily_returns(state, freq="D")
             equity_curve = calculate_equity_curve(state)
             original_returns = calculate_returns(equity_curve)
+
+            sharpe_ratio = calculate_sharpe(daily_returns)
+            sortino_ratio = calculate_sortino(daily_returns)
+            profit_factor = calculate_profit_factor(original_returns)  # as profit factor is not annualised, better to calculate it on the original returns
+            max_drawdown = calculate_max_drawdown(equity_curve)
         else:
             daily_returns = None
             original_returns = None
+            sharpe_ratio = None
+            sortino_ratio = None
+            profit_factor = None
+            max_drawdown = None
 
         def get_avg_profit_pct_check(trades: List | None):
             return float(np.mean(trades)) if trades else None
@@ -720,14 +733,6 @@ class TradeAnalysis:
 
         lp_fees_average_pc = lp_fees_paid / trade_volume if trade_volume else 0
         
-        # to avoid circular import error
-        from tradeexecutor.statistics.key_metric import calculate_sharpe, calculate_sortino, calculate_profit_factor
-        sharpe_ratio = calculate_sharpe(daily_returns) if daily_returns is not None else None
-        sortino_ratio = calculate_sortino(daily_returns) if daily_returns is not None else None
-
-        # as profit factor is not annualised, better to calculate it on the original returns
-        profit_factor = calculate_profit_factor(original_returns) if original_returns is not None else None
-
         return TradeSummary(
             won=won,
             lost=lost,
@@ -756,6 +761,7 @@ class TradeAnalysis:
             max_pos_cons=max_pos_cons,
             max_neg_cons=max_neg_cons,
             max_pullback=max_pullback_pct,
+            max_drawdown=max_drawdown,
             max_loss_risk=max_loss_risk_at_open_pc,
             max_realised_loss=max_realised_loss,
             avg_realised_risk=avg_realised_risk,
