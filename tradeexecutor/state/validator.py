@@ -40,6 +40,8 @@ ALLOWED_VALUE_TYPES = (
     datetime.datetime,  # Supported by dadtaclasses_json
     Decimal,  # Supported by dadtaclasses_json
     datetime.timedelta,
+    pd.Timestamp,
+    pd.Timedelta,
 )
 
 #: We especially do not want to see these in serialisation.
@@ -51,8 +53,8 @@ ALLOWED_VALUE_TYPES = (
 BAD_VALUE_TYPES = (
     # np.float32,
     # np.float64,
-    pd.Timedelta,
-    pd.Timestamp,
+    # pd.Timedelta,  fixed in monkeypatch/dataclasses_json.py
+    # pd.Timestamp,  fixed in monkeypatch/dataclasses_json.py
 )
 
 _inf=INFINITY

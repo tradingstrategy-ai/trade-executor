@@ -957,3 +957,66 @@ def test_blockchain_transaction_params():
     assert data["transaction_args"] == "80049510000000000000008a0b000000000000000000000185942e"
     validate_nested_state_dict(data)
     bt.to_json()
+
+
+def test_serialize_state(usdc, weth_usdc, start_ts: datetime.datetime):
+    """Dump and reload the internal state."""
+
+    state = State()
+    state.update_reserves([ReservePosition(
+        usdc,
+        Decimal(1000),
+        start_ts,
+        1.0,
+        start_ts,
+        initial_deposit=Decimal(1000),
+        initial_deposit_reserve_token_price=1.0,
+    )])
+    trader = DummyTestTrader(state)
+
+    # 1: buy 1
+    position, trade = trader.buy(weth_usdc, Decimal(0.1), 1700)
+    assert state.portfolio.get_total_equity() == 998.3
+    assert position.get_value() == pytest.approx(168.3)
+    assert position.last_pricing_at == start_ts
+
+    update_statistics(datetime.datetime.utcnow(), state.stats, state.portfolio, ExecutionMode.real_trading)
+
+    state.perform_integrity_check()
+
+    # test restore from dump
+    dump = state.to_json()
+    state2 = State.from_json(dump)
+    state2.perform_integrity_check()
+
+    # Check we decoded correctly
+    portfolio2 = state2.portfolio
+    position2 = portfolio2.open_positions[1]
+    summary = state2.stats.get_latest_portfolio_stats().summary
+    assert position2.get_value() == pytest.approx(168.3)
+    assert position2.last_pricing_at == start_ts
+    assert position2.last_pricing_at.tzinfo == None  # Be especially careful with timestamps
+    assert isinstance(summary.duration, datetime.timedelta)
+    assert isinstance(summary.average_duration_of_winning_trades, datetime.timedelta)
+    assert isinstance(summary.average_duration_of_losing_trades, datetime.timedelta)
+
+    # test restore from dump using different method
+    dump = state.to_json_safe()
+    state3 = State.from_json(dump)
+    state3.perform_integrity_check()
+
+
+def test_serialize_panda_timestamp():
+    """Handle pd.Timestamp conversion in serialisation.."""
+
+    state: State = State()
+    state.created_at = pd.Timestamp(2020, 1, 1)
+
+    # test restore from dump using different method
+    dump = state.to_json_safe()
+    state2 = State.from_json(dump)
+    state2.perform_integrity_check()
+
+    assert state.created_at == datetime.datetime(2020, 1, 1)
+
+
