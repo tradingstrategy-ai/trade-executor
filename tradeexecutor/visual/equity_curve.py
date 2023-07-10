@@ -357,6 +357,8 @@ def calculate_compounding_realised_trading_profitability(
         (`State.last_updated_at),
         working around various issues when dealing with this data at the frontend.
 
+        Any fixes are not applied to empty arrays.
+
     :return:
         Pandas series (DatetimeIndex, cumulative % profit).
 
@@ -370,9 +372,20 @@ def calculate_compounding_realised_trading_profitability(
     # https://stackoverflow.com/a/42672553/315168
     compounded = realised_profitability.add(1).cumprod().sub(1)
 
-    last_ts = state.last_updated_at
-    if fill_current_time_gap and last_ts and len(compounded) > 0 and last_ts > compounded.index[-1]:
-        compounded[last_ts] = compounded.iloc[-1]
+    if fill_current_time_gap and len(compounded) > 0:
+
+        started_at, last_ts = state.get_strategy_time_range()
+        last_value = compounded.iloc[-1]
+
+        # Strategy always starts at zero
+        compounded[started_at] = 0
+
+        # Fill fromt he last sample to current
+        if last_ts and len(compounded) > 0 and last_ts > compounded.index[-1]:
+            compounded[last_ts] = last_value
+
+        # Because we insert new entries, we need to resort the array
+        compounded = compounded.sort_index()
 
     return compounded
 
