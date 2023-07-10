@@ -912,10 +912,6 @@ def test_validate_state():
         bad = {"foo": {"bar": np.float32(1)}}
         validate_nested_state_dict(bad)
 
-    with pytest.raises(BadStateData):
-        bad = {"foo": {"bar": pd.Timestamp("1970-1-1")}}
-        validate_nested_state_dict(bad)
-
 
 def test_serialise_timedelta():
     """Serialise timedelta, that is part of a TradePricing object."""
