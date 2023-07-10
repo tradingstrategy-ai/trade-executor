@@ -6,6 +6,7 @@ import datetime
 from typing import List, Iterable
 
 import pandas as pd
+import numpy as np
 
 from tradeexecutor.state.state import State
 from tradeexecutor.state.types import Percent
@@ -57,6 +58,22 @@ def calculate_sortino(returns: pd.Series, periods=365) -> float:
     )
 
 
+def calculate_profit_factor(returns: pd.Series) -> float:
+    """Calculate profit factor.
+
+    Internally uses quantstats.
+
+    See :term:`profit factor`.
+
+    :param returns:
+        Returns series
+
+    """
+    # Lazy import to allow optional dependency
+    from quantstats.stats import profit_factor
+    return profit_factor(returns)
+
+
 def calculate_max_drawdown(returns: pd.Series) -> Percent:
     """Calculate maximum drawdown.
 
@@ -76,6 +93,26 @@ def calculate_max_drawdown(returns: pd.Series) -> Percent:
     dd = to_drawdown_series(returns)
     return dd.min()
 
+
+def calculate_max_runup(returns: pd.Series) -> Percent:
+    """Calculate maximum runup. Somewhat manual implementation since quantstats doesn't have this.
+
+    :param returns:
+        Returns series (can use original returns, doesn't have to be daily returns since not annualised)
+
+    :return:
+        Positive value
+    
+    """
+
+    from quantstats import utils
+
+    # convert returns to runup series
+    prices = utils._prepare_prices(returns)
+    ru = prices / np.minimum.accumulate(prices) - 1.
+    runup_series = ru.replace([np.inf, -np.inf, -0], 0)
+    
+    return runup_series.max()
 
 
 def calculate_profitability(returns: pd.Series) -> Percent:
