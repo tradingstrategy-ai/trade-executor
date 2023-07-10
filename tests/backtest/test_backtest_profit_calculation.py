@@ -230,6 +230,24 @@ def test_calculate_realised_trading_profitability(backtest_result: State):
     assert compounded_profitability.iloc[-1] == pytest.approx(-0.04583804672389613)  # Strategy has destroyed 4.5% of capital
 
 
+def test_calculate_realised_trading_profitability_fill_gap(backtest_result: State):
+    """Calculate the realised trading profitability, filling gap to the latest date.
+
+    By default, always insert a bookkeeping market at the last available date,
+    so web frontend can deal with the data easier.
+    """
+    backtest_result.last_updated_at = datetime.datetime(2023, 4, 4)
+    compounded_profitability = calculate_compounding_realised_trading_profitability(backtest_result)
+    compounded_profitability.index[-1] == pd.Timestamp(2023, 4, 4)
+    last = compounded_profitability.index[-1]
+    second_last = compounded_profitability.index[-2]
+    assert last == datetime.datetime(2023, 4, 4)
+    assert second_last == pd.Timestamp('2021-12-31 00:00:00')
+    last_val = compounded_profitability[last]
+    second_last_val = compounded_profitability[second_last]
+    assert last_val == second_last_val
+
+
 def test_calculate_realised_trading_profitability_no_trades():
     """Do not crash when calculating realised trading profitability if there are no trades."""
     state = State()
