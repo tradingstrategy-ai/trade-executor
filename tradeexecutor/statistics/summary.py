@@ -75,6 +75,8 @@ def calculate_summary_statistics(
     # We can alway get the current value even if there are no trades
     current_value = portfolio.get_total_equity()
 
+    strategy_start, strategy_end  = state.get_strategy_time_range()
+
     first_trade, last_trade = portfolio.get_first_and_last_executed_trade()
 
     first_trade_at = first_trade.executed_at if first_trade else None
@@ -84,12 +86,17 @@ def calculate_summary_statistics(
         now_ = pd.Timestamp.utcnow().tz_localize(None)
 
     start_at = now_ - time_window
+    if strategy_start and strategy_end:
+        age = strategy_end - strategy_start
+    else:
+        age = None
 
     stats = state.stats
 
     profitability_90_days = None
     enough_data = False
     performance_chart_90_days = None
+    returns_all_time = returns_annualised = None
 
     if len(stats.portfolio) > 0 and not legacy_workarounds:
         profitability = calculate_compounding_realised_trading_profitability(state)
@@ -105,6 +112,10 @@ def calculate_summary_statistics(
             profitability_90_days = None
             performance_chart_90_days = None
 
+        returns_all_time = profitability.iloc[-1]
+        if age:
+            returns_annualised = returns_all_time * datetime.timedelta(days=365) / age
+
     key_metrics = {m.kind.value: m for m in calculate_key_metrics(state, backtested_state, required_history=key_metrics_backtest_cut_off)}
 
     logger.info("calculate_summary_statistics() finished, took %s seconds", perf_counter() - func_started_at)
@@ -119,4 +130,6 @@ def calculate_summary_statistics(
         key_metrics=key_metrics,
         launched_at=state.created_at,
         backtest_metrics_cut_off_period=key_metrics_backtest_cut_off,
+        return_all_time=returns_all_time,
+        return_annualised=returns_annualised,
     )

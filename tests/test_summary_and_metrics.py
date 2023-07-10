@@ -258,6 +258,8 @@ def test_calculate_all_summary_statistics(state: State):
     true_profitability = 9541.619532761046 / 10_000 - 1
     assert true_profitability == pytest.approx(-0.045838046723895465)
     assert summary.profitability_90_days == pytest.approx(-0.045838046723895465)
+    assert summary.return_all_time == pytest.approx(-0.045838046723895576)
+    assert summary.return_annualised == pytest.approx(-0.07818171520665672)
 
     datapoints = summary.performance_chart_90_days
     assert len(datapoints) == 92

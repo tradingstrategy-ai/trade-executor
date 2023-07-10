@@ -186,6 +186,16 @@ class StrategySummaryStatistics:
     #: otherwise we can say so sar.
     profitability_90_days: Optional[float] = None
 
+    #: All time returns, %
+    #:
+    #: Based on :ref:`compounding realised positions profit`.
+    return_all_time: Optional[float] = None
+
+    #: Annualised returns, %
+    #:
+    #: Based on :ref:`compounding realised positions profit`.
+    return_annualised: Optional[float] = None
+
     #: Data for the performance chart used in the summary card.
     #:
     #: Contains (UNIX time, performance %) tuples.

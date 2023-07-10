@@ -21,26 +21,15 @@ from tradingstrategy.exchange import Exchange
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
 
-from tradeexecutor.analysis.advanced_metrics import calculate_advanced_metrics
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel
 from tradeexecutor.backtest.backtest_runner import run_backtest, setup_backtest_for_universe
 from tradeexecutor.cli.log import setup_pytest_logging
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
-from tradeexecutor.state.state import State
-from tradeexecutor.state.statistics import Statistics, calculate_naive_profitability
-from tradeexecutor.state.validator import validate_nested_state_dict
-from tradeexecutor.statistics.key_metric import calculate_key_metrics
-from tradeexecutor.statistics.summary import calculate_summary_statistics
 from tradeexecutor.strategy.cycle import CycleDuration
-from tradeexecutor.strategy.execution_context import ExecutionMode
-from tradeexecutor.strategy.summary import KeyMetricSource
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, create_pair_universe_from_code
 from tradeexecutor.testing.synthetic_ethereum_data import generate_random_ethereum_address
 from tradeexecutor.testing.synthetic_exchange_data import generate_exchange, generate_simple_routing_model
 from tradeexecutor.testing.synthetic_price_data import generate_ohlcv_candles
-
-from tradeexecutor.visual.equity_curve import calculate_equity_curve, calculate_returns, calculate_deposit_adjusted_returns
-
 
 @pytest.fixture(scope="module")
 def logger(request):
