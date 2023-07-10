@@ -222,7 +222,7 @@ class Statistics:
         if len(self.portfolio) == 0:
             return 0.0
 
-        return (self.portfolio[-1].total_equity - self.portfolio[0].total_equity) / self.portfolio[0].total_equity - 1
+        return (self.portfolio[-1].total_equity - self.portfolio[0].total_equity) / self.portfolio[0].total_equity
 
 
 def calculate_naive_profitability(

@@ -131,31 +131,24 @@ def format_multipair_summary(
         df[col] = df[col].apply(format_func)
 
     if format_columns:
-        df.columns = [
-            make_clickable(
-                "Trading pair", "https://tradingstrategy.ai/glossary/trading-pair"
-            ),
-            make_clickable("Positions", "https://tradingstrategy.ai/glossary/position"),
-            make_clickable("Trades", "https://tradingstrategy.ai/glossary/swap"),
-            "Total PnL USD",
-            "Best",
-            "Worst",
-            "Avg",
-            "Median",
-            "Volume",
-            "Wins",
-            "Losses",
-            make_clickable(
-                "Take profits", "https://tradingstrategy.ai/glossary/take-profit"
-            ),
-            make_clickable(
-                "Stop losses", "https://tradingstrategy.ai/glossary/stop-loss"
-            ),
-            make_clickable(
-                "Trailing stop losses",
-                "https://tradingstrategy.ai/glossary/trailing-stop-loss",
-            ),
+        headings = [
+            ("Trading pair", "https://tradingstrategy.ai/glossary/trading-pair"),
+            ("Positions", "https://tradingstrategy.ai/glossary/position"),
+            ("Trades", "https://tradingstrategy.ai/glossary/swap"),
+            ("Total PnL USD", None),
+            ("Best", None),
+            ("Worst", None),
+            ("Avg", None),
+            ("Median", None),
+            ("Volume", None),
+            ("Wins", None),
+            ("Losses", None),
+            ("Take profits", "https://tradingstrategy.ai/glossary/take-profit"),
+            ("Stop losses", "https://tradingstrategy.ai/glossary/stop-loss"),
+            ("Trailing stop losses", "https://tradingstrategy.ai/glossary/trailing-stop-loss")
         ]
+
+        df.columns = [make_clickable(h, url) if url else h for h, url in headings]
 
         return HTML(df.to_html(escape=False))
 
