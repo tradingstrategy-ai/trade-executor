@@ -7,8 +7,7 @@ from typing import Optional, List, Tuple, Dict, Any
 from dataclasses_json import dataclass_json
 
 from tradeexecutor.state.metadata import OnChainData
-from tradeexecutor.state.types import USDollarAmount
-
+from tradeexecutor.state.types import USDollarAmount, UnixTimestamp, Percent
 
 
 class KeyMetricKind(enum.Enum):
@@ -186,17 +185,17 @@ class StrategySummaryStatistics:
     #: otherwise we can say so sar.
     #:
     #: Based on :ref:`compounding realised positions profit`.
-    profitability_90_days: Optional[float] = None
+    profitability_90_days: Optional[Percent] = None
 
     #: All time returns, %
     #:
     #: Based on :ref:`compounding realised positions profit`.
-    return_all_time: Optional[float] = None
+    return_all_time: Optional[Percent] = None
 
     #: Annualised returns, %
     #:
     #: Based on :ref:`compounding realised positions profit`.
-    return_annualised: Optional[float] = None
+    return_annualised: Optional[Percent] = None
 
     #: Data for the performance chart used in the summary card.
     #:
@@ -210,7 +209,7 @@ class StrategySummaryStatistics:
     #: are inclusive.
     #:
     #: Based on :ref:`compounding realised positions profit`.
-    performance_chart_90_days: Optional[List[Tuple[float, float]]] = None
+    performance_chart_90_days: Optional[List[Tuple[UnixTimestamp, USDollarAmount]]] = None
 
     #: Strategy performance metrics to be displayed on the summary card
     #:
