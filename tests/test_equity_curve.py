@@ -274,9 +274,9 @@ def test_web_compounding_realised_profit_export(state: State):
     assert chart.help_link == 'https://tradingstrategy.ai/glossary/profitability'
     assert chart.title == 'Compounded realised trading position % profit'
 
-    first_tuple = chart.data[0]
-    assert first_tuple[0] == 1622937600
-    assert first_tuple[1] == -0.0033223057702593817
+    second_tuple = chart.data[1]
+    assert second_tuple[0] == 1622937600
+    assert second_tuple[1] == -0.0033223057702593817
 
 
 def test_web_equity_curve(state: State):
