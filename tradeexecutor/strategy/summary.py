@@ -184,6 +184,8 @@ class StrategySummaryStatistics:
     #:
     #: If :py:attr:`enough_data` is set we can display this annualised,
     #: otherwise we can say so sar.
+    #:
+    #: Based on :ref:`compounding realised positions profit`.
     profitability_90_days: Optional[float] = None
 
     #: All time returns, %
@@ -206,6 +208,8 @@ class StrategySummaryStatistics:
     #: One point per day.
     #: Note that we might have 90 or 91 points because date ranges
     #: are inclusive.
+    #:
+    #: Based on :ref:`compounding realised positions profit`.
     performance_chart_90_days: Optional[List[Tuple[float, float]]] = None
 
     #: Strategy performance metrics to be displayed on the summary card
