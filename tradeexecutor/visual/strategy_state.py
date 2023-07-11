@@ -31,6 +31,7 @@ def draw_single_pair_strategy_state(
         start_at: Optional[datetime.datetime] = None,
         end_at: Optional[datetime.datetime] = None,
         technical_indicators=True,
+        title=False,
 ) -> go.Figure:
     """Draw a mini price chart image.
 
@@ -66,7 +67,7 @@ def draw_single_pair_strategy_state(
         assert universe.universe.candles.get_pair_count() == 1
         target_pair_candles = universe.universe.candles.df.loc[pd.Timestamp(start_at):pd.Timestamp(end_at)]
 
-    return visualise_single_pair_strategy_state(state, target_pair_candles, start_at, end_at, technical_indicators=technical_indicators)
+    return visualise_single_pair_strategy_state(state, target_pair_candles, start_at, end_at, technical_indicators=technical_indicators, title=title)
 
 
 
@@ -118,7 +119,7 @@ def draw_multi_pair_strategy_state(
 
     assert universe.get_pair_count() <= 3, "This visualisation can be done only for less than 3 pairs"
 
-    figures = []
+    figures, titles = [], []
 
     for pair_id, data in universe.universe.candles.get_all_pairs():
         
@@ -137,24 +138,43 @@ def draw_multi_pair_strategy_state(
             assert end_at, "Must have start_at with end_at"
             target_pair_candles = data.loc[pd.Timestamp(start_at):pd.Timestamp(end_at)]
 
-        figure = visualise_single_pair_strategy_state(state, target_pair_candles, start_at, end_at, technical_indicators=technical_indicators)
+        pair = universe.universe.pairs.get_pair_by_id(pair_id)
+
+        title = f"{pair.base_token_symbol}/{pair.quote_token_symbol}"
+        titles.append(title)
+
+        figure = visualise_single_pair_strategy_state(state, target_pair_candles, start_at, end_at, technical_indicators=technical_indicators, title=title)
 
         figures.append(figure)
 
-    combined_image = combine_images(figures, width, height)
+    combined_figure = combine_images(figures, width, height, titles)
 
-    return combined_image
+    return combined_figure
 
 
-def combine_images(figures, width, height):
+def combine_images(figures, width, height, titles):
     """Combine multiple Plotly Figures into one image."""
 
-    combined_image = sp.make_subplots(rows=len(figures), cols=1, shared_xaxes=True, vertical_spacing=0.02)
+    combined_figure = sp.make_subplots(rows=len(figures), cols=1, shared_xaxes=True, vertical_spacing=0.1, row_titles=titles)
 
     for i, figure in enumerate(figures):
-        combined_image.add_trace(figure.data[0], row=i + 1, col=1)
+        combined_figure.add_trace(figure.data[0], row=i + 1, col=1)
 
-    return combined_image
+    # Range slider is not very user friendly so just
+    # disable it for now
+    combined_figure.update_xaxes(rangeslider={"visible": False})
+    
+    combined_figure.update_annotations(font_size=12)
+
+    # By default, Plotly seems to make a good size for the subplot figure
+    # so we don't use height and width for now
+    combined_figure.update_layout(
+        # height=height,
+        # width=width,
+        margin=dict(l=50, r=30, t=50, b=50),
+    )
+
+    return combined_figure
 
 
 def visualise_single_pair_strategy_state(
@@ -163,7 +183,8 @@ def visualise_single_pair_strategy_state(
         start_at: Optional[datetime.datetime] = None,
         end_at: Optional[datetime.datetime] = None,
         height=512,
-        technical_indicators=True
+        technical_indicators=True,
+        title=False,
 ) -> go.Figure:
     """Produces a visualisation of the strategy state for a single pair.
     
@@ -194,7 +215,7 @@ def visualise_single_pair_strategy_state(
         start_at=start_at,
         end_at=end_at,
         height=height,
-        title=False,
+        title=title,
         axes=False,
         technical_indicators=technical_indicators,
         volume_bar_mode=VolumeBarMode.hidden,  # TODO: Might be needed in the future strats
