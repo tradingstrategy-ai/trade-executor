@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 
 from tradeexecutor.ethereum.revert import clean_revert_reason_message
-from tradeexecutor.state.position import TradingPosition
+
 from tradeexecutor.state.trade import TradeExecution
 
 
@@ -72,7 +72,9 @@ def display_slippage(trades: Iterable[TradeExecution]) -> pd.DataFrame:
                 uniswap_amount_out = np.NaN
 
             tx_hash = swap_tx.tx_hash
-            tx_link = f"""<a href="https://polygonscan.io/tx/{tx_hash}>{tx_hash}</a>"""
+            # TODO: Does not work in all notebook run times
+            # tx_link = f"""<a href="https://polygonscan.io/tx/{tx_hash}>{tx_hash}</a>"""
+            tx_link = tx_hash
 
         items.append({
             "Flags": ", ".join(flags),
@@ -81,7 +83,7 @@ def display_slippage(trades: Iterable[TradeExecution]) -> pd.DataFrame:
             "Started": _ftime(t.started_at),
             "Executed": _ftime(t.executed_at),
             "Lag": lag.total_seconds() if lag else np.NaN,
-            "Slippage tolerance (BPS)": t.slippage_tolerance * 10000,
+            "Slippage tol (BPS)": int(t.slippage_tolerance * 10000) if t.slippage_tolerance else np.NaN,
             "Tx": tx_link,
             "Notes": t.notes,
             "Failure reason": reason,
