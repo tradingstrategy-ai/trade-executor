@@ -343,6 +343,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             exchanges={exchange},
             candles=candle_universe,
             liquidity=liquidity_universe,
+            exchange_universe=exchange_universe,
         )
 
         if dataset.backtest_stop_loss_candles is not None:
