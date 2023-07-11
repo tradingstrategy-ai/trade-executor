@@ -503,11 +503,16 @@ class TradeExecution:
 
         A manual repair command was issued and it manaeged to correctly repair this trade
         and underlying transactions.
+
+        See also :py:meth:`is_repair_trade`.
         """
         return self.repaired_at is not None
 
     def is_repair_trade(self) -> bool:
-        """This trade repairs another trade in the same position."""
+        """This trade repairs another trade in the same position.
+
+        See also :py:meth:`is_repair_trade`.
+        """
         return self.repaired_trade_id is not None
 
     def is_executed(self) -> bool:
@@ -530,6 +535,20 @@ class TradeExecution:
 
     def is_redemption(self) -> bool:
         """This trade marks a redemption balance update on a position"""
+
+    def get_input_asset(self) -> AssetIdentifier:
+        """How we fund this trade."""
+        if self.is_buy():
+            return self.pair.quote
+        else:
+            return self.pair.base
+
+    def get_output_asset(self) -> AssetIdentifier:
+        """What asset we receive out from this trade"""
+        if self.is_buy():
+            return self.pair.base
+        else:
+            return self.pair.quote
 
     def get_status(self) -> TradeStatus:
         """Resolve the trade status.
@@ -695,9 +714,43 @@ class TradeExecution:
         """How long it took between strategy decision cycle starting and the strategy to make a decision."""
         return self.started_at - self.opened_at
 
-    def get_execution_lag(self) -> datetime.timedelta:
+    def get_execution_lag(self) -> Optional[datetime.timedelta]:
         """How long it took between strategy decision cycle starting and the trade executed."""
-        return self.started_at - self.opened_at
+        if self.started_at and self.opened_at:
+            return self.started_at - self.opened_at
+        return None
+
+    def get_failed_transaction(self) -> Optional[BlockchainTransaction]:
+        """Get the transaction that failed this trade.
+
+        Extract the EVM revert reason from the underlying transactions.
+
+        - Each trade can consist of multiple transactions
+
+        - Iterate transactions from the last to first and return the first failure reason
+        """
+        for tx in reversed(self.blockchain_transactions):
+            if tx.is_reverted():
+                return tx
+
+        return None
+
+    def get_revert_reason(self) -> Optional[str]:
+        """Get the transaction failure reason.
+
+        Extract the EVM revert reason from the underlying transactions.
+
+        - Each trade can consist of multiple transactions
+
+        - Iterate transactions from the last to first and return the first failure reason
+
+        See also :py:func:`tradeexecutor.ethereum.revert.clean_revert_reason_message`.
+        """
+        tx = self.get_failed_transaction()
+        if tx:
+            return tx.revert_reason
+
+        return None
 
     def mark_broadcasted(self, broadcasted_at: datetime.datetime):
         assert self.get_status() == TradeStatus.started, f"Trade in bad state: {self.get_status()}"
