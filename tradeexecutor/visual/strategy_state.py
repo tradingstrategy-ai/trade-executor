@@ -31,7 +31,6 @@ def draw_single_pair_strategy_state(
         start_at: Optional[datetime.datetime] = None,
         end_at: Optional[datetime.datetime] = None,
         technical_indicators=True,
-        title=False,
 ) -> go.Figure:
     """Draw a mini price chart image.
 
@@ -66,6 +65,9 @@ def draw_single_pair_strategy_state(
         assert end_at, "Must have start_at with end_at"
         assert universe.universe.candles.get_pair_count() == 1
         target_pair_candles = universe.universe.candles.df.loc[pd.Timestamp(start_at):pd.Timestamp(end_at)]
+
+    pair = universe.get_single_pair()
+    title = f"{pair.base.token_symbol}/{pair.quote.token_symbol}"
 
     return visualise_single_pair_strategy_state(state, target_pair_candles, start_at, end_at, technical_indicators=technical_indicators, title=title)
 
@@ -219,6 +221,10 @@ def visualise_single_pair_strategy_state(
         axes=False,
         technical_indicators=technical_indicators,
         volume_bar_mode=VolumeBarMode.hidden,  # TODO: Might be needed in the future strats
+    )
+
+    figure.update_layout(
+        margin=dict(l=60, r=50, t=70, b=60),
     )
 
     return figure
