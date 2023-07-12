@@ -69,6 +69,10 @@ class ReservePosition:
         """Approximation of current value of this reserve."""
         return float(self.quantity) * self.reserve_token_price
 
+    def get_quantity(self) -> Decimal:
+        """Get the absolute amount of reserve tokens held."""
+        return self.quantity
+
     def get_total_equity(self) -> USDollarAmount:
         """Approximation of total equity of this reserve."""
         return self.get_value()

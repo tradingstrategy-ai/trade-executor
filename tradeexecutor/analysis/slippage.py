@@ -41,11 +41,6 @@ def display_slippage(trades: Iterable[TradeExecution]) -> pd.DataFrame:
         if t.is_repair_trade():
             flags.append("FIX")
 
-        if t.is_buy():
-            trade_type = "BUY"
-        else:
-            trade_type = "SELL"
-
         lag = t.get_execution_lag()
 
         reason = t.get_revert_reason()
