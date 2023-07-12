@@ -407,7 +407,7 @@ def test_enzyme_correct_accounts(
     deployer,
     usdc,
 ):
-    """Run the correct accounts command.
+    """Run the correct-accounts command.
 
     There should be nothing to correct.
     """
@@ -420,8 +420,6 @@ def test_enzyme_correct_accounts(
     assert result.exit_code == 0
 
     cli = get_command(app)
-
-    environment["LOG_LEVEL"] = "info"
 
     with patch.dict(os.environ, environment, clear=True):
         with pytest.raises(SystemExit) as e:

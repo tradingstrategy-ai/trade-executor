@@ -57,6 +57,12 @@ class AccountingCorrectionAborted(Exception):
 
 @dataclass
 class AccountingCorrection:
+    """Accounting correction applied to a balance.
+
+    Any irregular accounting correction will cause the position profit calcualtions
+    and such to become invalid. Such positions should be separately market
+    and not included in the profit calculations.
+    """
 
     type: AccountingCorrectionType
 
