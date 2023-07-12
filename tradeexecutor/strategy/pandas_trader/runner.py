@@ -242,7 +242,8 @@ class PandasTraderRunner(StrategyRunner):
 
                 last_candle = candles.iloc[-1]
                 lag = pd.Timestamp.utcnow().tz_localize(None) - last_candle["timestamp"]
-                
+
+                pair = universe.universe.pairs.get_pair_by_id(pair_id)
                 print(f"  Last candle at: {last_candle['timestamp']} UTC, market data and action lag: {lag}", file=buf)
                 print(f"  Price open:{last_candle['open']} close:{last_candle['close']} {pair.base.token_symbol} / {pair.quote.token_symbol}", file=buf)
 

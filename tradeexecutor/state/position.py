@@ -12,6 +12,7 @@ import pandas as pd
 from dataclasses_json import dataclass_json
 
 from tradeexecutor.state.balance_update import BalanceUpdate
+from tradeexecutor.state.generic_position import GenericPosition
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
 from tradeexecutor.state.trade import TradeType, QUANTITY_EPSILON
 from tradeexecutor.state.trade import TradeExecution
@@ -59,7 +60,7 @@ class TriggerPriceUpdate:
 
 @dataclass_json
 @dataclass(slots=True)
-class TradingPosition:
+class TradingPosition(GenericPosition):
     """Represents a single trading position.
 
     - Each position trades a single asset
@@ -368,21 +369,25 @@ class TradingPosition:
 
         - Because decimal summ might
 
-        - Accounts for any balance update events (redemptions, interest)
+        - Accounts for any balance update events (redemptions, interest, accounting corrections)
 
         :return:
             Number of asset units held by this position.
 
             Rounded down to zero if the sum of
         """
-        s = sum_decimal([t.get_position_quantity() for t in self.trades.values() if t.is_success()])
+        trades = sum_decimal([t.get_position_quantity() for t in self.trades.values() if t.is_success()])
+        direct_balance_updates = self.get_balance_update_quantity()
+        s = trades + direct_balance_updates
 
+        # TODO:
+        # We should not have math that ends up with a trading position with dust left,
+        # tough this might not always hold the case
         if s != Decimal(0):
             assert s >= QUANTITY_EPSILON, "Safety check in floating point math triggered"
 
-        s += self.get_balance_update_quantity()
-
-        return Decimal(s)  # Make zero to decimal
+        # Always convert zero to decimal
+        return Decimal(s)
 
     def get_live_quantity(self) -> Decimal:
         """Get all tied up token quantity.
@@ -487,7 +492,7 @@ class TradingPosition:
         return last_trade.is_take_profit()
 
     def open_trade(self,
-                   strategy_cycle_at: datetime.datetime,
+                   strategy_cycle_at: datetime.datetime | None,
                    trade_id: int,
                    quantity: Optional[Decimal],
                    reserve: Optional[Decimal],
@@ -507,6 +512,8 @@ class TradingPosition:
 
         :param strategy_cycle_at:
             The strategy cycle timestamp for which this trade was executed.
+
+            Might not be available for the accounting corrections done offline.
 
         :param trade_id:
             Trade id allocated by the portfolio
@@ -567,7 +574,9 @@ class TradingPosition:
         
         assert self.reserve_currency.get_identifier() == reserve_currency.get_identifier(), "New trade is using different reserve currency than the position has"
         assert isinstance(trade_id, int)
-        assert isinstance(strategy_cycle_at, datetime.datetime)
+
+        if strategy_cycle_at is not None:
+            assert isinstance(strategy_cycle_at, datetime.datetime)
 
         if reserve is not None:
             planned_reserve = reserve

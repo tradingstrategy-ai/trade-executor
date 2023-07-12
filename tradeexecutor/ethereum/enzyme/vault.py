@@ -5,7 +5,7 @@ import datetime
 import pprint
 from _decimal import Decimal
 from functools import partial
-from typing import cast, List, Optional, Tuple
+from typing import cast, List, Optional, Tuple, Iterable
 
 from web3 import Web3
 
@@ -17,6 +17,7 @@ from eth_defi.event_reader.reorganisation_monitor import ReorganisationMonitor
 from eth_defi.hotwallet import HotWallet
 
 from tradeexecutor.ethereum.enzyme.tx import EnzymeTransactionBuilder
+from tradeexecutor.ethereum.onchain_balance import fetch_address_balances
 from tradeexecutor.ethereum.token import translate_token_details
 from tradeexecutor.state.portfolio import Portfolio
 
@@ -26,7 +27,7 @@ from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.state import State
 from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdateCause, BalanceUpdatePositionType
 from tradeexecutor.state.sync import BalanceEventRef
-from tradeexecutor.strategy.sync_model import SyncModel
+from tradeexecutor.strategy.sync_model import SyncModel, OnChainBalance
 from tradingstrategy.chain import ChainId
 
 logger = logging.getLogger(__name__)
@@ -390,6 +391,21 @@ class EnzymeVaultSyncModel(SyncModel):
         deployment.vault_token_symbol = self.vault.get_symbol()
         deployment.chain_id = ChainId(web3.eth.chain_id)
         deployment.initialised_at = datetime.datetime.utcnow()
+
+    def fetch_onchain_balances(self, assets: List[AssetIdentifier], filter_zero=True) -> Iterable[OnChainBalance]:
+        """Read the on-chain asset details.
+
+        - Mark the block we are reading at the start
+
+        :param filter_zero:
+            Do not return zero balances
+        """
+        return fetch_address_balances(
+            self.web3,
+            self.get_vault_address(),
+            assets,
+            filter_zero=filter_zero,
+        )
 
     def sync_treasury(self,
                       strategy_cycle_ts: datetime.datetime,
