@@ -28,6 +28,7 @@ def overlay_all_technical_indicators(
         start_at: Optional[pd.Timestamp] = None,
         end_at: Optional[pd.Timestamp] = None,
         volume_bar_mode: VolumeBarMode = None,
+        pair_id: Optional[int] = None,
 ):
     """Draw all technical indicators from the visualisation over candle chart.
 
@@ -46,6 +47,9 @@ def overlay_all_technical_indicators(
 
     # https://plotly.com/python/graphing-multiple-chart-types/
     for plot in visualisation.plots.values():
+
+        if pair_id != getattr(plot.pair,"internal_id", None):
+            continue
         
         # get trace which is unattached to plot
         trace = visualise_technical_indicator(
