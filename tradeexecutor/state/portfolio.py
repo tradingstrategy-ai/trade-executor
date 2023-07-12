@@ -540,6 +540,16 @@ class Portfolio:
         assert len(positions) == 1, f"Had {len(positions)} reserve position"
         return positions[0]
 
+    def get_reserve_assets(self) -> List[AssetIdentifier]:
+        """Get reserves assets.
+
+        Reserve assets are registered with the state when it is initialised.
+
+        :return:
+            If the state is not properly initialised, the reserve asset list is empty.
+        """
+        return [r.asset for r in self.reserves.values()]
+
     def get_equity_for_pair(self, pair: TradingPairIdentifier) -> Decimal:
         """Return how much equity allocation we have in a certain trading pair."""
         position = self.get_position_by_trading_pair(pair)
