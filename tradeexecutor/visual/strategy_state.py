@@ -145,7 +145,15 @@ def draw_multi_pair_strategy_state(
         title = f"{pair.base_token_symbol}/{pair.quote_token_symbol}"
         titles.append(title)
 
-        figure = visualise_single_pair_strategy_state(state, target_pair_candles, start_at, end_at, technical_indicators=technical_indicators, title=title)
+        figure = visualise_single_pair_strategy_state(
+            state, 
+            target_pair_candles, 
+            start_at, 
+            end_at,
+            pair_id=pair_id,
+            technical_indicators=technical_indicators, 
+            title=title
+        )
 
         figures.append(figure)
 
@@ -184,6 +192,7 @@ def visualise_single_pair_strategy_state(
         target_pair_candles,
         start_at: Optional[datetime.datetime] = None,
         end_at: Optional[datetime.datetime] = None,
+        pair_id: Optional[int] = None,
         height=512,
         technical_indicators=True,
         title=False,
@@ -216,6 +225,7 @@ def visualise_single_pair_strategy_state(
         target_pair_candles,
         start_at=start_at,
         end_at=end_at,
+        pair_id=pair_id,
         height=height,
         title=title,
         axes=False,
