@@ -305,6 +305,7 @@ class Visualisation:
              detached_overlay_name: Optional[str] = None,
              indicator_size: Optional[float] = None,
              recording_time: Optional[RecordingTime] = RecordingTime.decision_making_time,
+             pair: Optional[TradingPairIdentifier] = None,
         ):
         """Add a value to the output data and diagram.
         
@@ -383,6 +384,8 @@ class Visualisation:
             plot.colour = colour
 
         plot.recording_time = recording_time
+
+        plot.pair = pair
 
         self.plots[name] = plot
 
