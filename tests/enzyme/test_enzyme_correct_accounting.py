@@ -265,6 +265,9 @@ def test_enzyme_correct_accounting_errors(
 
     trader.execute_trades_simple([trade], broadcast=True)
 
+    reserve_position: ReservePosition = state.portfolio.get_default_reserve_position()
+    assert reserve_position.get_quantity() == pytest.approx(Decimal(0))
+
     assert weth.functions.balanceOf(vault.vault.address).call() > 0
 
     #
