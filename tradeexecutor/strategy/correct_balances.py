@@ -9,11 +9,15 @@
 - Generate the accounting events to reflect these changes
 
 """
+import enum
 from _decimal import Decimal
 from dataclasses import dataclass
-from typing import List, Iterable
+from typing import List, Iterable, Collection
+
+from tradingstrategy.pair import PandasPairUniverse
 
 from tradeexecutor.ethereum.enzyme.vault import EnzymeVaultSyncModel
+from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.state import State
@@ -23,11 +27,16 @@ from tradeexecutor.strategy.sync_model import SyncModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 
 
+#: The amount of token units that is considered "dust" or rounding error.
+#:
+DUST_EPSILON = Decimal(10**-5)
+
+
 class UnexpectedAccountingCorrectionIssue(Exception):
     """Something wrong in the token accounting we do not expect to be automatically correct."""
 
 
-class AccountingCorrectionType:
+class AccountingCorrectionType(enum.Enum):
 
     #: Do not know what caused the incorrect amount
     unknown = "unknown"
@@ -49,10 +58,11 @@ class AccountingCorrection:
 
 
 def calculate_account_corrections(
-        universe: TradingStrategyUniverse,
+        pair_universe: PandasPairUniverse,
+        reserve_assets: Collection[AssetIdentifier],
         state: State,
         sync_model: SyncModel,
-        epsilon=QUANTITY_EPSILON,
+        epsilon=DUST_EPSILON,
 ) -> Iterable[AccountingCorrection]:
     """Figure out differences between our internal ledger (state) and on-chain balances.
 
@@ -63,11 +73,12 @@ def calculate_account_corrections(
 
     """
 
-    assert isinstance(universe, TradingStrategyUniverse)
+    assert isinstance(pair_universe, PandasPairUniverse)
     assert isinstance(state, State)
     assert isinstance(sync_model, EnzymeVaultSyncModel), "Only EnzymeVaultSyncModel tested for now"
+    assert len(reserve_assets) > 0, "No reserve assets defined"
 
-    assets = get_relevant_assets(universe, state)
+    assets = get_relevant_assets(pair_universe, reserve_assets, state)
     asset_balances = sync_model.fetch_onchain_balances(assets)
 
     for ab in asset_balances:

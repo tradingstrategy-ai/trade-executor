@@ -43,6 +43,9 @@ def get_relevant_assets(
         A list of tokens of which balances we need to check when doing accounting
     """
 
+    assert isinstance(pair_universe, PandasPairUniverse)
+    assert isinstance(state, State)
+
     assets = []
 
     for asset in reserve_assets:
