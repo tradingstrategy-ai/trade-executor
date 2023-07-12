@@ -824,7 +824,7 @@ def _get_figure_grid_with_indicators(
     volume_axis_name: str = "Volume USD",
     pair_id: int | None = None,
 ):
-    """Gets figure grid with indicators overlayered already. Main price plot is not yet added"""
+    """Gets figure grid with candles and indicators overlayed."""
     title_text, axes_text, volume_text = _get_all_text(state.name, axes, title, pair_name, volume_axis_name)
 
     plots = [plot for plot in state.visualisation.plots.values() if getattr(plot.pair, "internal_id", None) == pair_id]
