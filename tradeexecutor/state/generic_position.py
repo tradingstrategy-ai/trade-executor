@@ -1,9 +1,7 @@
 """Base class for trading and reserve positions."""
 
 from _decimal import Decimal
-from abc import abstractmethod
-
-from black.trans import ABC
+from abc import abstractmethod, ABC
 
 from tradeexecutor.state.types import USDollarAmount
 
