@@ -768,3 +768,52 @@ class Portfolio:
 
         (pair,) = pairs
         return pair
+
+    def correct_open_position_balance(
+            self,
+            position: TradingPosition,
+            expected_amount: Decimal,
+            actual_amount: Decimal,
+            strategy_cycle_ts: datetime.datetime,
+            block_number: int,
+            balance_update_id: int,
+            ) -> TradeExecution:
+        """Create an accounting entry trade that correct the balance."""
+
+        raise NotImplementedError("This method is currently not being used, as the trading positions take account of direct quantity updates in get_quantity()")
+        #
+        # trade_id = self.next_trade_id
+        # self.next_trade_id += 1
+        #
+        # assumed_price = position.last_token_price
+        #
+        # correction_amount = actual_amount - expected_amount
+        #
+        # trade = position.open_trade(
+        #     strategy_cycle_ts,
+        #     trade_id,
+        #     quantity=correction_amount,
+        #     reserve=None,
+        #     assumed_price=assumed_price,
+        #     trade_type=TradeType.accounting_correction,
+        #     reserve_currency=position.reserve_currency,
+        #     reserve_currency_price=position.last_reserve_price,
+        # )
+        #
+        # trade.balance_update_id = balance_update_id
+        # trade.notes = f"Accounting correction based on the actual on-chain balances.\n" \
+        #               f"The internal ledger balance was  {expected_amount} {position.pair.base.token_symbol}\n" \
+        #               f"On-chain balance was {actual_amount} {position.pair.base.token_symbol} at block {block_number:,}\n" \
+        #               f"Balance was updated {correction_amount} {position.pair.base.token_symbol}\n"
+        #
+        # trade.mark_success(
+        #     datetime.datetime.utcnow(),
+        #     trade.planned_price,
+        #     trade.planned_quantity,
+        #     trade.planned_reserve,
+        #     lp_fees=0,
+        #     native_token_price=position.last_reserve_price,
+        #     force=True,
+        # )
+        #
+        # return trade

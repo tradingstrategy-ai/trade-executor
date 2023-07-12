@@ -31,9 +31,11 @@ from tradeexecutor.ethereum.enzyme.tx import EnzymeTransactionBuilder
 from tradeexecutor.ethereum.enzyme.vault import EnzymeVaultSyncModel
 
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
+from tradeexecutor.state.position import TradingPosition
+from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.asset import get_relevant_assets
-from tradeexecutor.strategy.correct_balances import calculate_account_corrections
+from tradeexecutor.strategy.correct_balances import calculate_account_corrections, AccountingCorrectionType, correct_balances
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.testing.ethereumtrader_uniswap_v2 import UniswapV2TestTrader
 
@@ -296,3 +298,71 @@ def test_enzyme_correct_accounting_errors(
         sync_model))
 
     assert len(corrections) == 2
+
+    # USDC correction
+    reserve_correction = corrections[0]
+    assert reserve_correction.type == AccountingCorrectionType.unknown
+    assert isinstance(reserve_correction.position, ReservePosition)
+    assert reserve_correction.expected_amount == pytest.approx(Decimal('2.35431888385E-14'))
+    assert reserve_correction.actual_amount == pytest.approx(Decimal('400.000001'))
+    assert reserve_correction.block_number > 0
+    assert isinstance(reserve_correction.timestamp, datetime.datetime)
+
+    # WETH correction
+    position_correction = corrections[1]
+    assert position_correction.type == AccountingCorrectionType.unknown
+    assert isinstance(position_correction.position, TradingPosition)
+    assert position_correction.expected_amount == pytest.approx(Decimal('0.310787860635789571'))
+    assert position_correction.actual_amount == pytest.approx(Decimal('0.2107878606357895711'))
+
+    #
+    # Correct state (internal ledger)
+    #
+
+    balance_updates = correct_balances(
+        state,
+        sync_model,
+        corrections,
+        strategy_cycle_included_at=None,
+        interactive=False,
+    )
+    balance_updates = list(balance_updates)
+    assert len(balance_updates) == 2
+
+    # See the balance updates look good
+    reserve_update = balance_updates[1]
+    assert reserve_update.block_number > 0
+    assert reserve_update.quantity == 0
+
+    position_update= balance_updates[2]
+
+    # Check we updated acconting correction metadata
+    assert state.sync.accounting.last_updated_at is not None
+    assert state.sync.accounting.last_block_scanned > 0
+    assert len(state.sync.accounting.balance_update_refs) == 2
+
+    # Check that actual position amounts are correct
+    reserve_position: ReservePosition = state.portfolio.get_default_reserve_position()
+    assert reserve_position.get_quantity()  == pytest.approx(Decimal('400.000001'))
+    position: TradingPosition = state.portfolio.open_positions[1]
+    assert position.get_quantity() == pytest.approx(Decimal('0.2107878606357895711'))
+
+    #
+    # Check state serialises afterwards
+    #
+    text = state.to_json_safe()
+    state2 = State.read_json_blob(text)
+    assert not state2.is_empty()
+
+    #
+    # No further accounting errors
+    #
+    further_corrections = list(calculate_account_corrections(
+        pair_universe,
+        state.portfolio.get_reserve_assets(),
+        state,
+        sync_model))
+
+    import ipdb ; ipdb.set_trace()
+
+    assert len(further_corrections) == 0

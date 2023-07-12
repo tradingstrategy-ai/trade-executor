@@ -9,6 +9,7 @@
 - Generate the accounting events to reflect these changes
 
 """
+import datetime
 import enum
 from _decimal import Decimal
 from dataclasses import dataclass
@@ -17,14 +18,15 @@ from typing import List, Iterable, Collection
 from tradingstrategy.pair import PandasPairUniverse
 
 from tradeexecutor.ethereum.enzyme.vault import EnzymeVaultSyncModel
+from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdatePositionType, BalanceUpdateCause
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.state import State
-from tradeexecutor.state.trade import QUANTITY_EPSILON
+from tradeexecutor.state.sync import BalanceEventRef
+from tradeexecutor.state.types import USDollarAmount
 from tradeexecutor.strategy.asset import get_relevant_assets, map_onchain_asset_to_position
 from tradeexecutor.strategy.sync_model import SyncModel
-from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 
 
 #: The amount of token units that is considered "dust" or rounding error.
@@ -45,16 +47,44 @@ class AccountingCorrectionType(enum.Enum):
     rebase = "rebase"
 
 
+class AccountingCorrectionAborted(Exception):
+    """User presses n"""
+
+
 @dataclass
 class AccountingCorrection:
 
     type: AccountingCorrectionType
 
+    #: Related on-chain asset
+    asset: AssetIdentifier
+
+    #: Related position
     position: TradingPosition | ReservePosition
 
     expected_amount: Decimal
 
     actual_amount: Decimal
+
+    block_number: int | None
+
+    timestamp: datetime.datetime | None
+
+    #: Keep track of monetary value of corrections.
+    #:
+    #: An estimated value at the time of the correction creation.
+    #:
+    #: Negative for negative corrections
+    #:
+    usd_value: USDollarAmount
+
+    def __repr__(self):
+        return f"<Accounting correction type {self.type.value} for {self.position}, expected {self.expected_amount}, actual {self.actual_amount} at {self.timestamp}>"
+
+    @property
+    def quantity(self):
+        """How many tokens we corrected"""
+        return self.actual_amount - self.expected_amount
 
 
 def calculate_account_corrections(
@@ -95,22 +125,120 @@ def calculate_account_corrections(
 
         actual_amount = ab.amount
         expected_amount = position.get_quantity()
+        diff = actual_amount - expected_amount
+
+        usd_value = position.calculate_quantity_usd_value(diff)
 
         if abs(actual_amount - expected_amount) > epsilon:
             yield AccountingCorrection(
                 AccountingCorrectionType.unknown,
+                ab.asset,
                 position,
                 expected_amount,
                 actual_amount,
+                ab.block_number,
+                ab.timestamp,
+                usd_value,
             )
+
+
+def apply_accounting_correction(
+        state: State,
+        correction: AccountingCorrection,
+        strategy_cycle_included_at: datetime.datetime | None,
+):
+    """Update the state to reflect the true on-chain balances."""
+
+    assert correction.type == AccountingCorrectionType.unknown, f"Not supported: {correction}"
+    assert correction.timestamp
+
+    portfolio = state.portfolio
+    asset = correction.asset
+    position = correction.position
+
+    event_id = portfolio.next_balance_update_id
+    portfolio.next_balance_update_id += 1
+
+    if isinstance(position, TradingPosition):
+        position_type = BalanceUpdatePositionType.open_position
+        position_id = correction.position.position_id
+    elif isinstance(position, ReservePosition):
+        position_type = BalanceUpdatePositionType.reserve
+        position_id = None
+    else:
+        raise NotImplementedError()
+
+    evt = BalanceUpdate(
+        balance_update_id=event_id,
+        position_type=position_type,
+        cause=BalanceUpdateCause.correction,
+        asset=correction.asset,
+        block_mined_at=correction.timestamp,
+        strategy_cycle_included_at=strategy_cycle_included_at,
+        chain_id=asset.chain_id,
+        old_balance=correction.actual_amount,
+        usd_value=correction.usd_value,
+        quantity=correction.quantity,
+        owner_address=None,
+        tx_hash=None,
+        log_index=None,
+        position_id=position_id,
+        block_number=correction.block_number,
+    )
+
+    assert evt.balance_update_id not in position.balance_updates, f"Alreaddy written: {evt}"
+    position.balance_updates[evt.balance_update_id] = evt
+
+    ref = BalanceEventRef(
+        balance_event_id=evt.balance_update_id,
+        strategy_cycle_included_at=strategy_cycle_included_at,
+        cause=evt.cause,
+        position_type=position_type,
+        position_id=evt.position_id,
+        usd_value=evt.usd_value,
+    )
+
+    if isinstance(position, TradingPosition):
+        # Balance_updates toggle is enough
+        pass
+    elif isinstance(position, ReservePosition):
+        # No fancy method to correct reserves
+        position.quantity += correction.quantity
+    else:
+        raise NotImplementedError()
+
+    state.sync.accounting.balance_update_refs.append(ref)
+
+    state.sync.accounting.last_updated_at = datetime.datetime.utcnow()
+    state.sync.accounting.last_block_scanned = evt.block_number
+
+    return evt
 
 
 def correct_balances(
         state: State,
         sync_model: SyncModel,
         corrections: List[AccountingCorrection],
+        strategy_cycle_included_at: datetime.datetime | None,
         interactive=True,
-):
+) -> Iterable[BalanceUpdate]:
+    """Apply the accounting corrections on the state (internal ledger).
 
-    assets
+    - Change values of the underlying positions
 
+    - Create BalanceUpdate events and store them in the state
+
+    - Create BalanceUpdateRefs and store them in the state
+    """
+
+    if interactive:
+
+        for c in corrections:
+            print("Needs accounting correction:", c)
+
+        confirmation = input("Attempt to repair [y/n]").lower()
+        if confirmation != "y":
+            raise AccountingCorrectionAborted()
+
+    for correction in corrections:
+        yield apply_accounting_correction(state, correction, strategy_cycle_included_at)

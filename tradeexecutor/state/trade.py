@@ -47,6 +47,9 @@ class TradeType(enum.Enum):
     #: - This trade contains any reverse accounting variables needed to fix the position total
     repair = "repair"
 
+    #: Internal state balances are updated to match on-chain balances
+    accounting_correction = "accounting_correction"
+
 
 class TradeStatus(enum.Enum):
 
@@ -133,6 +136,8 @@ class TradeExecution:
     #: If the trade was executed by a take profit/stop loss trigger
     #: then this is the trigger timestamp (not wall clock time)
     #:
+    #: Not available if the trade was done outside the strategy execution (manual trades, accounting corrections).
+    #:
     #: See also
     #:
     #: - :py:attr:`started_at`
@@ -141,7 +146,7 @@ class TradeExecution:
     #:
     #: - :py:meth:`get_decision_lag`
     #:
-    opened_at: datetime.datetime
+    opened_at: datetime.datetime | None
 
     #: Positive for buy, negative for sell.
     #:
@@ -330,7 +335,6 @@ class TradeExecution:
     #:
     #: TradePricing instance can refer to more than one swap
     price_structure: Optional[TradePricing] = None
-    
 
     def __repr__(self):
         if self.is_buy():
@@ -533,8 +537,12 @@ class TradeExecution:
         """
         return self.repaired_trade_id is not None
 
-    def is_redemption(self) -> bool:
-        """This trade marks a redemption balance update on a position"""
+    def is_accounting_correction(self) -> bool:
+        """This trade is an accounting correction.
+
+        This is a virtual trade made to have the
+        """
+        self.balance_update_id is not None
 
     def get_input_asset(self) -> AssetIdentifier:
         """How we fund this trade."""
@@ -770,6 +778,11 @@ class TradeExecution:
         - Called by execution engine when we get a confirmation from the blockchain our blockchain txs where good
 
         - Called by repair to force trades to good state
+
+        :param force:
+            Do not check if we are in the correct previous state (broadcasted).
+
+            Used in the accounting corrections.
         """
         if not force:
             assert self.get_status() == TradeStatus.broadcasted, f"Cannot mark trade success if it is not broadcasted. Current status: {self.get_status()}"

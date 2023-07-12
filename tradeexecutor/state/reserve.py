@@ -8,14 +8,15 @@ from typing import Optional, Dict, List
 from dataclasses_json import dataclass_json
 
 from tradeexecutor.state.balance_update import BalanceUpdate
+from tradeexecutor.state.generic_position import GenericPosition
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.types import USDollarAmount
 from tradeexecutor.utils.accuracy import sum_decimal
 
 
 @dataclass_json
-@dataclass
-class ReservePosition:
+@dataclass(slots=True)
+class ReservePosition(GenericPosition):
     """Manage reserve currency of a portfolio.
 
     - One portfolio can have multiple reserve currencies,
@@ -42,14 +43,14 @@ class ReservePosition:
     #:
     #: Used to shortcut the backtest performance benchmark.
     #:
-    #: TODO: Remove optional in future versions.
+    #: TODO: Remove in future versions as SyncModel has been rewritten.
     initial_deposit: Optional[Decimal] = None
 
     #: What was the first deposit exchange rate.
     #:
     #: Used to shortcut the backtest performance benchmark.
     #:
-    #: TODO: Remove optional in future versions.
+    #: TODO: Remove in future versions as SyncModel has been rewritten.
     initial_deposit_reserve_token_price: Optional[USDollarAmount] = None
 
     #: BalanceUpdate.id -> BalanceUpdate mapping
@@ -105,4 +106,14 @@ class ReservePosition:
         self.reserve_token_price = exchange_rate
         self.last_pricing_at = datetime.datetime.utcnow()
         self.last_sync_at = datetime.datetime.utcnow()
+
+    def calculate_quantity_usd_value(self, quantity: Decimal) -> USDollarAmount:
+        """Return the quantity
+
+        Now hardwired all reserves are 1:1 USDC.
+
+        :return:
+            Dollar amount
+        """
+        return float(quantity)
 
