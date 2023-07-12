@@ -324,7 +324,6 @@ def test_enzyme_correct_accounting_errors(
 
     balance_updates = correct_accounts(
         state,
-        sync_model,
         corrections,
         strategy_cycle_included_at=None,
         interactive=False,
