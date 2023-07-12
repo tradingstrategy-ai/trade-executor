@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "trade-executor"
 version = "0.3"
-description = "Algorithmic trading backtesting and execution engine for decentralised finance"
+description = "Algorithmic trading backtesting and live trading engine for decentralised finance"
 authors = ["Mikko Ohtamaa <mikko@tradingstrategy.ai>"]
 homepage = "https://tradingstrategy.ai"
 repository = "https://github.com/tradingstrategy-ai/trade-executor"
