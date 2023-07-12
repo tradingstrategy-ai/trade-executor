@@ -643,7 +643,8 @@ def visualise_single_pair(
         candles=candles,
         pair_name=pair_name,
         labels=labels,
-        volume_axis_name=volume_axis_name
+        volume_axis_name=volume_axis_name,
+        pair_id=pair_id,
     )
 
 
@@ -821,11 +822,12 @@ def _get_figure_grid_with_indicators(
     pair_name: str | None, 
     labels: pd.Series,
     volume_axis_name: str = "Volume USD",
+    pair_id: int | None = None,
 ):
     """Gets figure grid with indicators overlayered already. Main price plot is not yet added"""
     title_text, axes_text, volume_text = _get_all_text(state.name, axes, title, pair_name, volume_axis_name)
 
-    plots = state.visualisation.plots.values()
+    plots = [plot for plot in state.visualisation.plots.values() if getattr(plot.pair, "internal_id", None) == pair_id]
     
     num_detached_indicators, subplot_names = _get_num_detached_and_names(plots, volume_bar_mode, volume_axis_name)
     
@@ -846,6 +848,7 @@ def _get_figure_grid_with_indicators(
         subplot_font_size=subplot_font_size,
     )
 
+
     # Draw EMAs etc.
     if technical_indicators:
         overlay_all_technical_indicators(
@@ -854,6 +857,7 @@ def _get_figure_grid_with_indicators(
             start_at,
             end_at,
             volume_bar_mode,
+            pair_id,
         )
         
     return fig
