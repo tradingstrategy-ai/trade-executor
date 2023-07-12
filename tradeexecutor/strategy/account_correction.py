@@ -9,6 +9,7 @@
 - Generate the accounting events to reflect these changes
 
 """
+import logging
 import datetime
 import enum
 from _decimal import Decimal
@@ -27,6 +28,9 @@ from tradeexecutor.state.sync import BalanceEventRef
 from tradeexecutor.state.types import USDollarAmount
 from tradeexecutor.strategy.asset import get_relevant_assets, map_onchain_asset_to_position
 from tradeexecutor.strategy.sync_model import SyncModel
+
+
+logger = logging.getLogger(__name__)
 
 
 #: The amount of token units that is considered "dust" or rounding error.
@@ -106,10 +110,14 @@ def calculate_account_corrections(
     assert isinstance(pair_universe, PandasPairUniverse)
     assert isinstance(state, State)
     assert isinstance(sync_model, EnzymeVaultSyncModel), "Only EnzymeVaultSyncModel tested for now"
-    assert len(reserve_assets) > 0, "No reserve assets defined. Did you run init for the strategy?"
+    assert len(state.portfolio.reserves) > 0, "No reserve positions. Did you run init for the strategy?"
+
+    logger.info("Scanning for account corrections")
 
     assets = get_relevant_assets(pair_universe, reserve_assets, state)
-    asset_balances = sync_model.fetch_onchain_balances(assets)
+    asset_balances = list(sync_model.fetch_onchain_balances(assets))
+
+    logger.info("Found %d on-chain tokens", len(asset_balances))
 
     for ab in asset_balances:
         position = map_onchain_asset_to_position(ab.asset, state)
@@ -128,6 +136,8 @@ def calculate_account_corrections(
         diff = actual_amount - expected_amount
 
         usd_value = position.calculate_quantity_usd_value(diff)
+
+        logger.info("Fix needed %s worth of %f USD", ab.asset, usd_value)
 
         if abs(actual_amount - expected_amount) > epsilon:
             yield AccountingCorrection(
@@ -159,6 +169,8 @@ def apply_accounting_correction(
 
     event_id = portfolio.next_balance_update_id
     portfolio.next_balance_update_id += 1
+
+    logger.info("Corrected %s", position)
 
     if isinstance(position, TradingPosition):
         position_type = BalanceUpdatePositionType.open_position
@@ -193,9 +205,6 @@ def apply_accounting_correction(
         notes=notes,
     )
 
-        # trade.
-        #
-
     assert evt.balance_update_id not in position.balance_updates, f"Alreaddy written: {evt}"
     position.balance_updates[evt.balance_update_id] = evt
 
@@ -211,16 +220,21 @@ def apply_accounting_correction(
     if isinstance(position, TradingPosition):
         # Balance_updates toggle is enough
         position.balance_updates[evt.balance_update_id] = evt
+
+        # TODO: Close position if the new balance is zero
+        assert position.get_quantity() > 0, "Position closing logic missing"
+
     elif isinstance(position, ReservePosition):
         # No fancy method to correct reserves
         position.quantity += correction.quantity
     else:
         raise NotImplementedError()
 
-    state.sync.accounting.balance_update_refs.append(ref)
-
-    state.sync.accounting.last_updated_at = datetime.datetime.utcnow()
-    state.sync.accounting.last_block_scanned = evt.block_number
+    # Bump our last updated date
+    accounting = state.sync.accounting
+    accounting.balance_update_refs.append(ref)
+    accounting.last_updated_at = datetime.datetime.utcnow()
+    accounting.last_block_scanned = evt.block_number
 
     return evt
 
@@ -238,12 +252,19 @@ def correct_accounts(
     - Create BalanceUpdate events and store them in the state
 
     - Create BalanceUpdateRefs and store them in the state
+
+    .. note::
+
+        You need to iterate the returend iterator to have any of the corrections applied.
+
+    :return:
+        Iterator of corrections.
     """
 
     if interactive:
 
         for c in corrections:
-            print("Needs accounting correction:", c)
+            print("Correction needed:", c)
 
         confirmation = input("Attempt to repair [y/n]").lower()
         if confirmation != "y":

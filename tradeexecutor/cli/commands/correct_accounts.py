@@ -9,6 +9,7 @@ from typing import Optional
 
 from eth_defi.hotwallet import HotWallet
 
+from tradeexecutor.strategy.account_correction import correct_accounts as _correct_accounts
 from .app import app
 from ..bootstrap import prepare_executor_id, create_web3_config, create_sync_model, create_state_store, create_client
 from ..log import setup_logging
@@ -66,6 +67,8 @@ def correct_accounts(
     This command will fix any accounting divergences between a vault and a strategy state.
     The strategy must not have any open positions to be reinitialised, because those open
     positions cannot carry over with the current event based tracking logic.
+
+    This command is interactive and you need to confirm any changes applied to the state.
 
     An old state file is automatically backed up.
     """
@@ -133,7 +136,7 @@ def correct_accounts(
     # https://stackoverflow.com/a/47528275/315168
     backup_file = None
     for i in range(1, 20):  # Try 20 different iterateive backup filenames
-        backup_file = state_file.with_suffix(f".reinit-backup-{i}.json")
+        backup_file = state_file.with_suffix(f".correct-accounts-backup-{i}.json")
         if os.path.exists(backup_file):
             continue
 
@@ -186,6 +189,19 @@ def correct_accounts(
         UniverseOptions()
     )
 
+    logger.info("Universe contains %d pairs", universe.universe.pairs.get_count())
+    logger.info("Reserve assets are: %s", universe.reserve_assets)
+
+    assert len(universe.reserve_assets) == 1, "Need exactly one reserve asset"
+
+    # Set initial reserves,
+    # in order to run the tests
+    # TODO: Have this / treasury sync as a separate CLI command later
+    if unit_testing:
+        if len(state.portfolio.reserves) == 0:
+            logger.info("Initialising reserves for the unit test: %s", universe.reserve_assets[0])
+            state.portfolio.initialise_reserves(universe.reserve_assets[0])
+
     corrections = calculate_account_corrections(
         universe.universe.pairs,
         universe.reserve_assets,
@@ -197,12 +213,14 @@ def correct_accounts(
     if len(corrections) == 0:
         logger.info("No account corrections found")
 
-    correct_accounts(
+    balance_updates = _correct_accounts(
         state,
         corrections,
         strategy_cycle_included_at=None,
         interactive=not unit_testing,
     )
+    balance_updates = list(balance_updates)
+    logger.info("Applied %d balance updates", len(balance_updates))
 
     store.sync(state)
     web3config.close()

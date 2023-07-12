@@ -392,15 +392,19 @@ class EnzymeVaultSyncModel(SyncModel):
         deployment.chain_id = ChainId(web3.eth.chain_id)
         deployment.initialised_at = datetime.datetime.utcnow()
 
-    def fetch_onchain_balances(self, assets: List[AssetIdentifier]) -> Iterable[OnChainBalance]:
+    def fetch_onchain_balances(self, assets: List[AssetIdentifier], filter_zero=True) -> Iterable[OnChainBalance]:
         """Read the on-chain asset details.
 
         - Mark the block we are reading at the start
+
+        :param filter_zero:
+            Do not return zero balances
         """
         return fetch_address_balances(
             self.web3,
             self.get_vault_address(),
             assets,
+            filter_zero=filter_zero,
         )
 
     def sync_treasury(self,
