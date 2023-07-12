@@ -76,7 +76,7 @@ def map_onchain_asset_to_position(
       then panic
     """
 
-    for p in state.portfolio.get_all_positions():
+    for p in state.portfolio.open_positions.values():
         if asset == p.pair.base:
             return p
 
