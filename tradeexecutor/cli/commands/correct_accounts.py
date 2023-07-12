@@ -147,7 +147,7 @@ def correct_accounts(
 
     logger.info("Old state backed up as %s", backup_file)
 
-    state = store.create(name)
+    state = store.load()
 
     mod: StrategyModuleInformation = read_strategy_module(strategy_file)
 
