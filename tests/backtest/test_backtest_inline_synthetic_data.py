@@ -35,6 +35,9 @@ from tradeexecutor.strategy.strategy_module import pregenerated_create_trading_u
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.strategy_type import StrategyType
 from tradeexecutor.strategy.default_routing_options import TradeRouting
+from tradeexecutor.visual.equity_curve import calculate_equity_curve, calculate_returns
+from tradeexecutor.analysis.advanced_metrics import visualise_advanced_metrics, AdvancedMetricsMode
+
 
 
 # relative tolerance for floating point tests
@@ -353,42 +356,83 @@ def test_bars_display(backtest_result: tuple[State, TradingStrategyUniverse, dic
     assert df.loc["Average duration of losing positions"][0] == '8 bars'
 
 def test_advanced_summary_statistics(
+    backtest_result: tuple[State, TradingStrategyUniverse, dict],
     summary: TradeSummary
 ):
-    full_stats = summary.get_full_stats()
+    
 
-    adv_stats = full_stats.to_dict()["Strategy"]
+    state, universe, debug_dump = backtest_result
+
+    equity = calculate_equity_curve(state)
+    returns = calculate_returns(equity)
+    metrics = visualise_advanced_metrics(returns, mode=AdvancedMetricsMode.full)
+    adv_stats = metrics.to_dict()["Strategy"]
 
     assert adv_stats['Start Period'] == '2021-06-01'
     assert adv_stats['End Period'] == '2021-12-30'
-    assert adv_stats['Risk-Free Rate'] == pytest.approx(0, rel=APPROX_REL)
-    assert adv_stats['Time in Market'] == pytest.approx(0.7, rel=APPROX_REL)
-    assert adv_stats['Cumulative Return'] == pytest.approx(0, rel=APPROX_REL)
-    assert adv_stats['CAGR﹪'] == pytest.approx(-0.01, rel=APPROX_REL)
-    assert adv_stats['Sharpe'] == pytest.approx(-0.14, rel=APPROX_REL)
-    assert adv_stats['Prob. Sharpe Ratio'] == pytest.approx(0.45, rel=APPROX_REL)
-    assert adv_stats['Smart Sharpe'] == pytest.approx(-0.13, rel=APPROX_REL)
-    assert adv_stats['Sortino'] == pytest.approx(-0.2, rel=APPROX_REL)
-    assert adv_stats['Smart Sortino'] == pytest.approx(-0.19, rel=APPROX_REL)
-    assert adv_stats['Sortino/√2'] == pytest.approx(-0.14, rel=APPROX_REL)
-    assert adv_stats['Smart Sortino/√2'] == pytest.approx(-0.13, rel=APPROX_REL)
-    assert adv_stats['Omega'] == pytest.approx(0.98, rel=APPROX_REL)
-    assert adv_stats['Max Drawdown'] == pytest.approx(-0.03, rel=APPROX_REL)
-    assert adv_stats['Longest DD Days'] == 76
-    assert adv_stats['Volatility (ann.)'] == pytest.approx(0.04, rel=APPROX_REL)
-    assert adv_stats['Calmar'] == pytest.approx(-0.32, rel=APPROX_REL)
-    assert adv_stats['Skew'] == pytest.approx(0.22, rel=APPROX_REL)
-    assert adv_stats['Kurtosis'] == pytest.approx(0.08, rel=APPROX_REL)
-    assert adv_stats['Expected Daily'] == pytest.approx(0, rel=APPROX_REL)
-    assert adv_stats['Expected Monthly'] == pytest.approx(0, rel=APPROX_REL)
-    assert adv_stats['Expected Yearly'] == pytest.approx(0, rel=APPROX_REL)
-    assert adv_stats['Kelly Criterion'] == pytest.approx(-0.01, rel=APPROX_REL)
-    assert adv_stats['Risk of Ruin'] == pytest.approx(0, rel=APPROX_REL)
-    assert adv_stats['Daily Value-at-Risk'] == pytest.approx(0, rel=APPROX_REL)
-    assert adv_stats['Expected Shortfall (cVaR)'] == pytest.approx(0, rel=APPROX_REL)
-    assert adv_stats['Max Consecutive Wins'] == 5.0
-    assert adv_stats['Max Consecutive Losses'] == 7.0
-    assert adv_stats['Gain/Pain Ratio'] == pytest.approx(-0.02, rel=APPROX_REL)
+    assert adv_stats['Risk-Free Rate'] == '0.0%'
+    assert adv_stats['Time in Market'] == '70.0%'
+    assert adv_stats['Cumulative Return'] == '-0.47%'
+    assert adv_stats['CAGR﹪'] == '-0.81%'
+    assert adv_stats['Sharpe'] == '-0.16'
+    assert adv_stats['Prob. Sharpe Ratio'] == '45.02%'
+    assert adv_stats['Smart Sharpe'] == '-0.16'
+    assert adv_stats['Sortino'] == '-0.24'
+    assert adv_stats['Smart Sortino'] == '-0.23'
+    assert adv_stats['Sortino/√2'] == '-0.17'
+    assert adv_stats['Smart Sortino/√2'] == '-0.16'
+    assert adv_stats['Omega'] == '0.98'
+    assert adv_stats['Max Drawdown'] == '-2.52%'
+    assert adv_stats['Longest DD Days'] == '76'
+    assert adv_stats['Volatility (ann.)'] == '4.35%'
+    assert adv_stats['Calmar'] == '-0.32'
+    assert adv_stats['Skew'] == '0.22'
+    assert adv_stats['Kurtosis'] == '0.08'
+    assert adv_stats['Expected Daily'] == '-0.0%'
+    assert adv_stats['Expected Monthly'] == '-0.07%'
+    assert adv_stats['Expected Yearly'] == '-0.47%'
+    assert adv_stats['Kelly Criterion'] == '-1.13%'
+    assert adv_stats['Risk of Ruin'] == '0.0%'
+    assert adv_stats['Daily Value-at-Risk'] == '-0.38%'
+    assert adv_stats['Expected Shortfall (cVaR)'] == '-0.38%'
+    assert adv_stats['Max Consecutive Wins'] == '5'
+    assert adv_stats['Max Consecutive Losses'] == '7'
+    assert adv_stats['Gain/Pain Ratio'] == '-0.02'
+    assert adv_stats['Gain/Pain (1M)'] == '-0.12'
+    assert adv_stats['Payoff Ratio'] == '1.2'
+    assert adv_stats['Profit Factor'] == '0.98'
+    assert adv_stats['Common Sense Ratio'] == '1.05'
+    assert adv_stats['CPC Index'] == '0.52'
+    assert adv_stats['Tail Ratio'] == '1.08'
+    assert adv_stats['Outlier Win Ratio'] == '4.23'
+    assert adv_stats['Outlier Loss Ratio'] == '2.23'
+    assert adv_stats['MTD'] == '-1.23%'
+    assert adv_stats['3M'] == '-0.59%'
+    assert adv_stats['6M'] == '-0.47%'
+    assert adv_stats['YTD'] == '-0.47%'
+    assert adv_stats['1Y'] == '-0.47%'
+    assert adv_stats['3Y (ann.)'] == '-0.81%'
+    assert adv_stats['5Y (ann.)'] == '-0.81%'
+    assert adv_stats['10Y (ann.)'] == '-0.81%'
+    assert adv_stats['All-time (ann.)'] == '-0.81%'
+    assert adv_stats['Best Day'] == '0.55%'
+    assert adv_stats['Worst Day'] == '-0.57%'
+    assert adv_stats['Best Month'] == '1.11%'
+    assert adv_stats['Worst Month'] == '-1.7%'
+    assert adv_stats['Best Year'] == '-0.47%'
+    assert adv_stats['Worst Year'] == '-0.47%'
+    assert adv_stats['Avg. Drawdown'] == '-1.11%'
+    assert adv_stats['Avg. Drawdown Days'] == '25'
+    assert adv_stats['Recovery Factor'] == '-0.19'
+    assert adv_stats['Ulcer Index'] == '0.01'
+    assert adv_stats['Serenity Index'] == '-0.04'
+    assert adv_stats['Avg. Up Month'] == '1.06%'
+    assert adv_stats['Avg. Down Month'] == '-1.2%'
+    assert adv_stats['Win Days'] == '44.9%'
+    assert adv_stats['Win Month'] == '50.0%'
+    assert adv_stats['Win Quarter'] == '50.0%'
+    assert adv_stats['Win Year'] == '0.0%'
+
 
 
 
