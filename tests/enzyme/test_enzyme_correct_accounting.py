@@ -20,6 +20,7 @@ from tradingstrategy.universe import Universe
 
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_live_pricing import UniswapV2LivePricing
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2SimpleRoutingModel
+from tradeexecutor.state.balance_update import BalanceUpdateCause, BalanceUpdatePositionType
 from tradeexecutor.state.blockhain_transaction import BlockchainTransactionType
 from tradingstrategy.pair import PandasPairUniverse
 from web3 import Web3
@@ -243,6 +244,9 @@ def test_enzyme_correct_accounting_errors(
     sync_model.sync_treasury(datetime.datetime.utcnow(), state)
     assert state.portfolio.get_total_equity() == pytest.approx(500)
 
+    reserve_position: ReservePosition = state.portfolio.get_default_reserve_position()
+    assert reserve_position.get_quantity() == pytest.approx(Decimal(500))
+
     tx_builder = EnzymeTransactionBuilder(hot_wallet, vault)
 
     # Check we have balance
@@ -271,7 +275,7 @@ def test_enzyme_correct_accounting_errors(
     assert weth.functions.balanceOf(vault.vault.address).call() > 0
 
     #
-    # Mess up accounting by not correctly snncing it
+    # Mess up accounting by not correctly syncing it
     #
 
     # 1. Add 500 USDC in reserves
@@ -333,21 +337,49 @@ def test_enzyme_correct_accounting_errors(
     assert len(balance_updates) == 2
 
     # See the balance updates look good
-    reserve_update = balance_updates[1]
+    reserve_update = balance_updates[0]
+    assert reserve_update.usd_value == pytest.approx(400)
+    assert reserve_update.position_type == BalanceUpdatePositionType.reserve
     assert reserve_update.block_number > 0
-    assert reserve_update.quantity == 0
+    assert reserve_update.quantity == pytest.approx(Decimal('400.0000009999999764568111615'))
+    assert reserve_update.strategy_cycle_included_at is None
+    assert reserve_update.cause == BalanceUpdateCause.correction
 
-    position_update= balance_updates[2]
+    position_update = balance_updates[1]
+    assert position_update.position_type == BalanceUpdatePositionType.open_position
+    assert position_update.usd_value == pytest.approx(-160.881444332999)
+    assert position_update.block_number > 0
+    assert position_update.quantity == Decimal('-0.100000000000000000')
+    assert position_update.strategy_cycle_included_at is None
+    assert position_update.cause == BalanceUpdateCause.correction
 
     # Check we updated acconting correction metadata
     assert state.sync.accounting.last_updated_at is not None
     assert state.sync.accounting.last_block_scanned > 0
     assert len(state.sync.accounting.balance_update_refs) == 2
 
-    # Check that actual position amounts are correct
+    ref = state.sync.accounting.balance_update_refs[0]
+    assert ref.balance_event_id == 2
+    assert ref.strategy_cycle_included_at is None
+    assert ref.cause == BalanceUpdateCause.correction
+    assert ref.position_type == BalanceUpdatePositionType.reserve
+    assert ref.usd_value == pytest.approx(400)
+
+    ref = state.sync.accounting.balance_update_refs[1]
+    assert ref.balance_event_id == 3
+    assert ref.strategy_cycle_included_at is None
+    assert ref.cause == BalanceUpdateCause.correction
+    assert ref.position_type == BalanceUpdatePositionType.open_position
+    assert ref.usd_value == pytest.approx(-160.881444332999)
+
+    # Check that actual position amounts are now correct
+    # and match actual amounts
     reserve_position: ReservePosition = state.portfolio.get_default_reserve_position()
-    assert reserve_position.get_quantity()  == pytest.approx(Decimal('400.000001'))
+    assert len(reserve_position.balance_updates) == 2
+    assert reserve_position.get_quantity() == pytest.approx(Decimal('400.000001'))
+
     position: TradingPosition = state.portfolio.open_positions[1]
+    assert len(position.balance_updates) == 1
     assert position.get_quantity() == pytest.approx(Decimal('0.2107878606357895711'))
 
     #
@@ -365,7 +397,5 @@ def test_enzyme_correct_accounting_errors(
         state.portfolio.get_reserve_assets(),
         state,
         sync_model))
-
-    import ipdb ; ipdb.set_trace()
 
     assert len(further_corrections) == 0

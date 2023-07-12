@@ -369,21 +369,25 @@ class TradingPosition(GenericPosition):
 
         - Because decimal summ might
 
-        - Accounts for any balance update events (redemptions, interest)
+        - Accounts for any balance update events (redemptions, interest, accounting corrections)
 
         :return:
             Number of asset units held by this position.
 
             Rounded down to zero if the sum of
         """
-        s = sum_decimal([t.get_position_quantity() for t in self.trades.values() if t.is_success()])
+        trades = sum_decimal([t.get_position_quantity() for t in self.trades.values() if t.is_success()])
+        direct_balance_updates = self.get_balance_update_quantity()
+        s = trades + direct_balance_updates
 
+        # TODO:
+        # We should not have math that ends up with a trading position with dust left,
+        # tough this might not always hold the case
         if s != Decimal(0):
             assert s >= QUANTITY_EPSILON, "Safety check in floating point math triggered"
 
-        s += self.get_balance_update_quantity()
-
-        return Decimal(s)  # Make zero to decimal
+        # Always convert zero to decimal
+        return Decimal(s)
 
     def get_live_quantity(self) -> Decimal:
         """Get all tied up token quantity.

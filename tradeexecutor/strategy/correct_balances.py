@@ -155,6 +155,7 @@ def apply_accounting_correction(
     portfolio = state.portfolio
     asset = correction.asset
     position = correction.position
+    block_number = correction.block_number
 
     event_id = portfolio.next_balance_update_id
     portfolio.next_balance_update_id += 1
@@ -167,6 +168,11 @@ def apply_accounting_correction(
         position_id = None
     else:
         raise NotImplementedError()
+
+    notes = f"Accounting correction based on the actual on-chain balances.\n" \
+        f"The internal ledger balance was  {correction.expected_amount} {asset.token_symbol}\n" \
+        f"On-chain balance was {correction.actual_amount} {asset.token_symbol} at block {block_number or 0:,}\n" \
+        f"Balance was updated {correction.quantity} {asset.token_symbol}\n"
 
     evt = BalanceUpdate(
         balance_update_id=event_id,
@@ -184,7 +190,11 @@ def apply_accounting_correction(
         log_index=None,
         position_id=position_id,
         block_number=correction.block_number,
+        notes=notes,
     )
+
+        # trade.
+        #
 
     assert evt.balance_update_id not in position.balance_updates, f"Alreaddy written: {evt}"
     position.balance_updates[evt.balance_update_id] = evt
@@ -200,7 +210,7 @@ def apply_accounting_correction(
 
     if isinstance(position, TradingPosition):
         # Balance_updates toggle is enough
-        pass
+        position.balance_updates[evt.balance_update_id] = evt
     elif isinstance(position, ReservePosition):
         # No fancy method to correct reserves
         position.quantity += correction.quantity
