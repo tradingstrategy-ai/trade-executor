@@ -78,7 +78,7 @@ class TradeSummary:
 
     initial_cash: USDollarAmount
     extra_return: USDollarAmount
-    duration: datetime.timedelta = field(metadata=config(
+    duration: Optional[datetime.timedelta] = field(metadata=config(
         encoder=json_encode_timedelta,
         decoder=json_decode_timedelta,
     ))

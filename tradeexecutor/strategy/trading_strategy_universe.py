@@ -134,6 +134,15 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         else:
             return f"<TradingStrategyUniverse for {self.universe.pairs.get_count()} pairs>"
 
+    def is_open_ended_universe(self) -> bool:
+        """Can new trading pairs to be added to this universe over time.
+
+        :return:
+            True if the trading universe may contain hundreds or thousands of trading pairs.
+        """
+        # TODO: In the future strategy modules, make a real flag for this and now we just use this hack
+        return self.universe.pairs.get_count() > 20
+
     def clone(self) -> "TradingStrategyUniverse":
         """Create a copy of this universe.
 

@@ -145,6 +145,29 @@ class Treasury:
 
 @dataclass_json
 @dataclass
+class Accounting:
+    """State of accounting corrections.
+
+    """
+
+    #: Wall clock time. timestamp for which we run the last sync
+    #:
+    #: Wall clock time, at the beginning on the sync cycle.
+    last_updated_at: Optional[datetime.datetime] = None
+
+    #: What is the last processed block for deposit
+    #:
+    #: 0 = not scanned yet
+    last_block_scanned: Optional[int] = None
+
+    #: List of refernces to all balance update events.
+    #:
+    #: The actual balance update content is stored on the position itself.
+    balance_update_refs: List[BalanceEventRef] = field(default_factory=list)
+
+
+@dataclass_json
+@dataclass
 class Sync:
     """On-chain sync state.
 
@@ -157,6 +180,8 @@ class Sync:
     deployment: Deployment = field(default_factory=Deployment)
 
     treasury: Treasury = field(default_factory=Treasury)
+
+    accounting: Accounting = field(default_factory=Accounting)
 
     def is_initialised(self) -> bool:
         """Have we scanned the initial deployment event for the sync model."""
