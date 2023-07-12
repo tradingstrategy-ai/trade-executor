@@ -17,14 +17,15 @@ from ...strategy.run_state import RunState
 from ...strategy.trading_strategy_universe import TradingStrategyUniverseModel
 from ...strategy.universe_model import UniverseOptions
 from ...utils.timer import timed_task
+from . import shared_options
 
 
 @app.command()
 def check_universe(
     id: str = typer.Option(None, envvar="EXECUTOR_ID", help="Executor id used when programmatically referring to this instance. If not given, take the base of --strategy-file."),
     strategy_file: Path = typer.Option(..., envvar="STRATEGY_FILE"),
-    trading_strategy_api_key: str = typer.Option(None, envvar="TRADING_STRATEGY_API_KEY", help="Trading Strategy API key"),
-    cache_path: Optional[Path] = typer.Option(None, envvar="CACHE_PATH", help="Where to store downloaded datasets"),
+    trading_strategy_api_key: str = shared_options.trading_strategy_api_key,
+    cache_path: Optional[Path] = shared_options.cache_path,
     max_data_delay_minutes: int = typer.Option(24*60, envvar="MAX_DATA_DELAY_MINUTES", help="How fresh the OHCLV data for our strategy must be before failing"),
     log_level: str = typer.Option(None, envvar="LOG_LEVEL", help="The Python default logging level. The defaults are 'info' is live execution, 'warning' if backtesting. Set 'disabled' in testing."),
 ):

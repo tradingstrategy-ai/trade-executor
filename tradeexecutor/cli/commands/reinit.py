@@ -42,9 +42,8 @@ def reinit(
 
     Deletes all the state history of a state and starts tracking the strategy again.
 
-    This command will fix any accounting divergences between a vault and a strategy state.
-    The strategy must not have any open positions to be reinitialised, because those open
-    positions cannot carry over with the current event based tracking logic.
+    This command will start the internal ledger accounting from the scratch.
+    All strategy live execution history is lost.
     """
 
     global logger

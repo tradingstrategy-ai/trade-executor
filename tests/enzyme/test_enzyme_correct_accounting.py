@@ -9,19 +9,16 @@ from eth_account import Account
 from hexbytes import HexBytes
 
 from eth_defi.enzyme.erc20 import prepare_transfer
-from eth_defi.enzyme.integration_manager import IntegrationManagerActionId
 from eth_defi.enzyme.vault import Vault
 from eth_defi.hotwallet import HotWallet
 from eth_defi.middleware import construct_sign_and_send_raw_middleware_anvil
 from eth_defi.trace import assert_transaction_success_with_explanation
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment
 from eth_typing import HexAddress
-from tradingstrategy.universe import Universe
 
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_live_pricing import UniswapV2LivePricing
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2SimpleRoutingModel
 from tradeexecutor.state.balance_update import BalanceUpdateCause, BalanceUpdatePositionType
-from tradeexecutor.state.blockhain_transaction import BlockchainTransactionType
 from tradingstrategy.pair import PandasPairUniverse
 from web3 import Web3
 from web3.contract import Contract
@@ -36,8 +33,7 @@ from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.asset import get_relevant_assets
-from tradeexecutor.strategy.correct_balances import calculate_account_corrections, AccountingCorrectionType, correct_balances
-from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
+from tradeexecutor.strategy.account_correction import calculate_account_corrections, AccountingCorrectionType, correct_accounts
 from tradeexecutor.testing.ethereumtrader_uniswap_v2 import UniswapV2TestTrader
 
 
@@ -326,7 +322,7 @@ def test_enzyme_correct_accounting_errors(
     # Correct state (internal ledger)
     #
 
-    balance_updates = correct_balances(
+    balance_updates = correct_accounts(
         state,
         sync_model,
         corrections,

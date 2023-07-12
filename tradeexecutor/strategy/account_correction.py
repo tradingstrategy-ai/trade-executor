@@ -106,7 +106,7 @@ def calculate_account_corrections(
     assert isinstance(pair_universe, PandasPairUniverse)
     assert isinstance(state, State)
     assert isinstance(sync_model, EnzymeVaultSyncModel), "Only EnzymeVaultSyncModel tested for now"
-    assert len(reserve_assets) > 0, "No reserve assets defined"
+    assert len(reserve_assets) > 0, "No reserve assets defined. Did you run init for the strategy?"
 
     assets = get_relevant_assets(pair_universe, reserve_assets, state)
     asset_balances = sync_model.fetch_onchain_balances(assets)
@@ -225,9 +225,8 @@ def apply_accounting_correction(
     return evt
 
 
-def correct_balances(
+def correct_accounts(
         state: State,
-        sync_model: SyncModel,
         corrections: List[AccountingCorrection],
         strategy_cycle_included_at: datetime.datetime | None,
         interactive=True,

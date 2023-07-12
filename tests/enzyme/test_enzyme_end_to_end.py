@@ -398,3 +398,40 @@ def test_enzyme_live_trading_reinit(
         assert treasury.last_updated_at
         assert len(treasury.balance_update_refs) == 1
         assert len(reserve_position.balance_updates) == 1
+
+
+def test_enzyme_correct_accounts(
+    environment: dict,
+    state_file: Path,
+    vault,
+    deployer,
+    usdc,
+):
+    """Run the correct accounts command.
+
+    There should be nothing to correct.
+    """
+
+    if os.path.exists("/tmp/test_enzyme_end_to_end.reinit-backup-1.json"):
+        os.remove("/tmp/test_enzyme_end_to_end.reinit-backup-1.json")
+
+    result = run_init(environment)
+    assert result.exit_code == 0
+
+    cli = get_command(app)
+
+    # Deposit some money in the vault which should be picked up by correct accounts
+    usdc.functions.approve(vault.comptroller.address, 500 * 10**6).transact({"from": deployer})
+    vault.comptroller.functions.buyShares(500 * 10**6, 1).transact({"from": deployer})
+
+    with patch.dict(os.environ, environment, clear=True):
+        with pytest.raises(SystemExit) as e:
+            cli.main(args=["correct-accounts"])
+        assert e.value.code == 0
+
+    # See that the reinitialised state looks correct
+    with state_file.open("rt") as inp:
+        state: State = State.from_json(inp.read())
+        reserve_position = state.portfolio.get_default_reserve_position()
+        assert reserve_position.quantity == 500
+        import ipdb ; ipdb.set_trace()
