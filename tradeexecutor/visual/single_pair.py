@@ -144,7 +144,10 @@ def export_trades_as_dataframe(
 def visualise_trades(
         fig: go.Figure,
         candles: pd.DataFrame,
-        trades_df: pd.DataFrame, ):
+        trades_df: pd.DataFrame,
+        candlestick_row: int | None = None, 
+        column: int | None = None,
+    ):
     """Plot individual trades over the candlestick chart."""
 
     # If we have used stop loss, do different categories
@@ -175,6 +178,8 @@ def visualise_trades(
             hoverinfo="text",
         ),
         secondary_y=False,
+        row=candlestick_row,
+        col=column,
     )
 
     # Sells
@@ -190,6 +195,8 @@ def visualise_trades(
             hoverinfo="text",
         ),
         secondary_y=False,
+        row=candlestick_row,
+        col=column,
     )
 
     if stop_loss_df is not None:
@@ -204,6 +211,8 @@ def visualise_trades(
                 hoverinfo="text",
             ),
             secondary_y=False,
+            row=candlestick_row,
+            col=column,
         )
 
     if take_profit_df is not None:
@@ -218,6 +227,8 @@ def visualise_trades(
                 hoverinfo="text",
             ),
             secondary_y=False,
+            row=candlestick_row,
+            col=column,
         )
 
     return fig
@@ -575,26 +586,7 @@ def visualise_single_pair(
         # Raw dataframe
         candles = candle_universe
 
-    # Get all positions for the trading pair we want to visualise
-    if pair_id:
-        positions = _get_all_positions(state, pair_id)
-    else:
-        positions = []
-
-    if len(positions) > 0:
-        first_trade = positions[0].get_first_trade()
-    else:
-        first_trade = None
-
-    if first_trade:
-        pair_name = _get_pair_name_from_first_trade(first_trade)
-        pair = first_trade.pair
-        base_token = pair.base.token_symbol
-        quote_token = pair.quote.token_symbol
-    else:
-        pair_name = None
-        base_token = None
-        quote_token = None
+    pair_name, base_token, quote_token = _get_pair_base_quote_names(state, pair_id)
 
     if not start_at:
         # No trades made, use the first candle timestamp
@@ -627,7 +619,7 @@ def visualise_single_pair(
         candle_decimals=candle_decimals
     )
 
-    fig = _get_figure_grid_with_indicators(
+    fig = _get_grid_with_candles_volume_indicators(
         state=state, 
         start_at=start_at, 
         end_at=end_at, 
@@ -780,7 +772,7 @@ def visualise_single_pair_positions_with_duration_and_slippage(
     # hide volume bar
     volume_bar_mode = VolumeBarMode.hidden
 
-    fig = _get_figure_grid_with_indicators(
+    fig = _get_grid_with_candles_volume_indicators(
         state=state, 
         start_at=start_at, 
         end_at=end_at, 
@@ -804,7 +796,7 @@ def visualise_single_pair_positions_with_duration_and_slippage(
     return fig
 
 
-def _get_figure_grid_with_indicators(
+def _get_grid_with_candles_volume_indicators(
     *,
     state: State, 
     start_at: pd.Timestamp | None, 
@@ -824,12 +816,13 @@ def _get_figure_grid_with_indicators(
     volume_axis_name: str = "Volume USD",
     pair_id: int | None = None,
 ):
-    """Gets figure grid with candles and indicators overlayed."""
+    """Gets figure grid with candles, volume, and indicators overlayed."""
+    
     title_text, axes_text, volume_text = _get_all_text(state.name, axes, title, pair_name, volume_axis_name)
 
     plots = [plot for plot in state.visualisation.plots.values() if getattr(plot.pair, "internal_id", None) == pair_id]
     
-    num_detached_indicators, subplot_names = _get_num_detached_and_names(plots, volume_bar_mode, volume_axis_name)
+    num_detached_indicators, subplot_names = _get_num_detached_and_names(plots, volume_bar_mode, volume_text)
     
     # visualise candles and volume and create empty grid space for technical indicators
     fig = visualise_ohlcv(
@@ -993,3 +986,29 @@ def _get_axes_and_volume_text(axes: bool, pair_name: str | None, volume_axis_nam
 
 def _get_pair_name_from_first_trade(first_trade: TradeExecution):
     return f"{first_trade.pair.base.token_symbol} - {first_trade.pair.quote.token_symbol}"
+
+
+def _get_pair_base_quote_names(state: State, pair_id: int | None):
+    """Get all positions for the trading pair we want to visualise"""
+    
+    if pair_id:
+        positions = _get_all_positions(state, pair_id)
+    else:
+        positions = []
+
+    if len(positions) > 0:
+        first_trade = positions[0].get_first_trade()
+    else:
+        first_trade = None
+
+    if first_trade:
+        pair_name = _get_pair_name_from_first_trade(first_trade)
+        pair = first_trade.pair
+        base_token = pair.base.token_symbol
+        quote_token = pair.quote.token_symbol
+    else:
+        pair_name = None
+        base_token = None
+        quote_token = None
+
+    return pair_name, base_token, quote_token
