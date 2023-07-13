@@ -40,7 +40,7 @@ def render_plotly_figure_as_image_file(
     return data
 
 
-def open_plotly_figure_in_browser(figure: go.Figure) -> None:
+def open_plotly_figure_in_browser(figure: go.Figure, height:int = 512, width: int = 512) -> None:
     """Open Plotly figure in a browser. Useful for debugging.
 
     See https://stackoverflow.com/a/74619515/315168
@@ -48,7 +48,7 @@ def open_plotly_figure_in_browser(figure: go.Figure) -> None:
     :param figure:
         Plotly figure
     """
-    png_data = render_plotly_figure_as_image_file(figure)
+    png_data = render_plotly_figure_as_image_file(figure, height=height, width=width)
     path = Path("/tmp/test-image.png")
     with open(path, "wb") as out:
         out.write(png_data)
