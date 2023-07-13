@@ -767,7 +767,7 @@ class TradingPosition(GenericPosition):
             return "Could not extract freeze reason"
 
         t: TradeExecution
-        for t in reversed(self.trades):
+        for t in reversed(self.trades.values()):
             reason = t.get_revert_reason()
             if reason:
                 return reason

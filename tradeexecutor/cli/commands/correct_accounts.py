@@ -137,7 +137,7 @@ def correct_accounts(
     # Make a backup
     # https://stackoverflow.com/a/47528275/315168
     backup_file = None
-    for i in range(1, 20):  # Try 20 different iterateive backup filenames
+    for i in range(1, 99):  # Try 99 different iterateive backup filenames
         backup_file = state_file.with_suffix(f".correct-accounts-backup-{i}.json")
         if os.path.exists(backup_file):
             continue

@@ -13,8 +13,9 @@ def clean_revert_reason_message(msg: str | None) -> str:
         Raw revert reason message from JSON-RPC API
 
     :return:
-        Revert reason cleaned up from whatever binary Enzyme inserts there
+        Revert reason cleaned up from whatever binary Enzyme inserts there.
 
+        If revert reason is `None` return empty string.
     """
 
     if not msg:
