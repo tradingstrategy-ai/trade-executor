@@ -1,21 +1,20 @@
-"""Correct accounting errors in the internal state.
+"""show-positions command.
 
 """
 import datetime
-import os
-import shutil
+import sys
 from pathlib import Path
 from typing import Optional
 
 from eth_defi.hotwallet import HotWallet
+from tabulate import tabulate
 
-from tradeexecutor.strategy.account_correction import correct_accounts as _correct_accounts
+from tradeexecutor.strategy.account_correction import check_accounts as _check_accounts
 from .app import app
 from ..bootstrap import prepare_executor_id, create_web3_config, create_sync_model, create_state_store, create_client
 from ..log import setup_logging
 from ...ethereum.enzyme.vault import EnzymeVaultSyncModel
-from ...strategy.bootstrap import import_strategy_file, make_factory_from_strategy_mod
-from ...strategy.account_correction import calculate_account_corrections
+from ...strategy.bootstrap import make_factory_from_strategy_mod
 from ...strategy.description import StrategyExecutionDescription
 from ...strategy.execution_context import ExecutionContext, ExecutionMode
 from ...strategy.execution_model import AssetManagementMode
@@ -27,9 +26,8 @@ from ...strategy.universe_model import UniverseOptions
 
 
 @app.command()
-def correct_accounts(
+def check_accounts(
     id: str = shared_options.id,
-    name: str = shared_options.name,
 
     strategy_file: Path = shared_options.strategy_file,
     state_file: Optional[Path] = shared_options.state_file,
@@ -57,21 +55,9 @@ def correct_accounts(
     test_evm_uniswap_v2_init_code_hash: Optional[str] = shared_options.test_evm_uniswap_v2_init_code_hash,
     unit_testing: bool = shared_options.unit_testing,
 ):
-    """Correct accounting errors in the internal ledger of the trade executor.
+    """Check that state internal ledger matches on chain balances.
 
-    Trade executor tracks all non-controlled flow of assets with events.
-    This includes deposits and redemptions and interest events.
-    Under misbehavior, tracked asset amounts in the internal ledger
-    might drift off from the actual on-chain balances. Such
-    misbehavior may be caused e.g. misbehaving blockchain nodes.
-
-    This command will fix any accounting divergences between a vault and a strategy state.
-    The strategy must not have any open positions to be reinitialised, because those open
-    positions cannot carry over with the current event based tracking logic.
-
-    This command is interactive and you need to confirm any changes applied to the state.
-
-    An old state file is automatically backed up.
+    - Print out differences between actual on-chain balances and expected state balances
     """
 
     global logger
@@ -134,21 +120,6 @@ def correct_accounts(
     store = create_state_store(state_file)
     assert not store.is_pristine(), f"State does not exists yet: {state_file}"
 
-    # Make a backup
-    # https://stackoverflow.com/a/47528275/315168
-    backup_file = None
-    for i in range(1, 99):  # Try 99 different iterateive backup filenames
-        backup_file = state_file.with_suffix(f".correct-accounts-backup-{i}.json")
-        if os.path.exists(backup_file):
-            continue
-
-        shutil.copy(state_file, backup_file)
-        break
-    else:
-        raise RuntimeError(f"Could not create backup {backup_file}")
-
-    logger.info("Old state backed up as %s", backup_file)
-
     state = store.load()
 
     mod: StrategyModuleInformation = read_strategy_module(strategy_file)
@@ -183,7 +154,6 @@ def correct_accounts(
         timed_task_context_manager=execution_context.timed_task_context_manager,
     )
 
-    #
     universe_model: TradingStrategyUniverseModel = run_description.universe_model
     universe = universe_model.construct_universe(
         datetime.datetime.utcnow(),
@@ -204,30 +174,18 @@ def correct_accounts(
             logger.info("Initialising reserves for the unit test: %s", universe.reserve_assets[0])
             state.portfolio.initialise_reserves(universe.reserve_assets[0])
 
-    corrections = calculate_account_corrections(
+    df = _check_accounts(
         universe.universe.pairs,
         universe.reserve_assets,
         state,
         sync_model,
     )
-    corrections = list(corrections)
 
-    if len(corrections) == 0:
-        logger.info("No account corrections found")
+    if len(df) == 0:
+        logger.info("All accounts match")
+        sys.exit(0)
 
-    balance_updates = _correct_accounts(
-        state,
-        corrections,
-        strategy_cycle_included_at=None,
-        interactive=not unit_testing,
-        vault=sync_model.vault,
-        hot_wallet=sync_model.hot_wallet,
-        unknown_token_receiver=hot_wallet.address,  # Send any unknown tokens to the hot wallet of the trade-executor
-    )
-    balance_updates = list(balance_updates)
-    logger.info("Applied %d balance updates", len(balance_updates))
+    output = tabulate(df, headers='keys', tablefmt='rounded_outline')
+    logger.warning("Accounts do not match:\n%s", output)
 
-    store.sync(state)
-    web3config.close()
-
-    logger.info("All ok")
+    sys.exit(1)
