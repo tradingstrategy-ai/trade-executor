@@ -353,7 +353,7 @@ def transfer_away_assets_without_position(
                 asset.token_symbol,
                 unknown_token_receiver)
 
-    prepared_tx = prepare_transfer(
+    args_bound_func = prepare_transfer(
         vault.deployment,
         vault,
         vault.generic_adapter,
@@ -362,5 +362,15 @@ def transfer_away_assets_without_position(
         token.convert_to_raw(correction.actual_amount),
     )
 
-    tx_hash = prepared_tx.transact({"from": hot_wallet.address})
+    hot_wallet.sync_nonce(web3)
+
+    tx = args_bound_func.build_transaction({
+        "chainId": web3.eth.chain_id,
+        "from": hot_wallet.address,
+        "gas": 450_000,
+    })
+
+    signed_tx = hot_wallet.sign_transaction_with_new_nonce(tx)
+
+    tx_hash = web3.eth.send_raw_transaction(signed_tx.rawTransaction)
     assert_transaction_success_with_explanation(web3, tx_hash)
