@@ -7,11 +7,12 @@ from _decimal import Decimal
 from functools import partial
 from typing import cast, List, Optional, Tuple, Iterable
 
-from web3 import Web3
+from web3 import Web3, HTTPProvider
 
-from eth_defi.chain import fetch_block_timestamp
+from eth_defi.chain import fetch_block_timestamp, has_graphql_support
 from eth_defi.enzyme.events import fetch_vault_balance_events, EnzymeBalanceEvent, Deposit, Redemption, fetch_vault_balances
 from eth_defi.enzyme.vault import Vault
+from eth_defi.event_reader.lazy_timestamp_reader import extract_timestamps_json_rpc_lazy
 from eth_defi.event_reader.reader import read_events, Web3EventReader, extract_events, extract_timestamps_json_rpc
 from eth_defi.event_reader.reorganisation_monitor import ReorganisationMonitor
 from eth_defi.hotwallet import HotWallet
@@ -407,6 +408,32 @@ class EnzymeVaultSyncModel(SyncModel):
             filter_zero=filter_zero,
         )
 
+    def create_event_reader(self) -> Web3EventReader:
+        """Create event reader for vault deposit/redemption events.
+
+        Set up the reader interface for fetch_deployment_event()
+        extract_timestamp is disabled to speed up the event reading,
+        we handle it separately
+        """
+        # TODO: make this a configuration option
+        provider = cast(HTTPProvider, self.web3.provider)
+        if has_graphql_support(provider):
+            logger.info("Using /graqpql based reader for vault events")
+            # GoEthereum with /graphql enabled
+            reader: Web3EventReader = cast(
+                Web3EventReader,
+                partial(read_events, notify=self._notify, chunk_size=self.scan_chunk_size, reorg_mon=self.reorg_mon, extract_timestamps=None)
+            )
+        else:
+            # Fall back to lazy load event timestamps,
+            # all commercial SaaS nodes
+            logger.info("Using lazy timestamp loading reader for vault events")
+            reader: Web3EventReader = cast(
+                Web3EventReader,
+                partial(read_events, notify=self._notify, chunk_size=self.scan_chunk_size, reorg_mon=None, extract_timestamps=extract_timestamps_json_rpc_lazy)
+            )
+        return reader
+
     def sync_treasury(self,
                       strategy_cycle_ts: datetime.datetime,
                       state: State,
@@ -466,13 +493,7 @@ class EnzymeVaultSyncModel(SyncModel):
             range_start = start_block
             range_end = end_block
 
-        # Set up the reader interface for fetch_deployment_event()
-        # extract_timestamp is disabled to speed up the event reading,
-        # we handle it separately
-        reader: Web3EventReader = cast(
-            Web3EventReader,
-            partial(read_events, notify=self._notify, chunk_size=self.scan_chunk_size, reorg_mon=self.reorg_mon, extract_timestamps=None)
-        )
+        reader = self.create_event_reader()
 
         events_iter = fetch_vault_balance_events(
             vault,
