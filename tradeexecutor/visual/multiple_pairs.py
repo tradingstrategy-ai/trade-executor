@@ -15,9 +15,20 @@ from tradeexecutor.visual.technical_indicator import overlay_all_technical_indic
 from tradeexecutor.visual.utils import get_pair_base_quote_names
 
 from tradingstrategy.candle import GroupedCandleUniverse
-from tradingstrategy.charting.candle_chart import make_candle_labels, VolumeBarMode, _get_secondary_y, _get_specs
+from tradingstrategy.charting.candle_chart import (
+    make_candle_labels,
+    VolumeBarMode,
+    _get_secondary_y,
+    _get_specs,
+)
 
-from tradeexecutor.visual.utils import export_trades_as_dataframe, visualise_trades, get_start_and_end, get_all_text, get_num_detached_and_names
+from tradeexecutor.visual.utils import (
+    export_trades_as_dataframe,
+    visualise_trades,
+    get_start_and_end,
+    get_all_text,
+    get_num_detached_and_names,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -68,26 +79,26 @@ class PairSubplotInfo:
             return self.candlestick_row + 1
         else:
             return None
-        
+
 
 def visualise_multiple_pairs(
-        state: Optional[State],
-        candle_universe: GroupedCandleUniverse | pd.DataFrame,
-        start_at: Optional[Union[pd.Timestamp, datetime.datetime]] = None,
-        end_at: Optional[Union[pd.Timestamp, datetime.datetime]] = None,
-        pair_ids: Optional[list[PairInternalId]] = None,
-        height=2000,
-        width=1000,
-        axes=True,
-        technical_indicators=True,
-        title: Union[str, bool] = True,
-        theme="plotly_white",
-        volume_bar_modes: Optional[list[VolumeBarMode]] = None,
-        vertical_spacing = 0.03,
-        subplot_font_size = 11,
-        relative_sizing: list[float] = None,
-        volume_axis_name: str = "Volume USD",
-        candle_decimals: int = 4,
+    state: Optional[State],
+    candle_universe: GroupedCandleUniverse | pd.DataFrame,
+    start_at: Optional[Union[pd.Timestamp, datetime.datetime]] = None,
+    end_at: Optional[Union[pd.Timestamp, datetime.datetime]] = None,
+    pair_ids: Optional[list[PairInternalId]] = None,
+    height=2000,
+    width=1000,
+    axes=True,
+    technical_indicators=True,
+    title: Union[str, bool] = True,
+    theme="plotly_white",
+    volume_bar_modes: Optional[list[VolumeBarMode]] = None,
+    vertical_spacing=0.03,
+    subplot_font_size=11,
+    relative_sizing: list[float] = None,
+    volume_axis_name: str = "Volume USD",
+    candle_decimals: int = 4,
 ) -> go.Figure:
     """Visualise single-pair trade execution.
 
@@ -131,31 +142,31 @@ def visualise_multiple_pairs(
 
     :param theme:
         Plotly colour scheme to use
-        
+
     :param volume_bar_mode:
         How to draw the volume bars
-    
+
     :param vertical_spacing:
         Vertical spacing between the subplots. Default is 0.05.
-    
+
     :param subplot_font_size:
         Font size of the subplot titles. Default is 11.
-    
+
     :param relative_sizing:
-        Optional relative sizes of each plot. Starts with first main candle plot, then the volume plot if it is detached, then the other detached technical indicators. 
-        
+        Optional relative sizes of each plot. Starts with first main candle plot, then the volume plot if it is detached, then the other detached technical indicators.
+
         e.g. [1, 0.2, 0.3, 0.3] would mean the second plot is 20% the size of the first, and the third and fourth plots are 30% the size of the first.
-        
-        Remember to account for whether the volume subplot is detached or not. If it is detached, it should take up the second element in the list. 
-    
+
+        Remember to account for whether the volume subplot is detached or not. If it is detached, it should take up the second element in the list.
+
     :param volume_axis_name:
         Name of the volume axis. Default is "Volume USD".
-    
+
     :param candle_decimals:
         Number of decimal places to round the candlesticks to. Default is 4.
 
     """
-    
+
     logger.info("Visualising %s", state)
 
     start_at, end_at = get_start_and_end(start_at, end_at)
@@ -163,7 +174,9 @@ def visualise_multiple_pairs(
     # convert candles to raw dataframe
     if isinstance(candle_universe, GroupedCandleUniverse):
         if pair_ids is None:
-            pair_ids = [int(pair_id) for pair_id in list(candle_universe.get_pair_ids())]
+            pair_ids = [
+                int(pair_id) for pair_id in list(candle_universe.get_pair_ids())
+            ]
 
         df = candle_universe.df
         candles = df.loc[df["pair_id"].isin(pair_ids)]
@@ -175,17 +188,18 @@ def visualise_multiple_pairs(
     if not volume_bar_modes:
         volume_bar_modes = [VolumeBarMode.overlay] * len(pair_ids)
     else:
-        assert len(volume_bar_modes) == len(pair_ids), "volume_bar_modes must be the same length as pair_ids"
+        assert len(volume_bar_modes) == len(
+            pair_ids
+        ), "volume_bar_modes must be the same length as pair_ids"
 
     pair_subplot_infos: list[PairSubplotInfo] = []
     current_candlestick_row = 1
 
     for i, pair_id in enumerate(pair_ids):
-
         assert "pair_id" in candles.columns, "candles must have a pair_id column"
-        
+
         c = candles.loc[candles["pair_id"] == pair_id]
-        
+
         pair_name, base_token, quote_token = get_pair_base_quote_names(state, pair_id)
 
         if not start_at:
@@ -216,14 +230,22 @@ def visualise_multiple_pairs(
             c,
             base_token_name=base_token,
             quote_token_name=quote_token,
-            candle_decimals=candle_decimals
+            candle_decimals=candle_decimals,
         )
 
-        plots = [plot for plot in state.visualisation.plots.values() if plot.pair.internal_id == pair_id]
+        plots = [
+            plot
+            for plot in state.visualisation.plots.values()
+            if plot.pair.internal_id == pair_id
+        ]
 
-        title_text, axes_text, volume_text = get_all_text(state.name, axes, title, pair_name, volume_axis_name)
+        title_text, axes_text, volume_text = get_all_text(
+            state.name, axes, title, pair_name, volume_axis_name
+        )
 
-        num_detached_indicators, subplot_names = get_num_detached_and_names(plots, volume_bar_modes[i], volume_text, pair_name)
+        num_detached_indicators, subplot_names = get_num_detached_and_names(
+            plots, volume_bar_modes[i], volume_text, pair_name
+        )
 
         if not relative_sizing:
             _relative_sizing = [1] + [0.3] * num_detached_indicators
@@ -236,25 +258,39 @@ def visualise_multiple_pairs(
                 num_detached_indicators=num_detached_indicators,
                 subplot_names=subplot_names,
                 candles=c,
-                candle_labels = labels,
+                candle_labels=labels,
                 trades=trades_df,
-                relative_sizing = _relative_sizing
+                relative_sizing=_relative_sizing,
             )
         )
 
         current_candlestick_row += num_detached_indicators + 1
-    
+
     # Create empty grid space
 
-    relative_sizing = [item for pair_subplot_info in pair_subplot_infos for item in pair_subplot_info.relative_sizing]
+    relative_sizing = [
+        item
+        for pair_subplot_info in pair_subplot_infos
+        for item in pair_subplot_info.relative_sizing
+    ]
 
-    subplot_names = [item for pair_subplot_info in pair_subplot_infos for item in pair_subplot_info.subplot_names]
+    subplot_names = [
+        item
+        for pair_subplot_info in pair_subplot_infos
+        for item in pair_subplot_info.subplot_names
+    ]
 
-    specs = [item for pair_subplot_info in pair_subplot_infos for item in pair_subplot_info.specs]
-    
+    specs = [
+        item
+        for pair_subplot_info in pair_subplot_infos
+        for item in pair_subplot_info.specs
+    ]
+
     num_rows = current_candlestick_row - 1
 
-    assert len(relative_sizing) == len(subplot_names) == len(specs) == num_rows, f"Sanity check. Should not happen. Expected {num_rows}, got {len(relative_sizing), len(subplot_names), len(specs)}"
+    assert (
+        len(relative_sizing) == len(subplot_names) == len(specs) == num_rows
+    ), f"Sanity check. Should not happen. Expected {num_rows}, got {len(relative_sizing), len(subplot_names), len(specs)}"
 
     subplot = make_subplots(
         rows=num_rows,
@@ -262,7 +298,7 @@ def visualise_multiple_pairs(
         row_heights=relative_sizing,
         row_titles=subplot_names,
         shared_xaxes=True,
-        specs = specs,
+        specs=specs,
         vertical_spacing=vertical_spacing,
     )
 
@@ -273,18 +309,17 @@ def visualise_multiple_pairs(
     4. plot technical indicators for each pair in the grid
     5. trades (same row as candlestick)
     """
-    
-    for pair_subplot_info in pair_subplot_infos:
 
+    for pair_subplot_info in pair_subplot_infos:
         _candles = pair_subplot_info.candles
         text = pair_subplot_info.candle_labels
 
         candlesticks = go.Candlestick(
             x=_candles.index,
-            open=_candles['open'],
-            high=_candles['high'],
-            low=_candles['low'],
-            close=_candles['close'],
+            open=_candles["open"],
+            high=_candles["high"],
+            low=_candles["low"],
+            close=_candles["close"],
             showlegend=False,
             text=text,
             hoverinfo="text",
@@ -296,17 +331,19 @@ def visualise_multiple_pairs(
             col=1,
         )
 
-        
-        if "volume" in candles.columns and pair_subplot_info.volume_bar_mode != VolumeBarMode.hidden:
+        if (
+            "volume" in candles.columns
+            and pair_subplot_info.volume_bar_mode != VolumeBarMode.hidden
+        ):
             volume_bars = go.Bar(
-                    x=candles.index,
-                    y=candles['volume'],
-                    showlegend=False,
-                    marker={
-                        "color": "rgba(128,128,128,0.5)",
-                    }
-                )
-            
+                x=candles.index,
+                y=candles["volume"],
+                showlegend=False,
+                marker={
+                    "color": "rgba(128,128,128,0.5)",
+                },
+            )
+
             subplot.add_trace(
                 volume_bars,
                 row=pair_subplot_info.get_volume_row(),
@@ -331,8 +368,8 @@ def visualise_multiple_pairs(
         if len(trades_df) > 0:
             visualise_trades(
                 subplot,
-                candles, 
-                trades_df, 
+                candles,
+                trades_df,
                 pair_subplot_info.candlestick_row,
                 1,
             )
@@ -341,13 +378,13 @@ def visualise_multiple_pairs(
 
     subplot.update_annotations(font_size=subplot_font_size)
 
-    subplot.update_layout(dict(
-        showlegend = False,
-        height=height,
-        width=width,
-        template=theme,
-    ))
+    subplot.update_layout(
+        dict(
+            showlegend=False,
+            height=height,
+            width=width,
+            template=theme,
+        )
+    )
 
     return subplot
-
-

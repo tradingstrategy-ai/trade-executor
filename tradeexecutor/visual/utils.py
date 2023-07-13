@@ -1,6 +1,6 @@
 from typing import Optional
 import pandas as pd
-
+import logging
 
 import datetime
 
@@ -13,12 +13,14 @@ from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.types import PairInternalId
 from tradeexecutor.state.visualisation import Plot, PlotKind
 from tradeexecutor.strategy.trade_pricing import format_fees_dollars
-from tradeexecutor.visual.single_pair import logger
+
+
+logger = logging.getLogger(__name__)
 
 
 def get_start_and_end(
     start_at: pd.Timestamp | datetime.datetime | None,
-    end_at: pd.Timestamp | datetime.datetime | None
+    end_at: pd.Timestamp | datetime.datetime | None,
 ):
     """Get and validate start and end timestamps"""
     if isinstance(start_at, datetime.datetime):
@@ -32,7 +34,7 @@ def get_start_and_end(
 
     if end_at is not None:
         assert isinstance(end_at, pd.Timestamp)
-    return start_at,end_at
+    return start_at, end_at
 
 
 def export_trade_for_dataframe(p: Portfolio, t: TradeExecution) -> dict:
@@ -52,8 +54,11 @@ def export_trade_for_dataframe(p: Portfolio, t: TradeExecution) -> dict:
     else:
         if t.is_sell():
             if t.is_stop_loss():
-                label += [f"Stop loss {t.pair.base.token_symbol}", "",
-                          f"Trigger was at {position.stop_loss:.4f} {price_prefix}"]
+                label += [
+                    f"Stop loss {t.pair.base.token_symbol}",
+                    "",
+                    f"Trigger was at {position.stop_loss:.4f} {price_prefix}",
+                ]
                 type = "stop-loss"
             else:
                 label += [f"Sell {t.pair.base.token_symbol}"]
@@ -61,8 +66,11 @@ def export_trade_for_dataframe(p: Portfolio, t: TradeExecution) -> dict:
         else:
             if t.is_take_profit():
                 type = "take-profit"
-                label += [f"Take profit {t.pair.base.token_symbol}", "",
-                          "Trigger was at {position.take_profit:.4f} {price_prefix}"]
+                label += [
+                    f"Take profit {t.pair.base.token_symbol}",
+                    "",
+                    "Trigger was at {position.take_profit:.4f} {price_prefix}",
+                ]
             else:
                 type = "buy"
                 label += [f"Buy {t.pair.base.token_symbol}"]
@@ -76,7 +84,9 @@ def export_trade_for_dataframe(p: Portfolio, t: TradeExecution) -> dict:
         ]
 
         label += [
-            f"Mid-price: {t.planned_mid_price:.4f} {price_prefix}" if t.planned_mid_price else "",
+            f"Mid-price: {t.planned_mid_price:.4f} {price_prefix}"
+            if t.planned_mid_price
+            else "",
             f"Executed at price: {t.executed_price:.4f} {price_prefix}",
             f"Estimated execution price: {t.planned_price:.4f} {price_prefix}",
             "",
@@ -88,7 +98,7 @@ def export_trade_for_dataframe(p: Portfolio, t: TradeExecution) -> dict:
                 label += [
                     f"Fees paid: {format_fees_dollars(t.get_fees_paid())}",
                     f"Fees planned: {format_fees_dollars(t.lp_fees_estimated)}",
-                    f"Fees: {realised_fees:.4f} %"
+                    f"Fees: {realised_fees:.4f} %",
                 ]
             else:
                 label += [
@@ -107,10 +117,10 @@ def export_trade_for_dataframe(p: Portfolio, t: TradeExecution) -> dict:
 
 
 def export_trades_as_dataframe(
-        portfolio: Portfolio,
-        pair_id: PairInternalId,
-        start: Optional[pd.Timestamp] = None,
-        end: Optional[pd.Timestamp] = None,
+    portfolio: Portfolio,
+    pair_id: PairInternalId,
+    start: Optional[pd.Timestamp] = None,
+    end: Optional[pd.Timestamp] = None,
 ) -> pd.DataFrame:
     """Convert executed trades to a dataframe, so it is easier to work with them in Plotly.
     :param start_at:
@@ -129,13 +139,11 @@ def export_trades_as_dataframe(
     data = []
 
     for t in portfolio.get_all_trades():
-
         if t.pair.internal_id != pair_id:
             continue
 
         # Crop
         if start or end:
-
             if not t.started_at:
                 # Hotfix to some invalid data?
                 logger.warning("Trade lacks start date: %s", t)
@@ -149,17 +157,19 @@ def export_trades_as_dataframe(
 
 
 def visualise_trades(
-        fig: go.Figure,
-        candles: pd.DataFrame,
-        trades_df: pd.DataFrame,
-        candlestick_row: int | None = None,
-        column: int | None = None,
-    ):
+    fig: go.Figure,
+    candles: pd.DataFrame,
+    trades_df: pd.DataFrame,
+    candlestick_row: int | None = None,
+    column: int | None = None,
+):
     """Plot individual trades over the candlestick chart."""
 
     # If we have used stop loss, do different categories
     advanced_trade_types = ("stop-loss", "take-profit")
-    advanced_trades = len(trades_df.loc[trades_df["type"].isin(advanced_trade_types)]) > 0
+    advanced_trades = (
+        len(trades_df.loc[trades_df["type"].isin(advanced_trade_types)]) > 0
+    )
 
     if advanced_trades:
         buys_df = trades_df.loc[trades_df["type"] == "buy"]
@@ -180,8 +190,12 @@ def visualise_trades(
             x=buys_df["timestamp"],
             y=buys_df["price"],
             text=buys_df["label"],
-            marker={"color": "#aaaaff", "symbol": 'triangle-right', "size": 12,
-                    "line": {"width": 1, "color": "#3333aa"}},
+            marker={
+                "color": "#aaaaff",
+                "symbol": "triangle-right",
+                "size": 12,
+                "line": {"width": 1, "color": "#3333aa"},
+            },
             hoverinfo="text",
         ),
         secondary_y=False,
@@ -197,8 +211,12 @@ def visualise_trades(
             x=sells_df["timestamp"],
             y=sells_df["price"],
             text=sells_df["label"],
-            marker={"color": "#aaaaff", "symbol": 'triangle-left', "size": 12,
-                    "line": {"width": 1, "color": "#3333aa"}},
+            marker={
+                "color": "#aaaaff",
+                "symbol": "triangle-left",
+                "size": 12,
+                "line": {"width": 1, "color": "#3333aa"},
+            },
             hoverinfo="text",
         ),
         secondary_y=False,
@@ -214,7 +232,11 @@ def visualise_trades(
                 x=stop_loss_df["timestamp"],
                 y=stop_loss_df["price"],
                 text=stop_loss_df["label"],
-                marker={"symbol": 'triangle-left', "size": 12, "line": {"width": 1, "color": "black"}},
+                marker={
+                    "symbol": "triangle-left",
+                    "size": 12,
+                    "line": {"width": 1, "color": "black"},
+                },
                 hoverinfo="text",
             ),
             secondary_y=False,
@@ -230,7 +252,11 @@ def visualise_trades(
                 x=take_profit_df["timestamp"],
                 y=take_profit_df["price"],
                 text=take_profit_df["label"],
-                marker={"symbol": 'triangle-left', "size": 12, "line": {"width": 1, "color": "black"}},
+                marker={
+                    "symbol": "triangle-left",
+                    "size": 12,
+                    "line": {"width": 1, "color": "black"},
+                },
                 hoverinfo="text",
             ),
             secondary_y=False,
@@ -244,12 +270,16 @@ def visualise_trades(
 def get_all_positions(state: State, pair_id):
     """Get all positions for a given pair"""
     assert type(pair_id) == int
-    positions = [p for p in state.portfolio.get_all_positions() if p.pair.internal_id == pair_id]
+    positions = [
+        p for p in state.portfolio.get_all_positions() if p.pair.internal_id == pair_id
+    ]
     return positions
 
 
 def get_pair_name_from_first_trade(first_trade: TradeExecution):
-    return f"{first_trade.pair.base.token_symbol} - {first_trade.pair.quote.token_symbol}"
+    return (
+        f"{first_trade.pair.base.token_symbol} - {first_trade.pair.quote.token_symbol}"
+    )
 
 
 def get_pair_base_quote_names(state: State, pair_id: int | None):
@@ -287,7 +317,9 @@ def _get_title(name: str, title: str):
         return None
 
 
-def _get_axes_and_volume_text(axes: bool, pair_name: str | None, volume_axis_name: str = "Volume USD"):
+def _get_axes_and_volume_text(
+    axes: bool, pair_name: str | None, volume_axis_name: str = "Volume USD"
+):
     """Get axes and volume text"""
     if axes:
         axes_text = pair_name
@@ -295,7 +327,7 @@ def _get_axes_and_volume_text(axes: bool, pair_name: str | None, volume_axis_nam
     else:
         axes_text = None
         volume_text = None
-    return axes_text,volume_text
+    return axes_text, volume_text
 
 
 def get_all_text(
@@ -306,17 +338,18 @@ def get_all_text(
     volume_axis_name: str,
 ):
     title_text = _get_title(state_name, title)
-    axes_text, volume_text = _get_axes_and_volume_text(axes, pair_name, volume_axis_name)
+    axes_text, volume_text = _get_axes_and_volume_text(
+        axes, pair_name, volume_axis_name
+    )
 
-    return title_text,axes_text,volume_text
+    return title_text, axes_text, volume_text
 
 
 def _get_num_detached_indicators(plots: list[Plot], volume_bar_mode: VolumeBarMode):
     """Get the number of detached technical indicators"""
 
     num_detached_indicators = sum(
-        plot.kind == PlotKind.technical_indicator_detached
-        for plot in plots
+        plot.kind == PlotKind.technical_indicator_detached for plot in plots
     )
 
     if volume_bar_mode in {VolumeBarMode.hidden, VolumeBarMode.overlay}:
@@ -329,10 +362,14 @@ def _get_num_detached_indicators(plots: list[Plot], volume_bar_mode: VolumeBarMo
     return num_detached_indicators
 
 
-def _get_subplot_names(plots: list[Plot], volume_bar_mode: VolumeBarMode, volume_axis_name: str = "Volume USD"):
-    """Get subplot names for detached technical indicators. 
+def _get_subplot_names(
+    plots: list[Plot],
+    volume_bar_mode: VolumeBarMode,
+    volume_axis_name: str = "Volume USD",
+    pair_name: str = None
+):
+    """Get subplot names for detached technical indicators.
     Overlaid names are appended to the detached plot name."""
-
 
     if volume_bar_mode in {VolumeBarMode.hidden, VolumeBarMode.overlay}:
         subplot_names = []
@@ -341,34 +378,49 @@ def _get_subplot_names(plots: list[Plot], volume_bar_mode: VolumeBarMode, volume
         subplot_names = [volume_axis_name]
         detached_without_overlay_count = 1
 
-
     # for allowing multiple overlays on detached plots
     # list of detached plot names that already have overlays
     already_overlaid_names = []
 
     for plot in plots:
         # get subplot names for detached technical indicators without any overlay
-        if (plot.kind == PlotKind.technical_indicator_detached) and (plot.name not in [plot.detached_overlay_name for plot in plots if plot.kind == PlotKind.technical_indicator_overlay_on_detached]):
+        if (plot.kind == PlotKind.technical_indicator_detached) and (
+            plot.name
+            not in [
+                plot.detached_overlay_name
+                for plot in plots
+                if plot.kind == PlotKind.technical_indicator_overlay_on_detached
+            ]
+        ):
             subplot_names.append(plot.name)
             detached_without_overlay_count += 1
 
         # get subplot names for detached technical indicators with overlay
         if plot.kind == PlotKind.technical_indicator_overlay_on_detached:
             # check that detached plot exists
-            detached_plots = [plot.name for plot in plots if plot.kind == PlotKind.technical_indicator_detached]
-            assert plot.detached_overlay_name in detached_plots, f"Overlay name {plot.detached_overlay_name} not in available detached plots {detached_plots}"
+            detached_plots = [
+                plot.name
+                for plot in plots
+                if plot.kind == PlotKind.technical_indicator_detached
+            ]
+            assert (
+                plot.detached_overlay_name in detached_plots
+            ), f"Overlay name {plot.detached_overlay_name} not in available detached plots {detached_plots}"
 
             # check if another overlay exists
             if plot.detached_overlay_name in already_overlaid_names:
                 # add to existing overlay
-                subplot_names[detached_without_overlay_count + already_overlaid_names.index(plot.detached_overlay_name)] += f"<br> + {plot.name}"
+                subplot_names[
+                    detached_without_overlay_count
+                    + already_overlaid_names.index(plot.detached_overlay_name)
+                ] += f"<br> + {plot.name}"
             else:
                 # add to list
                 subplot_names.append(plot.detached_overlay_name + f"<br> + {plot.name}")
                 already_overlaid_names.append(plot.detached_overlay_name)
 
-    # Insert blank name for main candle chart    
-    subplot_names.insert(0, None)
+    # Insert blank name for main candle chart
+    subplot_names.insert(0, pair_name)
 
     return subplot_names
 
@@ -376,9 +428,12 @@ def _get_subplot_names(plots: list[Plot], volume_bar_mode: VolumeBarMode, volume
 def get_num_detached_and_names(
     plots: list[Plot],
     volume_bar_mode: VolumeBarMode,
-    volume_axis_name: str
+    volume_axis_name: str,
+    pair_name: str | None = None,
 ):
     """Get num_detached_indicators and subplot_names"""
     num_detached_indicators = _get_num_detached_indicators(plots, volume_bar_mode)
-    subplot_names = _get_subplot_names(plots, volume_bar_mode, volume_axis_name)
-    return num_detached_indicators,subplot_names
+    subplot_names = _get_subplot_names(
+        plots, volume_bar_mode, volume_axis_name, pair_name
+    )
+    return num_detached_indicators, subplot_names
