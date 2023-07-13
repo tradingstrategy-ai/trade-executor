@@ -16,6 +16,7 @@ from _decimal import Decimal
 from dataclasses import dataclass
 from typing import List, Iterable, Collection
 
+import pandas as pd
 from eth_defi.enzyme.erc20 import prepare_transfer
 from eth_defi.enzyme.vault import Vault
 from eth_defi.hotwallet import HotWallet
@@ -373,3 +374,57 @@ def transfer_away_assets_without_position(
 
     tx_hash = web3.eth.send_raw_transaction(signed_tx.rawTransaction)
     assert_transaction_success_with_explanation(web3, tx_hash)
+
+
+def check_accounting(
+    pair_universe: PandasPairUniverse,
+    reserve_assets: Collection[AssetIdentifier],
+    state: State,
+    sync_model: SyncModel,
+    epsilon=DUST_EPSILON,
+) -> pd.DataFrame:
+    """Get a table output of accounting corrections needed.
+
+    :return:
+        Dataframe that can be printed to the console
+    """
+
+    corrections = calculate_account_corrections(
+        pair_universe,
+        reserve_assets,
+        state,
+        sync_model,
+        epsilon,
+    )
+
+    idx = []
+    items = []
+    for c in corrections:
+        idx.append(c.asset.token_symbol)
+
+        match c.position:
+            case None:
+                position_label = "No open position"
+            case ReservePosition():
+                position_label = "Reserves"
+            case TradingPosition():
+                position_label = c.position.pair.get_ticker()
+            case _:
+                raise NotImplementedError()
+
+        dust = abs(c.quantity) <= DUST_EPSILON
+
+        items.append({
+            "Address": c.asset.address,
+            "Reserve": "Y" if c.reserve_asset else "N",
+            "Position": position_label,
+            "Actual amount": c.actual_amount,
+            "Expected amount": c.expected_amount,
+            "Diff": c.quantity,
+            "Dusty": "Y" if dust else "N",
+        })
+
+    df = pd.DataFrame(items, index=idx)
+    df = df.fillna("")
+    df = df.replace({pd.NaT: ""})
+    return df
