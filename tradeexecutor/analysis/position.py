@@ -4,6 +4,7 @@ from typing import Iterable
 
 import pandas as pd
 
+from tradeexecutor.ethereum.revert import clean_revert_reason_message
 from tradeexecutor.state.position import TradingPosition
 
 
@@ -50,12 +51,16 @@ def display_positions(positions: Iterable[TradingPosition]) -> pd.DataFrame:
 
         for t in p.trades.values():
             idx.append(p.position_id)
+
+            revert_reason = clean_revert_reason_message(t.get_revert_reason())
+            text = (t.notes or "") + revert_reason
+
             items.append({
                 "Trade id": str(t.trade_id),  # Mixed NA/number column fix
                 "Price": t.executed_price,
                 "Trade opened": _ftime(t.opened_at),
                 "Trade executed": _ftime(t.executed_at),
-                "Trade notes": t.notes,
+                "Trade notes": text,
             })
 
     df = pd.DataFrame(items, index=idx)
