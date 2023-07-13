@@ -41,6 +41,7 @@ def correct_accounts(
 
     asset_management_mode: AssetManagementMode = shared_options.asset_management_mode,
     vault_address: Optional[str] = shared_options.vault_address,
+    vault_adapter_address: Optional[str] = shared_options.vault_adapter_address,
     vault_deployment_block_number: Optional[int] = shared_options.vault_deployment_block_number,
 
     json_rpc_binance: Optional[str] = shared_options.json_rpc_binance,
@@ -106,6 +107,7 @@ def correct_accounts(
         web3,
         hot_wallet,
         vault_address,
+        vault_adapter_address,
     )
 
     logger.info("RPC details")
