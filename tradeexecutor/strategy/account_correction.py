@@ -334,7 +334,6 @@ def transfer_away_assets_without_position(
     :param correction:
 
     :param unknown_token_receiver:
-    :return:
     """
 
     assert correction.position is None

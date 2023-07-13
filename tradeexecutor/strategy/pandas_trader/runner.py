@@ -245,13 +245,16 @@ class PandasTraderRunner(StrategyRunner):
 
                 dex_pair = universe.universe.pairs.get_pair_by_id(pair_id)
                 pair = translate_trading_pair(dex_pair)
-                print(f"  Last candle at: {last_candle['timestamp']} UTC, market data and action lag: {lag}", file=buf)
-                print(f"  Price open:{last_candle['open']} close:{last_candle['close']} {pair.base.token_symbol} / {pair.quote.token_symbol}", file=buf)
+
+                if not pair:
+                    logger.warning(f"  Pair missing: {dex_pair} - should not happen")
+                else:
+                    print(f"  Last candle at: {last_candle['timestamp']} UTC, market data and action lag: {lag}", file=buf)
+                    print(f"  Price open:{last_candle['open']} close:{last_candle['close']} {pair.base.token_symbol} / {pair.quote.token_symbol}", file=buf)
 
                 # Draw indicators
                 for name, plot in visualisation.plots.items():
-                    
-                    if plot.pair.internal_id != pair_id:
+                    if plot.pair and plot.pair.internal_id != pair_id:
                         continue
 
                     value = plot.get_last_value()
