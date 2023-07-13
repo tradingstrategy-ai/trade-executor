@@ -820,7 +820,14 @@ def _get_grid_with_candles_volume_indicators(
     
     title_text, axes_text, volume_text = _get_all_text(state.name, axes, title, pair_name, volume_axis_name)
 
-    plots = [plot for plot in state.visualisation.plots.values() if getattr(plot.pair, "internal_id", None) == pair_id]
+    # TODO (fix)
+    # without this line, will show detached indicators for all pairs
+    # but with this line involves breaking change 
+    # since plot_indicator will require pair argument
+
+    # plots = [plot for plot in state.visualisation.plots.values() if getattr(plot.pair, "internal_id", None) == pair_id]
+
+    plots = state.visualisation.plots.values()
     
     num_detached_indicators, subplot_names = _get_num_detached_and_names(plots, volume_bar_mode, volume_text)
     

@@ -49,8 +49,14 @@ def overlay_all_technical_indicators(
 
     if start_row:
         cur_row = cur_row + start_row - 1
+
+        # currently, this line breaks single pair visualisation without breaking changes, so needs to be here
+        plots = [plot for plot in visualisation.plots.values() if getattr(plot.pair, "internal_id", None) == pair_id]
+
+    else:
+        start_row = 1
+        plots = visualisation.plots.values()
     
-    plots = [plot for plot in visualisation.plots.values() if getattr(plot.pair, "internal_id", None) == pair_id]
 
     # https://plotly.com/python/graphing-multiple-chart-types/
     for plot in plots:
