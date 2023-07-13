@@ -365,7 +365,7 @@ def test_visualise_strategy_state(
 
     image = draw_multi_pair_strategy_state(state, universe)
     
-    png_data = render_plotly_figure_as_image_file(image)
+    png_data = render_plotly_figure_as_image_file(image, height=2000, width=1000)
 
     # Test the image on a local screen
     # using a web brower
