@@ -376,7 +376,7 @@ def transfer_away_assets_without_position(
     assert_transaction_success_with_explanation(web3, tx_hash)
 
 
-def check_accounting(
+def check_accounts(
     pair_universe: PandasPairUniverse,
     reserve_assets: Collection[AssetIdentifier],
     state: State,
@@ -416,7 +416,6 @@ def check_accounting(
 
         items.append({
             "Address": c.asset.address,
-            "Reserve": "Y" if c.reserve_asset else "N",
             "Position": position_label,
             "Actual amount": c.actual_amount,
             "Expected amount": c.expected_amount,

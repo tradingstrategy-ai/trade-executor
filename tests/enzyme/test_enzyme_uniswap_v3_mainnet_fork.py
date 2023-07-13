@@ -17,15 +17,13 @@ from web3.contract import Contract
 
 from eth_defi.abi import get_deployed_contract
 from eth_defi.anvil import AnvilLaunch, launch_anvil
-from eth_defi.chain import install_chain_"type":
+from eth_defi.chain import install_chain_middleware
 from eth_defi.deploy import deploy_contract
 from eth_defi.enzyme.deployment import EnzymeDeployment, POLYGON_DEPLOYMENT
 from eth_defi.enzyme.vault import Vault
 from eth_defi.hotwallet import HotWallet
 from eth_defi.token import TokenDetails, fetch_erc20_details
 from eth_defi.trace import assert_transaction_success_with_explanation
-
-from tradingstrategy.pair import PandasPairUniverse
 
 from tradeexecutor.cli.main import app
 from tradeexecutor.ethereum.token import translate_token_details

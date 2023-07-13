@@ -2,8 +2,6 @@
 
 """
 import datetime
-import os
-import shutil
 import sys
 from pathlib import Path
 from typing import Optional
@@ -11,13 +9,12 @@ from typing import Optional
 from eth_defi.hotwallet import HotWallet
 from tabulate import tabulate
 
-from tradeexecutor.strategy.account_correction import correct_accounts as _correct_accounts, check_accounting
+from tradeexecutor.strategy.account_correction import check_accounts as _check_accounts
 from .app import app
 from ..bootstrap import prepare_executor_id, create_web3_config, create_sync_model, create_state_store, create_client
 from ..log import setup_logging
 from ...ethereum.enzyme.vault import EnzymeVaultSyncModel
-from ...strategy.bootstrap import import_strategy_file, make_factory_from_strategy_mod
-from ...strategy.account_correction import calculate_account_corrections
+from ...strategy.bootstrap import make_factory_from_strategy_mod
 from ...strategy.description import StrategyExecutionDescription
 from ...strategy.execution_context import ExecutionContext, ExecutionMode
 from ...strategy.execution_model import AssetManagementMode
@@ -29,9 +26,8 @@ from ...strategy.universe_model import UniverseOptions
 
 
 @app.command()
-def show_positions(
+def check_accounts(
     id: str = shared_options.id,
-    name: str = shared_options.name,
 
     strategy_file: Path = shared_options.strategy_file,
     state_file: Optional[Path] = shared_options.state_file,
@@ -62,9 +58,7 @@ def show_positions(
     """Check that state internal ledger matches on chain balances.
 
     - Print out differences between actual on-chain balances and expected state balances
-
     """
-
 
     global logger
 
@@ -160,7 +154,6 @@ def show_positions(
         timed_task_context_manager=execution_context.timed_task_context_manager,
     )
 
-    #
     universe_model: TradingStrategyUniverseModel = run_description.universe_model
     universe = universe_model.construct_universe(
         datetime.datetime.utcnow(),
@@ -173,7 +166,15 @@ def show_positions(
 
     assert len(universe.reserve_assets) == 1, "Need exactly one reserve asset"
 
-    df = check_accounting(
+    # Set initial reserves,
+    # in order to run the tests
+    # TODO: Have this / treasury sync as a separate CLI command later
+    if unit_testing:
+        if len(state.portfolio.reserves) == 0:
+            logger.info("Initialising reserves for the unit test: %s", universe.reserve_assets[0])
+            state.portfolio.initialise_reserves(universe.reserve_assets[0])
+
+    df = _check_accounts(
         universe.universe.pairs,
         universe.reserve_assets,
         state,
@@ -184,8 +185,7 @@ def show_positions(
         logger.info("All accounts match")
         sys.exit(0)
 
-    logger.warning("Accounts do not match")
-
-    print(tabulate(df, headers='keys', tablefmt='rounded_outline'))
+    output = tabulate(df, headers='keys', tablefmt='rounded_outline')
+    logger.warning("Accounts do not match:\n%s", output)
 
     sys.exit(1)
