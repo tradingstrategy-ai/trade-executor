@@ -368,5 +368,4 @@ def test_visualise_strategy_state(
     # Test the image on a local screen
     # using a web brower
     if os.environ.get("SHOW_IMAGE"):
-        # https://stackoverflow.com/a/74619515/315168
         open_plotly_figure_in_browser(image, height=2000, width=1000)

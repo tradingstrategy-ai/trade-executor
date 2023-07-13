@@ -201,5 +201,5 @@ def test_visualise_strategy_state(
 
     # Test the image on a local screen
     # using a web brower
-    if os.environ.get("SHOW_IMAGE"):
-        open_plotly_figure_in_browser(image)
+    #if os.environ.get("SHOW_IMAGE"):
+    open_plotly_figure_in_browser(image)
