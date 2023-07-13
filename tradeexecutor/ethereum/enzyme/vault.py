@@ -418,10 +418,7 @@ class EnzymeVaultSyncModel(SyncModel):
 
         # TODO: make this a configuration option
         provider = cast(HTTPProvider, self.web3.provider)
-        if has_graphql_support(provider):
-
-        # TODO: make this a configuration option
-        provider = cast(HTTPProvider, self.web3.provider)
+        
         if has_graphql_support(provider):
             logger.info("Using /graqpql based reader for vault events")
             # GoEthereum with /graphql enabled
