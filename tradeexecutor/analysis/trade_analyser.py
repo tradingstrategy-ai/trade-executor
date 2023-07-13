@@ -78,7 +78,7 @@ class TradeSummary:
 
     initial_cash: USDollarAmount
     extra_return: USDollarAmount
-    duration: datetime.timedelta = field(metadata=config(
+    duration: Optional[datetime.timedelta] = field(metadata=config(
         encoder=json_encode_timedelta,
         decoder=json_decode_timedelta,
     ))
@@ -365,96 +365,6 @@ class TradeSummary:
             html += '</div>'
         html += '</div>'
         return HTML(html)
-
-
-    # TODO delete/deprecate the remaining methods below in this class
-     
-    def show(self):
-        """Render a summary table in IPython notebook."""
-        self.show_custom(self.to_dataframe())
-    
-    @staticmethod
-    def show_custom(df: pd.DataFrame):
-        """Render a summary table in IPython notebook.
-        
-        TODO: truncate unnecassary decimals at the end of floats
-        """
-        with pd.option_context("display.max_row", None):
-            display(df.style.set_table_styles([{'selector': 'thead', 'props': [('display', 'none')]}]))
-    
-    @staticmethod
-    def check_quantstats(function):
-        """Decorator function that checks that requirements are met for using quantstats library. Used as decorator for provided helper methods."""
-        def wrapper(*args, **kwargs):
-            if not HAS_QUANTSTATS:
-                raise RuntimeError("Quantstats library not installed")
-
-            if not hasattr(args[0], "daily_returns"):
-                raise RuntimeError("Daily returns have not been calculated. Remember to provided state argument. E.g. summary = analysis.calculate_summary_statistics(state=state)")
-            
-            with warnings.catch_warnings():
-                
-                # Silences 2 warnings from quantstats library
-                # 1.                
-                # /usr/local/lib/python3.10/site-packages/quantstats/stats.py:968: FutureWarning: In a future version of pandas all arguments of DataFrame.pivot will be keyword-only.
-                # returns = returns.pivot('Year', 'Month', 'Returns').fillna(0)
-                
-                # 2.
-                # findfont: Font family 'Arial' not found.
-                # Unfortunatly, this second warning is not silenced by the following lines. Users can silence it manually. See:
-                # https://stackoverflow.com/questions/42097053/matplotlib-cannot-find-basic-fonts  
-
-                warnings.simplefilter("ignore")
-                result = function(*args, **kwargs)
-                
-                return result
-        return wrapper
-    
-    @check_quantstats
-    def show_full_report(self) -> None:
-        """Show basic and advanced stats and plots
-        
-        - Should be used in IPython notebooks
-        - Shows a bunch of statistics (basic and advanced) and some plots
-        - This function cannot be used in normal python (.py) files since its only
-        purpose to display
-        """
-        return qs.reports.full(self.daily_returns) 
-    
-    @check_quantstats
-    def get_basic_stats(self) -> pd.DataFrame:
-        """Gets basic stats only.
-        
-        returns: Pandas DataFrame object 
-        """
-        return qs.reports.metrics(self.daily_returns, display=False)
-
-    @check_quantstats
-    def get_full_stats(self) -> pd.DataFrame:
-        """Gets basic and advanced stats.
-        
-        returns: Pandas DataFrame object"""
-        return qs.reports.metrics(self.daily_returns, mode='full', display=False)
-
-    @check_quantstats
-    def show_basic_plots(self) -> None:
-        """Show basic plots
-        
-        - Should be used in IPython notebooks
-        - Shows some basic plots
-        - This function cannot be used in normal python (.py) files since its only
-        purpose to display"""
-        return qs.reports.plots(self.daily_returns)
-
-    @check_quantstats
-    def show_full_plots(self) -> None:
-        """Show basic and advanced plots
-        
-        - Should be used in IPython notebooks
-        - Shows both basic and more advanced plots
-        - This function cannot be used in normal python (.py) files since its only
-        purpose to display"""
-        return qs.reports.plots(self.daily_returns, mode='full')
 
 
 @dataclass

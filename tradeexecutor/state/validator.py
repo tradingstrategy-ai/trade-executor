@@ -35,6 +35,7 @@ ALLOWED_VALUE_TYPES = (
     float,
     int,
     str,
+    tuple,
     NoneType,
     Enum,  # Supported by dadtaclasses_json
     datetime.datetime,  # Supported by dadtaclasses_json

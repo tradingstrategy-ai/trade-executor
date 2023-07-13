@@ -297,6 +297,10 @@ class BlockchainTransaction:
         """Transaction is success if it's succeed flag has been set."""
         return self.status
 
+    def is_reverted(self) -> bool:
+        """Transaction reverted."""
+        return not self.status
+
     def set_target_information(self, chain_id: int, contract_address: str, function_selector: str, args: list, details: dict):
         """Update the information on which transaction we are going to perform."""
         assert type(contract_address) == str

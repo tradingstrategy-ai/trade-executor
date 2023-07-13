@@ -3,6 +3,7 @@
 import datetime
 from _decimal import Decimal
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from typing import Callable, List, Optional
 
 from eth_defi.hotwallet import HotWallet
@@ -11,11 +12,29 @@ from tradeexecutor.ethereum.wallet import ReserveUpdateEvent
 from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdateCause, BalanceUpdatePositionType
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.portfolio import Portfolio
+from tradeexecutor.state.position import TradingPosition
+from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.state import State
 from tradeexecutor.state.sync import BalanceEventRef
 
 # Prototype sync method that is not applicable to the future production usage
 SyncMethodV0 = Callable[[Portfolio, datetime.datetime, List[AssetIdentifier]], List[ReserveUpdateEvent]]
+
+
+@dataclass
+class OnChainBalance:
+    """Describe on-chain token position.
+
+    Amount of tokens held at the certain point of time.
+
+    """
+    block_number: int | None
+    timestamp: datetime.datetime | None
+    asset: AssetIdentifier
+    amount: Decimal
+
+    def __repr__(self):
+        return f"<On-chain balance for {self.asset} is {self.amount} at {self.timestamp}>"
 
 
 class SyncModel(ABC):

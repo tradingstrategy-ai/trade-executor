@@ -108,13 +108,13 @@ def calculate_summary_statistics(
             profitability_daily = profitability_daily.ffill()
             profitability_90_days = profitability_daily.iloc[-1]
             performance_chart_90_days = export_time_series(profitability_daily)
+            returns_all_time = profitability.iloc[-1]
         else:
             profitability_90_days = None
             performance_chart_90_days = None
 
-        returns_all_time = profitability.iloc[-1]
-        if age:
-            returns_annualised = returns_all_time * datetime.timedelta(days=365) / age
+    if age and returns_all_time:
+        returns_annualised = returns_all_time * datetime.timedelta(days=365) / age
 
     key_metrics = {m.kind.value: m for m in calculate_key_metrics(state, backtested_state, required_history=key_metrics_backtest_cut_off)}
 

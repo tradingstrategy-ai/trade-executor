@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "trade-executor"
 version = "0.3"
-description = "Algorithmic trading backtesting and execution engine for decentralised finance"
+description = "Algorithmic trading backtesting and live trading engine for decentralised finance"
 authors = ["Mikko Ohtamaa <mikko@tradingstrategy.ai>"]
 homepage = "https://tradingstrategy.ai"
 repository = "https://github.com/tradingstrategy-ai/trade-executor"
@@ -24,7 +24,7 @@ matplotlib = "^3.6.0"
 jupyterlab = "^3.5.0"
 pandas-ta = "^0.3.14b"
 tqdm-loggable = "0.1.4"
-web3-ethereum-defi = {version="0.21.3", extras=["data"]}
+web3-ethereum-defi = {version="0.21.5", extras=["data"]}
 
 # tqdm progress bar doesn't show up in VScode Jupyter with ipywidgets>=8
 # https://github.com/microsoft/vscode-jupyter/issues/11014

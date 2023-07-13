@@ -19,9 +19,19 @@ from tradingstrategy.types import USDollarAmount
 
 
 class BalanceUpdateCause(enum.Enum):
+
+    #: Reserve was deposited in the vault
     deposit = "deposit"
+
+    #: User redeemed assets
     redemption = "redemption"
+
+    #: Position value has change due to accrued interest
     interest = "interest"
+
+    #: Accounting correction from on-chain balances to the state (internal ledger)
+    #:
+    correction = "correction"
 
 
 class BalanceUpdatePositionType(enum.Enum):
@@ -76,7 +86,9 @@ class BalanceUpdate:
     #: It might be outside the cycle frequency if treasuries were processed
     #: in a cron job outside the cycle for slow moving strategies.
     #:
-    strategy_cycle_included_at: datetime.datetime
+    #: For accounting corrections this is set to `None`.
+    #:
+    strategy_cycle_included_at: datetime.datetime | None
 
     #: Chain that updated the balance
     chain_id: int
@@ -120,6 +132,12 @@ class BalanceUpdate:
     #: Human-readable notes regarding this event
     #:
     notes: Optional[str] = None
+
+    #: Block number related to the event.
+    #:
+    #: Not always available.
+    #:
+    block_number: int | None = None
 
     def __post_init__(self):
         assert self.quantity != 0, "Balance update cannot be zero: {self}"
