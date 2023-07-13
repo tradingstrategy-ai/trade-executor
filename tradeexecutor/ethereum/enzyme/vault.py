@@ -414,7 +414,6 @@ class EnzymeVaultSyncModel(SyncModel):
         extract_timestamp is disabled to speed up the event reading,
         we handle it separately
         """
-
         # TODO: make this a configuration option
         provider = cast(HTTPProvider, self.web3.provider)
         if has_graphql_support(provider):
