@@ -15,6 +15,7 @@ import pandas as pd
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.visual.single_pair import visualise_single_pair
+from tradeexecutor.visual.multiple_pairs import visualise_multiple_pairs
 
 import plotly.graph_objects as go
 import plotly.subplots as sp
@@ -121,70 +122,31 @@ def draw_multi_pair_strategy_state(
 
     assert universe.get_pair_count() <= 3, "This visualisation can be done only for less than 3 pairs"
 
-    figures, titles = [], []
+    data = universe.universe.candles.df
+    pair_ids = universe.universe.pairs.get_all_pair_ids()
 
-    for pair_id, data in universe.universe.candles.get_all_pairs():
-        
-        if start_at is None and end_at is None:
+    if start_at is None and end_at is None:
             # Get
-            target_pair_candles = data
+            candles = data
 
             # Do candle count clip
             if candle_count:
-                target_pair_candles = target_pair_candles.iloc[-candle_count:]
+                candles = candles.iloc[-candle_count*len(pair_ids):]
 
-            start_at = target_pair_candles.iloc[0]["timestamp"]
-            end_at = target_pair_candles.iloc[-1]["timestamp"]
-        else:
-            assert start_at, "Must have start_at with end_at"
-            assert end_at, "Must have start_at with end_at"
-            target_pair_candles = data.loc[pd.Timestamp(start_at):pd.Timestamp(end_at)]
+            start_at = candles.iloc[0]["timestamp"]
+            end_at = candles.iloc[-1]["timestamp"]
+    else:
+        assert start_at, "Must have start_at with end_at"
+        assert end_at, "Must have start_at with end_at"
+        candles = data.loc[pd.Timestamp(start_at):pd.Timestamp(end_at)]
 
-        pair = universe.universe.pairs.get_pair_by_id(pair_id)
-
-        title = f"{pair.base_token_symbol}/{pair.quote_token_symbol}"
-        titles.append(title)
-
-        figure = visualise_single_pair_strategy_state(
-            state, 
-            target_pair_candles, 
-            start_at, 
-            end_at,
-            pair_id=pair_id,
-            technical_indicators=technical_indicators, 
-            title=title
-        )
-
-        figures.append(figure)
-
-    combined_figure = combine_images(figures, width, height, titles)
-
-    return combined_figure
-
-
-def combine_images(figures, width, height, titles):
-    """Combine multiple Plotly Figures into one image."""
-
-    combined_figure = sp.make_subplots(rows=len(figures), cols=1, shared_xaxes=True, vertical_spacing=0.1, row_titles=titles)
-
-    for i, figure in enumerate(figures):
-        combined_figure.add_trace(figure.data[0], row=i + 1, col=1)
-
-    # Range slider is not very user friendly so just
-    # disable it for now
-    combined_figure.update_xaxes(rangeslider={"visible": False})
-    
-    combined_figure.update_annotations(font_size=12)
-
-    # By default, Plotly seems to make a good size for the subplot figure
-    # so we don't use height and width for now
-    combined_figure.update_layout(
-        # height=height,
-        # width=width,
-        margin=dict(l=50, r=30, t=50, b=50),
+    return visualise_multiple_pairs(
+        state,
+        data,
+        start_at,
+        end_at,
+        pair_ids,
     )
-
-    return combined_figure
 
 
 def visualise_single_pair_strategy_state(
