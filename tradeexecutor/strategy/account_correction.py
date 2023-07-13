@@ -16,6 +16,12 @@ from _decimal import Decimal
 from dataclasses import dataclass
 from typing import List, Iterable, Collection
 
+from eth_defi.enzyme.erc20 import prepare_transfer
+from eth_defi.enzyme.vault import Vault
+from eth_defi.hotwallet import HotWallet
+from eth_defi.token import fetch_erc20_details
+from eth_defi.trace import assert_transaction_success_with_explanation
+from eth_typing import HexAddress
 from tradingstrategy.pair import PandasPairUniverse
 
 from tradeexecutor.ethereum.enzyme.vault import EnzymeVaultSyncModel
@@ -70,7 +76,9 @@ class AccountingCorrection:
     asset: AssetIdentifier
 
     #: Related position
-    position: TradingPosition | ReservePosition
+    #:
+    #: Set none if no open position was found
+    position: TradingPosition | ReservePosition | None
 
     expected_amount: Decimal
 
@@ -86,7 +94,13 @@ class AccountingCorrection:
     #:
     #: Negative for negative corrections
     #:
-    usd_value: USDollarAmount
+    #: `None` if the the tokens are for a new position and we do not have pricing information yet availble.
+    #:
+    usd_value: USDollarAmount | None
+
+    #: Is this correction for reserve asset
+    #:
+    reserve_asset: bool
 
     def __repr__(self):
         return f"<Accounting correction type {self.type.value} for {self.position}, expected {self.expected_amount}, actual {self.actual_amount} at {self.timestamp}>"
@@ -126,10 +140,10 @@ def calculate_account_corrections(
     logger.info("Found %d on-chain tokens", len(asset_balances))
 
     for ab in asset_balances:
-        position = map_onchain_asset_to_position(ab.asset, state)
 
-        if position is None:
-            raise UnexpectedAccountingCorrectionIssue(f"Could not map the on-chain balance to any known position:\n{ab}")
+        reserve = ab.asset in reserve_assets
+
+        position = map_onchain_asset_to_position(ab.asset, state)
 
         if isinstance(position, TradingPosition):
             if position.is_closed():
@@ -138,12 +152,12 @@ def calculate_account_corrections(
                                                           f"{position}")
 
         actual_amount = ab.amount
-        expected_amount = position.get_quantity()
+        expected_amount = position.get_quantity() if position else 0
         diff = actual_amount - expected_amount
 
-        usd_value = position.calculate_quantity_usd_value(diff)
+        usd_value = position.calculate_quantity_usd_value(diff) if position else None
 
-        logger.info("Fix needed %s worth of %f USD", ab.asset, usd_value)
+        logger.info("Fix needed %s worth of %f USD", ab.asset, usd_value or 0)
 
         if abs(actual_amount - expected_amount) > epsilon:
             yield AccountingCorrection(
@@ -155,6 +169,7 @@ def calculate_account_corrections(
                 ab.block_number,
                 ab.timestamp,
                 usd_value,
+                reserve,
             )
 
 
@@ -184,6 +199,12 @@ def apply_accounting_correction(
     elif isinstance(position, ReservePosition):
         position_type = BalanceUpdatePositionType.reserve
         position_id = None
+    elif position is None:
+        # Tokens were for a trading position, but no position was open.
+        # Open a new position
+        portfolio.create_trade(
+            strategy_cycle_at=strategy_cycle_included_at,
+        )
     else:
         raise NotImplementedError()
 
@@ -250,6 +271,9 @@ def correct_accounts(
         corrections: List[AccountingCorrection],
         strategy_cycle_included_at: datetime.datetime | None,
         interactive=True,
+        vault: Vault | None = None,
+        hot_wallet: HotWallet | None = None,
+        unknown_token_receiver: HexAddress | str | None = None,
 ) -> Iterable[BalanceUpdate]:
     """Apply the accounting corrections on the state (internal ledger).
 
@@ -267,6 +291,10 @@ def correct_accounts(
         Iterator of corrections.
     """
 
+    if vault is not None:
+        assert vault.generic_adapter is not None
+        assert hot_wallet is not None
+
     if interactive:
 
         for c in corrections:
@@ -277,4 +305,62 @@ def correct_accounts(
             raise AccountingCorrectionAborted()
 
     for correction in corrections:
-        yield apply_accounting_correction(state, correction, strategy_cycle_included_at)
+
+        # Could not map to open position,
+        # but we do not have code to open new positions yet.
+        # Just deal with it by transferring away.
+        if correction.position is None:
+            transfer_away_assets_without_position(
+                correction,
+                unknown_token_receiver,
+                vault,
+                hot_wallet,
+            )
+        else:
+            yield apply_accounting_correction(state, correction, strategy_cycle_included_at)
+
+
+def transfer_away_assets_without_position(
+    correction: AccountingCorrection,
+    unknown_token_receiver: HexAddress | str,
+    vault: Vault,
+    hot_wallet: HotWallet,
+):
+    """Transfer away non-reserve assets that cannot be mapped to an open position.
+
+    TODO: Correct approach would be to open a new trading position
+    directly in the correction, but it's complicated and we do not want to get there yet.
+
+    :param correction:
+
+    :param unknown_token_receiver:
+    :return:
+    """
+
+    assert correction.position is None
+    assert not correction.reserve_asset
+
+    web3 = vault.web3
+    asset = correction.asset
+
+    token = fetch_erc20_details(
+        web3,
+        asset.address,
+    )
+
+    logger.info(f"Transfering %s %s to %s as we could not map it to open position",
+                correction.actual_amount,
+                asset.token_symbol,
+                unknown_token_receiver)
+
+    prepared_tx = prepare_transfer(
+        vault.deployment,
+        vault,
+        vault.generic_adapter,
+        token.contract,
+        unknown_token_receiver,
+        token.convert_to_raw(correction.actual_amount),
+    )
+
+    tx_hash = prepared_tx.transact({"from": hot_wallet.address})
+    assert_transaction_success_with_explanation(web3, tx_hash)

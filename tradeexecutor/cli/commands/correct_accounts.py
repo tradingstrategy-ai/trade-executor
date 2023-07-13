@@ -218,6 +218,9 @@ def correct_accounts(
         corrections,
         strategy_cycle_included_at=None,
         interactive=not unit_testing,
+        vault=sync_model.vault,
+        hot_wallet=sync_model.hot_wallet,
+        unknown_token_receiver=hot_wallet.address,  # Send any unknown tokens to the hot wallet of the trade-executor
     )
     balance_updates = list(balance_updates)
     logger.info("Applied %d balance updates", len(balance_updates))

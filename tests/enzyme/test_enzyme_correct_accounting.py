@@ -394,3 +394,106 @@ def test_enzyme_correct_accounting_errors(
         sync_model))
 
     assert len(further_corrections) == 0
+
+
+def test_enzyme_correct_accounting_no_open_position(
+    web3: Web3,
+    deployer: HexAddress,
+    vault: Vault,
+    usdc: Contract,
+    weth: Contract,
+    usdc_asset: AssetIdentifier,
+    weth_asset: AssetIdentifier,
+    user_1: HexAddress,
+    user_2: HexAddress,
+    uniswap_v2: UniswapV2Deployment,
+    weth_usdc_trading_pair: TradingPairIdentifier,
+    pair_universe: PandasPairUniverse,
+    hot_wallet: HotWallet,
+):
+    """Correct accounting errors
+
+    - Send it WETH that belongs to WETH-USDC position
+
+    - Accounting correction maps the unknow weth to a position
+
+    - Apply the correction to internal ledger accounting
+
+    - Recheck accounting errors disappear
+    """
+    assert vault.generic_adapter
+
+    reorg_mon = create_reorganisation_monitor(web3)
+
+    tx_hash = vault.vault.functions.addAssetManagers([hot_wallet.address]).transact({"from": user_1})
+    assert_transaction_success_with_explanation(web3, tx_hash)
+
+    sync_model = EnzymeVaultSyncModel(
+        web3,
+        vault.address,
+        reorg_mon,
+        generic_adapter_address=vault.generic_adapter.address,
+    )
+
+    state = State()
+    sync_model.sync_initial(state)
+
+    # Make two deposits from separate parties
+    usdc.functions.transfer(user_1, 1000 * 10**6).transact({"from": deployer})
+    usdc.functions.approve(vault.comptroller.address, 500 * 10**6).transact({"from": user_1})
+    vault.comptroller.functions.buyShares(500 * 10**6, 1).transact({"from": user_1})
+
+    # Strategy has its reserve balances updated
+    sync_model.sync_treasury(datetime.datetime.utcnow(), state)
+    assert state.portfolio.get_total_equity() == pytest.approx(500)
+
+    # Send in some WETH
+    weth.functions.transfer(vault.vault.address, 2*10**18).transact({"from": deployer})
+
+    # Now both USDC and WETH balances should be out of sync
+    corrections = list(calculate_account_corrections(
+        pair_universe,
+        state.portfolio.get_reserve_assets(),
+        state,
+        sync_model))
+
+    # Unknown WETH
+    assert len(corrections) == 1
+
+    # WETH correction
+    position_correction = corrections[0]
+    assert position_correction.type == AccountingCorrectionType.unknown
+    assert position_correction.asset == weth_asset
+    assert position_correction.position is None
+    assert position_correction.expected_amount == pytest.approx(Decimal('0'))
+    assert position_correction.actual_amount == pytest.approx(Decimal('2'))
+
+    #
+    # Correct state (internal ledger)
+    #
+
+    vault = sync_model.vault
+    balance_updates = correct_accounts(
+        state,
+        corrections,
+        strategy_cycle_included_at=None,
+        interactive=False,
+        vault=vault,
+        hot_wallet=hot_wallet,
+        unknown_token_receiver=user_1,
+    )
+    balance_updates = list(balance_updates)
+    assert len(balance_updates) == 0
+
+    assert weth.functions.balanceOf(user_1).call() == pytest.approx(Decimal(2*10**18))
+
+    #
+    # No further accounting errors
+    #
+    further_corrections = list(calculate_account_corrections(
+        pair_universe,
+        state.portfolio.get_reserve_assets(),
+        state,
+        sync_model))
+
+    assert len(further_corrections) == 0
