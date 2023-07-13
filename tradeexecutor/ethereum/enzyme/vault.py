@@ -12,6 +12,7 @@ from web3 import Web3, HTTPProvider
 from eth_defi.chain import fetch_block_timestamp, has_graphql_support
 from eth_defi.enzyme.events import fetch_vault_balance_events, EnzymeBalanceEvent, Deposit, Redemption, fetch_vault_balances
 from eth_defi.enzyme.vault import Vault
+from eth_defi.event_reader.lazy_timestamp_reader import extract_timestamps_json_rpc_lazy
 from eth_defi.event_reader.reader import read_events, Web3EventReader, extract_events, extract_timestamps_json_rpc
 from eth_defi.event_reader.reorganisation_monitor import ReorganisationMonitor
 from eth_defi.hotwallet import HotWallet
@@ -418,6 +419,11 @@ class EnzymeVaultSyncModel(SyncModel):
         # TODO: make this a configuration option
         provider = cast(HTTPProvider, self.web3.provider)
         if has_graphql_support(provider):
+
+        # TODO: make this a configuration option
+        provider = cast(HTTPProvider, self.web3.provider)
+        if has_graphql_support(provider):
+            logger.info("Using /graqpql based reader for vault events")
             # GoEthereum with /graphql enabled
             reader: Web3EventReader = cast(
                 Web3EventReader,
@@ -426,6 +432,7 @@ class EnzymeVaultSyncModel(SyncModel):
         else:
             # Fall back to lazy load event timestamps,
             # all commercial SaaS nodes
+            logger.info("Using lazy timestamp loading reader for vault events")
             reader: Web3EventReader = cast(
                 Web3EventReader,
                 partial(read_events, notify=self._notify, chunk_size=self.scan_chunk_size, reorg_mon=None, extract_timestamps=extract_timestamps_json_rpc_lazy)
