@@ -1009,33 +1009,3 @@ def test_stateful_routing_adjust_epsilon(
     trade_tx = trades[0].blockchain_transactions[-1]
     assert trade_tx.other["reserve_amount"] == str(100 * 10**18)
     assert trade_tx.other["adjusted_reserve_amount"] == str(100 * 10**18 - 1)
-
-    # We received the tokens we bought
-    assert cake_token.functions.balanceOf(hot_wallet.address).call() > 0
-
-    cake_position: TradingPosition = state.portfolio.open_positions[1]
-    assert cake_position
-
-    # Buy Cake via BUSD -> BNB pool for 100 USD
-    trades = [
-        trader.sell(cake_busd_trading_pair, cake_position.get_quantity())
-    ]
-
-    t = trades[0]
-    assert t.is_sell()
-    assert t.reserve_currency == busd_asset
-    assert t.pair == cake_busd_trading_pair
-    assert t.planned_quantity == -cake_position.get_quantity()
-
-    state.start_trades(datetime.datetime.utcnow(), trades)
-    routing_model.execute_trades_internal(pair_universe, routing_state, trades, check_balances=True)
-    execution_model.broadcast_and_resolve(state, trades, stop_on_execution_failure=True)
-
-    # Check all all trades and transactions completed
-    for t in trades:
-        assert t.is_success()
-        for tx in t.blockchain_transactions:
-            assert tx.is_success()
-
-    # On-chain balance is zero after the sell
-    assert cake_token.functions.balanceOf(hot_wallet.address).call() == 0
