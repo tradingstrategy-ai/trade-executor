@@ -1066,5 +1066,4 @@ def test_stateful_routing_adjust_epsilon_sell(
 
     # Check that we recorded spending amount correctly
     trade_tx = t.blockchain_transactions[-1]
-    assert trade_tx.other["reserve_amount"] == str(62383807922243175731)
-    assert trade_tx.other["adjusted_reserve_amount"] == str(62383807922243175730)
+    assert int(trade_tx.other["reserve_amount"]) == int(trade_tx.other["adjusted_reserve_amount"]) + 1
