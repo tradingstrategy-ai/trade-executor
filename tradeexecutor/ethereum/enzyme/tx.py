@@ -160,6 +160,7 @@ class EnzymeTransactionBuilder(TransactionBuilder):
             transaction_args=execute_calls_bound_func.args,
             args=execute_calls_bound_func.args,
             wrapped_args=args_bound_func.arguments,
+            wrapped_function_selector=args_bound_func.fn_name,
             signed_bytes=signed_bytes,
             tx_hash=signed_tx.hash.hex(),
             nonce=signed_tx.nonce,

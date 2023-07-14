@@ -148,9 +148,11 @@ class BlockchainTransaction:
     #: Contract we called. Usually the Uniswap v2 router address.
     contract_address: Optional[JSONHexAddress] = None
 
-    #: Function we called
+    #: Function name we called
     #:
     #: This is Solidity function entry point from the transaction data payload
+    #:
+    #: Human-readable function name for debugging purposes.
     #:
     function_selector: Optional[str] = None
 
@@ -167,6 +169,15 @@ class BlockchainTransaction:
             decoder=decode_pickle_over_json,
         )
     )
+
+    #: Function name the vault calls.
+    #:
+    #: This is Solidity function entry point from the transaction data payload
+    #:
+    #:
+    #: Human-readable function name for debugging purposes.
+    #:
+    wrapped_function_selector: Optional[str] = None
 
     #: Arguments that execute the actual trade.
     #:

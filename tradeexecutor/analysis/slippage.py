@@ -1,6 +1,7 @@
 """Display trading positions as Pandas notebook items."""
 import binascii
 import datetime
+from _decimal import Decimal
 from typing import Iterable
 
 import numpy as np
@@ -41,12 +42,18 @@ def _decode_generic_adapter_execute_calls_args(data: bytes) -> dict:
     generic_adapter_abi = ["address[]", "uint256[]", "address[]", "uint256[]", "bytes"]
     decoded_2 = decode(generic_adapter_abi, generic_adapter_payload)
 
+    call_abi = ["address[]", "bytes[]"]
+    called_addresses, called_data = decode(call_abi, decoded_2[4])
+
+    calls = list(zip(called_addresses, called_data))
+
     return {
         "incoming_assets": decoded_2[0],
         "min_incoming": decoded_2[1],
         "spend_assets": decoded_2[2],
         "spend_assets_amounts": decoded_2[3],
         "encoded_external_calls_data": decoded_2[4],
+        "calls": calls,
     }
 
 
@@ -96,23 +103,24 @@ def display_slippage(trades: Iterable[TradeExecution]) -> pd.DataFrame:
         if len(t.blockchain_transactions) > 0:
             swap_tx = t.blockchain_transactions[-1]
             block_number = swap_tx.block_number
-            import ipdb ; ipdb.set_trace()
+
             if swap_tx.function_selector == "callOnExtension":
                 # Enzyme vault tx + underlying GenericAdapter wrapper
                 # Assume Uniswap v3 always
                 #  wrapped args:[['2791bca1f2de4661ed88a30c99a7a9449aa841740001f47ceb23fd6bc0add59e62ac25578270cff1b9f619', '0x07f7eB451DfeeA0367965646660E85680800E352', 9223372036854775808, 3582781, 1896263219612875]]
                 uni_arg_list = swap_tx.wrapped_args[0]
-                uniswap_amount_in = uni_arg_list[-1]
-                uniswap_amount_out = uni_arg_list[-2]
+                uniswap_amount_in = uni_arg_list[-2]
+                uniswap_amount_out = uni_arg_list[-1]
 
                 amount_in = input.convert_to_decimal(uniswap_amount_in)
                 amount_out = output.convert_to_decimal(uniswap_amount_out)
                 uniswap_price = amount_in / amount_out
 
+                if t.is_sell():
+                    uniswap_price = Decimal(1) / uniswap_price
+
                 generic_adapter_data = binascii.unhexlify(swap_tx.args[2])
                 enzyme_args = _decode_generic_adapter_execute_calls_args(generic_adapter_data)
-
-                import ipdb ; ipdb.set_trace()
 
                 # Check we did not pass wrong token address to enzyme
                 enzyme_incoming_token = enzyme_args["incoming_assets"][0]
@@ -120,6 +128,10 @@ def display_slippage(trades: Iterable[TradeExecution]) -> pd.DataFrame:
 
                 enzyme_min_incoming_raw = enzyme_args["min_incoming"][0]
                 enzyme_expected_amount = output.convert_to_decimal(enzyme_min_incoming_raw)
+
+                uniswap_function_selector = enzyme_args["calls"][0][1][0:4].hex()
+                # exactInput((bytes,address,uint256,uint256,uint256))
+                assert uniswap_function_selector == "c04b8d59"
 
             tx_hash = swap_tx.tx_hash
             # TODO: Does not work in all notebook run times
@@ -135,14 +147,14 @@ def display_slippage(trades: Iterable[TradeExecution]) -> pd.DataFrame:
             # "Block": f"{block_number:,}" if block_number else "",
             "Lag": lag.total_seconds() if lag else np.NaN,
             "Slippage": int(t.slippage_tolerance * 10000) if t.slippage_tolerance else np.NaN,
-            "Amount in": amount_in,
-            "Amount out": amount_out,
+            "exactInput amount in": amount_in,
+            "exactInput amount out": amount_out,
             "Enzyme expected amount": enzyme_expected_amount,
             "Assumed price": t.planned_price,
             "Uniswap price": uniswap_price,
-            #"Tx": tx_link,
             # "Notes": t.notes,
             "Failure reason": reason,
+            "Tx": tx_link,
         })
 
     df = pd.DataFrame(items, index=idx)
