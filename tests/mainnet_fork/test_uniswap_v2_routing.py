@@ -954,6 +954,87 @@ def test_stateful_routing_out_of_balance(
         routing_model.execute_trades_internal(pair_universe, routing_state, trades, check_balances=True)
 
 
+def test_stateful_routing_adjust_epsilon(
+        web3,
+        pair_universe,
+        hot_wallet,
+        busd_asset,
+        bnb_asset,
+        cake_asset,
+        cake_token,
+        routing_model,
+        cake_busd_trading_pair,
+        state: State,
+        execution_model: UniswapV2ExecutionModel
+        busd_token,
+        user_2
+):
+    """Perform a trade where we have a rounding error in our reserves.
+    """
 
+    # Prepare a transaction builder
+    tx_builder = HotWalletTransactionBuilder(web3, hot_wallet)
 
+    # Move 1 unit of BUSD out from the wallet
+    remove_tokens_tx = busd_token.functions.transfer(user_2, 1)
+    signed_tx = hot_wallet.sign_bound_call_with_new_nonce(remove_tokens_tx)
+    web3.eth.send_raw_transaction(signed_tx.rawTransaction)
 
+    routing_state = UniswapV2RoutingState(pair_universe, tx_builder)
+
+    trader = PairUniverseTestTrader(state)
+
+    # Buy Cake via BUSD -> BNB pool for 100 USD
+    trades = [
+        trader.buy(cake_busd_trading_pair, Decimal(100))
+    ]
+
+    t = trades[0]
+    assert t.is_buy()
+    assert t.reserve_currency == busd_asset
+    assert t.pair == cake_busd_trading_pair
+
+    state.start_trades(datetime.datetime.utcnow(), trades)
+    routing_model.execute_trades_internal(pair_universe, routing_state, trades, check_balances=True)
+    execution_model.broadcast_and_resolve(state, trades, stop_on_execution_failure=True)
+
+    # Check all all trades and transactions completed
+    for t in trades:
+        assert t.is_success()
+        for tx in t.blockchain_transactions:
+            assert tx.is_success()
+
+    # Check that we recorded spending amount correctly
+    trade_tx = trades[0].blockchain_transactions[-1]
+    assert trade_tx.other["reserve_amount"] == str(100 * 10**18)
+    assert trade_tx.other["adjusted_reserve_amount"] == str(100 * 10**18 - 1)
+
+    # We received the tokens we bought
+    assert cake_token.functions.balanceOf(hot_wallet.address).call() > 0
+
+    cake_position: TradingPosition = state.portfolio.open_positions[1]
+    assert cake_position
+
+    # Buy Cake via BUSD -> BNB pool for 100 USD
+    trades = [
+        trader.sell(cake_busd_trading_pair, cake_position.get_quantity())
+    ]
+
+    t = trades[0]
+    assert t.is_sell()
+    assert t.reserve_currency == busd_asset
+    assert t.pair == cake_busd_trading_pair
+    assert t.planned_quantity == -cake_position.get_quantity()
+
+    state.start_trades(datetime.datetime.utcnow(), trades)
+    routing_model.execute_trades_internal(pair_universe, routing_state, trades, check_balances=True)
+    execution_model.broadcast_and_resolve(state, trades, stop_on_execution_failure=True)
+
+    # Check all all trades and transactions completed
+    for t in trades:
+        assert t.is_success()
+        for tx in t.blockchain_transactions:
+            assert tx.is_success()
+
+    # On-chain balance is zero after the sell
+    assert cake_token.functions.balanceOf(hot_wallet.address).call() == 0
