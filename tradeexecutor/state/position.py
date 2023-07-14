@@ -237,8 +237,11 @@ class TradingPosition(GenericPosition):
         return not self.is_open()
 
     def is_frozen(self) -> bool:
-        """This position has had a failed trade and can no longer be automatically moved around."""
-        return self.frozen_at is not None
+        """This position has had a failed trade and can no longer be automatically moved around.
+
+        After the position is unfrozen the flag goes away.
+        """
+        return (self.frozen_at is not None) and not self.is_unfrozen()
 
     def is_unfrozen(self) -> bool:
         """This position was frozen, but its trades were successfully repaired."""
