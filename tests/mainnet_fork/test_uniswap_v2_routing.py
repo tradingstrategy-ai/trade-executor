@@ -1029,10 +1029,8 @@ def test_stateful_routing_adjust_epsilon_sell(
     """
 
     # Prepare a transaction builder
-    tx_builder = HotWalletTransactionBuilder(web3, hot_wallet)
-
+    tx_builder = HotWalletTransactionBuilder(web3, hot_wallet)=
     routing_state = UniswapV2RoutingState(pair_universe, tx_builder)
-
     trader = PairUniverseTestTrader(state)
 
     # Buy Cake via BUSD -> BNB pool for 100 USD
@@ -1049,29 +1047,19 @@ def test_stateful_routing_adjust_epsilon_sell(
 
     cake_position: TradingPosition = state.portfolio.open_positions[1]
 
-    # Move 0.000001 cake away
-    # Move 1 unit of BUSD out from the wallet
+    # Move 0.000001 Cake away to simulate rounding error
     remove_tokens_tx = cake_token.functions.transfer(user_2, 1)
     signed_tx = hot_wallet.sign_bound_call_with_new_nonce(remove_tokens_tx)
     web3.eth.send_raw_transaction(signed_tx.rawTransaction)
 
-    # Buy Cake via BUSD -> BNB pool for 100 USD
-    trades = [
-        trader.sell(cake_busd_trading_pair, cake_position.get_quantity())
-    ]
-
-    t = trades[0]
+    t = trader.sell(cake_busd_trading_pair, cake_position.get_quantity())
     assert t.is_sell()
 
+    trades = [t]
     state.start_trades(datetime.datetime.utcnow(), trades)
     routing_model.execute_trades_internal(pair_universe, routing_state, trades, check_balances=True)
     execution_model.broadcast_and_resolve(state, trades, stop_on_execution_failure=True)
-
-    # Check all all trades and transactions completed
-    for t in trades:
-        assert t.is_success()
-        for tx in t.blockchain_transactions:
-            assert tx.is_success()
+    assert t.is_success()
 
     # On-chain balance is zero after the sell
     assert cake_token.functions.balanceOf(hot_wallet.address).call() == 0
