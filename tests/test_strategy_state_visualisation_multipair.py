@@ -36,7 +36,7 @@ from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.visual.strategy_state import draw_multi_pair_strategy_state
-from tradeexecutor.visual.image_output import render_plotly_figure_as_image_file
+from tradeexecutor.visual.image_output import open_plotly_figure_in_browser
 from tradingstrategy.utils.groupeduniverse import NoDataAvailable
 from tradeexecutor.strategy.trading_strategy_universe import translate_trading_pair
 
@@ -49,10 +49,10 @@ from tradeexecutor.strategy.trading_strategy_universe import translate_trading_p
 TRADE_ROUTING = TradeRouting.uniswap_v3_usdc
 
 # How often the strategy performs the decide_trades cycle.
-TRADING_STRATEGY_CYCLE = CycleDuration.cycle_1h
+TRADING_STRATEGY_CYCLE = CycleDuration.cycle_1d
 
 # Time bucket for our candles
-CANDLE_TIME_BUCKET = TimeBucket.h1
+CANDLE_TIME_BUCKET = TimeBucket.d1
 
 # Candle time granularity we use to trigger stop loss checks
 STOP_LOSS_TIME_BUCKET = TimeBucket.m15
@@ -102,6 +102,7 @@ STDDEV = 2.0
 # and tables shorter for the demostration.
 #
 START_AT = datetime.datetime(2022, 7, 1)
+START_AT_DATA = datetime.datetime(2022, 3, 1)
 
 # Backtest range
 END_AT = datetime.datetime(2023, 6, 6)
@@ -184,6 +185,8 @@ def decide_trades(
     # Fetch candle data for all pairs in a single go
     candle_data = universe.candles.iterate_samples_by_pair_range(start, end)
 
+    visualisation = state.visualisation
+
     for pair_id, candles in candle_data:
 
         # Convert raw trading pair data to strategy execution format
@@ -252,26 +255,21 @@ def decide_trades(
                 position_for_pair.stop_loss = float(price_latest * TRAILING_STOP_LOSS_PCT)
                     
         # Visualise our technical indicators.
-        # With the current setup, we only visual price action for one pair,
-        # instead of plotting a separate price chart for each ticker.
-        visualisation = state.visualisation
-        symbol = pair.base.token_symbol
-        if symbol == EXAMINED_PAIR[2]:
-            visualisation.plot_indicator(timestamp, f"{symbol} BB upper", PlotKind.technical_indicator_on_price, bb_upper.iloc[-1])
-            visualisation.plot_indicator(timestamp, f"{symbol} BB lower", PlotKind.technical_indicator_on_price, bb_lower.iloc[-1])        
-            visualisation.plot_indicator(timestamp, f"{symbol} moving avg", PlotKind.technical_indicator_on_price, bb_mid.iloc[-1])
+        pair_slug = f"{pair.base.token_symbol}/{pair.quote.token_symbol}"
         
-        # We plot RSI for all pairs
-        visualisation.plot_indicator(timestamp, f"{symbol} RSI", PlotKind.technical_indicator_detached, current_rsi)
+        # bollinger bands
+        visualisation.plot_indicator(timestamp, f"{pair_slug} BB upper", PlotKind.technical_indicator_on_price, bb_upper.iloc[-1], pair=pair)
+        visualisation.plot_indicator(timestamp, f"{pair_slug} BB lower", PlotKind.technical_indicator_on_price, bb_lower.iloc[-1], pair=pair)        
+        visualisation.plot_indicator(timestamp, f"{pair_slug} moving avg", PlotKind.technical_indicator_on_price, bb_mid.iloc[-1], pair=pair)
+        
+        # rsi
+        visualisation.plot_indicator(timestamp, f"{pair_slug} RSI", PlotKind.technical_indicator_detached, current_rsi, pair=pair)
 
     return trades
 
 
 @pytest.fixture(scope="module")
 def universe() -> TradingStrategyUniverse:
-
-    start_at = datetime.datetime(2021, 6, 1)
-    end_at = datetime.datetime(2022, 1, 1)
 
     # Set up fake assets
     mock_chain_id = ChainId.ethereum
@@ -313,13 +311,13 @@ def universe() -> TradingStrategyUniverse:
         internal_id=101,
         internal_exchange_id=mock_exchange.exchange_id)
     
-    time_bucket = TimeBucket.d1
+    time_bucket = CANDLE_TIME_BUCKET
 
     pair_universe = create_pair_universe_from_code(mock_chain_id, [weth_usdc, pepe_usdc, bob_usdc])
 
-    candles_weth_usdc = generate_ohlcv_candles(time_bucket, start_at, end_at, daily_drift=(0.95, 1.05), pair_id=weth_usdc.internal_id)
-    candles_pepe_usdc = generate_ohlcv_candles(time_bucket, start_at, end_at, daily_drift=(0.93, 1.06), pair_id=pepe_usdc.internal_id)
-    candles_bob_usdc = generate_ohlcv_candles(time_bucket, start_at, end_at, daily_drift=(0.98, 1.09), pair_id=bob_usdc.internal_id)
+    candles_weth_usdc = generate_ohlcv_candles(time_bucket, START_AT_DATA, END_AT, pair_id=weth_usdc.internal_id, random_seed=1)
+    candles_pepe_usdc = generate_ohlcv_candles(time_bucket, START_AT_DATA, END_AT, pair_id=pepe_usdc.internal_id, random_seed = 2)
+    candles_bob_usdc = generate_ohlcv_candles(time_bucket, START_AT_DATA, END_AT, pair_id=bob_usdc.internal_id, random_seed = 4)
     
     candle_universe = GroupedCandleUniverse.create_from_multiple_candle_datafarames([candles_weth_usdc, candles_pepe_usdc, candles_bob_usdc])
 
@@ -332,7 +330,12 @@ def universe() -> TradingStrategyUniverse:
         liquidity=None
     )
 
-    return TradingStrategyUniverse(universe=universe, reserve_assets=[usdc])
+    return TradingStrategyUniverse(
+        universe=universe, 
+        backtest_stop_loss_candles=candle_universe,
+        backtest_stop_loss_time_bucket=time_bucket,
+        reserve_assets=[usdc]
+    )
 
 
 def test_visualise_strategy_state(
@@ -341,20 +344,18 @@ def test_visualise_strategy_state(
     ):
     """Visualise strategy state as a bunch inline images."""
 
-    start_at, end_at = universe.universe.candles.get_timestamp_range()
-
     routing_model = generate_simple_routing_model(universe)
 
     # Run the test
     state, universe, debug_dump = run_backtest_inline(
-        start_at=start_at.to_pydatetime(),
-        end_at=end_at.to_pydatetime(),
+        start_at=START_AT,
+        end_at=END_AT,
         client=None,  # None of downloads needed, because we are using synthetic data
-        cycle_duration=CycleDuration.cycle_1d,  # Override to use 24h cycles despite what strategy file says
+        cycle_duration=TRADING_STRATEGY_CYCLE,
         decide_trades=decide_trades,
         create_trading_universe=None,
         universe=universe,
-        initial_deposit=10_000,
+        initial_deposit=INITIAL_DEPOSIT,
         reserve_currency=ReserveCurrency.busd,
         trade_routing=TradeRouting.user_supplied_routing_model,
         routing_model=routing_model,
@@ -362,16 +363,9 @@ def test_visualise_strategy_state(
         allow_missing_fees=True,
     )
 
-    image= draw_multi_pair_strategy_state(state, universe)
+    image = draw_multi_pair_strategy_state(state, universe)
     
-    png_data = render_plotly_figure_as_image_file(image)
-
     # Test the image on a local screen
     # using a web brower
     if os.environ.get("SHOW_IMAGE"):
-        # https://stackoverflow.com/a/74619515/315168
-        path = Path("/tmp/test-image.png")
-        with open(path, "wb") as out:
-            out.write(png_data)
-
-        webbrowser.open(f"file://{path.as_posix()}")
+        open_plotly_figure_in_browser(image, height=2000, width=1000)

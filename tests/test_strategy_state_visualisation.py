@@ -35,7 +35,7 @@ from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.visual.strategy_state import draw_single_pair_strategy_state
-from tradeexecutor.visual.image_output import render_plotly_figure_as_image_file
+from tradeexecutor.visual.image_output import open_plotly_figure_in_browser
 from tradingstrategy.utils.groupeduniverse import NoDataAvailable
 
 
@@ -198,18 +198,8 @@ def test_visualise_strategy_state(
     )
 
     image = draw_single_pair_strategy_state(state, universe)
-    png_data = render_plotly_figure_as_image_file(image)
 
     # Test the image on a local screen
     # using a web brower
-    if os.environ.get("SHOW_IMAGE"):
-        # https://stackoverflow.com/a/74619515/315168
-        path = Path("/tmp/test-image.png")
-        with open(path, "wb") as out:
-            out.write(png_data)
-
-        webbrowser.open(f"file://{path.as_posix()}")
-
-
-
-
+    #if os.environ.get("SHOW_IMAGE"):
+    open_plotly_figure_in_browser(image)

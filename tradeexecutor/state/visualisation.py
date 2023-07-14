@@ -305,6 +305,7 @@ class Visualisation:
              detached_overlay_name: Optional[str] = None,
              indicator_size: Optional[float] = None,
              recording_time: Optional[RecordingTime] = RecordingTime.decision_making_time,
+             pair: Optional[TradingPairIdentifier] = None,
         ):
         """Add a value to the output data and diagram.
         
@@ -358,7 +359,7 @@ class Visualisation:
             try:
                 value = float(value)
             except TypeError as e:
-                raise RuntimeError(f"Could not convert value {value} {value.__class__} to float" + _get_helper_message("value")) from e
+                raise RuntimeError(f"Could not convert value {value} {value.__class__} to float" + _get_helper_message("value") + ". Make sure you provide a float or int, not a series, to plot_indicator.") from e
 
         if detached_overlay_name:
             assert type(detached_overlay_name) is str, "Detached overlay must be a string" + _get_helper_message("detached_overlay_name")
@@ -383,6 +384,8 @@ class Visualisation:
             plot.colour = colour
 
         plot.recording_time = recording_time
+
+        plot.pair = pair
 
         self.plots[name] = plot
 

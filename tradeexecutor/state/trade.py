@@ -370,7 +370,7 @@ class TradeExecution:
         if self.trade_type != TradeType.repair:
             assert self.planned_quantity != 0
 
-        assert abs(self.planned_quantity) > QUANTITY_EPSILON, f"We got a planned quantity that does look like a good number: {self.planned_quantity}, trade is: {self}"
+        assert abs(self.planned_quantity) > QUANTITY_EPSILON, f"We got a planned quantity that does not look like a good number: {self.planned_quantity}, trade is: {self}"
 
         assert self.planned_price > 0
         assert self.planned_reserve >= 0
