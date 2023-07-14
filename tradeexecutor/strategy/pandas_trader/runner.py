@@ -240,6 +240,8 @@ class PandasTraderRunner(StrategyRunner):
                 
                 print("", file=buf)
 
+                pair = universe.universe.pairs.get_pair_by_id(pair_id)
+
                 last_candle = candles.iloc[-1]
                 lag = pd.Timestamp.utcnow().tz_localize(None) - last_candle["timestamp"]
 
