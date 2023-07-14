@@ -965,9 +965,9 @@ def test_stateful_routing_adjust_epsilon(
         routing_model,
         cake_busd_trading_pair,
         state: State,
-        execution_model: UniswapV2ExecutionModel
+        execution_model: UniswapV2ExecutionModel,
         busd_token,
-        user_2
+        user_2,
 ):
     """Perform a trade where we have a rounding error in our reserves.
     """
@@ -976,10 +976,11 @@ def test_stateful_routing_adjust_epsilon(
     tx_builder = HotWalletTransactionBuilder(web3, hot_wallet)
 
     # Move 1 unit of BUSD out from the wallet
-    remove_tokens_tx = busd_token.functions.transfer(user_2, 1)
+    balance = busd_token.functions.balanceOf(hot_wallet.address).call()
+    diff = (balance - 100 * 10**18) + 1
+    remove_tokens_tx = busd_token.functions.transfer(user_2, diff)
     signed_tx = hot_wallet.sign_bound_call_with_new_nonce(remove_tokens_tx)
     web3.eth.send_raw_transaction(signed_tx.rawTransaction)
-
     routing_state = UniswapV2RoutingState(pair_universe, tx_builder)
 
     trader = PairUniverseTestTrader(state)
