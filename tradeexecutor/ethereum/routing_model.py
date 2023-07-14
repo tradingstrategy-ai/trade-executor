@@ -69,8 +69,9 @@ class EthereumRoutingModel(RoutingModel):
         """
 
         super().__init__(allowed_intermediary_pairs, reserve_token_address)
-        
         self.chain_id = chain_id
+
+
 
     def make_direct_trade(self,
                           routing_state: EthereumRoutingState,
@@ -97,8 +98,13 @@ class EthereumRoutingModel(RoutingModel):
             txs = routing_state.ensure_token_approved(token_address, uniswap.swap_router.address)
         else:
             raise TypeError("Incorrect Uniswap Instance provided. Can't get router.")
-            
-        txs += routing_state.trade_on_router_two_way(
+
+        reserve_amount = routing_state.adjust_spend(
+            reserve_asset,
+            reserve_amount,
+        )
+
+        trade = routing_state.trade_on_router_two_way(
             uniswap,
             target_pair,
             reserve_asset,
@@ -107,6 +113,11 @@ class EthereumRoutingModel(RoutingModel):
             check_balances,
             asset_deltas=asset_deltas,
             )
+
+        routing_state.validate_trade_asset_deltas(trade)
+
+        txs.append(trade)
+
         return txs
 
     def make_multihop_trade(self,
@@ -137,7 +148,12 @@ class EthereumRoutingModel(RoutingModel):
             txs = routing_state.ensure_token_approved(token_address, uniswap.swap_router.address)
         else:
             raise TypeError("Incorrect Uniswap Instance provided. Can't get router.")
-        
+
+        reserve_amount = routing_state.adjust_spend(
+            reserve_asset,
+            reserve_amount,
+        )
+
         txs += routing_state.trade_on_router_three_way(
             uniswap,
             target_pair,
