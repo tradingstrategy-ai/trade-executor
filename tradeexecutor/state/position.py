@@ -367,7 +367,7 @@ class TradingPosition(GenericPosition):
 
         - Does not account for trades that are currently being executed.
 
-        - Because decimal summ might
+        - Does some fixing for rounding errors in the form of epsilon checks
 
         - Accounts for any balance update events (redemptions, interest, accounting corrections)
 
@@ -389,19 +389,22 @@ class TradingPosition(GenericPosition):
         # Always convert zero to decimal
         return Decimal(s)
 
-    def get_live_quantity(self) -> Decimal:
-        """Get all tied up token quantity.
+    def get_available_trading_quantity(self) -> Decimal:
+        """Get token quantity still availble for the trades in this strategy cycle.
 
         This includes
 
         - All executed trades
 
-        - All planned trades for this cycle
+        - All planned trades for this cycle that have already reduced/increased
+          amounts for this position
 
         This gives you remaining token balance, even if there are some earlier
         sell orders that have not been executed yet.
         """
-        return sum([t.get_position_quantity() for t in self.trades.values() if not t.is_failed()])
+        planned = sum([t.get_position_quantity() for t in self.trades.values() if t.is_planned()])
+        live = self.get_available_trading_quantity()
+        return planned + live
 
     def get_current_price(self) -> USDollarAmount:
         """Get the price of the base asset based on the latest valuation."""

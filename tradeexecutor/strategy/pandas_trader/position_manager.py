@@ -624,7 +624,7 @@ class PositionManager:
         assert position.is_long(), "Only long supported for now"
         assert position.is_open(), f"Tried to close already closed position {position}"
 
-        quantity_left = position.get_live_quantity()
+        quantity_left = position.get_available_trading_quantity()
 
         if quantity_left == 0:
             # We have already generated closing trades for this position
@@ -639,6 +639,8 @@ class PositionManager:
         reserve_asset, reserve_price = self.state.portfolio.get_default_reserve()
 
         slippage_tolerance = slippage_tolerance or self.default_slippage_tolerance
+
+        logger.info("Preparing to close position %s, quantity %s, pricing %s, slippage tolerance %f", position, quantity, price_structure, slippage_tolerance)
 
         position2, trade, created = self.state.create_trade(
             self.timestamp,
