@@ -403,7 +403,7 @@ class TradingPosition(GenericPosition):
         sell orders that have not been executed yet.
         """
         planned = sum([t.get_position_quantity() for t in self.trades.values() if t.is_planned()])
-        live = self.get_available_trading_quantity()
+        live = self.get_quantity()
         return planned + live
 
     def get_current_price(self) -> USDollarAmount:
