@@ -43,6 +43,9 @@ def display_positions(positions: Iterable[TradingPosition]) -> pd.DataFrame:
         if p.has_unexecuted_trades():
             flags.append("UE")
 
+        if p.is_stop_loss():
+            flags.append("SL")
+
         items.append({
             "Flags": ", ".join(flags),
             "Ticker": p.pair.get_ticker(),

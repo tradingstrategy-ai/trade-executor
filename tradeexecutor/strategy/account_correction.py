@@ -166,7 +166,7 @@ def calculate_account_corrections(
 
         usd_value = position.calculate_quantity_usd_value(diff) if position else None
 
-        logger.info("Fix needed %s worth of %f USD", ab.asset, usd_value or 0)
+        logger.debug("Correction check worth of %s worth of %f USD", ab.asset, usd_value or 0)
 
         mismatch = abs(actual_amount - expected_amount) > epsilon
 
@@ -438,7 +438,7 @@ def check_accounts(
             "Dusty": "Y" if dust else "N",
         })
 
-        if c.actual_amount != c.expected_amount:
+        if c.mismatch:
             clean = False
 
     df = pd.DataFrame(items, index=idx)
