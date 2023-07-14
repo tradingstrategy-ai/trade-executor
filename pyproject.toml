@@ -138,6 +138,9 @@ addopts = "-s --tb=native"
 testpaths = [
     "tests",
 ]
+markers = [
+    "slow_test_group: manually separated group of tests that take individually long time to run"
+]
 
 filterwarnings = [
     # python_openapi complaint
