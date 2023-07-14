@@ -18,7 +18,7 @@ from tradeexecutor.state.portfolio import NotEnoughMoney
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.trade import TradeExecution, TradeStatus
-from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
+from tradeexecutor.state.blockhain_transaction import BlockchainTransaction, solidity_arg_encoder
 from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.state.validator import validate_nested_state_dict, BadStateData
@@ -1015,4 +1015,13 @@ def test_serialize_panda_timestamp():
 
     assert state.created_at == datetime.datetime(2020, 1, 1)
 
+
+def test_encode_solidty_args():
+    """See we can make Solidity ABI values JSON serializable."""
+
+    # Nested lists,
+    # 256bit unint
+    args = [[["0x8dccfFD0FB877890Bd7c5B21941932a5D3EaDea3",9223372036854776000,513172,682184]]]
+    solidity_madness = {"foo": solidity_arg_encoder(args)}
+    validate_nested_state_dict(solidity_madness)
 

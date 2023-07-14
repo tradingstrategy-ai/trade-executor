@@ -13,6 +13,7 @@ from dataclasses_json import dataclass_json
 
 from eth_defi.tx import AssetDelta
 
+from tradeexecutor.ethereum.revert import clean_revert_reason_message
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
 from tradeexecutor.state.types import USDollarAmount, USDollarPrice, BPS
@@ -752,11 +753,16 @@ class TradeExecution:
 
         - Iterate transactions from the last to first and return the first failure reason
 
-        See also :py:func:`tradeexecutor.ethereum.revert.clean_revert_reason_message`.
+        See also
+
+        - :py:func:`tradeexecutor.ethereum.revert.clean_revert_reason_message`.
+
+        :return:
+            Cleaned revert reason message
         """
         tx = self.get_failed_transaction()
         if tx:
-            return tx.revert_reason
+            return clean_revert_reason_message(tx.revert_reason)
 
         return None
 

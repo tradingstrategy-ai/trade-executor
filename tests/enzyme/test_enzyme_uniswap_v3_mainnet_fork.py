@@ -25,8 +25,6 @@ from eth_defi.hotwallet import HotWallet
 from eth_defi.token import TokenDetails, fetch_erc20_details
 from eth_defi.trace import assert_transaction_success_with_explanation
 
-from tradingstrategy.pair import PandasPairUniverse
-
 from tradeexecutor.cli.main import app
 from tradeexecutor.ethereum.token import translate_token_details
 from tradeexecutor.monkeypatch.web3 import construct_sign_and_send_raw_middleware
