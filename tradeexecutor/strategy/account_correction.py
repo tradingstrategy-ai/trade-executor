@@ -14,7 +14,7 @@ import datetime
 import enum
 from _decimal import Decimal
 from dataclasses import dataclass
-from typing import List, Iterable, Collection
+from typing import List, Iterable, Collection, Tuple
 
 import pandas as pd
 from eth_defi.enzyme.erc20 import prepare_transfer
@@ -63,7 +63,7 @@ class AccountingCorrectionAborted(Exception):
 
 
 @dataclass
-class AccountingCorrection:
+class AccountingBalanceCheck:
     """Accounting correction applied to a balance.
 
     Any irregular accounting correction will cause the position profit calcualtions
@@ -85,6 +85,9 @@ class AccountingCorrection:
 
     actual_amount: Decimal
 
+    #: Used epsilon
+    epsilon: Decimal
+
     block_number: int | None
 
     timestamp: datetime.datetime | None
@@ -103,6 +106,10 @@ class AccountingCorrection:
     #:
     reserve_asset: bool
 
+    #: Was there a balance mismatch that is larger than the epsilon
+    #:
+    mismatch: bool
+
     def __repr__(self):
         return f"<Accounting correction type {self.type.value} for {self.position}, expected {self.expected_amount}, actual {self.actual_amount} at {self.timestamp}>"
 
@@ -113,19 +120,20 @@ class AccountingCorrection:
 
 
 def calculate_account_corrections(
-        pair_universe: PandasPairUniverse,
-        reserve_assets: Collection[AssetIdentifier],
-        state: State,
-        sync_model: SyncModel,
-        epsilon=DUST_EPSILON,
-) -> Iterable[AccountingCorrection]:
+    pair_universe: PandasPairUniverse,
+    reserve_assets: Collection[AssetIdentifier],
+    state: State,
+    sync_model: SyncModel,
+    epsilon=DUST_EPSILON,
+    all_balances=False,
+) -> Iterable[AccountingBalanceCheck]:
     """Figure out differences between our internal ledger (state) and on-chain balances.
 
+    :param all_balances:
+        pass
 
     :raise UnexpectedAccountingCorrectionIssue:
         If we find on-chain tokens we do not know how to map any of our strategy positions
-
-
     """
 
     assert isinstance(pair_universe, PandasPairUniverse)
@@ -160,23 +168,27 @@ def calculate_account_corrections(
 
         logger.info("Fix needed %s worth of %f USD", ab.asset, usd_value or 0)
 
-        if abs(actual_amount - expected_amount) > epsilon:
-            yield AccountingCorrection(
+        mismatch = abs(actual_amount - expected_amount) > epsilon
+
+        if mismatch or all_balances:
+            yield AccountingBalanceCheck(
                 AccountingCorrectionType.unknown,
                 ab.asset,
                 position,
                 expected_amount,
                 actual_amount,
+                epsilon,
                 ab.block_number,
                 ab.timestamp,
                 usd_value,
                 reserve,
+                mismatch,
             )
 
 
 def apply_accounting_correction(
         state: State,
-        correction: AccountingCorrection,
+        correction: AccountingBalanceCheck,
         strategy_cycle_included_at: datetime.datetime | None,
 ):
     """Update the state to reflect the true on-chain balances."""
@@ -269,7 +281,7 @@ def apply_accounting_correction(
 
 def correct_accounts(
         state: State,
-        corrections: List[AccountingCorrection],
+        corrections: List[AccountingBalanceCheck],
         strategy_cycle_included_at: datetime.datetime | None,
         interactive=True,
         vault: Vault | None = None,
@@ -322,7 +334,7 @@ def correct_accounts(
 
 
 def transfer_away_assets_without_position(
-    correction: AccountingCorrection,
+    correction: AccountingBalanceCheck,
     unknown_token_receiver: HexAddress | str,
     vault: Vault,
     hot_wallet: HotWallet,
@@ -382,19 +394,22 @@ def check_accounts(
     state: State,
     sync_model: SyncModel,
     epsilon=DUST_EPSILON,
-) -> pd.DataFrame:
+) -> Tuple[bool, pd.DataFrame]:
     """Get a table output of accounting corrections needed.
 
     :return:
-        Dataframe that can be printed to the console
+
+        Tuple (accounting clean Dataframe that can be printed to the console)
     """
 
+    clean = False
     corrections = calculate_account_corrections(
         pair_universe,
         reserve_assets,
         state,
         sync_model,
         epsilon,
+        all_balances=True,
     )
 
     idx = []
@@ -423,7 +438,10 @@ def check_accounts(
             "Dusty": "Y" if dust else "N",
         })
 
+        if c.actual_amount != c.expected_amount:
+            clean = False
+
     df = pd.DataFrame(items, index=idx)
     df = df.fillna("")
     df = df.replace({pd.NaT: ""})
-    return df
+    return clean, df

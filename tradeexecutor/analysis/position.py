@@ -34,6 +34,9 @@ def display_positions(positions: Iterable[TradingPosition]) -> pd.DataFrame:
         idx.append(p.position_id)
         flags = []
 
+        if p.is_frozen():
+            flags.append("F")
+
         if p.is_repaired():
             flags.append("R")
 
@@ -43,6 +46,7 @@ def display_positions(positions: Iterable[TradingPosition]) -> pd.DataFrame:
         items.append({
             "Flags": ", ".join(flags),
             "Ticker": p.pair.get_ticker(),
+            f"Size {p.pair.base.token_symbol}": p.get_quantity(),
             "Profit": p.get_realised_profit_percent() * 100 if p.is_closed() else "",
             "Opened at": _ftime(p.opened_at),
             "Closed at": _ftime(p.closed_at),
@@ -63,6 +67,7 @@ def display_positions(positions: Iterable[TradingPosition]) -> pd.DataFrame:
             items.append({
                 "Trade id": str(t.trade_id),  # Mixed NA/number column fix
                 "Price": t.executed_price,
+                f"Trade size": t.get_position_quantity(),
                 "Trade opened": _ftime(t.opened_at),
                 "Trade executed": _ftime(t.executed_at),
                 "Trade notes": "\n".join(text),

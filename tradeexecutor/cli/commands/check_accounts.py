@@ -174,18 +174,18 @@ def check_accounts(
             logger.info("Initialising reserves for the unit test: %s", universe.reserve_assets[0])
             state.portfolio.initialise_reserves(universe.reserve_assets[0])
 
-    df = _check_accounts(
+    clean, df = _check_accounts(
         universe.universe.pairs,
         universe.reserve_assets,
         state,
         sync_model,
     )
 
-    if len(df) == 0:
-        logger.info("All accounts match")
-        sys.exit(0)
-
     output = tabulate(df, headers='keys', tablefmt='rounded_outline')
-    logger.warning("Accounts do not match:\n%s", output)
 
-    sys.exit(1)
+    if clean:
+        logger.info("All accounts match:\n%s", output)
+        sys.exit(0)
+    else:
+        logger.warning("Accounts do not match:\n%s", output)
+        sys.exit(1)

@@ -228,6 +228,11 @@ class EthereumRoutingState(RoutingState):
     ) -> int:
         """Check that our on-chain balances have enough tokens to cover the trade.
 
+        This is designed to work with the case that there is one
+        position and sell all trade is incoming.
+        We do not want this trade to fail because some mishaps
+        in the accounting, or at least have a very clear error when it does.
+
         :raise OutOfBalance:
             We do not have enough tokens to cover the trade
 
