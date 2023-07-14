@@ -2,13 +2,15 @@
 
 import logging
 from collections import defaultdict
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Iterable
 from abc import ABC, abstractmethod
 
-from eth_typing import ChecksumAddress
+from eth_typing import ChecksumAddress, HexAddress
 from web3.contract.contract import ContractFunction
 
 from eth_defi.tx import AssetDelta
+
+from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.types import BPS
 from web3 import Web3
 from web3.contract import Contract
@@ -217,7 +219,46 @@ class EthereumRoutingState(RoutingState):
             asset_deltas=asset_deltas,
         )
         return [signed_tx]
-    
+
+    def adjust_spend(
+            self,
+            asset: AssetIdentifier,
+            required_amount: int,
+            epsilon=0.00001,
+    ) -> int:
+        """Check that our on-chain balances have enough tokens to cover the trade.
+
+        :raise OutOfBalance:
+            We do not have enough tokens to cover the trade
+
+        :param epsilon:
+            How much floating point error tolerance is ok.
+
+            Default to 1 BPS.
+
+        :return:
+            The actual token amount we can spent on the transaction
+        """
+
+        assert required_amount > 0, f"Cannot adjust trade spend. Asset {asset}, required_amount: {required_amount}"
+
+        web3 = self.tx_builder.web3
+        holding_address = self.tx_builder.get_erc_20_balance_address()
+        token = fetch_erc20_details(web3, asset.address)
+        on_chain_balance = token.contract.functions.balanceOf(holding_address).call()
+        if on_chain_balance <  required_amount:
+            # Check if we are within epsilon
+            if (required_amount - on_chain_balance) / required_amount < epsilon:
+                logger.info("Adjusting spending amount to fit to the epsilon. For %s we have on-chain: %d, required: %d", asset, on_chain_balance, required_amount)
+                return on_chain_balance
+            else:
+                raise OutOfBalance(
+                    f"Not enough tokens for {asset} to perform the trade. Required: {required_amount}, on-chain balance for {holding_address} is {on_chain_balance}."
+                )
+        else:
+            # We are correctly funded
+            return required_amount
+
     @staticmethod
     def validate_pairs(target_pair, intermediary_pair):
         """Check we can chain two pairs

@@ -5305,13 +5305,13 @@ tester = ["eth-tester[py-evm] (==v0.8.0-b.3)", "py-geth (>=3.11.0)"]
 
 [[package]]
 name = "web3-ethereum-defi"
-version = "0.21.5"
+version = "0.21.6"
 description = "Python library for Uniswap, Aave, ChainLink, Enzyme and other protocols on BNB Chain, Polygon, Ethereum and other blockchains"
 optional = false
 python-versions = ">=3.10,<3.11"
 files = [
-    {file = "web3_ethereum_defi-0.21.5-py3-none-any.whl", hash = "sha256:db986194cb61f23ca322eb9c509aba27774bf8759b0d93acbfe03ad734d5b983"},
-    {file = "web3_ethereum_defi-0.21.5.tar.gz", hash = "sha256:2c9a6425f2a42ed13070c8e42bb098afb70d6642bb241b0a9909c21249547262"},
+    {file = "web3_ethereum_defi-0.21.6-py3-none-any.whl", hash = "sha256:249c98f0e994bcfd255b348702abbcf083fe1f48353df196cdbdd55e38832a26"},
+    {file = "web3_ethereum_defi-0.21.6.tar.gz", hash = "sha256:ef9327aada101f7f6b4568717d6b51d9169f708148a61e00c745fab251aac03d"},
 ]
 
 [package.dependencies]
@@ -5686,13 +5686,13 @@ multidict = ">=4.0"
 
 [[package]]
 name = "yfinance"
-version = "0.2.22"
+version = "0.2.23"
 description = "Download market data from Yahoo! Finance API"
 optional = true
 python-versions = "*"
 files = [
-    {file = "yfinance-0.2.22-py2.py3-none-any.whl", hash = "sha256:f48f32a4d3a717cff6702616196da3824b194377a230431462466aeecd20e384"},
-    {file = "yfinance-0.2.22.tar.gz", hash = "sha256:782e05fa53babdc7a4ca4fafbebe6ecccb760ed6bd54ccc2e2a49ba4ad119fc7"},
+    {file = "yfinance-0.2.23-py2.py3-none-any.whl", hash = "sha256:1c008b0f8e5c60cb24329b7a66dd35775817ad3bb3e4edcd9e7a4b3e276a9b41"},
+    {file = "yfinance-0.2.23.tar.gz", hash = "sha256:9038a523ebf336ba158504087ca6d2fbd6b24b0bd9505c01aeba9291c1fe956f"},
 ]
 
 [package.dependencies]
@@ -5800,4 +5800,4 @@ web-server = ["WebTest", "openapi-core", "pyramid", "pyramid-openapi3", "waitres
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.10,<3.11"
-content-hash = "24c22f41f1dbeed6fcb4e80b5b079419ec2c4eb96acdb83a2ed7fbc9f61a450b"
+content-hash = "c62539c34af5ebaef119dac4d92d3e006a30a274c6389da7dcc5970a70a2b6dd"
