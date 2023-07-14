@@ -52,15 +52,20 @@ def display_positions(positions: Iterable[TradingPosition]) -> pd.DataFrame:
         for t in p.trades.values():
             idx.append(p.position_id)
 
+            text = []
+            if t.notes:
+                text.append(t.notes)
+
             revert_reason = clean_revert_reason_message(t.get_revert_reason())
-            text = (t.notes or "") + revert_reason
+            if revert_reason:
+                text.append(revert_reason)
 
             items.append({
                 "Trade id": str(t.trade_id),  # Mixed NA/number column fix
                 "Price": t.executed_price,
                 "Trade opened": _ftime(t.opened_at),
                 "Trade executed": _ftime(t.executed_at),
-                "Trade notes": text,
+                "Trade notes": "\n".join(text),
             })
 
     df = pd.DataFrame(items, index=idx)
