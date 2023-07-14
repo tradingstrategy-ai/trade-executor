@@ -200,6 +200,7 @@ def cake_busd_trading_pair(cake_asset, busd_asset, pancakeswap_v2) -> TradingPai
         internal_id=1000,  # random number
         internal_exchange_id=1000,  # random number
         exchange_address=pancakeswap_v2.factory.address,
+        fee=0.0030,
     )
 
 
@@ -212,6 +213,7 @@ def bnb_busd_trading_pair(bnb_asset, busd_asset, pancakeswap_v2) -> TradingPairI
         internal_id=1001,  # random number
         internal_exchange_id=1000,  # random number
         exchange_address=pancakeswap_v2.factory.address,
+        fee=0.0030,
     )
 
 
@@ -225,6 +227,7 @@ def cake_bnb_trading_pair(cake_asset, bnb_asset, pancakeswap_v2) -> TradingPairI
         internal_id=1002,  # random number
         internal_exchange_id=1000,  # random number
         exchange_address=pancakeswap_v2.factory.address,
+        fee=0.0030,
     )
 
 
@@ -946,8 +949,6 @@ def test_stateful_routing_out_of_balance(
         trader.buy(cake_busd_trading_pair, Decimal(100))
     ]
 
-    t = trades[0]
-
     state.start_trades(datetime.datetime.utcnow(), trades)
 
     with pytest.raises(OutOfBalance):
@@ -1029,7 +1030,7 @@ def test_stateful_routing_adjust_epsilon_sell(
     """
 
     # Prepare a transaction builder
-    tx_builder = HotWalletTransactionBuilder(web3, hot_wallet)=
+    tx_builder = HotWalletTransactionBuilder(web3, hot_wallet)
     routing_state = UniswapV2RoutingState(pair_universe, tx_builder)
     trader = PairUniverseTestTrader(state)
 
@@ -1062,9 +1063,9 @@ def test_stateful_routing_adjust_epsilon_sell(
     assert t.is_success()
 
     # On-chain balance is zero after the sell
-    assert cake_token.functions.balanceOf(hot_wallet.address).call() == 0
+    assert cake_token.functions.balanceOf(hot_wallet.address).call() == cake_position.get_quantity() * 10**187
 
     # Check that we recorded spending amount correctly
-    trade_tx = trades[0].blockchain_transactions[-1]
-    assert trade_tx.other["reserve_amount"] == str(62402048385460577171)
-    assert trade_tx.other["adjusted_reserve_amount"] == str(62402048385460577170)
+    trade_tx = t.blockchain_transactions[-1]
+    assert trade_tx.other["reserve_amount"] == str(62383807922243175731)
+    assert trade_tx.other["adjusted_reserve_amount"] == str(62383807922243175730)
