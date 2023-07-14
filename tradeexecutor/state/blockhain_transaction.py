@@ -29,13 +29,20 @@ def _clean_print_args(val: tuple):
         return val
 
 
-def solidity_arg_encoder(val: tuple) -> tuple:
-    """JSON safe Solidity function argument encoder."""
+def solidity_arg_encoder(val: tuple | list) -> list:
+    """JSON safe Solidity function argument encoder.
+
+    - Support nested lists (Uniswap v3)
+
+    - Fix big ints
+
+    - Abort on floats
+    """
 
     if type(val) not in (list, tuple):
         return val
 
-    def _int_to_string(x):
+    def _encode_solidity_value_json_safe(x):
         if type(x) == int:
             return str(x)
         if type(x) == bytes:
@@ -44,10 +51,10 @@ def solidity_arg_encoder(val: tuple) -> tuple:
             return solidity_arg_encoder(x)
         elif type(x) == float:
             # Smart contracts cannot have float arguents
-            raise RuntimeError(f"Cannot encode: {val}")
+            raise RuntimeError(f"Cannot encode float: {val}")
         return x
 
-    return list(_int_to_string(x) for x in val)
+    return list(_encode_solidity_value_json_safe(x) for x in val)
 
 
 class BlockchainTransactionType(enum.Enum):

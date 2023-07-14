@@ -1020,7 +1020,7 @@ def test_encode_solidty_args():
     """See we can make Solidity ABI values JSON serializable."""
 
     # Nested lists,
-    # 256bit unint
+    # 256bit uint
     args = [[["0x8dccfFD0FB877890Bd7c5B21941932a5D3EaDea3",9223372036854776000,513172,682184]]]
     solidity_madness = {"foo": solidity_arg_encoder(args)}
     validate_nested_state_dict(solidity_madness)
