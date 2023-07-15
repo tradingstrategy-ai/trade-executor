@@ -24,6 +24,11 @@ from tradeexecutor.utils.accuracy import sum_decimal
 logger = logging.getLogger(__name__)
 
 
+#: If a token position helds less than this amount of token
+#: consider closing it as dust
+CLOSE_POSIITON_DUST_EPSILON = 0.0001
+
+
 @dataclass_json
 @dataclass(slots=True, frozen=True)
 class TriggerPriceUpdate:
@@ -426,8 +431,13 @@ class TradingPosition(GenericPosition):
         return last_trade.executed_price
 
     def get_equity_for_position(self) -> Decimal:
-        """How many asset units this position tolds."""
-        return sum_decimal([t.get_equity_for_position() for t in self.trades.values() if t.is_success()])
+        """How many asset units this position tolds.
+
+        TODO: Remove this
+
+        Alias for :py:meth:`get_quantity`
+        """
+        return self.get_quantity()
 
     def has_unexecuted_trades(self) -> bool:
         return any([t for t in self.trades.values() if t.is_pending()])
@@ -630,9 +640,12 @@ class TradingPosition(GenericPosition):
                 return True
         return False
 
-    def can_be_closed(self) -> bool:
-        """There are no tied tokens in this position."""
-        return self.get_equity_for_position() == 0
+    def can_be_closed(self, epsilon=CLOSE_POSIITON_DUST_EPSILON) -> bool:
+        """There are no tied tokens in this position.
+
+        Perform additional check for token amount dust caused by rounding errors.
+        """
+        return self.get_quantity() <= epsilon
 
     def get_total_bought_usd(self) -> USDollarAmount:
         """How much money we have used on buys"""
