@@ -24,9 +24,9 @@ from tradeexecutor.utils.accuracy import sum_decimal
 logger = logging.getLogger(__name__)
 
 
-#: If a token position helds less than this amount of token
+#: If a token position helds less than this absolute amount of token
 #: consider closing it as dust
-CLOSE_POSIITON_DUST_EPSILON = 0.0001
+CLOSED_POSITION_DUST_EPSILON = 0.0001
 
 
 @dataclass_json
@@ -640,7 +640,7 @@ class TradingPosition(GenericPosition):
                 return True
         return False
 
-    def can_be_closed(self, epsilon=CLOSE_POSIITON_DUST_EPSILON) -> bool:
+    def can_be_closed(self, epsilon=CLOSED_POSITION_DUST_EPSILON) -> bool:
         """There are no tied tokens in this position.
 
         Perform additional check for token amount dust caused by rounding errors.
