@@ -129,11 +129,30 @@ def calculate_account_corrections(
 ) -> Iterable[AccountingBalanceCheck]:
     """Figure out differences between our internal ledger (state) and on-chain balances.
 
+    :param pair_universe:
+        Needed to know what asses we are looking for
+
+
+    :param reserve_assets:
+        Needed to know what asses we are looking for
+
+    :param state:
+        The current state of the internal ledger
+
+    :param sync_model:
+        How ot access on-chain balances
+
+    :param epsilon:
+        Minimum amount of token (abs quantity) before it is considered as a rounding error
+
     :param all_balances:
-        pass
+        If `True` iterate all balances even if there are no mismatch.
 
     :raise UnexpectedAccountingCorrectionIssue:
         If we find on-chain tokens we do not know how to map any of our strategy positions
+
+    :return:
+        Difference in balances or all balances if `all_balances` is true.
     """
 
     assert isinstance(pair_universe, PandasPairUniverse)
