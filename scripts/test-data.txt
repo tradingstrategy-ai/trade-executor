@@ -1,0 +1,5 @@
+amountIn = 8589988 (8.5899880 USDC)
+amountOutMinimum: 4445456425600057 (0.004445456425600057 WETH)
+exactInputInternal result: 4445162983302229
+Diff: amountOutMinimum vs. result: 4445162983302229  2.93442297828e-07
+

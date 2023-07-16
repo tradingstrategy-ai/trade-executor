@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Optional, List
 
 from tradeexecutor.state.identifier import TradingPairIdentifier
-from tradeexecutor.state.types import USDollarAmount, BPS, USDollarPrice
+from tradeexecutor.state.types import USDollarAmount, BPS, USDollarPrice, BlockNumber
 from dataclasses_json import dataclass_json
 
 
@@ -71,6 +71,12 @@ class TradePricing:
     #: Path of the trade
     #: One trade can have multiple swaps if there is an intermediary pair.
     path: Optional[List[TradingPairIdentifier]] = None
+
+    #: When the price read was performed
+    read_at: Optional[datetime.datetime] = None
+
+    #: What was the block number when the read was performed
+    block_number: Optional[BlockNumber] = None
 
     def __repr__(self):
         fee_list = [fee or 0 for fee in self.pair_fee]

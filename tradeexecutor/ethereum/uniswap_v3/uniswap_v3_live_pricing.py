@@ -153,9 +153,9 @@ class UniswapV3LivePricing(EthereumPricingModel):
             lp_fee=[lp_fee],
             pair_fee=fees,
             side=False,
-            path=path
+            path=path,
+            read_at=datetime.datetime.utcnow(),
         )
-        
 
     def get_buy_price(self,
                        ts: datetime.datetime,
@@ -238,7 +238,8 @@ class UniswapV3LivePricing(EthereumPricingModel):
             pair_fee=fees,
             market_feed_delay=datetime.timedelta(seconds=0),
             side=True,
-            path=path
+            path=path,
+            read_at=datetime.datetime.utcnow(),
         )
         
 
