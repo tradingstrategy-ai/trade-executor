@@ -236,7 +236,7 @@ def visualise_multiple_pairs(
         plots = [
             plot
             for plot in state.visualisation.plots.values()
-            if plot.pair.internal_id == pair_id
+            if plot.pair and plot.pair.internal_id == pair_id
         ]
 
         title_text, axes_text, volume_text = get_all_text(
