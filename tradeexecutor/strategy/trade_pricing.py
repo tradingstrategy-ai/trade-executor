@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Optional, List
 
 from tradeexecutor.state.identifier import TradingPairIdentifier
-from tradeexecutor.state.types import USDollarAmount, BPS, USDollarPrice, BlockNumber
+from tradeexecutor.state.types import USDollarAmount, BPS, USDollarPrice
 from dataclasses_json import dataclass_json
 
 
