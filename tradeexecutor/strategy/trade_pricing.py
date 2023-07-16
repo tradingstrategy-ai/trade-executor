@@ -76,7 +76,7 @@ class TradePricing:
     read_at: Optional[datetime.datetime] = None
 
     #: What was the block number when the read was performed
-    block_number: Optional[BlockNumber] = None
+    block_number: Optional[int] = None
 
     def __repr__(self):
         fee_list = [fee or 0 for fee in self.pair_fee]

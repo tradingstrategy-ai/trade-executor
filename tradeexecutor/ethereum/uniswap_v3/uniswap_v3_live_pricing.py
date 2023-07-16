@@ -241,7 +241,6 @@ class UniswapV3LivePricing(EthereumPricingModel):
             path=path,
             read_at=datetime.datetime.utcnow(),
         )
-        
 
 
 def uniswap_v3_live_pricing_factory(
