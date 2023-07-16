@@ -136,7 +136,7 @@ class PositionManager:
                  universe: Universe,
                  state: State,
                  pricing_model: PricingModel,
-                 default_slippage_tolerance=0.01,  # Slippage tole
+                 default_slippage_tolerance=0.05,  # Slippage tole
                  ):
 
         """Create a new PositionManager instance.
@@ -157,6 +157,10 @@ class PositionManager:
          
         :param default_slippage_tolerance: 
             Slippage tolerance parameter set for any trades if not overriden trade-by-trade basis.
+
+            Default to 5% slippage.
+
+            TODO: Tighten this parameter when execution tracking works better.
             
         """
 

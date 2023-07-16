@@ -101,6 +101,7 @@ def display_slippage(trades: Iterable[TradeExecution]) -> pd.DataFrame:
 
         # Swap is always the last transaction
         if len(t.blockchain_transactions) > 0:
+
             swap_tx = t.blockchain_transactions[-1]
             block_number = swap_tx.block_number
 
@@ -141,15 +142,16 @@ def display_slippage(trades: Iterable[TradeExecution]) -> pd.DataFrame:
         items.append({
             "Flags": ", ".join(flags),
             "Position": f"#{t.position_id}",
+            "Time": t.executed_at or t.failed_at,
             "Trade": f"{input.token_symbol}->{output.token_symbol}",
             # "Started": _ftime(t.started_at),
             #"Executed": _ftime(t.executed_at),
             # "Block": f"{block_number:,}" if block_number else "",
             "Lag": lag.total_seconds() if lag else np.NaN,
             "Slippage": int(t.slippage_tolerance * 10000) if t.slippage_tolerance else np.NaN,
-            "exactInput amount in": amount_in,
-            "exactInput amount out": amount_out,
-            "Enzyme expected amount": enzyme_expected_amount,
+            "amountIn": amount_in,
+            "amountOut": amount_out,
+            "Enzyme amountOut": enzyme_expected_amount,
             "Assumed price": t.planned_price,
             "Uniswap price": uniswap_price,
             # "Notes": t.notes,
