@@ -261,7 +261,8 @@ class PandasTraderRunner(StrategyRunner):
                     if getattr(plot.pair, "internal_id", None) is None:
                         logger.warning(f"  Plot {name} has no pair argument. To see indicator values for individual pairs in a multipair strategy, add pair argument to the `plot_indicator` function in your strategy file.")
                         continue
-                    elif plot.pair.internal_id != pair_id:
+                    
+                    if plot.pair.internal_id != pair_id:
                         continue
 
                     value = plot.get_last_value()
