@@ -259,7 +259,7 @@ class PandasTraderRunner(StrategyRunner):
                 for name, plot in visualisation.plots.items():
                     
                     if getattr(plot.pair, "internal_id", None) is None:
-                        logger.warning(f"  Plot {name} has no pair argument. To see indicator values for individual pairs, add a pair argument to the `plot_indicator` function in your strategy file.")
+                        logger.warning(f"  Plot {name} has no pair argument. To see indicator values for individual pairs in a multipair strategy, add pair argument to the `plot_indicator` function in your strategy file.")
                         continue
                     elif plot.pair.internal_id != pair_id:
                         continue
