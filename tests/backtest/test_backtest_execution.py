@@ -136,7 +136,7 @@ def state(universe: TradingStrategyUniverse, deposit_syncer: BacktestSyncer) -> 
     state = State()
     events = deposit_syncer(state, datetime.datetime(1970, 1, 1), universe.reserve_assets)
     assert len(events) == 1
-    token, usd_exchange_rate = state.portfolio.get_default_reserve()
+    token, usd_exchange_rate = state.portfolio.get_default_reserve_asset()
     assert token.token_symbol == "BUSD"
     assert usd_exchange_rate == 1
     assert state.portfolio.get_current_cash() == 10_000

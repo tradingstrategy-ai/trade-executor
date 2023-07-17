@@ -3,7 +3,7 @@
 import datetime
 from dataclasses import dataclass, field
 from decimal import Decimal
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Iterable
 
 from dataclasses_json import dataclass_json
 
@@ -116,4 +116,7 @@ class ReservePosition(GenericPosition):
             Dollar amount
         """
         return float(quantity)
+
+    def get_balance_update_events(self) -> Iterable[BalanceUpdate]:
+        return self.balance_updates.values()
 

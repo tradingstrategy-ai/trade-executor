@@ -171,7 +171,7 @@ class EnzymeVaultSyncModel(SyncModel):
 
         position_str = ", ".join([str(p) for p in portfolio.get_open_positions()])
         raise UnknownAsset(f"Asset {asset} does not map to any open position.\n"
-                           f"Reserve: {portfolio.get_default_reserve()}.\n"
+                           f"Reserve: {portfolio.get_default_reserve_asset()}.\n"
                            f"Open positions: {position_str}")
 
     def process_deposit(self, portfolio: Portfolio, event: Deposit, strategy_cycle_ts: datetime.datetime) -> BalanceUpdate:
@@ -182,7 +182,7 @@ class EnzymeVaultSyncModel(SyncModel):
             # Initial deposit
             portfolio.initialise_reserves(asset)
         else:
-            reserve_asset, reserve_price = portfolio.get_default_reserve()
+            reserve_asset, reserve_price = portfolio.get_default_reserve_asset()
             assert asset == reserve_asset
 
         reserve_position = portfolio.get_reserve_position(asset)

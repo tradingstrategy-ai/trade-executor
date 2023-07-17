@@ -360,6 +360,9 @@ class TradingPosition(GenericPosition):
         """Get the unit name we label the quantity in this position"""
         return f"{self.pair.base.token_symbol}"
 
+    def get_balance_update_events(self) -> Iterable[BalanceUpdate]:
+        return self.balance_updates.values()
+
     def get_balance_update_quantity(self) -> Decimal:
         """Get quantity of all balance udpdates for this position.
 
@@ -607,7 +610,12 @@ class TradingPosition(GenericPosition):
             trade_type=trade_type,
             pair=self.pair,
             opened_at=strategy_cycle_at,
-            started_at=datetime.datetime.utc(),
+            # TODO: Currently always set here to wall clock time,
+            # so it is not left unset by accident.
+            # Backtest will override this with opened_at in its executor.
+            # Might make sense to make this to be an argument for
+            # open_trade()
+            started_at=datetime.datetime.utcnow(),
             planned_quantity=planned_quantity,
             planned_price=assumed_price,
             planned_reserve=planned_reserve,

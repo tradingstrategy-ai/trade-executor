@@ -176,7 +176,7 @@ class PositionManager:
         self.pricing_model = pricing_model
         self.default_slippage_tolerance = default_slippage_tolerance
 
-        reserve_currency, reserve_price = state.portfolio.get_default_reserve()
+        reserve_currency, reserve_price = state.portfolio.get_default_reserve_asset()
 
         self.reserve_currency = reserve_currency
 
@@ -365,7 +365,7 @@ class PositionManager:
 
         assert type(price_structure.mid_price) == float
 
-        reserve_asset, reserve_price = self.state.portfolio.get_default_reserve()
+        reserve_asset, reserve_price = self.state.portfolio.get_default_reserve_asset()
 
         slippage_tolerance = slippage_tolerance or self.default_slippage_tolerance
 
@@ -517,7 +517,7 @@ class PositionManager:
 
         price = price_structure.price
 
-        reserve_asset, reserve_price = self.state.portfolio.get_default_reserve()
+        reserve_asset, reserve_price = self.state.portfolio.get_default_reserve_asset()
 
         slippage_tolerance = slippage_tolerance or self.default_slippage_tolerance
 
@@ -640,7 +640,7 @@ class PositionManager:
         quantity = quantity_left
         price_structure = self.pricing_model.get_sell_price(self.timestamp, pair, quantity=quantity)
 
-        reserve_asset, reserve_price = self.state.portfolio.get_default_reserve()
+        reserve_asset, reserve_price = self.state.portfolio.get_default_reserve_asset()
 
         slippage_tolerance = slippage_tolerance or self.default_slippage_tolerance
 

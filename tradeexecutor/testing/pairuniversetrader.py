@@ -21,7 +21,7 @@ class PairUniverseTestTrader:
     def buy(self, pair: TradingPairIdentifier, amount_in_usd: Decimal) -> TradeExecution:
         """Buy token (trading pair) for a certain value."""
 
-        reserve_currency, exchange_rate = self.state.portfolio.get_default_reserve()
+        reserve_currency, exchange_rate = self.state.portfolio.get_default_reserve_asset()
 
         position, trade, created = self.state.create_trade(
             strategy_cycle_at=datetime.datetime.utcnow(),
@@ -40,7 +40,7 @@ class PairUniverseTestTrader:
     def sell(self, pair: TradingPairIdentifier, quantity: Decimal) -> TradeExecution:
         """Sell token token (trading pair) for a certain quantity."""
 
-        reserve_currency, exchange_rate = self.state.portfolio.get_default_reserve()
+        reserve_currency, exchange_rate = self.state.portfolio.get_default_reserve_asset()
 
         position, trade, created = self.state.create_trade(
             strategy_cycle_at=datetime.datetime.utcnow(),
