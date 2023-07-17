@@ -118,10 +118,6 @@ TRAILING_STOP_LOSS_PCT = 0.993
 # Activate trailing stop loss when this level is reached
 TRAILING_STOP_LOSS_ACTIVATION_LEVEL=1.01
 
-# Which pair we draw the price action charts for?
-# With the current setup, 
-# we only draw the price action chart for a single pair.
-EXAMINED_PAIR = (ChainId.polygon, "uniswap-v3", "WETH", "USDC", 0.0005) # Ether-USD Coin (PoS) https://tradingstrategy.ai/trading-view/polygon/uniswap-v3/eth-usdc-fee-5
 
 def decide_trades(
         timestamp: pd.Timestamp,
