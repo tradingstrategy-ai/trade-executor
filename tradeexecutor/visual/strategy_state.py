@@ -124,7 +124,9 @@ def draw_multi_pair_strategy_state(
     assert universe.get_pair_count() <= 3, "This visualisation can be done only for less than 3 pairs"
 
     data = universe.universe.candles.df
-    pair_ids = universe.universe.pairs.get_all_pair_ids()
+
+    if not pair_ids:
+        pair_ids = universe.universe.pairs.get_all_pair_ids()
 
     if start_at is None and end_at is None:
             # Get
@@ -132,7 +134,8 @@ def draw_multi_pair_strategy_state(
 
             # Do candle count clip
             if candle_count:
-                candles = candles.iloc[-candle_count*len(pair_ids):]
+                pair_count = universe.get_pair_count()
+                candles = candles.iloc[-candle_count*pair_count:]
 
             start_at = candles.iloc[0]["timestamp"]
             end_at = candles.iloc[-1]["timestamp"]
