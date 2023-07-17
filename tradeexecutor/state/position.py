@@ -607,6 +607,7 @@ class TradingPosition(GenericPosition):
             trade_type=trade_type,
             pair=self.pair,
             opened_at=strategy_cycle_at,
+            started_at=datetime.datetime.utc(),
             planned_quantity=planned_quantity,
             planned_price=assumed_price,
             planned_reserve=planned_reserve,
