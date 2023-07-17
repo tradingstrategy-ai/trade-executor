@@ -446,7 +446,7 @@ def check_accounts(
             case _:
                 raise NotImplementedError()
 
-        dust = abs(c.quantity) <= DUST_EPSILON
+        dust = abs(c.quantity) <= DUST_EPSILON and c.quantity > 0
 
         items.append({
             "Address": c.asset.address,
@@ -455,6 +455,7 @@ def check_accounts(
             "Expected amount": c.expected_amount,
             "Diff": c.quantity,
             "Dusty": "Y" if dust else "N",
+            "Mismatch": "Y" if c.mismatch else "N",
         })
 
         if c.mismatch:
