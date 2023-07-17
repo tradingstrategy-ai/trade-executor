@@ -578,6 +578,8 @@ class EnzymeVaultSyncModel(SyncModel):
         assert len(balances) == 1, f"reinit cannot be done if the vault has positions other than reserve currencies, got {balances}"
         reserve_current_balance = balances[0]
 
+        logger.info("Found on-chain balance %s at block %s", reserve_current_balance, current_block)
+
         asset = translate_token_details(reserve_current_balance.token)
 
         assert len(portfolio.reserves) == 0
