@@ -116,10 +116,10 @@ class PandasTraderRunner(StrategyRunner):
 
         elif 1 < universe.get_pair_count() <= 3:
             
-            small_figures_combined = draw_multi_pair_strategy_state(state, universe, height=512)
+            small_figure_combined = draw_multi_pair_strategy_state(state, universe, height=512)
             large_figure_combined = draw_multi_pair_strategy_state(state, universe, height=1024)
 
-            self.update_strategy_thinking_image_data(small_figures_combined, large_figure_combined)
+            self.update_strategy_thinking_image_data(small_figure_combined, large_figure_combined)
 
         else:
             logger.warning("Charts not yet available for this strategy type. Pair count: %s", universe.get_pair_count())
@@ -233,14 +233,14 @@ class PandasTraderRunner(StrategyRunner):
             buf = StringIO()
 
             print("Strategy thinking", file=buf)
-            print("", file=buf)
             print(f"  Strategy cycle #{cycle}: {strategy_cycle_timestamp} UTC, now is {datetime.datetime.utcnow()}", file=buf)
 
             for pair_id, candles in universe.universe.candles.get_all_pairs():
                 
-                print("", file=buf)
-
                 pair = universe.universe.pairs.get_pair_by_id(pair_id)
+                pair_slug = f"{pair.base_token_symbol} / {pair.quote_token_symbol}"
+
+                print(f"  {pair_slug}", file=buf)
 
                 last_candle = candles.iloc[-1]
                 lag = pd.Timestamp.utcnow().tz_localize(None) - last_candle["timestamp"]
@@ -252,7 +252,8 @@ class PandasTraderRunner(StrategyRunner):
                     logger.warning(f"  Pair missing: {dex_pair} - should not happen")
                 else:
                     print(f"  Last candle at: {last_candle['timestamp']} UTC, market data and action lag: {lag}", file=buf)
-                    print(f"  Price open:{last_candle['open']} close:{last_candle['close']} {pair.base.token_symbol} / {pair.quote.token_symbol}", file=buf)
+                    print(f"  Price open:{last_candle['open']}", file=buf)
+                    print(f"  Close:{last_candle['close']}")
 
                 # Draw indicators
                 for name, plot in visualisation.plots.items():
