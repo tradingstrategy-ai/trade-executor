@@ -240,7 +240,7 @@ class PandasTraderRunner(StrategyRunner):
                 pair = universe.universe.pairs.get_pair_by_id(pair_id)
                 pair_slug = f"{pair.base_token_symbol} / {pair.quote_token_symbol}"
 
-                print(f"  {pair_slug}", file=buf)
+                print(f"\n  {pair_slug}", file=buf)
 
                 last_candle = candles.iloc[-1]
                 lag = pd.Timestamp.utcnow().tz_localize(None) - last_candle["timestamp"]
@@ -257,7 +257,12 @@ class PandasTraderRunner(StrategyRunner):
 
                 # Draw indicators
                 for name, plot in visualisation.plots.items():
-                    if plot.pair and plot.pair.internal_id != pair_id:
+                    
+                    if getattr(plot.pair, "internal_id", None) is None:
+                        logger.warning(f"  Plot {name} has no pair argument. To see indicator values for individual pairs in a multipair strategy, add pair argument to the `plot_indicator` function in your strategy file.")
+                        continue
+                    
+                    if plot.pair.internal_id != pair_id:
                         continue
 
                     value = plot.get_last_value()
@@ -269,4 +274,4 @@ class PandasTraderRunner(StrategyRunner):
             post_logging_discord_image(small_image)
 
         else:   
-            logger.warning("Reporting of strategy thinking of multipair universes not supported yet")
+            logger.warning("Reporting of strategy thinking of multipair universes with more than 3 pairs not supported yet")

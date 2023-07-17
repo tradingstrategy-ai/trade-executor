@@ -369,7 +369,7 @@ def visualise_single_pair(
 
     if isinstance(candle_universe, GroupedCandleUniverse):
         if not pair_id:
-            assert candle_universe.get_pair_count() == 1, "visualise_single_pair() can be only used for a trading universe with a single pair, please pass pair_id"
+            assert candle_universe.get_pair_count() == 1, "visualise_single_pair() can be only used for a trading universe with a single pair, please pass pair_id or use visualise_multiple_pairs()"
             pair_id = next(iter(candle_universe.get_pair_ids()))
         candles = candle_universe.get_candles_by_pair(pair_id)
     else:
@@ -385,7 +385,7 @@ def visualise_single_pair(
     if not end_at:
         end_at = candle_universe.get_timestamp_range()[1]
 
-    logger.info(f"Visualising single pair strategy for range {start_at} - {end_at}")
+    logger.info(f"Visualising single pair for pair ({pair_name}) strategy for range {start_at} - {end_at}")
 
     # Candles define our diagram X axis
     # Crop it to the trading range
