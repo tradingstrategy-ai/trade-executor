@@ -12,7 +12,7 @@ import pandas as pd
 from dataclasses_json import dataclass_json
 
 from tradeexecutor.state.balance_update import BalanceUpdate
-from tradeexecutor.state.generic_position import GenericPosition
+from tradeexecutor.state.generic_position import GenericPosition, BalanceUpdateEventAlreadyAdded
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
 from tradeexecutor.state.trade import TradeType, QUANTITY_EPSILON
 from tradeexecutor.state.trade import TradeExecution
@@ -1040,6 +1040,17 @@ class TradingPosition(GenericPosition):
 
         self.notes += msg
         self.notes += "\n"
+
+    def add_balance_update_event(self, event: BalanceUpdate):
+        """Include a new balance update event
+
+        :raise BalanceUpdateEventAlreadyAdded:
+            In the case of a duplicate and event id is already used.
+        """
+        if event.balance_update_id in self.balance_updates:
+            raise BalanceUpdateEventAlreadyAdded(f"Duplicate balance update: {event}")
+
+        self.balance_updates[event.balance_update_id] = event
 
 
 class PositionType(enum.Enum):

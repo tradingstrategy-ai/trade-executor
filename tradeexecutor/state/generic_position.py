@@ -8,6 +8,14 @@ from tradeexecutor.state.balance_update import BalanceUpdate
 from tradeexecutor.state.types import USDollarAmount
 
 
+
+class BalanceUpdateEventAlreadyAdded(Exception):
+    """Tries to include the same balance update event twice.
+
+    See :py:meth:`GenericPosition.add_balance_update_event`
+    """
+
+
 class GenericPosition(ABC):
     """Base class for trading and reserve positions.
 
@@ -69,4 +77,12 @@ class GenericPosition(ABC):
         - Account corrections
 
         - **Trades** are not included here
+        """
+
+    @abstractmethod
+    def add_balance_update_event(self, event: BalanceUpdate):
+        """Include a new balance update event
+
+        :raise BalanceUpdateEventAlreadyAdded:
+            In the case of a duplicate and event id is already used.
         """

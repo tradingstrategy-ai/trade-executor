@@ -215,7 +215,7 @@ class EnzymeVaultSyncModel(SyncModel):
             position_id=None,
         )
 
-        reserve_position.balance_updates[evt.balance_update_id] = evt
+        reserve_position.add_balance_update_event(evt)
 
         return evt
 
@@ -302,7 +302,7 @@ class EnzymeVaultSyncModel(SyncModel):
                 usd_value=usd_value,
             )
 
-            position.balance_updates[event_id] = evt
+            position.add_balance_update_event(evt)
 
             events.append(evt)
 
@@ -616,7 +616,7 @@ class EnzymeVaultSyncModel(SyncModel):
             notes=f"reinit() at block {current_block}"
         )
 
-        reserve_position.balance_updates[master_event.balance_update_id] = master_event
+        reserve_position.add_balance_update_event(master_event)
 
         events = [master_event]
 
