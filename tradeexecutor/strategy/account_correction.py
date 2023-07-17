@@ -185,7 +185,7 @@ def calculate_account_corrections(
 
         usd_value = position.calculate_quantity_usd_value(diff) if position else None
 
-        logger.debug("Correction check worth of %s worth of %f USD", ab.asset, usd_value or 0)
+        logger.debug("Correction check worth of %s worth of %f USD, actual amount %s, expected amount %s", ab.asset, usd_value or 0, actual_amount, expected_amount)
 
         mismatch = abs(diff) > epsilon
 
