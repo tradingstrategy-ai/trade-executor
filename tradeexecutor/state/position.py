@@ -610,12 +610,6 @@ class TradingPosition(GenericPosition):
             trade_type=trade_type,
             pair=self.pair,
             opened_at=strategy_cycle_at,
-            # TODO: Currently always set here to wall clock time,
-            # so it is not left unset by accident.
-            # Backtest will override this with opened_at in its executor.
-            # Might make sense to make this to be an argument for
-            # open_trade()
-            started_at=datetime.datetime.utcnow(),
             planned_quantity=planned_quantity,
             planned_price=assumed_price,
             planned_reserve=planned_reserve,

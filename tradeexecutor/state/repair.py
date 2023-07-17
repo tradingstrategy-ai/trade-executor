@@ -76,6 +76,7 @@ def make_counter_trade(portfolio: Portfolio, p: TradingPosition, t: TradeExecuti
         reserve_currency_price=t.get_reserve_currency_exchange_rate(),
         position=p,
     )
+    counter_trade.started_at = datetime.datetime.utcnow()
     assert created is False
     assert position == p
 
