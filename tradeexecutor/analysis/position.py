@@ -6,6 +6,7 @@ import pandas as pd
 
 from tradeexecutor.ethereum.revert import clean_revert_reason_message
 from tradeexecutor.state.position import TradingPosition
+from tradeexecutor.state.reserve import ReservePosition
 
 
 def _ftime(v: datetime.datetime) -> str:
@@ -81,4 +82,28 @@ def display_positions(positions: Iterable[TradingPosition]) -> pd.DataFrame:
     df = df.replace({pd.NaT: ""})
     return df
 
+
+def display_reserve_position_events(position: ReservePosition) -> pd.DataFrame:
+    """Display events that cause the balance of the reserve position.
+
+    """
+
+    items = []
+    idx = []
+
+    for event in position.get_balance_update_events():
+        idx.append(event.balance_update_id)
+        items.append({
+            "Cause": event.cause.name,
+            "At": event.block_mined_at,
+            "Quantity": event.quantity,
+            "Dollar value": event.usd_value,
+            "Address": event.owner_address,
+            "Notes": event.notes,
+        })
+
+    df = pd.DataFrame(items, index=idx)
+    df = df.fillna("")
+    df = df.replace({pd.NaT: ""})
+    return df
 

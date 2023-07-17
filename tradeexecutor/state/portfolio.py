@@ -649,7 +649,7 @@ class Portfolio:
         except Exception as e:
             raise InvalidValuationOutput(f"Valuation model failed to output proper price: {valuation_method}: {e}") from e
 
-    def get_default_reserve(self) -> Tuple[Optional[AssetIdentifier], Optional[USDollarAmount]]:
+    def get_default_reserve_asset(self) -> Tuple[Optional[AssetIdentifier], Optional[USDollarPrice]]:
         """Gets the default reserve currency associated with this state.
 
         For strategies that use only one reserve currency.
@@ -717,6 +717,9 @@ class Portfolio:
         - Assume there has been only one deposit event
 
         - This deposit happened at the start of the backtest
+
+        TODO: Shoud not be used, as we have new `SyncModel` instance
+        for backtesters. Code will be removed.
         """
 
         if len(self.reserves) == 0:

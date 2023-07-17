@@ -2,8 +2,18 @@
 
 from _decimal import Decimal
 from abc import abstractmethod, ABC
+from typing import Iterable
 
+from tradeexecutor.state.balance_update import BalanceUpdate
 from tradeexecutor.state.types import USDollarAmount
+
+
+
+class BalanceUpdateEventAlreadyAdded(Exception):
+    """Tries to include the same balance update event twice.
+
+    See :py:meth:`GenericPosition.add_balance_update_event`
+    """
 
 
 class GenericPosition(ABC):
@@ -51,4 +61,28 @@ class GenericPosition(ABC):
 
         :return:
             What's the total value of non-trade events affecting the balances of this position.
+        """
+
+    @abstractmethod
+    def get_balance_update_events(self) -> Iterable[BalanceUpdate]:
+        """Iterate over all balance update events.
+
+        Balance updates describe external events affecting the balance of this position:
+        the update was not triggered by the trade executor itself.
+
+        - Deposits
+
+        - Redemptions
+
+        - Account corrections
+
+        - **Trades** are not included here
+        """
+
+    @abstractmethod
+    def add_balance_update_event(self, event: BalanceUpdate):
+        """Include a new balance update event
+
+        :raise BalanceUpdateEventAlreadyAdded:
+            In the case of a duplicate and event id is already used.
         """

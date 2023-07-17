@@ -171,7 +171,7 @@ class EnzymeVaultSyncModel(SyncModel):
 
         position_str = ", ".join([str(p) for p in portfolio.get_open_positions()])
         raise UnknownAsset(f"Asset {asset} does not map to any open position.\n"
-                           f"Reserve: {portfolio.get_default_reserve()}.\n"
+                           f"Reserve: {portfolio.get_default_reserve_asset()}.\n"
                            f"Open positions: {position_str}")
 
     def process_deposit(self, portfolio: Portfolio, event: Deposit, strategy_cycle_ts: datetime.datetime) -> BalanceUpdate:
@@ -182,7 +182,7 @@ class EnzymeVaultSyncModel(SyncModel):
             # Initial deposit
             portfolio.initialise_reserves(asset)
         else:
-            reserve_asset, reserve_price = portfolio.get_default_reserve()
+            reserve_asset, reserve_price = portfolio.get_default_reserve_asset()
             assert asset == reserve_asset
 
         reserve_position = portfolio.get_reserve_position(asset)
@@ -215,7 +215,7 @@ class EnzymeVaultSyncModel(SyncModel):
             position_id=None,
         )
 
-        reserve_position.balance_updates[evt.balance_update_id] = evt
+        reserve_position.add_balance_update_event(evt)
 
         return evt
 
@@ -302,7 +302,7 @@ class EnzymeVaultSyncModel(SyncModel):
                 usd_value=usd_value,
             )
 
-            position.balance_updates[event_id] = evt
+            position.add_balance_update_event(evt)
 
             events.append(evt)
 
@@ -578,6 +578,8 @@ class EnzymeVaultSyncModel(SyncModel):
         assert len(balances) == 1, f"reinit cannot be done if the vault has positions other than reserve currencies, got {balances}"
         reserve_current_balance = balances[0]
 
+        logger.info("Found on-chain balance %s at block %s", reserve_current_balance, current_block)
+
         asset = translate_token_details(reserve_current_balance.token)
 
         assert len(portfolio.reserves) == 0
@@ -616,7 +618,7 @@ class EnzymeVaultSyncModel(SyncModel):
             notes=f"reinit() at block {current_block}"
         )
 
-        reserve_position.balance_updates[master_event.balance_update_id] = master_event
+        reserve_position.add_balance_update_event(master_event)
 
         events = [master_event]
 

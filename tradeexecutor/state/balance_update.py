@@ -9,7 +9,7 @@
 import datetime
 import enum
 from _decimal import Decimal
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 from dataclasses_json import dataclass_json
@@ -110,6 +110,10 @@ class BalanceUpdate:
     #:
     usd_value: USDollarAmount
 
+    #: Wall clock time when this event was created
+    #:
+    created_at: datetime.datetime | None = field(default_factory=datetime.datetime.utcnow)
+
     #: Investor address that the balance update is related to
     #:
     owner_address: Optional[str] = None
@@ -172,4 +176,5 @@ class BalanceUpdate:
     def is_reserve_update(self) -> bool:
         """Return whether this event updates reserve balance or open position balance"""
         return self.position_type == BalanceUpdatePositionType.reserve
+
 

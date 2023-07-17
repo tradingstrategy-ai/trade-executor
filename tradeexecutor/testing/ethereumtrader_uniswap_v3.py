@@ -145,7 +145,7 @@ class UniswapV3TestTrader(EthereumTrader):
 
         tx_builder = self.tx_builder
 
-        reserve_asset, rate = state.portfolio.get_default_reserve()
+        reserve_asset, rate = state.portfolio.get_default_reserve_asset()
 
         # We know only about one exchange
         routing_model = UniswapV3SimpleRoutingModel(

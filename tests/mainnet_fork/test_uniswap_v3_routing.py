@@ -324,7 +324,7 @@ def state(web3, hot_wallet, usdc_asset) -> State:
     )
     assert len(events) > 0
     apply_sync_events(state, events)
-    reserve_currency, exchange_rate = state.portfolio.get_default_reserve()
+    reserve_currency, exchange_rate = state.portfolio.get_default_reserve_asset()
     assert reserve_currency == usdc_asset
     return state
 
