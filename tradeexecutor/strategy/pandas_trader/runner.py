@@ -116,10 +116,10 @@ class PandasTraderRunner(StrategyRunner):
 
         elif 1 < universe.get_pair_count() <= 3:
             
-            small_figures_combined = draw_multi_pair_strategy_state(state, universe, height=512)
+            small_figure_combined = draw_multi_pair_strategy_state(state, universe, height=512)
             large_figure_combined = draw_multi_pair_strategy_state(state, universe, height=1024)
 
-            self.update_strategy_thinking_image_data(small_figures_combined, large_figure_combined)
+            self.update_strategy_thinking_image_data(small_figure_combined, large_figure_combined)
 
         else:
             logger.warning("Charts not yet available for this strategy type. Pair count: %s", universe.get_pair_count())
