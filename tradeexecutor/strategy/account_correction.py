@@ -187,7 +187,7 @@ def calculate_account_corrections(
 
         logger.debug("Correction check worth of %s worth of %f USD", ab.asset, usd_value or 0)
 
-        mismatch = abs(actual_amount - expected_amount) > epsilon
+        mismatch = abs(diff) > epsilon
 
         if mismatch or all_balances:
             yield AccountingBalanceCheck(
