@@ -13,6 +13,7 @@ from typing import Optional
 import pandas as pd
 
 from tradeexecutor.state.state import State
+from tradeexecutor.state.types import PairInternalId
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.visual.single_pair import visualise_single_pair
 from tradeexecutor.visual.multiple_pairs import visualise_multiple_pairs
@@ -73,16 +74,16 @@ def draw_single_pair_strategy_state(
     return visualise_single_pair_strategy_state(state, target_pair_candles, start_at, end_at, technical_indicators=technical_indicators, title=title)
 
 
-
 def draw_multi_pair_strategy_state(
         state: State,
         universe: TradingStrategyUniverse,
-        width=512,
-        height=512,
-        candle_count=64,
+        width: Optional[int] = 512,
+        height: Optional[int] = 512,
+        candle_count: Optional[int] = 64,
         start_at: Optional[datetime.datetime] = None,
         end_at: Optional[datetime.datetime] = None,
-        technical_indicators=True,
+        technical_indicators: Optional[bool] = True,
+        pair_ids: Optional[list[PairInternalId]] = None,
 ) -> list[go.Figure]:
     """Draw mini price chart images for multiple pairs. Returns a single figure with multiple subplots.
 
@@ -146,6 +147,9 @@ def draw_multi_pair_strategy_state(
         start_at,
         end_at,
         pair_ids,
+        height=height,
+        width=width,
+        technical_indicators=technical_indicators,
     )
 
 
