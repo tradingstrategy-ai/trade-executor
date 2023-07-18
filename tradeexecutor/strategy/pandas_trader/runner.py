@@ -116,8 +116,8 @@ class PandasTraderRunner(StrategyRunner):
 
         elif 1 < universe.get_pair_count() <= 3:
             
-            small_figure_combined = draw_multi_pair_strategy_state(state, universe, height=512)
-            large_figure_combined = draw_multi_pair_strategy_state(state, universe, height=1024)
+            small_figure_combined = draw_multi_pair_strategy_state(state, universe, height=1024)
+            large_figure_combined = draw_multi_pair_strategy_state(state, universe, height=2048)
 
             self.update_strategy_thinking_image_data(small_figure_combined, large_figure_combined)
 
@@ -270,8 +270,8 @@ class PandasTraderRunner(StrategyRunner):
                 
             logger.trade(buf.getvalue())
 
-            small_image = self.run_state.visualisation.small_image
-            post_logging_discord_image(small_image)
+            large_image = self.run_state.visualisation.large_image
+            post_logging_discord_image(large_image)
 
         else:   
             logger.warning("Reporting of strategy thinking of multipair universes with more than 3 pairs not supported yet")
