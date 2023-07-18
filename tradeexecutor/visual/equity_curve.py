@@ -193,11 +193,11 @@ def visualise_equity_curve(
     .. code-block:: python
 
         from tradeexecutor.visual.equity_curve import calculate_equity_curve, calculate_returns
-        from tradeexecutor.visual.equity_curve import visualise_equity_performance
+        from tradeexecutor.visual.equity_curve import visualise_equity_curve
 
         curve = calculate_equity_curve(state)
         returns = calculate_returns(curve)
-        fig = visualise_equity_performance(returns)
+        fig = visualise_equity_curve(returns)
         display(fig)
 
     :return:
