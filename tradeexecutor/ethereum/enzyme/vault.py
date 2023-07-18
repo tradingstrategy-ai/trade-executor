@@ -428,10 +428,16 @@ class EnzymeVaultSyncModel(SyncModel):
         else:
             # Fall back to lazy load event timestamps,
             # all commercial SaaS nodes
+
+            # QuickNode is crap
+            # We do not explicitly detect QuickNode, but we are getting
+            # equests.exceptions.HTTPError: 413 Client Error: Request Entity Too Large for url: https://xxx.pro/ec618a382930d83cdbeb0119eae1694c480ce789/
+            chunk_size = 1000
+
             logger.info("Using lazy timestamp loading reader for vault events")
             reader: Web3EventReader = cast(
                 Web3EventReader,
-                partial(read_events, notify=self._notify, chunk_size=self.scan_chunk_size, reorg_mon=None, extract_timestamps=extract_timestamps_json_rpc_lazy)
+                partial(read_events, notify=self._notify, chunk_size=chunk_size, reorg_mon=None, extract_timestamps=extract_timestamps_json_rpc_lazy)
             )
         return reader
 
