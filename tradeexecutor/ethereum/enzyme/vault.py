@@ -408,12 +408,15 @@ class EnzymeVaultSyncModel(SyncModel):
             filter_zero=filter_zero,
         )
 
-    def create_event_reader(self) -> Web3EventReader:
+    def create_event_reader(self) -> Tuple[Web3EventReader, bool]:
         """Create event reader for vault deposit/redemption events.
 
         Set up the reader interface for fetch_deployment_event()
         extract_timestamp is disabled to speed up the event reading,
         we handle it separately
+
+        :return:
+            Tuple (event reader, quick node workarounds).
         """
 
         # TODO: make this a configuration option
@@ -425,6 +428,8 @@ class EnzymeVaultSyncModel(SyncModel):
                 Web3EventReader,
                 partial(read_events, notify=self._notify, chunk_size=self.scan_chunk_size, reorg_mon=self.reorg_mon, extract_timestamps=None)
             )
+
+            broken_quicknode = False
         else:
             # Fall back to lazy load event timestamps,
             # all commercial SaaS nodes
@@ -449,7 +454,9 @@ class EnzymeVaultSyncModel(SyncModel):
 
             logger.info("Made %d eth_getBlockByNumber API calls", lazy_timestamp_container.api_call_counter)
 
-        return reader
+            broken_quicknode = True
+
+        return reader, broken_quicknode
 
     def sync_treasury(self,
                       strategy_cycle_ts: datetime.datetime,
@@ -487,9 +494,11 @@ class EnzymeVaultSyncModel(SyncModel):
 
         logger.info(f"Starting sync for vault %s, comptroller %s, looking block range {start_block:,} - {end_block:,}", self.vault.address, self.vault.comptroller.address)
 
+        reader, broken_quicknode = self.create_event_reader()
+
         # Feed block headers for the listeners
         # to get the timestamps of the blocks
-        if self.only_chain_listener:
+        if self.only_chain_listener and not broken_quicknode:
 
             skip_to_block = treasury_sync.last_block_scanned or sync.deployment.block_number
 
@@ -509,8 +518,6 @@ class EnzymeVaultSyncModel(SyncModel):
         else:
             range_start = start_block
             range_end = end_block
-
-        reader = self.create_event_reader()
 
         events_iter = fetch_vault_balance_events(
             vault,
