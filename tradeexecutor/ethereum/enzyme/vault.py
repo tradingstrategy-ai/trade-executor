@@ -12,7 +12,7 @@ from web3 import Web3, HTTPProvider
 from eth_defi.chain import fetch_block_timestamp, has_graphql_support
 from eth_defi.enzyme.events import fetch_vault_balance_events, EnzymeBalanceEvent, Deposit, Redemption, fetch_vault_balances
 from eth_defi.enzyme.vault import Vault
-from eth_defi.event_reader.lazy_timestamp_reader import extract_timestamps_json_rpc_lazy
+from eth_defi.event_reader.lazy_timestamp_reader import extract_timestamps_json_rpc_lazy, LazyTimestampContainer
 from eth_defi.event_reader.reader import read_events, Web3EventReader, extract_events, extract_timestamps_json_rpc
 from eth_defi.event_reader.reorganisation_monitor import ReorganisationMonitor
 from eth_defi.hotwallet import HotWallet
@@ -434,11 +434,21 @@ class EnzymeVaultSyncModel(SyncModel):
             # equests.exceptions.HTTPError: 413 Client Error: Request Entity Too Large for url: https://xxx.pro/ec618a382930d83cdbeb0119eae1694c480ce789/
             chunk_size = 1000
 
+            lazy_timestamp_container: LazyTimestampContainer = None
+
+            def wrapper(web3, start_block, end_block):
+                nonlocal lazy_timestamp_container
+                lazy_timestamp_container = extract_timestamps_json_rpc_lazy(web3, start_block, end_block)
+                return lazy_timestamp_container
+
             logger.info("Using lazy timestamp loading reader for vault events")
             reader: Web3EventReader = cast(
                 Web3EventReader,
-                partial(read_events, notify=self._notify, chunk_size=chunk_size, reorg_mon=None, extract_timestamps=extract_timestamps_json_rpc_lazy)
+                partial(read_events, notify=self._notify, chunk_size=chunk_size, reorg_mon=None, extract_timestamps=wrapper)
             )
+
+            logger.info("Made %d eth_getBlockByNumber API calls", lazy_timestamp_container.api_call_counter)
+
         return reader
 
     def sync_treasury(self,
