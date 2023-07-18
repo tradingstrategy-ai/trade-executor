@@ -452,7 +452,10 @@ class EnzymeVaultSyncModel(SyncModel):
                 partial(read_events, notify=self._notify, chunk_size=chunk_size, reorg_mon=None, extract_timestamps=wrapper)
             )
 
-            logger.info("Made %d eth_getBlockByNumber API calls", lazy_timestamp_container.api_call_counter)
+            if lazy_timestamp_container:
+                logger.info("Made %d eth_getBlockByNumber API calls", lazy_timestamp_container.api_call_counter)
+            else:
+                logger.info("Event reader not called")
 
             broken_quicknode = True
 
