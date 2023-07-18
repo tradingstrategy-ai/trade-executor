@@ -99,6 +99,7 @@ def visualise_multiple_pairs(
     relative_sizing: list[float] = None,
     volume_axis_name: str = "Volume USD",
     candle_decimals: int = 4,
+    show_trades: bool = True,
 ) -> go.Figure:
     """Visualise single-pair trade execution.
 
@@ -169,6 +170,9 @@ def visualise_multiple_pairs(
 
     logger.info("Visualising %s", state)
 
+    if not show_trades:
+        logger.warning("Trades will not be shown")
+
     start_at, end_at = get_start_and_end(start_at, end_at)
 
     # convert candles to raw dataframe
@@ -182,6 +186,10 @@ def visualise_multiple_pairs(
         candles = df.loc[df["pair_id"].isin(pair_ids)]
     else:
         candles = candle_universe
+
+        if pair_ids is None:
+            assert "pair_id" in candles.columns, "candles must have a pair_id column"
+            pair_ids = list(candles["pair_id"].unique())
 
     pair_ids = [int(pair_id) for pair_id in pair_ids]
 
@@ -219,12 +227,15 @@ def visualise_multiple_pairs(
         candle_end_ts = c["timestamp"].max()
         logger.info(f"Candles are {candle_start_ts} = {candle_end_ts}")
 
-        trades_df = export_trades_as_dataframe(
-            state.portfolio,
-            pair_id,
-            start_at,
-            end_at,
-        )
+        if show_trades:
+            trades_df = export_trades_as_dataframe(
+                state.portfolio,
+                pair_id,
+                start_at,
+                end_at,
+            )
+        else: 
+            trades_df = None
 
         labels = make_candle_labels(
             c,
@@ -365,7 +376,7 @@ def visualise_multiple_pairs(
 
         # Add trade markers if any trades have been made
         trades_df = pair_subplot_info.trades
-        if len(trades_df) > 0:
+        if show_trades and trades_df is not None and len(trades_df) > 0:
             visualise_trades(
                 subplot,
                 candles,

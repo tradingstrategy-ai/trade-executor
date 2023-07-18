@@ -8,9 +8,9 @@
 
 """
 import datetime
-from typing import Optional
-
+import logging
 import pandas as pd
+from typing import Optional
 
 from tradeexecutor.state.state import State
 from tradeexecutor.state.types import PairInternalId
@@ -22,6 +22,10 @@ import plotly.graph_objects as go
 import plotly.subplots as sp
 
 from tradingstrategy.charting.candle_chart import VolumeBarMode
+
+
+logger = logging.getLogger(__name__)
+
 
 
 def draw_single_pair_strategy_state(
@@ -71,14 +75,14 @@ def draw_single_pair_strategy_state(
     pair = universe.get_single_pair()
     title = f"{pair.base.token_symbol}/{pair.quote.token_symbol}"
 
-    return visualise_single_pair_strategy_state(state, target_pair_candles, start_at, end_at, technical_indicators=technical_indicators, title=title, width=width, height=height)
+    return visualise_single_pair_strategy_state(state, target_pair_candles, start_at, end_at, technical_indicators=technical_indicators, title=title, height=height)
 
 
 def draw_multi_pair_strategy_state(
         state: State,
         universe: TradingStrategyUniverse,
-        width: Optional[int] = 512,
-        height: Optional[int] = 512,
+        width: Optional[int] =1024,
+        height: Optional[int] = 2048,
         candle_count: Optional[int] = 64,
         start_at: Optional[datetime.datetime] = None,
         end_at: Optional[datetime.datetime] = None,
@@ -134,14 +138,15 @@ def draw_multi_pair_strategy_state(
 
             # Do candle count clip
             if candle_count:
-                # pair_count = universe.get_pair_count()
-                candles = candles.iloc[-candle_count:]
+                pair_count = universe.get_pair_count()
+                candles = candles.iloc[-candle_count * pair_count:]
 
             start_at = candles.iloc[0]["timestamp"]
             end_at = candles.iloc[-1]["timestamp"]
     else:
         assert start_at, "Must have start_at with end_at"
         assert end_at, "Must have start_at with end_at"
+        logger.warning("Own start_at and end_at provided")
         candles = data.loc[pd.Timestamp(start_at):pd.Timestamp(end_at)]
 
     return visualise_multiple_pairs(
