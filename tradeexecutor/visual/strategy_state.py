@@ -71,7 +71,7 @@ def draw_single_pair_strategy_state(
     pair = universe.get_single_pair()
     title = f"{pair.base.token_symbol}/{pair.quote.token_symbol}"
 
-    return visualise_single_pair_strategy_state(state, target_pair_candles, start_at, end_at, technical_indicators=technical_indicators, title=title)
+    return visualise_single_pair_strategy_state(state, target_pair_candles, start_at, end_at, technical_indicators=technical_indicators, title=title, width=width, height=height)
 
 
 def draw_multi_pair_strategy_state(
@@ -134,8 +134,8 @@ def draw_multi_pair_strategy_state(
 
             # Do candle count clip
             if candle_count:
-                pair_count = universe.get_pair_count()
-                candles = candles.iloc[-candle_count*pair_count:]
+                # pair_count = universe.get_pair_count()
+                candles = candles.iloc[-candle_count:]
 
             start_at = candles.iloc[0]["timestamp"]
             end_at = candles.iloc[-1]["timestamp"]
