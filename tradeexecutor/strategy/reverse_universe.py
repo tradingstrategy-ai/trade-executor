@@ -101,7 +101,7 @@ def reverse_trading_universe_from_state(
         pair_ids.add(pair.internal_id)
 
         if data_range_mode == DataRangeMode.trades:
-            start = trade.started_at or trade.opened_at or trade.executed_at or start
+            start = min(trade.started_at or trade.opened_at or trade.executed_at, start)
             end = max(end, trade.executed_at)
 
     if data_range_mode == DataRangeMode.indicators:
