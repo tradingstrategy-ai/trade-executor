@@ -146,7 +146,7 @@ def draw_multi_pair_strategy_state(
     else:
         assert start_at, "Must have start_at with end_at"
         assert end_at, "Must have start_at with end_at"
-        logger.warning("Own start_at and end_at provided for multipair live visaualisation.")
+        logger.info("Own start_at and end_at provided for multipair live visualisation.")
         candles = data.loc[pd.Timestamp(start_at):pd.Timestamp(end_at)]
 
     return visualise_multiple_pairs(
