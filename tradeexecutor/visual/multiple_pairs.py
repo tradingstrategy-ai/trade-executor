@@ -81,6 +81,25 @@ class PairSubplotInfo:
             return None
 
 
+def get_start_and_end_full(candles: pd.DataFrame | GroupedCandleUniverse, start_at: pd.Timestamp | datetime.datetime | None, end_at: pd.Timestamp | datetime.datetime | None):
+
+    start_at, end_at = get_start_and_end(start_at, end_at)
+    
+    if isinstance(candles, GroupedCandleUniverse):
+        s, e = candles.get_timestamp_range()
+        if not start_at or start_at < s:
+            start_at = s
+        if not end_at or end_at > e:
+            end_at = e
+    else:
+        if not start_at or start_at < candles["timestamp"].min():
+            start_at = candles["timestamp"].min()
+        if not end_at or end_at > candles["timestamp"].max():
+            end_at = candles["timestamp"].max()
+
+    return start_at, end_at
+
+
 def visualise_multiple_pairs(
     state: Optional[State],
     candle_universe: GroupedCandleUniverse | pd.DataFrame,
@@ -173,8 +192,6 @@ def visualise_multiple_pairs(
     if not show_trades:
         logger.warning("Trades will not be shown")
 
-    start_at, end_at = get_start_and_end(start_at, end_at)
-
     # convert candles to raw dataframe
     if isinstance(candle_universe, GroupedCandleUniverse):
         if pair_ids is None:
@@ -193,6 +210,8 @@ def visualise_multiple_pairs(
 
     pair_ids = [int(pair_id) for pair_id in pair_ids]
 
+    start_at, end_at = get_start_and_end_full(candles, start_at, end_at)
+
     if not volume_bar_modes:
         volume_bar_modes = [VolumeBarMode.overlay] * len(pair_ids)
     else:
@@ -203,36 +222,28 @@ def visualise_multiple_pairs(
     pair_subplot_infos: list[PairSubplotInfo] = []
     current_candlestick_row = 1
 
-    for i, pair_id in enumerate(pair_ids):
-        assert "pair_id" in candles.columns, "candles must have a pair_id column"
+    assert "pair_id" in candles.columns, "candles must have a pair_id column"
 
-        c = candles.loc[candles["pair_id"] == pair_id]
+    for i, pair_id in enumerate(pair_ids):
+
+        # Candles define our diagram X axis
+        # Crop it to the trading range and correct pair
+        c = candles.loc[(candles["pair_id"] == pair_id) & (candles["timestamp"].between(start_at, end_at))]
 
         pair_name, base_token, quote_token = get_pair_base_quote_names(state, pair_id)
 
-        if not start_at:
-            # No trades made, use the first candle timestamp
-            start_at = candle_universe.get_timestamp_range()[0]
-
-        if not end_at:
-            end_at = candle_universe.get_timestamp_range()[1]
-
-        logger.info(f"Visualising single pair strategy for range {start_at} - {end_at}")
-
-        # Candles define our diagram X axis
-        # Crop it to the trading range
-        c = c.loc[c["timestamp"].between(start_at, end_at)]
+        logger.info(f"Visualising pair {pair_name} for range {start_at} - {end_at}")
 
         candle_start_ts = c["timestamp"].min()
         candle_end_ts = c["timestamp"].max()
-        logger.info(f"Candles are {candle_start_ts} = {candle_end_ts}")
+        logger.info(f"Candles for {pair_name} are {candle_start_ts} - {candle_end_ts}")
 
         if show_trades:
             trades_df = export_trades_as_dataframe(
                 state.portfolio,
                 pair_id,
-                start_at,
-                end_at,
+                candle_start_ts,
+                candle_end_ts,
             )
         else: 
             trades_df = None
@@ -343,12 +354,12 @@ def visualise_multiple_pairs(
         )
 
         if (
-            "volume" in candles.columns
+            "volume" in _candles.columns
             and pair_subplot_info.volume_bar_mode != VolumeBarMode.hidden
         ):
             volume_bars = go.Bar(
-                x=candles.index,
-                y=candles["volume"],
+                x=_candles.index,
+                y=_candles["volume"],
                 showlegend=False,
                 marker={
                     "color": "rgba(128,128,128,0.5)",
@@ -379,7 +390,7 @@ def visualise_multiple_pairs(
         if show_trades and trades_df is not None and len(trades_df) > 0:
             visualise_trades(
                 subplot,
-                candles,
+                _candles,
                 trades_df,
                 pair_subplot_info.candlestick_row,
                 1,
