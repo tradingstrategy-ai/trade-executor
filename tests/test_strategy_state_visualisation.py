@@ -199,7 +199,10 @@ def test_visualise_strategy_state(
 
     image = draw_single_pair_strategy_state(state, universe)
 
+    assert len(image.data) == 5
+    assert len(image._grid_ref) == 1
+
     # Test the image on a local screen
     # using a web brower
-    #if os.environ.get("SHOW_IMAGE"):
-    open_plotly_figure_in_browser(image)
+    if os.environ.get("SHOW_IMAGE"):
+        open_plotly_figure_in_browser(image)

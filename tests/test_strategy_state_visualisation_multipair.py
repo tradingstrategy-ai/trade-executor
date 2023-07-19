@@ -361,6 +361,9 @@ def test_visualise_strategy_state(
 
     image = draw_multi_pair_strategy_state(state, universe)
     
+    assert len(image.data) == 27
+    assert len(image._grid_ref) == 6
+
     # Test the image on a local screen
     # using a web brower
     if os.environ.get("SHOW_IMAGE"):

@@ -139,7 +139,7 @@ def export_trades_as_dataframe(
     data = []
 
     for t in portfolio.get_all_trades():
-        if t.pair.internal_id != pair_id:
+        if pair_id is not None and t.pair.internal_id != pair_id:
             continue
 
         # Crop
