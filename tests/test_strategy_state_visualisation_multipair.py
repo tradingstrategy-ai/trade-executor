@@ -360,9 +360,11 @@ def test_visualise_strategy_state(
     )
 
     image = draw_multi_pair_strategy_state(state, universe)
-    
+
     assert len(image.data) == 27
     assert len(image._grid_ref) == 6
+    assert image.data[0]['x'][0] == datetime.datetime(2023,4,3,0,0)
+    assert image.data[0]['x'][-1] == datetime.datetime(2023,6,5,0,0)
 
     # Test the image on a local screen
     # using a web brower
