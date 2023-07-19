@@ -212,6 +212,8 @@ def visualise_multiple_pairs(
 
     start_at, end_at = get_start_and_end_full(candles, start_at, end_at)
 
+    logger.info(f"Visualising multipair strategy for range {start_at} - {end_at}")
+
     if not volume_bar_modes:
         volume_bar_modes = [VolumeBarMode.overlay] * len(pair_ids)
     else:
