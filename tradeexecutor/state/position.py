@@ -1051,6 +1051,9 @@ class TradingPosition(GenericPosition):
         
         The relative size of a position is typically calculated at the time the position is opened and is given by the size (value) of the position divided by the total portfolio value at that same time. The relative size of a position is a number between 0 and 1, where 0 means that the position is not open and 1 means that the position is the only position in the portfolio.
         """
+        if not self.portfolio_value_at_open:
+            return 0
+        
         return self.get_value_at_open() / self.portfolio_value_at_open
 
 
