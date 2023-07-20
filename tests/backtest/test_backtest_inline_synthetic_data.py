@@ -338,6 +338,7 @@ def test_basic_summary_statistics(
     assert summary.sharpe_ratio == pytest.approx(-0.16440603545590504, rel=APPROX_REL)
     assert summary.sortino_ratio == pytest.approx(-0.23988078508533023, rel=APPROX_REL)
     assert summary.profit_factor == pytest.approx(0.9754583954173234, rel=APPROX_REL)
+    assert summary.compound_realised_profit == pytest.approx(-0.004717044385644686, rel=APPROX_REL)
 
 
 def test_bars_display(backtest_result: tuple[State, TradingStrategyUniverse, dict],

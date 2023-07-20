@@ -1046,6 +1046,13 @@ class TradingPosition(GenericPosition):
 
         self.balance_updates[event.balance_update_id] = event
 
+    def get_relative_size(self):
+        """Get the relative size of this position compared to the portfolio.
+        
+        The relative size of a position is typically calculated at the time the position is opened and is given by the size (value) of the position divided by the total portfolio value at that same time. The relative size of a position is a number between 0 and 1, where 0 means that the position is not open and 1 means that the position is the only position in the portfolio.
+        """
+        return self.get_value_at_open() / self.portfolio_value_at_open
+
 
 class PositionType(enum.Enum):
     token_hold = "token_hold"

@@ -162,6 +162,7 @@ class TradeSummary:
     profit_factor: Optional[float] = None
     max_drawdown: Optional[float] = None
     max_runup: Optional[float] = None
+    compound_realised_profit: Optional[float] = None
 
     average_duration_of_zero_loss_trades: Optional[datetime.timedelta] = None
     average_duration_of_all_trades: Optional[datetime.timedelta] = None
@@ -521,6 +522,8 @@ class TradeAnalysis:
         winning_take_profits = 0
         losing_take_profits = 0
 
+        compound_realised_profit = 1
+
         for pair_id, position in self.get_all_positions():
             
             portfolio_value_at_open = position.portfolio_value_at_open
@@ -557,6 +560,8 @@ class TradeAnalysis:
             realised_profit_percent = position.get_realised_profit_percent()
             realised_profit_usd = position.get_realised_profit_usd()
             duration = position.get_duration()
+
+            compound_realised_profit *= 1 + realised_profit_percent * position.get_relative_size()
             
             if position.is_profitable():
                 won += 1
@@ -619,6 +624,8 @@ class TradeAnalysis:
             else:
                 # Bad input data / legacy data
                 max_pullback_pct = 0
+
+        compound_realised_profit -= 1
 
         all_trades = winning_trades + losing_trades + [0 for i in range(zero_loss)]
         average_trade = func_check(all_trades, avg)
@@ -693,6 +700,7 @@ class TradeAnalysis:
             sharpe_ratio=sharpe_ratio,
             sortino_ratio=sortino_ratio,
             profit_factor=profit_factor,
+            compound_realised_profit=compound_realised_profit,
         )
 
     @staticmethod
