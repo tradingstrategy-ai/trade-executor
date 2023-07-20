@@ -1292,6 +1292,8 @@ def load_partial_data(
     assert isinstance(execution_context, ExecutionContext)
     assert isinstance(universe_options, UniverseOptions)
 
+    assert type(pairs) == list, "remember to use list() when passing pairs"
+
     # Apply overrides
     stop_loss_time_bucket = universe_options.stop_loss_time_bucket_override or stop_loss_time_bucket
     time_bucket = universe_options.candle_time_bucket_override or time_bucket
