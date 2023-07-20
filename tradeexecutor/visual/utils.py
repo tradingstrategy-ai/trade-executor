@@ -144,7 +144,7 @@ def export_trades_as_dataframe(
 
         # Crop
         if start or end:
-            s = t.started_at or t.opened_at
+            s = t.opened_at or t.started_at
             
             if not s:
                 # Hotfix to some invalid data?
