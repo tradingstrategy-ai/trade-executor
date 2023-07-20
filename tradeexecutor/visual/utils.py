@@ -158,7 +158,6 @@ def export_trades_as_dataframe(
 
 def visualise_trades(
     fig: go.Figure,
-    candles: pd.DataFrame,
     trades_df: pd.DataFrame,
     candlestick_row: int | None = None,
     column: int | None = None,

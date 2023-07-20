@@ -432,7 +432,7 @@ def visualise_single_pair(
 
     # Add trade markers if any trades have been made
     if len(trades_df) > 0:
-        visualise_trades(fig, candles, trades_df)
+        visualise_trades(fig, trades_df)
 
     return fig
 

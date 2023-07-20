@@ -368,7 +368,6 @@ def visualise_multiple_pairs(
         if len(trades_df) > 0:
             visualise_trades(
                 subplot,
-                candles,
                 trades_df,
                 pair_subplot_info.candlestick_row,
                 1,
