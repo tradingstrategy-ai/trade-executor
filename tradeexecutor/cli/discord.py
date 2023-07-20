@@ -11,6 +11,9 @@ from discord_webhook import DiscordWebhook
 from tradeexecutor.cli.log import setup_discord_logging, setup_logging
 
 
+logger = logging.getLogger(__name__)
+
+
 def get_discord_logging_handler() -> Optional[DiscordHandler]:
     """See" log.py
 
@@ -45,12 +48,15 @@ def post_logging_discord_image(image: bytes):
         username=handler.service_name,
         rate_limit_retry=handler.rate_limit_retry,
         avatar_url=handler.avatar_url,
-        timeout=handler.discord_timeout,
+        timeout=60,
     )
 
     discord.add_file(image, "strategy-state.png")
 
-    discord.execute()
+    try:
+        discord.execute()
+    except Exception:
+        logger.error("Failed to post image to Discord", exc_info=True)
 
 
 if __name__ == "__main__":
