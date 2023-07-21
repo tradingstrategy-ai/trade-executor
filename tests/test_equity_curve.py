@@ -41,6 +41,7 @@ from tradingstrategy.timebucket import TimeBucket
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.default_routing_options import TradeRouting
+from tradeexecutor.visual.web_chart import render_web_chart, WebChartType, WebChartSource
 
 
 def decide_trades(
@@ -218,6 +219,21 @@ def test_calculate_equity_curve(state: State):
     assert curve[pd.Timestamp("2021-12-30")] == pytest.approx(8605.74)
 
 
+def test_calculate_equity_time_gapped(state: State):
+    """Get the backtest equity curve with time gaps filler."""
+
+    # Check that our trades look correct
+    assert len(list(state.portfolio.get_all_trades())) > 10
+
+    curve = calculate_equity_curve(state, fill_time_gaps=True)
+    assert type(curve) == pd.Series
+
+    # Check begin and end values of portfolio look correct
+    assert state.portfolio.get_total_equity() == pytest.approx(8605.74)
+    assert curve[pd.Timestamp("2021-06-01")] == 10_000
+    assert curve[pd.Timestamp("2021-12-30")] == pytest.approx(8605.74)
+
+
 def test_calculate_aggregated_returns(state: State):
     """Calculate monthly returns."""
 
@@ -260,3 +276,49 @@ def test_returns_distribution(state: State):
     returns = calculate_returns(curve)
     fig = visualise_returns_distribution(returns)
     assert isinstance(fig, Figure)
+
+
+def test_web_compounding_realised_profit_export(state: State):
+    """Export profit % to the web."""
+    chart = render_web_chart(
+        state,
+        WebChartType.compounding_realised_profitability,
+        WebChartSource.backtest,
+    )
+
+    assert chart.help_link == 'https://tradingstrategy.ai/glossary/profitability'
+    assert chart.title == 'Compounded realised trading position % profit'
+
+    second_tuple = chart.data[1]  # See calculate_compounding_realised_trading_profitability(fill_current_time_gap)
+    assert second_tuple[0] == 1622937600
+    assert second_tuple[1] == -0.0033223057702593817
+
+
+def test_web_equity_curve(state: State):
+    """Export equity curve the web."""
+    chart = render_web_chart(
+        state,
+        WebChartType.total_equity,
+        WebChartSource.backtest,
+    )
+
+    assert chart.help_link == 'https://tradingstrategy.ai/glossary/total-equity'
+
+    first_tuple = chart.data[0]
+    assert first_tuple[0] == 1622505600.0
+    assert first_tuple[1] == 10000.0  # Initial deposit
+
+
+def test_web_netflow(state: State):
+    """Netflow curve the web."""
+    chart = render_web_chart(
+        state,
+        WebChartType.netflow,
+        WebChartSource.backtest,
+    )
+
+    assert chart.help_link == 'https://tradingstrategy.ai/glossary/netflow'
+
+    first_tuple = chart.data[0]
+    assert first_tuple[0] == 1622505600.0
+    assert first_tuple[1] == 10000.0  # Initial deposit

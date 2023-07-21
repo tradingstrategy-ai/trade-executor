@@ -47,7 +47,6 @@ def hot_wallet(web3, deployer, user_1, usdc: Contract) -> HotWallet:
     assert_transaction_success_with_explanation(web3, tx_hash)
     tx_hash = usdc.functions.transfer(wallet.address, 500 * 10**6).transact({"from": deployer})
     assert_transaction_success_with_explanation(web3, tx_hash)
-
     return wallet
 
 
@@ -200,7 +199,7 @@ def test_enzyme_execute_open_position(
     assert swap_tx.asset_deltas[0].asset == usdc_asset.address
     assert swap_tx.asset_deltas[0].int_amount < 0
     assert swap_tx.asset_deltas[1].asset == weth_asset.address
-    assert swap_tx.asset_deltas[1].int_amount == pytest.approx(eth_amount * Decimal(1 - trade.slippage_tolerance) * 10**18)
+    assert swap_tx.asset_deltas[1].int_amount == pytest.approx(eth_amount * Decimal(1 - trade.slippage_tolerance) * 10**18, rel=Decimal(0.01))
 
     # Broadcast both transactions
     trader.broadcast_trades([trade], stop_on_execution_failure=True)

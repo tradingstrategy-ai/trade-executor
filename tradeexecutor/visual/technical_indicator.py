@@ -28,6 +28,8 @@ def overlay_all_technical_indicators(
         start_at: Optional[pd.Timestamp] = None,
         end_at: Optional[pd.Timestamp] = None,
         volume_bar_mode: VolumeBarMode = None,
+        pair_id: Optional[int] = None,
+        start_row: int = None,
 ):
     """Draw all technical indicators from the visualisation over candle chart.
 
@@ -42,11 +44,23 @@ def overlay_all_technical_indicators(
     """
 
     # get starting row for indicators
+    # should start on candlestick row if volume is overlayed or hidden
     cur_row = _get_initial_row(volume_bar_mode)
 
+    if start_row:
+        cur_row = cur_row + start_row - 1
+
+        # currently, this line breaks single pair visualisation without breaking changes, so needs to be here
+        plots = [plot for plot in visualisation.plots.values() if getattr(plot.pair, "internal_id", None) == pair_id]
+
+    else:
+        start_row = 1
+        plots = visualisation.plots.values()
+    
+
     # https://plotly.com/python/graphing-multiple-chart-types/
-    for plot in visualisation.plots.values():
-        
+    for plot in plots:
+
         # get trace which is unattached to plot
         trace = visualise_technical_indicator(
             plot,
@@ -65,7 +79,7 @@ def overlay_all_technical_indicators(
             fig.add_trace(trace, row=cur_row, col=1)
         elif plot.kind == PlotKind.technical_indicator_on_price:
             # don't increment current row
-            fig.add_trace(trace, row=1, col=1)
+            fig.add_trace(trace, row=start_row, col=1)
         elif plot.kind == PlotKind.technical_indicator_overlay_on_detached:
             # don't increment current row
             fig.add_trace(trace, row=cur_row, col=1)

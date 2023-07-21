@@ -10,7 +10,7 @@ from typing import List, Dict
 
 from tradingstrategy.candle import CandleSampleUnavailable
 
-from tradeexecutor.state.position import TradingPosition, TriggerPriceUpdate
+from tradeexecutor.state.position import TradingPosition, TriggerPriceUpdate, CLOSED_POSITION_DUST_EPSILON
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution, TradeType
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
@@ -77,6 +77,9 @@ def check_position_triggers(
     :param position_manager:
         Encapsulates the current state, universe for closing positions
 
+    :param epsilon:
+        The rounding error to zero
+
     :return:
         List of triggered trades for all positions, like market sell on a stop loss triggered.s
     """
@@ -100,7 +103,7 @@ def check_position_triggers(
         size = p.get_quantity()
 
         if size == 0:
-            logger.warning("Encountered position without token quantity: %s", p)
+            logger.warning("Encountered open position without token quantity: %s. Quantity is %s.", p, size)
             continue
 
         # TODO: Tracking down math bug

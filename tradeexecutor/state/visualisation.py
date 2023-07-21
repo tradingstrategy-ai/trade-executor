@@ -23,7 +23,7 @@ import logging
 from dataclasses_json import dataclass_json
 
 from tradeexecutor.utils.timestamp import convert_and_validate_timestamp, convert_and_validate_timestamp_as_int
-
+from tradeexecutor.state.identifier import TradingPairIdentifier
 
 logger = logging.getLogger(__name__)
 
@@ -147,6 +147,12 @@ class Plot:
     #: Are we adjusted for look ahead bias or not.
     #:
     recording_time: RecordingTime = RecordingTime.decision_making_time
+
+    #: The trading pair this plot is for.
+    #:
+    #: Plots are not necessarily restricted to a single trading pair, so this is optional.
+    #:
+    pair: Optional[TradingPairIdentifier] = None
 
     def __repr__(self):
         return f"<Plot name:{self.name} kind:{self.kind.name} with {len(self.points)} points>"
@@ -299,6 +305,7 @@ class Visualisation:
              detached_overlay_name: Optional[str] = None,
              indicator_size: Optional[float] = None,
              recording_time: Optional[RecordingTime] = RecordingTime.decision_making_time,
+             pair: Optional[TradingPairIdentifier] = None,
         ):
         """Add a value to the output data and diagram.
         
@@ -352,7 +359,7 @@ class Visualisation:
             try:
                 value = float(value)
             except TypeError as e:
-                raise RuntimeError(f"Could not convert value {value} {value.__class__} to float" + _get_helper_message("value")) from e
+                raise RuntimeError(f"Could not convert value {value} {value.__class__} to float" + _get_helper_message("value") + ". Make sure you provide a float or int, not a series, to plot_indicator.") from e
 
         if detached_overlay_name:
             assert type(detached_overlay_name) is str, "Detached overlay must be a string" + _get_helper_message("detached_overlay_name")
@@ -377,6 +384,8 @@ class Visualisation:
             plot.colour = colour
 
         plot.recording_time = recording_time
+
+        plot.pair = pair
 
         self.plots[name] = plot
 

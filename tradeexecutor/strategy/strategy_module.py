@@ -1,12 +1,16 @@
 """Describe strategy modules and their loading."""
+import datetime
 import logging
 import runpy
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Dict, Protocol, List, Optional, Union
-import pandas
-from tradingstrategy.chain import ChainId
+from packaging import version
 
+import pandas
+import pandas as pd
+
+from tradingstrategy.chain import ChainId
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.cycle import CycleDuration
@@ -264,6 +268,10 @@ class StrategyModuleInformation:
 
     """
 
+    #: Path to the module
+    #:
+    path: Path
+
     #: The source code of the strategy
     #:
     #: Can be set `None` for strategies that are not public.
@@ -288,6 +296,22 @@ class StrategyModuleInformation:
     #: Valid for single chain strategies only
     chain_id: Optional[ChainId] = None
 
+
+    #: Only needed for backtests
+    backtest_start: Optional[datetime.datetime] = None
+
+    #: Only needed for backtests
+    backtest_end: Optional[datetime.datetime] = None
+
+    #: Only needed for backtests
+    initial_cash: Optional[float] = None
+
+    def is_version_greater_or_equal_than(self, major: int, minor: int, patch: int) -> bool:
+        """Check strategy module for its version compatibility."""
+        assert self.trading_strategy_engine_version, f"Strategy module does not contain trading_strategy_engine_version varible: {self.path}"
+        required_version = f"{major}.{minor}.{patch}"
+        return version.parse(self.trading_strategy_engine_version) >= version.parse(required_version)
+
     def validate(self):
         """Check that the user inputted variable names look good.
 
@@ -296,13 +320,14 @@ class StrategyModuleInformation:
         """
 
         if not self.trading_strategy_engine_version:
-            raise StrategyModuleNotValid(f"trading_strategy_engine_version missing in the module")
+            raise StrategyModuleNotValid(f"trading_strategy_engine_version missing in the module {self.path}")
 
         if not type(self.trading_strategy_engine_version) == str:
             raise StrategyModuleNotValid(f"trading_strategy_engine_version is not string")
 
-        if self.trading_strategy_engine_version != "0.1":
-            raise StrategyModuleNotValid(f"Only version 0.1 supported for now, got {self.trading_strategy_engine_version}")
+        supported_versions = ("0.1", "0.2",)
+        if self.trading_strategy_engine_version not in supported_versions:
+            raise StrategyModuleNotValid(f"Only versions {supported_versions} supported, got {self.trading_strategy_engine_version}")
 
         if not self.trading_strategy_type:
             raise StrategyModuleNotValid(f"trading_strategy_type missing in the module")
@@ -331,15 +356,38 @@ class StrategyModuleInformation:
         if self.chain_id:
             assert isinstance(self.chain_id, ChainId), f"Strategy module chain_in varaible expected ChainId instance, got {self.chain_id}"
 
+        if self.backtest_start:
+            assert isinstance(self.backtest_start, datetime.datetime), f"Strategy module backtest_start variable, expected datetime.datetime instance, got {self.backtest_start}"
 
-def parse_strategy_module(python_module_exports: dict, source_code: Optional[str]=None) -> StrategyModuleInformation:
+        if self.backtest_end:
+            assert isinstance(self.backtest_end, datetime.datetime), f"Strategy module backtest_start variable, expected datetime.datetime instance, got {self.backtest_end}"
+
+        if self.initial_cash:
+            assert type(self.initial_cash) in (int, float), f"Strategy module initial_cash variable, expected float instance, got {self.initial_cash.__class__}"
+
+    def validate_backtest(self):
+        """Validate that the module is backtest runnable."""
+        self.validate()
+        assert self.backtest_start is not None, f"BACKTEST_START variable is not set in the strategy module {self.path}"
+        assert self.backtest_end is not None, f"BACKTEST_END variable is not set in the strategy module {self.path}"
+        assert self.initial_cash is not None, f"INITIAL_CASH variable is not set in the strategy module {self.path}"
+
+
+def parse_strategy_module(
+        path,
+        python_module_exports: dict,
+        source_code: Optional[str]=None) -> StrategyModuleInformation:
     """Parse a loaded .py module that describes a trading strategy.
 
     :param python_module_exports:
         Python module
 
     """
+
+    assert isinstance(path, Path)
+
     return StrategyModuleInformation(
+        path,
         source_code,
         python_module_exports.get("trading_strategy_engine_version"),
         python_module_exports.get("trading_strategy_type"),
@@ -349,6 +397,9 @@ def parse_strategy_module(python_module_exports: dict, source_code: Optional[str
         python_module_exports.get("decide_trades"),
         python_module_exports.get("create_trading_universe"),
         python_module_exports.get("chain_id"),
+        _ensure_dt(python_module_exports.get("backtest_start")),
+        _ensure_dt(python_module_exports.get("backtest_end")),
+        python_module_exports.get("initial_cash"),
     )
 
 
@@ -391,7 +442,14 @@ def read_strategy_module(path: Path) -> Union[StrategyModuleInformation, Strateg
 
     logger.info("Strategy module %s, engine version %s", path, version)
 
-    mod_info = parse_strategy_module(strategy_exports, source_code)
+    mod_info = parse_strategy_module(path, strategy_exports, source_code)
     mod_info.validate()
 
     return mod_info
+
+
+def _ensure_dt(v: datetime.datetime | pd.Timestamp | None) -> datetime.datetime | None:
+    """Allow pd.Timestamp in a file but use datetime internally"""
+    if isinstance(v, pd.Timestamp):
+        return v.to_pydatetime()
+    return v

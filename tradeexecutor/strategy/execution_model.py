@@ -142,6 +142,8 @@ class ExecutionModel(abc.ABC):
         """
 
 
+
+
 class AssetManagementMode(enum.Enum):
     """Default execution options.
 
@@ -173,3 +175,6 @@ class AssetManagementMode(enum.Enum):
         Are we executing against a blockchain (including test chains).
         """
         return self in (AssetManagementMode.hot_wallet, AssetManagementMode.enzyme,)
+
+
+

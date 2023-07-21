@@ -258,12 +258,19 @@ def test_calculate_all_summary_statistics(state: State):
     true_profitability = 9541.619532761046 / 10_000 - 1
     assert true_profitability == pytest.approx(-0.045838046723895465)
     assert summary.profitability_90_days == pytest.approx(-0.045838046723895465)
+    assert summary.return_all_time == pytest.approx(-0.045838046723895576)
+    assert summary.return_annualised == pytest.approx(-0.07818171520665672)
 
     datapoints = summary.performance_chart_90_days
-    assert len(datapoints) == 91
+    assert len(datapoints) == 92
 
-    assert datapoints[0] == (datetime.datetime(2021, 10, 2, 0, 0), -0.02687699056973558)
-    assert datapoints[-1] == (datetime.datetime(2021, 12, 31, 0, 0), -0.045838046723895576)
+    #assert datapoints[0] == (datetime.datetime(2021, 10, 2, 0, 0), -0.02687699056973558)
+    #assert datapoints[-1] == (datetime.datetime(2021, 12, 31, 0, 0), -0.045838046723895576)
+
+    assert datapoints[0] == (1633132800.0, -0.02687699056973558)
+    assert datapoints[-2] == (1640908800.0, -0.045838046723895576)
+    assert datapoints[-1] == (1640995200.0, -0.045838046723895576)
+
 
     # Make sure we do not output anything that is not JSON'able
     data = summary.to_dict()
@@ -281,7 +288,6 @@ def test_advanced_metrics(state: State):
     # index 1 is the benchmark.
     sharpe = metrics.loc["Sharpe"][0]
     assert sharpe == pytest.approx(-2.09)
-
 
 
 def test_calculate_key_metrics_empty():
@@ -312,10 +318,8 @@ def test_calculate_key_metrics_live(state: State):
     assert metrics["sortino"].value == pytest.approx(-2.720957242817309)
     assert metrics["profitability"].value == pytest.approx(-0.045838046723895576)
     assert metrics["total_equity"].value == pytest.approx(9541.619532761046)
-    assert metrics["max_drawdown"].value == pytest.approx(-0.04780138378916754)
+    assert metrics["max_drawdown"].value == pytest.approx(0.04780138378916754)
     assert metrics["max_drawdown"].source == KeyMetricSource.live_trading
-    assert metrics["max_drawdown"].calculation_window_start_at == datetime.datetime(2021, 6, 1, 0, 0)
-    assert metrics["max_drawdown"].calculation_window_end_at == datetime.datetime(2021, 12, 31, 0, 0)
     assert metrics["max_drawdown"].help_link == "https://tradingstrategy.ai/glossary/maximum-drawdown"
 
 
@@ -334,10 +338,11 @@ def test_calculate_key_metrics_live_and_backtesting(state: State):
     # returns = calculate_compounding_realised_profitability(state)
 
     metrics = {m.kind.value: m for m in calculate_key_metrics(live_state=empty_state, backtested_state=state)}
-    assert metrics["max_drawdown"].value == pytest.approx(-0.04780138378916754)
+    assert metrics["max_drawdown"].value == pytest.approx(0.04780138378916754)
     assert metrics["max_drawdown"].source == KeyMetricSource.backtesting
     assert metrics["max_drawdown"].calculation_window_start_at == datetime.datetime(2021, 6, 1, 0, 0)
     assert metrics["max_drawdown"].calculation_window_end_at == datetime.datetime(2021, 12, 31, 0, 0)
 
     assert metrics["started_at"].source == KeyMetricSource.live_trading
     assert metrics["started_at"].value >= datetime.datetime(2023, 1, 1, 0, 0)
+

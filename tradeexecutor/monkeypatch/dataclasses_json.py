@@ -13,6 +13,7 @@ from enum import Enum
 from typing import Collection, Mapping
 from uuid import UUID
 
+import pandas as pd
 from dataclasses_json import core
 
 from tradeexecutor.utils.timestamp import convert_and_validate_timestamp_as_float
@@ -29,11 +30,20 @@ def _patched_default(self, o) -> core.Json:
     elif core._isinstance_safe(o, datetime):
         #assert o.tzinfo == None, "Received a datetime with attached tz info: {o}"
         result = convert_and_validate_timestamp_as_float(o)
+
+    elif core._isinstance_safe(o, pd.Timestamp):
+        # Automatically convert pd.Timestamps to Python datetimes on write
+        dt = o.to_pydatetime()
+        result = convert_and_validate_timestamp_as_float(dt)
     #
     # Patch timedelta support
     #
     elif core._isinstance_safe(o, timedelta):
         result = o.total_seconds()
+
+    elif core._isinstance_safe(o, pd.Timedelta):
+        result = o.total_seconds()
+
     elif core._isinstance_safe(o, UUID):
         result = str(o)
     elif core._isinstance_safe(o, Enum):

@@ -1,0 +1,30 @@
+<!doctype html>
+<html>
+  <head>
+      <script src="https://cdn.jsdelivr.net/pyodide/v0.23.4/full/pyodide.js"></script>
+
+  </head>
+  <body>
+    <script type="text/javascript">
+      async function main(){
+        let pyodide = await loadPyodide();
+
+        await pyodide.loadPackage("micropip");
+        const micropip = pyodide.pyimport("micropip");
+        await micropip.install.callKwargs(
+            'http://localhost:9000/trade_executor-0.3-py3-none-any.whl',
+            {keep_going: true}
+        )
+
+        pyodide.runPython(`
+          import snowballstemmer
+          stemmer = snowballstemmer.stemmer('english')
+          print(stemmer.stemWords('go goes going gone'.split()))
+        `);
+
+        console.log(pyodide.runPython("1 + 2"));
+      }
+      main();
+    </script>
+  </body>
+</html>

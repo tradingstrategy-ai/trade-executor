@@ -86,6 +86,7 @@ def multipair_universe(execution_context, persistent_test_client) -> TradingStra
     return universe
 
 
+@pytest.mark.slow_test_group
 def test_decision_trigger_ready_data(persistent_test_client, universe):
     """Test that we can immedidately trigger trades for old data.
 
@@ -114,6 +115,7 @@ def test_decision_trigger_ready_data(persistent_test_client, universe):
     )
 
 
+@pytest.mark.slow_test_group
 def test_decision_trigger_multipair(persistent_test_client, multipair_universe: TradingStrategyUniverse):
     """Wait for the multipair decision trigger to be ready."""
 

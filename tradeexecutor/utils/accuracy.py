@@ -53,7 +53,7 @@ def sum_decimal(numbers: Iterable[Decimal]) -> Decimal:
         Incoming Decimals to sum
     """
     total = sum(numbers)
-    if total < SUM_EPSILON:
+    if abs(total) < SUM_EPSILON:
         return ZERO_DECIMAL
     return total
 

@@ -65,3 +65,6 @@ Percent: TypeAlias = float
 #:
 #: - Cannot be zero
 BlockNumber: int
+
+#: Unix timestamp as seconds
+UnixTimestamp: TypeAlias = float

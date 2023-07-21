@@ -5,18 +5,20 @@ import datetime
 import pprint
 from _decimal import Decimal
 from functools import partial
-from typing import cast, List, Optional, Tuple
+from typing import cast, List, Optional, Tuple, Iterable
 
-from web3 import Web3
+from web3 import Web3, HTTPProvider
 
-from eth_defi.chain import fetch_block_timestamp
+from eth_defi.chain import fetch_block_timestamp, has_graphql_support
 from eth_defi.enzyme.events import fetch_vault_balance_events, EnzymeBalanceEvent, Deposit, Redemption, fetch_vault_balances
 from eth_defi.enzyme.vault import Vault
+from eth_defi.event_reader.lazy_timestamp_reader import extract_timestamps_json_rpc_lazy, LazyTimestampContainer
 from eth_defi.event_reader.reader import read_events, Web3EventReader, extract_events, extract_timestamps_json_rpc
 from eth_defi.event_reader.reorganisation_monitor import ReorganisationMonitor
 from eth_defi.hotwallet import HotWallet
 
 from tradeexecutor.ethereum.enzyme.tx import EnzymeTransactionBuilder
+from tradeexecutor.ethereum.onchain_balance import fetch_address_balances
 from tradeexecutor.ethereum.token import translate_token_details
 from tradeexecutor.state.portfolio import Portfolio
 
@@ -26,7 +28,7 @@ from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.state import State
 from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdateCause, BalanceUpdatePositionType
 from tradeexecutor.state.sync import BalanceEventRef
-from tradeexecutor.strategy.sync_model import SyncModel
+from tradeexecutor.strategy.sync_model import SyncModel, OnChainBalance
 from tradingstrategy.chain import ChainId
 
 logger = logging.getLogger(__name__)
@@ -169,7 +171,7 @@ class EnzymeVaultSyncModel(SyncModel):
 
         position_str = ", ".join([str(p) for p in portfolio.get_open_positions()])
         raise UnknownAsset(f"Asset {asset} does not map to any open position.\n"
-                           f"Reserve: {portfolio.get_default_reserve()}.\n"
+                           f"Reserve: {portfolio.get_default_reserve_asset()}.\n"
                            f"Open positions: {position_str}")
 
     def process_deposit(self, portfolio: Portfolio, event: Deposit, strategy_cycle_ts: datetime.datetime) -> BalanceUpdate:
@@ -180,7 +182,7 @@ class EnzymeVaultSyncModel(SyncModel):
             # Initial deposit
             portfolio.initialise_reserves(asset)
         else:
-            reserve_asset, reserve_price = portfolio.get_default_reserve()
+            reserve_asset, reserve_price = portfolio.get_default_reserve_asset()
             assert asset == reserve_asset
 
         reserve_position = portfolio.get_reserve_position(asset)
@@ -213,7 +215,7 @@ class EnzymeVaultSyncModel(SyncModel):
             position_id=None,
         )
 
-        reserve_position.balance_updates[evt.balance_update_id] = evt
+        reserve_position.add_balance_update_event(evt)
 
         return evt
 
@@ -300,7 +302,7 @@ class EnzymeVaultSyncModel(SyncModel):
                 usd_value=usd_value,
             )
 
-            position.balance_updates[event_id] = evt
+            position.add_balance_update_event(evt)
 
             events.append(evt)
 
@@ -391,6 +393,74 @@ class EnzymeVaultSyncModel(SyncModel):
         deployment.chain_id = ChainId(web3.eth.chain_id)
         deployment.initialised_at = datetime.datetime.utcnow()
 
+    def fetch_onchain_balances(self, assets: List[AssetIdentifier], filter_zero=True) -> Iterable[OnChainBalance]:
+        """Read the on-chain asset details.
+
+        - Mark the block we are reading at the start
+
+        :param filter_zero:
+            Do not return zero balances
+        """
+        return fetch_address_balances(
+            self.web3,
+            self.get_vault_address(),
+            assets,
+            filter_zero=filter_zero,
+        )
+
+    def create_event_reader(self) -> Tuple[Web3EventReader, bool]:
+        """Create event reader for vault deposit/redemption events.
+
+        Set up the reader interface for fetch_deployment_event()
+        extract_timestamp is disabled to speed up the event reading,
+        we handle it separately
+
+        :return:
+            Tuple (event reader, quick node workarounds).
+        """
+
+        # TODO: make this a configuration option
+        provider = cast(HTTPProvider, self.web3.provider)
+        if has_graphql_support(provider):
+            logger.info("Using /graqpql based reader for vault events")
+            # GoEthereum with /graphql enabled
+            reader: Web3EventReader = cast(
+                Web3EventReader,
+                partial(read_events, notify=self._notify, chunk_size=self.scan_chunk_size, reorg_mon=self.reorg_mon, extract_timestamps=None)
+            )
+
+            broken_quicknode = False
+        else:
+            # Fall back to lazy load event timestamps,
+            # all commercial SaaS nodes
+
+            # QuickNode is crap
+            # We do not explicitly detect QuickNode, but we are getting
+            # equests.exceptions.HTTPError: 413 Client Error: Request Entity Too Large for url: https://xxx.pro/ec618a382930d83cdbeb0119eae1694c480ce789/
+            chunk_size = 1000
+
+            logger.info("Using lazy timestamp loading reader for vault events")
+            lazy_timestamp_container: LazyTimestampContainer = None
+
+            def wrapper(web3, start_block, end_block):
+                nonlocal lazy_timestamp_container
+                lazy_timestamp_container = extract_timestamps_json_rpc_lazy(web3, start_block, end_block)
+                return lazy_timestamp_container
+
+            logger.info("Using lazy timestamp loading reader for vault events")
+            reader: Web3EventReader = cast(
+                Web3EventReader,
+                partial(read_events, notify=self._notify, chunk_size=chunk_size, reorg_mon=None, extract_timestamps=wrapper))
+
+            if lazy_timestamp_container:
+                logger.info("Made %d eth_getBlockByNumber API calls", lazy_timestamp_container.api_call_counter)
+            else:
+                logger.info("Event reader not called")
+
+            broken_quicknode = True
+
+        return reader, broken_quicknode
+
     def sync_treasury(self,
                       strategy_cycle_ts: datetime.datetime,
                       state: State,
@@ -427,9 +497,11 @@ class EnzymeVaultSyncModel(SyncModel):
 
         logger.info(f"Starting sync for vault %s, comptroller %s, looking block range {start_block:,} - {end_block:,}", self.vault.address, self.vault.comptroller.address)
 
+        reader, broken_quicknode = self.create_event_reader()
+
         # Feed block headers for the listeners
         # to get the timestamps of the blocks
-        if self.only_chain_listener:
+        if self.only_chain_listener and not broken_quicknode:
 
             skip_to_block = treasury_sync.last_block_scanned or sync.deployment.block_number
 
@@ -449,14 +521,6 @@ class EnzymeVaultSyncModel(SyncModel):
         else:
             range_start = start_block
             range_end = end_block
-
-        # Set up the reader interface for fetch_deployment_event()
-        # extract_timestamp is disabled to speed up the event reading,
-        # we handle it separately
-        reader: Web3EventReader = cast(
-            Web3EventReader,
-            partial(read_events, notify=self._notify, chunk_size=self.scan_chunk_size, reorg_mon=self.reorg_mon, extract_timestamps=None)
-        )
 
         events_iter = fetch_vault_balance_events(
             vault,
@@ -540,6 +604,8 @@ class EnzymeVaultSyncModel(SyncModel):
         assert len(balances) == 1, f"reinit cannot be done if the vault has positions other than reserve currencies, got {balances}"
         reserve_current_balance = balances[0]
 
+        logger.info("Found on-chain balance %s at block %s", reserve_current_balance, current_block)
+
         asset = translate_token_details(reserve_current_balance.token)
 
         assert len(portfolio.reserves) == 0
@@ -578,7 +644,7 @@ class EnzymeVaultSyncModel(SyncModel):
             notes=f"reinit() at block {current_block}"
         )
 
-        reserve_position.balance_updates[master_event.balance_update_id] = master_event
+        reserve_position.add_balance_update_event(master_event)
 
         events = [master_event]
 
@@ -602,6 +668,27 @@ class EnzymeVaultSyncModel(SyncModel):
     def create_transaction_builder(self) -> EnzymeTransactionBuilder:
         assert self.hot_wallet, "HotWallet not set - cannot create transaction builder"
         return EnzymeTransactionBuilder(self.hot_wallet, self.vault)
+
+    def check_ownership(self):
+        """Check that the hot wallet has the correct ownership rights to make trades through the vault.
+
+        Hot wallet must be registered either as
+
+        - Vault owner
+
+        - Vault asset manager
+
+        :raise AssertionError:
+            If the hot wallet cannot perform trades for the vault
+        """
+
+        # TODO: Move this check internal on EnzymeVaultSyncModel
+        hot_wallet = self.get_hot_wallet()
+        vault = self.vault
+
+        owner = vault.vault.functions.getOwner().call()
+        if owner != hot_wallet.address:
+            assert vault.vault.functions.isAssetManager(hot_wallet.address).call(), f"Address is not set up as Enzyme asset manager: {hot_wallet.address}"
 
 
 def _dump_enzyme_event(e: EnzymeBalanceEvent) -> str:

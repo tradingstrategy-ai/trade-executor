@@ -297,7 +297,10 @@ class StrategyRunner(abc.ABC):
         routing_state_details = self.execution_model.get_routing_state_details()
 
         # Initialise the current routing state with execution details
-        logger.info("Setting up routing. Routing model is %s, details are %s, universe is %s",
+        logger.info("Setting up routing.\n"
+                    "Routing model is %s\n"
+                    "Details are %s\n"
+                    "Universe is %s",
                     self.routing_model,
                     routing_state_details,
                     universe,

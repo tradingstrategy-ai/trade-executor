@@ -9,7 +9,7 @@
 import datetime
 import enum
 from _decimal import Decimal
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 from dataclasses_json import dataclass_json
@@ -19,9 +19,19 @@ from tradingstrategy.types import USDollarAmount
 
 
 class BalanceUpdateCause(enum.Enum):
+
+    #: Reserve was deposited in the vault
     deposit = "deposit"
+
+    #: User redeemed assets
     redemption = "redemption"
+
+    #: Position value has change due to accrued interest
     interest = "interest"
+
+    #: Accounting correction from on-chain balances to the state (internal ledger)
+    #:
+    correction = "correction"
 
 
 class BalanceUpdatePositionType(enum.Enum):
@@ -76,7 +86,9 @@ class BalanceUpdate:
     #: It might be outside the cycle frequency if treasuries were processed
     #: in a cron job outside the cycle for slow moving strategies.
     #:
-    strategy_cycle_included_at: datetime.datetime
+    #: For accounting corrections this is set to `None`.
+    #:
+    strategy_cycle_included_at: datetime.datetime | None
 
     #: Chain that updated the balance
     chain_id: int
@@ -97,6 +109,10 @@ class BalanceUpdate:
     #: This is the asset value from our internal price keeping at the time of the event.
     #:
     usd_value: USDollarAmount
+
+    #: Wall clock time when this event was created
+    #:
+    created_at: datetime.datetime | None = field(default_factory=datetime.datetime.utcnow)
 
     #: Investor address that the balance update is related to
     #:
@@ -121,11 +137,22 @@ class BalanceUpdate:
     #:
     notes: Optional[str] = None
 
+    #: Block number related to the event.
+    #:
+    #: Not always available.
+    #:
+    block_number: int | None = None
+
     def __post_init__(self):
         assert self.quantity != 0, "Balance update cannot be zero: {self}"
 
     def __repr__(self):
-        return f"<BalanceUpdate #{self.balance_update_id} {self.cause.name} {self.quantity} for position {self.position_id}>"
+        if self.position_id:
+            position_name = f"position #{self.position_id}"
+        else:
+            position_name = "strategy reserves"
+
+        return f"<BalanceUpdate #{self.balance_update_id} {self.cause.name} {self.quantity} for {position_name} at block {self.block_mined_at and self.block_mined_at:,}>"
 
     def __eq__(self, other: "BalanceUpdate"):
         assert isinstance(other, BalanceUpdate), f"Got {other}"
@@ -149,4 +176,5 @@ class BalanceUpdate:
     def is_reserve_update(self) -> bool:
         """Return whether this event updates reserve balance or open position balance"""
         return self.position_type == BalanceUpdatePositionType.reserve
+
 

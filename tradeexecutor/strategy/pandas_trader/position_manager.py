@@ -136,7 +136,7 @@ class PositionManager:
                  universe: Universe,
                  state: State,
                  pricing_model: PricingModel,
-                 default_slippage_tolerance=0.01,  # Slippage tole
+                 default_slippage_tolerance=0.05,  # Slippage tole
                  ):
 
         """Create a new PositionManager instance.
@@ -157,6 +157,10 @@ class PositionManager:
          
         :param default_slippage_tolerance: 
             Slippage tolerance parameter set for any trades if not overriden trade-by-trade basis.
+
+            Default to 5% slippage.
+
+            TODO: Tighten this parameter when execution tracking works better.
             
         """
 
@@ -172,7 +176,7 @@ class PositionManager:
         self.pricing_model = pricing_model
         self.default_slippage_tolerance = default_slippage_tolerance
 
-        reserve_currency, reserve_price = state.portfolio.get_default_reserve()
+        reserve_currency, reserve_price = state.portfolio.get_default_reserve_asset()
 
         self.reserve_currency = reserve_currency
 
@@ -361,7 +365,7 @@ class PositionManager:
 
         assert type(price_structure.mid_price) == float
 
-        reserve_asset, reserve_price = self.state.portfolio.get_default_reserve()
+        reserve_asset, reserve_price = self.state.portfolio.get_default_reserve_asset()
 
         slippage_tolerance = slippage_tolerance or self.default_slippage_tolerance
 
@@ -513,7 +517,7 @@ class PositionManager:
 
         price = price_structure.price
 
-        reserve_asset, reserve_price = self.state.portfolio.get_default_reserve()
+        reserve_asset, reserve_price = self.state.portfolio.get_default_reserve_asset()
 
         slippage_tolerance = slippage_tolerance or self.default_slippage_tolerance
 
@@ -624,7 +628,7 @@ class PositionManager:
         assert position.is_long(), "Only long supported for now"
         assert position.is_open(), f"Tried to close already closed position {position}"
 
-        quantity_left = position.get_live_quantity()
+        quantity_left = position.get_available_trading_quantity()
 
         if quantity_left == 0:
             # We have already generated closing trades for this position
@@ -636,9 +640,11 @@ class PositionManager:
         quantity = quantity_left
         price_structure = self.pricing_model.get_sell_price(self.timestamp, pair, quantity=quantity)
 
-        reserve_asset, reserve_price = self.state.portfolio.get_default_reserve()
+        reserve_asset, reserve_price = self.state.portfolio.get_default_reserve_asset()
 
         slippage_tolerance = slippage_tolerance or self.default_slippage_tolerance
+
+        logger.info("Preparing to close position %s, quantity %s, pricing %s, slippage tolerance %f", position, quantity, price_structure, slippage_tolerance)
 
         position2, trade, created = self.state.create_trade(
             self.timestamp,

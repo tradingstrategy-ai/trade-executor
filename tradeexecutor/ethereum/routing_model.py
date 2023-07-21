@@ -69,8 +69,9 @@ class EthereumRoutingModel(RoutingModel):
         """
 
         super().__init__(allowed_intermediary_pairs, reserve_token_address)
-        
         self.chain_id = chain_id
+
+
 
     def make_direct_trade(self,
                           routing_state: EthereumRoutingState,
@@ -97,16 +98,30 @@ class EthereumRoutingModel(RoutingModel):
             txs = routing_state.ensure_token_approved(token_address, uniswap.swap_router.address)
         else:
             raise TypeError("Incorrect Uniswap Instance provided. Can't get router.")
-            
-        txs += routing_state.trade_on_router_two_way(
+
+        adjusted_reserve_amount = routing_state.adjust_spend(
+            reserve_asset,
+            reserve_amount,
+        )
+
+        trade_txs = routing_state.trade_on_router_two_way(
             uniswap,
             target_pair,
             reserve_asset,
-            reserve_amount,
+            adjusted_reserve_amount,
             max_slippage,
             check_balances,
             asset_deltas=asset_deltas,
             )
+
+        # Leave note of adjustment.
+        # Use str() because JSON cannot handle big int
+        trade_txs[0].other = {
+            "reserve_amount": str(reserve_amount),
+            "adjusted_reserve_amount": str(adjusted_reserve_amount),
+        }
+
+        txs += trade_txs
         return txs
 
     def make_multihop_trade(self,
@@ -137,17 +152,31 @@ class EthereumRoutingModel(RoutingModel):
             txs = routing_state.ensure_token_approved(token_address, uniswap.swap_router.address)
         else:
             raise TypeError("Incorrect Uniswap Instance provided. Can't get router.")
-        
-        txs += routing_state.trade_on_router_three_way(
+
+        adjusted_reserve_amount = routing_state.adjust_spend(
+            reserve_asset,
+            reserve_amount,
+        )
+
+        trade_txs = routing_state.trade_on_router_three_way(
             uniswap,
             target_pair,
             intermediary_pair,
             reserve_asset,
-            reserve_amount,
+            adjusted_reserve_amount,
             max_slippage,
             check_balances,
             asset_deltas=asset_deltas,
             )
+
+        txs += trade_txs
+
+        # Leave note of adjustment.
+        # Use str() because JSON cannot handle big int
+        trade_txs[0].other = {
+            "reserve_amount": str(reserve_amount),
+            "adjusted_reserve_amount": str(adjusted_reserve_amount),
+        }
         return txs
 
     def trade(self,
@@ -243,6 +272,8 @@ class EthereumRoutingModel(RoutingModel):
             else:
                 # Old path that does not slippage tolerances for trades
                 asset_deltas = None
+
+            logger.info("Slippage tolerance is: %f, expected asset deltas: %s", t.slippage_tolerance, asset_deltas)
 
             target_pair, intermediary_pair = self.route_trade(pair_universe, t)
 

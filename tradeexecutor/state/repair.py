@@ -76,6 +76,7 @@ def make_counter_trade(portfolio: Portfolio, p: TradingPosition, t: TradeExecuti
         reserve_currency_price=t.get_reserve_currency_exchange_rate(),
         position=p,
     )
+    counter_trade.started_at = datetime.datetime.utcnow()
     assert created is False
     assert position == p
 
@@ -201,6 +202,11 @@ def unfreeze_position(portfolio: Portfolio, position: TradingPosition) -> bool:
 
     position.unfrozen_at = datetime.datetime.utcnow()
     del portfolio.frozen_positions[position.position_id]
+
+    if position.notes is None:
+        position.notes = ""
+
+    position.add_notes_message(f"Unfrozen at {datetime.datetime.utcnow()}")
 
     return True
 

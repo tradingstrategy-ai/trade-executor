@@ -13,10 +13,13 @@ from typing import Optional
 import pandas as pd
 
 from tradeexecutor.state.state import State
+from tradeexecutor.state.types import PairInternalId
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.visual.single_pair import visualise_single_pair
+from tradeexecutor.visual.multiple_pairs import visualise_multiple_pairs
 
 import plotly.graph_objects as go
+import plotly.subplots as sp
 
 from tradingstrategy.charting.candle_chart import VolumeBarMode
 
@@ -65,21 +68,24 @@ def draw_single_pair_strategy_state(
         assert universe.universe.candles.get_pair_count() == 1
         target_pair_candles = universe.universe.candles.df.loc[pd.Timestamp(start_at):pd.Timestamp(end_at)]
 
-    return visualise_single_pair_strategy_state(state, target_pair_candles, start_at, end_at, technical_indicators=technical_indicators)
+    pair = universe.get_single_pair()
+    title = f"{pair.base.token_symbol}/{pair.quote.token_symbol}"
 
+    return visualise_single_pair_strategy_state(state, target_pair_candles, start_at, end_at, technical_indicators=technical_indicators, title=title)
 
 
 def draw_multi_pair_strategy_state(
         state: State,
         universe: TradingStrategyUniverse,
-        width=512,
-        height=512,
-        candle_count=64,
+        width: Optional[int] = 512,
+        height: Optional[int] = 512,
+        candle_count: Optional[int] = 64,
         start_at: Optional[datetime.datetime] = None,
         end_at: Optional[datetime.datetime] = None,
-        technical_indicators=True,
+        technical_indicators: Optional[bool] = True,
+        pair_ids: Optional[list[PairInternalId]] = None,
 ) -> list[go.Figure]:
-    """Draw mini price chart images for multiple pairs.
+    """Draw mini price chart images for multiple pairs. Returns a single figure with multiple subplots.
 
     See also
 
@@ -112,35 +118,42 @@ def draw_multi_pair_strategy_state(
         Whether to draw technical indicators or not
 
     :return:
-        The strategy state visualisation as a list of Plotly figures
+        The strategy state visualisation as a single Plotly figure with multiple subplots
     """
 
     assert universe.get_pair_count() <= 3, "This visualisation can be done only for less than 3 pairs"
 
-    figures = []
+    data = universe.universe.candles.df
 
-    for pair_id, data in universe.universe.candles.get_all_pairs():
-        
-        if start_at is None and end_at is None:
+    if not pair_ids:
+        pair_ids = universe.universe.pairs.get_all_pair_ids()
+
+    if start_at is None and end_at is None:
             # Get
-            target_pair_candles = data
+            candles = data
 
             # Do candle count clip
             if candle_count:
-                target_pair_candles = target_pair_candles.iloc[-candle_count:]
+                pair_count = universe.get_pair_count()
+                candles = candles.iloc[-candle_count*pair_count:]
 
-            start_at = target_pair_candles.iloc[0]["timestamp"]
-            end_at = target_pair_candles.iloc[-1]["timestamp"]
-        else:
-            assert start_at, "Must have start_at with end_at"
-            assert end_at, "Must have start_at with end_at"
-            target_pair_candles = data.loc[pd.Timestamp(start_at):pd.Timestamp(end_at)]
+            start_at = candles.iloc[0]["timestamp"]
+            end_at = candles.iloc[-1]["timestamp"]
+    else:
+        assert start_at, "Must have start_at with end_at"
+        assert end_at, "Must have start_at with end_at"
+        candles = data.loc[pd.Timestamp(start_at):pd.Timestamp(end_at)]
 
-        figure = visualise_single_pair_strategy_state(state, target_pair_candles, start_at, end_at, technical_indicators=technical_indicators)
-
-        figures.append(figure)
-
-    return figures
+    return visualise_multiple_pairs(
+        state,
+        data,
+        start_at,
+        end_at,
+        pair_ids,
+        height=height,
+        width=width,
+        technical_indicators=technical_indicators,
+    )
 
 
 def visualise_single_pair_strategy_state(
@@ -148,8 +161,10 @@ def visualise_single_pair_strategy_state(
         target_pair_candles,
         start_at: Optional[datetime.datetime] = None,
         end_at: Optional[datetime.datetime] = None,
+        pair_id: Optional[int] = None,
         height=512,
-        technical_indicators=True
+        technical_indicators=True,
+        title=False,
 ) -> go.Figure:
     """Produces a visualisation of the strategy state for a single pair.
     
@@ -179,11 +194,16 @@ def visualise_single_pair_strategy_state(
         target_pair_candles,
         start_at=start_at,
         end_at=end_at,
+        pair_id=pair_id,
         height=height,
-        title=False,
+        title=title,
         axes=False,
         technical_indicators=technical_indicators,
         volume_bar_mode=VolumeBarMode.hidden,  # TODO: Might be needed in the future strats
+    )
+
+    figure.update_layout(
+        margin=dict(l=60, r=50, t=70, b=60),
     )
 
     return figure

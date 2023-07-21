@@ -72,6 +72,12 @@ class TradePricing:
     #: One trade can have multiple swaps if there is an intermediary pair.
     path: Optional[List[TradingPairIdentifier]] = None
 
+    #: When the price read was performed
+    read_at: Optional[datetime.datetime] = None
+
+    #: What was the block number when the read was performed
+    block_number: Optional[int] = None
+
     def __repr__(self):
         fee_list = [fee or 0 for fee in self.pair_fee]
         return f"<TradePricing:{self.price} mid:{self.mid_price} fee:{format_fees_percentage(fee_list)}>"

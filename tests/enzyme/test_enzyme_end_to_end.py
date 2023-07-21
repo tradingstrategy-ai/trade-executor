@@ -345,9 +345,7 @@ def test_enzyme_perform_test_trade(
     # Check the resulting state and see we made some trade for trading fee losses
     with state_file.open("rt") as inp:
         state: State = State.from_json(inp.read())
-
         assert len(list(state.portfolio.get_all_trades())) == 2
-
         reserve_value = state.portfolio.get_default_reserve_position().get_value()
         assert reserve_value == pytest.approx(499.994009)
 
@@ -398,3 +396,64 @@ def test_enzyme_live_trading_reinit(
         assert treasury.last_updated_at
         assert len(treasury.balance_update_refs) == 1
         assert len(reserve_position.balance_updates) == 1
+
+
+def test_enzyme_correct_accounts(
+    environment: dict,
+    state_file: Path,
+    vault,
+    deployer,
+    usdc,
+):
+    """Run the correct-accounts command.
+
+    """
+
+    # Deposit some money in the vault which should be picked up by correct accounts
+    usdc.functions.approve(vault.comptroller.address, 500 * 10**6).transact({"from": deployer})
+    vault.comptroller.functions.buyShares(500 * 10**6, 1).transact({"from": deployer})
+
+    result = run_init(environment)
+    assert result.exit_code == 0
+
+    cli = get_command(app)
+
+    with patch.dict(os.environ, environment, clear=True):
+        with pytest.raises(SystemExit) as e:
+            cli.main(args=["correct-accounts"])
+        assert e.value.code == 0
+
+    # We created a backup of the old state
+    assert os.path.exists("/tmp/test_enzyme_end_to_end.correct-accounts-backup-1.json")
+
+    # See that the corrected reverse balance looks ok
+    state: State = State.read_json_file(state_file)
+    reserve_position = state.portfolio.get_default_reserve_position()
+    assert reserve_position.quantity == 500
+    assert state.sync.accounting.last_updated_at is not None
+
+
+def test_enzyme_check_accounts(
+    environment: dict,
+    state_file: Path,
+    vault,
+    deployer,
+    usdc,
+):
+    """Run the check-accounts command.
+
+    """
+
+    # Deposit some money in the vault which should be picked up by check-accounts
+    usdc.functions.approve(vault.comptroller.address, 500 * 10**6).transact({"from": deployer})
+    vault.comptroller.functions.buyShares(500 * 10**6, 1).transact({"from": deployer})
+
+    result = run_init(environment)
+    assert result.exit_code == 0
+
+    cli = get_command(app)
+
+    with patch.dict(os.environ, environment, clear=True):
+        with pytest.raises(SystemExit) as e:
+            cli.main(args=["check-accounts"])
+        assert e.value.code == 1

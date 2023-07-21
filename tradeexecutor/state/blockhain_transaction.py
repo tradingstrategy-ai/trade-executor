@@ -29,23 +29,32 @@ def _clean_print_args(val: tuple):
         return val
 
 
-def solidity_arg_encoder(val: tuple) -> tuple:
-    """JSON safe Solidity function argument encoder."""
+def solidity_arg_encoder(val: tuple | list) -> list:
+    """JSON safe Solidity function argument encoder.
+
+    - Support nested lists (Uniswap v3)
+
+    - Fix big ints
+
+    - Abort on floats
+    """
 
     if type(val) not in (list, tuple):
         return val
 
-    def _int_to_string(x):
+    def _encode_solidity_value_json_safe(x):
         if type(x) == int:
             return str(x)
         if type(x) == bytes:
             return x.hex()
+        if type(x) in (tuple, list):
+            return solidity_arg_encoder(x)
         elif type(x) == float:
             # Smart contracts cannot have float arguents
-            raise RuntimeError(f"Cannot encode: {val}")
+            raise RuntimeError(f"Cannot encode float: {val}")
         return x
 
-    return list(_int_to_string(x) for x in val)
+    return list(_encode_solidity_value_json_safe(x) for x in val)
 
 
 class BlockchainTransactionType(enum.Enum):
@@ -139,9 +148,11 @@ class BlockchainTransaction:
     #: Contract we called. Usually the Uniswap v2 router address.
     contract_address: Optional[JSONHexAddress] = None
 
-    #: Function we called
+    #: Function name we called
     #:
     #: This is Solidity function entry point from the transaction data payload
+    #:
+    #: Human-readable function name for debugging purposes.
     #:
     function_selector: Optional[str] = None
 
@@ -158,6 +169,15 @@ class BlockchainTransaction:
             decoder=decode_pickle_over_json,
         )
     )
+
+    #: Function name the vault calls.
+    #:
+    #: This is Solidity function entry point from the transaction data payload
+    #:
+    #:
+    #: Human-readable function name for debugging purposes.
+    #:
+    wrapped_function_selector: Optional[str] = None
 
     #: Arguments that execute the actual trade.
     #:
@@ -240,6 +260,11 @@ class BlockchainTransaction:
         )
     )
 
+    #: Any other metadata associated with this transaction.
+    #:
+    #: Currently used for `vault_slippage_tolerance`.
+    other: dict = field(default_factory=dict)
+
     def __repr__(self):
         if self.status is True:
             return f"<Tx \n" \
@@ -291,6 +316,10 @@ class BlockchainTransaction:
     def is_success(self) -> bool:
         """Transaction is success if it's succeed flag has been set."""
         return self.status
+
+    def is_reverted(self) -> bool:
+        """Transaction reverted."""
+        return not self.status
 
     def set_target_information(self, chain_id: int, contract_address: str, function_selector: str, args: list, details: dict):
         """Update the information on which transaction we are going to perform."""

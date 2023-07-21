@@ -56,7 +56,6 @@ def start(
 
     # Strategy assets
     id: str = shared_options.id,
-    log_level: str = shared_options.log_level,
     name: Optional[str] = shared_options.name,
     short_description: Optional[str] = typer.Option(None, envvar="SHORT_DESCRIPTION", help="Short description for metadata"),
     long_description: Optional[str] = typer.Option(None, envvar="LONG_DESCRIPTION", help="Long description for metadata"),
@@ -128,10 +127,16 @@ def start(
     max_data_delay_minutes: int = typer.Option(1*60, envvar="MAX_DATA_DELAY_MINUTES", help="If our data feed is delayed more than this minutes, abort the execution. Defaults to 1 hours. Used by both strategy cycle trigger types."),
     trade_immediately: bool = typer.Option(False, "--trade-immediately", envvar="TRADE_IMMEDIATELY", help="Perform the first rebalance immediately, do not wait for the next trading universe refresh"),
     strategy_cycle_trigger: StrategyCycleTrigger = typer.Option("cycle_offset", envvar="STRATEGY_CYCLE_TRIGGER", help="How do decide when to start executing the next live trading strategy cycle"),
+    key_metrics_backtest_cut_off_days: float = typer.Option(90, envvar="KEY_METRIC_BACKTEST_CUT_OFF_DAYS", help="How many days live data is collected until key metrics are switched from backtest to live trading based"),
 
-    # Unsorted options
+    # Logging
+    log_level: str = shared_options.log_level,
+
+    # Various file configurations
     state_file: Optional[Path] = shared_options.state_file,
     backtest_result: Optional[Path] = shared_options.backtest_result,
+    notebook_report: Optional[Path] = shared_options.notebook_report,
+    html_report: Optional[Path] = shared_options.html_report,
     cache_path: Optional[Path] = shared_options.cache_path,
     ):
     """Launch Trade Executor instance."""
@@ -293,6 +298,12 @@ def start(
                 assert backtest_result.exists(), f"Previous backtest results are needed to have the live webhook server.\n" \
                                                  f"The BACKTEST_RESULT file {backtest_result.absolute()} does not exist."
 
+        if not html_report:
+            html_report = Path(f"state/{id}-backtest.html")
+
+        if not notebook_report:
+            notebook_report = Path(f"state/{id}-backtest.ipynb")
+
         metadata = create_metadata(
             name,
             short_description,
@@ -302,6 +313,9 @@ def start(
             chain_id=mod.chain_id,
             vault=vault,
             backtest_result=backtest_result,
+            backtest_notebook=notebook_report,
+            backtest_html=html_report,
+            key_metrics_backtest_cut_off_days=key_metrics_backtest_cut_off_days,
         )
 
         # Start the queue that relays info from the web server to the strategy executor

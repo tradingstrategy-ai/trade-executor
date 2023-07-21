@@ -2,6 +2,7 @@
 import datetime
 import sys
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Optional, TypedDict
 
 import dataclasses_json
@@ -36,7 +37,7 @@ class LatestStateVisualisation:
     #: Dark theme version
     small_image_dark: Optional[bytes] = None
 
-    #: 1920 x 1920 image SVG
+    #: 1024 x 1024 image SVG
     large_image: Optional[bytes] = None
 
     #: Dark theme version

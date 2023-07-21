@@ -42,9 +42,8 @@ def reinit(
 
     Deletes all the state history of a state and starts tracking the strategy again.
 
-    This command will fix any accounting divergences between a vault and a strategy state.
-    The strategy must not have any open positions to be reinitialised, because those open
-    positions cannot carry over with the current event based tracking logic.
+    This command will start the internal ledger accounting from the scratch.
+    All strategy live execution history is lost.
     """
 
     global logger
@@ -136,7 +135,9 @@ def reinit(
     web3config.close()
 
     reserve_position = state.portfolio.get_default_reserve_position()
-    logger.info("Reserve balance is %s", reserve_position)
+    asset, rate = state.portfolio.get_default_reserve_asset()
+    logger.info("Reserve position is %s", reserve_position)
+    logger.info("Balance is %s %s", reserve_position.get_quantity(), asset.token_symbol)
     assert reserve_position.quantity > 0, f"Reinitialisation did not see any deposits in vault: {sync_model.vault}, reserve position is {reserve_position}"
 
     logger.info("All done: State deployment info is %s", state.sync.deployment)

@@ -12,6 +12,7 @@ import pandas as pd
 from dataclasses_json import dataclass_json
 
 from tradeexecutor.state.balance_update import BalanceUpdate
+from tradeexecutor.state.generic_position import GenericPosition, BalanceUpdateEventAlreadyAdded
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
 from tradeexecutor.state.trade import TradeType, QUANTITY_EPSILON
 from tradeexecutor.state.trade import TradeExecution
@@ -21,6 +22,11 @@ from tradeexecutor.utils.accuracy import sum_decimal
 
 
 logger = logging.getLogger(__name__)
+
+
+#: If a token position helds less than this absolute amount of token
+#: consider closing it as dust
+CLOSED_POSITION_DUST_EPSILON = 0.0001
 
 
 @dataclass_json
@@ -59,7 +65,7 @@ class TriggerPriceUpdate:
 
 @dataclass_json
 @dataclass(slots=True)
-class TradingPosition:
+class TradingPosition(GenericPosition):
     """Represents a single trading position.
 
     - Each position trades a single asset
@@ -170,8 +176,14 @@ class TradingPosition:
 
     #: Human readable notes about this trade
     #:
-    #: Used to mark test trades from command line.
     #: Special case; not worth to display unless the field is filled in.
+    #:
+    #: - May contain multiple newline separated messages
+    #:
+    #: - Used to mark test trades from command line.
+    #:
+    #: - Used to add log information abotu frozen and unfrozen positions
+    #:
     notes: Optional[str] = None
 
     #: All balance updates that have touched this reserve position.
@@ -230,12 +242,22 @@ class TradingPosition:
         return not self.is_open()
 
     def is_frozen(self) -> bool:
-        """This position has had a failed trade and can no longer be automatically moved around."""
-        return self.frozen_at is not None
+        """This position has had a failed trade and can no longer be automatically moved around.
+
+        After the position is unfrozen the flag goes away.
+        """
+        return (self.frozen_at is not None) and not self.is_unfrozen()
 
     def is_unfrozen(self) -> bool:
         """This position was frozen, but its trades were successfully repaired."""
         return self.unfrozen_at is not None
+
+    def is_repaired(self) -> bool:
+        """This position was frozen, but its trades were successfully repaired.
+
+        Alias for :py:meth:`is_unfrozen`.
+        """
+        return self.is_unfrozen()
 
     def has_automatic_close(self) -> bool:
         """This position has stop loss/take profit set."""
@@ -338,6 +360,9 @@ class TradingPosition:
         """Get the unit name we label the quantity in this position"""
         return f"{self.pair.base.token_symbol}"
 
+    def get_balance_update_events(self) -> Iterable[BalanceUpdate]:
+        return self.balance_updates.values()
+
     def get_balance_update_quantity(self) -> Decimal:
         """Get quantity of all balance udpdates for this position.
 
@@ -353,37 +378,44 @@ class TradingPosition:
 
         - Does not account for trades that are currently being executed.
 
-        - Because decimal summ might
+        - Does some fixing for rounding errors in the form of epsilon checks
 
-        - Accounts for any balance update events (redemptions, interest)
+        - Accounts for any balance update events (redemptions, interest, accounting corrections)
 
         :return:
             Number of asset units held by this position.
 
             Rounded down to zero if the sum of
         """
-        s = sum_decimal([t.get_position_quantity() for t in self.trades.values() if t.is_success()])
+        trades = sum_decimal([t.get_position_quantity() for t in self.trades.values() if t.is_success()])
+        direct_balance_updates = self.get_balance_update_quantity()
+        s = trades + direct_balance_updates
 
+        # TODO:
+        # We should not have math that ends up with a trading position with dust left,
+        # tough this might not always hold the case
         if s != Decimal(0):
             assert s >= QUANTITY_EPSILON, "Safety check in floating point math triggered"
 
-        s += self.get_balance_update_quantity()
+        # Always convert zero to decimal
+        return Decimal(s)
 
-        return Decimal(s)  # Make zero to decimal
-
-    def get_live_quantity(self) -> Decimal:
-        """Get all tied up token quantity.
+    def get_available_trading_quantity(self) -> Decimal:
+        """Get token quantity still availble for the trades in this strategy cycle.
 
         This includes
 
         - All executed trades
 
-        - All planned trades for this cycle
+        - All planned trades for this cycle that have already reduced/increased
+          amounts for this position
 
         This gives you remaining token balance, even if there are some earlier
         sell orders that have not been executed yet.
         """
-        return sum([t.get_position_quantity() for t in self.trades.values() if not t.is_failed()])
+        planned = sum([t.get_position_quantity() for t in self.trades.values() if t.is_planned()])
+        live = self.get_quantity()
+        return planned + live
 
     def get_current_price(self) -> USDollarAmount:
         """Get the price of the base asset based on the latest valuation."""
@@ -402,8 +434,13 @@ class TradingPosition:
         return last_trade.executed_price
 
     def get_equity_for_position(self) -> Decimal:
-        """How many asset units this position tolds."""
-        return sum_decimal([t.get_equity_for_position() for t in self.trades.values() if t.is_success()])
+        """How many asset units this position tolds.
+
+        TODO: Remove this
+
+        Alias for :py:meth:`get_quantity`
+        """
+        return self.get_quantity()
 
     def has_unexecuted_trades(self) -> bool:
         return any([t for t in self.trades.values() if t.is_pending()])
@@ -474,7 +511,7 @@ class TradingPosition:
         return last_trade.is_take_profit()
 
     def open_trade(self,
-                   strategy_cycle_at: datetime.datetime,
+                   strategy_cycle_at: datetime.datetime | None,
                    trade_id: int,
                    quantity: Optional[Decimal],
                    reserve: Optional[Decimal],
@@ -494,6 +531,8 @@ class TradingPosition:
 
         :param strategy_cycle_at:
             The strategy cycle timestamp for which this trade was executed.
+
+            Might not be available for the accounting corrections done offline.
 
         :param trade_id:
             Trade id allocated by the portfolio
@@ -554,7 +593,9 @@ class TradingPosition:
         
         assert self.reserve_currency.get_identifier() == reserve_currency.get_identifier(), "New trade is using different reserve currency than the position has"
         assert isinstance(trade_id, int)
-        assert isinstance(strategy_cycle_at, datetime.datetime)
+
+        if strategy_cycle_at is not None:
+            assert isinstance(strategy_cycle_at, datetime.datetime)
 
         if reserve is not None:
             planned_reserve = reserve
@@ -602,9 +643,12 @@ class TradingPosition:
                 return True
         return False
 
-    def can_be_closed(self) -> bool:
-        """There are no tied tokens in this position."""
-        return self.get_equity_for_position() == 0
+    def can_be_closed(self, epsilon=CLOSED_POSITION_DUST_EPSILON) -> bool:
+        """There are no tied tokens in this position.
+
+        Perform additional check for token amount dust caused by rounding errors.
+        """
+        return self.get_quantity() <= epsilon
 
     def get_total_bought_usd(self) -> USDollarAmount:
         """How much money we have used on buys"""
@@ -725,14 +769,32 @@ class TradingPosition:
         """
         raise NotImplementedError()
 
-    def get_freeze_reason(self) -> str:
+    def get_freeze_reason(self) -> Optional[str]:
         """Return the revert reason why this position is frozen.
 
         Get the revert reason of the last blockchain transaction, assumed to be swap,
         for this trade.
+
+        If this position has been unfrozen, then return the last freeze reason.
+
+        :return:
+            Revert message (cleaned) or None
         """
-        assert self.is_frozen()
-        return self.get_last_trade().blockchain_transactions[-1].revert_reason
+        assert self.is_frozen(), f"Asked for freeze reason, but position not frozen: {self}"
+
+        if len(self.get_last_trade().blockchain_transactions) == 0:
+            logger.warning("Position frozen: Last trade did not have any blockchain transactions: %s", self)
+            for t in self.trades.values():
+                logger.warning("Trade #%d: %s", t.trade_id, t)
+            return "Could not extract freeze reason"
+
+        t: TradeExecution
+        for t in reversed(self.trades.values()):
+            reason = t.get_revert_reason()
+            if reason:
+                return reason
+
+        return None
 
     def get_last_tx_hash(self) -> Optional[str]:
         """Get the latest transaction performed for this position.
@@ -841,7 +903,7 @@ class TradingPosition:
             If the position made 1% profit returns 1.01.
         """
         
-        assert not self.is_open()
+        assert not self.is_open(), "Cannot calculate realised profit for open positions"
         buy_value = self.get_buy_value()
         sell_value = self.get_sell_value()
 
@@ -961,6 +1023,28 @@ class TradingPosition:
             return 0
         assert self.last_token_price, f"Asset price not available when calculating price for quantity: {quantity}"
         return float(quantity) * self.last_token_price
+
+    def add_notes_message(self, msg: str):
+        """Add a new message to the notes field.
+
+        Messages are newline separated.
+        """
+        if self.notes is None:
+            self.notes = ""
+
+        self.notes += msg
+        self.notes += "\n"
+
+    def add_balance_update_event(self, event: BalanceUpdate):
+        """Include a new balance update event
+
+        :raise BalanceUpdateEventAlreadyAdded:
+            In the case of a duplicate and event id is already used.
+        """
+        if event.balance_update_id in self.balance_updates:
+            raise BalanceUpdateEventAlreadyAdded(f"Duplicate balance update: {event}")
+
+        self.balance_updates[event.balance_update_id] = event
 
 
 class PositionType(enum.Enum):

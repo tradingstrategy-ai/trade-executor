@@ -540,6 +540,16 @@ class Portfolio:
         assert len(positions) == 1, f"Had {len(positions)} reserve position"
         return positions[0]
 
+    def get_reserve_assets(self) -> List[AssetIdentifier]:
+        """Get reserves assets.
+
+        Reserve assets are registered with the state when it is initialised.
+
+        :return:
+            If the state is not properly initialised, the reserve asset list is empty.
+        """
+        return [r.asset for r in self.reserves.values()]
+
     def get_equity_for_pair(self, pair: TradingPairIdentifier) -> Decimal:
         """Return how much equity allocation we have in a certain trading pair."""
         position = self.get_position_by_trading_pair(pair)
@@ -639,7 +649,7 @@ class Portfolio:
         except Exception as e:
             raise InvalidValuationOutput(f"Valuation model failed to output proper price: {valuation_method}: {e}") from e
 
-    def get_default_reserve(self) -> Tuple[Optional[AssetIdentifier], Optional[USDollarAmount]]:
+    def get_default_reserve_asset(self) -> Tuple[Optional[AssetIdentifier], Optional[USDollarPrice]]:
         """Gets the default reserve currency associated with this state.
 
         For strategies that use only one reserve currency.
@@ -707,6 +717,9 @@ class Portfolio:
         - Assume there has been only one deposit event
 
         - This deposit happened at the start of the backtest
+
+        TODO: Shoud not be used, as we have new `SyncModel` instance
+        for backtesters. Code will be removed.
         """
 
         if len(self.reserves) == 0:
@@ -758,3 +771,52 @@ class Portfolio:
 
         (pair,) = pairs
         return pair
+
+    def correct_open_position_balance(
+            self,
+            position: TradingPosition,
+            expected_amount: Decimal,
+            actual_amount: Decimal,
+            strategy_cycle_ts: datetime.datetime,
+            block_number: int,
+            balance_update_id: int,
+            ) -> TradeExecution:
+        """Create an accounting entry trade that correct the balance."""
+
+        raise NotImplementedError("This method is currently not being used, as the trading positions take account of direct quantity updates in get_quantity()")
+        #
+        # trade_id = self.next_trade_id
+        # self.next_trade_id += 1
+        #
+        # assumed_price = position.last_token_price
+        #
+        # correction_amount = actual_amount - expected_amount
+        #
+        # trade = position.open_trade(
+        #     strategy_cycle_ts,
+        #     trade_id,
+        #     quantity=correction_amount,
+        #     reserve=None,
+        #     assumed_price=assumed_price,
+        #     trade_type=TradeType.accounting_correction,
+        #     reserve_currency=position.reserve_currency,
+        #     reserve_currency_price=position.last_reserve_price,
+        # )
+        #
+        # trade.balance_update_id = balance_update_id
+        # trade.notes = f"Accounting correction based on the actual on-chain balances.\n" \
+        #               f"The internal ledger balance was  {expected_amount} {position.pair.base.token_symbol}\n" \
+        #               f"On-chain balance was {actual_amount} {position.pair.base.token_symbol} at block {block_number:,}\n" \
+        #               f"Balance was updated {correction_amount} {position.pair.base.token_symbol}\n"
+        #
+        # trade.mark_success(
+        #     datetime.datetime.utcnow(),
+        #     trade.planned_price,
+        #     trade.planned_quantity,
+        #     trade.planned_reserve,
+        #     lp_fees=0,
+        #     native_token_price=position.last_reserve_price,
+        #     force=True,
+        # )
+        #
+        # return trade
