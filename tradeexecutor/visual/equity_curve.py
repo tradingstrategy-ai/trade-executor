@@ -52,7 +52,7 @@ def calculate_equity_curve(
     data = [(s.calculated_at, getattr(s, attribute_name)) for s in portfolio_stats]
 
     if len(data) == 0:
-        return pd.Series([], index=pd.to_datetime([]))
+        return pd.Series([], index=pd.to_datetime([]), dtype='float64')
 
     if fill_time_gaps:
         start, end = state.get_strategy_time_range()
@@ -299,7 +299,7 @@ def calculate_investment_flow(
     values = [e.usd_value for e in balance_updates]
 
     if len(index) == 0:
-        return pd.Series([], index=pd.to_datetime([]))
+        return pd.Series([], index=pd.to_datetime([]), dtype='float64')
 
     return pd.Series(values, index)
 
@@ -322,7 +322,7 @@ def calculate_realised_profitability(
     data = [(p.closed_at, p.get_realised_profit_percent()) for p in state.portfolio.closed_positions.values() if p.is_closed()]
 
     if len(data) == 0:
-        return pd.Series()
+        return pd.Series(dtype='float64')
 
     # https://stackoverflow.com/a/66772284/315168
     return pd.DataFrame(data).set_index(0)[1]
