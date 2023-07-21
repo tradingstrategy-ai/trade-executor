@@ -346,7 +346,7 @@ def calculate_size_relative_realised_trading_returns(
     data = [(p.closed_at, p.get_size_relative_realised_profit_percent()) for p in state.portfolio.closed_positions.values() if p.is_closed()]
 
     if len(data) == 0:
-        return pd.Series()
+        return pd.Series(dtype='float64')
 
     # https://stackoverflow.com/a/66772284/315168
     return pd.DataFrame(data).set_index(0)[1]

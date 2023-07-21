@@ -214,7 +214,7 @@ def test_calculate_profitability_empty():
     """Calculate strategy profitability but we have no data yet.
 
     """
-    s = pd.Series([], index=pd.DatetimeIndex([]))
+    s = pd.Series([], index=pd.DatetimeIndex([]), dtype='float64')
 
     profitability_90_days, time_window = calculate_naive_profitability(s, look_back=pd.Timedelta(days=90))
 
