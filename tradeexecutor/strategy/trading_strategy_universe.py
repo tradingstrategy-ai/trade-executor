@@ -1292,7 +1292,7 @@ def load_partial_data(
     assert isinstance(execution_context, ExecutionContext)
     assert isinstance(universe_options, UniverseOptions)
 
-    assert type(pairs) == list, "remember to use list() when passing pairs"
+    assert type(pairs) in {list, tuple}, "remember to pass pairs as a list or tuple of pair identifiers"
 
     # Apply overrides
     stop_loss_time_bucket = universe_options.stop_loss_time_bucket_override or stop_loss_time_bucket
