@@ -427,6 +427,9 @@ def run_backtest_inline(
     :param end_at:
         When backtesting ends
 
+    :param minimum_data_lookback_range:
+        If start_at and end_at are not given, use this range to determine the backtesting period. Cannot be used with start_at and end_at.
+
     :param client:
         You need to set up a Trading Strategy client for fetching the data
 
