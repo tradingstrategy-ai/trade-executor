@@ -144,12 +144,14 @@ def export_trades_as_dataframe(
 
         # Crop
         if start or end:
-            if not t.started_at:
+            s = t.opened_at or t.started_at
+            
+            if not s:
                 # Hotfix to some invalid data?
                 logger.info("Trade lacks start date: %s", t)
                 continue
-
-            if t.started_at < start or t.started_at > end:
+            
+            if s < start or s > end:
                 continue
 
         data.append(export_trade_for_dataframe(portfolio, t))

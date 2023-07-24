@@ -101,8 +101,10 @@ def reverse_trading_universe_from_state(
         pair_ids.add(pair.internal_id)
 
         if data_range_mode == DataRangeMode.trades:
-            start = min(start, trade.started_at)
-            end = max(end, trade.executed_at)
+            start = min(trade.started_at or trade.opened_at or trade.executed_at, start)
+            
+            if trade.executed_at:
+                end = max(end, trade.executed_at)
 
     if data_range_mode == DataRangeMode.indicators:
         # Get the data from the latest technical indicators.
