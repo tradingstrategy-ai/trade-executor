@@ -393,8 +393,9 @@ def run_backtest(
 
 def run_backtest_inline(
     *ignore,
-    start_at: datetime.datetime,
-    end_at: datetime.datetime,
+    start_at: Optional[datetime.datetime] = None,
+    end_at: Optional[datetime.datetime] = None,
+    minimum_data_lookback_range: Optional[datetime.timedelta] = None,
     client: Optional[Client],
     decide_trades: DecideTradesProtocol,
     cycle_duration: CycleDuration,
@@ -494,6 +495,14 @@ def run_backtest_inline(
     if ignore:
         # https://www.python.org/dev/peps/pep-3102/
         raise TypeError("Only keyword arguments accepted")
+
+    if not (start_at and end_at):
+        assert isinstance(minimum_data_lookback_range, datetime.timedelta), "You must give minimum_data_lookback_range if you do not give start_at and end_at"
+
+        end_at = datetime.datetime.now() - datetime.timedelta(days=1)
+        start_at = end_at - minimum_data_lookback_range
+    else:
+        assert not minimum_data_lookback_range, "You must not give minimum_data_lookback_range if you give start_at and end_at"
 
     assert isinstance(start_at, datetime.datetime)
     assert isinstance(end_at, datetime.datetime)

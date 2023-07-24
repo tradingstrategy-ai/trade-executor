@@ -500,6 +500,17 @@ class State:
         with path.open("wt") as out:
             out.write(txt)
 
+    def get_strategy_start_and_end(self) -> tuple[datetime.datetime, datetime.datetime]:
+        """Get the time range for which the strategy should have data.
+        """
+        assert self.stats.portfolio, "No portfolio statistics, this is required for the time range"
+
+
+        start_at = pd.Timestamp(self.stats.portfolio[0].calculated_at)
+        end_at = pd.Timestamp(self.stats.portfolio[-1].calculated_at)
+
+        return start_at, end_at
+
     @staticmethod
     def read_json_file(path: Path) -> "State":
         """Read state from the JSON file.
