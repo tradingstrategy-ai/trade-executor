@@ -292,34 +292,23 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             This or `pair`.
         """
 
-        if pair:
-            # Create trading pair database
-            pair_universe = PandasPairUniverse.create_pair_universe(
-                dataset.pairs,
-                pairs=[pair],
-            )
+        if not pair:
+            pair = (chain_id, exchange_slug, base_token, quote_token)
 
-            chain_id = pair[0]
-            exchange_slug = pair[1]
 
-            # We only trade on Pancakeswap v2
-            exchange_universe = dataset.exchanges
-            exchange = exchange_universe.get_by_chain_and_slug(chain_id, exchange_slug)
-            assert exchange, f"No exchange {exchange_slug} found on chain {chain_id.name}"
+        # Create trading pair database
+        pair_universe = PandasPairUniverse.create_pair_universe(
+            dataset.pairs,
+            pairs=[pair],
+        )
 
-        else:
-            # We only trade on Pancakeswap v2
-            exchange_universe = dataset.exchanges
-            exchange = exchange_universe.get_by_chain_and_slug(chain_id, exchange_slug)
-            assert exchange, f"No exchange {exchange_slug} found on chain {chain_id.name}"
+        chain_id = pair[0]
+        exchange_slug = pair[1]
 
-            # Create trading pair database
-            pair_universe = PandasPairUniverse.create_single_pair_universe(
-                dataset.pairs,
-                exchange,
-                base_token,
-                quote_token,
-            )
+        # We only trade on Pancakeswap v2
+        exchange_universe = dataset.exchanges
+        exchange = exchange_universe.get_by_chain_and_slug(chain_id, exchange_slug)
+        assert exchange, f"No exchange {exchange_slug} found on chain {chain_id.name}"
 
         # Get daily candles as Pandas DataFrame
         if dataset.candles is not None:

@@ -96,7 +96,7 @@ class BalanceEventRef:
     #: It might be outside the cycle frequency if treasuries were processed
     #: in a cron job outside the cycle for slow moving strategies.
     #:
-    strategy_cycle_included_at: datetime.datetime
+    strategy_cycle_included_at: Optional[datetime.datetime]
 
     #: Cause of the event
     cause: BalanceUpdateCause

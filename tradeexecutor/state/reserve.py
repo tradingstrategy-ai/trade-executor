@@ -34,10 +34,10 @@ class ReservePosition(GenericPosition):
     last_sync_at: datetime.datetime
 
     #: What was the US dollar exchange rate of our reserves
-    reserve_token_price: USDollarAmount
+    reserve_token_price: Optional[USDollarAmount]
 
     #: When we fetched the US dollar exchange rate of our reserves last time
-    last_pricing_at: datetime.datetime
+    last_pricing_at: Optional[datetime.datetime]
 
     #: What was the first deposit amount.
     #:
