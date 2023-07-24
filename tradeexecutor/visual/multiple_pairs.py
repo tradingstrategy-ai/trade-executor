@@ -210,6 +210,9 @@ def visualise_multiple_pairs(
 
     pair_ids = [int(pair_id) for pair_id in pair_ids]
 
+    if not (start_at and end_at):
+        start_at, end_at = state.get_strategy_start_and_end()
+
     start_at, end_at = get_start_and_end_full(candles, start_at, end_at)
 
     logger.info(f"Visualising multipair strategy for range {start_at} - {end_at}")
