@@ -418,10 +418,10 @@ def check_accounts(
 
     :return:
 
-        Tuple (accounting clean Dataframe that can be printed to the console)
+        Tuple (accounts clean, accounting clean Dataframe that can be printed to the console)
     """
 
-    clean = False
+    clean = True
     corrections = calculate_account_corrections(
         pair_universe,
         reserve_assets,

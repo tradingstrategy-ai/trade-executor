@@ -562,6 +562,11 @@ class StrategyRunner(abc.ABC):
 
         assert isinstance(universe, TradingStrategyUniverse)
 
+        # Enzyme tests
+        if len(state.portfolio.reserves) == 0:
+            logger.info("No reserves, skipping accounting checks")
+            return
+
         if self.accounting_checks:
             clean, df = check_accounts(
                 universe.universe.pairs,
