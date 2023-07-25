@@ -128,6 +128,7 @@ def start(
     trade_immediately: bool = typer.Option(False, "--trade-immediately", envvar="TRADE_IMMEDIATELY", help="Perform the first rebalance immediately, do not wait for the next trading universe refresh"),
     strategy_cycle_trigger: StrategyCycleTrigger = typer.Option("cycle_offset", envvar="STRATEGY_CYCLE_TRIGGER", help="How do decide when to start executing the next live trading strategy cycle"),
     key_metrics_backtest_cut_off_days: float = typer.Option(90, envvar="KEY_METRIC_BACKTEST_CUT_OFF_DAYS", help="How many days live data is collected until key metrics are switched from backtest to live trading based"),
+    check_accounts: bool = typer.Option(True, "--check-accounts", envvar="CHECK_ACCOUNTS", help="Do extra accounting checks to track mismatch balances"),
 
     # Logging
     log_level: str = shared_options.log_level,
@@ -438,6 +439,7 @@ def start(
         strategy_cycle_trigger=strategy_cycle_trigger,
         routing_model=routing_model,
         metadata=metadata,
+        check_accounts=check_accounts,
     )
 
     # Crash gracefully at the start up if our main loop cannot set itself up

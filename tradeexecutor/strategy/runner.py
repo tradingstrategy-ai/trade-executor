@@ -11,6 +11,7 @@ from io import StringIO
 
 from typing import List, Optional, Tuple
 
+from tradeexecutor.strategy.account_correction import check_accounts, UnexpectedAccountingCorrectionIssue
 from tradeexecutor.strategy.approval import ApprovalModel
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.execution_context import ExecutionContext
@@ -62,6 +63,7 @@ class StrategyRunner(abc.ABC):
                  execution_context: ExecutionContext,
                  routing_model: Optional[RoutingModel] = None,
                  run_state: Optional[RunState] = None,
+                 accounting_checks=False,
                  ):
 
         assert isinstance(execution_context, ExecutionContext)
@@ -78,6 +80,7 @@ class StrategyRunner(abc.ABC):
         self.routing_model = routing_model
         self.run_state = run_state
         self.execution_context = execution_context
+        self.accounting_checks = accounting_checks
 
     @abc.abstractmethod
     def pretick_check(self, ts: datetime.datetime, universe: StrategyExecutionUniverse):
@@ -377,6 +380,10 @@ class StrategyRunner(abc.ABC):
             with self.timed_task_context_manager("sync_portfolio"):
                 self.sync_portfolio(strategy_cycle_timestamp, universe, state, debug_details)
 
+            # Double check we handled deposits correctly
+            with self.timed_task_context_manager("check_accounts"):
+                self.check_accounts(universe, state)
+
             # Assing a new value for every existing position
             with self.timed_task_context_manager("revalue_portfolio"):
                 self.revalue_portfolio(strategy_cycle_timestamp, state, valuation_model)
@@ -482,6 +489,8 @@ class StrategyRunner(abc.ABC):
 
         with self.timed_task_context_manager("check_position_triggers"):
 
+            # TODO: Sync the treasury here
+
             # We use PositionManager.close_position()
             # to generate trades to close stop loss positions
             position_manager = PositionManager(
@@ -540,3 +549,37 @@ class StrategyRunner(abc.ABC):
 
         The function is overridden by the child class for actual strategy runner specific implementation.
         """
+
+    def check_accounts(self, universe: TradingStrategyUniverse, state: State):
+        """Perform extra accounting checks on live trading startup.
+
+        Must be enabled in the settings. Enabled by default for live trading.
+
+        :raise UnexpectedAccountingCorrectionIssue:
+            Aborting execution.
+
+        """
+
+        assert isinstance(universe, TradingStrategyUniverse)
+
+        # Enzyme tests
+        if len(state.portfolio.reserves) == 0:
+            logger.info("No reserves, skipping accounting checks")
+            return
+
+        if self.accounting_checks:
+            clean, df = check_accounts(
+                universe.universe.pairs,
+                [universe.get_reserve_asset()],
+                state,
+                self.sync_model,
+            )
+
+            if not clean:
+                logger.error("Accounting errors detected\n"
+                             "Aborting execution as we cannot reliable trade with incorrect balances.\n"
+                             "Accounting errors are:\n"
+                             "%s", df.to_string())
+                raise UnexpectedAccountingCorrectionIssue("Accounting errors detected")
+        else:
+            logger.info("Accounting checks disabled - skipping")
