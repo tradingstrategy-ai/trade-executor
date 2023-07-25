@@ -21,6 +21,7 @@ from apscheduler.events import EVENT_JOB_ERROR
 from tradeexecutor.backtest.backtest_sync import BacktestSyncModel
 from tradeexecutor.cli.watchdog import create_watchdog_registry, register_worker, mark_alive, start_background_watchdog, \
     WatchdogMode
+from tradeexecutor.ethereum.enzyme.vault import EnzymeVaultSyncModel
 from tradeexecutor.state.metadata import Metadata
 from tradeexecutor.statistics.summary import calculate_summary_statistics
 from tradeexecutor.strategy.account_correction import check_accounts
@@ -1083,7 +1084,8 @@ class ExecutionLoop:
         self.universe_model = run_description.universe_model
 
         # TODO: Pass this as a constructor argument
-        self.runner.accounting_checks = self.check_accounts
+        # TODO: Accounting checks only supports Enzyme currently
+        self.runner.accounting_checks = self.check_accounts and isinstance(self.sync_model, EnzymeVaultSyncModel)
 
         # Load cycle_duration from v0.1 strategies,
         # if not given from the command line to override backtesting data

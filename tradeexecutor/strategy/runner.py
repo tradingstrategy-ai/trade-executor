@@ -577,4 +577,4 @@ class StrategyRunner(abc.ABC):
                              "%s", df.to_string())
                 raise UnexpectedAccountingCorrectionIssue("Accounting errors detected")
         else:
-            logger.info("Accounting checks disabled")
+            logger.info("Accounting checks disabled - skipping")
