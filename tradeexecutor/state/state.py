@@ -7,6 +7,7 @@ Any datetime must be naive, without timezone, and is assumed to be UTC.
 import json
 from dataclasses import dataclass, field
 import datetime
+import logging
 from decimal import Decimal
 from pathlib import Path
 from typing import List, Callable, Tuple, Set, Optional
@@ -28,6 +29,9 @@ from .visualisation import Visualisation
 
 from tradeexecutor.strategy.trade_pricing import TradePricing
 from ..strategy.cycle import CycleDuration
+
+
+logger = logging.getLogger(__name__)
 
 
 class UncleanState(Exception):
@@ -503,7 +507,10 @@ class State:
     def get_strategy_start_and_end(self) -> tuple[datetime.datetime, datetime.datetime]:
         """Get the time range for which the strategy should have data.
         """
-        assert self.stats.portfolio, "No portfolio statistics, this is required for the time range"
+        
+        if not self.stats.portfolio:
+            logger.warn("No portfolio statistics, this is required for the time range")
+            return None, None
 
 
         start_at = pd.Timestamp(self.stats.portfolio[0].calculated_at)
