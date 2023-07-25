@@ -126,6 +126,8 @@ def test_get_current_position_none(position_manager):
     with pytest.raises(NoSingleOpenPositionException):
         position_manager.get_current_position()
 
+    assert position_manager.get_current_position_stop_loss_price() is None
+
 
 def test_get_current_position(position_manager_with_open_position: PositionManager):
     """"Check the latest price of the position."""
@@ -152,6 +154,12 @@ def test_get_current_position(position_manager_with_open_position: PositionManag
     # point for the convenience.
     price = current_position.get_opening_price()
     assert price == 1648.28488966024
+
+    # stop loss value
+    assert pm.get_current_position_stop_loss_price() is None
+    current_position.stop_loss = 1000
+    assert pm.get_current_position_stop_loss_price() == 1000
+
 
 
 def test_estimate_fee_not_available(synthetic_universe, position_manager):

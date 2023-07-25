@@ -718,3 +718,14 @@ class PositionManager:
         pricing_model = self.pricing_model
         price = pricing_model.get_mid_price(timestamp, pair)
         return float(dollar_amount / price)
+    
+    def get_current_position_stop_loss_price(self) -> USDollarAmount | None:
+        """Get the stop loss price for the current position.
+        
+        :return:
+            Stop loss price if set, None if not set.
+        """
+        if self.is_any_open():
+            return self.get_current_position().stop_loss
+        else:
+            return None
