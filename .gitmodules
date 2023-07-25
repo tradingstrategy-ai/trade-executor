@@ -9,4 +9,4 @@
 [submodule "deps/web3-ethereum-defi"]
 	path = deps/web3-ethereum-defi
 	url = https://github.com/tradingstrategy-ai/web3-ethereum-defi.git
-	ignore = dirtyx
+	ignore = dirty
