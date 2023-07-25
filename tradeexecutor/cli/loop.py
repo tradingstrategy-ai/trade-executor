@@ -23,6 +23,7 @@ from tradeexecutor.cli.watchdog import create_watchdog_registry, register_worker
     WatchdogMode
 from tradeexecutor.state.metadata import Metadata
 from tradeexecutor.statistics.summary import calculate_summary_statistics
+from tradeexecutor.strategy.account_correction import check_accounts
 from tradeexecutor.strategy.pandas_trader.decision_trigger import wait_for_universe_data_availability_jsonl
 from tradeexecutor.strategy.routing import RoutingModel
 from tradeexecutor.strategy.run_state import RunState
@@ -136,9 +137,14 @@ class ExecutionLoop:
             strategy_cycle_trigger: StrategyCycleTrigger = StrategyCycleTrigger.cycle_offset,
             routing_model: Optional[RoutingModel] = None,
             execution_test_hook: Optional[ExecutionTestHook] = None,
-            metadata: Optional[Metadata] = None
+            metadata: Optional[Metadata] = None,
+            check_accounts: Optional[bool] = None,
     ):
         """See main.py for details."""
+
+        #
+        # TODO: Initialisation needs a major rewrite
+        #
 
         if ignore:
             # https://www.python.org/dev/peps/pep-3102/
@@ -155,6 +161,7 @@ class ExecutionLoop:
         self.execution_model = execution_model
         self.execution_test_hook = execution_test_hook
         self.metadata = metadata
+        self.check_accounts = check_accounts
 
         self.backtest_start = backtest_start
         self.backtest_end = backtest_end
@@ -794,7 +801,7 @@ class ExecutionLoop:
             return self.debug_dump_state
 
         cycle = state.cycle
-        universe: Optional[StrategyExecutionUniverse] = None
+        universe: Optional[TradingStrategyUniverse] = None
         execution_context = self.execution_context
         run_state: RunState = self.run_state
         crash_exception: Optional[Exception] = None
@@ -811,6 +818,12 @@ class ExecutionLoop:
         assert execution_context, "ExecutionContext missing"
 
         universe = self.warm_up_live_trading()
+
+        logger.info("Performing startup accounting check")
+        self.runner.check_accounts(
+            universe,
+            state
+        )
 
         # Store summary statistics in memory before doing anything else
         self.refresh_live_run_state(state, visualisation=True, universe=universe)
@@ -1068,6 +1081,9 @@ class ExecutionLoop:
         # Deconstruct strategy input
         self.runner: StrategyRunner = run_description.runner
         self.universe_model = run_description.universe_model
+
+        # TODO: Pass this as a constructor argument
+        self.runner.accounting_checks = self.check_accounts
 
         # Load cycle_duration from v0.1 strategies,
         # if not given from the command line to override backtesting data
