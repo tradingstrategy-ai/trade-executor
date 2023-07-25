@@ -288,7 +288,7 @@ def _inject_custom_css_and_js(html: str, css_code: str, js_code: str) -> str:
                     ...
     """
     assert css_code
-    soup = BeautifulSoup(html)
+    soup = BeautifulSoup(html, features='lxml')
     head = soup.head
     # Add a style tag class for better diagnostics
     tag = soup.new_tag('style', attrs={"id": "trade-executor-css-inject"}, type='text/css')

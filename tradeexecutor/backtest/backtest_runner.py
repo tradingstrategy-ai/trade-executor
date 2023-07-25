@@ -242,7 +242,7 @@ def setup_backtest(
     """
 
     assert isinstance(strategy_path, Path), f"Got {strategy_path}"
-    assert initial_deposit > 0
+    assert initial_deposit > 0, "Remember to set the backtest variables in your strategy module. See https://tradingstrategy.ai/docs/deployment/vault-deployment.html#run-a-backtest-on-the-strategy-module"
 
     wallet = SimulatedWallet()
     # deposit_syncer = BacktestSyncer(wallet, Decimal(initial_deposit))
