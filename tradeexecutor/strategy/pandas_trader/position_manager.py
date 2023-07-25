@@ -720,7 +720,13 @@ class PositionManager:
         return float(dollar_amount / price)
     
     def get_current_position_stop_loss_price(self) -> USDollarAmount | None:
-        """Get the stop loss price for the current position.
+        """Get the stop loss price for the current position. 
+
+        Useful for stop loss visualisation. E.g.
+
+        .. code-block:: python
+            # plot stop loss line (inside decide trades)
+            visualisation.plot_indicator(timestamp, "stop loss", PlotKind.technical_indicator_on_price, position_manager.get_current_position_stop_loss_price(), colour="blue")
         
         :return:
             Stop loss price if set, None if not set.
