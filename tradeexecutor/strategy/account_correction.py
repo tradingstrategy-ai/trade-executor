@@ -157,7 +157,6 @@ def calculate_account_corrections(
 
     assert isinstance(pair_universe, PandasPairUniverse)
     assert isinstance(state, State)
-    assert isinstance(sync_model, EnzymeVaultSyncModel), "Only EnzymeVaultSyncModel tested for now"
     assert len(state.portfolio.reserves) > 0, "No reserve positions. Did you run init for the strategy?"
 
     logger.info("Scanning for account corrections")
