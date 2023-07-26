@@ -420,7 +420,7 @@ def transfer_away_assets_without_position(
     )
 
     tx_hash = web3.eth.send_raw_transaction(blockchain_data.get_prepared_raw_transaction())
-    logger.info("Broadcasted %s", tx_hash)
+    logger.info("Broadcasted %s", tx_hash.hex())
     assert_transaction_success_with_explanation(web3, tx_hash)
 
 
