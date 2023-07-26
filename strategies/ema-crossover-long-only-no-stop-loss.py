@@ -128,7 +128,7 @@ def decide_trades(
     # We could have candles for multiple trading pairs in a different strategy,
     # but this strategy only operates on single pair candle.
     # We also limit our sample size to N latest candles to speed up calculations.
-    candles: pd.DataFrame = universe.candles.get_single_pair_data(sample_count=batch_size)
+    candles: pd.DataFrame = universe.candles.get_single_pair_data(sample_count=batch_size, raise_on_not_enough_data=False)
 
     # We have data for open, high, close, etc.
     # We only operate using candle close values in this strategy.
