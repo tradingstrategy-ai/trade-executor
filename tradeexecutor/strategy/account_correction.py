@@ -17,6 +17,8 @@ from dataclasses import dataclass
 from typing import List, Iterable, Collection, Tuple
 
 import pandas as pd
+from web3 import Web3
+
 from eth_defi.enzyme.erc20 import prepare_transfer
 from eth_defi.enzyme.vault import Vault
 from eth_defi.hotwallet import HotWallet
@@ -396,7 +398,7 @@ def transfer_away_assets_without_position(
     tokens_to_transfer_raw = token.convert_to_raw(tokens_to_transfer)
 
     asset_delta = AssetDelta(
-        token.address,
+        Web3.to_checksum_address(token.address),
         -tokens_to_transfer_raw,
     )
 
@@ -405,7 +407,10 @@ def transfer_away_assets_without_position(
                 asset.token_symbol,
                 unknown_token_receiver)
 
-    args_bound_func = token.contract.functions.transfer(unknown_token_receiver, tokens_to_transfer_raw)
+    args_bound_func = token.contract.functions.transfer(
+        Web3.to_checksum_address(unknown_token_receiver),
+        tokens_to_transfer_raw
+    )
 
     blockchain_data = tx_builder.sign_transaction(
         token.contract,

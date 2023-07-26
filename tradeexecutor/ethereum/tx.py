@@ -275,7 +275,7 @@ class HotWalletTransactionBuilder(TransactionBuilder):
 
         tx = args_bound_func.build_transaction({
             "chainId": self.chain_id,
-            "from": self.hot_wallet.address,
+            "from": Web3.to_checksum_address(self.hot_wallet.address),
             "gas": gas_limit,
         })
 
