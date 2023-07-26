@@ -322,10 +322,14 @@ def test_enzyme_correct_accounting_errors(
     # Correct state (internal ledger)
     #
 
+    vault = sync_model.vault
+    tx_builder = EnzymeTransactionBuilder(hot_wallet, vault)
+
     balance_updates = correct_accounts(
         state,
         corrections,
         strategy_cycle_included_at=None,
+        tx_builder=tx_builder,
         interactive=False,
     )
     balance_updates = list(balance_updates)
