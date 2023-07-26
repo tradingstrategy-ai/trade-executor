@@ -46,10 +46,10 @@ class BacktestSetup:
     """Describe backtest setup, ready to run."""
 
     #: Test start
-    start_at: datetime.datetime
+    start_at: datetime.datetime | None
 
     #: Test end
-    end_at: datetime.datetime
+    end_at: datetime.datetime | None
 
     #: Override trading_strategy_cycle from strategy module
     universe_options: UniverseOptions
@@ -74,6 +74,8 @@ class BacktestSetup:
 
     #: Name for this backtest
     name: str = "backtest"
+
+    minimum_data_lookback_range: Optional[datetime.timedelta] = None
 
     # strategy_module: StrategyModuleInformation
 
@@ -214,14 +216,15 @@ def setup_backtest_for_universe(
 
 def setup_backtest(
         strategy_path: Path,
-        start_at: datetime.datetime,
-        end_at: datetime.datetime,
-        initial_deposit: USDollarAmount,
-        max_slippage=0.01,
+        start_at: Optional[datetime.datetime] = None,
+        end_at: Optional[datetime.datetime] = None,
+        initial_deposit: Optional[USDollarAmount] = None,
+        max_slippage: Optional[float] = 0.01,
         cycle_duration: Optional[CycleDuration]=None,
         candle_time_frame: Optional[TimeBucket]=None,
         strategy_module: Optional[StrategyModuleInformation]=None,
         name: Optional[str] = None,
+        minimum_data_lookback_range: Optional[datetime.timedelta] = None,
     ) -> BacktestSetup:
     """High-level entry point for setting up a backtest from a strategy module.
 
@@ -240,6 +243,9 @@ def setup_backtest(
     :param strategy_module:
         If strategy module was previously loaded
     """
+
+    assert initial_deposit, "You must give initial_deposit"
+    assert max_slippage >= 0, f"You must give max slippage. Got max slippage {max_slippage}"
 
     assert isinstance(strategy_path, Path), f"Got {strategy_path}"
     assert initial_deposit > 0, "Remember to set the backtest variables in your strategy module. See https://tradingstrategy.ai/docs/deployment/vault-deployment.html#run-a-backtest-on-the-strategy-module"
@@ -284,6 +290,7 @@ def setup_backtest(
         trade_routing=strategy_module.trade_routing,
         trading_strategy_engine_version=strategy_module.trading_strategy_engine_version,
         name=name,
+        minimum_data_lookback_range=minimum_data_lookback_range,
     )
 
 
@@ -384,6 +391,7 @@ def run_backtest(
         tick_offset=datetime.timedelta(seconds=1),
         trade_immediately=True,
         execution_test_hook=execution_test_hook,
+        minimum_data_lookback_range=setup.minimum_data_lookback_range,
     )
 
     debug_dump = main_loop.run()
@@ -499,13 +507,6 @@ def run_backtest_inline(
         # https://www.python.org/dev/peps/pep-3102/
         raise TypeError("Only keyword arguments accepted")
 
-    if minimum_data_lookback_range:
-        assert not start_at or not end_at, "You must not give start_at and end_at if you give minimum_data_lookback_range. minimum_data_lookback_range automatically ends at the current time."
-        assert isinstance(minimum_data_lookback_range, datetime.timedelta), "minimum_data_lookback_range must be a datetime.timedelta"
-
-        end_at = datetime.datetime.now()
-        start_at = end_at - minimum_data_lookback_range
-
     if start_at:
         assert isinstance(start_at, datetime.datetime)
         assert end_at, "You must give end_at if you give start_at"
@@ -577,6 +578,7 @@ def run_backtest_inline(
         trading_strategy_engine_version=CURRENT_ENGINE_VERSION,
         name=name,
         data_preload=data_preload,
+        minimum_data_lookback_range=minimum_data_lookback_range,
     )
 
     return run_backtest(backtest_setup, client, allow_missing_fees=True)
