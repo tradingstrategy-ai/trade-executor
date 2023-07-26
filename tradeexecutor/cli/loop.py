@@ -1069,6 +1069,20 @@ class ExecutionLoop:
         self.runner: StrategyRunner = run_description.runner
         self.universe_model = run_description.universe_model
 
+        # set start and end automatically if not set
+        u = self.universe_model.construct_universe(
+            self.backtest_start,
+            self.execution_context.mode,
+            self.universe_options,
+        )
+
+        if self.backtest_start is None:
+            s,e  = u.universe.candles.get_timestamp_range()
+            self.backtest_start = s.to_pydatetime().replace(tzinfo=None)
+            self.backtest_end = e.to_pydatetime().replace(tzinfo=None)
+
+            logger.info("Automatically using %s - %s for backtest start and end", self.backtest_start, self.backtest_end)
+
         # Load cycle_duration from v0.1 strategies,
         # if not given from the command line to override backtesting data
         if run_description.cycle_duration and not self.cycle_duration:

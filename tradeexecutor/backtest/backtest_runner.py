@@ -428,7 +428,7 @@ def run_backtest_inline(
         When backtesting ends
 
     :param minimum_data_lookback_range:
-        If start_at and end_at are not given, use this range to determine the backtesting period. Cannot be used with start_at and end_at.
+        If start_at and end_at are not given, use this range to determine the backtesting period. Cannot be used with start_at and end_at. Automatically ends at the current time.
 
     :param client:
         You need to set up a Trading Strategy client for fetching the data
@@ -499,16 +499,21 @@ def run_backtest_inline(
         # https://www.python.org/dev/peps/pep-3102/
         raise TypeError("Only keyword arguments accepted")
 
-    if not (start_at and end_at):
-        assert isinstance(minimum_data_lookback_range, datetime.timedelta), "You must give minimum_data_lookback_range if you do not give start_at and end_at"
+    if minimum_data_lookback_range:
+        assert not start_at or not end_at, "You must not give start_at and end_at if you give minimum_data_lookback_range. minimum_data_lookback_range automatically ends at the current time."
+        assert isinstance(minimum_data_lookback_range, datetime.timedelta), "minimum_data_lookback_range must be a datetime.timedelta"
 
-        end_at = datetime.datetime.now() - datetime.timedelta(days=1)
+        end_at = datetime.datetime.now()
         start_at = end_at - minimum_data_lookback_range
-    else:
-        assert not minimum_data_lookback_range, "You must not give minimum_data_lookback_range if you give start_at and end_at"
 
-    assert isinstance(start_at, datetime.datetime)
-    assert isinstance(end_at, datetime.datetime)
+    if start_at:
+        assert isinstance(start_at, datetime.datetime)
+        assert end_at, "You must give end_at if you give start_at"
+    
+    if end_at:
+        assert isinstance(end_at, datetime.datetime)
+        assert start_at, "You must give start_at if you give end_at"
+    
     assert initial_deposit > 0
 
     # Setup our special logging level if not done yet.
