@@ -111,6 +111,7 @@ def weight_by_1_slash_n(alpha_signals: Dict[int, float]) -> Dict[int, float]:
     return weighed_signals
 
 def weight_equal(alpha_signals: Dict[int, float]) -> Dict[int, float]:
+    """Give equal weight to every asset, regardless of the signal strength"""
     weighed_signals = {}
     for idx, tuple in enumerate(alpha_signals.items(), 1):
         pair_id, alpha = tuple
