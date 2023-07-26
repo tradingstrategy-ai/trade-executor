@@ -504,7 +504,7 @@ class State:
         with path.open("wt") as out:
             out.write(txt)
 
-    def get_strategy_start_and_end(self) -> tuple[datetime.datetime, datetime.datetime]:
+    def get_strategy_start_and_end(self) -> tuple[pd.Timestamp, pd.Timestamp]:
         """Get the time range for which the strategy should have data.
         """
         
