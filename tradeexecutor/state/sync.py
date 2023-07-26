@@ -69,6 +69,9 @@ class Deployment:
     #:
     initialised_at: Optional[datetime.datetime] = None
 
+    def __repr__(self):
+        return f"<Deployment chain:{self.chain_id.name} address:{self.address} name:{self.vault_token_name} token:{self.vault_token_symbol}>"
+
 
 @dataclass_json
 @dataclass
@@ -141,6 +144,10 @@ class Treasury:
     #:
     #: The actual balance update content is stored on the position itself.
     balance_update_refs: List[BalanceEventRef] = field(default_factory=list)
+
+    def __repr__(self):
+        return f"<Treasury updated:{self.last_updated_at} cycle:{self.last_cycle_at} block scanned:{self.last_block_scanned or 0:,} refs:{len(self.balance_update_refs)}>"
+
 
 
 @dataclass_json
