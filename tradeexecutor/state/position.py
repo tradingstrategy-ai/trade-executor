@@ -233,6 +233,9 @@ class TradingPosition(GenericPosition):
         assert not isinstance(self.last_token_price, np.float32)
         assert not isinstance(self.stop_loss, np.float64)
 
+    def get_human_readable_name(self) -> str:
+        return f"Trading position #{self.position_id} for {self.pair.get_ticker()}"
+
     def is_open(self) -> bool:
         """This is an open trading position."""
         return self.closed_at is None

@@ -32,6 +32,10 @@ class GenericPosition(ABC):
     """
 
     @abstractmethod
+    def get_human_readable_name(self) -> str:
+        """How to refer this position in log output."""
+
+    @abstractmethod
     def get_quantity(self) -> Decimal:
         """Get the number of tokens held in this position."""
 

@@ -36,6 +36,9 @@ class HotWalletSyncModel(SyncModel):
     def get_hot_wallet(self) -> Optional[HotWallet]:
         return self.hot_wallet
 
+    def get_token_storage_address(self) -> Optional[str]:
+        return self.hot_wallet.address
+
     def resync_nonce(self):
         self.hot_wallet.sync_nonce(self.web3)
 

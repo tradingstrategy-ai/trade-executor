@@ -110,6 +110,9 @@ class EnzymeVaultSyncModel(SyncModel):
     def get_hot_wallet(self) -> Optional[HotWallet]:
         return self.hot_wallet
 
+    def get_token_storage_address(self) -> Optional[str]:
+        return self.get_vault_address()
+
     def is_ready_for_live_trading(self, state: State) -> bool:
         """Have we run init command on the vault."""
         return state.sync.deployment.block_number is not None

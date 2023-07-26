@@ -23,6 +23,9 @@ from eth_defi.hotwallet import HotWallet
 from eth_defi.token import fetch_erc20_details
 from eth_defi.trace import assert_transaction_success_with_explanation
 from eth_typing import HexAddress
+
+from eth_defi.tx import AssetDelta
+from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradingstrategy.pair import PandasPairUniverse
 
 from tradeexecutor.ethereum.enzyme.vault import EnzymeVaultSyncModel
@@ -49,12 +52,12 @@ class UnexpectedAccountingCorrectionIssue(Exception):
     """Something wrong in the token accounting we do not expect to be automatically correct."""
 
 
-class AccountingCorrectionType(enum.Enum):
+class AccountingCorrectionCause(enum.Enum):
 
     #: Do not know what caused the incorrect amount
-    unknown = "unknown"
+    unknown_cause = "unknown_cause"
 
-    #: aUSDC
+    #: aUSDC, etc.
     rebase = "rebase"
 
 
@@ -71,7 +74,12 @@ class AccountingBalanceCheck:
     and not included in the profit calculations.
     """
 
-    type: AccountingCorrectionType
+    type: AccountingCorrectionCause
+
+    #: Where is this token being stored
+    #:
+    #: Hot wallet address or Enzyme vault address
+    holding_address: str
 
     #: Related on-chain asset
     asset: AssetIdentifier
@@ -111,7 +119,13 @@ class AccountingBalanceCheck:
     mismatch: bool
 
     def __repr__(self):
-        return f"<Accounting correction type {self.type.value} for {self.position}, expected {self.expected_amount}, actual {self.actual_amount} at {self.timestamp}>"
+
+        if self.position:
+            position_name = self.position.get_human_readable_name()
+        else:
+            position_name = "unknown trading position"
+
+        return f"<Accounting correction type {self.type.value} for {position_name}, expected {self.expected_amount}, actual {self.actual_amount} at {self.timestamp}>"
 
     @property
     def quantity(self):
@@ -190,7 +204,8 @@ def calculate_account_corrections(
 
         if mismatch or all_balances:
             yield AccountingBalanceCheck(
-                AccountingCorrectionType.unknown,
+                AccountingCorrectionCause.unknown_cause,
+                sync_model.get_token_storage_address(),
                 ab.asset,
                 position,
                 expected_amount,
@@ -211,7 +226,7 @@ def apply_accounting_correction(
 ):
     """Update the state to reflect the true on-chain balances."""
 
-    assert correction.type == AccountingCorrectionType.unknown, f"Not supported: {correction}"
+    assert correction.type == AccountingCorrectionCause.unknown_cause, f"Not supported: {correction}"
     assert correction.timestamp
 
     portfolio = state.portfolio
@@ -301,9 +316,8 @@ def correct_accounts(
         state: State,
         corrections: List[AccountingBalanceCheck],
         strategy_cycle_included_at: datetime.datetime | None,
+        tx_builder: TransactionBuilder,
         interactive=True,
-        vault: Vault | None = None,
-        hot_wallet: HotWallet | None = None,
         unknown_token_receiver: HexAddress | str | None = None,
 ) -> Iterable[BalanceUpdate]:
     """Apply the accounting corrections on the state (internal ledger).
@@ -322,15 +336,12 @@ def correct_accounts(
         Iterator of corrections.
     """
 
-    if vault is not None:
-        assert vault.generic_adapter is not None
-        assert hot_wallet is not None
-
     if interactive:
 
         for c in corrections:
             print("Correction needed:", c)
 
+        print(f"Any tokens that cannot be assigned to an open position will be send to {unknown_token_receiver}")
         confirmation = input("Attempt to repair [y/n]").lower()
         if confirmation != "y":
             raise AccountingCorrectionAborted()
@@ -344,8 +355,7 @@ def correct_accounts(
             transfer_away_assets_without_position(
                 correction,
                 unknown_token_receiver,
-                vault,
-                hot_wallet,
+                tx_builder,
             )
         else:
             yield apply_accounting_correction(state, correction, strategy_cycle_included_at)
@@ -354,8 +364,7 @@ def correct_accounts(
 def transfer_away_assets_without_position(
     correction: AccountingBalanceCheck,
     unknown_token_receiver: HexAddress | str,
-    vault: Vault,
-    hot_wallet: HotWallet,
+    tx_builder: TransactionBuilder,
 ):
     """Transfer away non-reserve assets that cannot be mapped to an open position.
 
@@ -370,7 +379,7 @@ def transfer_away_assets_without_position(
     assert correction.position is None
     assert not correction.reserve_asset
 
-    web3 = vault.web3
+    web3 = tx_builder.web3
     asset = correction.asset
 
     token = fetch_erc20_details(
@@ -378,31 +387,30 @@ def transfer_away_assets_without_position(
         asset.address,
     )
 
+    tokens_to_transfer = correction.quantity
+    tokens_to_transfer_raw = token.convert_to_raw(tokens_to_transfer)
+
+    asset_delta = AssetDelta(
+        token.address,
+        -tokens_to_transfer_raw,
+    )
+
     logger.info(f"Transfering %s %s to %s as we could not map it to open position",
-                correction.actual_amount,
+                correction.quantity,
                 asset.token_symbol,
                 unknown_token_receiver)
 
-    args_bound_func = prepare_transfer(
-        vault.deployment,
-        vault,
-        vault.generic_adapter,
+    args_bound_func = token.contract.functions.transfer(unknown_token_receiver, tokens_to_transfer_raw)
+
+    blockchain_data = tx_builder.sign_transaction(
         token.contract,
-        unknown_token_receiver,
-        token.convert_to_raw(correction.actual_amount),
+        args_bound_func,
+        gas_limit=250_000,
+        asset_deltas=[asset_delta],
     )
 
-    hot_wallet.sync_nonce(web3)
-
-    tx = args_bound_func.build_transaction({
-        "chainId": web3.eth.chain_id,
-        "from": hot_wallet.address,
-        "gas": 450_000,
-    })
-
-    signed_tx = hot_wallet.sign_transaction_with_new_nonce(tx)
-
-    tx_hash = web3.eth.send_raw_transaction(signed_tx.rawTransaction)
+    tx_hash = web3.eth.send_raw_transaction(blockchain_data.get_prepared_raw_transaction())
+    logger.info("Broadcasted %s", tx_hash)
     assert_transaction_success_with_explanation(web3, tx_hash)
 
 

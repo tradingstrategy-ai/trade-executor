@@ -33,7 +33,7 @@ from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.asset import get_relevant_assets
-from tradeexecutor.strategy.account_correction import calculate_account_corrections, AccountingCorrectionType, correct_accounts
+from tradeexecutor.strategy.account_correction import calculate_account_corrections, AccountingCorrectionCause, correct_accounts
 from tradeexecutor.testing.ethereumtrader_uniswap_v2 import UniswapV2TestTrader
 
 
@@ -304,7 +304,7 @@ def test_enzyme_correct_accounting_errors(
 
     # USDC correction
     reserve_correction = corrections[0]
-    assert reserve_correction.type == AccountingCorrectionType.unknown
+    assert reserve_correction.type == AccountingCorrectionCause.unknown_cause
     assert isinstance(reserve_correction.position, ReservePosition)
     assert reserve_correction.expected_amount == pytest.approx(Decimal('2.35431888385E-14'))
     assert reserve_correction.actual_amount == pytest.approx(Decimal('400.000001'))
@@ -313,7 +313,7 @@ def test_enzyme_correct_accounting_errors(
 
     # WETH correction
     position_correction = corrections[1]
-    assert position_correction.type == AccountingCorrectionType.unknown
+    assert position_correction.type == AccountingCorrectionCause.unknown_cause
     assert isinstance(position_correction.position, TradingPosition)
     assert position_correction.expected_amount == pytest.approx(Decimal('0.310787860635789571'))
     assert position_correction.actual_amount == pytest.approx(Decimal('0.2107878606357895711'))
@@ -462,7 +462,7 @@ def test_enzyme_correct_accounting_no_open_position(
 
     # WETH correction
     position_correction = corrections[0]
-    assert position_correction.type == AccountingCorrectionType.unknown
+    assert position_correction.type == AccountingCorrectionCause.unknown_cause
     assert position_correction.asset == weth_asset
     assert position_correction.position is None
     assert position_correction.expected_amount == pytest.approx(Decimal('0'))
@@ -473,13 +473,13 @@ def test_enzyme_correct_accounting_no_open_position(
     #
 
     vault = sync_model.vault
+    tx_builder = EnzymeTransactionBuilder(hot_wallet, vault)
     balance_updates = correct_accounts(
         state,
         corrections,
         strategy_cycle_included_at=None,
         interactive=False,
-        vault=vault,
-        hot_wallet=hot_wallet,
+        tx_builder=tx_builder,
         unknown_token_receiver=user_1,
     )
     balance_updates = list(balance_updates)
