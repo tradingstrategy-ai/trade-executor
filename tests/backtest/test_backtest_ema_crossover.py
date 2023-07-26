@@ -63,3 +63,71 @@ def test_ema_crossover_real_data(
     assert len(debug_dump) == 214
 
     # TODO: Not sure if we have any meaningful results to verify
+
+
+def test_start_end_automation(
+    strategy_path,
+    logger: logging.Logger,
+    persistent_test_client,
+    ):
+    """Check that EMA crossover strategy against real data."""
+
+    client = persistent_test_client
+
+    # Run backtest over 6 months, daily
+    setup = setup_backtest(
+        strategy_path,
+        initial_deposit=10_000,
+        cycle_duration=CycleDuration.cycle_30d,  # Override to use monthly cycles to speed up the test
+        candle_time_frame=TimeBucket.d30,  # Override to use monthly data to speed up the test
+    )
+
+    state, universe, debug_dump = run_backtest(setup, client)
+
+    assert len(debug_dump) == 28
+
+
+def test_start_end_automation(
+    strategy_path,
+    logger: logging.Logger,
+    persistent_test_client,
+    ):
+    """Check that EMA crossover strategy against real data."""
+
+    client = persistent_test_client
+
+    # Run backtest over 6 months, daily
+    setup = setup_backtest(
+        strategy_path,
+        initial_deposit=10_000,
+        cycle_duration=CycleDuration.cycle_30d,  # Override to use monthly cycles to speed up the test
+        candle_time_frame=TimeBucket.d30,  # Override to use monthly data to speed up the test
+    )
+
+    state, universe, debug_dump = run_backtest(setup, client)
+
+    assert len(debug_dump) == 28
+
+
+def test_minimum_lookback_data_range(
+    strategy_path,
+    logger: logging.Logger,
+    persistent_test_client,
+    ):
+    """Check that EMA crossover strategy against real data."""
+
+    client = persistent_test_client
+
+    # Run backtest over 6 months, daily
+    setup = setup_backtest(
+        strategy_path,
+        initial_deposit=10_000,
+        cycle_duration=CycleDuration.cycle_1d,  # Override to use monthly cycles to speed up the test
+        candle_time_frame=TimeBucket.d1,  # Override to use monthly data to speed up the test
+        minimum_data_lookback_range=datetime.timedelta(days=23),
+    )
+
+    state, universe, debug_dump = run_backtest(setup, client)
+
+    assert len(debug_dump) == 24
+    
