@@ -124,8 +124,6 @@ def check_accounts(
 
     mod: StrategyModuleInformation = read_strategy_module(strategy_file)
 
-    assert isinstance(sync_model, EnzymeVaultSyncModel), f"reinit currently only supports EnzymeVaultSyncModel, got {sync_model}"
-
     client, routing_model = create_client(
         mod=mod,
         web3config=web3config,

@@ -7,13 +7,18 @@ import shutil
 from pathlib import Path
 from typing import Optional
 
+from typer import Option
+
 from eth_defi.hotwallet import HotWallet
 
 from tradeexecutor.strategy.account_correction import correct_accounts as _correct_accounts
 from .app import app
 from ..bootstrap import prepare_executor_id, create_web3_config, create_sync_model, create_state_store, create_client
 from ..log import setup_logging
+from ...ethereum.enzyme.tx import EnzymeTransactionBuilder
 from ...ethereum.enzyme.vault import EnzymeVaultSyncModel
+from ...ethereum.hot_wallet_sync_model import HotWalletSyncModel
+from ...ethereum.tx import HotWalletTransactionBuilder
 from ...strategy.bootstrap import import_strategy_file, make_factory_from_strategy_mod
 from ...strategy.account_correction import calculate_account_corrections
 from ...strategy.description import StrategyExecutionDescription
@@ -51,11 +56,14 @@ def correct_accounts(
     json_rpc_arbitrum: Optional[str] = shared_options.json_rpc_arbitrum,
     json_rpc_anvil: Optional[str] = shared_options.json_rpc_anvil,
 
+    unknown_token_receiver: Optional[str] = Option(None, "--unknown-token-receiver", envvar="UNKNOWN_TOKEN_RECEIVER", help="The Ethereum address that will receive any token that cannot be associated with an open position. For Enzyme vault based strategies this address defauts to the executor hot wallet."),
+
     # Test functionality
     test_evm_uniswap_v2_router: Optional[str] = shared_options.test_evm_uniswap_v2_router,
     test_evm_uniswap_v2_factory: Optional[str] = shared_options.test_evm_uniswap_v2_factory,
     test_evm_uniswap_v2_init_code_hash: Optional[str] = shared_options.test_evm_uniswap_v2_init_code_hash,
     unit_testing: bool = shared_options.unit_testing,
+
 ):
     """Correct accounting errors in the internal ledger of the trade executor.
 
@@ -153,8 +161,6 @@ def correct_accounts(
 
     mod: StrategyModuleInformation = read_strategy_module(strategy_file)
 
-    assert isinstance(sync_model, EnzymeVaultSyncModel), f"reinit currently only supports EnzymeVaultSyncModel, got {sync_model}"
-
     client, routing_model = create_client(
         mod=mod,
         web3config=web3config,
@@ -215,14 +221,34 @@ def correct_accounts(
     if len(corrections) == 0:
         logger.info("No account corrections found")
 
+    if isinstance(sync_model, EnzymeVaultSyncModel):
+        vault = sync_model.vault
+        tx_builder = EnzymeTransactionBuilder(hot_wallet, vault)
+    elif isinstance(sync_model, HotWalletSyncModel):
+        vault = None
+        tx_builder = HotWalletTransactionBuilder(web3, hot_wallet)
+    else:
+        raise NotImplementedError()
+
+    # Set the default token dump address
+    if not unknown_token_receiver:
+        if isinstance(sync_model, EnzymeVaultSyncModel):
+            unknown_token_receiver = sync_model.get_hot_wallet().address
+
+    if not unknown_token_receiver:
+        raise RuntimeError(f"unknown_token_receiver missing and cannot deduct from the config. Please give one on the command line.")
+
+    assert hot_wallet is not None
+    hot_wallet.sync_nonce(web3)
+    logger.info("Hot wallet nonce is %d", hot_wallet.current_nonce)
+
     balance_updates = _correct_accounts(
         state,
         corrections,
         strategy_cycle_included_at=None,
         interactive=not unit_testing,
-        vault=sync_model.vault,
-        hot_wallet=sync_model.hot_wallet,
-        unknown_token_receiver=hot_wallet.address,  # Send any unknown tokens to the hot wallet of the trade-executor
+        tx_builder=tx_builder,
+        unknown_token_receiver=unknown_token_receiver,  # Send any unknown tokens to the hot wallet of the trade-executor
     )
     balance_updates = list(balance_updates)
     logger.info("Applied %d balance updates", len(balance_updates))

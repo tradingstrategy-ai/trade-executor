@@ -63,6 +63,9 @@ class ReservePosition(GenericPosition):
     def __post_init__(self):
         assert self.asset.decimals > 0, f"Looks like we have improper reserve asset: {self.asset}"
 
+    def get_human_readable_name(self) -> str:
+        return f"{self.asset.token_symbol} reserve"
+
     def get_identifier(self) -> str:
         return self.asset.get_identifier()
 

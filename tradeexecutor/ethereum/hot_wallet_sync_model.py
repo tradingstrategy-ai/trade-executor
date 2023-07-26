@@ -1,8 +1,9 @@
 """Sync model for strategies using a single hot wallet."""
 import datetime
-from typing import List, Optional
+from typing import List, Optional, Iterable
 
 from eth_defi.hotwallet import HotWallet
+from tradeexecutor.ethereum.onchain_balance import fetch_address_balances
 from tradeexecutor.state.balance_update import BalanceUpdate
 from tradingstrategy.chain import ChainId
 from web3 import Web3
@@ -12,7 +13,7 @@ from tradeexecutor.ethereum.wallet import sync_reserves
 from tradeexecutor.state.identifier import AssetIdentifier
 
 from tradeexecutor.state.state import State
-from tradeexecutor.strategy.sync_model import SyncModel
+from tradeexecutor.strategy.sync_model import SyncModel, OnChainBalance
 from tradeexecutor.testing.dummy_wallet import apply_sync_events
 
 
@@ -34,6 +35,9 @@ class HotWalletSyncModel(SyncModel):
 
     def get_hot_wallet(self) -> Optional[HotWallet]:
         return self.hot_wallet
+
+    def get_token_storage_address(self) -> Optional[str]:
+        return self.hot_wallet.address
 
     def resync_nonce(self):
         self.hot_wallet.sync_nonce(self.web3)
@@ -79,6 +83,21 @@ class HotWalletSyncModel(SyncModel):
         self.init()
         self.sync_initial(state)
         self.sync_treasury(datetime.datetime.utcnow(), state, supported_reserves)
+
+    def fetch_onchain_balances(self, assets: List[AssetIdentifier], filter_zero=True) -> Iterable[OnChainBalance]:
+        """Read the on-chain asset details.
+
+        - Mark the block we are reading at the start
+
+        :param filter_zero:
+            Do not return zero balances
+        """
+        return fetch_address_balances(
+            self.web3,
+            self.get_hot_wallet().address,
+            assets,
+            filter_zero=filter_zero,
+        )
 
 
 def EthereumHotWalletReserveSyncer(

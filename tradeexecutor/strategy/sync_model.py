@@ -16,6 +16,7 @@ from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.state import State
 from tradeexecutor.state.sync import BalanceEventRef
+from tradeexecutor.state.types import JSONHexAddress
 
 # Prototype sync method that is not applicable to the future production usage
 SyncMethodV0 = Callable[[Portfolio, datetime.datetime, List[AssetIdentifier]], List[ReserveUpdateEvent]]
@@ -67,6 +68,17 @@ class SyncModel(ABC):
         """Check that the state and sync model is ready for live trading."""
         # By default not any checks are needed
         return True
+
+    @abstractmethod
+    def get_token_storage_address(self) -> Optional[JSONHexAddress]:
+        """Get the address where tokens are stored.
+
+        :return:
+            Vault address for enzyme, wallet address for hot wallet.
+
+            Return `None` for DummySyncModel e.g. in the case of
+            unit and backtests.
+        """
 
     @abstractmethod
     def sync_initial(self, state: State, **kwargs):
@@ -137,6 +149,9 @@ class DummySyncModel(SyncModel):
 
     def sync_initial(self, state: State):
         pass
+
+    def get_token_storage_address(self) -> Optional[JSONHexAddress]:
+        return None
 
     def sync_treasury(self,
                  strategy_cycle_ts: datetime.datetime,

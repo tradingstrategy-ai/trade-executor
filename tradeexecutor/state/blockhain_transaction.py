@@ -400,3 +400,9 @@ class BlockchainTransaction:
         if self.wrapped_args is not None:
             return self.wrapped_args
         return self.transaction_args
+
+    def get_prepared_raw_transaction(self) -> bytes:
+        """Get the bytes we can pass to web_ethSendRawTransction"""
+        assert self.signed_bytes, "Signed payload missing"
+        assert self.signed_bytes.startswith("0x")
+        return bytes.fromhex(self.signed_bytes[2:])
