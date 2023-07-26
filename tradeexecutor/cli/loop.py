@@ -1122,11 +1122,12 @@ class ExecutionLoop:
                 self.universe_options,
             )
 
-            s,e  = u.universe.candles.get_timestamp_range()
-            self.backtest_start = s.to_pydatetime().replace(tzinfo=None)
-            self.backtest_end = e.to_pydatetime().replace(tzinfo=None)
+            if u.universe.candles is not None:
+                s,e  = u.universe.candles.get_timestamp_range()
+                self.backtest_start = s.to_pydatetime().replace(tzinfo=None)
+                self.backtest_end = e.to_pydatetime().replace(tzinfo=None)
 
-            logger.info("Automatically using %s - %s for backtest start and end", self.backtest_start, self.backtest_end)
+                logger.info("Automatically using %s - %s for backtest start and end", self.backtest_start, self.backtest_end)
 
     def run_with_state(self, state: State) -> dict:
         """Start the execution.
