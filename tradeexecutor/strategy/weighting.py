@@ -110,6 +110,13 @@ def weight_by_1_slash_n(alpha_signals: Dict[int, float]) -> Dict[int, float]:
         weighed_signals[pair_id] = 1 / idx
     return weighed_signals
 
+def weight_equal(alpha_signals: Dict[int, float]) -> Dict[int, float]:
+    """Give equal weight to every asset, regardless of the signal strength"""
+    weighed_signals = {}
+    for idx, tuple in enumerate(alpha_signals.items(), 1):
+        pair_id, alpha = tuple
+        weighed_signals[pair_id] = 1
+    return weighed_signals
 
 def weight_passthrouh(alpha_signals: Dict[int, float]) -> Dict[int, float]:
     """Use the given raw weight value as is as the portfolio weight."""
