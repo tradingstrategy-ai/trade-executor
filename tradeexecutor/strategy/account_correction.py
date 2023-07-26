@@ -132,6 +132,10 @@ class AccountingBalanceCheck:
         """How many tokens we corrected"""
         return self.actual_amount - self.expected_amount
 
+    def has_extra_tokens(self) -> bool:
+        """We have extra"""
+        return self.quantity > 0
+
 
 def calculate_account_corrections(
     pair_universe: PandasPairUniverse,
@@ -358,6 +362,7 @@ def correct_accounts(
                 tx_builder,
             )
         else:
+            # Change open position balance to match the on-chain balance
             yield apply_accounting_correction(state, correction, strategy_cycle_included_at)
 
 
