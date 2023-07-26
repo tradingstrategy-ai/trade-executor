@@ -74,7 +74,10 @@ class SyncModel(ABC):
         """Get the address where tokens are stored.
 
         :return:
-            Vault address for enzyme, wallet address for hot wallet
+            Vault address for enzyme, wallet address for hot wallet.
+
+            Return `None` for DummySyncModel e.g. in the case of
+            unit and backtests.
         """
 
     @abstractmethod
@@ -146,6 +149,9 @@ class DummySyncModel(SyncModel):
 
     def sync_initial(self, state: State):
         pass
+
+    def get_token_storage_address(self) -> Optional[JSONHexAddress]:
+        return None
 
     def sync_treasury(self,
                  strategy_cycle_ts: datetime.datetime,

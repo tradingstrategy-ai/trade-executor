@@ -8,6 +8,7 @@ from tradeexecutor.ethereum.wallet import ReserveUpdateEvent
 from tradeexecutor.state.balance_update import BalanceUpdate
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.state import State
+from tradeexecutor.state.types import JSONHexAddress
 from tradeexecutor.strategy.sync_model import SyncModel
 
 from tradeexecutor.testing.dummy_wallet import apply_sync_events
@@ -42,6 +43,9 @@ class BacktestSyncModel(SyncModel):
         self.fund_flow_queue: List[FundFlowEvent] = []
         if initial_deposit_amount > 0:
             self.fund_flow_queue.append(FundFlowEvent(datetime.datetime.utcnow(), initial_deposit_amount))
+
+    def get_token_storage_address(self) -> Optional[JSONHexAddress]:
+        return None
 
     def sync_initial(self, state: State):
         """Set up the initial sync details.
