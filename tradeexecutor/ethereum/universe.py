@@ -36,7 +36,7 @@ def create_pair_universe(web3: Web3, exchange: Optional[Exchange], pairs: List[T
         assert p.base.address != p.quote.address
         assert p.fee is not None, f"Pair missing fee {p}"
         dex_pair = DEXPair(
-            pair_id=p.internal_id,
+            pair_id=p.internal_id or int(p.get_identifier(), 16),
             chain_id=chain_id,
             exchange_id=exchange.exchange_id if exchange else 1,
             exchange_address=p.exchange_address if exchange else None,
