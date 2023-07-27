@@ -401,6 +401,7 @@ def test_live_stop_loss(
         wallet_account=trader,
         routing_model=routing_model,
     )
+    loop.runner.run_state = RunState()
 
     ts = get_latest_block_timestamp(web3)
 
@@ -493,6 +494,7 @@ def test_live_stop_loss_missing(
         wallet_account=trader,
         routing_model=routing_model,
     )
+    loop.runner.run_state = RunState()
 
     ts = get_latest_block_timestamp(web3)
 
