@@ -221,9 +221,15 @@ def prepare_cache(
         str, cache_path: Optional[Path],
         unit_testing=False,
 ) -> Path:
-    """Fail early if the cache path is not writable.
-
-    Otherwise Docker might spit misleading "Device or resource busy" message.
+    """Prepare a cache location for this trade-executor.
+    
+    - Fail early if the cache path is not writable.
+      Otherwise Docker might spit misleading "Device or resource busy" message.
+    
+    - Default is `./cache/$EXECUTOR_ID`
+    
+    - Unit tests share a fixed cache path across tests to speed
+      up them
     """
 
     assert executor_id
@@ -235,6 +241,7 @@ def prepare_cache(
         if unit_testing:
             cache_path = Path("/tmp/trading-strategy-tests")
         else:
+            # Default is ./cache/$EXECUTOR_ID
             cache_path = Path("cache").joinpath(executor_id)
     else:
         generated = False
