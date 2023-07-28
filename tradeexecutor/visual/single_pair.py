@@ -365,6 +365,9 @@ def visualise_single_pair(
     
     logger.info("Visualising %s", state)
 
+    if not (start_at and end_at):
+        start_at, end_at = state.get_strategy_start_and_end()
+
     start_at, end_at = get_start_and_end(start_at, end_at)
 
     if isinstance(candle_universe, GroupedCandleUniverse):
@@ -521,6 +524,9 @@ def visualise_single_pair_positions_with_duration_and_slippage(
     """
 
     logger.info("Visualising %s", state)
+
+    if not (start_at and end_at):
+        start_at, end_at = state.get_strategy_start_and_end()
 
     start_at, end_at = get_start_and_end(start_at, end_at)
 

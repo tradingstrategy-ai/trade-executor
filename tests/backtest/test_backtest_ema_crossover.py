@@ -12,9 +12,9 @@ To run:
 import datetime
 import logging
 import os
+import pandas as pd
 
 from pathlib import Path
-
 
 import pytest
 from tradeexecutor.backtest.backtest_runner import run_backtest, setup_backtest
@@ -60,6 +60,68 @@ def test_ema_crossover_real_data(
 
     state, universe, debug_dump = run_backtest(setup, client)
 
+    start, end = state.get_strategy_start_and_end()
+    assert start == pd.Timestamp('2021-06-01 00:00:00')
+    assert end == pd.Timestamp('2021-12-31 00:00:00')
+
     assert len(debug_dump) == 214
 
     # TODO: Not sure if we have any meaningful results to verify
+
+
+def test_start_end_automation(
+    strategy_path,
+    logger: logging.Logger,
+    persistent_test_client,
+    ):
+    """Check that EMA crossover strategy against real data."""
+
+    client = persistent_test_client
+
+    # Run backtest over 6 months, daily
+    setup = setup_backtest(
+        strategy_path,
+        initial_deposit=10_000,
+        cycle_duration=CycleDuration.cycle_30d,  # Override to use monthly cycles to speed up the test
+        candle_time_frame=TimeBucket.d30,  # Override to use monthly data to speed up the test
+    )
+
+    state, universe, debug_dump = run_backtest(setup, client)
+
+    start, end = state.get_strategy_start_and_end()
+
+    assert start == pd.Timestamp('2021-04-01 00:00:00')
+    assert end >= pd.Timestamp('2023-06-20 00:00:00')  # end is dynamic
+
+    assert len(debug_dump) == 28
+
+
+def test_minimum_lookback_data_range(
+    strategy_path,
+    logger: logging.Logger,
+    persistent_test_client,
+    ):
+    """Check that EMA crossover strategy against real data."""
+
+    client = persistent_test_client
+
+    # Run backtest over 6 months, daily
+    setup = setup_backtest(
+        strategy_path,
+        initial_deposit=10_000,
+        cycle_duration=CycleDuration.cycle_1d,  # Override to use monthly cycles to speed up the test
+        candle_time_frame=TimeBucket.d1,  # Override to use monthly data to speed up the test
+        minimum_data_lookback_range=datetime.timedelta(days=23),
+    )
+
+    state, universe, debug_dump = run_backtest(setup, client)
+
+    start, end = state.get_strategy_start_and_end()
+
+    # both start and end are dynamic
+    assert start >= pd.Timestamp('2023-07-03 00:00:00')
+    assert end >= pd.Timestamp('2023-07-26 00:00:00')
+    assert end - start == pd.Timedelta('23 days 00:00:00')
+
+    assert len(debug_dump) == 24
+    

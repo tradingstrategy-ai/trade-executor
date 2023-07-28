@@ -77,6 +77,9 @@ class CycleDuration(enum.Enum):
     #: Run `decide_trades()` for every week
     cycle_7d = "7d"
 
+    #: Run `decide_trades()` for every month
+    cycle_30d = "30d"
+
     #: Don't really know or care about the trade cycle duration.
     #:
     #: Used when doing a simulated execution loop
@@ -217,6 +220,7 @@ _TICK_DURATIONS = {
     CycleDuration.cycle_1d: datetime.timedelta(hours=24),
     CycleDuration.cycle_4d: datetime.timedelta(days=4),
     CycleDuration.cycle_7d: datetime.timedelta(days=7),
+    CycleDuration.cycle_30d: datetime.timedelta(days=30),
     CycleDuration.cycle_unknown: datetime.timedelta(days=0),
 }
 
