@@ -113,6 +113,11 @@ def display_slippage(trades: Iterable[TradeExecution]) -> pd.DataFrame:
                 uniswap_amount_in = uni_arg_list[-2]
                 uniswap_amount_out = uni_arg_list[-1]
 
+                #
+                # Do a lot of decoding different parts of Enzyme transaction
+                # and cross referencing different amounts
+                #
+
                 amount_in = input.convert_to_decimal(uniswap_amount_in)
                 amount_out = output.convert_to_decimal(uniswap_amount_out)
                 uniswap_price = amount_in / amount_out
@@ -120,7 +125,10 @@ def display_slippage(trades: Iterable[TradeExecution]) -> pd.DataFrame:
                 if t.is_sell():
                     uniswap_price = Decimal(1) / uniswap_price
 
-                generic_adapter_data = binascii.unhexlify(swap_tx.args[2])
+                # TODO: Was legacy, is still around?
+                # generic_adapter_data = binascii.unhexlify(swap_tx.args[2])
+
+                generic_adapter_data = swap_tx.transaction_args[2]
                 enzyme_args = _decode_generic_adapter_execute_calls_args(generic_adapter_data)
 
                 # Check we did not pass wrong token address to enzyme

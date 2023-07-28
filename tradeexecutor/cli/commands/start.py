@@ -206,7 +206,10 @@ def start(
             if unit_testing:
                 cache_path = Path("/tmp/trading-strategy-tests")
 
-        cache_path = prepare_cache(id, cache_path)
+            cache_path = prepare_cache(id, cache_path)
+
+        else:
+            logger.info("Using explicitly given cache path given %s", cache_path)
 
         confirmation_timeout = datetime.timedelta(seconds=confirmation_timeout)
 
