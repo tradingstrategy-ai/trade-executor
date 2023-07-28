@@ -216,7 +216,11 @@ def create_state_store(state_file: Path) -> StateStore:
     return store
 
 
-def prepare_cache(executor_id: str, cache_path: Optional[Path]) -> Path:
+def prepare_cache(
+        executor_id:
+        str, cache_path: Optional[Path],
+        unit_testing=False,
+) -> Path:
     """Fail early if the cache path is not writable.
 
     Otherwise Docker might spit misleading "Device or resource busy" message.
@@ -225,12 +229,23 @@ def prepare_cache(executor_id: str, cache_path: Optional[Path]) -> Path:
     assert executor_id
 
     if not cache_path:
-        cache_path = Path("cache").joinpath(executor_id)
+        # Avoid polluting user caches during test runs,
+        # so we use different default
+        generated = True
+        if unit_testing:
+            cache_path = Path("/tmp/trading-strategy-tests")
+        else:
+            cache_path = Path("cache").joinpath(executor_id)
+    else:
+        generated = False
 
-    logger.info("Dataset cache is %s", os.path.realpath(cache_path))
+    logger.info("Dataset cache is %s, was generated from the executor id %s",
+                os.path.realpath(cache_path),
+                generated)
 
     os.makedirs(cache_path, exist_ok=True)
 
+    # Check that the cache is writable
     with open(cache_path.joinpath("cache.pid"), "wt") as out:
         print(os.getpid(), file=out)
 

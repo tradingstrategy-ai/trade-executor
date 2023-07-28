@@ -200,16 +200,8 @@ def start(
                     if state_file.exists():
                         os.remove(state_file)
 
-        # Avoid polluting user caches during test runs,
-        # so we use different default
-        if not cache_path:
-            if unit_testing:
-                cache_path = Path("/tmp/trading-strategy-tests")
 
-            cache_path = prepare_cache(id, cache_path)
-
-        else:
-            logger.info("Using explicitly given cache path given %s", cache_path)
+        cache_path = prepare_cache(id, cache_path, unit_testing)
 
         confirmation_timeout = datetime.timedelta(seconds=confirmation_timeout)
 
