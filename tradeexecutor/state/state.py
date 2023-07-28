@@ -7,6 +7,7 @@ Any datetime must be naive, without timezone, and is assumed to be UTC.
 import json
 from dataclasses import dataclass, field
 import datetime
+import logging
 from decimal import Decimal
 from pathlib import Path
 from typing import List, Callable, Tuple, Set, Optional
@@ -28,6 +29,9 @@ from .visualisation import Visualisation
 
 from tradeexecutor.strategy.trade_pricing import TradePricing
 from ..strategy.cycle import CycleDuration
+
+
+logger = logging.getLogger(__name__)
 
 
 class UncleanState(Exception):
@@ -499,6 +503,20 @@ class State:
         txt = self.to_json_safe()
         with path.open("wt") as out:
             out.write(txt)
+
+    def get_strategy_start_and_end(self) -> tuple[pd.Timestamp, pd.Timestamp]:
+        """Get the time range for which the strategy should have data.
+        """
+        
+        if not self.stats.portfolio:
+            logger.warn("No portfolio statistics, this is required for the time range")
+            return None, None
+
+
+        start_at = pd.Timestamp(self.stats.portfolio[0].calculated_at)
+        end_at = pd.Timestamp(self.stats.portfolio[-1].calculated_at)
+
+        return start_at, end_at
 
     @staticmethod
     def read_json_file(path: Path) -> "State":

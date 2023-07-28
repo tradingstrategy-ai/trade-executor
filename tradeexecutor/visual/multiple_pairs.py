@@ -101,7 +101,7 @@ def get_start_and_end_full(candles: pd.DataFrame | GroupedCandleUniverse, start_
 
 
 def visualise_multiple_pairs(
-    state: Optional[State],
+    state: State,
     candle_universe: GroupedCandleUniverse | pd.DataFrame,
     start_at: Optional[Union[pd.Timestamp, datetime.datetime]] = None,
     end_at: Optional[Union[pd.Timestamp, datetime.datetime]] = None,
@@ -209,6 +209,9 @@ def visualise_multiple_pairs(
             pair_ids = list(candles["pair_id"].unique())
 
     pair_ids = [int(pair_id) for pair_id in pair_ids]
+
+    if not (start_at and end_at):
+        start_at, end_at = state.get_strategy_start_and_end()
 
     start_at, end_at = get_start_and_end_full(candles, start_at, end_at)
 
