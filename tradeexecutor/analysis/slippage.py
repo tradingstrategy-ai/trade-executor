@@ -98,6 +98,7 @@ def display_slippage(trades: Iterable[TradeExecution]) -> pd.DataFrame:
         amount_out = np.NaN
         uniswap_price = np.NaN
         enzyme_expected_amount = np.NaN
+        block_executed = np.NaN
 
         # Swap is always the last transaction
         if len(t.blockchain_transactions) > 0:
@@ -142,10 +143,14 @@ def display_slippage(trades: Iterable[TradeExecution]) -> pd.DataFrame:
                 # exactInput((bytes,address,uint256,uint256,uint256))
                 assert uniswap_function_selector == "c04b8d59"
 
+                block_executed = swap_tx.block_number
+
             tx_hash = swap_tx.tx_hash
             # TODO: Does not work in all notebook run times
             # tx_link = f"""<a href="https://polygonscan.io/tx/{tx_hash}>{tx_hash}</a>"""
             tx_link = tx_hash
+
+        block_decided = t.price_structure.block_number or np.NaN
 
         items.append({
             "Flags": ", ".join(flags),
@@ -162,7 +167,9 @@ def display_slippage(trades: Iterable[TradeExecution]) -> pd.DataFrame:
             "Enzyme amountOut": enzyme_expected_amount,
             "Assumed price": t.planned_price,
             "Uniswap price": uniswap_price,
-            # "Notes": t.notes,
+            "Block decided": f"{block_decided:,}",
+            "Block executed": f"{block_executed:,}",
+        # "Notes": t.notes,
             "Failure reason": reason,
             "Tx": tx_link,
         })
