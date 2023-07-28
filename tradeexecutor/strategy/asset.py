@@ -70,13 +70,32 @@ def map_onchain_asset_to_position(
 
     - Any reserve currency deposits go to the reserve
 
-    - Any trading position assets go to their respective open trading position
+    - Any trading position assets go to their respective open trading
+      and frozen position
 
     - If there are trading position assets and no position is open,
       then panic
+
+    :param asset:
+        On-chain read token we should make
+
+    :param state:
+        The current strategy state
+
+    :return:
+        The position we think the asset belongs to.
+
+        None if there is no reserve, open or frozen
+        positions we know of.
     """
 
     for p in state.portfolio.open_positions.values():
+        if asset == p.pair.base:
+            return p
+
+    # Frozen position should be considered open positions,
+    # when trying to assign tokens to a position they need to be in
+    for p in state.portfolio.frozen_positions.values():
         if asset == p.pair.base:
             return p
 
