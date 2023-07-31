@@ -20,7 +20,6 @@ from eth_defi.uniswap_v3.tvl import fetch_uniswap_v3_pool_tvl
 
 params = {"path":"0x0d500b1d8e8ef31e21c99d1db9a6444d3adf12700001f42791bca1f2de4661ed88a30c99a7a9449aa84174","recipient":"0x19f61a2cdebccbf500b24a1330c46b15e5f54cbc","deadline":"9223372036854775808","amountIn":"14975601230579683413","amountOutMinimum":"10799953"}
 
-amount_in = 14975601230579683413
 path = params["path"]
 # https://tradingstrategy.ai/trading-view/polygon/uniswap-v3/matic-usdc-fee-5
 pool_address = "0xa374094527e1673a86de625aa59517c5de346d32"
