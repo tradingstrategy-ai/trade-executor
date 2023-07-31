@@ -68,8 +68,11 @@ class UniswapV3LivePricing(EthereumPricingModel):
         )
 
     def get_pair_fee_multiplier(self, ts, pair):
-        """Uniswap V3 pairs get fees in raw format e.g. 3000 instead of 0.3%"""
-        return super().get_pair_fee(ts, pair)/1_000_000
+        """Outdated: Uniswap V3 pairs get fees in raw format e.g. 3000 instead of 0.3%
+        
+        Now, all pairs are already in multiplier format, so no changes necessary.
+        """
+        return super().get_pair_fee(ts, pair)
     
     def get_uniswap(self, target_pair: TradingPairIdentifier) -> UniswapV3Deployment:
         """Helper function to speed up Uniswap v3 deployment resolution."""
