@@ -271,6 +271,8 @@ def decide_trades(
             buy_amount,
             stop_loss_pct=0.95,  # Use 5% stop loss
         )
+    else:
+        position_manager.close_all()
 
     return trades
 
@@ -316,7 +318,7 @@ def core_universe(web3,
 
     df = generate_ohlcv_candles(
         start=datetime.datetime(2023, 1, 1),
-        end=datetime.datetime(2024, 1, 1),  # test will work until this date
+        end=datetime.datetime.now(),
         bucket=time_bucket,
         pair_id = weth_usdc_pair.internal_id,
         exchange_id = None,
@@ -401,7 +403,7 @@ def test_live_stop_loss(
         wallet_account=trader,
         routing_model=routing_model,
     )
-    loop.runner.run_state = RunState()
+    loop.runner.run_state = RunState()  # Needed for visualisations
 
     ts = get_latest_block_timestamp(web3)
 
@@ -633,9 +635,9 @@ def test_refresh_visualisations(
         routing_model=routing_model,
     )
 
-    loop.runner.run_state = RunState()
+    loop.runner.run_state = RunState()  # needed for visualisations
 
-    ts = get_latest_block_timestamp(web3)
+    ts = get_latest_block_timestamp(web3)  # will not show trades due to the timestamp
 
     # Make transaction confirmation step to skip,
     execution_model = loop.execution_model
