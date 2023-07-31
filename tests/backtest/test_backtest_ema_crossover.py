@@ -93,7 +93,7 @@ def test_start_end_automation(
     assert start == pd.Timestamp('2021-04-01 00:00:00')
     assert end >= pd.Timestamp('2023-06-20 00:00:00')  # end is dynamic
 
-    assert len(debug_dump) == 28
+    assert len(debug_dump) >= 28  # since end is dynamic, we can't know the exact number of cycles
 
 
 def test_minimum_lookback_data_range(
