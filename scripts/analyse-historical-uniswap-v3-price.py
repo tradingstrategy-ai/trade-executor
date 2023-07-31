@@ -14,7 +14,9 @@ from web3 import Web3, HTTPProvider
 
 from eth_defi.token import fetch_erc20_details
 from eth_defi.uniswap_v3.deployment import fetch_deployment
+from eth_defi.uniswap_v3.pool import fetch_pool_details
 from eth_defi.uniswap_v3.price import get_onchain_price, estimate_sell_received_amount
+from eth_defi.uniswap_v3.tvl import fetch_uniswap_v3_pool_tvl
 
 params = {"path":"0x0d500b1d8e8ef31e21c99d1db9a6444d3adf12700001f42791bca1f2de4661ed88a30c99a7a9449aa84174","recipient":"0x19f61a2cdebccbf500b24a1330c46b15e5f54cbc","deadline":"9223372036854775808","amountIn":"14975601230579683413","amountOutMinimum":"10799953"}
 
@@ -41,16 +43,33 @@ web3 = Web3(HTTPProvider(json_rpc_url))
 wmatic = fetch_erc20_details(web3, wmatic_address)
 usdc = fetch_erc20_details(web3, usdc_address)
 
+pool = fetch_pool_details(web3, pool_address)
+
 wmatic_amount_raw = wmatic.convert_to_raw(wmatic_amount)
 
 mid_price_estimated = get_onchain_price(web3, pool_address, block_identifier=block_estimated)
 mid_price_executed = get_onchain_price(web3, pool_address, block_identifier=block_executed)
 
-print(f"Mid price when estimate at block {block_estimated:,}:", mid_price_estimated)
-print(f"Mid price at the time of execution at block {block_executed:,}:", mid_price_executed)
-print(f"Price difference {(mid_price_executed - mid_price_estimated) / mid_price_estimated * 100:.2f}%")
+tvl_estimated = fetch_uniswap_v3_pool_tvl(
+    pool,
+    quote_token=usdc,
+    block_identifier=block_estimated,
+)
 
-# Uniswap v4 deployment addresses are the same across the chains
+tvl_executed = fetch_uniswap_v3_pool_tvl(
+    pool,
+    quote_token=usdc,
+    block_identifier=block_executed,
+)
+
+print(f"WMATIC sold {wmatic_amount}")
+print(f"TVL during estimation: {tvl_estimated:,} USDC at block {block_estimated:,}")
+print(f"TVL during execution: {tvl_executed:,} USDC")
+print(f"Mid price when estimate at block {block_estimated:,} USDC/MATIC:", mid_price_estimated)
+print(f"Mid price at the time of execution at block {block_executed:,} USDC/MATIC:", mid_price_executed)
+print(f"Mid price movement {(mid_price_executed - mid_price_estimated) / mid_price_estimated * 100:.2f}%")
+
+# Uniswap v3 deployment addresses are the same across the chains
 # https://docs.uniswap.org/contracts/v3/reference/deployments
 uniswap = fetch_deployment(
     web3,
@@ -60,6 +79,7 @@ uniswap = fetch_deployment(
     "0xb27308f9F90D607463bb33eA1BeBb41C27CE5AB6",
 )
 
+# Get the amount of price impact
 estimated_sell_raw = estimate_sell_received_amount(
     uniswap,
     base_token_address=wmatic_address,
@@ -84,7 +104,9 @@ executed_sell_raw = estimate_sell_received_amount(
 )
 executed_sell = usdc.convert_to_decimals(executed_sell_raw)
 
+executed_sell_price = executed_sell / wmatic_amount
+
 print(f"Executed received quantity: {executed_sell} USDC")
-
-print(f"Supposed price impact {(executed_sell - estimated_sell) / estimated_sell * 100:.2f}%")
-
+print(f"Executed sell price: {executed_sell_price} USDC/MATIC")
+print(f"Executed price impact {(executed_sell_price - mid_price_executed) / mid_price_executed * 100:.2f}%")
+print(f"Slippage {(executed_sell - estimated_sell) / estimated_sell * 100:.2f}%")
