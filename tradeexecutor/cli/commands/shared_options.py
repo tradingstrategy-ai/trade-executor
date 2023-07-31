@@ -50,7 +50,7 @@ html_report = Option(None, envvar="HTML_REPORT", help="HTML file where the store
 
 trading_strategy_api_key = Option(None, envvar="TRADING_STRATEGY_API_KEY", help="Trading Strategy API key")
 
-cache_path = Option("cache/", envvar="CACHE_PATH", help="Where to cache downloaded datasets on a local filesystem")
+cache_path = Option(None, envvar="CACHE_PATH", help="Where to cache downloaded datasets on a local filesystem. If not given, default to cache/{executor-id}")
 
 max_slippage = Option(0.0025, envvar="MAX_SLIPPAGE", help="Max slippage allowed per trade before failing. The default 0.0025 is 0.25% or 25 BPS.")
 
