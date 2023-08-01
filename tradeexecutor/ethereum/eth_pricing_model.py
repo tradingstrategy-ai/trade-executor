@@ -61,6 +61,7 @@ class EthereumPricingModel(PricingModel):
         self.pair_universe = pair_universe
         self.very_small_amount = very_small_amount
         self.routing_model = routing_model
+        self.epsilon = 1e-10
 
         assert isinstance(self.very_small_amount, Decimal)
     
@@ -141,6 +142,41 @@ class EthereumPricingModel(PricingModel):
             This can be different from zero fees.
         """
         return pair.fee
+    
+    def validate_mid_price_for_sell(self, lp_fee, mid_price, price, quantity):
+        """Validate the mid price calculation for a sell trade.
+        
+        :param lp_fee:
+            The fee that is paid to the LPs.
+        
+        :param mid_price:
+            The mid price of the pair.
+
+        :param price:
+            The price of the trade.
+
+        :param quantity:
+            The quantity of the trade.
+        """
+        assert lp_fee - (mid_price - price)/mid_price * float(quantity) < self.epsilon, f"Bad lp fee calculation: {lp_fee}, {mid_price}, {price}, {quantity}"
+
+    def validate_mid_price_for_buy(self, lp_fee, price, mid_price, reserve):
+        """Validate the mid price calculation for a buy trade.
+        
+        :param lp_fee:
+            The fee that is paid to the LPs.
+        
+        :param price:
+            The price of the trade.
+
+        :param mid_price:
+            The mid price of the pair.
+
+        :param reserve:
+            The reserve of the trade.
+        """
+
+        assert lp_fee - (price - mid_price)/price * float(reserve) < self.epsilon, f"Bad lp fee calculation: {lp_fee}, {mid_price}, {price}, {reserve}"
     
     @abc.abstractmethod
     def get_uniswap(self, target_pair: TradingPairIdentifier) -> deployment_types:

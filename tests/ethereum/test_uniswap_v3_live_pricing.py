@@ -301,6 +301,10 @@ def test_uniswap_v3_two_leg_buy_price_no_price_impact(
     assert price_structure.lp_fee == [0.0003000000000000003] # TODO address floating point errors
     assert price_structure.get_total_lp_fees() == pytest.approx(0.0003000000000000003, rel=APPROX_REL)
 
+    mid_price = pricing_method.get_mid_price(datetime.datetime.utcnow(), pair)
+    assert price_structure.price > mid_price
+    assert mid_price == pytest.approx(1699.9232380190588, rel=APPROX_REL)
+
 
 def test_uniswap_v3_two_leg_buy_price_with_price_impact(
         web3: Web3,
@@ -367,6 +371,10 @@ def test_uniswap_v3_two_leg_sell_price_with_price_impact(
     
     assert price_structure.get_total_lp_fees() == pytest.approx(0.15000000000000013, rel=APPROX_REL)
 
+    mid_price = pricing_method.get_mid_price(datetime.datetime.utcnow(), pair)
+    assert price_structure.price < mid_price
+    assert mid_price == pytest.approx(1699.9232380190588, rel=APPROX_REL)
+
 
 def test_uniswap_v3_three_leg_buy_price_with_price_impact(
         web3: Web3,
@@ -427,6 +435,10 @@ def test_uniswap_v3_three_leg_buy_price_with_price_impact(
     # makes sense 20_000 * 0.003 * 2 = 120
     assert price_structure.get_total_lp_fees() == pytest.approx(119.81999999999937, rel=APPROX_REL)
 
+    mid_price = pricing_method.get_mid_price(datetime.datetime.utcnow(), pair)
+    assert price_structure.price > mid_price
+    assert mid_price == pytest.approx(339.9994284591918, rel=APPROX_REL)
+
 
 def test_uniswap_v3_three_leg_sell_price_with_price_impact(
         web3: Web3,
@@ -453,3 +465,7 @@ def test_uniswap_v3_three_leg_sell_price_with_price_impact(
     
     # makes sense 500 * 0.003 * 2 = 3
     assert price_structure.get_total_lp_fees() == pytest.approx(2.9954999999999843, rel=APPROX_REL)
+
+    mid_price = pricing_method.get_mid_price(datetime.datetime.utcnow(), pair)
+    assert price_structure.price > mid_price
+    assert mid_price == pytest.approx(339.9994284591918, rel=APPROX_REL)

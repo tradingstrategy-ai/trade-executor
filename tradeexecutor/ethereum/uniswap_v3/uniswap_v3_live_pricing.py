@@ -152,7 +152,7 @@ class UniswapV3LivePricing(EthereumPricingModel):
         price = float(received / quantity)
         
         if intermediate_pair:
-            mid_price = price / (1 - self.get_pair_fee_multiplier(ts, target_pair)) / (1 - self.get_pair_fee_multiplier(ts, intermediate_pair.fee))
+            mid_price = price / (1 - self.get_pair_fee_multiplier(ts, target_pair)) / (1 - self.get_pair_fee_multiplier(ts, intermediate_pair))
         else:
             mid_price = price / (1 - self.get_pair_fee_multiplier(ts, target_pair))
         
@@ -160,9 +160,7 @@ class UniswapV3LivePricing(EthereumPricingModel):
 
         lp_fee = float(quantity) * total_fee_pct
 
-        # should have:         
-        # lp_fee = (mid_price - price)/mid_price * float(quantity)
-        assert lp_fee - (mid_price - price)/mid_price * float(quantity) < self.epsilon, f"Bad lp fee calculation: {lp_fee}, {mid_price}, {price}, {quantity}"
+        self.validate_mid_price_for_sell(lp_fee, mid_price, price, quantity)
         
         return TradePricing(
             price=price,
@@ -265,8 +263,7 @@ class UniswapV3LivePricing(EthereumPricingModel):
 
         assert price >= mid_price, f"Bad pricing: {price}, {mid_price}"
 
-        # should have lp_fee = (price - mid_price)/price * float(reserve)
-        assert lp_fee - (price - mid_price)/price * float(reserve) < self.epsilon, f"Bad lp fee calculation: {lp_fee}, {mid_price}, {price}, {reserve}"
+        self.validate_mid_price_for_buy(lp_fee, price, mid_price, reserve)
         
         return TradePricing(
             price=float(price),

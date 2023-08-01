@@ -63,6 +63,8 @@ class UniswapV2LivePricing(EthereumPricingModel):
 
         self.uniswap_cache: Dict[TradingPairIdentifier, UniswapV2Deployment] = {}
 
+        self.epsilon = 1e-10
+
         super().__init__(
             web3,
             pair_universe,
@@ -131,20 +133,20 @@ class UniswapV2LivePricing(EthereumPricingModel):
             
         if intermediate_pair:
             # TODO: Verify calculation
-            mid_price = price * (1 + fee) * (1 + fee)
+            mid_price = price / (1 - fee) / (1 - fee)
             
             path = [intermediate_pair, target_pair]
         else:
-            mid_price = price * (1 + fee)
+            mid_price = price / (1 - fee)
             
             path = [target_pair]
             
         
         lp_fee = float(quantity) * total_fee_pct
-        #lp_fee = (mid_price - price) * float(quantity)
             
         assert price <= mid_price, f"Bad pricing: {price}, {mid_price}"
 
+        self.validate_mid_price_for_sell(lp_fee, mid_price, price, quantity)
 
         return TradePricing(
             price=price,
@@ -232,7 +234,9 @@ class UniswapV2LivePricing(EthereumPricingModel):
         lp_fee = float(reserve) * total_fee_pct
 
         assert price >= mid_price, f"Bad pricing: {price}, {mid_price}"
-        
+
+        self.validate_mid_price_for_buy(lp_fee, price, mid_price, reserve)
+
         return TradePricing(
             price=float(price),
             mid_price=float(mid_price),
