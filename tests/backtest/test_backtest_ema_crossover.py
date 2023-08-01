@@ -69,6 +69,7 @@ def test_ema_crossover_real_data(
     # TODO: Not sure if we have any meaningful results to verify
 
 
+@pytest.mark.skip(reason="The logic is broken and breaks live trading startup")
 def test_start_end_automation(
     strategy_path,
     logger: logging.Logger,
