@@ -35,6 +35,10 @@ def create_pair_universe(web3: Web3, exchange: Optional[Exchange], pairs: List[T
         assert p.quote.decimals
         assert p.base.address != p.quote.address
         assert p.fee is not None, f"Pair missing fee {p}"
+
+        # pair_id cannot be None here since it is enforced in the TradingPairIdentifier hash method
+        # so if no internal_id is already set, we use the integer version of the identifier as the pair_id
+
         dex_pair = DEXPair(
             pair_id=p.internal_id or int(p.get_identifier(), 16),
             chain_id=chain_id,

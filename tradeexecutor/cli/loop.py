@@ -140,6 +140,7 @@ class ExecutionLoop:
             execution_test_hook: Optional[ExecutionTestHook] = None,
             metadata: Optional[Metadata] = None,
             check_accounts: Optional[bool] = None,
+            minimum_data_lookback_range: Optional[datetime.timedelta] = None,
     ):
         """See main.py for details."""
 
@@ -195,6 +196,8 @@ class ExecutionLoop:
             candle_time_bucket_override=self.backtest_candle_time_frame_override,
             stop_loss_time_bucket_override=self.backtest_stop_loss_time_frame_override,
         )
+
+        self.minimum_data_lookback_range = minimum_data_lookback_range
 
     def is_backtest(self) -> bool:
         """Are we doing a backtest execution."""
@@ -633,7 +636,7 @@ class ExecutionLoop:
 
         ts = self.backtest_start
 
-        logger.info("Strategy is executed in backtesting mode, starting at %s, cycle duration is %s", ts, self.cycle_duration.value)
+        logger.info("run_backtest(): Strategy is executed in backtesting mode, starting at %s, cycle duration is %s", ts, self.cycle_duration.value)
 
         cycle = state.cycle
         universe = None
@@ -775,6 +778,13 @@ class ExecutionLoop:
         :raise LiveSchedulingTaskFailed:
             If any of live trading concurrent tasks crashes with an exception
         """
+
+        logger.info("run_luve(): Strategy is executed in live trading mode")
+
+        # Safety checks
+        assert not self.is_backtest()
+        assert self.backtest_start is None
+        assert self.backtest_end is None
 
         ts = datetime.datetime.utcnow()
 
@@ -1087,6 +1097,13 @@ class ExecutionLoop:
         # TODO: Accounting checks only supports Enzyme currently
         self.runner.accounting_checks = self.check_accounts and isinstance(self.sync_model, EnzymeVaultSyncModel)
 
+        # TODO: Pass this as a constructor argument
+        # TODO: Accounting checks only supports Enzyme currently
+        self.runner.accounting_checks = self.check_accounts and isinstance(self.sync_model, EnzymeVaultSyncModel)
+
+        # TODO: Do this only when doing backtesting in a notebook
+        # self.set_start_and_end()
+
         # Load cycle_duration from v0.1 strategies,
         # if not given from the command line to override backtesting data
         if run_description.cycle_duration and not self.cycle_duration:
@@ -1095,6 +1112,30 @@ class ExecutionLoop:
         assert self.cycle_duration is not None, "Did not get strategy cycle duration from constructor or strategy run description"
 
         return state
+
+    def set_backtest_start_and_end(self):
+        """Set up backtesting start and end times. If no start, end, or lookback info provided, will set automatically to the entire available data range."""
+        if self.minimum_data_lookback_range is not None:
+            assert not self.backtest_start or not self.backtest_end, "You must not give start_at and end_at if you give minimum_data_lookback_range. minimum_data_lookback_range automatically ends at the current time."
+            assert isinstance(self.minimum_data_lookback_range, datetime.timedelta), "minimum_data_lookback_range must be a datetime.timedelta"
+
+            self.backtest_end = datetime.datetime.now()
+            self.backtest_start = self.backtest_end - self.minimum_data_lookback_range
+
+        # set automatically if not given
+        if self.backtest_start is None:
+            u = self.universe_model.construct_universe(
+                self.backtest_start,
+                self.execution_context.mode,
+                self.universe_options,
+            )
+
+            if u.universe.candles is not None:
+                s,e  = u.universe.candles.get_timestamp_range()
+                self.backtest_start = s.to_pydatetime().replace(tzinfo=None)
+                self.backtest_end = e.to_pydatetime().replace(tzinfo=None)
+
+                logger.info("Automatically using %s - %s for backtest start and end", self.backtest_start, self.backtest_end)
 
     def run_with_state(self, state: State) -> dict:
         """Start the execution.

@@ -1,4 +1,5 @@
 import datetime
+from _decimal import Decimal
 from logging import getLogger
 from dataclasses import dataclass
 from typing import Optional, List
@@ -25,9 +26,10 @@ class TradePricing:
 
     #: The price we expect this transaction to clear.
     #:
-    #: This price has LP fees already deducted away from it.
-    #: It may or may not include price impact if liquidity data was available
-    #: for the pricing model.
+    #: - LP fees included
+    #: - Price impact included
+    #: - Slippage = 0
+    #:
     price: USDollarPrice
 
     #: The theoretical market price during the transaction.
@@ -78,9 +80,25 @@ class TradePricing:
     #: What was the block number when the read was performed
     block_number: Optional[int] = None
 
+    #: Amount of tokens we put in
+    #:
+    #: Tracked for debugging
+    #:
+    token_in: Optional[Decimal] = None
+
+    #: Amount of tokens we got out
+    #:
+    #: Tracked for debugging
+    #:
+    token_out: Optional[Decimal] = None
+
     def __repr__(self):
         fee_list = [fee or 0 for fee in self.pair_fee]
-        return f"<TradePricing:{self.price} mid:{self.mid_price} fee:{format_fees_percentage(fee_list)}>"
+        if self.block_number:
+            block_text = "block:{self.block_number:,}"
+        else:
+            block_text = ""
+        return f"<TradePricing:{self.price} mid:{self.mid_price} fee:{format_fees_percentage(fee_list)} {block_text}>"
     
     def __post_init__(self):
         """Validate parameters.

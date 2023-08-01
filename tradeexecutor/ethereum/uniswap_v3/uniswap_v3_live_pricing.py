@@ -89,7 +89,7 @@ class UniswapV3LivePricing(EthereumPricingModel):
                        ts: datetime.datetime,
                        pair: TradingPairIdentifier,
                        quantity: Optional[Decimal],
-                       ) -> USDollarAmount:
+                       ) -> TradePricing:
         """Get live price on Uniswap."""
 
         if quantity is None:
@@ -157,9 +157,7 @@ class UniswapV3LivePricing(EthereumPricingModel):
         assert price <= mid_price, f"Bad pricing: {price}, {mid_price}"
 
         lp_fee = float(quantity) * total_fee_pct
-        
         #lp_fee = (mid_price - price) * float(quantity)
-        
         #assert lp_fee == float(quantity) * total_fee_pct
         
         return TradePricing(
@@ -171,13 +169,15 @@ class UniswapV3LivePricing(EthereumPricingModel):
             path=path,
             read_at=datetime.datetime.utcnow(),
             block_number=block_number,
+            token_in=quantity,
+            token_out=received,
         )
 
     def get_buy_price(self,
                        ts: datetime.datetime,
                        pair: TradingPairIdentifier,
                        reserve: Optional[Decimal],
-                       ) -> USDollarAmount:
+                       ) -> TradePricing:
         """Get live price on Uniswap.
 
         :param reserve:
@@ -273,6 +273,8 @@ class UniswapV3LivePricing(EthereumPricingModel):
             path=path,
             read_at=datetime.datetime.utcnow(),
             block_number=block_number,
+            token_in=reserve,
+            token_out=token_received,
         )
 
 

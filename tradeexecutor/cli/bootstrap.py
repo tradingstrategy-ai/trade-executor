@@ -68,13 +68,13 @@ def validate_executor_id(id: str):
 
 
 def create_web3_config(
-    json_rpc_binance,
-    json_rpc_polygon,
-    json_rpc_avalanche,
-    json_rpc_ethereum,
-    json_rpc_arbitrum,
-    json_rpc_anvil,
-    gas_price_method: Optional[GasPriceMethod]=None,
+        json_rpc_binance,
+        json_rpc_polygon,
+        json_rpc_avalanche,
+        json_rpc_ethereum,
+        json_rpc_arbitrum,
+        json_rpc_anvil,
+        gas_price_method: Optional[GasPriceMethod] = None,
 ) -> Web3Config:
     """Create Web3 connection to the live node we are executing against.
 
@@ -95,13 +95,13 @@ def create_web3_config(
 
 
 def create_execution_model(
-    routing_hint: Optional[TradeRouting],
-    tx_builder: Optional[TransactionBuilder],
-    confirmation_timeout: datetime.timedelta,
-    confirmation_block_count: int,
-    max_slippage: float,
-    min_gas_balance: Optional[Decimal],
-    mainnet_fork=False,
+        routing_hint: Optional[TradeRouting],
+        tx_builder: Optional[TransactionBuilder],
+        confirmation_timeout: datetime.timedelta,
+        confirmation_block_count: int,
+        max_slippage: float,
+        min_gas_balance: Optional[Decimal],
+        mainnet_fork=False,
 ):
     """Set up the code transaction building logic.
 
@@ -216,21 +216,43 @@ def create_state_store(state_file: Path) -> StateStore:
     return store
 
 
-def prepare_cache(executor_id: str, cache_path: Optional[Path]) -> Path:
-    """Fail early if the cache path is not writable.
-
-    Otherwise Docker might spit misleading "Device or resource busy" message.
+def prepare_cache(
+        executor_id: str,
+        cache_path: Optional[Path],
+        unit_testing=False,
+) -> Path:
+    """Prepare a cache location for this trade-executor.
+    
+    - Fail early if the cache path is not writable.
+      Otherwise Docker might spit misleading "Device or resource busy" message.
+    
+    - Default is `./cache/$EXECUTOR_ID`
+    
+    - Unit tests share a fixed cache path across tests to speed
+      up them
     """
 
     assert executor_id
 
     if not cache_path:
-        cache_path = Path("cache").joinpath(executor_id)
+        # Avoid polluting user caches during test runs,
+        # so we use different default
+        generated = True
+        if unit_testing:
+            cache_path = Path("/tmp/trading-strategy-tests")
+        else:
+            # Default is ./cache/$EXECUTOR_ID
+            cache_path = Path("cache").joinpath(executor_id)
+    else:
+        generated = False
 
-    logger.info("Dataset cache is %s", os.path.realpath(cache_path))
+    logger.info("Dataset cache is %s, was generated from the executor id %s",
+                os.path.realpath(cache_path),
+                generated)
 
     os.makedirs(cache_path, exist_ok=True)
 
+    # Check that the cache is writable
     with open(cache_path.joinpath("cache.pid"), "wt") as out:
         print(os.getpid(), file=out)
 
@@ -245,9 +267,9 @@ def create_metadata(
         asset_management_mode: AssetManagementMode,
         chain_id: ChainId,
         vault: Optional[Vault],
-        backtest_result: Optional[Path]=None,
-        backtest_notebook: Optional[Path]=None,
-        backtest_html: Optional[Path]=None,
+        backtest_result: Optional[Path] = None,
+        backtest_notebook: Optional[Path] = None,
+        backtest_html: Optional[Path] = None,
         key_metrics_backtest_cut_off_days: float = 90,
 ) -> Metadata:
     """Create metadata object from the configuration variables."""
@@ -267,7 +289,7 @@ def create_metadata(
         if vault.deployment.contracts.fund_value_calculator is None:
             # Hot fix for Polygon
             # TODO: Fix properly
-           on_chain_data.smart_contracts.update({
+            on_chain_data.smart_contracts.update({
                 "fund_value_calculator": "0xcdf038Dd3b66506d2e5378aee185b2f0084B7A33",
             })
 
@@ -345,14 +367,14 @@ def create_sync_model(
 
 
 def create_client(
-    mod: StrategyModuleInformation,
-    web3config: Web3Config,
-    trading_strategy_api_key: Optional[str],
-    cache_path: Optional[Path],
-    test_evm_uniswap_v2_factory: Optional[str],
-    test_evm_uniswap_v2_router: Optional[str],
-    test_evm_uniswap_v2_init_code_hash: Optional[str],
-    clear_caches: bool,
+        mod: StrategyModuleInformation,
+        web3config: Web3Config,
+        trading_strategy_api_key: Optional[str],
+        cache_path: Optional[Path],
+        test_evm_uniswap_v2_factory: Optional[str],
+        test_evm_uniswap_v2_router: Optional[str],
+        test_evm_uniswap_v2_init_code_hash: Optional[str],
+        clear_caches: bool,
 ) -> Tuple[BaseClient | None, RoutingModel | None]:
     """Create a Trading Strategy client instance.
 
@@ -400,4 +422,3 @@ def create_client(
         pass
 
     return client, routing_model
-

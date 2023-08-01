@@ -23,6 +23,11 @@ from tradeexecutor.ethereum.routing_state import EthereumRoutingState
 
 logger = logging.getLogger(__name__)
 
+
+#: Use 1% slippage tolerance if we somehow miss a vaue
+DEFAULT_SLIPPAGE_TOLERANCE = 0.01
+
+
 class EthereumRoutingModel(RoutingModel):
     """A simple router that does not optimise the trade execution cost. Designed for uniswap-v2 forks.
 
@@ -71,8 +76,6 @@ class EthereumRoutingModel(RoutingModel):
         super().__init__(allowed_intermediary_pairs, reserve_token_address)
         self.chain_id = chain_id
 
-
-
     def make_direct_trade(self,
                           routing_state: EthereumRoutingState,
                           target_pair: TradingPairIdentifier,
@@ -103,6 +106,8 @@ class EthereumRoutingModel(RoutingModel):
             reserve_asset,
             reserve_amount,
         )
+
+        logger.info("Doing two wa trade %s %s %s %s", target_pair, reserve_asset, adjusted_reserve_amount, max_slippage)
 
         trade_txs = routing_state.trade_on_router_two_way(
             uniswap,
@@ -209,6 +214,13 @@ class EthereumRoutingModel(RoutingModel):
             transactions in the `routing_state`.
         """
 
+        logger.info("trade() %s %s %s %s",
+                    target_pair,
+                    reserve_asset,
+                    reserve_asset_amount,
+                    max_slippage,
+        )
+
         self.pre_trade_assertions(reserve_asset_amount, max_slippage, target_pair, reserve_asset)
 
         # Our reserves match directly the asset on trading pair
@@ -273,7 +285,9 @@ class EthereumRoutingModel(RoutingModel):
                 # Old path that does not slippage tolerances for trades
                 asset_deltas = None
 
-            logger.info("Slippage tolerance is: %f, expected asset deltas: %s", t.slippage_tolerance, asset_deltas)
+            max_slippage = t.slippage_tolerance or DEFAULT_SLIPPAGE_TOLERANCE
+
+            logger.info("Slippage tolerance is: %f, expected asset deltas: %s", max_slippage, asset_deltas)
 
             target_pair, intermediary_pair = self.route_trade(pair_universe, t)
 
@@ -288,6 +302,7 @@ class EthereumRoutingModel(RoutingModel):
                         reserve_asset_amount=t.get_raw_planned_reserve(),
                         check_balances=check_balances,
                         asset_deltas=asset_deltas,
+                        max_slippage=max_slippage,
                     )
                     if t.is_buy()
                     else self.trade(
@@ -297,6 +312,7 @@ class EthereumRoutingModel(RoutingModel):
                         reserve_asset_amount=-t.get_raw_planned_quantity(),
                         check_balances=check_balances,
                         asset_deltas=asset_deltas,
+                        max_slippage=max_slippage,
                     )
                 )
             elif t.is_buy():
@@ -307,6 +323,7 @@ class EthereumRoutingModel(RoutingModel):
                     reserve_asset_amount=t.get_raw_planned_reserve(),
                     check_balances=check_balances,
                     intermediary_pair=intermediary_pair,
+                    max_slippage=max_slippage,
                 )
             else:
                 trade_txs = self.trade(
@@ -317,6 +334,7 @@ class EthereumRoutingModel(RoutingModel):
                     check_balances=check_balances,
                     intermediary_pair=intermediary_pair,
                     asset_deltas=asset_deltas,
+                    max_slippage=max_slippage,
                 )
 
             t.set_blockchain_transactions(trade_txs)
