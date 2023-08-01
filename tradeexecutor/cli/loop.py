@@ -633,7 +633,6 @@ class ExecutionLoop:
         if self.backtest_end or self.backtest_start:
             assert self.backtest_start and self.backtest_end, f"If backtesting both start and end must be given, we have {self.backtest_start} - {self.backtest_end}"
 
-
         ts = self.backtest_start
 
         logger.info("run_backtest(): Strategy is executed in backtesting mode, starting at %s, cycle duration is %s", ts, self.cycle_duration.value)

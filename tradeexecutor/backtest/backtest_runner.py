@@ -359,6 +359,9 @@ def run_backtest(
             backtest_universe = universe
     else:
         backtest_universe = setup.universe
+
+
+
         def backtest_setup(state: State, universe: TradingStrategyUniverse, deposit_syncer: BacktestSyncer):
             pass
 
@@ -394,7 +397,7 @@ def run_backtest(
         minimum_data_lookback_range=setup.minimum_data_lookback_range,
     )
 
-    debug_dump = main_loop.run()
+    debug_dump = main_loop.run_backtest(store.state)
 
     return setup.state, backtest_universe, debug_dump
 
