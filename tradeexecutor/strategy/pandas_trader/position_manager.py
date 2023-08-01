@@ -719,7 +719,7 @@ class PositionManager:
         price = pricing_model.get_mid_price(timestamp, pair)
         return float(dollar_amount / price)
 
-    def update_stop_loss(self, timestamp, stop_loss: USDollarAmount):
+    def update_stop_loss(self, stop_loss: USDollarAmount):
         """Update the stop loss for the current position.
         
         :param timestamp:
@@ -732,7 +732,7 @@ class PositionManager:
         pos: TradingPosition = self.get_current_position()
         
         pos.trigger_updates = TriggerPriceUpdate(
-            timestamp=timestamp,
+            timestamp=self.timestamp,
             stop_loss_before = pos.stop_loss,
             stop_loss_after = stop_loss,
             mid_price = None,
