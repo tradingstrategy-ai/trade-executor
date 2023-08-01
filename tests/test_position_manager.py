@@ -154,7 +154,7 @@ def test_get_current_position(position_manager_with_open_position: PositionManag
     assert price == 1648.28488966024
 
     # Test setting the stop loss
-    pm.update_stop_loss(datetime.datetime.now(), 0.98)
+    pm.update_stop_loss(0.98)
     assert current_position.stop_loss == 0.98
 
 
