@@ -1164,3 +1164,7 @@ class ExecutionLoop:
         state = self.setup()
         return self.run_with_state(state)
 
+    def run_and_setup_backtest(self):
+        state = self.setup()
+        return self.run_backtest(state)
+

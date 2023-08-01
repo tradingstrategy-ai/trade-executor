@@ -397,7 +397,7 @@ def run_backtest(
         minimum_data_lookback_range=setup.minimum_data_lookback_range,
     )
 
-    debug_dump = main_loop.run_backtest(store.state)
+    debug_dump = main_loop.run_and_setup_backtest()
 
     return setup.state, backtest_universe, debug_dump
 
