@@ -315,13 +315,12 @@ def test_uniswap_v3_two_leg_buy_price_with_price_impact(
     weth_usdc = pair_universe.get_one_pair_from_pandas_universe(exchange.exchange_id, "WETH", "USDC")
     pair = translate_trading_pair(weth_usdc)
 
-    # Get price for 100 USDC
-    # TODO: Looks incorrect
     price_structure = pricing_method.get_buy_price(datetime.datetime.utcnow(), pair, Decimal(50_000))
     assert price_structure.price == pytest.approx(1755.115346038114, rel=APPROX_REL)
 
     mid_price = pricing_method.get_mid_price(datetime.datetime.utcnow(), pair)
     assert price_structure.price > mid_price
+    assert mid_price == pytest.approx(1699.9232380190588, rel=APPROX_REL)
     
     assert price_structure.get_total_lp_fees() == pytest.approx(150.0, rel=APPROX_REL)
 
@@ -344,6 +343,7 @@ def test_uniswap_v3_two_leg_sell_price_no_price_impact(
 
     mid_price = pricing_method.get_mid_price(datetime.datetime.utcnow(), pair)
     assert price_structure.price < mid_price
+    assert mid_price == pytest.approx(1699.9232380190588, rel=APPROX_REL)
     
     assert price_structure.get_total_lp_fees() == pytest.approx(0.0003000000000000003, rel=APPROX_REL)
 

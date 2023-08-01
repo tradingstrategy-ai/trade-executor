@@ -60,6 +60,8 @@ class UniswapV3LivePricing(EthereumPricingModel):
 
         self.uniswap_cache: Dict[TradingPairIdentifier, UniswapV3Deployment] = {}
 
+        self.epsilon = 1e-10
+
         super().__init__(
             web3,
             pair_universe,
@@ -150,15 +152,17 @@ class UniswapV3LivePricing(EthereumPricingModel):
         price = float(received / quantity)
         
         if intermediate_pair:
-            mid_price = price * (1 + self.get_pair_fee_multiplier(ts, target_pair)) * (1 + self.get_pair_fee_multiplier(ts, intermediate_pair.fee))
+            mid_price = price / (1 - self.get_pair_fee_multiplier(ts, target_pair)) / (1 - self.get_pair_fee_multiplier(ts, intermediate_pair.fee))
         else:
-            mid_price = price * (1 + self.get_pair_fee_multiplier(ts, target_pair))
+            mid_price = price / (1 - self.get_pair_fee_multiplier(ts, target_pair))
         
         assert price <= mid_price, f"Bad pricing: {price}, {mid_price}"
 
         lp_fee = float(quantity) * total_fee_pct
-        #lp_fee = (mid_price - price) * float(quantity)
-        #assert lp_fee == float(quantity) * total_fee_pct
+
+        # should have:         
+        # lp_fee = (mid_price - price)/mid_price * float(quantity)
+        assert lp_fee - (mid_price - price)/mid_price * float(quantity) < self.epsilon, f"Bad lp fee calculation: {lp_fee}, {mid_price}, {price}, {quantity}"
         
         return TradePricing(
             price=price,
@@ -250,8 +254,6 @@ class UniswapV3LivePricing(EthereumPricingModel):
 
         lp_fee = float(reserve) * total_fee_pct
 
-        # TODO: Verify mid_price calculation
-
         if intermediate_pair:        
             mid_price = price * (1 - self.get_pair_fee_multiplier(ts, intermediate_pair)) * (1 - self.get_pair_fee_multiplier(ts, target_pair))
             
@@ -262,6 +264,9 @@ class UniswapV3LivePricing(EthereumPricingModel):
             path = [target_pair]
 
         assert price >= mid_price, f"Bad pricing: {price}, {mid_price}"
+
+        # should have lp_fee = (price - mid_price)/price * float(reserve)
+        assert lp_fee - (price - mid_price)/price * float(reserve) < self.epsilon, f"Bad lp fee calculation: {lp_fee}, {mid_price}, {price}, {reserve}"
         
         return TradePricing(
             price=float(price),

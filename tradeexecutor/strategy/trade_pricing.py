@@ -138,6 +138,7 @@ class TradePricing:
             return sum(self.lp_fee)
         
         logger.warning("some trades don't have an associated lp fee")
+        
         return sum(filter(None, self.lp_fee))
     
     def get_fee_percentage(self):
