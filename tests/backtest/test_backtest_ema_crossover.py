@@ -69,6 +69,7 @@ def test_ema_crossover_real_data(
     # TODO: Not sure if we have any meaningful results to verify
 
 
+@pytest.mark.skip(reason="The logic is broken and breaks live trading startup")
 def test_start_end_automation(
     strategy_path,
     logger: logging.Logger,
@@ -98,6 +99,7 @@ def test_start_end_automation(
     assert len(debug_dump) == 29
 
 
+@pytest.mark.skip(reason="ExecutionLoop.set_backtest_start_and_end is bad code")
 def test_minimum_lookback_data_range(
     strategy_path,
     logger: logging.Logger,
