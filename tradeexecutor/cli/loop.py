@@ -636,7 +636,7 @@ class ExecutionLoop:
 
         ts = self.backtest_start
 
-        logger.info("Strategy is executed in backtesting mode, starting at %s, cycle duration is %s", ts, self.cycle_duration.value)
+        logger.info("run_backtest(): Strategy is executed in backtesting mode, starting at %s, cycle duration is %s", ts, self.cycle_duration.value)
 
         cycle = state.cycle
         universe = None
@@ -778,6 +778,13 @@ class ExecutionLoop:
         :raise LiveSchedulingTaskFailed:
             If any of live trading concurrent tasks crashes with an exception
         """
+
+        logger.info("run_luve(): Strategy is executed in live trading mode")
+
+        # Safety checks
+        assert not self.is_backtest()
+        assert self.backtest_start is None
+        assert self.backtest_end is None
 
         ts = datetime.datetime.utcnow()
 
@@ -1093,8 +1100,9 @@ class ExecutionLoop:
         # TODO: Pass this as a constructor argument
         # TODO: Accounting checks only supports Enzyme currently
         self.runner.accounting_checks = self.check_accounts and isinstance(self.sync_model, EnzymeVaultSyncModel)
-        
-        self.set_start_and_end()
+
+        # TODO: Do this only when doing backtesting in a notebook
+        # self.set_start_and_end()
 
         # Load cycle_duration from v0.1 strategies,
         # if not given from the command line to override backtesting data
@@ -1105,7 +1113,7 @@ class ExecutionLoop:
 
         return state
 
-    def set_start_and_end(self):
+    def set_backtest_start_and_end(self):
         """Set up backtesting start and end times. If no start, end, or lookback info provided, will set automatically to the entire available data range."""
         if self.minimum_data_lookback_range is not None:
             assert not self.backtest_start or not self.backtest_end, "You must not give start_at and end_at if you give minimum_data_lookback_range. minimum_data_lookback_range automatically ends at the current time."

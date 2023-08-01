@@ -1526,6 +1526,7 @@ def load_pair_data_for_single_exchange(
             end_time=end_time,
         )
 
+        stop_loss_candles = None
         if stop_loss_time_bucket:
             if execution_context.live_trading:
                 logger.info(f"Loading granular price data for stop loss/take profit skipped in live trading as live price events from the JSON-RPC endpoint are used")
@@ -1538,8 +1539,6 @@ def load_pair_data_for_single_exchange(
                     start_time=start_time,
                     end_time=end_time,
                 )
-        else:
-            stop_loss_candles = None
 
         if liquidity:
             raise NotImplemented("Partial liquidity data loading is not yet supported")
