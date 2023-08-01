@@ -68,62 +68,62 @@ def test_ema_crossover_real_data(
 
     # TODO: Not sure if we have any meaningful results to verify
 
+"""The tests commented out for now, since the automated backtesting range was removed
+due to errors in live strategies"""
 
-def test_start_end_automation(
-    strategy_path,
-    logger: logging.Logger,
-    persistent_test_client,
-    ):
-    """Check that EMA crossover strategy against real data."""
+# def test_start_end_automation(
+#     strategy_path,
+#     logger: logging.Logger,
+#     persistent_test_client,
+#     ):
+#     """Check that EMA crossover strategy against real data."""
 
-    client = persistent_test_client
+#     client = persistent_test_client
 
-    # Run backtest over 6 months, daily
-    setup = setup_backtest(
-        strategy_path,
-        initial_deposit=10_000,
-        cycle_duration=CycleDuration.cycle_30d,  # Override to use monthly cycles to speed up the test
-        candle_time_frame=TimeBucket.d30,  # Override to use monthly data to speed up the test
-    )
+#     # Run backtest over 6 months, daily
+#     setup = setup_backtest(
+#         strategy_path,
+#         initial_deposit=10_000,
+#         cycle_duration=CycleDuration.cycle_30d,  # Override to use monthly cycles to speed up the test
+#         candle_time_frame=TimeBucket.d30,  # Override to use monthly data to speed up the test
+#     )
 
-    state, universe, debug_dump = run_backtest(setup, client)
+#     state, universe, debug_dump = run_backtest(setup, client)
 
-    start, end = state.get_strategy_start_and_end()
+#     start, end = state.get_strategy_start_and_end()
 
-    assert start == pd.Timestamp('2021-04-01 00:00:00')
-    assert end >= pd.Timestamp('2023-06-20 00:00:00')  # end is dynamic
+#     assert start == pd.Timestamp('2021-04-01 00:00:00')
+#     assert end >= pd.Timestamp('2023-06-20 00:00:00')  # end is dynamic
 
-    # TODO: No idea what changed this?
-    # assert len(debug_dump) == 28
-    assert len(debug_dump) == 29
+#     assert len(debug_dump) >= 28  # since end is dynamic, we can't know the exact number of cycles
 
 
-def test_minimum_lookback_data_range(
-    strategy_path,
-    logger: logging.Logger,
-    persistent_test_client,
-    ):
-    """Check that EMA crossover strategy against real data."""
+# def test_minimum_lookback_data_range(
+#     strategy_path,
+#     logger: logging.Logger,
+#     persistent_test_client,
+#     ):
+#     """Check that EMA crossover strategy against real data."""
 
-    client = persistent_test_client
+#     client = persistent_test_client
 
-    # Run backtest over 6 months, daily
-    setup = setup_backtest(
-        strategy_path,
-        initial_deposit=10_000,
-        cycle_duration=CycleDuration.cycle_1d,  # Override to use monthly cycles to speed up the test
-        candle_time_frame=TimeBucket.d1,  # Override to use monthly data to speed up the test
-        minimum_data_lookback_range=datetime.timedelta(days=23),
-    )
+#     # Run backtest over 6 months, daily
+#     setup = setup_backtest(
+#         strategy_path,
+#         initial_deposit=10_000,
+#         cycle_duration=CycleDuration.cycle_1d,  # Override to use monthly cycles to speed up the test
+#         candle_time_frame=TimeBucket.d1,  # Override to use monthly data to speed up the test
+#         minimum_data_lookback_range=datetime.timedelta(days=23),
+#     )
 
-    state, universe, debug_dump = run_backtest(setup, client)
+#     state, universe, debug_dump = run_backtest(setup, client)
 
-    start, end = state.get_strategy_start_and_end()
+#     start, end = state.get_strategy_start_and_end()
 
-    # both start and end are dynamic
-    assert start >= pd.Timestamp('2023-07-03 00:00:00')
-    assert end >= pd.Timestamp('2023-07-26 00:00:00')
-    assert end - start == pd.Timedelta('23 days 00:00:00')
+#     # both start and end are dynamic
+#     assert start >= pd.Timestamp('2023-07-03 00:00:00')
+#     assert end >= pd.Timestamp('2023-07-26 00:00:00')
+#     assert end - start == pd.Timedelta('23 days 00:00:00')
 
-    assert len(debug_dump) == 24
+#     assert len(debug_dump) == 24
     
