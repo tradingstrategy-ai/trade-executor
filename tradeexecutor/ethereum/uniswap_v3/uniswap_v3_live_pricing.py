@@ -159,6 +159,7 @@ class UniswapV3LivePricing(EthereumPricingModel):
                 target_pair.pool_address,
                 block_identifier=block_number,
             )
+            mid_price = float(mid_price)
         
         assert price <= mid_price, f"Bad pricing: {price}, {mid_price}"
 
@@ -271,7 +272,7 @@ class UniswapV3LivePricing(EthereumPricingModel):
                 target_pair.pool_address,
                 block_identifier=block_number,
             )
-
+            mid_price = float(mid_price)
             path = [target_pair]
 
         assert price >= mid_price, f"Bad pricing: {price}, {mid_price}"
