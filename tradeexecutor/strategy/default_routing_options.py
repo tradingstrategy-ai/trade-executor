@@ -185,7 +185,7 @@ class TradeRouting(enum.Enum):
     def is_uniswap_v2(self) -> bool:
         """Do we neeed Uniswap v2 routing model"""
 
-        return self not in self.get_uni_v3_elements() | {TradeRouting.ignore, TradeRouting.user_supplied_routing_model}
+        return self not in self.get_uniswap_v3_elements() | {TradeRouting.ignore, TradeRouting.user_supplied_routing_model}
 
     def is_uniswap_v3(self) -> bool:
         """Do we neeed Uniswap v3 routing model"""
@@ -194,11 +194,13 @@ class TradeRouting(enum.Enum):
     
     @staticmethod
     def get_uniswap_v3_elements() -> set:
-        return {TradeRouting.uniswap_v3_usdc_poly,
+        return {
+            TradeRouting.uniswap_v3_usdc_poly,
             TradeRouting.uniswap_v3_usdc,
             TradeRouting.uniswap_v3_usdt_poly,
             TradeRouting.uniswap_v3_usdt,
             TradeRouting.uniswap_v3_dai,
             TradeRouting.uniswap_v3_busd,
             TradeRouting.uniswap_v3_usdc_arbitrum,
-            TradeRouting.uniswap_v3_usdt_arbitrum}
+            TradeRouting.uniswap_v3_usdt_arbitrum,
+        }
