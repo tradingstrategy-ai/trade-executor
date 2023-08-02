@@ -428,8 +428,9 @@ class EthereumExecutionModel(ExecutionModel):
                     executed_price=float(price),
                     executed_amount=executed_amount,
                     executed_reserve=executed_reserve,
-                    lp_fees=0,
-                    native_token_price=1.0,
+                    lp_fees=0,  # TODO fix
+                    native_token_price=1.0,  # TODO fix
+                    cost_of_gas=result.get_cost_of_gas(),
                 )
             else:
                 report_failure(ts, state, trade, stop_on_execution_failure)

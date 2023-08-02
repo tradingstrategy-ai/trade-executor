@@ -337,6 +337,11 @@ class TradeExecution:
     #: TradePricing instance can refer to more than one swap
     price_structure: Optional[TradePricing] = None
 
+    #: Cost of gas in terms of native token
+    #:
+    #: To get usd amount, use :py:meth:`get_cost_of_gas_usd`
+    cost_of_gas: Optional[Decimal] = None
+
     def __repr__(self):
         if self.is_buy():
             return f"<Buy #{self.trade_id} {self.planned_quantity} {self.pair.base.token_symbol} at {self.planned_price}, {self.get_status().name}>"
@@ -778,6 +783,7 @@ class TradeExecution:
                      lp_fees: USDollarAmount,
                      native_token_price: USDollarAmount,
                      force=False,
+                     cost_of_gas: USDollarAmount = None,
                      ):
         """Mark trade success.
 
@@ -789,12 +795,17 @@ class TradeExecution:
             Do not check if we are in the correct previous state (broadcasted).
 
             Used in the accounting corrections.
+
+        :param cost_of_gas:
+            How much we paid for gas for this trade in terms of native token e.g. Eth in Ethereum.
         """
         if not force:
             assert self.get_status() == TradeStatus.broadcasted, f"Cannot mark trade success if it is not broadcasted. Current status: {self.get_status()}"
         assert isinstance(executed_quantity, Decimal)
         assert type(executed_price) == float, f"Received executed price: {executed_price} {type(executed_price)}"
         assert executed_at.tzinfo is None
+        assert cost_of_gas, "Cost of gas must be set for successful trades"
+
         self.executed_at = executed_at
         self.executed_quantity = executed_quantity
         self.executed_reserve = executed_reserve
@@ -802,6 +813,7 @@ class TradeExecution:
         self.lp_fees_paid = lp_fees
         self.native_token_price = native_token_price
         self.reserve_currency_allocated = Decimal(0)
+        self.cost_of_gas = cost_of_gas
 
     def mark_failed(self, failed_at: datetime.datetime):
         assert self.get_status() == TradeStatus.broadcasted
@@ -869,3 +881,9 @@ class TradeExecution:
             AssetDelta(input_asset.address, -input_asset.convert_to_raw_amount(input_amount)),
             AssetDelta(output_asset.address, output_asset.convert_to_raw_amount(output_amount * Decimal(1 - self.slippage_tolerance))),
         ]
+    
+    def get_cost_of_gas_usd(self):
+        """Get the cost of gas for this trade in USD"""
+        assert self.cost_of_gas, "Cost of gas must be set to work out cost of gas in USD"
+        assert self.native_token_price, "Native token price must be set to work out cost of gas in USD"
+        return self.cost_of_gas * self.native_token_price

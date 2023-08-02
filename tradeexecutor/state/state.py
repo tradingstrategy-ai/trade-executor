@@ -343,7 +343,9 @@ class State:
                            executed_amount: Decimal,
                            executed_reserve: Decimal,
                            lp_fees: USDollarAmount,
-                           native_token_price: USDollarPrice):
+                           native_token_price: USDollarPrice,
+                           cost_of_gas: float,
+                        ):
         """"""
 
         position = self.portfolio.find_position_for_trade(trade)
@@ -354,7 +356,7 @@ class State:
             assert executed_reserve > 0, f"Executed reserve must be positive for sell, got amount:{executed_amount}, reserve:{executed_reserve}"
             assert executed_amount < 0, f"Executed amount must be negative for sell, got amount:{executed_amount}, reserve:{executed_reserve}"
 
-        trade.mark_success(executed_at, executed_price, executed_amount, executed_reserve, lp_fees, native_token_price)
+        trade.mark_success(executed_at, executed_price, executed_amount, executed_reserve, lp_fees, native_token_price, cost_of_gas)
 
         if trade.is_sell():
             self.portfolio.return_capital_to_reserves(trade)
