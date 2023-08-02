@@ -48,7 +48,7 @@ UNISWAP_V2_FEE = 0.0030
 # init_code_hash not applicable to v3 0xe34f199b19b2b4f47f68442619d555527d244f78a3297ea89325f843f87b8b54
 # not really a map, change name? 
 # V2 contracts (for router and quoter), not supported yet
-# Same address_map for ethereum and polygon
+# Same address_map for ethereum, polygon and arbitrum
 # TODO create address_map class
 uniswap_v3_address_map = {
     "factory": "0x1F98431c8aD98523631AE4a59f267346ea31F984",
