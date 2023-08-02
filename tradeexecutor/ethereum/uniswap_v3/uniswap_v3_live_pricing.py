@@ -104,6 +104,8 @@ class UniswapV3LivePricing(EthereumPricingModel):
         # In three token trades, be careful to use the correct reserve token
         quantity_raw = target_pair.base.convert_to_raw_amount(quantity)
 
+        reverse_token_order = target_pair.has_reverse_token_order()
+
         if intermediate_pair:
             path = [base_addr, intermediate_addr, quote_addr] 
             fees = [intermediate_pair.fee, target_pair.fee]
@@ -158,6 +160,7 @@ class UniswapV3LivePricing(EthereumPricingModel):
                 self.web3,
                 target_pair.pool_address,
                 block_identifier=block_number,
+                reverse_token_order=reverse_token_order,
             )
             mid_price = float(mid_price)
         
@@ -201,6 +204,8 @@ class UniswapV3LivePricing(EthereumPricingModel):
         target_pair, intermediate_pair = self.routing_model.route_pair(self.pair_universe, pair)
 
         base_addr, quote_addr, intermediate_addr = route_tokens(target_pair, intermediate_pair)
+
+        reverse_token_order = target_pair.has_reverse_token_order()
 
         # In three token trades, be careful to use the correct reserve token
         if intermediate_pair is not None:
@@ -271,6 +276,7 @@ class UniswapV3LivePricing(EthereumPricingModel):
                 self.web3,
                 target_pair.pool_address,
                 block_identifier=block_number,
+                reverse_token_order=reverse_token_order,
             )
             mid_price = float(mid_price)
             path = [target_pair]

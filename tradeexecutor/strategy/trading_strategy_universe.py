@@ -1027,6 +1027,7 @@ def translate_trading_pair(pair: DEXPair) -> TradingPairIdentifier:
         info_url=pair.get_trading_pair_page_url(),
         exchange_address=pair.exchange_address,
         fee=fee,
+        reverse_token_order=pair.token0_symbol != pair.base_token_symbol,
     )
 
 
