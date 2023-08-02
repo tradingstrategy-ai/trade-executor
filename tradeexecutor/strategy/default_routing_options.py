@@ -154,6 +154,20 @@ class TradeRouting(enum.Enum):
     #: - Open positions with USDC quote token.
     uniswap_v3_usdt_poly = "uniswap_v3_usdt_poly"
 
+    #: Two or three legged trades on Uniswap v3 on Arbitrum mainnet
+    #:
+    #: - Open positions with USDC quote token.
+    #:
+    #: - Open positions with WETH quote token.
+    uniswap_v3_usdc_arbitrum = "uniswap_v3_usdc_arbitrum"
+
+    #: Two or three legged trades on Uniswap v3 on Arbitrum mainnet
+    #:
+    #: - Open positions with USDT quote token.
+    #:
+    #: - Open positions with WETH quote token.
+    uniswap_v3_usdt_arbitrum = "uniswap_v3_usdt_arbitrum"
+
     #: Use user supplied routing model
     #:
     #: The routing table is constructed by the developer in the
@@ -171,19 +185,20 @@ class TradeRouting(enum.Enum):
     def is_uniswap_v2(self) -> bool:
         """Do we neeed Uniswap v2 routing model"""
 
-        # TODO: Complete the list
-        return self in (
-            TradeRouting.pancakeswap_busd,
-            TradeRouting.pancakeswap_usdc,
-            TradeRouting.trader_joe_usdc,
-            TradeRouting.quickswap_usdc
-        )
+        return self not in self.get_uni_v3_elements() | {TradeRouting.ignore, TradeRouting.user_supplied_routing_model}
 
     def is_uniswap_v3(self) -> bool:
         """Do we neeed Uniswap v3 routing model"""
 
-        # TODO: Complete the list
-        return self in (
-            TradeRouting.uniswap_v3_usdc_poly,
+        return self in self.get_uniswap_v3_elements()
+    
+    @staticmethod
+    def get_uniswap_v3_elements() -> set:
+        return {TradeRouting.uniswap_v3_usdc_poly,
             TradeRouting.uniswap_v3_usdc,
-        )
+            TradeRouting.uniswap_v3_usdt_poly,
+            TradeRouting.uniswap_v3_usdt,
+            TradeRouting.uniswap_v3_dai,
+            TradeRouting.uniswap_v3_busd,
+            TradeRouting.uniswap_v3_usdc_arbitrum,
+            TradeRouting.uniswap_v3_usdt_arbitrum}
