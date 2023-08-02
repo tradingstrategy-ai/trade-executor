@@ -145,6 +145,9 @@ class EthereumPricingModel(PricingModel):
     
     def validate_mid_price_for_sell(self, lp_fee, mid_price, price, quantity):
         """Validate the mid price calculation for a sell trade.
+
+        Should basically have:
+            lp_fee = (mid_price - price)/mid_price * float(quantity)
         
         :param lp_fee:
             The fee that is paid to the LPs.
@@ -162,6 +165,9 @@ class EthereumPricingModel(PricingModel):
 
     def validate_mid_price_for_buy(self, lp_fee, price, mid_price, reserve):
         """Validate the mid price calculation for a buy trade.
+
+        Should basically have:
+            lp_fee = (price - mid_price)/price * float(reserve)
         
         :param lp_fee:
             The fee that is paid to the LPs.
