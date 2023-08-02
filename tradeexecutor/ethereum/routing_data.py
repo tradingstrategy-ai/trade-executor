@@ -43,6 +43,22 @@ TRADER_JOE_FEE = 0.0030
 PANCAKE_FEE = 0.0025
 UNISWAP_V2_FEE = 0.0030
 
+# Allowed exchanges as factory -> router pairs,
+# by their smart contract addresses
+# init_code_hash not applicable to v3 0xe34f199b19b2b4f47f68442619d555527d244f78a3297ea89325f843f87b8b54
+# not really a map, change name? 
+# V2 contracts (for router and quoter), not supported yet
+# Same address_map for ethereum and polygon
+# TODO create address_map class
+uniswap_v3_address_map = {
+    "factory": "0x1F98431c8aD98523631AE4a59f267346ea31F984",
+    "router": "0xE592427A0AEce92De3Edee1F18E0157C05861564",
+    "position_manager": "0xC36442b4a4522E871399CD717aBDD847Ab11FE88",
+    "quoter": "0xb27308f9F90D607463bb33eA1BeBb41C27CE5AB6"
+    # "router02":"0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45",
+    # "quoterV2":"0x61fFE014bA17989E743c5F6cB21bF9697530B21e"
+} 
+
 
 class RoutingData(TypedDict):
     """Describe raw smart contract order routing data."""
@@ -390,23 +406,9 @@ def get_uniswap_v3_ethereum_default_routing_parameters(
     else:
         raise NotImplementedError()
 
-    # Allowed exchanges as factory -> router pairs,
-    # by their smart contract addresses
-    # init_code_hash not applicable to v3 0xe34f199b19b2b4f47f68442619d555527d244f78a3297ea89325f843f87b8b54
-    # not really a map, change name? 
-    # V2 contracts (for router and quoter), not supported yet
-    address_map = {
-        "factory": "0x1F98431c8aD98523631AE4a59f267346ea31F984",
-        "router": "0xE592427A0AEce92De3Edee1F18E0157C05861564",
-        "position_manager": "0xC36442b4a4522E871399CD717aBDD847Ab11FE88",
-        "quoter": "0xb27308f9F90D607463bb33eA1BeBb41C27CE5AB6"
-        # "router02":"0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45",
-        # "quoterV2":"0x61fFE014bA17989E743c5F6cB21bF9697530B21e"
-    }
-
     return {
         "chain_id": ChainId.ethereum,
-        "address_map": address_map,
+        "address_map": uniswap_v3_address_map,
         "allowed_intermediary_pairs": allowed_intermediary_pairs,
         "reserve_token_address": reserve_token_address,
         # USDC, WETH, USDT
@@ -445,24 +447,10 @@ def get_uniswap_v3_polygon_default_routing_parameters(
             "0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270": "0x9b08288c3be4f62bbf8d1c20ac9c5e6f9467d8b7",
         }
 
-    # Allowed exchanges as factory -> router pairs,
-    # by their smart contract addresses
-    # init_code_hash not applicable to v3 0xe34f199b19b2b4f47f68442619d555527d244f78a3297ea89325f843f87b8b54
-    # not really a map, change name? 
-    # V2 contracts (for router and quoter), not supported yet
-    # Same address_map for ethereum and polygon
-    address_map = {
-        "factory": "0x1F98431c8aD98523631AE4a59f267346ea31F984",
-        "router": "0xE592427A0AEce92De3Edee1F18E0157C05861564",
-        "position_manager": "0xC36442b4a4522E871399CD717aBDD847Ab11FE88",
-        "quoter": "0xb27308f9F90D607463bb33eA1BeBb41C27CE5AB6"
-        # "router02":"0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45",
-        # "quoterV2":"0x61fFE014bA17989E743c5F6cB21bF9697530B21e"
-    } # TODO create address_map class
-
+    
     return {
         "chain_id": ChainId.polygon,
-        "address_map": address_map,
+        "address_map": uniswap_v3_address_map,
         "allowed_intermediary_pairs": allowed_intermediary_pairs,
         "reserve_token_address": reserve_token_address,
         # USDC, WMATIC, USDT
@@ -501,24 +489,9 @@ def get_uniswap_v3_arbitrum_default_routing_parameters(
             "0x82af49447d8a07e3bd95bd0d56f35241523fbab1": "0x641c00a822e8b671738d32a431a4fb6074e5c79d",
         }
 
-    # Allowed exchanges as factory -> router pairs,
-    # by their smart contract addresses
-    # init_code_hash not applicable to v3 0xe34f199b19b2b4f47f68442619d555527d244f78a3297ea89325f843f87b8b54
-    # not really a map, change name? 
-    # V2 contracts (for router and quoter), not supported yet
-    # Same address_map for ethereum and polygon and arbitrum
-    address_map = {
-        "factory": "0x1F98431c8aD98523631AE4a59f267346ea31F984",
-        "router": "0xE592427A0AEce92De3Edee1F18E0157C05861564",
-        "position_manager": "0xC36442b4a4522E871399CD717aBDD847Ab11FE88",
-        "quoter": "0xb27308f9F90D607463bb33eA1BeBb41C27CE5AB6"
-        # "router02":"0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45",
-        # "quoterV2":"0x61fFE014bA17989E743c5F6cB21bF9697530B21e"
-    } # TODO create address_map class
-
     return {
         "chain_id": ChainId.arbitrum,
-        "address_map": address_map,
+        "address_map": uniswap_v3_address_map,
         "allowed_intermediary_pairs": allowed_intermediary_pairs,
         "reserve_token_address": reserve_token_address,
         # USDC, WETH, USDT
