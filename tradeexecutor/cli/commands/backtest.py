@@ -95,7 +95,7 @@ def backtest(
         name = f"{id} backtest"
 
     if not log_level:
-        log_level = logging.WARNING
+        log_level = logging.INFO
 
     # Make sure unit tests run logs do not get polluted
     # Don't touch any log levels, but
