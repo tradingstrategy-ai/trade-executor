@@ -242,7 +242,9 @@ class TradingPairIdentifier:
     def has_reverse_token_order(self) -> bool:
         """Has Uniswap smart contract a flipped token order.
 
-        - Is token0 base token and so on
+        - Is token0 base token or token0 is the quote token
+
+        See :py:func:`eth_defi.uniswap_v3.price.get_onchain_price`
         """
         assert self.reverse_token_order is not None, f"reverse_token_order not set for: {self}"
         return self.reverse_token_order

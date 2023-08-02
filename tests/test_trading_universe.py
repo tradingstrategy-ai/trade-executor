@@ -121,7 +121,7 @@ def test_reverse_token_order(persistent_test_client):
 
     pairs = (
         (ChainId.polygon, "uniswap-v3", "WETH", "USDC", 0.0005),  # https://tradingstrategy.ai/trading-view/polygon/uniswap-v3/eth-usdc-fee-5
-        (ChainId.polygon, "uniswap-v3", "WMATIC", "USDC", 0.0005),  # Matic
+        (ChainId.polygon, "uniswap-v3", "WMATIC", "USDC", 0.0005),  # https://tradingstrategy.ai/trading-view/polygon/uniswap-v3/matic-usdc-fee-5
     )
 
     universe = TradingStrategyUniverse.create_multichain_universe_by_pair_descriptions(
