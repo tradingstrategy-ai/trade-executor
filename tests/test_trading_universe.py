@@ -99,3 +99,39 @@ def test_create_multipair_universe_by_pair_descriptions(persistent_test_client):
     assert universe.universe.pairs.get_count() == 10
     assert universe.universe.candles.get_pair_count() == 10
     assert universe.reserve_assets[0].token_symbol == "USDC"
+
+
+def test_reverse_token_order(persistent_test_client):
+    """Check for a reverse token order."""
+
+    client = persistent_test_client
+    candle_time_bucket = TimeBucket.d7
+
+    execution_context = ExecutionContext(
+        ExecutionMode.unit_testing_trading,
+        timed_task,
+    )
+
+    dataset = load_all_data(
+        client,
+        candle_time_bucket,
+        execution_context,
+        UniverseOptions(),
+    )
+
+    pairs = (
+        (ChainId.polygon, "uniswap-v3", "WETH", "USDC", 0.0005),  # https://tradingstrategy.ai/trading-view/polygon/uniswap-v3/eth-usdc-fee-5
+        (ChainId.polygon, "uniswap-v3", "WMATIC", "USDC", 0.0005),  # https://tradingstrategy.ai/trading-view/polygon/uniswap-v3/matic-usdc-fee-5
+    )
+
+    universe = TradingStrategyUniverse.create_multichain_universe_by_pair_descriptions(
+        dataset,
+        pairs,
+        "USDC",
+    )
+
+    pair = universe.get_pair_by_address("0x45dda9cb7c25131df268515131f647d726f50608")
+    assert pair.has_reverse_token_order()
+
+    pair = universe.get_pair_by_address("0xa374094527e1673a86de625aa59517c5de346d32")
+    assert not pair.has_reverse_token_order()

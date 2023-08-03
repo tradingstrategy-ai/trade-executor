@@ -20,7 +20,7 @@ from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniv
 from tradeexecutor.strategy.trade_pricing import TradePricing
 from tradingstrategy.pair import PandasPairUniverse
 
-from eth_defi.uniswap_v3.price import UniswapV3PriceHelper, estimate_sell_received_amount, estimate_buy_received_amount
+from eth_defi.uniswap_v3.price import UniswapV3PriceHelper, estimate_sell_received_amount, estimate_buy_received_amount, get_onchain_price
 from eth_defi.uniswap_v3.deployment import UniswapV3Deployment
 
 logger = logging.getLogger(__name__)
@@ -107,6 +107,8 @@ class UniswapV3LivePricing(EthereumPricingModel):
         # In three token trades, be careful to use the correct reserve token
         quantity_raw = target_pair.base.convert_to_raw_amount(quantity)
 
+        reverse_token_order = target_pair.has_reverse_token_order()
+
         if intermediate_pair:
             path = [base_addr, intermediate_addr, quote_addr] 
             fees = [intermediate_pair.fee, target_pair.fee]
@@ -155,7 +157,15 @@ class UniswapV3LivePricing(EthereumPricingModel):
         if intermediate_pair:
             mid_price = price * (1 + self.get_pair_fee_multiplier(ts, target_pair)) * (1 + self.get_pair_fee_multiplier(ts, intermediate_pair.fee))
         else:
-            mid_price = price * (1 + self.get_pair_fee_multiplier(ts, target_pair))
+            # Read mid-price at the mid point of Uni v3 liquidity,
+            # at our block number
+            mid_price = get_onchain_price(
+                self.web3,
+                target_pair.pool_address,
+                block_identifier=block_number,
+                reverse_token_order=reverse_token_order,
+            )
+            mid_price = float(mid_price)
         
         assert price <= mid_price, f"Bad pricing: {price}, {mid_price}"
 
@@ -197,6 +207,8 @@ class UniswapV3LivePricing(EthereumPricingModel):
         target_pair, intermediate_pair = self.routing_model.route_pair(self.pair_universe, pair)
 
         base_addr, quote_addr, intermediate_addr = route_tokens(target_pair, intermediate_pair)
+
+        reverse_token_order = target_pair.has_reverse_token_order()
 
         # In three token trades, be careful to use the correct reserve token
         if intermediate_pair is not None:
@@ -255,13 +267,21 @@ class UniswapV3LivePricing(EthereumPricingModel):
 
         # TODO: Verify mid_price calculation
 
-        if intermediate_pair:        
+        if intermediate_pair:
+            # TODO: Confirm mid-price calculations
             mid_price = price * (1 - self.get_pair_fee_multiplier(ts, intermediate_pair)) * (1 - self.get_pair_fee_multiplier(ts, target_pair))
             
             path = [intermediate_pair, target_pair]
         else:
-            mid_price = price * (1 - fee)
-            
+            # Read mid-price at the mid point of Uni v3 liquidity,
+            # at our block number
+            mid_price = get_onchain_price(
+                self.web3,
+                target_pair.pool_address,
+                block_identifier=block_number,
+                reverse_token_order=reverse_token_order,
+            )
+            mid_price = float(mid_price)
             path = [target_pair]
 
         assert price >= mid_price, f"Bad pricing: {price}, {mid_price}"
