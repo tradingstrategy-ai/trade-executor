@@ -542,5 +542,5 @@ def pairs(weth_usdc_trading_pair, pepe_usdc_trading_pair, bob_usdc_trading_pair,
 
 
 @pytest.fixture()
-def multipair_universe(web3, uniswap_v2_exchange, pairs) -> PandasPairUniverse:
-    return create_pair_universe(web3, uniswap_v2_exchange, pairs)
+def multipair_universe(web3, pairs) -> PandasPairUniverse:
+    return create_pair_universe(web3, pairs=pairs)

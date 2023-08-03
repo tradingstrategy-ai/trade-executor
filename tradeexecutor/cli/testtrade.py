@@ -56,7 +56,9 @@ def make_test_trade(
         raise RuntimeError("You are using a multipair universe. Provide pair argument to perform a test trade on a specific pair.")
     
     if pair:
-        raw_pair = data_universe.pairs.get_pair(*pair)
+        assert data_universe.exchange_universe is not None, "You need to provide exchanges for the universe"
+
+        raw_pair = data_universe.pairs.get_pair(*pair, exchange_universe=data_universe.exchange_universe)
     else:
         raw_pair = data_universe.pairs.get_single()
     
