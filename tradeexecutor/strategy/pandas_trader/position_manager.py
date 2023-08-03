@@ -731,13 +731,13 @@ class PositionManager:
 
         pos: TradingPosition = self.get_current_position()
         
-        pos.trigger_updates = TriggerPriceUpdate(
+        pos.trigger_updates.append(TriggerPriceUpdate(
             timestamp=self.timestamp,
             stop_loss_before = pos.stop_loss,
             stop_loss_after = stop_loss,
             mid_price = None,
             take_profit_before = pos.take_profit,
             take_profit_after = pos.take_profit,  # No changes to take profit
-        )
+        ))
 
         pos.stop_loss = stop_loss
