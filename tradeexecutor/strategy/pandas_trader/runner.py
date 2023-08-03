@@ -151,10 +151,10 @@ class PandasTraderRunner(StrategyRunner):
     
     def get_image_and_dark_image(self, figure, width, height):
         """Renders the figure as a PNG image and a dark theme PNG image."""
-        image = render_plotly_figure_as_image_file(figure, width=width, height=height, format="png")
+        image = render_plotly_figure_as_image_file(figure, width=width, height=height, format="svg")
         
         figure.update_layout(template="plotly_dark")
-        image_dark = render_plotly_figure_as_image_file(figure, width=width, height=height, format="png")
+        image_dark = render_plotly_figure_as_image_file(figure, width=width, height=height, format="svg")
 
         return image, image_dark 
 
