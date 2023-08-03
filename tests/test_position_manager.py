@@ -156,6 +156,11 @@ def test_get_current_position(position_manager_with_open_position: PositionManag
     # Test setting the stop loss
     pm.update_stop_loss(0.98)
     assert current_position.stop_loss == 0.98
+    assert current_position.trigger_updates.timestamp == datetime.datetime(2021,6,2,0,0)
+    assert current_position.trigger_updates.stop_loss_before == None
+    assert current_position.trigger_updates.stop_loss_after == 0.98
+    assert current_position.trigger_updates.take_profit_before == None
+    assert current_position.trigger_updates.take_profit_after == None
 
 
 def test_estimate_fee_not_available(synthetic_universe, position_manager):
