@@ -100,7 +100,7 @@ def test_route_arbitrum_usdc(execution_context):
     assert routing.chain_id == ChainId.arbitrum
 
 def test_route_mismatch_reserve_currency_pancake(execution_context):
-    """Test Pancake BUSD routing."""
+    """Test Pancake BUSD routing. """
     with pytest.raises(MismatchReserveCurrency):
         get_routing_model(execution_context, TradeRouting.pancakeswap_busd, ReserveCurrency.usdc)
 
