@@ -32,6 +32,12 @@ logger = logging.getLogger(__name__)
 CLOSED_POSITION_DUST_EPSILON = 0.0001
 
 
+class PositionType(str, enum.Enum):
+    LEVERAGED_LONG = "leveraged_long"
+    LEVERAGED_SHORT = "leveraged_short"
+    SUPPLY_CREDIT = "supply_credit"
+
+
 @dataclass_json
 @dataclass(slots=True, frozen=True)
 class TriggerPriceUpdate:
@@ -217,6 +223,10 @@ class TradingPosition(GenericPosition):
     #:
     interest: Optional[Interest] = None
 
+    #: Position type
+    #:
+    position_type: PositionType = PositionType.LEVERAGED_LONG
+
     def __repr__(self):
         if self.is_open():
             return f"<Open position #{self.position_id} {self.pair} ${self.get_value()}>"
@@ -308,11 +318,12 @@ class TradingPosition(GenericPosition):
         We consider the position long if the first trade is buy.
         """
         assert len(self.trades) > 0, "Cannot determine if position is long or short because there are no trades"
-        return self.get_first_trade().is_buy()
+        return self.position_type == PositionType.LEVERAGED_LONG
+        # return self.get_first_trade().is_buy()
 
     def is_short(self) -> bool:
         """Is this position short on the underlying base asset."""
-        return not self.is_long()
+        return self.position_type == PositionType.LEVERAGED_SHORT
 
     def is_stop_loss(self) -> bool:
         """Was this position ended with stop loss trade"""
@@ -1125,6 +1136,13 @@ class TradingPosition(GenericPosition):
         """
         return sum_decimal([b.quantity for b in self.balance_updates.values() if b.cause == BalanceUpdateCause.interest])
 
-class PositionType(enum.Enum):
-    token_hold = "token_hold"
-    lending_pool_hold = "lending_pool_hold"
+    def get_interest(self) -> USDollarAmount:
+        "Denormalised variable and/or sum of accrued interest events"
+        pass
+
+    def update_accrured_interest(self):
+        """
+        - Updates the interest based on the last block range/timestamp
+        - BalanceUpdateEvent for interest updates that contains individual live trading balance update events
+        """
+        pass

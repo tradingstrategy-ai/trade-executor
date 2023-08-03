@@ -54,6 +54,9 @@ class TradeType(enum.Enum):
     #: Lending protocol supplying credit
     supply_credit = "supply_credit"
 
+    leveraged_long = "leveraged_long"
+    leveraged_short = "leveraged_short"
+
 
 class TradeStatus(enum.Enum):
 

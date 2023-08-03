@@ -744,3 +744,12 @@ class PositionManager:
         ))
 
         position.stop_loss = stop_loss
+
+    def open_supply_credit(self, value: USDollarAmount):
+        pass
+
+    def close_supply_credit(self, position: TradingPosition):
+        pass
+
+    def close_supply_credit_all(self):
+        pass
