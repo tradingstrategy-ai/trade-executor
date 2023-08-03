@@ -153,6 +153,16 @@ def test_get_current_position(position_manager_with_open_position: PositionManag
     price = current_position.get_opening_price()
     assert price == 1648.28488966024
 
+    # Test setting the stop loss
+    pm.update_stop_loss(0.98)
+    assert current_position.stop_loss == 0.98
+    assert current_position.trigger_updates[0].timestamp == datetime.datetime(2021,6,2,0,0)
+    assert current_position.trigger_updates[0].stop_loss_before is None
+    assert current_position.trigger_updates[0].stop_loss_after == 0.98
+    assert current_position.trigger_updates[0].take_profit_before is None
+    assert current_position.trigger_updates[0].take_profit_after is None
+    assert len(current_position.trigger_updates) == 1
+
 
 def test_estimate_fee_not_available(synthetic_universe, position_manager):
     """"Estimate the trading fee."""
