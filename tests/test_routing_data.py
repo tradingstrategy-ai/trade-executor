@@ -328,6 +328,25 @@ def test_uniswap_v2_routing_models(
             "0xc2132d05d31c914a87c6611c10748aeb04b58e8f",
             ChainId.polygon,
         ),
+        (
+            TradeRouting.uniswap_v3_usdc_arbitrum,
+            ReserveCurrency.usdc,
+            {
+                "0x82af49447d8a07e3bd95bd0d56f35241523fbab1": "0xc31e54c7a869b9fcbecc14363cf510d1c41fa443",
+                "0x912ce59144191c1204e64559fe8253a0e49e6548": "0xcda53b1f66614552f834ceef361a8d12a0b8dad8"
+            },
+            "0xff970a61a04b1ca14834a43f5de4533ebddb5cc8",
+            ChainId.arbitrum,
+        ),
+        (
+            TradeRouting.uniswap_v3_usdt_arbitrum,
+            ReserveCurrency.usdt,
+            {
+                "0x82af49447d8a07e3bd95bd0d56f35241523fbab1": "0x641c00a822e8b671738d32a431a4fb6074e5c79d"
+            },
+            "0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9",
+            ChainId.arbitrum,
+        ),
     ],
 )
 def test_uniswap_v3_routing_models(
