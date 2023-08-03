@@ -7,6 +7,7 @@ from typing import Dict, Optional, List
 from eth_defi.gas import GasPriceMethod, node_default_gas_price_strategy
 from eth_defi.hotwallet import HotWallet
 from eth_defi.middleware import http_retry_request_with_sleep_middleware
+from eth_defi.provider.multi_provider import MultiProviderWeb3, create_multi_provider_web3
 from tradeexecutor.monkeypatch.web3 import construct_sign_and_send_raw_middleware
 from tradingstrategy.chain import ChainId
 from web3 import Web3, HTTPProvider
@@ -42,7 +43,7 @@ class Web3Config:
     """
 
     #: Mapping of different connections for different chains
-    connections: Dict[ChainId, Web3] = field(default_factory=dict)
+    connections: Dict[ChainId, MultiProviderWeb3] = field(default_factory=dict)
 
     #: How do we price our txs
     gas_price_method: Optional[GasPriceMethod] = None
@@ -51,29 +52,18 @@ class Web3Config:
     default_chain_id: Optional[ChainId] = None
 
     @staticmethod
-    def create_web3(url: str, gas_price_method: Optional[GasPriceMethod] = None) -> Web3:
+    def create_web3(configuration_line: str, gas_price_method: Optional[GasPriceMethod] = None) -> Web3:
         """Create a new Web3.py connection.
 
-        :param url:
-            JSON-RPC node URL
+        :param configuration_line:
+            JSON-RPC configuration line
 
         :param gas_price_method:
             How do we estimate gas for a transaction
             If not given autodetect the method.
         """
 
-        provider = HTTPProvider(url)
-
-        # Web3 6.0 fixes
-        provider.middlewares = (
-            #    attrdict_middleware,
-            # default_transaction_fields_middleware,
-            #ethereum_tester_middleware,
-        )
-
-        web3 = Web3(provider)
-
-        web3.middleware_onion.clear()
+        web3 = create_multi_provider_web3(configuration_line)
 
         # Read numeric chain id from JSON-RPC
         chain_id = web3.eth.chain_id
@@ -106,18 +96,13 @@ class Web3Config:
 
         logger.trade("Connected to chain: %s, node provider: %s, gas pricing method: %s",
                      chain_id_obj.name,
-                     get_url_domain(url),
+                     get_url_domain(configuration_line),
                      gas_price_method.name)
 
         # London is the default method
         if gas_price_method == GasPriceMethod.legacy:
             logger.info("Setting up gas price middleware for Web3")
             web3.eth.set_gas_price_strategy(node_default_gas_price_strategy)
-
-        # Set POA middleware if needed
-        if chain_id in (ChainId.bsc.value, ChainId.polygon.value, ChainId.avalanche.value):
-            logger.info("Using proof-of-authority web3 middleware for chain %d", chain_id)
-            web3.middleware_onion.inject(geth_poa_middleware, layer=0)
 
         # Set up automatic rqeuest replays in the case of network issues
         web3.middleware_onion.inject(http_retry_request_with_sleep_middleware, layer=0)
@@ -194,6 +179,9 @@ class Web3Config:
         web3config = Web3Config()
 
         web3config.gas_price_method = gas_price_method
+
+        # Lowercase all key names
+        kwargs = {k.lower(): v for k, v in kwargs.items()}
 
         for chain_id in SUPPORTED_CHAINS:
             key = f"json_rpc_{chain_id.get_slug()}"

@@ -175,7 +175,7 @@ def web_visulisation(request: Request):
         if not data:
             return exception_response(501, detail=f"Image data not available. It will be generated on the first strategy cycle.")
 
-        r = Response(content_type="image/png")
+        r = Response(content_type="image/svg+xml")
         r.body = data
         return r
     elif type =="large":
