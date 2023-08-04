@@ -11,7 +11,7 @@ from tradingstrategy.exchange import ExchangeUniverse, Exchange, ExchangeType
 from tradingstrategy.pair import DEXPair, PandasPairUniverse
 
 
-def create_pair_universe(web3: Web3, exchange: Optional[Exchange], pairs: List[TradingPairIdentifier]) -> PandasPairUniverse:
+def create_pair_universe(web3: Web3, exchange: Exchange, pairs: List[TradingPairIdentifier]) -> PandasPairUniverse:
     """Creates a PairUniverse from on-chain test data.
 
     A test trading universe.
