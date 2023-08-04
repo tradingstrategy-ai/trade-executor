@@ -10,6 +10,7 @@ from tradeexecutor.ethereum.enzyme.vault import EnzymeVaultSyncModel
 from tradeexecutor.strategy.sync_model import SyncModel
 from tradingstrategy.universe import Universe
 from tradingstrategy.pair import HumanReadableTradingPairDescription
+from tradingstrategy.exchange import ExchangeUniverse
 
 from tradeexecutor.ethereum.hot_wallet_sync_model import EthereumHotWalletReserveSyncer
 from tradeexecutor.state.state import State
@@ -56,9 +57,14 @@ def make_test_trade(
         raise RuntimeError("You are using a multipair universe. Provide pair argument to perform a test trade on a specific pair.")
     
     if pair:
-        assert data_universe.exchange_universe is not None, "You need to provide exchanges for the universe"
+        if data_universe.exchanges:
+            exchange_universe = ExchangeUniverse.from_collection(data_universe.exchanges)
+        elif data_universe.exchange_universe:
+            exchange_universe = data_universe.exchange_universe
+        else:
+            raise RuntimeError("You need to provide the exchange_universe when creating the universe")
 
-        raw_pair = data_universe.pairs.get_pair(*pair, exchange_universe=data_universe.exchange_universe)
+        raw_pair = data_universe.pairs.get_pair(*pair, exchange_universe=exchange_universe)
     else:
         raw_pair = data_universe.pairs.get_single()
     
