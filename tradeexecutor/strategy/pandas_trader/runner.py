@@ -227,7 +227,7 @@ class PandasTraderRunner(StrategyRunner):
             small_image = self.run_state.visualisation.small_image
             post_logging_discord_image(small_image)
 
-        elif 1 <= universe.get_pair_count() <= 3:
+        else:
             
              # Log state
             buf = StringIO()
@@ -270,8 +270,10 @@ class PandasTraderRunner(StrategyRunner):
                 
             logger.trade(buf.getvalue())
 
-            large_image = self.run_state.visualisation.large_image
-            post_logging_discord_image(large_image)
+            # there is already a warning in refresh_visualisations for pair count > 3
+            if universe.get_pair_count() <= 3:
+                large_image = self.run_state.visualisation.large_image
+                post_logging_discord_image(large_image)
+            else:
+                logger.info(f"Strategy visualisation not posted to Discord because pair count of {universe.get_pair_count()} is greater than 3.")
 
-        else:   
-            logger.warning("Reporting of strategy thinking of multipair universes with more than 3 pairs not supported yet")
