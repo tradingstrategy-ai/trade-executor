@@ -274,4 +274,6 @@ class PandasTraderRunner(StrategyRunner):
             if universe.get_pair_count() <= 3:
                 large_image = self.run_state.visualisation.large_image
                 post_logging_discord_image(large_image)
+            else:
+                logger.info(f"Strategy visualisation not posted to Discord because pair count of {universe.get_pair_count()} is greater than 3.")
 
