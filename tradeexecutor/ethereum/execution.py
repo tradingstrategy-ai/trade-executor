@@ -130,6 +130,7 @@ class EthereumExecutionModel(ExecutionModel):
         tx_hash: str,
         tx_receipt: dict,
         input_args: tuple | None,
+        pair_fee: float | None
     ) -> (TradeSuccess | TradeFail):
         """Links to either uniswap v2 or v3 implementation in eth_defi"""
 
@@ -382,14 +383,26 @@ class EthereumExecutionModel(ExecutionModel):
             receipt = receipts[HexBytes(swap_tx.tx_hash)]
 
             input_args = swap_tx.get_actual_function_input_args()
-            result = self.analyse_trade_by_receipt(
-                web3,
-                uniswap,
-                tx_dict,
-                swap_tx.tx_hash,
-                receipt,
-                input_args=input_args,
-            )
+            
+            if self.is_v3():
+                result = self.analyse_trade_by_receipt(
+                    web3,
+                    uniswap,
+                    tx_dict,
+                    swap_tx.tx_hash,
+                    receipt,
+                    input_args=input_args,
+                )
+            else:
+                result = self.analyse_trade_by_receipt(
+                    web3,
+                    uniswap,
+                    tx_dict,
+                    swap_tx.tx_hash,
+                    receipt,
+                    input_args=input_args,
+                    pair_fee=trade.pair.fee,
+                )
 
             if isinstance(result, TradeSuccess):
 
@@ -428,7 +441,7 @@ class EthereumExecutionModel(ExecutionModel):
                     executed_price=float(price),
                     executed_amount=executed_amount,
                     executed_reserve=executed_reserve,
-                    lp_fees=0,  # TODO fix
+                    lp_fees=result.lp_fee_paid,
                     native_token_price=1.0,  # TODO fix
                     cost_of_gas=result.get_cost_of_gas(),
                 )

@@ -85,8 +85,9 @@ class UniswapV2ExecutionModel(EthereumExecutionModel):
         tx_hash: str,
         tx_receipt: dict,
         input_args: tuple | None,
+        pair_fee: float | None,
     ) -> (TradeSuccess | TradeFail):
-        return analyse_trade_by_receipt(web3, uniswap, tx, tx_hash, tx_receipt)
+        return analyse_trade_by_receipt(web3, uniswap, tx, tx_hash, tx_receipt, pair_fee)
 
     def mock_partial_deployment_for_analysis(
         self,

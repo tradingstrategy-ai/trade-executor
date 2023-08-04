@@ -272,14 +272,14 @@ class TradeExecution:
     #:
     fee_tier: Optional[float] = None
 
-    #: LP fees paid, currency convereted to the USD.
+    #: LP fees paid, in terms of the amount in token
     #:
     #: The value is read back from the realised trade.
     #: LP fee is usually % of the trade. For Uniswap style exchanges
     #: fees are always taken from `amount in` token
     #: and directly passed to the LPs as the part of the swap,
     #: these is no separate fee information.
-    lp_fees_paid: Optional[USDollarAmount] = None
+    lp_fees_paid: Optional[float] = None
 
     #: LP fees estimated in the USD
     #:
@@ -804,7 +804,7 @@ class TradeExecution:
         assert isinstance(executed_quantity, Decimal)
         assert type(executed_price) == float, f"Received executed price: {executed_price} {type(executed_price)}"
         assert executed_at.tzinfo is None
-        assert cost_of_gas, "Cost of gas must be set for successful trades"
+        assert cost_of_gas is not None, "Cost of gas must be set for successful trades"
 
         self.executed_at = executed_at
         self.executed_quantity = executed_quantity
