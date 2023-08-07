@@ -61,7 +61,7 @@ class EthereumPricingModel(PricingModel):
         self.pair_universe = pair_universe
         self.very_small_amount = very_small_amount
         self.routing_model = routing_model
-        self.epsilon = 1e-10
+        self.epsilon = 1e-5
 
         assert isinstance(self.very_small_amount, Decimal)
     
