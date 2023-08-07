@@ -171,7 +171,7 @@ def test_enzyme_no_accounting_errors(
     # Should be all-in to ETH with some dust error
     assert len(balances) == 2
 
-    # USDC is under DUST_EPSILON limit
+    # USDC 0.000001 is under DUST_EPSILON limit
     b = balances[0]
     assert b.asset == usdc_asset
     assert b.amount == pytest.approx(Decimal("0.000001"))
