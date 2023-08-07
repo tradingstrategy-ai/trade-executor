@@ -272,7 +272,7 @@ def test_execute_trade_instructions_buy_weth(
     assert trade.executed_price == pytest.approx(Decimal(1705.6136999031144))
     assert trade.executed_quantity == pytest.approx(Decimal(0.292184487629472304))
     assert trade.cost_of_gas == pytest.approx(Decimal('0.000171561179463388'))
-    assert trade.lp_fees_paid == 0.0
+    assert trade.lp_fees_paid == None
 
 
 def test_execute_trade_instructions_buy_weth_with_tester(
@@ -304,7 +304,7 @@ def test_execute_trade_instructions_buy_weth_with_tester(
     assert trade.get_status() == TradeStatus.success
     assert trade.executed_price == pytest.approx(1705.6136999031144)
     assert trade.executed_quantity == pytest.approx(Decimal('0.293149331800817389'))
-    assert trade.lp_fees_paid == 0.0
+    assert trade.lp_fees_paid == None
     assert trade.cost_of_gas == pytest.approx(Decimal('0.0001715479495444'))
 
     # Cash balance has been deducted
@@ -384,7 +384,7 @@ def test_buy_sell_buy_with_tester(
     assert trade3.executed_price == pytest.approx(1705.618349674022)
     assert trade3.executed_quantity == pytest.approx(Decimal('0.293148816143752232'))
 
-    assert trade3.lp_fees_paid == 0.0
+    assert trade3.lp_fees_paid == None
     assert trade3.cost_of_gas == pytest.approx(Decimal('0.000129771959605676'))
 
     # Double check See we can serialise state after all this
@@ -431,7 +431,7 @@ def test_buy_buy_sell_sell_tester(
     position3, trade3 = trader.sell(weth_usdc_pair, sell_quantity_1)
     position4, trade4 = trader.sell(weth_usdc_pair, sell_quantity_2)
 
-    assert trade4.lp_fees_paid == 0.0
+    assert trade4.lp_fees_paid == None
     assert trade4.cost_of_gas == pytest.approx(Decimal('0.00009991316734488'))
 
     assert position4.is_closed()
@@ -512,10 +512,10 @@ def test_two_parallel_positions(
     assert trade3.blockchain_transactions[0].nonce == 3
     assert trade4.blockchain_transactions[0].nonce == 5
 
-    assert trade3.lp_fees_paid == 0.0
+    assert trade3.lp_fees_paid == None
     assert trade3.cost_of_gas == pytest.approx(Decimal('0.00010072211587578'))
 
-    assert trade4.lp_fees_paid == 0.0
+    assert trade4.lp_fees_paid == None
     assert trade4.cost_of_gas == pytest.approx(Decimal('0.000105005059967555'))
 
     assert position3.position_id == 1
