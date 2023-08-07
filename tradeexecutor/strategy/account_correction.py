@@ -45,9 +45,21 @@ from tradeexecutor.strategy.sync_model import SyncModel
 logger = logging.getLogger(__name__)
 
 
-#: The amount of token units that is considered "dust" or rounding error.
+#: The absolute number of tokens we consider the value to be zero
 #:
-DUST_EPSILON = Decimal(10**-5)
+#:
+#: Because of funny %s of values divided near zero,
+#: we cannot use relative comparison near zero values.
+#:
+#:
+DUST_EPSILON = Decimal(10**-4)
+
+
+#: The default % we allow the balance to drift before we consider it a mismatch.
+#:
+#: Set to 10 BPS
+#:
+RELATIVE_EPSILON = Decimal(10**-4)
 
 
 class UnexpectedAccountingCorrectionIssue(Exception):
@@ -95,8 +107,11 @@ class AccountingBalanceCheck:
 
     actual_amount: Decimal
 
-    #: Used epsilon
-    epsilon: Decimal
+    #: Dust epsilon
+    dust_epsilon: Decimal
+
+    #: Relative epsilon
+    relative_epsilon: Decimal
 
     block_number: int | None
 
@@ -138,13 +153,56 @@ class AccountingBalanceCheck:
         """We have extra"""
         return self.quantity > 0
 
+    def is_dusty(self) -> bool:
+        """If there is a mismatch, is the mismatch within the dust tolerance,"""
+
+        # Perfect accounting match
+        if self.quantity == 0:
+            return False
+
+        # We have a mismatch, but is it larger
+        # than the dust epsilon
+        return not is_relative_mismatch(
+            self.actual_amount,
+            self.expected_amount,
+            self.dust_epsilon,
+            self.relative_epsilon,
+        )
+
+    def is_mismatch(self) -> bool:
+        return self.mismatch
+
+
+def is_relative_mismatch(
+        actual_amount,
+        expected_amount,
+        relative_epsilon,
+        dust_epsilon,
+) -> bool:
+    """Calculate if we are within the relative tolerance.
+
+    Mismatch has two methods of ronding
+
+    - Close to zero as absolute units (dust)
+
+    - Relative % of the position size
+    """
+
+    # Accounting dust.
+    # Cannot be compared with relative match
+    if abs(actual_amount) < dust_epsilon and abs(expected_amount) < dust_epsilon:
+        return False
+
+    return abs((expected_amount - actual_amount) / actual_amount) > relative_epsilon
+
 
 def calculate_account_corrections(
     pair_universe: PandasPairUniverse,
     reserve_assets: Collection[AssetIdentifier],
     state: State,
     sync_model: SyncModel,
-    epsilon=DUST_EPSILON,
+    relative_epsilon=RELATIVE_EPSILON,
+    dust_epsilon=DUST_EPSILON,
     all_balances=False,
 ) -> Iterable[AccountingBalanceCheck]:
     """Figure out differences between our internal ledger (state) and on-chain balances.
@@ -162,7 +220,7 @@ def calculate_account_corrections(
     :param sync_model:
         How ot access on-chain balances
 
-    :param epsilon:
+    :param dust_epsilon:
         Minimum amount of token (abs quantity) before it is considered as a rounding error
 
     :param all_balances:
@@ -206,7 +264,7 @@ def calculate_account_corrections(
 
         logger.debug("Correction check worth of %s worth of %f USD, actual amount %s, expected amount %s", ab.asset, usd_value or 0, actual_amount, expected_amount)
 
-        mismatch = abs(diff) > epsilon
+        mismatch = is_relative_mismatch(actual_amount, expected_amount, relative_epsilon, dust_epsilon)
 
         if mismatch or all_balances:
             yield AccountingBalanceCheck(
@@ -216,7 +274,8 @@ def calculate_account_corrections(
                 position,
                 expected_amount,
                 actual_amount,
-                epsilon,
+                dust_epsilon,
+                relative_epsilon,
                 ab.block_number,
                 ab.timestamp,
                 usd_value,
@@ -463,7 +522,7 @@ def check_accounts(
             case _:
                 raise NotImplementedError()
 
-        dust = abs(c.quantity) <= DUST_EPSILON and c.quantity > 0
+        dust = c.is_dusty()
 
         items.append({
             "Address": c.asset.address,
