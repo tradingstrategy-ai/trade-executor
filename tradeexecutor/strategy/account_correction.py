@@ -48,6 +48,10 @@ logger = logging.getLogger(__name__)
 #: The absolute number of tokens we consider the value to be zero
 #:
 #:
+#: Because of funny %s of values divided near zero,
+#: we cannot use relative comparison near zero values.
+#:
+#:
 DUST_EPSILON = Decimal(10**-4)
 
 
@@ -104,7 +108,7 @@ class AccountingBalanceCheck:
     actual_amount: Decimal
 
     #: Dust epsilon
-    epsilon: Decimal
+    dust_epsilon: Decimal
 
     #: Relative epsilon
     relative_epsilon: Decimal
@@ -161,7 +165,7 @@ class AccountingBalanceCheck:
         return not is_relative_mismatch(
             self.actual_amount,
             self.expected_amount,
-            self.epsilon,
+            self.dust_epsilon,
             self.relative_epsilon,
         )
 
