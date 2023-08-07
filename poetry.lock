@@ -1914,7 +1914,6 @@ optional = false
 python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*, !=3.4.*, !=3.5.*, !=3.6.*"
 files = [
     {file = "jsonpointer-2.4-py2.py3-none-any.whl", hash = "sha256:15d51bba20eea3165644553647711d150376234112651b4f1811022aecad7d7a"},
-    {file = "jsonpointer-2.4.tar.gz", hash = "sha256:585cee82b70211fa9e6043b7bb89db6e1aa49524340dde8ad6b63206ea689d88"},
 ]
 
 [[package]]
@@ -4697,6 +4696,20 @@ testing = ["build[virtualenv]", "filelock (>=3.4.0)", "flake8 (<5)", "flake8-202
 testing-integration = ["build[virtualenv]", "filelock (>=3.4.0)", "jaraco.envs (>=2.2)", "jaraco.path (>=3.2.0)", "pytest", "pytest-enabler", "pytest-xdist", "tomli", "virtualenv (>=13.0.0)", "wheel"]
 
 [[package]]
+name = "sigfig"
+version = "1.3.2"
+description = "Python library for rounding numbers (with expected results)"
+optional = false
+python-versions = "*"
+files = [
+    {file = "sigfig-1.3.2-py3-none-any.whl", hash = "sha256:b54d4943ba553671bf18da2da109d7824cf44e7c80032a0fb56a6c209e558ee3"},
+    {file = "sigfig-1.3.2.tar.gz", hash = "sha256:97a1225a38924e0586365500668fa3f2ba023bdb103207ea676507af378fce32"},
+]
+
+[package.dependencies]
+SortedContainers = "*"
+
+[[package]]
 name = "six"
 version = "1.16.0"
 description = "Python 2 and 3 compatibility utilities"
@@ -5277,13 +5290,13 @@ tester = ["eth-tester[py-evm] (==v0.8.0-b.3)", "py-geth (>=3.11.0)"]
 
 [[package]]
 name = "web3-ethereum-defi"
-version = "0.22.1"
+version = "0.22.5"
 description = "Python library for Uniswap, Aave, ChainLink, Enzyme and other protocols on BNB Chain, Polygon, Ethereum and other blockchains"
 optional = false
 python-versions = ">=3.10,<3.11"
 files = [
-    {file = "web3_ethereum_defi-0.22.1-py3-none-any.whl", hash = "sha256:310292e97655bd4106958d1032e4030f898d1ea32895d4a0f89785cd04f83179"},
-    {file = "web3_ethereum_defi-0.22.1.tar.gz", hash = "sha256:6aca698f471d2fca51027c4e632bd1ae8cf48787afcf42b7c71f267637c94202"},
+    {file = "web3_ethereum_defi-0.22.5-py3-none-any.whl", hash = "sha256:261d44773e4ec17bd2b364c9842d708766953901dbd729f70cb448467c5dd6d6"},
+    {file = "web3_ethereum_defi-0.22.5.tar.gz", hash = "sha256:1e1857ea94ab25f6cfccd5319332f57310a9ddfad76fe749cf3cfaa33f7762aa"},
 ]
 
 [package.dependencies]
@@ -5298,6 +5311,7 @@ plotly = {version = ">=5.8.2,<6.0.0", optional = true, markers = "extra == \"dat
 psutil = ">=5.9.0,<6.0.0"
 pyarrow = {version = ">=10.0.1,<11.0.0", optional = true, markers = "extra == \"data\""}
 setuptools = ">=65.6.3,<66.0.0"
+sigfig = ">=1.3.2,<2.0.0"
 tqdm = {version = ">=4.64.0,<5.0.0", optional = true, markers = "extra == \"data\""}
 tqdm-loggable = ">=0.1.3,<0.2.0"
 ujson = "5.7.0"
@@ -5305,7 +5319,7 @@ web3 = {version = "6.0.0", extras = ["tester"]}
 
 [package.extras]
 data = ["gql[requests] (>=3.3.0,<4.0.0)", "jupyter (>=1.0.0,<2.0.0)", "matplotlib (>=3.5.2,<4.0.0)", "pandas (>=1.4.2,<2.0.0)", "plotly (>=5.8.2,<6.0.0)", "pyarrow (>=10.0.1,<11.0.0)", "tqdm (>=4.64.0,<5.0.0)"]
-docs = ["Sphinx (>=4.5.0,<5.0.0)", "furo (>=2022.6.4.1,<2023.0.0.0)", "nbsphinx (>=0.8.9,<0.9.0)", "sphinx-autodoc-typehints (>=1.16.0,<2.0.0)", "sphinx-rtd-theme (>=1.0.0,<2.0.0)", "sphinx-sitemap (>=2.2.0,<3.0.0)"]
+docs = ["Sphinx (>=4.5.0,<5.0.0)", "furo (>=2022.6.4.1,<2023.0.0.0)", "nbsphinx (>=0.8.9,<0.9.0)", "sphinx-autodoc-typehints (>=1.16.0,<2.0.0)", "sphinx-rtd-theme (>=1.0.0,<2.0.0)", "sphinx-sitemap (>=2.2.0,<3.0.0)", "zope-dottedname (>=6.0,<7.0)"]
 
 [[package]]
 name = "webcolors"
@@ -5772,4 +5786,4 @@ web-server = ["WebTest", "openapi-core", "pyramid", "pyramid-openapi3", "waitres
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.10,<3.11"
-content-hash = "2cb91f8a96b0597b7204b34fc966cc4614868c7f39a93bd45470b0efdf55d5e5"
+content-hash = "4ad26def29ab4004b3a84144e76ce222dc3f4a3ad89505c883585b35f007442d"
