@@ -4,11 +4,15 @@ Import from there and use in
 """
 from typing import Optional
 
-
-from eth import Chain
-from tradingstrategy.chain import ChainId
-from tradingstrategy.pair import HumanReadableTradingPairDescription
 from typer import Option
+
+
+def _gen_rpc_help(network_name: str):
+    """Generate help text for RPC endpoint.
+
+    """
+    return f"This configures JSON-RPC endpoints for {network_name}. For the configuration format see https://web3-ethereum-defi.readthedocs.io/tutorials/multi-rpc-configuration.html"
+
 
 id = Option(None, envvar="EXECUTOR_ID", help="Executor id used when programmatically referring to this instance.\n"
                                                   "\n"
@@ -34,11 +38,11 @@ asset_management_mode = Option(None, envvar="ASSET_MANAGEMENT_MODE", help="How d
 
 
 # Web3 connection options
-json_rpc_binance = Option(None, envvar="JSON_RPC_BINANCE", help="BNB Chain JSON-RPC node URL we connect to")
-json_rpc_polygon = Option(None, envvar="JSON_RPC_POLYGON", help="Polygon JSON-RPC node URL we connect to")
-json_rpc_ethereum = Option(None, envvar="JSON_RPC_ETHEREUM", help="Ethereum JSON-RPC node URL we connect to")
-json_rpc_avalanche = Option(None, envvar="JSON_RPC_AVALANCHE", help="Avalanche C-chain JSON-RPC node URL we connect to")
-json_rpc_arbitrum = Option(None, envvar="JSON_RPC_ARBITRUM", help="Arbitrum C-chain JSON-RPC node URL we connect to")
+json_rpc_binance = Option(None, envvar="JSON_RPC_BINANCE", help=_gen_rpc_help("BNB Smart Chain"))
+json_rpc_polygon = Option(None, envvar="JSON_RPC_POLYGON", help=_gen_rpc_help("Polygon"))
+json_rpc_ethereum = Option(None, envvar="JSON_RPC_ETHEREUM", help=_gen_rpc_help("Ethereum"))
+json_rpc_avalanche = Option(None, envvar="JSON_RPC_AVALANCHE", help=_gen_rpc_help("Avalanche C-chain"))
+json_rpc_arbitrum = Option(None, envvar="JSON_RPC_ARBITRUM", help=_gen_rpc_help("Arbitrum One"))
 json_rpc_anvil = Option(None, envvar="JSON_RPC_ANVIL", help="Anvil JSON-RPC url. Anvil from Foundry is only used in local development and is not a readl blockchain.")
 
 state_file = Option(None, envvar="STATE_FILE", help="JSON file where we serialise the execution state. If not given defaults to state/{executor-id}.json for live trade execution, state/{executor-id}-backtest.json for the backtest results.")

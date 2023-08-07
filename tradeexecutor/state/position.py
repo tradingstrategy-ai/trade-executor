@@ -45,20 +45,23 @@ class TriggerPriceUpdate:
 
     timestamp: datetime.datetime
 
-    mid_price: USDollarAmount
+    mid_price: Optional[USDollarAmount] = None
 
-    stop_loss_before: Optional[USDollarAmount]
+    stop_loss_before: Optional[USDollarAmount] = None
 
-    stop_loss_after: Optional[USDollarAmount]
+    stop_loss_after: Optional[USDollarAmount] = None
 
-    take_profit_before: Optional[USDollarAmount]
+    take_profit_before: Optional[USDollarAmount] = None
 
-    take_profit_after: Optional[USDollarAmount]
+    take_profit_after: Optional[USDollarAmount] = None
 
     def __post_init__(self):
         # Currently we only support trailing stop loss upwards
         assert isinstance(self.timestamp, datetime.datetime)
-        assert type(self.mid_price) == float
+
+        if self.mid_price:
+            assert type(self.mid_price) == float
+        
         if self.stop_loss_before:
             assert self.stop_loss_before < self.stop_loss_after
 
@@ -149,6 +152,8 @@ class TradingPosition(GenericPosition):
     #: Trigger a stop loss if this price is reached,
     #:
     #: We use mid-price as the trigger price.
+    #:
+    #: .. note:: This should not be updated directly, but via :py:func:`tradeexecutor.strategy.pandas_trader.position_manager.update_stop_loss`.
     stop_loss: Optional[USDollarAmount] = None
 
     #: Trigger a take profit if this price is reached

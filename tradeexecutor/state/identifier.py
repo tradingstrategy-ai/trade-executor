@@ -163,6 +163,12 @@ class TradingPairIdentifier:
     #:
     fee: Optional[float] = None
 
+    #: The underlying token0/token1 for Uniswap pair is flipped compared to base token/quote token.
+    #:
+    #: Use :py:meth:`has_reverse_token_order` to access - might not be set.
+    #:
+    reverse_token_order: Optional[bool] = None
+
     def __post_init__(self):
         assert self.base.chain_id == self.quote.chain_id, "Cross-chain trading pairs are not possible"
 
@@ -232,3 +238,13 @@ class TradingPairIdentifier:
                 self.base.token_symbol and
                 self.quote.decimals > 0 and
                 self.quote.token_symbol)
+
+    def has_reverse_token_order(self) -> bool:
+        """Has Uniswap smart contract a flipped token order.
+
+        - Is token0 base token or token0 is the quote token
+
+        See :py:func:`eth_defi.uniswap_v3.price.get_onchain_price`
+        """
+        assert self.reverse_token_order is not None, f"reverse_token_order not set for: {self}"
+        return self.reverse_token_order

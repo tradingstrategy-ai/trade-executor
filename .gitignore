@@ -8,8 +8,10 @@ dist
 .cache
 .python-version
 
+# Generated files by trade-executor
 cache
-state/*.json
+state/*
+
 .idea
 
 # Default file created if trade-executon command is run locally
@@ -30,3 +32,4 @@ env/local-test.env
 
 # See scripts/pyodide/README.md
 *.whl
+

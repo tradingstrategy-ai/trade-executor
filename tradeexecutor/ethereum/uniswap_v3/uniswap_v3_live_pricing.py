@@ -70,7 +70,10 @@ class UniswapV3LivePricing(EthereumPricingModel):
         )
 
     def get_pair_fee_multiplier(self, ts, pair):
-        """Uniswap V3 fees are returned as a multiplier already, as are all other pairs."""
+        """Outdated: Uniswap V3 pairs get fees in raw format e.g. 3000 instead of 0.3%
+        
+        Now, all pairs are already in multiplier format, so no changes necessary.
+        """
         return super().get_pair_fee(ts, pair)
     
     def get_uniswap(self, target_pair: TradingPairIdentifier) -> UniswapV3Deployment:
@@ -105,6 +108,8 @@ class UniswapV3LivePricing(EthereumPricingModel):
 
         # In three token trades, be careful to use the correct reserve token
         quantity_raw = target_pair.base.convert_to_raw_amount(quantity)
+
+        reverse_token_order = target_pair.has_reverse_token_order()
 
         if intermediate_pair:
             path = [base_addr, intermediate_addr, quote_addr] 
@@ -160,6 +165,7 @@ class UniswapV3LivePricing(EthereumPricingModel):
                 self.web3,
                 target_pair.pool_address,
                 block_identifier=block_number,
+                reverse_token_order=reverse_token_order,
             )
             mid_price = float(mid_price)
         
@@ -203,6 +209,8 @@ class UniswapV3LivePricing(EthereumPricingModel):
         target_pair, intermediate_pair = self.routing_model.route_pair(self.pair_universe, pair)
 
         base_addr, quote_addr, intermediate_addr = route_tokens(target_pair, intermediate_pair)
+
+        reverse_token_order = target_pair.has_reverse_token_order()
 
         # In three token trades, be careful to use the correct reserve token
         if intermediate_pair is not None:
@@ -270,6 +278,7 @@ class UniswapV3LivePricing(EthereumPricingModel):
                 self.web3,
                 target_pair.pool_address,
                 block_identifier=block_number,
+                reverse_token_order=reverse_token_order,
             )
             mid_price = float(mid_price)
             path = [target_pair]
