@@ -88,6 +88,7 @@ def draw_multi_pair_strategy_state(
         end_at: Optional[datetime.datetime] = None,
         technical_indicators: Optional[bool] = True,
         pair_ids: Optional[list[PairInternalId]] = None,
+        detached_indicators: Optional[bool] = True,
 ) -> list[go.Figure]:
     """Draw mini price chart images for multiple pairs. Returns a single figure with multiple subplots.
 
@@ -120,6 +121,12 @@ def draw_multi_pair_strategy_state(
 
     :param technical_indicators:
         Whether to draw technical indicators or not
+
+    :param pair_ids:
+        The pair ids to draw
+
+    :param detached_indicators:
+        Whether to draw detached technical indicators. This will be ignored if technical_indicators is False.
 
     :return:
         The strategy state visualisation as a single Plotly figure with multiple subplots
@@ -158,6 +165,7 @@ def draw_multi_pair_strategy_state(
         height=height,
         width=width,
         technical_indicators=technical_indicators,
+        detached_indicators=detached_indicators,
     )
 
 

@@ -123,8 +123,8 @@ class PandasTraderRunner(StrategyRunner):
 
         elif 3 < universe.get_pair_count() <=5 :
             
-            small_figure_combined = draw_multi_pair_strategy_state(state, universe, height=2048, technical_indicators=False)
-            large_figure_combined = draw_multi_pair_strategy_state(state, universe, height=3840, width = 2160, technical_indicators=False)
+            small_figure_combined = draw_multi_pair_strategy_state(state, universe, height=2048, detached_indicators = False)
+            large_figure_combined = draw_multi_pair_strategy_state(state, universe, height=3840, width = 2160, detached_indicators = False)
 
             self.update_strategy_thinking_image_data(small_figure_combined, large_figure_combined)
 

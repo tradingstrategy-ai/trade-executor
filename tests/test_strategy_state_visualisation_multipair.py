@@ -360,6 +360,7 @@ def test_visualise_strategy_state(
     )
 
     image = draw_multi_pair_strategy_state(state, universe)
+    image_no_detached = draw_multi_pair_strategy_state(state, universe, detached_indicators=False)
 
     assert len(image.data) == 27
     assert len(image._grid_ref) == 6
@@ -370,3 +371,4 @@ def test_visualise_strategy_state(
     # using a web brower
     if os.environ.get("SHOW_IMAGE"):
         open_plotly_figure_in_browser(image, height=2000, width=1000)
+        open_plotly_figure_in_browser(image_no_detached, height=2000, width=1000)
