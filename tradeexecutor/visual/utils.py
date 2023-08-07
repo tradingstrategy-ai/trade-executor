@@ -360,7 +360,7 @@ def _get_num_detached_indicators(plots: list[Plot], volume_bar_mode: VolumeBarMo
     if volume_bar_mode in {VolumeBarMode.hidden, VolumeBarMode.overlay}:
         pass
     elif volume_bar_mode == VolumeBarMode.separate:
-        num_detached_indicators += 1 if detached_indicators else 0
+        num_detached_indicators += 1
     else:
         raise ValueError(f"Unknown volume bar mode {VolumeBarMode}")
 
@@ -372,7 +372,6 @@ def _get_subplot_names(
     volume_bar_mode: VolumeBarMode,
     volume_axis_name: str = "Volume USD",
     pair_name: str = None,
-    detached_indicators: bool = True,
 ):
     """Get subplot names for detached technical indicators.
     Overlaid names are appended to the detached plot name."""
@@ -445,6 +444,27 @@ def get_num_detached_and_names(
         subplot_names = _get_subplot_names(
             plots, volume_bar_mode, volume_axis_name, pair_name
         )
+    elif volume_bar_mode == VolumeBarMode.separate:
+        subplot_names = [pair_name, volume_axis_name]
+    else:
+        subplot_names = [pair_name]
+
+    return num_detached_indicators, subplot_names
+
+
+def get_num_detached_and_names_no_indicators(
+    volume_bar_mode: VolumeBarMode,
+    volume_axis_name: str,
+    pair_name: str | None = None,
+):
+    """Get num_detached_indicators and subplot_names. Used when technical_indicators == False"""
+    if volume_bar_mode == VolumeBarMode.separate:
+        num_detached_indicators = 1
+    else:
+        num_detached_indicators = 0
+    
+    if volume_bar_mode == VolumeBarMode.separate:
+        subplot_names = [pair_name, volume_axis_name]
     else:
         subplot_names = [pair_name]
 

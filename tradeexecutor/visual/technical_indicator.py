@@ -71,7 +71,7 @@ def overlay_all_technical_indicators(
     # https://plotly.com/python/graphing-multiple-chart-types/
     for plot in plots:
 
-        if plot.kind == PlotKind.technical_indicator_detached and not detached_indicators:
+        if plot.kind in {PlotKind.technical_indicator_detached, PlotKind.technical_indicator_overlay_on_detached} and not detached_indicators:
             continue
 
         # get trace which is unattached to plot

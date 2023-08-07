@@ -28,6 +28,7 @@ from tradeexecutor.visual.utils import (
     get_start_and_end,
     get_all_text,
     get_num_detached_and_names,
+    get_num_detached_and_names_no_indicators,
 )
 
 
@@ -274,9 +275,12 @@ def visualise_multiple_pairs(
             state.name, axes, title, pair_name, volume_axis_name
         )
 
-        num_detached_indicators, subplot_names = get_num_detached_and_names(
-            plots, volume_bar_modes[i], volume_text, pair_name, detached_indicators
-        )
+        if technical_indicators:
+            num_detached_indicators, subplot_names = get_num_detached_and_names(
+                plots, volume_bar_modes[i], volume_text, pair_name, detached_indicators
+            )
+        else:
+            num_detached_indicators, subplot_names = get_num_detached_and_names_no_indicators(volume_bar_modes[i], volume_text, pair_name)
 
         if not relative_sizing:
             _relative_sizing = [1] + [0.3] * num_detached_indicators

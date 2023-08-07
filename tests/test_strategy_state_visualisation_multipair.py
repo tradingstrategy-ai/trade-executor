@@ -360,20 +360,27 @@ def test_visualise_strategy_state(
     )
 
     image = draw_multi_pair_strategy_state(state, universe)
-    image_no_detached = draw_multi_pair_strategy_state(state, universe, detached_indicators=False)
 
     assert len(image.data) == 27
     assert len(image._grid_ref) == 6
     assert image.data[0]['x'][0] == datetime.datetime(2023,4,3,0,0)
     assert image.data[0]['x'][-1] == datetime.datetime(2023,6,5,0,0)
 
+    image_no_detached = draw_multi_pair_strategy_state(state, universe, detached_indicators=False)
+
     assert len(image_no_detached.data) == 24
     assert len(image_no_detached._grid_ref) == 3
     assert image_no_detached.data[0]['x'][0] == datetime.datetime(2023,4,3,0,0)
     assert image_no_detached.data[0]['x'][-1] == datetime.datetime(2023,6,5,0,0)
+
+    image_no_indicators = draw_multi_pair_strategy_state(state, universe, technical_indicators=False)
+
+    assert len(image_no_indicators.data) == 15
+    assert len(image_no_indicators._grid_ref) == 3
 
     # Test the image on a local screen
     # using a web brower
     if os.environ.get("SHOW_IMAGE"):
         open_plotly_figure_in_browser(image, height=2000, width=1000)
         open_plotly_figure_in_browser(image_no_detached, height=2000, width=1000)
+        open_plotly_figure_in_browser(image_no_indicators, height=2000, width=1000)
