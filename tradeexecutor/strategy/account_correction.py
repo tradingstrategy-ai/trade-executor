@@ -140,16 +140,19 @@ class AccountingBalanceCheck:
         """We have extra"""
         return self.quantity > 0
 
-    def is_dusty(self):
+    def is_dusty(self) -> bool:
+        """If there is a mismatch, is the mismatch within the dust tolerance,"""
 
         # Perfect accounting match
         if self.quantity == 0:
-            return 0
+            return False
 
+        # We have a mismatch, but is it larger
+        # than the dust epsilon
         return not is_relative_mismatch(
             self.actual_amount,
             self.expected_amount,
-            DUST_EPSILON,
+            self.epsilon,
         )
 
     def is_mismatch(self) -> bool:
