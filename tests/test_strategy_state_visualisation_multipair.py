@@ -367,6 +367,11 @@ def test_visualise_strategy_state(
     assert image.data[0]['x'][0] == datetime.datetime(2023,4,3,0,0)
     assert image.data[0]['x'][-1] == datetime.datetime(2023,6,5,0,0)
 
+    assert len(image_no_detached.data) == 24
+    assert len(image_no_detached._grid_ref) == 3
+    assert image_no_detached.data[0]['x'][0] == datetime.datetime(2023,4,3,0,0)
+    assert image_no_detached.data[0]['x'][-1] == datetime.datetime(2023,6,5,0,0)
+
     # Test the image on a local screen
     # using a web brower
     if os.environ.get("SHOW_IMAGE"):
