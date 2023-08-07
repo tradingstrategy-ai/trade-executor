@@ -47,7 +47,10 @@ logger = logging.getLogger(__name__)
 
 #: The amount of token units that is considered "dust" or rounding error.
 #:
-DUST_EPSILON = Decimal(10**-5)
+#:
+#: TODO: Switch to relative epsilon
+#:
+DUST_EPSILON = Decimal(10**-4)
 
 
 class UnexpectedAccountingCorrectionIssue(Exception):
