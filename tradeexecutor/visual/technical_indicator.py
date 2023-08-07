@@ -30,6 +30,7 @@ def overlay_all_technical_indicators(
         volume_bar_mode: VolumeBarMode = None,
         pair_id: Optional[int] = None,
         start_row: int = None,
+        detached_indicators: bool = True,
 ):
     """Draw all technical indicators from the visualisation over candle chart.
 
@@ -41,6 +42,15 @@ def overlay_all_technical_indicators(
     
     :param volume_bar_mode:
         How to draw volume bars e.g. overlay, seperate, hidden
+
+    :param pair_id:
+        If set, only draw indicators for this pair
+
+    :param start_row:
+        If set, start drawing indicators from this row. Used for multipair visualisation.
+
+    :param detached_indicators:
+        If set, draw detached indicators.
     """
 
     # get starting row for indicators
@@ -60,6 +70,9 @@ def overlay_all_technical_indicators(
 
     # https://plotly.com/python/graphing-multiple-chart-types/
     for plot in plots:
+
+        if plot.kind == PlotKind.technical_indicator_detached and not detached_indicators:
+            continue
 
         # get trace which is unattached to plot
         trace = visualise_technical_indicator(

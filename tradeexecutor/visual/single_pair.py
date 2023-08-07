@@ -295,6 +295,7 @@ def visualise_single_pair(
         relative_sizing: list[float] = None,
         volume_axis_name: str = "Volume USD",
         candle_decimals: int = 4,
+        detached_indicators: bool = True,
 ) -> go.Figure:
     """Visualise single-pair trade execution.
 
@@ -360,6 +361,9 @@ def visualise_single_pair(
     
     :param candle_decimals:
         Number of decimal places to round the candlesticks to. Default is 4.
+
+    :param detached_indicators:
+        If set, draw detached indicators. Has no effect if `technical_indicators` is False.
 
     """
     
@@ -430,6 +434,7 @@ def visualise_single_pair(
         labels=labels,
         volume_axis_name=volume_axis_name,
         pair_id=pair_id,
+        detached_indicators=detached_indicators,
     )
 
 
@@ -611,6 +616,7 @@ def _get_grid_with_candles_volume_indicators(
     labels: pd.Series,
     volume_axis_name: str = "Volume USD",
     pair_id: int | None = None,
+    detached_indicators: bool = True,
 ):
     """Gets figure grid with candles, volume, and indicators overlayed."""
     
@@ -654,6 +660,7 @@ def _get_grid_with_candles_volume_indicators(
             end_at,
             volume_bar_mode,
             pair_id,
+            detached_indicators=detached_indicators,
         )
         
     return fig
