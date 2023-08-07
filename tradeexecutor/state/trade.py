@@ -783,7 +783,7 @@ class TradeExecution:
                      lp_fees: USDollarAmount,
                      native_token_price: USDollarAmount,
                      force=False,
-                     cost_of_gas: USDollarAmount = None,
+                     cost_of_gas: USDollarAmount | None = None,
                      ):
         """Mark trade success.
 

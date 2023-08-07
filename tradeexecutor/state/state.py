@@ -344,7 +344,7 @@ class State:
                            executed_reserve: Decimal,
                            lp_fees: USDollarAmount,
                            native_token_price: USDollarPrice,
-                           cost_of_gas: float,
+                           cost_of_gas: float | None = None ,
                         ):
         """"""
 
