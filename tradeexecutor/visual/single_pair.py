@@ -631,7 +631,7 @@ def _get_grid_with_candles_volume_indicators(
 
     plots = state.visualisation.plots.values()
     
-    num_detached_indicators, subplot_names = get_num_detached_and_names(plots, volume_bar_mode, volume_text)
+    num_detached_indicators, subplot_names = get_num_detached_and_names(plots, volume_bar_mode, volume_text, detached_indicators)
     
     # visualise candles and volume and create empty grid space for technical indicators
     fig = visualise_ohlcv(

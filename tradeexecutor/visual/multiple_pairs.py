@@ -275,7 +275,7 @@ def visualise_multiple_pairs(
         )
 
         num_detached_indicators, subplot_names = get_num_detached_and_names(
-            plots, volume_bar_modes[i], volume_text, pair_name
+            plots, volume_bar_modes[i], volume_text, pair_name, detached_indicators
         )
 
         if not relative_sizing:
