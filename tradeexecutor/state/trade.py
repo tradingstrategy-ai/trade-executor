@@ -804,7 +804,6 @@ class TradeExecution:
         assert isinstance(executed_quantity, Decimal)
         assert type(executed_price) == float, f"Received executed price: {executed_price} {type(executed_price)}"
         assert executed_at.tzinfo is None
-        assert cost_of_gas is not None, "Cost of gas must be set for successful trades"
 
         self.executed_at = executed_at
         self.executed_quantity = executed_quantity
