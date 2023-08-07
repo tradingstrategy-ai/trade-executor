@@ -151,10 +151,12 @@ class PandasTraderRunner(StrategyRunner):
     
     def get_image_and_dark_image(self, figure, width, height):
         """Renders the figure as a PNG image and a dark theme PNG image."""
-        image = render_plotly_figure_as_image_file(figure, width=width, height=height, format="svg")
+        # TODO: Web frontend should use SVG, but SVG does not work in discord
+        # now set to PNG
+        image = render_plotly_figure_as_image_file(figure, width=width, height=height, format="png")
         
         figure.update_layout(template="plotly_dark")
-        image_dark = render_plotly_figure_as_image_file(figure, width=width, height=height, format="svg")
+        image_dark = render_plotly_figure_as_image_file(figure, width=width, height=height, format="png")
 
         return image, image_dark 
 
