@@ -15,6 +15,7 @@ from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
 from tradeexecutor.strategy.trading_strategy_universe import translate_trading_pair
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.trade_pricing import TradePricing
+from tradeexecutor.strategy.account_correction import DUST_EPSILON
 from tradeexecutor.ethereum.routing_model import EthereumRoutingModel
 
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment
@@ -63,7 +64,7 @@ class EthereumPricingModel(PricingModel):
         self.pair_universe = pair_universe
         self.very_small_amount = very_small_amount
         self.routing_model = routing_model
-        self.epsilon = epsilon or 1e-5
+        self.epsilon = epsilon or DUST_EPSILON
 
         assert isinstance(self.very_small_amount, Decimal)
     
