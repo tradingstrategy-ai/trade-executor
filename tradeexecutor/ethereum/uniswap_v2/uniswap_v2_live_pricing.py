@@ -63,8 +63,6 @@ class UniswapV2LivePricing(EthereumPricingModel):
 
         self.uniswap_cache: Dict[TradingPairIdentifier, UniswapV2Deployment] = {}
 
-        self.epsilon = 1e-10
-
         super().__init__(
             web3,
             pair_universe,
