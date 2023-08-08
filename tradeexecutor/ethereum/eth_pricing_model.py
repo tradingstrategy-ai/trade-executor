@@ -52,7 +52,9 @@ class EthereumPricingModel(PricingModel):
                  web3: Web3,
                  pair_universe: PandasPairUniverse,
                  routing_model: EthereumRoutingModel,
-                 very_small_amount: Decimal):
+                 very_small_amount: Decimal,
+                 epsilon: Optional[float] = None,  # for testing
+                 ):
 
         assert isinstance(web3, Web3)
         assert isinstance(pair_universe, PandasPairUniverse)
@@ -61,7 +63,7 @@ class EthereumPricingModel(PricingModel):
         self.pair_universe = pair_universe
         self.very_small_amount = very_small_amount
         self.routing_model = routing_model
-        self.epsilon = 1e-5
+        self.epsilon = epsilon or 1e-5
 
         assert isinstance(self.very_small_amount, Decimal)
     

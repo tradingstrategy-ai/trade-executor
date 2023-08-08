@@ -54,7 +54,9 @@ class UniswapV3LivePricing(EthereumPricingModel):
                  web3: Web3,
                  pair_universe: PandasPairUniverse,
                  routing_model: UniswapV3SimpleRoutingModel,
-                 very_small_amount=Decimal("0.10")):
+                 very_small_amount=Decimal("0.10"),
+                 epsilon: Optional[float] = None,  # for testing
+                 ):
 
         assert isinstance(routing_model, UniswapV3SimpleRoutingModel)
 
@@ -64,8 +66,10 @@ class UniswapV3LivePricing(EthereumPricingModel):
             web3,
             pair_universe,
             routing_model,
-            very_small_amount
+            very_small_amount,
+            epsilon
         )
+
 
     def get_pair_fee_multiplier(self, ts, pair):
         """Outdated: Uniswap V3 pairs get fees in raw format e.g. 3000 instead of 0.3%

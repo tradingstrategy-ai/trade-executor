@@ -57,7 +57,9 @@ class UniswapV2LivePricing(EthereumPricingModel):
                  web3: Web3,
                  pair_universe: PandasPairUniverse,
                  routing_model: UniswapV2SimpleRoutingModel,
-                 very_small_amount=Decimal("0.10")):
+                 very_small_amount=Decimal("0.10"),
+                 epsilon: Optional[float] = None,
+                 ):
 
         assert isinstance(routing_model, UniswapV2SimpleRoutingModel)
 
@@ -67,8 +69,10 @@ class UniswapV2LivePricing(EthereumPricingModel):
             web3,
             pair_universe,
             routing_model,
-            very_small_amount
+            very_small_amount,
+            epsilon,
         )
+
         
     def get_uniswap(self, target_pair: TradingPairIdentifier) -> UniswapV2Deployment:
         """Helper function to speed up Uniswap v2 deployment resolution."""
