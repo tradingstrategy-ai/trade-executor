@@ -28,6 +28,7 @@ from tradeexecutor.visual.utils import (
     get_start_and_end,
     get_all_text,
     get_num_detached_and_names,
+    get_num_detached_and_names_no_indicators,
 )
 
 
@@ -119,6 +120,7 @@ def visualise_multiple_pairs(
     volume_axis_name: str = "Volume USD",
     candle_decimals: int = 4,
     show_trades: bool = True,
+    detached_indicators: bool = True,
 ) -> go.Figure:
     """Visualise single-pair trade execution.
 
@@ -184,6 +186,9 @@ def visualise_multiple_pairs(
 
     :param candle_decimals:
         Number of decimal places to round the candlesticks to. Default is 4.
+
+    :param detached_indicators:
+        If set, draw detached indicators. Has no effect if `technical_indicators` is False.
 
     """
 
@@ -270,9 +275,12 @@ def visualise_multiple_pairs(
             state.name, axes, title, pair_name, volume_axis_name
         )
 
-        num_detached_indicators, subplot_names = get_num_detached_and_names(
-            plots, volume_bar_modes[i], volume_text, pair_name
-        )
+        if technical_indicators:
+            num_detached_indicators, subplot_names = get_num_detached_and_names(
+                plots, volume_bar_modes[i], volume_text, pair_name, detached_indicators
+            )
+        else:
+            num_detached_indicators, subplot_names = get_num_detached_and_names_no_indicators(volume_bar_modes[i], volume_text, pair_name)
 
         if not relative_sizing:
             _relative_sizing = [1] + [0.3] * num_detached_indicators
@@ -388,6 +396,7 @@ def visualise_multiple_pairs(
                 pair_subplot_info.volume_bar_mode,
                 pair_subplot_info.pair_id,
                 start_row=pair_subplot_info.candlestick_row,
+                detached_indicators=detached_indicators,
             )
 
         # Add trade markers if any trades have been made
