@@ -5,6 +5,7 @@ from decimal import Decimal
 import pandas as pd
 import pytest
 import random
+import os
 
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.state.reserve import ReservePosition
@@ -237,6 +238,46 @@ def test_visualise_trades_with_indicator(state_and_candles: tuple[State, pd.Data
     ts = df.iloc[0]["timestamp"]
     ts = ts.replace(minute=0, second=0)
     assert ts == pd.Timestamp("2021-1-1 00:00")
+
+    fig2 = visualise_single_pair(
+        state, 
+        candle_universe,
+        detached_indicators=False
+    )
+
+    assert len(fig2.data) == 4
+    assert len(fig2._grid_ref) == 1
+
+    fig3 = visualise_single_pair(
+        state, 
+        candle_universe,
+        detached_indicators=False,
+        volume_bar_mode=VolumeBarMode.separate,
+    )
+
+    assert len(fig3.data) == 4
+    assert len(fig3._grid_ref) == 2
+
+    fig4 = visualise_single_pair(
+        state,
+        candle_universe,
+        detached_indicators=True,
+        technical_indicators=False,
+    )
+
+    assert len(fig4.data) == 3
+    assert len(fig4._grid_ref) == 1
+
+    fig5 = visualise_single_pair(
+        state,
+        candle_universe,
+        detached_indicators=True,
+        technical_indicators=False,
+        volume_bar_mode=VolumeBarMode.separate,
+    )
+
+    assert len(fig5.data) == 3
+    assert len(fig5._grid_ref) == 2
 
 
 def test_visualise_trades_with_indicator_separate_volume(
