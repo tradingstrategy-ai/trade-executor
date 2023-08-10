@@ -251,5 +251,8 @@ class EthereumPricingModel(PricingModel):
 #: Pricing model depends on the trading universe that may change for each strategy tick,
 #: as new trading pairs appear.
 #: Thus, we need to reconstruct pricing model as the start of the each tick.
+#:
+#: TODO: Convert to protocol
+#:
 PricingModelFactory = Callable[[ExecutionModel, StrategyExecutionUniverse, RoutingModel], PricingModel]
 

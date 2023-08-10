@@ -34,7 +34,8 @@ try:
     from apscheduler.executors.pool import ThreadPoolExecutor
     from apscheduler.schedulers.blocking import BlockingScheduler
 except ImportError:
-    # apscheduler is only required in live trading
+    # apscheduler is only required in live trading,
+    # not in backtesting
     pass
 
 try:
@@ -457,7 +458,8 @@ class ExecutionLoop:
         if live:
             # To be extra careful,
             # save the state if we are going to crash
-            # in statistics calculations
+            # in statistics calculations, so we have a trace
+            # of broadcasted transactions
             self.store.sync(state)
 
             update_statistics(

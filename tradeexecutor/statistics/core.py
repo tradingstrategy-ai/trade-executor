@@ -152,6 +152,8 @@ def update_statistics(
 ):
     """Update statistics in a portfolio.
 
+    TODO: Rename to `update_trading_statistics()`.
+
     Can be collected at
 
     - And of the strategy cycle
