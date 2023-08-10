@@ -130,6 +130,7 @@ class EthereumExecutionModel(ExecutionModel):
         tx_hash: str,
         tx_receipt: dict,
         input_args: tuple | None,
+        pair_fee: float | None
     ) -> (TradeSuccess | TradeFail):
         """Links to either uniswap v2 or v3 implementation in eth_defi"""
 
@@ -383,14 +384,26 @@ class EthereumExecutionModel(ExecutionModel):
             receipt = receipts[HexBytes(swap_tx.tx_hash)]
 
             input_args = swap_tx.get_actual_function_input_args()
-            result = self.analyse_trade_by_receipt(
-                web3,
-                uniswap,
-                tx_dict,
-                swap_tx.tx_hash,
-                receipt,
-                input_args=input_args,
-            )
+            
+            if self.is_v3():
+                result = self.analyse_trade_by_receipt(
+                    web3,
+                    uniswap,
+                    tx_dict,
+                    swap_tx.tx_hash,
+                    receipt,
+                    input_args=input_args,
+                )
+            else:
+                result = self.analyse_trade_by_receipt(
+                    web3,
+                    uniswap,
+                    tx_dict,
+                    swap_tx.tx_hash,
+                    receipt,
+                    input_args=input_args,
+                    pair_fee=trade.pair.fee,
+                )
 
             if isinstance(result, TradeSuccess):
 
@@ -407,6 +420,9 @@ class EthereumExecutionModel(ExecutionModel):
 
                     executed_reserve = result.amount_in / Decimal(10**quote_token_details.decimals)
                     executed_amount = result.amount_out / Decimal(10**base_token_details.decimals)
+
+                    # lp fee is already in terms of quote token
+                    lp_fee_paid = result.lp_fee_paid
                 else:
                     # Ordered other way around
                     assert path[0] == base_token_details.address.lower(), f"Path is {path}, base token is {base_token_details}"
@@ -420,6 +436,9 @@ class EthereumExecutionModel(ExecutionModel):
                     executed_amount = -result.amount_in / Decimal(10**base_token_details.decimals)
                     executed_reserve = result.amount_out / Decimal(10**quote_token_details.decimals)
 
+                    # convert lp fee to be in terms of quote token
+                    lp_fee_paid = result.lp_fee_paid * float(price) if result.lp_fee_paid else None
+
                 assert (executed_reserve > 0) and (executed_amount != 0) and (price > 0), f"Executed amount {executed_amount}, executed_reserve: {executed_reserve}, price: {price}, tx info {trade.tx_info}"
 
                 # Mark as success
@@ -429,8 +448,9 @@ class EthereumExecutionModel(ExecutionModel):
                     executed_price=float(price),
                     executed_amount=executed_amount,
                     executed_reserve=executed_reserve,
-                    lp_fees=0,
-                    native_token_price=1.0,
+                    lp_fees=lp_fee_paid,
+                    native_token_price=0,  # won't fix
+                    cost_of_gas=result.get_cost_of_gas(),
                 )
             else:
                 report_failure(ts, state, trade, stop_on_execution_failure)

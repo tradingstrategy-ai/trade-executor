@@ -54,7 +54,9 @@ class UniswapV3LivePricing(EthereumPricingModel):
                  web3: Web3,
                  pair_universe: PandasPairUniverse,
                  routing_model: UniswapV3SimpleRoutingModel,
-                 very_small_amount=Decimal("0.10")):
+                 very_small_amount=Decimal("0.10"),
+                 epsilon: Optional[float] = None,  # for testing
+                 ):
 
         assert isinstance(routing_model, UniswapV3SimpleRoutingModel)
 
@@ -64,8 +66,10 @@ class UniswapV3LivePricing(EthereumPricingModel):
             web3,
             pair_universe,
             routing_model,
-            very_small_amount
+            very_small_amount,
+            epsilon
         )
+
 
     def get_pair_fee_multiplier(self, ts, pair):
         """Outdated: Uniswap V3 pairs get fees in raw format e.g. 3000 instead of 0.3%
@@ -155,7 +159,7 @@ class UniswapV3LivePricing(EthereumPricingModel):
         price = float(received / quantity)
         
         if intermediate_pair:
-            mid_price = price * (1 + self.get_pair_fee_multiplier(ts, target_pair)) * (1 + self.get_pair_fee_multiplier(ts, intermediate_pair.fee))
+            mid_price = price / (1 - self.get_pair_fee_multiplier(ts, target_pair)) / (1 - self.get_pair_fee_multiplier(ts, intermediate_pair))
         else:
             # Read mid-price at the mid point of Uni v3 liquidity,
             # at our block number
@@ -170,8 +174,8 @@ class UniswapV3LivePricing(EthereumPricingModel):
         assert price <= mid_price, f"Bad pricing: {price}, {mid_price}"
 
         lp_fee = float(quantity) * total_fee_pct
-        #lp_fee = (mid_price - price) * float(quantity)
-        #assert lp_fee == float(quantity) * total_fee_pct
+
+        self.validate_mid_price_for_sell(lp_fee, mid_price, price, quantity)
         
         return TradePricing(
             price=price,
@@ -265,10 +269,7 @@ class UniswapV3LivePricing(EthereumPricingModel):
 
         lp_fee = float(reserve) * total_fee_pct
 
-        # TODO: Verify mid_price calculation
-
-        if intermediate_pair:
-            # TODO: Confirm mid-price calculations
+        if intermediate_pair:        
             mid_price = price * (1 - self.get_pair_fee_multiplier(ts, intermediate_pair)) * (1 - self.get_pair_fee_multiplier(ts, target_pair))
             
             path = [intermediate_pair, target_pair]
@@ -285,6 +286,8 @@ class UniswapV3LivePricing(EthereumPricingModel):
             path = [target_pair]
 
         assert price >= mid_price, f"Bad pricing: {price}, {mid_price}"
+
+        self.validate_mid_price_for_buy(lp_fee, price, mid_price, reserve)
         
         return TradePricing(
             price=float(price),

@@ -220,7 +220,7 @@ def test_enzyme_live_trading_start(
         t = p.trades[3]
         assert t.is_success()
         assert t.lp_fees_estimated == pytest.approx(0.14991015720000014)
-        assert t.lp_fees_paid in (0, None)  # Not supported yet
+        assert t.lp_fees_paid == pytest.approx(0.14991015600000002)
         assert t.trade_type == TradeType.rebalance
         assert t.slippage_tolerance == 0.02  # Set in enzyme_end_to_end.py strategy module
 

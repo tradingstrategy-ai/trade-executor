@@ -57,7 +57,9 @@ class UniswapV2LivePricing(EthereumPricingModel):
                  web3: Web3,
                  pair_universe: PandasPairUniverse,
                  routing_model: UniswapV2SimpleRoutingModel,
-                 very_small_amount=Decimal("0.10")):
+                 very_small_amount=Decimal("0.10"),
+                 epsilon: Optional[float] = None,
+                 ):
 
         assert isinstance(routing_model, UniswapV2SimpleRoutingModel)
 
@@ -67,8 +69,10 @@ class UniswapV2LivePricing(EthereumPricingModel):
             web3,
             pair_universe,
             routing_model,
-            very_small_amount
+            very_small_amount,
+            epsilon,
         )
+
         
     def get_uniswap(self, target_pair: TradingPairIdentifier) -> UniswapV2Deployment:
         """Helper function to speed up Uniswap v2 deployment resolution."""
@@ -130,21 +134,20 @@ class UniswapV2LivePricing(EthereumPricingModel):
         price = float(received / quantity)
             
         if intermediate_pair:
-            # TODO: Verify calculation
-            mid_price = price * (1 + fee) * (1 + fee)
+            mid_price = price / (1 - fee) / (1 - fee)
             
             path = [intermediate_pair, target_pair]
         else:
-            mid_price = price * (1 + fee)
+            mid_price = price / (1 - fee)
             
             path = [target_pair]
             
         
         lp_fee = float(quantity) * total_fee_pct
-        #lp_fee = (mid_price - price) * float(quantity)
             
         assert price <= mid_price, f"Bad pricing: {price}, {mid_price}"
 
+        self.validate_mid_price_for_sell(lp_fee, mid_price, price, quantity)
 
         return TradePricing(
             price=price,
@@ -161,7 +164,6 @@ class UniswapV2LivePricing(EthereumPricingModel):
                        reserve: Optional[Decimal],
                        ) -> TradePricing:
         """Get live price on Uniswap.
-        TODO: Fees are incorrectly calculated in the case of multipair routing
         :param reserve:
             The buy size in quote token e.g. in dollars
         :return:
@@ -228,11 +230,13 @@ class UniswapV2LivePricing(EthereumPricingModel):
             
             total_fee_pct = 1 - (1 - fees[0])
             
-        
+        # Reserve is not necessarily a dollar amount (quote token doesn't have to be dollars), so we need to calculate
         lp_fee = float(reserve) * total_fee_pct
 
         assert price >= mid_price, f"Bad pricing: {price}, {mid_price}"
-        
+
+        self.validate_mid_price_for_buy(lp_fee, price, mid_price, reserve)
+
         return TradePricing(
             price=float(price),
             mid_price=float(mid_price),
