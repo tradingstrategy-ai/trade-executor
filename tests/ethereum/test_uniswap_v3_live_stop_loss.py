@@ -3,6 +3,7 @@
 """
 import datetime
 import secrets
+import os
 from decimal import Decimal
 from typing import List
 
@@ -30,18 +31,21 @@ from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_routing import UniswapV3Simple
 from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_live_pricing import UniswapV3LivePricing
 from tradeexecutor.state.state import State, UncleanState
 from tradeexecutor.state.trade import TradeExecution
-from tradeexecutor.strategy.cycle import snap_to_previous_tick
+from tradeexecutor.strategy.cycle import snap_to_previous_tick, snap_to_next_tick
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.trading_strategy_universe import translate_trading_pair, TradingStrategyUniverse
 from tradeexecutor.strategy.execution_context import ExecutionMode
+from tradeexecutor.strategy.run_state import RunState
 from tradingstrategy.exchange import ExchangeUniverse
 from tradingstrategy.pair import PandasPairUniverse
 
 from tradeexecutor.ethereum.universe import create_exchange_universe, create_pair_universe
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.testing.simulated_execution_loop import set_up_simulated_execution_loop_uniswap_v3
+from tradeexecutor.testing.synthetic_price_data import generate_ohlcv_candles
 from tradeexecutor.utils.blockchain import get_latest_block_timestamp
+from tradeexecutor.visual.image_output import open_plotly_figure_in_browser, open_bytes_in_browser
 
 
 #: How much values we allow to drift.
@@ -174,6 +178,7 @@ def weth_usdc_pair(uniswap_v3, weth_usdc_uniswap_trading_pair, asset_usdc, asset
         weth_usdc_uniswap_trading_pair,
         uniswap_v3.factory.address,
         fee=WETH_USDC_FEE,
+        internal_id = 1,
     )
 
 
@@ -266,6 +271,8 @@ def decide_trades(
             buy_amount,
             stop_loss_pct=0.95,  # Use 5% stop loss
         )
+    else:
+        position_manager.close_all()
 
     return trades
 
@@ -293,6 +300,8 @@ def decide_trades_no_stop_loss(
             pair,
             buy_amount,
         )
+    else:
+        position_manager.close_all()
 
     return trades
 
@@ -300,14 +309,32 @@ def decide_trades_no_stop_loss(
 @pytest.fixture()
 def core_universe(web3,
              exchange_universe: ExchangeUniverse,
-             pair_universe: PandasPairUniverse) -> Universe:
+             pair_universe: PandasPairUniverse,
+             weth_usdc_pair: TradingPairIdentifier
+             ) -> Universe:
     """Create a trading universe that contains our mock pair."""
+
+    time_bucket = TimeBucket.d1
+
+    df = generate_ohlcv_candles(
+        start=datetime.datetime(2023, 1, 1),
+        end=datetime.datetime.now(),
+        bucket=time_bucket,
+        pair_id = weth_usdc_pair.internal_id,
+        exchange_id = None,
+        daily_drift = (0.98, 1.02),  # sideways
+        high_drift=1.01,
+        low_drift=0.99,
+    )
+
+    candle_universe = GroupedCandleUniverse(df, time_bucket)
+    
     return Universe(
         time_bucket=TimeBucket.d1,
         chains=[ChainId(web3.eth.chain_id)],
         exchanges=list(exchange_universe.exchanges.values()),
         pairs=pair_universe,
-        candles=GroupedCandleUniverse.create_empty(),
+        candles=candle_universe,
         liquidity=GroupedLiquidityUniverse.create_empty(),
     )
 
@@ -376,6 +403,7 @@ def test_live_stop_loss(
         wallet_account=trader,
         routing_model=routing_model,
     )
+    loop.runner.run_state = RunState()  # Needed for visualisations
 
     ts = get_latest_block_timestamp(web3)
 
@@ -468,6 +496,7 @@ def test_live_stop_loss_missing(
         wallet_account=trader,
         routing_model=routing_model,
     )
+    loop.runner.run_state = RunState()
 
     ts = get_latest_block_timestamp(web3)
 
@@ -580,3 +609,79 @@ def test_broadcast_failed_and_repair_state(
     assert t.is_repaired()
 
     state.check_if_clean()
+
+
+def test_refresh_visualisations(
+        logger,
+        web3: Web3,
+        deployer: HexAddress,
+        trader: LocalAccount,
+        trading_strategy_universe: TradingStrategyUniverse,
+        routing_model: UniswapV3SimpleRoutingModel,
+        uniswap_v3: UniswapV3Deployment,
+        usdc_token: Contract,
+        weth_token: Contract,
+):
+    """Check that we can refresh visualisations."""
+
+     # Set up an execution loop we can step through
+    state = State()
+    loop = set_up_simulated_execution_loop_uniswap_v3(
+        web3=web3,
+        decide_trades=decide_trades_no_stop_loss,
+        universe=trading_strategy_universe,
+        state=state,
+        wallet_account=trader,
+        routing_model=routing_model,
+    )
+
+    loop.runner.run_state = RunState()  # needed for visualisations
+
+    ts = get_latest_block_timestamp(web3)  # will not show trades due to the timestamp
+
+    # Make transaction confirmation step to skip,
+    execution_model = loop.execution_model
+    assert isinstance(execution_model, UniswapV3ExecutionModel)
+
+    # Set confirmation timeout to negative
+    # to signal we are testing broadcast problems
+    execution_model.confirmation_timeout = datetime.timedelta(seconds=-1)
+
+    strategy_cycle_timestamp = snap_to_previous_tick(ts, loop.cycle_duration)
+
+    loop.tick(
+        ts,
+        loop.cycle_duration,
+        state,
+        cycle=1,
+        live=True,
+        strategy_cycle_timestamp=strategy_cycle_timestamp,
+    )
+
+    loop.runner.refresh_visualisations(state, trading_strategy_universe)
+
+    strategy_cycle_timestamp = snap_to_next_tick(ts, loop.cycle_duration)
+
+    loop.tick(
+        ts,
+        loop.cycle_duration,
+        state,
+        cycle=2,
+        live=True,
+        strategy_cycle_timestamp=strategy_cycle_timestamp,
+    )
+
+    loop.runner.refresh_visualisations(state, trading_strategy_universe)
+
+    small_image = loop.runner.run_state.visualisation.small_image
+    small_image_dark = loop.runner.run_state.visualisation.small_image_dark
+    large_image = loop.runner.run_state.visualisation.large_image
+    large_image_dark = loop.runner.run_state.visualisation.large_image_dark
+
+    if os.environ.get('SHOW_IMAGE'):
+        open_bytes_in_browser(small_image)
+        open_bytes_in_browser(small_image_dark)
+        open_bytes_in_browser(large_image)
+        open_bytes_in_browser(large_image_dark)
+
+

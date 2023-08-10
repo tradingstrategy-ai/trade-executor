@@ -18,7 +18,7 @@ from tradeexecutor.visual.technical_indicator import overlay_all_technical_indic
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.charting.candle_chart import visualise_ohlcv, make_candle_labels, VolumeBarMode
 
-from tradeexecutor.visual.utils import get_all_positions, get_pair_name_from_first_trade, get_all_text, get_num_detached_and_names, get_pair_base_quote_names, get_start_and_end, export_trades_as_dataframe, visualise_trades
+from tradeexecutor.visual.utils import get_all_positions, get_pair_name_from_first_trade, get_all_text, get_num_detached_and_names, get_pair_base_quote_names, get_start_and_end, export_trades_as_dataframe, visualise_trades, get_num_detached_and_names_no_indicators
 
 
 logger = logging.getLogger(__name__)
@@ -295,6 +295,7 @@ def visualise_single_pair(
         relative_sizing: list[float] = None,
         volume_axis_name: str = "Volume USD",
         candle_decimals: int = 4,
+        detached_indicators: bool = True,
 ) -> go.Figure:
     """Visualise single-pair trade execution.
 
@@ -360,6 +361,9 @@ def visualise_single_pair(
     
     :param candle_decimals:
         Number of decimal places to round the candlesticks to. Default is 4.
+
+    :param detached_indicators:
+        If set, draw detached indicators. Has no effect if `technical_indicators` is False.
 
     """
     
@@ -430,6 +434,7 @@ def visualise_single_pair(
         labels=labels,
         volume_axis_name=volume_axis_name,
         pair_id=pair_id,
+        detached_indicators=detached_indicators,
     )
 
 
@@ -611,6 +616,7 @@ def _get_grid_with_candles_volume_indicators(
     labels: pd.Series,
     volume_axis_name: str = "Volume USD",
     pair_id: int | None = None,
+    detached_indicators: bool = True,
 ):
     """Gets figure grid with candles, volume, and indicators overlayed."""
     
@@ -625,7 +631,10 @@ def _get_grid_with_candles_volume_indicators(
 
     plots = state.visualisation.plots.values()
     
-    num_detached_indicators, subplot_names = get_num_detached_and_names(plots, volume_bar_mode, volume_text)
+    if technical_indicators:
+        num_detached_indicators, subplot_names = get_num_detached_and_names(plots, volume_bar_mode, volume_text, pair_name=None, detached_indicators=detached_indicators)
+    else:
+        num_detached_indicators, subplot_names = get_num_detached_and_names_no_indicators(volume_bar_mode, volume_text, pair_name=None)
     
     # visualise candles and volume and create empty grid space for technical indicators
     fig = visualise_ohlcv(
@@ -654,6 +663,7 @@ def _get_grid_with_candles_volume_indicators(
             end_at,
             volume_bar_mode,
             pair_id,
+            detached_indicators=detached_indicators,
         )
         
     return fig

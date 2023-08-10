@@ -114,7 +114,7 @@ class TradingPosition(GenericPosition):
     #: yet, because the buy price != sell price.
     last_token_price: USDollarAmount
 
-    # 1.0 for stablecoins, unless out of peg, in which case can be 0.99
+    #: 1.0 for stablecoins, unless out of peg, in which case can be 0.99
     last_reserve_price: USDollarAmount
 
     #: Which reserve currency we are going to receive when we sell the asset

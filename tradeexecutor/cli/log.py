@@ -26,19 +26,23 @@ _ring_buffer_handler: Optional[RingBufferHandler] = None
 
 
 def setup_logging(
-        log_level: str | int=logging.INFO,
+        log_level: None | str | int=logging.INFO,
         in_memory_buffer=False) -> Logger:
     """Setup root logger and quiet some levels.
+
+    :param log_level:
+        Log level read from command line or environment var.
 
     :param in_memory_buffer:
         Setup in-memory log buffer used to fetch log messages to the frontend.
     """
-
     setup_custom_log_levels()
 
     if log_level == "disabled":
         # Special unit test marker, don't mess with loggers
         return logging.getLogger()
+    elif log_level is None:
+        log_level = logging.INFO
 
     if isinstance(log_level, str):
         log_level = log_level.upper()

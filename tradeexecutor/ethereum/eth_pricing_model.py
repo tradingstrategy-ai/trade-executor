@@ -15,6 +15,7 @@ from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
 from tradeexecutor.strategy.trading_strategy_universe import translate_trading_pair
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.trade_pricing import TradePricing
+from tradeexecutor.strategy.account_correction import DUST_EPSILON
 from tradeexecutor.ethereum.routing_model import EthereumRoutingModel
 
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment
@@ -52,7 +53,9 @@ class EthereumPricingModel(PricingModel):
                  web3: Web3,
                  pair_universe: PandasPairUniverse,
                  routing_model: EthereumRoutingModel,
-                 very_small_amount: Decimal):
+                 very_small_amount: Decimal,
+                 epsilon: Optional[float] = None,  # for testing
+                 ):
 
         assert isinstance(web3, Web3)
         assert isinstance(pair_universe, PandasPairUniverse)
@@ -61,6 +64,7 @@ class EthereumPricingModel(PricingModel):
         self.pair_universe = pair_universe
         self.very_small_amount = very_small_amount
         self.routing_model = routing_model
+        self.epsilon = epsilon or DUST_EPSILON
 
         assert isinstance(self.very_small_amount, Decimal)
     
@@ -141,6 +145,47 @@ class EthereumPricingModel(PricingModel):
             This can be different from zero fees.
         """
         return pair.fee
+    
+    def validate_mid_price_for_sell(self, lp_fee, mid_price, price, quantity):
+        """Validate the mid price calculation for a sell trade.
+
+        Should basically have:
+            lp_fee = (mid_price - price)/mid_price * float(quantity)
+        
+        :param lp_fee:
+            The fee that is paid to the LPs.
+        
+        :param mid_price:
+            The mid price of the pair.
+
+        :param price:
+            The price of the trade.
+
+        :param quantity:
+            The quantity of the trade.
+        """
+        assert lp_fee - (mid_price - price)/mid_price * float(quantity) < self.epsilon, f"Bad lp fee calculation: {lp_fee}, {mid_price}, {price}, {quantity}"
+
+    def validate_mid_price_for_buy(self, lp_fee, price, mid_price, reserve):
+        """Validate the mid price calculation for a buy trade.
+
+        Should basically have:
+            lp_fee = (price - mid_price)/price * float(reserve)
+        
+        :param lp_fee:
+            The fee that is paid to the LPs.
+        
+        :param price:
+            The price of the trade.
+
+        :param mid_price:
+            The mid price of the pair.
+
+        :param reserve:
+            The reserve of the trade.
+        """
+
+        assert lp_fee - (price - mid_price)/price * float(reserve) < self.epsilon, f"Bad lp fee calculation: {lp_fee}, {mid_price}, {price}, {reserve}"
     
     @abc.abstractmethod
     def get_uniswap(self, target_pair: TradingPairIdentifier) -> deployment_types:
