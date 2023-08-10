@@ -419,6 +419,9 @@ class EthereumExecutionModel(ExecutionModel):
 
                     executed_reserve = result.amount_in / Decimal(10**quote_token_details.decimals)
                     executed_amount = result.amount_out / Decimal(10**base_token_details.decimals)
+
+                    # lp fee is already in terms of quote token
+                    lp_fee_paid = result.lp_fee_paid
                 else:
                     # Ordered other way around
                     assert path[0] == base_token_details.address.lower(), f"Path is {path}, base token is {base_token_details}"
@@ -432,10 +435,12 @@ class EthereumExecutionModel(ExecutionModel):
                     executed_amount = -result.amount_in / Decimal(10**base_token_details.decimals)
                     executed_reserve = result.amount_out / Decimal(10**quote_token_details.decimals)
 
+                    # convert lp fee to be in terms of quote token
+                    lp_fee_paid = result.lp_fee_paid * float(price)
+
                 assert (executed_reserve > 0) and (executed_amount != 0) and (price > 0), f"Executed amount {executed_amount}, executed_reserve: {executed_reserve}, price: {price}, tx info {trade.tx_info}"
 
-                # amount is already taken into account in result.lp_fee_paid
-                lp_fee_paid = result.lp_fee_paid * price
+                
 
                 # Mark as success
                 state.mark_trade_success(
