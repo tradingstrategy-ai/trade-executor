@@ -438,6 +438,31 @@ class ExecutionLoop:
             cycle=cycle,
         )
 
+        # Update portfolio and position historical data tracking.
+        #
+        # Statistics are updated on live_positions().
+        # However if any position was opened,
+        # we need at least one good entry with valuation in
+        # PositionStatistics().
+        #
+        # Thus we need to update statistics right after,
+        # otherwise a stop loss can close the position
+        # and it never get any good samples to position
+        # statistics out of it.
+        #
+        # TODO: We have update_statistics() and
+        # calculate_summary_statistics().
+        # Rename other to avoid confusion.
+        #
+        if live:
+            update_statistics(
+                datetime.datetime.utcnow(),
+                state.stats,
+                state.portfolio,
+                ExecutionMode.real_trading,
+                strategy_cycle_at=strategy_cycle_timestamp,
+            )
+
         state.uptime.record_cycle_complete(cycle)
 
         # Check that state is good before writing it to the disk
@@ -850,6 +875,7 @@ class ExecutionLoop:
             scheduler.shutdown(wait=False)
             crash_exception = exc
 
+        # Timed task to do the live trading cycles
         def live_cycle():
             nonlocal cycle
             nonlocal universe
@@ -924,15 +950,6 @@ class ExecutionLoop:
                     logger.exception(e)
                     pass
 
-                # Update portfolio and position historical data tracking
-                update_statistics(
-                    datetime.datetime.utcnow(),
-                    state.stats,
-                    state.portfolio,
-                    ExecutionMode.real_trading,
-                    strategy_cycle_at=strategy_cycle_timestamp,
-                )
-
                 # Go to sleep and
                 # and advance to the next cycle
                 cycle += 1
@@ -955,6 +972,7 @@ class ExecutionLoop:
             # Reset the background watchdog timer
             mark_alive(watchdog_registry, "live_cycle")
 
+        # Timed task to update the valuation of open positions and collect statistics
         def live_positions():
             nonlocal universe
 
@@ -977,6 +995,7 @@ class ExecutionLoop:
             run_state.position_revaluations += 1
             run_state.bumb_refreshed()
 
+        # Timed task to do the stop loss checks
         def live_trigger_checks():
             nonlocal universe
 
