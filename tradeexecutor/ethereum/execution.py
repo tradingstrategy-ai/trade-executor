@@ -440,8 +440,6 @@ class EthereumExecutionModel(ExecutionModel):
 
                 assert (executed_reserve > 0) and (executed_amount != 0) and (price > 0), f"Executed amount {executed_amount}, executed_reserve: {executed_reserve}, price: {price}, tx info {trade.tx_info}"
 
-                
-
                 # Mark as success
                 state.mark_trade_success(
                     ts,

@@ -279,7 +279,7 @@ class TradeExecution:
     #: fees are always taken from `amount in` token
     #: and directly passed to the LPs as the part of the swap,
     #: these is no separate fee information.
-    lp_fees_paid: Optional[float] = None
+    lp_fees_paid: Optional[USDollarAmount] = None
 
     #: LP fees estimated in the USD
     #:
@@ -339,7 +339,7 @@ class TradeExecution:
 
     #: Cost of gas in terms of native token
     #:
-    #: To get usd amount, use :py:meth:`get_cost_of_gas_usd`
+    #: E.g. on Ethereum, this is the amount of ETH spent on gas
     cost_of_gas: Optional[Decimal] = None
 
     def __repr__(self):
@@ -883,6 +883,8 @@ class TradeExecution:
     
     def get_cost_of_gas_usd(self):
         """Get the cost of gas for this trade in USD"""
-        assert self.cost_of_gas, "Cost of gas must be set to work out cost of gas in USD"
-        assert self.native_token_price, "Native token price must be set to work out cost of gas in USD"
-        return self.cost_of_gas * self.native_token_price
+        raise NotImplementedError("This method is not implemented yet since we do not store native token prices yet")
+        
+        # assert self.cost_of_gas, "Cost of gas must be set to work out cost of gas in USD"
+        # assert self.native_token_price, "Native token price must be set to work out cost of gas in USD"
+        # return self.cost_of_gas * self.native_token_price
