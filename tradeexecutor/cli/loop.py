@@ -34,7 +34,8 @@ try:
     from apscheduler.executors.pool import ThreadPoolExecutor
     from apscheduler.schedulers.blocking import BlockingScheduler
 except ImportError:
-    # apscheduler is only required in live trading
+    # apscheduler is only required in live trading,
+    # not in backtesting
     pass
 
 try:
@@ -438,6 +439,37 @@ class ExecutionLoop:
             cycle=cycle,
         )
 
+        # Update portfolio and position historical data tracking.
+        #
+        # Statistics are updated on live_positions().
+        # However if any position was opened,
+        # we need at least one good entry with valuation in
+        # PositionStatistics().
+        #
+        # Thus we need to update statistics right after,
+        # otherwise a stop loss can close the position
+        # and it never get any good samples to position
+        # statistics out of it.
+        #
+        # TODO: We have update_statistics() and
+        # calculate_summary_statistics().
+        # Rename other to avoid confusion.
+        #
+        if live:
+            # To be extra careful,
+            # save the state if we are going to crash
+            # in statistics calculations, so we have a trace
+            # of broadcasted transactions
+            self.store.sync(state)
+
+            update_statistics(
+                datetime.datetime.utcnow(),
+                state.stats,
+                state.portfolio,
+                ExecutionMode.real_trading,
+                strategy_cycle_at=strategy_cycle_timestamp,
+            )
+
         state.uptime.record_cycle_complete(cycle)
 
         # Check that state is good before writing it to the disk
@@ -482,7 +514,7 @@ class ExecutionLoop:
             self.runner.revalue_portfolio(clock, state, valuation_method)
 
         with self.timed_task_context_manager("update_statistics"):
-            logger.info("Updating position statistics")
+            logger.info("Updating position statistics after revaluation")
             update_statistics(clock, state.stats, state.portfolio, execution_mode)
 
         # Check that state is good before writing it to the disk
@@ -778,7 +810,7 @@ class ExecutionLoop:
             If any of live trading concurrent tasks crashes with an exception
         """
 
-        logger.info("run_luve(): Strategy is executed in live trading mode")
+        logger.info("run_live(): Strategy is executed in live trading mode")
 
         # Safety checks
         assert not self.is_backtest()
@@ -850,6 +882,7 @@ class ExecutionLoop:
             scheduler.shutdown(wait=False)
             crash_exception = exc
 
+        # Timed task to do the live trading cycles
         def live_cycle():
             nonlocal cycle
             nonlocal universe
@@ -946,6 +979,7 @@ class ExecutionLoop:
             # Reset the background watchdog timer
             mark_alive(watchdog_registry, "live_cycle")
 
+        # Timed task to update the valuation of open positions and collect statistics
         def live_positions():
             nonlocal universe
 
@@ -968,6 +1002,7 @@ class ExecutionLoop:
             run_state.position_revaluations += 1
             run_state.bumb_refreshed()
 
+        # Timed task to do the stop loss checks
         def live_trigger_checks():
             nonlocal universe
 

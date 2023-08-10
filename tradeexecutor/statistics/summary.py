@@ -27,6 +27,8 @@ def calculate_summary_statistics(
 ) -> StrategySummaryStatistics:
     """Preprocess the strategy statistics for the summary card in the web frontend.
 
+    TODO: Rename to `calculate_strategy_preview_statistics()`.
+
     To test out in the :ref:`console`:
 
     .. code-block:: python

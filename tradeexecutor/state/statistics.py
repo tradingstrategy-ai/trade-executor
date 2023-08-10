@@ -32,6 +32,7 @@ class PositionStatistics:
     """
 
     #: Real-time clock when these stats were calculated
+    #:
     calculated_at: datetime.datetime
 
     #: When this position was revalued last time.
@@ -40,6 +41,9 @@ class PositionStatistics:
     last_valuation_at: datetime.datetime
 
     #: Profitability %
+    #:
+    #: Unrealised profitability
+    #:
     profitability: float
 
     #: How much profit we made so far
@@ -49,8 +53,8 @@ class PositionStatistics:
     quantity: float
 
     #: The current position size dollars
+    #:
     value: USDollarAmount
-
 
     def __post_init__(self):
         assert isinstance(self.calculated_at, datetime.datetime)
@@ -77,7 +81,6 @@ class FinalPositionStatistics:
 
     #: How much was we held at the maximum point of time
     value_at_max: USDollarAmount
-
 
 
 @dataclass_json

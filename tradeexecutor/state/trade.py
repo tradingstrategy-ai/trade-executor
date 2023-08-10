@@ -619,7 +619,11 @@ class TradeExecution:
     def get_position_quantity(self) -> Decimal:
         """Get the planned or executed quantity of the base token.
 
-        Positive for buy, negative for sell.
+        - Positive for buy, negative for sell.
+
+        - Return executed quantity if the trade has been done
+
+        - Otherwise return planned quantity
         """
 
         if self.repaired_trade_id or self.repaired_at:

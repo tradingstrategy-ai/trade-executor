@@ -871,6 +871,11 @@ def test_state_summary_without_initial_cash(usdc, weth_usdc, start_ts: datetime.
     assert state.portfolio.get_total_equity() == 998.3
     assert position.get_value() == pytest.approx(168.3)
     assert position.last_pricing_at == start_ts
+
+    assert position.is_open()
+    assert trade.is_success()
+    update_statistics(datetime.datetime.utcnow(), state.stats, state.portfolio, ExecutionMode.real_trading)
+
     trader.sell(weth_usdc, state.portfolio.get_equity_for_pair(weth_usdc), 1800)
 
     update_statistics(datetime.datetime.utcnow(), state.stats, state.portfolio, ExecutionMode.real_trading)
