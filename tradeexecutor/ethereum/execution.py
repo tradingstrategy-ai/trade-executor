@@ -436,7 +436,7 @@ class EthereumExecutionModel(ExecutionModel):
                     executed_reserve = result.amount_out / Decimal(10**quote_token_details.decimals)
 
                     # convert lp fee to be in terms of quote token
-                    lp_fee_paid = result.lp_fee_paid * float(price)
+                    lp_fee_paid = result.lp_fee_paid * float(price) if result.lp_fee_paid else None
 
                 assert (executed_reserve > 0) and (executed_amount != 0) and (price > 0), f"Executed amount {executed_amount}, executed_reserve: {executed_reserve}, price: {price}, tx info {trade.tx_info}"
 
