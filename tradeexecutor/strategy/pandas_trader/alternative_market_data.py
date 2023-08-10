@@ -44,14 +44,14 @@ def resample_single_pair(df, bucket: TimeBucket) -> pd.DataFrame:
     # Do forward fill, as missing values in the source data
     # may case NaN to appear as price
     resampled = df.resample(bucket.to_frequency()).agg(ohlc_dict)
-    filled = resampled.fillna("ffill")
+    filled = resampled.ffill()
     return filled
 
 
 def _fix_nans(df: pd.DataFrame) -> pd.DataFrame:
     """External data sources might have NaN values for prices."""
 
-    # TODO: Add NaN fixing logic
+    # TODO: Add NaN fixing logic here
     # https://stackoverflow.com/a/29530303/315168
     assert not df.isnull().any().any(), "DataFrame contains NaNs"
     return df
@@ -69,6 +69,11 @@ def load_pair_candles_from_parquet(
     usually from a centralised exchange. This allows
     strategy testing to see there is no price feed data issues
     or specificity with it.
+
+    :param pair:
+        The trading pair data this Parquet file contains.
+
+        E.g. ticker symbols and trading fee are read from this argument.
 
     :param resample:
         Resample OHLCV data to a higher timeframe
