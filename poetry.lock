@@ -4943,13 +4943,13 @@ tqdm = ">=4.64.1,<5.0.0"
 
 [[package]]
 name = "trading-strategy"
-version = "0.18.1"
+version = "0.18.2"
 description = "Algorithmic trading, token and cryptocurrency DEX trading data, for Uniswap, Aave, PancakeSwap, Sushi, Trader Joe, others"
 optional = false
 python-versions = ">=3.10,<3.11"
 files = [
-    {file = "trading_strategy-0.18.1-py3-none-any.whl", hash = "sha256:f573cc2dd354d5d65d3ac42f13c2238f6d2fd95ec80b93efe269537397d8fd4b"},
-    {file = "trading_strategy-0.18.1.tar.gz", hash = "sha256:36be3134474d468ec0e44623f3b76bff3d18ad6efd74b4d4e912cc60866164ab"},
+    {file = "trading_strategy-0.18.2-py3-none-any.whl", hash = "sha256:2585625401effbdc38f16d30a4b11cad28f796e3c010af3df5be64a7c1c8736e"},
+    {file = "trading_strategy-0.18.2.tar.gz", hash = "sha256:cf9f93394cd34a89453852fc2d8b7d35b4ee3b2b340d6c4f7f0be01b20fc188f"},
 ]
 
 [package.dependencies]
@@ -5802,4 +5802,4 @@ web-server = ["WebTest", "openapi-core", "pyramid", "pyramid-openapi3", "waitres
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.10,<3.11"
-content-hash = "f99107bba4f2ee2cc03b19b03baaa170a0fe3b77becea7516810684555b89f18"
+content-hash = "597abce5da9667543b2d13b654c3f250b92a04a0b28c3ae430256714234f6bc6"
