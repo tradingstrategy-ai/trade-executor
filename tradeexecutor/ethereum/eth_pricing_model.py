@@ -27,6 +27,11 @@ from tradingstrategy.pair import PandasPairUniverse
 deployment_types = (UniswapV2Deployment | UniswapV3Deployment)
 
 
+#: TODO: No good data yet for the value used here
+#:
+LP_FEE_VALIDATION_EPSILON = 0.001
+
+
 class EthereumPricingModel(PricingModel):
     """Get a price for the asset.
 
@@ -54,7 +59,7 @@ class EthereumPricingModel(PricingModel):
                  pair_universe: PandasPairUniverse,
                  routing_model: EthereumRoutingModel,
                  very_small_amount: Decimal,
-                 epsilon: Optional[float] = None,  # for testing
+                 epsilon: Optional[float] = LP_FEE_VALIDATION_EPSILON,
                  ):
 
         assert isinstance(web3, Web3)
@@ -64,7 +69,7 @@ class EthereumPricingModel(PricingModel):
         self.pair_universe = pair_universe
         self.very_small_amount = very_small_amount
         self.routing_model = routing_model
-        self.epsilon = epsilon or DUST_EPSILON
+        self.epsilon = epsilon
 
         assert isinstance(self.very_small_amount, Decimal)
     
@@ -164,7 +169,11 @@ class EthereumPricingModel(PricingModel):
         :param quantity:
             The quantity of the trade.
         """
-        assert lp_fee - (mid_price - price)/mid_price * float(quantity) < self.epsilon, f"Bad lp fee calculation: {lp_fee}, {mid_price}, {price}, {quantity}"
+        raise NotImplementedError("Cannot use mid-price here")
+
+        #value = lp_fee - (mid_price - price)/mid_price * float(quantity)
+        #assert abs(value) < self.epsilon, f"Bad lp fee calculation: {lp_fee}, {mid_price}, {price}, {quantity}.\n" \
+        #                             f"Value {value} < epsilon {self.epsilon}\n"
 
     def validate_mid_price_for_buy(self, lp_fee, price, mid_price, reserve):
         """Validate the mid price calculation for a buy trade.
@@ -184,8 +193,8 @@ class EthereumPricingModel(PricingModel):
         :param reserve:
             The reserve of the trade.
         """
-
-        assert lp_fee - (price - mid_price)/price * float(reserve) < self.epsilon, f"Bad lp fee calculation: {lp_fee}, {mid_price}, {price}, {reserve}"
+        raise NotImplementedError("Cannot use mid-price here")
+        #assert lp_fee - (price - mid_price)/price * float(reserve) < self.epsilon, f"Bad lp fee calculation: {lp_fee}, {mid_price}, {price}, {reserve}"
     
     @abc.abstractmethod
     def get_uniswap(self, target_pair: TradingPairIdentifier) -> deployment_types:

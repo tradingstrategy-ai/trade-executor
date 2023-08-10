@@ -16,7 +16,7 @@ from eth_defi.uniswap_v2.fees import estimate_buy_received_amount_raw, estimate_
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_execution import UniswapV2ExecutionModel
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_execution_v0 import UniswapV2ExecutionModelVersion0
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2SimpleRoutingModel, route_tokens, get_uniswap_for_pair
-from tradeexecutor.ethereum.eth_pricing_model import EthereumPricingModel
+from tradeexecutor.ethereum.eth_pricing_model import EthereumPricingModel, LP_FEE_VALIDATION_EPSILON
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.strategy.dummy import DummyExecutionModel
 from tradeexecutor.strategy.execution_model import ExecutionModel
@@ -58,7 +58,7 @@ class UniswapV2LivePricing(EthereumPricingModel):
                  pair_universe: PandasPairUniverse,
                  routing_model: UniswapV2SimpleRoutingModel,
                  very_small_amount=Decimal("0.10"),
-                 epsilon: Optional[float] = None,
+                 epsilon: Optional[float] = LP_FEE_VALIDATION_EPSILON,
                  ):
 
         assert isinstance(routing_model, UniswapV2SimpleRoutingModel)
@@ -147,7 +147,7 @@ class UniswapV2LivePricing(EthereumPricingModel):
             
         assert price <= mid_price, f"Bad pricing: {price}, {mid_price}"
 
-        self.validate_mid_price_for_sell(lp_fee, mid_price, price, quantity)
+        # self.validate_mid_price_for_sell(lp_fee, mid_price, price, quantity)
 
         return TradePricing(
             price=price,
@@ -235,7 +235,7 @@ class UniswapV2LivePricing(EthereumPricingModel):
 
         assert price >= mid_price, f"Bad pricing: {price}, {mid_price}"
 
-        self.validate_mid_price_for_buy(lp_fee, price, mid_price, reserve)
+        # self.validate_mid_price_for_buy(lp_fee, price, mid_price, reserve)
 
         return TradePricing(
             price=float(price),

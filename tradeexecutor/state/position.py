@@ -403,7 +403,7 @@ class TradingPosition(GenericPosition):
         # We should not have math that ends up with a trading position with dust left,
         # tough this might not always hold the case
         if s != Decimal(0):
-            assert s >= QUANTITY_EPSILON, "Safety check in floating point math triggered"
+            assert abs(s) >= QUANTITY_EPSILON, f"Epsilon dust safety check in floating point math triggered. Quantity: {s}. Epsilon: {QUANTITY_EPSILON}."
 
         # Always convert zero to decimal
         return Decimal(s)

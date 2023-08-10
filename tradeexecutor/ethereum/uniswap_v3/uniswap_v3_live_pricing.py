@@ -12,7 +12,7 @@ from web3 import Web3
 
 from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_execution import UniswapV3ExecutionModel
 from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_routing import UniswapV3SimpleRoutingModel, route_tokens, get_uniswap_for_pair
-from tradeexecutor.ethereum.eth_pricing_model import EthereumPricingModel
+from tradeexecutor.ethereum.eth_pricing_model import EthereumPricingModel, LP_FEE_VALIDATION_EPSILON
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.state.types import USDollarAmount
@@ -55,7 +55,7 @@ class UniswapV3LivePricing(EthereumPricingModel):
                  pair_universe: PandasPairUniverse,
                  routing_model: UniswapV3SimpleRoutingModel,
                  very_small_amount=Decimal("0.10"),
-                 epsilon: Optional[float] = None,  # for testing
+                 epsilon: Optional[float] = LP_FEE_VALIDATION_EPSILON,
                  ):
 
         assert isinstance(routing_model, UniswapV3SimpleRoutingModel)
@@ -287,7 +287,7 @@ class UniswapV3LivePricing(EthereumPricingModel):
 
         assert price >= mid_price, f"Bad pricing: {price}, {mid_price}"
 
-        self.validate_mid_price_for_buy(lp_fee, price, mid_price, reserve)
+        # self.validate_mid_price_for_buy(lp_fee, price, mid_price, reserve)
         
         return TradePricing(
             price=float(price),

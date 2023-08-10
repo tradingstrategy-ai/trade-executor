@@ -17,10 +17,22 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class TimestampedStatistics:
-    """New statistics calculated for the portfolio on each stats cycle."""
+    """Statistics calculated for the portfolio on each stats cycle.
 
+    Can be collected at
 
+    - And of the strategy cycle
+
+    - During the position revaluation
+    """
+
+    #: Statistics for the whole portfolio
+    #:
+    #: Inc. quant finance metrics
+    #:
     portfolio: PortfolioStatistics
+
+    #: Statistics for each individual position that was open at the time of colleciton
     positions: Dict[int, PositionStatistics] = field(default_factory=dict)
 
     #: Strategy cycle timestamp
@@ -138,7 +150,15 @@ def update_statistics(
         execution_mode: ExecutionMode,
         strategy_cycle_at: datetime.datetime | None = None,
 ):
-    """Update statistics in a portfolio with a new cycle.
+    """Update statistics in a portfolio.
+
+    Can be collected at
+
+    - And of the strategy cycle
+
+    - During the position revaluation
+
+    - Other ad-hoc timestamp
 
     :param clock:
         Real-time clock of the update.
