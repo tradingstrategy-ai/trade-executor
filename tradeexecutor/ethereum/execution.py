@@ -434,6 +434,9 @@ class EthereumExecutionModel(ExecutionModel):
 
                 assert (executed_reserve > 0) and (executed_amount != 0) and (price > 0), f"Executed amount {executed_amount}, executed_reserve: {executed_reserve}, price: {price}, tx info {trade.tx_info}"
 
+                # amount is already taken into account in result.lp_fee_paid
+                lp_fee_paid = result.lp_fee_paid * price
+
                 # Mark as success
                 state.mark_trade_success(
                     ts,
@@ -441,8 +444,8 @@ class EthereumExecutionModel(ExecutionModel):
                     executed_price=float(price),
                     executed_amount=executed_amount,
                     executed_reserve=executed_reserve,
-                    lp_fees=result.lp_fee_paid,
-                    native_token_price=0,  # TODO fix
+                    lp_fees=lp_fee_paid,
+                    native_token_price=0,  # won't fix
                     cost_of_gas=result.get_cost_of_gas(),
                 )
             else:
