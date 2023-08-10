@@ -121,6 +121,13 @@ class PandasTraderRunner(StrategyRunner):
 
             self.update_strategy_thinking_image_data(small_figure_combined, large_figure_combined)
 
+        elif 3 < universe.get_pair_count() <=5 :
+            
+            small_figure_combined = draw_multi_pair_strategy_state(state, universe, height=2048, detached_indicators = False)
+            large_figure_combined = draw_multi_pair_strategy_state(state, universe, height=3840, width = 2160, detached_indicators = False)
+
+            self.update_strategy_thinking_image_data(small_figure_combined, large_figure_combined)
+
         else:
             logger.warning("Charts not yet available for this strategy type. Pair count: %s", universe.get_pair_count())
     
@@ -151,6 +158,8 @@ class PandasTraderRunner(StrategyRunner):
     
     def get_image_and_dark_image(self, figure, width, height):
         """Renders the figure as a PNG image and a dark theme PNG image."""
+        # TODO: Web frontend should use SVG, but SVG does not work in discord
+        # now set to PNG
         image = render_plotly_figure_as_image_file(figure, width=width, height=height, format="png")
         
         figure.update_layout(template="plotly_dark")
@@ -227,7 +236,7 @@ class PandasTraderRunner(StrategyRunner):
             small_image = self.run_state.visualisation.small_image
             post_logging_discord_image(small_image)
 
-        elif 1 <= universe.get_pair_count() <= 3:
+        else:
             
              # Log state
             buf = StringIO()
@@ -270,8 +279,10 @@ class PandasTraderRunner(StrategyRunner):
                 
             logger.trade(buf.getvalue())
 
-            large_image = self.run_state.visualisation.large_image
-            post_logging_discord_image(large_image)
+            # there is already a warning in refresh_visualisations for pair count > 3
+            if universe.get_pair_count() <= 5:
+                large_image = self.run_state.visualisation.large_image
+                post_logging_discord_image(large_image)
+            else:
+                logger.info(f"Strategy visualisation not posted to Discord because pair count of {universe.get_pair_count()} is greater than 5.")
 
-        else:   
-            logger.warning("Reporting of strategy thinking of multipair universes with more than 3 pairs not supported yet")

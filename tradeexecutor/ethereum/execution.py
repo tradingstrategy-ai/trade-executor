@@ -235,7 +235,8 @@ class EthereumExecutionModel(ExecutionModel):
         # Check we have money for gas fees
         if self.min_balance_threshold > 0:
             balance = self.tx_builder.get_gas_wallet_balance()
-            assert balance > self.min_balance_threshold, f"At least {self.min_balance_threshold} native currency need, our wallet {self.tx_builder.get_gas_wallet_address()} has {balance:.8f}"
+            assert balance > self.min_balance_threshold, f"At least {self.min_balance_threshold} native currency need, our wallet {self.tx_builder.get_gas_wallet_address()} has {balance:.8f}\n" \
+                                                         f"If you think believe this balance is enough consider setting MIN_GAS_BALANCE environment variable."
 
     def initialize(self):
         """Set up the wallet"""

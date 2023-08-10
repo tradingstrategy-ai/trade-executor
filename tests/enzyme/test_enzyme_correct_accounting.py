@@ -171,7 +171,7 @@ def test_enzyme_no_accounting_errors(
     # Should be all-in to ETH with some dust error
     assert len(balances) == 2
 
-    # USDC is under DUST_EPSILON limit
+    # USDC 0.000001 is under DUST_EPSILON limit
     b = balances[0]
     assert b.asset == usdc_asset
     assert b.amount == pytest.approx(Decimal("0.000001"))
@@ -445,7 +445,9 @@ def test_enzyme_correct_accounting_no_open_position(
     # Make two deposits from separate parties
     usdc.functions.transfer(user_1, 1000 * 10**6).transact({"from": deployer})
     usdc.functions.approve(vault.comptroller.address, 500 * 10**6).transact({"from": user_1})
-    vault.comptroller.functions.buyShares(500 * 10**6, 1).transact({"from": user_1})
+    tx_hash = vault.comptroller.functions.buyShares(500 * 10**6, 1).transact({"from": user_1})
+
+    assert_transaction_success_with_explanation(web3, tx_hash)
 
     # Strategy has its reserve balances updated
     sync_model.sync_treasury(datetime.datetime.utcnow(), state)

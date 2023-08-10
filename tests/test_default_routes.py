@@ -4,6 +4,7 @@ from tradingstrategy.chain import ChainId
 
 from tradeexecutor.ethereum.routing_data import get_routing_model, MismatchReserveCurrency
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2SimpleRoutingModel
+from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_routing import UniswapV3SimpleRoutingModel
 from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
@@ -80,8 +81,26 @@ def test_route_ethereum_dai(execution_context):
     assert isinstance(routing, UniswapV2SimpleRoutingModel)
     assert routing.chain_id == ChainId.ethereum
 
+def test_route_uniswap_v3_usdc(execution_context):
+    """Test Uniswap v3 USDC routing."""
+    routing = get_routing_model(execution_context, TradeRouting.uniswap_v3_usdc, ReserveCurrency.usdc)
+    assert isinstance(routing, UniswapV3SimpleRoutingModel)
+    assert routing.chain_id == ChainId.ethereum
+
+def test_route_polygon_usdc(execution_context):
+    """Test Uniswap v3 Polygon USDC routing."""
+    routing = get_routing_model(execution_context, TradeRouting.uniswap_v3_usdc_poly, ReserveCurrency.usdc)
+    assert isinstance(routing, UniswapV3SimpleRoutingModel)
+    assert routing.chain_id == ChainId.polygon
+
+def test_route_arbitrum_usdc(execution_context):
+    """Test Uniswap v3 Arbitrum USDC routing."""
+    routing = get_routing_model(execution_context, TradeRouting.uniswap_v3_usdc_arbitrum, ReserveCurrency.usdc)
+    assert isinstance(routing, UniswapV3SimpleRoutingModel)
+    assert routing.chain_id == ChainId.arbitrum
+
 def test_route_mismatch_reserve_currency_pancake(execution_context):
-    """Test Pancake BUSD routing."""
+    """Test Pancake BUSD routing. """
     with pytest.raises(MismatchReserveCurrency):
         get_routing_model(execution_context, TradeRouting.pancakeswap_busd, ReserveCurrency.usdc)
 
@@ -94,6 +113,21 @@ def test_route_mismatch_reserve_currency_trader_joe(execution_context):
     """Test Trader Joe USDC routing."""
     with pytest.raises(MismatchReserveCurrency):
         get_routing_model(execution_context, TradeRouting.trader_joe_usdc, ReserveCurrency.usdt)
+
+def test_route_mismatch_reserve_currency_uniswap_v3_ethereum(execution_context):
+    """Test Uniswap V3 USDC routing."""
+    with pytest.raises(MismatchReserveCurrency):
+        get_routing_model(execution_context, TradeRouting.uniswap_v3_usdc, ReserveCurrency.usdt)
+
+def test_route_mismatch_reserve_currency_uniswap_v3_poly(execution_context):
+    """Test Uniswap V3 Polygon USDC routing."""
+    with pytest.raises(MismatchReserveCurrency):
+        get_routing_model(execution_context, TradeRouting.uniswap_v3_usdc_poly, ReserveCurrency.usdt)
+
+def test_route_mismatch_reserve_currency_uniswap_v3_arbitrum(execution_context):
+    """Test Uniswap V3 Arbitrum USDC routing."""
+    with pytest.raises(MismatchReserveCurrency):
+        get_routing_model(execution_context, TradeRouting.uniswap_v3_usdc_arbitrum, ReserveCurrency.usdt)
 
 
 

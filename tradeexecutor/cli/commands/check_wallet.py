@@ -16,6 +16,7 @@ from . import shared_options
 from .app import app
 from ..bootstrap import prepare_executor_id, prepare_cache, create_web3_config, create_execution_and_sync_model
 from ..log import setup_logging
+from ...ethereum.enzyme.vault import EnzymeVaultSyncModel
 from ...strategy.approval import UncheckedApprovalModel
 from ...strategy.bootstrap import make_factory_from_strategy_mod
 from ...strategy.description import StrategyExecutionDescription
@@ -31,15 +32,15 @@ from ...utils.timer import timed_task
 
 @app.command()
 def check_wallet(
-    id: str = typer.Option(None, envvar="EXECUTOR_ID", help="Executor id used when programmatically referring to this instance. If not given, take the base of --strategy-file."),
+    id: str = shared_options.id,
 
-    strategy_file: Path = typer.Option(..., envvar="STRATEGY_FILE"),
-    private_key: str = typer.Option(None, envvar="PRIVATE_KEY"),
-    trading_strategy_api_key: str = typer.Option(None, envvar="TRADING_STRATEGY_API_KEY", help="Trading Strategy API key"),
-    cache_path: Optional[Path] = typer.Option("cache/", envvar="CACHE_PATH", help="Where to store downloaded datasets"),
+    strategy_file: Path = shared_options.strategy_file,
+    private_key: str = shared_options.private_key,
+    trading_strategy_api_key: str = shared_options.trading_strategy_api_key,
+    cache_path: Optional[Path] = shared_options.cache_path,
 
     # Get minimum gas balance from the env
-    minimum_gas_balance: Optional[float] = typer.Option(0.1, envvar="MINUMUM_GAS_BALANCE", help="What is the minimum balance of gas token you need to have in your wallet. If the balance falls below this, abort by crashing and do not attempt to create transactions. Expressed in the native token e.g. ETH."),
+    min_gas_balance: Optional[float] = shared_options.min_gas_balance,
 
     # Live trading or backtest
     asset_management_mode: AssetManagementMode = shared_options.asset_management_mode,
@@ -55,7 +56,7 @@ def check_wallet(
     json_rpc_arbitrum: Optional[str] = shared_options.json_rpc_arbitrum,
     json_rpc_anvil: Optional[str] = shared_options.json_rpc_anvil,
 
-    log_level: str = typer.Option(None, envvar="LOG_LEVEL", help="The Python default logging level. The defaults are 'info' is live execution, 'warning' if backtesting. Set 'disabled' in testing."),
+    log_level: Optional[str] = shared_options.log_level,
 ):
     """Print out the token balances of the hot wallet.
 
@@ -105,7 +106,7 @@ def check_wallet(
         confirmation_timeout=datetime.timedelta(seconds=60),
         confirmation_block_count=6,
         max_slippage=0.01,
-        min_gas_balance=minimum_gas_balance,
+        min_gas_balance=min_gas_balance,
         vault_address=vault_address,
         vault_adapter_address=vault_adapter_address,
         vault_payment_forwarder_address=vault_payment_forwarder_address,
@@ -158,9 +159,10 @@ def check_wallet(
     logger.info("Balance details")
     logger.info("  Hot wallet is %s", sync_model.get_hot_wallet())
     gas_balance = web3.eth.get_balance(hot_wallet.address) / 10**18
-    logger.info("  Vault address is %s", reserve_address)
-    logger.info("  We have %f tokens for gas left", gas_balance)
-    logger.info("  The gas error limit is %f tokens", minimum_gas_balance)
+    if isinstance(sync_model, EnzymeVaultSyncModel):
+        logger.info("  Vault address is %s", sync_model.get_vault_address())
+    logger.info("  We have %f tokens left for gas", gas_balance)
+    logger.info("  The gas error limit is %f tokens", min_gas_balance)
 
     for asset in reserve_assets:
         logger.info("  Reserve asset: %s (%s)", asset.token_symbol, asset.address)

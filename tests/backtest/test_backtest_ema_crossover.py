@@ -71,12 +71,13 @@ def test_ema_crossover_real_data(
 """The tests commented out for now, since the automated backtesting range was removed
 due to errors in live strategies"""
 
-# def test_start_end_automation(
-#     strategy_path,
-#     logger: logging.Logger,
-#     persistent_test_client,
-#     ):
-#     """Check that EMA crossover strategy against real data."""
+@pytest.mark.skip(reason="The logic is broken and breaks live trading startup")
+def test_start_end_automation(
+    strategy_path,
+    logger: logging.Logger,
+    persistent_test_client,
+    ):
+    """Check that EMA crossover strategy against real data."""
 
 #     client = persistent_test_client
 
@@ -98,12 +99,13 @@ due to errors in live strategies"""
 #     assert len(debug_dump) >= 28  # since end is dynamic, we can't know the exact number of cycles
 
 
-# def test_minimum_lookback_data_range(
-#     strategy_path,
-#     logger: logging.Logger,
-#     persistent_test_client,
-#     ):
-#     """Check that EMA crossover strategy against real data."""
+@pytest.mark.skip(reason="ExecutionLoop.set_backtest_start_and_end is bad code")
+def test_minimum_lookback_data_range(
+    strategy_path,
+    logger: logging.Logger,
+    persistent_test_client,
+    ):
+    """Check that EMA crossover strategy against real data."""
 
 #     client = persistent_test_client
 

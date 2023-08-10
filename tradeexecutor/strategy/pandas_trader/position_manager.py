@@ -9,7 +9,7 @@ import pandas as pd
 
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.state.portfolio import Portfolio
-from tradeexecutor.state.position import TradingPosition
+from tradeexecutor.state.position import TradingPosition, TriggerPriceUpdate
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeType, TradeExecution
 from tradeexecutor.state.types import USDollarAmount, Percent
@@ -718,3 +718,26 @@ class PositionManager:
         pricing_model = self.pricing_model
         price = pricing_model.get_mid_price(timestamp, pair)
         return float(dollar_amount / price)
+
+    def update_stop_loss(self, stop_loss: USDollarAmount):
+        """Update the stop loss for the current position.
+        
+        :param timestamp:
+            Timestamp of the current cycle
+
+        :param stop_loss:
+            Stop loss in US dollar terms
+        """
+
+        pos: TradingPosition = self.get_current_position()
+        
+        pos.trigger_updates.append(TriggerPriceUpdate(
+            timestamp=self.timestamp,
+            stop_loss_before = pos.stop_loss,
+            stop_loss_after = stop_loss,
+            mid_price = None,
+            take_profit_before = pos.take_profit,
+            take_profit_after = pos.take_profit,  # No changes to take profit
+        ))
+
+        pos.stop_loss = stop_loss

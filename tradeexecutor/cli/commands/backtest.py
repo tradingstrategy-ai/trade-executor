@@ -94,8 +94,11 @@ def backtest(
     if not name:
         name = f"{id} backtest"
 
+    # Make sure
+    # - We do not flood console with the messages
+    # - There are no warnings in the resulting notebook file
     if not log_level:
-        log_level = logging.WARNING
+        log_level = logging.ERROR
 
     # Make sure unit tests run logs do not get polluted
     # Don't touch any log levels, but
@@ -120,6 +123,8 @@ def backtest(
     if not backtest_result:
         backtest_result = Path(f"state/{id}-backtest.json")
 
+    print(f"Starting backtesting for {strategy_file}")
+
     mod = read_strategy_module(strategy_file)
 
     assert mod.is_version_greater_or_equal_than(0, 2, 0), f"trading_strategy_engine_version must be 0.2.0 or newer for {strategy_file}"
@@ -142,10 +147,10 @@ def backtest(
 
     display_backtesting_results(state)
 
-    logger.info("Writing backtest state to %s", backtest_result)
+    print(f"Writing backtest data the state file: {backtest_result}")
     state.write_json_file(backtest_result)
 
-    logger.info("Exporting report, notebook: %s, HTML: %s", notebook_report, html_report)
+    print(f"Exporting report, notebook: {notebook_report}, HTML: {html_report}")
     export_backtest_report(
         state,
         universe,
