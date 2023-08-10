@@ -96,7 +96,7 @@ def universe(mock_chain_id, mock_exchange, weth_usdc) -> TradingStrategyUniverse
 
     # Generate candles for pair_id = 1
     candles = generate_ohlcv_candles(time_bucket, start_date, end_date, pair_id=weth_usdc.internal_id)
-    candle_universe = GroupedCandleUniverse.create_from_single_pair_dataframe(candles)
+    candle_universe = GroupedCandleUniverse.create_from_single_pair_dataframe(candles, time_bucket)
 
     universe = Universe(
         time_bucket=time_bucket,

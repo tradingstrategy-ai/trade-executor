@@ -56,8 +56,9 @@ def state_and_candles(usdc, weth, weth_usdc) -> tuple[State, pd.DataFrame]:
     state.update_reserves([ReservePosition(usdc, Decimal(100_000), start_date, 1.0, 0)])
 
     # Generate candles for pair_id = 1
-    candles = generate_ohlcv_candles(TimeBucket.d1, start_date, end_date, pair_id=weth_usdc.internal_id)
-    candle_universe = GroupedCandleUniverse.create_from_single_pair_dataframe(candles)
+    time_bucket = TimeBucket.d1
+    candles = generate_ohlcv_candles(time_bucket, start_date, end_date, pair_id=weth_usdc.internal_id)
+    candle_universe = GroupedCandleUniverse.create_from_single_pair_dataframe(candles, time_bucket)
 
     trader = DummyTestTrader(state)
 
