@@ -132,8 +132,6 @@ def draw_multi_pair_strategy_state(
         The strategy state visualisation as a single Plotly figure with multiple subplots
     """
 
-    assert universe.get_pair_count() <= 3, "This visualisation can be done only for less than 3 pairs"
-
     data = universe.universe.candles.df
 
     if not pair_ids:
