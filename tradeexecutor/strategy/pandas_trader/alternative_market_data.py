@@ -71,6 +71,8 @@ def load_pair_candles_from_parquet(
     strategy testing to see there is no price feed data issues
     or specificity with it.
 
+    For example see :py:func:`replace_candles`.
+
     :param pair:
         The trading pair data this Parquet file contains.
 
@@ -152,9 +154,75 @@ def replace_candles(
         stop_loss_candles: GroupedCandleUniverse | None = None,
         ignore_time_bucket_mismatch=False,
 ):
-    """Replace the candles in the data.
+    """Replace the candles in the trading universe with an alternative version.
 
-    Any stop loss price feed data is cleared.
+    - This is a simple trick to allow backtesting strategies against CEX
+      and other price feed data that is not built into system.
+
+    - You can compare if the outcome our the strategy would be different
+      with a different price source
+
+    Example:
+
+    .. code-block:: python
+
+        #
+        # First load DEX data for a single pair as you would do normally
+        #
+
+        TRADING_PAIR = (ChainId.arbitrum, "uniswap-v3", "WBTC", "USDC", 0.0005)
+
+        CANDLE_TIME_BUCKET = TimeBucket.h1
+
+        def create_trading_universe(
+            ts: datetime.datetime,
+            client: Client,
+            execution_context: ExecutionContext,
+            universe_options: UniverseOptions,
+        ):
+            assert isinstance(
+                client, Client
+            ), f"Looks like we are not running on the real data. Got: {client}"
+
+            # Download live data from the oracle
+            dataset = load_pair_data_for_single_exchange(
+                client,
+                time_bucket=CANDLE_TIME_BUCKET,
+                pair_tickers=[TRADING_PAIR],
+                execution_context=execution_context,
+                universe_options=universe_options,
+            )
+
+            # Convert loaded data to a trading pair universe
+            universe = TradingStrategyUniverse.create_single_pair_universe(
+                dataset,
+                pair=TRADING_PAIR,
+            )
+
+            return universe
+
+        client = Client.create_jupyter_client()
+        universe = create_trading_universe(
+            datetime.datetime.utcnow(),
+            client,
+            ExecutionContext(mode=ExecutionMode.backtesting),
+            universe_options=UniverseOptions(),
+        )
+
+        #
+        # Replace the single pair price feed with a data from Binance,
+        # distributed as Parquet file.
+        #
+        # Also set the same 1h candle fee to be used as stop loss trigger
+        # signal.
+        #
+        pair = universe.get_single_pair()
+        new_candles, stop_loss_candles = load_pair_candles_from_parquet(
+            pair,
+            Path("tests/binance-BTCUSDT-1h.parquet"),
+            include_as_trigger_signal=True,
+        )
+        replace_candles(universe, new_candles, stop_loss_candles)
 
     :param universe:
         Trading universe to modify
