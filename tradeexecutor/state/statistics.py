@@ -91,7 +91,6 @@ class FinalPositionStatistics:
     value_at_max: USDollarAmount
 
 
-
 @dataclass_json
 @dataclass
 class PortfolioStatistics:

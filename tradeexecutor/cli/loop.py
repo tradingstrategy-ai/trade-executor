@@ -482,7 +482,7 @@ class ExecutionLoop:
             self.runner.revalue_portfolio(clock, state, valuation_method)
 
         with self.timed_task_context_manager("update_statistics"):
-            logger.info("Updating position statistics")
+            logger.info("Updating position statistics after revaluation")
             update_statistics(clock, state.stats, state.portfolio, execution_mode)
 
         # Check that state is good before writing it to the disk
@@ -778,7 +778,7 @@ class ExecutionLoop:
             If any of live trading concurrent tasks crashes with an exception
         """
 
-        logger.info("run_luve(): Strategy is executed in live trading mode")
+        logger.info("run_live(): Strategy is executed in live trading mode")
 
         # Safety checks
         assert not self.is_backtest()
@@ -923,6 +923,15 @@ class ExecutionLoop:
                     logger.warning("refresh_live_run_state() failed in the live cycle: %s", e)
                     logger.exception(e)
                     pass
+
+                # Update portfolio and position historical data tracking
+                update_statistics(
+                    datetime.datetime.utcnow(),
+                    state.stats,
+                    state.portfolio,
+                    ExecutionMode.real_trading,
+                    strategy_cycle_at=strategy_cycle_timestamp,
+                )
 
                 # Go to sleep and
                 # and advance to the next cycle

@@ -1,5 +1,6 @@
 """Core portfolio statistics calculations."""
 
+import logging
 import datetime
 from dataclasses import dataclass, field
 from typing import Dict, List
@@ -10,29 +11,63 @@ from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.statistics import Statistics, PortfolioStatistics, PositionStatistics, FinalPositionStatistics
 from tradeexecutor.strategy.execution_context import ExecutionMode
 
+
+logger = logging.getLogger(__name__)
+
+
 @dataclass
-class NewStatistics:
-    """New statistics calcualted for the portfolio on each stats cycle."""
+class TimestampedStatistics:
+    """New statistics calculated for the portfolio on each stats cycle."""
+
+
     portfolio: PortfolioStatistics
     positions: Dict[int, PositionStatistics] = field(default_factory=dict)
 
+    #: Strategy cycle timestamp
+    #:
+    #: Not available if the statistics where calculated
+    #: out of rebalance
+    #:
+    strategy_cycle_at: datetime.datetime | None = None
 
 def calculate_position_statistics(clock: datetime.datetime, position: TradingPosition) -> PositionStatistics:
-    first_trade = position.get_first_trade()
-    stats = PositionStatistics(
-        open=position.is_open(),
-        calculated_at=clock,
-        last_valuation_at=position.last_pricing_at,
-        profitability=position.get_total_profit_percent(),
-        profit_usd=position.get_total_profit_usd(),
-        quantity=float(position.get_equity_for_position()),
-        value=position.get_value(),
-    )
+    """Generate a historical record of the current position state."""
+    #first_trade = position.get_first_trade()
+
+    try:
+        stats = PositionStatistics(
+            open=position.is_open(),
+            calculated_at=clock,
+            last_valuation_at=position.last_pricing_at,
+            profitability=position.get_total_profit_percent(),
+            profit_usd=position.get_total_profit_usd(),
+            quantity=float(position.get_equity_for_position()),
+            value=position.get_value(),
+        )
+    except AssertionError as e:
+        # Related to https://github.com/tradingstrategy-ai/trade-executor/issues/517
+        # Some more debug info.
+        raise AssertionError(f"Could not calculate statistics for {position}") from e
     return stats
 
 
-def calculate_closed_position_statistics(clock: datetime.datetime, position: TradingPosition, position_stats: List[PositionStatistics]) -> PositionStatistics:
+def calculate_closed_position_statistics(
+        clock: datetime.datetime,
+        position: TradingPosition,
+        position_stats: List[PositionStatistics]) -> FinalPositionStatistics:
+    """Calculate the statistics for closed positions."""
+
+    # This position should have at least some relevant value calculated
+    # for it
+    first_trade = position.get_first_trade()
+
     value_at_open = position_stats[0].value
+
+    if first_trade.is_success():
+        assert value_at_open > 0, f"PositionStatistics lacked value at open for {position}.\n" \
+                                  f"Stats:\n" \
+                                  f"{position_stats}"
+
     value_at_max = max([(p.value or 0) for p in position_stats])
     stats = FinalPositionStatistics(
         calculated_at=clock,
@@ -43,7 +78,12 @@ def calculate_closed_position_statistics(clock: datetime.datetime, position: Tra
     return stats
 
 
-def calculate_statistics(clock: datetime.datetime, portfolio: Portfolio, execution_mode: ExecutionMode) -> NewStatistics:
+def calculate_statistics(
+        clock: datetime.datetime,
+        portfolio: Portfolio,
+        execution_mode: ExecutionMode,
+        strategy_cycle_at: datetime.datetime | None=None,
+) -> TimestampedStatistics:
     """Calculate statistics for a portfolio."""
 
     first_trade, last_trade = portfolio.get_first_and_last_executed_trade()
@@ -74,7 +114,10 @@ def calculate_statistics(clock: datetime.datetime, portfolio: Portfolio, executi
             total_equity=portfolio.get_total_equity(),
         )
 
-    stats = NewStatistics(portfolio=pf_stats)
+    stats = TimestampedStatistics(
+        portfolio=pf_stats,
+        strategy_cycle_at=strategy_cycle_at,
+    )
 
     for position in portfolio.open_positions.values():
         stats.positions[position.position_id] = calculate_position_statistics(clock, position)
@@ -85,8 +128,31 @@ def calculate_statistics(clock: datetime.datetime, portfolio: Portfolio, executi
     return stats
 
 
-def update_statistics(clock: datetime.datetime, stats: Statistics, portfolio: Portfolio, execution_mode: ExecutionMode):
-    """Update statistics in a portfolio with a new cycle."""
+def update_statistics(
+        clock: datetime.datetime,
+        stats: Statistics,
+        portfolio: Portfolio,
+        execution_mode: ExecutionMode,
+        strategy_cycle_at: datetime.datetime | None = None,
+):
+    """Update statistics in a portfolio with a new cycle.
+
+    :param clock:
+        Real-time clock of the update.
+
+        Always available.
+
+    :param strategy_cycle_at:
+        The strategy cycle timestamp.
+
+        Only available when `update_statistics()` is run
+        at the end of live trading cycle.
+    """
+
+    logger.info("update_statistics(), real-time clock at %s, strategy cycle at %s",
+                clock,
+                strategy_cycle_at
+                )
 
     new_stats = calculate_statistics(clock, portfolio, execution_mode)
     stats.portfolio.append(new_stats.portfolio)
@@ -106,3 +172,5 @@ def update_statistics(clock: datetime.datetime, stats: Statistics, portfolio: Po
         stats.add_positions_stats(position_id, position_stats)
         # Calculate stats that are only available for closed positions
         stats.closed_positions[position_id] = calculate_closed_position_statistics(clock, position, stats.positions[position_id])
+
+    logger.info("update_statistics() complete")
