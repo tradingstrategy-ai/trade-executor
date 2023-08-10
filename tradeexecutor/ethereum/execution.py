@@ -775,7 +775,7 @@ def broadcast(
         # We want to add more error information here
         # ValueError: {'code': -32000, 'message': 'tx fee (6.23 ether) exceeds the configured cap (1.00 ether)'}
         for t in instructions:
-            logger.error("Could not broadcast trade: %s", t)
+            logger.error("Could not transactions for broadcast trade: %s", t)
             for tx in t.blockchain_transactions:
                 logger.error("Transaction: %s, planned gas price: %s, gas limit: %s", tx, tx.get_planned_gas_price(), tx.get_gas_limit())
         raise e

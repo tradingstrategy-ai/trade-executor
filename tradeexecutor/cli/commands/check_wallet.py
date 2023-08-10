@@ -157,7 +157,7 @@ def check_wallet(
     # Check balances
     reserve_address = sync_model.get_vault_address() or sync_model.get_hot_wallet().address
     logger.info("Balance details")
-    logger.info("  Hot wallet is %s", sync_model.get_hot_wallet())
+    logger.info("  Hot wallet is %s", sync_model.get_hot_wallet().address)
     gas_balance = web3.eth.get_balance(hot_wallet.address) / 10**18
     if isinstance(sync_model, EnzymeVaultSyncModel):
         logger.info("  Vault address is %s", sync_model.get_vault_address())
