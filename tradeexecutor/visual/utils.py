@@ -347,12 +347,15 @@ def get_all_text(
     return title_text, axes_text, volume_text
 
 
-def _get_num_detached_indicators(plots: list[Plot], volume_bar_mode: VolumeBarMode):
+def _get_num_detached_indicators(plots: list[Plot], volume_bar_mode: VolumeBarMode, detached_indicators: bool):
     """Get the number of detached technical indicators"""
 
-    num_detached_indicators = sum(
-        plot.kind == PlotKind.technical_indicator_detached for plot in plots
-    )
+    if detached_indicators:
+        num_detached_indicators = sum(
+            plot.kind == PlotKind.technical_indicator_detached for plot in plots
+        )
+    else:
+        num_detached_indicators = 0
 
     if volume_bar_mode in {VolumeBarMode.hidden, VolumeBarMode.overlay}:
         pass
@@ -368,7 +371,7 @@ def _get_subplot_names(
     plots: list[Plot],
     volume_bar_mode: VolumeBarMode,
     volume_axis_name: str = "Volume USD",
-    pair_name: str = None
+    pair_name: str = None,
 ):
     """Get subplot names for detached technical indicators.
     Overlaid names are appended to the detached plot name."""
@@ -432,10 +435,37 @@ def get_num_detached_and_names(
     volume_bar_mode: VolumeBarMode,
     volume_axis_name: str,
     pair_name: str | None = None,
+    detached_indicators: bool = True,
 ):
     """Get num_detached_indicators and subplot_names"""
-    num_detached_indicators = _get_num_detached_indicators(plots, volume_bar_mode)
-    subplot_names = _get_subplot_names(
-        plots, volume_bar_mode, volume_axis_name, pair_name
-    )
+    num_detached_indicators = _get_num_detached_indicators(plots, volume_bar_mode, detached_indicators)
+    
+    if detached_indicators:
+        subplot_names = _get_subplot_names(
+            plots, volume_bar_mode, volume_axis_name, pair_name
+        )
+    elif volume_bar_mode == VolumeBarMode.separate:
+        subplot_names = [pair_name, volume_axis_name]
+    else:
+        subplot_names = [pair_name]
+
+    return num_detached_indicators, subplot_names
+
+
+def get_num_detached_and_names_no_indicators(
+    volume_bar_mode: VolumeBarMode,
+    volume_axis_name: str,
+    pair_name: str | None = None,
+):
+    """Get num_detached_indicators and subplot_names. Used when technical_indicators == False"""
+    if volume_bar_mode == VolumeBarMode.separate:
+        num_detached_indicators = 1
+    else:
+        num_detached_indicators = 0
+    
+    if volume_bar_mode == VolumeBarMode.separate:
+        subplot_names = [pair_name, volume_axis_name]
+    else:
+        subplot_names = [pair_name]
+
     return num_detached_indicators, subplot_names

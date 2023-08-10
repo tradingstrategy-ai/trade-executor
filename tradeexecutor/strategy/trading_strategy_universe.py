@@ -295,7 +295,6 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         if not pair:
             pair = (chain_id, exchange_slug, base_token, quote_token)
 
-
         # Create trading pair database
         pair_universe = PandasPairUniverse.create_pair_universe(
             dataset.pairs,
@@ -314,7 +313,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         if dataset.candles is not None:
             all_candles = dataset.candles
             filtered_candles = filter_for_pairs(all_candles, pair_universe.df)
-            candle_universe = GroupedCandleUniverse(filtered_candles)
+            candle_universe = GroupedCandleUniverse(filtered_candles, time_bucket=dataset.time_bucket)
         else:
             candle_universe = None
 
