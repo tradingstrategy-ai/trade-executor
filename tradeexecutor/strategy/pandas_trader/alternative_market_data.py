@@ -5,7 +5,7 @@ for testing out trading strategies.
 
 """
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Tuple
 
 import pandas as pd
 
@@ -62,7 +62,8 @@ def load_pair_candles_from_parquet(
     file: Path,
     column_map: Dict[str, str] = COLUMN_MAP,
     resample: TimeBucket | None = None,
-) -> GroupedCandleUniverse:
+    include_as_trigger_signal=True,
+) -> Tuple[GroupedCandleUniverse, GroupedCandleUniverse | None]:
     """Load a single pair price feed from an alternative file.
 
     Overrides the current price candle feed with an alternative version,
@@ -78,11 +79,20 @@ def load_pair_candles_from_parquet(
     :param resample:
         Resample OHLCV data to a higher timeframe
 
+    :param include_as_trigger_signal:
+        Create take profit/stop loss signal from the data.
+
+        For this, any upsampling is not used.
+
     :raise NoMatchingBucket:
         Could not match candle time frame to any of our timeframes.
 
     :return:
-        A candle universe for a single pair
+        (Price feed universe, stop loss trigger candls universe) tuple.
+
+        Stop loss data is only generated if `include_as_trigger_signal` is True.
+        Stop loss data is never resampled and is in the most accurate available resolution.
+
     """
 
     assert isinstance(pair, TradingPairIdentifier)
@@ -92,14 +102,16 @@ def load_pair_candles_from_parquet(
 
     assert isinstance(df.index, pd.DatetimeIndex), f"Parquet did not have DateTime index: {df.index}"
 
-    df = df.rename(columns=column_map)
+    orig = df = df.rename(columns=column_map)
+
+    # What's the spacing of candles
+    granularity = df.index[1] - df.index[0]
+    original_bucket = TimeBucket.from_pandas_timedelta(granularity)
 
     if resample:
         df = resample_single_pair(df, resample)
         bucket = resample
     else:
-        # What's the spacing of candles
-        granularity = df.index[1] - df.index[0]
         bucket = TimeBucket.from_pandas_timedelta(granularity)
 
     df = _fix_nans(df)
@@ -112,17 +124,32 @@ def load_pair_candles_from_parquet(
     # we make timestamp a column
     df["timestamp"] = df.index.to_series()
 
-    return GroupedCandleUniverse(
+    candles = GroupedCandleUniverse(
         df,
         time_bucket=bucket,
         index_automatically=False,
         fix_wick_threshold=None,
     )
 
+    if include_as_trigger_signal:
+        orig["pair_id"] = pair.internal_id
+        orig["timestamp"] = df.index.to_series()
+        stop_loss_candles = GroupedCandleUniverse(
+            orig,
+            time_bucket=original_bucket,
+            index_automatically=False,
+            fix_wick_threshold=None,
+        )
+    else:
+        stop_loss_candles = None
+
+    return candles, stop_loss_candles
+
 
 def replace_candles(
         universe: TradingStrategyUniverse,
         candles: GroupedCandleUniverse,
+        stop_loss_candles: GroupedCandleUniverse | None = None,
         ignore_time_bucket_mismatch=False,
 ):
     """Replace the candles in the data.
@@ -135,6 +162,9 @@ def replace_candles(
     :param candles:
         New price data feeds
 
+    :param stop_loss_candles:
+        Trigger signal for stop loss backtesting.
+
     :param ignore_time_bucket_mismatch:
         Do not fail if new and old candles have different granularity
     """
@@ -146,5 +176,9 @@ def replace_candles(
         assert candles.time_bucket == universe.universe.candles.time_bucket, f"TimeBucket mismatch. Old {universe.universe.candles.time_bucket}, new: {candles.time_bucket}"
 
     universe.universe.candles = candles
-    universe.backtest_stop_loss_candles = None
-    universe.backtest_stop_loss_time_bucket = None
+    if stop_loss_candles:
+        universe.backtest_stop_loss_candles = stop_loss_candles
+        universe.backtest_stop_loss_time_bucket = stop_loss_candles.time_bucket
+    else:
+        universe.backtest_stop_loss_candles = None
+        universe.backtest_stop_loss_time_bucket = None
