@@ -359,7 +359,7 @@ def test_execute_trade_instructions_buy_weth_with_tester(
     assert trade.get_status() == TradeStatus.success
     assert trade.executed_price == pytest.approx(1700.930449623516)
     assert trade.executed_quantity == pytest.approx(Decimal('0.29314933179905376'))
-    assert trade.lp_fees_paid == pytest.approx(249999.9995)
+    assert trade.lp_fees_paid == pytest.approx(1.499999997)
     assert trade.native_token_price == 1.0
     assert trade.cost_of_gas == pytest.approx(Decimal('0.000154891504185768'))
 
