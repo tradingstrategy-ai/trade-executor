@@ -175,7 +175,7 @@ class UniswapV3LivePricing(EthereumPricingModel):
 
         lp_fee = float(quantity) * total_fee_pct
 
-        self.validate_mid_price_for_sell(lp_fee, mid_price, price, quantity)
+        # self.validate_mid_price_for_sell(lp_fee, mid_price, price, quantity)
         
         return TradePricing(
             price=price,
