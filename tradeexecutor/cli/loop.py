@@ -455,6 +455,11 @@ class ExecutionLoop:
         # Rename other to avoid confusion.
         #
         if live:
+            # To be extra careful,
+            # save the state if we are going to crash
+            # in statistics calculations
+            self.store.sync(state)
+
             update_statistics(
                 datetime.datetime.utcnow(),
                 state.stats,
