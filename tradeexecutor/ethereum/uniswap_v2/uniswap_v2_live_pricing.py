@@ -134,7 +134,6 @@ class UniswapV2LivePricing(EthereumPricingModel):
         price = float(received / quantity)
             
         if intermediate_pair:
-            # TODO: Verify calculation
             mid_price = price / (1 - fee) / (1 - fee)
             
             path = [intermediate_pair, target_pair]
@@ -165,7 +164,6 @@ class UniswapV2LivePricing(EthereumPricingModel):
                        reserve: Optional[Decimal],
                        ) -> TradePricing:
         """Get live price on Uniswap.
-        TODO: Fees are incorrectly calculated in the case of multipair routing
         :param reserve:
             The buy size in quote token e.g. in dollars
         :return:
@@ -232,7 +230,7 @@ class UniswapV2LivePricing(EthereumPricingModel):
             
             total_fee_pct = 1 - (1 - fees[0])
             
-        
+        # Reserve is not necessarily a dollar amount (quote token doesn't have to be dollars), so we need to calculate
         lp_fee = float(reserve) * total_fee_pct
 
         assert price >= mid_price, f"Bad pricing: {price}, {mid_price}"
