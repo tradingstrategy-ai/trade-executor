@@ -146,7 +146,10 @@ class BacktestSimplePricingModel(PricingModel):
             # Move price below mid price
             price = mid_price * (1 - pair_fee)
 
-            assert lp_fee > 0, f"Got bad fee: {pair} {quantity}: {lp_fee}"
+            try:
+                assert lp_fee > 0, f"Got bad fee: {pair} {quantity}: {lp_fee}"
+            except Exception as e:
+                import ipdb ; ipdb.set_trace()
 
         else:
             # Fee information not available

@@ -24,10 +24,44 @@ COLUMN_MAP = {
 }
 
 
+def resample_single_pair(df, bucket: TimeBucket) -> pd.DataFrame:
+    """Upsample a single pair DataFrame to a lower time bucket.
+
+    - Resample in OHLCV manner
+    - Forward fill any gaps in data
+    """
+
+    # https://stackoverflow.com/a/68487354/315168
+
+    ohlc_dict = {
+        'open': 'first',
+        'high': 'max',
+        'low': 'min',
+        'close': 'last',
+        'volume': 'sum',
+    }
+
+    # Do forward fill, as missing values in the source data
+    # may case NaN to appear as price
+    resampled = df.resample(bucket.to_frequency()).agg(ohlc_dict)
+    filled = resampled.fillna("ffill")
+    return filled
+
+
+def _fix_nans(df: pd.DataFrame) -> pd.DataFrame:
+    """External data sources might have NaN values for prices."""
+
+    # TODO: Add NaN fixing logic
+    # https://stackoverflow.com/a/29530303/315168
+    assert not df.isnull().any().any(), "DataFrame contains NaNs"
+    return df
+
+
 def load_pair_candles_from_parquet(
     pair: TradingPairIdentifier,
     file: Path,
     column_map: Dict[str, str] = COLUMN_MAP,
+    resample: TimeBucket | None = None,
 ) -> GroupedCandleUniverse:
     """Load a single pair price feed from an alternative file.
 
@@ -35,6 +69,9 @@ def load_pair_candles_from_parquet(
     usually from a centralised exchange. This allows
     strategy testing to see there is no price feed data issues
     or specificity with it.
+
+    :param resample:
+        Resample OHLCV data to a higher timeframe
 
     :raise NoMatchingBucket:
         Could not match candle time frame to any of our timeframes.
@@ -52,10 +89,15 @@ def load_pair_candles_from_parquet(
 
     df = df.rename(columns=column_map)
 
-    # What's the spacing of candles
-    granularity = df.index[1] - df.index[0]
+    if resample:
+        df = resample_single_pair(df, resample)
+        bucket = resample
+    else:
+        # What's the spacing of candles
+        granularity = df.index[1] - df.index[0]
+        bucket = TimeBucket.from_pandas_timedelta(granularity)
 
-    bucket = TimeBucket.from_pandas_timedelta(granularity)
+    df = _fix_nans(df)
 
     # Add pair column
     df["pair_id"] = pair.internal_id
@@ -75,12 +117,29 @@ def load_pair_candles_from_parquet(
 
 def replace_candles(
         universe: TradingStrategyUniverse,
-        candles: GroupedCandleUniverse):
-    """Replace the candles in the data."""
+        candles: GroupedCandleUniverse,
+        ignore_time_bucket_mismatch=False,
+):
+    """Replace the candles in the data.
+
+    Any stop loss price feed data is cleared.
+
+    :param universe:
+        Trading universe to modify
+
+    :param candles:
+        New price data feeds
+
+    :param ignore_time_bucket_mismatch:
+        Do not fail if new and old candles have different granularity
+    """
 
     assert isinstance(universe, TradingStrategyUniverse)
     assert isinstance(candles, GroupedCandleUniverse)
 
-    assert candles.time_bucket == universe.universe.candles.time_bucket, f"TimeBucket mismatch. Old {universe.universe.candles.time_bucket}, new: {candles.time_bucket}"
+    if not ignore_time_bucket_mismatch:
+        assert candles.time_bucket == universe.universe.candles.time_bucket, f"TimeBucket mismatch. Old {universe.universe.candles.time_bucket}, new: {candles.time_bucket}"
 
     universe.universe.candles = candles
+    universe.backtest_stop_loss_candles = None
+    universe.backtest_stop_loss_time_bucket = None

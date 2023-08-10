@@ -122,3 +122,29 @@ def test_replace_candles(
     assert start == pd.Timestamp('2017-08-17 04:00:00')
     assert end == pd.Timestamp('2023-08-02 13:00:00')
 
+    assert synthetic_universe.get_pair_count() == 1
+
+
+def test_replace_candles_resample(
+    synthetic_universe: TradingStrategyUniverse,
+    wbtc_usdc,
+    sample_file
+):
+    """Replace candles for WBTC-USDC from the Binance hourly feed."""
+
+    assert synthetic_universe.universe.candles.time_bucket == TimeBucket.h1
+
+    new_candles = load_pair_candles_from_parquet(
+        wbtc_usdc,
+        sample_file,
+        resample=TimeBucket.h4,
+    )
+
+    replace_candles(synthetic_universe, new_candles, ignore_time_bucket_mismatch=True)
+
+    start, end = synthetic_universe.universe.candles.get_timestamp_range()
+
+    # Readjusted to 4h candles
+    assert start == pd.Timestamp('2017-08-17 04:00:00')
+    assert end == pd.Timestamp('2023-08-02 12:00:00')
+
