@@ -20,6 +20,7 @@ class NewStatistics:
 def calculate_position_statistics(clock: datetime.datetime, position: TradingPosition) -> PositionStatistics:
     first_trade = position.get_first_trade()
     stats = PositionStatistics(
+        open=position.is_open(),
         calculated_at=clock,
         last_valuation_at=position.last_pricing_at,
         profitability=position.get_total_profit_percent(),
