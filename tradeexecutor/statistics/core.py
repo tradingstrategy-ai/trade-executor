@@ -30,24 +30,27 @@ class TimestampedStatistics:
     #:
     strategy_cycle_at: datetime.datetime | None = None
 
+
 def calculate_position_statistics(clock: datetime.datetime, position: TradingPosition) -> PositionStatistics:
     """Generate a historical record of the current position state."""
     #first_trade = position.get_first_trade()
 
-    try:
-        stats = PositionStatistics(
-            open=position.is_open(),
-            calculated_at=clock,
-            last_valuation_at=position.last_pricing_at,
-            profitability=position.get_total_profit_percent(),
-            profit_usd=position.get_total_profit_usd(),
-            quantity=float(position.get_equity_for_position()),
-            value=position.get_value(),
-        )
-    except AssertionError as e:
-        # Related to https://github.com/tradingstrategy-ai/trade-executor/issues/517
-        # Some more debug info.
-        raise AssertionError(f"Could not calculate statistics for {position}") from e
+    value = position.get_value()
+
+    first_trade = position.get_first_trade()
+    if position.is_open() and first_trade.is_success():
+        # Normally opened positions should always have some value
+        assert value > 0, f"Position {position} reported value {value}"
+
+    stats = PositionStatistics(
+        calculated_at=clock,
+        last_valuation_at=position.last_pricing_at,
+        profitability=position.get_total_profit_percent(),
+        profit_usd=position.get_total_profit_usd(),
+        quantity=float(position.get_equity_for_position()),
+        value=value,
+    )
+
     return stats
 
 

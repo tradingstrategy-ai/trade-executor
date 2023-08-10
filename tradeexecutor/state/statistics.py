@@ -31,10 +31,6 @@ class PositionStatistics:
     allowing one to plot the position performance over time.
     """
 
-    #: Is this position open
-    #:
-    open: bool
-
     #: Real-time clock when these stats were calculated
     #:
     calculated_at: datetime.datetime
@@ -64,10 +60,6 @@ class PositionStatistics:
         assert isinstance(self.calculated_at, datetime.datetime)
         assert isinstance(self.last_valuation_at, datetime.datetime)
         assert not isnan(self.profitability)
-
-        if self.open:
-            assert self.quantity != 0
-            assert self.value != 0
 
 
 @dataclass_json
