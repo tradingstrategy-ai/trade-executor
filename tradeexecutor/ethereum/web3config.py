@@ -31,7 +31,6 @@ TEST_CHAIN_IDS: List[ChainId] = [
     ChainId.anvil,
 ]
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -65,6 +64,7 @@ class Web3Config:
             If not given autodetect the method.
         """
 
+        assert type(configuration_line) == str, f"Got: {configuration_line.__class__}"
         web3 = create_multi_provider_web3(configuration_line)
 
         # Read numeric chain id from JSON-RPC
@@ -168,7 +168,9 @@ class Web3Config:
             assert web3.eth.chain_id == self.default_chain_id.value, f"Expected chain id {self.default_chain_id}, got {web3.eth.chain_id}"
 
     @classmethod
-    def setup_from_environment(cls, gas_price_method: Optional[GasPriceMethod], **kwargs) -> "Web3Config":
+    def setup_from_environment(cls,
+                               gas_price_method: Optional[GasPriceMethod],
+                               **kwargs) -> "Web3Config":
         """Setup connections based on given RPC URLs.
 
         Read `JSON_RPC_BINANCE`, `JSON_RPC_POLYGON`, etc.
@@ -188,8 +190,9 @@ class Web3Config:
 
         for chain_id in SUPPORTED_CHAINS:
             key = f"json_rpc_{chain_id.get_slug()}"
-            rpcs = kwargs.get(key)
-            web3config.connections[chain_id] = Web3Config.create_web3(rpcs, gas_price_method)
+            configuration_line = kwargs.get(key)
+            if configuration_line:
+                web3config.connections[chain_id] = Web3Config.create_web3(configuration_line, gas_price_method)
 
         return web3config
 
