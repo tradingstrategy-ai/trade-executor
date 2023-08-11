@@ -52,11 +52,13 @@ class Web3Config:
     default_chain_id: Optional[ChainId] = None
 
     @staticmethod
-    def create_web3(configuration_line: str, gas_price_method: Optional[GasPriceMethod] = None) -> Web3:
+    def create_web3(configuration_line: str, gas_price_method: Optional[GasPriceMethod] = None) -> MultiProviderWeb3:
         """Create a new Web3.py connection.
 
         :param configuration_line:
-            JSON-RPC configuration line
+            JSON-RPC configuration line.
+
+            May contain several space separated entries.
 
         :param gas_price_method:
             How do we estimate gas for a transaction
@@ -69,7 +71,7 @@ class Web3Config:
         chain_id = web3.eth.chain_id
 
         if gas_price_method is None:
-            if chain_id in (ChainId.ethereum.value, ChainId.ganache.value, ChainId.avalanche.value, ChainId.polygon.value, ChainId.anvil.value):
+            if chain_id in (ChainId.ethereum.value, ChainId.ganache.value, ChainId.avalanche.value, ChainId.polygon.value, ChainId.anvil.value, ChainId.arbitrum.value):
                 # Ethereum supports maxBaseFee method (London hard fork)
                 # Same for Avalanche C-chain https://twitter.com/avalancheavax/status/1389763933448323073
 
@@ -94,18 +96,19 @@ class Web3Config:
 
         chain_id_obj = ChainId(chain_id)
 
-        logger.trade("Connected to chain: %s, node provider: %s, gas pricing method: %s",
+        rpc_urls = [get_url_domain(rpc) for rpc in configuration_line.split()]
+        logger.info("Chain %s connects using %s", chain_id_obj.name, rpc_urls)
+
+        logger.trade("Connected to chain: %s, gas pricing method: %s, providers %s",
                      chain_id_obj.name,
-                     get_url_domain(configuration_line),
-                     gas_price_method.name)
+                     gas_price_method.name,
+                     rpc_urls,
+                     )
 
         # London is the default method
         if gas_price_method == GasPriceMethod.legacy:
             logger.info("Setting up gas price middleware for Web3")
             web3.eth.set_gas_price_strategy(node_default_gas_price_strategy)
-
-        # Set up automatic rqeuest replays in the case of network issues
-        web3.middleware_onion.inject(http_retry_request_with_sleep_middleware, layer=0)
 
         return web3
 
@@ -185,12 +188,8 @@ class Web3Config:
 
         for chain_id in SUPPORTED_CHAINS:
             key = f"json_rpc_{chain_id.get_slug()}"
-
-            rpc = kwargs.get(key)
-            if rpc:
-                redacted_url = get_url_domain(rpc)
-                logger.info("Chain %s connects using %s", chain_id.name, redacted_url)
-                web3config.connections[chain_id] = Web3Config.create_web3(rpc, gas_price_method)
+            rpcs = kwargs.get(key)
+            web3config.connections[chain_id] = Web3Config.create_web3(rpcs, gas_price_method)
 
         return web3config
 
