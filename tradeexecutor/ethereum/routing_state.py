@@ -2,16 +2,14 @@
 
 import logging
 from collections import defaultdict
-from typing import List, Optional, Tuple, Iterable
-from abc import ABC, abstractmethod
+from typing import List, Optional, Tuple
+from abc import abstractmethod
 
-from eth_typing import ChecksumAddress, HexAddress
+from eth_typing import ChecksumAddress
 from web3.contract.contract import ContractFunction
 
 from eth_defi.tx import AssetDelta
 
-from tradeexecutor.state.trade import TradeExecution
-from tradeexecutor.state.types import BPS
 from web3 import Web3
 from web3.contract import Contract
 
@@ -24,6 +22,7 @@ from tradeexecutor.ethereum.tx import HotWalletTransactionBuilder, TransactionBu
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
 from tradeexecutor.strategy.routing import RoutingState
+from tradingstrategy.chain import ChainId
 from tradingstrategy.pair import PandasPairUniverse
 
 
@@ -33,6 +32,18 @@ logger = logging.getLogger(__name__)
 
 class OutOfBalance(Exception):
     """Did not have enough tokens"""
+
+
+#: How much maximum we can spend on a ERC-20 approve for a router
+#:
+#:
+APPROVE_GAS_LIMITS = {
+    # Arbitrum default gas limit is 500_000
+    # and it is not enough
+    ChainId.arbitrum.value: 850_000,
+}
+
+DEFAULT_APPROVE_GAS_LIMIT = 250_000
 
 
 deployment_types = UniswapV2Deployment | UniswapV3Deployment
@@ -193,12 +204,16 @@ class EthereumRoutingState(RoutingState):
         if erc_20.functions.allowance(approve_address, router_address).call() > 0:
             # already approved in previous execution cycle
             return []
+
+        # Gas limit for ERC-20 approve() may vary per chain,
+        # see Arbitrum
+        gas_limit = APPROVE_GAS_LIMITS.get(self.tx_builder.chain_id, DEFAULT_APPROVE_GAS_LIMIT)
         
         # Create infinite approval
         tx = self.tx_builder.sign_transaction(
             erc_20,
             erc_20.functions.approve(router_address, 2**256-1),
-            gas_limit=None,  # For approve, assume it cannot take more than 100k gas
+            gas_limit=gas_limit,
             gas_price_suggestion=None,
             asset_deltas=[],
         )
