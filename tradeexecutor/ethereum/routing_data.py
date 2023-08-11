@@ -468,7 +468,7 @@ def get_uniswap_v3_arbitrum_default_routing_parameters(
     """Generate routing using Uniswap V3 router for Arbitrum"""
 
     if reserve_currency == ReserveCurrency.usdc:
-        reserve_token_address = "0xaf88d065e77c8cC2239327C5EDb3A432268e5831".lower()
+        reserve_token_address = "0xaf88d065e77c8cc2239327c5edb3a432268e5831".lower()
         allowed_intermediary_pairs = {}
     elif reserve_currency == ReserveCurrency.usdc_e:
         reserve_token_address = "0xff970a61a04b1ca14834a43f5de4533ebddb5cc8".lower()
@@ -489,7 +489,7 @@ def get_uniswap_v3_arbitrum_default_routing_parameters(
         # USDC, WETH, USDT
         "quote_token_addresses": {
             "0xff970a61a04b1ca14834a43f5de4533ebddb5cc8",
-            "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+            "0xaf88d065e77c8cc2239327c5edb3a432268e5831",
             "0x82af49447d8a07e3bd95bd0d56f35241523fbab1",
             "0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9",
         },
