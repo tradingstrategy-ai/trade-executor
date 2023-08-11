@@ -17,7 +17,7 @@ from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.trade import TradeType
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.types import USDollarAmount, BPS, USDollarPrice
-from tradeexecutor.strategy.dust import get_dust_epsilon
+from tradeexecutor.strategy.dust import get_dust_epsilon_for_pair
 from tradeexecutor.strategy.trade_pricing import TradePricing
 
 class NotEnoughMoney(Exception):
@@ -485,7 +485,7 @@ class Portfolio:
 
         self.next_trade_id += 1
 
-        dust_epsilon = get_dust_epsilon(trade.pair)
+        dust_epsilon = get_dust_epsilon_for_pair(trade.pair)
         if abs(trade.planned_quantity) <= dust_epsilon:
             raise TooSmallTrade(f"Trade cannot be this small\n"
                                 f"Quantity {trade.planned_quantity}, dust epsilon {dust_epsilon}\n"

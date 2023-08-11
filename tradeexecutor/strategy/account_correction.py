@@ -25,7 +25,7 @@ from eth_typing import HexAddress
 
 from eth_defi.tx import AssetDelta
 from tradeexecutor.ethereum.tx import TransactionBuilder
-from tradeexecutor.strategy.dust import DEFAULT_DUST_EPSILON, get_dust_epsilon
+from tradeexecutor.strategy.dust import DEFAULT_DUST_EPSILON, get_dust_epsilon_for_pair, get_dust_epsilon_for_asset
 from tradingstrategy.pair import PandasPairUniverse
 
 from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdatePositionType, BalanceUpdateCause
@@ -246,7 +246,14 @@ def calculate_account_corrections(
         expected_amount = position.get_quantity() if position else 0
         diff = actual_amount - expected_amount
 
-        dust_epsilon = get_dust_epsilon(position.pair)
+        if isinstance(position, TradingPosition):
+            dust_epsilon = get_dust_epsilon_for_pair(position.pair)
+        elif isinstance(position, ReservePosition):
+            dust_epsilon = get_dust_epsilon_for_asset(position.asset)
+        elif position is None:
+            dust_epsilon = DEFAULT_DUST_EPSILON
+        else:
+            raise NotImplementedError(f"Could not figure out position: {position}")
 
         usd_value = position.calculate_quantity_usd_value(diff) if position else None
 
