@@ -362,7 +362,7 @@ class TradeExecution:
         :return:
             Indented JSON-like content
         """
-        return pprint.pformat(asdict(self))
+        return pprint.pformat(asdict(self), width=160)
 
     def __hash__(self):
         # TODO: Hash better?
@@ -380,6 +380,7 @@ class TradeExecution:
         if self.trade_type != TradeType.repair:
             assert self.planned_quantity != 0
 
+        # TODO: We have additional check in open_position()
         assert abs(self.planned_quantity) > QUANTITY_EPSILON, f"We got a planned quantity that does not look like a good number: {self.planned_quantity}, trade is: {self}"
 
         assert self.planned_price > 0

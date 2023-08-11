@@ -249,7 +249,7 @@ class TradingPosition(GenericPosition):
         :return:
             Indented JSON-like content
         """
-        return pprint.pformat(asdict(self))
+        return pprint.pformat(asdict(self), width=160)
 
     def is_open(self) -> bool:
         """This is an open trading position."""
