@@ -9,6 +9,7 @@ from web3 import Web3
 from web3.contract import Contract
 
 from eth_defi.event_reader.reorganisation_monitor import create_reorganisation_monitor
+from eth_defi.trace import assert_transaction_success_with_explanation
 from tradeexecutor.ethereum.enzyme.vault import EnzymeVaultSyncModel
 from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
 from tradeexecutor.state.balance_update import BalanceUpdatePositionType, BalanceUpdateCause
@@ -105,7 +106,8 @@ def test_enzyme_single_deposit(
     # Make a deposit
     usdc.functions.transfer(user_1, 500 * 10**6).transact({"from": deployer})
     usdc.functions.approve(vault_comptroller_contract.address, 500 * 10**6).transact({"from": user_1})
-    vault_comptroller_contract.functions.buyShares(500 * 10**6, 1).transact({"from": user_1})
+    tx_hash = vault_comptroller_contract.functions.buyShares(500 * 10**6, 1).transact({"from": user_1})
+    assert_transaction_success_with_explanation(web3, tx_hash)
 
     # One deposit detected
     events = sync_model.sync_treasury(cycle, state)
