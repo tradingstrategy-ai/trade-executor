@@ -69,7 +69,7 @@ def test_main_loop_crash_with_catch(
         assert str(e.value) == "Boom"
 
 
-@flaky.flaky()
+@flaky.flaky(max_runs=5)
 @pytest.mark.skipif(os.environ.get("BNB_CHAIN_JSON_RPC") is None, reason="Set BNB_CHAIN_JSON_RPC environment variable to Binance Smart Chain node to run this test")
 def test_main_loop_crash(
     strategy_path,
