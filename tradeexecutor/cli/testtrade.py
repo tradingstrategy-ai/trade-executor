@@ -7,6 +7,8 @@ from typing import Union
 from web3 import Web3
 
 from tradeexecutor.ethereum.enzyme.vault import EnzymeVaultSyncModel
+from tradeexecutor.statistics.core import update_statistics
+from tradeexecutor.strategy.execution_context import ExecutionMode
 from tradeexecutor.strategy.sync_model import SyncModel
 from tradeexecutor.utils.accuracy import sum_decimal
 from tradingstrategy.universe import Universe
@@ -188,6 +190,8 @@ def make_test_trade(
             raise AssertionError("Test buy succeed, but the position was not opened\n"
                                  "Check for dust corrections.")
 
+        update_statistics(datetime.datetime.utcnow(), state.stats, state.portfolio, ExecutionMode.real_trading)
+
     logger.info("Position %s is open. Now closing the position.", position)
 
     if not buy_only:
@@ -220,6 +224,8 @@ def make_test_trade(
             logger.error("Test sell failed: %s", sell_trade)
             logger.error("Trade dump:\n%s", sell_trade.get_debug_dump())
             raise AssertionError("Test sell failed")
+
+        update_statistics(datetime.datetime.utcnow(), state.stats, state.portfolio, ExecutionMode.real_trading)
 
     else:
         sell_trade = None
