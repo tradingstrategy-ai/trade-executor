@@ -497,7 +497,7 @@ def check_accounts(
         reserve_assets,
         state,
         sync_model,
-        epsilon,
+        relative_epsilon=RELATIVE_EPSILON,
         all_balances=True,
     )
 
