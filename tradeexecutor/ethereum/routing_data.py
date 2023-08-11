@@ -468,27 +468,19 @@ def get_uniswap_v3_arbitrum_default_routing_parameters(
     """Generate routing using Uniswap V3 router for Arbitrum"""
 
     if reserve_currency == ReserveCurrency.usdc:
-        # https://tradingstrategy.ai/trading-view/arbitrum/tokens/0xff970a61a04b1ca14834a43f5de4533ebddb5cc8
+        reserve_token_address = "0xaf88d065e77c8cc2239327c5edb3a432268e5831".lower()
+        allowed_intermediary_pairs = {}
+    elif reserve_currency == ReserveCurrency.usdc_e:
         reserve_token_address = "0xff970a61a04b1ca14834a43f5de4533ebddb5cc8".lower()
-
-        allowed_intermediary_pairs = {
-            # Route WETH through USDC:WETH fee 0.05% pool,
-            # https://tradingstrategy.ai/trading-view/arbitrum/uniswap-v3/eth-usdc-fee-5
-            "0x82af49447d8a07e3bd95bd0d56f35241523fbab1": "0xc31e54c7a869b9fcbecc14363cf510d1c41fa443",
-            # Route ARB through USDC:ARB fee 0.05% pool,
-            # https://tradingstrategy.ai/trading-view/arbitrum/uniswap-v3/arb-usdc-fee-5
-            "0x912ce59144191c1204e64559fe8253a0e49e6548": "0xcda53b1f66614552f834ceef361a8d12a0b8dad8",
-        }
+        allowed_intermediary_pairs = {}
     elif reserve_currency == ReserveCurrency.usdt:
         # https://tradingstrategy.ai/trading-view/arbitrum/tokens/0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9
         reserve_token_address = "0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9"
-
         allowed_intermediary_pairs = {
             # Route WETH through USDT:ETH fee 0.05% pool
             # https://tradingstrategy.ai/trading-view/arbitrum/uniswap-v3/eth-usdt-fee-5
             "0x82af49447d8a07e3bd95bd0d56f35241523fbab1": "0x641c00a822e8b671738d32a431a4fb6074e5c79d",
         }
-
     return {
         "chain_id": ChainId.arbitrum,
         "address_map": uniswap_v3_address_map,
@@ -497,6 +489,7 @@ def get_uniswap_v3_arbitrum_default_routing_parameters(
         # USDC, WETH, USDT
         "quote_token_addresses": {
             "0xff970a61a04b1ca14834a43f5de4533ebddb5cc8",
+            "0xaf88d065e77c8cc2239327c5edb3a432268e5831",
             "0x82af49447d8a07e3bd95bd0d56f35241523fbab1",
             "0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9",
         },
@@ -523,7 +516,8 @@ def get_uniswap_v3_compatible_routing_types_poly():
 def get_uniswap_v3_compatible_routing_types_arbitrum():
     # TODO find a way to get without hardcoding
     return {
-        TradeRouting.uniswap_v3_usdc_arbitrum,
+        TradeRouting.uniswap_v3_usdc_arbitrum_bridged,
+        TradeRouting.uniswap_v3_usdc_arbitrum_native,
         TradeRouting.uniswap_v3_usdt_arbitrum,
     }
 
@@ -569,9 +563,14 @@ def validate_reserve_currency(
         TradeRouting.uniswap_v2_usdc,
         TradeRouting.uniswap_v3_usdc,
         TradeRouting.uniswap_v3_usdc_poly,
-        TradeRouting.uniswap_v3_usdc_arbitrum,
+        TradeRouting.uniswap_v3_usdc_arbitrum_native,
     }:
         if reserve_currency != ReserveCurrency.usdc:
+            raise MismatchReserveCurrency(f"Got {routing_type} with {reserve_currency}")
+    elif routing_type in {
+        TradeRouting.uniswap_v3_usdc_arbitrum_bridged,
+    }:
+        if reserve_currency != ReserveCurrency.usdc_e:
             raise MismatchReserveCurrency(f"Got {routing_type} with {reserve_currency}")
     # usdt
     elif routing_type in {

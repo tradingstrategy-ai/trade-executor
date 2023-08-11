@@ -95,9 +95,16 @@ def test_route_polygon_usdc(execution_context):
 
 def test_route_arbitrum_usdc(execution_context):
     """Test Uniswap v3 Arbitrum USDC routing."""
-    routing = get_routing_model(execution_context, TradeRouting.uniswap_v3_usdc_arbitrum, ReserveCurrency.usdc)
+    routing = get_routing_model(execution_context, TradeRouting.uniswap_v3_usdc_arbitrum_native, ReserveCurrency.usdc)
     assert isinstance(routing, UniswapV3SimpleRoutingModel)
     assert routing.chain_id == ChainId.arbitrum
+
+def test_route_arbitrum_usdc(execution_context):
+    """Test Uniswap v3 Arbitrum USDC routing."""
+    routing = get_routing_model(execution_context, TradeRouting.uniswap_v3_usdc_arbitrum_bridged, ReserveCurrency.usdc_e)
+    assert isinstance(routing, UniswapV3SimpleRoutingModel)
+    assert routing.chain_id == ChainId.arbitrum
+
 
 def test_route_mismatch_reserve_currency_pancake(execution_context):
     """Test Pancake BUSD routing. """
@@ -127,7 +134,7 @@ def test_route_mismatch_reserve_currency_uniswap_v3_poly(execution_context):
 def test_route_mismatch_reserve_currency_uniswap_v3_arbitrum(execution_context):
     """Test Uniswap V3 Arbitrum USDC routing."""
     with pytest.raises(MismatchReserveCurrency):
-        get_routing_model(execution_context, TradeRouting.uniswap_v3_usdc_arbitrum, ReserveCurrency.usdt)
+        get_routing_model(execution_context, TradeRouting.uniswap_v3_usdc_arbitrum_bridged, ReserveCurrency.usdt)
 
 
 
