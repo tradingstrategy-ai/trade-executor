@@ -183,7 +183,7 @@ class Portfolio:
                     price = trade.executed_price
                     
                 assert quantity != 0, f"Got bad quantity for {trade}"
-                assert (price is not None) and price > 0, f"Got invalid trade {trade.get_full_debug_dump_str()} - price is {price}"
+                assert (price is not None) and price > 0, f"Got invalid trade {trade.get_debug_dump()} - price is {price}"
 
                 filtered_position.trades[key] = trade
 

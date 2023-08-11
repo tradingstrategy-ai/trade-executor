@@ -8,6 +8,7 @@ from web3 import Web3
 
 from tradeexecutor.ethereum.enzyme.vault import EnzymeVaultSyncModel
 from tradeexecutor.strategy.sync_model import SyncModel
+from tradeexecutor.utils.accuracy import sum_decimal
 from tradingstrategy.universe import Universe
 from tradingstrategy.pair import HumanReadableTradingPairDescription
 from tradingstrategy.exchange import ExchangeUniverse
@@ -167,15 +168,23 @@ def make_test_trade(
         position_id = trade.position_id
         position = state.portfolio.get_position_by_id(position_id)
 
-        if not trade.is_success():
+        if not trade.is_success() or not position.is_open():
+            # Alot of diagnostics to debug Arbitrum / WBTC issues
+            trades = sum_decimal([t.get_position_quantity() for t in position.trades.values() if t.is_success()])
+            direct_balance_updates = position.get_balance_update_quantity()
+
+            logger.error("Trade quantity: %s, direct balance updates: %s", trades, direct_balance_updates)
+
             logger.error("Test buy failed: %s", trade)
             logger.error("Tx hash: %s", trade.blockchain_transactions[-1].tx_hash)
             logger.error("Revert reason: %s", trade.blockchain_transactions[-1].revert_reason)
-            logger.error("Trade dump:\n%s", trade.get_full_debug_dump_str())
+            logger.error("Trade dump:\n%s", trade.get_debug_dump())
+            logger.error("Position dump:\n%s", position.get_debug_dump())
+
+        if not trade.is_success():
             raise AssertionError("Test buy failed.")
 
         if not position.is_open():
-            logger.error("Position status: %s", position)
             raise AssertionError("Test buy succeed, but the position was not opened\n"
                                  "Check for dust corrections.")
 
@@ -209,7 +218,7 @@ def make_test_trade(
 
         if not sell_trade.is_success():
             logger.error("Test sell failed: %s", sell_trade)
-            logger.error("Trade dump:\n%s", sell_trade.get_full_debug_dump_str())
+            logger.error("Trade dump:\n%s", sell_trade.get_debug_dump())
             raise AssertionError("Test sell failed")
 
     else:

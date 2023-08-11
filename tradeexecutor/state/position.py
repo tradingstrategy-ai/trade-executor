@@ -2,7 +2,8 @@
 import datetime
 import enum
 import logging
-from dataclasses import dataclass, field
+import pprint
+from dataclasses import dataclass, field, asdict
 from decimal import Decimal
 
 from typing import Dict, Optional, List, Iterable
@@ -17,6 +18,7 @@ from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifie
 from tradeexecutor.state.trade import TradeType, QUANTITY_EPSILON
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.types import USDollarAmount, BPS, USDollarPrice, Percent
+from tradeexecutor.strategy.dust import get_dust_epsilon_for_pair
 from tradeexecutor.strategy.trade_pricing import TradePricing
 from tradeexecutor.utils.accuracy import sum_decimal
 
@@ -240,6 +242,14 @@ class TradingPosition(GenericPosition):
 
     def get_human_readable_name(self) -> str:
         return f"Trading position #{self.position_id} for {self.pair.get_ticker()}"
+
+    def get_debug_dump(self) -> str:
+        """Return class contents for logging.
+
+        :return:
+            Indented JSON-like content
+        """
+        return pprint.pformat(asdict(self))
 
     def is_open(self) -> bool:
         """This is an open trading position."""
@@ -651,11 +661,12 @@ class TradingPosition(GenericPosition):
                 return True
         return False
 
-    def can_be_closed(self, epsilon=CLOSED_POSITION_DUST_EPSILON) -> bool:
+    def can_be_closed(self) -> bool:
         """There are no tied tokens in this position.
 
         Perform additional check for token amount dust caused by rounding errors.
         """
+        epsilon = get_dust_epsilon_for_pair(self.pair)
         return self.get_quantity() <= epsilon
 
     def get_total_bought_usd(self) -> USDollarAmount:

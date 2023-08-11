@@ -148,7 +148,7 @@ def close_all(
             logger.error("Trade failed: %s", trade)
             logger.error("Tx hash: %s", trade.blockchain_transactions[-1].tx_hash)
             logger.error("Revert reason: %s", trade.blockchain_transactions[-1].revert_reason)
-            logger.error("Trade dump:\n%s", trade.get_full_debug_dump_str())
+            logger.error("Trade dump:\n%s", trade.get_debug_dump())
             raise AssertionError("Trade to close position failed")
 
         if p.notes is None:

@@ -356,7 +356,12 @@ class TradeExecution:
         d = asdict(self)
         return pprint.pformat(d)
 
-    def get_full_debug_dump_str(self):
+    def get_debug_dump(self) -> str:
+        """Return class contents for logging.
+
+        :return:
+            Indented JSON-like content
+        """
         return pprint.pformat(asdict(self))
 
     def __hash__(self):
