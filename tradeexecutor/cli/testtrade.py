@@ -167,13 +167,17 @@ def make_test_trade(
         position_id = trade.position_id
         position = state.portfolio.get_position_by_id(position_id)
 
-        if not trade.is_success() or not position.is_open():
+        if not trade.is_success():
             logger.error("Test buy failed: %s", trade)
             logger.error("Tx hash: %s", trade.blockchain_transactions[-1].tx_hash)
             logger.error("Revert reason: %s", trade.blockchain_transactions[-1].revert_reason)
             logger.error("Trade dump:\n%s", trade.get_full_debug_dump_str())
+            raise AssertionError("Test buy failed.")
+
+        if not position.is_open():
             logger.error("Position status: %s", position)
-            raise AssertionError("Test buy failed")
+            raise AssertionError("Test buy succeed, but the position was not opened\n"
+                                 "Check for dust corrections.")
 
     logger.info("Position %s is open. Now closing the position.", position)
 

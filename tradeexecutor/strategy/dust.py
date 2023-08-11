@@ -1,5 +1,9 @@
 """Dust amounts and epsilon rounding.
 
+Because of very small and very accurate token units,
+a lot of trades may end up having rounding artifacts.
+We need to deal with these rounding artifacts by checking for "dust".
+
 """
 from decimal import Decimal
 
