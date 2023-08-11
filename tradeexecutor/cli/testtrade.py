@@ -167,14 +167,15 @@ def make_test_trade(
         position_id = trade.position_id
         position = state.portfolio.get_position_by_id(position_id)
 
-        if not trade.is_success():
+        if not trade.is_success() or not position.is_open():
             logger.error("Test buy failed: %s", trade)
             logger.error("Tx hash: %s", trade.blockchain_transactions[-1].tx_hash)
             logger.error("Revert reason: %s", trade.blockchain_transactions[-1].revert_reason)
             logger.error("Trade dump:\n%s", trade.get_full_debug_dump_str())
+            logger.error("Position status: %s", position)
             raise AssertionError("Test buy failed")
 
-    logger.info("Position %s open. Now closing the position.", position)
+    logger.info("Position %s is open. Now closing the position.", position)
 
     if not buy_only:
         # Recreate the position manager for the new timestamp,

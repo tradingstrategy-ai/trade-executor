@@ -471,7 +471,7 @@ def update_confirmation_status(
         # as we now have receipt for them
         for tx_hash, receipt in receipts.items():
             trade, tx = tx_map[tx_hash.hex()]
-            logger.info("Resolved trade %s", trade)
+            logger.info("Resolved tx %s for trade %s", tx_hash, trade)
             # Update the transaction confirmation status
             status = receipt["status"] == 1
             reason = None
