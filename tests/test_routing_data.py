@@ -329,7 +329,7 @@ def test_uniswap_v2_routing_models(
             ChainId.polygon,
         ),
         (
-            TradeRouting.uniswap_v3_usdc_arbitrum,
+            TradeRouting.uniswap_v3_usdc_arbitrum_bridged,
             ReserveCurrency.usdc,
             {
                 "0x82af49447d8a07e3bd95bd0d56f35241523fbab1": "0xc31e54c7a869b9fcbecc14363cf510d1c41fa443",

@@ -355,14 +355,20 @@ class ExecutionLoop:
             Cycle duration for this cycle. Either from the strategy module,
             or a backtest override.
 
+        :param live:
+            We are doing live trading.
+
         :param existing_universe:
             If passed, use this universe instead of trying to download
             and filter new one. This is shortcut for backtesting
             where the universe does not change between cycles
-            (as opposite to live trading new pairs pop in to the existince).
+            (as opposite to live trading new pairs pop in to the existence).
 
         :param extra_debug_data:
             Extra data to be passed to the debug dump used in unit testing.
+
+        :return:
+            The universe where we are trading.
         """
 
         assert isinstance(unrounded_timestamp, datetime.datetime)

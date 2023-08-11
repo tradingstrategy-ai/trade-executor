@@ -156,10 +156,27 @@ class TradeRouting(enum.Enum):
 
     #: Two or three legged trades on Uniswap v3 on Arbitrum mainnet
     #:
+    #: - See two flavours of USDC on Arbitrum https://arbitrumfoundation.medium.com/usdc-to-come-natively-to-arbitrum-f751a30e3d83
+    #:
+    #: - `Two swap between USDC.e/USDC <https://app.uniswap.org/#/swap?exactField=input&exactAmount=10&inputCurrency=0xff970a61a04b1ca14834a43f5de4533ebddb5cc8&outputCurrency=0xaf88d065e77c8cC2239327C5EDb3A432268e5831>`__
+    #:
+    #: - This USDC is `0xff970a61a04b1ca14834a43f5de4533ebddb5cc8`
+    #:
     #: - Open positions with USDC quote token.
     #:
-    #: - Open positions with WETH quote token.
-    uniswap_v3_usdc_arbitrum = "uniswap_v3_usdc_arbitrum"
+    uniswap_v3_usdc_arbitrum_bridged = "uniswap_v3_usdc_arbitrum_bridged"
+
+    #: Two or three legged trades on Uniswap v3 on Arbitrum mainnet
+    #:
+    #: - See two flavours of USDC on Arbitrum https://arbitrumfoundation.medium.com/usdc-to-come-natively-to-arbitrum-f751a30e3d83
+    #:
+    #: - `Two swap between USDC.e/USDC <https://app.uniswap.org/#/swap?exactField=input&exactAmount=10&inputCurrency=0xff970a61a04b1ca14834a43f5de4533ebddb5cc8&outputCurrency=0xaf88d065e77c8cC2239327C5EDb3A432268e5831>`__
+    #:
+    #: - This USDC is `0xaf88d065e77c8cC2239327C5EDb3A432268e5831`
+    #:
+    #: - Open positions with USDC quote token.
+    #:
+    uniswap_v3_usdc_arbitrum_native = "uniswap_v3_usdc_arbitrum_native"
 
     #: Two or three legged trades on Uniswap v3 on Arbitrum mainnet
     #:
@@ -201,6 +218,7 @@ class TradeRouting(enum.Enum):
             TradeRouting.uniswap_v3_usdt,
             TradeRouting.uniswap_v3_dai,
             TradeRouting.uniswap_v3_busd,
-            TradeRouting.uniswap_v3_usdc_arbitrum,
+            TradeRouting.uniswap_v3_usdc_arbitrum_bridged,
+            TradeRouting.uniswap_v3_usdc_arbitrum_native,
             TradeRouting.uniswap_v3_usdt_arbitrum,
         }
