@@ -17,6 +17,7 @@ from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.trade import TradeType
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.types import USDollarAmount, BPS, USDollarPrice
+from tradeexecutor.strategy.dust import get_dust_epsilon
 from tradeexecutor.strategy.trade_pricing import TradePricing
 
 class NotEnoughMoney(Exception):
@@ -38,6 +39,13 @@ class NotSinglePair(Exception):
     """Raised when there is zero or two plus pairs when single expected.
 
     See :py:meth:`Portfolio.get_single_pair`.
+    """
+
+
+class TooSmallTrade(Exception):
+    """The trade amount is smaller than our dust epsilon.
+
+    If the position quantity is too small, we cannot distinguish it from a closed position.
     """
 
 
@@ -476,6 +484,13 @@ class Portfolio:
         # Check we accidentally do not reuse trade id somehow
 
         self.next_trade_id += 1
+
+        dust_epsilon = get_dust_epsilon(trade.pair)
+        if abs(trade.planned_quantity) <= dust_epsilon:
+            raise TooSmallTrade(f"Trade cannot be this small\n"
+                                f"Quantity {trade.planned_quantity}, dust epsilon {dust_epsilon}\n"
+                                f"Trade: {trade}\n"
+                                f"Pair: {trade.pair}")
 
         return position, trade, created
 

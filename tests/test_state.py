@@ -14,7 +14,7 @@ from hexbytes import HexBytes
 from tradeexecutor.strategy.trade_pricing import TradePricing
 from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
 from tradeexecutor.state.state import State, TradeType
-from tradeexecutor.state.portfolio import NotEnoughMoney
+from tradeexecutor.state.portfolio import NotEnoughMoney, TooSmallTrade
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.trade import TradeExecution, TradeStatus
@@ -1030,3 +1030,18 @@ def test_encode_solidty_args():
     solidity_madness = {"foo": solidity_arg_encoder(args)}
     validate_nested_state_dict(solidity_madness)
 
+
+def test_trade_too_small(usdc, weth_usdc, start_ts: datetime.datetime):
+    """We cannot open very small trades."""
+    state = State()
+    state.update_reserves([ReservePosition(
+        usdc,
+        Decimal(1000),
+        start_ts,
+        1.0,
+        start_ts
+    )])
+    trader = DummyTestTrader(state)
+
+    with pytest.raises(TooSmallTrade):
+         trader.buy(weth_usdc, Decimal(0.000000001), 1700)

@@ -19,18 +19,15 @@ from typing import List, Iterable, Collection, Tuple
 import pandas as pd
 from web3 import Web3
 
-from eth_defi.enzyme.erc20 import prepare_transfer
-from eth_defi.enzyme.vault import Vault
-from eth_defi.hotwallet import HotWallet
 from eth_defi.token import fetch_erc20_details
 from eth_defi.trace import assert_transaction_success_with_explanation
 from eth_typing import HexAddress
 
 from eth_defi.tx import AssetDelta
 from tradeexecutor.ethereum.tx import TransactionBuilder
+from tradeexecutor.strategy.dust import DEFAULT_DUST_EPSILON, get_dust_epsilon
 from tradingstrategy.pair import PandasPairUniverse
 
-from tradeexecutor.ethereum.enzyme.vault import EnzymeVaultSyncModel
 from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdatePositionType, BalanceUpdateCause
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.position import TradingPosition
@@ -43,16 +40,6 @@ from tradeexecutor.strategy.sync_model import SyncModel
 
 
 logger = logging.getLogger(__name__)
-
-
-#: The absolute number of tokens we consider the value to be zero
-#:
-#:
-#: Because of funny %s of values divided near zero,
-#: we cannot use relative comparison near zero values.
-#:
-#:
-DUST_EPSILON = Decimal(10**-4)
 
 
 #: The default % we allow the balance to drift before we consider it a mismatch.
@@ -202,7 +189,6 @@ def calculate_account_corrections(
     state: State,
     sync_model: SyncModel,
     relative_epsilon=RELATIVE_EPSILON,
-    dust_epsilon=DUST_EPSILON,
     all_balances=False,
 ) -> Iterable[AccountingBalanceCheck]:
     """Figure out differences between our internal ledger (state) and on-chain balances.
@@ -259,6 +245,8 @@ def calculate_account_corrections(
         actual_amount = ab.amount
         expected_amount = position.get_quantity() if position else 0
         diff = actual_amount - expected_amount
+
+        dust_epsilon = get_dust_epsilon(position.pair)
 
         usd_value = position.calculate_quantity_usd_value(diff) if position else None
 
@@ -488,7 +476,6 @@ def check_accounts(
     reserve_assets: Collection[AssetIdentifier],
     state: State,
     sync_model: SyncModel,
-    epsilon=DUST_EPSILON,
 ) -> Tuple[bool, pd.DataFrame]:
     """Get a table output of accounting corrections needed.
 

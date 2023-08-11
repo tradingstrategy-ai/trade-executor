@@ -15,7 +15,7 @@ from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
 from tradeexecutor.strategy.trading_strategy_universe import translate_trading_pair
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.trade_pricing import TradePricing
-from tradeexecutor.strategy.account_correction import DUST_EPSILON
+from tradeexecutor.strategy.dust import DEFAULT_DUST_EPSILON
 from tradeexecutor.ethereum.routing_model import EthereumRoutingModel
 
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment
