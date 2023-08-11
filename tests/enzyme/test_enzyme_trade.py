@@ -245,7 +245,8 @@ def test_enzyme_execute_close_position(
     # Make two deposits from separate parties
     usdc.functions.transfer(user_1, 500 * 10**6).transact({"from": deployer})
     usdc.functions.approve(vault.comptroller.address, 500 * 10**6).transact({"from": user_1})
-    vault.comptroller.functions.buyShares(500 * 10**6, 1).transact({"from": user_1})
+    tx_hash = vault.comptroller.functions.buyShares(500 * 10**6, 1).transact({"from": user_1})
+    assert_transaction_success_with_explanation(web3, tx_hash)
 
     # Strategy has its reserve balances updated
     sync_model.sync_treasury(datetime.datetime.utcnow(), state)
