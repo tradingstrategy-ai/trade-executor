@@ -84,7 +84,12 @@ class StrategyRunner(abc.ABC):
 
     @abc.abstractmethod
     def pretick_check(self, ts: datetime.datetime, universe: StrategyExecutionUniverse):
-        """Called when the trade executor instance is started.
+        """Check the universe for good data before a strategy tick is executed.
+
+        If there are data errors, then log and abort with helpful error messages.
+
+        Only relevant for live trading; if backtesting data fails
+        it can be diagnosed in the backtesting itself.
 
         :param client: Trading Strategy client to check server versions etc.
 
