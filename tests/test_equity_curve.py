@@ -11,8 +11,10 @@
 """
 
 import logging
+import os.path
 import random
 import datetime
+from pathlib import Path
 from typing import List, Dict
 
 import pytest
@@ -20,6 +22,7 @@ import pytest
 import pandas as pd
 from matplotlib.figure import Figure
 
+from tradeexecutor.analysis.single_pair import expand_entries_and_exists
 from tradeexecutor.backtest.backtest_runner import run_backtest_inline
 from tradeexecutor.cli.log import setup_pytest_logging
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
@@ -322,3 +325,14 @@ def test_web_netflow(state: State):
     first_tuple = chart.data[0]
     assert first_tuple[0] == 1622505600.0
     assert first_tuple[1] == 10000.0  # Initial deposit
+
+
+def test_single_pair_timeline():
+    """Create timeline DataFrame for a single pair."""
+
+    dump_file = Path(os.path.join(os.path.dirname(__file__), "arbitrum-btc-usd-sls-binance-data-1h.json"))
+    state = State.read_json_file(dump_file)
+    df = expand_entries_and_exists(state)
+
+    print(df)
+
