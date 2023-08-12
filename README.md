@@ -43,6 +43,18 @@ First study the example code
 **Note**: The project is under active development. We recommend any developers to use Github master branch
 for installations.
 
+As as dependency line for Poetry `pyproject.yml`:
+
+```toml
+[tool.poetry.dependencies]
+# Remove Python 3.11 pin down after upstream dependency issues are resolved
+python = ">=3.10,<3.11"  
+# extras=["all"] does not seem to work here. Poetry bug?
+trade-executor = {git = "https://github.com/tradingstrategy-ai/trade-executor.git", extras = ["web-server", "execution", "quantstats", "data"], rev = "master" }
+```
+
+Checking out from Github to make contributions: 
+
 ```shell
 git clone git@github.com:tradingstrategy-ai/trade-executor.git
 cd trade-executor
@@ -52,7 +64,7 @@ git submodule update --init --recursive
 # - execution: infrastructure to run live strategies
 # - web-server: support webhook server of live strategy executors
 # - qstrader: still needed to run legacy unit tests
-poetry install -E web-server -E execution -E qstrader -E quantstats
+poetry install --all-extras
 ``` 
 
 Or with pip:

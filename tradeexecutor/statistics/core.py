@@ -162,6 +162,11 @@ def update_statistics(
 
     - Other ad-hoc timestamp
 
+    .. note ::
+
+        You *must* make sure this function is called any time a position has been opened
+        or closed, or relevant statistics may get corrupted due to holes in them.
+
     :param clock:
         Real-time clock of the update.
 
