@@ -73,6 +73,12 @@ Or with pip:
 pip install -e ".[web-server,execution,qstrader,quantstats]" 
 ```
 
+Or directly from Github URL:
+
+```shell
+pip install -e "git+https://github.com/tradingstrategy-ai/trade-executor.git@master#egg=trade-executor[web-server,execution,qstrader,quantstats]"  
+```
+
 ## Architecture overview
 
 Here is an example of a live trading deployment of a `trade-executor` package.
