@@ -17,23 +17,10 @@ from tradeexecutor.state.state import State
 
 pytestmark = pytest.mark.skipif(os.environ.get("TRADING_STRATEGY_API_KEY") is None, reason="Set TRADING_STRATEGY_API_KEY environment variable to run this test module")
 
-
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 def strategy_path():
     """We use pancake-eth-usd-sma.py as the strategy module input for these tests."""
     return os.path.join(os.path.dirname(__file__), "..", "..", "strategies", "pancake-eth-usd-sma.py")
-
-
-@pytest.fixture(scope="session")
-def unit_test_cache_path():
-    """Where unit tests  cache files.
-
-    We have special path for CLI tests to make sure CLI tests
-    always do fresh downloads.
-    """
-    path = os.path.join(os.path.dirname(__file__), "/tmp/cli_tests")
-    os.makedirs(path, exist_ok=True)
-    return path
 
 
 def test_cli_check_universe(

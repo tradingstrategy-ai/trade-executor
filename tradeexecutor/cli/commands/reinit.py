@@ -17,7 +17,7 @@ from . import shared_options
 
 
 @app.command()
-def reinit(
+def reset(
     id: str = shared_options.id,
     name: str = shared_options.name,
 
@@ -38,7 +38,7 @@ def reinit(
     json_rpc_anvil: Optional[str] = shared_options.json_rpc_anvil,
 
 ):
-    """Reinitialise a strategy state.
+    """Reset the strategy state.
 
     Deletes all the state history of a state and starts tracking the strategy again.
 
@@ -126,8 +126,6 @@ def reinit(
 
     logger.info("Syncing initial strategy chain state: %s", name)
     logger.info(f"Vault deployment block number hint is {start_block or 0:,}.")
-
-    assert isinstance(sync_model, EnzymeVaultSyncModel), f"reinit currently only supports EnzymeVaultSyncModel, got {sync_model}"
 
     # Perform reconstruction of state
     sync_model.sync_reinit(state, start_block=start_block)
