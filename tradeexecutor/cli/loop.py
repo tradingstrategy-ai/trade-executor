@@ -427,7 +427,8 @@ class ExecutionLoop:
             universe = existing_universe
 
         # Run cycle checks
-        self.runner.pretick_check(ts, universe)
+        if live:
+            self.runner.pretick_check(ts, universe)
 
         if cycle == 1 and self.backtest_setup is not None:
             # The hook to set up backtest initial balance.
