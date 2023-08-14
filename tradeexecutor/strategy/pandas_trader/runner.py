@@ -131,19 +131,19 @@ class PandasTraderRunner(StrategyRunner):
         else:
             logger.warning("Charts not yet available for this strategy type. Pair count: %s", universe.get_pair_count())
     
-    def update_strategy_thinking_image_data(self, small_image, large_image):
+    def update_strategy_thinking_image_data(self, small_figure, large_figure):
         """Update the strategy thinking image data with small, small dark theme, large, and large dark theme images.
         
         :param small_image: 512 x 512 image
         :param large_image: 1920 x 1920 image
         """
 
-        small_image, small_image_dark = self.get_small_images(small_image)
-        large_image, large_image_dark = self.get_large_images(large_image)
+        small_image, small_image_dark = self.get_small_images(small_figure)
+        large_image, large_image_dark = self.get_large_images(large_figure)
         
         # don't need the dark images for png (only post light images to discord)
-        small_image_png, _ = self.get_image_and_dark_image(small_image, format="png", width=512, height=512)
-        large_image_png, _ = self.get_image_and_dark_image(large_image, format="png", width=1024, height=1024)
+        small_image_png, _ = self.get_image_and_dark_image(small_figure, format="png", width=512, height=512)
+        large_image_png, _ = self.get_image_and_dark_image(large_figure, format="png", width=1024, height=1024)
 
         self.run_state.visualisation.update_image_data(
             small_image,
@@ -164,8 +164,6 @@ class PandasTraderRunner(StrategyRunner):
     
     def get_image_and_dark_image(self, figure, width, height, format="svg"):
         """Renders the figure as a PNG image and a dark theme PNG image."""
-        
-        assert format in ["png", "svg"], "Format must be png or svg"
 
         image = render_plotly_figure_as_image_file(figure, width=width, height=height, format=format)
         
