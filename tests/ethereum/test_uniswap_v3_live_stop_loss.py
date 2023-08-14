@@ -678,10 +678,15 @@ def test_refresh_visualisations(
     large_image = loop.runner.run_state.visualisation.large_image
     large_image_dark = loop.runner.run_state.visualisation.large_image_dark
 
+    small_image_png = loop.runner.run_state.visualisation.small_image_png
+    large_image_png = loop.runner.run_state.visualisation.large_image_png
+
     if os.environ.get('SHOW_IMAGE'):
         open_bytes_in_browser(small_image)
         open_bytes_in_browser(small_image_dark)
         open_bytes_in_browser(large_image)
         open_bytes_in_browser(large_image_dark)
+        open_bytes_in_browser(small_image_png)
+        open_bytes_in_browser(large_image_png)
 
 
