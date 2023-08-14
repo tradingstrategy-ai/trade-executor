@@ -22,7 +22,7 @@ import pytest
 import pandas as pd
 from matplotlib.figure import Figure
 
-from tradeexecutor.analysis.single_pair import expand_entries_and_exists
+from tradeexecutor.analysis.single_pair import expand_entries_and_exits
 from tradeexecutor.backtest.backtest_runner import run_backtest_inline
 from tradeexecutor.cli.log import setup_pytest_logging
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
@@ -332,7 +332,7 @@ def test_single_pair_timeline():
 
     dump_file = Path(os.path.join(os.path.dirname(__file__), "arbitrum-btc-usd-sls-binance-data-1h.json"))
     state = State.read_json_file(dump_file)
-    df = expand_entries_and_exists(state)
+    df = expand_entries_and_exits(state)
 
     print(df)
 

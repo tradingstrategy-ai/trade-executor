@@ -81,6 +81,7 @@ def test_metadata(logger, server_url):
     assert data["short_description"] == "Short desc"
     assert data["icon_url"] == None
     assert data["executor_running"] == True
+    assert data["crashed_at"] is None
 
 
 def test_cors(logger, server_url):

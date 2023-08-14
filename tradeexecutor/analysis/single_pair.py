@@ -5,7 +5,7 @@ from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
 
 
-def expand_entries_and_exists(
+def expand_entries_and_exits(
     state: State,
 ) -> pd.DataFrame:
     """Write out a table containing entries and exists of every taken position.

@@ -286,6 +286,10 @@ class StrategySummary:
     #:
     backtest_available: bool = False
 
+    #: When the executor bailed out with an exception
+    #:
+    crashed_at: datetime.datetime | None = None
+
 
 #: Help links for different metrics
 _KEY_METRIC_HELP = {

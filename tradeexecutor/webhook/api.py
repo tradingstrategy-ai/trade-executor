@@ -51,7 +51,7 @@ def web_metadata(request: Request):
     Executor metadata.
     """
     metadata: Metadata = request.registry["metadata"]
-    execution_state: RunState = request.registry["run_state"]
+    run_state: RunState = request.registry["run_state"]
 
     # Retrofitted with the running flag,
     # not really a nice API design.
@@ -62,12 +62,13 @@ def web_metadata(request: Request):
         long_description=metadata.long_description,
         icon_url=metadata.icon_url,
         started_at=time.mktime(metadata.started_at.timetuple()),
-        executor_running=execution_state.executor_running,
-        summary_statistics=execution_state.summary_statistics,
+        executor_running=run_state.executor_running,
+        summary_statistics=run_state.summary_statistics,
         on_chain_data=metadata.on_chain_data,
-        frozen_positions=execution_state.frozen_positions,
-        error_message=execution_state.exception.get("exception_message") if execution_state.exception else None,
+        frozen_positions=run_state.frozen_positions,
+        error_message=run_state.exception.get("exception_message") if run_state.exception else None,
         backtest_available=metadata.has_backtest_data(),
+        crashed_at=run_state.crashed_at,
     )
 
     # Catch NaN's and other data JavaScript cannot eat
