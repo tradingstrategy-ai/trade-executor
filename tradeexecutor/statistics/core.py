@@ -11,7 +11,6 @@ from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.statistics import Statistics, PortfolioStatistics, PositionStatistics, FinalPositionStatistics
 from tradeexecutor.strategy.execution_context import ExecutionMode
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -45,7 +44,7 @@ class TimestampedStatistics:
 
 def calculate_position_statistics(clock: datetime.datetime, position: TradingPosition) -> PositionStatistics:
     """Generate a historical record of the current position state."""
-    #first_trade = position.get_first_trade()
+    # first_trade = position.get_first_trade()
 
     value = position.get_value()
 
@@ -79,9 +78,13 @@ def calculate_closed_position_statistics(
     value_at_open = position_stats[0].value
 
     if first_trade.is_success():
-        assert value_at_open > 0, f"PositionStatistics lacked value at open for {position}.\n" \
-                                  f"Stats:\n" \
-                                  f"{position_stats}"
+        if value_at_open == 0:
+            # TODO:
+            # We should really abort here with an exception
+            # but we have some legacy data that prevents this
+            logger.warning(f"PositionStatistics lacked value at open for {position}.\n"
+                           f"Stats:\n"
+                           f"{position_stats}")
 
     value_at_max = max([(p.value or 0) for p in position_stats])
     stats = FinalPositionStatistics(
@@ -97,15 +100,15 @@ def calculate_statistics(
         clock: datetime.datetime,
         portfolio: Portfolio,
         execution_mode: ExecutionMode,
-        strategy_cycle_at: datetime.datetime | None=None,
+        strategy_cycle_at: datetime.datetime | None = None,
 ) -> TimestampedStatistics:
     """Calculate statistics for a portfolio."""
 
     first_trade, last_trade = portfolio.get_first_and_last_executed_trade()
-    
+
     # comprehensenhive statistics after each trade are not needed for backtesting
-    if(execution_mode != ExecutionMode.backtesting):
-        
+    if (execution_mode != ExecutionMode.backtesting):
+
         trade_analysis = build_trade_analysis(portfolio)
 
         pf_stats = PortfolioStatistics(
