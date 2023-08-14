@@ -142,8 +142,8 @@ class PandasTraderRunner(StrategyRunner):
         large_image, large_image_dark = self.get_large_images(large_image)
         
         # don't need the dark images for png (only post light images to discord)
-        small_image_png, _ = self.get_image_and_dark_image(small_image, format="png")
-        large_image_png, _ = self.get_image_and_dark_image(large_image, format="png")
+        small_image_png, _ = self.get_image_and_dark_image(small_image, format="png", width=512, height=512)
+        large_image_png, _ = self.get_image_and_dark_image(large_image, format="png", width=1024, height=1024)
 
         self.run_state.visualisation.update_image_data(
             small_image,
