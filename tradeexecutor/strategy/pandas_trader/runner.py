@@ -134,18 +134,24 @@ class PandasTraderRunner(StrategyRunner):
     def update_strategy_thinking_image_data(self, small_image, large_image):
         """Update the strategy thinking image data with small, small dark theme, large, and large dark theme images.
         
-        :param small_image: 512 x 512 image PNG
-        :param large_image: 1920 x 1920 image SVG
+        :param small_image: 512 x 512 image
+        :param large_image: 1920 x 1920 image
         """
 
         small_image, small_image_dark = self.get_small_images(small_image)
         large_image, large_image_dark = self.get_large_images(large_image)
         
+        # don't need the dark images for png (only post light images to discord)
+        small_image_png, _ = self.get_image_and_dark_image(small_image, format="png")
+        large_image_png, _ = self.get_image_and_dark_image(large_image, format="png")
+
         self.run_state.visualisation.update_image_data(
             small_image,
             large_image,
             small_image_dark,
             large_image_dark,
+            small_image_png,
+            large_image_png,
         )
 
     def get_small_images(self, small_figure):
@@ -156,14 +162,15 @@ class PandasTraderRunner(StrategyRunner):
         """Gets the png image of the figure and the dark theme png image. Images are 1024 x 1024."""
         return self.get_image_and_dark_image(large_figure, width=1024, height=1024)
     
-    def get_image_and_dark_image(self, figure, width, height):
+    def get_image_and_dark_image(self, figure, width, height, format="svg"):
         """Renders the figure as a PNG image and a dark theme PNG image."""
-        # TODO: Web frontend should use SVG, but SVG does not work in discord
-        # now set to PNG
-        image = render_plotly_figure_as_image_file(figure, width=width, height=height, format="png")
+        
+        assert format in ["png", "svg"], "Format must be png or svg"
+
+        image = render_plotly_figure_as_image_file(figure, width=width, height=height, format=format)
         
         figure.update_layout(template="plotly_dark")
-        image_dark = render_plotly_figure_as_image_file(figure, width=width, height=height, format="png")
+        image_dark = render_plotly_figure_as_image_file(figure, width=width, height=height, format=format)
 
         return image, image_dark 
 
@@ -233,7 +240,7 @@ class PandasTraderRunner(StrategyRunner):
 
             logger.trade(buf.getvalue())
 
-            small_image = self.run_state.visualisation.small_image
+            small_image = self.run_state.visualisation.small_image_png
             post_logging_discord_image(small_image)
 
         else:
@@ -281,7 +288,7 @@ class PandasTraderRunner(StrategyRunner):
 
             # there is already a warning in refresh_visualisations for pair count > 3
             if universe.get_pair_count() <= 5:
-                large_image = self.run_state.visualisation.large_image
+                large_image = self.run_state.visualisation.large_image_png
                 post_logging_discord_image(large_image)
             else:
                 logger.info(f"Strategy visualisation not posted to Discord because pair count of {universe.get_pair_count()} is greater than 5.")
