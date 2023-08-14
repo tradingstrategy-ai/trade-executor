@@ -697,7 +697,7 @@ class TradeAnalysis:
 
     @staticmethod
     def get_capital_tied_at_open(position):
-        if position.portfolio_value_at_open:
+        if position.portfolio_value_at_creation:
             return position.get_capital_tied_at_open_pct()
         else:
             return None

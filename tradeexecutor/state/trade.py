@@ -342,6 +342,11 @@ class TradeExecution:
     #: E.g. on Ethereum, this is the amount of ETH spent on gas
     cost_of_gas: Optional[Decimal] = None
 
+    #: The total porfolio value when this position was opened
+    #:
+    #: Used for risk metrics and other statistics.
+    portfolio_value_at_creation: Optional[USDollarAmount] = None
+
     def __repr__(self):
         if self.is_buy():
             return f"<Buy #{self.trade_id} {self.planned_quantity} {self.pair.base.token_symbol} at {self.planned_price}, {self.get_status().name}>"

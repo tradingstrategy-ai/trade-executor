@@ -445,6 +445,8 @@ class Portfolio:
             # Open a new position
             position = self.get_position_by_trading_pair(pair)
 
+        portfolio_value = self.get_total_equity()
+
         if position is None:
             position = self.open_new_position(
                 strategy_cycle_at,
@@ -453,6 +455,8 @@ class Portfolio:
                 reserve_currency,
                 reserve_currency_price)
             created = True
+
+            position.portfolio_value_at_open = portfolio_value
         else:
             # Trade counts against old position,
             # - inc/dec size
@@ -475,6 +479,7 @@ class Portfolio:
             planned_mid_price=planned_mid_price,
             price_structure=price_structure,
             slippage_tolerance=slippage_tolerance,
+            portfolio_value_at_creation=portfolio_value,
         )
 
         # Update notes

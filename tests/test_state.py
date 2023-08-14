@@ -807,6 +807,10 @@ def test_single_buy_failed(usdc, weth, weth_usdc, start_ts):
 
     assert len(state.portfolio.open_positions) == 1
 
+    # Check portfolio value recording
+    assert position.portfolio_value_at_open == 1000.0
+    assert trade.portfolio_value_at_creation == 1000.0
+
 
 def test_serialize_state(usdc, weth_usdc, start_ts: datetime.datetime):
     """Dump and reload the internal state."""

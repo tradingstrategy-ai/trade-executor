@@ -541,7 +541,8 @@ class TradingPosition(GenericPosition):
                    lp_fees_estimated: Optional[USDollarAmount] = None,
                    planned_mid_price: Optional[USDollarPrice] = None,
                    price_structure: Optional[TradePricing] = None,
-                   slippage_tolerance: Optional[float] = None
+                   slippage_tolerance: Optional[float] = None,
+                   portfolio_value_at_creation: Optional[USDollarAmount] = None,
                    ) -> TradeExecution:
         """Open a new trade on position.
 
@@ -601,6 +602,11 @@ class TradingPosition(GenericPosition):
             Slippage tolerance for this trade.
 
             See :py:attr:`tradeexecutor.state.trade.TradeExecution.slippage_tolerance` for details.
+
+        :param portfolio_value_at_creation:
+            Record the portfolio's value when this posistion was opened.
+
+            Will be later used for risk metrics calculations and such.
         """
 
         if quantity is not None:
@@ -637,6 +643,7 @@ class TradingPosition(GenericPosition):
             lp_fees_estimated=lp_fees_estimated,
             price_structure=price_structure,
             slippage_tolerance=slippage_tolerance,
+            portfolio_value_at_creation=portfolio_value_at_creation,
         )
         self.trades[trade.trade_id] = trade
         return trade
