@@ -59,6 +59,7 @@ def start(
     name: Optional[str] = shared_options.name,
     short_description: Optional[str] = typer.Option(None, envvar="SHORT_DESCRIPTION", help="Short description for metadata"),
     long_description: Optional[str] = typer.Option(None, envvar="LONG_DESCRIPTION", help="Long description for metadata"),
+    badges: Optional[str] = typer.Option(None, envvar="BADGES", help="Comma separated list of badges to be displayed on the strategy tile"),
     icon_url: Optional[str] = typer.Option(None, envvar="ICON_URL", help="Strategy icon for web rendering and Discord avatar"),
 
     strategy_file: Path = shared_options.strategy_file,
@@ -312,6 +313,7 @@ def start(
             backtest_notebook=notebook_report,
             backtest_html=html_report,
             key_metrics_backtest_cut_off_days=key_metrics_backtest_cut_off_days,
+            badges=badges,
         )
 
         # Start the queue that relays info from the web server to the strategy executor

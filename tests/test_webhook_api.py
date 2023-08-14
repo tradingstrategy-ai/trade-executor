@@ -40,7 +40,15 @@ def server_url(store):
 
     queue = Queue()
 
-    metadata = Metadata("Foobar", "Short desc", "Long desc", None, datetime.datetime.utcnow(), True)
+    metadata = Metadata(
+        "Foobar",
+        "Short desc",
+        "Long desc",
+        None,
+        datetime.datetime.utcnow(),
+        True,
+        badges=Metadata.parse_badges_configuration("polygon, metamask, eth, usdc"),
+    )
 
     # Inject some fake files for the backtest content
     notebook_result = Path(tempfile.mkdtemp()) / 'test_cli_backtest.ipynb'
@@ -82,6 +90,7 @@ def test_metadata(logger, server_url):
     assert data["icon_url"] == None
     assert data["executor_running"] == True
     assert data["crashed_at"] is None
+    assert data["badges"] == ["polygon", "metamask", "eth", "usdc"]
 
 
 def test_cors(logger, server_url):

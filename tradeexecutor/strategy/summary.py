@@ -290,6 +290,10 @@ class StrategySummary:
     #:
     crashed_at: datetime.datetime | None = None
 
+    #: List of strategy tile badges
+    #:
+    badges: List[str] = field(default_factory=list)
+
 
 #: Help links for different metrics
 _KEY_METRIC_HELP = {

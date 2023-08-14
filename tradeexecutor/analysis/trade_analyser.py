@@ -696,7 +696,8 @@ class TradeAnalysis:
         )
 
     @staticmethod
-    def get_capital_tied_at_open(position):
+    def get_capital_tied_at_open(position) -> Percent | None:
+        """Calculate how much capital % was allocated to this position when it was opened."""
         if position.portfolio_value_at_open:
             return position.get_capital_tied_at_open_pct()
         else:

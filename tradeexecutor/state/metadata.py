@@ -6,7 +6,7 @@ on the executor start up.
 import datetime
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional, Dict, TypedDict
+from typing import Optional, Dict, TypedDict, List
 
 from dataclasses_json import dataclass_json
 from tradingstrategy.chain import ChainId
@@ -128,6 +128,14 @@ class Metadata:
     #:
     key_metrics_backtest_cut_off: datetime.timedelta = datetime.timedelta(days=90)
 
+    #: List of badges strategy tile can display
+    #:
+    #: E.g. "metamask", "polygon", "eth", "usdc"
+    #:
+    #: For the available badges see the frontend repo.
+    #:
+    badges: List[str] = field(default_factory=list)
+
     @staticmethod
     def create_dummy() -> "Metadata":
         return Metadata(
@@ -142,3 +150,14 @@ class Metadata:
     def has_backtest_data(self) -> bool:
         """Does this strategy have backtest data available on the file system?"""
         return (self.backtest_notebook and self.backtest_notebook.exists()) and (self.backtest_html and self.backtest_html.exists())
+
+    @staticmethod
+    def parse_badges_configuration(config_line: str | None) -> List[str]:
+        """Parse BADGES environment variable.
+
+        Comma separated list, support whitespaces.
+        """
+        if not config_line:
+            return []
+
+        return [s.strip() for s in config_line.split(",")]
