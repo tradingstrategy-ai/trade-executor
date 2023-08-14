@@ -124,6 +124,8 @@ def visualise_multiple_pairs(
 ) -> go.Figure:
     """Visualise single-pair trade execution.
 
+    .. note:: Volume has been disabled for now for multipair visualisation. Using volume_bar_modes or volume_axis_name currently has no effect.
+
     :param state:
         The recorded state of the strategy execution.
 
@@ -222,12 +224,14 @@ def visualise_multiple_pairs(
 
     logger.info(f"Visualising multipair strategy for range {start_at} - {end_at}")
 
-    if not volume_bar_modes:
-        volume_bar_modes = [VolumeBarMode.overlay] * len(pair_ids)
-    else:
-        assert len(volume_bar_modes) == len(
-            pair_ids
-        ), "volume_bar_modes must be the same length as pair_ids"
+    # volume disabled for multipair visualisation
+    volume_bar_modes = [VolumeBarMode.hidden] * len(pair_ids)
+    # if not volume_bar_modes:
+    #     volume_bar_modes = [VolumeBarMode.overlay] * len(pair_ids)
+    # else:
+    #     assert len(volume_bar_modes) == len(
+    #         pair_ids
+    #     ), "volume_bar_modes must be the same length as pair_ids"
 
     pair_subplot_infos: list[PairSubplotInfo] = []
     current_candlestick_row = 1
