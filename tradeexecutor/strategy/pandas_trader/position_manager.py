@@ -572,18 +572,18 @@ class PositionManager:
             if position.stop_loss:
                 # Update existing stop loss
                 if override_stop_loss:
-                    position.stop_loss = price_structure.mid_price * stop_loss
+                    position.update_stop_loss(price_structure.mid_price * stop_loss)
                 else:
                     # Do not override existing stop loss set earlier
                     pass
             else:
                 # Set the initial stop loss
-                position.stop_loss = price_structure.mid_price * stop_loss
+                position.update_stop_loss(price_structure.mid_price * stop_loss)
 
         if trailing_stop_loss:
             assert trailing_stop_loss < 1, f"Got trailing_stop_loss {trailing_stop_loss}"
             if not position.stop_loss:
-                position.stop_loss = price_structure.mid_price * trailing_stop_loss
+                position.update_stop_loss(price_structure.mid_price * trailing_stop_loss)
             position.trailing_stop_loss_pct = trailing_stop_loss
 
         if take_profit:

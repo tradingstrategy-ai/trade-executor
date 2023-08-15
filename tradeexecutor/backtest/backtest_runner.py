@@ -244,7 +244,7 @@ def setup_backtest(
         If strategy module was previously loaded
     """
 
-    assert initial_deposit, "You must give initial_deposit"
+    assert initial_deposit, "You must give initial_cash"
     assert max_slippage >= 0, f"You must give max slippage. Got max slippage {max_slippage}"
 
     assert isinstance(strategy_path, Path), f"Got {strategy_path}"

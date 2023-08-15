@@ -220,7 +220,7 @@ class BacktestExecutionModel(ExecutionModel):
                 # Check that we have stop loss data available
                 # for backtesting
                 if not self.is_stop_loss_supported():
-                    raise AutoClosingOrderUnsupported("Trade was marked with stop loss/take profit even though backtesting trading universe does not have price feed for stop loss checks available.")
+                    raise AutoClosingOrderUnsupported("Trade was marked with stop loss/take profit even though backtesting trading universe does not have price feed for stop loss checks available. Remember to use the stop_loss_time_bucket parameter or equivalent when you create your trading universe to avoid this error.")
 
         for idx, trade in enumerate(trades):
 
