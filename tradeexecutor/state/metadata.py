@@ -132,7 +132,10 @@ class Metadata:
     #:
     #: E.g. "metamask", "polygon", "eth", "usdc"
     #:
-    #: For the available badges see the frontend repo.
+    #: - For the available badges see the frontend repo.
+    #: - Chain badge e.g. Polygon does not need to be declared as it is part of the strategh
+    #: - Vault type. e.g. Enzyme badge is the same
+    #: - Can contain badges like USDC
     #:
     badges: List[str] = field(default_factory=list)
 

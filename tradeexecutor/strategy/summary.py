@@ -292,6 +292,8 @@ class StrategySummary:
 
     #: List of strategy tile badges
     #:
+    #: See `Metadata.badges` for description.
+    #:
     badges: List[str] = field(default_factory=list)
 
 
