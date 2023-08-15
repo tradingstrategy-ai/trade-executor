@@ -31,32 +31,44 @@ class LatestStateVisualisation:
     #: When the execution state was updated last time
     last_refreshed_at: datetime.datetime = field(default_factory=datetime.datetime.utcnow)
 
-    #: 512 x 512 image PNG
-    small_image: Optional[bytes] = None
+    #: 512 x 512 image SVG
+    small_image: Optional[str] = None
 
     #: Dark theme version
-    small_image_dark: Optional[bytes] = None
+    small_image_dark: Optional[str] = None
 
     #: 1024 x 1024 image SVG
-    large_image: Optional[bytes] = None
+    large_image: Optional[str] = None
 
     #: Dark theme version
-    large_image_dark: Optional[bytes] = None
+    large_image_dark: Optional[str] = None
+
+    #: 512 x 512 image PNG for Discord
+    small_image_png: Optional[bytes] = None
+
+    #: 1024 x 1024 image PNG for Discord
+    large_image_png: Optional[bytes] = None
 
     def __repr__(self) -> str:
         """Don't dump binary"""
         return f"<LatestStateVisualisation at {self.last_refreshed_at}>"
 
-    def update_image_data(self,
-                          small_image,
-                          large_image,
-                          small_image_dark,
-                          large_image_dark,
-                          ):
+    def update_image_data(
+        self,
+        small_image,
+        large_image,
+        small_image_dark,
+        large_image_dark,
+        small_image_png,
+        large_image_png,
+    ):
         self.small_image = small_image
         self.small_image_dark = small_image_dark
         self.large_image = large_image
         self.large_image_dark = large_image_dark
+        self.small_image_png = small_image_png
+        self.large_image_png = large_image_png
+
         self.last_refreshed_at = datetime.datetime.utcnow()
 
 

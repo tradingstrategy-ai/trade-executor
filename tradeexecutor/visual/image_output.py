@@ -27,6 +27,9 @@ def render_plotly_figure_as_image_file(
     :param format:
         "png" or "svg"
     """
+
+    assert format in ["png", "svg"], "Format must be png or svg"
+
     stream = BytesIO()
     figure.write_image(
         stream,
