@@ -786,6 +786,17 @@ class TradeExecution:
 
         return None
 
+    def get_volume(self) -> USDollarAmount:
+        """Get the volume this trade generated.
+
+        If the trade is not yet executed,
+        or failed to execute, assume zero volume.
+        """
+        if self.is_success():
+            return self.get_executed_value()
+        return 0
+
+
     def mark_broadcasted(self, broadcasted_at: datetime.datetime):
         assert self.get_status() == TradeStatus.started, f"Trade in bad state: {self.get_status()}"
         self.broadcasted_at = broadcasted_at
