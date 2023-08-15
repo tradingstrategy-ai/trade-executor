@@ -159,7 +159,7 @@ class TradePricing:
                 return self.pair_fee[0]
             elif len(self.pair_fee) == 2:
                 assert all([0 <= fee < 1 for fee in self.pair_fee])
-                return 1 - (1 - self.pair_fee[0])(1 - self.pair_fee[1])
+                return 1 - (1 - self.pair_fee[0]) * (1 - self.pair_fee[1])
             else:
                 raise ValueError("Swap involves fees from more than two pairs")
             
