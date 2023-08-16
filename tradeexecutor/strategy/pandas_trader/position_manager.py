@@ -722,11 +722,14 @@ class PositionManager:
     def update_stop_loss(self, position: TradingPosition, stop_loss: USDollarAmount, mid_price: USDollarPrice | None = None):
         """Update the stop loss for the current position.
         
+        :param position:
+            Position to update. For multipair strategies, providing this parameter is strongly recommended.
+
         :param stop_loss:
             Stop loss in US dollar terms
 
-        :param position:
-            Position to update. For multipair strategies, providing this parameter is strongly recommended.
+        :param mid_price:
+            Mid price of the pair (https://tradingstrategy.ai/glossary/mid-price). Provide when possible for most complete statistical analysis. In certain cases, it may not be easily available, so it's optional.
         """
 
         position.trigger_updates.append(TriggerPriceUpdate(
