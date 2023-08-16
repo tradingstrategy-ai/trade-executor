@@ -12,7 +12,7 @@ from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.position import TradingPosition, TriggerPriceUpdate
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeType, TradeExecution
-from tradeexecutor.state.types import USDollarAmount, Percent
+from tradeexecutor.state.types import USDollarAmount, Percent, USDollarPrice
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradingstrategy.candle import CandleSampleUnavailable
 from tradingstrategy.pair import DEXPair
@@ -392,12 +392,12 @@ class PositionManager:
 
         if stop_loss_pct is not None:
             assert 0 <= stop_loss_pct <= 1, f"stop_loss_pct must be 0..1, got {stop_loss_pct}"
-            position.update_stop_loss(price_structure.mid_price * stop_loss_pct, self.timestamp, price_structure.mid_price)
+            self.update_stop_loss(price_structure.mid_price * stop_loss_pct, price_structure.mid_price, position)
 
         if trailing_stop_loss_pct:
             assert stop_loss_pct is None, "You cannot give both stop_loss_pct and trailing_stop_loss_pct"
             assert 0 <= trailing_stop_loss_pct <= 1, f"trailing_stop_loss_pct must be 0..1, got {trailing_stop_loss_pct}"
-            position.update_stop_loss(price_structure.mid_price * trailing_stop_loss_pct, self.timestamp, price_structure.mid_price)
+            self.update_stop_loss(price_structure.mid_price * trailing_stop_loss_pct, price_structure.mid_price, position)
             position.trailing_stop_loss_pct = trailing_stop_loss_pct
         
         if stop_loss_usd:
@@ -405,7 +405,7 @@ class PositionManager:
             assert not trailing_stop_loss_pct, "You cannot give both trailing_stop_loss_pct and stop_loss_usd"
             assert stop_loss_usd < price_structure.mid_price, f"stop_loss_usd must be less than mid_price got {stop_loss_usd} >= {price_structure.mid_price}"
             
-            position.update_stop_loss(stop_loss_usd, self.timestamp, price_structure.mid_price)
+            self.update_stop_loss(stop_loss_usd, price_structure.mid_price, position)
 
             
 
@@ -572,18 +572,18 @@ class PositionManager:
             if position.stop_loss:
                 # Update existing stop loss
                 if override_stop_loss:
-                    position.update_stop_loss(price_structure.mid_price * stop_loss, self.timestamp, price_structure.mid_price)
+                    self.update_stop_loss(price_structure.mid_price * stop_loss, price_structure.mid_price, position)
                 else:
                     # Do not override existing stop loss set earlier
                     pass
             else:
                 # Set the initial stop loss
-                position.update_stop_loss(price_structure.mid_price * stop_loss, self.timestamp, price_structure.mid_price)
+                self.update_stop_loss(price_structure.mid_price * stop_loss, price_structure.mid_price, position)
 
         if trailing_stop_loss:
             assert trailing_stop_loss < 1, f"Got trailing_stop_loss {trailing_stop_loss}"
             if not position.stop_loss:
-                position.update_stop_loss(price_structure.mid_price * trailing_stop_loss, self.timestamp, price_structure.mid_price)
+                self.update_stop_loss(price_structure.mid_price * trailing_stop_loss, price_structure.mid_price, position)
             position.trailing_stop_loss_pct = trailing_stop_loss
 
         if take_profit:
@@ -719,22 +719,26 @@ class PositionManager:
         price = pricing_model.get_mid_price(timestamp, pair)
         return float(dollar_amount / price)
 
-    def update_stop_loss(self, stop_loss: USDollarAmount):
-        """Update the stop loss for the current position. To update stop loss for a specific position, use `update_stop_loss()` on the position object. This method is not recommended in multipair strategies since there may be multiple open positions.
+    def update_stop_loss(self, stop_loss: USDollarAmount, mid_price: USDollarPrice | None = None, position: TradingPosition | None = None):
+        """Update the stop loss for the current position.
         
         :param stop_loss:
             Stop loss in US dollar terms
+
+        :param position:
+            Position to update. For multipair strategies, providing this parameter is strongly recommended.
         """
 
-        pos: TradingPosition = self.get_current_position()
-        
-        pos.trigger_updates.append(TriggerPriceUpdate(
+        if not position:
+            position: TradingPosition = self.get_current_position()
+
+        position.trigger_updates.append(TriggerPriceUpdate(
             timestamp=self.timestamp,
-            stop_loss_before = pos.stop_loss,
+            stop_loss_before = position.stop_loss,
             stop_loss_after = stop_loss,
-            mid_price = None,
-            take_profit_before = pos.take_profit,
-            take_profit_after = pos.take_profit,  # No changes to take profit
+            mid_price = mid_price,
+            take_profit_before = position.take_profit,
+            take_profit_after = position.take_profit,  # No changes to take profit
         ))
 
-        pos.stop_loss = stop_loss
+        position.stop_loss = stop_loss
