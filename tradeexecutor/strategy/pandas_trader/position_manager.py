@@ -180,6 +180,8 @@ class PositionManager:
 
         self.reserve_currency = reserve_currency
 
+        self.mid_price = None
+
     def is_any_open(self) -> bool:
         """Do we have any positions open."""
         return len(self.state.portfolio.open_positions) > 0
@@ -363,6 +365,8 @@ class PositionManager:
 
         price_structure = self.pricing_model.get_buy_price(self.timestamp, executor_pair, value)
 
+        self.mid_price = price_structure.mid_price
+
         assert type(price_structure.mid_price) == float
 
         reserve_asset, reserve_price = self.state.portfolio.get_default_reserve_asset()
@@ -516,6 +520,8 @@ class PositionManager:
             ) from e
 
         price = price_structure.price
+
+        self.mid_price = price_structure.mid_price
 
         reserve_asset, reserve_price = self.state.portfolio.get_default_reserve_asset()
 
@@ -719,7 +725,7 @@ class PositionManager:
         price = pricing_model.get_mid_price(timestamp, pair)
         return float(dollar_amount / price)
 
-    def update_stop_loss(self, position: TradingPosition, stop_loss: USDollarAmount, mid_price: USDollarPrice | None = None):
+    def update_stop_loss(self, position: TradingPosition, stop_loss: USDollarAmount):
         """Update the stop loss for the current position.
         
         :param position:
@@ -736,7 +742,7 @@ class PositionManager:
             timestamp=self.timestamp,
             stop_loss_before = position.stop_loss,
             stop_loss_after = stop_loss,
-            mid_price = mid_price,
+            mid_price = self.mid_price,
             take_profit_before = position.take_profit,
             take_profit_after = position.take_profit,  # No changes to take profit
         ))
