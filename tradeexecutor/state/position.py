@@ -1072,27 +1072,6 @@ class TradingPosition(GenericPosition):
 
         self.balance_updates[event.balance_update_id] = event
 
-    def update_stop_loss(self, stop_loss: USDollarAmount, timestamp: datetime.datetime, mid_price: Optional[USDollarPrice] = None):
-        """Update the stop loss for the position.
-        
-        :param timestamp:
-            Timestamp of the current cycle
-
-        :param stop_loss:
-            Stop loss in US dollar terms
-        """
-
-        self.trigger_updates.append(TriggerPriceUpdate(
-            timestamp=timestamp,
-            stop_loss_before = self.stop_loss,
-            stop_loss_after = stop_loss,
-            mid_price = mid_price,
-            take_profit_before = self.take_profit,
-            take_profit_after = self.take_profit,  # No changes to take profit
-        ))
-
-        self.stop_loss = stop_loss
-
 
 class PositionType(enum.Enum):
     token_hold = "token_hold"
