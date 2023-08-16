@@ -720,11 +720,8 @@ class PositionManager:
         return float(dollar_amount / price)
 
     def update_stop_loss(self, stop_loss: USDollarAmount):
-        """Update the stop loss for the current position. To update stop loss for a specific position, use `update_stop_loss()` on the position object.
+        """Update the stop loss for the current position. To update stop loss for a specific position, use `update_stop_loss()` on the position object. This method is not recommended in multipair strategies since there may be multiple open positions.
         
-        :param timestamp:
-            Timestamp of the current cycle
-
         :param stop_loss:
             Stop loss in US dollar terms
         """
