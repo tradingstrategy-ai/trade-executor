@@ -392,12 +392,12 @@ class PositionManager:
 
         if stop_loss_pct is not None:
             assert 0 <= stop_loss_pct <= 1, f"stop_loss_pct must be 0..1, got {stop_loss_pct}"
-            self.update_stop_loss(price_structure.mid_price * stop_loss_pct, price_structure.mid_price, position)
+            self.update_stop_loss(position, price_structure.mid_price * stop_loss_pct, price_structure.mid_price)
 
         if trailing_stop_loss_pct:
             assert stop_loss_pct is None, "You cannot give both stop_loss_pct and trailing_stop_loss_pct"
             assert 0 <= trailing_stop_loss_pct <= 1, f"trailing_stop_loss_pct must be 0..1, got {trailing_stop_loss_pct}"
-            self.update_stop_loss(price_structure.mid_price * trailing_stop_loss_pct, price_structure.mid_price, position)
+            self.update_stop_loss(position, price_structure.mid_price * trailing_stop_loss_pct, price_structure.mid_price)
             position.trailing_stop_loss_pct = trailing_stop_loss_pct
         
         if stop_loss_usd:
@@ -405,7 +405,7 @@ class PositionManager:
             assert not trailing_stop_loss_pct, "You cannot give both trailing_stop_loss_pct and stop_loss_usd"
             assert stop_loss_usd < price_structure.mid_price, f"stop_loss_usd must be less than mid_price got {stop_loss_usd} >= {price_structure.mid_price}"
             
-            self.update_stop_loss(stop_loss_usd, price_structure.mid_price, position)
+            self.update_stop_loss(position, stop_loss_usd, price_structure.mid_price)
 
             
 
@@ -572,18 +572,18 @@ class PositionManager:
             if position.stop_loss:
                 # Update existing stop loss
                 if override_stop_loss:
-                    self.update_stop_loss(price_structure.mid_price * stop_loss, price_structure.mid_price, position)
+                    self.update_stop_loss(position, price_structure.mid_price * stop_loss, price_structure.mid_price)
                 else:
                     # Do not override existing stop loss set earlier
                     pass
             else:
                 # Set the initial stop loss
-                self.update_stop_loss(price_structure.mid_price * stop_loss, price_structure.mid_price, position)
+                self.update_stop_loss(position, price_structure.mid_price * stop_loss, price_structure.mid_price)
 
         if trailing_stop_loss:
             assert trailing_stop_loss < 1, f"Got trailing_stop_loss {trailing_stop_loss}"
             if not position.stop_loss:
-                self.update_stop_loss(price_structure.mid_price * trailing_stop_loss, price_structure.mid_price, position)
+                self.update_stop_loss(position, price_structure.mid_price * trailing_stop_loss, price_structure.mid_price)
             position.trailing_stop_loss_pct = trailing_stop_loss
 
         if take_profit:
@@ -719,7 +719,7 @@ class PositionManager:
         price = pricing_model.get_mid_price(timestamp, pair)
         return float(dollar_amount / price)
 
-    def update_stop_loss(self, stop_loss: USDollarAmount, mid_price: USDollarPrice | None = None, position: TradingPosition | None = None):
+    def update_stop_loss(self, position: TradingPosition, stop_loss: USDollarAmount, mid_price: USDollarPrice | None = None):
         """Update the stop loss for the current position.
         
         :param stop_loss:
@@ -728,9 +728,6 @@ class PositionManager:
         :param position:
             Position to update. For multipair strategies, providing this parameter is strongly recommended.
         """
-
-        if not position:
-            position: TradingPosition = self.get_current_position()
 
         position.trigger_updates.append(TriggerPriceUpdate(
             timestamp=self.timestamp,
