@@ -176,12 +176,14 @@ def start(
             avatar_url=icon_url)
 
     if logstash_server and asset_management_mode.is_live_trading():
-        # TODO: Move backtesting to its own console command
+        logger.info("Enabling Logstash logging to %s", logstash_server)
         setup_logstash_logging(
             logstash_server,
             f"executor-{id}",  # Always prefix logged with executor id
             quiet=False,
         )
+    else:
+        logger.info("Logstash logging disabled")
 
     setup_file_logging(
         f"logs/{id}.log",
