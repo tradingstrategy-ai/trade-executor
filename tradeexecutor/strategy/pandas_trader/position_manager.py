@@ -180,8 +180,6 @@ class PositionManager:
 
         self.reserve_currency = reserve_currency
 
-        self.mid_price = None
-
     def is_any_open(self) -> bool:
         """Do we have any positions open."""
         return len(self.state.portfolio.open_positions) > 0
@@ -365,8 +363,6 @@ class PositionManager:
 
         price_structure = self.pricing_model.get_buy_price(self.timestamp, executor_pair, value)
 
-        self.mid_price = price_structure.mid_price
-
         assert type(price_structure.mid_price) == float
 
         reserve_asset, reserve_price = self.state.portfolio.get_default_reserve_asset()
@@ -396,12 +392,12 @@ class PositionManager:
 
         if stop_loss_pct is not None:
             assert 0 <= stop_loss_pct <= 1, f"stop_loss_pct must be 0..1, got {stop_loss_pct}"
-            self.update_stop_loss(position, price_structure.mid_price * stop_loss_pct, price_structure.mid_price)
+            self.update_stop_loss(position, price_structure.mid_price * stop_loss_pct)
 
         if trailing_stop_loss_pct:
             assert stop_loss_pct is None, "You cannot give both stop_loss_pct and trailing_stop_loss_pct"
             assert 0 <= trailing_stop_loss_pct <= 1, f"trailing_stop_loss_pct must be 0..1, got {trailing_stop_loss_pct}"
-            self.update_stop_loss(position, price_structure.mid_price * trailing_stop_loss_pct, price_structure.mid_price)
+            self.update_stop_loss(position, price_structure.mid_price * trailing_stop_loss_pct)
             position.trailing_stop_loss_pct = trailing_stop_loss_pct
         
         if stop_loss_usd:
@@ -409,7 +405,7 @@ class PositionManager:
             assert not trailing_stop_loss_pct, "You cannot give both trailing_stop_loss_pct and stop_loss_usd"
             assert stop_loss_usd < price_structure.mid_price, f"stop_loss_usd must be less than mid_price got {stop_loss_usd} >= {price_structure.mid_price}"
             
-            self.update_stop_loss(position, stop_loss_usd, price_structure.mid_price)
+            self.update_stop_loss(position, stop_loss_usd)
 
             
 
@@ -521,8 +517,6 @@ class PositionManager:
 
         price = price_structure.price
 
-        self.mid_price = price_structure.mid_price
-
         reserve_asset, reserve_price = self.state.portfolio.get_default_reserve_asset()
 
         slippage_tolerance = slippage_tolerance or self.default_slippage_tolerance
@@ -578,18 +572,18 @@ class PositionManager:
             if position.stop_loss:
                 # Update existing stop loss
                 if override_stop_loss:
-                    self.update_stop_loss(position, price_structure.mid_price * stop_loss, price_structure.mid_price)
+                    self.update_stop_loss(position, price_structure.mid_price * stop_loss)
                 else:
                     # Do not override existing stop loss set earlier
                     pass
             else:
                 # Set the initial stop loss
-                self.update_stop_loss(position, price_structure.mid_price * stop_loss, price_structure.mid_price)
+                self.update_stop_loss(position, price_structure.mid_price * stop_loss)
 
         if trailing_stop_loss:
             assert trailing_stop_loss < 1, f"Got trailing_stop_loss {trailing_stop_loss}"
             if not position.stop_loss:
-                self.update_stop_loss(position, price_structure.mid_price * trailing_stop_loss, price_structure.mid_price)
+                self.update_stop_loss(position, price_structure.mid_price * trailing_stop_loss)
             position.trailing_stop_loss_pct = trailing_stop_loss
 
         if take_profit:
@@ -738,11 +732,13 @@ class PositionManager:
             Mid price of the pair (https://tradingstrategy.ai/glossary/mid-price). Provide when possible for most complete statistical analysis. In certain cases, it may not be easily available, so it's optional.
         """
 
+        mid_price =  self.pricing_model.get_mid_price(self.timestamp, position.pair)
+
         position.trigger_updates.append(TriggerPriceUpdate(
             timestamp=self.timestamp,
             stop_loss_before = position.stop_loss,
             stop_loss_after = stop_loss,
-            mid_price = self.mid_price,
+            mid_price = mid_price,
             take_profit_before = position.take_profit,
             take_profit_after = position.take_profit,  # No changes to take profit
         ))
