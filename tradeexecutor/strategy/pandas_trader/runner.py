@@ -141,6 +141,10 @@ class PandasTraderRunner(StrategyRunner):
         small_image, small_image_dark = self.get_small_images(small_figure)
         large_image, large_image_dark = self.get_large_images(large_figure)
         
+        # uncomment if you want light mode for Discord
+        # small_figure.update_layout(template="plotly")
+        # large_figure.update_layout(template="plotly")
+
         # don't need the dark images for png (only post light images to discord)
         small_image_png, _ = self.get_image_and_dark_image(small_figure, format="png", width=512, height=512)
         large_image_png, _ = self.get_image_and_dark_image(large_figure, format="png", width=1024, height=1024)

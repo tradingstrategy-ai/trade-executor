@@ -59,14 +59,14 @@ def open_plotly_figure_in_browser(figure: go.Figure, height:int = 512, width: in
     webbrowser.open(f"file://{path.as_posix()}")
 
 
-def open_bytes_in_browser(data: bytes) -> None:
+def open_bytes_in_browser(data: bytes, format="png") -> None:
     """Open bytes in a browser. Useful for debugging.
 
     :param data:
         bytes data to be used to create an image
     """
 
-    path = Path("/tmp/test-image.png")
+    path = Path(f"/tmp/test-image.{format}")
     with open(path, "wb") as out:
         out.write(data)
 
