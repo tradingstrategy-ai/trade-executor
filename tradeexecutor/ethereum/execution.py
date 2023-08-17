@@ -36,10 +36,8 @@ from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_routing import UniswapV3Simple
 from tradeexecutor.strategy.execution_model import ExecutionModel, RoutingStateDetails
 from tradingstrategy.chain import ChainId
 
-logger = logging.getLogger(__name__)
 
-routing_models = UniswapV2SimpleRoutingModel | UniswapV3SimpleRoutingModel # TODO create enum, actually just use ehtereum Base
-routing_states = UniswapV2RoutingState | UniswapV3RoutingState # TODO create enum, actually just use ethereum base
+logger = logging.getLogger(__name__)
 
 
 class TradeExecutionFailed(Exception):
@@ -109,8 +107,8 @@ class EthereumExecutionModel(ExecutionModel):
     @staticmethod
     def pre_execute_assertions(
         ts: datetime.datetime, 
-        routing_model: routing_models,
-        routing_state: routing_states
+        routing_model: UniswapV2SimpleRoutingModel | UniswapV3SimpleRoutingModel,
+        routing_state: UniswapV2RoutingState | UniswapV3RoutingState
     ):
         assert isinstance(ts, datetime.datetime)
 
@@ -301,8 +299,8 @@ class EthereumExecutionModel(ExecutionModel):
                        ts: datetime.datetime,
                        state: State,
                        trades: List[TradeExecution],
-                       routing_model: routing_models,
-                       routing_state: routing_states,
+                       routing_model: UniswapV2SimpleRoutingModel | UniswapV3SimpleRoutingModel,
+                       routing_state: UniswapV2RoutingState | UniswapV3RoutingState,
                        check_balances=False):
         """Execute the trades determined by the algo on a designed Uniswap v2 instance.
 
