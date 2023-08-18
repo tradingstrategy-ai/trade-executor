@@ -649,7 +649,7 @@ class TradingPosition(GenericPosition):
         # between the trade type and underlying trading pair identifier
         pair = self.pair
         match trade_type:
-            case TradeType.rebalance | TradeType.stop_loss | TradeType.take_profit:
+            case TradeType.rebalance | TradeType.stop_loss | TradeType.take_profit | TradeType.repair:
                 assert pair.kind in (TradingPairKind.spot_market_hold,)
             case TradeType.supply_credit:
                 assert pair.kind == TradingPairKind.credit_supply
