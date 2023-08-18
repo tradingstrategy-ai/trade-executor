@@ -20,7 +20,7 @@ class OutputMode(enum.Enum):
     interactive = "interactive"
 
 
-def setup_charting_and_output(mode: OutputMode=OutputMode.interactive):
+def setup_charting_and_output(mode: OutputMode=OutputMode.interactive, image_format="svg"):
     """Sets up Jupyter Notebook based charting.
 
     - `Set Quantstats chart to SVG output and for high-resolution screens <https://stackoverflow.com/questions/74721731/how-to-generate-svg-images-using-python-quantstat-library>`__
@@ -47,7 +47,7 @@ def setup_charting_and_output(mode: OutputMode=OutputMode.interactive):
 
     # Render charts from quantstats in high resolution
     # https://stackoverflow.com/questions/74721731/how-to-generate-svg-images-using-python-quantstat-library
-    matplotlib_inline.backend_inline.set_matplotlib_formats('svg')
+    matplotlib_inline.backend_inline.set_matplotlib_formats(image_format)
 
     # Set Plotly to offline (static image mode)
     if mode == OutputMode.static:
@@ -58,10 +58,10 @@ def setup_charting_and_output(mode: OutputMode=OutputMode.interactive):
 
         # https://stackoverflow.com/a/74609837/315168
         import plotly.io as pio
-        pio.kaleido.scope.default_format = "svg"
+        pio.kaleido.scope.default_format = image_format
 
         # https://plotly.com/python/renderers/#overriding-the-default-renderer
-        pio.renderers.default = "svg"
-        svg_renderer = pio.renderers["svg"]
-        # Have SVGs default 1200 pixel with
-        svg_renderer.width = 1200
+        pio.renderers.default = image_format
+        svg_renderer = pio.renderers[image_format]
+        # Have SVGs default pixel with
+        svg_renderer.width = 1500
