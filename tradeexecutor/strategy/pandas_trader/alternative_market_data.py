@@ -62,7 +62,7 @@ def load_candles_from_parquet(
     pair_id=int | None,
     column_map: Dict[str, str] = DEFAULT_COLUMN_MAP,
     resample: TimeBucket | None = None,
-) -> Tuple[pd.DataFrame, TimeBucket, TimeBucket]:
+) -> Tuple[pd.DataFrame, pd.DataFrame, TimeBucket, TimeBucket]:
     """Loads OHLCV candle data and.
 
     :return:
