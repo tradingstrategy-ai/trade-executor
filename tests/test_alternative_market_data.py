@@ -7,7 +7,7 @@ import pandas as pd
 import pytest
 
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
-from tradeexecutor.strategy.pandas_trader.alternative_market_data import load_pair_candles_from_parquet, replace_candles
+from tradeexecutor.strategy.pandas_trader.alternative_market_data import load_candle_universe_from_parquet, replace_candles
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, create_pair_universe_from_code
 from tradeexecutor.testing.synthetic_ethereum_data import generate_random_ethereum_address
 from tradeexecutor.testing.synthetic_exchange_data import generate_exchange
@@ -115,7 +115,7 @@ def test_replace_candles(
 
     assert synthetic_universe.universe.candles.time_bucket == TimeBucket.h1
 
-    new_candles, _ = load_pair_candles_from_parquet(
+    new_candles, _ = load_candle_universe_from_parquet(
         wbtc_usdc,
         sample_file
     )
@@ -138,7 +138,7 @@ def test_replace_candles_resample(
 
     assert synthetic_universe.universe.candles.time_bucket == TimeBucket.h1
 
-    new_candles, stop_loss_candles = load_pair_candles_from_parquet(
+    new_candles, stop_loss_candles = load_candle_universe_from_parquet(
         wbtc_usdc,
         sample_file,
         resample=TimeBucket.h4,
@@ -165,7 +165,7 @@ def test_replace_candles_resample_no_stop_loss(
 
     assert synthetic_universe.universe.candles.time_bucket == TimeBucket.h1
 
-    new_candles, stop_loss_candles = load_pair_candles_from_parquet(
+    new_candles, stop_loss_candles = load_candle_universe_from_parquet(
         wbtc_usdc,
         sample_file,
         resample=TimeBucket.h4,

@@ -5,7 +5,7 @@ for testing out trading strategies.
 
 """
 from pathlib import Path
-from typing import Dict, Tuple
+from typing import Dict, Tuple, Final
 
 import pandas as pd
 
@@ -15,7 +15,7 @@ from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.timebucket import TimeBucket
 
 
-COLUMN_MAP = {
+DEFAULT_COLUMN_MAP: Final = {
     "open": "open",
     "high": "high",
     "low": "low",
@@ -57,10 +57,52 @@ def _fix_nans(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def load_pair_candles_from_parquet(
+def load_candles_from_parquet(
+    file: Path,
+    pair_id=int | None,
+    column_map: Dict[str, str] = DEFAULT_COLUMN_MAP,
+    resample: TimeBucket | None = None,
+) -> Tuple[pd.DataFrame, TimeBucket, TimeBucket]:
+    """Loads OHLCV candle data and.
+
+    :return:
+        Tuple (Original dataframe, processed candles dataframe, resampled time bucket, original time bucket) tuple
+    """
+
+    assert isinstance(file, Path)
+
+    df = pd.read_parquet(file)
+
+    assert isinstance(df.index, pd.DatetimeIndex), f"Parquet did not have DateTime index: {df.index}"
+
+    orig = df = df.rename(columns=column_map)
+
+    # What's the spacing of candles
+    granularity = df.index[1] - df.index[0]
+    original_bucket = TimeBucket.from_pandas_timedelta(granularity)
+
+    if resample:
+        df = resample_single_pair(df, resample)
+        bucket = resample
+    else:
+        bucket = TimeBucket.from_pandas_timedelta(granularity)
+
+    df = _fix_nans(df)
+
+    df["pair_id"] = pair_id
+
+    # Because we assume multipair data from now on,
+    # with group index instead of timestamp index,
+    # we make timestamp a column
+    df["timestamp"] = df.index.to_series()
+
+    return df, orig, bucket, original_bucket
+
+
+def load_candle_universe_from_parquet(
     pair: TradingPairIdentifier,
     file: Path,
-    column_map: Dict[str, str] = COLUMN_MAP,
+    column_map: Dict[str, str] = DEFAULT_COLUMN_MAP,
     resample: TimeBucket | None = None,
     include_as_trigger_signal=True,
 ) -> Tuple[GroupedCandleUniverse, GroupedCandleUniverse | None]:
@@ -98,33 +140,16 @@ def load_pair_candles_from_parquet(
     """
 
     assert isinstance(pair, TradingPairIdentifier)
-    assert isinstance(file, Path)
-
-    df = pd.read_parquet(file)
-
-    assert isinstance(df.index, pd.DatetimeIndex), f"Parquet did not have DateTime index: {df.index}"
-
-    orig = df = df.rename(columns=column_map)
-
-    # What's the spacing of candles
-    granularity = df.index[1] - df.index[0]
-    original_bucket = TimeBucket.from_pandas_timedelta(granularity)
-
-    if resample:
-        df = resample_single_pair(df, resample)
-        bucket = resample
-    else:
-        bucket = TimeBucket.from_pandas_timedelta(granularity)
-
-    df = _fix_nans(df)
 
     # Add pair column
-    df["pair_id"] = pair.internal_id
+    assert pair.internal_id, f"Internal id missing"
 
-    # Because we assume multipair data from now on,
-    # with group index instead of timestamp index,
-    # we make timestamp a column
-    df["timestamp"] = df.index.to_series()
+    df, orig, bucket, original_bucket = load_candles_from_parquet(
+        file,
+        pair.internal_id,
+        column_map,
+        resample,
+    )
 
     candles = GroupedCandleUniverse(
         df,
