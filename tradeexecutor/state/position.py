@@ -14,7 +14,8 @@ from dataclasses_json import dataclass_json
 
 from tradeexecutor.state.balance_update import BalanceUpdate
 from tradeexecutor.state.generic_position import GenericPosition, BalanceUpdateEventAlreadyAdded
-from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
+from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier, TradingPairKind
+from tradeexecutor.state.interest import Interest
 from tradeexecutor.state.trade import TradeType, QUANTITY_EPSILON
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.types import USDollarAmount, BPS, USDollarPrice, Percent
@@ -209,6 +210,12 @@ class TradingPosition(GenericPosition):
     #: Trigger updates are stored oldest first.
     #:
     trigger_updates: List[TriggerPriceUpdate] = field(default_factory=list)
+
+    #: Position accrued interest
+    #:
+    #: Only applicable for positions gaining interest.
+    #:
+    interest: Optional[Interest] = None
 
     def __repr__(self):
         if self.is_open():
@@ -628,11 +635,22 @@ class TradingPosition(GenericPosition):
             planned_quantity = quantity
             planned_reserve = abs(quantity * Decimal(assumed_price))
 
+        # Validate there is correlation
+        # between the trade type and underlying trading pair identifier
+        pair = self.pair
+        match trade_type:
+            case TradeType.rebalance | TradeType.stop_loss | TradeType.take_profit:
+                assert pair.kind in (TradingPairKind.spot_market_hold,)
+            case TradeType.supply_credit:
+                assert pair.kind == TradingPairKind.credit_supply
+            case _:
+                raise NotImplementedError(f"Cannot deal with {trade_type}")
+
         trade = TradeExecution(
             trade_id=trade_id,
             position_id=self.position_id,
             trade_type=trade_type,
-            pair=self.pair,
+            pair=pair,
             opened_at=strategy_cycle_at,
             planned_quantity=planned_quantity,
             planned_price=assumed_price,
@@ -645,7 +663,16 @@ class TradingPosition(GenericPosition):
             slippage_tolerance=slippage_tolerance,
             portfolio_value_at_creation=portfolio_value_at_creation,
         )
+
         self.trades[trade.trade_id] = trade
+
+        if pair.kind.is_interest_accruing():
+            self.interest = Interest(
+                opening_amount=planned_reserve,
+                last_amount_updated_at=datetime.datetime.utcnow(),
+                last_accrued_interest=Decimal(0),
+            )
+
         return trade
 
     def has_trade(self, trade: TradeExecution):

@@ -2,6 +2,7 @@
 
 How executor internally knows how to connect trading pairs in data and in execution environment (on-chain).
 """
+import enum
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Optional
@@ -92,6 +93,40 @@ class AssetIdentifier:
         return Decimal(raw_amount) / Decimal(10**self.decimals)
 
 
+class TradingPairKind(enum.Enum):
+    """What kind of trading position this is.
+
+    - Spot markets are base:quote token pairs
+
+    - Credit supplies are aToken:token pairs
+    """
+
+    #: Bought tokens from DEX
+    #:
+    spot_market_hold = "spot_market_hold"
+
+    #: Bought rebalancing tokens from DEX
+    #:
+    #: E.g. buy stETH or aUSD directly through DEX,
+    #: instead of thru vault/reserves deposit.
+    #:
+    spot_market_rebalancing_token = "spot_market_rebalancing token"
+
+    #: Supplying credit to Aave reserves/gaining interest
+    #:
+    credit_supply = "credit_supply"
+
+    #: Leveraged long constructd using lending protocols
+    #:
+    lending_protocol_long = "lending_protocol_long"
+
+    #: Leveraged short constructd using lending protocols
+    #:
+    lending_protocol_short = "lending_protocol_short"
+
+    def is_interest_accruing(self) -> bool:
+        return self != TradingPairKind.spot_market_hold
+
 
 @dataclass_json
 @dataclass(slots=True)
@@ -114,6 +149,9 @@ class TradingPairIdentifier:
       sometimes it is handy to manually override :py:attr`fee`
       for different backtesting scenarios
 
+    - This identifier is also used for :term:`lending protocols <lending protocol>`.
+      In this case :py:attr:`base` is aToken like aUSDC. and :py:attr:`quote`
+      is USDC.
     """
 
     #: Base token in this trading pair
@@ -168,6 +206,10 @@ class TradingPairIdentifier:
     #: Use :py:meth:`has_reverse_token_order` to access - might not be set.
     #:
     reverse_token_order: Optional[bool] = None
+
+    #: What kind of position this is
+    #:
+    kind: TradingPairKind = TradingPairKind.spot_market_hold
 
     def __post_init__(self):
         assert self.base.chain_id == self.quote.chain_id, "Cross-chain trading pairs are not possible"
