@@ -646,13 +646,15 @@ def test_synthetic_data_backtest_trailing_stop_loss(
     stop_loss_positions = [p for p in state.portfolio.get_all_positions() if p.is_stop_loss()]
     trailing_stop_loss_positions = [p for p in state.portfolio.get_all_positions() if p.is_trailing_stop_loss()]
     assert len(stop_loss_positions) == 45
-    assert len(trailing_stop_loss_positions) == 23
+    assert len(trailing_stop_loss_positions) == 45
 
     # Check one trigger update for contents
     p: TradingPosition
     p = trailing_stop_loss_positions[0]
     assert len(p.trigger_updates) > 0
-    tu = p.trigger_updates[0]
+    
+    # p.trigger_updates[0] has stop_loss_before = None
+    tu = p.trigger_updates[1]
     assert tu.timestamp > datetime.datetime(1970, 1, 1)
     assert tu.mid_price > 1000.0  # ETH/USD
     assert tu.stop_loss_before < tu.mid_price

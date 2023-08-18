@@ -154,11 +154,11 @@ def test_get_current_position(position_manager_with_open_position: PositionManag
     assert price == 1648.28488966024
 
     # Test setting the stop loss
-    pm.update_stop_loss(0.98)
-    assert current_position.stop_loss == 0.98
+    pm.update_stop_loss(current_position, 1600)
+    assert current_position.stop_loss == 1600
     assert current_position.trigger_updates[0].timestamp == datetime.datetime(2021,6,2,0,0)
     assert current_position.trigger_updates[0].stop_loss_before is None
-    assert current_position.trigger_updates[0].stop_loss_after == 0.98
+    assert current_position.trigger_updates[0].stop_loss_after == 1600
     assert current_position.trigger_updates[0].take_profit_before is None
     assert current_position.trigger_updates[0].take_profit_after is None
     assert len(current_position.trigger_updates) == 1
