@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 from dataclasses_json import dataclass_json
 
-from tradeexecutor.state.balance_update import BalanceUpdate
+from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdateCause
 from tradeexecutor.state.generic_position import GenericPosition, BalanceUpdateEventAlreadyAdded
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier, TradingPairKind
 from tradeexecutor.state.interest import Interest
@@ -407,6 +407,13 @@ class TradingPosition(GenericPosition):
 
         - Accounts for any balance update events (redemptions, interest, accounting corrections)
 
+        For interest positions
+
+        - The underlying principle is calculated as sum of trades e.g.
+          how many deposit or redemption trades we did for Aave reserves
+
+        - The accrued interest can be read from balance update events
+
         :return:
             Number of asset units held by this position.
 
@@ -488,6 +495,9 @@ class TradingPosition(GenericPosition):
     def calculate_value_using_price(self, token_price: USDollarAmount, reserve_price: USDollarAmount) -> USDollarAmount:
         """Calculate the value of this position using the given prices."""
         token_quantity = sum([t.get_equity_for_position() for t in self.trades.values() if t.is_accounted_for_equity()])
+
+        token_quantity += self.calculate_accrued_interest_tokens()
+
         reserve_quantity = sum([t.get_equity_for_reserve() for t in self.trades.values() if t.is_accounted_for_equity()])
         return float(token_quantity) * token_price + float(reserve_quantity) * reserve_price
 
@@ -666,11 +676,15 @@ class TradingPosition(GenericPosition):
 
         self.trades[trade.trade_id] = trade
 
+        # Initialise interest tracking data structure
         if pair.kind.is_interest_accruing():
+            assert pair.kind == TradingPairKind.credit_supply, "Only credit supply supported for now"
             self.interest = Interest(
                 opening_amount=planned_reserve,
-                last_amount_updated_at=datetime.datetime.utcnow(),
+                last_updated_at=datetime.datetime.utcnow(),
+                last_event_at=datetime.datetime.utcnow(),
                 last_accrued_interest=Decimal(0),
+                last_atoken_amount=planned_reserve,
             )
 
         return trade
@@ -1099,6 +1113,17 @@ class TradingPosition(GenericPosition):
 
         self.balance_updates[event.balance_update_id] = event
 
+    def calculate_accrued_interest_tokens(self) -> Decimal:
+        """Calculate the gained interest in tokens.
+
+        This is done as the sum of all interest events.
+
+        This is also denormalised as `position.interest.accrued_interest`.
+
+        :return:
+            Number of quote tokens this position has gained interest
+        """
+        return sum_decimal([b.quantity for b in self.balance_updates.values() if b.cause == BalanceUpdateCause.interest])
 
 class PositionType(enum.Enum):
     token_hold = "token_hold"

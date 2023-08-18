@@ -13,6 +13,7 @@ from tradingstrategy.chain import ChainId
 from web3 import Web3
 
 from tradeexecutor.state.types import JSONHexAddress
+from tradingstrategy.stablecoin import is_stablecoin_like
 
 
 @dataclass_json
@@ -91,6 +92,10 @@ class AssetIdentifier:
     def convert_to_decimal(self, raw_amount: int) -> Decimal:
         assert self.decimals is not None, f"Cannot perform human to raw token amount conversion, because no decimals given: {self}"
         return Decimal(raw_amount) / Decimal(10**self.decimals)
+
+    def is_stablecoin(self) -> bool:
+        """Do we think this asset reprents a stablecoin"""
+        return is_stablecoin_like(self.token_symbol)
 
 
 class TradingPairKind(enum.Enum):

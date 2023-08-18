@@ -12,6 +12,8 @@ from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifie
 from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeType
+from tradeexecutor.strategy.interest import update_credit_supply_interest
+from tradeexecutor.testing.dummy_trader import DummyTestTrader
 from tradingstrategy.chain import ChainId
 
 
@@ -41,8 +43,8 @@ def lending_pool_identifier(usdc, ausdc) -> TradingPairIdentifier:
     """Sets up a lending pool"""
     # https://etherscan.io/token/0xbcca60bb61934080951369a648fb03df4f96263c
     return TradingPairIdentifier(
-        usdc,
         ausdc,
+        usdc,
         "0x1",
         ZERO_ADDRESS,
         internal_id=1,
@@ -75,6 +77,10 @@ def test_open_supply_credit(
     Check that the position variables are correctly initialised.
     """
     assert lending_pool_identifier.kind.is_interest_accruing()
+    assert lending_pool_identifier.base.token_symbol == "aUSDC"
+    assert lending_pool_identifier.quote.token_symbol == "USDC"
+
+    trader = DummyTestTrader(state)
 
     credit_supply_position, trade, created = state.create_trade(
         datetime.datetime.utcnow(),
@@ -87,12 +93,60 @@ def test_open_supply_credit(
         reserve_currency_price=1.0,
     )
 
+    trader.set_perfectly_executed(trade)
+
+    assert credit_supply_position.last_token_price == 1.0
+
     assert created
+    assert trade.is_success()
+    assert trade.trade_type == TradeType.supply_credit
     assert credit_supply_position.interest is not None
     assert credit_supply_position.interest.opening_amount == Decimal(9000)
     assert credit_supply_position.interest.last_accrued_interest == 0
+    assert credit_supply_position.get_value() == Decimal(9000)
 
-    assert trade.trade_type == TradeType.supply_credit
+    assert state.portfolio.get_total_equity() == 10000
 
 
+def test_accrue_interest(
+        state: State,
+        lending_pool_identifier: TradingPairIdentifier,
+        usdc: AssetIdentifier,
+):
+    """See that the credit supply position gains interest.
 
+    """
+    opened_at = datetime.datetime(2020, 1, 1)
+
+    trader = DummyTestTrader(state)
+
+    credit_supply_position, trade, _ = state.create_trade(
+        opened_at,
+        lending_pool_identifier,
+        quantity=None,
+        reserve=Decimal(9000),
+        assumed_price=1.0,
+        trade_type=TradeType.supply_credit,
+        reserve_currency=usdc,
+        reserve_currency_price=1.0,
+    )
+
+    trader.set_perfectly_executed(trade)
+
+    assert credit_supply_position.get_value() == pytest.approx(9000)
+
+    interest_event_1_at = datetime.datetime(2020, 1, 2)
+    update_credit_supply_interest(
+        state,
+        credit_supply_position,
+        new_atoken_amount=Decimal(9000.01),
+        event_at=interest_event_1_at,
+    )
+
+    assert credit_supply_position.interest.last_accrued_interest == pytest.approx(Decimal(0.01))
+    assert credit_supply_position.interest.last_event_at == interest_event_1_at
+
+    assert credit_supply_position.get_value() == pytest.approx(9000.01)
+    assert credit_supply_position.get_quantity() == pytest.approx(Decimal(9000.01))
+
+    assert state.portfolio.get_total_equity() == 10000.01

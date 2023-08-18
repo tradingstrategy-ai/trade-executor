@@ -19,6 +19,8 @@ from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.types import USDollarAmount, BPS, USDollarPrice
 from tradeexecutor.strategy.dust import get_dust_epsilon_for_pair
 from tradeexecutor.strategy.trade_pricing import TradePricing
+from tradingstrategy.types import PrimaryKey
+
 
 class NotEnoughMoney(Exception):
     """We try to allocate reserve for a buy trade, but do not have cash."""
@@ -791,6 +793,11 @@ class Portfolio:
 
         (pair,) = pairs
         return pair
+
+    def allocate_balance_update_id(self) -> PrimaryKey:
+        """Get a new balance update event id."""
+        self.next_balance_update_id += 1
+        return self.next_balance_update_id - 1
 
     def correct_open_position_balance(
             self,
