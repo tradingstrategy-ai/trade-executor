@@ -33,3 +33,5 @@ env/local-test.env
 # See scripts/pyodide/README.md
 *.whl
 
+# Some test files
+notebooks/*.json
