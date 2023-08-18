@@ -63,7 +63,10 @@ def load_candles_from_parquet(
     column_map: Dict[str, str] = DEFAULT_COLUMN_MAP,
     resample: TimeBucket | None = None,
 ) -> Tuple[pd.DataFrame, pd.DataFrame, TimeBucket, TimeBucket]:
-    """Loads OHLCV candle data and.
+    """Loads OHLCV candle data from a Parquest file.
+
+    Designed to load Parquest compressed external data dumps,
+    like ones from Binance and Kraken.
 
     :return:
         Tuple (Original dataframe, processed candles dataframe, resampled time bucket, original time bucket) tuple
