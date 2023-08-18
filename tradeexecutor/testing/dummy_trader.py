@@ -87,6 +87,30 @@ class DummyTestTrader:
         self.state.mark_trade_success(self.ts, trade, executed_price, executed_quantity, executed_reserve, self.lp_fees, self.native_token_price)
         return position, trade
 
+    def set_perfectly_executed(self, trade: TradeExecution):
+        # 2. Capital allocation
+        txid = hex(self.nonce)
+        nonce = self.nonce
+        self.state.start_execution(self.ts, trade, txid, nonce)
+
+        # 3. broadcast
+        self.nonce += 1
+        self.ts += datetime.timedelta(seconds=1)
+
+        self.state.mark_broadcasted(self.ts, trade)
+        self.ts += datetime.timedelta(seconds=1)
+
+        # 4. executed
+        executed_price = trade.planned_price
+        if trade.is_buy():
+            executed_quantity = trade.planned_quantity
+            executed_reserve = Decimal(0)
+        else:
+            executed_quantity = trade.planned_quantity
+            executed_reserve = trade.planned_reserve
+
+        self.state.mark_trade_success(self.ts, trade, executed_price, executed_quantity, executed_reserve, self.lp_fees, self.native_token_price)
+
     def buy(self, pair, quantity, price) -> Tuple[TradingPosition, TradeExecution]:
         return self.create_and_execute(pair, quantity, price)
 

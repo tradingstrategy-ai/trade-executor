@@ -51,6 +51,9 @@ class TradeType(enum.Enum):
     #: Internal state balances are updated to match on-chain balances
     accounting_correction = "accounting_correction"
 
+    #: Lending protocol supplying credit
+    supply_credit = "supply_credit"
+
 
 class TradeStatus(enum.Enum):
 
