@@ -19,7 +19,7 @@ python = ">=3.10,<3.11"
 # web3-ethereum-defi = {path = "deps/web3-ethereum-defi", develop = true}
 # trading-strategy = {path = "deps/trading-strategy", develop = true}
 requests = "^2.27.1"
-trading-strategy = "^0.18.2"
+trading-strategy = "^0.19"
 matplotlib = "^3.6.0"
 jupyterlab = "^3.5.0"
 pandas-ta = "^0.3.14b"
@@ -70,6 +70,10 @@ trading-strategy-qstrader = {version="^0.5",  optional = true}
 # advanced statistical reports
 #
 quantstats = {version="^0.0.59", optional = true}
+
+# Needed for Plotly Express scatter(trendline="ols)
+# https://www.statsmodels.org/stable/index.html
+statsmodels = {version="^0.14.0"}
 
 #
 # This package is to be used in various environemnts
