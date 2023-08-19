@@ -1,4 +1,4 @@
-"""Interest accruing functions."""
+"""Functions to refresh accrued interest on credit positions."""
 import datetime
 from decimal import Decimal
 

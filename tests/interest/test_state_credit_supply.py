@@ -19,12 +19,12 @@ from tradingstrategy.chain import ChainId
 
 @pytest.fixture()
 def usdc() -> AssetIdentifier:
-    """Mock some assets"""
+    """Mock USDC."""
     return AssetIdentifier(ChainId.ethereum.value, "0x0", "USDC", 6)
 
 @pytest.fixture()
 def ausdc() -> AssetIdentifier:
-    """Mock some assets"""
+    """Mock aUSDC. Aave's interest accruing USDC where balanceOf() is dynamic."""
     # https://etherscan.io/token/0xbcca60bb61934080951369a648fb03df4f96263c#readProxyContract
     return AssetIdentifier(ChainId.ethereum.value, "0x1", "aUSDC", 6)
 
@@ -41,7 +41,6 @@ def lending_protocol_address() -> str:
 @pytest.fixture()
 def lending_pool_identifier(usdc, ausdc) -> TradingPairIdentifier:
     """Sets up a lending pool"""
-    # https://etherscan.io/token/0xbcca60bb61934080951369a648fb03df4f96263c
     return TradingPairIdentifier(
         ausdc,
         usdc,
@@ -120,6 +119,7 @@ def test_accrue_interest(
 
     trader = DummyTestTrader(state)
 
+    # Open credit supply position
     credit_supply_position, trade, _ = state.create_trade(
         opened_at,
         lending_pool_identifier,
@@ -130,11 +130,10 @@ def test_accrue_interest(
         reserve_currency=usdc,
         reserve_currency_price=1.0,
     )
-
     trader.set_perfectly_executed(trade)
-
     assert credit_supply_position.get_value() == pytest.approx(9000)
 
+    # Generate first interest accruing event
     interest_event_1_at = datetime.datetime(2020, 1, 2)
     update_credit_supply_interest(
         state,
@@ -143,9 +142,13 @@ def test_accrue_interest(
         event_at=interest_event_1_at,
     )
 
+    # The position has refreshed its accrued interest once
+    assert len(credit_supply_position.balance_updates) == 1
+    assert credit_supply_position.balance_updates[0].quantity == pytest.approx(Decimal(0.01))
+
+    # Position and portfolio valuations reflect the accrued interest
     assert credit_supply_position.interest.last_accrued_interest == pytest.approx(Decimal(0.01))
     assert credit_supply_position.interest.last_event_at == interest_event_1_at
-
     assert credit_supply_position.get_value() == pytest.approx(9000.01)
     assert credit_supply_position.get_quantity() == pytest.approx(Decimal(9000.01))
 
