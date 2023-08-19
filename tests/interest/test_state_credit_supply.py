@@ -25,28 +25,26 @@ def usdc() -> AssetIdentifier:
 @pytest.fixture()
 def ausdc() -> AssetIdentifier:
     """Mock some assets"""
-    # https://etherscan.io/token/0xbcca60bb61934080951369a648fb03df4f96263c#readProxyContract
-    return AssetIdentifier(ChainId.ethereum.value, "0x1", "aUSDC", 6)
+    # https://etherscan.io/address/0x98c23e9d8f34fefb1b7bd6a91b7ff122f4e16f5c#readProxyContract
+    return AssetIdentifier(ChainId.ethereum.value, "0x1", "aEthUSDC", 6)
 
 
 @pytest.fixture()
-def lending_protocol_address() -> str:
-    """Mock some assets.
-
-    TODO: What is unique address to identify Aave deployments?
-    """
+def lending_pool_address() -> str:
+    """Mock Aave v3 pool"""
+    # https://etherscan.io/address/0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2
     return ZERO_ADDRESS
 
 
 @pytest.fixture()
-def lending_pool_identifier(usdc, ausdc) -> TradingPairIdentifier:
-    """Sets up a lending pool"""
-    # https://etherscan.io/token/0xbcca60bb61934080951369a648fb03df4f96263c
+def lending_reserve_identifier(usdc, ausdc, lending_pool_address) -> TradingPairIdentifier:
+    """Sets up a lending reserve"""
+    # https://etherscan.io/token/0x98c23e9d8f34fefb1b7bd6a91b7ff122f4e16f5c
     return TradingPairIdentifier(
         ausdc,
         usdc,
         "0x1",
-        ZERO_ADDRESS,
+        lending_pool_address,
         internal_id=1,
         kind=TradingPairKind.credit_supply,
     )
@@ -69,22 +67,22 @@ def state(usdc):
 
 def test_open_supply_credit(
         state: State,
-        lending_pool_identifier: TradingPairIdentifier,
+        lending_reserve_identifier: TradingPairIdentifier,
         usdc: AssetIdentifier,
 ):
     """Open a credit supply position.
 
     Check that the position variables are correctly initialised.
     """
-    assert lending_pool_identifier.kind.is_interest_accruing()
-    assert lending_pool_identifier.base.token_symbol == "aUSDC"
-    assert lending_pool_identifier.quote.token_symbol == "USDC"
+    assert lending_reserve_identifier.kind.is_interest_accruing()
+    assert lending_reserve_identifier.base.token_symbol == "aEthUSDC"
+    assert lending_reserve_identifier.quote.token_symbol == "USDC"
 
     trader = DummyTestTrader(state)
 
     credit_supply_position, trade, created = state.create_trade(
         datetime.datetime.utcnow(),
-        lending_pool_identifier,
+        lending_reserve_identifier,
         quantity=None,
         reserve=Decimal(9000),
         assumed_price=1.0,
@@ -110,7 +108,7 @@ def test_open_supply_credit(
 
 def test_accrue_interest(
         state: State,
-        lending_pool_identifier: TradingPairIdentifier,
+        lending_reserve_identifier: TradingPairIdentifier,
         usdc: AssetIdentifier,
 ):
     """See that the credit supply position gains interest.
@@ -122,7 +120,7 @@ def test_accrue_interest(
 
     credit_supply_position, trade, _ = state.create_trade(
         opened_at,
-        lending_pool_identifier,
+        lending_reserve_identifier,
         quantity=None,
         reserve=Decimal(9000),
         assumed_price=1.0,
@@ -139,7 +137,7 @@ def test_accrue_interest(
     update_credit_supply_interest(
         state,
         credit_supply_position,
-        new_atoken_amount=Decimal(9000.01),
+        new_token_amount=Decimal(9000.01),
         event_at=interest_event_1_at,
     )
 
