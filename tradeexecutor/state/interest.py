@@ -23,10 +23,9 @@ class Interest:
     #:
     opening_amount: Decimal
 
-    #: How many tokens we had at the previous read
-    # TODO: not sure if this is needed
+    #: How many atokens we had at the previous read
     #:
-    last_token_amount: Decimal
+    last_atoken_amount: Decimal
 
     #: When the denormalised data was last updated.
     #:

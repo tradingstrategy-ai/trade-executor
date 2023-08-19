@@ -11,7 +11,7 @@ from tradeexecutor.state.state import State
 def update_credit_supply_interest(
     state: State,
     position: TradingPosition,
-    new_token_amount: Decimal,
+    new_atoken_amount: Decimal,
     event_at: datetime.datetime,
     block_number: int | None = None,
     tx_hash: int | None = None,
@@ -38,11 +38,11 @@ def update_credit_supply_interest(
     assert asset.is_stablecoin(), f"Credit supply is currently supported for stablecoin assets with 1:1 USD price assumption. Got: {asset}"
 
     # TODO: 
-    old_balance = position.interest.last_token_amount
-    gained_interest = new_token_amount - old_balance
-    usd_value = float(new_token_amount)
+    old_balance = position.interest.last_atoken_amount
+    gained_interest = new_atoken_amount - old_balance
+    usd_value = float(new_atoken_amount)
 
-    assert 0 < gained_interest < 999, f"Unlikely gained_interest: {gained_interest}, old quantity: {position.quantity}, new quantity: {new_token_amount}"
+    assert 0 < gained_interest < 999, f"Unlikely gained_interest: {gained_interest}, old quantity: {position.quantity}, new quantity: {new_atoken_amount}"
 
     evt = BalanceUpdate(
         balance_update_id=event_id,
@@ -69,4 +69,4 @@ def update_credit_supply_interest(
     position.interest.last_updated_at = datetime.datetime.utcnow()
     position.interest.last_event_at = event_at
     position.interest.last_updated_block_number = block_number
-    position.interest.last_token_amount = new_token_amount
+    position.interest.last_atoken_amount = new_atoken_amount

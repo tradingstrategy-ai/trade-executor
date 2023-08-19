@@ -684,7 +684,7 @@ class TradingPosition(GenericPosition):
                 last_updated_at=datetime.datetime.utcnow(),
                 last_event_at=datetime.datetime.utcnow(),
                 last_accrued_interest=Decimal(0),
-                last_token_amount=planned_reserve,
+                last_atoken_amount=planned_reserve,
             )
 
         return trade

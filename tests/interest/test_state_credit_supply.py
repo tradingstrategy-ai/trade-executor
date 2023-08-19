@@ -137,7 +137,7 @@ def test_accrue_interest(
     update_credit_supply_interest(
         state,
         credit_supply_position,
-        new_token_amount=Decimal(9000.01),
+        new_atoken_amount=Decimal(9000.01),
         event_at=interest_event_1_at,
     )
 
