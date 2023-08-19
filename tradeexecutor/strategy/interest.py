@@ -2,10 +2,32 @@
 import datetime
 from decimal import Decimal
 
+from web3 import Web3
+from eth_defi.abi import get_deployed_contract
+
 from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdatePositionType, BalanceUpdateCause
-from tradeexecutor.state.identifier import TradingPairKind
+from tradeexecutor.state.identifier import TradingPairKind, TradingPairIdentifier
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
+
+
+def get_onchain_atoken_amount(
+    web3,
+    lending_reserve_identifier: TradingPairIdentifier,
+    wallet_address: str,
+    block_number: int | None = None,
+) -> Decimal:
+    assert lending_reserve_identifier.kind == TradingPairKind.credit_supply
+
+    # aToken is the base asset of this pair
+    atoken_address = lending_reserve_identifier.base.address
+    atoken_decimals = lending_reserve_identifier.base.decimals
+
+    atoken_contract = get_deployed_contract(web3, "ERC20MockDecimals.json", Web3.to_checksum_address(atoken_address))
+
+    raw_amount = atoken_contract.functions.balanceOf(wallet_address).call(block_identifier=block_number)
+
+    return Decimal(raw_amount) / Decimal(10 ** atoken_decimals)
 
 
 def update_credit_supply_interest(
@@ -37,7 +59,6 @@ def update_credit_supply_interest(
 
     assert asset.is_stablecoin(), f"Credit supply is currently supported for stablecoin assets with 1:1 USD price assumption. Got: {asset}"
 
-    # TODO: 
     old_balance = position.interest.last_atoken_amount
     gained_interest = new_atoken_amount - old_balance
     usd_value = float(new_atoken_amount)

@@ -6,21 +6,42 @@ import datetime
 from _decimal import Decimal
 
 import pytest
-
+from web3 import EthereumTesterProvider, Web3
 from eth_defi.uniswap_v2.utils import ZERO_ADDRESS
+
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier, TradingPairKind
 from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeType
-from tradeexecutor.strategy.interest import update_credit_supply_interest
+from tradeexecutor.strategy.interest import update_credit_supply_interest, get_new_atoken_amount
 from tradeexecutor.testing.dummy_trader import DummyTestTrader
 from tradingstrategy.chain import ChainId
+
+
+@pytest.fixture
+def tester_provider():
+    # https://web3py.readthedocs.io/en/stable/examples.html#contract-unit-tests-in-python
+    return EthereumTesterProvider()
+
+
+@pytest.fixture
+def eth_tester(tester_provider):
+    # https://web3py.readthedocs.io/en/stable/examples.html#contract-unit-tests-in-python
+    return tester_provider.ethereum_tester
+
+
+@pytest.fixture
+def web3(tester_provider):
+    """Set up a local unit testing blockchain."""
+    # https://web3py.readthedocs.io/en/stable/examples.html#contract-unit-tests-in-python
+    return Web3(tester_provider)
 
 
 @pytest.fixture()
 def usdc() -> AssetIdentifier:
     """Mock some assets"""
     return AssetIdentifier(ChainId.ethereum.value, "0x0", "USDC", 6)
+
 
 @pytest.fixture()
 def ausdc() -> AssetIdentifier:
@@ -107,6 +128,7 @@ def test_open_supply_credit(
 
 
 def test_accrue_interest(
+        web3: Web3,
         state: State,
         lending_reserve_identifier: TradingPairIdentifier,
         usdc: AssetIdentifier,
@@ -134,10 +156,14 @@ def test_accrue_interest(
     assert credit_supply_position.get_value() == pytest.approx(9000)
 
     interest_event_1_at = datetime.datetime(2020, 1, 2)
+
+    # new_atoken_amount = get_new_atoken_amount(web3, lending_reserve_identifier, wallet_address)
+    new_atoken_amount = Decimal(9000.01)
+
     update_credit_supply_interest(
         state,
         credit_supply_position,
-        new_atoken_amount=Decimal(9000.01),
+        new_atoken_amount=new_atoken_amount,
         event_at=interest_event_1_at,
     )
 
