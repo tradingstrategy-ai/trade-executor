@@ -745,8 +745,33 @@ class PositionManager:
 
         position.stop_loss = stop_loss
 
-    def open_supply_credit(self, value: USDollarAmount):
-        pass
+    def open_supply_credit(
+        self,
+        lending_reserve: TradingPairIdentifier,
+        value: USDollarAmount
+    ):
+        reserve_asset, reserve_price = self.state.portfolio.get_default_reserve_asset()
+
+        # TODO: figure out the lending reserve based on currency?
+
+        position, trade, created = self.state.create_trade(
+            self.timestamp,
+            lending_reserve,
+            quantity=None,
+            reserve=Decimal(value),
+            assumed_price=1.0,
+            trade_type=TradeType.supply_credit,
+            reserve_currency=reserve_asset,
+            reserve_currency_price=reserve_price,
+        )
+
+        assert created, f"There was conflicting open supply credit position on: {lending_reserve}"
+
+        self.state.visualisation.add_message(
+            self.timestamp,
+            f"Opened supply credit on {lending_reserve}, position value {value} USD")
+
+        return [trade]
 
     def close_supply_credit(self, position: TradingPosition):
         pass

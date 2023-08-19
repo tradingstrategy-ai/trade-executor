@@ -78,6 +78,9 @@ class Dataset:
     #: Data clipping period
     end_at: Optional[datetime.datetime] = None
 
+    #: All lending reserves
+    lending_reserves: pd.DataFrame | None = None
+
     def __post_init__(self):
         """Check we got good data."""
         candles = self.candles
