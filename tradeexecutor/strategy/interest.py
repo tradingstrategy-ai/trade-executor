@@ -16,7 +16,7 @@ def update_credit_supply_interest(
     block_number: int | None = None,
     tx_hash: int | None = None,
     log_index: int | None = None,
-):
+) -> BalanceUpdate:
     """Poke credit supply position to increase its interest amount.
 
     :param event_at:
@@ -69,3 +69,5 @@ def update_credit_supply_interest(
     position.interest.last_event_at = event_at
     position.interest.last_updated_block_number = block_number
     position.interest.last_atoken_amount = new_atoken_amount
+
+    return evt

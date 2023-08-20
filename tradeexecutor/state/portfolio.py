@@ -847,3 +847,8 @@ class Portfolio:
         # )
         #
         # return trade
+
+    def get_current_credit_positions(self) -> List[TradingPosition]:
+        """Return currently open credit positions."""
+        credit_positions = [p for p in chain(self.open_positions.values(), self.frozen_positions.values()) if p.is_credit_supply()]
+        return credit_positions

@@ -342,6 +342,10 @@ class TradingPosition(GenericPosition):
         trailing_stop_set = any([True for t in self.trigger_updates if t.stop_loss_after is not None])
         return trailing_stop_set
 
+    def is_credit_supply(self):
+        """This is a trading position for gaining interest by lending out reserve currency."""
+        return self.pair.kind == TradingPairKind.credit_supply
+
     def is_take_profit(self) -> bool:
         """Was this position ended with take profit trade"""
         last_trade = self.get_last_trade()

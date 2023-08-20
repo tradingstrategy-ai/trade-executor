@@ -155,6 +155,10 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         # TODO: In the future strategy modules, make a real flag for this and now we just use this hack
         return self.universe.pairs.get_count() > 20
 
+    def has_lending_data(self) -> bool:
+        """Is any lending data available."""
+        return self.universe.lending_reserves is not None
+
     def clone(self) -> "TradingStrategyUniverse":
         """Create a copy of this universe.
 
