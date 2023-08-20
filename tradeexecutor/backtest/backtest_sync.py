@@ -129,6 +129,14 @@ class BacktestSyncModel(SyncModel):
     def create_transaction_builder(self) -> None:
         """Backtesting does not need to care about how to build blockchain transactions."""
 
+    def calculate_accrued_interest(
+            self,
+            universe: TradingStrategyUniverse,
+            position: TradingPosition,
+    ) -> float:
+        """Calculate accrued interest relative to 1.0 base units."""
+        raise NotImplementedError()
+
     def sync_credit_supply(self,
                            timestamp: datetime.datetime,
                            state: State,
@@ -143,10 +151,12 @@ class BacktestSyncModel(SyncModel):
 
             assert p.is_credit_supply()
 
+            accrued = self.calculate_accrued_interest(universe, p)
+
             # TODO: replace with a real interest calculation,
             # based on universe.lending_candles
             old_amount = p.interest.last_atoken_amount
-            new_amount = old_amount + Decimal("0.0001")
+            new_amount = old_amount * Decimal(1+accrued)
             evt = update_credit_supply_interest(
                 state,
                 p,

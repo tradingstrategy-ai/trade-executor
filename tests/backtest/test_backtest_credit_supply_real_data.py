@@ -30,7 +30,7 @@ from tradeexecutor.state.state import State
 
 
 # https://docs.pytest.org/en/latest/how-to/skipping.html#skip-all-test-functions-of-a-class-or-module
-pytestmark = pytest.mark.skipif(os.environ.get("TRADING_STRATEGY_API_KEY") is None, reason="Set TRADING_STRATEGY_API_KEY environment variable to run this test")
+pytestmark = pytest.mark.skipif(os.environ.get("TRADING_STRATEGY_API_KEY") is None or os.environ.get("LENDING_UNFINISHED") is None, reason="Set TRADING_STRATEGY_API_KEY environment variable to run this test")
 
 
 def create_trading_universe(
@@ -184,5 +184,5 @@ def test_backtest_open_and_close_credit_supply_real_data(
     assert credit_position.get_accrued_interest() == pytest.approx(0.0014)  # Denormalised interest
     assert credit_position.get_quantity() == Decimal('0')  # Closed positions do not have quantity left
     assert credit_position.get_value() == pytest.approx(0)  # Closed positions do not have value left
-    import ipdb ; ipdb.set_trace()
+
     assert portfolio.get_total_equity() == pytest.approx(10000.0014)
