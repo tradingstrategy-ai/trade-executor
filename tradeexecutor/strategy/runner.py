@@ -14,6 +14,7 @@ from typing import List, Optional, Tuple
 from tradeexecutor.strategy.account_correction import check_accounts, UnexpectedAccountingCorrectionIssue
 from tradeexecutor.strategy.approval import ApprovalModel
 from tradeexecutor.strategy.cycle import CycleDuration
+from tradeexecutor.strategy.engine_version import TradingStrategyEngineVersion
 from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.strategy.sync_model import SyncMethodV0, SyncModel
@@ -65,6 +66,14 @@ class StrategyRunner(abc.ABC):
                  run_state: Optional[RunState] = None,
                  accounting_checks=False,
                  ):
+        """
+        :param engine_version:
+            Strategy execution version.
+
+            Changes function arguments based on this.
+            See `StrategyModuleInformation.trading_strategy_engine_version`.
+
+        """
 
         assert isinstance(execution_context, ExecutionContext)
 
@@ -81,6 +90,8 @@ class StrategyRunner(abc.ABC):
         self.run_state = run_state
         self.execution_context = execution_context
         self.accounting_checks = accounting_checks
+
+        logger.info("Created strategy runner %s, engine version %s", self, self.execution_context.engine_version)
 
     @abc.abstractmethod
     def pretick_check(self, ts: datetime.datetime, universe: StrategyExecutionUniverse):

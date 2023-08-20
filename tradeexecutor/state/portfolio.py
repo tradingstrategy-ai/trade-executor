@@ -654,20 +654,25 @@ class Portfolio:
     def revalue_positions(self, ts: datetime.datetime, valuation_method: Callable, revalue_frozen=True):
         """Revalue all open positions in the portfolio.
 
-        Reserves are not revalued.
+        - Reserves are not revalued
+        - Credit supply positions are not revalued
 
         :param revalue_frozen:
             Revalue frozen positions as well
         """
         try:
             for p in self.open_positions.values():
-                ts, price = valuation_method(ts, p)
-                p.set_revaluation_data(ts, price)
+                # TODO: How to handle credit supply position revaluation
+                if not p.is_credit_supply():
+                    ts, price = valuation_method(ts, p)
+                    p.set_revaluation_data(ts, price)
 
             if revalue_frozen:
                 for p in self.frozen_positions.values():
-                    ts, price = valuation_method(ts, p)
-                    p.set_revaluation_data(ts, price)
+                    # TODO: How to handle credit supply position revaluation
+                    if not p.is_credit_supply():
+                        ts, price = valuation_method(ts, p)
+                        p.set_revaluation_data(ts, price)
         except Exception as e:
             raise InvalidValuationOutput(f"Valuation model failed to output proper price: {valuation_method}: {e}") from e
 

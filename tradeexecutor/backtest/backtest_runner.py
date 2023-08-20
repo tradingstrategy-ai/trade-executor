@@ -30,6 +30,7 @@ from tradeexecutor.strategy.execution_context import ExecutionContext, Execution
 from tradeexecutor.strategy.pandas_trader.runner import PandasTraderRunner
 from tradeexecutor.strategy.strategy_module import parse_strategy_module, \
     DecideTradesProtocol, CreateTradingUniverseProtocol, CURRENT_ENGINE_VERSION, StrategyModuleInformation
+from tradeexecutor.strategy.engine_version import TradingStrategyEngineVersion
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse,  \
@@ -76,6 +77,12 @@ class BacktestSetup:
     name: str = "backtest"
 
     minimum_data_lookback_range: Optional[datetime.timedelta] = None
+
+    #: Trading strategy engine version.
+    #:
+    #: See `StrategyRunnerInfo.trading_strategy_engine_version` for details.
+    #:
+    engine_version: Optional[str] = None
 
     # strategy_module: StrategyModuleInformation
 
@@ -360,14 +367,13 @@ def run_backtest(
     else:
         backtest_universe = setup.universe
 
-
-
         def backtest_setup(state: State, universe: TradingStrategyUniverse, deposit_syncer: BacktestSyncer):
             pass
 
     execution_context = ExecutionContext(
         mode=ExecutionMode.backtesting,
         timed_task_context_manager=timed_task,
+        engine_version=setup.engine_version,
     )
 
     main_loop = ExecutionLoop(
@@ -395,6 +401,7 @@ def run_backtest(
         trade_immediately=True,
         execution_test_hook=execution_test_hook,
         minimum_data_lookback_range=setup.minimum_data_lookback_range,
+        universe_options=setup.universe_options,
     )
 
     debug_dump = main_loop.run_and_setup_backtest()
@@ -423,6 +430,7 @@ def run_backtest_inline(
     data_delay_tolerance: Optional[pd.Timedelta] = None,
     name: str="backtest",
     allow_missing_fees=False,
+    engine_version: Optional[TradingStrategyEngineVersion]=None,
 ) -> Tuple[State, TradingStrategyUniverse, dict]:
     """Run backtests for given decide_trades and create_trading_universe functions.
 
@@ -501,6 +509,11 @@ def run_backtest_inline(
         Allow synthetic data to lack fee information.
 
         Only set in legacy backtests.
+
+    :param engine_version:
+        The used TS engine version/
+
+        See :py:data:`tradeexecutor.strategy.strategy_model.SUPPORTED_TRADING_STRATEGY_ENGINE_VERSIONS`.
 
     :return:
         tuple (State of a completely executed strategy, trading strategy universe, debug dump dict)
@@ -584,6 +597,7 @@ def run_backtest_inline(
         name=name,
         data_preload=data_preload,
         minimum_data_lookback_range=minimum_data_lookback_range,
+        engine_version=engine_version,
     )
 
     return run_backtest(backtest_setup, client, allow_missing_fees=True)

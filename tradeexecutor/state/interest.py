@@ -53,3 +53,4 @@ class Interest:
         assert isinstance(self.last_accrued_interest, Decimal)
 
 
+

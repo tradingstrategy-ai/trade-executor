@@ -10,6 +10,7 @@ from packaging import version
 import pandas
 import pandas as pd
 
+from tradeexecutor.strategy.engine_version import SUPPORTED_TRADING_STRATEGY_ENGINE_VERSIONS, TradingStrategyEngineVersion
 from tradingstrategy.chain import ChainId
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
@@ -28,7 +29,7 @@ from tradingstrategy.universe import Universe
 from tradeexecutor.strategy.universe_model import UniverseOptions
 
 #: As set for StrategyModuleInformation.trading_strategy_engine_version
-CURRENT_ENGINE_VERSION = "0.1"
+CURRENT_ENGINE_VERSION = "0.3"
 
 
 logger = logging.getLogger()
@@ -150,6 +151,10 @@ class DecideTradesProtocol(Protocol):
             :param universe:
                 Trading universe that was constructed earlier.
 
+                .. note ::
+
+                    In version 0.3 this was changed from `Universe` -> `TradingStrategyUniverse`.
+
             :param state:
                 The current trade execution state.
                 Contains current open positions and all previously executed trades.
@@ -165,6 +170,23 @@ class DecideTradesProtocol(Protocol):
                 List of trade instructions in the form of :py:class:`TradeExecution` instances.
                 The trades can be generated using `position_manager` but strategy could also handcraft its trades.
             """
+
+class DecideTradesProtocol2(Protocol):
+    """New decide_trades() function signature.
+
+    `universe` -> `strategy_universe` parameter change.
+
+    See :py:class:`DecideTradesProtocol`
+    """
+
+    def __call__(self,
+            timestamp: pandas.Timestamp,
+            strategy_universe: TradingStrategyUniverse,
+            state: State,
+            pricing_model: PricingModel,
+            cycle_debug_data: Dict) -> List[TradeExecution]:
+        """The brain function to decide the trades on each"""
+        raise NotImplementedError()
 
 
 class CreateTradingUniverseProtocol(Protocol):
@@ -281,12 +303,20 @@ class StrategyModuleInformation:
     #:
     source_code: Optional[str]
 
-    trading_strategy_engine_version: str
+    #: The engine version this strategy requires.
+    #:
+    #: Function signatures and results may be changed depending
+    #: on for engine version the strategy is for.
+    #:
+    #: See :py:data:`SUPPORTED_TRADING_STRATEGY_ENGINE_VERSIONS`.
+    #:
+    trading_strategy_engine_version: TradingStrategyEngineVersion
+
     trading_strategy_type: StrategyType
     trading_strategy_cycle: CycleDuration
     trade_routing: TradeRouting
     reserve_currency: ReserveCurrency
-    decide_trades: DecideTradesProtocol
+    decide_trades: DecideTradesProtocol | DecideTradesProtocol2
 
     #: If `execution_context.live_trading` is true then this function is called for
     #: every execution cycle. If we are backtesting, then this function is
@@ -328,9 +358,8 @@ class StrategyModuleInformation:
         if not type(self.trading_strategy_engine_version) == str:
             raise StrategyModuleNotValid(f"trading_strategy_engine_version is not string")
 
-        supported_versions = ("0.1", "0.2",)
-        if self.trading_strategy_engine_version not in supported_versions:
-            raise StrategyModuleNotValid(f"Only versions {supported_versions} supported, got {self.trading_strategy_engine_version}")
+        if self.trading_strategy_engine_version not in SUPPORTED_TRADING_STRATEGY_ENGINE_VERSIONS:
+            raise StrategyModuleNotValid(f"Only versions {SUPPORTED_TRADING_STRATEGY_ENGINE_VERSIONS} supported, got {self.trading_strategy_engine_version}")
 
         if not self.trading_strategy_type:
             raise StrategyModuleNotValid(f"trading_strategy_type missing in the module")

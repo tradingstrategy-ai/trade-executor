@@ -3,31 +3,31 @@
 """
 import os
 import logging
+import datetime
+from _decimal import Decimal
 
 import pytest
+from typing import List, Dict
 
 import pandas as pd
+
+from tradingstrategy.client import Client
+from tradingstrategy.chain import ChainId
+from tradingstrategy.lending import LendingProtocolType
+from tradingstrategy.timebucket import TimeBucket
+from tradingstrategy.universe import Universe
 
 from tradeexecutor.backtest.backtest_runner import run_backtest_inline
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, load_partial_data
 from tradeexecutor.strategy.execution_context import ExecutionContext, unit_test_execution_context
-from tradingstrategy.client import Client
-import datetime
-
-from tradingstrategy.chain import ChainId
-from tradingstrategy.lending import LendingProtocolType
-from tradingstrategy.timebucket import TimeBucket
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.universe_model import UniverseOptions, default_universe_options
-
 from tradeexecutor.state.trade import TradeExecution
-from typing import List, Dict
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.state.state import State
-from tradingstrategy.universe import Universe
 
 
 # https://docs.pytest.org/en/latest/how-to/skipping.html#skip-all-test-functions-of-a-class-or-module
@@ -36,12 +36,12 @@ pytestmark = pytest.mark.skipif(os.environ.get("TRADING_STRATEGY_API_KEY") is No
 
 def decide_trades(
         timestamp: pd.Timestamp,
-        universe: Universe,
+        strategy_universe: TradingStrategyUniverse,
         state: State,
         pricing_model: PricingModel,
         cycle_debug_data: Dict) -> List[TradeExecution]:
     """A simple strategy that puts all in to our lending reserve."""
-    position_manager = PositionManager(timestamp, universe, state, pricing_model)
+    position_manager = PositionManager(timestamp, strategy_universe, state, pricing_model)
     cash = state.portfolio.get_current_cash()
 
     trades = []
@@ -58,6 +58,9 @@ def create_trading_universe(
         execution_context: ExecutionContext,
         universe_options: UniverseOptions,
 ) -> TradingStrategyUniverse:
+
+    assert universe_options.start_at
+    assert execution_context.engine_version == "0.3"  # We changed the decide_trades() signature
 
     pairs = [
         (ChainId.polygon, "uniswap-v3", "WETH", "USDC", 0.0005)
@@ -102,12 +105,19 @@ def test_backtest_open_credit_supply_real_data(
         initial_deposit=10_000,
         reserve_currency=ReserveCurrency.usdc,
         trade_routing=TradeRouting.uniswap_v3_usdc_poly,
+        engine_version="0.3",
     )
 
     portfolio = state.portfolio
     assert len(portfolio.open_positions) == 1
     credit_position = portfolio.open_positions[1]
+    assert credit_position.is_credit_supply()
 
     # Backtest creates one event before each tick
     assert len(credit_position.balance_updates) == 30
+
+    assert credit_position.get_accrued_interest() == pytest.approx(0.0030)
+    assert credit_position.get_quantity() == Decimal('10000.0030')
+    assert credit_position.get_value() == pytest.approx(10000.003)
+    assert portfolio.get_total_equity() == pytest.approx(10000.003)
 

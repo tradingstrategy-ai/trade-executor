@@ -165,7 +165,6 @@ class PositionManager:
         """
 
         assert pricing_model, "pricing_model is needed in order to know buy/sell price of new positions"
-        assert isinstance(universe, Universe), f"Expected Universe(), got {universe} {type(universe)}"
 
         if isinstance(timestamp, pd.Timestamp):
             timestamp = timestamp.to_pydatetime().replace(tzinfo=None)
@@ -174,9 +173,12 @@ class PositionManager:
 
         if isinstance(universe, Universe):
             # Legacy
+            # Engine version 0.1 and 0.2
             self.data_universe = universe
             self.strategy_universe = None
         elif isinstance(universe, TradingStrategyUniverse):
+            # Engine version 0.3
+            # See tradeexecutor.strategy.engine_version
             self.strategy_universe = universe
             self.data_universe = universe.universe
         else:

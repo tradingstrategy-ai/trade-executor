@@ -1129,6 +1129,19 @@ class TradingPosition(GenericPosition):
         """
         return sum_decimal([b.quantity for b in self.balance_updates.values() if b.cause == BalanceUpdateCause.interest])
 
+    def get_accrued_interest(self) -> USDollarAmount:
+        """Get the USD value of currently accrued interest for this position so far.
+
+        :return:
+            Positive if we have earned interest, negative if we have paid it.
+        """
+
+        if self.interest is not None:
+            return float(self.interest.last_accrued_interest) * self.last_token_price
+
+        return 0.0
+
+
 class PositionType(enum.Enum):
     token_hold = "token_hold"
     lending_pool_hold = "lending_pool_hold"

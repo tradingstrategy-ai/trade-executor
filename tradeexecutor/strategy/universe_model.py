@@ -7,7 +7,7 @@ from typing import List, Optional, Collection
 from tradingstrategy.timebucket import TimeBucket
 
 from tradeexecutor.state.identifier import AssetIdentifier
-from tradeexecutor.strategy.execution_context import ExecutionMode
+from tradeexecutor.strategy.execution_context import ExecutionMode, ExecutionContext
 
 
 class DataTooOld(Exception):
@@ -96,7 +96,7 @@ class UniverseModel(abc.ABC):
     by refreshing the trading data from the server.
     """
 
-    def preload_universe(self, universe_options: UniverseOptions) -> StrategyExecutionUniverse:
+    def preload_universe(self, universe_options: UniverseOptions, execution_context: ExecutionContext | None=None) -> StrategyExecutionUniverse:
         """Triggered before backtesting execution.
 
         - Load all datasets with progress bar display

@@ -8,8 +8,8 @@ import logging
 import pandas as pd
 
 from tradeexecutor.cli.discord import post_logging_discord_image
-from tradeexecutor.strategy.pandas_trader.trade_decision import TradeDecider
 from tradeexecutor.strategy.pricing_model import PricingModel
+from tradeexecutor.strategy.strategy_module import DecideTradesProtocol, DecideTradesProtocol2
 from tradeexecutor.strategy.sync_model import SyncModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_trading_pair
 
@@ -27,7 +27,11 @@ logger = logging.getLogger(__name__)
 class PandasTraderRunner(StrategyRunner):
     """A trading executor for Pandas math based algorithm."""
 
-    def __init__(self, *args, decide_trades: TradeDecider, max_data_age: Optional[datetime.timedelta] = None, **kwargs):
+    def __init__(self,
+                 *args,
+                 decide_trades: DecideTradesProtocol | DecideTradesProtocol2,
+                 max_data_age: Optional[datetime.timedelta] = None,
+                 **kwargs):
         super().__init__(*args, **kwargs)
         self.decide_trades = decide_trades
         self.max_data_age = max_data_age
@@ -42,30 +46,39 @@ class PandasTraderRunner(StrategyRunner):
 
     def on_clock(self,
                  clock: datetime.datetime,
-                 executor_universe: TradingStrategyUniverse,
+                 strategy_universe: TradingStrategyUniverse,
                  pricing_model: PricingModel,
                  state: State,
                  debug_details: dict) -> List[TradeExecution]:
         """Run one strategy tick."""
 
-        assert isinstance(executor_universe, TradingStrategyUniverse)
-        universe = executor_universe.universe
+        assert isinstance(strategy_universe, TradingStrategyUniverse)
+        universe = strategy_universe.universe
         pd_timestamp = pd.Timestamp(clock)
 
         assert state.sync.treasury.last_updated_at is not None, "Cannot do trades before treasury is synced at least once"
         # All sync models do not emit events correctly yet
         # assert len(state.sync.treasury.balance_update_refs) > 0, "No deposit detected. Please do at least one deposit before starting the strategy"
-        assert len(executor_universe.reserve_assets) == 1
+        assert len(strategy_universe.reserve_assets) == 1
 
         # Call the strategy script decide_trades()
         # callback
-        return self.decide_trades(
-            timestamp=pd_timestamp,
-            universe=universe,
-            state=state,
-            pricing_model=pricing_model,
-            cycle_debug_data=debug_details,
-        )
+        if self.execution_context.is_version_greater_or_equal_than(0, 3, 0):
+            return self.decide_trades(
+                timestamp=pd_timestamp,
+                strategy_universe=strategy_universe,
+                state=state,
+                pricing_model=pricing_model,
+                cycle_debug_data=debug_details,
+            )
+        else:
+            return self.decide_trades(
+                timestamp=pd_timestamp,
+                universe=universe,
+                state=state,
+                pricing_model=pricing_model,
+                cycle_debug_data=debug_details,
+            )
 
     def pretick_check(self, ts: datetime.datetime, universe: TradingStrategyUniverse):
         """Check the data looks more or less sane."""

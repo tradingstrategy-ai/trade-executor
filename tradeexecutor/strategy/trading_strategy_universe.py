@@ -973,7 +973,7 @@ class DefaultTradingStrategyUniverseModel(TradingStrategyUniverseModel):
         self.execution_context = execution_context
         self.create_trading_universe = create_trading_universe
 
-    def preload_universe(self, universe_options: UniverseOptions):
+    def preload_universe(self, universe_options: UniverseOptions, execution_context: ExecutionContext | None = None):
         """Triggered before backtesting execution.
 
         - Load all datasets with progress bar display.
@@ -986,7 +986,9 @@ class DefaultTradingStrategyUniverseModel(TradingStrategyUniverseModel):
             return preload_data(
                 self.client,
                 self.create_trading_universe,
-                universe_options=universe_options)
+                universe_options=universe_options,
+                execution_context=execution_context,
+            )
 
     def construct_universe(self,
                            ts: datetime.datetime,
