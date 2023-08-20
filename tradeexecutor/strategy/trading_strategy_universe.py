@@ -156,7 +156,13 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         return self.universe.pairs.get_count() > 20
 
     def has_lending_data(self) -> bool:
-        """Is any lending data available."""
+        """Is any lending data available.
+
+        .. note ::
+
+            For live trading, lending candles are not available,
+            but any lending rates are directly updated from on-chain sources.
+        """
         return self.universe.lending_reserves is not None
 
     def clone(self) -> "TradingStrategyUniverse":

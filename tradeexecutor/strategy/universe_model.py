@@ -71,6 +71,18 @@ class UniverseOptions:
 
     stop_loss_time_bucket_override: Optional[TimeBucket] = None
 
+    #: Optionally passed backtest start time.
+    #:
+    #: Can be used in create_trading_universe() to set the data range.
+    #:
+    start_at: Optional[datetime.datetime] = None
+
+    #: Optionally passed backtest end time
+    #:
+    #: Can be used in create_trading_universe() to set the data range.
+    #:
+    end_at: Optional[datetime.datetime] = None
+
 
 #: Shorthand method
 #:

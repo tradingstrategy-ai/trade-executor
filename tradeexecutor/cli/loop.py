@@ -437,7 +437,7 @@ class ExecutionLoop:
             self.backtest_setup(state, universe, self.sync_model)
 
         # Sync credit information before each tick
-        credit_positions = state.portfolio.has_open_credit_positions()
+        credit_positions = state.portfolio.get_current_credit_positions()
         if credit_positions:
             logger.info("We have %d credit positions open", len(credit_positions))
             credit_events = self.sync_model.sync_credit_supply(

@@ -560,6 +560,8 @@ def run_backtest_inline(
 
     universe_options = UniverseOptions(
         candle_time_bucket_override=candle_time_frame,
+        start_at=start_at,
+        end_at=end_at,
     )
 
     backtest_setup = BacktestSetup(

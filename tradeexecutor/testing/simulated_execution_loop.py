@@ -94,7 +94,7 @@ def set_up_simulated_execution_loop_uniswap_v2(
     def pricing_model_factory(execution_model, universe, routing_model):
         return UniswapV2LivePricing(
             web3,
-            universe.universe.pairs,
+            universe.data_universe.pairs,
             routing_model)
 
     # Valuation model factory for single Uni v2 exchange
@@ -196,7 +196,7 @@ def set_up_simulated_execution_loop_uniswap_v3(
     def pricing_model_factory(execution_model, universe, routing_model):
         return UniswapV3LivePricing(
             web3,
-            universe.universe.pairs,
+            universe.data_universe.pairs,
             routing_model)
 
     # Valuation model factory for single Uni v2 exchange

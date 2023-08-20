@@ -133,7 +133,7 @@ class PositionManager:
 
     def __init__(self,
                  timestamp: Union[datetime.datetime, pd.Timestamp],
-                 universe: Universe,
+                 universe: Universe | TradingStrategyUniverse,
                  state: State,
                  pricing_model: PricingModel,
                  default_slippage_tolerance=0.05,  # Slippage tole
@@ -171,7 +171,17 @@ class PositionManager:
             timestamp = timestamp.to_pydatetime().replace(tzinfo=None)
 
         self.timestamp = timestamp
-        self.universe = universe
+
+        if isinstance(universe, Universe):
+            # Legacy
+            self.data_universe = universe
+            self.strategy_universe = None
+        elif isinstance(universe, TradingStrategyUniverse):
+            self.strategy_universe = universe
+            self.data_universe = universe.universe
+        else:
+            raise RuntimeError(f"Does not know the universe: {universe}")
+
         self.state = state
         self.pricing_model = pricing_model
         self.default_slippage_tolerance = default_slippage_tolerance
@@ -261,7 +271,7 @@ class PositionManager:
         :return:
             Trading pair information
         """
-        dex_pair = self.universe.pairs.get_pair_by_id(pair_id)
+        dex_pair = self.data_universe.pairs.get_pair_by_id(pair_id)
         return translate_trading_pair(dex_pair)
 
     def get_pair_fee(self,
@@ -744,3 +754,22 @@ class PositionManager:
         ))
 
         position.stop_loss = stop_loss
+
+    def open_credit_supply_position_for_reserves(self, amount: USDollarAmount) -> List[TradeExecution]:
+        """Move reserve currency to a credit supply position."""
+
+        lending_pool_identifier = self.strategy_universe.get_credit_supply_pair()
+        state = self.state
+
+        credit_supply_position, trade, _ = state.create_trade(
+            self.timestamp,
+            lending_pool_identifier,
+            quantity=None,
+            reserve=Decimal(amount),
+            assumed_price=1.0,
+            trade_type=TradeType.supply_credit,
+            reserve_currency=lending_pool_identifier.quote,
+            reserve_currency_price=1.0,
+        )
+
+        return [trade]
