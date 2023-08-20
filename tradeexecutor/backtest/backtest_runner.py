@@ -29,7 +29,7 @@ from tradeexecutor.strategy.description import StrategyExecutionDescription
 from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
 from tradeexecutor.strategy.pandas_trader.runner import PandasTraderRunner
 from tradeexecutor.strategy.strategy_module import parse_strategy_module, \
-    DecideTradesProtocol, CreateTradingUniverseProtocol, CURRENT_ENGINE_VERSION, StrategyModuleInformation
+    DecideTradesProtocol, CreateTradingUniverseProtocol, CURRENT_ENGINE_VERSION, StrategyModuleInformation, DecideTradesProtocol2
 from tradeexecutor.strategy.engine_version import TradingStrategyEngineVersion
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.default_routing_options import TradeRouting
@@ -415,7 +415,7 @@ def run_backtest_inline(
     end_at: Optional[datetime.datetime] = None,
     minimum_data_lookback_range: Optional[datetime.timedelta] = None,
     client: Optional[Client],
-    decide_trades: DecideTradesProtocol,
+    decide_trades: DecideTradesProtocol | DecideTradesProtocol2,
     cycle_duration: CycleDuration,
     initial_deposit: float,
     reserve_currency: ReserveCurrency,
@@ -430,7 +430,7 @@ def run_backtest_inline(
     data_delay_tolerance: Optional[pd.Timedelta] = None,
     name: str="backtest",
     allow_missing_fees=False,
-    engine_version: Optional[TradingStrategyEngineVersion]=None,
+    engine_version: Optional[TradingStrategyEngineVersion] = None,
 ) -> Tuple[State, TradingStrategyUniverse, dict]:
     """Run backtests for given decide_trades and create_trading_universe functions.
 
@@ -513,7 +513,7 @@ def run_backtest_inline(
     :param engine_version:
         The used TS engine version/
 
-        See :py:data:`tradeexecutor.strategy.strategy_model.SUPPORTED_TRADING_STRATEGY_ENGINE_VERSIONS`.
+        See :py:mod:`tradeexecutor.strategy.engine_version`.
 
     :return:
         tuple (State of a completely executed strategy, trading strategy universe, debug dump dict)

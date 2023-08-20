@@ -174,7 +174,7 @@ class DecideTradesProtocol(Protocol):
 class DecideTradesProtocol2(Protocol):
     """New decide_trades() function signature.
 
-    `universe` -> `strategy_universe` parameter change.
+    `universe` -> `strategy_universe` decide_trades() argument change.
 
     See :py:class:`DecideTradesProtocol`
     """

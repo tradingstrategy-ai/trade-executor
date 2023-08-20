@@ -1,4 +1,9 @@
-"""Execution engine versioning."""
+"""Execution engine versioning.
+
+Different strategy modules may have functions with different signatures.
+Versioning strategy modules allows us to add and remove arguments
+without breaking backwards compatibility.
+"""
 
 from typing import TypeAlias
 

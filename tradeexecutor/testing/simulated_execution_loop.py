@@ -193,10 +193,10 @@ def set_up_simulated_execution_loop_uniswap_v3(
     )
 
     # Pricing model factory for single Uni v2 exchange
-    def pricing_model_factory(execution_model, universe, routing_model):
+    def pricing_model_factory(execution_model, universe: StrategyExecutionUniverse, routing_model):
         return UniswapV3LivePricing(
             web3,
-            universe.data_universe.pairs,
+            universe.universe.pairs,
             routing_model)
 
     # Valuation model factory for single Uni v2 exchange

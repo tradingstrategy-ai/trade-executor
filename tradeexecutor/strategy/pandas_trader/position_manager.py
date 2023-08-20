@@ -419,8 +419,6 @@ class PositionManager:
             
             self.update_stop_loss(position, stop_loss_usd)
 
-            
-
         if notes:
             position.notes = notes
             trade.notes = notes
@@ -758,7 +756,14 @@ class PositionManager:
         position.stop_loss = stop_loss
 
     def open_credit_supply_position_for_reserves(self, amount: USDollarAmount) -> List[TradeExecution]:
-        """Move reserve currency to a credit supply position."""
+        """Move reserve currency to a credit supply position.
+
+        :param amount:
+            Amount of cash to lend out
+
+        :return:
+            List of trades that will open this credit position
+        """
 
         lending_pool_identifier = self.strategy_universe.get_credit_supply_pair()
         state = self.state
@@ -770,7 +775,7 @@ class PositionManager:
             reserve=Decimal(amount),
             assumed_price=1.0,
             trade_type=TradeType.supply_credit,
-            reserve_currency=lending_pool_identifier.quote,
+            reserve_currency=self.strategy_universe.get_reserve_asset(),
             reserve_currency_price=1.0,
         )
 
