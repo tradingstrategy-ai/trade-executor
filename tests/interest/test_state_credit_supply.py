@@ -144,7 +144,7 @@ def test_accrue_interest(
 
     # The position has refreshed its accrued interest once
     assert len(credit_supply_position.balance_updates) == 1
-    assert credit_supply_position.balance_updates[0].quantity == pytest.approx(Decimal(0.01))
+    assert credit_supply_position.balance_updates[1].quantity == pytest.approx(Decimal(0.01))
 
     # Position and portfolio valuations reflect the accrued interest
     assert credit_supply_position.interest.last_accrued_interest == pytest.approx(Decimal(0.01))

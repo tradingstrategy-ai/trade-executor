@@ -122,3 +122,7 @@ class ExecutionContext:
              False if we are operating on backtesting data.
         """
         return self.mode in (ExecutionMode.real_trading, ExecutionMode.paper_trading, ExecutionMode.simulated_trading)
+
+
+#: Shorthand for unit testing
+unit_test_execution_context = ExecutionContext(ExecutionMode.unit_testing_trading)

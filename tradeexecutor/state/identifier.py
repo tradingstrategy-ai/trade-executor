@@ -174,6 +174,9 @@ class TradingPairIdentifier:
     #: - Uniswap v2 pair contract address
     #:
     #: - Uniswap v3 pool contract address
+    #:
+    #: Set to asset address for Aave pools.
+    #:
     pool_address: str
 
     #: Exchange address.
