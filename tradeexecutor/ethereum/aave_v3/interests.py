@@ -5,7 +5,7 @@ import pandas as pd
 
 from eth_defi.aave_v3.rates import SECONDS_PER_YEAR
 
-from tradingstrategy.lending import LendingReserve
+from tradingstrategy.lending import LendingReserve, LendingCandleType
 from tradingstrategy.client import Client
 from tradingstrategy.timebucket import TimeBucket
 
@@ -23,7 +23,7 @@ def get_aave_v3_candles_for_period(
     lending_candles = client.fetch_lending_candles_by_reserve_id(
         reserve.reserve_id,
         bucket=TimeBucket.h1,
-        candle_type="variable_borrow_apr",
+        candle_type=LendingCandleType.variable_borrow_apr,
         start_time=start_time,
         end_time=end_time,
     )
