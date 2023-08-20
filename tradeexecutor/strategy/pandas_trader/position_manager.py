@@ -133,7 +133,7 @@ class PositionManager:
 
     def __init__(self,
                  timestamp: Union[datetime.datetime, pd.Timestamp],
-                 universe: Universe,
+                 universe: Universe | TradingStrategyUniverse,
                  state: State,
                  pricing_model: PricingModel,
                  default_slippage_tolerance=0.05,  # Slippage tole
@@ -165,13 +165,25 @@ class PositionManager:
         """
 
         assert pricing_model, "pricing_model is needed in order to know buy/sell price of new positions"
-        assert isinstance(universe, Universe), f"Expected Universe(), got {universe} {type(universe)}"
 
         if isinstance(timestamp, pd.Timestamp):
             timestamp = timestamp.to_pydatetime().replace(tzinfo=None)
 
         self.timestamp = timestamp
-        self.universe = universe
+
+        if isinstance(universe, Universe):
+            # Legacy
+            # Engine version 0.1 and 0.2
+            self.data_universe = universe
+            self.strategy_universe = None
+        elif isinstance(universe, TradingStrategyUniverse):
+            # Engine version 0.3
+            # See tradeexecutor.strategy.engine_version
+            self.strategy_universe = universe
+            self.data_universe = universe.universe
+        else:
+            raise RuntimeError(f"Does not know the universe: {universe}")
+
         self.state = state
         self.pricing_model = pricing_model
         self.default_slippage_tolerance = default_slippage_tolerance
@@ -261,7 +273,7 @@ class PositionManager:
         :return:
             Trading pair information
         """
-        dex_pair = self.universe.pairs.get_pair_by_id(pair_id)
+        dex_pair = self.data_universe.pairs.get_pair_by_id(pair_id)
         return translate_trading_pair(dex_pair)
 
     def get_pair_fee(self,
@@ -406,8 +418,6 @@ class PositionManager:
             assert stop_loss_usd < price_structure.mid_price, f"stop_loss_usd must be less than mid_price got {stop_loss_usd} >= {price_structure.mid_price}"
             
             self.update_stop_loss(position, stop_loss_usd)
-
-            
 
         if notes:
             position.notes = notes
@@ -592,49 +602,20 @@ class PositionManager:
 
         return [trade]
 
-    def close_position(self,
+    def close_spot_position(self,
                        position: TradingPosition,
                        trade_type: TradeType=TradeType.rebalance,
                        notes: Optional[str] = None,
                        slippage_tolerance: Optional[float] = None,
                        ) -> List[TradeExecution]:
-        """Close a single position.
+        """Close a single spot market trading position.
 
-        The position may already have piled up selling trades.
-        In this case calling `close_position()` again on the same position
-        does nothing and `None` is returned.
-
-        :param position:
-            Position to be closed
-
-        :param trade_type:
-            What's the reason to close the position
-
-        :param notes:
-            Human readable notes for this trade
-
-        :param slippage_tolerance:
-            Slippage tolerance for this trade.
-
-            Use :py:attr:`default_slippage_tolerance` if not set.
-
-        :return:
-            Get list of trades needed to close this position.
-
-            return list of trades.
-
+        See :py:meth:`close_position` for usage.
         """
 
-        assert position.is_long(), "Only long supported for now"
-        assert position.is_open(), f"Tried to close already closed position {position}"
+        assert position.is_spot_market()
 
         quantity_left = position.get_available_trading_quantity()
-
-        if quantity_left == 0:
-            # We have already generated closing trades for this position
-            # earlier
-            logger.warning("Tried to close position that is likely already closed, as there are no tokens to sell: %s", position)
-            return []
 
         pair = position.pair
         quantity = quantity_left
@@ -672,6 +653,128 @@ class PositionManager:
                                       f"Reserve asset: {reserve_asset}\n"
 
         return [trade]
+
+    def close_credit_supply_position(self,
+                       position: TradingPosition,
+                       quantity: float | Decimal | None = None,
+                       notes: Optional[str] = None,
+                       trade_type: TradeType = TradeType.supply_credit,
+                       ) -> List[TradeExecution]:
+        """Close a credit supply position
+
+        :param position:
+            Position to close.
+
+            Must be a credit supply position.
+
+        :param quantity:
+            How much of the quantity we reduce.
+
+            If not given close the full position.
+
+        :return:
+            New trades to be executed
+        """
+
+        assert self.strategy_universe, "Make sure trading_strategy_engine_version = 0.3. Credit supply does not work with old decide_trades()."
+        pair = position.pair
+
+        assert pair.quote.is_stablecoin(), f"Non-stablecoin lending not yet implemented"
+        price = 1.0
+
+        if quantity is None:
+            quantity = position.get_quantity()
+
+        if type(quantity) == float:
+            # TODO: Snap the amount to the full position size if rounding errors
+            quantity = Decimal(quantity)
+
+        # TODO: Hardcoded USD exchange rate
+        reserve_asset = self.strategy_universe.get_reserve_asset()
+        reserve_price = 1.0
+
+        position2, trade, created = self.state.create_trade(
+            self.timestamp,
+            pair,
+            -quantity,
+            reserve=None,
+            assumed_price=price,
+            trade_type=trade_type,
+            reserve_currency=reserve_asset,
+            reserve_currency_price=reserve_price,
+            notes=notes,
+            position=position,
+        )
+        assert position2 == position
+        return [trade]
+
+    def close_position(self,
+                       position: TradingPosition,
+                       trade_type: TradeType | None = None,
+                       notes: Optional[str] = None,
+                       slippage_tolerance: Optional[float] = None,
+                       ) -> List[TradeExecution]:
+        """Close a single position.
+
+        The position may already have piled up selling trades.
+        In this case calling `close_position()` again on the same position
+        does nothing and `None` is returned.
+
+        :param position:
+            Position to be closed
+
+        :param trade_type:
+            What's the reason to close the position
+
+        :param notes:
+            Human-readable notes for this trade
+
+        :param slippage_tolerance:
+            Slippage tolerance for this trade.
+
+            Use :py:attr:`default_slippage_tolerance` if not set.
+
+        :return:
+            Get list of trades needed to close this position.
+
+            return list of trades.
+
+        """
+
+        assert position.is_long(), "Only long supported for now"
+        assert position.is_open(), f"Tried to close already closed position {position}"
+
+        quantity_left = position.get_available_trading_quantity()
+
+        if quantity_left == 0:
+            # We have already generated closing trades for this position
+            # earlier
+            logger.warning("Tried to close position that is likely already closed, as there are no tokens to sell: %s", position)
+            return []
+
+        if position.is_spot_market():
+
+            if trade_type is None:
+                trade_type = TradeType.rebalance
+
+            return self.close_spot_position(
+                position,
+                trade_type,
+                notes,
+                slippage_tolerance
+            )
+        elif position.is_credit_supply():
+
+            if trade_type is None:
+                trade_type = TradeType.supply_credit
+
+            return self.close_credit_supply_position(
+                position,
+                trade_type=trade_type,
+                notes=notes,
+            )
+        else:
+            raise NotImplementedError(f"Does not know how to close: {position}")
 
     def close_all(self) -> List[TradeExecution]:
         """Close all open positions.
@@ -744,3 +847,29 @@ class PositionManager:
         ))
 
         position.stop_loss = stop_loss
+
+    def open_credit_supply_position_for_reserves(self, amount: USDollarAmount) -> List[TradeExecution]:
+        """Move reserve currency to a credit supply position.
+
+        :param amount:
+            Amount of cash to lend out
+
+        :return:
+            List of trades that will open this credit position
+        """
+
+        lending_pool_identifier = self.strategy_universe.get_credit_supply_pair()
+        state = self.state
+
+        credit_supply_position, trade, _ = state.create_trade(
+            self.timestamp,
+            lending_pool_identifier,
+            quantity=None,
+            reserve=Decimal(amount),
+            assumed_price=1.0,
+            trade_type=TradeType.supply_credit,
+            reserve_currency=self.strategy_universe.get_reserve_asset(),
+            reserve_currency_price=1.0,
+        )
+
+        return [trade]

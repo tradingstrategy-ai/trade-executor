@@ -342,6 +342,14 @@ class TradingPosition(GenericPosition):
         trailing_stop_set = any([True for t in self.trigger_updates if t.stop_loss_after is not None])
         return trailing_stop_set
 
+    def is_credit_supply(self):
+        """This is a trading position for gaining interest by lending out reserve currency."""
+        return self.pair.kind == TradingPairKind.credit_supply
+
+    def is_spot_market(self):
+        """This is a spot market position."""
+        return self.pair.kind == TradingPairKind.spot_market_hold
+
     def is_take_profit(self) -> bool:
         """Was this position ended with take profit trade"""
         last_trade = self.get_last_trade()
@@ -496,7 +504,7 @@ class TradingPosition(GenericPosition):
         """Calculate the value of this position using the given prices."""
         token_quantity = sum([t.get_equity_for_position() for t in self.trades.values() if t.is_accounted_for_equity()])
 
-        token_quantity += self.calculate_accrued_interest_tokens()
+        token_quantity += self.calculate_accrued_interest_quantity()
 
         reserve_quantity = sum([t.get_equity_for_reserve() for t in self.trades.values() if t.is_accounted_for_equity()])
         return float(token_quantity) * token_price + float(reserve_quantity) * reserve_price
@@ -679,13 +687,17 @@ class TradingPosition(GenericPosition):
         # Initialise interest tracking data structure
         if pair.kind.is_interest_accruing():
             assert pair.kind == TradingPairKind.credit_supply, "Only credit supply supported for now"
-            self.interest = Interest(
-                opening_amount=planned_reserve,
-                last_updated_at=datetime.datetime.utcnow(),
-                last_event_at=datetime.datetime.utcnow(),
-                last_accrued_interest=Decimal(0),
-                last_atoken_amount=planned_reserve,
-            )
+            if self.interest is None:
+                assert trade.is_buy(), "Opening credit position is modelled as buy"
+                self.interest = Interest(
+                    opening_amount=planned_reserve,
+                    last_updated_at=datetime.datetime.utcnow(),
+                    last_event_at=datetime.datetime.utcnow(),
+                    last_accrued_interest=Decimal(0),
+                    last_atoken_amount=planned_reserve,
+                )
+            else:
+                pass
 
         return trade
 
@@ -1113,7 +1125,7 @@ class TradingPosition(GenericPosition):
 
         self.balance_updates[event.balance_update_id] = event
 
-    def calculate_accrued_interest_tokens(self) -> Decimal:
+    def calculate_accrued_interest_quantity(self) -> Decimal:
         """Calculate the gained interest in tokens.
 
         This is done as the sum of all interest events.
@@ -1124,6 +1136,21 @@ class TradingPosition(GenericPosition):
             Number of quote tokens this position has gained interest
         """
         return sum_decimal([b.quantity for b in self.balance_updates.values() if b.cause == BalanceUpdateCause.interest])
+
+    def get_accrued_interest(self) -> USDollarAmount:
+        """Get the USD value of currently accrued interest for this position so far.
+
+        The accrued interest is not zeroed out for closed positions.
+
+        :return:
+            Positive if we have earned interest, negative if we have paid it.
+        """
+
+        if self.interest is not None:
+            return float(self.interest.last_accrued_interest) * self.last_token_price
+
+        return 0.0
+
 
 class PositionType(enum.Enum):
     token_hold = "token_hold"

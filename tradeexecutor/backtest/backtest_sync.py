@@ -1,17 +1,25 @@
+import logging
 import datetime
 from dataclasses import dataclass
 from decimal import Decimal
+from itertools import chain
 from typing import List, Optional
 
 from tradeexecutor.backtest.simulated_wallet import SimulatedWallet
 from tradeexecutor.ethereum.wallet import ReserveUpdateEvent
 from tradeexecutor.state.balance_update import BalanceUpdate
 from tradeexecutor.state.identifier import AssetIdentifier
+from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
 from tradeexecutor.state.types import JSONHexAddress
+from tradeexecutor.strategy.interest import update_credit_supply_interest
 from tradeexecutor.strategy.sync_model import SyncModel
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 
 from tradeexecutor.testing.dummy_wallet import apply_sync_events
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -120,3 +128,46 @@ class BacktestSyncModel(SyncModel):
 
     def create_transaction_builder(self) -> None:
         """Backtesting does not need to care about how to build blockchain transactions."""
+
+    def calculate_accrued_interest(
+            self,
+            universe: TradingStrategyUniverse,
+            position: TradingPosition,
+    ) -> float:
+        """Calculate accrued interest relative to 1.0 base units."""
+        raise NotImplementedError()
+
+    def sync_credit_supply(self,
+                           timestamp: datetime.datetime,
+                           state: State,
+                           universe: TradingStrategyUniverse,
+                           credit_positions: List[TradingPosition],
+                           ) -> List[BalanceUpdate]:
+
+        assert universe.has_lending_data(), "Cannot update credit positions if no data is available"
+
+        events = []
+        for p in credit_positions:
+
+            assert p.is_credit_supply()
+
+            accrued = self.calculate_accrued_interest(universe, p)
+
+            # TODO: replace with a real interest calculation,
+            # based on universe.lending_candles
+            old_amount = p.interest.last_atoken_amount
+            new_amount = old_amount * Decimal(1+accrued)
+            evt = update_credit_supply_interest(
+                state,
+                p,
+                new_atoken_amount=new_amount,
+                event_at=timestamp,
+            )
+            events.append(evt)
+
+            # Make atokens magically appear in the simulated
+            # backtest wallet. The amount must be updated, or
+            # otherwise we get errors when closing the position.
+            self.wallet.update_balance(p.pair.base.address, new_amount)
+
+        return events

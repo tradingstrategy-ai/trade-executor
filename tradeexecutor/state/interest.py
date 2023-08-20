@@ -46,6 +46,8 @@ class Interest:
 
     #: Block number for the update
     #:
+    #: When was the last time we read aToken balance.
+    #:
     last_updated_block_number: int | None = None
 
     def __post_init__(self):

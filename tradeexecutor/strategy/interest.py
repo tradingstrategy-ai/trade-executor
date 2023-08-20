@@ -16,7 +16,7 @@ def update_credit_supply_interest(
     block_number: int | None = None,
     tx_hash: int | None = None,
     log_index: int | None = None,
-):
+) -> BalanceUpdate:
     """Poke credit supply position to increase its interest amount.
 
     :param event_at:
@@ -25,7 +25,7 @@ def update_credit_supply_interest(
     """
 
     assert position.pair.kind == TradingPairKind.credit_supply
-    assert position.is_open() and not position.is_frozen(), f"Cannot update interest for position {position}"
+    assert position.is_open() or position.is_frozen(), f"Cannot update interest for position {position}"
 
     portfolio = state.portfolio
 
@@ -64,8 +64,9 @@ def update_credit_supply_interest(
     position.add_balance_update_event(evt)
 
     # Update interest stats
-    position.interest.last_accrued_interest = position.calculate_accrued_interest_tokens()
+    position.interest.last_accrued_interest = position.calculate_accrued_interest_quantity()
     position.interest.last_updated_at = datetime.datetime.utcnow()
     position.interest.last_event_at = event_at
     position.interest.last_updated_block_number = block_number
     position.interest.last_atoken_amount = new_atoken_amount
+    return evt
