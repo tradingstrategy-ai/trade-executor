@@ -15,7 +15,6 @@ from tradingstrategy.client import Client
 from tradingstrategy.chain import ChainId
 from tradingstrategy.lending import LendingProtocolType
 from tradingstrategy.timebucket import TimeBucket
-from tradingstrategy.universe import Universe
 
 from tradeexecutor.backtest.backtest_runner import run_backtest_inline
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, load_partial_data
@@ -32,24 +31,6 @@ from tradeexecutor.state.state import State
 
 # https://docs.pytest.org/en/latest/how-to/skipping.html#skip-all-test-functions-of-a-class-or-module
 pytestmark = pytest.mark.skipif(os.environ.get("TRADING_STRATEGY_API_KEY") is None, reason="Set TRADING_STRATEGY_API_KEY environment variable to run this test")
-
-
-def decide_trades(
-        timestamp: pd.Timestamp,
-        strategy_universe: TradingStrategyUniverse,
-        state: State,
-        pricing_model: PricingModel,
-        cycle_debug_data: Dict) -> List[TradeExecution]:
-    """A simple strategy that puts all in to our lending reserve."""
-    position_manager = PositionManager(timestamp, strategy_universe, state, pricing_model)
-    cash = state.portfolio.get_current_cash()
-
-    trades = []
-
-    if not position_manager.is_any_open():
-        trades += position_manager.open_credit_supply_position_for_reserves(cash)
-
-    return trades
 
 
 def create_trading_universe(
@@ -85,7 +66,7 @@ def create_trading_universe(
     return strategy_universe
 
 
-def test_backtest_open_credit_supply_real_data(
+def test_backtest_open_only_credit_supply_real_data(
         logger: logging.Logger,
         persistent_test_client: Client,
     ):
@@ -94,12 +75,29 @@ def test_backtest_open_credit_supply_real_data(
     - How much interest we can get on USDC on Polygon in one month
     """
 
+    def decide_trades(
+            timestamp: pd.Timestamp,
+            strategy_universe: TradingStrategyUniverse,
+            state: State,
+            pricing_model: PricingModel,
+            cycle_debug_data: Dict) -> List[TradeExecution]:
+        """A simple strategy that puts all in to our lending reserve."""
+        position_manager = PositionManager(timestamp, strategy_universe, state, pricing_model)
+        cash = state.portfolio.get_current_cash()
+
+        trades = []
+
+        if not position_manager.is_any_open():
+            trades += position_manager.open_credit_supply_position_for_reserves(cash)
+
+        return trades
+
     # Run the test
     state, universe, debug_dump = run_backtest_inline(
         start_at=datetime.datetime(2023, 1, 1),
         end_at=datetime.datetime(2023, 2, 1),
         client=persistent_test_client,
-        cycle_duration=CycleDuration.cycle_1d,  # Override to use 24h cycles despite what strategy file says
+        cycle_duration=CycleDuration.cycle_1d,
         decide_trades=decide_trades,
         create_trading_universe=create_trading_universe,
         initial_deposit=10_000,
@@ -116,8 +114,75 @@ def test_backtest_open_credit_supply_real_data(
     # Backtest creates one event before each tick
     assert len(credit_position.balance_updates) == 30
 
+    assert credit_position.interest.opening_amount == Decimal("10000.00")
     assert credit_position.get_accrued_interest() == pytest.approx(0.0030)
     assert credit_position.get_quantity() == Decimal('10000.0030')
     assert credit_position.get_value() == pytest.approx(10000.003)
     assert portfolio.get_total_equity() == pytest.approx(10000.003)
 
+
+def test_backtest_open_and_close_credit_supply_real_data(
+        logger: logging.Logger,
+        persistent_test_client: Client,
+    ):
+    """Run the strategy backtest using inline decide_trades function.
+
+    - Close position at half way the test run to see if
+      we account the gained interest correctly.
+    """
+
+    def decide_trades(
+            timestamp: pd.Timestamp,
+            strategy_universe: TradingStrategyUniverse,
+            state: State,
+            pricing_model: PricingModel,
+            cycle_debug_data: Dict) -> List[TradeExecution]:
+        """A simple strategy that puts all in to our lending reserve."""
+        position_manager = PositionManager(timestamp, strategy_universe, state, pricing_model)
+        cash = state.portfolio.get_current_cash()
+
+        trades = []
+
+        if timestamp < pd.Timestamp("2023-01-15"):
+            if not position_manager.is_any_open():
+                trades += position_manager.open_credit_supply_position_for_reserves(cash)
+            else:
+                pos = position_manager.get_current_position()
+        else:
+            if position_manager.is_any_open():
+                trades += position_manager.close_all()
+
+        return trades
+
+    # Run the test
+    state, universe, debug_dump = run_backtest_inline(
+        start_at=datetime.datetime(2023, 1, 1),
+        end_at=datetime.datetime(2023, 2, 1),
+        client=persistent_test_client,
+        cycle_duration=CycleDuration.cycle_1d,
+        decide_trades=decide_trades,
+        create_trading_universe=create_trading_universe,
+        initial_deposit=10_000,
+        reserve_currency=ReserveCurrency.usdc,
+        trade_routing=TradeRouting.uniswap_v3_usdc_poly,
+        engine_version="0.3",
+    )
+
+    portfolio = state.portfolio
+    assert len(portfolio.open_positions) == 0
+    assert len(portfolio.frozen_positions) == 0
+    assert len(portfolio.closed_positions) == 1
+
+    credit_position = portfolio.closed_positions[1]
+    assert credit_position.is_credit_supply()
+    assert len(credit_position.balance_updates) == 14
+    assert credit_position.interest.opening_amount == Decimal("10000.00")
+    assert credit_position.calculate_accrued_interest_quantity() == Decimal('0.0014')  # Non-denormalised interest
+    assert credit_position.interest.last_atoken_amount == Decimal('10000.0014')
+    assert credit_position.interest.last_accrued_interest == Decimal('0.0014')
+
+    assert credit_position.get_accrued_interest() == pytest.approx(0.0014)  # Denormalised interest
+    assert credit_position.get_quantity() == Decimal('0')  # Closed positions do not have quantity left
+    assert credit_position.get_value() == pytest.approx(0)  # Closed positions do not have value left
+    import ipdb ; ipdb.set_trace()
+    assert portfolio.get_total_equity() == pytest.approx(10000.0014)

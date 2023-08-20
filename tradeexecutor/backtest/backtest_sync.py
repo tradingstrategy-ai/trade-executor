@@ -140,6 +140,9 @@ class BacktestSyncModel(SyncModel):
 
         events = []
         for p in credit_positions:
+
+            assert p.is_credit_supply()
+
             # TODO: replace with a real interest calculation,
             # based on universe.lending_candles
             old_amount = p.interest.last_atoken_amount
@@ -151,4 +154,10 @@ class BacktestSyncModel(SyncModel):
                 event_at=timestamp,
             )
             events.append(evt)
+
+            # Make atokens magically appear in the simulated
+            # backtest wallet. The amount must be updated, or
+            # otherwise we get errors when closing the position.
+            self.wallet.update_balance(p.pair.base.address, new_amount)
+
         return events

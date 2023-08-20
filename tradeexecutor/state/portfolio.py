@@ -93,6 +93,11 @@ class Portfolio:
     #: - rug pull token - transfer disabled
     frozen_positions: Dict[int, TradingPosition] = field(default_factory=dict)
 
+    def __repr__(self):
+        reserve_asset, _ = self.get_default_reserve_asset()
+        reserve_position = self.get_reserve_position(reserve_asset)
+        return f"<Portfolio with positions open:{len(self.open_positions)} frozen:{len(self.frozen_positions)} closed:{len(self.frozen_positions)} and reserve {reserve_position.quantity} {reserve_position.asset.token_symbol}>"
+
     def is_empty(self):
         """This portfolio has no open or past trades or any reserves."""
         return len(self.open_positions) == 0 and len(self.reserves) == 0 and len(self.closed_positions) == 0
@@ -593,7 +598,7 @@ class Portfolio:
         assert isinstance(amount, Decimal), f"Got amount {amount}"
         reserve = self.get_reserve_position(asset)
         assert reserve, f"No reserves available for {asset}"
-        assert reserve.quantity, f"Reserve quantity missing for {asset}"
+        assert reserve.quantity is not None, f"Reserve quantity not set for {asset} in portfolio {self}"
         reserve.quantity += amount
 
     def move_capital_from_reserves_to_trade(self, trade: TradeExecution, underflow_check=True):

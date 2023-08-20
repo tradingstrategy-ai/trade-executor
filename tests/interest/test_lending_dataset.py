@@ -3,7 +3,7 @@ import pandas as pd
 import pytest
 
 from tradeexecutor.state.identifier import TradingPairKind
-from tradeexecutor.strategy.execution_context import ExecutionContext, unit_test_execution_context
+from tradeexecutor.strategy.execution_context import unit_test_execution_context
 from tradeexecutor.strategy.trading_strategy_universe import load_partial_data, TradingStrategyUniverse
 from tradeexecutor.strategy.universe_model import default_universe_options
 from tradingstrategy.chain import ChainId
@@ -81,7 +81,7 @@ def test_construct_trading_universe_with_lending(persistent_test_client: Client)
     rates = data_universe.lending_candles.supply_apr.get_rates_by_reserve(
         (ChainId.polygon, LendingProtocolType.aave_v3, "USDC")
     )
-    assert rates["open"][pd.Timestamp("2023-01-01")] == pytest.approx(1.836242)
+    assert rates["open"][pd.Timestamp("2023-01-01")] == pytest.approx(0.6998308843795215)
     assert rates["close"][pd.Timestamp("2023-01-01")] == pytest.approx(1.780513)
 
 
@@ -122,4 +122,7 @@ def test_get_credit_supply_trading_pair(persistent_test_client: Client):
 
     data_universe = strategy_universe.universe
     rate_candles = data_universe.lending_candles.supply_apr.get_rates_by_id(reserve_credit_supply_pair.internal_id)
+    assert rate_candles["open"][pd.Timestamp("2023-01-01")] == pytest.approx(0.6998308843795215)
+
+    rate_candles = data_universe.lending_candles.variable_borrow_apr.get_rates_by_id(reserve_credit_supply_pair.internal_id)
     assert rate_candles["open"][pd.Timestamp("2023-01-01")] == pytest.approx(1.836242)
