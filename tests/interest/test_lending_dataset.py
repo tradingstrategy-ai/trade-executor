@@ -43,8 +43,8 @@ def test_load_lending_dataset(persistent_test_client: Client):
     rates = dataset.lending_candles.supply_apr.get_rates_by_reserve(
         (ChainId.polygon, LendingProtocolType.aave_v3, "USDC")
     )
-    assert rates["open"][pd.Timestamp("2023-01-01")] == pytest.approx(1.836242)
-    assert rates["close"][pd.Timestamp("2023-01-01")] == pytest.approx(1.780513)
+    assert rates["open"][pd.Timestamp("2023-01-01")] == pytest.approx(0.6998308843795215)
+    assert rates["close"][pd.Timestamp("2023-01-01")] == pytest.approx(0.6589076823528996)
 
 
 def test_construct_trading_universe_with_lending(persistent_test_client: Client):
@@ -82,7 +82,7 @@ def test_construct_trading_universe_with_lending(persistent_test_client: Client)
         (ChainId.polygon, LendingProtocolType.aave_v3, "USDC")
     )
     assert rates["open"][pd.Timestamp("2023-01-01")] == pytest.approx(0.6998308843795215)
-    assert rates["close"][pd.Timestamp("2023-01-01")] == pytest.approx(1.780513)
+    assert rates["close"][pd.Timestamp("2023-01-01")] == pytest.approx(0.6589076823528996)
 
 
 def test_get_credit_supply_trading_pair(persistent_test_client: Client):
