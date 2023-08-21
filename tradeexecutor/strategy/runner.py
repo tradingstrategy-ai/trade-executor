@@ -14,7 +14,7 @@ from typing import List, Optional, Tuple
 from tradeexecutor.strategy.account_correction import check_accounts, UnexpectedAccountingCorrectionIssue
 from tradeexecutor.strategy.approval import ApprovalModel
 from tradeexecutor.strategy.cycle import CycleDuration
-from tradeexecutor.strategy.execution_context import ExecutionContext
+from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
 from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.strategy.sync_model import SyncMethodV0, SyncModel
 from tradeexecutor.strategy.run_state import RunState
@@ -290,6 +290,19 @@ class StrategyRunner(abc.ABC):
         """
 
     def setup_routing(self, universe: StrategyExecutionUniverse) -> Tuple[RoutingState, PricingModel, ValuationModel]:
+        if self.execution_context.mode == ExecutionMode.backtesting:
+            return self._setup_routing(universe)
+        
+        routing_data = {}
+        for routing_model in self.routing_models:
+
+            routing_state, pricing_model, valuation_model = self.setup_routing(universe)
+            rd = {"routing_model": routing_model, "routing_state": routing_state, "pricing_model": pricing_model, "valuation_model": valuation_model}
+            routing_data.append(rd)
+
+        return routing_data
+
+    def _setup_routing(self, universe: StrategyExecutionUniverse, routing_model: RoutingModel | None = None) -> Tuple[RoutingState, PricingModel, ValuationModel]:
         """Setups routing state for this cycle.
 
         :param universe:
@@ -299,8 +312,10 @@ class StrategyRunner(abc.ABC):
             Tuple(routing state, pricing model, valuation model)
         """
 
-        assert self.routing_model, "Routing model not set"
+        rm = routing_model or self.routing_model
 
+        assert rm, "Routing model not set"
+    
         # Get web3 connection, hot wallet
         routing_state_details = self.execution_model.get_routing_state_details()
 
@@ -309,14 +324,14 @@ class StrategyRunner(abc.ABC):
                     "Routing model is %s\n"
                     "Details are %s\n"
                     "Universe is %s",
-                    self.routing_model,
+                    rm,
                     routing_state_details,
                     universe,
                     )
-        routing_state = self.routing_model.create_routing_state(universe, routing_state_details)
+        routing_state = rm.create_routing_state(universe, routing_state_details)
 
         # Create a pricing model for assets
-        pricing_model = self.pricing_model_factory(self.execution_model, universe, self.routing_model)
+        pricing_model = self.pricing_model_factory(self.execution_model, universe, rm)
 
         assert pricing_model, "pricing_model_factory did not return a value"
 
@@ -377,9 +392,12 @@ class StrategyRunner(abc.ABC):
 
         friendly_cycle_duration = cycle_duration.value if cycle_duration else "-"
         with self.timed_task_context_manager("strategy_tick", clock=strategy_cycle_timestamp, cycle_duration=friendly_cycle_duration):
-
-            routing_state, pricing_model, valuation_model = self.setup_routing(universe)
-            assert pricing_model, "Routing did not provide pricing_model"
+            
+            if self.execution_context.mode == ExecutionMode.backtesting:
+                routing_state, pricing_model, valuation_model = self.setup_routing(universe)
+                assert pricing_model, "Routing did not provide pricing_model"
+            else:
+                routing_data = self.setup_routing(universe)
 
             # Watch incoming deposits
             with self.timed_task_context_manager("sync_portfolio"):
@@ -399,7 +417,16 @@ class StrategyRunner(abc.ABC):
 
             # Run the strategy cycle
             with self.timed_task_context_manager("decide_trades"):
-                rebalance_trades = self.on_clock(strategy_cycle_timestamp, universe, pricing_model, state, debug_details)
+                
+                if self.execution_context.mode == ExecutionMode.backtesting:
+                    assert len(self.routing_models) == 1, "Backtesting only supports one routing model"
+                    rebalance_trades = self.on_clock(strategy_cycle_timestamp, universe, pricing_model, state, debug_details, self.routing_models[0])
+                else:
+                    pricing_models = [item["pricing_model"] for item in routing_data]
+                    routing_models = [item["routing_model"] for item in routing_data]
+
+                    rebalance_trades = self.on_clock(strategy_cycle_timestamp, universe, pricing_models, state, debug_details, routing_models)
+                
                 assert type(rebalance_trades) == list
                 debug_details["rebalance_trades"] = rebalance_trades
 

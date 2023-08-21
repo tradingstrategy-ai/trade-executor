@@ -299,13 +299,15 @@ class EthereumExecutionModel(ExecutionModel):
                        ts: datetime.datetime,
                        state: State,
                        trades: List[TradeExecution],
-                       routing_model: UniswapV2SimpleRoutingModel | UniswapV3SimpleRoutingModel,
-                       routing_state: UniswapV2RoutingState | UniswapV3RoutingState,
+                       routing_models: list[UniswapV2SimpleRoutingModel | UniswapV3SimpleRoutingModel],
+                       routing_states: list[UniswapV2RoutingState | UniswapV3RoutingState],
                        check_balances=False):
         """Execute the trades determined by the algo on a designed Uniswap v2 instance.
 
         :return: Tuple List of succeeded trades, List of failed trades
         """
+
+        assert len(routing_models) == len(routing_states), "Routing models and states must be the same length"
 
         state.start_trades(datetime.datetime.utcnow(), trades, max_slippage=self.max_slippage)
 
@@ -313,20 +315,23 @@ class EthereumExecutionModel(ExecutionModel):
             if not self.mainnet_fork:
                 assert self.confirmation_block_count > 0, f"confirmation_block_count set to {self.confirmation_block_count} "
 
-        routing_model.setup_trades(
-            routing_state,
-            trades,
-            check_balances=check_balances)
 
-        self.broadcast_and_resolve(
-            state,
-            trades,
-            confirmation_timeout=self.confirmation_timeout,
-            confirmation_block_count=self.confirmation_block_count,
-        )
+        for routing_model, routing_state in zip(routing_models, routing_states):
 
-        # Clean up failed trades
-        freeze_position_on_failed_trade(ts, state, trades)
+            routing_model.setup_trades(
+                routing_state,
+                trades,
+                check_balances=check_balances)
+
+            self.broadcast_and_resolve(
+                state,
+                trades,
+                confirmation_timeout=self.confirmation_timeout,
+                confirmation_block_count=self.confirmation_block_count,
+            )
+
+            # Clean up failed trades
+            freeze_position_on_failed_trade(ts, state, trades)
 
     def get_routing_state_details(self) -> RoutingStateDetails:
         return {

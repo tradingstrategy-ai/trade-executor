@@ -370,10 +370,7 @@ class EthereumRoutingModel(RoutingModel):
     def create_routing_state(self,
                              universe: StrategyExecutionUniverse,
                              execution_details: dict,
-                             Routing_State: Type[EthereumRoutingState] 
-                             # Doesn't get full typing
-                             # Type[UniswapV2RoutingState] | Type[UniswapV3RoutingState]
-                             # throws error due to circular import
+                             Routing_State: EthereumRoutingState 
                              ) -> EthereumRoutingState:
         """Create a new routing state for this cycle.
 

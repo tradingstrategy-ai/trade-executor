@@ -16,6 +16,7 @@ from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniv
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.runner import StrategyRunner, PreflightCheckFailed
+from tradeexecutor.strategy.routing import RoutingModel
 from tradeexecutor.visual.image_output import render_plotly_figure_as_image_file
 from tradeexecutor.visual.strategy_state import draw_single_pair_strategy_state, draw_multi_pair_strategy_state
 from tradeexecutor.state.visualisation import Visualisation
@@ -43,9 +44,11 @@ class PandasTraderRunner(StrategyRunner):
     def on_clock(self,
                  clock: datetime.datetime,
                  executor_universe: TradingStrategyUniverse,
-                 pricing_model: PricingModel,
+                 pricing_models: PricingModel | list[PricingModel],
                  state: State,
-                 debug_details: dict) -> List[TradeExecution]:
+                 debug_details: dict,
+                 routing_models: RoutingModel | list[RoutingModel],
+            ) -> List[TradeExecution]:
         """Run one strategy tick."""
 
         assert isinstance(executor_universe, TradingStrategyUniverse)
@@ -63,8 +66,9 @@ class PandasTraderRunner(StrategyRunner):
             timestamp=pd_timestamp,
             universe=universe,
             state=state,
-            pricing_model=pricing_model,
+            pricing_models=pricing_models,
             cycle_debug_data=debug_details,
+            routing_models=routing_models,
         )
 
     def pretick_check(self, ts: datetime.datetime, universe: TradingStrategyUniverse):
