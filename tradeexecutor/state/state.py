@@ -309,6 +309,128 @@ class State:
 
         return position, trade, created
 
+    def create_short(
+            self,
+            leverage: Optional[float] = None,
+            strategy_cycle_at: datetime.datetime,
+            pair: TradingPairIdentifier,
+            quantity: Optional[Decimal],
+            reserve: Optional[Decimal],
+            assumed_price: USDollarPrice,
+            trade_type: TradeType,
+            reserve_currency: AssetIdentifier,
+            reserve_currency_price: USDollarPrice,
+            notes: Optional[str] = None,
+            pair_fee: Optional[float] = None,
+            lp_fees_estimated: Optional[USDollarAmount] = None,
+            planned_mid_price: Optional[USDollarPrice] = None,
+            price_structure: Optional[TradePricing] = None,
+            position: Optional[TradingPosition] = None,
+            slippage_tolerance: Optional[float] = None,
+    ) -> Tuple[TradingPosition, TradeExecution, bool]:
+        """Open a short position.
+
+        If there is an existing short position increase/reduce it.
+
+        :param strategy_cycle_at:
+            The strategy cycle timestamp for which this trade was executed.
+
+        :param trade_id:
+            Trade id allocated by the portfolio
+
+        :param quantity:
+            How many units this trade does.
+
+            Must be negative as we are selling.
+
+        :param assumed_price:
+            The planned execution price.
+
+            This is the assumed sell price of the asset.
+
+        :param reserve_currency:
+            Which portfolio reserve we use for this trade.
+
+         :param reserve_currency_price:
+            If the quote token is not USD, then the exchange rate between USD and quote token we assume we have.
+
+            Actual exchange rate may depend on the execution.
+
+        :param notes:
+            Any human-readable remarks we want to tell about this trade.
+
+        :param pair_fee:
+            The fee tier from the trading pair / overriden fee.
+
+            This is for selling the borrowed asset.
+
+        :param lp_fees_estimated:
+            HOw much we estimate to pay in LP fees (dollar).
+
+            This is for selling the borrowed asset.
+
+        :param planned_mid_price:
+            What was the mid-price of the trading pair when we started to plan this trade.
+
+            This is for selling the borrowed asset.
+
+        :param reserve:
+            How many reserve units this trade produces/consumes.
+
+            I.e. dollar amount for buys/sells.
+
+        :param price_structure:
+            The full planned price structure for this trade.
+
+            The state of the market at the time of planning the trade,
+            and what fees we assumed we are going to get.
+
+        :param position:
+            Override the position for the trade.
+
+            - Use for close trades (you need to explicitly tell which position to close
+              as there might be two positions with the same pair)
+
+            - Use for repair trades.
+
+        :param notes:
+            Human-readable string to show on the trade.
+
+        :param slippage_tolerance:
+            Slippage tolerance for this trade.
+
+            See :py:attr:`tradeexecutor.state.trade.TradeExecution.slippage_tolerance` for details.
+
+        :return:
+            Tuple of entries
+
+            - Trade position (old/new)
+
+            - New trade
+
+            - True if a a new position was opened
+        """
+
+        assert quantity < 0, "Quantity must be negative for shorts"
+
+        return self.create_trade(
+            strategy_cycle_at=strategy_cycle_at,
+            pair=pair,
+            quantity=quantity,
+            reserve=reserve,
+            assumed_price=assumed_price,
+            trade_type=TradeType.lending_protocol_short,
+            reserve_currency=reserve_currency,
+            reserve_currency_price=reserve_currency_price,
+            notes=notes,
+            pair_fee=pair_fee,
+            lp_fees_estimated=lp_fees_estimated,
+            planned_mid_price=planned_mid_price,
+            price_structure=price_structure,
+            position=position,
+            slippage_tolerance=slippage_tolerance,
+        )
+
     def start_execution(self, ts: datetime.datetime, trade: TradeExecution, txid: str, nonce: int):
         """Update our balances and mark the trade execution as started.
 

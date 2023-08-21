@@ -497,6 +497,8 @@ class Portfolio:
 
         self.next_trade_id += 1
 
+        # Do not allow open positions that are so small
+        # we cannot track
         dust_epsilon = get_dust_epsilon_for_pair(trade.pair)
         if abs(trade.planned_quantity) <= dust_epsilon:
             raise TooSmallTrade(f"Trade cannot be this small\n"

@@ -57,6 +57,10 @@ class TradeType(enum.Enum):
     #:
     supply_credit = "supply_credit"
 
+    #: Short the asset using a lending protocol.
+    #:
+    lending_protocol_short = "lending_protocol_short"
+
 
 class TradeStatus(enum.Enum):
 

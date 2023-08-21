@@ -2,6 +2,7 @@
 
 How executor internally knows how to connect trading pairs in data and in execution environment (on-chain).
 """
+import datetime
 import enum
 from dataclasses import dataclass
 from decimal import Decimal
@@ -12,7 +13,8 @@ from eth_typing import HexAddress
 from tradingstrategy.chain import ChainId
 from web3 import Web3
 
-from tradeexecutor.state.types import JSONHexAddress
+from tradeexecutor.state.types import JSONHexAddress, USDollarAmount, LeverageMultiplier
+from tradingstrategy.lending import LendingProtocolType
 from tradingstrategy.stablecoin import is_stablecoin_like
 
 
@@ -132,6 +134,10 @@ class TradingPairKind(enum.Enum):
     def is_interest_accruing(self) -> bool:
         return self != TradingPairKind.spot_market_hold
 
+    def is_shorting(self) -> bool:
+        """This trading pair is for shorting."""
+        return self == TradingPairKind.lending_protocol_short
+
 
 @dataclass_json
 @dataclass(slots=True)
@@ -219,6 +225,17 @@ class TradingPairIdentifier:
     #:
     kind: TradingPairKind = TradingPairKind.spot_market_hold
 
+    #: For longs/short on a lending protocol.
+    #:
+    #: What is the colleteral factor of base asset.
+    #:
+    #: E.g. you can borrow 800 USD worth of WETH against 1000 USDC,
+    #: collateral factor is
+    #:
+    #: See `1delta documentation <https://docs.1delta.io/lenders/metrics>`__.
+    #:
+    collateral_factor: Optional[float] = None
+
     def __post_init__(self):
         assert self.base.chain_id == self.quote.chain_id, "Cross-chain trading pairs are not possible"
 
@@ -269,6 +286,12 @@ class TradingPairIdentifier:
         """Same as get_ticker()."""
         return self.get_ticker()
 
+    def get_lending_protocol(self) -> LendingProtocolType | None:
+        """Is this pair on a particular lending protocol."""
+        if self.kind in (TradingPairKind.lending_protocol_short, TradingPairKind.lending_protocol_long):
+            return LendingProtocolType.aave_v3
+        return None
+
     def has_complete_info(self) -> bool:
         """Check if the pair has good information.
 
@@ -298,3 +321,56 @@ class TradingPairIdentifier:
         """
         assert self.reverse_token_order is not None, f"reverse_token_order not set for: {self}"
         return self.reverse_token_order
+
+    def get_max_leverage_at_open(self) -> LeverageMultiplier:
+        """Return the max leverage we can set for this position at open.
+
+        E.g. for AAVE WETH short this is 0.8 because we can supply
+        1000 USDC to get 800 USDC loan. This gives us the health factor
+        of 1.13 on open.
+
+        Max Leverage in pair: l=1/(1-cfBuy); cfBuy = collateralFacor of Buy Asset
+
+        - `See 1delta documentation <https://docs.1delta.io/lenders/metrics>`__.
+        """
+        assert self.kind in (TradingPairKind.lending_protocol_short, TradingPairKind.lending_protocol_long)
+        return 1 / (1 - self.collateral_factor)
+
+
+@dataclass_json
+@dataclass
+class AssetWithTrackedValue:
+    """Track one asset with a value."""
+
+    #: Asset we are tracking
+    #:
+    #: The underlying asset like USDC, WETH, etc.
+    #:
+    asset: AssetIdentifier
+
+    #: How many token units we have.
+    #:
+    #:
+    quantity: Decimal
+
+    #: What was the last known USD price of a single unit of quantity
+    last_usd_price: float
+
+    #: When the last pricing happened
+    last_pricing_at: datetime.datetime
+
+    #: The token that is a derivate for a loan.
+    #:
+    #: It has a dynamic balanceOf()
+    #:
+    #: For aUSDC credit this is USDC.
+    #: For vWETH short this is WETH.
+    #:
+    presentation: AssetIdentifier | None = None
+
+    def get_usd_value(self) -> USDollarAmount:
+        """Rrturn the approximate value of this tracked asset.
+
+        Priced in the `last_usd_price`
+        """
+        return float(self.quantity) * self.last_usd_price
