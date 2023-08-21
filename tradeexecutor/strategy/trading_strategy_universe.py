@@ -1369,12 +1369,16 @@ def load_partial_data(
 
     assert start_at and end_at, "Current implementatation is designed for backtest use only and needs both start_at and end_at timestamps"
 
+    if len(pairs) >= 25:
+        logger.warning("This method is designed to load data for low number or trading pairs, got %d", len(pairs))
+
     with execution_context.timed_task_context_manager("load_partial_pair_data", time_bucket=time_bucket.value):
 
         exchange_universe = client.fetch_exchange_universe()
 
         pairs_df = client.fetch_pair_universe().to_pandas()
-        pair_universe = PandasPairUniverse(pairs_df)
+
+        pair_universe = PandasPairUniverse(pairs_df, build_index=False)
 
         # Filter pairs first and then rest by the resolved pairs
         our_pairs = {pair_universe.get_pair_by_human_description(exchange_universe, d) for d in pairs}
