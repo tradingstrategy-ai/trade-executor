@@ -4,12 +4,12 @@
 import os
 import logging
 import datetime
+import itertools
 from _decimal import Decimal
 from unittest.mock import patch
-
-import pytest
 from typing import List, Dict
 
+import pytest
 import pandas as pd
 
 from tradingstrategy.client import Client
@@ -38,8 +38,12 @@ pytestmark = pytest.mark.skipif(os.environ.get("TRADING_STRATEGY_API_KEY") is No
 def interest_rate_mock():
     """Patch backtest sync to use fixed interest rate for every call"""
 
-    daily_apr = 0.0001
-    with patch("tradeexecutor.backtest.backtest_sync.BacktestSyncModel.calculate_accrued_interest", return_value=daily_apr):
+    daily_interest = Decimal("1")
+    with patch(
+        "tradeexecutor.backtest.backtest_sync.BacktestSyncModel.calculate_accrued_interest",
+        # we need to produce accured interest, so it's increasing daily
+        side_effect=[i * daily_interest for i in range(1, 100)]
+    ):
         yield
 
 
@@ -76,7 +80,7 @@ def create_trading_universe(
     return strategy_universe
 
 
-def test_backtest_open_only_credit_supply_real_data(
+def test_backtest_open_only_credit_supply_mock(
         logger: logging.Logger,
         persistent_test_client: Client,
         interest_rate_mock,
@@ -126,13 +130,13 @@ def test_backtest_open_only_credit_supply_real_data(
     assert len(credit_position.balance_updates) == 30
 
     assert credit_position.interest.opening_amount == Decimal("10000.00")
-    assert credit_position.get_accrued_interest() == pytest.approx(30.043540627415943)
-    assert credit_position.get_quantity() == pytest.approx(Decimal('10030.043540627415943'))
-    assert credit_position.get_value() == pytest.approx(10030.043540627415943)
-    assert portfolio.get_total_equity() == pytest.approx(10030.043540627415943)
+    assert credit_position.get_accrued_interest() == pytest.approx(30)
+    assert credit_position.get_quantity() == pytest.approx(Decimal('10030'))
+    assert credit_position.get_value() == pytest.approx(10030)
+    assert portfolio.get_total_equity() == pytest.approx(10030)
 
 
-def test_backtest_open_and_close_credit_supply_real_data(
+def test_backtest_open_and_close_credit_supply_mock(
         logger: logging.Logger,
         persistent_test_client: Client,
         interest_rate_mock,
@@ -189,12 +193,12 @@ def test_backtest_open_and_close_credit_supply_real_data(
     assert credit_position.is_credit_supply()
     assert len(credit_position.balance_updates) == 14
     assert credit_position.interest.opening_amount == Decimal("10000.00")
-    assert credit_position.calculate_accrued_interest_quantity() == Decimal('14.00910364099965634665267')  # Non-denormalised interest
-    assert credit_position.interest.last_atoken_amount == Decimal('10014.00910364099965634665267')
-    assert credit_position.interest.last_accrued_interest == Decimal('14.00910364099965634665267')
+    assert credit_position.calculate_accrued_interest_quantity() == Decimal('14')  # Non-denormalised interest
+    assert credit_position.interest.last_atoken_amount == Decimal('10014')
+    assert credit_position.interest.last_accrued_interest == Decimal('14')
 
-    assert credit_position.get_accrued_interest() == pytest.approx(14.00910364099965634665267)  # Denormalised interest
+    assert credit_position.get_accrued_interest() == pytest.approx(14)  # Denormalised interest
     assert credit_position.get_quantity() == Decimal('0')  # Closed positions do not have quantity left
     assert credit_position.get_value() == pytest.approx(0)  # Closed positions do not have value left
 
-    assert portfolio.get_total_equity() == pytest.approx(10014.00910364099965634665267)
+    assert portfolio.get_total_equity() == pytest.approx(10014)

@@ -41,7 +41,7 @@ def update_credit_supply_interest(
     gained_interest = new_atoken_amount - old_balance
     usd_value = float(new_atoken_amount)
 
-    assert 0 < gained_interest < 999, f"Unlikely gained_interest: {gained_interest}, old quantity: {position.quantity}, new quantity: {new_atoken_amount}"
+    assert 0 < gained_interest < 999, f"Unlikely gained_interest: {gained_interest}, old quantity: {old_balance}, new quantity: {new_atoken_amount}"
 
     evt = BalanceUpdate(
         balance_update_id=event_id,

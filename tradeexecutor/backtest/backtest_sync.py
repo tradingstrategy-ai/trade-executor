@@ -2,8 +2,9 @@ import logging
 import datetime
 from dataclasses import dataclass
 from decimal import Decimal
-from itertools import chain
 from typing import List, Optional
+
+from eth_defi.aave_v3.rates import SECONDS_PER_YEAR
 
 from tradeexecutor.backtest.simulated_wallet import SimulatedWallet
 from tradeexecutor.ethereum.wallet import ReserveUpdateEvent
@@ -15,7 +16,6 @@ from tradeexecutor.state.types import JSONHexAddress
 from tradeexecutor.strategy.interest import update_credit_supply_interest
 from tradeexecutor.strategy.sync_model import SyncModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
-
 from tradeexecutor.testing.dummy_wallet import apply_sync_events
 
 
@@ -130,19 +130,36 @@ class BacktestSyncModel(SyncModel):
         """Backtesting does not need to care about how to build blockchain transactions."""
 
     def calculate_accrued_interest(
-            self,
-            universe: TradingStrategyUniverse,
-            position: TradingPosition,
-    ) -> float:
-        """Calculate accrued interest relative to 1.0 base units."""
-        raise NotImplementedError()
+        self,
+        universe: TradingStrategyUniverse,
+        position: TradingPosition,
+        timestamp: datetime.datetime,
+    ) -> Decimal:
+        """Calculate accrued interest of a position."""
+        # get relevant candles for the position period from opened until now
+        df = universe.universe.lending_candles.supply_apr.df.copy()
+        df = df[
+            (df["timestamp"] >= position.opened_at)
+            & (df["timestamp"] <= timestamp)
+        ]
 
-    def sync_credit_supply(self,
-                           timestamp: datetime.datetime,
-                           state: State,
-                           universe: TradingStrategyUniverse,
-                           credit_positions: List[TradingPosition],
-                           ) -> List[BalanceUpdate]:
+        # get average APR from high and low
+        df["avg"] = df[["high", "low"]].mean(axis=1)
+        avg_apr = Decimal(df["avg"].mean() / 100)
+
+        opening_amount = Decimal(position.interest.opening_amount)
+        duration = Decimal((timestamp - position.opened_at).total_seconds())
+        accrued_interest_estimation = opening_amount * avg_apr * duration / SECONDS_PER_YEAR
+
+        return accrued_interest_estimation
+
+    def sync_credit_supply(
+        self,
+        timestamp: datetime.datetime,
+        state: State,
+        universe: TradingStrategyUniverse,
+        credit_positions: List[TradingPosition],
+    ) -> List[BalanceUpdate]:
 
         assert universe.has_lending_data(), "Cannot update credit positions if no data is available"
 
@@ -151,12 +168,8 @@ class BacktestSyncModel(SyncModel):
 
             assert p.is_credit_supply()
 
-            accrued = self.calculate_accrued_interest(universe, p)
-
-            # TODO: replace with a real interest calculation,
-            # based on universe.lending_candles
-            old_amount = p.interest.last_atoken_amount
-            new_amount = old_amount * Decimal(1+accrued)
+            accrued = self.calculate_accrued_interest(universe, p, timestamp)
+            new_amount = Decimal(p.interest.opening_amount) + accrued
             evt = update_credit_supply_interest(
                 state,
                 p,
