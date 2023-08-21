@@ -73,3 +73,5 @@ confirmation_block_count = Option(2, envvar="CONFIRMATION_BLOCK_COUNT", help="Ho
 unit_testing = Option(False, "--unit-testing", envvar="UNIT_TESTING", help="The trade executor is called under the unit testing mode. No caches are purged.")
 
 pair: Optional[str] = Option(None, "--pair", envvar="PAIR", help="Must be specified for a multipair universe.")
+
+all_pairs: Optional[str] = Option(None, "--all-pairs", envvar="ALL_PAIRS", help="Whether to perform a test trade for each pair in the universe. If not given, then the pair option must be specified.")
