@@ -311,7 +311,6 @@ class State:
 
     def create_short(
             self,
-            leverage: Optional[float] = None,
             strategy_cycle_at: datetime.datetime,
             pair: TradingPairIdentifier,
             quantity: Optional[Decimal],
@@ -327,6 +326,7 @@ class State:
             price_structure: Optional[TradePricing] = None,
             position: Optional[TradingPosition] = None,
             slippage_tolerance: Optional[float] = None,
+            leverage: Optional[float] = None,
     ) -> Tuple[TradingPosition, TradeExecution, bool]:
         """Open a short position.
 

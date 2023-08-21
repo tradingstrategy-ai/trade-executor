@@ -864,3 +864,9 @@ class Portfolio:
         """Return currently open credit positions."""
         credit_positions = [p for p in chain(self.open_positions.values(), self.frozen_positions.values()) if p.is_credit_supply()]
         return credit_positions
+
+    def get_total_borrowed(self) -> USDollarAmount:
+        pass
+
+    def get_total_collateral(self) -> USDollarAmount:
+        pass

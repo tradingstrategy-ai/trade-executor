@@ -229,8 +229,12 @@ class TradingPairIdentifier:
     #:
     #: What is the colleteral factor of base asset.
     #:
+    #: Collateral factor ``cF``: Determines how much borrow capacity a trader has when depositing an asset.
+    #: Also described as Liquidation Threshold.
+    #:
     #: E.g. you can borrow 800 USD worth of WETH against 1000 USDC,
-    #: collateral factor is
+    #: collateral factor is 0.80. This is also presented
+    #: as Max LTV in Aave UI. Collateral factor 0.80 is 80% Max LTV (TODO: Verify).
     #:
     #: See `1delta documentation <https://docs.1delta.io/lenders/metrics>`__.
     #:
@@ -340,7 +344,15 @@ class TradingPairIdentifier:
 @dataclass_json
 @dataclass
 class AssetWithTrackedValue:
-    """Track one asset with a value."""
+    """Track one asset with a value.
+
+    - Track asset quantity \
+
+    - The asset can be vToken/aToken for interest based tracking,
+      in this case :py:attr:`presentation` is set
+
+    - Any tracked asset must get USD oracle price from somewhere
+    """
 
     #: Asset we are tracking
     #:

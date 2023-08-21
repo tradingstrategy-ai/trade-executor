@@ -10,7 +10,7 @@ import dataclasses_json
 from dataclasses_json import dataclass_json
 
 from tradeexecutor.state.identifier import AssetIdentifier, AssetWithTrackedValue
-from tradeexecutor.state.types import LeverageMultiplier
+from tradeexecutor.state.types import LeverageMultiplier, USDollarAmount
 
 #: Health Factor: hF=dC/d, if lower than 1, the account can be liquidated
 HealthFactor: TypeAlias = float
@@ -42,12 +42,19 @@ class Loan:
     #:
     borrowed: AssetWithTrackedValue
 
+    def get_nav(self) -> USDollarAmount:
+        """TODO: From 1delta terminology"""
+        return self.collateral.get_usd_value() - self.borrowed.get_usd_value()
+
     def get_leverage(self) -> LeverageMultiplier:
-        """How much leveraged is this loan."""
-        return self.borrowed.get_usd_value() / self.collateral.get_usd_value()
+        """TODO: From 1delta terminology"""
+        return self.collateral.get_usd_value() / self.get_nav()
+
+    def get_free_margin(self) -> USDollarAmount:
+        raise NotImplementedError()
 
     def get_health_factor(self) -> HealthFactor:
-        pass
+        raise NotImplementedError()
 
-    def get_value(self):
-        pass
+    def get_max_size(self) -> USDollarAmount:
+        raise NotImplementedError()

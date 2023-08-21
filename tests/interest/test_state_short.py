@@ -107,14 +107,13 @@ def test_open_short(
     assert weth_short_identifier.get_lending_protocol() == LendingProtocolType.aave_v3
     assert weth_short_identifier.base.token_symbol == "WETH"
     assert weth_short_identifier.quote.token_symbol == "USDC"
-    assert weth_short_identifier.get_max_leverage_at_open() == 1.00
+    assert weth_short_identifier.get_max_leverage_at_open() == 5.00
 
     trader = DummyTestTrader(state)
 
     # Take 1000 USDC reserves and open a ETH short using it.
     # We should get 800 USDC worth of ETH for this.
     short_position, trade, created = state.create_short(
-        leverage=0.8,
         strategy_cycle_at=datetime.datetime.utcnow(),
         pair=weth_short_identifier,
         quantity=None,
@@ -123,6 +122,7 @@ def test_open_short(
         trade_type=TradeType.lending_protocol_short,
         reserve_currency=usdc,
         reserve_currency_price=1.0,
+        leverage=0.8,
     )
 
     trader.set_perfectly_executed(trade)
