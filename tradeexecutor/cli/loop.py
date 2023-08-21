@@ -592,13 +592,13 @@ class ExecutionLoop:
 
         return trades
 
-    def warm_up_backtest(self):
+    def warm_up_backtest(self) -> TradingStrategyUniverse:
         """Load backtesting trading universe.
 
         Display progress bars for data downloads.
         """
         logger.info("Warming up backesting, universe options are %s", self.universe_options)
-        self.universe_model.preload_universe(self.universe_options, self.execution_context)
+        return self.universe_model.preload_universe(self.universe_options, self.execution_context)
 
     def warm_up_live_trading(self) -> TradingStrategyUniverse:
         """Load live trading universe.
@@ -709,7 +709,7 @@ class ExecutionLoop:
 
         seconds = int(range.total_seconds())
 
-        self.warm_up_backtest()
+        universe = self.warm_up_backtest()
 
         # Allow backtest step to be overwritten from the command line
         if self.universe_options.candle_time_bucket_override:
