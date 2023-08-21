@@ -1378,6 +1378,11 @@ def load_partial_data(
 
         pairs_df = client.fetch_pair_universe().to_pandas()
 
+        # We do not build the pair index here,
+        # as we assume we filter out the pairs down a bit,
+        # and then recontruct a new pair universe with only few selected pairs with full indexes
+        # later. The whole purpose of this here is to
+        # go around lack of good look up functions of raw DataFrame pairs data.
         pair_universe = PandasPairUniverse(pairs_df, build_index=False)
 
         # Filter pairs first and then rest by the resolved pairs
