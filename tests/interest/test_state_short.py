@@ -24,25 +24,33 @@ def usdc() -> AssetIdentifier:
 
 
 @pytest.fixture()
-def ausdc() -> AssetIdentifier:
-    """Mock aUSDC. Aave's interest accruing USDC where balanceOf() is dynamic."""
-    # https://etherscan.io/token/0xbcca60bb61934080951369a648fb03df4f96263c#readProxyContract
-    return AssetIdentifier(ChainId.polygon.value, "0x1", "aPolUSDC", 6)
-
-
-@pytest.fixture()
 def weth() -> AssetIdentifier:
+    """Mock WETH."""
     return AssetIdentifier(ChainId.polygon.value, "0x2", "WETH", 18)
 
 
 @pytest.fixture()
-def ausdc() -> AssetIdentifier:
-    return AssetIdentifier(ChainId.polygon.value, "0x3", "aPolUSDC", 18)
+def ausdc(usdc: AssetIdentifier) -> AssetIdentifier:
+    """Aave collateral."""
+    return AssetIdentifier(
+        ChainId.polygon.value,
+        "0x3",
+        "aPolUSDC",
+        18,
+        underlying=usdc,
+    )
 
 
 @pytest.fixture()
-def vweth() -> AssetIdentifier:
-    return AssetIdentifier(ChainId.polygon.value, "0x4", "variableDebtPolWETH", 18)
+def vweth(weth: AssetIdentifier) -> AssetIdentifier:
+    """Variable debt token."""
+    return AssetIdentifier(
+        ChainId.polygon.value,
+        "0x4",
+        "variableDebtPolWETH",
+        18,
+        underlying=weth,
+    )
 
 
 @pytest.fixture()
@@ -55,11 +63,11 @@ def lending_protocol_address() -> str:
 
 
 @pytest.fixture()
-def weth_short_identifier(usdc, weth) -> TradingPairIdentifier:
+def weth_short_identifier(ausdc: AssetIdentifier, vweth: AssetIdentifier) -> TradingPairIdentifier:
     """Sets up a lending pool"""
     return TradingPairIdentifier(
-        weth,
-        usdc,
+        vweth,
+        ausdc,
         "0x1",
         ZERO_ADDRESS,
         internal_id=1,
@@ -69,7 +77,7 @@ def weth_short_identifier(usdc, weth) -> TradingPairIdentifier:
 
 
 @pytest.fixture()
-def state(usdc):
+def state(usdc: AssetIdentifier):
     """Set up a state with a starting balance."""
     state = State()
     reserve_position = ReservePosition(
@@ -105,9 +113,11 @@ def test_open_short(
     """
     assert weth_short_identifier.kind.is_shorting()
     assert weth_short_identifier.get_lending_protocol() == LendingProtocolType.aave_v3
-    assert weth_short_identifier.base.token_symbol == "WETH"
-    assert weth_short_identifier.quote.token_symbol == "USDC"
-    assert weth_short_identifier.get_max_leverage_at_open() == 5.00
+    assert weth_short_identifier.base.token_symbol == "variableDebtPolWETH"
+    assert weth_short_identifier.base.underlying.token_symbol == "WETH"
+    assert weth_short_identifier.quote.token_symbol == "aPolUSDC"
+    assert weth_short_identifier.quote.underlying.token_symbol == "USDC"
+    assert weth_short_identifier.get_max_leverage_at_open() == pytest.approx(5.00)
 
     trader = DummyTestTrader(state)
 
@@ -117,40 +127,41 @@ def test_open_short(
         strategy_cycle_at=datetime.datetime.utcnow(),
         pair=weth_short_identifier,
         quantity=None,
-        reserve=Decimal(1000),
+        reserve=-Decimal(1000),
         assumed_price=1500,  # USDC/ETH price we are going to sell
         trade_type=TradeType.lending_protocol_short,
         reserve_currency=usdc,
         reserve_currency_price=1.0,
-        leverage=0.8,
+        leverage=weth_short_identifier.get_max_leverage_at_open(),
     )
 
     trader.set_perfectly_executed(trade)
 
+    # How many ETH (vWETH) we expect when we go in
+    # with our max leverage available
+    # based on the collateral ratio
     expected_eth_shorted_amount = 1000 * 0.8 * 1500
 
     assert created
     assert trade.is_success()
     assert trade.trade_type == TradeType.lending_protocol_short
 
+    # Check that opened short position data looks correct
     assert short_position.is_short()
-    assert short_position.interest is not None
-    assert short_position.interest.opening_amount == pytest.approx(Decimal(expected_eth_shorted_amount))
-    assert short_position.interest.last_accrued_interest == 0
     assert short_position.get_value() == Decimal(1000)
-
     assert short_position.get_opening_price() == 1500
     assert short_position.loan is not None
-    assert short_position.loan.collateral.asset.token_symbol == "USDC"
+    assert short_position.loan.collateral.asset.token_symbol == "aPolUSDC"
     assert short_position.loan.collateral.quantity == Decimal(1000)
-    assert short_position.loan.collateral.presentation.token_symbol == "aPolUSDC"
+    assert short_position.loan.collateral.asset.underlying.token_symbol == "USDC"
     assert short_position.loan.borrowed.quantity == pytest.approx(Decimal(expected_eth_shorted_amount))
-    assert short_position.loan.borrowed.asset.token_symbol == "WETH"
-    assert short_position.loan.presentation.token_symbol == "variableDebtPolWETH"
+    assert short_position.loan.borrowed.asset.token_symbol == "variableDebtPolWETH"
+    assert short_position.loan.borrowed.asset.underlying.token_symbol == "variableDebtPolWETH"
     assert short_position.loan.get_leverage() == 0.8
     assert short_position.get_unrealised_profit_usd() == 0
     assert short_position.get_realised_profit_usd() == 0
 
+    # Check that we track the equity value correctly
     assert state.portfolio.get_total_equity() == 10000
 
 

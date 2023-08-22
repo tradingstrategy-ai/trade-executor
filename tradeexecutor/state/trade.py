@@ -61,6 +61,10 @@ class TradeType(enum.Enum):
     #:
     lending_protocol_short = "lending_protocol_short"
 
+    #: Long the asset using a lending protocol.
+    #:
+    lending_protocol_long = "lending_protocol_long"
+
 
 class TradeStatus(enum.Enum):
 
@@ -399,7 +403,9 @@ class TradeExecution:
         assert abs(self.planned_quantity) > QUANTITY_EPSILON, f"We got a planned quantity that does not look like a good number: {self.planned_quantity}, trade is: {self}"
 
         assert self.planned_price > 0
-        assert self.planned_reserve >= 0
+        if not self.is_leverage_short():
+            assert self.planned_reserve >= 0, "Spot market trades must have planned reserve position"
+
         assert type(self.planned_price) in {float, int}, f"Price was given as {self.planned_price.__class__}: {self.planned_price}"
         assert self.opened_at.tzinfo is None, f"We got a datetime {self.opened_at} with tzinfo {self.opened_at.tzinfo}"
         
@@ -570,6 +576,22 @@ class TradeExecution:
         This is a virtual trade made to have the
         """
         self.balance_update_id is not None
+
+    def is_leverage(self) -> bool:
+        """This is margined trade."""
+        return self.pair.kind.is_leverage()
+
+    def is_spot(self) -> bool:
+        """This is a spot marget trade."""
+        return not self.is_leverage()
+
+    def is_leverage_short(self) -> bool:
+        """This is margined trade."""
+        return self.pair.kind.is_shorting()
+
+    def is_leverage_long(self) -> bool:
+        """This is margined trade."""
+        return self.pair.kind.is_longing()
 
     def get_input_asset(self) -> AssetIdentifier:
         """How we fund this trade."""

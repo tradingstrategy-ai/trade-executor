@@ -48,6 +48,9 @@ class AssetIdentifier:
     #: Info page URL for this asset
     info_url: Optional[str] = None
 
+    #: The underlying asset for aTokens, vTokens and such
+    underlying: Optional["AssetIdentifier"] = None
+
     def __str__(self):
         return f"<{self.token_symbol} at {self.address}>"
 
@@ -132,11 +135,20 @@ class TradingPairKind(enum.Enum):
     lending_protocol_short = "lending_protocol_short"
 
     def is_interest_accruing(self) -> bool:
-        return self != TradingPairKind.spot_market_hold
+        """Do base or quote or both gain interest during when the position is open."""
+        return self in (TradingPairKind.lending_protocol_short, TradingPairKind.lending_protocol_long, TradingPairKind.credit_supply)
 
     def is_shorting(self) -> bool:
         """This trading pair is for shorting."""
         return self == TradingPairKind.lending_protocol_short
+
+    def is_longing(self) -> bool:
+        """This trading pair is for shorting."""
+        return self == TradingPairKind.lending_protocol_long
+
+    def is_leverage(self) -> bool:
+        """This is a leverage trade on a lending protocol."""
+        return self.is_shorting() or self.is_longing()
 
 
 @dataclass_json
@@ -252,7 +264,8 @@ class TradingPairIdentifier:
 
     def __repr__(self):
         fee = self.fee or 0
-        return f"<Pair {self.base.token_symbol}-{self.quote.token_symbol} at {self.pool_address} ({fee * 100:.4f}% fee) on exchange {self.exchange_address}>"
+        type_name = self.kind.name if self.kind else "spot"
+        return f"<Pair {self.base.token_symbol}-{self.quote.token_symbol} {type_name} at {self.pool_address} ({fee * 100:.4f}% fee) on exchange {self.exchange_address}>"
 
     def __hash__(self):
         assert self.internal_id, "Internal id needed to be hashable"

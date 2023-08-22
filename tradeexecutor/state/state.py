@@ -411,8 +411,6 @@ class State:
             - True if a a new position was opened
         """
 
-        assert quantity < 0, "Quantity must be negative for shorts"
-
         return self.create_trade(
             strategy_cycle_at=strategy_cycle_at,
             pair=pair,

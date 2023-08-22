@@ -18,7 +18,7 @@ from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifie
 from tradeexecutor.state.interest import Interest
 from tradeexecutor.state.trade import TradeType, QUANTITY_EPSILON
 from tradeexecutor.state.trade import TradeExecution
-from tradeexecutor.state.types import USDollarAmount, BPS, USDollarPrice, Percent
+from tradeexecutor.state.types import USDollarAmount, BPS, USDollarPrice, Percent, LeverageMultiplier
 from tradeexecutor.strategy.dust import get_dust_epsilon_for_pair
 from tradeexecutor.strategy.trade_pricing import TradePricing
 from tradeexecutor.utils.accuracy import sum_decimal
@@ -568,6 +568,7 @@ class TradingPosition(GenericPosition):
                    price_structure: Optional[TradePricing] = None,
                    slippage_tolerance: Optional[float] = None,
                    portfolio_value_at_creation: Optional[USDollarAmount] = None,
+                   leverage: Optional[LeverageMultiplier]=None,
                    ) -> TradeExecution:
         """Open a new trade on position.
 
@@ -646,12 +647,17 @@ class TradingPosition(GenericPosition):
         if strategy_cycle_at is not None:
             assert isinstance(strategy_cycle_at, datetime.datetime)
 
-        if reserve is not None:
-            planned_reserve = reserve
-            planned_quantity = reserve / Decimal(assumed_price)
+        if leverage:
+            # Set lending market estimated quantities
+            raise NotImplementedError()
         else:
-            planned_quantity = quantity
-            planned_reserve = abs(quantity * Decimal(assumed_price))
+            # Set spot market estimated quantities
+            if reserve is not None:
+                planned_reserve = reserve
+                planned_quantity = reserve / Decimal(assumed_price)
+            else:
+                planned_quantity = quantity
+                planned_reserve = abs(quantity * Decimal(assumed_price))
 
         # Validate there is correlation
         # between the trade type and underlying trading pair identifier
@@ -661,6 +667,10 @@ class TradingPosition(GenericPosition):
                 assert pair.kind in (TradingPairKind.spot_market_hold,)
             case TradeType.supply_credit:
                 assert pair.kind == TradingPairKind.credit_supply
+            case TradeType.lending_protocol_short:
+                assert pair.kind == TradingPairKind.lending_protocol_short
+            case TradeType.lending_protocol_long:
+                assert pair.kind == TradingPairKind.lending_protocol_long
             case _:
                 raise NotImplementedError(f"Cannot deal with {trade_type}")
 
@@ -686,18 +696,21 @@ class TradingPosition(GenericPosition):
 
         # Initialise interest tracking data structure
         if pair.kind.is_interest_accruing():
-            assert pair.kind == TradingPairKind.credit_supply, "Only credit supply supported for now"
-            if self.interest is None:
-                assert trade.is_buy(), "Opening credit position is modelled as buy"
-                self.interest = Interest(
-                    opening_amount=planned_reserve,
-                    last_updated_at=datetime.datetime.utcnow(),
-                    last_event_at=datetime.datetime.utcnow(),
-                    last_accrued_interest=Decimal(0),
-                    last_atoken_amount=planned_reserve,
-                )
+            if pair.kind == TradingPairKind.credit_supply:
+                assert pair.kind == TradingPairKind.credit_supply, "Only credit supply supported for now"
+                if self.interest is None:
+                    assert trade.is_buy(), "Opening credit position is modelled as buy"
+                    self.interest = Interest(
+                        opening_amount=planned_reserve,
+                        last_updated_at=datetime.datetime.utcnow(),
+                        last_event_at=datetime.datetime.utcnow(),
+                        last_accrued_interest=Decimal(0),
+                        last_atoken_amount=planned_reserve,
+                    )
+            elif pair.kind.is_leverage():
+                raise NotImplementedError()
             else:
-                pass
+                raise NotImplementedError(f"Don't know how to deal with {pair}")
 
         return trade
 
