@@ -157,7 +157,7 @@ class UniswapV2RoutingState(EthereumRoutingState):
             uniswap.router,
             bound_swap_func,
             self.swap_gas_limit,
-            asset_deltas
+            asset_deltas=asset_deltas
         )
         return [tx]
 
