@@ -25,6 +25,7 @@ from ...strategy.universe_model import UniverseOptions
 from ...utils.timer import timed_task
 from tradeexecutor.cli.commands import shared_options
 from tradingstrategy.chain import ChainId
+from tradingstrategy.pair import DEXPair
 
 
 @app.command()
@@ -62,6 +63,7 @@ def perform_test_trade(
 
     # for multipair strategies
     pair: Optional[str] = shared_options.pair,
+    all_pairs: bool = shared_options.all_pairs,
 
     buy_only: bool = Option(None, "--buy-only", envvar="BUY_ONLY", help="Only perform the buy side of the test trade - leave position open.")
 ):
@@ -74,6 +76,7 @@ def perform_test_trade(
     """
 
     if pair:
+        assert not all_pairs, "Cannot specify both --pair and --all-pairs"
         pair = parse_pair_data(pair)
 
     id = prepare_executor_id(id, strategy_file)
@@ -166,18 +169,39 @@ def perform_test_trade(
     runner = run_description.runner
     routing_state, pricing_model, valuation_method = runner.setup_routing(universe)
 
-    make_test_trade(
-        web3config.get_default(),
-        execution_model,
-        pricing_model,
-        sync_model,
-        state,
-        universe,
-        runner.routing_model,
-        routing_state,
-        pair=pair,
-        buy_only=buy_only,
-    )
+    if all_pairs:
+
+        for pair in universe.universe.pairs.iterate_pairs():
+
+            _p = construct_identifier_from_pair(pair)
+            p = parse_pair_data(_p)
+
+            make_test_trade(
+                web3config.get_default(),
+                execution_model,
+                pricing_model,
+                sync_model,
+                state,
+                universe,
+                runner.routing_model,
+                routing_state,
+                pair=p,
+                buy_only=buy_only,
+            )
+    else:
+
+        make_test_trade(
+            web3config.get_default(),
+            execution_model,
+            pricing_model,
+            sync_model,
+            state,
+            universe,
+            runner.routing_model,
+            routing_state,
+            pair=pair,
+            buy_only=buy_only,
+        )
 
     # Store the test trade data in the strategy history
     store.sync(state)
@@ -220,3 +244,17 @@ def parse_pair_data(s: str):
         raise ValueError(f'Invalid pair data: {s}. Tuple must be in the format of: (chain_id, exchange_slug, base_token, quote_token, fee), where fee is optional')
 
     return (chain_id, exchange_slug, base_token, quote_token, fee)
+
+
+def construct_identifier_from_pair(pair: DEXPair) -> str:
+    """Construct pair identifier from pair data.
+    
+    :param pair:
+        Pair data as DEXPair.
+
+    :return:
+        Pair identifier string."""
+    
+    assert isinstance(pair, DEXPair), 'Pair must be of type DEXPair'
+
+    return f'({pair.chain_id.name}, "{pair.exchange_slug}", "{pair.base_token_symbol}", "{pair.quote_token_symbol}", {pair.fee/10_000})'

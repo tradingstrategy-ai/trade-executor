@@ -1,4 +1,4 @@
-"""close-all CLI command end-to-end test."""
+"""Perform a hot-wallet based test trade on all pairs in the trading universe."""
 import json
 import os
 import secrets
@@ -23,9 +23,6 @@ from tradeexecutor.cli.main import app
 from tradeexecutor.state.state import State
 
 
-logger = logging.getLogger(__name__)
-
-
 @pytest.fixture()
 def strategy_file() -> Path:
     """Where do we load our strategy file."""
@@ -38,20 +35,20 @@ def state_file() -> Path:
 
 
 @pytest.fixture()
-def environment(
+def multipair_environment_all_pairs(
     anvil: AnvilLaunch,
     deployer: HexAddress,
     user_1: HexAddress,
     uniswap_v2: UniswapV2Deployment,
-    pair_universe: PandasPairUniverse,
+    multipair_universe: PandasPairUniverse,
     hot_wallet: HotWallet,
     state_file: Path,
     strategy_file: Path,
     ) -> dict:
-    """Set up environment vars for all CLI commands."""
-
-    environment = {
-        "EXECUTOR_ID": "test_close_all",
+    """Passed to init and start commands as multipair_environment variables"""
+    # Set up the configuration for the live trader
+    multipair_environment = {
+        "EXECUTOR_ID": "test_perform_test_trade_all_pairs",
         "STRATEGY_FILE": strategy_file.as_posix(),
         "PRIVATE_KEY": hot_wallet.account.key.hex(),
         "JSON_RPC_ANVIL": anvil.json_rpc_url,
@@ -64,12 +61,14 @@ def environment(
         "TEST_EVM_UNISWAP_V2_FACTORY": uniswap_v2.factory.address,
         "TEST_EVM_UNISWAP_V2_INIT_CODE_HASH": uniswap_v2.init_code_hash,
         "CONFIRMATION_BLOCK_COUNT": "0",  # Needed for test backend, Anvil
+        "MAX_CYCLES": "5",  # Run decide_trades() 5 times
+        "ALL_PAIRS": 'True',
     }
-    return environment
+    return multipair_environment
 
 
-def test_close_all(
-    environment: dict,
+def test_perform_test_trade_all_pairs(
+    multipair_environment_all_pairs: dict,
     state_file: Path,
 ):
     """Perform close-all command
@@ -87,27 +86,20 @@ def test_close_all(
 
     # trade-executor init
     cli = get_command(app)
-    with patch.dict(os.environ, environment, clear=True):
+    with patch.dict(os.environ, multipair_environment_all_pairs, clear=True):
         with pytest.raises(SystemExit) as e:
             cli.main(args=["init"])
         assert e.value.code == 0
 
     # trade-executor perform-test-trade --buy-only
     cli = get_command(app)
-    with patch.dict(os.environ, environment, clear=True):
+    with patch.dict(os.environ, multipair_environment_all_pairs, clear=True):
         with pytest.raises(SystemExit) as e:
-            cli.main(args=["perform-test-trade", "--buy-only"])
+            cli.main(args=["perform-test-trade"])
         assert e.value.code == 0
 
     state = State.read_json_file(state_file)
-    assert len(state.portfolio.open_positions) == 1
-
-    # trade-executor close-all
-    cli = get_command(app)
-    with patch.dict(os.environ, environment, clear=True):
-        with pytest.raises(SystemExit) as e:
-            cli.main(args=["close-all"])
-        assert e.value.code == 0
+    assert len(state.portfolio.open_positions) == 0
 
     state = State.read_json_file(state_file)
     assert len(state.portfolio.open_positions) == 0
