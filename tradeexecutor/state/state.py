@@ -187,6 +187,7 @@ class State:
                      price_structure: Optional[TradePricing] = None,
                      position: Optional[TradingPosition] = None,
                      slippage_tolerance: Optional[float] = None,
+                     leverage: Optional[float] = None,
                      ) -> Tuple[TradingPosition, TradeExecution, bool]:
         """Creates a request for a new trade.
 
@@ -305,6 +306,7 @@ class State:
             position=position,
             slippage_tolerance=slippage_tolerance,
             notes=notes,
+            leverage=leverage,
         )
 
         return position, trade, created
@@ -427,6 +429,7 @@ class State:
             price_structure=price_structure,
             position=position,
             slippage_tolerance=slippage_tolerance,
+            leverage=leverage
         )
 
     def start_execution(self, ts: datetime.datetime, trade: TradeExecution, txid: str, nonce: int):

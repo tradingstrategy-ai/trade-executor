@@ -366,6 +366,7 @@ class Portfolio:
                      price_structure: Optional[TradePricing] = None,
                      position: Optional[TradingPosition] = None,
                      slippage_tolerance: Optional[float] = None,
+                     leverage: Optional[float] = None,
                      ) -> Tuple[TradingPosition, TradeExecution, bool]:
         """Create a trade.
 
@@ -487,6 +488,7 @@ class Portfolio:
             price_structure=price_structure,
             slippage_tolerance=slippage_tolerance,
             portfolio_value_at_creation=portfolio_value,
+            leverage=leverage,
         )
 
         # Update notes

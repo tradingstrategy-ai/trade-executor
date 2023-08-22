@@ -16,7 +16,7 @@ from eth_defi.tx import AssetDelta
 from tradeexecutor.ethereum.revert import clean_revert_reason_message
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
-from tradeexecutor.state.types import USDollarAmount, USDollarPrice, BPS
+from tradeexecutor.state.types import USDollarAmount, USDollarPrice, BPS, LeverageMultiplier
 from tradeexecutor.strategy.trade_pricing import TradePricing
 
 
@@ -360,6 +360,10 @@ class TradeExecution:
     #:
     #: Used for risk metrics and other statistics.
     portfolio_value_at_creation: Optional[USDollarAmount] = None
+
+    #: Leverage factor used when opening a position
+    #:
+    leverage: Optional[LeverageMultiplier] = None
 
     def __repr__(self):
         if self.is_buy():

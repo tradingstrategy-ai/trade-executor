@@ -4,7 +4,7 @@ How executor internally knows how to connect trading pairs in data and in execut
 """
 import datetime
 import enum
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Optional
 
@@ -16,6 +16,26 @@ from web3 import Web3
 from tradeexecutor.state.types import JSONHexAddress, USDollarAmount, LeverageMultiplier
 from tradingstrategy.lending import LendingProtocolType
 from tradingstrategy.stablecoin import is_stablecoin_like
+from tradingstrategy.types import PrimaryKey
+
+
+@dataclass_json
+@dataclass
+class AssetType:
+    """What kind of asset is this.
+
+    We mark special tokens that are dynamically created
+    by lending protocols.
+    """
+
+    #: Normal ERC-20
+    token = "token"
+
+    #: ERC-20 aToken with dynamic balance()
+    collateral = "collateral"
+
+    #: ERC-20 vToken with dynamic balance()
+    borrowed = "borrowed"
 
 
 @dataclass_json
@@ -43,13 +63,16 @@ class AssetIdentifier:
     decimals: int
 
     #: How this asset is referred in the internal database
-    internal_id: Optional[int] = None
+    internal_id: Optional[PrimaryKey] = None
 
     #: Info page URL for this asset
     info_url: Optional[str] = None
 
     #: The underlying asset for aTokens, vTokens and such
     underlying: Optional["AssetIdentifier"] = None
+
+    #: What kind of asset is this
+    type: AssetType = AssetType.token
 
     def __str__(self):
         return f"<{self.token_symbol} at {self.address}>"
@@ -244,13 +267,15 @@ class TradingPairIdentifier:
     #: Collateral factor ``cF``: Determines how much borrow capacity a trader has when depositing an asset.
     #: Also described as Liquidation Threshold.
     #:
+    collateral_factor: Optional[float] = None
+
     #: E.g. you can borrow 800 USD worth of WETH against 1000 USDC,
     #: collateral factor is 0.80. This is also presented
     #: as Max LTV in Aave UI. Collateral factor 0.80 is 80% Max LTV (TODO: Verify).
     #:
     #: See `1delta documentation <https://docs.1delta.io/lenders/metrics>`__.
     #:
-    collateral_factor: Optional[float] = None
+    max_ltv: Optional[float] = None
 
     def __post_init__(self):
         assert self.base.chain_id == self.quote.chain_id, "Cross-chain trading pairs are not possible"
@@ -355,7 +380,7 @@ class TradingPairIdentifier:
 
 
 @dataclass_json
-@dataclass
+@dataclass(frozen=True)
 class AssetWithTrackedValue:
     """Track one asset with a value.
 
@@ -384,14 +409,17 @@ class AssetWithTrackedValue:
     #: When the last pricing happened
     last_pricing_at: datetime.datetime
 
-    #: The token that is a derivate for a loan.
+    #: Strategy cycle time stamp when the tracking was started
     #:
-    #: It has a dynamic balanceOf()
+    created_at: datetime.datetime = field(default_factory=datetime.datetime.utcnow)
+
+    #: Strategy cycle time stamp when the tracking was started
     #:
-    #: For aUSDC credit this is USDC.
-    #: For vWETH short this is WETH.
-    #:
-    presentation: AssetIdentifier | None = None
+    created_strategy_cycle_at: datetime.datetime | None = None
+
+    def __post_init__(self):
+        assert self.quantity > 0, "Any tracked asset must have positive quantity"
+        assert self.last_usd_price > 0
 
     def get_usd_value(self) -> USDollarAmount:
         """Rrturn the approximate value of this tracked asset.

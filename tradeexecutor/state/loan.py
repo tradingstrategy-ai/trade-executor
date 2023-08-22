@@ -9,7 +9,7 @@ from typing import TypeAlias
 import dataclasses_json
 from dataclasses_json import dataclass_json
 
-from tradeexecutor.state.identifier import AssetIdentifier, AssetWithTrackedValue
+from tradeexecutor.state.identifier import AssetIdentifier, AssetWithTrackedValue, TradingPairIdentifier
 from tradeexecutor.state.types import LeverageMultiplier, USDollarAmount
 
 #: Health Factor: hF=dC/d, if lower than 1, the account can be liquidated
@@ -28,7 +28,12 @@ class Loan:
     - :py:class:`tradeexcutor.state.interest.Interest` for position interest calculations
 
     - `1delta documentation <https://docs.1delta.io/lenders/metrics>`__
+
+    - `leverage calculations <https://amplifiedlambda.com/leverage-with-defi-calculations/>`__
     """
+
+    #: Our trading pair data for this position
+    pair: TradingPairIdentifier
 
     #: What collateral we used for this loan
     #:
@@ -58,3 +63,8 @@ class Loan:
 
     def get_max_size(self) -> USDollarAmount:
         raise NotImplementedError()
+
+    def get_collateral_factor(self) -> float:
+        return self.pair.collateral_factor
+
+

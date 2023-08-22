@@ -16,13 +16,15 @@ from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdateCause
 from tradeexecutor.state.generic_position import GenericPosition, BalanceUpdateEventAlreadyAdded
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier, TradingPairKind
 from tradeexecutor.state.interest import Interest
+from tradeexecutor.state.loan import Loan
 from tradeexecutor.state.trade import TradeType, QUANTITY_EPSILON
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.types import USDollarAmount, BPS, USDollarPrice, Percent, LeverageMultiplier
 from tradeexecutor.strategy.dust import get_dust_epsilon_for_pair
+from tradeexecutor.strategy.loan import create_short_loan
 from tradeexecutor.strategy.trade_pricing import TradePricing
 from tradeexecutor.utils.accuracy import sum_decimal
-
+from tradingstrategy.lending import LendingProtocolType
 
 logger = logging.getLogger(__name__)
 
@@ -649,7 +651,11 @@ class TradingPosition(GenericPosition):
 
         if leverage:
             # Set lending market estimated quantities
-            raise NotImplementedError()
+            if trade_type == TradeType.lending_protocol_short:
+                planned_reserve = reserve
+                planned_quantity = -reserve / Decimal(assumed_price)
+            else:
+                raise NotImplementedError()
         else:
             # Set spot market estimated quantities
             if reserve is not None:
@@ -690,6 +696,7 @@ class TradingPosition(GenericPosition):
             price_structure=price_structure,
             slippage_tolerance=slippage_tolerance,
             portfolio_value_at_creation=portfolio_value_at_creation,
+            leverage=leverage,
         )
 
         self.trades[trade.trade_id] = trade
@@ -708,7 +715,11 @@ class TradingPosition(GenericPosition):
                         last_atoken_amount=planned_reserve,
                     )
             elif pair.kind.is_leverage():
-                raise NotImplementedError()
+                assert pair.get_lending_protocol() == LendingProtocolType.aave_v3, "Unsupported protocol"
+                if pair.kind.is_shorting():
+                    self.loan = create_short_loan(trade)
+                else:
+                    raise NotImplementedError()
             else:
                 raise NotImplementedError(f"Don't know how to deal with {pair}")
 

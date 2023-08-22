@@ -7,7 +7,7 @@ from _decimal import Decimal
 import pytest
 
 from eth_defi.uniswap_v2.utils import ZERO_ADDRESS
-from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier, TradingPairKind
+from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier, TradingPairKind, AssetType
 from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeType
@@ -38,6 +38,7 @@ def ausdc(usdc: AssetIdentifier) -> AssetIdentifier:
         "aPolUSDC",
         18,
         underlying=usdc,
+        type=AssetType.collateral,
     )
 
 
@@ -50,6 +51,7 @@ def vweth(weth: AssetIdentifier) -> AssetIdentifier:
         "variableDebtPolWETH",
         18,
         underlying=weth,
+        type=AssetType.borrowed,
     )
 
 
@@ -127,12 +129,12 @@ def test_open_short(
         strategy_cycle_at=datetime.datetime.utcnow(),
         pair=weth_short_identifier,
         quantity=None,
-        reserve=-Decimal(1000),
-        assumed_price=1500,  # USDC/ETH price we are going to sell
+        reserve=Decimal(1000),
+        assumed_price=float(1500),  # USDC/ETH price we are going to sell
         trade_type=TradeType.lending_protocol_short,
         reserve_currency=usdc,
         reserve_currency_price=1.0,
-        leverage=weth_short_identifier.get_max_leverage_at_open(),
+        leverage=0.8,
     )
 
     trader.set_perfectly_executed(trade)
@@ -140,7 +142,7 @@ def test_open_short(
     # How many ETH (vWETH) we expect when we go in
     # with our max leverage available
     # based on the collateral ratio
-    expected_eth_shorted_amount = 1000 * 0.8 * 1500
+    expected_eth_shorted_amount = 1000 * 0.8 / 1500
 
     assert created
     assert trade.is_success()
@@ -148,9 +150,9 @@ def test_open_short(
 
     # Check that opened short position data looks correct
     assert short_position.is_short()
-    assert short_position.get_value() == Decimal(1000)
     assert short_position.get_opening_price() == 1500
     assert short_position.loan is not None
+    assert short_position.loan.pair == weth_short_identifier
     assert short_position.loan.collateral.asset.token_symbol == "aPolUSDC"
     assert short_position.loan.collateral.quantity == Decimal(1000)
     assert short_position.loan.collateral.asset.underlying.token_symbol == "USDC"
@@ -163,5 +165,3 @@ def test_open_short(
 
     # Check that we track the equity value correctly
     assert state.portfolio.get_total_equity() == 10000
-
-
