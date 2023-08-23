@@ -143,6 +143,8 @@ class ExecutionLoop:
             check_accounts: Optional[bool] = None,
             minimum_data_lookback_range: Optional[datetime.timedelta] = None,
             universe_options: Optional[UniverseOptions] = None,
+            generic_routing_data: Optional[UniverseOptions] = None,
+            generic_strategy_factory: Optional[StrategyFactory] = None,
     ):
         """See main.py for details."""
 
@@ -205,6 +207,12 @@ class ExecutionLoop:
 
         self.minimum_data_lookback_range = minimum_data_lookback_range
 
+        self.generic_routing_data = generic_routing_data
+        self.generic_strategy_factory = generic_strategy_factory
+
+        if self.generic_routing_data or self.generic_strategy_factory:
+            assert self.generic_routing_data and self.generic_strategy_factory, "Both generic_routing_data and generic_strategy_factory must be set, if either is set"
+
     def is_backtest(self) -> bool:
         """Are we doing a backtest execution."""
         return self.backtest_start is not None
@@ -253,7 +261,14 @@ class ExecutionLoop:
 
         Perform preflight checks e.g. to see if our trading accounts look sane.
         """
-        self.execution_model.initialize()
+
+        if self.generic_routing_data: 
+            for element in self.generic_routing_data:
+                execution_model = element["execution_model"]
+                execution_model.initialize()
+        else:
+            self.execution_model.initialize()
+        
         if not self.is_live_trading_unit_test():
             self.execution_model.preflight_check()
             logger.info("Preflight checks ok")
@@ -1136,18 +1151,29 @@ class ExecutionLoop:
 
         self.init_execution_model()
 
-        run_description: StrategyExecutionDescription = self.strategy_factory(
-            execution_model=self.execution_model,
-            execution_context=self.execution_context,
-            timed_task_context_manager=self.timed_task_context_manager,
-            sync_model=self.sync_model,
-            valuation_model_factory=self.valuation_model_factory,
-            pricing_model_factory=self.pricing_model_factory,
-            approval_model=self.approval_model,
-            client=self.client,
-            routing_model=self.routing_model,
-            run_state=self.run_state,
-        )
+        if self.generic_strategy_factory:
+            run_description: StrategyExecutionDescription = self.strategy_factory(
+                execution_model=self.execution_model,
+                execution_context=self.execution_context,
+                timed_task_context_manager=self.timed_task_context_manager,
+                sync_model=self.sync_model,
+                valuation_model_factory=self.valuation_model_factory,
+                pricing_model_factory=self.pricing_model_factory,
+                approval_model=self.approval_model,
+                client=self.client,
+                routing_model=self.routing_model,
+                run_state=self.run_state,
+            )
+        else:
+            run_description = self.generic_strategy_factory(
+                execution_context=self.execution_context,
+                timed_task_context_manager=self.timed_task_context_manager,
+                sync_model=self.sync_model,
+                approval_model=self.approval_model,
+                client=self.client,
+                run_state=self.run_state,
+                generic_routing_data=self.generic_routing_data,
+            )
 
         self.init_live_run_state(run_description)
 
