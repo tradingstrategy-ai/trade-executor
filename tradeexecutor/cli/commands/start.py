@@ -23,7 +23,7 @@ from tradingstrategy.timebucket import TimeBucket
 from . import shared_options
 from .app import app, TRADE_EXECUTOR_VERSION
 from ..bootstrap import prepare_executor_id, prepare_cache, create_web3_config, create_state_store, \
-    create_execution_and_sync_model, create_metadata, create_approval_model, create_client
+    create_execution_and_sync_model, create_metadata, create_approval_model, create_client, create_generic_execution_and_sync_model
 from ..log import setup_logging, setup_discord_logging, setup_logstash_logging, setup_file_logging, \
     setup_custom_log_levels
 from ..loop import ExecutionLoop
@@ -35,7 +35,7 @@ from ...ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2SimpleRoutingMode
 from ...state.state import State
 from ...state.store import NoneStore, JSONFileStore
 from ...strategy.approval import ApprovalType
-from ...strategy.bootstrap import import_strategy_file
+from ...strategy.bootstrap import import_strategy_file, import_generic_strategy_file, 
 from ...strategy.cycle import CycleDuration
 from ...strategy.default_routing_options import TradeRouting
 from ...strategy.execution_context import ExecutionContext, ExecutionMode
@@ -256,19 +256,41 @@ def start(
             # because likely Ganache has simply crashed on background
             confirmation_timeout = datetime.timedelta(seconds=30)
 
-        execution_model, sync_model, valuation_model_factory, pricing_model_factory = create_execution_and_sync_model(
-            asset_management_mode=asset_management_mode,
-            private_key=private_key,
-            web3config=web3config,
-            confirmation_timeout=confirmation_timeout,
-            confirmation_block_count=confirmation_block_count,
-            max_slippage=max_slippage,
-            min_gas_balance=min_gas_balance,
-            vault_address=vault_address,
-            vault_adapter_address=vault_adapter_address,
-            vault_payment_forwarder_address=vault_payment_forwarder_address,
-            routing_hint=mod.trade_routing,
-        )
+        execution_model, sync_model, valuation_model_factory, pricing_model_factory = None, None, None, None
+
+        if type(mod.trade_routing) == list and len(mod.trade_routing) > 1:
+            generic_routing_data = create_generic_execution_and_sync_model(
+                asset_management_mode=asset_management_mode,
+                private_key=private_key,
+                web3config=web3config,
+                confirmation_timeout=confirmation_timeout,
+                confirmation_block_count=confirmation_block_count,
+                max_slippage=max_slippage,
+                min_gas_balance=min_gas_balance,
+                vault_address=vault_address,
+                vault_adapter_address=vault_adapter_address,
+                vault_payment_forwarder_address=vault_payment_forwarder_address,
+                routing_hint=mod.trade_routing,
+            )
+        else:
+
+            if type(mod.trade_routing) == list:
+                assert len(mod.trade_routing) == 1
+                mod.trade_routing = mod.trade_routing[0]
+
+            execution_model, sync_model, valuation_model_factory, pricing_model_factory = create_execution_and_sync_model(
+                asset_management_mode=asset_management_mode,
+                private_key=private_key,
+                web3config=web3config,
+                confirmation_timeout=confirmation_timeout,
+                confirmation_block_count=confirmation_block_count,
+                max_slippage=max_slippage,
+                min_gas_balance=min_gas_balance,
+                vault_address=vault_address,
+                vault_adapter_address=vault_adapter_address,
+                vault_payment_forwarder_address=vault_payment_forwarder_address,
+                routing_hint=mod.trade_routing,
+            )
 
         approval_model = create_approval_model(approval_type)
 
@@ -373,7 +395,12 @@ def start(
         position_trigger_check_frequency = datetime.timedelta(minutes=position_trigger_check_minutes)
 
         logger.info("Loading strategy file %s", strategy_file)
-        strategy_factory = import_strategy_file(strategy_file)
+
+        strategy_factory, generic_strategy_factory = None, None
+        if generic_routing_data:
+            generic_strategy_factory = import_generic_strategy_file(strategy_file)
+        else:
+            strategy_factory = import_strategy_file(strategy_file)
 
         logger.trade("%s (%s): trade execution starting", name, id)
 
@@ -406,7 +433,7 @@ def start(
         # caused the start up to fail
         logger.critical("Startup failed: %s", e)
         logger.exception(e)
-        raise
+        raise                  
 
     loop = ExecutionLoop(
         name=name,
@@ -439,6 +466,8 @@ def start(
         routing_model=routing_model,
         metadata=metadata,
         check_accounts=check_accounts,
+        generic_routing_data=generic_routing_data,
+        generic_strategy_factory=generic_strategy_factory,
     )
 
     # Crash gracefully at the start up if our main loop cannot set itself up
