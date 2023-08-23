@@ -169,6 +169,9 @@ class TradingPairIdentifier:
     #:
     reverse_token_order: Optional[bool] = None
 
+    #: Whether the pair is based on a Uniswap v3 pool (or uniswap v3 equivalent).
+    uniswap_v3_like: Optional[bool] = None
+
     def __post_init__(self):
         assert self.base.chain_id == self.quote.chain_id, "Cross-chain trading pairs are not possible"
 

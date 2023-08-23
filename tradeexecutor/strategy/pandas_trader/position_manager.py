@@ -808,4 +808,11 @@ class PositionManager:
         if not rm:
             raise NotImplementedError("Unable to find routing_model for pair, make sure to add correct routing models for the pairs that you want to trade")
 
+        if isinstance(rm, UniswapV2SimpleRoutingModel):
+            pair.uniswap_v3_like = False
+        elif isinstance(rm, UniswapV3SimpleRoutingModel):
+            pair.uniswap_v3_like = True
+        else:
+            raise NotImplementedError("Routing model not supported")
+
         return rm

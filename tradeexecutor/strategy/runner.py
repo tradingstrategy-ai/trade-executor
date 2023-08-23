@@ -289,20 +289,7 @@ class StrategyRunner(abc.ABC):
             Dict of random debug stuff
         """
 
-    def setup_routing(self, universe: StrategyExecutionUniverse) -> Tuple[RoutingState, PricingModel, ValuationModel]:
-        if self.execution_context.mode == ExecutionMode.backtesting:
-            return self._setup_routing(universe)
-        
-        routing_data = {}
-        for routing_model in self.routing_models:
-
-            routing_state, pricing_model, valuation_model = self.setup_routing(universe)
-            rd = {"routing_model": routing_model, "routing_state": routing_state, "pricing_model": pricing_model, "valuation_model": valuation_model}
-            routing_data.append(rd)
-
-        return routing_data
-
-    def _setup_routing(self, universe: StrategyExecutionUniverse, routing_model: RoutingModel | None = None) -> Tuple[RoutingState, PricingModel, ValuationModel]:
+    def setup_routing(self, universe: StrategyExecutionUniverse) -> list[Tuple[RoutingState, PricingModel, ValuationModel]]:
         """Setups routing state for this cycle.
 
         :param universe:
@@ -311,7 +298,21 @@ class StrategyRunner(abc.ABC):
         :return:
             Tuple(routing state, pricing model, valuation model)
         """
+        
+        if self.execution_context.mode == ExecutionMode.backtesting:
+            return self._setup_routing(universe)
+        
+        routing_data = []
 
+        for routing_model in self.routing_models:
+
+            routing_state, pricing_model, valuation_model = self.setup_routing(universe, routing_model)
+            routing_data.append((routing_model, routing_state, pricing_model, valuation_model))
+
+        return routing_data
+
+    def _setup_routing(self, universe: StrategyExecutionUniverse, routing_model: RoutingModel | None = None) -> Tuple[RoutingState, PricingModel, ValuationModel]:
+        
         rm = routing_model or self.routing_model
 
         assert rm, "Routing model not set"
@@ -474,19 +475,44 @@ class StrategyRunner(abc.ABC):
                 # Make sure our hot wallet nonce is up to date
                 self.sync_model.resync_nonce()
 
-                self.execution_model.execute_trades(
-                    strategy_cycle_timestamp,
-                    state,
-                    approved_trades,
-                    self.routing_model,
-                    routing_state,
-                    check_balances=check_balances)
+                for execution_model in self.execution_models:
+                    trades_to_execute = []
+                    
+                    for trade in approved_trades:
+                        em = self.get_execution_model_from_pair(trade.pair)
+                        if type(execution_model) == type(em):
+                            trades_to_execute.append(trade)
+
+                    if not trades_to_execute:
+                        continue
+
+                    execution_model.execute_trades(
+                        strategy_cycle_timestamp,
+                        state,
+                        trades_to_execute,
+                        self.routing_model,
+                        routing_state,
+                        check_balances=check_balances
+                    )
 
             # Log output
             if self.is_progress_report_needed():
                 self.report_after_execution(strategy_cycle_timestamp, universe, state, debug_details)
 
         return debug_details
+    
+    def get_execution_model_from_pair(self, pair):
+        """Get the execution model for a pair."""
+
+        assert pair.uniswap_v3_like is not None, "Pair is missing uniswap_v3_like flag. This is supposed to be set in the position_manager when the trade is opened."
+
+        for execution_model in self.execution_models:
+            if execution_model.is_v3() and pair.uniswap_v3_like:
+                return execution_model
+            elif not execution_model.is_v3() and not pair.uniswap_v3_like:
+                return execution_model
+            
+        raise NotImplementedError("No execution model found for pair")
 
     def check_position_triggers(self,
         clock: datetime.datetime,

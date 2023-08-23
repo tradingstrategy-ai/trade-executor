@@ -256,7 +256,8 @@ def start(
             # because likely Ganache has simply crashed on background
             confirmation_timeout = datetime.timedelta(seconds=30)
 
-        execution_model, sync_model, valuation_model_factory, pricing_model_factory = create_execution_and_sync_model(
+
+        execution_models, sync_model, valuation_model_factories, pricing_model_factories = create_execution_and_sync_model(
             asset_management_mode=asset_management_mode,
             private_key=private_key,
             web3config=web3config,
@@ -411,12 +412,12 @@ def start(
     loop = ExecutionLoop(
         name=name,
         command_queue=command_queue,
-        execution_model=execution_model,
+        execution_models=execution_models,
         execution_context=execution_context,
         sync_model=sync_model,
         approval_model=approval_model,
-        pricing_model_factory=pricing_model_factory,
-        valuation_model_factory=valuation_model_factory,
+        pricing_model_factories=pricing_model_factories,
+        valuation_model_factories=valuation_model_factories,
         store=store,
         client=client,
         strategy_factory=strategy_factory,

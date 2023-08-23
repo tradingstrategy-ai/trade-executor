@@ -111,12 +111,12 @@ class ExecutionLoop:
             *ignore,
             name: str,
             command_queue: Queue,
-            execution_model: ExecutionModel,
+            execution_models: list[ExecutionModel],
             execution_context: ExecutionContext,
             sync_model: SyncModel,
             approval_model: ApprovalModel,
-            pricing_model_factory: PricingModelFactory,
-            valuation_model_factory: ValuationModelFactory,
+            pricing_model_factories: list[PricingModelFactory],
+            valuation_model_factories: list[ValuationModelFactory],
             store: StateStore,
             client: Optional[BaseClient],
             strategy_factory: Optional[StrategyFactory],
@@ -161,7 +161,7 @@ class ExecutionLoop:
         self.strategy_factory = strategy_factory
         self.reset = reset
         self.routing_model = routing_model
-        self.execution_model = execution_model
+        self.execution_models = execution_models
         self.execution_test_hook = execution_test_hook
         self.metadata = metadata
         self.check_accounts = check_accounts
@@ -199,6 +199,9 @@ class ExecutionLoop:
         )
 
         self.minimum_data_lookback_range = minimum_data_lookback_range
+
+        self.pricing_model_factories = pricing_model_factories
+        self.valuation_model_factories = valuation_model_factories
 
     def is_backtest(self) -> bool:
         """Are we doing a backtest execution."""

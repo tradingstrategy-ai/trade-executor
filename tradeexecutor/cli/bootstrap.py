@@ -95,7 +95,7 @@ def create_web3_config(
 
 
 def create_execution_model(
-        routing_hint: Optional[TradeRouting],
+        routing_hint: Optional[TradeRouting] | list[TradeRouting],
         tx_builder: Optional[TransactionBuilder],
         confirmation_timeout: datetime.timedelta,
         confirmation_block_count: int,
@@ -108,35 +108,51 @@ def create_execution_model(
     Choose between Uniswap v2 and v3 trade routing.
     """
 
-    # TODO: user_supplied_routing_model can be uni v3 as well
-    if routing_hint is None or routing_hint.is_uniswap_v2() or routing_hint == TradeRouting.user_supplied_routing_model:
-        logger.info("Uniswap v2 like exchange. Routing hint is %s", routing_hint)
-        execution_model = UniswapV2ExecutionModel(
-            tx_builder,
-            confirmation_timeout=confirmation_timeout,
-            confirmation_block_count=confirmation_block_count,
-            max_slippage=max_slippage,
-            min_balance_threshold=min_gas_balance,
-            mainnet_fork=mainnet_fork,
-        )
-        valuation_model_factory = uniswap_v2_sell_valuation_factory
-        pricing_model_factory = uniswap_v2_live_pricing_factory
-    elif routing_hint.is_uniswap_v3():
-        logger.info("Uniswap v3 like exchange. Routing hint is %s", routing_hint)
-        execution_model = UniswapV3ExecutionModel(
-            tx_builder,
-            confirmation_timeout=confirmation_timeout,
-            confirmation_block_count=confirmation_block_count,
-            max_slippage=max_slippage,
-            min_balance_threshold=min_gas_balance,
-            mainnet_fork=mainnet_fork,
-        )
-        valuation_model_factory = uniswap_v3_sell_valuation_factory
-        pricing_model_factory = uniswap_v3_live_pricing_factory
-    else:
-        raise RuntimeError(f"Does not know how to route: {routing_hint}")
+    if not isinstance(routing_hint, list):
+        routing_hint = [routing_hint]
 
-    return execution_model, valuation_model_factory, pricing_model_factory
+    uniswap_v2_like = False
+    uniswap_v3_like = False
+
+    execution_models, valuation_model_factories, pricing_model_factories = [], [], []
+
+    for routing_hint in routing_hint:
+
+        # TODO: user_supplied_routing_model can be uni v3 as well
+        if (routing_hint is None or routing_hint.is_uniswap_v2() or routing_hint == TradeRouting.user_supplied_routing_model) and (uniswap_v2_like == False):
+            logger.info("Uniswap v2 like exchange. Routing hint is %s", routing_hint)
+            execution_models += UniswapV2ExecutionModel(
+                tx_builder,
+                confirmation_timeout=confirmation_timeout,
+                confirmation_block_count=confirmation_block_count,
+                max_slippage=max_slippage,
+                min_balance_threshold=min_gas_balance,
+                mainnet_fork=mainnet_fork,
+            )
+            valuation_model_factories += uniswap_v2_sell_valuation_factory
+            pricing_model_factories += uniswap_v2_live_pricing_factory
+
+            uniswap_v2_like = True
+        elif routing_hint.is_uniswap_v3() and uniswap_v3_like == False:
+            logger.info("Uniswap v3 like exchange. Routing hint is %s", routing_hint)
+            execution_models += UniswapV3ExecutionModel(
+                tx_builder,
+                confirmation_timeout=confirmation_timeout,
+                confirmation_block_count=confirmation_block_count,
+                max_slippage=max_slippage,
+                min_balance_threshold=min_gas_balance,
+                mainnet_fork=mainnet_fork,
+            )
+            valuation_model_factories += uniswap_v3_sell_valuation_factory
+            pricing_model_factories += uniswap_v3_live_pricing_factory
+
+            uniswap_v3_like = True
+        else:
+            raise RuntimeError(f"Does not know how to route: {routing_hint}")
+
+    assert len(execution_models) == len(valuation_model_factories) == len(pricing_model_factories) <= 2
+
+    return execution_models, valuation_model_factories, pricing_model_factories
 
 
 def create_execution_and_sync_model(
@@ -151,7 +167,7 @@ def create_execution_and_sync_model(
         vault_adapter_address: Optional[str],
         vault_payment_forwarder_address: Optional[str],
         routing_hint: Optional[TradeRouting] = None,
-) -> Tuple[ExecutionModel, SyncModel, ValuationModelFactory, PricingModelFactory]:
+) -> Tuple[ExecutionModel, SyncModel, ValuationModelFactory, PricingModelFactory] | Tuple[list[ExecutionModel], SyncModel, list[ValuationModelFactory], list[PricingModelFactory]]:
     """Set up the wallet sync and execution mode for the command line client."""
 
     assert isinstance(confirmation_timeout, datetime.timedelta), f"Got {confirmation_timeout}"
@@ -179,7 +195,7 @@ def create_execution_and_sync_model(
 
         logger.info("Creating execution model. Asset management mode is %s, routing hint is %s", asset_management_mode.value, routing_hint.value)
 
-        execution_model, valuation_model_factory, pricing_model_factory = create_execution_model(
+        execution_models, valuation_model_factories, pricing_model_factories = create_execution_model(
             routing_hint=routing_hint,
             tx_builder=sync_model.create_transaction_builder(),
             confirmation_timeout=confirmation_timeout,
@@ -188,7 +204,7 @@ def create_execution_and_sync_model(
             min_gas_balance=min_gas_balance,
             mainnet_fork=web3config.is_mainnet_fork(),
         )
-        return execution_model, sync_model, valuation_model_factory, pricing_model_factory
+        return execution_models, sync_model, valuation_model_factories, pricing_model_factories
 
     elif asset_management_mode == AssetManagementMode.backtest:
         logger.info("TODO: Command line backtests are always executed with initial deposit of $10,000")
