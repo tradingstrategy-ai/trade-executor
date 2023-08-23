@@ -234,8 +234,8 @@ def test_single_sell_all(usdc, weth, weth_usdc, start_ts, single_asset_portfolio
     # 0: Check the starting state
     assert state.portfolio.get_current_cash() == 500
     assert state.portfolio.get_total_equity() == 657.7
-    assert state.portfolio.get_open_position_equity() == 157.7
-    eth_quantity = state.portfolio.open_positions[1].get_equity_for_position()
+    assert state.portfolio.get_position_equity_and_collateral() == 157.7
+    eth_quantity = state.portfolio.open_positions[1].get_quantity_old()
     assert eth_quantity == Decimal("0.09500000000000000111022302463")
 
     # #1 Planning stage
@@ -328,7 +328,7 @@ def test_single_sell_all(usdc, weth, weth_usdc, start_ts, single_asset_portfolio
     # now sold at 1640
     assert state.portfolio.get_current_cash() == 655.8
     assert state.portfolio.get_total_equity() == 655.8
-    assert state.portfolio.get_open_position_equity() == 0
+    assert state.portfolio.get_position_equity_and_collateral() == 0
 
     assert len(state.portfolio.open_positions) == 0
     assert len(state.portfolio.closed_positions) == 1
@@ -347,11 +347,11 @@ def test_buy_buy_sell_sell(usdc, weth, weth_usdc, start_ts):
     # 1: buy 1
     position, trade = trader.buy(weth_usdc, Decimal(0.1), 1700)
     assert state.portfolio.get_total_equity() == 998.3
-    assert position.get_equity_for_position() == pytest.approx(Decimal(0.099))
+    assert position.get_quantity_old() == pytest.approx(Decimal(0.099))
 
     # 2: buy 2
     position, trade = trader.buy(weth_usdc, Decimal(0.1), 1700)
-    assert position.get_equity_for_position() == pytest.approx(Decimal(0.099 * 2))
+    assert position.get_quantity_old() == pytest.approx(Decimal(0.099 * 2))
     assert len(position.trades) == 2
     assert position.trades[1].get_position_quantity() == pytest.approx(Decimal(0.1 * 0.99))
     assert position.trades[2].get_position_quantity() == pytest.approx(Decimal(0.1 * 0.99))
@@ -367,17 +367,17 @@ def test_buy_buy_sell_sell(usdc, weth, weth_usdc, start_ts):
     assert len(state.portfolio.open_positions) == 1
 
     # Sell all accrued tokens in two trades
-    half_1 = position.get_equity_for_position() / 2
-    half_2 = position.get_equity_for_position() - half_1
+    half_1 = position.get_quantity_old() / 2
+    half_2 = position.get_quantity_old() - half_1
 
     position, trade = trader.sell(weth_usdc, half_1, 1700)
     assert trade.executed_quantity == -half_1
     assert trade.get_equity_for_position() == -half_1
-    assert position.get_equity_for_position() == half_2
+    assert position.get_quantity_old() == half_2
 
     trader.sell(weth_usdc, half_2, 1700)
 
-    assert position.get_equity_for_position() == 0
+    assert position.get_quantity_old() == 0
     assert len(state.portfolio.open_positions) == 0
     assert state.portfolio.get_total_equity() == pytest.approx(993.234)
 
@@ -399,11 +399,11 @@ def test_buy_sell_two_positions(usdc, weth_usdc, aave_usdc, start_ts):
     # 1: buy token 1
     position, trade = trader.buy(weth_usdc, Decimal(0.1), 1700)
     assert state.portfolio.get_total_equity() == 998.3
-    assert position.get_equity_for_position() == pytest.approx(Decimal(0.099))
+    assert position.get_quantity_old() == pytest.approx(Decimal(0.099))
 
     # 2: buy  token 3
     position, trade = trader.buy(aave_usdc, Decimal(0.5), 200)
-    assert position.get_equity_for_position() == pytest.approx(Decimal(0.5 * 0.99))
+    assert position.get_quantity_old() == pytest.approx(Decimal(0.5 * 0.99))
 
     assert len(state.portfolio.open_positions) == 2
     assert state.portfolio.get_total_equity() == 997.3
@@ -546,17 +546,17 @@ def test_buy_sell_buy(usdc, weth, weth_usdc, start_ts):
     # 1: buy 1
     position, trade = trader.buy(weth_usdc, Decimal(0.1), 1700)
     assert state.portfolio.get_total_equity() == 998.3
-    assert position.get_equity_for_position() == pytest.approx(Decimal(0.099))
+    assert position.get_quantity_old() == pytest.approx(Decimal(0.099))
 
     # 2: Sell half of the tokens
-    half_1 = position.get_equity_for_position() / 2
+    half_1 = position.get_quantity_old() / 2
     position, trade = trader.sell(weth_usdc, half_1, 1700)
-    assert position.get_equity_for_position() == pytest.approx(Decimal(0.0495))
+    assert position.get_quantity_old() == pytest.approx(Decimal(0.0495))
     assert len(position.trades) == 2
 
     # 3: buy more
     position, trade = trader.buy(weth_usdc, Decimal(0.1), 1700)
-    assert position.get_equity_for_position() == pytest.approx(Decimal(0.1485))
+    assert position.get_quantity_old() == pytest.approx(Decimal(0.1485))
 
     # All done
     assert len(position.trades) == 3

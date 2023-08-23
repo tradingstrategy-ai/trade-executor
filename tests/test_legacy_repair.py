@@ -91,7 +91,7 @@ def test_repair_trades(
     assert portfolio.get_current_cash() == 6.815099
 
     # Failed buy, allocated capital needs to be released
-    assert pos1.get_equity_for_position() == 0
+    assert pos1.get_quantity_old() == 0
     assert pos1.get_unexeuted_reserve() == pytest.approx(Decimal('69.505733499999990954165696166455745697021484375'))
     assert pos1.is_frozen()
     t = t1 = pos1.get_last_trade()
@@ -101,14 +101,14 @@ def test_repair_trades(
     assert t.get_reserve_quantity() == pytest.approx(Decimal('69.505733499999990954165696166455745697021484375'))
 
     assert pos2.is_frozen()
-    assert pos2.get_equity_for_position() == 0
+    assert pos2.get_quantity_old() == 0
     assert pos2.get_unexeuted_reserve() == pytest.approx(Decimal('60.87260269999999451329131261'))
     t = t2 = pos1.get_last_trade()
     assert t.is_buy()
 
     # Failed sell, the trade must be marked as never happened
     assert pos3.is_frozen()
-    assert pos3.get_equity_for_position() == pytest.approx(Decimal('3.180200722896299527'))
+    assert pos3.get_quantity_old() == pytest.approx(Decimal('3.180200722896299527'))
     assert pos3.get_unexeuted_reserve() == pytest.approx(Decimal('0'))
     t = t3 = pos3.get_last_trade()
     assert t.is_sell()
@@ -123,7 +123,7 @@ def test_repair_trades(
     # Check how our positions look like
     pos1 = state.portfolio.get_position_by_id(1)
     assert pos1.is_closed()
-    assert pos1.get_equity_for_position() == 0
+    assert pos1.get_quantity_old() == 0
     assert pos1.get_unexeuted_reserve() == 0
     assert pos1.get_value() == 0
     assert t1.get_reserve_quantity() == 0
@@ -132,7 +132,7 @@ def test_repair_trades(
 
     pos2 = state.portfolio.get_position_by_id(26)
     assert pos2.is_closed()
-    assert pos2.get_equity_for_position() == 0
+    assert pos2.get_quantity_old() == 0
     assert pos2.get_unexeuted_reserve() == 0
     assert pos2.get_value() == 0
     assert t2.is_repaired()
@@ -141,7 +141,7 @@ def test_repair_trades(
     # the tokens are left on the position
     pos3 = state.portfolio.get_position_by_id(36)
     assert pos3.is_open()
-    assert pos3.get_equity_for_position() == Decimal('3.180200722896299527')
+    assert pos3.get_quantity_old() == Decimal('3.180200722896299527')
     assert pos3.get_unexeuted_reserve() == 0
     assert pos3.get_value() == pytest.approx(48.802913)  # Unsold tokens hold some value
     assert t3.is_repaired()

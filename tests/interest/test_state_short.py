@@ -173,7 +173,14 @@ def test_open_short(
     assert short_position.get_opening_price() == 1500
     assert short_position.get_unrealised_profit_usd() == 0
     assert short_position.get_realised_profit_usd() == 0
-    assert short_position.get_value() == 1000
+    assert short_position.get_value() == 800  # -800 USD worth of ETH
+    assert short_position.get_borrowed() == 800  # 800 USD worth of ETH
+    assert short_position.get_equity() == 0  # Because we are not holding spot tokens, it does not count as equity
+    assert short_position.get_collateral() == 1000
 
     # Check that we track the equity value correctly
+    assert state.portfolio.get_borrowed() == 800
+    assert state.portfolio.get_position_equity_and_collateral() == 1000  # 1000 USDC collateral
+    assert state.portfolio.get_current_cash() == 9000
+    assert state.portfolio.get_loan_net_asset_value() == 200
     assert state.portfolio.get_total_equity() == 10000

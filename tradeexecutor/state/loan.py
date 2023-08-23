@@ -46,7 +46,7 @@ class Loan:
     #:
     borrowed: AssetWithTrackedValue
 
-    def get_nav(self) -> USDollarAmount:
+    def get_net_asset_value(self) -> USDollarAmount:
         """TODO: From 1delta terminology"""
         return self.collateral.get_usd_value() - self.borrowed.get_usd_value()
 

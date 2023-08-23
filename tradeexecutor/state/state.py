@@ -329,8 +329,15 @@ class State:
 
         self.portfolio.check_for_nonce_reuse(nonce)
 
-        if trade.is_buy():
+        # Allocate reserve capital for this trade.
+        # Reserve capital cannot be double spent until the trades are execured.
+        if trade.is_spot():
+            if trade.is_buy():
+                self.portfolio.move_capital_from_reserves_to_trade(trade)
+        elif trade.is_leverage():
             self.portfolio.move_capital_from_reserves_to_trade(trade)
+        else:
+            raise NotImplementedError()
 
         trade.started_at = ts
 
@@ -365,7 +372,7 @@ class State:
 
         trade.mark_success(executed_at, executed_price, executed_amount, executed_reserve, lp_fees, native_token_price, cost_of_gas=cost_of_gas)
 
-        if trade.is_sell():
+        if trade.is_sell() and trade.is_spot():
             self.portfolio.return_capital_to_reserves(trade)
 
         if position.can_be_closed():

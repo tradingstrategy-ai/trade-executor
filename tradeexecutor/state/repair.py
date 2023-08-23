@@ -190,7 +190,7 @@ def unfreeze_position(portfolio: Portfolio, position: TradingPosition) -> bool:
 
     # Based on if the last failing trade was open or close,
     # the position should ended up in open or closed
-    total_equity = position.get_equity_for_position()
+    total_equity = position.get_quantity_old()
     if total_equity > 0:
         portfolio.open_positions[position.position_id] = position
     elif total_equity == 0:

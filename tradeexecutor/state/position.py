@@ -478,7 +478,7 @@ class TradingPosition(GenericPosition):
         last_trade = self.get_last_trade()
         return last_trade.executed_price
 
-    def get_equity_for_position(self) -> Decimal:
+    def get_quantity_old(self) -> Decimal:
         """How many asset units this position tolds.
 
         TODO: Remove this
@@ -514,7 +514,19 @@ class TradingPosition(GenericPosition):
         reserve_quantity = sum([t.get_equity_for_reserve() for t in self.trades.values() if t.is_accounted_for_equity()])
         return float(token_quantity) * token_price + float(reserve_quantity) * reserve_price
 
-    def get_value(self, include_interest=True) -> USDollarAmount:
+    def get_equity(self) -> USDollarAmount:
+        """Get equity tied to this position.
+
+        :return:
+        """
+
+        match self.pair.kind:
+            case TradingPairKind.spot_market_hold:
+                return self.calculate_value_using_price(self.last_token_price, self.last_reserve_price)
+            case _:
+                return 0
+
+    def get_value(self, include_interest=True, equity_only=False) -> USDollarAmount:
         """Get the position value using the latest revaluation pricing.
 
         If the position is closed, the value should be zero.
@@ -540,7 +552,6 @@ class TradingPosition(GenericPosition):
                 # Value for leveraged positions is
                 value += self.calculate_value_using_price(self.last_token_price, self.last_reserve_price)
                 value = -value  # Short
-                import ipdb ; ipdb.set_trace()
             case _:
                 raise NotImplementedError(f"Does not know how to value position for {self.pair}")
 
@@ -1237,6 +1248,14 @@ class TradingPosition(GenericPosition):
             return float(self.interest.last_accrued_interest) * self.last_token_price
 
         return 0.0
+
+    def get_borrowed(self) -> USDollarAmount:
+        """Get the amount of outstanding loans we have."""
+        return self.loan.borrowed.get_usd_value()
+
+    def get_collateral(self) -> USDollarAmount:
+        """Get the amount of outstanding loans we have."""
+        return self.loan.collateral.get_usd_value()
 
 
 class PositionType(enum.Enum):

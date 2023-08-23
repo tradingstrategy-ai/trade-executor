@@ -12,6 +12,7 @@ from pandas import Timestamp
 from dataclasses_json import dataclass_json
 
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
+from tradeexecutor.state.loan import Loan
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.trade import TradeType
@@ -154,7 +155,20 @@ class Portfolio:
     def get_all_positions(self) -> Iterable[TradingPosition]:
         """Get open, closed and frozen, positions."""
         return chain(self.open_positions.values(), self.closed_positions.values(), self.frozen_positions.values())
-    
+
+    def get_open_loans(self) -> Iterable[Loan]:
+        """Get loans across all positions."""
+        for p in self.get_open_and_frozen_positions():
+            if p.loan:
+                yield p.loan
+
+    def get_open_and_frozen_positions(self) -> Iterable[TradingPosition]:
+        """Get open and frozen, positions.
+
+        These are all the positions where we have capital tied at the moment.
+        """
+        return chain(self.open_positions.values(), self.closed_positions.values())
+
     def get_all_positions_filtered(self) -> Iterable[TradingPosition]:
         """Get open, closed and frozen, positions filtered to remove
         repaired or failed trades.
@@ -516,9 +530,19 @@ class Portfolio:
         """Get how much reserve stablecoins we have."""
         return sum([r.get_value() for r in self.reserves.values()])
 
-    def get_open_position_equity(self) -> USDollarAmount:
-        """Get the value of current trading positions."""
-        return sum([p.get_value() for p in self.open_positions.values()])
+    def get_position_equity_and_collateral(self) -> USDollarAmount:
+        """Get the equity tied tot the current trading positions.
+
+        TODO: Rename this function - also deals with loans not just equity
+        """
+
+        # Any trading positions we have one
+        position_values = sum([p.get_equity() for p in self.open_positions.values()])
+
+        # Minus any outstanding loans we have
+        collateral_values = sum([p.get_collateral() for p in self.open_positions.values()])
+
+        return position_values + collateral_values
 
     def get_frozen_position_equity(self) -> USDollarAmount:
         """Get the value of trading positions that are frozen currently."""
@@ -539,7 +563,7 @@ class Portfolio:
 
         - Cash in the hand
         """
-        return self.get_open_position_equity() + self.get_current_cash()
+        return self.get_position_equity_and_collateral() + self.get_current_cash()
 
     def get_unrealised_profit_usd(self) -> USDollarAmount:
         """Get the profit of currently open positions."""
@@ -588,7 +612,7 @@ class Portfolio:
         position = self.get_position_by_trading_pair(pair)
         if position is None:
             return Decimal(0)
-        return position.get_equity_for_position()
+        return position.get_quantity_old()
 
     def adjust_reserves(self, asset: AssetIdentifier, amount: Decimal):
         """Remove currency from reserved.
@@ -612,7 +636,9 @@ class Portfolio:
 
         Total equity of the porfolio stays the same.
         """
-        assert trade.is_buy()
+
+        if trade.is_spot():
+            assert trade.is_buy()
 
         reserve = trade.get_planned_reserve()
         try:
@@ -621,7 +647,8 @@ class Portfolio:
             raise RuntimeError(f"Reserve missing for {trade.reserve_currency}") from e
 
         # Sanity check on price calculatins
-        assert abs(float(reserve) - trade.get_planned_value()) < 0.01, f"Trade {trade}: Planned value {trade.get_planned_value()}, but wants to allocate reserve currency for {reserve}"
+        if trade.is_spot():
+            assert abs(float(reserve) - trade.get_planned_value()) < 0.01, f"Trade {trade}: Planned value {trade.get_planned_value()}, but wants to allocate reserve currency for {reserve}"
 
         if underflow_check:
             if available < reserve:
@@ -866,11 +893,15 @@ class Portfolio:
 
     def get_current_credit_positions(self) -> List[TradingPosition]:
         """Return currently open credit positions."""
-        credit_positions = [p for p in chain(self.open_positions.values(), self.frozen_positions.values()) if p.is_credit_supply()]
+        credit_positions = [p for p in self.get_open_and_frozen_positions() if p.is_credit_supply()]
         return credit_positions
 
-    def get_total_borrowed(self) -> USDollarAmount:
-        pass
+    def get_borrowed(self) -> USDollarAmount:
+        return sum([p.get_borrowed() for p in self.get_open_and_frozen_positions()])
+
+    def get_loan_net_asset_value(self) -> USDollarAmount:
+        """What is our Net Asset Value (NAV) across all open loan positions."""
+        return sum(l.get_net_asset_value() for l in self.get_open_loans())
 
     def get_total_collateral(self) -> USDollarAmount:
-        pass
+        raise NotImplementedError()

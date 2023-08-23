@@ -415,7 +415,7 @@ def test_buy_sell_buy_with_tester(
 
     # We get the same position object as in the first buy
     assert position2.position_id == position.position_id
-    assert position2.get_equity_for_position() == 0
+    assert position2.get_quantity_old() == 0
     assert position2.is_closed()
 
     assert trade2.get_status() == TradeStatus.success
@@ -434,7 +434,7 @@ def test_buy_sell_buy_with_tester(
 
     assert position3.is_open()
     assert position3.position_id != position.position_id
-    assert position3.get_equity_for_position() == pytest.approx(Decimal('0.293148816843562091'))
+    assert position3.get_quantity_old() == pytest.approx(Decimal('0.293148816843562091'))
 
     assert trade3.planned_price == pytest.approx(1705.618345602341)
     assert trade3.planned_quantity == pytest.approx(Decimal('0.293148816843562091'))
@@ -476,7 +476,7 @@ def test_buy_buy_sell_sell_tester(
     position2, trade2 = trader.buy(weth_usdc_pair, Decimal(500))
 
     # 1000 USDC for 1700 USD/ETH
-    weth_holding = position2.get_equity_for_position()
+    weth_holding = position2.get_quantity_old()
     assert weth_holding == pytest.approx(Decimal('0.586126840906346334'))
 
     # Now liquidate the portfolio
@@ -541,8 +541,8 @@ def test_two_parallel_positions(
     trader.execute_trades_simple([trade1, trade2])
     assert hot_wallet.current_nonce == 3
 
-    assert position1.get_equity_for_position() == pytest.approx(Decimal('0.29314933179905376'))
-    assert position2.get_equity_for_position() == pytest.approx(Decimal('2.486302890046558723'))
+    assert position1.get_quantity_old() == pytest.approx(Decimal('0.29314933179905376'))
+    assert position2.get_quantity_old() == pytest.approx(Decimal('2.486302890046558723'))
     assert position1.get_value() == pytest.approx(499.999998997285)
     assert position2.get_value() == pytest.approx(500.00000000000006)
     assert portfolio.get_total_equity() == pytest.approx(9999.999998997286)
@@ -558,8 +558,8 @@ def test_two_parallel_positions(
     # 4. Sell all AAVE
     #
 
-    position3, trade3 = trader.sell(weth_usdc_pair, position1.get_equity_for_position(), execute=False)
-    position4, trade4 = trader.sell(aave_usdc_pair, position2.get_equity_for_position(), execute=False)
+    position3, trade3 = trader.sell(weth_usdc_pair, position1.get_quantity_old(), execute=False)
+    position4, trade4 = trader.sell(aave_usdc_pair, position2.get_quantity_old(), execute=False)
 
     trader.execute_trades_simple([trade3, trade4])
 
