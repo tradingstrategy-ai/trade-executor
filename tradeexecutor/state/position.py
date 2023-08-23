@@ -17,7 +17,7 @@ from tradeexecutor.state.generic_position import GenericPosition, BalanceUpdateE
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier, TradingPairKind
 from tradeexecutor.state.interest import Interest
 from tradeexecutor.state.loan import Loan
-from tradeexecutor.state.trade import TradeType, QUANTITY_EPSILON
+from tradeexecutor.state.trade import TradeType, QUANTITY_EPSILON, COLLATERAL_POSITION_CLOSE
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.types import USDollarAmount, BPS, USDollarPrice, Percent, LeverageMultiplier
 from tradeexecutor.strategy.dust import get_dust_epsilon_for_pair
@@ -706,8 +706,13 @@ class TradingPosition(GenericPosition):
                 if len(self.trades) == 0:
                     assert reserve is not None, "Both reserve and quantity needs to be given for lending protocol short open"
                     assert quantity is not None, "Both reserve and quantity needs to be given for lending protocol short open"
+                    assert collateral_adjustment is None, "collateral_adjustment cannot be used when opening a position"
                 else:
                     assert quantity is not None, "For increasing/reducing short position quantity must be given"
+
+                    # Get rid of the extra collateral
+                    if collateral_adjustment == COLLATERAL_POSITION_CLOSE:
+                        collateral_adjustment = -self.loan.calculate_collateral_left_after_closing()
 
                 assert reserve_currency_price, f"Collateral price missing"
                 assert assumed_price, f"Short token price missing"
@@ -720,6 +725,7 @@ class TradingPosition(GenericPosition):
                     planned_reserve = -abs(quantity * Decimal(assumed_price))
 
                 planned_quantity = quantity
+
             case TradingPairKind.spot_market_hold | TradingPairKind.credit_supply:
                 # Set spot market estimated quantities
                 if reserve is not None:

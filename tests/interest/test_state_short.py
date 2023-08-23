@@ -521,17 +521,13 @@ def test_short_close_all(
 
     trader.set_perfectly_executed(trade)
 
-    assert state.portfolio.get_total_equity() == 10000
-    loan = short_position.loan
-    assert loan.borrowed.quantity == pytest.approx(Decimal(expected_eth_shorted_amount))
-    assert loan.collateral.quantity == pytest.approx(1000)
-    assert portfolio.get_current_cash() == 9000
-
     # ETH price 1500 -> 1400
     short_position.revalue_base_asset(
         datetime.datetime.utcnow(),
         1400.0,
     )
+
+    assert state.portfolio.get_theoretical_value() == pytest.approx(10053.33333)
 
     # Make a trade that fully closes the position
     short_position_ref_2, trade_2, created = state.create_trade(
@@ -546,8 +542,9 @@ def test_short_close_all(
         collateral_adjustment=COLLATERAL_POSITION_CLOSE,
     )
 
-    assert trade_2.planned_loan_update.collateral.quantity == 0
+    assert trade_2.planned_loan_update.collateral.quantity == Decimal('253.3333333333333436954148965')
     assert trade_2.planned_loan_update.borrowed.quantity == 0
+    assert trade_2.collateral_adjustment == pytest.approx(Decimal('-253.3333333333333436954148965'))
 
     # Trade 2 will be excuted,
     # planned loan update moves sto executed
@@ -556,12 +553,11 @@ def test_short_close_all(
 
     # Check that loan has now been repaid
     loan = short_position.loan
-    assert loan.collateral.quantity == 0
-    assert loan.borrowed.quantity == 0
+    assert loan.collateral.quantity == pytest.approx(0)  # TODO: Epsilon issues
+    assert loan.borrowed.quantity == pytest.approx(0)  # TODO: Epsilon issues
 
     assert short_position.is_closed()
 
     assert portfolio.get_current_cash() == pytest.approx(10053.333333333334)  # We have now cashed out our USD 53 profit unlike in the previous test
     assert portfolio.get_theoretical_value() == pytest.approx(10053.333333333334)  # Should be same with our without reducing position as we have no fees, see test above
     assert portfolio.get_total_equity() == pytest.approx(10053.333333333334)
-

@@ -78,14 +78,14 @@ def plan_short_loan_update(
     if trade.is_reduce():
 
         loan.collateral.change_quantity_and_value(
-            reserve,
+            trade.planned_reserve,
             trade.reserve_currency_exchange_rate,
             trade.opened_at,
         )
 
         # In short position, positive value reduces the borrowed amount
         loan.borrowed.change_quantity_and_value(
-            base,
+            -trade.planned_quantity,
             trade.planned_price,
             trade.opened_at,
         )

@@ -101,4 +101,17 @@ class Loan:
         usd_value = borrowed_usd/ target_ltv
         return Decimal(usd_value / self.collateral.last_usd_price)
 
+    def calculate_collateral_left_after_closing(self) -> Decimal:
+        """Calculate how much collateral we have left after all debt is paid back.
+
+        .. note ::
+
+            Watch out for rounding/epsilon errors.
+
+        :return:
+            Collateral token quantity
+        """
+        expected_collateral_release_usd = self.borrowed.get_usd_value()
+        collateral_left_usd = self.collateral.get_usd_value() - expected_collateral_release_usd
+        return Decimal(collateral_left_usd / self.collateral.last_usd_price)
 
