@@ -319,6 +319,10 @@ class TradingPosition(GenericPosition):
         """Is this position short on the underlying base asset."""
         return not self.is_long()
 
+    def is_leverage(self) -> bool:
+        """Is this leveraged/loan backed position."""
+        return self.pair.is_leverage()
+
     def is_stop_loss(self) -> bool:
         """Was this position ended with stop loss trade"""
         last_trade = self.get_last_trade()
@@ -980,14 +984,21 @@ class TradingPosition(GenericPosition):
 
         return t.blockchain_transactions[-1].tx_hash
 
-    def set_revaluation_data(self, last_pricing_at: datetime.datetime, last_token_price: float):
+    def revalue_base_asset(self, last_pricing_at: datetime.datetime, last_token_price: USDollarPrice):
+        """Update position token prices."""
         assert isinstance(last_pricing_at, datetime.datetime)
         assert not isinstance(last_pricing_at, pd.Timestamp)
-        assert isinstance(last_token_price, float)
+
+        assert isinstance(last_token_price, float), f"Expected price as float, got {last_token_price.__class__}"
         assert not isinstance(last_pricing_at, np.float32)
+
         assert last_pricing_at.tzinfo is None
         self.last_pricing_at = last_pricing_at
         self.last_token_price = last_token_price
+
+        if self.loan:
+            assert self.is_short()
+            self.loan.borrowed.revalue(last_token_price, last_pricing_at)
 
     def get_value_at_open(self) -> USDollarAmount:
         """How much the position had value tied after its open.

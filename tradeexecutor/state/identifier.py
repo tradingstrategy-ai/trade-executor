@@ -13,7 +13,7 @@ from eth_typing import HexAddress
 from tradingstrategy.chain import ChainId
 from web3 import Web3
 
-from tradeexecutor.state.types import JSONHexAddress, USDollarAmount, LeverageMultiplier
+from tradeexecutor.state.types import JSONHexAddress, USDollarAmount, LeverageMultiplier, USDollarPrice
 from tradingstrategy.lending import LendingProtocolType
 from tradingstrategy.stablecoin import is_stablecoin_like
 from tradingstrategy.types import PrimaryKey
@@ -378,9 +378,12 @@ class TradingPairIdentifier:
         assert self.kind in (TradingPairKind.lending_protocol_short, TradingPairKind.lending_protocol_long)
         return 1 / (1 - self.collateral_factor)
 
+    def is_leverage(self) -> bool:
+        return self.kind.is_leverage()
+
 
 @dataclass_json
-@dataclass(frozen=True)
+@dataclass(slots=True)
 class AssetWithTrackedValue:
     """Track one asset with a value.
 
@@ -404,7 +407,7 @@ class AssetWithTrackedValue:
     quantity: Decimal
 
     #: What was the last known USD price of a single unit of quantity
-    last_usd_price: float
+    last_usd_price: USDollarPrice
 
     #: When the last pricing happened
     last_pricing_at: datetime.datetime
@@ -428,3 +431,11 @@ class AssetWithTrackedValue:
         Priced in the `last_usd_price`
         """
         return float(self.quantity) * self.last_usd_price
+
+    def revalue(self, price: USDollarPrice, when: datetime.datetime):
+        """Update the latest known price of the asset."""
+        assert isinstance(when, datetime.datetime)
+        assert type(price) == float
+        assert 0 < price < 1_000_000, f"Price sanity check {price}"
+        self.last_usd_price = price
+        self.last_pricing_at = when

@@ -152,20 +152,20 @@ def test_open_short(
     assert trade.trade_type == TradeType.rebalance
 
     # Check loan data structures
-    assert short_position.loan is not None
-    assert short_position.loan.pair == weth_short_identifier
+    loan = short_position.loan
+    assert loan is not None
+    assert loan.pair == weth_short_identifier
 
-    assert short_position.loan.collateral.asset.token_symbol == "aPolUSDC"
-    assert short_position.loan.collateral.quantity == Decimal(1000)
-    assert short_position.loan.collateral.asset.underlying.token_symbol == "USDC"
-    assert short_position.loan.collateral.last_usd_price == 1.0
+    assert loan.collateral.asset.token_symbol == "aPolUSDC"
+    assert loan.collateral.quantity == Decimal(1000)
+    assert loan.collateral.asset.underlying.token_symbol == "USDC"
+    assert loan.collateral.last_usd_price == 1.0
 
-    assert short_position.loan.borrowed.quantity == pytest.approx(Decimal(expected_eth_shorted_amount))
-    assert short_position.loan.borrowed.asset.token_symbol == "variableDebtPolWETH"
-    assert short_position.loan.borrowed.asset.underlying.token_symbol == "WETH"
-    assert short_position.loan.borrowed.last_usd_price == 1500
-
-    assert short_position.loan.get_loan_to_value() == 0.8
+    assert loan.borrowed.quantity == pytest.approx(Decimal(expected_eth_shorted_amount))
+    assert loan.borrowed.asset.token_symbol == "variableDebtPolWETH"
+    assert loan.borrowed.asset.underlying.token_symbol == "WETH"
+    assert loan.borrowed.last_usd_price == 1500
+    assert loan.get_loan_to_value() == 0.8
 
     # Check position data structures
     assert short_position.is_short()
@@ -184,3 +184,65 @@ def test_open_short(
     assert state.portfolio.get_current_cash() == 9000
     assert state.portfolio.get_loan_net_asset_value() == 200
     assert state.portfolio.get_total_equity() == 10000
+
+
+def test_short_unrealised_profit(
+        state: State,
+        weth_short_identifier: TradingPairIdentifier,
+        usdc: AssetIdentifier,
+):
+    """Opening a short position and get some unrealised profit.
+
+    - ETH price goes 1500 -> 1400 so we get unrealised PnL
+
+    """
+
+    trader = UnitTestTrader(state)
+
+    # Aave allows us to borrow 80% ETH against our USDC collateral
+    start_ltv = 0.8
+
+    # How many ETH (vWETH) we expect when we go in
+    # with our max leverage available
+    # based on the collateral ratio
+    expected_eth_shorted_amount = 1000 * start_ltv / 1500
+
+    # Take 1000 USDC reserves and open a ETH short using it.
+    # We should get 800 USDC worth of ETH for this.
+    short_position, trade, created = state.create_trade(
+        strategy_cycle_at=datetime.datetime.utcnow(),
+        pair=weth_short_identifier,
+        quantity=-Decimal(expected_eth_shorted_amount),
+        reserve=Decimal(1000),
+        assumed_price=float(1500),  # USDC/ETH price we are going to sell
+        trade_type=TradeType.rebalance,
+        reserve_currency=usdc,
+        reserve_currency_price=1.0,
+    )
+
+    trader.set_perfectly_executed(trade)
+    assert state.portfolio.get_total_equity() == 10000
+
+    # ETH price 1500 -> 1400
+    short_position.revalue_base_asset(
+        datetime.datetime.utcnow(),
+        1400.0,
+    )
+
+    # New ETH loan worth of 746.6666666666666 USD
+    assert short_position.get_current_price() == 1400
+    assert short_position.get_average_price() == 1500
+    assert short_position.get_unrealised_profit_usd() == pytest.approx(800 - 746.6666666666666)
+    assert short_position.get_realised_profit_usd() == 0
+
+    loan = short_position.loan
+    assert loan.borrowed.quantity == pytest.approx(Decimal(expected_eth_shorted_amount))
+    assert loan.borrowed.asset.token_symbol == "variableDebtPolWETH"
+    assert loan.borrowed.asset.underlying.token_symbol == "WETH"
+    assert loan.borrowed.last_usd_price == 1400
+    assert loan.get_loan_to_value() == pytest.approx(0.746666)
+
+    # Check that we track the equity value correctly
+    assert state.portfolio.get_loan_net_asset_value() == pytest.approx(253.33333333333337)
+    assert state.portfolio.get_current_cash() == 9000
+    assert state.portfolio.get_theoretical_value() == pytest.approx(10053.333333333334)

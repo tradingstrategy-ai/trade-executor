@@ -555,19 +555,53 @@ class Portfolio:
     def get_total_equity(self) -> USDollarAmount:
         """Get the value of the portfolio based on the latest pricing.
 
-        This is
+        This includes
 
-        - Value of the positions
+        - Equity Value of the positions
 
-        plus
+        - ...and cash in the hand
 
-        - Cash in the hand
+        But not
+
+        - Leverage/loan based positions (equity is in collateral)
+
+        See also :py:meth:`get_theoretical_value`
+
         """
         return self.get_position_equity_and_collateral() + self.get_current_cash()
 
+    def get_theoretical_value(self) -> USDollarAmount:
+        """Calculate portfolio value if every position would be closed now.
+
+        This includes
+
+        - Total equity
+
+        - Any unrealised profit from margined positions
+
+        TODO: Rename this function
+
+        See also :py:meth:`get_total_equity`
+        """
+        return self.get_total_equity() + self.get_unrealised_profit_in_leveraged_positions()
+
     def get_unrealised_profit_usd(self) -> USDollarAmount:
-        """Get the profit of currently open positions."""
+        """Get the profit of currently open positions.
+
+        - This profit includes spot market equity i.e. holding tokens
+
+        See also :py:meth:`get_unrealised_profit_in_leveraged_positions`.
+        """
         return sum([p.get_unrealised_profit_usd() for p in self.open_positions.values()])
+
+    def get_unrealised_profit_in_leveraged_positions(self) -> USDollarAmount:
+        """Get the profit of currently open margiend positions.
+
+        - This profit is not included in the portfolio total equity
+
+        See also :py:meth:`get_unrealised_profit_usd`.
+        """
+        return sum([p.get_unrealised_profit_usd() for p in self.open_positions.values() if p.is_leverage()])
 
     def get_closed_profit_usd(self) -> USDollarAmount:
         """Get the value of the portfolio based on the latest pricing."""
@@ -703,14 +737,14 @@ class Portfolio:
                 # TODO: How to handle credit supply position revaluation
                 if not p.is_credit_supply():
                     ts, price = valuation_method(ts, p)
-                    p.set_revaluation_data(ts, price)
+                    p.revalue_base_asset(ts, price)
 
             if revalue_frozen:
                 for p in self.frozen_positions.values():
                     # TODO: How to handle credit supply position revaluation
                     if not p.is_credit_supply():
                         ts, price = valuation_method(ts, p)
-                        p.set_revaluation_data(ts, price)
+                        p.revalue_base_asset(ts, price)
         except Exception as e:
             raise InvalidValuationOutput(f"Valuation model failed to output proper price: {valuation_method}: {e}") from e
 
