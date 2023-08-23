@@ -314,7 +314,7 @@ class StrategyModuleInformation:
 
     trading_strategy_type: StrategyType
     trading_strategy_cycle: CycleDuration
-    trade_routing: TradeRouting
+    trade_routing: TradeRouting | list[TradeRouting]
     reserve_currency: ReserveCurrency
     decide_trades: DecideTradesProtocol | DecideTradesProtocol2
 
