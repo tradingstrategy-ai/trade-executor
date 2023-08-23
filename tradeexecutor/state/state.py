@@ -382,7 +382,11 @@ class State:
             self.portfolio.return_capital_to_reserves(trade)
 
         if trade.is_leverage_short() and trade.is_reduce():
+            # Release any collateral
             self.portfolio.return_capital_to_reserves(trade)
+
+        if trade.is_leverage_long():
+            raise NotImplementedError()
 
         if position.can_be_closed():
             # Move position to closed

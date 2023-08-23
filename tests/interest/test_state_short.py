@@ -304,6 +304,9 @@ def test_short_unrealised_profit_partially_closed(
     )
 
     # Close 50% of the position
+    #
+    # TODO: Only use quantity here
+    #
     short_position_ref_2, trade_2, created = state.create_trade(
         strategy_cycle_at=datetime.datetime.utcnow(),
         pair=weth_short_identifier,
