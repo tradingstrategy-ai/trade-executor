@@ -188,6 +188,7 @@ class State:
                      position: Optional[TradingPosition] = None,
                      slippage_tolerance: Optional[float] = None,
                      leverage: Optional[float] = None,
+                     collateral_adjustment: Optional[Decimal] = None,
                      ) -> Tuple[TradingPosition, TradeExecution, bool]:
         """Creates a request for a new trade.
 
@@ -315,6 +316,7 @@ class State:
             slippage_tolerance=slippage_tolerance,
             notes=notes,
             leverage=leverage,
+            collateral_adjustment=collateral_adjustment,
         )
 
         return position, trade, created
@@ -385,6 +387,9 @@ class State:
         if trade.is_leverage_short() and trade.is_reduce():
             # Release any collateral
             self.portfolio.return_capital_to_reserves(trade)
+
+            if trade.collateral_adjustment:
+                self.portfolio.return_collateral(position.loan, -trade.collateral_adjustment)
 
         if trade.is_leverage_long():
             raise NotImplementedError()

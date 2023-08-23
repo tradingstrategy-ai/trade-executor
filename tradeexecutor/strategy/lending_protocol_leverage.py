@@ -7,7 +7,7 @@ import datetime
 
 from tradeexecutor.state.identifier import AssetWithTrackedValue, AssetType
 from tradeexecutor.state.loan import Loan
-from tradeexecutor.state.trade import TradeExecution
+from tradeexecutor.state.trade import TradeExecution, COLLATERAL_POSITION_CLOSE
 
 
 def create_short_loan(
@@ -76,15 +76,16 @@ def plan_short_loan_update(
     assert len(position.trades) > 1, "Can be only called when closing/reducing/increasing/position"
 
     if trade.is_reduce():
+
         loan.collateral.change_quantity_and_value(
-            trade.planned_reserve,
+            reserve,
             trade.reserve_currency_exchange_rate,
             trade.opened_at,
         )
 
         # In short position, positive value reduces the borrowed amount
         loan.borrowed.change_quantity_and_value(
-            -trade.planned_quantity,
+            base,
             trade.planned_price,
             trade.opened_at,
         )

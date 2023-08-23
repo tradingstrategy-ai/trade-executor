@@ -4,6 +4,7 @@
 
 """
 import copy
+from _decimal import Decimal
 from dataclasses import dataclass
 from typing import TypeAlias
 
@@ -72,5 +73,32 @@ class Loan:
         return self.pair.collateral_factor
 
     def get_loan_to_value(self):
-        """Get LTV of this loan."""
+        """Get LTV of this loan.
+
+        LTV should stay below the liquidation threshold.
+        For Aave ETH the liquidation threshold is 80%.
+        """
         return self.borrowed.get_usd_value() / self.collateral.get_usd_value()
+
+    def calculate_collateral_for_target_ltv(
+            self,
+            target_ltv: float,
+            borrowed_quantity: Decimal | float,
+    ) -> Decimal:
+        """Calculate the collateral amount we need to hit a target LTV.
+
+        Assuming our debt stays the same, how much collateral we need
+        to hit the target LTV.
+
+        .. note ::
+
+            Watch out for rounding/epsilon errors.
+
+        :return:
+            US dollars worth of collateral needed
+        """
+        borrowed_usd = self.borrowed.last_usd_price  * float(borrowed_quantity)
+        usd_value = borrowed_usd/ target_ltv
+        return Decimal(usd_value / self.collateral.last_usd_price)
+
+

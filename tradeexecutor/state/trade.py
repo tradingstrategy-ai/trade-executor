@@ -29,6 +29,19 @@ logger = logging.getLogger()
 #: Used to catch floating point rounding errors
 QUANTITY_EPSILON = Decimal(10**-18)
 
+#: Mark the trade execution to release all collateral after this trade.
+#:
+#: - The trade is set to close the loan and close a leveraged position
+#:
+#: - This special value marks the collateral adjustment amount
+#:   meaning "all of it"
+#:
+#: - If not given, then any profit and loss, etc.
+#:   will just stay as the collateral, and
+#:   is never put back to cash reserves
+#:
+COLLATERAL_POSITION_CLOSE = Decimal(-10**10)
+
 
 class TradeType(enum.Enum):
     """What kind of trade execution this was."""
@@ -378,6 +391,21 @@ class TradeExecution:
     #:
     executed_loan_update: Optional[Loan] = None
 
+    #: After the trade execution, adjust collateral amount this many tokens.
+    #:
+    #: This is done on the top of any collateral changes caused by
+    #: trade execution (buy/sell).
+    #:
+    #: Negative to move collateral to cash reserves, positive
+    #: to move cash reserves to collateral to increase the health ration.
+    #:
+    #: Because by default any leveraged position realised profit goes
+    #: to the collateral, not cash reserves, this allows us to
+    #: keep the position LTV same and also release collateral
+    #: when we reduce the position.
+    #:
+    collateral_adjustment: Optional[Decimal] = None
+
     def __repr__(self):
         if self.is_buy():
             return f"<Buy #{self.trade_id} {self.planned_quantity} {self.pair.base.token_symbol} at {self.planned_price}, {self.get_status().name}>"
@@ -618,6 +646,13 @@ class TradeExecution:
             return self.planned_quantity < 0
         else:
             raise NotImplementedError(f"Not leveraged trade: {self}")
+
+    def is_release_all_collateral(self) -> bool:
+        """This trade is marked to release all remaining collateral for the undertlying loan.
+
+        This assumes we successfully first reduce borrowed amount to zero.
+        """
+        return self.collateral_adjustment == COLLATERAL_POSITION_CLOSE
 
     def get_input_asset(self) -> AssetIdentifier:
         """How we fund this trade."""

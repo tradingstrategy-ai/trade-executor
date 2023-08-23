@@ -381,7 +381,7 @@ class Portfolio:
                      position: Optional[TradingPosition] = None,
                      slippage_tolerance: Optional[float] = None,
                      leverage: Optional[float] = None,
-                     ltv: Optional[float] = None,
+                     collateral_adjustment: Optional[Decimal] = None,
                      ) -> Tuple[TradingPosition, TradeExecution, bool]:
         """Create a trade.
 
@@ -505,6 +505,7 @@ class Portfolio:
             slippage_tolerance=slippage_tolerance,
             portfolio_value_at_creation=portfolio_value,
             leverage=leverage,
+            collateral_adjustment=collateral_adjustment,
         )
 
         # Update notes
@@ -711,6 +712,20 @@ class Portfolio:
             self.adjust_reserves(trade.reserve_currency, -trade.executed_reserve)
         else:
             self.adjust_reserves(trade.reserve_currency, +trade.executed_reserve)
+
+    def return_collateral(self, loan: Loan, quantity: Decimal):
+        """Return collateral to reserves.
+
+        :param loan:
+            For which loan we return the reserves
+
+        :param quantity:
+            How much collateral we return
+        """
+        assert quantity > 0
+        currency = loan.collateral.asset.underlying
+        loan.collateral.quantity -= quantity
+        self.adjust_reserves(currency, quantity)
 
     def has_unexecuted_trades(self) -> bool:
         """Do we have any trades that have capital allocated, but not executed yet."""

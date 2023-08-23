@@ -617,6 +617,7 @@ class TradingPosition(GenericPosition):
                    slippage_tolerance: Optional[float] = None,
                    portfolio_value_at_creation: Optional[USDollarAmount] = None,
                    leverage: Optional[LeverageMultiplier]=None,
+                   collateral_adjustment: Optional[Decimal]=None,
                    ) -> TradeExecution:
         """Open a new trade on position.
 
@@ -748,6 +749,7 @@ class TradingPosition(GenericPosition):
             portfolio_value_at_creation=portfolio_value_at_creation,
             leverage=leverage,
             reserve_currency_exchange_rate=reserve_currency_price,
+            collateral_adjustment=collateral_adjustment,
         )
 
         self.trades[trade.trade_id] = trade
