@@ -345,6 +345,6 @@ def test_short_unrealised_profit_partially_closed(
 
     # Check that we track the equity value correctly
     assert state.portfolio.get_loan_net_asset_value() == pytest.approx(253.33333333333337 / 2)
-    assert state.portfolio.get_current_cash() == 9500
+    assert state.portfolio.get_current_cash() == 9500 + short_position.get_realised_profit_usd()
     assert state.portfolio.get_total_equity() == pytest.approx(10_000 + short_position.get_realised_profit_usd())  # Any profits from closed short positions are moved to equity
     assert state.portfolio.get_theoretical_value() == pytest.approx(10053.333333333334)
