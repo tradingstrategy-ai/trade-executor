@@ -11,7 +11,7 @@ from unittest.mock import patch
 import pytest
 from typer.main import get_command
 
-from eth_defi.anvil import AnvilLaunch
+from eth_defi.provider.anvil import AnvilLaunch
 from eth_typing import HexAddress
 
 from eth_defi.hotwallet import HotWallet

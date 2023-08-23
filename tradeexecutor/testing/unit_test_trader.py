@@ -108,8 +108,13 @@ class UnitTestTrader:
         # 4. executed
         executed_price = trade.planned_price
         if trade.is_buy():
-            executed_quantity = trade.planned_quantity
-            executed_reserve = Decimal(0)
+            if trade.is_spot():
+                executed_quantity = trade.planned_quantity
+                executed_reserve = Decimal(0)  # TODO: Check if we can reorg code here more cleanly
+            else:
+                # short reduction also changes the reserve (releases collateral)
+                executed_quantity = trade.planned_quantity
+                executed_reserve = trade.planned_reserve
         else:
             executed_quantity = trade.planned_quantity
             executed_reserve = trade.planned_reserve

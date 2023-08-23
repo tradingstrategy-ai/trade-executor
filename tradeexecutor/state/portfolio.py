@@ -583,7 +583,9 @@ class Portfolio:
 
         See also :py:meth:`get_total_equity`
         """
-        return self.get_total_equity() + self.get_unrealised_profit_in_leveraged_positions()
+        return self.get_total_equity() \
+            + self.get_unrealised_profit_in_leveraged_positions() \
+            + self.get_realised_profit_in_leveraged_positions()
 
     def get_unrealised_profit_usd(self) -> USDollarAmount:
         """Get the profit of currently open positions.
@@ -602,6 +604,15 @@ class Portfolio:
         See also :py:meth:`get_unrealised_profit_usd`.
         """
         return sum([p.get_unrealised_profit_usd() for p in self.open_positions.values() if p.is_leverage()])
+
+    def get_realised_profit_in_leveraged_positions(self) -> USDollarAmount:
+        """Get the profit of currently open margiend positions.
+
+        - This profit is not included in the portfolio total equity
+
+        See also :py:meth:`get_unrealised_profit_usd`.
+        """
+        return sum([p.get_realised_profit_usd() for p in self.open_positions.values() if p.is_leverage()])
 
     def get_closed_profit_usd(self) -> USDollarAmount:
         """Get the value of the portfolio based on the latest pricing."""
@@ -695,7 +706,11 @@ class Portfolio:
         """Return capital to reserves after a sell."""
         if trade.is_spot():
             assert trade.is_sell()
-        self.adjust_reserves(trade.reserve_currency, +trade.executed_reserve)
+
+        if trade.is_leverage_short() and trade.is_reduce():
+            self.adjust_reserves(trade.reserve_currency, -trade.executed_reserve)
+        else:
+            self.adjust_reserves(trade.reserve_currency, +trade.executed_reserve)
 
     def has_unexecuted_trades(self) -> bool:
         """Do we have any trades that have capital allocated, but not executed yet."""

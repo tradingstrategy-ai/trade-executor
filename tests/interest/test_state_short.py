@@ -258,12 +258,14 @@ def test_short_unrealised_profit_partially_closed(
 ):
     """Opening a short position and get some unrealised profit.
 
-    - ETH price goes 1500 -> 1400 so we get unrealised PnL
+    - ETH price goes 1500 -> 1400 so we get USD 56 unrealised PnL
 
-    - Close 50% of this position at this price
+    - Close 50% of this position at this price, we get USD 27 realised profit
     """
 
     trader = UnitTestTrader(state)
+
+    portfolio = state.portfolio
 
     # Aave allows us to borrow 80% ETH against our USDC collateral
     start_ltv = 0.8
@@ -275,6 +277,7 @@ def test_short_unrealised_profit_partially_closed(
 
     # Take 1000 USDC reserves and open a ETH short using it.
     # We should get 800 USDC worth of ETH for this.
+    # 800 USDC worth of ETH is
     short_position, trade, created = state.create_trade(
         strategy_cycle_at=datetime.datetime.utcnow(),
         pair=weth_short_identifier,
@@ -296,6 +299,7 @@ def test_short_unrealised_profit_partially_closed(
     loan = short_position.loan
     assert loan.borrowed.quantity == pytest.approx(Decimal(expected_eth_shorted_amount))
     assert loan.collateral.quantity == pytest.approx(1000)
+    assert portfolio.get_current_cash() == 9000
 
     # ETH price 1500 -> 1400
     short_position.revalue_base_asset(
@@ -303,16 +307,17 @@ def test_short_unrealised_profit_partially_closed(
         1400.0,
     )
 
+    # Loan value 800 USD -> 746 USD
+    assert short_position.loan.borrowed.get_usd_value() == pytest.approx(746.6666666666666)
+
     # Close 50% of the position
-    #
-    # TODO: Only use quantity here
     #
     short_position_ref_2, trade_2, created = state.create_trade(
         strategy_cycle_at=datetime.datetime.utcnow(),
         pair=weth_short_identifier,
         # Position quantity for short position means reduce the position
         quantity=Decimal(expected_eth_shorted_amount / 2),  # Short position quantity is counted as negative. When we close the quantity goes towards zero from neagtive.
-        reserve=-Decimal(500), # Because this is reducing short exposure, the reserve allocated for this position is negative (reduced)
+        reserve=None,  # Reserve will be calculated generated from the released collateral
         assumed_price=float(1400),  # USDC/ETH price we are going to sell
         trade_type=TradeType.rebalance,
         reserve_currency=usdc,
@@ -324,30 +329,51 @@ def test_short_unrealised_profit_partially_closed(
     assert not created
     assert short_position.loan.borrowed.quantity == pytest.approx(Decimal(expected_eth_shorted_amount))
 
+    # Trade 2 will be excuted,
+    # planned loan update moves sto executed
+    # we get rid of half of the position
     assert trade_2.planned_loan_update is not None
     assert trade_2.executed_loan_update is None
     trader.set_perfectly_executed(trade_2)
     assert trade_2.planned_loan_update is not None
     assert trade_2.executed_loan_update is not None
+    assert trade_2.planned_quantity == pytest.approx(Decimal(expected_eth_shorted_amount / 2))
+    assert trade_2.executed_quantity == pytest.approx(Decimal(expected_eth_shorted_amount / 2))
+    assert trade_2.planned_reserve == pytest.approx(Decimal(-expected_eth_shorted_amount / 2 * 1400))
+    assert trade_2.executed_reserve == pytest.approx(Decimal(-expected_eth_shorted_amount / 2 * 1400))
 
     # New ETH loan worth of 746.6666666666666 USD
+    # Because we closed half, we realised 50% of profit, left 50% profit on the table.
+    # We have a total profit of USD 53
+    total_profit = (1500-1400) * expected_eth_shorted_amount
+    assert total_profit == pytest.approx(53.333333333333336)
     assert short_position.get_current_price() == 1400
     assert short_position.get_average_price() == 1500
-    assert short_position.get_unrealised_profit_usd() == pytest.approx((800 - 746.6666666666666) / 2)
-    assert short_position.get_realised_profit_usd() == pytest.approx((800 - 746.6666666666666) / 2)
+    assert short_position.get_unrealised_profit_usd() == pytest.approx(total_profit / 2)
+    assert short_position.get_realised_profit_usd() == pytest.approx(total_profit / 2)
 
     # Loan is 50% reduced from 0.53 ETH to 0.26 ETH
-    # Because price has decreased, the USDC value goes down faster
+    # Because price has decreased, the USDC value goes down faster.
+    #
+    # Note that here realised profit goes into loan net asset value,
+    # because ATM reducing short only the matching amount of collateral ,
+    # but leaves the PnL on the net asset value of the loan
+    #
     loan = short_position.loan
-    assert loan.collateral.quantity == pytest.approx(500)
-    assert loan.collateral.get_usd_value() == pytest.approx(500)
+    released_collateral = 1400 * expected_eth_shorted_amount / 2
+    assert released_collateral == pytest.approx(373.333333)
+    assert loan.collateral.quantity == pytest.approx(Decimal(626.6666666666666718477074483))
+    assert loan.collateral.get_usd_value() == pytest.approx(626.6666666666666718477074483)
     assert loan.borrowed.quantity == pytest.approx(Decimal(expected_eth_shorted_amount / 2))
     assert loan.borrowed.last_usd_price == 1400
     assert loan.borrowed.get_usd_value() == pytest.approx(373.333333)
-    assert loan.get_loan_to_value() == pytest.approx(0.746666)
+    assert loan.get_loan_to_value() == pytest.approx(0.5957446808510638)
 
-    # Check that we track the equity value correctly
-    assert state.portfolio.get_loan_net_asset_value() == pytest.approx(253.33333333333337 / 2)
-    assert state.portfolio.get_current_cash() == 9500 + short_position.get_realised_profit_usd()
-    assert state.portfolio.get_total_equity() == pytest.approx(10_000 + short_position.get_realised_profit_usd())  # Any profits from closed short positions are moved to equity
-    assert state.portfolio.get_theoretical_value() == pytest.approx(10053.333333333334)
+    # Check that we track the portfolio value correctly
+    # after realising profit
+    cash_back = released_collateral + total_profit / 2  # We get some of our collateral value back plus half of the profit
+    assert cash_back == pytest.approx(400)
+    assert portfolio.get_current_cash() == 9000 + released_collateral  # Realised profit is return to the reserves
+    assert portfolio.get_theoretical_value() == pytest.approx(10053.333333333334)  # Should be same with our without reducing position as we have no fees, see test above
+    assert portfolio.get_loan_net_asset_value() == pytest.approx(253.33333333333337)
+    assert portfolio.get_total_equity() == pytest.approx(10_000)  # Any profits from closed short positions are not moved to equity, unless told so

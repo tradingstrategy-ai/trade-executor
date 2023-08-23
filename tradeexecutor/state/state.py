@@ -338,7 +338,8 @@ class State:
             if trade.is_buy():
                 self.portfolio.move_capital_from_reserves_to_trade(trade)
         elif trade.is_leverage():
-            self.portfolio.move_capital_from_reserves_to_trade(trade)
+            if not trade.is_reduce():
+                self.portfolio.move_capital_from_reserves_to_trade(trade)
         else:
             raise NotImplementedError()
 

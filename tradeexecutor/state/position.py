@@ -701,11 +701,23 @@ class TradingPosition(GenericPosition):
         # Set lending market estimated quantities
         match pair.kind:
             case TradingPairKind.lending_protocol_short:
-                assert reserve is not None, "Both reserve and quantity needs to be given for lending protocol shorts"
-                assert quantity is not None, "Both reserve and quantity needs to be given for lending protocol shorts"
+
+                if len(self.trades) == 0:
+                    assert reserve is not None, "Both reserve and quantity needs to be given for lending protocol short open"
+                    assert quantity is not None, "Both reserve and quantity needs to be given for lending protocol short open"
+                else:
+                    assert quantity is not None, "For increasing/reducing short position quantity must be given"
+
                 assert reserve_currency_price, f"Collateral price missing"
                 assert assumed_price, f"Short token price missing"
-                planned_reserve = reserve
+
+                if reserve:
+                    planned_reserve = reserve
+                else:
+                    # Calculate how much collateral will be released
+                    # for reducing a short
+                    planned_reserve = -abs(quantity * Decimal(assumed_price))
+
                 planned_quantity = quantity
             case TradingPairKind.spot_market_hold | TradingPairKind.credit_supply:
                 # Set spot market estimated quantities
