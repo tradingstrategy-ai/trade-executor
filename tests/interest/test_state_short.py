@@ -557,6 +557,8 @@ def test_short_close_all(
     assert loan.borrowed.quantity == pytest.approx(0)  # TODO: Epsilon issues
 
     assert short_position.is_closed()
+    assert short_position.get_value() == 0
+    assert short_position.get_quantity() == 0
 
     assert portfolio.get_current_cash() == pytest.approx(10053.333333333334)  # We have now cashed out our USD 53 profit unlike in the previous test
     assert portfolio.get_theoretical_value() == pytest.approx(10053.333333333334)  # Should be same with our without reducing position as we have no fees, see test above
