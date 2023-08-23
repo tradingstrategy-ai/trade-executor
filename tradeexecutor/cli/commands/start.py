@@ -294,13 +294,15 @@ def start(
                 if not backtest_result:
                     backtest_result = Path(f"state/{id}-backtest.json")
 
-                assert backtest_result.exists(), f"Previous backtest results are needed to have the live webhook server.\n" \
-                                                 f"The BACKTEST_RESULT file {backtest_result.absolute()} does not exist."
+                if not backtest_result.exists():
+                    logger.warning(f"Previous backtest results are needed to show them on the web.\n" 
+                                   f"The BACKTEST_RESULT file {backtest_result.absolute()} does not exist.")
+                    backtest_result = None
 
-        if not html_report:
+        if not html_report and backtest_result:
             html_report = Path(f"state/{id}-backtest.html")
 
-        if not notebook_report:
+        if not notebook_report and backtest_result:
             notebook_report = Path(f"state/{id}-backtest.ipynb")
 
         metadata = create_metadata(
