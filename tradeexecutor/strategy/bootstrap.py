@@ -50,6 +50,19 @@ def import_strategy_file(path: Path) -> StrategyFactory:
     return make_factory_from_strategy_mod(mod_or_factory)
 
 
+def import_generic_strategy_file(path: Path) -> StrategyFactory:
+    """Loads a strategy module and returns its factor function.
+
+    All exports will be lowercased for further processing,
+    so we do not care if constant variables are written in upper or lowercase.
+    """
+    logger.info("Importing strategy %s", path)
+    assert isinstance(path, Path)
+    mod = read_strategy_module(path)
+
+    return make_generic_factory_from_strategy_mod(mod)
+
+
 def bootstrap_strategy(
         timed_task_context_manager: AbstractContextManager,
         path: Path,
@@ -154,4 +167,79 @@ def make_factory_from_strategy_mod(mod: StrategyModuleInformation) -> StrategyFa
 
     return default_strategy_factory
 
+def make_generic_factory_from_strategy_mod(mod: StrategyModuleInformation) -> StrategyFactory:
+    """Initialises the strategy script file and hooks it to the executor for a multi-dex strategy.
+
+    Assumes the module has two functions
+
+    - `decide_trade`
+
+    - `create_trading_universe`
+
+    Hook this up the strategy execution system.
+    """
+
+    mod_info = mod
+
+    assert mod_info.trading_strategy_type == StrategyType.managed_positions, "Unsupported strategy tpe"
+
+    assert mod_info, "chain_id blockchain information missing from the strategy module"
+
+    def default_generic_strategy_factory(
+            *ignore,
+            execution_context: ExecutionContext,
+            sync_model: SyncModel,
+            client: Client,
+            timed_task_context_manager: AbstractContextManager,
+            approval_model: ApprovalModel,
+            run_state: RunState,
+            generic_routing_data: dict,
+            **kwargs) -> StrategyExecutionDescription:
+
+        # Migration assert
+        assert run_state, "run_state needs to be passed for new strategies"
+
+        if ignore:
+            # https://www.python.org/dev/peps/pep-3102/
+            raise TypeError("Only keyword arguments accepted")
+
+        if sync_model is not None:
+            assert isinstance(sync_model, SyncModel), f"SyncModel not good: {sync_model}"
+
+        universe_model = DefaultTradingStrategyUniverseModel(
+            client,
+            execution_context,
+            mod_info.create_trading_universe)
+
+        # Routing model can come with hardcoded Python tables of addresses (see default_routes.py)
+        # or it is dynamically generated for any local dev chain.
+        # If it is not dynamically generated, here set up one of the default routing models from
+        # strategy module's trade_routing var.
+        for trade_routing, reserve_currency in zip(mod_info.trade_routing, mod_info.reserve_currency):
+            routing_model = get_routing_model(
+                execution_context,
+                trade_routing,
+                reserve_currency
+            )
+
+        runner = PandasTraderRunner(
+            timed_task_context_manager=timed_task_context_manager,
+            approval_model=approval_model,
+            sync_model=sync_model,
+            routing_model=routing_model,
+            decide_trades=mod_info.decide_trades,
+            execution_context=execution_context,
+            run_state=run_state,
+        )
+
+        return StrategyExecutionDescription(
+            universe_model=universe_model,
+            runner=runner,
+            trading_strategy_engine_version=mod_info.trading_strategy_engine_version,
+            cycle_duration=mod_info.trading_strategy_cycle,
+            chain_id=mod_info.chain_id,
+            source_code=mod_info.source_code,
+        )
+
+    return default_generic_strategy_factory
 
