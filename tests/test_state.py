@@ -23,7 +23,7 @@ from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.state.validator import validate_nested_state_dict, BadStateData
 from tradeexecutor.statistics.core import update_statistics
-from tradeexecutor.testing.dummy_trader import DummyTestTrader
+from tradeexecutor.testing.unit_test_trader import UnitTestTrader
 from tradingstrategy.chain import ChainId
 from tradingstrategy.types import USDollarAmount
 from tradeexecutor.strategy.execution_context import ExecutionMode
@@ -339,7 +339,7 @@ def test_buy_buy_sell_sell(usdc, weth, weth_usdc, start_ts):
 
     state = State()
     state.update_reserves([ReservePosition(usdc, Decimal(1000), start_ts, 1.0, start_ts)])
-    trader = DummyTestTrader(state)
+    trader = UnitTestTrader(state)
 
     # 0: start
     assert state.portfolio.get_total_equity() == 1000.0
@@ -391,7 +391,7 @@ def test_buy_sell_two_positions(usdc, weth_usdc, aave_usdc, start_ts):
 
     state = State()
     state.update_reserves([ReservePosition(usdc, Decimal(1000), start_ts, 1.0, start_ts)])
-    trader = DummyTestTrader(state)
+    trader = UnitTestTrader(state)
 
     # 0: start
     assert state.portfolio.get_total_equity() == 1000.0
@@ -430,7 +430,7 @@ def test_statistics(usdc, weth_usdc, aave_usdc, start_ts):
         initial_deposit=Decimal(1000),
         initial_deposit_reserve_token_price=1.0,
     )])
-    trader = DummyTestTrader(state)
+    trader = UnitTestTrader(state)
 
     # 0: start
     assert state.portfolio.get_total_equity() == 1000.0
@@ -523,7 +523,7 @@ def test_not_enough_cash(usdc, weth_usdc, start_ts):
 
     state = State()
     state.update_reserves([ReservePosition(usdc, Decimal(1000), start_ts, 1.0, start_ts)])
-    trader = DummyTestTrader(state)
+    trader = UnitTestTrader(state)
 
     # 0: start
     assert state.portfolio.get_total_equity() == 1000.0
@@ -538,7 +538,7 @@ def test_buy_sell_buy(usdc, weth, weth_usdc, start_ts):
 
     state = State()
     state.update_reserves([ReservePosition(usdc, Decimal(1000), start_ts, 1.0, start_ts)])
-    trader = DummyTestTrader(state)
+    trader = UnitTestTrader(state)
 
     # 0: start
     assert state.portfolio.get_total_equity() == 1000.0
@@ -568,7 +568,7 @@ def test_revalue(usdc, weth_usdc, start_ts: datetime.datetime):
 
     state = State()
     state.update_reserves([ReservePosition(usdc, Decimal(1000), start_ts, 1.0, start_ts)])
-    trader = DummyTestTrader(state)
+    trader = UnitTestTrader(state)
 
     # 0: start
     assert state.portfolio.get_total_equity() == 1000.0
@@ -597,7 +597,7 @@ def test_realised_profit_calculation(usdc, weth_usdc, start_ts: datetime.datetim
 
     state = State()
     state.update_reserves([ReservePosition(usdc, Decimal(10000), start_ts, 1.0, start_ts)])
-    trader = DummyTestTrader(state, lp_fees=0, price_impact=1)
+    trader = UnitTestTrader(state, lp_fees=0, price_impact=1)
 
     assert state.portfolio.get_total_equity() == 10000.0
 
@@ -640,7 +640,7 @@ def test_realised_partial_profit_calculation(usdc, weth_usdc, start_ts: datetime
 
     state = State()
     state.update_reserves([ReservePosition(usdc, Decimal(10000), start_ts, 1.0, start_ts)])
-    trader = DummyTestTrader(state, lp_fees=0, price_impact=1)
+    trader = UnitTestTrader(state, lp_fees=0, price_impact=1)
 
     assert state.portfolio.get_total_equity() == 10000.0
 
@@ -670,7 +670,7 @@ def test_unrealised_profit_calculation(usdc, weth_usdc, start_ts: datetime.datet
 
     state = State()
     state.update_reserves([ReservePosition(usdc, Decimal(10000), start_ts, 1.0, start_ts)])
-    trader = DummyTestTrader(state, lp_fees=0, price_impact=1)
+    trader = UnitTestTrader(state, lp_fees=0, price_impact=1)
 
     assert state.portfolio.get_total_equity() == 10000.0
 
@@ -731,7 +731,7 @@ def test_position_risk_calculation(usdc, weth_usdc, start_ts: datetime.datetime)
 
     state = State()
     state.update_reserves([ReservePosition(usdc, Decimal(10000), start_ts, 1.0, start_ts)])
-    trader = DummyTestTrader(state, lp_fees=0, price_impact=1)
+    trader = UnitTestTrader(state, lp_fees=0, price_impact=1)
 
     assert state.portfolio.get_total_equity() == 10000.0
 
@@ -825,7 +825,7 @@ def test_serialize_state(usdc, weth_usdc, start_ts: datetime.datetime):
         initial_deposit=Decimal(1000),
         initial_deposit_reserve_token_price=1.0,
     )])
-    trader = DummyTestTrader(state)
+    trader = UnitTestTrader(state)
 
     # 1: buy 1
     position, trade = trader.buy(weth_usdc, Decimal(0.1), 1700)
@@ -869,7 +869,7 @@ def test_state_summary_without_initial_cash(usdc, weth_usdc, start_ts: datetime.
         1.0, 
         start_ts
     )])
-    trader = DummyTestTrader(state)
+    trader = UnitTestTrader(state)
 
     position, trade = trader.buy(weth_usdc, Decimal(0.1), 1700)
     assert state.portfolio.get_total_equity() == 998.3
@@ -977,7 +977,7 @@ def test_serialize_state(usdc, weth_usdc, start_ts: datetime.datetime):
         initial_deposit=Decimal(1000),
         initial_deposit_reserve_token_price=1.0,
     )])
-    trader = DummyTestTrader(state)
+    trader = UnitTestTrader(state)
 
     # 1: buy 1
     position, trade = trader.buy(weth_usdc, Decimal(0.1), 1700)
@@ -1045,7 +1045,7 @@ def test_trade_too_small(usdc, weth_usdc, start_ts: datetime.datetime):
         1.0,
         start_ts
     )])
-    trader = DummyTestTrader(state)
+    trader = UnitTestTrader(state)
 
     with pytest.raises(TooSmallTrade):
          trader.buy(weth_usdc, Decimal(0.000000001), 1700)

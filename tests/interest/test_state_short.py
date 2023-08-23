@@ -12,7 +12,7 @@ from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeType
 from tradeexecutor.strategy.interest import update_credit_supply_interest
-from tradeexecutor.testing.dummy_trader import DummyTestTrader
+from tradeexecutor.testing.unit_test_trader import UnitTestTrader
 from tradingstrategy.chain import ChainId
 from tradingstrategy.lending import LendingProtocolType
 
@@ -100,7 +100,7 @@ def test_open_short(
 ):
     """Opening a short position.
 
-    - Supply USDC as a collateral
+    - Supply 1000 USDC as a collateral
 
     - Borrow out WETH (default leverage ETH 80% of USDC value, or 0.8x)
 
@@ -121,47 +121,59 @@ def test_open_short(
     assert weth_short_identifier.quote.underlying.token_symbol == "USDC"
     assert weth_short_identifier.get_max_leverage_at_open() == pytest.approx(5.00)
 
-    trader = DummyTestTrader(state)
+    trader = UnitTestTrader(state)
 
-    # Take 1000 USDC reserves and open a ETH short using it.
-    # We should get 800 USDC worth of ETH for this.
-    short_position, trade, created = state.create_short(
-        strategy_cycle_at=datetime.datetime.utcnow(),
-        pair=weth_short_identifier,
-        quantity=None,
-        reserve=Decimal(1000),
-        assumed_price=float(1500),  # USDC/ETH price we are going to sell
-        trade_type=TradeType.lending_protocol_short,
-        reserve_currency=usdc,
-        reserve_currency_price=1.0,
-        leverage=0.8,
-    )
-
-    trader.set_perfectly_executed(trade)
+    # Aave allows us to borrow 80% ETH against our USDC collateral
+    start_ltv = 0.8
 
     # How many ETH (vWETH) we expect when we go in
     # with our max leverage available
     # based on the collateral ratio
-    expected_eth_shorted_amount = 1000 * 0.8 / 1500
+    expected_eth_shorted_amount = 1000 * start_ltv / 1500
+
+    # Take 1000 USDC reserves and open a ETH short using it.
+    # We should get 800 USDC worth of ETH for this.
+    short_position, trade, created = state.create_trade(
+        strategy_cycle_at=datetime.datetime.utcnow(),
+        pair=weth_short_identifier,
+        quantity=-Decimal(expected_eth_shorted_amount),
+        reserve=Decimal(1000),
+        assumed_price=float(1500),  # USDC/ETH price we are going to sell
+        trade_type=TradeType.rebalance,
+        reserve_currency=usdc,
+        reserve_currency_price=1.0,
+    )
+
+    trader.set_perfectly_executed(trade)
 
     assert created
     assert trade.is_success()
-    assert trade.trade_type == TradeType.lending_protocol_short
+    assert trade.is_sell()
+    assert trade.trade_type == TradeType.rebalance
 
-    # Check that opened short position data looks correct
-    assert short_position.is_short()
-    assert short_position.get_opening_price() == 1500
+    # Check loan data structures
     assert short_position.loan is not None
     assert short_position.loan.pair == weth_short_identifier
+
     assert short_position.loan.collateral.asset.token_symbol == "aPolUSDC"
     assert short_position.loan.collateral.quantity == Decimal(1000)
     assert short_position.loan.collateral.asset.underlying.token_symbol == "USDC"
+    assert short_position.loan.collateral.last_usd_price == 1.0
+
     assert short_position.loan.borrowed.quantity == pytest.approx(Decimal(expected_eth_shorted_amount))
     assert short_position.loan.borrowed.asset.token_symbol == "variableDebtPolWETH"
-    assert short_position.loan.borrowed.asset.underlying.token_symbol == "variableDebtPolWETH"
-    assert short_position.loan.get_leverage() == 0.8
+    assert short_position.loan.borrowed.asset.underlying.token_symbol == "WETH"
+    assert short_position.loan.borrowed.last_usd_price == 1500
+
+    assert short_position.loan.get_loan_to_value() == 0.8
+
+    # Check position data structures
+    assert short_position.is_short()
+    assert short_position.is_open()
+    assert short_position.get_opening_price() == 1500
     assert short_position.get_unrealised_profit_usd() == 0
     assert short_position.get_realised_profit_usd() == 0
+    assert short_position.get_value() == 1000
 
     # Check that we track the equity value correctly
     assert state.portfolio.get_total_equity() == 10000

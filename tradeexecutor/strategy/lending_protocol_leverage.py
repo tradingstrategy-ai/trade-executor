@@ -1,3 +1,8 @@
+"""Lendindg protocol leveraged.
+
+- Various helpers related to lending protocol leverage
+"""
+
 import datetime
 
 from tradeexecutor.state.identifier import AssetWithTrackedValue, AssetType
@@ -10,7 +15,9 @@ def create_short_loan(
 ) -> Loan:
     """Create the loan data tracking for short position.
 
-    Check that the informatio looks correct for a short position.
+    - Check that the information looks correct for a short position.
+
+    - Populates :py:class:`Loan` data structure.
     """
 
     assert trade.is_leverage_short()
@@ -38,7 +45,7 @@ def create_short_loan(
     # aToken
     collateral = AssetWithTrackedValue(
         asset=pair.quote,
-        last_usd_price=trade.planned_price,
+        last_usd_price=trade.reserve_currency_exchange_rate,
         last_pricing_at=datetime.datetime.utcnow(),
         quantity=trade.planned_reserve,
     )

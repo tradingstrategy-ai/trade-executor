@@ -143,7 +143,7 @@ class TradingPairKind(enum.Enum):
     #: E.g. buy stETH or aUSD directly through DEX,
     #: instead of thru vault/reserves deposit.
     #:
-    spot_market_rebalancing_token = "spot_market_rebalancing token"
+    spot_market_hold_rebalancing_token = "spot_market_rebalancing token"
 
     #: Supplying credit to Aave reserves/gaining interest
     #:
@@ -419,6 +419,7 @@ class AssetWithTrackedValue:
 
     def __post_init__(self):
         assert self.quantity > 0, "Any tracked asset must have positive quantity"
+        assert self.last_usd_price is not None, "Price is None - asset price must set during initialisation"
         assert self.last_usd_price > 0
 
     def get_usd_value(self) -> USDollarAmount:

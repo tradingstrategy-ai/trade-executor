@@ -13,7 +13,7 @@ from tradeexecutor.state.state import State
 from tradeexecutor.state.validator import validate_state_serialisation
 from tradeexecutor.state.visualisation import PlotKind
 from tradeexecutor.testing.synthetic_price_data import generate_ohlcv_candles
-from tradeexecutor.testing.dummy_trader import DummyTestTrader
+from tradeexecutor.testing.unit_test_trader import UnitTestTrader
 from tradeexecutor.visual.single_pair import visualise_single_pair, visualise_single_pair_positions_with_duration_and_slippage
 from tradeexecutor.visual.technical_indicator import export_plot_as_dataframe
 from tradingstrategy.candle import GroupedCandleUniverse
@@ -60,7 +60,7 @@ def state_and_candles(usdc, weth, weth_usdc) -> tuple[State, pd.DataFrame]:
     candles = generate_ohlcv_candles(time_bucket, start_date, end_date, pair_id=weth_usdc.internal_id)
     candle_universe = GroupedCandleUniverse.create_from_single_pair_dataframe(candles, time_bucket)
 
-    trader = DummyTestTrader(state)
+    trader = UnitTestTrader(state)
 
     # Day 1
     # Buy 10 ETH at 1700 USD/ETH

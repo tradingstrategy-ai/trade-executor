@@ -1,12 +1,11 @@
-"""Loan management.
+"""Loan data structures.
 
-When you do a leveraged position by borrowing assets.
+- When you do short and leveraged position by borrowing assets
+
 """
-from decimal import Decimal
 from dataclasses import dataclass
 from typing import TypeAlias
 
-import dataclasses_json
 from dataclasses_json import dataclass_json
 
 from tradeexecutor.state.identifier import AssetIdentifier, AssetWithTrackedValue, TradingPairIdentifier
@@ -67,4 +66,6 @@ class Loan:
     def get_collateral_factor(self) -> float:
         return self.pair.collateral_factor
 
-
+    def get_loan_to_value(self):
+        """Get LTV of this loan."""
+        return self.borrowed.get_usd_value() / self.collateral.get_usd_value()

@@ -21,7 +21,7 @@ from tradeexecutor.state.trade import TradeType, QUANTITY_EPSILON
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.types import USDollarAmount, BPS, USDollarPrice, Percent, LeverageMultiplier
 from tradeexecutor.strategy.dust import get_dust_epsilon_for_pair
-from tradeexecutor.strategy.loan import create_short_loan
+from tradeexecutor.strategy.lending_protocol_leverage import create_short_loan
 from tradeexecutor.strategy.trade_pricing import TradePricing
 from tradeexecutor.utils.accuracy import sum_decimal
 from tradingstrategy.lending import LendingProtocolType
@@ -265,7 +265,10 @@ class TradingPosition(GenericPosition):
         return self.closed_at is None
 
     def is_closed(self) -> bool:
-        """This position has been closed and does not have any capital tied to it."""
+        """This position has been closed and does not have any capital tied to it.
+
+        See also :py:meth:`is_reduced`:
+        """
         return not self.is_open()
 
     def is_frozen(self) -> bool:
@@ -511,15 +514,37 @@ class TradingPosition(GenericPosition):
         reserve_quantity = sum([t.get_equity_for_reserve() for t in self.trades.values() if t.is_accounted_for_equity()])
         return float(token_quantity) * token_price + float(reserve_quantity) * reserve_price
 
-    def get_value(self) -> USDollarAmount:
+    def get_value(self, include_interest=True) -> USDollarAmount:
         """Get the position value using the latest revaluation pricing.
 
         If the position is closed, the value should be zero.
+
+        :param include_interest:
+            Include accrued interest in the valuation
         """
-        if self.is_closed():
-            return USDollarAmount(0)
+
+        if include_interest:
+            value = self.get_accrued_interest()
         else:
-            return self.calculate_value_using_price(self.last_token_price, self.last_reserve_price)
+            value = 0
+
+        if self.is_closed():
+            # Closed positions do not have any value left,
+            # outside its accrued interest
+            return value
+
+        match self.pair.kind:
+            case TradingPairKind.spot_market_hold | TradingPairKind.credit_supply:
+                value += self.calculate_value_using_price(self.last_token_price, self.last_reserve_price)
+            case TradingPairKind.lending_protocol_short:
+                # Value for leveraged positions is
+                value += self.calculate_value_using_price(self.last_token_price, self.last_reserve_price)
+                value = -value  # Short
+                import ipdb ; ipdb.set_trace()
+            case _:
+                raise NotImplementedError(f"Does not know how to value position for {self.pair}")
+
+        return value
 
     def get_trades_by_strategy_cycle(self, timestamp: datetime.datetime) -> Iterable[TradeExecution]:
         """Get all trades made for this position at a specific time.
@@ -637,8 +662,11 @@ class TradingPosition(GenericPosition):
             Will be later used for risk metrics calculations and such.
         """
 
-        if quantity is not None:
-            assert reserve is None, "Quantity and reserve both cannot be given at the same time"
+        # Done in State.create_trade()
+        # if quantity is not None:
+        #    assert reserve is None, "Quantity and reserve both cannot be given at the same time"
+
+        pair = self.pair
 
         if price_structure is not None:
             assert isinstance(price_structure, TradePricing)
@@ -649,36 +677,25 @@ class TradingPosition(GenericPosition):
         if strategy_cycle_at is not None:
             assert isinstance(strategy_cycle_at, datetime.datetime)
 
-        if leverage:
-            # Set lending market estimated quantities
-            if trade_type == TradeType.lending_protocol_short:
+        # Set lending market estimated quantities
+        match pair.kind:
+            case TradingPairKind.lending_protocol_short:
+                assert reserve, "Both reserve and quantity needs to be given for lending protocol shorts"
+                assert quantity, "Both reserve and quantity needs to be given for lending protocol shorts"
+                assert reserve_currency_price, f"Collateral price missing"
+                assert assumed_price, f"Short token price missing"
                 planned_reserve = reserve
-                planned_quantity = -reserve / Decimal(assumed_price)
-            else:
-                raise NotImplementedError()
-        else:
-            # Set spot market estimated quantities
-            if reserve is not None:
-                planned_reserve = reserve
-                planned_quantity = reserve / Decimal(assumed_price)
-            else:
                 planned_quantity = quantity
-                planned_reserve = abs(quantity * Decimal(assumed_price))
-
-        # Validate there is correlation
-        # between the trade type and underlying trading pair identifier
-        pair = self.pair
-        match trade_type:
-            case TradeType.rebalance | TradeType.stop_loss | TradeType.take_profit | TradeType.repair:
-                assert pair.kind in (TradingPairKind.spot_market_hold,)
-            case TradeType.supply_credit:
-                assert pair.kind == TradingPairKind.credit_supply
-            case TradeType.lending_protocol_short:
-                assert pair.kind == TradingPairKind.lending_protocol_short
-            case TradeType.lending_protocol_long:
-                assert pair.kind == TradingPairKind.lending_protocol_long
+            case TradingPairKind.spot_market_hold | TradingPairKind.credit_supply:
+                # Set spot market estimated quantities
+                if reserve is not None:
+                    planned_reserve = reserve
+                    planned_quantity = reserve / Decimal(assumed_price)
+                else:
+                    planned_quantity = quantity
+                    planned_reserve = abs(quantity * Decimal(assumed_price))
             case _:
-                raise NotImplementedError(f"Cannot deal with {trade_type}")
+                raise NotImplementedError(f"Does not know how to calculate quantities for open a trade on: {pair}")
 
         trade = TradeExecution(
             trade_id=trade_id,
@@ -697,6 +714,7 @@ class TradingPosition(GenericPosition):
             slippage_tolerance=slippage_tolerance,
             portfolio_value_at_creation=portfolio_value_at_creation,
             leverage=leverage,
+            reserve_currency_exchange_rate=reserve_currency_price,
         )
 
         self.trades[trade.trade_id] = trade
@@ -819,15 +837,49 @@ class TradingPosition(GenericPosition):
         else:
             return self.get_average_sell()
 
-    def get_realised_profit_usd(self) -> Optional[USDollarAmount]:
+    def is_reduced(self) -> bool:
+        """Is any of the position closed.
+
+        The position is reduced towards close if it contains opposite trades.
+
+        See also :py:meth:`is_closed`.
+        """
+        sells = any([t.is_sell() for t in self.trades.values()])
+        buys = any([t.is_buy() for t in self.trades.values()])
+        return sells and buys
+
+    def get_realised_profit_usd(
+            self,
+            include_interest=True) -> Optional[USDollarAmount]:
         """Calculates the profit & loss (P&L) that has been 'realised' via two opposing asset transactions in the Position to date.
 
-        :return: profit in dollar or None if no opposite trade made
+        - Profit is calculated as the diff of avg buy and sell price times quantity
+
+        - Any avg buy and sell contains all fees we have paid in included in the price,
+          so we do not need to add them to profit here
+
+        :param include_interest:
+            Include any accrued interest in PnL.
+
+        :return:
+            Profit in dollar.
+
+            `None` if the position lacks any realised profit (contains only unrealised).
         """
-        assert self.is_long(), "TODO: Only long supported"
-        if self.get_sell_quantity() == 0:
-            return None
-        return (self.get_average_sell() - self.get_average_buy()) * float(self.get_sell_quantity())
+
+        if self.is_reduced():
+            if self.is_spot_market():
+                trade_profit = (self.get_average_sell() - self.get_average_buy()) * float(self.get_sell_quantity())
+            else:
+                raise NotImplementedError()
+        else:
+            # No closes yet, only unrealised PnL
+            trade_profit = 0.0
+
+        if include_interest:
+            trade_profit += self.get_accrued_interest()
+
+        return trade_profit
 
     def get_unrealised_profit_usd(self) -> USDollarAmount:
         """Calculate the position unrealised profit.
@@ -1164,11 +1216,22 @@ class TradingPosition(GenericPosition):
     def get_accrued_interest(self) -> USDollarAmount:
         """Get the USD value of currently accrued interest for this position so far.
 
-        The accrued interest is not zeroed out for closed positions.
+        - The accrued interest is included as the position accounting item until the position is completely closed
+
+        - When the position is completed closed,
+          the accured interest tokens are traded and moved to reserves
+
+        - After position is closed calling `get_accrued_interest()` returns zero.
+          This is similar behavior os :py:meth:`get_value`
+
+        - You can still access historical interest by (TODO)
 
         :return:
             Positive if we have earned interest, negative if we have paid it.
         """
+
+        if self.is_closed():
+            return 0
 
         if self.interest is not None:
             return float(self.interest.last_accrued_interest) * self.last_token_price

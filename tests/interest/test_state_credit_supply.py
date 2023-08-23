@@ -13,7 +13,7 @@ from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeType
 from tradeexecutor.strategy.interest import update_credit_supply_interest
-from tradeexecutor.testing.dummy_trader import DummyTestTrader
+from tradeexecutor.testing.unit_test_trader import UnitTestTrader
 from tradingstrategy.chain import ChainId
 
 
@@ -79,7 +79,7 @@ def test_open_supply_credit(
     assert lending_pool_identifier.base.token_symbol == "aUSDC"
     assert lending_pool_identifier.quote.token_symbol == "USDC"
 
-    trader = DummyTestTrader(state)
+    trader = UnitTestTrader(state)
 
     credit_supply_position, trade, created = state.create_trade(
         datetime.datetime.utcnow(),
@@ -117,7 +117,7 @@ def test_accrue_interest(
     """
     opened_at = datetime.datetime(2020, 1, 1)
 
-    trader = DummyTestTrader(state)
+    trader = UnitTestTrader(state)
 
     # Open credit supply position
     credit_supply_position, trade, _ = state.create_trade(

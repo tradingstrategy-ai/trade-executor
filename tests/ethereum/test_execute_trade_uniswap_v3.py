@@ -31,7 +31,7 @@ from tradeexecutor.state.trade import TradeStatus
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.testing.ethereumtrader_uniswap_v3 import UniswapV3TestTrader
-from tradeexecutor.testing.dummy_trader import DummyTestTrader
+from tradeexecutor.testing.unit_test_trader import UnitTestTrader
 
 
 
@@ -301,7 +301,7 @@ def test_execute_trade_instructions_buy_weth(
     assert portfolio.get_current_cash() == 10_000
 
     # Buy 500 USDC worth of WETH
-    trader = DummyTestTrader(state)
+    trader = UnitTestTrader(state)
 
     buy_amount = 500
 

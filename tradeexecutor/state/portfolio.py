@@ -367,6 +367,7 @@ class Portfolio:
                      position: Optional[TradingPosition] = None,
                      slippage_tolerance: Optional[float] = None,
                      leverage: Optional[float] = None,
+                     ltv: Optional[float] = None,
                      ) -> Tuple[TradingPosition, TradeExecution, bool]:
         """Create a trade.
 
@@ -446,8 +447,9 @@ class Portfolio:
         if price_structure is not None:
             assert isinstance(price_structure, TradePricing)
 
-        if quantity is not None:
-            assert reserve is None, "Quantity and reserve both cannot be given at the same time"
+        # Done in State.create_trade()
+        # if quantity is not None:
+        #    assert reserve is None, "Quantity and reserve both cannot be given at the same time"
 
         if position is None:
             # Open a new position

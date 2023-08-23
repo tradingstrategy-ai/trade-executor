@@ -12,8 +12,8 @@ from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradingstrategy.candle import GroupedCandleUniverse
 
 
-class DummyTestTrader:
-    """Helper class to generate trades for tests.
+class UnitTestTrader:
+    """Helper class to generate and settle trades in unit tests.
 
     This trade helper is not connected to any blockchain - it just simulates txid and nonce values.
     """
@@ -88,6 +88,11 @@ class DummyTestTrader:
         return position, trade
 
     def set_perfectly_executed(self, trade: TradeExecution):
+        """Sets trade to a executed state.
+
+        - There are no checks whether the wallet contains relevant balances or not
+        """
+
         # 2. Capital allocation
         txid = hex(self.nonce)
         nonce = self.nonce
