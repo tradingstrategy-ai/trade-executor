@@ -420,6 +420,9 @@ class AssetWithTrackedValue:
     #:
     created_strategy_cycle_at: datetime.datetime | None = None
 
+    def __repr__(self):
+        return f"<AssetWithTrackedValue {self.asset.token_symbol} {self.quantity} at price {self.last_usd_price} USD>"
+
     def __post_init__(self):
         assert self.quantity > 0, "Any tracked asset must have positive quantity"
         assert self.last_usd_price is not None, "Price is None - asset price must set during initialisation"
@@ -439,3 +442,14 @@ class AssetWithTrackedValue:
         assert 0 < price < 1_000_000, f"Price sanity check {price}"
         self.last_usd_price = price
         self.last_pricing_at = when
+
+    def change_quantity_and_value(
+        self,
+        delta: Decimal,
+        price: USDollarPrice,
+        when: datetime.datetime,
+    ):
+        """The tracked asset amount is changing due to position increase/reduce."""
+        self.revalue(price, when)
+        assert self.quantity + delta >= 0, f"Tracked asset cannot go negative: {self}. Quantity: {self.quantity}, delta: {delta}"
+        self.quantity += delta

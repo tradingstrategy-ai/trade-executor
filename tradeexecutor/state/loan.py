@@ -3,6 +3,7 @@
 - When you do short and leveraged position by borrowing assets
 
 """
+import copy
 from dataclasses import dataclass
 from typing import TypeAlias
 
@@ -45,6 +46,10 @@ class Loan:
     #: This is vToken for Aave
     #:
     borrowed: AssetWithTrackedValue
+
+    def clone(self) -> "Loan":
+        """Clone this data structure for mutating."""
+        return copy.deepcopy(self)
 
     def get_net_asset_value(self) -> USDollarAmount:
         """TODO: From 1delta terminology"""

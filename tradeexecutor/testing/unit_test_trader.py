@@ -114,6 +114,9 @@ class UnitTestTrader:
             executed_quantity = trade.planned_quantity
             executed_reserve = trade.planned_reserve
 
+        if trade.planned_loan_update:
+            trade.executed_loan_update = trade.planned_loan_update
+
         self.state.mark_trade_success(self.ts, trade, executed_price, executed_quantity, executed_reserve, self.lp_fees, self.native_token_price)
 
     def buy(self, pair, quantity, price) -> Tuple[TradingPosition, TradeExecution]:

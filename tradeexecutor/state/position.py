@@ -21,7 +21,7 @@ from tradeexecutor.state.trade import TradeType, QUANTITY_EPSILON
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.types import USDollarAmount, BPS, USDollarPrice, Percent, LeverageMultiplier
 from tradeexecutor.strategy.dust import get_dust_epsilon_for_pair
-from tradeexecutor.strategy.lending_protocol_leverage import create_short_loan
+from tradeexecutor.strategy.lending_protocol_leverage import create_short_loan, plan_short_loan_update
 from tradeexecutor.strategy.trade_pricing import TradePricing
 from tradeexecutor.utils.accuracy import sum_decimal
 from tradingstrategy.lending import LendingProtocolType
@@ -218,6 +218,12 @@ class TradingPosition(GenericPosition):
     #: Only applicable for positions gaining interest.
     #:
     interest: Optional[Interest] = None
+
+    #: The loan underlying the position leverage
+    #:
+    #: Only applicable for short/long positions using lending protocols.
+    #:
+    loan: Optional[Loan] = None
 
     def __repr__(self):
         if self.is_open():
@@ -695,8 +701,8 @@ class TradingPosition(GenericPosition):
         # Set lending market estimated quantities
         match pair.kind:
             case TradingPairKind.lending_protocol_short:
-                assert reserve, "Both reserve and quantity needs to be given for lending protocol shorts"
-                assert quantity, "Both reserve and quantity needs to be given for lending protocol shorts"
+                assert reserve is not None, "Both reserve and quantity needs to be given for lending protocol shorts"
+                assert quantity is not None, "Both reserve and quantity needs to be given for lending protocol shorts"
                 assert reserve_currency_price, f"Collateral price missing"
                 assert assumed_price, f"Short token price missing"
                 planned_reserve = reserve
@@ -750,7 +756,15 @@ class TradingPosition(GenericPosition):
             elif pair.kind.is_leverage():
                 assert pair.get_lending_protocol() == LendingProtocolType.aave_v3, "Unsupported protocol"
                 if pair.kind.is_shorting():
-                    self.loan = create_short_loan(trade)
+                    if not self.loan:
+                        # Opening the position, create the first loan
+                        trade.planned_loan_update = create_short_loan(self, trade)
+                    else:
+                        # Loan is being increased/reduced
+                        trade.planned_loan_update = plan_short_loan_update(
+                            self.loan.clone(),
+                            self,
+                            trade)
                 else:
                     raise NotImplementedError()
             else:
@@ -886,7 +900,10 @@ class TradingPosition(GenericPosition):
             if self.is_spot_market():
                 trade_profit = (self.get_average_sell() - self.get_average_buy()) * float(self.get_sell_quantity())
             else:
-                raise NotImplementedError()
+                if self.is_short():
+                    trade_profit = (self.get_average_sell() - self.get_average_buy()) * float(self.get_buy_quantity())
+                else:
+                    raise NotImplementedError()
         else:
             # No closes yet, only unrealised PnL
             trade_profit = 0.0

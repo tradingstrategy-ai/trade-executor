@@ -16,6 +16,7 @@ from eth_defi.tx import AssetDelta
 from tradeexecutor.ethereum.revert import clean_revert_reason_message
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
+from tradeexecutor.state.loan import Loan
 from tradeexecutor.state.types import USDollarAmount, USDollarPrice, BPS, LeverageMultiplier
 from tradeexecutor.strategy.trade_pricing import TradePricing
 
@@ -162,6 +163,8 @@ class TradeExecution:
 
     #: How many reserve tokens (USD) we use in this trade
     #:
+    #: **For spot market**
+    #:
     #: - Always a position number (only the sign of :py:attr:`planned_quantity` changes between buy/sell)
     #:
     #: - For buys, Always known accurately for buys.
@@ -169,6 +172,12 @@ class TradeExecution:
     #: - For sells, an estimation based on :py:attr:`planned_price`
     #:
     #: Expressed in :py:attr:`reserve_currency`.
+    #:
+    #: **For leverage**
+    #:
+    #: - Positive: we need to move our reserves to collateral to increase margin
+    #:
+    #: - Negative: position exposure is reduced, so we need less collateral and are getting collateral back
     #:
     planned_reserve: Decimal
 
@@ -356,6 +365,18 @@ class TradeExecution:
     #: Leverage factor used when opening a position
     #:
     leverage: Optional[LeverageMultiplier] = None
+
+    #: New position loan parameters that will become effective if this trade executes
+    #:
+    #: If the trade execution fails then the loan parameters do not change
+    #:
+    planned_loan_update: Optional[Loan] = None
+
+    #: New position loan parameters that become effective if this trade executes
+    #:
+    #: Because of slippage, etc. this can differ from :py:attr:`planned_loan_update`
+    #:
+    executed_loan_update: Optional[Loan] = None
 
     def __repr__(self):
         if self.is_buy():
@@ -588,6 +609,15 @@ class TradeExecution:
     def is_leverage_long(self) -> bool:
         """This is margined trade."""
         return self.pair.kind.is_longing()
+
+    def is_reduce(self) -> bool:
+        """This trade decreases the exposure of existing leveraged position."""
+        if self.is_leverage_short():
+            return self.planned_quantity > 0
+        elif self.is_leverage_long():
+            return self.planned_quantity < 0
+        else:
+            raise NotImplementedError(f"Not leveraged trade: {self}")
 
     def get_input_asset(self) -> AssetIdentifier:
         """How we fund this trade."""

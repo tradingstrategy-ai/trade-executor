@@ -693,7 +693,8 @@ class Portfolio:
 
     def return_capital_to_reserves(self, trade: TradeExecution, underflow_check=True):
         """Return capital to reserves after a sell."""
-        assert trade.is_sell()
+        if trade.is_spot():
+            assert trade.is_sell()
         self.adjust_reserves(trade.reserve_currency, +trade.executed_reserve)
 
     def has_unexecuted_trades(self) -> bool:
