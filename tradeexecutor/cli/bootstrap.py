@@ -139,6 +139,59 @@ def create_execution_model(
     return execution_model, valuation_model_factory, pricing_model_factory
 
 
+def create_generic_execution_model(
+        routing_hints: Optional[list[TradeRouting]],
+        tx_builder: Optional[TransactionBuilder],
+        confirmation_timeout: datetime.timedelta,
+        confirmation_block_count: int,
+        max_slippage: float,
+        min_gas_balance: Optional[Decimal],
+        mainnet_fork=False,
+):
+    """Set up the code transaction building logic.
+
+    Choose between Uniswap v2 and v3 trade routing.
+    """
+
+    # TODO: execution models can be shared between dexs of the same type
+
+    generic_routing_data = []
+
+    for routing_hint in routing_hints:
+        # TODO: user_supplied_routing_model can be uni v3 as well
+        if routing_hint is None or routing_hint.is_uniswap_v2() or routing_hint == TradeRouting.user_supplied_routing_model:
+            logger.info("Uniswap v2 like exchange. Routing hint is %s", routing_hint)
+            execution_model = UniswapV2ExecutionModel(
+                tx_builder,
+                confirmation_timeout=confirmation_timeout,
+                confirmation_block_count=confirmation_block_count,
+                max_slippage=max_slippage,
+                min_balance_threshold=min_gas_balance,
+                mainnet_fork=mainnet_fork,
+            )
+            valuation_model_factory = uniswap_v2_sell_valuation_factory
+            pricing_model_factory = uniswap_v2_live_pricing_factory
+
+        elif routing_hint.is_uniswap_v3():
+            logger.info("Uniswap v3 like exchange. Routing hint is %s", routing_hint)
+            execution_model = UniswapV3ExecutionModel(
+                tx_builder,
+                confirmation_timeout=confirmation_timeout,
+                confirmation_block_count=confirmation_block_count,
+                max_slippage=max_slippage,
+                min_balance_threshold=min_gas_balance,
+                mainnet_fork=mainnet_fork,
+            )
+            valuation_model_factory = uniswap_v3_sell_valuation_factory
+            pricing_model_factory = uniswap_v3_live_pricing_factory
+        else:
+            raise RuntimeError(f"Does not know how to route: {routing_hint}")
+        
+        generic_routing_data.append(dict(execution_model=execution_model, valudation_model_factory=valuation_model_factory, pricing_model_factory=pricing_model_factory))
+
+    return generic_routing_data
+
+
 def create_execution_and_sync_model(
         asset_management_mode: AssetManagementMode,
         private_key: str,
@@ -200,6 +253,46 @@ def create_execution_and_sync_model(
         return execution_model, sync_model, valuation_model_factory, pricing_model_factory
     else:
         raise NotImplementedError(f"Unsupported asset management mode: {asset_management_mode} - did you pass ASSET_MANAGEMENT_MODE environment variable?")
+
+def create_generic_execution_and_sync_model(
+    asset_management_mode: AssetManagementMode,
+    private_key: str,
+    web3config: Web3Config,
+    confirmation_timeout: datetime.timedelta,
+    confirmation_block_count: int,
+    max_slippage: float,
+    min_gas_balance: Optional[Decimal],
+    vault_address: Optional[str],
+    vault_adapter_address: Optional[str],
+    vault_payment_forwarder_address: Optional[str],
+    routing_hints: Optional[list[TradeRouting]] = None,
+):  
+    """Set up the wallet sync and execution mode for the command line client for a trading universe with multiple dexes."""
+    assert asset_management_mode in (AssetManagementMode.hot_wallet, AssetManagementMode.enzyme)
+    assert private_key, "Private key is needed for live trading"
+    web3 = web3config.get_default()
+    hot_wallet = HotWallet.from_private_key(private_key)
+    sync_model = create_sync_model(
+        asset_management_mode,
+        web3,
+        hot_wallet,
+        vault_address,
+        vault_adapter_address,
+        vault_payment_forwarder_address,
+    )
+
+    logger.info("Creating execution model. Asset management mode is %s, routing hint is %s", asset_management_mode.value, routing_hints.value)
+
+    generic_routing_data = create_generic_execution_model(
+        routing_hints=routing_hints,
+        tx_builder=sync_model.create_transaction_builder(),
+        confirmation_timeout=confirmation_timeout,
+        confirmation_block_count=confirmation_block_count,
+        max_slippage=max_slippage,
+        min_gas_balance=min_gas_balance,
+        mainnet_fork=web3config.is_mainnet_fork(),
+    )
+    return generic_routing_data, sync_model
 
 
 def create_approval_model(approval_type: ApprovalType) -> ApprovalModel:
