@@ -769,7 +769,7 @@ class TradingPosition(GenericPosition):
         Perform additional check for token amount dust caused by rounding errors.
         """
         epsilon = get_dust_epsilon_for_pair(self.pair)
-        return self.get_quantity() <= epsilon
+        return abs(self.get_quantity()) <= epsilon
 
     def get_total_bought_usd(self) -> USDollarAmount:
         """How much money we have used on buys"""
