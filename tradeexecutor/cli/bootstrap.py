@@ -187,7 +187,7 @@ def create_generic_execution_model(
         else:
             raise RuntimeError(f"Does not know how to route: {routing_hint}")
         
-        generic_routing_data.append(dict(execution_model=execution_model, valudation_model_factory=valuation_model_factory, pricing_model_factory=pricing_model_factory))
+        generic_routing_data.append(dict(execution_model=execution_model, valudation_model_factory=valuation_model_factory, pricing_model_factory=pricing_model_factory, routing_hint=routing_hint))
 
     return generic_routing_data
 
