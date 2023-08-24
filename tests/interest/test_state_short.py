@@ -42,6 +42,7 @@ def ausdc(usdc: AssetIdentifier) -> AssetIdentifier:
         18,
         underlying=usdc,
         type=AssetType.collateral,
+        liquidation_threshold=0.85,  # From Aave UI
     )
 
 
@@ -486,24 +487,34 @@ def test_short_close_all(
         weth_short_identifier: TradingPairIdentifier,
         usdc: AssetIdentifier,
 ):
-    """Opening a short position and get some unrealised profit.
+    """Opening a short position and close it.
+
+    - Start with 1000 USDC collateral
+
+    - Take 1000 USDC worth of ETH loan
+
+    - Sell ETH at 1500 USDC/ETH
+
+    - Now you end up with 2000 USDC collateral, 0.66 ETH debt
 
     - ETH price goes 1500 -> 1400 so we get USD 53.333 unrealised PnL
 
     - Close the position fully
+
+    - Close position example TX on 1delta
+      https://polygonscan.com/tx/0x44dbfd62b0730f83f89474eb7ca45b797a414276ed38fee77c5df3e7c56ae399
     """
 
     trader = UnitTestTrader(state)
 
     portfolio = state.portfolio
 
-    # Aave allows us to borrow 80% ETH against our USDC collateral
-    start_ltv = 0.8
-
-    # How many ETH (vWETH) we expect when we go in
-    # with our max leverage available
-    # based on the collateral ratio
-    expected_eth_shorted_amount = 1000 * start_ltv / 1500
+    # We deposit 1000 USDC as reserves,
+    # use it to take a loan WETH at price 1500 USD/ETH
+    # for 1000 USDC,
+    # This gives us short leverage 1x,
+    # long leverage 2x.
+    expected_eth_shorted_amount = 1000 / 1500
 
     # Take 1000 USDC reserves and open a ETH short using it.
     # We should get 800 USDC worth of ETH for this.
@@ -521,6 +532,27 @@ def test_short_close_all(
 
     trader.set_perfectly_executed(trade)
 
+    loan = short_position.loan
+
+    # Collateral is our initial collateral 1000 USDC,
+    # plus it is once looped
+    assert loan.collateral.quantity == 2000
+
+    # We start with 1000 USDC collateral
+    # and then do short with full collateral amount
+    # so we end up 2000 USDC collateral and half of its
+    # worth of ETH
+    start_ltv = 0.50
+    assert loan.get_loan_to_value() == start_ltv
+
+    # Health factor comes from LTV
+    # using 85% liquidation threshold for USDC
+    # 1 / 0.5 * 0.85
+    start_health_factor = 1.7
+    assert loan.get_health_factor() == start_health_factor
+
+    assert loan.get_leverage() == 2.0
+
     # ETH price 1500 -> 1400
     short_position.revalue_base_asset(
         datetime.datetime.utcnow(),
@@ -529,7 +561,9 @@ def test_short_close_all(
 
     assert state.portfolio.get_theoretical_value() == pytest.approx(10053.33333)
 
-    # Make a trade that fully closes the position
+    # Make a trade that fully closes the position.
+    # We are going to need 746 USD worth of buy ETH
+    # and close the position.
     short_position_ref_2, trade_2, created = state.create_trade(
         strategy_cycle_at=datetime.datetime.utcnow(),
         pair=weth_short_identifier,
@@ -550,6 +584,9 @@ def test_short_close_all(
     # planned loan update moves sto executed
     # we get rid of half of the position
     trader.set_perfectly_executed(trade_2)
+
+    assert trade_2.executed_price == 1400
+    import ipdb ; ipdb.set_trace()
 
     # Check that loan has now been repaid
     loan = short_position.loan

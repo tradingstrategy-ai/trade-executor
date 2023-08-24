@@ -379,13 +379,15 @@ class State:
         trade.mark_success(executed_at, executed_price, executed_amount, executed_reserve, lp_fees, native_token_price, cost_of_gas=cost_of_gas)
 
         if trade.planned_loan_update:
-            position.loan = trade.planned_loan_update
+            assert trade.executed_loan_update, "TradeExecution.executed_loan_update structure not filled"
+            position.loan = trade.executed_loan_update
 
         if trade.is_sell() and trade.is_spot():
             self.portfolio.return_capital_to_reserves(trade)
 
         if trade.is_leverage_short() and trade.is_reduce():
             # Release any collateral
+
             self.portfolio.return_capital_to_reserves(trade)
 
             if trade.collateral_adjustment:

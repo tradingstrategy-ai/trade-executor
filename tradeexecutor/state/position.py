@@ -720,9 +720,13 @@ class TradingPosition(GenericPosition):
                 if reserve:
                     planned_reserve = reserve
                 else:
-                    # Calculate how much collateral will be released
-                    # for reducing a short
-                    planned_reserve = -abs(quantity * Decimal(assumed_price))
+                    # Calculate how much cash we need to to
+                    # buy base token (WETH) in order to repay the loan
+                    if quantity > 0:
+                        planned_reserve = abs(quantity * Decimal(assumed_price))
+                    else:
+                        raise NotImplementedError()
+                        # planned_reserve = abs(quantity * Decimal(assumed_price))
 
                 planned_quantity = quantity
 

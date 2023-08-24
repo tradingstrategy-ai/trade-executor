@@ -74,6 +74,12 @@ class AssetIdentifier:
     #: What kind of asset is this
     type: AssetType = AssetType.token
 
+    #: Aave liquidation threhold for this asset
+    #:
+    #: Set on aTokens that are used as collateral.
+    #:
+    liquidation_threshold: float = None
+
     def __str__(self):
         return f"<{self.token_symbol} at {self.address}>"
 
