@@ -13,6 +13,7 @@ from tradingstrategy.chain import ChainId
 from web3 import Web3
 
 from tradeexecutor.state.types import JSONHexAddress
+from tradeexecutor.strategy.routing import RoutingModel
 from tradingstrategy.stablecoin import is_stablecoin_like
 
 
@@ -181,7 +182,7 @@ class TradingPairIdentifier:
 
     #: Exchange address.
     #: Identifies a decentralised exchange.
-    #: Uniswap v2 likes are identified by their factor address.
+    #: Uniswap v2 likes are identified by their factory address.
     exchange_address: str
 
     #: How this asset is referred in the internal database
@@ -218,6 +219,12 @@ class TradingPairIdentifier:
     #: What kind of position this is
     #:
     kind: TradingPairKind = TradingPairKind.spot_market_hold
+
+    #: How this pair is routed
+    #:
+    #: Always initially set to None, but can be set later
+    #:
+    routing_model: Optional[RoutingModel] = None
 
     def __post_init__(self):
         assert self.base.chain_id == self.quote.chain_id, "Cross-chain trading pairs are not possible"
