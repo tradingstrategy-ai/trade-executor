@@ -4,6 +4,7 @@
 """
 
 import datetime
+from _decimal import Decimal
 
 from tradeexecutor.state.identifier import AssetWithTrackedValue, AssetType
 from tradeexecutor.state.loan import Loan
@@ -19,10 +20,15 @@ def create_short_loan(
     - Check that the information looks correct for a short position.
 
     - Populates :py:class:`Loan` data structure.
+
+    - We use assumed prices. The actual execution prices may differ
+      and must be populated to `trade.executed_loan`.
     """
 
     assert trade.is_leverage_short()
     assert len(position.trades) == 1, "Can be only called when position is opening"
+
+    assert not position.loan, f"loan already set"
 
     pair = trade.pair
 
@@ -32,8 +38,10 @@ def create_short_loan(
     assert pair.base.type == AssetType.borrowed, f"Trading pair base asset is not borrowed: {pair.base}"
     assert pair.quote.type == AssetType.collateral, f"Trading pair quote asset is not collateral: {pair.base}"
 
+    assert pair.quote.underlying.is_stablecoin(), f"Only stablecoin collateral supported for shorts: {pair.quote}"
+
     # Extra checks when position is opened
-    assert trade.planned_quantity < 0, f"Short position must open with  a sell with negative quantity, got: {trade.planned_quantity}"
+    assert trade.planned_quantity < 0, f"Short position must open with a sell with negative quantity, got: {trade.planned_quantity}"
     assert trade.planned_reserve > 0, f"Collateral must be positive: {trade.planned_reserve}"
 
     # vToken
@@ -46,11 +54,18 @@ def create_short_loan(
     )
 
     # aToken
+
+    #
+    # The expected collateral
+    # is our collateral allocation (reserve)
+    # and whatever more collateral we get for selling the shorted token
+    #
+
     collateral = AssetWithTrackedValue(
         asset=pair.quote,
         last_usd_price=trade.reserve_currency_exchange_rate,
         last_pricing_at=datetime.datetime.utcnow(),
-        quantity=trade.planned_reserve,
+        quantity=trade.planned_reserve + Decimal(trade.get_planned_value()),
     )
 
     loan = Loan(

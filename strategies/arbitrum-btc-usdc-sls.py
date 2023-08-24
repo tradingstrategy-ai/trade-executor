@@ -155,7 +155,7 @@ def get_signals(candles):
 
 
 def calculate_size(state, close):
-    cash = state.portfolio.get_current_cash()
+    cash = state.portfolio.get_cash()
     return cash * 0.99
 
 

@@ -391,20 +391,12 @@ class TradeExecution:
     #:
     executed_loan_update: Optional[Loan] = None
 
-    #: After the trade execution, adjust collateral amount this many tokens.
+    #: Closing flag set on leveraged positions.
     #:
-    #: This is done on the top of any collateral changes caused by
-    #: trade execution (buy/sell).
+    #: After this trade is executed, any position
+    #: collateral should return to the cash reserves.
     #:
-    #: Negative to move collateral to cash reserves, positive
-    #: to move cash reserves to collateral to increase the health ration.
-    #:
-    #: Because by default any leveraged position realised profit goes
-    #: to the collateral, not cash reserves, this allows us to
-    #: keep the position LTV same and also release collateral
-    #: when we reduce the position.
-    #:
-    collateral_adjustment: Optional[Decimal] = None
+    closing: bool = None
 
     def __repr__(self):
         if self.is_buy():
@@ -647,15 +639,9 @@ class TradeExecution:
         else:
             raise NotImplementedError(f"Not leveraged trade: {self}")
 
-    def is_release_all_collateral(self) -> bool:
-        """This trade is marked to release all remaining collateral for the undertlying loan.
-
-        This assumes we successfully first reduce borrowed amount to zero.
-        """
-        return self.collateral_adjustment == COLLATERAL_POSITION_CLOSE
-
     def get_input_asset(self) -> AssetIdentifier:
         """How we fund this trade."""
+        assert self.is_spot()
         if self.is_buy():
             return self.pair.quote
         else:
@@ -663,6 +649,7 @@ class TradeExecution:
 
     def get_output_asset(self) -> AssetIdentifier:
         """What asset we receive out from this trade"""
+        assert self.is_spot()
         if self.is_buy():
             return self.pair.base
         else:

@@ -381,7 +381,7 @@ class Portfolio:
                      position: Optional[TradingPosition] = None,
                      slippage_tolerance: Optional[float] = None,
                      leverage: Optional[float] = None,
-                     collateral_adjustment: Optional[Decimal] = None,
+                     closing: Optional[bool] = False,
                      ) -> Tuple[TradingPosition, TradeExecution, bool]:
         """Create a trade.
 
@@ -505,7 +505,7 @@ class Portfolio:
             slippage_tolerance=slippage_tolerance,
             portfolio_value_at_creation=portfolio_value,
             leverage=leverage,
-            collateral_adjustment=collateral_adjustment,
+            closing=closing,
         )
 
         # Update notes
@@ -527,23 +527,34 @@ class Portfolio:
 
         return position, trade, created
 
-    def get_current_cash(self) -> USDollarAmount:
+    def get_cash(self) -> USDollarAmount:
         """Get how much reserve stablecoins we have."""
         return sum([r.get_value() for r in self.reserves.values()])
 
-    def get_position_equity_and_collateral(self) -> USDollarAmount:
+    def get_current_cash(self):
+        """Alias for get_cash()"""
+        return self.get_cash()
+
+    def get_position_equity_and_leveraged_nav(self) -> USDollarAmount:
         """Get the equity tied tot the current trading positions.
 
         TODO: Rename this function - also deals with loans not just equity
+
+        - Includes open positions
+        - Does not include frozen positions
         """
 
         # Any trading positions we have one
-        position_values = sum([p.get_equity() for p in self.open_positions.values()])
+        spot_values = sum([p.get_equity() for p in self.open_positions.values() if not p.is_leverage()])
 
         # Minus any outstanding loans we have
-        collateral_values = sum([p.get_collateral() for p in self.open_positions.values()])
+        leveraged_values = self.get_leveraged_net_asset_value()
 
-        return position_values + collateral_values
+        return spot_values + leveraged_values
+
+    def get_leveraged_net_asset_value(self) -> USDollarAmount:
+        """Get net asset value we can theoretically free from leveraged positions."""
+        return sum([p.loan.get_net_asset_value() for p in self.open_positions.values() if p.is_leverage()])
 
     def get_frozen_position_equity(self) -> USDollarAmount:
         """Get the value of trading positions that are frozen currently."""
@@ -569,24 +580,20 @@ class Portfolio:
         See also :py:meth:`get_theoretical_value`
 
         """
-        return self.get_position_equity_and_collateral() + self.get_current_cash()
+        return self.get_position_equity_and_leveraged_nav() + self.get_cash()
 
-    def get_theoretical_value(self) -> USDollarAmount:
+    def get_net_asset_value(self) -> USDollarAmount:
         """Calculate portfolio value if every position would be closed now.
 
         This includes
 
-        - Total equity
+        - Cash
 
-        - Any unrealised profit from margined positions
+        - Equity hold in spot positions
 
-        TODO: Rename this function
-
-        See also :py:meth:`get_total_equity`
+        - Net asset value hold in leveraged positions
         """
-        return self.get_total_equity() \
-            + self.get_unrealised_profit_in_leveraged_positions() \
-            + self.get_realised_profit_in_leveraged_positions()
+        return self.get_position_equity_and_leveraged_nav() + self.get_cash()
 
     def get_unrealised_profit_usd(self) -> USDollarAmount:
         """Get the profit of currently open positions.
@@ -677,7 +684,7 @@ class Portfolio:
         assert reserve.quantity is not None, f"Reserve quantity not set for {asset} in portfolio {self}"
         reserve.quantity += amount
 
-    def move_capital_from_reserves_to_trade(self, trade: TradeExecution, underflow_check=True):
+    def move_capital_from_reserves_to_spot_trade(self, trade: TradeExecution, underflow_check=True):
         """Allocate capital from reserves to trade instance.
 
         Total equity of the porfolio stays the same.

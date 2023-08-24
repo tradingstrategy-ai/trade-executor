@@ -617,7 +617,7 @@ class TradingPosition(GenericPosition):
                    slippage_tolerance: Optional[float] = None,
                    portfolio_value_at_creation: Optional[USDollarAmount] = None,
                    leverage: Optional[LeverageMultiplier]=None,
-                   collateral_adjustment: Optional[Decimal]=None,
+                   closing: Optional[bool] = False,
                    ) -> TradeExecution:
         """Open a new trade on position.
 
@@ -706,28 +706,25 @@ class TradingPosition(GenericPosition):
                 if len(self.trades) == 0:
                     assert reserve is not None, "Both reserve and quantity needs to be given for lending protocol short open"
                     assert quantity is not None, "Both reserve and quantity needs to be given for lending protocol short open"
-                    assert collateral_adjustment is None, "collateral_adjustment cannot be used when opening a position"
+                    assert not closing, "Cannot close position not yet open"
                 else:
-                    assert quantity is not None, "For increasing/reducing short position quantity must be given"
+                    if closing:
+                        assert reserve is None, "reserve calculated automatically when closing a position"
+                        assert quantity is None, "quantity calculated automatically when closing a position"
 
-                    # Get rid of the extra collateral
-                    if collateral_adjustment == COLLATERAL_POSITION_CLOSE:
-                        collateral_adjustment = -self.loan.calculate_collateral_left_after_closing()
+                        # Buy back all the debt
+                        quantity = self.loan.borrowed.quantity
+
+                        # Release collateral is the current collateral
+                        reserve = -self.loan.collateral.quantity
+
+                    else:
+                        assert quantity is not None, "For increasing/reducing short position quantity must be given"
 
                 assert reserve_currency_price, f"Collateral price missing"
                 assert assumed_price, f"Short token price missing"
 
-                if reserve:
-                    planned_reserve = reserve
-                else:
-                    # Calculate how much cash we need to to
-                    # buy base token (WETH) in order to repay the loan
-                    if quantity > 0:
-                        planned_reserve = abs(quantity * Decimal(assumed_price))
-                    else:
-                        raise NotImplementedError()
-                        # planned_reserve = abs(quantity * Decimal(assumed_price))
-
+                planned_reserve = reserve
                 planned_quantity = quantity
 
             case TradingPairKind.spot_market_hold | TradingPairKind.credit_supply:
@@ -759,7 +756,6 @@ class TradingPosition(GenericPosition):
             portfolio_value_at_creation=portfolio_value_at_creation,
             leverage=leverage,
             reserve_currency_exchange_rate=reserve_currency_price,
-            collateral_adjustment=collateral_adjustment,
         )
 
         self.trades[trade.trade_id] = trade

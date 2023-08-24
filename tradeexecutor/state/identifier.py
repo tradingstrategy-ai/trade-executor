@@ -13,7 +13,7 @@ from eth_typing import HexAddress
 from tradingstrategy.chain import ChainId
 from web3 import Web3
 
-from tradeexecutor.state.types import JSONHexAddress, USDollarAmount, LeverageMultiplier, USDollarPrice
+from tradeexecutor.state.types import JSONHexAddress, USDollarAmount, LeverageMultiplier, USDollarPrice, Percent
 from tradingstrategy.lending import LendingProtocolType
 from tradingstrategy.stablecoin import is_stablecoin_like
 from tradingstrategy.types import PrimaryKey
@@ -81,7 +81,10 @@ class AssetIdentifier:
     liquidation_threshold: float = None
 
     def __str__(self):
-        return f"<{self.token_symbol} at {self.address}>"
+        if self.underlying:
+            return f"<{self.token_symbol} ({self.underlying.token_symbol}) at {self.address}>"
+        else:
+            return f"<{self.token_symbol} at {self.address}>"
 
     def __hash__(self):
         assert self.chain_id, "chain_id needs to be set to be hashable"
@@ -266,23 +269,6 @@ class TradingPairIdentifier:
     #:
     kind: TradingPairKind = TradingPairKind.spot_market_hold
 
-    #: For longs/short on a lending protocol.
-    #:
-    #: What is the colleteral factor of base asset.
-    #:
-    #: Collateral factor ``cF``: Determines how much borrow capacity a trader has when depositing an asset.
-    #: Also described as Liquidation Threshold.
-    #:
-    collateral_factor: Optional[float] = None
-
-    #: E.g. you can borrow 800 USD worth of WETH against 1000 USDC,
-    #: collateral factor is 0.80. This is also presented
-    #: as Max LTV in Aave UI. Collateral factor 0.80 is 80% Max LTV (TODO: Verify).
-    #:
-    #: See `1delta documentation <https://docs.1delta.io/lenders/metrics>`__.
-    #:
-    max_ltv: Optional[float] = None
-
     def __post_init__(self):
         assert self.base.chain_id == self.quote.chain_id, "Cross-chain trading pairs are not possible"
 
@@ -386,6 +372,12 @@ class TradingPairIdentifier:
 
     def is_leverage(self) -> bool:
         return self.kind.is_leverage()
+
+    def get_liquidation_threshold(self) -> Percent:
+        """What's the liqudation threshold for this leveraged pair"""
+        assert self.kind.is_leverage()
+        # Liquidation threshold comes from the collateral token
+        return self.quote.liquidation_threshold
 
 
 @dataclass_json

@@ -53,24 +53,23 @@ class Loan:
         return copy.deepcopy(self)
 
     def get_net_asset_value(self) -> USDollarAmount:
-        """TODO: From 1delta terminology"""
+        """What's the withdrawable amount of the position is closed.
+
+        """
         return self.collateral.get_usd_value() - self.borrowed.get_usd_value()
 
     def get_leverage(self) -> LeverageMultiplier:
         """TODO: From 1delta terminology"""
-        return self.collateral.get_usd_value() / self.get_nav()
+        return self.collateral.get_usd_value() / self.get_net_asset_value()
 
     def get_free_margin(self) -> USDollarAmount:
         raise NotImplementedError()
 
     def get_health_factor(self) -> HealthFactor:
-        raise NotImplementedError()
+        return self.collateral.asset.liquidation_threshold * self.collateral.get_usd_value() / self.borrowed.get_usd_value()
 
     def get_max_size(self) -> USDollarAmount:
         raise NotImplementedError()
-
-    def get_collateral_factor(self) -> float:
-        return self.pair.collateral_factor
 
     def get_loan_to_value(self):
         """Get LTV of this loan.
@@ -114,4 +113,6 @@ class Loan:
         expected_collateral_release_usd = self.borrowed.get_usd_value()
         collateral_left_usd = self.collateral.get_usd_value() - expected_collateral_release_usd
         return Decimal(collateral_left_usd / self.collateral.last_usd_price)
+
+
 

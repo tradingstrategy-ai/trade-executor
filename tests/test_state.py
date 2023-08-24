@@ -140,7 +140,7 @@ def test_update_reserves(usdc, weth, weth_usdc, start_ts):
     """Set currency reserves for a portfolio."""
     state = State()
     state.update_reserves([ReservePosition(usdc, Decimal(1000), start_ts, 1.0, start_ts)])
-    assert state.portfolio.get_current_cash() == 1_000
+    assert state.portfolio.get_cash() == 1_000
     assert state.portfolio.get_total_equity() == 1_000
 
 
@@ -179,7 +179,7 @@ def test_single_buy(usdc, weth, weth_usdc, start_ts):
     assert asset_deltas[1].raw_amount == pytest.approx(98999999999999999)
 
     assert position.has_planned_trades()
-    assert state.portfolio.get_current_cash() == 1_000
+    assert state.portfolio.get_cash() == 1_000
     assert state.portfolio.get_total_equity() == 1_000
 
     # #2 Capital allocation
@@ -193,13 +193,13 @@ def test_single_buy(usdc, weth, weth_usdc, start_ts):
     assert trade.get_value() == 170
     assert position.has_unexecuted_trades()
     assert not position.has_planned_trades()
-    assert state.portfolio.get_current_cash() == 830  # Trades being executed do not show in the portfolio value
+    assert state.portfolio.get_cash() == 830  # Trades being executed do not show in the portfolio value
     assert state.portfolio.get_total_equity() == 1000  # Trades being executed do not show in the portfolio value
 
     # #3 broadcast
     ts = ts + datetime.timedelta(minutes=1)
     state.mark_broadcasted(ts, trade)
-    assert state.portfolio.get_current_cash() == 830  # Trades being executed do not show in the portfolio value
+    assert state.portfolio.get_cash() == 830  # Trades being executed do not show in the portfolio value
     assert state.portfolio.get_total_equity() == 1000  # Trades being executed do not show in the portfolio value
 
     # #4 success
@@ -221,7 +221,7 @@ def test_single_buy(usdc, weth, weth_usdc, start_ts):
 
     assert not position.has_unexecuted_trades()
     assert not position.has_planned_trades()
-    assert state.portfolio.get_current_cash() == 830  # Trades being executed do not show in the portfolio value
+    assert state.portfolio.get_cash() == 830  # Trades being executed do not show in the portfolio value
     assert state.portfolio.get_total_equity() == 983  # Trades being executed do not show in the portfolio value7
 
     assert len(state.portfolio.open_positions) == 1
@@ -232,9 +232,9 @@ def test_single_sell_all(usdc, weth, weth_usdc, start_ts, single_asset_portfolio
     state = State(portfolio=single_asset_portfolio)
 
     # 0: Check the starting state
-    assert state.portfolio.get_current_cash() == 500
+    assert state.portfolio.get_cash() == 500
     assert state.portfolio.get_total_equity() == 657.7
-    assert state.portfolio.get_position_equity_and_collateral() == 157.7
+    assert state.portfolio.get_position_equity_and_leveraged_nav() == 157.7
     eth_quantity = state.portfolio.open_positions[1].get_quantity_old()
     assert eth_quantity == Decimal("0.09500000000000000111022302463")
 
@@ -261,7 +261,7 @@ def test_single_sell_all(usdc, weth, weth_usdc, start_ts, single_asset_portfolio
     assert trade.is_sell()
     assert trade.get_status() == TradeStatus.planned
     assert position.has_planned_trades()
-    assert state.portfolio.get_current_cash() == 500
+    assert state.portfolio.get_cash() == 500
     assert state.portfolio.get_total_equity() == 657.7
 
     asset_deltas = trade.calculate_asset_deltas()
@@ -277,7 +277,7 @@ def test_single_sell_all(usdc, weth, weth_usdc, start_ts, single_asset_portfolio
     nonce = 2
     ts = start_ts + datetime.timedelta(minutes=1)
     state.start_execution(ts, trade, txid, nonce)
-    assert state.portfolio.get_current_cash() == 500
+    assert state.portfolio.get_cash() == 500
     assert state.portfolio.get_total_equity() == 657.7
     assert state.portfolio.open_positions[1].trades[2].txid == txid
     assert state.portfolio.open_positions[1].trades[2].nonce == nonce
@@ -289,7 +289,7 @@ def test_single_sell_all(usdc, weth, weth_usdc, start_ts, single_asset_portfolio
     # #3 broadcast
     ts = ts + datetime.timedelta(minutes=1)
     state.mark_broadcasted(ts, trade)
-    assert state.portfolio.get_current_cash() == 500
+    assert state.portfolio.get_cash() == 500
     assert state.portfolio.get_total_equity() == 657.7
 
     # #4 success
@@ -326,9 +326,9 @@ def test_single_sell_all(usdc, weth, weth_usdc, start_ts, single_asset_portfolio
     # We lost some money in the trade, so equity is now lower
     # We originally bought ETH at 1690
     # now sold at 1640
-    assert state.portfolio.get_current_cash() == 655.8
+    assert state.portfolio.get_cash() == 655.8
     assert state.portfolio.get_total_equity() == 655.8
-    assert state.portfolio.get_position_equity_and_collateral() == 0
+    assert state.portfolio.get_position_equity_and_leveraged_nav() == 0
 
     assert len(state.portfolio.open_positions) == 0
     assert len(state.portfolio.closed_positions) == 1
@@ -784,7 +784,7 @@ def test_single_buy_failed(usdc, weth, weth_usdc, start_ts):
     # #3 broadcast
     ts = ts + datetime.timedelta(minutes=1)
     state.mark_broadcasted(ts, trade)
-    assert state.portfolio.get_current_cash() == 830  # Trades being executed do not show in the portfolio value
+    assert state.portfolio.get_cash() == 830  # Trades being executed do not show in the portfolio value
     assert state.portfolio.get_total_equity() == 1000  # Trades being executed do not show in the portfolio value
 
     # #4 fail
@@ -802,7 +802,7 @@ def test_single_buy_failed(usdc, weth, weth_usdc, start_ts):
 
     assert not position.has_unexecuted_trades()
     assert not position.has_planned_trades()
-    assert state.portfolio.get_current_cash() == 1000.0  # Trades being executed do not show in the portfolio value
+    assert state.portfolio.get_cash() == 1000.0  # Trades being executed do not show in the portfolio value
     assert state.portfolio.get_total_equity() == 1000.0  # Trades being executed do not show in the portfolio value7
 
     assert len(state.portfolio.open_positions) == 1

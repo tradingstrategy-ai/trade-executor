@@ -76,7 +76,7 @@ def stop_loss_decide_trades_factory(stop_loss_pct=None):
         pair = universe.pairs.get_single()
 
         # How much cash we have in the hand
-        cash = state.portfolio.get_current_cash()
+        cash = state.portfolio.get_cash()
 
         position_manager = PositionManager(timestamp, universe, state, pricing_model)
 
@@ -132,7 +132,7 @@ def take_profit_decide_trades_factory(take_profit_pct=None):
         pair = universe.pairs.get_single()
 
         # How much cash we have in the hand
-        cash = state.portfolio.get_current_cash()
+        cash = state.portfolio.get_cash()
 
         position_manager = PositionManager(timestamp, universe, state, pricing_model)
 
@@ -189,7 +189,7 @@ def trailing_stop_loss_decide_trades_factory(trailing_stop_loss_pct=None):
         pair = universe.pairs.get_single()
 
         # How much cash we have in the hand
-        cash = state.portfolio.get_current_cash()
+        cash = state.portfolio.get_cash()
 
         position_manager = PositionManager(timestamp, universe, state, pricing_model)
 
@@ -240,7 +240,7 @@ def stop_loss_usd_decide_trades_factory(stop_loss_pct=None):
         pair = universe.pairs.get_single()
 
         # How much cash we have in the hand
-        cash = state.portfolio.get_current_cash()
+        cash = state.portfolio.get_cash()
 
         position_manager = PositionManager(timestamp, universe, state, pricing_model)
 

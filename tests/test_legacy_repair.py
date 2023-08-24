@@ -88,7 +88,7 @@ def test_repair_trades(
 
     # We have $6.8 in reserves - after fixing positions this amount should be
     # restored from the reserve allocated for failed buys
-    assert portfolio.get_current_cash() == 6.815099
+    assert portfolio.get_cash() == 6.815099
 
     # Failed buy, allocated capital needs to be released
     assert pos1.get_quantity_old() == 0
@@ -155,7 +155,7 @@ def test_repair_trades(
     assert t4.get_value() == 0
     assert t4.get_position_quantity() == 0
 
-    assert portfolio.get_current_cash() == pytest.approx(137.19343519999998)
+    assert portfolio.get_cash() == pytest.approx(137.19343519999998)
     assert len(list(portfolio.get_unfrozen_positions())) == 3
 
     # After repair run some summary statistics to see they don't crash

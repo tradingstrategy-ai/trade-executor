@@ -151,7 +151,7 @@ class StrategyRunner(abc.ABC):
         # Update the debug data for tests with our events
         debug_details["reserve_update_events"] = balance_update_events
         debug_details["total_equity_at_start"] = state.portfolio.get_total_equity()
-        debug_details["total_cash_at_start"] = state.portfolio.get_current_cash()
+        debug_details["total_cash_at_start"] = state.portfolio.get_cash()
 
     def revalue_portfolio(self, ts: datetime.datetime, state: State, valuation_method: ValuationModel):
         """Revalue portfolio based on the data."""
@@ -189,7 +189,7 @@ class StrategyRunner(abc.ABC):
         tick = debug_details.get("cycle", 1)
         print(f"Portfolio status (before rebalance), tick #{tick}", file=buf)
         print("", file=buf)
-        print(f"Total equity: ${portfolio.get_total_equity():,.2f}, in cash: ${portfolio.get_current_cash():,.2f}", file=buf)
+        print(f"Total equity: ${portfolio.get_total_equity():,.2f}, in cash: ${portfolio.get_cash():,.2f}", file=buf)
         print(f"Life-time positions: {portfolio.next_position_id - 1}, trades: {portfolio.next_trade_id - 1}", file=buf)
         print(DISCORD_BREAK_CHAR, file=buf)
 
@@ -238,7 +238,7 @@ class StrategyRunner(abc.ABC):
         
         print("Portfolio status (after rebalance)", file=buf)
         print("", file=buf)
-        print(f"Total equity: ${portfolio.get_total_equity():,.2f}, Cash: ${portfolio.get_current_cash():,.2f}", file=buf)
+        print(f"Total equity: ${portfolio.get_total_equity():,.2f}, Cash: ${portfolio.get_cash():,.2f}", file=buf)
 
         print(DISCORD_BREAK_CHAR, file=buf)
 
