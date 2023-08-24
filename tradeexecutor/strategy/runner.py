@@ -64,7 +64,9 @@ class StrategyRunner(abc.ABC):
                  execution_context: ExecutionContext,
                  routing_model: Optional[RoutingModel] = None,
                  run_state: Optional[RunState] = None,
-                 accounting_checks=False,
+                 accounting_checks: bool=False,
+                 generic_routing_data: list[dict]=None,
+                 routing_models: list[RoutingModel]=None, # TODO: delete
                  ):
         """
         :param engine_version:
@@ -90,6 +92,8 @@ class StrategyRunner(abc.ABC):
         self.run_state = run_state
         self.execution_context = execution_context
         self.accounting_checks = accounting_checks
+        self.generic_routing_data = generic_routing_data
+        self.routing_models = routing_models
 
         logger.info("Created strategy runner %s, engine version %s", self, self.execution_context.engine_version)
 
@@ -342,6 +346,63 @@ class StrategyRunner(abc.ABC):
 
         return routing_state, pricing_model, valuation_model
 
+    def setup_generic_routing(self, universe: StrategyExecutionUniverse) -> list[dict[RoutingState, PricingModel, ValuationModel, RoutingModel]]:
+        """Setups routing state for this cycle.
+
+        :param universe:
+            The currently tradeable universe
+
+        :return:
+            list[Tuple(routing state, pricing model, valuation model)]
+        """
+
+        assert self.generic_routing_data, "generic_routing_data not set"
+
+        generic_execution_data: list[dict] = []
+
+        for item in self.generic_routing_data:
+
+            execution_model = item["execution_model"]
+            valuation_model_factory = item["valuation_model_factory"]
+            pricing_model_factory = item["pricing_model_factory"]
+
+            # routing model should be set in tradeexecutor.strategy.bootstrap.make_generic_factory_from_strategy_mod
+            routing_model = item["routing_model"]
+
+            # Get web3 connection, hot wallet
+            routing_state_details = execution_model.get_routing_state_details()
+
+            # Initialise the current routing state with execution details
+            logger.info(
+                "Setting up routing.\n"
+                "Routing models are %s\n"
+                "Details are %s\n"
+                "Universe is %s",
+                [item["routing_model"] for item in self.generic_routing_data],
+                routing_state_details,
+                universe,
+            )
+            
+            routing_state = routing_model.create_routing_state(universe, routing_state_details)
+
+            # Create a pricing model for assets
+            pricing_model = pricing_model_factory(execution_model, universe, routing_model)
+
+            assert pricing_model, "pricing_model_factory did not return a value"
+
+            # Create a valuation model for positions
+            valuation_model = valuation_model_factory(pricing_model)
+
+            logger.debug("setup_routing(): routing_state: %s, pricing_model: %s, valuation_model: %s",
+                routing_state,
+                pricing_model,
+                valuation_model
+            )
+
+            generic_execution_data.append(dict(routing_state=routing_state, pricing_model=pricing_model, valudation_model=valuation_model, routing_model=routing_model))
+
+        return generic_execution_data
+
     def tick(self,
              strategy_cycle_timestamp: datetime.datetime,
              universe: StrategyExecutionUniverse,
@@ -388,9 +449,12 @@ class StrategyRunner(abc.ABC):
 
         friendly_cycle_duration = cycle_duration.value if cycle_duration else "-"
         with self.timed_task_context_manager("strategy_tick", clock=strategy_cycle_timestamp, cycle_duration=friendly_cycle_duration):
-
-            routing_state, pricing_model, valuation_model = self.setup_routing(universe)
-            assert pricing_model, "Routing did not provide pricing_model"
+            
+            if not self.generic_routing_data:
+                routing_state, pricing_model, valuation_model = self.setup_routing(universe)
+                assert pricing_model, "Routing did not provide pricing_model"
+            else:
+                generic_execution_data = self.setup_generic_routing(universe)
 
             # Watch incoming deposits
             with self.timed_task_context_manager("sync_portfolio"):
@@ -402,7 +466,7 @@ class StrategyRunner(abc.ABC):
 
             # Assing a new value for every existing position
             with self.timed_task_context_manager("revalue_portfolio"):
-                self.revalue_portfolio(strategy_cycle_timestamp, state, valuation_model)
+                self.revalue_portfolio(strategy_cycle_timestamp, state, valuation_model) # TODO
 
             # Log output
             if self.is_progress_report_needed():
@@ -457,14 +521,48 @@ class StrategyRunner(abc.ABC):
 
                 # Make sure our hot wallet nonce is up to date
                 self.sync_model.resync_nonce()
+                
 
-                self.execution_model.execute_trades(
-                    strategy_cycle_timestamp,
-                    state,
-                    approved_trades,
-                    self.routing_model,
-                    routing_state,
-                    check_balances=check_balances)
+                if self.execution_model:
+                    assert not self.generic_routing_data, "generic_routing_data should be empty"
+
+                    self.execution_model.execute_trades(
+                        strategy_cycle_timestamp,
+                        state,
+                        approved_trades,
+                        self.routing_model,
+                        routing_state,
+                        check_balances=check_balances
+                    )
+                else:
+                    assert generic_execution_data, "generic_execution_data should be set"
+                    
+                    for item in self.generic_routing_data:
+                        routing_model = item["routing_model"]
+                        execution_model = item["execution_model"]
+                        
+                        trades_to_execute = []
+                        
+                        # get trades corresponding to routing model
+                        for trade in approved_trades:
+                            if trade.routing_model == routing_model:
+                                trades_to_execute.append(trade)
+
+                        # get execution details corresponding to routing model
+                        for item in generic_execution_data:
+                            if item["routing_model"] == routing_model:
+                                routing_state = item["routing_state"]
+                                pricing_model = item["pricing_model"]
+                                valuation_model = item["valuation_model"]
+                        
+                        execution_model.execute_trades(
+                            strategy_cycle_timestamp,
+                            state,
+                            trades_to_execute,
+                            routing_model,
+                            routing_state,
+                            check_balances=check_balances,
+                        )
 
             # Log output
             if self.is_progress_report_needed():
