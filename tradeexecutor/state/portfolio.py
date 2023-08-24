@@ -383,6 +383,7 @@ class Portfolio:
                      leverage: Optional[float] = None,
                      closing: Optional[bool] = False,
                      planned_collateral_consumption: Optional[Decimal] = None,
+                     planned_collateral_allocation: Optional[Decimal] = None,
                      ) -> Tuple[TradingPosition, TradeExecution, bool]:
         """Create a trade.
 
@@ -508,6 +509,7 @@ class Portfolio:
             leverage=leverage,
             closing=closing,
             planned_collateral_consumption=planned_collateral_consumption,
+            planned_collateral_allocation=planned_collateral_allocation,
         )
 
         # Update notes

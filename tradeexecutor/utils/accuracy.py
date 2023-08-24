@@ -11,6 +11,13 @@ from typing import Iterable
 #: If sum of token quantities goes below this value assume the sum is zero
 SUM_EPSILON = Decimal(10**-18)
 
+#: When selling "full amount" use this epsilon
+#: the ensure we calculate 100% correctly
+#:
+#: See :py:func:`snap_to_epsilon`
+#:
+SNAP_EPSILON = Decimal(10**-8)
+
 #: Preconstruced Decimal Zero
 #:
 #: Avoid object reinitialisation.
@@ -57,7 +64,16 @@ def sum_decimal(numbers: Iterable[Decimal]) -> Decimal:
         return ZERO_DECIMAL
     return total
 
-
+def snap_to_epsilon(
+    available_token_quantity: Decimal,
+    calculated_token_quantity: Decimal,
+    epsilon=SNAP_EPSILON
+) -> Decimal:
+    """Make sure our calculated quantity does not exceed max available tokens."""
+    if calculated_token_quantity != available_token_quantity:
+        if abs(calculated_token_quantity) - abs(available_token_quantity) < epsilon:
+            return available_token_quantity
+    return calculated_token_quantity
 
 
 

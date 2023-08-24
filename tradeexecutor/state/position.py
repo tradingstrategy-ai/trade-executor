@@ -619,6 +619,7 @@ class TradingPosition(GenericPosition):
                    leverage: Optional[LeverageMultiplier]=None,
                    closing: Optional[bool] = False,
                    planned_collateral_consumption: Optional[Decimal] = None,
+                   planned_collateral_allocation: Optional[Decimal] = None,
                    ) -> TradeExecution:
         """Open a new trade on position.
 
@@ -700,8 +701,6 @@ class TradingPosition(GenericPosition):
         if strategy_cycle_at is not None:
             assert isinstance(strategy_cycle_at, datetime.datetime)
 
-        planned_collateral_consumption = planned_collateral_allocation=  None
-
         # Set lending market estimated quantities
         match pair.kind:
             case TradingPairKind.lending_protocol_short:
@@ -731,6 +730,7 @@ class TradingPosition(GenericPosition):
                     else:
                         assert quantity is not None, "For increasing/reducing short position quantity must be given"
                         planned_collateral_consumption = -quantity * Decimal(self.loan.borrowed.last_usd_price)
+                        planned_collateral_allocation = planned_collateral_allocation
 
                 assert reserve_currency_price, f"Collateral price missing"
                 assert assumed_price, f"Short token price missing"
