@@ -52,6 +52,8 @@ class UnitTestTrader:
 
     def create_and_execute(self, pair: TradingPairIdentifier, quantity: Decimal, price: float) -> Tuple[TradingPosition, TradeExecution]:
 
+        assert pair.is_leverage()
+
         assert price > 0
         assert quantity != 0
 
@@ -84,7 +86,14 @@ class UnitTestTrader:
             executed_quantity = quantity
             executed_reserve = abs(quantity * Decimal(executed_price))
 
-        self.state.mark_trade_success(self.ts, trade, executed_price, executed_quantity, executed_reserve, self.lp_fees, self.native_token_price)
+        self.state.mark_trade_success(
+            self.ts,
+            trade,
+            executed_price,
+            executed_quantity,
+            executed_reserve,
+            self.lp_fees,
+            self.native_token_price)
         return position, trade
 
     def set_perfectly_executed(self, trade: TradeExecution):
@@ -108,6 +117,8 @@ class UnitTestTrader:
         # 4. executed
         executed_price = trade.planned_price
         executed_collateral_consumption = trade.planned_collateral_consumption
+        executed_collateral_allocation = trade.planned_collateral_allocation
+
         if trade.is_buy():
             if trade.is_spot():
                 executed_quantity = trade.planned_quantity
@@ -132,6 +143,7 @@ class UnitTestTrader:
             self.lp_fees,
             self.native_token_price,
             executed_collateral_consumption=executed_collateral_consumption,
+            executed_collateral_allocation=executed_collateral_allocation,
         )
 
     def buy(self, pair, quantity, price) -> Tuple[TradingPosition, TradeExecution]:

@@ -470,6 +470,7 @@ class State:
                            native_token_price: USDollarPrice,
                            cost_of_gas: float | None = None ,
                            executed_collateral_consumption: Optional[Decimal] = None,
+                           executed_collateral_allocation: Optional[Decimal] = None,
                         ):
         """"""
 
@@ -490,6 +491,7 @@ class State:
             native_token_price,
             cost_of_gas=cost_of_gas,
             executed_collateral_consumption=executed_collateral_consumption,
+            executed_collateral_allocation=executed_collateral_allocation,
         )
 
         if trade.planned_loan_update:
@@ -501,10 +503,9 @@ class State:
 
         if trade.is_leverage_short() and trade.is_reduce():
             # Release any collateral
-
-            if executed_collateral_consumption:
+            if executed_collateral_allocation:
                 assert trade.pair.quote.underlying
-                self.portfolio.adjust_reserves(trade.pair.quote.underlying, executed_collateral_consumption)
+                self.portfolio.adjust_reserves(trade.pair.quote.underlying, -executed_collateral_allocation)
 
         if trade.is_leverage_long():
             raise NotImplementedError()

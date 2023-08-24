@@ -153,6 +153,8 @@ def test_open_short(
     assert trade.is_success()
     assert trade.is_sell()
     assert trade.trade_type == TradeType.rebalance
+    assert trade.executed_collateral_allocation == trade.planned_collateral_allocation
+    assert trade.executed_collateral_consumption == trade.executed_collateral_consumption
 
     # Check loan data structures
     loan = short_position.loan
@@ -271,13 +273,8 @@ def test_short_unrealised_profit_partially_closed_keep_collateral(
 
     portfolio = state.portfolio
 
-    # Aave allows us to borrow 80% ETH against our USDC collateral
-    start_ltv = 0.8
-
-    # How many ETH (vWETH) we expect when we go in
-    # with our max leverage available
-    # based on the collateral ratio
-    expected_eth_shorted_amount = 1000 * start_ltv / 1500
+    # Start by shorting  ETH 2:1 with 1000 USD
+    expected_eth_shorted_amount = 1000 / 1500
 
     # Take 1000 USDC reserves and open a ETH short using it.
     # We should get 800 USDC worth of ETH for this.
@@ -299,10 +296,12 @@ def test_short_unrealised_profit_partially_closed_keep_collateral(
     assert trade.planned_loan_update is not None
     assert trade.executed_loan_update is not None
 
-    assert state.portfolio.get_total_equity() == 10000
     loan = short_position.loan
     assert loan.borrowed.quantity == pytest.approx(Decimal(expected_eth_shorted_amount))
-    assert loan.collateral.quantity == pytest.approx(1800)
+    assert loan.collateral.quantity == pytest.approx(2000)
+    assert loan.get_leverage() == 2.0
+
+    assert portfolio.get_total_equity() == 10000
     assert portfolio.get_cash() == 9000
 
     # ETH price 1500 -> 1400
@@ -311,8 +310,8 @@ def test_short_unrealised_profit_partially_closed_keep_collateral(
         1400.0,
     )
 
-    # Loan value 800 USD -> 746 USD
-    assert short_position.loan.borrowed.get_usd_value() == pytest.approx(746.6666666666666)
+    # Loan value 1000 USD -> 933 USD
+    assert short_position.loan.borrowed.get_usd_value() == pytest.approx(933.3333333333333)
 
     # Close 50% of the position
     #
@@ -346,39 +345,35 @@ def test_short_unrealised_profit_partially_closed_keep_collateral(
     assert trade_2.planned_reserve == pytest.approx(Decimal(0))
     assert trade_2.executed_reserve == pytest.approx(Decimal(0))
 
-    # New ETH loan worth of 746.6666666666666 USD
     # Because we closed half, we realised 50% of profit, left 50% profit on the table.
-    # We have a total profit of USD 53
     total_profit = (1500-1400) * expected_eth_shorted_amount
-    assert total_profit == pytest.approx(53.333333333333336)
+    assert total_profit == pytest.approx(66.6666666)
     assert short_position.get_current_price() == 1400
     assert short_position.get_average_price() == 1500
     assert short_position.get_unrealised_profit_usd() == pytest.approx(total_profit / 2)
     assert short_position.get_realised_profit_usd() == pytest.approx(total_profit / 2)
 
-    # Loan is 50% reduced from 0.53 ETH to 0.26 ETH
-    # Because price has decreased, the USDC value goes down faster.
-    #
-    # Note that here realised profit goes into loan net asset value,
-    # because ATM reducing short only the matching amount of collateral ,
-    # but leaves the PnL on the net asset value of the loan
-    #
+    # Loan is 50% reduced from 0.53 ETH to 0.26 ETH.
+    # We buy the ETH to repay using the USDC loan from collateral
     loan = short_position.loan
     released_collateral = 1400 * expected_eth_shorted_amount / 2
-    assert released_collateral == pytest.approx(373.333333)
-    assert loan.collateral.quantity == pytest.approx(Decimal(1800))
-    assert loan.collateral.get_usd_value() == pytest.approx(1800)
+    assert released_collateral == pytest.approx(466.66666666666663)
+    left_collateral = Decimal(2000 - released_collateral)
+    assert left_collateral == pytest.approx(Decimal(1533.33333333333348491578362882137298583984375))
+    assert loan.collateral.quantity == pytest.approx(left_collateral)
+    assert loan.collateral.get_usd_value() == pytest.approx(float(left_collateral))
     assert loan.borrowed.quantity == pytest.approx(Decimal(expected_eth_shorted_amount / 2))
     assert loan.borrowed.last_usd_price == 1400
-    assert loan.borrowed.get_usd_value() == pytest.approx(373.333333)
-    assert loan.get_loan_to_value() == pytest.approx(0.2074074074074074)
+    assert loan.borrowed.get_usd_value() == pytest.approx(466.66666666666663)
+    assert loan.get_loan_to_value() == pytest.approx(0.3043478260869565)
+    assert loan.get_leverage() == pytest.approx(1.4375000000000002)
 
     # Check that we track the portfolio value correctly
     # after realising profit
-    assert portfolio.get_cash() == 9000
-    assert portfolio.get_net_asset_value() == pytest.approx(10053.333333333334)  # Should be same with our without reducing position as we have no fees, see test above
-    assert portfolio.get_loan_net_asset_value() == pytest.approx(253.33333333333337)
-    assert portfolio.get_total_equity() == pytest.approx(10_000)  # Any profits from closed short positions are not moved to equity, unless told so
+    assert portfolio.get_cash() == 9000  # No changes in cash, because we paid back from the collateral
+    assert portfolio.get_net_asset_value() == pytest.approx(10066.66666)  # Should be same with our without reducing position as we have no fees, see test above
+    assert portfolio.get_loan_net_asset_value() == pytest.approx(1066.6666666666665)
+    assert portfolio.get_total_equity() == pytest.approx(10066.666)  # Any profits from closed short positions are not moved to equity, unless told so
 
 
 def test_short_unrealised_profit_partially_closed_release_collateral(
@@ -400,13 +395,10 @@ def test_short_unrealised_profit_partially_closed_release_collateral(
 
     portfolio = state.portfolio
 
-    # Aave allows us to borrow 80% ETH against our USDC collateral
-    start_ltv = 0.8
-
     # How many ETH (vWETH) we expect when we go in
     # with our max leverage available
     # based on the collateral ratio
-    expected_eth_shorted_amount = 1000 * start_ltv / 1500
+    expected_eth_shorted_amount = 1000 / 1500
 
     # Take 1000 USDC reserves and open a ETH short using it.
     # We should get 800 USDC worth of ETH for this.
@@ -427,7 +419,7 @@ def test_short_unrealised_profit_partially_closed_release_collateral(
     assert state.portfolio.get_total_equity() == 10000
     loan = short_position.loan
     assert loan.borrowed.quantity == pytest.approx(Decimal(expected_eth_shorted_amount))
-    assert loan.collateral.quantity == pytest.approx(1800)
+    assert loan.collateral.quantity == pytest.approx(2000)
     assert portfolio.get_cash() == 9000
 
     # ETH price 1500 -> 1400
@@ -582,7 +574,10 @@ def test_short_close_all(
         collateral_asset_price=1.0,
     )
 
-    assert trade_2.planned_collateral_consumption == pytest.approx(Decimal(-933.333333333333))  # Amount of USDC we need to repay the loan
+    # Amount of USDC we can return from the collateral to the cash reserves
+    assert trade_2.planned_collateral_allocation == pytest.approx(Decimal(-1066.666666666666718477074482))
+    # Amount of USDC we need to repay the loan
+    assert trade_2.planned_collateral_consumption== pytest.approx(Decimal(-933.333333))
     assert trade_2.planned_loan_update.collateral.quantity == Decimal(0)
     assert trade_2.planned_loan_update.borrowed.quantity == Decimal(0)
 
@@ -592,7 +587,8 @@ def test_short_close_all(
     trader.set_perfectly_executed(trade_2)
 
     assert trade_2.executed_price == 1400
-    assert trade_2.executed_collateral_consumption == pytest.approx(Decimal(-933.333333))
+    assert trade_2.executed_collateral_allocation == trade_2.planned_collateral_allocation
+    assert trade_2.executed_collateral_consumption == trade_2.executed_collateral_consumption
 
     # Check that loan has now been repaid
     loan = short_position.loan

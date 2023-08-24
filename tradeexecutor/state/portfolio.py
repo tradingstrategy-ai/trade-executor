@@ -585,6 +585,10 @@ class Portfolio:
         See also :py:meth:`get_theoretical_value`
 
         """
+
+        # Any trading positions we have one
+        spot_values = sum([p.get_equity() for p in self.open_positions.values() if not p.is_leverage()])
+
         return self.get_position_equity_and_leveraged_nav() + self.get_cash()
 
     def get_net_asset_value(self) -> USDollarAmount:

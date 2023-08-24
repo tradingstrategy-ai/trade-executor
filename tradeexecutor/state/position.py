@@ -700,7 +700,7 @@ class TradingPosition(GenericPosition):
         if strategy_cycle_at is not None:
             assert isinstance(strategy_cycle_at, datetime.datetime)
 
-        planned_collateral_consumption = None
+        planned_collateral_consumption = planned_collateral_allocation=  None
 
         # Set lending market estimated quantities
         match pair.kind:
@@ -720,9 +720,13 @@ class TradingPosition(GenericPosition):
                         quantity = self.loan.borrowed.quantity
 
                         # Release collateral is the current collateral
-                        reserve = -self.loan.collateral.quantity
+                        reserve = 0
 
+                        # We need to use USD from the collateral to pay back the loan
                         planned_collateral_consumption = -quantity * Decimal(self.loan.borrowed.last_usd_price)
+
+                        # Any leftover USD from the collateral is released to the reserves
+                        planned_collateral_allocation = -(self.loan.collateral.quantity + planned_collateral_consumption)
 
                     else:
                         assert quantity is not None, "For increasing/reducing short position quantity must be given"
@@ -763,6 +767,7 @@ class TradingPosition(GenericPosition):
             portfolio_value_at_creation=portfolio_value_at_creation,
             leverage=leverage,
             reserve_currency_exchange_rate=reserve_currency_price,
+            planned_collateral_allocation=planned_collateral_allocation,
             planned_collateral_consumption=planned_collateral_consumption,
         )
 

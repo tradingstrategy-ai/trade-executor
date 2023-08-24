@@ -182,6 +182,10 @@ class TradingPairKind(enum.Enum):
         """This is a leverage trade on a lending protocol."""
         return self.is_shorting() or self.is_longing()
 
+    def is_spot(self) -> bool:
+        """This is a spot market pair."""
+        return self == TradingPairKind.spot_market_hold or self == TradingPairKind.spot_market_hold_rebalancing_token
+
 
 @dataclass_json
 @dataclass(slots=True)
@@ -372,6 +376,9 @@ class TradingPairIdentifier:
 
     def is_leverage(self) -> bool:
         return self.kind.is_leverage()
+
+    def is_spot(self) -> bool:
+        return self.kind.is_spot()
 
     def get_liquidation_threshold(self) -> Percent:
         """What's the liqudation threshold for this leveraged pair"""

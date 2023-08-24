@@ -209,23 +209,36 @@ class TradeExecution:
     #: when our routing model supports this.
     reserve_currency: AssetIdentifier
 
-    #: Planned amount of reserve currency we need to payback the collateral
+    #: Planned amount of reserve currency that goes in out or out to collateral.
     #:
-    #: When we reduce short positions, we are going to
-    #: spend some collateral (reserve token) to buy
-    #: back the debted token from the markets.
+    #: - Negative if collateral is released and added to the reserves
     #:
-    #: This is the amount of reserve token we need to spend for the buyback.
-    #: This is independent from the collateral adjustments
-    #: which are in the :py:attr:`planned_reserve`
+    #: - Positive if reserve currency is added as the collateral
     #:
-    #: - For reducing short position this is negative.
+    #: This is different from :py:attr:`planned_reserve`,
+    #: as any collateral adjustment is done after the trade has been executed,
+    #: where as :py:attr:`planned_reserve` needs to be deposited
+    #: before the trade is executed.
     #:
-    planned_collateral_consumption: Optional[Decimal] = None
+    planned_collateral_allocation: Optional[Decimal] = None
 
     #: Executed amount of collateral we spend for the debt token buyback
     #:
-    #: See :py:attr:`planned_borrow_payback` for details.
+    #: See :py:attr:`planned_collateral_allocation` for details.
+    #:
+    executed_collateral_allocation: Optional[Decimal] = None
+
+    #: Planned amount of collateral that we use to pay back the debt
+    #:
+    #: - Negative if collateral is spend to pay back the debt
+    #:
+    #: - Positive if reserve currency is added as the collateral
+    #:
+    planned_collateral_consumption: Optional[Decimal] = None
+
+    #: Planned amount of collateral that we use to pay back the debt
+    #:
+    #: #: :py:attr:`planned_collateral_consumption` for details.
     #:
     executed_collateral_consumption: Optional[Decimal] = None
 
@@ -911,6 +924,7 @@ class TradeExecution:
                      force=False,
                      cost_of_gas: USDollarAmount | None = None,
                      executed_collateral_consumption: Decimal | None = None,
+                     executed_collateral_allocation: Decimal | None = None,
                      ):
         """Mark trade success.
 
@@ -940,6 +954,7 @@ class TradeExecution:
         self.native_token_price = native_token_price
         self.reserve_currency_allocated = Decimal(0)
         self.cost_of_gas = cost_of_gas
+        self.executed_collateral_allocation = executed_collateral_allocation
         self.executed_collateral_consumption = executed_collateral_consumption
 
     def mark_failed(self, failed_at: datetime.datetime):

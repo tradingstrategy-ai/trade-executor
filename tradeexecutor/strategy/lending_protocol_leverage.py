@@ -92,8 +92,11 @@ def plan_loan_update_for_short(
 
     if trade.is_reduce():
 
+        planned_collateral_consumption = trade.planned_collateral_consumption or Decimal(0)
+        planned_collateral_allocation = trade.planned_collateral_allocation or Decimal(0)
+
         loan.collateral.change_quantity_and_value(
-            trade.planned_reserve,
+            planned_collateral_consumption + planned_collateral_allocation,
             trade.reserve_currency_exchange_rate,
             trade.opened_at,
         )
