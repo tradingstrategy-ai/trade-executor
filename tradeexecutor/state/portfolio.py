@@ -532,7 +532,10 @@ class Portfolio:
         return sum([r.get_value() for r in self.reserves.values()])
 
     def get_current_cash(self):
-        """Alias for get_cash()"""
+        """Alias for get_cash()
+
+        TODO: Deprecate
+        """
         return self.get_cash()
 
     def get_position_equity_and_leveraged_nav(self) -> USDollarAmount:
@@ -711,14 +714,16 @@ class Portfolio:
         self.adjust_reserves(trade.reserve_currency, -reserve)
 
     def return_capital_to_reserves(self, trade: TradeExecution, underflow_check=True):
-        """Return capital to reserves after a sell."""
+        """Return capital to reserves after a spot sell or collateral returned.
+
+        """
         if trade.is_spot():
             assert trade.is_sell()
 
         if trade.is_leverage_short() and trade.is_reduce():
             self.adjust_reserves(trade.reserve_currency, -trade.executed_reserve)
         else:
-            self.adjust_reserves(trade.reserve_currency, +trade.executed_reserve)
+            raise NotImplementedError()
 
     def return_collateral(self, loan: Loan, quantity: Decimal):
         """Return collateral to reserves.

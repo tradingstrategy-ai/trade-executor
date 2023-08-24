@@ -209,6 +209,26 @@ class TradeExecution:
     #: when our routing model supports this.
     reserve_currency: AssetIdentifier
 
+    #: Planned amount of reserve currency we need to payback the collateral
+    #:
+    #: When we reduce short positions, we are going to
+    #: spend some collateral (reserve token) to buy
+    #: back the debted token from the markets.
+    #:
+    #: This is the amount of reserve token we need to spend for the buyback.
+    #: This is independent from the collateral adjustments
+    #: which are in the :py:attr:`planned_reserve`
+    #:
+    #: - For reducing short position this is negative.
+    #:
+    planned_collateral_consumption: Optional[Decimal] = None
+
+    #: Executed amount of collateral we spend for the debt token buyback
+    #:
+    #: See :py:attr:`planned_borrow_payback` for details.
+    #:
+    executed_collateral_consumption: Optional[Decimal] = None
+
     #: What is the reserve currency exchange rate used for this trade
     #:
     #: - Access using :py:attr:`get_reserve_currency_exchange_rate`.
@@ -890,6 +910,7 @@ class TradeExecution:
                      native_token_price: USDollarAmount,
                      force=False,
                      cost_of_gas: USDollarAmount | None = None,
+                     executed_collateral_consumption: Decimal | None = None,
                      ):
         """Mark trade success.
 
@@ -919,6 +940,7 @@ class TradeExecution:
         self.native_token_price = native_token_price
         self.reserve_currency_allocated = Decimal(0)
         self.cost_of_gas = cost_of_gas
+        self.executed_collateral_consumption = executed_collateral_consumption
 
     def mark_failed(self, failed_at: datetime.datetime):
         assert self.get_status() == TradeStatus.broadcasted

@@ -518,7 +518,7 @@ def test_short_close_all(
     # Take 1000 USDC reserves and open a ETH short using it.
     # We should get 800 USDC worth of ETH for this.
     # 800 USDC worth of ETH is
-    short_position, trade, created = state.create_short(
+    short_position, trade, created = state.trade_short_position(
         strategy_cycle_at=datetime.datetime.utcnow(),
         pair=weth_short_identifier,
         borrowed_quantity=-Decimal(expected_eth_shorted_amount),
@@ -551,7 +551,6 @@ def test_short_close_all(
     assert loan.get_health_factor() == start_health_factor
     assert loan.get_leverage() == 2.0  # 1000 USD worth of ETH, 2000 USDC collateral
 
-
     # Portfolio value should not change, because
     # we have not paid fees and any price has not changed yet
     assert loan.get_net_asset_value() == 1000
@@ -566,10 +565,11 @@ def test_short_close_all(
     )
 
     # Our short is USD 66 to profit after the price drop
+    assert loan.get_net_asset_value() == pytest.approx(1066.66666)
     assert portfolio.get_net_asset_value() == pytest.approx(10066.6666)
     assert portfolio.get_leveraged_net_asset_value() == pytest.approx(1066.666)
 
-    _, trade_2, _ = state.create_short(
+    _, trade_2, _ = state.trade_short_position(
         closing=True,
         strategy_cycle_at=datetime.datetime.utcnow(),
         pair=weth_short_identifier,
@@ -579,6 +579,7 @@ def test_short_close_all(
         reserve_currency_price=1.0,
     )
 
+    assert trade_2.planned_collateral_consumption == pytest.approx(Decimal(-933.333333333333))  # Amount of USDC we need to repay the loan
     assert trade_2.planned_loan_update.collateral.quantity == Decimal(0)
     assert trade_2.planned_loan_update.borrowed.quantity == Decimal(0)
 
@@ -588,6 +589,7 @@ def test_short_close_all(
     trader.set_perfectly_executed(trade_2)
 
     assert trade_2.executed_price == 1400
+    assert trade_2.executed_collateral_consumption == pytest.approx(Decimal(-933.333333))
 
     # Check that loan has now been repaid
     loan = short_position.loan
@@ -603,4 +605,4 @@ def test_short_close_all(
     assert portfolio.get_leveraged_net_asset_value() == 0
     assert portfolio.get_cash() == pytest.approx(10066.666666)  # We have now cashed out our USD 53 profit unlike in the previous test
     assert portfolio.get_net_asset_value() == pytest.approx(10066.666666)  # Should be same with our without reducing position as we have no fees, see test above
-
+    assert portfolio.get_total_equity() == pytest.approx(10066.666666)

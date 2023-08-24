@@ -321,24 +321,24 @@ class State:
 
         return position, trade, created
 
-    def create_short(self,
-                     strategy_cycle_at: datetime.datetime,
-                     pair: TradingPairIdentifier,
-                     borrowed_asset_price: USDollarPrice,
-                     trade_type: TradeType,
-                     reserve_currency: AssetIdentifier,
-                     reserve_currency_price: USDollarPrice,
-                     borrowed_quantity: Optional[Decimal] = None,
-                     collateral_quantity: Optional[Decimal] = None,
-                     notes: Optional[str] = None,
-                     pair_fee: Optional[float] = None,
-                     lp_fees_estimated: Optional[USDollarAmount] = None,
-                     planned_mid_price: Optional[USDollarPrice] = None,
-                     price_structure: Optional[TradePricing] = None,
-                     position: Optional[TradingPosition] = None,
-                     slippage_tolerance: Optional[float] = None,
-                     closing: Optional[bool] = False,
-                     ) -> Tuple[TradingPosition, TradeExecution, bool]:
+    def trade_short_position(self,
+                             strategy_cycle_at: datetime.datetime,
+                             pair: TradingPairIdentifier,
+                             borrowed_asset_price: USDollarPrice,
+                             trade_type: TradeType,
+                             reserve_currency: AssetIdentifier,
+                             reserve_currency_price: USDollarPrice,
+                             borrowed_quantity: Optional[Decimal] = None,
+                             collateral_quantity: Optional[Decimal] = None,
+                             notes: Optional[str] = None,
+                             pair_fee: Optional[float] = None,
+                             lp_fees_estimated: Optional[USDollarAmount] = None,
+                             planned_mid_price: Optional[USDollarPrice] = None,
+                             price_structure: Optional[TradePricing] = None,
+                             position: Optional[TradingPosition] = None,
+                             slippage_tolerance: Optional[float] = None,
+                             closing: Optional[bool] = False,
+                             ) -> Tuple[TradingPosition, TradeExecution, bool]:
         """Creates a trade for a short position.
 
         - Opens, increases or decreases short position size.
@@ -458,6 +458,7 @@ class State:
                            lp_fees: USDollarAmount,
                            native_token_price: USDollarPrice,
                            cost_of_gas: float | None = None ,
+                           executed_collateral_consumption: Optional[Decimal] = None,
                         ):
         """"""
 
@@ -469,7 +470,16 @@ class State:
             assert executed_reserve > 0, f"Executed reserve must be positive for sell, got amount:{executed_amount}, reserve:{executed_reserve}"
             assert executed_amount < 0, f"Executed amount must be negative for sell, got amount:{executed_amount}, reserve:{executed_reserve}"
 
-        trade.mark_success(executed_at, executed_price, executed_amount, executed_reserve, lp_fees, native_token_price, cost_of_gas=cost_of_gas)
+        trade.mark_success(
+            executed_at,
+            executed_price,
+            executed_amount,
+            executed_reserve,
+            lp_fees,
+            native_token_price,
+            cost_of_gas=cost_of_gas,
+            executed_collateral_consumption=executed_collateral_consumption,
+        )
 
         if trade.planned_loan_update:
             assert trade.executed_loan_update, "TradeExecution.executed_loan_update structure not filled"
@@ -481,8 +491,9 @@ class State:
         if trade.is_leverage_short() and trade.is_reduce():
             # Release any collateral
 
-            # self.portfolio.return_capital_to_reserves(trade)
-            pass
+            if executed_collateral_consumption:
+                assert trade.pair.quote.underlying
+                self.portfolio.adjust_reserves(trade.pair.quote.underlying, executed_collateral_consumption)
 
         if trade.is_leverage_long():
             raise NotImplementedError()

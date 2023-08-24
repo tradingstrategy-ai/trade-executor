@@ -107,6 +107,7 @@ class UnitTestTrader:
 
         # 4. executed
         executed_price = trade.planned_price
+        executed_collateral_consumption = trade.planned_collateral_consumption
         if trade.is_buy():
             if trade.is_spot():
                 executed_quantity = trade.planned_quantity
@@ -122,7 +123,16 @@ class UnitTestTrader:
         if trade.planned_loan_update:
             trade.executed_loan_update = trade.planned_loan_update
 
-        self.state.mark_trade_success(self.ts, trade, executed_price, executed_quantity, executed_reserve, self.lp_fees, self.native_token_price)
+        self.state.mark_trade_success(
+            self.ts,
+            trade,
+            executed_price,
+            executed_quantity,
+            executed_reserve,
+            self.lp_fees,
+            self.native_token_price,
+            executed_collateral_consumption=executed_collateral_consumption,
+        )
 
     def buy(self, pair, quantity, price) -> Tuple[TradingPosition, TradeExecution]:
         return self.create_and_execute(pair, quantity, price)
