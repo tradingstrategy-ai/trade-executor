@@ -368,7 +368,7 @@ class TradingPairIdentifier:
         - `See 1delta documentation <https://docs.1delta.io/lenders/metrics>`__.
         """
         assert self.kind in (TradingPairKind.lending_protocol_short, TradingPairKind.lending_protocol_long)
-        return 1 / (1 - self.collateral_factor)
+        return 1 / (1 - self.get_collateral_factor())
 
     def is_leverage(self) -> bool:
         return self.kind.is_leverage()
@@ -378,6 +378,13 @@ class TradingPairIdentifier:
         assert self.kind.is_leverage()
         # Liquidation threshold comes from the collateral token
         return self.quote.liquidation_threshold
+
+    def get_collateral_factor(self) -> Percent:
+        """Same as liquidation threshold.
+
+        Alias for :py:meth:`get_liquidation_threshold`
+        """
+        return self.get_liquidation_threshold()
 
 
 @dataclass_json
@@ -448,6 +455,7 @@ class AssetWithTrackedValue:
         when: datetime.datetime,
     ):
         """The tracked asset amount is changing due to position increase/reduce."""
+        assert delta is not None, "Asset delta must be given"
         self.revalue(price, when)
         assert self.quantity + delta >= 0, f"Tracked asset cannot go negative: {self}. Quantity: {self.quantity}, delta: {delta}"
         self.quantity += delta

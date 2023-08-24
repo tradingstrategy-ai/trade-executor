@@ -77,7 +77,7 @@ def create_short_loan(
     return loan
 
 
-def plan_short_loan_update(
+def plan_loan_update_for_short(
     loan: Loan,
     position: "tradeexeecutor.state.position.TradingPosition",
     trade: TradeExecution,

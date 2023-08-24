@@ -21,7 +21,7 @@ from tradeexecutor.state.trade import TradeType, QUANTITY_EPSILON, COLLATERAL_PO
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.types import USDollarAmount, BPS, USDollarPrice, Percent, LeverageMultiplier
 from tradeexecutor.strategy.dust import get_dust_epsilon_for_pair
-from tradeexecutor.strategy.lending_protocol_leverage import create_short_loan, plan_short_loan_update
+from tradeexecutor.strategy.lending_protocol_leverage import create_short_loan, plan_loan_update_for_short
 from tradeexecutor.strategy.trade_pricing import TradePricing
 from tradeexecutor.utils.accuracy import sum_decimal
 from tradingstrategy.lending import LendingProtocolType
@@ -618,6 +618,7 @@ class TradingPosition(GenericPosition):
                    portfolio_value_at_creation: Optional[USDollarAmount] = None,
                    leverage: Optional[LeverageMultiplier]=None,
                    closing: Optional[bool] = False,
+                   planned_collateral_consumption: Optional[Decimal] = None,
                    ) -> TradeExecution:
         """Open a new trade on position.
 
@@ -711,8 +712,9 @@ class TradingPosition(GenericPosition):
                     assert not closing, "Cannot close position not yet open"
                 else:
                     if closing:
-                        assert reserve is None, "reserve calculated automatically when closing a position"
-                        assert quantity is None, "quantity calculated automatically when closing a position"
+                        assert reserve is None, "reserve calculated automatically when closing a short position"
+                        assert quantity is None, "quantity calculated automatically when closing a short position"
+                        assert not planned_collateral_consumption, "planned_collateral_consumption set automaticalyl when closing a short position"
 
                         # Buy back all the debt
                         quantity = self.loan.borrowed.quantity
@@ -724,12 +726,13 @@ class TradingPosition(GenericPosition):
 
                     else:
                         assert quantity is not None, "For increasing/reducing short position quantity must be given"
+                        planned_collateral_consumption = -quantity * Decimal(self.loan.borrowed.last_usd_price)
 
                 assert reserve_currency_price, f"Collateral price missing"
                 assert assumed_price, f"Short token price missing"
 
-                planned_reserve = reserve
-                planned_quantity = quantity
+                planned_reserve = reserve or Decimal(0)
+                planned_quantity = quantity or Decimal(0)
 
             case TradingPairKind.spot_market_hold | TradingPairKind.credit_supply:
                 # Set spot market estimated quantities
@@ -786,7 +789,7 @@ class TradingPosition(GenericPosition):
                         trade.planned_loan_update = create_short_loan(self, trade)
                     else:
                         # Loan is being increased/reduced
-                        trade.planned_loan_update = plan_short_loan_update(
+                        trade.planned_loan_update = plan_loan_update_for_short(
                             self.loan.clone(),
                             self,
                             trade)

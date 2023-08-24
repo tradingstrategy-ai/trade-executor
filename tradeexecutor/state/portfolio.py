@@ -382,6 +382,7 @@ class Portfolio:
                      slippage_tolerance: Optional[float] = None,
                      leverage: Optional[float] = None,
                      closing: Optional[bool] = False,
+                     planned_collateral_consumption: Optional[Decimal] = None,
                      ) -> Tuple[TradingPosition, TradeExecution, bool]:
         """Create a trade.
 
@@ -506,6 +507,7 @@ class Portfolio:
             portfolio_value_at_creation=portfolio_value,
             leverage=leverage,
             closing=closing,
+            planned_collateral_consumption=planned_collateral_consumption,
         )
 
         # Update notes
@@ -796,6 +798,10 @@ class Portfolio:
 
         For strategies that use only one reserve currency.
         This is the first in the reserve currency list.
+
+        See also
+
+        - :py:meth:`get_default_reserve_position`
 
         :return:
             Tuple (Reserve currency asset, its latest US dollar exchanage rate)

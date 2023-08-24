@@ -189,6 +189,7 @@ class State:
                      slippage_tolerance: Optional[float] = None,
                      leverage: Optional[float] = None,
                      closing: Optional[bool] = False,
+                     planned_collateral_consumption: Optional[Decimal] = None,
                      ) -> Tuple[TradingPosition, TradeExecution, bool]:
         """Creates a request for a new trade.
 
@@ -271,6 +272,11 @@ class State:
 
             See :py:attr:`tradeexecutor.state.trade.TradeExecution.slippage_tolerance` for details.
 
+        :param closing:
+            This trade should close the position entirely.
+
+            A flag used with leveraged positions.
+
         :return:
             Tuple of entries
 
@@ -317,28 +323,29 @@ class State:
             notes=notes,
             leverage=leverage,
             closing=closing,
+            planned_collateral_consumption=planned_collateral_consumption,
         )
 
         return position, trade, created
 
-    def trade_short_position(self,
-                             strategy_cycle_at: datetime.datetime,
-                             pair: TradingPairIdentifier,
-                             borrowed_asset_price: USDollarPrice,
-                             trade_type: TradeType,
-                             reserve_currency: AssetIdentifier,
-                             reserve_currency_price: USDollarPrice,
-                             borrowed_quantity: Optional[Decimal] = None,
-                             collateral_quantity: Optional[Decimal] = None,
-                             notes: Optional[str] = None,
-                             pair_fee: Optional[float] = None,
-                             lp_fees_estimated: Optional[USDollarAmount] = None,
-                             planned_mid_price: Optional[USDollarPrice] = None,
-                             price_structure: Optional[TradePricing] = None,
-                             position: Optional[TradingPosition] = None,
-                             slippage_tolerance: Optional[float] = None,
-                             closing: Optional[bool] = False,
-                             ) -> Tuple[TradingPosition, TradeExecution, bool]:
+    def trade_short(self,
+                    strategy_cycle_at: datetime.datetime,
+                    pair: TradingPairIdentifier,
+                    borrowed_asset_price: USDollarPrice,
+                    trade_type: TradeType,
+                    reserve_currency: AssetIdentifier,
+                    collateral_asset_price: USDollarPrice,
+                    borrowed_quantity: Optional[Decimal] = None,
+                    collateral_quantity: Optional[Decimal] = None,
+                    notes: Optional[str] = None,
+                    pair_fee: Optional[float] = None,
+                    lp_fees_estimated: Optional[USDollarAmount] = None,
+                    planned_mid_price: Optional[USDollarPrice] = None,
+                    price_structure: Optional[TradePricing] = None,
+                    position: Optional[TradingPosition] = None,
+                    slippage_tolerance: Optional[float] = None,
+                    closing: Optional[bool] = False,
+                    ) -> Tuple[TradingPosition, TradeExecution, bool]:
         """Creates a trade for a short position.
 
         - Opens, increases or decreases short position size.
@@ -392,6 +399,10 @@ class State:
         assert pair.kind.is_shorting()
         assert pair.quote.underlying.is_stablecoin(), "Shorts accept only stablecoin collateral"
 
+        assert pair.quote.underlying == self.portfolio.get_default_reserve_position().asset, f"Collateral is not our reserve"
+
+        assert reserve_currency == pair.quote.underlying
+
         if not closing:
             assert borrowed_quantity is not None, "borrowed_quantity must be always set"
             assert collateral_quantity is not None, "collateral_quantity must be always set. Set to zero if you do not want to have change to the amount of collateral"
@@ -404,7 +415,7 @@ class State:
             assumed_price=borrowed_asset_price,
             trade_type=trade_type,
             reserve_currency=reserve_currency,
-            reserve_currency_price=reserve_currency_price,
+            reserve_currency_price=collateral_asset_price,
             notes=notes,
             pair_fee=pair_fee,
             lp_fees_estimated=lp_fees_estimated,
