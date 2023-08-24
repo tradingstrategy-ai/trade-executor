@@ -42,7 +42,9 @@ def create_short_loan(
 
     # Extra checks when position is opened
     assert trade.planned_quantity < 0, f"Short position must open with a sell with negative quantity, got: {trade.planned_quantity}"
-    assert trade.planned_reserve > 0, f"Collateral must be positive: {trade.planned_reserve}"
+
+    if not trade.planned_collateral_allocation:
+        assert trade.planned_reserve > 0, f"Collateral must be positive: {trade.planned_reserve}"
 
     # vToken
     borrowed = AssetWithTrackedValue(
@@ -65,7 +67,7 @@ def create_short_loan(
         asset=pair.quote,
         last_usd_price=trade.reserve_currency_exchange_rate,
         last_pricing_at=datetime.datetime.utcnow(),
-        quantity=trade.planned_reserve + Decimal(trade.get_planned_value()),
+        quantity=trade.planned_reserve + trade.planned_collateral_allocation,
     )
 
     loan = Loan(

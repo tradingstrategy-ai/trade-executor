@@ -61,6 +61,9 @@ class Loan:
     #:
     borrowed: AssetWithTrackedValue
 
+    def __repr__(self):
+        return f"<Loan, borrowed ${self.borrowed.get_usd_value()} {self.borrowed.asset.token_symbol} for collateral ${self.collateral.get_usd_value()}, at leverage {self.get_leverage()}>"
+
     def clone(self) -> "Loan":
         """Clone this data structure for mutating."""
         return copy.deepcopy(self)
@@ -121,22 +124,21 @@ class Loan:
             leverage: LeverageMultiplier,
             borrowed_quantity: Decimal | float,
     ) -> Decimal:
-        """Calculate the collateral amount we need to hit a target LTV.
+        """Calculate the collateral amount we need to hit a target leverage.
 
         Assuming our debt stays the same, how much collateral we need
         to hit the target LTV.
 
-        col / (col - borrow) = leverage
-        col = (col - borrow) * leverage
-        col = col * leverage - borrow * leverage
-        col - col * leverage = - borrow * levereage
-        col(1 - leverage) = - borrow * leverage
-        col = -(borrow * leverage) / (1 - leverage)
+        .. code-block:: text
 
+            col / (col - borrow) = leverage
+            col = (col - borrow) * leverage
+            col = col * leverage - borrow * leverage
+            col - col * leverage = - borrow * levereage
+            col(1 - leverage) = - borrow * leverage
+            col = -(borrow * leverage) / (1 - leverage)
 
-        .. note ::
-
-            Watch out for rounding/epsilon errors.
+        See also :py:func:`calculate_leverage_for_target_size`
 
         :param borrowed_quantity:
             What is expected outstanding loan amount
@@ -167,4 +169,19 @@ class Loan:
             )
 
 
+def calculate_leverage_for_target_size(
+    position_size: USDollarAmount,
+    leverage: LeverageMultiplier,
+) -> USDollarAmount:
+    """Calculate the collateral amount we need to hit a target leverage when opening a position.
+
+    :param position_size:
+        How large is the position size in USC
+
+    :return:
+        US dollars worth of collateral needed
+    """
+    borrowed_usd = position_size
+    usd_value = -(borrowed_usd * leverage) / (1 - leverage)
+    return usd_value
 

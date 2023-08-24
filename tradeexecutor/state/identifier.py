@@ -436,7 +436,7 @@ class AssetWithTrackedValue:
         return f"<AssetWithTrackedValue {self.asset.token_symbol} {self.quantity} at price {self.last_usd_price} USD>"
 
     def __post_init__(self):
-        assert self.quantity > 0, "Any tracked asset must have positive quantity"
+        assert self.quantity > 0, f"Any tracked asset must have positive quantity, received {self.asset} = {self.quantity}"
         assert self.last_usd_price is not None, "Price is None - asset price must set during initialisation"
         assert self.last_usd_price > 0
 
