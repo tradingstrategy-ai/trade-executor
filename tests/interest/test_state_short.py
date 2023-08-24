@@ -898,12 +898,12 @@ def test_short_unrealised_profit_leveraged(
         4.0,
     )
 
-    assert collateral_value == 2000
+    assert collateral_value == pytest.approx(5333.333333333333)
 
     short_position, trade, _ = state.trade_short(
         strategy_cycle_at=datetime.datetime.utcnow(),
         pair=weth_short_identifier,
-        borrowed_quantity=-Decimal(eth_short_size),
+        borrowed_quantity=-Decimal(eth_short_size) * 4,
         collateral_quantity=Decimal(0),
         borrowed_asset_price=eth_price,
         trade_type=TradeType.rebalance,
@@ -913,16 +913,16 @@ def test_short_unrealised_profit_leveraged(
     )
 
     assert trade.planned_reserve == 0
-    assert trade.planned_quantity == -eth_short_size
-    assert trade.planned_collateral_allocation == pytest.approx(Decimal(2000))
+    assert trade.planned_quantity == pytest.approx(Decimal(-eth_short_size * 4))
+    assert trade.planned_collateral_allocation == pytest.approx(Decimal(collateral_value))
 
     trader.set_perfectly_executed(trade)
 
     loan = short_position.loan
-    assert loan.collateral.get_usd_value() == 2000
-    assert loan.borrowed.get_usd_value() == 1500
+    assert loan.collateral.get_usd_value() == pytest.approx(5333.333333)
+    assert loan.borrowed.get_usd_value() == 4000
     assert loan.get_leverage() == pytest.approx(4.0)
-    assert loan.get_net_asset_value() == 500
+    assert loan.get_net_asset_value() == pytest.approx(1333.333333333333)
     assert portfolio.get_cash() == 8000
     assert portfolio.get_net_asset_value() == 10_000
 

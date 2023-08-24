@@ -181,7 +181,7 @@ def calculate_leverage_for_target_size(
     :return:
         US dollars worth of collateral needed
     """
-    borrowed_usd = position_size
+    borrowed_usd = position_size * leverage
     usd_value = -(borrowed_usd * leverage) / (1 - leverage)
     return usd_value
 
