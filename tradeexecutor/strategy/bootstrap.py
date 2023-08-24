@@ -215,21 +215,29 @@ def make_generic_factory_from_strategy_mod(mod: StrategyModuleInformation) -> St
         # or it is dynamically generated for any local dev chain.
         # If it is not dynamically generated, here set up one of the default routing models from
         # strategy module's trade_routing var.
+        routing_models = []
         for trade_routing, reserve_currency in zip(mod_info.trade_routing, mod_info.reserve_currency):
             routing_model = get_routing_model(
                 execution_context,
                 trade_routing,
                 reserve_currency
             )
+            
+            routing_models.append(routing_model)
+
+            # set routing models in generic_routing_data
+            for item in generic_routing_data:
+                if item["routing_hint"] == trade_routing:
+                    item["routing_model"] = routing_model
 
         runner = PandasTraderRunner(
             timed_task_context_manager=timed_task_context_manager,
             approval_model=approval_model,
             sync_model=sync_model,
-            routing_model=routing_model,
             decide_trades=mod_info.decide_trades,
             execution_context=execution_context,
             run_state=run_state,
+            generic_routing_data=generic_routing_data,
         )
 
         return StrategyExecutionDescription(
