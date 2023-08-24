@@ -49,7 +49,9 @@ class PandasTraderRunner(StrategyRunner):
                  strategy_universe: TradingStrategyUniverse,
                  pricing_model: PricingModel,
                  state: State,
-                 debug_details: dict) -> List[TradeExecution]:
+                 debug_details: dict,
+                 pricing_models: dict = None,
+            ) -> List[TradeExecution]:
         """Run one strategy tick."""
 
         assert isinstance(strategy_universe, TradingStrategyUniverse)
@@ -63,7 +65,15 @@ class PandasTraderRunner(StrategyRunner):
 
         # Call the strategy script decide_trades()
         # callback
-        if self.execution_context.is_version_greater_or_equal_than(0, 3, 0):
+        if self.execution_context.is_version_greater_or_equal_than(0, 4, 0):
+            return self.decide_trades(
+                timestamp=pd_timestamp,
+                universe=strategy_universe,
+                state=state,
+                pricing_models=pricing_models,
+                cycle_debug_data=debug_details,
+            )
+        elif self.execution_context.is_version_greater_or_equal_than(0, 3, 0):
             return self.decide_trades(
                 timestamp=pd_timestamp,
                 strategy_universe=strategy_universe,
