@@ -890,7 +890,7 @@ def test_short_unrealised_profit_leveraged(
     # with our max leverage available
     # based on the collateral ratio
     eth_price = 1500.0
-    eth_short_size = 1.0
+    eth_short_size = 1000 / 1500
 
     # Create a 4x short position against 1 ETH
     collateral_value = calculate_leverage_for_target_size(
