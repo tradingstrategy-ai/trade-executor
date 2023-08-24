@@ -18,6 +18,11 @@ from tradingstrategy.candle import CandleSampleUnavailable
 from tradingstrategy.pair import DEXPair
 from tradingstrategy.universe import Universe
 from tradeexecutor.strategy.trading_strategy_universe import translate_trading_pair, TradingStrategyUniverse
+from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2SimpleRoutingModel
+from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_routing import UniswapV3SimpleRoutingModel
+from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel
+from tradeexecutor.backtest.backtest_routing import BacktestRoutingIgnoredModel
+
 
 logger = logging.getLogger(__name__)
 
@@ -135,7 +140,7 @@ class PositionManager:
                  timestamp: Union[datetime.datetime, pd.Timestamp],
                  universe: Universe | TradingStrategyUniverse,
                  state: State,
-                 pricing_model: PricingModel,
+                 pricing_models: list[PricingModel],
                  default_slippage_tolerance=0.05,  # Slippage tole
                  ):
 
@@ -164,7 +169,7 @@ class PositionManager:
             
         """
 
-        assert pricing_model, "pricing_model is needed in order to know buy/sell price of new positions"
+        assert pricing_models, "pricing_models is needed in order to know buy/sell price of new positions"
 
         if isinstance(timestamp, pd.Timestamp):
             timestamp = timestamp.to_pydatetime().replace(tzinfo=None)
@@ -185,7 +190,7 @@ class PositionManager:
             raise RuntimeError(f"Does not know the universe: {universe}")
 
         self.state = state
-        self.pricing_model = pricing_model
+        self.pricing_models = pricing_models
         self.default_slippage_tolerance = default_slippage_tolerance
 
         reserve_currency, reserve_price = state.portfolio.get_default_reserve_asset()
@@ -299,7 +304,7 @@ class PositionManager:
             Returns None if the fee information is not available.
             This can be different from zero fees.
         """
-        return self.pricing_model.get_pair_fee(self.timestamp, pair)
+        return self.get_pricing_model(pair).get_pair_fee(self.timestamp, pair)
 
     def open_1x_long(self,
                      pair: Union[DEXPair, TradingPairIdentifier],
@@ -373,7 +378,7 @@ class PositionManager:
         if type(value) == float:
             value = Decimal(value)
 
-        price_structure = self.pricing_model.get_buy_price(self.timestamp, executor_pair, value)
+        price_structure = self.get_pricing_model(executor_pair).get_buy_price(self.timestamp, executor_pair, value)
 
         assert type(price_structure.mid_price) == float
 
@@ -507,14 +512,14 @@ class PositionManager:
 
         try:
             if dollar_delta > 0:
-                price_structure = self.pricing_model.get_buy_price(self.timestamp, pair, dollar_delta)
+                price_structure = self.get_pricing_model(pair).get_buy_price(self.timestamp, pair, dollar_delta)
             else:
-                price_structure = self.pricing_model.get_sell_price(self.timestamp, pair, abs(quantity_delta))
+                price_structure = self.get_pricing_model(pair).get_sell_price(self.timestamp, pair, abs(quantity_delta))
 
         except CandleSampleUnavailable as e:
             # Backtesting cannot fetch price for an asset,
             # probably not enough data and the pair is trading early?
-            data_delay_tolerance = getattr(self.pricing_model, "data_delay_tolerance", None)
+            data_delay_tolerance = getattr(self.get_pricing_model(pair), "data_delay_tolerance", None)
             raise CandleSampleUnavailable(
                 f"Could not fetch price for {pair} at {self.timestamp}\n"
                 f"\n"
@@ -619,7 +624,7 @@ class PositionManager:
 
         pair = position.pair
         quantity = quantity_left
-        price_structure = self.pricing_model.get_sell_price(self.timestamp, pair, quantity=quantity)
+        price_structure = self.get_pricing_model(pair).get_sell_price(self.timestamp, pair, quantity=quantity)
 
         reserve_asset, reserve_price = self.state.portfolio.get_default_reserve_asset()
 
@@ -818,7 +823,7 @@ class PositionManager:
         """
         assert dollar_amount, f"Got dollar amount: {dollar_amount}"
         timestamp = self.timestamp
-        pricing_model = self.pricing_model
+        pricing_model = self.get_pricing_model(pair)
         price = pricing_model.get_mid_price(timestamp, pair)
         return float(dollar_amount / price)
 
@@ -835,7 +840,7 @@ class PositionManager:
             Mid price of the pair (https://tradingstrategy.ai/glossary/mid-price). Provide when possible for most complete statistical analysis. In certain cases, it may not be easily available, so it's optional.
         """
 
-        mid_price =  self.pricing_model.get_mid_price(self.timestamp, position.pair)
+        mid_price =  self.get_pricing_model(position.pair).get_mid_price(self.timestamp, position.pair)
 
         position.trigger_updates.append(TriggerPriceUpdate(
             timestamp=self.timestamp,
@@ -873,3 +878,39 @@ class PositionManager:
         )
 
         return [trade]
+
+    def get_pricing_model(self, pair: TradingPairIdentifier):
+        """Get the pricing model used by this strategy."""
+
+        locked = False
+        rm = None
+
+        for pricing_model in self.pricing_models:
+
+            rm = pricing_model.routing_model
+
+            if hasattr(rm, "factory_router_map"):  # uniswap v2 like
+                keys = list(rm["factory_router_map"].keys())
+                assert len(keys) == 1, "Only one factory router map supported for now"
+                factory_address = keys[0]
+            elif hasattr(rm, "address_map"):  # uniswap v3 like
+                factory_address = rm["address_map"]["factory"] 
+            else:
+                raise NotImplementedError("Routing model not supported")
+
+            if factory_address.lower() == pair.exchange_address.lower() and rm["chain_id"] == pair.chain_id:
+                if locked == True:
+                    raise LookupError("Multiple routing models for same exchange (on same chain) not supported")
+
+                routing_model = rm
+                locked = True
+
+        if not routing_model:
+            raise NotImplementedError("Unable to find routing_model for pair, make sure to add correct routing models for the pairs that you want to trade")
+
+        if isinstance(routing_model, (UniswapV2SimpleRoutingModel, UniswapV3SimpleRoutingModel, BacktestRoutingModel, BacktestRoutingIgnoredModel)):
+            pair.routing_model = routing_model
+        else:
+            raise NotImplementedError("Routing model not supported")
+
+        return routing_model
