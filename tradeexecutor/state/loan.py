@@ -4,6 +4,7 @@
 
 """
 import copy
+import math
 from _decimal import Decimal
 from dataclasses import dataclass
 from typing import TypeAlias
@@ -14,7 +15,19 @@ from tradeexecutor.state.identifier import AssetIdentifier, AssetWithTrackedValu
 from tradeexecutor.state.types import LeverageMultiplier, USDollarAmount
 
 #: Health Factor: hF=dC/d, if lower than 1, the account can be liquidated
+#:
+#: Health factor is infinite for loans that do not borrow
+#: (doing only credit supply for interest).
+#:
 HealthFactor: TypeAlias = float
+
+
+class LiquidationRisked(Exception):
+    """The planned loan health factor is too low.
+
+    You would be immediately liquidated if the parameter
+    changes would be applied.
+    """
 
 
 @dataclass_json
@@ -53,9 +66,7 @@ class Loan:
         return copy.deepcopy(self)
 
     def get_net_asset_value(self) -> USDollarAmount:
-        """What's the withdrawable amount of the position is closed.
-
-        """
+        """What's the withdrawable amount of the position is closed."""
         return self.collateral.get_usd_value() - self.borrowed.get_usd_value()
 
     def get_leverage(self) -> LeverageMultiplier:
@@ -66,6 +77,8 @@ class Loan:
         raise NotImplementedError()
 
     def get_health_factor(self) -> HealthFactor:
+        if self.borrowed.quantity == 0:
+            return math.inf
         return self.collateral.asset.liquidation_threshold * self.collateral.get_usd_value() / self.borrowed.get_usd_value()
 
     def get_max_size(self) -> USDollarAmount:
@@ -93,6 +106,9 @@ class Loan:
 
             Watch out for rounding/epsilon errors.
 
+        :param borrowed_quantity:
+            What is expected outstanding loan amount
+
         :return:
             US dollars worth of collateral needed
         """
@@ -100,19 +116,55 @@ class Loan:
         usd_value = borrowed_usd/ target_ltv
         return Decimal(usd_value / self.collateral.last_usd_price)
 
-    def calculate_collateral_left_after_closing(self) -> Decimal:
-        """Calculate how much collateral we have left after all debt is paid back.
+    def calculate_collateral_for_target_leverage(
+            self,
+            leverage: LeverageMultiplier,
+            borrowed_quantity: Decimal | float,
+    ) -> Decimal:
+        """Calculate the collateral amount we need to hit a target LTV.
+
+        Assuming our debt stays the same, how much collateral we need
+        to hit the target LTV.
+
+        col / (col - borrow) = leverage
+        col = (col - borrow) * leverage
+        col = col * leverage - borrow * leverage
+        col - col * leverage = - borrow * levereage
+        col(1 - leverage) = - borrow * leverage
+        col = -(borrow * leverage) / (1 - leverage)
+
 
         .. note ::
 
             Watch out for rounding/epsilon errors.
 
+        :param borrowed_quantity:
+            What is expected outstanding loan amount
+
         :return:
-            Collateral token quantity
+            US dollars worth of collateral needed
         """
-        expected_collateral_release_usd = self.borrowed.get_usd_value()
-        collateral_left_usd = self.collateral.get_usd_value() - expected_collateral_release_usd
-        return Decimal(collateral_left_usd / self.collateral.last_usd_price)
+        borrowed_usd = self.borrowed.last_usd_price  * float(borrowed_quantity)
+        usd_value = -(borrowed_usd * leverage) / (1 - leverage)
+        return Decimal(usd_value / self.collateral.last_usd_price)
+
+    def check_health(self, desired_health_factor=1):
+        """Check if this loan is healthy.
+
+        Health factor must stay above 1 or you get liquidated.
+
+        :raise LiquidationRisked:
+            If the loan would be instantly liquidated
+
+        """
+        health_factor = self.get_health_factor()
+        if health_factor <= desired_health_factor:
+            raise LiquidationRisked(
+                f"You would be liquidated with health factor {health_factor}.\n"
+                f"Desired health factor is {desired_health_factor}.\n"
+                f"Collateral {self.collateral.get_usd_value()} USD.\n"
+                f"Borrowed {self.borrowed.quantity} {self.borrowed.asset.token_symbol} {self.borrowed.get_usd_value()} USD.\n"
+            )
 
 
 

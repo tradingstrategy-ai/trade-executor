@@ -17,7 +17,7 @@ from tradeexecutor.state.generic_position import GenericPosition, BalanceUpdateE
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier, TradingPairKind
 from tradeexecutor.state.interest import Interest
 from tradeexecutor.state.loan import Loan
-from tradeexecutor.state.trade import TradeType, QUANTITY_EPSILON, COLLATERAL_POSITION_CLOSE
+from tradeexecutor.state.trade import TradeType, QUANTITY_EPSILON
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.types import USDollarAmount, BPS, USDollarPrice, Percent, LeverageMultiplier
 from tradeexecutor.strategy.dust import get_dust_epsilon_for_pair

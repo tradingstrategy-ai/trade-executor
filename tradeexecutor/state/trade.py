@@ -29,19 +29,6 @@ logger = logging.getLogger()
 #: Used to catch floating point rounding errors
 QUANTITY_EPSILON = Decimal(10**-18)
 
-#: Mark the trade execution to release all collateral after this trade.
-#:
-#: - The trade is set to close the loan and close a leveraged position
-#:
-#: - This special value marks the collateral adjustment amount
-#:   meaning "all of it"
-#:
-#: - If not given, then any profit and loss, etc.
-#:   will just stay as the collateral, and
-#:   is never put back to cash reserves
-#:
-COLLATERAL_POSITION_CLOSE = Decimal(-10**10)
-
 
 class TradeType(enum.Enum):
     """What kind of trade execution this was."""
@@ -171,7 +158,11 @@ class TradeExecution:
 
     #: Positive for buy, negative for sell.
     #:
-    #: Always accurately known for sells.
+    #: - Always accurately known for sells.
+    #:
+    #: - This can be zero for leveraged trades if
+    #:   the trade only adjusts the collateral.
+    #:
     planned_quantity: Decimal
 
     #: How many reserve tokens (USD) we use in this trade
@@ -432,10 +423,18 @@ class TradeExecution:
     closing: bool = None
 
     def __repr__(self):
-        if self.is_buy():
-            return f"<Buy #{self.trade_id} {self.planned_quantity} {self.pair.base.token_symbol} at {self.planned_price}, {self.get_status().name}>"
+        if self.is_spot():
+            if self.is_buy():
+                return f"<Buy #{self.trade_id} {self.planned_quantity} {self.pair.base.token_symbol} at {self.planned_price}, {self.get_status().name}>"
+            else:
+                return f"<Sell #{self.trade_id} {abs(self.planned_quantity)} {self.pair.base.token_symbol} at {self.planned_price}, {self.get_status().name}>"
         else:
-            return f"<Sell #{self.trade_id} {abs(self.planned_quantity)} {self.pair.base.token_symbol} at {self.planned_price}, {self.get_status().name}>"
+            if self.is_short():
+                return f"<Short \n" \
+                       f"   #{self.trade_id} \n" \
+                       f"   {self.planned_quantity} {self.pair.base.token_symbol} at {self.planned_price}, {self.get_status().name} \n" \
+                       f"   collateral consumption: {self.planned_collateral_consumption} collateral allocation: {self.planned_collateral_allocation} \n" \
+                       f">"
 
     def pretty_print(self) -> str:
         """Get diagnostics output for the trade.
@@ -466,14 +465,17 @@ class TradeExecution:
 
         assert self.trade_id > 0
 
-        if self.trade_type != TradeType.repair:
+        if self.trade_type != TradeType.repair and not self.is_leverage():
+            # Leveraged trade can have quantity in zero,
+            # if they just adjust the collateral amount
             assert self.planned_quantity != 0
 
-        # TODO: We have additional check in open_position()
-        assert abs(self.planned_quantity) > QUANTITY_EPSILON, f"We got a planned quantity that does not look like a good number: {self.planned_quantity}, trade is: {self}"
+            # TODO: We have additional check in open_position()
+            assert abs(self.planned_quantity) > QUANTITY_EPSILON, f"We got a planned quantity that does not look like a good number: {self.planned_quantity}, trade is: {self}"
 
         assert self.planned_price > 0
-        if not self.is_leverage_short():
+
+        if not self.is_leverage():
             assert self.planned_reserve >= 0, "Spot market trades must have planned reserve position"
 
         assert type(self.planned_price) in {float, int}, f"Price was given as {self.planned_price.__class__}: {self.planned_price}"
@@ -655,19 +657,19 @@ class TradeExecution:
         """This is a spot marget trade."""
         return not self.is_leverage()
 
-    def is_leverage_short(self) -> bool:
-        """This is margined trade."""
+    def is_short(self) -> bool:
+        """This is margined short trade."""
         return self.pair.kind.is_shorting()
 
-    def is_leverage_long(self) -> bool:
-        """This is margined trade."""
+    def is_long(self) -> bool:
+        """This is margined long trade."""
         return self.pair.kind.is_longing()
 
     def is_reduce(self) -> bool:
         """This trade decreases the exposure of existing leveraged position."""
-        if self.is_leverage_short():
+        if self.is_short():
             return self.planned_quantity > 0
-        elif self.is_leverage_long():
+        elif self.is_long():
             return self.planned_quantity < 0
         else:
             raise NotImplementedError(f"Not leveraged trade: {self}")

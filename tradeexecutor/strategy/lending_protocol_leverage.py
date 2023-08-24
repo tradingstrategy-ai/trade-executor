@@ -8,7 +8,7 @@ from _decimal import Decimal
 
 from tradeexecutor.state.identifier import AssetWithTrackedValue, AssetType
 from tradeexecutor.state.loan import Loan
-from tradeexecutor.state.trade import TradeExecution, COLLATERAL_POSITION_CLOSE
+from tradeexecutor.state.trade import TradeExecution
 
 
 def create_short_loan(
@@ -25,7 +25,7 @@ def create_short_loan(
       and must be populated to `trade.executed_loan`.
     """
 
-    assert trade.is_leverage_short()
+    assert trade.is_short()
     assert len(position.trades) == 1, "Can be only called when position is opening"
 
     assert not position.loan, f"loan already set"
@@ -74,6 +74,9 @@ def create_short_loan(
         borrowed=borrowed,
     )
 
+    # Sanity check
+    loan.check_health()
+
     return loan
 
 
@@ -87,27 +90,27 @@ def plan_loan_update_for_short(
     - Check that the information looks correct for a short position.
 
     """
-    assert trade.is_leverage_short()
+    assert trade.is_short()
     assert len(position.trades) > 1, "Can be only called when closing/reducing/increasing/position"
 
-    if trade.is_reduce():
 
-        planned_collateral_consumption = trade.planned_collateral_consumption or Decimal(0)
-        planned_collateral_allocation = trade.planned_collateral_allocation or Decimal(0)
+    planned_collateral_consumption = trade.planned_collateral_consumption or Decimal(0)
+    planned_collateral_allocation = trade.planned_collateral_allocation or Decimal(0)
 
-        loan.collateral.change_quantity_and_value(
-            planned_collateral_consumption + planned_collateral_allocation,
-            trade.reserve_currency_exchange_rate,
-            trade.opened_at,
-        )
+    loan.collateral.change_quantity_and_value(
+        planned_collateral_consumption + planned_collateral_allocation,
+        trade.reserve_currency_exchange_rate,
+        trade.opened_at,
+    )
 
-        # In short position, positive value reduces the borrowed amount
-        loan.borrowed.change_quantity_and_value(
-            -trade.planned_quantity,
-            trade.planned_price,
-            trade.opened_at,
-        )
-    else:
-        raise NotImplementedError()
+    # In short position, positive value reduces the borrowed amount
+    loan.borrowed.change_quantity_and_value(
+        -trade.planned_quantity,
+        trade.planned_price,
+        trade.opened_at,
+    )
+
+    # Sanity check
+    loan.check_health()
 
     return loan

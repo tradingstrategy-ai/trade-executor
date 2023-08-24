@@ -347,6 +347,8 @@ class State:
                     position: Optional[TradingPosition] = None,
                     slippage_tolerance: Optional[float] = None,
                     closing: Optional[bool] = False,
+                    planned_collateral_consumption: Optional[Decimal] = None,
+                    planned_collateral_allocation: Optional[Decimal] = None,
                     ) -> Tuple[TradingPosition, TradeExecution, bool]:
         """Creates a trade for a short position.
 
@@ -426,6 +428,8 @@ class State:
             position=position,
             slippage_tolerance=slippage_tolerance,
             closing=closing,
+            planned_collateral_consumption=planned_collateral_consumption,
+            planned_collateral_allocation=planned_collateral_allocation,
         )
 
     def start_execution(self, ts: datetime.datetime, trade: TradeExecution, txid: str, nonce: int):
@@ -478,11 +482,12 @@ class State:
 
         position = self.portfolio.find_position_for_trade(trade)
 
-        if trade.is_buy():
-            assert executed_amount and executed_amount > 0, f"Executed amount was {executed_amount}"
-        else:
-            assert executed_reserve > 0, f"Executed reserve must be positive for sell, got amount:{executed_amount}, reserve:{executed_reserve}"
-            assert executed_amount < 0, f"Executed amount must be negative for sell, got amount:{executed_amount}, reserve:{executed_reserve}"
+        if trade.is_spot():
+            if trade.is_buy():
+                assert executed_amount and executed_amount > 0, f"Executed amount was {executed_amount}"
+            else:
+                assert executed_reserve > 0, f"Executed reserve must be positive for sell, got amount:{executed_amount}, reserve:{executed_reserve}"
+                assert executed_amount < 0, f"Executed amount must be negative for sell, got amount:{executed_amount}, reserve:{executed_reserve}"
 
         trade.mark_success(
             executed_at,
@@ -500,16 +505,16 @@ class State:
             assert trade.executed_loan_update, "TradeExecution.executed_loan_update structure not filled"
             position.loan = trade.executed_loan_update
 
-        if trade.is_sell() and trade.is_spot():
+        if trade.is_spot() and trade.is_sell():
             self.portfolio.return_capital_to_reserves(trade)
 
-        if trade.is_leverage_short() and trade.is_reduce():
+        if trade.is_leverage():
             # Release any collateral
             if executed_collateral_allocation:
                 assert trade.pair.quote.underlying
                 self.portfolio.adjust_reserves(trade.pair.quote.underlying, -executed_collateral_allocation)
 
-        if trade.is_leverage_long():
+        if trade.is_long():
             raise NotImplementedError()
 
         if position.can_be_closed():

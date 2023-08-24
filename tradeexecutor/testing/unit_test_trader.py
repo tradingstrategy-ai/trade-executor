@@ -119,8 +119,8 @@ class UnitTestTrader:
         executed_collateral_consumption = trade.planned_collateral_consumption
         executed_collateral_allocation = trade.planned_collateral_allocation
 
-        if trade.is_buy():
-            if trade.is_spot():
+        if trade.is_spot():
+            if trade.is_buy():
                 executed_quantity = trade.planned_quantity
                 executed_reserve = Decimal(0)  # TODO: Check if we can reorg code here more cleanly
             else:

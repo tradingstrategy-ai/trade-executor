@@ -523,11 +523,12 @@ class Portfolio:
         # Do not allow open positions that are so small
         # we cannot track
         dust_epsilon = get_dust_epsilon_for_pair(trade.pair)
-        if abs(trade.planned_quantity) <= dust_epsilon:
-            raise TooSmallTrade(f"Trade cannot be this small\n"
-                                f"Quantity {trade.planned_quantity}, dust epsilon {dust_epsilon}\n"
-                                f"Trade: {trade}\n"
-                                f"Pair: {trade.pair}")
+        if trade.planned_quantity != 0:
+            if abs(trade.planned_quantity) <= dust_epsilon:
+                raise TooSmallTrade(f"Trade cannot be this small\n"
+                                    f"Quantity {trade.planned_quantity}, dust epsilon {dust_epsilon}\n"
+                                    f"Trade: {trade}\n"
+                                    f"Pair: {trade.pair}")
 
         return position, trade, created
 
@@ -728,7 +729,7 @@ class Portfolio:
         if trade.is_spot():
             assert trade.is_sell()
 
-        if trade.is_leverage_short() and trade.is_reduce():
+        if trade.is_short() and trade.is_reduce():
             self.adjust_reserves(trade.reserve_currency, -trade.executed_reserve)
         else:
             raise NotImplementedError()
