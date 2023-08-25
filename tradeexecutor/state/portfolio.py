@@ -680,6 +680,63 @@ class Portfolio:
                         p.set_revaluation_data(ts, price)
         except Exception as e:
             raise InvalidValuationOutput(f"Valuation model failed to output proper price: {valuation_method}: {e}") from e
+        
+    def revalue_positions_generic(self, ts: datetime.datetime, valuation_methods: list[Callable], revalue_frozen=True):
+        """Revalue all open positions in the portfolio.
+
+        - Reserves are not revalued
+        - Credit supply positions are not revalued
+
+        :param revalue_frozen:
+            Revalue frozen positions as well
+        """
+        try:
+            # revalue normal positions
+            for position in self.open_positions.values():
+                if position.is_credit_supply():
+                    continue
+
+                
+                self.choose_valuation_method_and_revalue_position(ts, valuation_methods, position)
+                
+            if revalue_frozen:
+                for p in self.frozen_positions.values():
+                    # TODO: How to handle credit supply position revaluation
+                    if p.is_credit_supply():
+                        continue
+                    
+                    self.choose_valuation_method_and_revalue_position(ts, valuation_methods, p)
+
+        except Exception as e:
+            raise InvalidValuationOutput(f"Valuation models failed to output proper price: {valuation_methods}: {e}") from e
+
+    def choose_valuation_method_and_revalue_position(self, ts: datetime.datetime, valuation_methods: list[Callable], position: TradingPosition):
+        """Choose the correct valuation method and revalue the position.
+        
+        :param ts:
+            Timestamp to use for valuation
+
+        :param valuation_methods:
+            List of valuation methods to choose from
+
+        :param position:
+            Position to revalue
+
+        :raise NotImplementedError:
+            If no valuation method is found for the position
+        """
+
+        assert position.pair.routing_model, "Routing model not set for position pair"
+
+        is_revalued = False
+        for valuation_method in valuation_methods:
+            if valuation_method.pricing_model.routing_model == position.pair.routing_model:
+                ts, price = valuation_method.pricing_model(ts, position)
+                position.set_revaluation_data(ts, price)
+                is_revalued = True
+
+        if not is_revalued:
+            raise NotImplementedError(f"Valuation model not found for {position.pair.routing_model}")
 
     def get_default_reserve_asset(self) -> Tuple[Optional[AssetIdentifier], Optional[USDollarPrice]]:
         """Gets the default reserve currency associated with this state.

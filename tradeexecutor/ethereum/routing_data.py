@@ -728,20 +728,23 @@ def create_compatible_routing(
 ):
     """Create compatible routing.
 
-    At the moment, can either be uniswap-v2 compatible or uniswap-v3 compatible.
+    At the moment, can either be uniswap-v2 compatible and/or uniswap-v3 compatible. 
+
+    - Must be exchanges on the same chain with the same reserve currency
 
     - This takes one of the default routing options and gives the routing model for it
 
     - The routing model consists of smart contract addresses needed to trade, the chainid, and trading fee
     """
 
-    # assert reserve currency matches routing_type
     validate_reserve_currency(routing_type, reserve_currency)
 
     if routing_type in get_uniswap_v2_compatible_routing_types():
         return create_uniswap_v2_compatible_routing(routing_type, reserve_currency)
     elif routing_type in get_all_uniswap_v3_compatible_routing_types():
         return create_uniswap_v3_compatible_routing(routing_type, reserve_currency)
+    else:
+        raise NotImplementedError("Unknown routing type")
 
 
 def get_routing_model(

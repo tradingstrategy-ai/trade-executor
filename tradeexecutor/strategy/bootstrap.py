@@ -138,9 +138,10 @@ def make_factory_from_strategy_mod(mod: StrategyModuleInformation) -> StrategyFa
         # If it is not dynamically generated, here set up one of the default routing models from
         # strategy module's trade_routing var.
         if routing_model is None:
+            assert len(mod_info.trade_routing) == 1, "this should not happen"
             routing_model = get_routing_model(
                 execution_context,
-                mod_info.trade_routing,
+                mod_info.trade_routing[0],
                 mod_info.reserve_currency)
 
         runner = PandasTraderRunner(
@@ -216,11 +217,12 @@ def make_generic_factory_from_strategy_mod(mod: StrategyModuleInformation) -> St
         # If it is not dynamically generated, here set up one of the default routing models from
         # strategy module's trade_routing var.
         routing_models = []
-        for trade_routing, reserve_currency in zip(mod_info.trade_routing, mod_info.reserve_currency):
+
+        for trade_routing in mod_info.trade_routing:
             routing_model = get_routing_model(
                 execution_context,
                 trade_routing,
-                reserve_currency
+                mod_info.reserve_currency,
             )
             
             routing_models.append(routing_model)
@@ -238,6 +240,9 @@ def make_generic_factory_from_strategy_mod(mod: StrategyModuleInformation) -> St
             execution_context=execution_context,
             run_state=run_state,
             generic_routing_data=generic_routing_data,
+            execution_model=None,
+            valuation_model_factory=None,
+            pricing_model_factory=None,
         )
 
         return StrategyExecutionDescription(

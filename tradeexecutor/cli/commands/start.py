@@ -35,7 +35,7 @@ from ...ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2SimpleRoutingMode
 from ...state.state import State
 from ...state.store import NoneStore, JSONFileStore
 from ...strategy.approval import ApprovalType
-from ...strategy.bootstrap import import_strategy_file, import_generic_strategy_file, 
+from ...strategy.bootstrap import import_strategy_file, import_generic_strategy_file
 from ...strategy.cycle import CycleDuration
 from ...strategy.default_routing_options import TradeRouting
 from ...strategy.execution_context import ExecutionContext, ExecutionMode
@@ -256,10 +256,12 @@ def start(
             # because likely Ganache has simply crashed on background
             confirmation_timeout = datetime.timedelta(seconds=30)
 
-        execution_model, sync_model, valuation_model_factory, pricing_model_factory = None, None, None, None
+        execution_model, sync_model, valuation_model_factory, pricing_model_factory, generic_routing_data = None, None, None, None, None
 
-        if type(mod.trade_routing) == list and len(mod.trade_routing) > 1:
-            generic_routing_data = create_generic_execution_and_sync_model(
+        assert type(mod.trade_routing) == list, "Expected trade_routing to be a list"
+
+        if len(mod.trade_routing) > 1:
+            generic_routing_data, sync_model = create_generic_execution_and_sync_model(
                 asset_management_mode=asset_management_mode,
                 private_key=private_key,
                 web3config=web3config,
@@ -270,13 +272,11 @@ def start(
                 vault_address=vault_address,
                 vault_adapter_address=vault_adapter_address,
                 vault_payment_forwarder_address=vault_payment_forwarder_address,
-                routing_hint=mod.trade_routing,
+                routing_hints=mod.trade_routing,
             )
         else:
 
-            if type(mod.trade_routing) == list:
-                assert len(mod.trade_routing) == 1
-                mod.trade_routing = mod.trade_routing[0]
+            trade_routing = mod.trade_routing[0]
 
             execution_model, sync_model, valuation_model_factory, pricing_model_factory = create_execution_and_sync_model(
                 asset_management_mode=asset_management_mode,
@@ -289,7 +289,7 @@ def start(
                 vault_address=vault_address,
                 vault_adapter_address=vault_adapter_address,
                 vault_payment_forwarder_address=vault_payment_forwarder_address,
-                routing_hint=mod.trade_routing,
+                routing_hint=trade_routing,
             )
 
         approval_model = create_approval_model(approval_type)
@@ -399,6 +399,7 @@ def start(
         logger.info("Loading strategy file %s", strategy_file)
 
         strategy_factory, generic_strategy_factory = None, None
+
         if generic_routing_data:
             generic_strategy_factory = import_generic_strategy_file(strategy_file)
         else:

@@ -262,15 +262,27 @@ class ExecutionLoop:
         Perform preflight checks e.g. to see if our trading accounts look sane.
         """
 
-        if self.generic_routing_data: 
-            for element in self.generic_routing_data:
-                execution_model = element["execution_model"]
-                execution_model.initialize()
-        else:
-            self.execution_model.initialize()
-        
+        self.execution_model.initialize()
+        self.execution_model_preflight_check(self.execution_model)
+
+    def init_execution_models(self):
+        """Initialise execution models. Used when we have multiple execution models (in generic routing).
+        """
+
+        assert self.generic_routing_data, "Generic routing data must be set"
+
+        for element in self.generic_routing_data:
+            execution_model = element["execution_model"]
+            execution_model.initialize()
+            self.execution_model_preflight_check(execution_model)
+
+    def execution_model_preflight_check(self, execution_model: ExecutionModel):
+        """Preflight check for execution model.
+
+        This is called before the strategy execution starts.
+        """
         if not self.is_live_trading_unit_test():
-            self.execution_model.preflight_check()
+            execution_model.preflight_check()
             logger.info("Preflight checks ok")
 
     def init_simulation(
@@ -547,11 +559,16 @@ class ExecutionLoop:
         if len(state.portfolio.reserves) == 0:
             logger.info("The strategy has no reserves or deposits yet")
 
-        routing_state, pricing_model, valuation_method = self.runner.setup_routing(universe)
+        if not self.runner.generic_routing_data:
+            routing_state, pricing_model, valuation_method = self.runner.setup_routing(universe)
+        
+            with self.timed_task_context_manager("revalue_portfolio_statistics"):
+                logger.info("Updating position valuations")
+                self.runner.revalue_portfolio(clock, state, valuation_method)
 
-        with self.timed_task_context_manager("revalue_portfolio_statistics"):
-            logger.info("Updating position valuations")
-            self.runner.revalue_portfolio(clock, state, valuation_method)
+        else:
+            valuation_models = [item["valuation_model"] for item in self.runner.generic_execution_data]
+            state.portfolio.revalue_positions_generic(clock, valuation_models)
 
         with self.timed_task_context_manager("update_statistics"):
             logger.info("Updating position statistics after revaluation")
@@ -665,39 +682,98 @@ class ExecutionLoop:
         # Hop to the next tick
         ts = round_datetime_up(start_ts, tick_size.to_timedelta())
 
-        routing_state, pricing_model, valuation_model = self.runner.setup_routing(universe)
-        assert pricing_model, "Routing did not provide pricing_model"
+        if not self.runner.generic_routing_data:
+            routing_state, pricing_model, valuation_model = self.runner.setup_routing(universe)
+            assert pricing_model, "Routing did not provide pricing_model"
+            assert isinstance(pricing_model, BacktestSimplePricingModel)
 
-        assert isinstance(pricing_model, BacktestSimplePricingModel)
-
-        stop_loss_pricing_model = BacktestSimplePricingModel(
-            universe.backtest_stop_loss_candles,
-            self.runner.routing_model,
-            time_bucket=universe.backtest_stop_loss_time_bucket,
-            allow_missing_fees=pricing_model.allow_missing_fees
-        )
-
-        # Do stop loss checks for every time point between now and next strategy cycle
-        tp = 0
-        sl = 0
-
-        while ts < end_ts:
-            logger.debug("Backtesting take profit/stop loss at %s", ts)
-            trades = self.runner.check_position_triggers(
-                ts,
-                state,
-                universe,
-                stop_loss_pricing_model,
-                routing_state
+            stop_loss_pricing_model = BacktestSimplePricingModel(
+                universe.backtest_stop_loss_candles,
+                self.runner.routing_model,
+                time_bucket=universe.backtest_stop_loss_time_bucket,
+                allow_missing_fees=pricing_model.allow_missing_fees
             )
-            for t in trades:
-                if t.is_stop_loss():
-                    sl += 1
-                elif t.is_take_profit():
-                    tp += 1
-            ts += tick_size.to_timedelta()
+
+            # Do stop loss checks for every time point between now and next strategy cycle
+            tp = 0
+            sl = 0
+
+            while ts < end_ts:
+                logger.debug("Backtesting take profit/stop loss at %s", ts)
+                trades = self.runner.check_position_triggers(
+                    ts,
+                    state,
+                    universe,
+                    stop_loss_pricing_model,
+                    routing_state
+                )
+                for t in trades:
+                    if t.is_stop_loss():
+                        sl += 1
+                    elif t.is_take_profit():
+                        tp += 1
+                ts += tick_size.to_timedelta()
+
+
+        else:
+
+            generic_execution_data = self.runner.setup_generic_routing(universe)
+
+            stop_loss_pricing_models = []
+            routing_states = []
+            execution_models = []
+            routing_models = []
+
+            for item in self.generic_routing_data:
+                    routing_model = item["routing_model"]
+                    execution_model = item["execution_model"]
+                    
+                    # get execution details corresponding to routing model
+                    for item in generic_execution_data:
+                        if item["routing_model"] == routing_model:
+                            routing_state = item["routing_state"]
+                            pricing_model = item["pricing_model"]
+
+                            stop_loss_pricing_model = BacktestSimplePricingModel(
+                                universe.backtest_stop_loss_candles,
+                                routing_model,
+                                time_bucket=universe.backtest_stop_loss_time_bucket,
+                                allow_missing_fees=pricing_model.allow_missing_fees
+                            )
+                            
+                            routing_models.append(routing_model)
+                            stop_loss_pricing_models.append(stop_loss_pricing_model)
+                            routing_states.append(routing_state)
+                            execution_models.append(execution_model)
+
+            # Do stop loss checks for every time point between now and next strategy cycle
+            tp = 0
+            sl = 0
+
+            while ts < end_ts:
+                logger.debug("Backtesting take profit/stop loss at %s", ts)
+                trades = self.runner.check_generic_position_triggers(
+                    ts,
+                    state,
+                    universe,
+                    stop_loss_pricing_models,
+                    routing_states,
+                    routing_models,
+                    execution_models,
+                )
+                for t in trades:
+                    if t.is_stop_loss():
+                        sl += 1
+                    elif t.is_take_profit():
+                        tp += 1
+                ts += tick_size.to_timedelta()
 
         return tp, sl
+        
+
+        
+
+        
 
     def run_backtest(self, state: State) -> dict:
         """Backtest loop."""
@@ -1124,7 +1200,7 @@ class ExecutionLoop:
         logger.info("Scheduler finished - down the live trading loop")
 
         if crash_exception:
-            raise LiveSchedulingTaskFailed("trade-executor closed because one of the scheduled tasks failed") from crash_exception
+            raise LiveSchedulingTaskFailed("trade-executor closed because one of the scheduled tasks failed")
 
         return self.debug_dump_state
 
@@ -1149,9 +1225,23 @@ class ExecutionLoop:
             if not self.sync_model.is_ready_for_live_trading(state):
                 raise RuntimeError(f"{self.sync_model} not initialised for live trading - run trade-executor init command first")
 
-        self.init_execution_model()
 
         if self.generic_strategy_factory:
+            self.init_execution_models()
+
+            assert self.generic_routing_data, "Generic strategy factory requires generic routing data"
+            run_description = self.generic_strategy_factory(
+                execution_context=self.execution_context,
+                timed_task_context_manager=self.timed_task_context_manager,
+                sync_model=self.sync_model,
+                approval_model=self.approval_model,
+                client=self.client,
+                run_state=self.run_state,
+                generic_routing_data=self.generic_routing_data,
+            )
+        else:
+            self.init_execution_model()
+
             run_description: StrategyExecutionDescription = self.strategy_factory(
                 execution_model=self.execution_model,
                 execution_context=self.execution_context,
@@ -1163,16 +1253,6 @@ class ExecutionLoop:
                 client=self.client,
                 routing_model=self.routing_model,
                 run_state=self.run_state,
-            )
-        else:
-            run_description = self.generic_strategy_factory(
-                execution_context=self.execution_context,
-                timed_task_context_manager=self.timed_task_context_manager,
-                sync_model=self.sync_model,
-                approval_model=self.approval_model,
-                client=self.client,
-                run_state=self.run_state,
-                generic_routing_data=self.generic_routing_data,
             )
 
         self.init_live_run_state(run_description)

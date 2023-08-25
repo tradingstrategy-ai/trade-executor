@@ -187,7 +187,7 @@ def create_generic_execution_model(
         else:
             raise RuntimeError(f"Does not know how to route: {routing_hint}")
         
-        generic_routing_data.append(dict(execution_model=execution_model, valudation_model_factory=valuation_model_factory, pricing_model_factory=pricing_model_factory, routing_hint=routing_hint))
+        generic_routing_data.append(dict(execution_model=execution_model, valuation_model_factory=valuation_model_factory, pricing_model_factory=pricing_model_factory, routing_hint=routing_hint))
 
     return generic_routing_data
 
@@ -242,17 +242,23 @@ def create_execution_and_sync_model(
             mainnet_fork=web3config.is_mainnet_fork(),
         )
         return execution_model, sync_model, valuation_model_factory, pricing_model_factory
-
     elif asset_management_mode == AssetManagementMode.backtest:
-        logger.info("TODO: Command line backtests are always executed with initial deposit of $10,000")
         wallet = SimulatedWallet()
-        execution_model = BacktestExecutionModel(wallet, max_slippage=0.01, stop_loss_data_available=True)
         sync_model = BacktestSyncModel(wallet, Decimal(10_000))
-        pricing_model_factory = backtest_pricing_factory
-        valuation_model_factory = backtest_valuation_factory
-        return execution_model, sync_model, valuation_model_factory, pricing_model_factory
+        execution_model, valuation_model_factory, pricing_model_factory = create_backtest_execution_model(wallet)
     else:
         raise NotImplementedError(f"Unsupported asset management mode: {asset_management_mode} - did you pass ASSET_MANAGEMENT_MODE environment variable?")
+    
+    return execution_model, sync_model, valuation_model_factory, pricing_model_factory
+
+
+def create_backtest_execution_model(wallet: SimulatedWallet):
+    logger.info("TODO: Command line backtests are always executed with initial deposit of $10,000")
+    execution_model = BacktestExecutionModel(wallet, max_slippage=0.01, stop_loss_data_available=True)
+    pricing_model_factory = backtest_pricing_factory
+    valuation_model_factory = backtest_valuation_factory
+    return execution_model, valuation_model_factory, pricing_model_factory
+
 
 def create_generic_execution_and_sync_model(
     asset_management_mode: AssetManagementMode,
@@ -266,32 +272,48 @@ def create_generic_execution_and_sync_model(
     vault_adapter_address: Optional[str],
     vault_payment_forwarder_address: Optional[str],
     routing_hints: Optional[list[TradeRouting]] = None,
-):  
+):
     """Set up the wallet sync and execution mode for the command line client for a trading universe with multiple dexes."""
-    assert asset_management_mode in (AssetManagementMode.hot_wallet, AssetManagementMode.enzyme)
-    assert private_key, "Private key is needed for live trading"
-    web3 = web3config.get_default()
-    hot_wallet = HotWallet.from_private_key(private_key)
-    sync_model = create_sync_model(
-        asset_management_mode,
-        web3,
-        hot_wallet,
-        vault_address,
-        vault_adapter_address,
-        vault_payment_forwarder_address,
-    )
+    
+    assert len(routing_hints) > 1, "At least two dexes are needed for generic routing"
+    
+    if asset_management_mode == AssetManagementMode.backtest:
+        
+        wallet = SimulatedWallet()
+        sync_model = BacktestSyncModel(wallet, Decimal(10_000))
+        generic_routing_data = []
 
-    logger.info("Creating execution model. Asset management mode is %s, routing hint is %s", asset_management_mode.value, routing_hints.value)
+        for routing_hint in routing_hints:
+            execution_model, valuation_model_factory, pricing_model_factory = create_backtest_execution_model(wallet)
+            generic_routing_data.append(dict(execution_model=execution_model, valuation_model_factory=valuation_model_factory, pricing_model_factory=pricing_model_factory, routing_hint=routing_hint))
 
-    generic_routing_data = create_generic_execution_model(
-        routing_hints=routing_hints,
-        tx_builder=sync_model.create_transaction_builder(),
-        confirmation_timeout=confirmation_timeout,
-        confirmation_block_count=confirmation_block_count,
-        max_slippage=max_slippage,
-        min_gas_balance=min_gas_balance,
-        mainnet_fork=web3config.is_mainnet_fork(),
-    )
+    else:
+        assert asset_management_mode in (AssetManagementMode.hot_wallet, AssetManagementMode.enzyme)
+        assert private_key, "Private key is needed for live trading"
+        web3 = web3config.get_default()
+        hot_wallet = HotWallet.from_private_key(private_key)
+        sync_model = create_sync_model(
+            asset_management_mode,
+            web3,
+            hot_wallet,
+            vault_address,
+            vault_adapter_address,
+            vault_payment_forwarder_address,
+        )
+
+        logger.info("Creating execution model. Asset management mode is %s, routing hint is %s", asset_management_mode.value, routing_hints.value)
+
+        generic_routing_data = create_generic_execution_model(
+            routing_hints=routing_hints,
+            tx_builder=sync_model.create_transaction_builder(),
+            confirmation_timeout=confirmation_timeout,
+            confirmation_block_count=confirmation_block_count,
+            max_slippage=max_slippage,
+            min_gas_balance=min_gas_balance,
+            mainnet_fork=web3config.is_mainnet_fork(),
+        )
+
+
     return generic_routing_data, sync_model
 
 

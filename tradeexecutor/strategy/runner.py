@@ -347,7 +347,7 @@ class StrategyRunner(abc.ABC):
         return routing_state, pricing_model, valuation_model
 
     def setup_generic_routing(self, universe: StrategyExecutionUniverse) -> list[dict[RoutingState, PricingModel, ValuationModel, RoutingModel]]:
-        """Setups routing state for this cycle.
+        """Setup routing state for this cycle.
 
         :param universe:
             The currently tradeable universe
@@ -399,7 +399,7 @@ class StrategyRunner(abc.ABC):
                 valuation_model
             )
 
-            generic_execution_data.append(dict(routing_state=routing_state, pricing_model=pricing_model, valudation_model=valuation_model, routing_model=routing_model))
+            generic_execution_data.append(dict(routing_state=routing_state, pricing_model=pricing_model, valuation_model=valuation_model, routing_model=routing_model))
 
         return generic_execution_data
 
@@ -455,6 +455,7 @@ class StrategyRunner(abc.ABC):
                 assert pricing_model, "Routing did not provide pricing_model"
             else:
                 generic_execution_data = self.setup_generic_routing(universe)
+                self.generic_execution_data = generic_execution_data
 
             # Watch incoming deposits
             with self.timed_task_context_manager("sync_portfolio"):
@@ -466,7 +467,11 @@ class StrategyRunner(abc.ABC):
 
             # Assing a new value for every existing position
             with self.timed_task_context_manager("revalue_portfolio"):
-                self.revalue_portfolio(strategy_cycle_timestamp, state, valuation_model) # TODO
+                if not self.generic_routing_data:
+                    self.revalue_portfolio(strategy_cycle_timestamp, state, valuation_model)
+                else:
+                    valuation_models = [item["valuation_model"] for item in generic_execution_data]
+                    state.portfolio.revalue_positions_generic(strategy_cycle_timestamp, valuation_models)
 
             # Log output
             if self.is_progress_report_needed():
@@ -474,7 +479,12 @@ class StrategyRunner(abc.ABC):
 
             # Run the strategy cycle
             with self.timed_task_context_manager("decide_trades"):
-                rebalance_trades = self.on_clock(strategy_cycle_timestamp, universe, pricing_model, state, debug_details)
+                if not self.generic_routing_data:
+                    rebalance_trades = self.on_clock(strategy_cycle_timestamp, universe, pricing_model, state, debug_details)
+                else:
+                    pricing_models = [item["pricing_model"] for item in generic_execution_data]
+                    rebalance_trades = self.on_clock(strategy_cycle_timestamp, universe, pricing_models, state, debug_details)
+
                 assert type(rebalance_trades) == list
                 debug_details["rebalance_trades"] = rebalance_trades
 
@@ -627,6 +637,87 @@ class StrategyRunner(abc.ABC):
                     self.routing_model,
                     routing_state,
                     check_balances=False)
+
+            return approved_trades
+        
+    def check_generic_position_triggers(self,
+        clock: datetime.datetime,
+        state: State,
+        universe: StrategyExecutionUniverse,
+        stop_loss_pricing_models: list[PricingModel],
+        routing_states: list[RoutingState],
+        routing_models: list[RoutingModel],
+        execution_models: list[ExecutionModel],
+        ) -> List[TradeExecution]:
+        """Check stop loss/take profit for positions.
+
+        Unlike trade balancing in tick()
+
+        - Stop loss/take profit can occur only to any existing positions.
+          No new positions are opened.
+
+        - Trading Universe cannot change for these triggers,
+          but remains stable between main ticks.
+
+        - check_position_triggers() is much more lightweight and can be called much more frequently,
+          even once per minute
+
+        :return:
+            List of generated stop loss trades
+        """
+
+
+        assert self.generic_routing_data
+        assert len(routing_states) == len(routing_models) == len(execution_models) == len(stop_loss_pricing_models), "Lengths of routing_states, routing_models, execution_models, and stop_loss_pricing_models must be equal"
+
+        assert all(isinstance(model, PricingModel) for model in stop_loss_pricing_models), "stop_loss_pricing_models must be a list of PricingModel instances"
+
+        with self.timed_task_context_manager("check_position_triggers"):
+
+            # TODO: Sync the treasury here
+
+            # We use PositionManager.close_position()
+            # to generate trades to close stop loss positions
+            position_manager = PositionManager(
+                clock,
+                universe.universe,
+                state,
+                stop_loss_pricing_models,
+            )
+
+            triggered_trades = check_position_triggers(position_manager)
+
+            approved_trades = self.approval_model.confirm_trades(state, triggered_trades)
+
+            if approved_trades:
+                logger.info("Executing %d stop loss/take profit trades at %s", len(approved_trades), clock)
+                
+                
+                trades_to_execute = []
+                for routing_model, routing_state, execution_model in zip(routing_models, routing_states, execution_models):  
+
+                    if routing_state is None:
+                        # Dummy execution model
+                        return
+                    
+                    assert isinstance(routing_state, RoutingState)
+
+
+
+                    # get trades corresponding to routing model
+                    for trade in approved_trades:
+                        if trade.routing_model == routing_model:
+                            trades_to_execute.append(trade)
+                    
+                    if trades_to_execute:
+                        execution_model.execute_trades(
+                            clock,
+                            state,
+                            approved_trades,
+                            routing_model,
+                            routing_state,
+                            check_balances=False
+                        )
 
             return approved_trades
 

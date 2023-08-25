@@ -373,8 +373,14 @@ class StrategyModuleInformation:
         if self.trade_routing is None:
             raise StrategyModuleNotValid(f"trade_routing missing on the strategy")
 
-        if not isinstance(self.trade_routing, TradeRouting):
-            raise StrategyModuleNotValid(f"trade_routing not TradeRouting instance, got {self.trade_routing}")
+        if isinstance(self.trade_routing, TradeRouting):
+            self.trade_routing = [self.trade_routing]
+        else:
+            assert isinstance(self.trade_routing, list), f"trade_routing must be TradeRouting or list of TradeRouting, got {self.trade_routing.__class__}"
+
+        for trade_routing in self.trade_routing:
+            if not isinstance(trade_routing, TradeRouting):
+                raise StrategyModuleNotValid(f"trade_routing not TradeRouting instance, got {trade_routing}")
 
         if not isinstance(self.decide_trades, Callable):
             raise StrategyModuleNotValid(f"decide_trades function missing/invalid")

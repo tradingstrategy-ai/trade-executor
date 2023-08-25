@@ -86,13 +86,19 @@ def check_position_triggers(
 
     ts: datetime.datetime = position_manager.timestamp
     state: State = position_manager.state
-    pricing_model: PricingModel = position_manager.pricing_model
 
     positions = state.portfolio.get_open_positions()
 
     trades = []
 
     for p in positions:
+
+        if len(position_manager.pricing_models) == 1:
+            pricing_model: PricingModel = position_manager.pricing_model
+        else:
+            pricing_model: PricingModel = position_manager.get_pricing_model(p.pair)
+        
+        assert isinstance(pricing_model, PricingModel), f"Got bad pricing model: {pricing_model} {type(pricing_model)}"
 
         if not p.has_trigger_conditions():
             # This position does not have take profit/stop loss set

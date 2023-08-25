@@ -13,7 +13,6 @@ from tradingstrategy.chain import ChainId
 from web3 import Web3
 
 from tradeexecutor.state.types import JSONHexAddress
-from tradeexecutor.strategy.routing import RoutingModel
 from tradingstrategy.stablecoin import is_stablecoin_like
 
 
@@ -224,7 +223,7 @@ class TradingPairIdentifier:
     #:
     #: Always initially set to None, but can be set later
     #:
-    routing_model: Optional[RoutingModel] = None
+    routing_model: Optional["RoutingModel"] = None
 
     def __post_init__(self):
         assert self.base.chain_id == self.quote.chain_id, "Cross-chain trading pairs are not possible"

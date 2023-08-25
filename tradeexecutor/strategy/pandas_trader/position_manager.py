@@ -190,12 +190,23 @@ class PositionManager:
             raise RuntimeError(f"Does not know the universe: {universe}")
 
         self.state = state
+
+        if isinstance(pricing_models, PricingModel):
+            self.pricing_models = [pricing_models]
+
         self.pricing_models = pricing_models
         self.default_slippage_tolerance = default_slippage_tolerance
 
         reserve_currency, reserve_price = state.portfolio.get_default_reserve_asset()
 
         self.reserve_currency = reserve_currency
+
+    @property
+    def pricing_model(self):
+        if len(self.pricing_models) == 1:
+            return self.pricing_models[0]
+        else:
+            raise RuntimeError("Cannot use pricing_model property when there are multiple pricing models")
 
     def is_any_open(self) -> bool:
         """Do we have any positions open."""
