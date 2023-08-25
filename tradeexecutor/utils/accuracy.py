@@ -83,11 +83,17 @@ def ensure_exact_zero(
 ) -> Decimal:
     """Ensure that we hit precise zero.
 
+    :param quantity:
+        If this number is one bit off the zero due to decimal math,
+        then assume it is zero.
+
+    :return:
+        Exact zero for quantities that are too close to zero.
     """
 
     assert isinstance(quantity, Decimal)
 
     if abs(quantity) < epsilon:
-        return Decimal(0)
+        return ZERO_DECIMAL
 
     return quantity
