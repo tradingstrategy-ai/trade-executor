@@ -152,6 +152,8 @@ def create_short_loan(
         pair=trade.pair,
         collateral=collateral,
         borrowed=borrowed,
+        collateral_interest=Interest.open_new(collateral.quantity),
+        borrowed_interest=Interest.open_new(borrowed.quantity),
     )
 
     # Sanity check

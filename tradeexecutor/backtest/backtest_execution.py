@@ -86,7 +86,7 @@ class BacktestExecutionModel(ExecutionModel):
         """Set up the wallet"""
         logger.info("Initialising backtest execution model")
 
-    def simulate_spot(self, state: State, trade: TradeExecution) -> Tuple[Decimal, Decimal, Decimal]:
+    def simulate_spot(self, state: State, trade: TradeExecution) -> Tuple[Decimal, Decimal, bool]:
         """Spot market translation simulation with a simulated wallet.
 
         Check that the trade "executes" against the simulated wallet
@@ -131,10 +131,13 @@ class BacktestExecutionModel(ExecutionModel):
             self.wallet.update_balance(base.address, executed_quantity)
             self.wallet.update_balance(reserve.address, executed_reserve)
 
+        assert abs(executed_quantity) > 0, f"Expected executed_quantity for the trade to be above zero, got executed_quantity:{executed_quantity}, planned_quantity:{trade.planned_quantity}, trade is {trade}"
+        assert executed_reserve > 0, f"Expected executed_reserve for the trade to be above zero, got {executed_reserve}"
+
         return executed_quantity, executed_reserve, sell_amount_epsilon_fix
 
     def simulate_leverage(self, state: State, trade: TradeExecution):
-        pass
+        raise NotImplementedError()
 
     def simulate_trade(self,
                        ts: datetime.datetime,
@@ -174,12 +177,15 @@ class BacktestExecutionModel(ExecutionModel):
         executed_quantity = executed_reserve = sell_amount_epsilon_fix = Decimal(0)
 
         try:
-            if trade.is_spot():
+            if trade.is_spot() or trade.is_credit_supply():
                 executed_quantity, executed_reserve, sell_amount_epsilon_fix = self.simulate_spot(state, trade)
             elif trade.is_leverage():
                 executed_quantity, executed_reserve, sell_amount_epsilon_fix = self.simulate_leverage(state, trade)
             else:
                 raise NotImplementedError(f"Does not know how to simulate: {trade}")
+
+            trade.executed_loan_update = trade.planned_loan_update
+
         except OutOfSimulatedBalance as e:
             # Better error messages to helping out why backtesting failed
 
@@ -224,8 +230,6 @@ class BacktestExecutionModel(ExecutionModel):
                 f"  {extra_help_message}\n"
             ) from e
 
-        assert abs(executed_quantity) > 0, f"Expected executed_quantity for the trade to be above zero, got executed_quantity:{executed_quantity}, planned_quantity:{trade.planned_quantity}, trade is {trade}"
-        assert executed_reserve > 0, f"Expected executed_reserve for the trade to be above zero, got {executed_reserve}"
         return executed_quantity, executed_reserve
 
     def execute_trades(self,
@@ -271,7 +275,10 @@ class BacktestExecutionModel(ExecutionModel):
 
             # 4. execution is dummy operation where planned execution becomes actual execution
             # Assume we always get the same execution we planned
-            executed_price = float(abs(executed_reserve / executed_quantity))
+            if executed_quantity:
+                executed_price = float(abs(executed_reserve / executed_quantity))
+            else:
+                executed_price = 0
 
             state.mark_trade_success(
                 ts,

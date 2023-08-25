@@ -431,7 +431,9 @@ class AssetWithTrackedValue:
 
     #: Asset we are tracking
     #:
-    #: The underlying asset like USDC, WETH, etc.
+    #: The is aToken or vToken asset.
+    #:
+    #: Use ``asset.underlying`` to get the token.
     #:
     asset: AssetIdentifier
 

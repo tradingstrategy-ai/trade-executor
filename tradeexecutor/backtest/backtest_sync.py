@@ -168,11 +168,20 @@ class BacktestSyncModel(SyncModel):
 
             assert p.is_credit_supply()
 
-            accrued = self.calculate_accrued_interest(universe, p, timestamp)
-            new_amount = Decimal(p.interest.opening_amount) + accrued
+
+            accrued = self.calculate_accrued_interest(universe, p)
+
+            interest = p.loan.collateral_interest
+
+            # TODO: replace with a real interest calculation,
+            # based on universe.lending_candles
+            old_amount = interest.last_atoken_amount
+            new_amount = old_amount * Decimal(1+accrued)
+
             evt = update_credit_supply_interest(
                 state,
                 p,
+                p.pair.base,
                 new_atoken_amount=new_amount,
                 event_at=timestamp,
             )

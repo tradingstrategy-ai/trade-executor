@@ -435,24 +435,29 @@ class TradeExecution:
     #: This is the realised interest. Any accured interest
     #: must be realised by claiming it in some trade.
     #: Usually this is the trade that closes the position.
+    #: See `mark_trade_success` for the logic.
     #:
-    #: In reserve tokens.
+    #: Expressed in reserve tokens.
     #:
     claimed_interest: Optional[Decimal] = None
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         if self.is_spot():
             if self.is_buy():
                 return f"<Buy #{self.trade_id} {self.planned_quantity} {self.pair.base.token_symbol} at {self.planned_price}, {self.get_status().name}>"
             else:
                 return f"<Sell #{self.trade_id} {abs(self.planned_quantity)} {self.pair.base.token_symbol} at {self.planned_price}, {self.get_status().name}>"
-        else:
-            if self.is_short():
+        elif self.is_short():
                 return f"<Short \n" \
                        f"   #{self.trade_id} \n" \
                        f"   {self.planned_quantity} {self.pair.base.token_symbol} at {self.planned_price}, {self.get_status().name} \n" \
                        f"   collateral consumption: {self.planned_collateral_consumption} collateral allocation: {self.planned_collateral_allocation} \n" \
                        f">"
+        else:
+            return f"<Trade \n" \
+                   f"   #{self.trade_id} \n" \
+                   f"   {self.planned_quantity} {self.pair.base.token_symbol} at {self.planned_price}, {self.get_status().name} \n" \
+                   f">"
 
     def pretty_print(self) -> str:
         """Get diagnostics output for the trade.

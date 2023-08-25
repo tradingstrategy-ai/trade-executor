@@ -36,17 +36,26 @@ def update_credit_supply_interest(
 
     """
 
+    assert asset is not None
     assert position.pair.kind == TradingPairKind.credit_supply
     assert position.is_open() or position.is_frozen(), f"Cannot update interest for position {position}"
 
-    if asset == position.pair.quote:
-        interest = position.loan.collateral_interest
-    elif asset == position.pair.base:
-        interest = position.loan.borrowed_interest
-    else:
-        raise AssertionError(f"Trading pair {position.pair} does not know asset {asset}")
+    loan = position.loan
+    assert loan
 
-    assert interest, f"Position does not have interest tracked set up {position}"
+    if asset == loan.collateral.asset:
+        interest = loan.collateral_interest
+    elif loan.borrowed and asset == position.loan.borrowed.asset:
+        interest = loan.borrowed_interest
+    else:
+        raise AssertionError(f"Loan {loan} does not have asset {asset}\n"
+                             f"We have\n"
+                             f"- {loan.collateral.asset}\n"
+                             f"- {loan.borrowed.asset if loan.borrowed else '<no borrow>'}")
+
+    assert interest, f"Position does not have interest tracked set up on {asset.token_symbol}:\n" \
+                     f"{position} \n" \
+                     f"for asset {asset}"
 
     portfolio = state.portfolio
 

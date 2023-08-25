@@ -78,7 +78,8 @@ class Loan:
     realised_interest: Decimal = ZERO_DECIMAL
 
     def __repr__(self):
-        return f"<Loan, borrowed ${self.borrowed.get_usd_value()} {self.borrowed.asset.token_symbol} for collateral ${self.collateral.get_usd_value()}, at leverage {self.get_leverage()}>"
+        asset_symbol = self.borrowed.asset.token_symbol if self.borrowed else ""
+        return f"<Loan, borrowed ${self.get_borrow_value()} {asset_symbol} for collateral ${self.get_collateral_value()}, at leverage {self.get_leverage()}>"
 
     def clone(self) -> "Loan":
         """Clone this data structure for mutating."""
@@ -94,6 +95,13 @@ class Loan:
         return self.collateral.get_usd_value()
 
     def get_borrow_value(self, include_interest=True) -> USDollarAmount:
+        """Get the outstanding debt amount.
+
+        :param include_interest:
+            With interest.
+        """
+        if not self.borrowed:
+            return 0
         if include_interest:
             return self.borrowed.get_usd_value() + self.get_borrow_interest()
         return self.borrowed.get_usd_value()
@@ -166,13 +174,15 @@ class Loan:
         """
         return self.borrowed.get_usd_value() / self.collateral.get_usd_value()
 
-    def claim_interest(self, quantity: Decimal | None=None) -> Decimal:
+    def claim_interest(self, quantity: Decimal | None = None) -> Decimal:
         """Claim intrest from this position.
 
         Interest should be moved to reserves.
 
         :param quantity:
-            How many reserve tokens worth to claim
+            How many reserve tokens worth to claim.
+
+            If not given claim all accrued interest.
 
         :return:
             Claimed interest in reserve tokens

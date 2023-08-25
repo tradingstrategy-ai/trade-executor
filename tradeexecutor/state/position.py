@@ -1353,7 +1353,10 @@ class TradingPosition(GenericPosition):
         return 0.0
 
     def get_claimed_interest(self) -> USDollarAmount:
-        """How much interest we have claimed from this position and moved back to reserves."""
+        """How much interest we have claimed from this position and moved back to reserves.
+
+        See also :py:meth:`get_accrued_interest` for the life-time interest accumulation.
+        """
         interest = sum([t.get_claimed_interest() for t in self.trades.values() if t.is_success()])
         return interest
 

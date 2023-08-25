@@ -38,7 +38,6 @@ from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
 from tradingstrategy.utils.groupeduniverse import filter_for_pairs
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -243,7 +242,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         side channels.
         """
         return (self.backtest_stop_loss_candles is not None) and \
-               (self.backtest_stop_loss_time_bucket is not None)
+            (self.backtest_stop_loss_time_bucket is not None)
 
     def validate(self):
         """Check that the created universe looks good.
@@ -279,12 +278,12 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         return translate_trading_pair(pair)
 
     def create_single_pair_universe(
-        dataset: Dataset,
-        chain_id: Optional[ChainId] = None,
-        exchange_slug: Optional[str] = None,
-        base_token: Optional[str] = None,
-        quote_token: Optional[str] = None,
-        pair: Optional[HumanReadableTradingPairDescription] = None,
+            dataset: Dataset,
+            chain_id: Optional[ChainId] = None,
+            exchange_slug: Optional[str] = None,
+            base_token: Optional[str] = None,
+            quote_token: Optional[str] = None,
+            pair: Optional[HumanReadableTradingPairDescription] = None,
     ) -> "TradingStrategyUniverse":
         """Filters down the dataset for a single trading pair.
 
@@ -399,11 +398,11 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
 
     @staticmethod
     def create_limited_pair_universe(
-        dataset: Dataset,
-        chain_id: ChainId,
-        exchange_slug: str,
-        pairs: Set[Tuple[str, str]],
-        reserve_asset_pair_ticker: Optional[Tuple[str, str]] = None) -> "TradingStrategyUniverse":
+            dataset: Dataset,
+            chain_id: ChainId,
+            exchange_slug: str,
+            pairs: Set[Tuple[str, str]],
+            reserve_asset_pair_ticker: Optional[Tuple[str, str]] = None) -> "TradingStrategyUniverse":
         """Filters down the dataset for couple trading pair.
 
         This is ideal for strategies that only want to trade few pairs,
@@ -513,13 +512,13 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
 
     @staticmethod
     def create_multipair_universe(
-        dataset: Dataset,
-        chain_ids: Iterable[ChainId],
-        exchange_slugs: Iterable[str],
-        quote_tokens: Iterable[str],
-        reserve_token: str,
-        factory_router_map: Dict[str, tuple],
-        liquidity_resample_frequency: Optional[str] = None,
+            dataset: Dataset,
+            chain_ids: Iterable[ChainId],
+            exchange_slugs: Iterable[str],
+            quote_tokens: Iterable[str],
+            reserve_token: str,
+            factory_router_map: Dict[str, tuple],
+            liquidity_resample_frequency: Optional[str] = None,
     ) -> "TradingStrategyUniverse":
         """Create a trading universe where pairs match a filter conditions.
 
@@ -657,9 +656,9 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
 
     @staticmethod
     def create_multichain_universe_by_pair_descriptions(
-        dataset: Dataset,
-        pairs: Collection[HumanReadableTradingPairDescription],
-        reserve_token_symbol: str,
+            dataset: Dataset,
+            pairs: Collection[HumanReadableTradingPairDescription],
+            reserve_token_symbol: str,
     ) -> "TradingStrategyUniverse":
         """Create a trading universe based on list of (exchange, pair tuples)
 
@@ -759,11 +758,12 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         # Sanity check
         assert reserve.get_asset().address == reserve_asset.address
 
-        atoken = translate_token(reserve.get_atoken())
+        underlying = translate_token(reserve.get_asset())
+        atoken = translate_token(reserve.get_atoken(), underlying=underlying)
 
         return TradingPairIdentifier(
             atoken,
-            reserve_asset,
+            atoken,
             pool_address=reserve.asset_address,
             exchange_address=reserve.asset_address,
             internal_id=reserve.reserve_id,
@@ -810,7 +810,7 @@ class TradingStrategyUniverseModel(UniverseModel):
     def load_data(self,
                   time_frame: TimeBucket,
                   mode: ExecutionMode,
-                  backtest_stop_loss_time_frame: Optional[TimeBucket]=None) -> Dataset:
+                  backtest_stop_loss_time_frame: Optional[TimeBucket] = None) -> Dataset:
         """Loads the server-side data using the client.
 
         :param client:
@@ -1005,13 +1005,20 @@ class DefaultTradingStrategyUniverseModel(TradingStrategyUniverseModel):
             return universe
 
 
-def translate_token(token: Token, require_decimals=True) -> AssetIdentifier:
+def translate_token(
+        token: Token,
+        require_decimals=True,
+        underlying: AssetIdentifier | None = None,
+) -> AssetIdentifier:
     """Translate Trading Strategy token data definition to trade executor.
 
     Trading Strategy client uses compressed columnar data for pairs and tokens.
 
     Creates `AssetIdentifier` based on data coming from
     Trading Strategy :py:class:`tradingstrategy.pair.PandasPairUniverse`.
+
+    :param underlying:
+        Underlying asset for dynamic lending tokens.
 
     :param require_decimals:
         Most tokens / trading pairs are non-functional without decimals information.
@@ -1028,7 +1035,8 @@ def translate_token(token: Token, require_decimals=True) -> AssetIdentifier:
         token.chain_id.value,
         token.address,
         token.symbol,
-        token.decimals
+        token.decimals,
+        underlying=underlying,
     )
 
 
@@ -1078,14 +1086,14 @@ def translate_trading_pair(pair: DEXPair) -> TradingPairIdentifier:
             # Allow explicit fee = 0 in testing.
             # if pair.fee != 0:
             #     assert pair.fee > 1, f"DEXPair fee must be in BPS, got {pair.fee}"
-            
+
             # can receive fee in bps or multiplier, but not raw form
             if pair.fee > 1:
-                fee = pair.fee/10_000
-                
+                fee = pair.fee / 10_000
+
             else:
                 fee = pair.fee
-            
+
             # highest fee tier is currently 1% and lowest in 0.01%
             if fee != 0:
                 assert 0.0001 <= fee <= 0.01, "bug in converting fee to multiplier, make sure bps"
@@ -1222,7 +1230,6 @@ def load_all_data(
             if stop_loss_time_frame:
                 stop_loss_candles = client.fetch_all_candles(stop_loss_time_frame).to_pandas()
 
-
         return Dataset(
             time_bucket=time_frame,
             liquidity_time_bucket=liquidity_time_frame,
@@ -1242,7 +1249,7 @@ def load_partial_data(
         pairs: Collection[HumanReadableTradingPairDescription],
         universe_options: UniverseOptions,
         liquidity=False,
-        stop_loss_time_bucket: Optional[TimeBucket]=None,
+        stop_loss_time_bucket: Optional[TimeBucket] = None,
         required_history_period: datetime.timedelta | None = None,
         lending_reserves: Collection[LendingReserveDescription] | None = None,
         lending_candle_types: Collection[LendingCandleType] = (LendingCandleType.supply_apr, LendingCandleType.variable_borrow_apr),

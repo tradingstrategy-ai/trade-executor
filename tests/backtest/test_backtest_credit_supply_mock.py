@@ -129,11 +129,13 @@ def test_backtest_open_only_credit_supply_mock_data(
     # Backtest creates one event before each tick
     assert len(credit_position.balance_updates) == 30
 
-    assert credit_position.interest.opening_amount == Decimal("10000.00")
-    assert credit_position.get_accrued_interest() == pytest.approx(30)
-    assert credit_position.get_quantity() == pytest.approx(Decimal('10030'))
-    assert credit_position.get_value() == pytest.approx(10030)
-    assert portfolio.get_total_equity() == pytest.approx(10030)
+    interest = credit_position.loan.collateral_interest
+    assert interest.opening_amount == Decimal("10000.00")
+    assert credit_position.get_accrued_interest() == pytest.approx(30.043540627415943)
+    assert credit_position.get_quantity() == pytest.approx(Decimal('10030.043540627415943'))
+    assert credit_position.get_value() == pytest.approx(10030.043540627415943)
+    assert portfolio.get_total_equity() == pytest.approx(10030.043540627415943)
+
 
 
 def test_backtest_open_and_close_credit_supply_mock(

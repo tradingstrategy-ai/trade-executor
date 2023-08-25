@@ -681,7 +681,7 @@ class PositionManager:
         assert self.strategy_universe, "Make sure trading_strategy_engine_version = 0.3. Credit supply does not work with old decide_trades()."
         pair = position.pair
 
-        assert pair.quote.is_stablecoin(), f"Non-stablecoin lending not yet implemented"
+        assert pair.quote.underlying.is_stablecoin(), f"Non-stablecoin lending not yet implemented"
         price = 1.0
 
         if quantity is None:
@@ -768,7 +768,7 @@ class PositionManager:
         elif position.is_credit_supply():
 
             if trade_type is None:
-                trade_type = TradeType.supply_credit
+                trade_type = TradeType.rebalance
 
             return self.close_credit_supply_position(
                 position,
@@ -863,15 +863,13 @@ class PositionManager:
         lending_pool_identifier = self.strategy_universe.get_credit_supply_pair()
         state = self.state
 
-        credit_supply_position, trade, _ = state.create_trade(
+        credit_supply_position, trade, _ = state.supply_credit(
             self.timestamp,
             lending_pool_identifier,
-            quantity=None,
-            reserve=Decimal(amount),
-            assumed_price=1.0,
-            trade_type=TradeType.supply_credit,
+            collateral_quantity=Decimal(amount),
+            trade_type=TradeType.rebalance,
             reserve_currency=self.strategy_universe.get_reserve_asset(),
-            reserve_currency_price=1.0,
+            collateral_asset_price=1.0,
         )
 
         return [trade]
