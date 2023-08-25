@@ -356,6 +356,8 @@ class State:
 
         For argument and return value documentation see :py:meth:`create_trade`.
 
+        See also :py:meth:`supply_credit`.
+
         :param borrowed_quantity:
             How much we are going to borrow and increase/decrease our exposure.
 
@@ -451,18 +453,22 @@ class State:
     ) -> Tuple[TradingPosition, TradeExecution, bool]:
         """Create or adjust credit supply position.
 
-        Credit supply position is modelled as following
+        Credit supply position trades are modelled as following
 
-        - You BUY aToken using the reserve
+        - You BUY aToken using the reserve. Like buying aUSDC
+          with USDC.
 
         - You SELL aToken and get back reserve + interest,
           with the trade size reserve + interest
 
-        - aToken Quantity is positive/negative depending
-          if you are entering or exiting the position
-
         - Reserve is USDC, always positive
 
+        - The modelling is different from trade_short/trade_long
+
+        - See also :py:meth:`trade_short`
+
+        :param collateral_quantity:
+            Positive for supplying credit, negative of recalling reserves.
         """
 
         assert pair.kind == TradingPairKind.credit_supply

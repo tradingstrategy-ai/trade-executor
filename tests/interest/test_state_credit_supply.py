@@ -147,15 +147,13 @@ def test_accrue_interest(
     trader = UnitTestTrader(state)
 
     # Open credit supply position
-    credit_supply_position, trade, _ = state.create_trade(
+    credit_supply_position, trade, _ = state.supply_credit(
         opened_at,
         lending_pool_identifier,
-        quantity=None,
-        reserve=Decimal(9000),
-        assumed_price=1.0,
+        collateral_quantity=Decimal(9000),
+        collateral_asset_price=1.0,
         trade_type=TradeType.rebalance,
         reserve_currency=usdc,
-        reserve_currency_price=1.0,
     )
     trader.set_perfectly_executed(trade)
 

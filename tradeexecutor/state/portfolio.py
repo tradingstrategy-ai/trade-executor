@@ -694,7 +694,12 @@ class Portfolio:
         reserve = self.get_reserve_position(asset)
         assert reserve, f"No reserves available for {asset}"
         assert reserve.quantity is not None, f"Reserve quantity not set for {asset} in portfolio {self}"
-        assert reserve.quantity + amount >= 0, f"Reserves went to negative with new amount {amount}, current reserves {reserve.quantity}"
+
+        # TODO: On paper reserves can go negative.
+        # because we might execute sell trade that increase our capital
+        # before executing buy trades
+        # assert reserve.quantity + amount >= 0, f"Reserves went to negative with new amount {amount}, current reserves {reserve.quantity}"
+
         reserve.quantity += amount
 
     def move_capital_from_reserves_to_spot_trade(self, trade: TradeExecution, underflow_check=True):
