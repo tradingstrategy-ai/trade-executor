@@ -118,7 +118,7 @@ def calculate_statistics(
             total_equity=portfolio.get_total_equity(),
             free_cash=float(portfolio.get_cash()),
             open_position_count=len(portfolio.open_positions),
-            open_position_equity=portfolio.get_position_equity_and_leveraged_nav(),
+            open_position_equity=portfolio.get_position_equity_and_loan_nav(),
             frozen_position_equity=portfolio.get_frozen_position_equity(),
             frozen_position_count=len(portfolio.frozen_positions),
             closed_position_count=len(portfolio.closed_positions),

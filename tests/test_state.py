@@ -234,7 +234,7 @@ def test_single_sell_all(usdc, weth, weth_usdc, start_ts, single_asset_portfolio
     # 0: Check the starting state
     assert state.portfolio.get_cash() == 500
     assert state.portfolio.get_total_equity() == 657.7
-    assert state.portfolio.get_position_equity_and_leveraged_nav() == 157.7
+    assert state.portfolio.get_position_equity_and_loan_nav() == 157.7
     eth_quantity = state.portfolio.open_positions[1].get_quantity_old()
     assert eth_quantity == Decimal("0.09500000000000000111022302463")
 
@@ -328,7 +328,7 @@ def test_single_sell_all(usdc, weth, weth_usdc, start_ts, single_asset_portfolio
     # now sold at 1640
     assert state.portfolio.get_cash() == 655.8
     assert state.portfolio.get_total_equity() == 655.8
-    assert state.portfolio.get_position_equity_and_leveraged_nav() == 0
+    assert state.portfolio.get_position_equity_and_loan_nav() == 0
 
     assert len(state.portfolio.open_positions) == 0
     assert len(state.portfolio.closed_positions) == 1

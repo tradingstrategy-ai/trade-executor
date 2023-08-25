@@ -21,7 +21,7 @@ from tradeexecutor.state.trade import TradeType, QUANTITY_EPSILON
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.types import USDollarAmount, BPS, USDollarPrice, Percent, LeverageMultiplier
 from tradeexecutor.strategy.dust import get_dust_epsilon_for_pair
-from tradeexecutor.strategy.lending_protocol_leverage import create_short_loan, plan_loan_update_for_short
+from tradeexecutor.strategy.lending_protocol_leverage import create_short_loan, plan_loan_update_for_short, create_credit_supply_loan
 from tradeexecutor.strategy.trade_pricing import TradePricing
 from tradeexecutor.utils.accuracy import sum_decimal
 from tradingstrategy.lending import LendingProtocolType
@@ -213,15 +213,13 @@ class TradingPosition(GenericPosition):
     #:
     trigger_updates: List[TriggerPriceUpdate] = field(default_factory=list)
 
-    #: Position accrued interest
+    #: The loan underlying the position leverage or crdit supply.
     #:
-    #: Only applicable for positions gaining interest.
+    #: Applicable for
     #:
-    interest: Optional[Interest] = None
-
-    #: The loan underlying the position leverage
+    #: - short/long positions using lending protocols
     #:
-    #: Only applicable for short/long positions using lending protocols.
+    #: - credit supply (collateral without borrow)
     #:
     loan: Optional[Loan] = None
 
@@ -328,6 +326,10 @@ class TradingPosition(GenericPosition):
     def is_leverage(self) -> bool:
         """Is this leveraged/loan backed position."""
         return self.pair.is_leverage()
+
+    def is_loan_based(self) -> bool:
+        """The profit for this trading pair is loan based.."""
+        return self.pair.is_leverage() or self.pair.is_credit_supply()
 
     def is_stop_loss(self) -> bool:
         """Was this position ended with stop loss trade"""
@@ -515,13 +517,21 @@ class TradingPosition(GenericPosition):
         """Get all trades that have failed in the execution."""
         return [t for t in self.trades.values() if t.is_failed()]
 
-    def calculate_value_using_price(self, token_price: USDollarAmount, reserve_price: USDollarAmount) -> USDollarAmount:
+    def calculate_value_using_price(
+            self,
+            token_price: USDollarAmount,
+            reserve_price: USDollarAmount,
+            include_interest=True,
+    ) -> USDollarAmount:
         """Calculate the value of this position using the given prices."""
+
         token_quantity = sum([t.get_equity_for_position() for t in self.trades.values() if t.is_accounted_for_equity()])
 
-        token_quantity += self.calculate_accrued_interest_quantity()
+        if include_interest:
+            token_quantity += self.calculate_accrued_interest_quantity()
 
         reserve_quantity = sum([t.get_equity_for_reserve() for t in self.trades.values() if t.is_accounted_for_equity()])
+
         return float(token_quantity) * token_price + float(reserve_quantity) * reserve_price
 
     def get_equity(self) -> USDollarAmount:
@@ -536,8 +546,8 @@ class TradingPosition(GenericPosition):
             case _:
                 return 0
 
-    def get_value(self, include_interest=True, equity_only=False) -> USDollarAmount:
-        """Get the position value using the latest revaluation pricing.
+    def get_value(self, include_interest=True) -> USDollarAmount:
+        """Get the net asset value of this position.
 
         If the position is closed, the value should be zero.
 
@@ -557,11 +567,20 @@ class TradingPosition(GenericPosition):
 
         match self.pair.kind:
             case TradingPairKind.spot_market_hold | TradingPairKind.credit_supply:
-                value += self.calculate_value_using_price(self.last_token_price, self.last_reserve_price)
+                value += self.calculate_value_using_price(
+                    self.last_token_price,
+                    self.last_reserve_price,
+                    include_interest=False,
+                )
             case TradingPairKind.lending_protocol_short:
                 # Value for leveraged positions is
-                value += self.calculate_value_using_price(self.last_token_price, self.last_reserve_price)
-                value = -value  # Short
+                #
+                # Short
+                value -= self.calculate_value_using_price(
+                    self.last_token_price,
+                    self.last_reserve_price,
+                    include_interest=False,
+                )
             case _:
                 raise NotImplementedError(f"Does not know how to value position for {self.pair}")
 
@@ -788,21 +807,18 @@ class TradingPosition(GenericPosition):
         if pair.kind.is_interest_accruing():
             if pair.kind == TradingPairKind.credit_supply:
                 assert pair.kind == TradingPairKind.credit_supply, "Only credit supply supported for now"
-                if self.interest is None:
+                if self.loan is None:
                     assert trade.is_buy(), "Opening credit position is modelled as buy"
-                    self.interest = Interest(
-                        opening_amount=planned_reserve,
-                        last_updated_at=datetime.datetime.utcnow(),
-                        last_event_at=datetime.datetime.utcnow(),
-                        last_accrued_interest=Decimal(0),
-                        last_atoken_amount=planned_reserve,
-                    )
+                    trade.planned_loan_update = create_credit_supply_loan(self, trade)
+
             elif pair.kind.is_leverage():
                 assert pair.get_lending_protocol() == LendingProtocolType.aave_v3, "Unsupported protocol"
                 if pair.kind.is_shorting():
                     if not self.loan:
                         # Opening the position, create the first loan
-                        trade.planned_loan_update = create_short_loan(self, trade)
+                        trade.planned_loan_update = create_short_loan(
+                            self,
+                            trade)
                     else:
                         # Loan is being increased/reduced
                         trade.planned_loan_update = plan_loan_update_for_short(
@@ -1330,8 +1346,8 @@ class TradingPosition(GenericPosition):
         if self.is_closed():
             return 0
 
-        if self.interest is not None:
-            return float(self.interest.last_accrued_interest) * self.last_token_price
+        if self.loan is not None:
+            return self.loan.get_net_interest()
 
         return 0.0
 

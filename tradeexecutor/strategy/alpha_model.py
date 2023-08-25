@@ -442,7 +442,7 @@ class AlphaModel:
 
         - Update USD portfolio value of an asset
         """
-        total = portfolio.get_position_equity_and_leveraged_nav()
+        total = portfolio.get_position_equity_and_loan_nav()
         for position in portfolio.open_positions.values():
             value = position.get_value()
             weight = value  / total

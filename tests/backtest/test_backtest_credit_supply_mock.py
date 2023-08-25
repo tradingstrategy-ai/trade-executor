@@ -80,7 +80,7 @@ def create_trading_universe(
     return strategy_universe
 
 
-def test_backtest_open_only_credit_supply_mock(
+def test_backtest_open_only_credit_supply_mock_data(
         logger: logging.Logger,
         persistent_test_client: Client,
         interest_rate_mock,

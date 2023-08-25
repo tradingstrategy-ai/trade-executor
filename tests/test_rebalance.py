@@ -342,7 +342,7 @@ def test_rebalance_trades_flip_position(
     trades = rebalance_portfolio_old(
         position_manager,
         new_weights,
-        portfolio.get_position_equity_and_leveraged_nav(),
+        portfolio.get_position_equity_and_loan_nav(),
     )
 
     assert len(trades) == 2, f"Got trades: {trades}"
@@ -404,7 +404,7 @@ def test_rebalance_trades_flip_position_partial(
     trades = rebalance_portfolio_old(
         position_manager,
         new_weights,
-        portfolio.get_position_equity_and_leveraged_nav(),
+        portfolio.get_position_equity_and_loan_nav(),
     )
 
     assert len(trades) == 2, f"Got trades: {trades}"
@@ -464,7 +464,7 @@ def test_rebalance_bad_weights(
         rebalance_portfolio_old(
             position_manager,
             new_weights,
-            portfolio.get_position_equity_and_leveraged_nav(),
+            portfolio.get_position_equity_and_loan_nav(),
         )
 
 
@@ -514,7 +514,7 @@ def test_alpha_model_trades_flip_position(
     # Calculate how much dollar value we want each individual position to be on this strategy cycle,
     # based on our total available equity
     portfolio = position_manager.get_current_portfolio()
-    portfolio_target_value = portfolio.get_position_equity_and_leveraged_nav()
+    portfolio_target_value = portfolio.get_position_equity_and_loan_nav()
     alpha_model.calculate_target_positions(position_manager, portfolio_target_value)
 
     # Shift portfolio from current positions to target positions
@@ -598,7 +598,7 @@ def test_alpha_model_flip_position_partially(
     # Calculate how much dollar value we want each individual position to be on this strategy cycle,
     # based on our total available equity
     portfolio = position_manager.get_current_portfolio()
-    portfolio_target_value = portfolio.get_position_equity_and_leveraged_nav()
+    portfolio_target_value = portfolio.get_position_equity_and_loan_nav()
     alpha_model.calculate_target_positions(position_manager, portfolio_target_value)
 
     # Check we have 50% / 50%

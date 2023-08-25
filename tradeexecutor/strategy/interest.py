@@ -3,7 +3,7 @@ import datetime
 from decimal import Decimal
 
 from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdatePositionType, BalanceUpdateCause
-from tradeexecutor.state.identifier import TradingPairKind
+from tradeexecutor.state.identifier import TradingPairKind, AssetIdentifier
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
 
@@ -11,6 +11,7 @@ from tradeexecutor.state.state import State
 def update_credit_supply_interest(
     state: State,
     position: TradingPosition,
+    asset: AssetIdentifier,
     new_atoken_amount: Decimal,
     event_at: datetime.datetime,
     block_number: int | None = None,
@@ -18,6 +19,17 @@ def update_credit_supply_interest(
     log_index: int | None = None,
 ) -> BalanceUpdate:
     """Poke credit supply position to increase its interest amount.
+
+    :param position:
+        Trading position to update
+
+    :param asset:
+        The asset of which we update the events for.
+
+        aToken for collateral, vToken for debt.
+
+    :param new_atoken_amount:
+        The new on-chain value of aToken/vToken tracking the loan.
 
     :param event_at:
         Block mined timestamp
@@ -27,17 +39,22 @@ def update_credit_supply_interest(
     assert position.pair.kind == TradingPairKind.credit_supply
     assert position.is_open() or position.is_frozen(), f"Cannot update interest for position {position}"
 
+    if asset == position.pair.quote:
+        interest = position.loan.collateral_interest
+    elif asset == position.pair.base:
+        interest = position.loan.borrowed_interest
+    else:
+        raise AssertionError(f"Trading pair {position.pair} does not know asset {asset}")
+
+    assert interest, f"Position does not have interest tracked set up {position}"
+
     portfolio = state.portfolio
 
     event_id = portfolio.allocate_balance_update_id()
 
-    # We use USDC (not AUSDC) as the asset
-    # for credit supply interest events
-    asset = position.pair.quote
+    assert asset.underlying.is_stablecoin(), f"Credit supply is currently supported for stablecoin assets with 1:1 USD price assumption. Got: {asset}"
 
-    assert asset.is_stablecoin(), f"Credit supply is currently supported for stablecoin assets with 1:1 USD price assumption. Got: {asset}"
-
-    old_balance = position.interest.last_atoken_amount
+    old_balance = interest.last_atoken_amount
     gained_interest = new_atoken_amount - old_balance
     usd_value = float(new_atoken_amount)
 
@@ -64,9 +81,9 @@ def update_credit_supply_interest(
     position.add_balance_update_event(evt)
 
     # Update interest stats
-    position.interest.last_accrued_interest = position.calculate_accrued_interest_quantity()
-    position.interest.last_updated_at = datetime.datetime.utcnow()
-    position.interest.last_event_at = event_at
-    position.interest.last_updated_block_number = block_number
-    position.interest.last_atoken_amount = new_atoken_amount
+    interest.last_accrued_interest = position.calculate_accrued_interest_quantity()
+    interest.last_updated_at = datetime.datetime.utcnow()
+    interest.last_event_at = event_at
+    interest.last_updated_block_number = block_number
+    interest.last_atoken_amount = new_atoken_amount
     return evt

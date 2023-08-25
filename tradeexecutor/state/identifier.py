@@ -175,6 +175,10 @@ class TradingPairKind(enum.Enum):
         """Do base or quote or both gain interest during when the position is open."""
         return self in (TradingPairKind.lending_protocol_short, TradingPairKind.lending_protocol_long, TradingPairKind.credit_supply)
 
+    def is_credit_supply(self) -> bool:
+        """This trading pair is for gaining interest."""
+        return self == TradingPairKind.credit_supply
+
     def is_shorting(self) -> bool:
         """This trading pair is for shorting."""
         return self == TradingPairKind.lending_protocol_short
@@ -220,12 +224,19 @@ class TradingPairIdentifier:
 
     #: Base token in this trading pair
     #:
-    #: E.g. `WETH`
+    #: E.g. `WETH`.
+    #:
+    #: In leveraged positions this is borrowed asset with :py:attr:`AssetIdentifier.underlying` set.
+    #:
+    #:
     base: AssetIdentifier
 
     #: Quote token in this trading pair
     #:
     #: E.g. `USDC`
+    #:
+    #: In leveraged positions and credit supply positions, this is borrowed asset with :py:attr:`AssetIdentifier.underlying` set.
+    #:
     quote: AssetIdentifier
 
     #: Smart contract address of the pool contract.
@@ -384,6 +395,9 @@ class TradingPairIdentifier:
 
     def is_spot(self) -> bool:
         return self.kind.is_spot()
+
+    def is_credit_supply(self) -> bool:
+        return self.kind.is_credit_supply()
 
     def get_liquidation_threshold(self) -> Percent:
         """What's the liqudation threshold for this leveraged pair"""

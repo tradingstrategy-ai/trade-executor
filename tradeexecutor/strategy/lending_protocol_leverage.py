@@ -7,8 +7,57 @@ import datetime
 from _decimal import Decimal
 
 from tradeexecutor.state.identifier import AssetWithTrackedValue, AssetType
+from tradeexecutor.state.interest import Interest
 from tradeexecutor.state.loan import Loan
 from tradeexecutor.state.trade import TradeExecution
+
+
+def create_credit_supply_loan(
+    position: "tradeexeecutor.state.position.TradingPosition",
+    trade: TradeExecution,
+):
+    """Create a loan that supplies credit to a lending protocol.
+
+    This is a loan with
+
+    - Collateral only
+
+    - Borrowed is ``None``
+    """
+
+    assert trade.is_credit_supply()
+    assert not position.loan
+
+    pair = position.pair
+    assert pair.is_credit_supply()
+
+    # aToken
+
+    #
+    # The expected collateral
+    # is our collateral allocation (reserve)
+    # and whatever more collateral we get for selling the shorted token
+    #
+
+    collateral = AssetWithTrackedValue(
+        asset=pair.quote,
+        last_usd_price=trade.reserve_currency_exchange_rate,
+        last_pricing_at=datetime.datetime.utcnow(),
+        quantity=trade.planned_reserve,
+    )
+
+    loan = Loan(
+        pair=trade.pair,
+        collateral=collateral,
+        collateral_interest=Interest.open_new(trade.planned_reserve),
+        borrowed=None,
+        borrowed_interest=None,
+    )
+
+    # Sanity check
+    loan.check_health()
+
+    return loan
 
 
 def create_short_loan(

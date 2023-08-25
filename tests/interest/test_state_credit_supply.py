@@ -22,11 +22,18 @@ def usdc() -> AssetIdentifier:
     """Mock USDC."""
     return AssetIdentifier(ChainId.ethereum.value, "0x0", "USDC", 6)
 
+
 @pytest.fixture()
-def ausdc() -> AssetIdentifier:
+def ausdc(usdc) -> AssetIdentifier:
     """Mock aUSDC. Aave's interest accruing USDC where balanceOf() is dynamic."""
     # https://etherscan.io/token/0xbcca60bb61934080951369a648fb03df4f96263c#readProxyContract
-    return AssetIdentifier(ChainId.ethereum.value, "0x1", "aUSDC", 6)
+    return AssetIdentifier(
+        ChainId.ethereum.value,
+        "0x1",
+        "aUSDC",
+        6,
+        underlying=usdc,
+    )
 
 
 @pytest.fixture()
@@ -41,9 +48,15 @@ def lending_protocol_address() -> str:
 @pytest.fixture()
 def lending_pool_identifier(usdc, ausdc) -> TradingPairIdentifier:
     """Sets up a lending pool"""
+
+    #
+    # For "credit only"
+    # position both base and quote of the trading pair identifier
+    # are the atoken
+    #
     return TradingPairIdentifier(
         ausdc,
-        usdc,
+        ausdc,
         "0x1",
         ZERO_ADDRESS,
         internal_id=1,
@@ -77,40 +90,52 @@ def test_open_supply_credit(
     """
     assert lending_pool_identifier.kind.is_interest_accruing()
     assert lending_pool_identifier.base.token_symbol == "aUSDC"
-    assert lending_pool_identifier.quote.token_symbol == "USDC"
+    assert lending_pool_identifier.base.underlying.token_symbol == "USDC"
+    assert lending_pool_identifier.quote.token_symbol == "aUSDC"
+    assert lending_pool_identifier.quote.underlying.token_symbol == "USDC"
 
     trader = UnitTestTrader(state)
 
-    credit_supply_position, trade, created = state.create_trade(
+    credit_supply_position, trade, created = state.supply_credit(
         datetime.datetime.utcnow(),
         lending_pool_identifier,
-        quantity=None,
-        reserve=Decimal(9000),
-        assumed_price=1.0,
-        trade_type=TradeType.supply_credit,
+        collateral_quantity=Decimal(9000),
+        trade_type=TradeType.rebalance,
         reserve_currency=usdc,
-        reserve_currency_price=1.0,
+        collateral_asset_price=1.0,
     )
 
+    assert trade.planned_loan_update
     trader.set_perfectly_executed(trade)
+    assert trade.executed_loan_update
 
     assert credit_supply_position.last_token_price == 1.0
 
     assert created
     assert trade.is_success()
-    assert trade.trade_type == TradeType.supply_credit
-    assert credit_supply_position.interest is not None
-    assert credit_supply_position.interest.opening_amount == Decimal(9000)
-    assert credit_supply_position.interest.last_accrued_interest == 0
+    assert trade.is_credit_supply()
+
+    interest = credit_supply_position.loan.collateral_interest
+
+    assert interest is not None
+    assert interest.opening_amount == Decimal(9000)
+    assert interest.last_accrued_interest == 0
     assert credit_supply_position.get_value() == Decimal(9000)
 
-    assert state.portfolio.get_total_equity() == 10000
+    loan = credit_supply_position.loan
+    assert loan.get_net_asset_value() == 9000
+    assert loan.collateral.get_usd_value() == 9000
+    assert loan.get_collateral_interest() == 0
+
+    assert credit_supply_position.get_value() == pytest.approx(9000)
+    assert state.portfolio.get_net_asset_value() == 10000
 
 
 def test_accrue_interest(
         state: State,
         lending_pool_identifier: TradingPairIdentifier,
         usdc: AssetIdentifier,
+        ausdc: AssetIdentifier,
 ):
     """See that the credit supply position gains interest.
 
@@ -131,6 +156,7 @@ def test_accrue_interest(
         reserve_currency_price=1.0,
     )
     trader.set_perfectly_executed(trade)
+
     assert credit_supply_position.get_value() == pytest.approx(9000)
 
     # Generate first interest accruing event
@@ -138,6 +164,7 @@ def test_accrue_interest(
     update_credit_supply_interest(
         state,
         credit_supply_position,
+        ausdc,
         new_atoken_amount=Decimal(9000.01),
         event_at=interest_event_1_at,
     )
@@ -147,9 +174,17 @@ def test_accrue_interest(
     assert credit_supply_position.balance_updates[1].quantity == pytest.approx(Decimal(0.01))
 
     # Position and portfolio valuations reflect the accrued interest
-    assert credit_supply_position.interest.last_accrued_interest == pytest.approx(Decimal(0.01))
-    assert credit_supply_position.interest.last_event_at == interest_event_1_at
+    loan = credit_supply_position.loan
+    interest = loan.collateral_interest
+    assert interest.last_accrued_interest == pytest.approx(Decimal(0.01))
+    assert interest.last_event_at == interest_event_1_at
+
+    assert loan.get_collateral_interest() == pytest.approx(0.01)
+    assert loan.get_borrow_interest() == 0
+    assert loan.get_net_interest() == pytest.approx(0.01)
+
     assert credit_supply_position.get_value() == pytest.approx(9000.01)
     assert credit_supply_position.get_quantity() == pytest.approx(Decimal(9000.01))
 
-    assert state.portfolio.get_total_equity() == 10000.01
+    assert state.portfolio.get_net_asset_value(include_interest=True) == 10000.01
+    assert state.portfolio.get_net_asset_value(include_interest=False) == 10000.00

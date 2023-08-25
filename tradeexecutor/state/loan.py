@@ -12,6 +12,7 @@ from typing import TypeAlias, Tuple
 from dataclasses_json import dataclass_json
 
 from tradeexecutor.state.identifier import AssetIdentifier, AssetWithTrackedValue, TradingPairIdentifier
+from tradeexecutor.state.interest import Interest
 from tradeexecutor.state.types import LeverageMultiplier, USDollarAmount
 
 #: Health Factor: hF=dC/d, if lower than 1, the account can be liquidated
@@ -55,11 +56,21 @@ class Loan:
     #:
     collateral: AssetWithTrackedValue
 
+    #: Tracker for collateral interest events
+    #:
+    collateral_interest: Interest
+
     #: What collateral we used for this loan
     #:
-    #: This is vToken for Aave
+    #: This is vToken for Aave.
     #:
-    borrowed: AssetWithTrackedValue
+    #: Not set if the loan is only for credit supply position.
+    #:
+    borrowed: AssetWithTrackedValue | None = None
+
+    #: Tracker for borrowed asset interest events
+    #:
+    borrowed_interest: Interest | None = None
 
     def __repr__(self):
         return f"<Loan, borrowed ${self.borrowed.get_usd_value()} {self.borrowed.asset.token_symbol} for collateral ${self.collateral.get_usd_value()}, at leverage {self.get_leverage()}>"
@@ -68,9 +79,54 @@ class Loan:
         """Clone this data structure for mutating."""
         return copy.deepcopy(self)
 
-    def get_net_asset_value(self) -> USDollarAmount:
+    def get_collateral_interest(self) -> USDollarAmount:
+        """How much interest we have received on collateral."""
+        return float(self.collateral_interest.last_accrued_interest) * self.collateral.last_usd_price
+
+    def get_collateral_value(self, include_interest=True) -> USDollarAmount:
+        if include_interest:
+            return self.collateral.get_usd_value() + self.get_collateral_interest()
+        return self.collateral.get_usd_value()
+
+    def get_borrow_value(self, include_interest=True) -> USDollarAmount:
+        if include_interest:
+            return self.borrowed.get_usd_value() + self.get_borrow_interest()
+        return self.borrowed.get_usd_value()
+
+    def get_borrow_interest(self) -> USDollarAmount:
+        """How much interest we have paid on borrows
+
+        :return:
+            Always positive
+        """
+        if self.borrowed:
+            return float(self.borrowed_interest.last_accrued_interest) * self.borrowed.last_usd_price
+        return 0
+
+    def get_net_interest(self) -> USDollarAmount:
+        """How many dollars of interest we have accumulated.
+
+        - We gain money on collateral
+
+        - We lost money by maintaining borrow
+
+        """
+        if self.borrowed:
+            # Margined trading
+            return self.get_collateral_interest() - self.get_borrow_interest()
+        else:
+            # Credit supply
+            return self.get_collateral_interest()
+
+    def get_net_asset_value(self, include_interest=True) -> USDollarAmount:
         """What's the withdrawable amount of the position is closed."""
-        return self.collateral.get_usd_value() - self.borrowed.get_usd_value()
+
+        if self.borrowed:
+            # Margined trading
+            return self.get_collateral_value(include_interest) - self.get_borrow_value(include_interest)
+        else:
+            # Credit supply
+            return self.get_collateral_value(include_interest)
 
     def get_leverage(self) -> LeverageMultiplier:
         """How leveraged this loan is.
@@ -84,7 +140,13 @@ class Loan:
         raise NotImplementedError()
 
     def get_health_factor(self) -> HealthFactor:
-        if self.borrowed.quantity == 0:
+        """Get loan health factor.
+
+        Safety of your deposited collateral against the borrowed assets and its underlying value.
+
+        If the health factor goes below 1, the liquidation of your collateral might be triggered.
+        """
+        if self.borrowed is None or self.borrowed.quantity == 0:
             return math.inf
         return self.collateral.asset.liquidation_threshold * self.collateral.get_usd_value() / self.borrowed.get_usd_value()
 

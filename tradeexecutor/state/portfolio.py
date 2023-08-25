@@ -543,7 +543,7 @@ class Portfolio:
         """
         return self.get_cash()
 
-    def get_position_equity_and_leveraged_nav(self) -> USDollarAmount:
+    def get_position_equity_and_loan_nav(self, include_interest=True) -> USDollarAmount:
         """Get the equity tied tot the current trading positions.
 
         TODO: Rename this function - also deals with loans not just equity
@@ -553,16 +553,16 @@ class Portfolio:
         """
 
         # Any trading positions we have one
-        spot_values = sum([p.get_equity() for p in self.open_positions.values() if not p.is_leverage()])
+        spot_values = sum([p.get_equity() for p in self.open_positions.values() if not p.is_loan_based()])
 
         # Minus any outstanding loans we have
-        leveraged_values = self.get_leveraged_net_asset_value()
+        leveraged_values = self.get_all_loan_nav(include_interest)
 
         return spot_values + leveraged_values
 
-    def get_leveraged_net_asset_value(self) -> USDollarAmount:
+    def get_all_loan_nav(self, include_interest=True) -> USDollarAmount:
         """Get net asset value we can theoretically free from leveraged positions."""
-        return sum([p.loan.get_net_asset_value() for p in self.open_positions.values() if p.is_leverage()])
+        return sum([p.loan.get_net_asset_value(include_interest) for p in self.open_positions.values() if p.is_loan_based()])
 
     def get_frozen_position_equity(self) -> USDollarAmount:
         """Get the value of trading positions that are frozen currently."""
@@ -592,9 +592,9 @@ class Portfolio:
         # Any trading positions we have one
         spot_values = sum([p.get_equity() for p in self.open_positions.values() if not p.is_leverage()])
 
-        return self.get_position_equity_and_leveraged_nav() + self.get_cash()
+        return self.get_position_equity_and_loan_nav() + self.get_cash()
 
-    def get_net_asset_value(self) -> USDollarAmount:
+    def get_net_asset_value(self, include_interest=True) -> USDollarAmount:
         """Calculate portfolio value if every position would be closed now.
 
         This includes
@@ -605,7 +605,7 @@ class Portfolio:
 
         - Net asset value hold in leveraged positions
         """
-        return self.get_position_equity_and_leveraged_nav() + self.get_cash()
+        return self.get_position_equity_and_loan_nav(include_interest) + self.get_cash()
 
     def get_unrealised_profit_usd(self) -> USDollarAmount:
         """Get the profit of currently open positions.

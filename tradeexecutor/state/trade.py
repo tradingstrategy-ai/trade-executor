@@ -667,6 +667,10 @@ class TradeExecution:
         """This is margined trade."""
         return self.pair.kind.is_leverage()
 
+    def is_credit_supply(self) -> bool:
+        """This is a credit supply trade."""
+        return self.pair.kind.is_credit_supply()
+
     def is_spot(self) -> bool:
         """This is a spot marget trade."""
         return not self.is_leverage()

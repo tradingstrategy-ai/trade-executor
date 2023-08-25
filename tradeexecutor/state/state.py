@@ -17,7 +17,7 @@ from dataclasses_json import dataclass_json
 from dataclasses_json.core import _ExtendedEncoder
 
 from .sync import Sync
-from .identifier import AssetIdentifier, TradingPairIdentifier
+from .identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind
 from .portfolio import Portfolio
 from .position import TradingPosition
 from .reserve import ReservePosition
@@ -430,6 +430,46 @@ class State:
             closing=closing,
             planned_collateral_consumption=planned_collateral_consumption,
             planned_collateral_allocation=planned_collateral_allocation,
+        )
+
+    def supply_credit(
+            self,
+            strategy_cycle_at: datetime.datetime,
+            pair: TradingPairIdentifier,
+            trade_type: TradeType,
+            reserve_currency: AssetIdentifier,
+            collateral_asset_price: USDollarPrice,
+            collateral_quantity: Optional[Decimal] = None,
+            notes: Optional[str] = None,
+            pair_fee: Optional[float] = None,
+            lp_fees_estimated: Optional[USDollarAmount] = None,
+            planned_mid_price: Optional[USDollarPrice] = None,
+            price_structure: Optional[TradePricing] = None,
+            position: Optional[TradingPosition] = None,
+            slippage_tolerance: Optional[float] = None,
+            closing: Optional[bool] = False,
+    ) -> Tuple[TradingPosition, TradeExecution, bool]:
+        """Create or adjust credit supply position."""
+
+        assert pair.kind == TradingPairKind.credit_supply
+
+        return self.create_trade(
+            strategy_cycle_at=strategy_cycle_at,
+            pair=pair,
+            quantity=None,
+            assumed_price=1.0,
+            reserve=collateral_quantity,
+            trade_type=trade_type,
+            reserve_currency=reserve_currency,
+            reserve_currency_price=collateral_asset_price,
+            notes=notes,
+            pair_fee=pair_fee,
+            lp_fees_estimated=lp_fees_estimated,
+            planned_mid_price=planned_mid_price,
+            price_structure=price_structure,
+            position=position,
+            slippage_tolerance=slippage_tolerance,
+            closing=closing,
         )
 
     def start_execution(self, ts: datetime.datetime, trade: TradeExecution, txid: str, nonce: int):

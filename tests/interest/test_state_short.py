@@ -188,7 +188,7 @@ def test_open_short(
 
     # Check that we track the equity value correctly
     assert state.portfolio.get_borrowed() == 800
-    assert state.portfolio.get_position_equity_and_leveraged_nav() == 1000  # 1000 USDC collateral
+    assert state.portfolio.get_position_equity_and_loan_nav() == 1000  # 1000 USDC collateral
     assert state.portfolio.get_cash() == 9000
     assert state.portfolio.get_loan_net_asset_value() == 1000
     assert state.portfolio.get_total_equity() == 10000
@@ -567,7 +567,7 @@ def test_short_close_fully_profitable(
     assert loan.get_net_asset_value() == 1000
     assert portfolio.get_cash() == 9000
     assert portfolio.get_net_asset_value() == pytest.approx(10000)
-    assert portfolio.get_leveraged_net_asset_value() == 1000
+    assert portfolio.get_all_loan_nav() == 1000
 
     # ETH price 1500 -> 1400
     short_position.revalue_base_asset(
@@ -578,7 +578,7 @@ def test_short_close_fully_profitable(
     # Our short is USD 66 to profit after the price drop
     assert loan.get_net_asset_value() == pytest.approx(1066.66666)
     assert portfolio.get_net_asset_value() == pytest.approx(10066.6666)
-    assert portfolio.get_leveraged_net_asset_value() == pytest.approx(1066.666)
+    assert portfolio.get_all_loan_nav() == pytest.approx(1066.666)
 
     _, trade_2, _ = state.trade_short(
         closing=True,
@@ -617,7 +617,7 @@ def test_short_close_fully_profitable(
     assert short_position.get_unrealised_profit_usd() == 0
     assert short_position.get_realised_profit_usd() == pytest.approx(66.666666)
 
-    assert portfolio.get_leveraged_net_asset_value() == 0
+    assert portfolio.get_all_loan_nav() == 0
     assert portfolio.get_cash() == pytest.approx(10066.666666)  # We have now cashed out our USD 53 profit unlike in the previous test
     assert portfolio.get_net_asset_value() == pytest.approx(10066.666666)  # Should be same with our without reducing position as we have no fees, see test above
     assert portfolio.get_total_equity() == pytest.approx(10066.666666)
@@ -681,7 +681,7 @@ def test_short_close_fully_loss(
     assert loan.get_net_asset_value() == 1000
     assert portfolio.get_cash() == 9000
     assert portfolio.get_net_asset_value() == pytest.approx(10000)
-    assert portfolio.get_leveraged_net_asset_value() == 1000
+    assert portfolio.get_all_loan_nav() == 1000
 
     # ETH price 1500 -> 1600
     short_position.revalue_base_asset(
@@ -691,7 +691,7 @@ def test_short_close_fully_loss(
 
     assert loan.get_net_asset_value() == pytest.approx(933.3333333333335)
     assert portfolio.get_net_asset_value() == pytest.approx(9933.333333333334)
-    assert portfolio.get_leveraged_net_asset_value() == pytest.approx(933.3333333333335)
+    assert portfolio.get_all_loan_nav() == pytest.approx(933.3333333333335)
 
     _, trade_2, _ = state.trade_short(
         closing=True,
@@ -730,7 +730,7 @@ def test_short_close_fully_loss(
     assert short_position.get_unrealised_profit_usd() == 0
     assert short_position.get_realised_profit_usd() == pytest.approx(-66.666666)
 
-    assert portfolio.get_leveraged_net_asset_value() == 0
+    assert portfolio.get_all_loan_nav() == 0
     assert portfolio.get_cash() == pytest.approx(9933.333333333334)
     assert portfolio.get_net_asset_value() == pytest.approx(9933.333333333334)
     assert portfolio.get_total_equity() == pytest.approx(9933.333333333334)
@@ -794,7 +794,7 @@ def test_short_increase_leverage_and_close(
     assert loan.get_leverage() == 2.0
     assert portfolio.get_cash() == 9000
     assert portfolio.get_net_asset_value() == pytest.approx(10000)
-    assert portfolio.get_leveraged_net_asset_value() == 1000
+    assert portfolio.get_all_loan_nav() == 1000
 
     # ETH price 1500 -> 1600
     short_position.revalue_base_asset(
