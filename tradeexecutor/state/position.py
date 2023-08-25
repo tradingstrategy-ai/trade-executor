@@ -877,7 +877,8 @@ class TradingPosition(GenericPosition):
     def get_average_sell(self) -> Optional[USDollarAmount]:
         """Calculate average buy price.
 
-        :return: None if no sells
+        :return:
+            ``None`` if no sell trades that would have completed successfully
         """
         q = float(self.get_sell_quantity())
         if q == 0:

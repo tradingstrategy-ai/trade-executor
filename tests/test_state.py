@@ -614,8 +614,7 @@ def test_realised_profit_calculation(usdc, weth_usdc, start_ts: datetime.datetim
     assert position.get_buy_quantity() == Decimal("1.5")
 
     # No sells yet, no realised profit
-    with pytest.raises(ZeroDivisionError):
-        position.get_average_sell()
+    assert position.get_average_sell() is None
 
     assert position.get_realised_profit_usd() is None
 
