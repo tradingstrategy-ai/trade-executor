@@ -40,7 +40,7 @@ def create_credit_supply_loan(
     #
 
     collateral = AssetWithTrackedValue(
-        asset=pair.quote,
+        asset=pair.base,  # aUSDC token is the base pair for credit supply positions
         last_usd_price=trade.reserve_currency_exchange_rate,
         last_pricing_at=datetime.datetime.utcnow(),
         quantity=trade.planned_reserve,
@@ -77,7 +77,7 @@ def update_credit_supply_loan(
     assert loan
 
     loan.collateral.change_quantity_and_value(
-        trade.planned_reserve,
+        trade.planned_quantity,
         trade.reserve_currency_exchange_rate,
         trade.opened_at,
         allow_negative=True,

@@ -29,7 +29,7 @@ from .visualisation import Visualisation
 
 from tradeexecutor.strategy.trade_pricing import TradePricing
 from ..strategy.cycle import CycleDuration
-
+from ..utils.accuracy import ZERO_DECIMAL
 
 logger = logging.getLogger(__name__)
 
@@ -303,7 +303,7 @@ class State:
             # quantity (how much token we spent).
             # However for leveraged position we give both, because quantity/reserve
             # gives the final loan health rate.
-            if not pair.kind.is_leverage():
+            if not pair.kind.is_credit_based():
                 assert reserve is None, "Quantity and reserve both cannot be given at the same time for a spot market pair"
 
         position, trade, created = self.portfolio.create_trade(
@@ -449,16 +449,39 @@ class State:
             slippage_tolerance: Optional[float] = None,
             closing: Optional[bool] = False,
     ) -> Tuple[TradingPosition, TradeExecution, bool]:
-        """Create or adjust credit supply position."""
+        """Create or adjust credit supply position.
+
+        Credit supply position is modelled as following
+
+        - You BUY aToken using the reserve
+
+        - You SELL aToken and get back reserve + interest,
+          with the trade size reserve + interest
+
+        - aToken Quantity is positive/negative depending
+          if you are entering or exiting the position
+
+        - Reserve is USDC, always positive
+
+        """
 
         assert pair.kind == TradingPairKind.credit_supply
 
-        return self.create_trade(
+        planned_collateral_allocation = None
+        if collateral_quantity < 0:
+            # Moving collateral back to reserves
+            reserve = abs(collateral_quantity)
+        else:
+            reserve = collateral_quantity
+
+        quantity = collateral_quantity
+
+        position, trade, created = self.create_trade(
             strategy_cycle_at=strategy_cycle_at,
             pair=pair,
-            quantity=None,
+            quantity=quantity,
             assumed_price=1.0,
-            reserve=collateral_quantity,
+            reserve=reserve,
             trade_type=trade_type,
             reserve_currency=reserve_currency,
             reserve_currency_price=collateral_asset_price,
@@ -470,7 +493,9 @@ class State:
             position=position,
             slippage_tolerance=slippage_tolerance,
             closing=closing,
+            planned_collateral_allocation=planned_collateral_allocation,
         )
+        return position, trade, created
 
     def start_execution(self, ts: datetime.datetime, trade: TradeExecution, txid: str, nonce: int):
         """Update our balances and mark the trade execution as started.
@@ -490,8 +515,11 @@ class State:
         if trade.is_spot():
             if trade.is_buy():
                 self.portfolio.move_capital_from_reserves_to_spot_trade(trade)
-        elif trade.is_credit_based():
+        elif trade.is_leverage():
             self.portfolio.move_capital_from_reserves_to_spot_trade(trade)
+        elif trade.is_credit_supply():
+            if trade.is_buy():
+                self.portfolio.move_capital_from_reserves_to_spot_trade(trade)
         else:
             raise NotImplementedError()
 
@@ -547,12 +575,14 @@ class State:
 
         if trade.is_spot() and trade.is_sell():
             self.portfolio.return_capital_to_reserves(trade)
-
-        if trade.is_leverage():
+        elif trade.is_leverage():
             # Release any collateral
             if executed_collateral_allocation:
                 assert trade.pair.quote.underlying
                 self.portfolio.adjust_reserves(trade.pair.quote.underlying, -executed_collateral_allocation)
+        elif trade.is_credit_supply():
+            if trade.is_sell():
+                self.portfolio.adjust_reserves(trade.pair.quote, executed_reserve)
 
         if trade.is_long():
             raise NotImplementedError()

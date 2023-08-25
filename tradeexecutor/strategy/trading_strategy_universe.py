@@ -763,7 +763,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
 
         return TradingPairIdentifier(
             atoken,
-            atoken,
+            underlying,
             pool_address=reserve.asset_address,
             exchange_address=reserve.asset_address,
             internal_id=reserve.reserve_id,

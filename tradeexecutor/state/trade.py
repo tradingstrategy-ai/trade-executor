@@ -454,10 +454,16 @@ class TradeExecution:
                        f"   collateral consumption: {self.planned_collateral_consumption} collateral allocation: {self.planned_collateral_allocation} \n" \
                        f">"
         else:
-            return f"<Trade \n" \
-                   f"   #{self.trade_id} \n" \
-                   f"   {self.planned_quantity} {self.pair.base.token_symbol} at {self.planned_price}, {self.get_status().name} \n" \
-                   f">"
+            if self.is_buy():
+                return f"<Supply credit \n" \
+                       f"   #{self.trade_id} \n" \
+                       f"   {self.planned_quantity} {self.pair.base.token_symbol} at {self.planned_price}, {self.get_status().name} \n" \
+                       f">"
+            else:
+                return f"<Recall credit collateral \n" \
+                       f"   #{self.trade_id} \n" \
+                       f"   {self.planned_quantity} {self.pair.base.token_symbol} at {self.planned_price}, {self.get_status().name} \n" \
+                       f">"
 
     def pretty_print(self) -> str:
         """Get diagnostics output for the trade.
@@ -488,7 +494,7 @@ class TradeExecution:
 
         assert self.trade_id > 0
 
-        if self.trade_type != TradeType.repair and not self.is_leverage():
+        if self.trade_type != TradeType.repair and not self.is_credit_based():
             # Leveraged trade can have quantity in zero,
             # if they just adjust the collateral amount
             assert self.planned_quantity != 0
@@ -939,7 +945,6 @@ class TradeExecution:
             return self.get_executed_value()
         return 0
 
-
     def mark_broadcasted(self, broadcasted_at: datetime.datetime):
         assert self.get_status() == TradeStatus.started, f"Trade in bad state: {self.get_status()}"
         self.broadcasted_at = broadcasted_at
@@ -1061,3 +1066,26 @@ class TradeExecution:
         # assert self.cost_of_gas, "Cost of gas must be set to work out cost of gas in USD"
         # assert self.native_token_price, "Native token price must be set to work out cost of gas in USD"
         # return self.cost_of_gas * self.native_token_price
+
+    def get_credit_supply_reserve_change(self) -> Decimal | None:
+        """How many tokens this trade takes/adds to the reserves.
+
+        - Positive for consuming reserves and moving them to
+          lending pool
+
+        - Negative for removing lending collateral and returning
+          them to the reservers
+
+        Only negative value warrants for action,
+        because capital allocation for the credit supply
+        is done when the transaction is prepared.
+
+        :return:
+
+            ``None`` if not a credit supply trade
+        """
+
+        if not self.pair.is_credit_supply():
+            return None
+
+        return self.executed_reserve

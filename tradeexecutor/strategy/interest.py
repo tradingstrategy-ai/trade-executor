@@ -38,7 +38,10 @@ def update_credit_supply_interest(
 
     assert asset is not None
     assert position.pair.kind == TradingPairKind.credit_supply
-    assert position.is_open() or position.is_frozen(), f"Cannot update interest for position {position}"
+    assert position.is_open() or position.is_frozen(), f"Cannot update interest for position {position.position_id}\n" \
+                                                       f"Position details: {position}\n" \
+                                                       f"Position closed at: {position.closed_at}\n" \
+                                                       f"Interest event at: {event_at}"
 
     loan = position.loan
     assert loan

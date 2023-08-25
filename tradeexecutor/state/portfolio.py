@@ -167,7 +167,7 @@ class Portfolio:
 
         These are all the positions where we have capital tied at the moment.
         """
-        return chain(self.open_positions.values(), self.closed_positions.values())
+        return chain(self.open_positions.values(), self.frozen_positions.values())
 
     def get_all_positions_filtered(self) -> Iterable[TradingPosition]:
         """Get open, closed and frozen, positions filtered to remove
@@ -694,6 +694,7 @@ class Portfolio:
         reserve = self.get_reserve_position(asset)
         assert reserve, f"No reserves available for {asset}"
         assert reserve.quantity is not None, f"Reserve quantity not set for {asset} in portfolio {self}"
+        assert reserve.quantity + amount >= 0, f"Reserves went to negative with new amount {amount}, current reserves {reserve.quantity}"
         reserve.quantity += amount
 
     def move_capital_from_reserves_to_spot_trade(self, trade: TradeExecution, underflow_check=True):

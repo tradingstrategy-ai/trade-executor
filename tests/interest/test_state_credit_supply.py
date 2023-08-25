@@ -56,7 +56,7 @@ def lending_pool_identifier(usdc, ausdc) -> TradingPairIdentifier:
     #
     return TradingPairIdentifier(
         ausdc,
-        ausdc,
+        usdc,
         "0x1",
         ZERO_ADDRESS,
         internal_id=1,
@@ -91,8 +91,7 @@ def test_open_supply_credit(
     assert lending_pool_identifier.kind.is_interest_accruing()
     assert lending_pool_identifier.base.token_symbol == "aUSDC"
     assert lending_pool_identifier.base.underlying.token_symbol == "USDC"
-    assert lending_pool_identifier.quote.token_symbol == "aUSDC"
-    assert lending_pool_identifier.quote.underlying.token_symbol == "USDC"
+    assert lending_pool_identifier.quote.token_symbol == "USDC"
 
     trader = UnitTestTrader(state)
 
@@ -104,6 +103,9 @@ def test_open_supply_credit(
         reserve_currency=usdc,
         collateral_asset_price=1.0,
     )
+
+    assert trade.planned_quantity == Decimal(9000)  # Amount of aToken received
+    assert trade.planned_reserve == Decimal(9000)  # Amount of USDC deposited
 
     assert trade.planned_loan_update
     trader.set_perfectly_executed(trade)
@@ -202,19 +204,21 @@ def test_close_credit_position(
     opened_at = datetime.datetime(2020, 1, 1)
 
     trader = UnitTestTrader(state)
+    portfolio = state.portfolio
 
     # Open credit supply position
-    credit_supply_position, trade, _ = state.create_trade(
+    credit_supply_position, trade, _ = state.supply_credit(
         opened_at,
         lending_pool_identifier,
-        quantity=None,
-        reserve=Decimal(9000),
-        assumed_price=1.0,
+        collateral_quantity=Decimal(9000.00),
+        collateral_asset_price=1.0,
         trade_type=TradeType.rebalance,
         reserve_currency=usdc,
-        reserve_currency_price=1.0,
     )
     trader.set_perfectly_executed(trade)
+    assert portfolio.get_cash() == 1000
+    assert portfolio.get_all_loan_nav() == 9000
+    assert portfolio.get_net_asset_value() == 10000.00
 
     # Generate first interest accruing event
     interest_event_1_at = datetime.datetime(2020, 1, 2)
@@ -256,6 +260,8 @@ def test_close_credit_position(
     assert trade_2.is_success()
     assert trade_2.claimed_interest == Decimal(0.50)
     assert trade_2.get_claimed_interest() == 0.50
+    assert trade_2.planned_quantity == -Decimal(9000.50)
+    assert trade_2.executed_reserve == Decimal(9000.50)
 
     # Loan is now repaid
     loan = credit_supply_position.loan
@@ -267,6 +273,7 @@ def test_close_credit_position(
     assert credit_supply_position.get_realised_profit_usd() == 0.50
     assert credit_supply_position.get_accrued_interest() == 0.50
 
+    # All profits are in portfolio cash
     portfolio = state.portfolio
     assert portfolio.get_cash() == 10000.50
     assert portfolio.get_net_asset_value() == 10000.50

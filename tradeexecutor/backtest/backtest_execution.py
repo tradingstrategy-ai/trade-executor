@@ -116,6 +116,7 @@ class BacktestExecutionModel(ExecutionModel):
         position = state.portfolio.get_existing_open_position_by_trading_pair(trade.pair)
 
         sell_amount_epsilon_fix = False
+
         if trade.is_buy():
             executed_reserve = trade.planned_reserve
             executed_quantity = trade.planned_quantity
@@ -125,14 +126,13 @@ class BacktestExecutionModel(ExecutionModel):
             executed_reserve = abs(Decimal(trade.planned_quantity) * Decimal(trade.planned_price))
 
         if trade.is_buy():
-            self.wallet.update_balance(reserve.address, -executed_reserve)
             self.wallet.update_balance(base.address, executed_quantity)
+            self.wallet.update_balance(reserve.address, -executed_reserve)
         else:
             self.wallet.update_balance(base.address, executed_quantity)
             self.wallet.update_balance(reserve.address, executed_reserve)
 
         assert abs(executed_quantity) > 0, f"Expected executed_quantity for the trade to be above zero, got executed_quantity:{executed_quantity}, planned_quantity:{trade.planned_quantity}, trade is {trade}"
-        assert executed_reserve > 0, f"Expected executed_reserve for the trade to be above zero, got {executed_reserve}"
 
         return executed_quantity, executed_reserve, sell_amount_epsilon_fix
 

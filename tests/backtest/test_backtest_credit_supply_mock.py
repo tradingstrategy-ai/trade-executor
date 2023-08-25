@@ -137,8 +137,7 @@ def test_backtest_open_only_credit_supply_mock_data(
     assert portfolio.get_total_equity() == pytest.approx(10030.043540627415943)
 
 
-
-def test_backtest_open_and_close_credit_supply_mock(
+def test_backtest_open_and_close_credit_supply_mock_data(
         logger: logging.Logger,
         persistent_test_client: Client,
         interest_rate_mock,
@@ -191,16 +190,28 @@ def test_backtest_open_and_close_credit_supply_mock(
     assert len(portfolio.frozen_positions) == 0
     assert len(portfolio.closed_positions) == 1
 
+    # Examine closed credit position
     credit_position = portfolio.closed_positions[1]
     assert credit_position.is_credit_supply()
     assert len(credit_position.balance_updates) == 14
-    assert credit_position.interest.opening_amount == Decimal("10000.00")
-    assert credit_position.calculate_accrued_interest_quantity() == Decimal('14')  # Non-denormalised interest
-    assert credit_position.interest.last_atoken_amount == Decimal('10014')
-    assert credit_position.interest.last_accrued_interest == Decimal('14')
 
-    assert credit_position.get_accrued_interest() == pytest.approx(14)  # Denormalised interest
+    assert credit_position.trades[2].get_claimed_interest() == pytest.approx(14.00910364099965634665267)
+    assert credit_position.trades[2].planned_reserve == pytest.approx(Decimal(10014.00910364099965634665267))
+    assert credit_position.trades[2].executed_reserve == pytest.approx(Decimal(10014.00910364099965634665267))
+
+    interest = credit_position.loan.collateral_interest
+    assert interest.opening_amount == Decimal("10000.00")
+    assert credit_position.calculate_accrued_interest_quantity() == Decimal('14.00910364099965634665267')  # Non-denormalised interest
+    assert interest.last_atoken_amount == Decimal('10014.00910364099965634665267')
+    assert interest.last_accrued_interest == Decimal('14.00910364099965634665267')
+
+    assert credit_position.get_accrued_interest() == pytest.approx(14.00910364099965634665267)  # Denormalised interest
+    assert credit_position.get_claimed_interest() == pytest.approx(14.00910364099965634665267)  # Interest was claimed during closing
     assert credit_position.get_quantity() == Decimal('0')  # Closed positions do not have quantity left
     assert credit_position.get_value() == pytest.approx(0)  # Closed positions do not have value left
 
-    assert portfolio.get_total_equity() == pytest.approx(10014)
+    assert portfolio.get_cash() == pytest.approx(10014.00910364099965634665267)
+    assert portfolio.get_net_asset_value() == pytest.approx(10014.00910364099965634665267)
+    assert portfolio.get_total_equity() == pytest.approx(10014.00910364099965634665267)
+
+

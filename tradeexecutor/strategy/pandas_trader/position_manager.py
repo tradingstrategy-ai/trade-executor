@@ -681,7 +681,7 @@ class PositionManager:
         assert self.strategy_universe, "Make sure trading_strategy_engine_version = 0.3. Credit supply does not work with old decide_trades()."
         pair = position.pair
 
-        assert pair.quote.underlying.is_stablecoin(), f"Non-stablecoin lending not yet implemented"
+        assert pair.base.underlying.is_stablecoin(), f"Non-stablecoin lending not yet implemented"
         price = 1.0
 
         if quantity is None:
@@ -693,21 +693,17 @@ class PositionManager:
 
         # TODO: Hardcoded USD exchange rate
         reserve_asset = self.strategy_universe.get_reserve_asset()
-        reserve_price = 1.0
 
-        position2, trade, created = self.state.create_trade(
+        _, trade, _ = self.state.supply_credit(
             self.timestamp,
             pair,
-            -quantity,
-            reserve=None,
-            assumed_price=price,
+            collateral_asset_price=price,
+            collateral_quantity=-quantity,
             trade_type=trade_type,
             reserve_currency=reserve_asset,
-            reserve_currency_price=reserve_price,
             notes=notes,
             position=position,
         )
-        assert position2 == position
         return [trade]
 
     def close_position(self,

@@ -767,7 +767,7 @@ class TradingPosition(GenericPosition):
                 planned_collateral_consumption = planned_collateral_consumption or Decimal(0)
                 planned_collateral_allocation = planned_collateral_allocation or Decimal(0)
 
-            case TradingPairKind.spot_market_hold | TradingPairKind.credit_supply:
+            case TradingPairKind.spot_market_hold:
                 # Set spot market estimated quantities
                 if reserve is not None:
                     planned_reserve = reserve
@@ -775,6 +775,11 @@ class TradingPosition(GenericPosition):
                 else:
                     planned_quantity = quantity
                     planned_reserve = abs(quantity * Decimal(assumed_price))
+            case TradingPairKind.credit_supply:
+                assert reserve, "You must give reserve"
+                assert quantity, "You must give quantity"
+                planned_reserve = reserve
+                planned_quantity = quantity
 
             case _:
                 raise NotImplementedError(f"Does not know how to calculate quantities for open a trade on: {pair}")
