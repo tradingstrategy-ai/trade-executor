@@ -756,6 +756,7 @@ class TradingPosition(GenericPosition):
                 else:
                     planned_quantity = quantity
                     planned_reserve = abs(quantity * Decimal(assumed_price))
+
             case _:
                 raise NotImplementedError(f"Does not know how to calculate quantities for open a trade on: {pair}")
 
@@ -938,6 +939,9 @@ class TradingPosition(GenericPosition):
 
             `None` if the position lacks any realised profit (contains only unrealised).
         """
+
+        if not self.is_reduced():
+            return None
 
         if self.is_reduced():
             if self.is_spot_market():

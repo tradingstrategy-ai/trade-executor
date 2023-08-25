@@ -52,8 +52,6 @@ class UnitTestTrader:
 
     def create_and_execute(self, pair: TradingPairIdentifier, quantity: Decimal, price: float) -> Tuple[TradingPosition, TradeExecution]:
 
-        assert pair.is_leverage()
-
         assert price > 0
         assert quantity != 0
 

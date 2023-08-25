@@ -474,15 +474,15 @@ class Portfolio:
         portfolio_value = self.get_total_equity()
 
         if position is None:
+            # Initialise new position data structure
             position = self.open_new_position(
                 strategy_cycle_at,
                 pair,
                 assumed_price,
                 reserve_currency,
                 reserve_currency_price)
-            created = True
-
             position.portfolio_value_at_open = portfolio_value
+            created = True
         else:
             # Trade counts against old position,
             # - inc/dec size
@@ -729,24 +729,7 @@ class Portfolio:
         if trade.is_spot():
             assert trade.is_sell()
 
-        if trade.is_short() and trade.is_reduce():
-            self.adjust_reserves(trade.reserve_currency, -trade.executed_reserve)
-        else:
-            raise NotImplementedError()
-
-    def return_collateral(self, loan: Loan, quantity: Decimal):
-        """Return collateral to reserves.
-
-        :param loan:
-            For which loan we return the reserves
-
-        :param quantity:
-            How much collateral we return
-        """
-        assert quantity > 0
-        currency = loan.collateral.asset.underlying
-        loan.collateral.quantity -= quantity
-        self.adjust_reserves(currency, quantity)
+        self.adjust_reserves(trade.reserve_currency, trade.executed_reserve)
 
     def has_unexecuted_trades(self) -> bool:
         """Do we have any trades that have capital allocated, but not executed yet."""

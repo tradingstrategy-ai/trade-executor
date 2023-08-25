@@ -289,10 +289,20 @@ class TradeExecution:
     executed_price: Optional[USDollarPrice] = None
 
     #: How much underlying token we traded, the actual realised amount.
-    #: Positive for buy, negative for sell
+    #: Positive for buy, negative for sell.
+    #:
     executed_quantity: Optional[Decimal] = None
 
     #: How much reserves we spend for this traded, the actual realised amount.
+    #:
+    #: Always positive.
+    #:
+    #: - In the case of spot buy, this is how much reserve currency
+    #:   we spent to buy tokens
+    #:
+    #: - In the case of sell, this is how much reserve currency
+    #:   we will receive after the sell is closed
+    #:
     executed_reserve: Optional[Decimal] = None
 
     #: Slippage tolerance for this trade.

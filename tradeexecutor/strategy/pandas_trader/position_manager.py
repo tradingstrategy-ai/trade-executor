@@ -368,6 +368,8 @@ class PositionManager:
         else:
             executor_pair = pair
 
+        assert value > 0, f"Negative value: {value} on {pair}"
+
         # Convert amount of reserve currency to the decimal
         # so we can have exact numbers from this point forward
         if type(value) == float:

@@ -72,6 +72,9 @@ def decide_trades(
     # How much cash we have in the hand
     cash = state.portfolio.get_cash()
 
+    if cash < 0:
+        state.portfolio.get_cash()
+
     trades = []
 
     position_manager = PositionManager(timestamp, universe, state, pricing_model)
