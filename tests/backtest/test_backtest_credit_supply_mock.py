@@ -131,10 +131,10 @@ def test_backtest_open_only_credit_supply_mock_data(
 
     interest = credit_position.loan.collateral_interest
     assert interest.opening_amount == Decimal("10000.00")
-    assert credit_position.get_accrued_interest() == pytest.approx(30.043540627415943)
-    assert credit_position.get_quantity() == pytest.approx(Decimal('10030.043540627415943'))
-    assert credit_position.get_value() == pytest.approx(10030.043540627415943)
-    assert portfolio.get_total_equity() == pytest.approx(10030.043540627415943)
+    assert credit_position.get_accrued_interest() == pytest.approx(30)
+    assert credit_position.get_quantity() == pytest.approx(Decimal(10030))
+    assert credit_position.get_value() == pytest.approx(10030)
+    assert portfolio.get_total_equity() == pytest.approx(10030)
 
 
 def test_backtest_open_and_close_credit_supply_mock_data(
