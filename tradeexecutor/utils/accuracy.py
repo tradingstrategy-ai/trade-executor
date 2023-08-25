@@ -64,6 +64,7 @@ def sum_decimal(numbers: Iterable[Decimal]) -> Decimal:
         return ZERO_DECIMAL
     return total
 
+
 def snap_to_epsilon(
     available_token_quantity: Decimal,
     calculated_token_quantity: Decimal,
@@ -76,4 +77,17 @@ def snap_to_epsilon(
     return calculated_token_quantity
 
 
+def ensure_exact_zero(
+        quantity: Decimal,
+        epsilon=SUM_EPSILON,
+) -> Decimal:
+    """Ensure that we hit precise zero.
 
+    """
+
+    assert isinstance(quantity, Decimal)
+
+    if abs(quantity) < epsilon:
+        return Decimal(0)
+
+    return quantity

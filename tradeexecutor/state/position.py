@@ -709,11 +709,17 @@ class TradingPosition(GenericPosition):
                     assert reserve is not None, "Both reserve and quantity needs to be given for lending protocol short open"
                     assert quantity is not None, "Both reserve and quantity needs to be given for lending protocol short open"
                     assert not closing, "Cannot close position not yet open"
+
+                    # Automatically calculate the amount of collateral increase for this trade sizes
+                    if planned_collateral_consumption is None:
+                        planned_collateral_consumption = -quantity * Decimal(assumed_price)
+
                 else:
+
                     if closing:
                         assert reserve is None, "reserve calculated automatically when closing a short position"
                         assert quantity is None, "quantity calculated automatically when closing a short position"
-                        assert not planned_collateral_consumption, "planned_collateral_consumption set automaticalyl when closing a short position"
+                        assert not planned_collateral_consumption, "planned_collateral_consumption set automatically when closing a short position"
 
                         # Buy back all the debt
                         quantity = self.loan.borrowed.quantity
@@ -737,6 +743,10 @@ class TradingPosition(GenericPosition):
 
                 planned_reserve = reserve or Decimal(0)
                 planned_quantity = quantity or Decimal(0)
+
+                # From now on, we need meaningful values for math
+                planned_collateral_consumption = planned_collateral_consumption or Decimal(0)
+                planned_collateral_allocation = planned_collateral_allocation or Decimal(0)
 
             case TradingPairKind.spot_market_hold | TradingPairKind.credit_supply:
                 # Set spot market estimated quantities

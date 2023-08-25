@@ -10,6 +10,8 @@ from typing import Optional
 
 from dataclasses_json import dataclass_json
 from eth_typing import HexAddress
+
+from tradeexecutor.utils.accuracy import sum_decimal, ensure_exact_zero
 from tradingstrategy.chain import ChainId
 from web3 import Web3
 
@@ -464,5 +466,10 @@ class AssetWithTrackedValue:
         """The tracked asset amount is changing due to position increase/reduce."""
         assert delta is not None, "Asset delta must be given"
         self.revalue(price, when)
-        assert self.quantity + delta >= 0, f"Tracked asset cannot go negative: {self}. Quantity: {self.quantity}, delta: {delta}"
+        assert sum_decimal((self.quantity, delta,)) >= 0, f"Tracked asset cannot go negative: {self}. Quantity: {self.quantity}, delta: {delta}"
         self.quantity += delta
+
+        # Fix decimal math issues
+        self.quantity = ensure_exact_zero(self.quantity)
+
+

@@ -7,7 +7,7 @@ import copy
 import math
 from _decimal import Decimal
 from dataclasses import dataclass
-from typing import TypeAlias
+from typing import TypeAlias, Tuple
 
 from dataclasses_json import dataclass_json
 
@@ -73,7 +73,11 @@ class Loan:
         return self.collateral.get_usd_value() - self.borrowed.get_usd_value()
 
     def get_leverage(self) -> LeverageMultiplier:
-        """TODO: From 1delta terminology"""
+        """How leveraged this loan is.
+
+        Using formula ``(collateral / (collateral - borrow))``.
+
+        """
         return self.collateral.get_usd_value() / self.get_net_asset_value()
 
     def get_free_margin(self) -> USDollarAmount:
@@ -162,26 +166,60 @@ class Loan:
         health_factor = self.get_health_factor()
         if health_factor <= desired_health_factor:
             raise LiquidationRisked(
-                f"You would be liquidated with health factor {health_factor}.\n"
-                f"Desired health factor is {desired_health_factor}.\n"
+                f"Loan health factor: {health_factor:.2f}.\n"
+                f"You would be liquidated.\n"
+                f"Desired health factor is {desired_health_factor:.2f}.\n"
                 f"Collateral {self.collateral.get_usd_value()} USD.\n"
                 f"Borrowed {self.borrowed.quantity} {self.borrowed.asset.token_symbol} {self.borrowed.get_usd_value()} USD.\n"
             )
 
 
-def calculate_leverage_for_target_size(
-    position_size: USDollarAmount,
+def calculate_sizes_for_leverage(
+    starting_reserve: USDollarAmount,
     leverage: LeverageMultiplier,
-) -> USDollarAmount:
-    """Calculate the collateral amount we need to hit a target leverage when opening a position.
+) -> Tuple[USDollarAmount, USDollarAmount]:
+    """Calculate the collateral and borrow loan size to hit the target leverage with a starting capital.
 
-    :param position_size:
-        How large is the position size in USC
+    - When calculating the loan size using this function,
+      the loan net asset value will be the same as starting capital
+
+    - Because loan net asset value is same is deposited reserve,
+      portfolio total NAV stays intact
+
+    Notes:
+
+    .. code-block:: text
+
+            col / (col - borrow) = leverage
+            col = (col - borrow) * leverage
+            col = col * leverage - borrow * leverage
+            col - col * leverage = - borrow * levereage
+            col(1 - leverage) = - borrow * leverage
+            col = -(borrow * leverage) / (1 - leverage)
+
+            # Calculate leverage for 4x and 1000 USD collateral
+            col - borrow = 1000
+            col = 1000
+            leverage = 3
+
+            col / (col - borrow) = 3
+            3(col - borrow) = col
+            3borrow = 3col - col
+            borrow = col - col/3
+
+            col / (col - (col - borrow)) = leverage
+            col / borrow = leverage
+            borrow = leverage * 1000
+
+
+    :param starting_reserve:
+        Initial deposit in lending protocol
 
     :return:
-        US dollars worth of collateral needed
+        Tuple (borrow value, collateral value) in dollars
     """
-    borrowed_usd = position_size * leverage
-    usd_value = -(borrowed_usd * leverage) / (1 - leverage)
-    return usd_value
+
+    collateral_size = starting_reserve * leverage
+    borrow_size = (collateral_size - (collateral_size / leverage))
+    return borrow_size, collateral_size
 

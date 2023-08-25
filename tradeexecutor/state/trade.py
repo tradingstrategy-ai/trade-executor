@@ -211,6 +211,8 @@ class TradeExecution:
     #: where as :py:attr:`planned_reserve` needs to be deposited
     #: before the trade is executed.
     #:
+    #: Must be `None` for spot positions.
+    #:
     planned_collateral_allocation: Optional[Decimal] = None
 
     #: Executed amount of collateral we spend for the debt token buyback
@@ -224,6 +226,8 @@ class TradeExecution:
     #: - Negative if collateral is spend to pay back the debt
     #:
     #: - Positive if reserve currency is added as the collateral
+    #:
+    #: Must be `None` for spot positions.
     #:
     planned_collateral_consumption: Optional[Decimal] = None
 

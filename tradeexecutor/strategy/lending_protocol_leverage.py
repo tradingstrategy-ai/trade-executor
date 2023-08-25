@@ -67,7 +67,7 @@ def create_short_loan(
         asset=pair.quote,
         last_usd_price=trade.reserve_currency_exchange_rate,
         last_pricing_at=datetime.datetime.utcnow(),
-        quantity=trade.planned_reserve + trade.planned_collateral_allocation,
+        quantity=trade.planned_reserve + trade.planned_collateral_allocation + trade.planned_collateral_consumption,
     )
 
     loan = Loan(
@@ -94,7 +94,6 @@ def plan_loan_update_for_short(
     """
     assert trade.is_short()
     assert len(position.trades) > 1, "Can be only called when closing/reducing/increasing/position"
-
 
     planned_collateral_consumption = trade.planned_collateral_consumption or Decimal(0)
     planned_collateral_allocation = trade.planned_collateral_allocation or Decimal(0)
