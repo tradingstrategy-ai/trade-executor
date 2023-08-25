@@ -880,6 +880,8 @@ class TradingPosition(GenericPosition):
         :return: None if no sells
         """
         q = float(self.get_sell_quantity())
+        if q == 0:
+            return None
         return self.get_total_sold_usd() / q
 
     def get_price_at_open(self) -> USDollarAmount:
@@ -945,7 +947,15 @@ class TradingPosition(GenericPosition):
 
         if self.is_reduced():
             if self.is_spot_market():
-                trade_profit = (self.get_average_sell() - self.get_average_buy()) * float(self.get_sell_quantity())
+                sells = self.get_average_sell() or 0.0
+                buys = self.get_average_buy() or 0.0
+                sell_unit = self.get_sell_quantity()
+                if sell_unit != 0:
+                    trade_profit = (sells - buys) * float(sell_unit)
+                else:
+                    # We do not have successful sells (trades failed) so the
+                    # realised profit is zero
+                    trade_profit = 0
             else:
                 if self.is_short():
                     trade_profit = (self.get_average_sell() - self.get_average_buy()) * float(self.get_buy_quantity())

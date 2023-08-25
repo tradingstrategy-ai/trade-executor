@@ -180,7 +180,7 @@ def test_open_short(
     assert short_position.is_open()
     assert short_position.get_opening_price() == 1500
     assert short_position.get_unrealised_profit_usd() == 0
-    assert short_position.get_realised_profit_usd() == 0
+    assert short_position.get_realised_profit_usd() is None
     assert short_position.get_value() == 800  # -800 USD worth of ETH
     assert short_position.get_borrowed() == 800  # 800 USD worth of ETH
     assert short_position.get_equity() == 0  # Because we are not holding spot tokens, it does not count as equity
@@ -241,7 +241,7 @@ def test_short_unrealised_profit(
     assert short_position.get_current_price() == 1400
     assert short_position.get_average_price() == 1500
     assert short_position.get_unrealised_profit_usd() == pytest.approx(800 - 746.6666666666666)
-    assert short_position.get_realised_profit_usd() == 0
+    assert short_position.get_realised_profit_usd() is None
 
     loan = short_position.loan
     assert loan.borrowed.quantity == pytest.approx(Decimal(expected_eth_shorted_amount))

@@ -74,13 +74,16 @@ class AssetIdentifier:
     underlying: Optional["AssetIdentifier"] = None
 
     #: What kind of asset is this
-    type: AssetType = AssetType.token
+    #:
+    #: Legacy data will default to ``None``.
+    #:
+    type: AssetType | None = None
 
     #: Aave liquidation threhold for this asset
     #:
     #: Set on aTokens that are used as collateral.
     #:
-    liquidation_threshold: float = None
+    liquidation_threshold: float | None = None
 
     def __str__(self):
         if self.underlying:

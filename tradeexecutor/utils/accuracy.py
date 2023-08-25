@@ -57,7 +57,12 @@ def sum_decimal(numbers: Iterable[Decimal]) -> Decimal:
         0E-67
 
     :param numbers:
-        Incoming Decimals to sum
+
+        Incoming Decimals to sum.
+
+    :return:
+        Decimal value that is rounded to zero if it is too close to zero.
+
     """
     total = sum(numbers)
     if abs(total) < SUM_EPSILON:
