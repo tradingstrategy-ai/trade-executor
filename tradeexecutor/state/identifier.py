@@ -175,6 +175,9 @@ class TradingPairKind(enum.Enum):
         """Do base or quote or both gain interest during when the position is open."""
         return self in (TradingPairKind.lending_protocol_short, TradingPairKind.lending_protocol_long, TradingPairKind.credit_supply)
 
+    def is_credit_based(self) -> bool:
+        return self.is_interest_accruing()
+
     def is_credit_supply(self) -> bool:
         """This trading pair is for gaining interest."""
         return self == TradingPairKind.credit_supply
@@ -479,11 +482,14 @@ class AssetWithTrackedValue:
         delta: Decimal,
         price: USDollarPrice,
         when: datetime.datetime,
+        allow_negative=False,
     ):
         """The tracked asset amount is changing due to position increase/reduce."""
         assert delta is not None, "Asset delta must be given"
         self.revalue(price, when)
-        assert sum_decimal((self.quantity, delta,)) >= 0, f"Tracked asset cannot go negative: {self}. Quantity: {self.quantity}, delta: {delta}"
+
+        if not allow_negative:
+            assert sum_decimal((self.quantity, delta,)) >= 0, f"Tracked asset cannot go negative: {self}. Quantity: {self.quantity}, delta: {delta}"
         self.quantity += delta
 
         # Fix decimal math issues

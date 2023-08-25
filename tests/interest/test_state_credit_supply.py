@@ -151,7 +151,7 @@ def test_accrue_interest(
         quantity=None,
         reserve=Decimal(9000),
         assumed_price=1.0,
-        trade_type=TradeType.supply_credit,
+        trade_type=TradeType.rebalance,
         reserve_currency=usdc,
         reserve_currency_price=1.0,
     )
@@ -188,3 +188,85 @@ def test_accrue_interest(
 
     assert state.portfolio.get_net_asset_value(include_interest=True) == 10000.01
     assert state.portfolio.get_net_asset_value(include_interest=False) == 10000.00
+
+
+def test_close_credit_position(
+        state: State,
+        lending_pool_identifier: TradingPairIdentifier,
+        usdc: AssetIdentifier,
+        ausdc: AssetIdentifier,
+):
+    """We close a credit position and return any accrued interest to reserves.
+
+    """
+    opened_at = datetime.datetime(2020, 1, 1)
+
+    trader = UnitTestTrader(state)
+
+    # Open credit supply position
+    credit_supply_position, trade, _ = state.create_trade(
+        opened_at,
+        lending_pool_identifier,
+        quantity=None,
+        reserve=Decimal(9000),
+        assumed_price=1.0,
+        trade_type=TradeType.rebalance,
+        reserve_currency=usdc,
+        reserve_currency_price=1.0,
+    )
+    trader.set_perfectly_executed(trade)
+
+    # Generate first interest accruing event
+    interest_event_1_at = datetime.datetime(2020, 1, 2)
+    update_credit_supply_interest(
+        state,
+        credit_supply_position,
+        ausdc,
+        new_atoken_amount=Decimal(9000.50),
+        event_at=interest_event_1_at,
+    )
+
+    assert state.portfolio.get_net_asset_value() == 10000.50
+    assert credit_supply_position.get_unrealised_profit_usd() == 0.50
+
+    # Close credit supply position
+    #
+    # This trade will bring the collateral
+    # quantity to negative, but it's ok
+    # because the difference will be taken from aTokens
+    # when we redeem accured aToken interest to USDC
+    #
+    _, trade_2, _ = state.supply_credit(
+        opened_at,
+        lending_pool_identifier,
+        collateral_quantity=-Decimal(9000.50),
+        collateral_asset_price=1.0,
+        trade_type=TradeType.rebalance,
+        reserve_currency=usdc,
+        closing=True,
+    )
+
+    assert not trade_2.is_spot()
+    assert trade_2.is_credit_based()
+
+    trader.set_perfectly_executed(trade_2)
+
+    # The closing trade claims the interest
+    assert credit_supply_position.is_closed()
+    assert trade_2.is_success()
+    assert trade_2.claimed_interest == Decimal(0.50)
+    assert trade_2.get_claimed_interest() == 0.50
+
+    # Loan is now repaid
+    loan = credit_supply_position.loan
+    assert loan.get_collateral_value() == 0
+
+    assert credit_supply_position.get_claimed_interest() == 0.50
+    assert credit_supply_position.get_value() == 0
+    assert credit_supply_position.get_unrealised_profit_usd() == 0
+    assert credit_supply_position.get_realised_profit_usd() == 0.50
+    assert credit_supply_position.get_accrued_interest() == 0.50
+
+    portfolio = state.portfolio
+    assert portfolio.get_cash() == 10000.50
+    assert portfolio.get_net_asset_value() == 10000.50

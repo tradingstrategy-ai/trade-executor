@@ -52,12 +52,6 @@ class TradeType(enum.Enum):
     #: Internal state balances are updated to match on-chain balances
     accounting_correction = "accounting_correction"
 
-    #: Lending protocol supplying credit.
-    #:
-    #: Add or remove credit on lending protocols.
-    #:
-    supply_credit = "supply_credit"
-
 
 class TradeStatus(enum.Enum):
 
@@ -436,6 +430,16 @@ class TradeExecution:
     #:
     closing: bool = None
 
+    #: For interest bearing positions, how much of accrued interest was moved to reserves in this trade.
+    #:
+    #: This is the realised interest. Any accured interest
+    #: must be realised by claiming it in some trade.
+    #: Usually this is the trade that closes the position.
+    #:
+    #: In reserve tokens.
+    #:
+    claimed_interest: Optional[Decimal] = None
+
     def __repr__(self):
         if self.is_spot():
             if self.is_buy():
@@ -489,7 +493,7 @@ class TradeExecution:
 
         assert self.planned_price > 0
 
-        if not self.is_leverage():
+        if not self.is_credit_based():
             assert self.planned_reserve >= 0, "Spot market trades must have planned reserve position"
 
         assert type(self.planned_price) in {float, int}, f"Price was given as {self.planned_price.__class__}: {self.planned_price}"
@@ -667,13 +671,17 @@ class TradeExecution:
         """This is margined trade."""
         return self.pair.kind.is_leverage()
 
+    def is_credit_based(self) -> bool:
+        """This trade uses loans"""
+        return self.pair.kind.is_credit_based()
+
     def is_credit_supply(self) -> bool:
         """This is a credit supply trade."""
         return self.pair.kind.is_credit_supply()
 
     def is_spot(self) -> bool:
         """This is a spot marget trade."""
-        return not self.is_leverage()
+        return not self.is_credit_based()
 
     def is_short(self) -> bool:
         """This is margined short trade."""
@@ -833,14 +841,11 @@ class TradeExecution:
             # Trade does not have value until capital is allocated to it
             return 0.0
 
-    def get_credit_debit(self) -> Tuple[Decimal, Decimal]:
-        """Returns the token quantity and reserve currency quantity for this trade.
-
-        If buy this is (+trading position quantity/-reserve currency quantity).
-
-        If sell this is (-trading position quantity/-reserve currency quantity).
-        """
-        return self.get_position_quantity(), self.get_reserve_quantity()
+    def get_claimed_interest(self) -> USDollarAmount:
+        """How much US interest we have claimed in this trade."""
+        if not self.claimed_interest:
+            return 0.0
+        return float(self.claimed_interest) * self.reserve_currency_exchange_rate
 
     def get_fees_paid(self) -> USDollarAmount:
         """

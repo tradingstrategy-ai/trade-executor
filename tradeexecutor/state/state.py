@@ -490,7 +490,7 @@ class State:
         if trade.is_spot():
             if trade.is_buy():
                 self.portfolio.move_capital_from_reserves_to_spot_trade(trade)
-        elif trade.is_leverage():
+        elif trade.is_credit_based():
             self.portfolio.move_capital_from_reserves_to_spot_trade(trade)
         else:
             raise NotImplementedError()
@@ -562,6 +562,9 @@ class State:
             position.closed_at = executed_at
             del self.portfolio.open_positions[position.position_id]
             self.portfolio.closed_positions[position.position_id] = position
+
+            if position.loan:
+                trade.claimed_interest = position.loan.claim_interest()
 
     def mark_trade_failed(self, failed_at: datetime.datetime, trade: TradeExecution):
         """Unroll the allocated capital."""

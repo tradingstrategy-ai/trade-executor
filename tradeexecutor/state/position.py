@@ -21,7 +21,7 @@ from tradeexecutor.state.trade import TradeType, QUANTITY_EPSILON
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.types import USDollarAmount, BPS, USDollarPrice, Percent, LeverageMultiplier
 from tradeexecutor.strategy.dust import get_dust_epsilon_for_pair
-from tradeexecutor.strategy.lending_protocol_leverage import create_short_loan, plan_loan_update_for_short, create_credit_supply_loan
+from tradeexecutor.strategy.lending_protocol_leverage import create_short_loan, plan_loan_update_for_short, create_credit_supply_loan, update_credit_supply_loan
 from tradeexecutor.strategy.trade_pricing import TradePricing
 from tradeexecutor.utils.accuracy import sum_decimal
 from tradingstrategy.lending import LendingProtocolType
@@ -547,7 +547,7 @@ class TradingPosition(GenericPosition):
                 return 0
 
     def get_value(self, include_interest=True) -> USDollarAmount:
-        """Get the net asset value of this position.
+        """Get the current net asset value of this position.
 
         If the position is closed, the value should be zero.
 
@@ -556,7 +556,7 @@ class TradingPosition(GenericPosition):
         """
 
         if include_interest:
-            value = self.get_accrued_interest()
+            value = self.get_accrued_interest() - self.get_claimed_interest()
         else:
             value = 0
 
@@ -810,6 +810,8 @@ class TradingPosition(GenericPosition):
                 if self.loan is None:
                     assert trade.is_buy(), "Opening credit position is modelled as buy"
                     trade.planned_loan_update = create_credit_supply_loan(self, trade)
+                else:
+                    trade.planned_loan_update = update_credit_supply_loan(self, trade)
 
             elif pair.kind.is_leverage():
                 assert pair.get_lending_protocol() == LendingProtocolType.aave_v3, "Unsupported protocol"
@@ -974,20 +976,18 @@ class TradingPosition(GenericPosition):
                     # realised profit is zero
                     trade_profit = 0
             else:
-                if self.is_short():
-                    trade_profit = (self.get_average_sell() - self.get_average_buy()) * float(self.get_buy_quantity())
-                else:
-                    raise NotImplementedError()
+                trade_profit = (self.get_average_sell() - self.get_average_buy()) * float(self.get_buy_quantity())
         else:
             # No closes yet, only unrealised PnL
             trade_profit = 0.0
 
         if include_interest:
-            trade_profit += self.get_accrued_interest()
+            # Interest that is claimed is realised
+            trade_profit += self.get_claimed_interest()
 
         return trade_profit
 
-    def get_unrealised_profit_usd(self) -> USDollarAmount:
+    def get_unrealised_profit_usd(self, include_interest=True) -> USDollarAmount:
         """Calculate the position unrealised profit.
 
         Calculates the profit & loss (P&L) that has yet to be 'realised'
@@ -999,7 +999,10 @@ class TradingPosition(GenericPosition):
         avg_price = self.get_average_price()
         if avg_price is None:
             return 0
-        return (self.get_current_price() - avg_price) * float(self.get_net_quantity())
+        unrealised_equity = (self.get_current_price() - avg_price) * float(self.get_net_quantity())
+        if include_interest:
+            return unrealised_equity + self.get_accrued_interest() - self.get_claimed_interest()
+        return unrealised_equity
 
     def get_total_profit_usd(self) -> USDollarAmount:
         """Realised + unrealised profit."""
@@ -1334,22 +1337,25 @@ class TradingPosition(GenericPosition):
         - When the position is completed closed,
           the accured interest tokens are traded and moved to reserves
 
-        - After position is closed calling `get_accrued_interest()` returns zero.
-          This is similar behavior os :py:meth:`get_value`
+        - After position is closed calling `get_accrued_interest()` Keeps returning
+          the lifetime interest of the position.
 
-        - You can still access historical interest by (TODO)
+        - See :py:meth:`get_claimed_interest` to get the interest that has
+          been moved to reserves from this position.
 
         :return:
             Positive if we have earned interest, negative if we have paid it.
         """
 
-        if self.is_closed():
-            return 0
-
         if self.loan is not None:
             return self.loan.get_net_interest()
 
         return 0.0
+
+    def get_claimed_interest(self) -> USDollarAmount:
+        """How much interest we have claimed from this position and moved back to reserves."""
+        interest = sum([t.get_claimed_interest() for t in self.trades.values() if t.is_success()])
+        return interest
 
     def get_borrowed(self) -> USDollarAmount:
         """Get the amount of outstanding loans we have."""

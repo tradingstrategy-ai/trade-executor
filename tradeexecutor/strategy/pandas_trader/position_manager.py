@@ -660,7 +660,7 @@ class PositionManager:
                        position: TradingPosition,
                        quantity: float | Decimal | None = None,
                        notes: Optional[str] = None,
-                       trade_type: TradeType = TradeType.supply_credit,
+                       trade_type: TradeType = TradeType.rebalance,
                        ) -> List[TradeExecution]:
         """Close a credit supply position
 

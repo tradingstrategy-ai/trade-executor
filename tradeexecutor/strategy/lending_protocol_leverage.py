@@ -60,6 +60,35 @@ def create_credit_supply_loan(
     return loan
 
 
+def update_credit_supply_loan(
+    position: "tradeexeecutor.state.position.TradingPosition",
+    trade: TradeExecution,
+):
+    """Close/increase/reduce credit supply loan.
+
+    """
+
+    assert trade.is_credit_supply()
+
+    pair = position.pair
+    assert pair.is_credit_supply()
+
+    loan = position.loan
+    assert loan
+
+    loan.collateral.change_quantity_and_value(
+        trade.planned_reserve,
+        trade.reserve_currency_exchange_rate,
+        trade.opened_at,
+        allow_negative=True,
+    )
+
+    # Sanity check
+    loan.check_health()
+
+    return loan
+
+
 def create_short_loan(
     position: "tradeexeecutor.state.position.TradingPosition",
     trade: TradeExecution,

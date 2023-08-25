@@ -14,6 +14,7 @@ from dataclasses_json import dataclass_json
 from tradeexecutor.state.identifier import AssetIdentifier, AssetWithTrackedValue, TradingPairIdentifier
 from tradeexecutor.state.interest import Interest
 from tradeexecutor.state.types import LeverageMultiplier, USDollarAmount
+from tradeexecutor.utils.accuracy import ZERO_DECIMAL
 
 #: Health Factor: hF=dC/d, if lower than 1, the account can be liquidated
 #:
@@ -71,6 +72,10 @@ class Loan:
     #: Tracker for borrowed asset interest events
     #:
     borrowed_interest: Interest | None = None
+
+    #: How much accrued interest we have moved to the cast reserves from this position.
+    #:
+    realised_interest: Decimal = ZERO_DECIMAL
 
     def __repr__(self):
         return f"<Loan, borrowed ${self.borrowed.get_usd_value()} {self.borrowed.asset.token_symbol} for collateral ${self.collateral.get_usd_value()}, at leverage {self.get_leverage()}>"
@@ -160,6 +165,23 @@ class Loan:
         For Aave ETH the liquidation threshold is 80%.
         """
         return self.borrowed.get_usd_value() / self.collateral.get_usd_value()
+
+    def claim_interest(self, quantity: Decimal | None=None) -> Decimal:
+        """Claim intrest from this position.
+
+        Interest should be moved to reserves.
+
+        :param quantity:
+            How many reserve tokens worth to claim
+
+        :return:
+            Claimed interest in reserve tokens
+        """
+
+        if not quantity:
+            quantity = self.collateral_interest.last_accrued_interest
+        self.realised_interest += quantity
+        return quantity
 
     def calculate_collateral_for_target_ltv(
             self,
