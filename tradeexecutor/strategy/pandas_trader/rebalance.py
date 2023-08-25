@@ -22,7 +22,7 @@ def get_existing_portfolio_weights(portfolio: Portfolio) -> Dict[int, float]:
     Cash is not included in the weighting.
     """
 
-    total = portfolio.get_open_position_equity()
+    total = portfolio.get_position_equity_and_loan_nav()
     result = {}
     for position in portfolio.open_positions.values():
         result[position.pair.internal_id] = position.get_value() / total

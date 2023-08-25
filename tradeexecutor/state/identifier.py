@@ -2,18 +2,42 @@
 
 How executor internally knows how to connect trading pairs in data and in execution environment (on-chain).
 """
+import datetime
 import enum
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Optional
 
 from dataclasses_json import dataclass_json
 from eth_typing import HexAddress
+
+from tradeexecutor.utils.accuracy import sum_decimal, ensure_exact_zero
 from tradingstrategy.chain import ChainId
 from web3 import Web3
 
-from tradeexecutor.state.types import JSONHexAddress
+from tradeexecutor.state.types import JSONHexAddress, USDollarAmount, LeverageMultiplier, USDollarPrice, Percent
+from tradingstrategy.lending import LendingProtocolType
 from tradingstrategy.stablecoin import is_stablecoin_like
+from tradingstrategy.types import PrimaryKey
+
+
+@dataclass_json
+@dataclass
+class AssetType:
+    """What kind of asset is this.
+
+    We mark special tokens that are dynamically created
+    by lending protocols.
+    """
+
+    #: Normal ERC-20
+    token = "token"
+
+    #: ERC-20 aToken with dynamic balance()
+    collateral = "collateral"
+
+    #: ERC-20 vToken with dynamic balance()
+    borrowed = "borrowed"
 
 
 @dataclass_json
@@ -41,13 +65,31 @@ class AssetIdentifier:
     decimals: int
 
     #: How this asset is referred in the internal database
-    internal_id: Optional[int] = None
+    internal_id: Optional[PrimaryKey] = None
 
     #: Info page URL for this asset
     info_url: Optional[str] = None
 
+    #: The underlying asset for aTokens, vTokens and such
+    underlying: Optional["AssetIdentifier"] = None
+
+    #: What kind of asset is this
+    #:
+    #: Legacy data will default to ``None``.
+    #:
+    type: AssetType | None = None
+
+    #: Aave liquidation threhold for this asset
+    #:
+    #: Set on aTokens that are used as collateral.
+    #:
+    liquidation_threshold: float | None = None
+
     def __str__(self):
-        return f"<{self.token_symbol} at {self.address}>"
+        if self.underlying:
+            return f"<{self.token_symbol} ({self.underlying.token_symbol}) at {self.address}>"
+        else:
+            return f"<{self.token_symbol} at {self.address}>"
 
     def __hash__(self):
         assert self.chain_id, "chain_id needs to be set to be hashable"
@@ -115,7 +157,7 @@ class TradingPairKind(enum.Enum):
     #: E.g. buy stETH or aUSD directly through DEX,
     #: instead of thru vault/reserves deposit.
     #:
-    spot_market_rebalancing_token = "spot_market_rebalancing token"
+    spot_market_hold_rebalancing_token = "spot_market_rebalancing token"
 
     #: Supplying credit to Aave reserves/gaining interest
     #:
@@ -130,7 +172,31 @@ class TradingPairKind(enum.Enum):
     lending_protocol_short = "lending_protocol_short"
 
     def is_interest_accruing(self) -> bool:
-        return self != TradingPairKind.spot_market_hold
+        """Do base or quote or both gain interest during when the position is open."""
+        return self in (TradingPairKind.lending_protocol_short, TradingPairKind.lending_protocol_long, TradingPairKind.credit_supply)
+
+    def is_credit_based(self) -> bool:
+        return self.is_interest_accruing()
+
+    def is_credit_supply(self) -> bool:
+        """This trading pair is for gaining interest."""
+        return self == TradingPairKind.credit_supply
+
+    def is_shorting(self) -> bool:
+        """This trading pair is for shorting."""
+        return self == TradingPairKind.lending_protocol_short
+
+    def is_longing(self) -> bool:
+        """This trading pair is for shorting."""
+        return self == TradingPairKind.lending_protocol_long
+
+    def is_leverage(self) -> bool:
+        """This is a leverage trade on a lending protocol."""
+        return self.is_shorting() or self.is_longing()
+
+    def is_spot(self) -> bool:
+        """This is a spot market pair."""
+        return self == TradingPairKind.spot_market_hold or self == TradingPairKind.spot_market_hold_rebalancing_token
 
 
 @dataclass_json
@@ -161,12 +227,19 @@ class TradingPairIdentifier:
 
     #: Base token in this trading pair
     #:
-    #: E.g. `WETH`
+    #: E.g. `WETH`.
+    #:
+    #: In leveraged positions this is borrowed asset with :py:attr:`AssetIdentifier.underlying` set.
+    #:
+    #:
     base: AssetIdentifier
 
     #: Quote token in this trading pair
     #:
     #: E.g. `USDC`
+    #:
+    #: In leveraged positions and credit supply positions, this is borrowed asset with :py:attr:`AssetIdentifier.underlying` set.
+    #:
     quote: AssetIdentifier
 
     #: Smart contract address of the pool contract.
@@ -231,7 +304,8 @@ class TradingPairIdentifier:
 
     def __repr__(self):
         fee = self.fee or 0
-        return f"<Pair {self.base.token_symbol}-{self.quote.token_symbol} at {self.pool_address} ({fee * 100:.4f}% fee) on exchange {self.exchange_address}>"
+        type_name = self.kind.name if self.kind else "spot"
+        return f"<Pair {self.base.token_symbol}-{self.quote.token_symbol} {type_name} at {self.pool_address} ({fee * 100:.4f}% fee) on exchange {self.exchange_address}>"
 
     def __hash__(self):
         assert self.internal_id, "Internal id needed to be hashable"
@@ -269,6 +343,12 @@ class TradingPairIdentifier:
         """Same as get_ticker()."""
         return self.get_ticker()
 
+    def get_lending_protocol(self) -> LendingProtocolType | None:
+        """Is this pair on a particular lending protocol."""
+        if self.kind in (TradingPairKind.lending_protocol_short, TradingPairKind.lending_protocol_long):
+            return LendingProtocolType.aave_v3
+        return None
+
     def has_complete_info(self) -> bool:
         """Check if the pair has good information.
 
@@ -298,3 +378,123 @@ class TradingPairIdentifier:
         """
         assert self.reverse_token_order is not None, f"reverse_token_order not set for: {self}"
         return self.reverse_token_order
+
+    def get_max_leverage_at_open(self) -> LeverageMultiplier:
+        """Return the max leverage we can set for this position at open.
+
+        E.g. for AAVE WETH short this is 0.8 because we can supply
+        1000 USDC to get 800 USDC loan. This gives us the health factor
+        of 1.13 on open.
+
+        Max Leverage in pair: l=1/(1-cfBuy); cfBuy = collateralFacor of Buy Asset
+
+        - `See 1delta documentation <https://docs.1delta.io/lenders/metrics>`__.
+        """
+        assert self.kind in (TradingPairKind.lending_protocol_short, TradingPairKind.lending_protocol_long)
+        return 1 / (1 - self.get_collateral_factor())
+
+    def is_leverage(self) -> bool:
+        return self.kind.is_leverage()
+
+    def is_spot(self) -> bool:
+        return self.kind.is_spot()
+
+    def is_credit_supply(self) -> bool:
+        return self.kind.is_credit_supply()
+
+    def get_liquidation_threshold(self) -> Percent:
+        """What's the liqudation threshold for this leveraged pair"""
+        assert self.kind.is_leverage()
+        # Liquidation threshold comes from the collateral token
+        return self.quote.liquidation_threshold
+
+    def get_collateral_factor(self) -> Percent:
+        """Same as liquidation threshold.
+
+        Alias for :py:meth:`get_liquidation_threshold`
+        """
+        return self.get_liquidation_threshold()
+
+
+@dataclass_json
+@dataclass(slots=True)
+class AssetWithTrackedValue:
+    """Track one asset with a value.
+
+    - Track asset quantity \
+
+    - The asset can be vToken/aToken for interest based tracking,
+      in this case :py:attr:`presentation` is set
+
+    - Any tracked asset must get USD oracle price from somewhere
+    """
+
+    #: Asset we are tracking
+    #:
+    #: The is aToken or vToken asset.
+    #:
+    #: Use ``asset.underlying`` to get the token.
+    #:
+    asset: AssetIdentifier
+
+    #: How many token units we have.
+    #:
+    #:
+    quantity: Decimal
+
+    #: What was the last known USD price of a single unit of quantity
+    last_usd_price: USDollarPrice
+
+    #: When the last pricing happened
+    last_pricing_at: datetime.datetime
+
+    #: Strategy cycle time stamp when the tracking was started
+    #:
+    created_at: datetime.datetime = field(default_factory=datetime.datetime.utcnow)
+
+    #: Strategy cycle time stamp when the tracking was started
+    #:
+    created_strategy_cycle_at: datetime.datetime | None = None
+
+    def __repr__(self):
+        return f"<AssetWithTrackedValue {self.asset.token_symbol} {self.quantity} at price {self.last_usd_price} USD>"
+
+    def __post_init__(self):
+        assert self.quantity > 0, f"Any tracked asset must have positive quantity, received {self.asset} = {self.quantity}"
+        assert self.last_usd_price is not None, "Price is None - asset price must set during initialisation"
+        assert self.last_usd_price > 0
+
+    def get_usd_value(self) -> USDollarAmount:
+        """Rrturn the approximate value of this tracked asset.
+
+        Priced in the `last_usd_price`
+        """
+        return float(self.quantity) * self.last_usd_price
+
+    def revalue(self, price: USDollarPrice, when: datetime.datetime):
+        """Update the latest known price of the asset."""
+        assert isinstance(when, datetime.datetime)
+        assert type(price) == float
+        assert 0 < price < 1_000_000, f"Price sanity check {price}"
+        self.last_usd_price = price
+        self.last_pricing_at = when
+
+    def change_quantity_and_value(
+        self,
+        delta: Decimal,
+        price: USDollarPrice,
+        when: datetime.datetime,
+        allow_negative=False,
+    ):
+        """The tracked asset amount is changing due to position increase/reduce."""
+        assert delta is not None, "Asset delta must be given"
+        self.revalue(price, when)
+
+        if not allow_negative:
+            assert sum_decimal((self.quantity, delta,)) >= 0, f"Tracked asset cannot go negative: {self}. Quantity: {self.quantity}, delta: {delta}"
+        self.quantity += delta
+
+        # Fix decimal math issues
+        self.quantity = ensure_exact_zero(self.quantity)
+
+

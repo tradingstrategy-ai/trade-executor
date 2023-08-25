@@ -480,7 +480,7 @@ class TradeAnalysis:
         
         initial_cash = self.portfolio.get_initial_deposit()
 
-        uninvested_cash = self.portfolio.get_current_cash()
+        uninvested_cash = self.portfolio.get_cash()
 
         # EthLisbon hack
         extra_return = 0

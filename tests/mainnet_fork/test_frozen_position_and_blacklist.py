@@ -20,7 +20,7 @@ from typing import List
 
 import pytest
 from eth_account import Account
-from eth_defi.anvil import fork_network_anvil
+from eth_defi.provider.anvil import fork_network_anvil
 from eth_defi.chain import install_chain_middleware
 from eth_defi.confirmation import wait_transactions_to_complete
 from eth_typing import HexAddress, HexStr

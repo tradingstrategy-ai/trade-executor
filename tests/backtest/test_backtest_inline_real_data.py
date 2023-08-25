@@ -94,7 +94,7 @@ def decide_trades(
     pair = universe.pairs.get_single()
 
     # How much cash we have in the hand
-    cash = state.portfolio.get_current_cash()
+    cash = state.portfolio.get_cash()
 
     # Get OHLCV candles for our trading pair as Pandas Dataframe.
     # We could have candles for multiple trading pairs in a different strategy,

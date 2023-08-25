@@ -213,7 +213,7 @@ def state(universe: TradingStrategyUniverse, deposit_syncer: BacktestSyncer) -> 
     token, usd_exchange_rate = state.portfolio.get_default_reserve_asset()
     assert token.token_symbol == "BUSD"
     assert usd_exchange_rate == 1
-    assert state.portfolio.get_current_cash() == 10_000
+    assert state.portfolio.get_cash() == 10_000
     return state
 
 

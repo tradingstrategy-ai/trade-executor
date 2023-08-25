@@ -58,7 +58,7 @@ def calculate_position_statistics(clock: datetime.datetime, position: TradingPos
         last_valuation_at=position.last_pricing_at,
         profitability=position.get_total_profit_percent(),
         profit_usd=position.get_total_profit_usd(),
-        quantity=float(position.get_equity_for_position()),
+        quantity=float(position.get_quantity_old()),
         value=value,
     )
 
@@ -116,9 +116,9 @@ def calculate_statistics(
         pf_stats = PortfolioStatistics(
             calculated_at=clock,
             total_equity=portfolio.get_total_equity(),
-            free_cash=float(portfolio.get_current_cash()),
+            free_cash=float(portfolio.get_cash()),
             open_position_count=len(portfolio.open_positions),
-            open_position_equity=portfolio.get_open_position_equity(),
+            open_position_equity=portfolio.get_position_equity_and_loan_nav(),
             frozen_position_equity=portfolio.get_frozen_position_equity(),
             frozen_position_count=len(portfolio.frozen_positions),
             closed_position_count=len(portfolio.closed_positions),

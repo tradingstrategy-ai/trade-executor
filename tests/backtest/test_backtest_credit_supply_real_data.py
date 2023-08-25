@@ -83,7 +83,7 @@ def test_backtest_open_only_credit_supply_real_data(
             cycle_debug_data: Dict) -> List[TradeExecution]:
         """A simple strategy that puts all in to our lending reserve."""
         position_manager = PositionManager(timestamp, strategy_universe, state, pricing_model)
-        cash = state.portfolio.get_current_cash()
+        cash = state.portfolio.get_cash()
 
         trades = []
 
@@ -139,7 +139,7 @@ def test_backtest_open_and_close_credit_supply_real_data(
             cycle_debug_data: Dict) -> List[TradeExecution]:
         """A simple strategy that puts all in to our lending reserve."""
         position_manager = PositionManager(timestamp, strategy_universe, state, pricing_model)
-        cash = state.portfolio.get_current_cash()
+        cash = state.portfolio.get_cash()
 
         trades = []
 

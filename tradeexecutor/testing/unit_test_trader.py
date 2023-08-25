@@ -12,8 +12,8 @@ from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradingstrategy.candle import GroupedCandleUniverse
 
 
-class DummyTestTrader:
-    """Helper class to generate trades for tests.
+class UnitTestTrader:
+    """Helper class to generate and settle trades in unit tests.
 
     This trade helper is not connected to any blockchain - it just simulates txid and nonce values.
     """
@@ -84,10 +84,22 @@ class DummyTestTrader:
             executed_quantity = quantity
             executed_reserve = abs(quantity * Decimal(executed_price))
 
-        self.state.mark_trade_success(self.ts, trade, executed_price, executed_quantity, executed_reserve, self.lp_fees, self.native_token_price)
+        self.state.mark_trade_success(
+            self.ts,
+            trade,
+            executed_price,
+            executed_quantity,
+            executed_reserve,
+            self.lp_fees,
+            self.native_token_price)
         return position, trade
 
     def set_perfectly_executed(self, trade: TradeExecution):
+        """Sets trade to a executed state.
+
+        - There are no checks whether the wallet contains relevant balances or not
+        """
+
         # 2. Capital allocation
         txid = hex(self.nonce)
         nonce = self.nonce
@@ -102,14 +114,35 @@ class DummyTestTrader:
 
         # 4. executed
         executed_price = trade.planned_price
-        if trade.is_buy():
-            executed_quantity = trade.planned_quantity
-            executed_reserve = Decimal(0)
+        executed_collateral_consumption = trade.planned_collateral_consumption
+        executed_collateral_allocation = trade.planned_collateral_allocation
+
+        if trade.is_spot():
+            if trade.is_buy():
+                executed_quantity = trade.planned_quantity
+                executed_reserve = Decimal(0)  # TODO: Check if we can reorg code here more cleanly
+            else:
+                # short reduction also changes the reserve (releases collateral)
+                executed_quantity = trade.planned_quantity
+                executed_reserve = trade.planned_reserve
         else:
             executed_quantity = trade.planned_quantity
             executed_reserve = trade.planned_reserve
 
-        self.state.mark_trade_success(self.ts, trade, executed_price, executed_quantity, executed_reserve, self.lp_fees, self.native_token_price)
+        if trade.planned_loan_update:
+            trade.executed_loan_update = trade.planned_loan_update
+
+        self.state.mark_trade_success(
+            self.ts,
+            trade,
+            executed_price,
+            executed_quantity,
+            executed_reserve,
+            self.lp_fees,
+            self.native_token_price,
+            executed_collateral_consumption=executed_collateral_consumption,
+            executed_collateral_allocation=executed_collateral_allocation,
+        )
 
     def buy(self, pair, quantity, price) -> Tuple[TradingPosition, TradeExecution]:
         return self.create_and_execute(pair, quantity, price)
