@@ -260,6 +260,38 @@ def create_backtest_execution_model(wallet: SimulatedWallet):
     return execution_model, valuation_model_factory, pricing_model_factory
 
 
+def create_generic_backtest_execution_and_sync_model(
+    asset_management_mode: AssetManagementMode,
+    routing_hints: Optional[list[TradeRouting]],
+) -> Tuple[list[dict], BacktestSyncModel]:
+    """
+    TODO: currently unused in any code paths
+
+    For backtesting: Set up the wallet sync and execution mode for the command line client for a trading universe with multiple dexes.
+    
+    :param asset_management_mode:
+        The asset management mode to use. For safety to ensure backtesting mode.
+
+    :param routing_hints:
+        The routing hints to use for the backtesting.
+
+    :return:
+        A tuple of the generic routing data and the sync model.
+    """
+
+    assert asset_management_mode == AssetManagementMode.backtest, "Asset management mode must be backtest for backtesting"
+
+    wallet = SimulatedWallet()
+    sync_model = BacktestSyncModel(wallet, Decimal(10_000))
+    generic_routing_data = []
+
+    for routing_hint in routing_hints:
+        execution_model, valuation_model_factory, pricing_model_factory = create_backtest_execution_model(wallet)
+        generic_routing_data.append(dict(execution_model=execution_model, valuation_model_factory=valuation_model_factory, pricing_model_factory=pricing_model_factory, routing_hint=routing_hint))
+
+    return generic_routing_data, sync_model
+
+
 def create_generic_execution_and_sync_model(
     asset_management_mode: AssetManagementMode,
     private_key: str,
@@ -278,15 +310,7 @@ def create_generic_execution_and_sync_model(
     assert len(routing_hints) > 1, "At least two dexes are needed for generic routing"
     
     if asset_management_mode == AssetManagementMode.backtest:
-        
-        wallet = SimulatedWallet()
-        sync_model = BacktestSyncModel(wallet, Decimal(10_000))
-        generic_routing_data = []
-
-        for routing_hint in routing_hints:
-            execution_model, valuation_model_factory, pricing_model_factory = create_backtest_execution_model(wallet)
-            generic_routing_data.append(dict(execution_model=execution_model, valuation_model_factory=valuation_model_factory, pricing_model_factory=pricing_model_factory, routing_hint=routing_hint))
-
+        generic_routing_data, sync_model = create_generic_backtest_execution_and_sync_model(asset_management_mode, routing_hints)
     else:
         assert asset_management_mode in (AssetManagementMode.hot_wallet, AssetManagementMode.enzyme)
         assert private_key, "Private key is needed for live trading"
