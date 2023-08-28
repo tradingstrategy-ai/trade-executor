@@ -12,6 +12,7 @@ from pandas import Timestamp
 from dataclasses_json import dataclass_json
 
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
+from tradeexecutor.state.loan import Loan
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.trade import TradeType
@@ -19,6 +20,8 @@ from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.types import USDollarAmount, BPS, USDollarPrice
 from tradeexecutor.strategy.dust import get_dust_epsilon_for_pair
 from tradeexecutor.strategy.trade_pricing import TradePricing
+from tradingstrategy.types import PrimaryKey
+
 
 class NotEnoughMoney(Exception):
     """We try to allocate reserve for a buy trade, but do not have cash."""
@@ -91,6 +94,11 @@ class Portfolio:
     #: - rug pull token - transfer disabled
     frozen_positions: Dict[int, TradingPosition] = field(default_factory=dict)
 
+    def __repr__(self):
+        reserve_asset, _ = self.get_default_reserve_asset()
+        reserve_position = self.get_reserve_position(reserve_asset)
+        return f"<Portfolio with positions open:{len(self.open_positions)} frozen:{len(self.frozen_positions)} closed:{len(self.frozen_positions)} and reserve {reserve_position.quantity} {reserve_position.asset.token_symbol}>"
+
     def is_empty(self):
         """This portfolio has no open or past trades or any reserves."""
         return len(self.open_positions) == 0 and len(self.reserves) == 0 and len(self.closed_positions) == 0
@@ -147,7 +155,20 @@ class Portfolio:
     def get_all_positions(self) -> Iterable[TradingPosition]:
         """Get open, closed and frozen, positions."""
         return chain(self.open_positions.values(), self.closed_positions.values(), self.frozen_positions.values())
-    
+
+    def get_open_loans(self) -> Iterable[Loan]:
+        """Get loans across all positions."""
+        for p in self.get_open_and_frozen_positions():
+            if p.loan:
+                yield p.loan
+
+    def get_open_and_frozen_positions(self) -> Iterable[TradingPosition]:
+        """Get open and frozen, positions.
+
+        These are all the positions where we have capital tied at the moment.
+        """
+        return chain(self.open_positions.values(), self.frozen_positions.values())
+
     def get_all_positions_filtered(self) -> Iterable[TradingPosition]:
         """Get open, closed and frozen, positions filtered to remove
         repaired or failed trades.
@@ -359,6 +380,10 @@ class Portfolio:
                      price_structure: Optional[TradePricing] = None,
                      position: Optional[TradingPosition] = None,
                      slippage_tolerance: Optional[float] = None,
+                     leverage: Optional[float] = None,
+                     closing: Optional[bool] = False,
+                     planned_collateral_consumption: Optional[Decimal] = None,
+                     planned_collateral_allocation: Optional[Decimal] = None,
                      ) -> Tuple[TradingPosition, TradeExecution, bool]:
         """Create a trade.
 
@@ -438,8 +463,9 @@ class Portfolio:
         if price_structure is not None:
             assert isinstance(price_structure, TradePricing)
 
-        if quantity is not None:
-            assert reserve is None, "Quantity and reserve both cannot be given at the same time"
+        # Done in State.create_trade()
+        # if quantity is not None:
+        #    assert reserve is None, "Quantity and reserve both cannot be given at the same time"
 
         if position is None:
             # Open a new position
@@ -448,15 +474,15 @@ class Portfolio:
         portfolio_value = self.get_total_equity()
 
         if position is None:
+            # Initialise new position data structure
             position = self.open_new_position(
                 strategy_cycle_at,
                 pair,
                 assumed_price,
                 reserve_currency,
                 reserve_currency_price)
-            created = True
-
             position.portfolio_value_at_open = portfolio_value
+            created = True
         else:
             # Trade counts against old position,
             # - inc/dec size
@@ -480,6 +506,10 @@ class Portfolio:
             price_structure=price_structure,
             slippage_tolerance=slippage_tolerance,
             portfolio_value_at_creation=portfolio_value,
+            leverage=leverage,
+            closing=closing,
+            planned_collateral_consumption=planned_collateral_consumption,
+            planned_collateral_allocation=planned_collateral_allocation,
         )
 
         # Update notes
@@ -490,22 +520,49 @@ class Portfolio:
 
         self.next_trade_id += 1
 
+        # Do not allow open positions that are so small
+        # we cannot track
         dust_epsilon = get_dust_epsilon_for_pair(trade.pair)
-        if abs(trade.planned_quantity) <= dust_epsilon:
-            raise TooSmallTrade(f"Trade cannot be this small\n"
-                                f"Quantity {trade.planned_quantity}, dust epsilon {dust_epsilon}\n"
-                                f"Trade: {trade}\n"
-                                f"Pair: {trade.pair}")
+        if trade.planned_quantity != 0:
+            if abs(trade.planned_quantity) <= dust_epsilon:
+                raise TooSmallTrade(f"Trade cannot be this small\n"
+                                    f"Quantity {trade.planned_quantity}, dust epsilon {dust_epsilon}\n"
+                                    f"Trade: {trade}\n"
+                                    f"Pair: {trade.pair}")
 
         return position, trade, created
 
-    def get_current_cash(self) -> USDollarAmount:
+    def get_cash(self) -> USDollarAmount:
         """Get how much reserve stablecoins we have."""
         return sum([r.get_value() for r in self.reserves.values()])
 
-    def get_open_position_equity(self) -> USDollarAmount:
-        """Get the value of current trading positions."""
-        return sum([p.get_value() for p in self.open_positions.values()])
+    def get_current_cash(self):
+        """Alias for get_cash()
+
+        TODO: Deprecate
+        """
+        return self.get_cash()
+
+    def get_position_equity_and_loan_nav(self, include_interest=True) -> USDollarAmount:
+        """Get the equity tied tot the current trading positions.
+
+        TODO: Rename this function - also deals with loans not just equity
+
+        - Includes open positions
+        - Does not include frozen positions
+        """
+
+        # Any trading positions we have one
+        spot_values = sum([p.get_equity() for p in self.open_positions.values() if not p.is_loan_based()])
+
+        # Minus any outstanding loans we have
+        leveraged_values = self.get_all_loan_nav(include_interest)
+
+        return spot_values + leveraged_values
+
+    def get_all_loan_nav(self, include_interest=True) -> USDollarAmount:
+        """Get net asset value we can theoretically free from leveraged positions."""
+        return sum([p.loan.get_net_asset_value(include_interest) for p in self.open_positions.values() if p.is_loan_based()])
 
     def get_frozen_position_equity(self) -> USDollarAmount:
         """Get the value of trading positions that are frozen currently."""
@@ -518,19 +575,64 @@ class Portfolio:
     def get_total_equity(self) -> USDollarAmount:
         """Get the value of the portfolio based on the latest pricing.
 
-        This is
+        This includes
 
-        - Value of the positions
+        - Equity Value of the positions
 
-        plus
+        - ...and cash in the hand
 
-        - Cash in the hand
+        But not
+
+        - Leverage/loan based positions (equity is in collateral)
+
+        See also :py:meth:`get_theoretical_value`
+
         """
-        return self.get_open_position_equity() + self.get_current_cash()
+
+        # Any trading positions we have one
+        spot_values = sum([p.get_equity() for p in self.open_positions.values() if not p.is_leverage()])
+
+        return self.get_position_equity_and_loan_nav() + self.get_cash()
+
+    def get_net_asset_value(self, include_interest=True) -> USDollarAmount:
+        """Calculate portfolio value if every position would be closed now.
+
+        This includes
+
+        - Cash
+
+        - Equity hold in spot positions
+
+        - Net asset value hold in leveraged positions
+        """
+        return self.get_position_equity_and_loan_nav(include_interest) + self.get_cash()
 
     def get_unrealised_profit_usd(self) -> USDollarAmount:
-        """Get the profit of currently open positions."""
+        """Get the profit of currently open positions.
+
+        - This profit includes spot market equity i.e. holding tokens
+
+        See also :py:meth:`get_unrealised_profit_in_leveraged_positions`.
+        """
         return sum([p.get_unrealised_profit_usd() for p in self.open_positions.values()])
+
+    def get_unrealised_profit_in_leveraged_positions(self) -> USDollarAmount:
+        """Get the profit of currently open margiend positions.
+
+        - This profit is not included in the portfolio total equity
+
+        See also :py:meth:`get_unrealised_profit_usd`.
+        """
+        return sum([p.get_unrealised_profit_usd() for p in self.open_positions.values() if p.is_leverage()])
+
+    def get_realised_profit_in_leveraged_positions(self) -> USDollarAmount:
+        """Get the profit of currently open margiend positions.
+
+        - This profit is not included in the portfolio total equity
+
+        See also :py:meth:`get_unrealised_profit_usd`.
+        """
+        return sum([p.get_realised_profit_usd() for p in self.open_positions.values() if p.is_leverage()])
 
     def get_closed_profit_usd(self) -> USDollarAmount:
         """Get the value of the portfolio based on the latest pricing."""
@@ -575,7 +677,7 @@ class Portfolio:
         position = self.get_position_by_trading_pair(pair)
         if position is None:
             return Decimal(0)
-        return position.get_equity_for_position()
+        return position.get_quantity_old()
 
     def adjust_reserves(self, asset: AssetIdentifier, amount: Decimal):
         """Remove currency from reserved.
@@ -591,15 +693,23 @@ class Portfolio:
         assert isinstance(amount, Decimal), f"Got amount {amount}"
         reserve = self.get_reserve_position(asset)
         assert reserve, f"No reserves available for {asset}"
-        assert reserve.quantity, f"Reserve quantity missing for {asset}"
+        assert reserve.quantity is not None, f"Reserve quantity not set for {asset} in portfolio {self}"
+
+        # TODO: On paper reserves can go negative.
+        # because we might execute sell trade that increase our capital
+        # before executing buy trades
+        # assert reserve.quantity + amount >= 0, f"Reserves went to negative with new amount {amount}, current reserves {reserve.quantity}"
+
         reserve.quantity += amount
 
-    def move_capital_from_reserves_to_trade(self, trade: TradeExecution, underflow_check=True):
+    def move_capital_from_reserves_to_spot_trade(self, trade: TradeExecution, underflow_check=True):
         """Allocate capital from reserves to trade instance.
 
         Total equity of the porfolio stays the same.
         """
-        assert trade.is_buy()
+
+        if trade.is_spot():
+            assert trade.is_buy()
 
         reserve = trade.get_planned_reserve()
         try:
@@ -608,7 +718,8 @@ class Portfolio:
             raise RuntimeError(f"Reserve missing for {trade.reserve_currency}") from e
 
         # Sanity check on price calculatins
-        assert abs(float(reserve) - trade.get_planned_value()) < 0.01, f"Trade {trade}: Planned value {trade.get_planned_value()}, but wants to allocate reserve currency for {reserve}"
+        if trade.is_spot():
+            assert abs(float(reserve) - trade.get_planned_value()) < 0.01, f"Trade {trade}: Planned value {trade.get_planned_value()}, but wants to allocate reserve currency for {reserve}"
 
         if underflow_check:
             if available < reserve:
@@ -618,9 +729,13 @@ class Portfolio:
         self.adjust_reserves(trade.reserve_currency, -reserve)
 
     def return_capital_to_reserves(self, trade: TradeExecution, underflow_check=True):
-        """Return capital to reserves after a sell."""
-        assert trade.is_sell()
-        self.adjust_reserves(trade.reserve_currency, +trade.executed_reserve)
+        """Return capital to reserves after a spot sell or collateral returned.
+
+        """
+        if trade.is_spot():
+            assert trade.is_sell()
+
+        self.adjust_reserves(trade.reserve_currency, trade.executed_reserve)
 
     def has_unexecuted_trades(self) -> bool:
         """Do we have any trades that have capital allocated, but not executed yet."""
@@ -652,20 +767,25 @@ class Portfolio:
     def revalue_positions(self, ts: datetime.datetime, valuation_method: Callable, revalue_frozen=True):
         """Revalue all open positions in the portfolio.
 
-        Reserves are not revalued.
+        - Reserves are not revalued
+        - Credit supply positions are not revalued
 
         :param revalue_frozen:
             Revalue frozen positions as well
         """
         try:
             for p in self.open_positions.values():
-                ts, price = valuation_method(ts, p)
-                p.set_revaluation_data(ts, price)
+                # TODO: How to handle credit supply position revaluation
+                if not p.is_credit_supply():
+                    ts, price = valuation_method(ts, p)
+                    p.revalue_base_asset(ts, price)
 
             if revalue_frozen:
                 for p in self.frozen_positions.values():
-                    ts, price = valuation_method(ts, p)
-                    p.set_revaluation_data(ts, price)
+                    # TODO: How to handle credit supply position revaluation
+                    if not p.is_credit_supply():
+                        ts, price = valuation_method(ts, p)
+                        p.revalue_base_asset(ts, price)
         except Exception as e:
             raise InvalidValuationOutput(f"Valuation model failed to output proper price: {valuation_method}: {e}") from e
 
@@ -674,6 +794,10 @@ class Portfolio:
 
         For strategies that use only one reserve currency.
         This is the first in the reserve currency list.
+
+        See also
+
+        - :py:meth:`get_default_reserve_position`
 
         :return:
             Tuple (Reserve currency asset, its latest US dollar exchanage rate)
@@ -792,6 +916,11 @@ class Portfolio:
         (pair,) = pairs
         return pair
 
+    def allocate_balance_update_id(self) -> PrimaryKey:
+        """Get a new balance update event id."""
+        self.next_balance_update_id += 1
+        return self.next_balance_update_id - 1
+
     def correct_open_position_balance(
             self,
             position: TradingPosition,
@@ -840,3 +969,18 @@ class Portfolio:
         # )
         #
         # return trade
+
+    def get_current_credit_positions(self) -> List[TradingPosition]:
+        """Return currently open credit positions."""
+        credit_positions = [p for p in self.get_open_and_frozen_positions() if p.is_credit_supply()]
+        return credit_positions
+
+    def get_borrowed(self) -> USDollarAmount:
+        return sum([p.get_borrowed() for p in self.get_open_and_frozen_positions()])
+
+    def get_loan_net_asset_value(self) -> USDollarAmount:
+        """What is our Net Asset Value (NAV) across all open loan positions."""
+        return sum(l.get_net_asset_value() for l in self.get_open_loans())
+
+    def get_total_collateral(self) -> USDollarAmount:
+        raise NotImplementedError()

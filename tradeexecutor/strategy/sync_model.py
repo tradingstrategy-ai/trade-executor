@@ -17,6 +17,7 @@ from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.state import State
 from tradeexecutor.state.sync import BalanceEventRef
 from tradeexecutor.state.types import JSONHexAddress
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 
 # Prototype sync method that is not applicable to the future production usage
 SyncMethodV0 = Callable[[Portfolio, datetime.datetime, List[AssetIdentifier]], List[ReserveUpdateEvent]]
@@ -93,10 +94,10 @@ class SyncModel(ABC):
 
     @abstractmethod
     def sync_treasury(self,
-                 strategy_cycle_ts: datetime.datetime,
-                 state: State,
-                 supported_reserves: Optional[List[AssetIdentifier]] = None
-                 ) -> List[BalanceUpdate]:
+                      strategy_cycle_ts: datetime.datetime,
+                      state: State,
+                      supported_reserves: Optional[List[AssetIdentifier]] = None
+                      ) -> List[BalanceUpdate]:
         """Apply the balance sync before each strategy cycle.
 
         :param strategy_cycle_ts:
@@ -135,6 +136,33 @@ class SyncModel(ABC):
             - :py:class:`tradeexecutor.ethereum.enzyme.tx.EnzymeTransactionBuilder`
         """
 
+    def sync_credit_supply(self,
+                           timestamp: datetime.datetime,
+                           state: State,
+                           universe: TradingStrategyUniverse,
+                           credit_positions: List[TradingPosition],
+                           ) -> List[BalanceUpdate]:
+        """Update all credit supply positions.
+
+        :param timestamp:
+            Wall clock time.
+
+            This function can be called outside the strategy cycle.
+
+        :param state:
+            Current strategy state
+
+        :param universe:
+            Trading universe that must include lending data.
+
+        :param credit_positions:
+            Prefiltered list of credit positions to update.
+
+        :return:
+            All triggered balance update events
+        """
+        raise NotImplementedError()
+
 
 class DummySyncModel(SyncModel):
     """Do nothing sync model.
@@ -154,10 +182,10 @@ class DummySyncModel(SyncModel):
         return None
 
     def sync_treasury(self,
-                 strategy_cycle_ts: datetime.datetime,
-                 state: State,
-                 supported_reserves: Optional[List[AssetIdentifier]] = None
-                 ) -> List[BalanceUpdate]:
+                      strategy_cycle_ts: datetime.datetime,
+                      state: State,
+                      supported_reserves: Optional[List[AssetIdentifier]] = None
+                      ) -> List[BalanceUpdate]:
         if not self.fake_sync_done:
             state.sync.treasury.last_updated_at = datetime.datetime.utcnow()
             state.sync.treasury.last_cycle_at = strategy_cycle_ts

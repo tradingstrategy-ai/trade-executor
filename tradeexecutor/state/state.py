@@ -17,7 +17,7 @@ from dataclasses_json import dataclass_json
 from dataclasses_json.core import _ExtendedEncoder
 
 from .sync import Sync
-from .identifier import AssetIdentifier, TradingPairIdentifier
+from .identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind
 from .portfolio import Portfolio
 from .position import TradingPosition
 from .reserve import ReservePosition
@@ -29,7 +29,7 @@ from .visualisation import Visualisation
 
 from tradeexecutor.strategy.trade_pricing import TradePricing
 from ..strategy.cycle import CycleDuration
-
+from ..utils.accuracy import ZERO_DECIMAL
 
 logger = logging.getLogger(__name__)
 
@@ -187,6 +187,10 @@ class State:
                      price_structure: Optional[TradePricing] = None,
                      position: Optional[TradingPosition] = None,
                      slippage_tolerance: Optional[float] = None,
+                     leverage: Optional[float] = None,
+                     closing: Optional[bool] = False,
+                     planned_collateral_consumption: Optional[Decimal] = None,
+                     planned_collateral_allocation: Optional[Decimal] = None,
                      ) -> Tuple[TradingPosition, TradeExecution, bool]:
         """Creates a request for a new trade.
 
@@ -209,6 +213,9 @@ class State:
             How many units this trade does.
 
             Positive for buys, negative for sells in the spot market.
+
+            For short positions, negative quantity means increase the position of this much,
+            positive quantity means decrease the position.
 
         :param assumed_price:
             The planned execution price.
@@ -266,6 +273,11 @@ class State:
 
             See :py:attr:`tradeexecutor.state.trade.TradeExecution.slippage_tolerance` for details.
 
+        :param closing:
+            This trade should close the position entirely.
+
+            A flag used with leveraged positions.
+
         :return:
             Tuple of entries
 
@@ -287,7 +299,12 @@ class State:
             assert isinstance(price_structure, TradePricing)
 
         if quantity is not None:
-            assert reserve is None, "Quantity and reserve both cannot be given at the same time"
+            # We assume we give either reserve (how much cash we spent) or
+            # quantity (how much token we spent).
+            # However for leveraged position we give both, because quantity/reserve
+            # gives the final loan health rate.
+            if not pair.kind.is_credit_based():
+                assert reserve is None, "Quantity and reserve both cannot be given at the same time for a spot market pair"
 
         position, trade, created = self.portfolio.create_trade(
             strategy_cycle_at,
@@ -305,8 +322,185 @@ class State:
             position=position,
             slippage_tolerance=slippage_tolerance,
             notes=notes,
+            leverage=leverage,
+            closing=closing,
+            planned_collateral_consumption=planned_collateral_consumption,
+            planned_collateral_allocation=planned_collateral_allocation,
         )
 
+        return position, trade, created
+
+    def trade_short(self,
+                    strategy_cycle_at: datetime.datetime,
+                    pair: TradingPairIdentifier,
+                    borrowed_asset_price: USDollarPrice,
+                    trade_type: TradeType,
+                    reserve_currency: AssetIdentifier,
+                    collateral_asset_price: USDollarPrice,
+                    borrowed_quantity: Optional[Decimal] = None,
+                    collateral_quantity: Optional[Decimal] = None,
+                    notes: Optional[str] = None,
+                    pair_fee: Optional[float] = None,
+                    lp_fees_estimated: Optional[USDollarAmount] = None,
+                    planned_mid_price: Optional[USDollarPrice] = None,
+                    price_structure: Optional[TradePricing] = None,
+                    position: Optional[TradingPosition] = None,
+                    slippage_tolerance: Optional[float] = None,
+                    closing: Optional[bool] = False,
+                    planned_collateral_consumption: Optional[Decimal] = None,
+                    planned_collateral_allocation: Optional[Decimal] = None,
+                    ) -> Tuple[TradingPosition, TradeExecution, bool]:
+        """Creates a trade for a short position.
+
+        - Opens, increases or decreases short position size.
+
+        For argument and return value documentation see :py:meth:`create_trade`.
+
+        See also :py:meth:`supply_credit`.
+
+        :param borrowed_quantity:
+            How much we are going to borrow and increase/decrease our exposure.
+
+            Our short position size in the target token.
+
+            - Negative for increasing short position size
+
+            - Positive for reducing the short position size
+
+        :param collateral_quantity:
+            How much reserve currency we are going to use as a collateral for loans.
+
+            This is moved from cash reserves to lending protocol deposit.
+
+            - Always positive when opening
+
+            - Can be zero and in this case,
+              the shorted token is bought or sold and this
+              will affect the underlying loan health factor
+
+            - If negative then release collateral after
+              any changes to borrowed token via buy and sell
+
+        :param borrowed_asset_price:
+            What is the assumed price of the token we are going to borrow.
+
+            We estimate fees and value selling it short.
+
+        :param closing:
+            This trade should close any remaining exposure and return the collateral after the trade.
+
+            If set, norrowed quantity and collateral quantity
+            are automatically calculated.
+
+        :return:
+            Trading position, trade execution and created flag.
+
+            :py:attr:`TradeExecution.planned_loan` is set.
+
+            After the trade succeeds, :py:attr:`TradingPosition.loan`
+            is set.
+
+            If the trade does not succeed loan data remains unchanged.
+        """
+        assert pair.kind.is_shorting()
+        assert pair.quote.underlying.is_stablecoin(), "Shorts accept only stablecoin collateral"
+
+        assert pair.quote.underlying == self.portfolio.get_default_reserve_position().asset, f"Collateral is not our reserve"
+
+        assert reserve_currency == pair.quote.underlying
+
+        if not closing:
+            assert borrowed_quantity is not None, "borrowed_quantity must be always set"
+            assert collateral_quantity is not None, "collateral_quantity must be always set. Set to zero if you do not want to have change to the amount of collateral"
+
+        return self.create_trade(
+            strategy_cycle_at=strategy_cycle_at,
+            pair=pair,
+            quantity=borrowed_quantity,
+            reserve=collateral_quantity,
+            assumed_price=borrowed_asset_price,
+            trade_type=trade_type,
+            reserve_currency=reserve_currency,
+            reserve_currency_price=collateral_asset_price,
+            notes=notes,
+            pair_fee=pair_fee,
+            lp_fees_estimated=lp_fees_estimated,
+            planned_mid_price=planned_mid_price,
+            price_structure=price_structure,
+            position=position,
+            slippage_tolerance=slippage_tolerance,
+            closing=closing,
+            planned_collateral_consumption=planned_collateral_consumption,
+            planned_collateral_allocation=planned_collateral_allocation,
+        )
+
+    def supply_credit(
+            self,
+            strategy_cycle_at: datetime.datetime,
+            pair: TradingPairIdentifier,
+            trade_type: TradeType,
+            reserve_currency: AssetIdentifier,
+            collateral_asset_price: USDollarPrice,
+            collateral_quantity: Optional[Decimal] = None,
+            notes: Optional[str] = None,
+            pair_fee: Optional[float] = None,
+            lp_fees_estimated: Optional[USDollarAmount] = None,
+            planned_mid_price: Optional[USDollarPrice] = None,
+            price_structure: Optional[TradePricing] = None,
+            position: Optional[TradingPosition] = None,
+            slippage_tolerance: Optional[float] = None,
+            closing: Optional[bool] = False,
+    ) -> Tuple[TradingPosition, TradeExecution, bool]:
+        """Create or adjust credit supply position.
+
+        Credit supply position trades are modelled as following
+
+        - You BUY aToken using the reserve. Like buying aUSDC
+          with USDC.
+
+        - You SELL aToken and get back reserve + interest,
+          with the trade size reserve + interest
+
+        - Reserve is USDC, always positive
+
+        - The modelling is different from trade_short/trade_long
+
+        - See also :py:meth:`trade_short`
+
+        :param collateral_quantity:
+            Positive for supplying credit, negative of recalling reserves.
+        """
+
+        assert pair.kind == TradingPairKind.credit_supply
+
+        planned_collateral_allocation = None
+        if collateral_quantity < 0:
+            # Moving collateral back to reserves
+            reserve = abs(collateral_quantity)
+        else:
+            reserve = collateral_quantity
+
+        quantity = collateral_quantity
+
+        position, trade, created = self.create_trade(
+            strategy_cycle_at=strategy_cycle_at,
+            pair=pair,
+            quantity=quantity,
+            assumed_price=1.0,
+            reserve=reserve,
+            trade_type=trade_type,
+            reserve_currency=reserve_currency,
+            reserve_currency_price=collateral_asset_price,
+            notes=notes,
+            pair_fee=pair_fee,
+            lp_fees_estimated=lp_fees_estimated,
+            planned_mid_price=planned_mid_price,
+            price_structure=price_structure,
+            position=position,
+            slippage_tolerance=slippage_tolerance,
+            closing=closing,
+            planned_collateral_allocation=planned_collateral_allocation,
+        )
         return position, trade, created
 
     def start_execution(self, ts: datetime.datetime, trade: TradeExecution, txid: str, nonce: int):
@@ -322,8 +516,18 @@ class State:
 
         self.portfolio.check_for_nonce_reuse(nonce)
 
-        if trade.is_buy():
-            self.portfolio.move_capital_from_reserves_to_trade(trade)
+        # Allocate reserve capital for this trade.
+        # Reserve capital cannot be double spent until the trades are execured.
+        if trade.is_spot():
+            if trade.is_buy():
+                self.portfolio.move_capital_from_reserves_to_spot_trade(trade)
+        elif trade.is_leverage():
+            self.portfolio.move_capital_from_reserves_to_spot_trade(trade)
+        elif trade.is_credit_supply():
+            if trade.is_buy():
+                self.portfolio.move_capital_from_reserves_to_spot_trade(trade)
+        else:
+            raise NotImplementedError()
 
         trade.started_at = ts
 
@@ -345,27 +549,58 @@ class State:
                            lp_fees: USDollarAmount,
                            native_token_price: USDollarPrice,
                            cost_of_gas: float | None = None ,
+                           executed_collateral_consumption: Optional[Decimal] = None,
+                           executed_collateral_allocation: Optional[Decimal] = None,
                         ):
         """"""
 
         position = self.portfolio.find_position_for_trade(trade)
 
-        if trade.is_buy():
-            assert executed_amount and executed_amount > 0, f"Executed amount was {executed_amount}"
-        else:
-            assert executed_reserve > 0, f"Executed reserve must be positive for sell, got amount:{executed_amount}, reserve:{executed_reserve}"
-            assert executed_amount < 0, f"Executed amount must be negative for sell, got amount:{executed_amount}, reserve:{executed_reserve}"
+        if trade.is_spot():
+            if trade.is_buy():
+                assert executed_amount and executed_amount > 0, f"Executed amount was {executed_amount}"
+            else:
+                assert executed_reserve > 0, f"Executed reserve must be positive for sell, got amount:{executed_amount}, reserve:{executed_reserve}"
+                assert executed_amount < 0, f"Executed amount must be negative for sell, got amount:{executed_amount}, reserve:{executed_reserve}"
 
-        trade.mark_success(executed_at, executed_price, executed_amount, executed_reserve, lp_fees, native_token_price, cost_of_gas=cost_of_gas)
+        trade.mark_success(
+            executed_at,
+            executed_price,
+            executed_amount,
+            executed_reserve,
+            lp_fees,
+            native_token_price,
+            cost_of_gas=cost_of_gas,
+            executed_collateral_consumption=executed_collateral_consumption,
+            executed_collateral_allocation=executed_collateral_allocation,
+        )
 
-        if trade.is_sell():
+        if trade.planned_loan_update:
+            assert trade.executed_loan_update, "TradeExecution.executed_loan_update structure not filled"
+            position.loan = trade.executed_loan_update
+
+        if trade.is_spot() and trade.is_sell():
             self.portfolio.return_capital_to_reserves(trade)
+        elif trade.is_leverage():
+            # Release any collateral
+            if executed_collateral_allocation:
+                assert trade.pair.quote.underlying
+                self.portfolio.adjust_reserves(trade.pair.quote.underlying, -executed_collateral_allocation)
+        elif trade.is_credit_supply():
+            if trade.is_sell():
+                self.portfolio.adjust_reserves(trade.pair.quote, executed_reserve)
+
+        if trade.is_long():
+            raise NotImplementedError()
 
         if position.can_be_closed():
             # Move position to closed
             position.closed_at = executed_at
             del self.portfolio.open_positions[position.position_id]
             self.portfolio.closed_positions[position.position_id] = position
+
+            if position.loan:
+                trade.claimed_interest = position.loan.claim_interest()
 
     def mark_trade_failed(self, failed_at: datetime.datetime, trade: TradeExecution):
         """Unroll the allocated capital."""
@@ -434,7 +669,7 @@ class State:
 
         for t in trades:
             if t.is_buy():
-                self.portfolio.move_capital_from_reserves_to_trade(t, underflow_check=underflow_check)
+                self.portfolio.move_capital_from_reserves_to_spot_trade(t, underflow_check=underflow_check)
 
             t.started_at = ts
             t.planned_max_slippage = max_slippage

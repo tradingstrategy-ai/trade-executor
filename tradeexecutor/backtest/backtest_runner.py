@@ -29,7 +29,8 @@ from tradeexecutor.strategy.description import StrategyExecutionDescription
 from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
 from tradeexecutor.strategy.pandas_trader.runner import PandasTraderRunner
 from tradeexecutor.strategy.strategy_module import parse_strategy_module, \
-    DecideTradesProtocol, CreateTradingUniverseProtocol, CURRENT_ENGINE_VERSION, StrategyModuleInformation
+    DecideTradesProtocol, CreateTradingUniverseProtocol, CURRENT_ENGINE_VERSION, StrategyModuleInformation, DecideTradesProtocol2
+from tradeexecutor.strategy.engine_version import TradingStrategyEngineVersion
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse,  \
@@ -76,6 +77,12 @@ class BacktestSetup:
     name: str = "backtest"
 
     minimum_data_lookback_range: Optional[datetime.timedelta] = None
+
+    #: Trading strategy engine version.
+    #:
+    #: See `StrategyRunnerInfo.trading_strategy_engine_version` for details.
+    #:
+    engine_version: Optional[str] = None
 
     # strategy_module: StrategyModuleInformation
 
@@ -178,7 +185,7 @@ def setup_backtest_for_universe(
     # assert len(events) == 1
     token, usd_exchange_rate = state.portfolio.get_default_reserve_asset()
     assert usd_exchange_rate == 1
-    assert state.portfolio.get_current_cash() == initial_deposit
+    assert state.portfolio.get_cash() == initial_deposit
 
     # Set up execution and pricing
     pricing_model = BacktestSimplePricingModel(universe.universe.candles, routing_model, allow_missing_fees=allow_missing_fees)
@@ -360,14 +367,13 @@ def run_backtest(
     else:
         backtest_universe = setup.universe
 
-
-
         def backtest_setup(state: State, universe: TradingStrategyUniverse, deposit_syncer: BacktestSyncer):
             pass
 
     execution_context = ExecutionContext(
         mode=ExecutionMode.backtesting,
         timed_task_context_manager=timed_task,
+        engine_version=setup.engine_version,
     )
 
     main_loop = ExecutionLoop(
@@ -395,6 +401,7 @@ def run_backtest(
         trade_immediately=True,
         execution_test_hook=execution_test_hook,
         minimum_data_lookback_range=setup.minimum_data_lookback_range,
+        universe_options=setup.universe_options,
     )
 
     debug_dump = main_loop.run_and_setup_backtest()
@@ -408,7 +415,7 @@ def run_backtest_inline(
     end_at: Optional[datetime.datetime] = None,
     minimum_data_lookback_range: Optional[datetime.timedelta] = None,
     client: Optional[Client],
-    decide_trades: DecideTradesProtocol,
+    decide_trades: DecideTradesProtocol | DecideTradesProtocol2,
     cycle_duration: CycleDuration,
     initial_deposit: float,
     reserve_currency: ReserveCurrency,
@@ -423,6 +430,7 @@ def run_backtest_inline(
     data_delay_tolerance: Optional[pd.Timedelta] = None,
     name: str="backtest",
     allow_missing_fees=False,
+    engine_version: Optional[TradingStrategyEngineVersion] = None,
 ) -> Tuple[State, TradingStrategyUniverse, dict]:
     """Run backtests for given decide_trades and create_trading_universe functions.
 
@@ -502,6 +510,11 @@ def run_backtest_inline(
 
         Only set in legacy backtests.
 
+    :param engine_version:
+        The used TS engine version/
+
+        See :py:mod:`tradeexecutor.strategy.engine_version`.
+
     :return:
         tuple (State of a completely executed strategy, trading strategy universe, debug dump dict)
     """
@@ -560,6 +573,8 @@ def run_backtest_inline(
 
     universe_options = UniverseOptions(
         candle_time_bucket_override=candle_time_frame,
+        start_at=start_at,
+        end_at=end_at,
     )
 
     backtest_setup = BacktestSetup(
@@ -582,6 +597,7 @@ def run_backtest_inline(
         name=name,
         data_preload=data_preload,
         minimum_data_lookback_range=minimum_data_lookback_range,
+        engine_version=engine_version,
     )
 
     return run_backtest(backtest_setup, client, allow_missing_fees=True)

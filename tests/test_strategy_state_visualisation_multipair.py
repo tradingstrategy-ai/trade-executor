@@ -168,7 +168,7 @@ def decide_trades(
     trades = []
 
     # How much cash we have in a hand
-    cash = state.portfolio.get_current_cash()
+    cash = state.portfolio.get_cash()
 
     # Set up the 
     # Load candle data for this decision frame,

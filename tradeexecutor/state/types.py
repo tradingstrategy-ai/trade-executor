@@ -68,3 +68,12 @@ BlockNumber: int
 
 #: Unix timestamp as seconds
 UnixTimestamp: TypeAlias = float
+
+#: Leverage multiplier
+#:
+#: 1.0 is spot market.
+#: 20.0 is degen.
+#:
+#: For over collateralised position. E.g. 8 USDC and then 6 USD worth of ETH this is ``0.8``.
+#:
+LeverageMultiplier: TypeAlias = float

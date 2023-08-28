@@ -7,7 +7,9 @@
 import enum
 from dataclasses import dataclass
 from typing import Callable
+from packaging import version
 
+from tradeexecutor.strategy.engine_version import TradingStrategyEngineVersion
 from tradeexecutor.utils.timer import timed_task
 
 
@@ -113,6 +115,23 @@ class ExecutionContext:
     #:
     timed_task_context_manager: Callable = timed_task
 
+    #: What TS engine the strategy is using.
+    #:
+    #: `None` means 0.1.
+    #:
+    #: See :py:mod:`tradeexecutor.strategy.engine_version`.
+    #:
+    engine_version: TradingStrategyEngineVersion = None
+
+    def __repr__(self):
+        return f"<ExecutionContext {self.mode.name} v{self.engine_version}>"
+
+    def is_version_greater_or_equal_than(self, major: int, minor: int, patch: int) -> bool:
+        """Check that we are runing engine as the minimum required version."""
+        running_version = self.engine_version or "0.1"
+        required_version = f"{major}.{minor}.{patch}"
+        return version.parse(running_version) >= version.parse(required_version)
+
     @property
     def live_trading(self) -> bool:
         """Are we doing live trading.
@@ -122,3 +141,7 @@ class ExecutionContext:
              False if we are operating on backtesting data.
         """
         return self.mode in (ExecutionMode.real_trading, ExecutionMode.paper_trading, ExecutionMode.simulated_trading)
+
+
+#: Shorthand for unit testing
+unit_test_execution_context = ExecutionContext(ExecutionMode.unit_testing_trading)

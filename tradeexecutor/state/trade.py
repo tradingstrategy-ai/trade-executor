@@ -16,7 +16,8 @@ from eth_defi.tx import AssetDelta
 from tradeexecutor.ethereum.revert import clean_revert_reason_message
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
-from tradeexecutor.state.types import USDollarAmount, USDollarPrice, BPS
+from tradeexecutor.state.loan import Loan
+from tradeexecutor.state.types import USDollarAmount, USDollarPrice, BPS, LeverageMultiplier
 from tradeexecutor.strategy.trade_pricing import TradePricing
 
 
@@ -151,10 +152,16 @@ class TradeExecution:
 
     #: Positive for buy, negative for sell.
     #:
-    #: Always accurately known for sells.
+    #: - Always accurately known for sells.
+    #:
+    #: - This can be zero for leveraged trades if
+    #:   the trade only adjusts the collateral.
+    #:
     planned_quantity: Decimal
 
     #: How many reserve tokens (USD) we use in this trade
+    #:
+    #: **For spot market**
     #:
     #: - Always a position number (only the sign of :py:attr:`planned_quantity` changes between buy/sell)
     #:
@@ -163,6 +170,12 @@ class TradeExecution:
     #: - For sells, an estimation based on :py:attr:`planned_price`
     #:
     #: Expressed in :py:attr:`reserve_currency`.
+    #:
+    #: **For leverage**
+    #:
+    #: - Positive: we need to move our reserves to collateral to increase margin
+    #:
+    #: - Negative: position exposure is reduced, so we need less collateral and are getting collateral back
     #:
     planned_reserve: Decimal
 
@@ -180,6 +193,43 @@ class TradeExecution:
     #: This is because we can do three-way trades like BUSD -> BNB -> Cake
     #: when our routing model supports this.
     reserve_currency: AssetIdentifier
+
+    #: Planned amount of reserve currency that goes in out or out to collateral.
+    #:
+    #: - Negative if collateral is released and added to the reserves
+    #:
+    #: - Positive if reserve currency is added as the collateral
+    #:
+    #: This is different from :py:attr:`planned_reserve`,
+    #: as any collateral adjustment is done after the trade has been executed,
+    #: where as :py:attr:`planned_reserve` needs to be deposited
+    #: before the trade is executed.
+    #:
+    #: Must be `None` for spot positions.
+    #:
+    planned_collateral_allocation: Optional[Decimal] = None
+
+    #: Executed amount of collateral we spend for the debt token buyback
+    #:
+    #: See :py:attr:`planned_collateral_allocation` for details.
+    #:
+    executed_collateral_allocation: Optional[Decimal] = None
+
+    #: Planned amount of collateral that we use to pay back the debt
+    #:
+    #: - Negative if collateral is spend to pay back the debt
+    #:
+    #: - Positive if reserve currency is added as the collateral
+    #:
+    #: Must be `None` for spot positions.
+    #:
+    planned_collateral_consumption: Optional[Decimal] = None
+
+    #: Planned amount of collateral that we use to pay back the debt
+    #:
+    #: #: :py:attr:`planned_collateral_consumption` for details.
+    #:
+    executed_collateral_consumption: Optional[Decimal] = None
 
     #: What is the reserve currency exchange rate used for this trade
     #:
@@ -233,10 +283,20 @@ class TradeExecution:
     executed_price: Optional[USDollarPrice] = None
 
     #: How much underlying token we traded, the actual realised amount.
-    #: Positive for buy, negative for sell
+    #: Positive for buy, negative for sell.
+    #:
     executed_quantity: Optional[Decimal] = None
 
     #: How much reserves we spend for this traded, the actual realised amount.
+    #:
+    #: Always positive.
+    #:
+    #: - In the case of spot buy, this is how much reserve currency
+    #:   we spent to buy tokens
+    #:
+    #: - In the case of sell, this is how much reserve currency
+    #:   we will receive after the sell is closed
+    #:
     executed_reserve: Optional[Decimal] = None
 
     #: Slippage tolerance for this trade.
@@ -347,11 +407,63 @@ class TradeExecution:
     #: Used for risk metrics and other statistics.
     portfolio_value_at_creation: Optional[USDollarAmount] = None
 
-    def __repr__(self):
-        if self.is_buy():
-            return f"<Buy #{self.trade_id} {self.planned_quantity} {self.pair.base.token_symbol} at {self.planned_price}, {self.get_status().name}>"
+    #: Leverage factor used when opening a position
+    #:
+    leverage: Optional[LeverageMultiplier] = None
+
+    #: New position loan parameters that will become effective if this trade executes
+    #:
+    #: If the trade execution fails then the loan parameters do not change
+    #:
+    planned_loan_update: Optional[Loan] = None
+
+    #: New position loan parameters that become effective if this trade executes
+    #:
+    #: Because of slippage, etc. this can differ from :py:attr:`planned_loan_update`
+    #:
+    executed_loan_update: Optional[Loan] = None
+
+    #: Closing flag set on leveraged positions.
+    #:
+    #: After this trade is executed, any position
+    #: collateral should return to the cash reserves.
+    #:
+    closing: bool = None
+
+    #: For interest bearing positions, how much of accrued interest was moved to reserves in this trade.
+    #:
+    #: This is the realised interest. Any accured interest
+    #: must be realised by claiming it in some trade.
+    #: Usually this is the trade that closes the position.
+    #: See `mark_trade_success` for the logic.
+    #:
+    #: Expressed in reserve tokens.
+    #:
+    claimed_interest: Optional[Decimal] = None
+
+    def __repr__(self) -> str:
+        if self.is_spot():
+            if self.is_buy():
+                return f"<Buy #{self.trade_id} {self.planned_quantity} {self.pair.base.token_symbol} at {self.planned_price}, {self.get_status().name}>"
+            else:
+                return f"<Sell #{self.trade_id} {abs(self.planned_quantity)} {self.pair.base.token_symbol} at {self.planned_price}, {self.get_status().name}>"
+        elif self.is_short():
+                return f"<Short \n" \
+                       f"   #{self.trade_id} \n" \
+                       f"   {self.planned_quantity} {self.pair.base.token_symbol} at {self.planned_price}, {self.get_status().name} \n" \
+                       f"   collateral consumption: {self.planned_collateral_consumption} collateral allocation: {self.planned_collateral_allocation} \n" \
+                       f">"
         else:
-            return f"<Sell #{self.trade_id} {abs(self.planned_quantity)} {self.pair.base.token_symbol} at {self.planned_price}, {self.get_status().name}>"
+            if self.is_buy():
+                return f"<Supply credit \n" \
+                       f"   #{self.trade_id} \n" \
+                       f"   {self.planned_quantity} {self.pair.base.token_symbol} at {self.planned_price}, {self.get_status().name} \n" \
+                       f">"
+            else:
+                return f"<Recall credit collateral \n" \
+                       f"   #{self.trade_id} \n" \
+                       f"   {self.planned_quantity} {self.pair.base.token_symbol} at {self.planned_price}, {self.get_status().name} \n" \
+                       f">"
 
     def pretty_print(self) -> str:
         """Get diagnostics output for the trade.
@@ -382,14 +494,19 @@ class TradeExecution:
 
         assert self.trade_id > 0
 
-        if self.trade_type != TradeType.repair:
+        if self.trade_type != TradeType.repair and not self.is_credit_based():
+            # Leveraged trade can have quantity in zero,
+            # if they just adjust the collateral amount
             assert self.planned_quantity != 0
 
-        # TODO: We have additional check in open_position()
-        assert abs(self.planned_quantity) > QUANTITY_EPSILON, f"We got a planned quantity that does not look like a good number: {self.planned_quantity}, trade is: {self}"
+            # TODO: We have additional check in open_position()
+            assert abs(self.planned_quantity) > QUANTITY_EPSILON, f"We got a planned quantity that does not look like a good number: {self.planned_quantity}, trade is: {self}"
 
         assert self.planned_price > 0
-        assert self.planned_reserve >= 0
+
+        if not self.is_credit_based():
+            assert self.planned_reserve >= 0, "Spot market trades must have planned reserve position"
+
         assert type(self.planned_price) in {float, int}, f"Price was given as {self.planned_price.__class__}: {self.planned_price}"
         assert self.opened_at.tzinfo is None, f"We got a datetime {self.opened_at} with tzinfo {self.opened_at.tzinfo}"
         
@@ -561,8 +678,42 @@ class TradeExecution:
         """
         self.balance_update_id is not None
 
+    def is_leverage(self) -> bool:
+        """This is margined trade."""
+        return self.pair.kind.is_leverage()
+
+    def is_credit_based(self) -> bool:
+        """This trade uses loans"""
+        return self.pair.kind.is_credit_based()
+
+    def is_credit_supply(self) -> bool:
+        """This is a credit supply trade."""
+        return self.pair.kind.is_credit_supply()
+
+    def is_spot(self) -> bool:
+        """This is a spot marget trade."""
+        return not self.is_credit_based()
+
+    def is_short(self) -> bool:
+        """This is margined short trade."""
+        return self.pair.kind.is_shorting()
+
+    def is_long(self) -> bool:
+        """This is margined long trade."""
+        return self.pair.kind.is_longing()
+
+    def is_reduce(self) -> bool:
+        """This trade decreases the exposure of existing leveraged position."""
+        if self.is_short():
+            return self.planned_quantity > 0
+        elif self.is_long():
+            return self.planned_quantity < 0
+        else:
+            raise NotImplementedError(f"Not leveraged trade: {self}")
+
     def get_input_asset(self) -> AssetIdentifier:
         """How we fund this trade."""
+        assert self.is_spot()
         if self.is_buy():
             return self.pair.quote
         else:
@@ -570,6 +721,7 @@ class TradeExecution:
 
     def get_output_asset(self) -> AssetIdentifier:
         """What asset we receive out from this trade"""
+        assert self.is_spot()
         if self.is_buy():
             return self.pair.base
         else:
@@ -700,14 +852,11 @@ class TradeExecution:
             # Trade does not have value until capital is allocated to it
             return 0.0
 
-    def get_credit_debit(self) -> Tuple[Decimal, Decimal]:
-        """Returns the token quantity and reserve currency quantity for this trade.
-
-        If buy this is (+trading position quantity/-reserve currency quantity).
-
-        If sell this is (-trading position quantity/-reserve currency quantity).
-        """
-        return self.get_position_quantity(), self.get_reserve_quantity()
+    def get_claimed_interest(self) -> USDollarAmount:
+        """How much US interest we have claimed in this trade."""
+        if not self.claimed_interest:
+            return 0.0
+        return float(self.claimed_interest) * self.reserve_currency_exchange_rate
 
     def get_fees_paid(self) -> USDollarAmount:
         """
@@ -796,7 +945,6 @@ class TradeExecution:
             return self.get_executed_value()
         return 0
 
-
     def mark_broadcasted(self, broadcasted_at: datetime.datetime):
         assert self.get_status() == TradeStatus.started, f"Trade in bad state: {self.get_status()}"
         self.broadcasted_at = broadcasted_at
@@ -810,6 +958,8 @@ class TradeExecution:
                      native_token_price: USDollarAmount,
                      force=False,
                      cost_of_gas: USDollarAmount | None = None,
+                     executed_collateral_consumption: Decimal | None = None,
+                     executed_collateral_allocation: Decimal | None = None,
                      ):
         """Mark trade success.
 
@@ -839,6 +989,8 @@ class TradeExecution:
         self.native_token_price = native_token_price
         self.reserve_currency_allocated = Decimal(0)
         self.cost_of_gas = cost_of_gas
+        self.executed_collateral_allocation = executed_collateral_allocation
+        self.executed_collateral_consumption = executed_collateral_consumption
 
     def mark_failed(self, failed_at: datetime.datetime):
         assert self.get_status() == TradeStatus.broadcasted
@@ -914,3 +1066,26 @@ class TradeExecution:
         # assert self.cost_of_gas, "Cost of gas must be set to work out cost of gas in USD"
         # assert self.native_token_price, "Native token price must be set to work out cost of gas in USD"
         # return self.cost_of_gas * self.native_token_price
+
+    def get_credit_supply_reserve_change(self) -> Decimal | None:
+        """How many tokens this trade takes/adds to the reserves.
+
+        - Positive for consuming reserves and moving them to
+          lending pool
+
+        - Negative for removing lending collateral and returning
+          them to the reservers
+
+        Only negative value warrants for action,
+        because capital allocation for the credit supply
+        is done when the transaction is prepared.
+
+        :return:
+
+            ``None`` if not a credit supply trade
+        """
+
+        if not self.pair.is_credit_supply():
+            return None
+
+        return self.executed_reserve

@@ -14,6 +14,7 @@ from typing import List, Optional, Tuple
 from tradeexecutor.strategy.account_correction import check_accounts, UnexpectedAccountingCorrectionIssue
 from tradeexecutor.strategy.approval import ApprovalModel
 from tradeexecutor.strategy.cycle import CycleDuration
+from tradeexecutor.strategy.engine_version import TradingStrategyEngineVersion
 from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
 from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.strategy.sync_model import SyncMethodV0, SyncModel
@@ -65,6 +66,14 @@ class StrategyRunner(abc.ABC):
                  run_state: Optional[RunState] = None,
                  accounting_checks=False,
                  ):
+        """
+        :param engine_version:
+            Strategy execution version.
+
+            Changes function arguments based on this.
+            See `StrategyModuleInformation.trading_strategy_engine_version`.
+
+        """
 
         assert isinstance(execution_context, ExecutionContext)
 
@@ -81,6 +90,8 @@ class StrategyRunner(abc.ABC):
         self.run_state = run_state
         self.execution_context = execution_context
         self.accounting_checks = accounting_checks
+
+        logger.info("Created strategy runner %s, engine version %s", self, self.execution_context.engine_version)
 
     @abc.abstractmethod
     def pretick_check(self, ts: datetime.datetime, universe: StrategyExecutionUniverse):
@@ -140,7 +151,7 @@ class StrategyRunner(abc.ABC):
         # Update the debug data for tests with our events
         debug_details["reserve_update_events"] = balance_update_events
         debug_details["total_equity_at_start"] = state.portfolio.get_total_equity()
-        debug_details["total_cash_at_start"] = state.portfolio.get_current_cash()
+        debug_details["total_cash_at_start"] = state.portfolio.get_cash()
 
     def revalue_portfolio(self, ts: datetime.datetime, state: State, valuation_method: ValuationModel):
         """Revalue portfolio based on the data."""
@@ -178,7 +189,7 @@ class StrategyRunner(abc.ABC):
         tick = debug_details.get("cycle", 1)
         print(f"Portfolio status (before rebalance), tick #{tick}", file=buf)
         print("", file=buf)
-        print(f"Total equity: ${portfolio.get_total_equity():,.2f}, in cash: ${portfolio.get_current_cash():,.2f}", file=buf)
+        print(f"Total equity: ${portfolio.get_total_equity():,.2f}, in cash: ${portfolio.get_cash():,.2f}", file=buf)
         print(f"Life-time positions: {portfolio.next_position_id - 1}, trades: {portfolio.next_trade_id - 1}", file=buf)
         print(DISCORD_BREAK_CHAR, file=buf)
 
@@ -227,7 +238,7 @@ class StrategyRunner(abc.ABC):
         
         print("Portfolio status (after rebalance)", file=buf)
         print("", file=buf)
-        print(f"Total equity: ${portfolio.get_total_equity():,.2f}, Cash: ${portfolio.get_current_cash():,.2f}", file=buf)
+        print(f"Total equity: ${portfolio.get_total_equity():,.2f}, Cash: ${portfolio.get_cash():,.2f}", file=buf)
 
         print(DISCORD_BREAK_CHAR, file=buf)
 

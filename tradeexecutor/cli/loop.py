@@ -142,6 +142,7 @@ class ExecutionLoop:
             metadata: Optional[Metadata] = None,
             check_accounts: Optional[bool] = None,
             minimum_data_lookback_range: Optional[datetime.timedelta] = None,
+            universe_options: Optional[UniverseOptions] = None,
     ):
         """See main.py for details."""
 
@@ -165,6 +166,7 @@ class ExecutionLoop:
         self.execution_test_hook = execution_test_hook
         self.metadata = metadata
         self.check_accounts = check_accounts
+        self.execution_context = execution_context
 
         self.backtest_start = backtest_start
         self.backtest_end = backtest_end
@@ -193,10 +195,13 @@ class ExecutionLoop:
         self.debug_dump_state = {}
 
         # Hook in any overrides for strategy cycles
-        self.universe_options = UniverseOptions(
-            candle_time_bucket_override=self.backtest_candle_time_frame_override,
-            stop_loss_time_bucket_override=self.backtest_stop_loss_time_frame_override,
-        )
+        if universe_options:
+            self.universe_options = universe_options
+        else:
+            self.universe_options = UniverseOptions(
+                candle_time_bucket_override=self.backtest_candle_time_frame_override,
+                stop_loss_time_bucket_override=self.backtest_stop_loss_time_frame_override,
+            )
 
         self.minimum_data_lookback_range = minimum_data_lookback_range
 
@@ -439,6 +444,19 @@ class ExecutionLoop:
             logger.info("Performing initial backtest account funding")
             self.backtest_setup(state, universe, self.sync_model)
 
+        # Sync credit supply information before each tick.
+        # This will update the latest accrued interest.
+        credit_positions = state.portfolio.get_current_credit_positions()
+        if credit_positions:
+            logger.info("We have %d credit positions open", len(credit_positions))
+            credit_events = self.sync_model.sync_credit_supply(
+                strategy_cycle_timestamp,
+                state,
+                cast(TradingStrategyUniverse, universe),
+                credit_positions,
+            )
+            logger.info("Generated %d credit events", len(credit_events))
+
         # Execute the strategy tick and trades
         self.runner.tick(
             strategy_cycle_timestamp=ts,
@@ -577,13 +595,13 @@ class ExecutionLoop:
 
         return trades
 
-    def warm_up_backtest(self):
+    def warm_up_backtest(self) -> TradingStrategyUniverse:
         """Load backtesting trading universe.
 
         Display progress bars for data downloads.
         """
         logger.info("Warming up backesting, universe options are %s", self.universe_options)
-        self.universe_model.preload_universe(self.universe_options)
+        return self.universe_model.preload_universe(self.universe_options, self.execution_context)
 
     def warm_up_live_trading(self) -> TradingStrategyUniverse:
         """Load live trading universe.
@@ -677,7 +695,10 @@ class ExecutionLoop:
 
         ts = self.backtest_start
 
-        logger.info("run_backtest(): Strategy is executed in backtesting mode, starting at %s, cycle duration is %s", ts, self.cycle_duration.value)
+        logger.info("run_backtest(): Strategy is executed in backtesting mode, starting at %s\n"
+                    "  cycle duration is %s\n"
+                    "  execution context is %s",
+                    ts, self.cycle_duration.value, self.execution_context)
 
         cycle = state.cycle
         universe = None
@@ -691,7 +712,7 @@ class ExecutionLoop:
 
         seconds = int(range.total_seconds())
 
-        self.warm_up_backtest()
+        universe = self.warm_up_backtest()
 
         # Allow backtest step to be overwritten from the command line
         if self.universe_options.candle_time_bucket_override:

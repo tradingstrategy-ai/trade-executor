@@ -50,7 +50,7 @@ def decide_trades(
     trades = []
 
     # How much cash we have in a hand
-    cash = state.portfolio.get_current_cash()
+    cash = state.portfolio.get_cash()
 
     for pair_id in universe.pairs.get_all_pair_ids():
 
@@ -60,7 +60,7 @@ def decide_trades(
 
         assert pair.internal_id > 0, "Invalid pair id"
 
-        cash = state.portfolio.get_current_cash()
+        cash = state.portfolio.get_cash()
 
         cycle_number = cycle_debug_data["cycle"]
 

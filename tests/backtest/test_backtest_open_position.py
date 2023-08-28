@@ -75,7 +75,7 @@ def decide_trades(
     pair = universe.pairs.get_single()
 
     # How much cash we have in the hand
-    cash = state.portfolio.get_current_cash()
+    cash = state.portfolio.get_cash()
 
     # Create a position manager helper class that allows us easily to create
     # opening/closing trades for different positions

@@ -133,7 +133,7 @@ def grid_search_worker(
     ):
         # The pair we are trading
         pair = universe.pairs.get_single()
-        cash = state.portfolio.get_current_cash()
+        cash = state.portfolio.get_cash()
         candles: pd.DataFrame = universe.candles.get_single_pair_data(sample_count=batch_size)
         close = candles["close"]
         slow_ema = close.ewm(span=slow_ema_candle_count).mean().iloc[-1]

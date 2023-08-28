@@ -70,7 +70,7 @@ def decide_trades(
 
     pair = universe.pairs.get_single()
 
-    cash = state.portfolio.get_current_cash()
+    cash = state.portfolio.get_cash()
 
     candles: pd.DataFrame = universe.candles.get_single_pair_data(timestamp, sample_count=BATCH_SIZE)
 

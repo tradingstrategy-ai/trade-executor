@@ -7,7 +7,7 @@ from typing import List, Optional, Collection
 from tradingstrategy.timebucket import TimeBucket
 
 from tradeexecutor.state.identifier import AssetIdentifier
-from tradeexecutor.strategy.execution_context import ExecutionMode
+from tradeexecutor.strategy.execution_context import ExecutionMode, ExecutionContext
 
 
 class DataTooOld(Exception):
@@ -71,6 +71,23 @@ class UniverseOptions:
 
     stop_loss_time_bucket_override: Optional[TimeBucket] = None
 
+    #: Optionally passed backtest start time.
+    #:
+    #: Can be used in create_trading_universe() to set the data range.
+    #:
+    start_at: Optional[datetime.datetime] = None
+
+    #: Optionally passed backtest end time
+    #:
+    #: Can be used in create_trading_universe() to set the data range.
+    #:
+    end_at: Optional[datetime.datetime] = None
+
+
+#: Shorthand method
+#:
+default_universe_options = UniverseOptions()
+
 
 class UniverseModel(abc.ABC):
     """Create and manage trade universe.
@@ -79,7 +96,7 @@ class UniverseModel(abc.ABC):
     by refreshing the trading data from the server.
     """
 
-    def preload_universe(self, universe_options: UniverseOptions) -> StrategyExecutionUniverse:
+    def preload_universe(self, universe_options: UniverseOptions, execution_context: ExecutionContext | None=None) -> StrategyExecutionUniverse:
         """Triggered before backtesting execution.
 
         - Load all datasets with progress bar display

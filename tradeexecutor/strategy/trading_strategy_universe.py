@@ -19,10 +19,12 @@ from typing import List, Optional, Callable, Tuple, Set, Dict, Iterable, Collect
 
 import pandas as pd
 
+from eth_defi.uniswap_v2.utils import ZERO_ADDRESS
 from tradeexecutor.strategy.execution_context import ExecutionMode, ExecutionContext
+from tradingstrategy.lending import LendingReserveUniverse, LendingReserveDescription, LendingCandleType, LendingCandleUniverse
 from tradingstrategy.token import Token
 
-from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
+from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind
 from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse, UniverseModel, DataTooOld, UniverseOptions
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId
@@ -35,7 +37,6 @@ from tradingstrategy.pair import DEXPair, PandasPairUniverse, resolve_pairs_base
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
 from tradingstrategy.utils.groupeduniverse import filter_for_pairs
-
 
 logger = logging.getLogger(__name__)
 
@@ -57,11 +58,17 @@ class Dataset:
     #: All trading pairs
     pairs: pd.DataFrame
 
+    #: All lending reserves
+    lending_reserves: Optional[LendingReserveUniverse] = None
+
     #: Candle data for all pairs
     candles: Optional[pd.DataFrame] = None
 
     #: All liquidity samples
     liquidity: Optional[pd.DataFrame] = None
+
+    #: All lendinds candles
+    lending_candles: Optional[LendingCandleUniverse] = None
 
     #: Liquidity data granularity
     liquidity_time_bucket: Optional[TimeBucket] = None
@@ -87,6 +94,10 @@ class Dataset:
         liquidity = self.liquidity
         if liquidity is not None:
             assert isinstance(liquidity, pd.DataFrame), f"Expected DataFrame, got {liquidity.__class__}"
+
+        lending_candles = self.lending_candles
+        if lending_candles is not None:
+            assert isinstance(lending_candles, LendingCandleUniverse), f"Expected LendingCandleUniverse, got {lending_candles.__class__}"
 
 
 @dataclass
@@ -142,6 +153,16 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         """
         # TODO: In the future strategy modules, make a real flag for this and now we just use this hack
         return self.universe.pairs.get_count() > 20
+
+    def has_lending_data(self) -> bool:
+        """Is any lending data available.
+
+        .. note ::
+
+            For live trading, lending candles are not available,
+            but any lending rates are directly updated from on-chain sources.
+        """
+        return self.universe.lending_reserves is not None
 
     def clone(self) -> "TradingStrategyUniverse":
         """Create a copy of this universe.
@@ -221,7 +242,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         side channels.
         """
         return (self.backtest_stop_loss_candles is not None) and \
-               (self.backtest_stop_loss_time_bucket is not None)
+            (self.backtest_stop_loss_time_bucket is not None)
 
     def validate(self):
         """Check that the created universe looks good.
@@ -257,12 +278,12 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         return translate_trading_pair(pair)
 
     def create_single_pair_universe(
-        dataset: Dataset,
-        chain_id: Optional[ChainId] = None,
-        exchange_slug: Optional[str] = None,
-        base_token: Optional[str] = None,
-        quote_token: Optional[str] = None,
-        pair: Optional[HumanReadableTradingPairDescription] = None
+            dataset: Dataset,
+            chain_id: Optional[ChainId] = None,
+            exchange_slug: Optional[str] = None,
+            base_token: Optional[str] = None,
+            quote_token: Optional[str] = None,
+            pair: Optional[HumanReadableTradingPairDescription] = None,
     ) -> "TradingStrategyUniverse":
         """Filters down the dataset for a single trading pair.
 
@@ -293,13 +314,28 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         """
 
         if not pair:
-            pair = (chain_id, exchange_slug, base_token, quote_token)
+            if base_token and quote_token:
+                # Legacy method of giving pair
+                pair = (chain_id, exchange_slug, base_token, quote_token)
 
-        # Create trading pair database
-        pair_universe = PandasPairUniverse.create_pair_universe(
-            dataset.pairs,
-            pairs=[pair],
-        )
+                # Limit the pair universe for selected entries
+                pair_universe = PandasPairUniverse.create_pair_universe(
+                    dataset.pairs,
+                    pairs=[pair],
+                )
+            else:
+                # Pair not given, but
+                # input has only single pair
+                assert len(dataset.pairs) == 1, "You need to give pair argument if input pair universe contains multiple pairs"
+                pair_universe = PandasPairUniverse(dataset.pairs)
+                pair_data = pair_universe.get_single()
+                pair = pair_data.to_human_description()
+        else:
+            # Pair given
+            pair_universe = PandasPairUniverse.create_pair_universe(
+                dataset.pairs,
+                pairs=[pair],
+            )
 
         chain_id = pair[0]
         exchange_slug = pair[1]
@@ -341,6 +377,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             candles=candle_universe,
             liquidity=liquidity_universe,
             exchange_universe=exchange_universe,
+            lending_candles=dataset.lending_candles
         )
 
         if dataset.backtest_stop_loss_candles is not None:
@@ -361,11 +398,11 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
 
     @staticmethod
     def create_limited_pair_universe(
-        dataset: Dataset,
-        chain_id: ChainId,
-        exchange_slug: str,
-        pairs: Set[Tuple[str, str]],
-        reserve_asset_pair_ticker: Optional[Tuple[str, str]] = None) -> "TradingStrategyUniverse":
+            dataset: Dataset,
+            chain_id: ChainId,
+            exchange_slug: str,
+            pairs: Set[Tuple[str, str]],
+            reserve_asset_pair_ticker: Optional[Tuple[str, str]] = None) -> "TradingStrategyUniverse":
         """Filters down the dataset for couple trading pair.
 
         This is ideal for strategies that only want to trade few pairs,
@@ -475,13 +512,13 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
 
     @staticmethod
     def create_multipair_universe(
-        dataset: Dataset,
-        chain_ids: Iterable[ChainId],
-        exchange_slugs: Iterable[str],
-        quote_tokens: Iterable[str],
-        reserve_token: str,
-        factory_router_map: Dict[str, tuple],
-        liquidity_resample_frequency: Optional[str] = None,
+            dataset: Dataset,
+            chain_ids: Iterable[ChainId],
+            exchange_slugs: Iterable[str],
+            quote_tokens: Iterable[str],
+            reserve_token: str,
+            factory_router_map: Dict[str, tuple],
+            liquidity_resample_frequency: Optional[str] = None,
     ) -> "TradingStrategyUniverse":
         """Create a trading universe where pairs match a filter conditions.
 
@@ -619,9 +656,9 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
 
     @staticmethod
     def create_multichain_universe_by_pair_descriptions(
-        dataset: Dataset,
-        pairs: Collection[HumanReadableTradingPairDescription],
-        reserve_token_symbol: str,
+            dataset: Dataset,
+            pairs: Collection[HumanReadableTradingPairDescription],
+            reserve_token_symbol: str,
     ) -> "TradingStrategyUniverse":
         """Create a trading universe based on list of (exchange, pair tuples)
 
@@ -699,6 +736,40 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             backtest_stop_loss_candles=stop_loss_candle_universe,
         )
 
+    def get_credit_supply_pair(self) -> TradingPairIdentifier:
+        """Get the credit supply trading pair.
+
+        This trading pair identifies the trades where we move our strategy reserve
+        currency to Aave lending pool to gain interest.
+
+        Assume we move our single reserve currency to a single lending reserve we know for it.
+
+        :return:
+            Credit supply trading pair with ticket (aToken for reserve asset, reserve asset)
+        """
+        reserve_asset = self.get_reserve_asset()
+
+        # Will raise exception if not available
+        reserve = self.universe.lending_reserves.get_by_chain_and_address(
+            ChainId(reserve_asset.chain_id),
+            reserve_asset.address,
+        )
+
+        # Sanity check
+        assert reserve.get_asset().address == reserve_asset.address
+
+        underlying = translate_token(reserve.get_asset())
+        atoken = translate_token(reserve.get_atoken(), underlying=underlying)
+
+        return TradingPairIdentifier(
+            atoken,
+            underlying,
+            pool_address=reserve.asset_address,
+            exchange_address=reserve.asset_address,
+            internal_id=reserve.reserve_id,
+            kind=TradingPairKind.credit_supply,
+        )
+
 
 class TradingStrategyUniverseModel(UniverseModel):
     """A universe constructor that builds the trading universe data using Trading Strategy client.
@@ -739,7 +810,7 @@ class TradingStrategyUniverseModel(UniverseModel):
     def load_data(self,
                   time_frame: TimeBucket,
                   mode: ExecutionMode,
-                  backtest_stop_loss_time_frame: Optional[TimeBucket]=None) -> Dataset:
+                  backtest_stop_loss_time_frame: Optional[TimeBucket] = None) -> Dataset:
         """Loads the server-side data using the client.
 
         :param client:
@@ -902,7 +973,7 @@ class DefaultTradingStrategyUniverseModel(TradingStrategyUniverseModel):
         self.execution_context = execution_context
         self.create_trading_universe = create_trading_universe
 
-    def preload_universe(self, universe_options: UniverseOptions):
+    def preload_universe(self, universe_options: UniverseOptions, execution_context: ExecutionContext | None = None):
         """Triggered before backtesting execution.
 
         - Load all datasets with progress bar display.
@@ -915,7 +986,9 @@ class DefaultTradingStrategyUniverseModel(TradingStrategyUniverseModel):
             return preload_data(
                 self.client,
                 self.create_trading_universe,
-                universe_options=universe_options)
+                universe_options=universe_options,
+                execution_context=execution_context,
+            )
 
     def construct_universe(self,
                            ts: datetime.datetime,
@@ -932,13 +1005,20 @@ class DefaultTradingStrategyUniverseModel(TradingStrategyUniverseModel):
             return universe
 
 
-def translate_token(token: Token, require_decimals=True) -> AssetIdentifier:
+def translate_token(
+        token: Token,
+        require_decimals=True,
+        underlying: AssetIdentifier | None = None,
+) -> AssetIdentifier:
     """Translate Trading Strategy token data definition to trade executor.
 
     Trading Strategy client uses compressed columnar data for pairs and tokens.
 
     Creates `AssetIdentifier` based on data coming from
     Trading Strategy :py:class:`tradingstrategy.pair.PandasPairUniverse`.
+
+    :param underlying:
+        Underlying asset for dynamic lending tokens.
 
     :param require_decimals:
         Most tokens / trading pairs are non-functional without decimals information.
@@ -955,7 +1035,8 @@ def translate_token(token: Token, require_decimals=True) -> AssetIdentifier:
         token.chain_id.value,
         token.address,
         token.symbol,
-        token.decimals
+        token.decimals,
+        underlying=underlying,
     )
 
 
@@ -1005,14 +1086,14 @@ def translate_trading_pair(pair: DEXPair) -> TradingPairIdentifier:
             # Allow explicit fee = 0 in testing.
             # if pair.fee != 0:
             #     assert pair.fee > 1, f"DEXPair fee must be in BPS, got {pair.fee}"
-            
+
             # can receive fee in bps or multiplier, but not raw form
             if pair.fee > 1:
-                fee = pair.fee/10_000
-                
+                fee = pair.fee / 10_000
+
             else:
                 fee = pair.fee
-            
+
             # highest fee tier is currently 1% and lowest in 0.01%
             if fee != 0:
                 assert 0.0001 <= fee <= 0.01, "bug in converting fee to multiplier, make sure bps"
@@ -1149,7 +1230,6 @@ def load_all_data(
             if stop_loss_time_frame:
                 stop_loss_candles = client.fetch_all_candles(stop_loss_time_frame).to_pandas()
 
-
         return Dataset(
             time_bucket=time_frame,
             liquidity_time_bucket=liquidity_time_frame,
@@ -1169,11 +1249,13 @@ def load_partial_data(
         pairs: Collection[HumanReadableTradingPairDescription],
         universe_options: UniverseOptions,
         liquidity=False,
-        stop_loss_time_bucket: Optional[TimeBucket]=None,
-        required_history_period: Optional[datetime.timedelta] = None,
-        start_at: Optional[datetime.datetime] = None,
-        end_at: Optional[datetime.datetime] = None,
-        name: Optional[str] = None,
+        stop_loss_time_bucket: Optional[TimeBucket] = None,
+        required_history_period: datetime.timedelta | None = None,
+        lending_reserves: Collection[LendingReserveDescription] | None = None,
+        lending_candle_types: Collection[LendingCandleType] = (LendingCandleType.supply_apr, LendingCandleType.variable_borrow_apr),
+        start_at: datetime.datetime | None = None,
+        end_at: datetime.datetime | None = None,
+        name: str | None = None,
 ) -> Dataset:
     """Load pair data for given trading pairs.
 
@@ -1244,8 +1326,14 @@ def load_partial_data(
         List of trading pair tickers as base token quote token tuples.
         E.g. `[('WBNB', 'BUSD'), ('Cake', 'BUSD')]`.
 
+    :param lending_reserves:
+        Lending reserves for which you want to download the data
+
     :param liquidity:
         Set true to load liquidity data as well
+
+    :param lending_reverses:
+        Set true to load lending reserve data as well
 
     :param stop_loss_time_bucket:
         If set load stop loss trigger
@@ -1288,12 +1376,21 @@ def load_partial_data(
 
     assert start_at and end_at, "Current implementatation is designed for backtest use only and needs both start_at and end_at timestamps"
 
+    if len(pairs) >= 25:
+        logger.warning("This method is designed to load data for low number or trading pairs, got %d", len(pairs))
+
     with execution_context.timed_task_context_manager("load_partial_pair_data", time_bucket=time_bucket.value):
 
         exchange_universe = client.fetch_exchange_universe()
 
         pairs_df = client.fetch_pair_universe().to_pandas()
-        pair_universe = PandasPairUniverse(pairs_df)
+
+        # We do not build the pair index here,
+        # as we assume we filter out the pairs down a bit,
+        # and then recontruct a new pair universe with only few selected pairs with full indexes
+        # later. The whole purpose of this here is to
+        # go around lack of good look up functions of raw DataFrame pairs data.
+        pair_universe = PandasPairUniverse(pairs_df, build_index=False)
 
         # Filter pairs first and then rest by the resolved pairs
         our_pairs = {pair_universe.get_pair_by_human_description(exchange_universe, d) for d in pairs}
@@ -1333,6 +1430,21 @@ def load_partial_data(
         if liquidity:
             raise NotImplemented("Partial liquidity data loading is not yet supported")
 
+        if lending_reserves:
+            lending_reserve_universe = client.fetch_lending_reserve_universe()
+            lending_reserve_universe = lending_reserve_universe.limit(lending_reserves)
+            lending_candles_map = client.fetch_lending_candles_for_universe(
+                lending_reserve_universe,
+                bucket=time_bucket,
+                candle_types=lending_candle_types,
+                start_time=start_at,
+                end_time=end_at,
+            )
+            lending_candles = LendingCandleUniverse(lending_candles_map, lending_reserve_universe)
+        else:
+            lending_reserve_universe = None
+            lending_candles = None
+
         return Dataset(
             time_bucket=time_bucket,
             exchanges=our_exchange_universe,
@@ -1341,6 +1453,8 @@ def load_partial_data(
             liquidity=None,
             backtest_stop_loss_time_bucket=stop_loss_time_bucket,
             backtest_stop_loss_candles=stop_loss_candles,
+            lending_reserves=lending_reserve_universe,
+            lending_candles=lending_candles,
         )
 
 

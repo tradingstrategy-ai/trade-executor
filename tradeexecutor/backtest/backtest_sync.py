@@ -1,17 +1,25 @@
+import logging
 import datetime
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import List, Optional
 
+from eth_defi.aave_v3.rates import SECONDS_PER_YEAR
+
 from tradeexecutor.backtest.simulated_wallet import SimulatedWallet
 from tradeexecutor.ethereum.wallet import ReserveUpdateEvent
 from tradeexecutor.state.balance_update import BalanceUpdate
 from tradeexecutor.state.identifier import AssetIdentifier
+from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
 from tradeexecutor.state.types import JSONHexAddress
+from tradeexecutor.strategy.interest import update_credit_supply_interest
 from tradeexecutor.strategy.sync_model import SyncModel
-
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.testing.dummy_wallet import apply_sync_events
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -120,3 +128,75 @@ class BacktestSyncModel(SyncModel):
 
     def create_transaction_builder(self) -> None:
         """Backtesting does not need to care about how to build blockchain transactions."""
+
+    def calculate_accrued_interest(
+        self,
+        universe: TradingStrategyUniverse,
+        position: TradingPosition,
+        timestamp: datetime.datetime,
+    ) -> Decimal:
+        """Calculate accrued interest of a position.
+
+        """
+        # get relevant candles for the position period from opened until now
+        df = universe.universe.lending_candles.supply_apr.df.copy()
+        df = df[
+            (df["timestamp"] >= position.opened_at)
+            & (df["timestamp"] <= timestamp)
+        ]
+
+        # get average APR from high and low
+        df["avg"] = df[["high", "low"]].mean(axis=1)
+        avg_apr = Decimal(df["avg"].mean() / 100)
+
+        opening_amount = Decimal(position.interest.opening_amount)
+        duration = Decimal((timestamp - position.opened_at).total_seconds())
+        accrued_interest_estimation = opening_amount * avg_apr * duration / SECONDS_PER_YEAR
+
+        return accrued_interest_estimation
+
+    def sync_credit_supply(
+        self,
+        timestamp: datetime.datetime,
+        state: State,
+        universe: TradingStrategyUniverse,
+        credit_positions: List[TradingPosition],
+    ) -> List[BalanceUpdate]:
+
+        assert universe.has_lending_data(), "Cannot update credit positions if no data is available"
+
+        events = []
+        for p in credit_positions:
+
+            assert p.is_credit_supply()
+
+            accrued = self.calculate_accrued_interest(
+                universe,
+                p,
+                timestamp,
+            )
+
+            interest = p.loan.collateral_interest
+
+            # TODO: replace with a real interest calculation,
+            # based on universe.lending_candles
+            assert len(p.trades) <= 2, "This interest calculation does not support increase/reduce position"
+            old_amount = interest.last_atoken_amount
+            #new_amount = old_amount * Decimal(1+accrued)
+            new_amount = interest.opening_amount + accrued
+
+            evt = update_credit_supply_interest(
+                state,
+                p,
+                p.pair.base,
+                new_atoken_amount=new_amount,
+                event_at=timestamp,
+            )
+            events.append(evt)
+
+            # Make atokens magically appear in the simulated
+            # backtest wallet. The amount must be updated, or
+            # otherwise we get errors when closing the position.
+            self.wallet.update_balance(p.pair.base.address, new_amount)
+
+        return events
