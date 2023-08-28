@@ -210,6 +210,10 @@ class PositionManager:
 
         self.reserve_currency = reserve_currency
 
+    @property
+    def pricing_model(self):
+        raise NotImplementedError("Use get_pricing_model(pair) instead")
+
     def is_any_open(self) -> bool:
         """Do we have any positions open."""
         return len(self.state.portfolio.open_positions) > 0
@@ -643,7 +647,7 @@ class PositionManager:
 
         pair = position.pair
         quantity = quantity_left
-        price_structure = self.pricing_model.get_sell_price(self.timestamp, pair, quantity=quantity)
+        price_structure = self.get_pricing_model(pair).get_sell_price(self.timestamp, pair, quantity=quantity)
 
         reserve_asset, reserve_price = self.state.portfolio.get_default_reserve_asset()
 
@@ -771,24 +775,19 @@ class PositionManager:
             # earlier
             logger.warning("Tried to close position that is likely already closed, as there are no tokens to sell: %s", position)
             return []
-
+        
         if position.is_spot_market():
-        pair = position.pair
-        quantity = quantity_left
-
-        pricing_model = self.get_pricing_model(position.pair)
-
-        price_structure = pricing_model.get_sell_price(self.timestamp, pair, quantity=quantity)
+        
 
             if trade_type is None:
                 trade_type = TradeType.rebalance
 
-            return self.close_spot_position(
-                position,
-                trade_type,
-                notes,
-                slippage_tolerance
-            )
+                return self.close_spot_position(
+                    position,
+                    trade_type,
+                    notes,
+                    slippage_tolerance
+                )
         elif position.is_credit_supply():
 
             if trade_type is None:
