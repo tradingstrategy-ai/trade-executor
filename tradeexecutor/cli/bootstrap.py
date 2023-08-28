@@ -325,7 +325,7 @@ def create_generic_execution_and_sync_model(
             vault_payment_forwarder_address,
         )
 
-        logger.info("Creating execution model. Asset management mode is %s, routing hint is %s", asset_management_mode.value, routing_hints.value)
+        logger.info("Creating execution model. Asset management mode is %s, routing hint(s) are", asset_management_mode.value, routing_hints)
 
         generic_routing_data = create_generic_execution_model(
             routing_hints=routing_hints,
