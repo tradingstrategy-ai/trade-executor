@@ -565,13 +565,13 @@ def multichain_universe(persistent_test_client) -> PandasPairUniverse:
     client = persistent_test_client
     
     trading_pairs = (
-        (ChainId.ethereum, "uniswap-v2", "BITCOIN", "WETH", 0.003) # HarryPotterObamaSonic10Inu-Ether https://tradingstrategy.ai/trading-view/ethereum/uniswap-v2/bitcoin-eth, 
-        (ChainId.ethereum, "uniswap-v3", "WETH", "USDC", 0.0005) # Ether-USD Coin https://tradingstrategy.ai/trading-view/ethereum/uniswap-v3/eth-usdc-fee-5 
-        (ChainId.ethereum, "uniswap-v2", "BAD", "WETH", 0.003) # BAD IDEA AI-Ether https://tradingstrategy.ai/trading-view/ethereum/uniswap-v2/bad-eth
-        (ChainId.ethereum, "uniswap-v2", "SHIA", "WETH", 0.003) # SHIA-Ether https://tradingstrategy.ai/trading-view/ethereum/uniswap-v2/shia-eth 
-        (ChainId.ethereum, "uniswap-v3", "PEPE", "WETH", 0.003) # Pepe-Ether https://tradingstrategy.ai/trading-view/ethereum/uniswap-v3/pepe-eth-fee-30
-        (ChainId.ethereum, "uniswap-v2", "Mog", "WETH", 0.003) # Mog Coin-Ether https://tradingstrategy.ai/trading-view/ethereum/uniswap-v2/mog-eth
-        (ChainId.ethereum, "uniswap-v2", "UNIBOT", "WETH", 0.003) # Unibot-Ether https://tradingstrategy.ai/trading-view/ethereum/uniswap-v2/unibot-eth 
+        (ChainId.ethereum, "uniswap-v2", "BITCOIN", "WETH", 0.003), # HarryPotterObamaSonic10Inu-Ether https://tradingstrategy.ai/trading-view/ethereum/uniswap-v2/bitcoin-eth, 
+        (ChainId.ethereum, "uniswap-v3", "WETH", "USDC", 0.0005), # Ether-USD Coin https://tradingstrategy.ai/trading-view/ethereum/uniswap-v3/eth-usdc-fee-5 
+        (ChainId.ethereum, "uniswap-v2", "BAD", "WETH", 0.003), # BAD IDEA AI-Ether https://tradingstrategy.ai/trading-view/ethereum/uniswap-v2/bad-eth
+        (ChainId.ethereum, "uniswap-v2", "SHIA", "WETH", 0.003), # SHIA-Ether https://tradingstrategy.ai/trading-view/ethereum/uniswap-v2/shia-eth 
+        (ChainId.ethereum, "uniswap-v3", "PEPE", "WETH", 0.003), # Pepe-Ether https://tradingstrategy.ai/trading-view/ethereum/uniswap-v3/pepe-eth-fee-30
+        (ChainId.ethereum, "uniswap-v2", "Mog", "WETH", 0.003), # Mog Coin-Ether https://tradingstrategy.ai/trading-view/ethereum/uniswap-v2/mog-eth
+        (ChainId.ethereum, "uniswap-v2", "UNIBOT", "WETH", 0.003), # Unibot-Ether https://tradingstrategy.ai/trading-view/ethereum/uniswap-v2/unibot-eth 
     )
 
 
