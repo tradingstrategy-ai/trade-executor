@@ -15,10 +15,11 @@ from tradeexecutor.strategy.alpha_model import AlphaModel
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
+from tradingstrategy.testing.uniswap_v2_mock_client import UniswapV2MockClient
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 
-from tradingstrategy.client import Client
+from tradingstrategy.client import Client, BaseClient
 
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.strategy.trading_strategy_universe import load_partial_data, load_all_data
@@ -88,10 +89,11 @@ end_at = datetime.datetime(2023, 6, 1)
 initial_deposit = 10_000
 
 # We trade on Polygon
-CHAIN_ID = ChainId.polygon
+# CHAIN_ID = ChainId.polygon
 
 # List of trading pairs that we consider "DeFi blueschips" for this strategy
 # For token ordering, wrappign see https://tradingstrategy.ai/docs/programming/market-data/trading-pairs.html
+# If pairs changed, make sure to update pairs in tests/enzyme/conftest/multichain_universe.py 
 pairs = (
     (ChainId.polygon, "quickswap", "WMATIC", "USDC"),  # Matic
     #(ChainId.polygon, "quickswap", "KLIMA", "USDC"), 
@@ -211,10 +213,12 @@ def decide_trades(
 
 def create_trading_universe(
         ts: datetime.datetime,
-        client: Client,
+        client: BaseClient,
         execution_context: ExecutionContext,
         universe_options: UniverseOptions,
 ) -> TradingStrategyUniverse:
+
+    assert isinstance(client, UniswapV2MockClient), f"Looks like we are not running on EVM testing backend. Got: {client}"
 
     assert not execution_context.mode.is_live_trading(), \
         f"Only strategy backtesting supported, got {execution_context.mode}"
