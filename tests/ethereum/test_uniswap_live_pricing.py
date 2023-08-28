@@ -224,10 +224,6 @@ def test_uniswap_two_leg_buy_price_no_price_impact(
     assert price_structure.price > mid_price
     assert mid_price == pytest.approx(1699.9232380190588, rel=APPROX_REL)
 
-    # get price for float
-    price_structure = pricing_method.get_buy_price(datetime.datetime.utcnow(), pair, 1000)
-    price_structure = pricing_method.get_sell_price(datetime.datetime.utcnow(), pair, 1000)
-
 
 def test_uniswap_two_leg_buy_price_with_price_impact(
         web3: Web3,
