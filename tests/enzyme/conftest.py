@@ -8,6 +8,7 @@
 
 import logging
 import pytest
+import datetime
 from eth_defi.enzyme.vault import Vault
 from pytest import FixtureRequest
 
@@ -15,6 +16,8 @@ from eth_typing import HexAddress
 from tradingstrategy.pair import PandasPairUniverse
 from tradingstrategy.exchange import Exchange, ExchangeType
 from tradingstrategy.chain import ChainId
+from tradingstrategy.client import Client
+from tradingstrategy.timebucket import TimeBucket
 from web3 import Web3, HTTPProvider
 from web3.contract import Contract
 
@@ -30,6 +33,10 @@ from eth_defi.uniswap_v2.deployment import deploy_uniswap_v2_like, UniswapV2Depl
 from tradeexecutor.ethereum.token import translate_token_details
 from tradeexecutor.ethereum.universe import create_pair_universe
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, load_partial_data
+from tradeexecutor.strategy.universe_model import UniverseOptions
+from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
+from tradeexecutor.utils.timer import timed_task
 
 
 logger = logging.getLogger(__name__)
@@ -544,3 +551,46 @@ def pairs(weth_usdc_trading_pair, pepe_usdc_trading_pair, bob_usdc_trading_pair,
 @pytest.fixture()
 def multipair_universe(web3, uniswap_v2_exchange, pairs) -> PandasPairUniverse:
     return create_pair_universe(web3, uniswap_v2_exchange, pairs)
+
+
+@pytest.fixture()
+def execution_context(request) -> ExecutionContext:
+    """Setup backtest execution context."""
+    return ExecutionContext(mode=ExecutionMode.backtesting, timed_task_context_manager=timed_task)
+
+
+@pytest.fixture()
+def multichain_universe(persistent_test_client) -> PandasPairUniverse:
+    
+    client = persistent_test_client
+    
+    trading_pairs = (
+        (ChainId.ethereum, "uniswap-v2", "BITCOIN", "WETH", 0.003) # HarryPotterObamaSonic10Inu-Ether https://tradingstrategy.ai/trading-view/ethereum/uniswap-v2/bitcoin-eth, 
+        (ChainId.ethereum, "uniswap-v3", "WETH", "USDC", 0.0005) # Ether-USD Coin https://tradingstrategy.ai/trading-view/ethereum/uniswap-v3/eth-usdc-fee-5 
+        (ChainId.ethereum, "uniswap-v2", "BAD", "WETH", 0.003) # BAD IDEA AI-Ether https://tradingstrategy.ai/trading-view/ethereum/uniswap-v2/bad-eth
+        (ChainId.ethereum, "uniswap-v2", "SHIA", "WETH", 0.003) # SHIA-Ether https://tradingstrategy.ai/trading-view/ethereum/uniswap-v2/shia-eth 
+        (ChainId.ethereum, "uniswap-v3", "PEPE", "WETH", 0.003) # Pepe-Ether https://tradingstrategy.ai/trading-view/ethereum/uniswap-v3/pepe-eth-fee-30
+        (ChainId.ethereum, "uniswap-v2", "Mog", "WETH", 0.003) # Mog Coin-Ether https://tradingstrategy.ai/trading-view/ethereum/uniswap-v2/mog-eth
+        (ChainId.ethereum, "uniswap-v2", "UNIBOT", "WETH", 0.003) # Unibot-Ether https://tradingstrategy.ai/trading-view/ethereum/uniswap-v2/unibot-eth 
+    )
+
+
+    # Load data for our trading pair whitelist
+    dataset = load_partial_data(
+        client=client,
+        pairs=trading_pairs,
+        time_bucket=TimeBucket.h1,
+        execution_context=execution_context,
+        universe_options=UniverseOptions(),
+        start_at=datetime.datetime(2023, 1, 1),
+        end_at=datetime.datetime(2023, 8, 26),
+    )
+
+    # Filter down the dataset to the pairs we specified
+    universe = TradingStrategyUniverse.create_multichain_universe_by_pair_descriptions(
+        dataset,
+        trading_pairs,
+        reserve_token_symbol="USDC"
+    )
+
+    return universe
