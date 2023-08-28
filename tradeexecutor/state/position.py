@@ -1373,7 +1373,3 @@ class TradingPosition(GenericPosition):
         """Get the amount of outstanding loans we have."""
         return self.loan.collateral.get_usd_value()
 
-
-class PositionType(enum.Enum):
-    token_hold = "token_hold"
-    lending_pool_hold = "lending_pool_hold"
