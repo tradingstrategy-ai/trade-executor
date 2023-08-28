@@ -94,24 +94,34 @@ initial_deposit = 10_000
 # List of trading pairs that we consider "DeFi blueschips" for this strategy
 # For token ordering, wrappign see https://tradingstrategy.ai/docs/programming/market-data/trading-pairs.html
 # If pairs changed, make sure to update pairs in tests/enzyme/conftest/multichain_universe.py 
+# pairs = (
+#     (ChainId.polygon, "quickswap", "WMATIC", "USDC"),  # Matic
+#     #(ChainId.polygon, "quickswap", "KLIMA", "USDC"), 
+#     #(ChainId.polygon, "quickswap", "CHC", "USDC"), 
+#     (ChainId.polygon, "uniswap-v3", "WMATIC", "USDC", 0.0005), 
+#     (ChainId.polygon, "quickswap", "SAND", "WMATIC"), 
+#     (ChainId.polygon, "quickswap", "WBTC", "WETH"), 
+#     #(ChainId.polygon, "quickswap", "NASMG", "WMATIC"), 
+#     (ChainId.polygon, "uniswap-v3", "WETH", "USDC", 0.0005),  
+#     #(ChainId.polygon, "quickswap", "GHST", "USDC"), 
+#     #(ChainId.polygon, "sushi", "NCT", "USDC"), 
+#     #(ChainId.polygon, "quickswap", "QI", "WMATIC"), 
+#     (ChainId.polygon, "quickswap", "mOCEAN", "WMATIC"), 
+#     #(ChainId.polygon, "quickswap", "ICE", "USDC"), 
+#     #(ChainId.polygon, "sushi", "GIDDY", "USDC"), 
+#     (ChainId.polygon, "quickswap", "DG", "WMATIC"), 
+#     #(ChainId.polygon, "quickswap", "ORBS", "USDC"), 
+# )
 pairs = (
-    (ChainId.polygon, "quickswap", "WMATIC", "USDC"),  # Matic
-    #(ChainId.polygon, "quickswap", "KLIMA", "USDC"), 
-    #(ChainId.polygon, "quickswap", "CHC", "USDC"), 
-    (ChainId.polygon, "uniswap-v3", "WMATIC", "USDC", 0.0005), 
-    (ChainId.polygon, "quickswap", "SAND", "WMATIC"), 
-    (ChainId.polygon, "quickswap", "WBTC", "WETH"), 
-    #(ChainId.polygon, "quickswap", "NASMG", "WMATIC"), 
-    (ChainId.polygon, "uniswap-v3", "WETH", "USDC", 0.0005),  
-    #(ChainId.polygon, "quickswap", "GHST", "USDC"), 
-    #(ChainId.polygon, "sushi", "NCT", "USDC"), 
-    #(ChainId.polygon, "quickswap", "QI", "WMATIC"), 
-    (ChainId.polygon, "quickswap", "mOCEAN", "WMATIC"), 
-    #(ChainId.polygon, "quickswap", "ICE", "USDC"), 
-    #(ChainId.polygon, "sushi", "GIDDY", "USDC"), 
-    (ChainId.polygon, "quickswap", "DG", "WMATIC"), 
-    #(ChainId.polygon, "quickswap", "ORBS", "USDC"), 
+    (ChainId.ethereum, "uniswap-v2", "BITCOIN", "WETH", 0.003), # HarryPotterObamaSonic10Inu-Ether https://tradingstrategy.ai/trading-view/ethereum/uniswap-v2/bitcoin-eth, 
+    (ChainId.ethereum, "uniswap-v3", "WETH", "USDC", 0.0005), # Ether-USD Coin https://tradingstrategy.ai/trading-view/ethereum/uniswap-v3/eth-usdc-fee-5 
+    (ChainId.ethereum, "uniswap-v2", "BAD", "WETH", 0.003), # BAD IDEA AI-Ether https://tradingstrategy.ai/trading-view/ethereum/uniswap-v2/bad-eth
+    (ChainId.ethereum, "uniswap-v2", "SHIA", "WETH", 0.003), # SHIA-Ether https://tradingstrategy.ai/trading-view/ethereum/uniswap-v2/shia-eth 
+    (ChainId.ethereum, "uniswap-v3", "PEPE", "WETH", 0.003), # Pepe-Ether https://tradingstrategy.ai/trading-view/ethereum/uniswap-v3/pepe-eth-fee-30
+    (ChainId.ethereum, "uniswap-v2", "Mog", "WETH", 0.003), # Mog Coin-Ether https://tradingstrategy.ai/trading-view/ethereum/uniswap-v2/mog-eth
+    (ChainId.ethereum, "uniswap-v2", "UNIBOT", "WETH", 0.003), # Unibot-Ether https://tradingstrategy.ai/trading-view/ethereum/uniswap-v2/unibot-eth 
 )
+
 
 
 def decide_trades(
@@ -218,7 +228,7 @@ def create_trading_universe(
         universe_options: UniverseOptions,
 ) -> TradingStrategyUniverse:
 
-    assert isinstance(client, UniswapV2MockClient), f"Looks like we are not running on EVM testing backend. Got: {client}"
+    # assert isinstance(client, UniswapV2MockClient), f"Looks like we are not running on EVM testing backend. Got: {client}"
 
     assert not execution_context.mode.is_live_trading(), \
         f"Only strategy backtesting supported, got {execution_context.mode}"
