@@ -137,6 +137,7 @@ def calculate_profitability(returns: pd.Series) -> Percent:
 def calculate_trades_last_week(portfolio: Portfolio, cut_off_date=None) -> int:
     """How many trades were executed last week.
 
+    See :term:`trades last week`.
     """
     if cut_off_date is None:
         cut_off_date = datetime.datetime.utcnow() - datetime.timedelta(days=7)
