@@ -35,6 +35,12 @@ class KeyMetricKind(enum.Enum):
     #: Total equity
     total_equity = "total_equity"
 
+    #: Last trade
+    last_trade = "last_trade"
+
+    #: Trades last week
+    trades_last_week = "trades_last_week"
+
     def get_help_link(self) -> Optional[str]:
         return _KEY_METRIC_HELP[self]
 
@@ -305,4 +311,6 @@ _KEY_METRIC_HELP = {
    KeyMetricKind.profitability: "https://tradingstrategy.ai/glossary/profitability",
    KeyMetricKind.total_equity: "https://tradingstrategy.ai/glossary/total-equity",
    KeyMetricKind.started_at: "https://tradingstrategy.ai/glossary/strategy-age",
+   KeyMetricKind.last_trade: "https://tradingstrategy.ai/glossary/last-trade",
+   KeyMetricKind.trades_last_week: "https://tradingstrategy.ai/glossary/trades-last-wee",
 }
