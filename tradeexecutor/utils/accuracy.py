@@ -11,6 +11,13 @@ from typing import Iterable
 #: If sum of token quantities goes below this value assume the sum is zero
 SUM_EPSILON = Decimal(10**-18)
 
+#: When selling "full amount" use this epsilon
+#: the ensure we calculate 100% correctly
+#:
+#: See :py:func:`snap_to_epsilon`
+#:
+SNAP_EPSILON = Decimal(10**-8)
+
 #: Preconstruced Decimal Zero
 #:
 #: Avoid object reinitialisation.
@@ -50,7 +57,12 @@ def sum_decimal(numbers: Iterable[Decimal]) -> Decimal:
         0E-67
 
     :param numbers:
-        Incoming Decimals to sum
+
+        Incoming Decimals to sum.
+
+    :return:
+        Decimal value that is rounded to zero if it is too close to zero.
+
     """
     total = sum(numbers)
     if abs(total) < SUM_EPSILON:
@@ -58,6 +70,35 @@ def sum_decimal(numbers: Iterable[Decimal]) -> Decimal:
     return total
 
 
+def snap_to_epsilon(
+    available_token_quantity: Decimal,
+    calculated_token_quantity: Decimal,
+    epsilon=SNAP_EPSILON
+) -> Decimal:
+    """Make sure our calculated quantity does not exceed max available tokens."""
+    if calculated_token_quantity != available_token_quantity:
+        if abs(calculated_token_quantity) - abs(available_token_quantity) < epsilon:
+            return available_token_quantity
+    return calculated_token_quantity
 
 
+def ensure_exact_zero(
+        quantity: Decimal,
+        epsilon=SUM_EPSILON,
+) -> Decimal:
+    """Ensure that we hit precise zero.
 
+    :param quantity:
+        If this number is one bit off the zero due to decimal math,
+        then assume it is zero.
+
+    :return:
+        Exact zero for quantities that are too close to zero.
+    """
+
+    assert isinstance(quantity, Decimal)
+
+    if abs(quantity) < epsilon:
+        return ZERO_DECIMAL
+
+    return quantity

@@ -70,7 +70,10 @@ def decide_trades(
     asset_2 = translate_trading_pair(universe.pairs.get_pair_by_id(3))
 
     # How much cash we have in the hand
-    cash = state.portfolio.get_current_cash()
+    cash = state.portfolio.get_cash()
+
+    if cash < 0:
+        state.portfolio.get_cash()
 
     trades = []
 

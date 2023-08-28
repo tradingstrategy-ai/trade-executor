@@ -135,7 +135,9 @@ class BacktestSyncModel(SyncModel):
         position: TradingPosition,
         timestamp: datetime.datetime,
     ) -> Decimal:
-        """Calculate accrued interest of a position."""
+        """Calculate accrued interest of a position.
+
+        """
         # get relevant candles for the position period from opened until now
         df = universe.universe.lending_candles.supply_apr.df.copy()
         df = df[
@@ -168,11 +170,25 @@ class BacktestSyncModel(SyncModel):
 
             assert p.is_credit_supply()
 
-            accrued = self.calculate_accrued_interest(universe, p, timestamp)
-            new_amount = Decimal(p.interest.opening_amount) + accrued
+            accrued = self.calculate_accrued_interest(
+                universe,
+                p,
+                timestamp,
+            )
+
+            interest = p.loan.collateral_interest
+
+            # TODO: replace with a real interest calculation,
+            # based on universe.lending_candles
+            assert len(p.trades) <= 2, "This interest calculation does not support increase/reduce position"
+            old_amount = interest.last_atoken_amount
+            #new_amount = old_amount * Decimal(1+accrued)
+            new_amount = interest.opening_amount + accrued
+
             evt = update_credit_supply_interest(
                 state,
                 p,
+                p.pair.base,
                 new_atoken_amount=new_amount,
                 event_at=timestamp,
             )

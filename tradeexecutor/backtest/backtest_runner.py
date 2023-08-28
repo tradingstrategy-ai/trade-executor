@@ -185,7 +185,7 @@ def setup_backtest_for_universe(
     # assert len(events) == 1
     token, usd_exchange_rate = state.portfolio.get_default_reserve_asset()
     assert usd_exchange_rate == 1
-    assert state.portfolio.get_current_cash() == initial_deposit
+    assert state.portfolio.get_cash() == initial_deposit
 
     # Set up execution and pricing
     pricing_model = BacktestSimplePricingModel(universe.universe.candles, routing_model, allow_missing_fees=allow_missing_fees)

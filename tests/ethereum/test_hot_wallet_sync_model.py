@@ -5,7 +5,7 @@ import secrets
 import pytest
 from _pytest.fixtures import FixtureRequest
 from eth_account import Account
-from eth_defi.anvil import launch_anvil, AnvilLaunch
+from eth_defi.provider.anvil import launch_anvil, AnvilLaunch
 from eth_defi.chain import install_chain_middleware
 from eth_defi.hotwallet import HotWallet
 from eth_defi.token import create_token, fetch_erc20_details

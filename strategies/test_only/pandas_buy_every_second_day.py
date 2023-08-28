@@ -59,7 +59,7 @@ def decide_trades(
 
     assert pair.pair_id > 0
 
-    cash = state.portfolio.get_current_cash()
+    cash = state.portfolio.get_cash()
     assert cash > 0, "You did not top up the backtest simulation"
 
     # 30 days EMA

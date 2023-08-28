@@ -46,7 +46,7 @@ def decide_trades(
 
     assert pair.pair_id > 0
 
-    cash = state.portfolio.get_current_cash()
+    cash = state.portfolio.get_cash()
 
     cycle_number = cycle_debug_data["cycle"]
 

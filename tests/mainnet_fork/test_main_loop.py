@@ -13,7 +13,7 @@ from typing import List
 import flaky
 import pytest
 from eth_account import Account
-from eth_defi.anvil import fork_network_anvil
+from eth_defi.provider.anvil import fork_network_anvil
 from eth_defi.chain import install_chain_middleware
 from eth_defi.gas import node_default_gas_price_strategy
 from eth_typing import HexAddress, HexStr
@@ -23,7 +23,7 @@ from web3 import Web3, HTTPProvider
 from web3.contract import Contract
 
 from eth_defi.abi import get_deployed_contract
-from eth_defi.ganache import fork_network
+from eth_defi.provider.ganache import fork_network
 from eth_defi.hotwallet import HotWallet
 from eth_defi.confirmation import wait_transactions_to_complete
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, fetch_deployment

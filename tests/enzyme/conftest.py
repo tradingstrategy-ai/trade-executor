@@ -22,7 +22,7 @@ from web3 import Web3, HTTPProvider
 from web3.contract import Contract
 
 from eth_defi.abi import get_deployed_contract
-from eth_defi.anvil import AnvilLaunch, launch_anvil
+from eth_defi.provider.anvil import AnvilLaunch, launch_anvil
 from eth_defi.chain import install_chain_middleware
 from eth_defi.deploy import deploy_contract
 from eth_defi.enzyme.deployment import EnzymeDeployment, RateAsset

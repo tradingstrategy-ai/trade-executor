@@ -23,7 +23,9 @@ class Interest:
     #:
     opening_amount: Decimal
 
-    #: How many atokens we had at the previous read
+    #: How many atokens/votkens we had on the previous read.
+    #:
+    #: This is principal + interest.
     #:
     last_atoken_amount: Decimal
 
@@ -50,8 +52,22 @@ class Interest:
     #:
     last_updated_block_number: int | None = None
 
+    def __repr__(self):
+        return f"<Interest, current principal + interest {self.last_atoken_amount}>"
+
     def __post_init__(self):
         assert isinstance(self.opening_amount, Decimal)
         assert isinstance(self.last_accrued_interest, Decimal)
+
+    @staticmethod
+    def open_new(opening_amount: Decimal) -> "Interest":
+        assert opening_amount > 0
+        return Interest(
+            opening_amount=opening_amount,
+            last_updated_at=datetime.datetime.utcnow(),
+            last_event_at=datetime.datetime.utcnow(),
+            last_accrued_interest=Decimal(0),
+            last_atoken_amount=opening_amount,
+        )
 
 

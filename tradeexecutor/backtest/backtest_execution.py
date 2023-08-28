@@ -86,6 +86,59 @@ class BacktestExecutionModel(ExecutionModel):
         """Set up the wallet"""
         logger.info("Initialising backtest execution model")
 
+    def simulate_spot(self, state: State, trade: TradeExecution) -> Tuple[Decimal, Decimal, bool]:
+        """Spot market translation simulation with a simulated wallet.
+
+        Check that the trade "executes" against the simulated wallet
+
+        :param state:
+            Backtester state
+
+        :param trade:
+            Trade to be executed
+
+        :return:
+            (ecuted_quantity, executed_reserve, sell_amount_epsilon_fix) tuple
+
+        :raise OutOfSimulatedBalance:
+            Wallet does not have enough tokens to do the trade
+        """
+
+        #
+        base = trade.pair.base
+        quote = trade.pair.quote
+        reserve = trade.reserve_currency
+
+        base_balance = self.wallet.get_balance(base.address)
+        quote_balance = self.wallet.get_balance(quote.address)
+        reserve_balance = self.wallet.get_balance(reserve.address)
+
+        position = state.portfolio.get_existing_open_position_by_trading_pair(trade.pair)
+
+        sell_amount_epsilon_fix = False
+
+        if trade.is_buy():
+            executed_reserve = trade.planned_reserve
+            executed_quantity = trade.planned_quantity
+        else:
+            assert position and position.is_open(), f"Tried to execute sell on position that is not open: {trade}"
+            executed_quantity, sell_amount_epsilon_fix = fix_sell_token_amount(base_balance, trade.planned_quantity)
+            executed_reserve = abs(Decimal(trade.planned_quantity) * Decimal(trade.planned_price))
+
+        if trade.is_buy():
+            self.wallet.update_balance(base.address, executed_quantity)
+            self.wallet.update_balance(reserve.address, -executed_reserve)
+        else:
+            self.wallet.update_balance(base.address, executed_quantity)
+            self.wallet.update_balance(reserve.address, executed_reserve)
+
+        assert abs(executed_quantity) > 0, f"Expected executed_quantity for the trade to be above zero, got executed_quantity:{executed_quantity}, planned_quantity:{trade.planned_quantity}, trade is {trade}"
+
+        return executed_quantity, executed_reserve, sell_amount_epsilon_fix
+
+    def simulate_leverage(self, state: State, trade: TradeExecution):
+        raise NotImplementedError()
+
     def simulate_trade(self,
                        ts: datetime.datetime,
                        state: State,
@@ -96,7 +149,7 @@ class BacktestExecutionModel(ExecutionModel):
         Currently, always executes trades "perfectly" i.e. no different slipppage
         that was planned, etc.
 
-        :poram ts:
+        :param ts:
             Strategy cycle timestamp
 
         :param state:
@@ -121,35 +174,30 @@ class BacktestExecutionModel(ExecutionModel):
 
         state.mark_broadcasted(ts, trade)
 
-        # Check that the trade "executes" against the simulated wallet
-        base = trade.pair.base
-        quote = trade.pair.quote
-        reserve = trade.reserve_currency
+        executed_quantity = executed_reserve = sell_amount_epsilon_fix = Decimal(0)
 
-        base_balance = self.wallet.get_balance(base.address)
-        quote_balance = self.wallet.get_balance(quote.address)
-        reserve_balance = self.wallet.get_balance(reserve.address)
-
-        position = state.portfolio.get_existing_open_position_by_trading_pair(trade.pair)
-
-        sell_amount_epsilon_fix = False
-        if trade.is_buy():
-            executed_reserve = trade.planned_reserve
-            executed_quantity = trade.planned_quantity
-        else:
-            assert position and position.is_open(), f"Tried to execute sell on position that is not open: {trade}"
-            executed_quantity, sell_amount_epsilon_fix = fix_sell_token_amount(base_balance, trade.planned_quantity)
-            executed_reserve = abs(Decimal(trade.planned_quantity) * Decimal(trade.planned_price))
         try:
-            if trade.is_buy():
-                self.wallet.update_balance(reserve.address, -executed_reserve)
-                self.wallet.update_balance(base.address, executed_quantity)
+            if trade.is_spot() or trade.is_credit_supply():
+                executed_quantity, executed_reserve, sell_amount_epsilon_fix = self.simulate_spot(state, trade)
+            elif trade.is_leverage():
+                executed_quantity, executed_reserve, sell_amount_epsilon_fix = self.simulate_leverage(state, trade)
             else:
-                self.wallet.update_balance(base.address, executed_quantity)
-                self.wallet.update_balance(reserve.address, executed_reserve)
+                raise NotImplementedError(f"Does not know how to simulate: {trade}")
+
+            trade.executed_loan_update = trade.planned_loan_update
 
         except OutOfSimulatedBalance as e:
             # Better error messages to helping out why backtesting failed
+
+            position = state.portfolio.get_existing_open_position_by_trading_pair(trade.pair)
+
+            base = trade.pair.base
+            quote = trade.pair.quote
+            reserve = trade.reserve_currency
+
+            base_balance = self.wallet.get_balance(base.address)
+            quote_balance = self.wallet.get_balance(quote.address)
+            reserve_balance = self.wallet.get_balance(reserve.address)
 
             if trade.is_buy():
                 # Give a hint to the user
@@ -182,8 +230,6 @@ class BacktestExecutionModel(ExecutionModel):
                 f"  {extra_help_message}\n"
             ) from e
 
-        assert abs(executed_quantity) > 0, f"Expected executed_quantity for the trade to be above zero, got executed_quantity:{executed_quantity}, planned_quantity:{trade.planned_quantity}, trade is {trade}"
-        assert executed_reserve > 0, f"Expected executed_reserve for the trade to be above zero, got {executed_reserve}"
         return executed_quantity, executed_reserve
 
     def execute_trades(self,
@@ -229,7 +275,10 @@ class BacktestExecutionModel(ExecutionModel):
 
             # 4. execution is dummy operation where planned execution becomes actual execution
             # Assume we always get the same execution we planned
-            executed_price = float(abs(executed_reserve / executed_quantity))
+            if executed_quantity:
+                executed_price = float(abs(executed_reserve / executed_quantity))
+            else:
+                executed_price = 0
 
             state.mark_trade_success(
                 ts,

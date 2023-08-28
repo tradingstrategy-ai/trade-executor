@@ -29,7 +29,7 @@ class CLIApprovalModel(ApprovalModel):
         :return: promp_toolkit HTML for displaying the portfolio
         """
         equity = portfolio.get_total_equity()
-        cash = portfolio.get_current_cash()
+        cash = portfolio.get_cash()
         text = textwrap.dedent(f"""
             Total equity <ansigreen>${equity:,.2f}</ansigreen>
             Current cash <ansigreen>${cash:,.2f}</ansigreen>""")

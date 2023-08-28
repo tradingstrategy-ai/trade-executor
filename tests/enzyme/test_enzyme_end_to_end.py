@@ -15,7 +15,7 @@ from typer.main import get_command
 from web3 import Web3
 
 from eth_defi.abi import get_deployed_contract
-from eth_defi.anvil import AnvilLaunch
+from eth_defi.provider.anvil import AnvilLaunch
 from hexbytes import HexBytes
 from typer.testing import CliRunner
 from web3.contract import Contract

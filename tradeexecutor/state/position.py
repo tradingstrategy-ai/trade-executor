@@ -16,13 +16,15 @@ from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdateCause
 from tradeexecutor.state.generic_position import GenericPosition, BalanceUpdateEventAlreadyAdded
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier, TradingPairKind
 from tradeexecutor.state.interest import Interest
+from tradeexecutor.state.loan import Loan
 from tradeexecutor.state.trade import TradeType, QUANTITY_EPSILON
 from tradeexecutor.state.trade import TradeExecution
-from tradeexecutor.state.types import USDollarAmount, BPS, USDollarPrice, Percent
+from tradeexecutor.state.types import USDollarAmount, BPS, USDollarPrice, Percent, LeverageMultiplier
 from tradeexecutor.strategy.dust import get_dust_epsilon_for_pair
+from tradeexecutor.strategy.lending_protocol_leverage import create_short_loan, plan_loan_update_for_short, create_credit_supply_loan, update_credit_supply_loan
 from tradeexecutor.strategy.trade_pricing import TradePricing
 from tradeexecutor.utils.accuracy import sum_decimal
-
+from tradingstrategy.lending import LendingProtocolType
 
 logger = logging.getLogger(__name__)
 
@@ -211,11 +213,15 @@ class TradingPosition(GenericPosition):
     #:
     trigger_updates: List[TriggerPriceUpdate] = field(default_factory=list)
 
-    #: Position accrued interest
+    #: The loan underlying the position leverage or crdit supply.
     #:
-    #: Only applicable for positions gaining interest.
+    #: Applicable for
     #:
-    interest: Optional[Interest] = None
+    #: - short/long positions using lending protocols
+    #:
+    #: - credit supply (collateral without borrow)
+    #:
+    loan: Optional[Loan] = None
 
     def __repr__(self):
         if self.is_open():
@@ -263,7 +269,10 @@ class TradingPosition(GenericPosition):
         return self.closed_at is None
 
     def is_closed(self) -> bool:
-        """This position has been closed and does not have any capital tied to it."""
+        """This position has been closed and does not have any capital tied to it.
+
+        See also :py:meth:`is_reduced`:
+        """
         return not self.is_open()
 
     def is_frozen(self) -> bool:
@@ -313,6 +322,14 @@ class TradingPosition(GenericPosition):
     def is_short(self) -> bool:
         """Is this position short on the underlying base asset."""
         return not self.is_long()
+
+    def is_leverage(self) -> bool:
+        """Is this leveraged/loan backed position."""
+        return self.pair.is_leverage()
+
+    def is_loan_based(self) -> bool:
+        """The profit for this trading pair is loan based.."""
+        return self.pair.is_leverage() or self.pair.is_credit_supply()
 
     def is_stop_loss(self) -> bool:
         """Was this position ended with stop loss trade"""
@@ -473,7 +490,7 @@ class TradingPosition(GenericPosition):
         last_trade = self.get_last_trade()
         return last_trade.executed_price
 
-    def get_equity_for_position(self) -> Decimal:
+    def get_quantity_old(self) -> Decimal:
         """How many asset units this position tolds.
 
         TODO: Remove this
@@ -500,24 +517,74 @@ class TradingPosition(GenericPosition):
         """Get all trades that have failed in the execution."""
         return [t for t in self.trades.values() if t.is_failed()]
 
-    def calculate_value_using_price(self, token_price: USDollarAmount, reserve_price: USDollarAmount) -> USDollarAmount:
+    def calculate_value_using_price(
+            self,
+            token_price: USDollarAmount,
+            reserve_price: USDollarAmount,
+            include_interest=True,
+    ) -> USDollarAmount:
         """Calculate the value of this position using the given prices."""
+
         token_quantity = sum([t.get_equity_for_position() for t in self.trades.values() if t.is_accounted_for_equity()])
 
-        token_quantity += self.calculate_accrued_interest_quantity()
+        if include_interest:
+            token_quantity += self.calculate_accrued_interest_quantity()
 
         reserve_quantity = sum([t.get_equity_for_reserve() for t in self.trades.values() if t.is_accounted_for_equity()])
+
         return float(token_quantity) * token_price + float(reserve_quantity) * reserve_price
 
-    def get_value(self) -> USDollarAmount:
-        """Get the position value using the latest revaluation pricing.
+    def get_equity(self) -> USDollarAmount:
+        """Get equity tied to this position.
+
+        :return:
+        """
+
+        match self.pair.kind:
+            case TradingPairKind.spot_market_hold:
+                return self.calculate_value_using_price(self.last_token_price, self.last_reserve_price)
+            case _:
+                return 0
+
+    def get_value(self, include_interest=True) -> USDollarAmount:
+        """Get the current net asset value of this position.
 
         If the position is closed, the value should be zero.
+
+        :param include_interest:
+            Include accrued interest in the valuation
         """
-        if self.is_closed():
-            return USDollarAmount(0)
+
+        if include_interest:
+            value = self.get_accrued_interest() - self.get_claimed_interest()
         else:
-            return self.calculate_value_using_price(self.last_token_price, self.last_reserve_price)
+            value = 0
+
+        if self.is_closed():
+            # Closed positions do not have any value left,
+            # outside its accrued interest
+            return value
+
+        match self.pair.kind:
+            case TradingPairKind.spot_market_hold | TradingPairKind.credit_supply:
+                value += self.calculate_value_using_price(
+                    self.last_token_price,
+                    self.last_reserve_price,
+                    include_interest=False,
+                )
+            case TradingPairKind.lending_protocol_short:
+                # Value for leveraged positions is
+                #
+                # Short
+                value -= self.calculate_value_using_price(
+                    self.last_token_price,
+                    self.last_reserve_price,
+                    include_interest=False,
+                )
+            case _:
+                raise NotImplementedError(f"Does not know how to value position for {self.pair}")
+
+        return value
 
     def get_trades_by_strategy_cycle(self, timestamp: datetime.datetime) -> Iterable[TradeExecution]:
         """Get all trades made for this position at a specific time.
@@ -568,6 +635,10 @@ class TradingPosition(GenericPosition):
                    price_structure: Optional[TradePricing] = None,
                    slippage_tolerance: Optional[float] = None,
                    portfolio_value_at_creation: Optional[USDollarAmount] = None,
+                   leverage: Optional[LeverageMultiplier]=None,
+                   closing: Optional[bool] = False,
+                   planned_collateral_consumption: Optional[Decimal] = None,
+                   planned_collateral_allocation: Optional[Decimal] = None,
                    ) -> TradeExecution:
         """Open a new trade on position.
 
@@ -634,8 +705,11 @@ class TradingPosition(GenericPosition):
             Will be later used for risk metrics calculations and such.
         """
 
-        if quantity is not None:
-            assert reserve is None, "Quantity and reserve both cannot be given at the same time"
+        # Done in State.create_trade()
+        # if quantity is not None:
+        #    assert reserve is None, "Quantity and reserve both cannot be given at the same time"
+
+        pair = self.pair
 
         if price_structure is not None:
             assert isinstance(price_structure, TradePricing)
@@ -646,23 +720,69 @@ class TradingPosition(GenericPosition):
         if strategy_cycle_at is not None:
             assert isinstance(strategy_cycle_at, datetime.datetime)
 
-        if reserve is not None:
-            planned_reserve = reserve
-            planned_quantity = reserve / Decimal(assumed_price)
-        else:
-            planned_quantity = quantity
-            planned_reserve = abs(quantity * Decimal(assumed_price))
+        # Set lending market estimated quantities
+        match pair.kind:
+            case TradingPairKind.lending_protocol_short:
 
-        # Validate there is correlation
-        # between the trade type and underlying trading pair identifier
-        pair = self.pair
-        match trade_type:
-            case TradeType.rebalance | TradeType.stop_loss | TradeType.take_profit | TradeType.repair:
-                assert pair.kind in (TradingPairKind.spot_market_hold,)
-            case TradeType.supply_credit:
-                assert pair.kind == TradingPairKind.credit_supply
+                if len(self.trades) == 0:
+                    assert reserve is not None, "Both reserve and quantity needs to be given for lending protocol short open"
+                    assert quantity is not None, "Both reserve and quantity needs to be given for lending protocol short open"
+                    assert not closing, "Cannot close position not yet open"
+
+                    # Automatically calculate the amount of collateral increase for this trade sizes
+                    if planned_collateral_consumption is None:
+                        planned_collateral_consumption = -quantity * Decimal(assumed_price)
+
+                else:
+
+                    if closing:
+                        assert reserve is None, "reserve calculated automatically when closing a short position"
+                        assert quantity is None, "quantity calculated automatically when closing a short position"
+                        assert not planned_collateral_consumption, "planned_collateral_consumption set automatically when closing a short position"
+
+                        # Buy back all the debt
+                        quantity = self.loan.borrowed.quantity
+
+                        # Release collateral is the current collateral
+                        reserve = 0
+
+                        # We need to use USD from the collateral to pay back the loan
+                        planned_collateral_consumption = -quantity * Decimal(self.loan.borrowed.last_usd_price)
+
+                        # Any leftover USD from the collateral is released to the reserves
+                        planned_collateral_allocation = -(self.loan.collateral.quantity + planned_collateral_consumption)
+
+                    else:
+                        assert quantity is not None, "For increasing/reducing short position quantity must be given"
+                        planned_collateral_consumption = -quantity * Decimal(self.loan.borrowed.last_usd_price)
+                        planned_collateral_allocation = planned_collateral_allocation
+
+                assert reserve_currency_price, f"Collateral price missing"
+                assert assumed_price, f"Short token price missing"
+
+                planned_reserve = reserve or Decimal(0)
+                planned_quantity = quantity or Decimal(0)
+
+                # From now on, we need meaningful values for math
+                planned_collateral_consumption = planned_collateral_consumption or Decimal(0)
+                planned_collateral_allocation = planned_collateral_allocation or Decimal(0)
+
+            case TradingPairKind.spot_market_hold:
+                # Set spot market estimated quantities
+                if reserve is not None:
+                    planned_reserve = reserve
+                    planned_quantity = reserve / Decimal(assumed_price)
+                else:
+                    planned_quantity = quantity
+                    planned_reserve = abs(quantity * Decimal(assumed_price))
+            case TradingPairKind.credit_supply:
+                assert reserve, "You must give reserve"
+                assert quantity, "You must give quantity"
+                planned_reserve = reserve
+                planned_quantity = quantity
+
             case _:
-                raise NotImplementedError(f"Cannot deal with {trade_type}")
+                raise NotImplementedError(f"Does not know how to calculate quantities for open a trade on: {pair}")
 
         trade = TradeExecution(
             trade_id=trade_id,
@@ -680,24 +800,42 @@ class TradingPosition(GenericPosition):
             price_structure=price_structure,
             slippage_tolerance=slippage_tolerance,
             portfolio_value_at_creation=portfolio_value_at_creation,
+            leverage=leverage,
+            reserve_currency_exchange_rate=reserve_currency_price,
+            planned_collateral_allocation=planned_collateral_allocation,
+            planned_collateral_consumption=planned_collateral_consumption,
         )
 
         self.trades[trade.trade_id] = trade
 
         # Initialise interest tracking data structure
         if pair.kind.is_interest_accruing():
-            assert pair.kind == TradingPairKind.credit_supply, "Only credit supply supported for now"
-            if self.interest is None:
-                assert trade.is_buy(), "Opening credit position is modelled as buy"
-                self.interest = Interest(
-                    opening_amount=planned_reserve,
-                    last_updated_at=datetime.datetime.utcnow(),
-                    last_event_at=datetime.datetime.utcnow(),
-                    last_accrued_interest=Decimal(0),
-                    last_atoken_amount=planned_reserve,
-                )
+            if pair.kind == TradingPairKind.credit_supply:
+                assert pair.kind == TradingPairKind.credit_supply, "Only credit supply supported for now"
+                if self.loan is None:
+                    assert trade.is_buy(), "Opening credit position is modelled as buy"
+                    trade.planned_loan_update = create_credit_supply_loan(self, trade)
+                else:
+                    trade.planned_loan_update = update_credit_supply_loan(self, trade)
+
+            elif pair.kind.is_leverage():
+                assert pair.get_lending_protocol() == LendingProtocolType.aave_v3, "Unsupported protocol"
+                if pair.kind.is_shorting():
+                    if not self.loan:
+                        # Opening the position, create the first loan
+                        trade.planned_loan_update = create_short_loan(
+                            self,
+                            trade)
+                    else:
+                        # Loan is being increased/reduced
+                        trade.planned_loan_update = plan_loan_update_for_short(
+                            self.loan.clone(),
+                            self,
+                            trade)
+                else:
+                    raise NotImplementedError()
             else:
-                pass
+                raise NotImplementedError(f"Don't know how to deal with {pair}")
 
         return trade
 
@@ -727,7 +865,7 @@ class TradingPosition(GenericPosition):
         Perform additional check for token amount dust caused by rounding errors.
         """
         epsilon = get_dust_epsilon_for_pair(self.pair)
-        return self.get_quantity() <= epsilon
+        return abs(self.get_quantity()) <= epsilon
 
     def get_total_bought_usd(self) -> USDollarAmount:
         """How much money we have used on buys"""
@@ -762,9 +900,12 @@ class TradingPosition(GenericPosition):
     def get_average_sell(self) -> Optional[USDollarAmount]:
         """Calculate average buy price.
 
-        :return: None if no sells
+        :return:
+            ``None`` if no sell trades that would have completed successfully
         """
         q = float(self.get_sell_quantity())
+        if q == 0:
+            return None
         return self.get_total_sold_usd() / q
 
     def get_price_at_open(self) -> USDollarAmount:
@@ -795,17 +936,63 @@ class TradingPosition(GenericPosition):
         else:
             return self.get_average_sell()
 
-    def get_realised_profit_usd(self) -> Optional[USDollarAmount]:
+    def is_reduced(self) -> bool:
+        """Is any of the position closed.
+
+        The position is reduced towards close if it contains opposite trades.
+
+        See also :py:meth:`is_closed`.
+        """
+        sells = any([t.is_sell() for t in self.trades.values()])
+        buys = any([t.is_buy() for t in self.trades.values()])
+        return sells and buys
+
+    def get_realised_profit_usd(
+            self,
+            include_interest=True) -> Optional[USDollarAmount]:
         """Calculates the profit & loss (P&L) that has been 'realised' via two opposing asset transactions in the Position to date.
 
-        :return: profit in dollar or None if no opposite trade made
-        """
-        assert self.is_long(), "TODO: Only long supported"
-        if self.get_sell_quantity() == 0:
-            return None
-        return (self.get_average_sell() - self.get_average_buy()) * float(self.get_sell_quantity())
+        - Profit is calculated as the diff of avg buy and sell price times quantity
 
-    def get_unrealised_profit_usd(self) -> USDollarAmount:
+        - Any avg buy and sell contains all fees we have paid in included in the price,
+          so we do not need to add them to profit here
+
+        :param include_interest:
+            Include any accrued interest in PnL.
+
+        :return:
+            Profit in dollar.
+
+            `None` if the position lacks any realised profit (contains only unrealised).
+        """
+
+        if not self.is_reduced():
+            return None
+
+        if self.is_reduced():
+            if self.is_spot_market():
+                sells = self.get_average_sell() or 0.0
+                buys = self.get_average_buy() or 0.0
+                sell_unit = self.get_sell_quantity()
+                if sell_unit != 0:
+                    trade_profit = (sells - buys) * float(sell_unit)
+                else:
+                    # We do not have successful sells (trades failed) so the
+                    # realised profit is zero
+                    trade_profit = 0
+            else:
+                trade_profit = (self.get_average_sell() - self.get_average_buy()) * float(self.get_buy_quantity())
+        else:
+            # No closes yet, only unrealised PnL
+            trade_profit = 0.0
+
+        if include_interest:
+            # Interest that is claimed is realised
+            trade_profit += self.get_claimed_interest()
+
+        return trade_profit
+
+    def get_unrealised_profit_usd(self, include_interest=True) -> USDollarAmount:
         """Calculate the position unrealised profit.
 
         Calculates the profit & loss (P&L) that has yet to be 'realised'
@@ -817,7 +1004,10 @@ class TradingPosition(GenericPosition):
         avg_price = self.get_average_price()
         if avg_price is None:
             return 0
-        return (self.get_current_price() - avg_price) * float(self.get_net_quantity())
+        unrealised_equity = (self.get_current_price() - avg_price) * float(self.get_net_quantity())
+        if include_interest:
+            return unrealised_equity + self.get_accrued_interest() - self.get_claimed_interest()
+        return unrealised_equity
 
     def get_total_profit_usd(self) -> USDollarAmount:
         """Realised + unrealised profit."""
@@ -893,14 +1083,21 @@ class TradingPosition(GenericPosition):
 
         return t.blockchain_transactions[-1].tx_hash
 
-    def set_revaluation_data(self, last_pricing_at: datetime.datetime, last_token_price: float):
+    def revalue_base_asset(self, last_pricing_at: datetime.datetime, last_token_price: USDollarPrice):
+        """Update position token prices."""
         assert isinstance(last_pricing_at, datetime.datetime)
         assert not isinstance(last_pricing_at, pd.Timestamp)
-        assert isinstance(last_token_price, float)
+
+        assert isinstance(last_token_price, float), f"Expected price as float, got {last_token_price.__class__}"
         assert not isinstance(last_pricing_at, np.float32)
+
         assert last_pricing_at.tzinfo is None
         self.last_pricing_at = last_pricing_at
         self.last_token_price = last_token_price
+
+        if self.loan:
+            assert self.is_short()
+            self.loan.borrowed.revalue(last_token_price, last_pricing_at)
 
     def get_value_at_open(self) -> USDollarAmount:
         """How much the position had value tied after its open.
@@ -1140,18 +1337,39 @@ class TradingPosition(GenericPosition):
     def get_accrued_interest(self) -> USDollarAmount:
         """Get the USD value of currently accrued interest for this position so far.
 
-        The accrued interest is not zeroed out for closed positions.
+        - The accrued interest is included as the position accounting item until the position is completely closed
+
+        - When the position is completed closed,
+          the accured interest tokens are traded and moved to reserves
+
+        - After position is closed calling `get_accrued_interest()` Keeps returning
+          the lifetime interest of the position.
+
+        - See :py:meth:`get_claimed_interest` to get the interest that has
+          been moved to reserves from this position.
 
         :return:
             Positive if we have earned interest, negative if we have paid it.
         """
 
-        if self.interest is not None:
-            return float(self.interest.last_accrued_interest) * self.last_token_price
+        if self.loan is not None:
+            return self.loan.get_net_interest()
 
         return 0.0
 
+    def get_claimed_interest(self) -> USDollarAmount:
+        """How much interest we have claimed from this position and moved back to reserves.
 
-class PositionType(enum.Enum):
-    token_hold = "token_hold"
-    lending_pool_hold = "lending_pool_hold"
+        See also :py:meth:`get_accrued_interest` for the life-time interest accumulation.
+        """
+        interest = sum([t.get_claimed_interest() for t in self.trades.values() if t.is_success()])
+        return interest
+
+    def get_borrowed(self) -> USDollarAmount:
+        """Get the amount of outstanding loans we have."""
+        return self.loan.borrowed.get_usd_value()
+
+    def get_collateral(self) -> USDollarAmount:
+        """Get the amount of outstanding loans we have."""
+        return self.loan.collateral.get_usd_value()
+

@@ -8,6 +8,7 @@ from typing import List, Iterable
 import pandas as pd
 import numpy as np
 
+from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.state import State
 from tradeexecutor.state.types import Percent
 from tradeexecutor.strategy.summary import KeyMetric, KeyMetricKind, KeyMetricSource, KeyMetricCalculationMethod
@@ -133,6 +134,21 @@ def calculate_profitability(returns: pd.Series) -> Percent:
     return compounded[-1]
 
 
+def calculate_trades_last_week(portfolio: Portfolio, cut_off_date=None) -> int:
+    """How many trades were executed last week.
+
+    See :term:`trades last week`.
+    """
+    if cut_off_date is None:
+        cut_off_date = datetime.datetime.utcnow() - datetime.timedelta(days=7)
+
+    end_date = datetime.datetime.utcnow()
+
+    trades = portfolio.get_all_trades()
+    trades_last_week = [t for t in trades if t.is_success() and t.executed_at >= cut_off_date and t.executed_at <= end_date]
+    return len(trades_last_week)
+
+
 def calculate_key_metrics(
         live_state: State,
         backtested_state: State | None = None,
@@ -250,5 +266,34 @@ def calculate_key_metrics(
         calculation_window_end_at=calculation_window_end_at,
         calculation_method=KeyMetricCalculationMethod.latest_value,
         help_link=KeyMetricKind.started_at.get_help_link(),
+    )
+
+    # The age of the trading history is made available always
+    #
+    # Always live
+    _, last_trade = live_state.portfolio.get_first_and_last_executed_trade()
+    if last_trade is not None:
+        yield KeyMetric(
+            KeyMetricKind.last_trade,
+            KeyMetricSource.live_trading,
+            last_trade.executed_at,
+            calculation_window_start_at=calculation_window_start_at,
+            calculation_window_end_at=calculation_window_end_at,
+            calculation_method=KeyMetricCalculationMethod.latest_value,
+            help_link=KeyMetricKind.last_trade.get_help_link(),
+        )
+
+    # The age of the trading history is made available always
+    #
+    # Always live
+    trades_last_week = calculate_trades_last_week(live_state.portfolio)
+    yield KeyMetric(
+        KeyMetricKind.trades_last_week,
+        KeyMetricSource.live_trading,
+        trades_last_week,
+        calculation_window_start_at=calculation_window_start_at,
+        calculation_window_end_at=calculation_window_end_at,
+        calculation_method=KeyMetricCalculationMethod.latest_value,
+        help_link=KeyMetricKind.trades_last_week.get_help_link(),
     )
 
