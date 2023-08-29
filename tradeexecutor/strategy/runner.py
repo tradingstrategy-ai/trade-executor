@@ -480,7 +480,7 @@ class StrategyRunner(abc.ABC):
             # Run the strategy cycle
             with self.timed_task_context_manager("decide_trades"):
                 if not self.generic_routing_data:
-                    rebalance_trades = self.on_clock(strategy_cycle_timestamp, universe, pricing_model, state, debug_details)
+                    rebalance_trades = self.on_clock(strategy_cycle_timestamp, universe, [pricing_model], state, debug_details)
                 else:
                     pricing_models = [item["pricing_model"] for item in generic_execution_data]
                     rebalance_trades = self.on_clock(strategy_cycle_timestamp, universe, pricing_models, state, debug_details)
