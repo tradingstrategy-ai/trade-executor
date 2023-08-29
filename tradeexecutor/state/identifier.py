@@ -296,7 +296,8 @@ class TradingPairIdentifier:
     #:
     #: Always initially set to None, but can be set later
     #:
-    routing_model: Optional["RoutingModel"] = None
+    #: Actually of type RoutingModel, but we cannot import it here
+    routing_model: Optional[str] = None
 
     def __post_init__(self):
         assert self.base.chain_id == self.quote.chain_id, "Cross-chain trading pairs are not possible"
