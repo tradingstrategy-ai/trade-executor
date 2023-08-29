@@ -47,12 +47,13 @@ class PandasTraderRunner(StrategyRunner):
     def on_clock(self,
                  clock: datetime.datetime,
                  strategy_universe: TradingStrategyUniverse,
-                 pricing_model: PricingModel,
+                 pricing_models: list[PricingModel],
                  state: State,
                  debug_details: dict,
-                 pricing_models: dict = None,
             ) -> List[TradeExecution]:
         """Run one strategy tick."""
+
+        assert type(pricing_models) == list, "Used for testing to fix all code paths"
 
         assert isinstance(strategy_universe, TradingStrategyUniverse)
         universe = strategy_universe.universe
@@ -65,28 +66,33 @@ class PandasTraderRunner(StrategyRunner):
 
         # Call the strategy script decide_trades()
         # callback
-        if self.execution_context.is_version_greater_or_equal_than(0, 4, 0):
+        #if self.execution_context.is_version_greater_or_equal_than(0, 4, 0):
+        if len(pricing_models) > 1 and self.execution_context.is_version_greater_or_equal_than(0, 3, 0):
             return self.decide_trades(
                 timestamp=pd_timestamp,
-                universe=strategy_universe,
+                strategy_universe=strategy_universe,
                 state=state,
                 pricing_models=pricing_models,
                 cycle_debug_data=debug_details,
             )
         elif self.execution_context.is_version_greater_or_equal_than(0, 3, 0):
+            assert len(pricing_models) == 1, "Only one pricing model supported"
+            
             return self.decide_trades(
                 timestamp=pd_timestamp,
                 strategy_universe=strategy_universe,
                 state=state,
-                pricing_model=pricing_model,
+                pricing_model=pricing_models[0],
                 cycle_debug_data=debug_details,
             )
         else:
+            assert len(pricing_models) == 1, "Only one pricing model supported"
+
             return self.decide_trades(
                 timestamp=pd_timestamp,
                 universe=universe,
                 state=state,
-                pricing_model=pricing_model,
+                pricing_model=pricing_models[0],
                 cycle_debug_data=debug_details,
             )
 
