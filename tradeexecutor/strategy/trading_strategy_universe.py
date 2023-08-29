@@ -1365,7 +1365,7 @@ def load_partial_data(
 
     """
 
-    assert isinstance(client, Client)
+    assert isinstance(client, BaseClient)
     assert isinstance(time_bucket, TimeBucket)
     assert isinstance(execution_context, ExecutionContext)
     assert isinstance(universe_options, UniverseOptions)
