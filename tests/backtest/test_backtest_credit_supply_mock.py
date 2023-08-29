@@ -41,8 +41,7 @@ def interest_rate_mock():
     daily_interest = Decimal("1")
     with patch(
         "tradeexecutor.backtest.backtest_sync.BacktestSyncModel.calculate_accrued_interest",
-        # we need to produce accured interest, so it's increasing daily
-        side_effect=[i * daily_interest for i in range(1, 100)]
+        return_value=daily_interest,
     ):
         yield
 
