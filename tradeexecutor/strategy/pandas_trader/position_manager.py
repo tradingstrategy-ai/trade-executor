@@ -191,6 +191,7 @@ class PositionManager:
         reserve_currency, reserve_price = state.portfolio.get_default_reserve_asset()
 
         self.reserve_currency = reserve_currency
+        self.reserve_price = reserve_price
 
     def is_any_open(self) -> bool:
         """Do we have any positions open."""
@@ -858,16 +859,85 @@ class PositionManager:
             List of trades that will open this credit position
         """
 
-        lending_pool_identifier = self.strategy_universe.get_credit_supply_pair()
-        state = self.state
+        lending_reserve_identifier = self.strategy_universe.get_credit_supply_pair()
 
-        credit_supply_position, trade, _ = state.supply_credit(
+        _, trade, _ = self.state.supply_credit(
             self.timestamp,
-            lending_pool_identifier,
+            lending_reserve_identifier,
             collateral_quantity=Decimal(amount),
             trade_type=TradeType.rebalance,
             reserve_currency=self.strategy_universe.get_reserve_asset(),
             collateral_asset_price=1.0,
         )
+
+        return [trade]
+    
+    def open_short(
+        self,
+        pair: Union[DEXPair, TradingPairIdentifier],
+        value: USDollarAmount,
+        *,
+        leverage: float = 1.0,
+        take_profit_pct: float | None = None,
+        stop_loss_pct: float | None = None,
+    ) -> list[TradeExecution]:
+        """Open a short position.
+
+        :param pair:
+            Trading pair where we take the position
+
+        :param value:
+            How large position to open, in US dollar terms
+
+        :param leverage:
+            Leverage level to use for the short position
+
+        :param take_profit_pct:
+            If set, set the position take profit relative
+            to the current market price.
+            1.0 is the current market price.
+            If asset opening price is $1000, take_profit_pct=1.05
+            will sell the asset when price reaches $1050.
+
+        :param stop_loss_pct:
+            If set, set the position to trigger stop loss relative to
+            the current market price.
+            1.0 is the current market price.
+            If asset opening price is $1000, stop_loss_pct=0.95
+            will sell the asset when price reaches 950.
+
+        :return:
+            List of trades that will open this credit position
+        """
+
+        if isinstance(pair, DEXPair):
+            executor_pair = translate_trading_pair(pair)
+        else:
+            executor_pair = pair
+
+        if type(value) == float:
+            value = Decimal(value)
+
+        # TODO: verify calculation here
+        price_structure = self.pricing_model.get_sell_price(self.timestamp, executor_pair, value)
+        borrowed_quantity = value * leverage / Decimal(price_structure.price)
+
+        position, trade, _ = self.state.trade_short(
+            self.timestamp,
+            pair=executor_pair,
+            borrowed_quantity=-borrowed_quantity,
+            collateral_quantity=Decimal(value),
+            borrowed_asset_price=price_structure.price,
+            trade_type=TradeType.rebalance,
+            reserve_currency=self.reserve_currency,
+            collateral_asset_price=self.reserve_price,
+        )
+
+        if take_profit_pct:
+            position.take_profit = price_structure.mid_price * take_profit_pct
+
+        if stop_loss_pct is not None:
+            assert 0 <= stop_loss_pct <= 1, f"stop_loss_pct must be 0..1, got {stop_loss_pct}"
+            self.update_stop_loss(position, price_structure.mid_price * stop_loss_pct)
 
         return [trade]
