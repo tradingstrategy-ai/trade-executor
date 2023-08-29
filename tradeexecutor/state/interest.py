@@ -60,12 +60,12 @@ class Interest:
         assert isinstance(self.last_accrued_interest, Decimal)
 
     @staticmethod
-    def open_new(opening_amount: Decimal) -> "Interest":
+    def open_new(opening_amount: Decimal, timestamp: datetime.datetime) -> "Interest":
         assert opening_amount > 0
         return Interest(
             opening_amount=opening_amount,
-            last_updated_at=datetime.datetime.utcnow(),
-            last_event_at=datetime.datetime.utcnow(),
+            last_updated_at=timestamp,
+            last_event_at=timestamp,
             last_accrued_interest=Decimal(0),
             last_atoken_amount=opening_amount,
         )

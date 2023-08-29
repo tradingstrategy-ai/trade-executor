@@ -94,7 +94,7 @@ def update_credit_supply_interest(
 
     # Update interest stats
     interest.last_accrued_interest = position.calculate_accrued_interest_quantity()
-    interest.last_updated_at = datetime.datetime.utcnow()
+    interest.last_updated_at = event_at
     interest.last_event_at = event_at
     interest.last_updated_block_number = block_number
     interest.last_atoken_amount = new_atoken_amount

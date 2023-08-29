@@ -136,7 +136,7 @@ class SyncModel(ABC):
             - :py:class:`tradeexecutor.ethereum.enzyme.tx.EnzymeTransactionBuilder`
         """
 
-    def sync_credit_supply(self,
+    def sync_interests(self,
                            timestamp: datetime.datetime,
                            state: State,
                            universe: TradingStrategyUniverse,
