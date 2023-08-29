@@ -769,6 +769,39 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             internal_id=reserve.reserve_id,
             kind=TradingPairKind.credit_supply,
         )
+    
+    def get_short_pair(self, pair: DEXPair) -> TradingPairIdentifier:
+        """Get the trading pair for shorting"""
+    
+        pair = translate_trading_pair(pair)
+        assert pair.kind == TradingPairKind.spot_market_hold
+
+        borrow_token = pair.base
+        collateral_token = pair.quote
+        assert collateral_token == self.get_reserve_asset()
+
+        # Will raise exception if not available
+        borrow_reserve = self.universe.lending_reserves.get_by_chain_and_address(
+            ChainId(borrow_token.chain_id),
+            borrow_token.address,
+        )
+
+        collateral_reserve = self.universe.lending_reserves.get_by_chain_and_address(
+            ChainId(collateral_token.chain_id),
+            collateral_token.address,
+        )
+
+        vtoken = translate_token(borrow_reserve.get_vtoken(), underlying=pair.base)
+        atoken = translate_token(collateral_reserve.get_atoken(), underlying=collateral_token)
+
+        return TradingPairIdentifier(
+            atoken,
+            atoken,
+            pool_address=borrow_token.address,
+            exchange_address=borrow_token.address,
+            internal_id=borrow_reserve.reserve_id,
+            kind=TradingPairKind.lending_protocol_short,
+        )
 
 
 class TradingStrategyUniverseModel(UniverseModel):
