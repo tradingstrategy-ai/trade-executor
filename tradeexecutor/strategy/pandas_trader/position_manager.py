@@ -140,7 +140,7 @@ class PositionManager:
                  timestamp: Union[datetime.datetime, pd.Timestamp],
                  universe: Universe | TradingStrategyUniverse,
                  state: State,
-                 pricing_models: list[PricingModel],
+                 pricing_models: list[PricingModel] | PricingModel,
                  default_slippage_tolerance=0.05,  # Slippage tole
                  ):
 
@@ -170,6 +170,11 @@ class PositionManager:
         """
 
         assert pricing_models, "pricing_models is needed in order to know buy/sell price of new positions"
+
+        if type(pricing_models) != list:
+            pricing_models = [pricing_models]
+
+        assert all(isinstance(p, PricingModel) for p in pricing_models), "pricing_models must be a list of PricingModel objects"
 
         if isinstance(timestamp, pd.Timestamp):
             timestamp = timestamp.to_pydatetime().replace(tzinfo=None)
@@ -888,6 +893,9 @@ class PositionManager:
 
     def get_pricing_model(self, pair: TradingPairIdentifier):
         """Get the pricing model used by this strategy."""
+
+        if len(self.pricing_models) == 1:
+            return self.pricing_models[0]
 
         locked = False
         rm = None
