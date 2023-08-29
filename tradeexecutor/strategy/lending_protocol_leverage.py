@@ -15,6 +15,7 @@ from tradeexecutor.state.trade import TradeExecution
 def create_credit_supply_loan(
     position: "tradeexeecutor.state.position.TradingPosition",
     trade: TradeExecution,
+    timestamp: datetime.datetime,
 ):
     """Create a loan that supplies credit to a lending protocol.
 
@@ -49,7 +50,7 @@ def create_credit_supply_loan(
     loan = Loan(
         pair=trade.pair,
         collateral=collateral,
-        collateral_interest=Interest.open_new(trade.planned_reserve),
+        collateral_interest=Interest.open_new(trade.planned_reserve, timestamp),
         borrowed=None,
         borrowed_interest=None,
     )
@@ -63,6 +64,7 @@ def create_credit_supply_loan(
 def update_credit_supply_loan(
     position: "tradeexeecutor.state.position.TradingPosition",
     trade: TradeExecution,
+    timestamp: datetime.datetime,
 ):
     """Close/increase/reduce credit supply loan.
 

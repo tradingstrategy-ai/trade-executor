@@ -135,68 +135,74 @@ class BacktestSyncModel(SyncModel):
         position: TradingPosition,
         timestamp: datetime.datetime,
     ) -> Decimal:
-        """Calculate accrued interest of a position.
+        """Calculate accrued interest of a position since last update."""
+        # get relevant candles for the position period since last update until now
+        collateral_interest = position.loan.collateral_interest
 
-        """
-        # get relevant candles for the position period from opened until now
         df = universe.universe.lending_candles.supply_apr.df.copy()
-        df = df[
-            (df["timestamp"] >= position.opened_at)
+        supply_df = df[
+            (df["timestamp"] >= collateral_interest.last_updated_at)
             & (df["timestamp"] <= timestamp)
         ]
 
-        # get average APR from high and low
-        df["avg"] = df[["high", "low"]].mean(axis=1)
-        avg_apr = Decimal(df["avg"].mean() / 100)
+        if len(supply_df) == 0:
+            # TODO: this is a temporary hack, we should make it better
+            supply_df = df[
+                (df["timestamp"] >= position.opened_at)
+                & (df["timestamp"] <= timestamp)
+            ]
 
-        opening_amount = Decimal(position.interest.opening_amount)
-        duration = Decimal((timestamp - position.opened_at).total_seconds())
-        accrued_interest_estimation = opening_amount * avg_apr * duration / SECONDS_PER_YEAR
+        assert len(supply_df) > 0, f"No lending data for {position} from {collateral_interest.last_updated_at} to {timestamp}"
+
+        # get average APR from high and low
+        supply_df["avg"] = supply_df[["high", "low"]].mean(axis=1)
+        avg_apr = Decimal(supply_df["avg"].mean() / 100)
+
+        amount = Decimal(collateral_interest.last_atoken_amount)
+        duration = Decimal((timestamp - collateral_interest.last_updated_at).total_seconds())
+        accrued_interest_estimation = amount * avg_apr * duration / SECONDS_PER_YEAR
 
         return accrued_interest_estimation
 
-    def sync_credit_supply(
+    def sync_interests(
         self,
         timestamp: datetime.datetime,
         state: State,
         universe: TradingStrategyUniverse,
-        credit_positions: List[TradingPosition],
+        positions: List[TradingPosition],
     ) -> List[BalanceUpdate]:
 
         assert universe.has_lending_data(), "Cannot update credit positions if no data is available"
 
         events = []
-        for p in credit_positions:
+        for p in positions:
 
-            assert p.is_credit_supply()
+            if p.is_credit_supply():
+                accrued = self.calculate_accrued_interest(
+                    universe,
+                    p,
+                    timestamp,
+                )
 
-            accrued = self.calculate_accrued_interest(
-                universe,
-                p,
-                timestamp,
-            )
+                interest = p.loan.collateral_interest
 
-            interest = p.loan.collateral_interest
+                # TODO: replace with a real interest calculation,
+                # based on universe.lending_candles
+                assert len(p.trades) <= 2, "This interest calculation does not support increase/reduce position"
+                new_amount = interest.last_atoken_amount + accrued
 
-            # TODO: replace with a real interest calculation,
-            # based on universe.lending_candles
-            assert len(p.trades) <= 2, "This interest calculation does not support increase/reduce position"
-            old_amount = interest.last_atoken_amount
-            #new_amount = old_amount * Decimal(1+accrued)
-            new_amount = interest.opening_amount + accrued
+                evt = update_credit_supply_interest(
+                    state,
+                    p,
+                    p.pair.base,
+                    new_atoken_amount=new_amount,
+                    event_at=timestamp,
+                )
+                events.append(evt)
 
-            evt = update_credit_supply_interest(
-                state,
-                p,
-                p.pair.base,
-                new_atoken_amount=new_amount,
-                event_at=timestamp,
-            )
-            events.append(evt)
-
-            # Make atokens magically appear in the simulated
-            # backtest wallet. The amount must be updated, or
-            # otherwise we get errors when closing the position.
-            self.wallet.update_balance(p.pair.base.address, new_amount)
+                # Make atokens magically appear in the simulated
+                # backtest wallet. The amount must be updated, or
+                # otherwise we get errors when closing the position.
+                self.wallet.update_balance(p.pair.base.address, new_amount)
 
         return events

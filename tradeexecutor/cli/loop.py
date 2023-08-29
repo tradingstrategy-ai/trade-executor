@@ -446,7 +446,7 @@ class ExecutionLoop:
         credit_positions = state.portfolio.get_current_credit_positions()
         if credit_positions:
             logger.info("We have %d credit positions open", len(credit_positions))
-            credit_events = self.sync_model.sync_credit_supply(
+            credit_events = self.sync_model.sync_interests(
                 strategy_cycle_timestamp,
                 state,
                 cast(TradingStrategyUniverse, universe),
