@@ -530,8 +530,10 @@ class PositionManager:
 
         try:
             if dollar_delta > 0:
+                dollar_delta = Decimal(dollar_delta) if isinstance(dollar_delta, float | int) else dollar_delta
                 price_structure = self.get_pricing_model(pair).get_buy_price(self.timestamp, pair, dollar_delta)
             else:
+                quantity_delta = Decimal(quantity_delta) if isinstance(quantity_delta, float | int) else quantity_delta
                 price_structure = self.get_pricing_model(pair).get_sell_price(self.timestamp, pair, abs(quantity_delta))
 
         except CandleSampleUnavailable as e:
