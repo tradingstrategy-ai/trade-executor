@@ -825,13 +825,16 @@ class TradingPosition(GenericPosition):
                         # Opening the position, create the first loan
                         trade.planned_loan_update = create_short_loan(
                             self,
-                            trade)
+                            trade,
+                            strategy_cycle_at,
+                        )
                     else:
                         # Loan is being increased/reduced
                         trade.planned_loan_update = plan_loan_update_for_short(
                             self.loan.clone(),
                             self,
-                            trade)
+                            trade,
+                        )
                 else:
                     raise NotImplementedError()
             else:

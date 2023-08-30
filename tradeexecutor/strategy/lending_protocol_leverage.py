@@ -13,7 +13,7 @@ from tradeexecutor.state.trade import TradeExecution
 
 
 def create_credit_supply_loan(
-    position: "tradeexeecutor.state.position.TradingPosition",
+    position: "tradeexecutor.state.position.TradingPosition",
     trade: TradeExecution,
     timestamp: datetime.datetime,
 ):
@@ -62,7 +62,7 @@ def create_credit_supply_loan(
 
 
 def update_credit_supply_loan(
-    position: "tradeexeecutor.state.position.TradingPosition",
+    position: "tradeexecutor.state.position.TradingPosition",
     trade: TradeExecution,
     timestamp: datetime.datetime,
 ):
@@ -92,8 +92,9 @@ def update_credit_supply_loan(
 
 
 def create_short_loan(
-    position: "tradeexeecutor.state.position.TradingPosition",
+    position: "tradeexecutor.state.position.TradingPosition",
     trade: TradeExecution,
+    timestamp: datetime.datetime,
 ) -> Loan:
     """Create the loan data tracking for short position.
 
@@ -116,7 +117,7 @@ def create_short_loan(
     assert pair.quote.underlying, "Quote token lacks underlying asset"
 
     assert pair.base.type == AssetType.borrowed, f"Trading pair base asset is not borrowed: {pair.base}"
-    assert pair.quote.type == AssetType.collateral, f"Trading pair quote asset is not collateral: {pair.base}"
+    assert pair.quote.type == AssetType.collateral, f"Trading pair quote asset is not collateral: {pair.quote}"
 
     assert pair.quote.underlying.is_stablecoin(), f"Only stablecoin collateral supported for shorts: {pair.quote}"
 
@@ -154,8 +155,8 @@ def create_short_loan(
         pair=trade.pair,
         collateral=collateral,
         borrowed=borrowed,
-        collateral_interest=Interest.open_new(collateral.quantity),
-        borrowed_interest=Interest.open_new(borrowed.quantity),
+        collateral_interest=Interest.open_new(collateral.quantity, timestamp),
+        borrowed_interest=Interest.open_new(borrowed.quantity, timestamp),
     )
 
     # Sanity check
@@ -166,7 +167,7 @@ def create_short_loan(
 
 def plan_loan_update_for_short(
     loan: Loan,
-    position: "tradeexeecutor.state.position.TradingPosition",
+    position: "tradeexecutor.state.position.TradingPosition",
     trade: TradeExecution,
 ):
     """Update the loan data tracking for short position.
