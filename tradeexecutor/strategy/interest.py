@@ -1,11 +1,13 @@
 """Functions to refresh accrued interest on credit positions."""
 import datetime
 from decimal import Decimal
+from typing import Tuple
 
 from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdatePositionType, BalanceUpdateCause
 from tradeexecutor.state.identifier import TradingPairKind, AssetIdentifier
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
+from tradeexecutor.state.types import USDollarPrice
 
 
 def update_credit_supply_interest(
@@ -14,6 +16,7 @@ def update_credit_supply_interest(
     asset: AssetIdentifier,
     new_atoken_amount: Decimal,
     event_at: datetime.datetime,
+    asset_price: USDollarPrice,
     block_number: int | None = None,
     tx_hash: int | None = None,
     log_index: int | None = None,
@@ -31,17 +34,24 @@ def update_credit_supply_interest(
     :param new_atoken_amount:
         The new on-chain value of aToken/vToken tracking the loan.
 
+    :param asset_price:
+        The latest known price for the underlying asset.
+
+        Needed to revalue dollar nominated loans.
+
     :param event_at:
         Block mined timestamp
 
     """
 
     assert asset is not None
-    assert position.pair.kind == TradingPairKind.credit_supply
+    # assert position.pair.kind == TradingPairKind.credit_supply
     assert position.is_open() or position.is_frozen(), f"Cannot update interest for position {position.position_id}\n" \
                                                        f"Position details: {position}\n" \
                                                        f"Position closed at: {position.closed_at}\n" \
                                                        f"Interest event at: {event_at}"
+    assert type(asset_price) == float, f"Got {asset_price.__class__}"
+    assert isinstance(new_atoken_amount, Decimal), f"Got {new_atoken_amount.__class__}"
 
     loan = position.loan
     assert loan
@@ -64,13 +74,15 @@ def update_credit_supply_interest(
 
     event_id = portfolio.allocate_balance_update_id()
 
-    assert asset.underlying.is_stablecoin(), f"Credit supply is currently supported for stablecoin assets with 1:1 USD price assumption. Got: {asset}"
+    # assert asset.underlying.is_stablecoin(), f"Credit supply is currently supported for stablecoin assets with 1:1 USD price assumption. Got: {asset}"
+
+    previous_update_at = interest.last_event_at
 
     old_balance = interest.last_atoken_amount
     gained_interest = new_atoken_amount - old_balance
-    usd_value = float(new_atoken_amount)
+    usd_value = float(new_atoken_amount) * asset_price
 
-    assert 0 < gained_interest < 999, f"Unlikely gained_interest: {gained_interest}, old quantity: {old_balance}, new quantity: {new_atoken_amount}"
+    assert 0 < abs(gained_interest) < 999, f"Unlikely gained_interest: {gained_interest}, old quantity: {old_balance}, new quantity: {new_atoken_amount}"
 
     evt = BalanceUpdate(
         balance_update_id=event_id,
@@ -88,6 +100,7 @@ def update_credit_supply_interest(
         log_index=log_index,
         position_id=position.position_id,
         block_number=block_number,
+        previous_update_at=previous_update_at,
     )
 
     position.add_balance_update_event(evt)
@@ -99,3 +112,90 @@ def update_credit_supply_interest(
     interest.last_updated_block_number = block_number
     interest.last_atoken_amount = new_atoken_amount
     return evt
+
+
+def update_leveraged_position_interest(
+    state: State,
+    position: TradingPosition,
+    new_vtoken_amount: Decimal,
+    new_atoken_amount: Decimal,
+    event_at: datetime.datetime,
+    vtoken_price: USDollarPrice,
+    atoken_price: USDollarPrice = 1.0,
+    block_number: int | None = None,
+    tx_hash: int | None = None,
+    log_index: int | None = None,
+) -> Tuple[BalanceUpdate, BalanceUpdate]:
+    """Updates accrued interest on lending protocol leveraged positions.
+
+    :param atoken_price:
+        What is the current price of aToken.
+
+        Needed to calculate dollar nominated amounts.
+
+    :param vtoken_price:
+        What is the current price of vToken
+
+        Needed to calculate dollar nominated amounts.
+
+    :return:
+        Tuple (vToken update event, aToken update event)
+    """
+
+    assert position.is_leverage()
+
+    pair = position.pair
+
+    # vToken
+    vevt = update_credit_supply_interest(
+        state,
+        position,
+        pair.base,
+        new_vtoken_amount,
+        event_at,
+        vtoken_price,
+        block_number,
+        tx_hash,
+        log_index,
+    )
+
+    # aToken
+    aevt = update_credit_supply_interest(
+        state,
+        position,
+        pair.quote,
+        new_atoken_amount,
+        event_at,
+        atoken_price,
+        block_number,
+        tx_hash,
+        log_index,
+    )
+
+    return (vevt, aevt)
+
+
+def estimate_interest(
+    start_at: datetime.datetime,
+    end_at: datetime.datetime,
+    start_quantity: Decimal,
+    interest_rate: float,
+    year = datetime.timedelta(days=360),
+) -> Decimal:
+    """Calculate new token amount, assuming fixed interest.
+
+    :param interest_rate:
+        Yearly interest
+
+    :param start_quantity:
+        Tokens at the start of the period
+
+    :param year:
+        Year length.
+
+        Default to the financial year.
+    """
+    assert end_at >= start_at
+    duration = end_at - start_at
+    multiplier = (end_at - start_at) / year
+    return start_quantity * Decimal(interest_rate ** multiplier)
