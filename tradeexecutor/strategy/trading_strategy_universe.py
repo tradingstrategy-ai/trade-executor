@@ -771,7 +771,17 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         )
     
     def get_shorting_pair(self, pair: TradingPairIdentifier) -> TradingPairIdentifier:
-        """Get the shorting pair from trading pair"""
+        """Get the shorting pair from trading pair
+
+        This trading pair identifies the trades where we borrow asset from Aave against 
+        collateral.
+        
+        :param pair:
+            Trading pair of the asset to be shorted
+        
+        :return:
+            Short pair with ticker (vToken for borrowed asseet, aToken for reserve asset)
+        """
 
         assert pair.kind == TradingPairKind.spot_market_hold
 
@@ -799,6 +809,9 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             collateral_reserve.get_atoken(),
             underlying=collateral_token,
             type=AssetType.collateral,
+            # TODO: this is only the latest liquidation theshold, for historical data
+            # for backtesting we neend to plugin some other logic later
+            liquidation_threshold=collateral_reserve.additional_details.liquidation_threshold,
         )
 
         return TradingPairIdentifier(
@@ -1050,6 +1063,7 @@ def translate_token(
     require_decimals=True,
     underlying: AssetIdentifier | None = None,
     type: AssetType | None = AssetType.token,
+    liquidation_threshold: float | None = None,
 ) -> AssetIdentifier:
     """Translate Trading Strategy token data definition to trade executor.
 
@@ -1066,11 +1080,19 @@ def translate_token(
         Assume decimals is in place. If not then raise AssertionError.
         This check allows some early error catching on bad data.
 
+    :param type:
+        What kind of asset this is.
+
+    :param liquidation_theshold:
+        Aave liquidation threhold for this asset, only collateral type asset can have this.
     """
 
     if require_decimals:
         assert token.decimals, f"Bad token: {token}"
         assert token.decimals > 0, f"Bad token: {token}"
+
+    if liquidation_threshold:
+        assert type == AssetType.collateral, f"Only collateral tokens can have liquidation threshold, got {type}"
 
     return AssetIdentifier(
         token.chain_id.value,
@@ -1079,6 +1101,7 @@ def translate_token(
         token.decimals,
         underlying=underlying,
         type=type,
+        liquidation_threshold=liquidation_threshold,
     )
 
 
