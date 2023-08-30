@@ -185,7 +185,12 @@ def estimate_interest(
     """Calculate new token amount, assuming fixed interest.
 
     :param interest_rate:
-        Yearly interest
+
+        Yearly interest relative to.
+
+        1 = 0%.
+
+        E.g. 1.02 for 2% yearly gained interest.
 
     :param start_quantity:
         Tokens at the start of the period
@@ -195,6 +200,10 @@ def estimate_interest(
 
         Default to the financial year.
     """
+
+    # 150x
+    assert interest_rate >= 1
+
     assert end_at >= start_at
     duration = end_at - start_at
     multiplier = (end_at - start_at) / year

@@ -220,5 +220,4 @@ class BalanceUpdate:
         if not period:
             return None
         gain = self.quantity / self.old_balance
-
-        return float(gain) * period / year
+        return float(gain) / (period / year)

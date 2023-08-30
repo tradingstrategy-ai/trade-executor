@@ -1152,6 +1152,8 @@ def test_short_unrealised_interest_and_profit(
     - ETH price goes 1500 -> 1400 so we get unrealised PnL
     - We have 10% interest cost on the short position
     - We have 2% interest income on the USDC collateral
+    - See ``test_short_unrealised_profit`` for a comparison calculations
+      with interest payments ignored
     """
 
     trader = UnitTestTrader(state)
@@ -1192,7 +1194,7 @@ def test_short_unrealised_interest_and_profit(
     )
 
     atoken_interest = 1.02
-    vtoken_interest = -1.10
+    vtoken_interest = 1.10
 
     # Calculate simulated interest gains
     new_atoken = estimate_interest(
@@ -1211,9 +1213,7 @@ def test_short_unrealised_interest_and_profit(
 
     # We have gained 15 USDC on our dollar long
     assert new_atoken == Decimal('1815.113089799044876389054071')
-
-    # assert Decimal('-0.5552334719541217745270929036')
-    import ipdb ; ipdb.set_trace()
+    assert new_vtoken == Decimal('0.5552334719541217745270929036')
 
     # Tell strategy state about interest gains
     # Note that this BalanceUpdate event
@@ -1231,20 +1231,24 @@ def test_short_unrealised_interest_and_profit(
     # We gain around 15 USDC in half a year
     assert aevt.quantity == pytest.approx(Decimal('15.113089799044887491284317'))
 
-    # We gain around 15 USDC in half a year
-    assert vevt.quantity == pytest.approx(Decimal('15.113089799044887491284317'))
+    # We need to pay ~ 0.02 ETH half a year
+    assert vevt.quantity == pytest.approx(Decimal('0.0219001386207884485952464011'))
 
     assert aevt.get_update_period() == datetime.timedelta(days=152)
     assert vevt.get_update_period() == datetime.timedelta(days=152)
-    assert aevt.get_effective_yearly_yield() == pytest.approx(0.02)
-    assert vevt.get_effective_yearly_yield() == pytest.approx(-0.10)
-
-    import ipdb ; ipdb.set_trace()
+    assert aevt.get_effective_yearly_yield() == pytest.approx(0.02, rel=0.01)
+    assert vevt.get_effective_yearly_yield() == pytest.approx(0.097, rel=0.01)
 
     # New ETH loan worth of 746.6666666666666 USD
     assert short_position.get_current_price() == 1400
     assert short_position.get_average_price() == 1500
-    assert short_position.get_unrealised_profit_usd() == pytest.approx(800 - 746.6666666666666)
+
+    assert short_position.loan.get_collateral_interest() == pytest.approx(15.134989937665676)
+    assert short_position.loan.get_borrow_interest() == pytest.approx(30.660194069103827)
+
+    assert short_position.get_accrued_interest() == pytest.approx(-15.525204131438151)
+
+    #  assert short_position.get_unrealised_profit_usd() == pytest.approx(800 - 746.6666666666666)
     assert short_position.get_realised_profit_usd() is None
 
     loan = short_position.loan
@@ -1255,6 +1259,6 @@ def test_short_unrealised_interest_and_profit(
     assert loan.get_loan_to_value() == pytest.approx(0.4148148148148148)
 
     # Check that we track the equity value correctly
-    assert state.portfolio.get_loan_net_asset_value() == pytest.approx(1053.3333333333335)
+    assert state.portfolio.get_loan_net_asset_value() == pytest.approx(1037.8081292018953)
     assert state.portfolio.get_cash() == 9000
-    assert state.portfolio.get_net_asset_value() == pytest.approx(10053.333333333334)
+    assert state.portfolio.get_net_asset_value() == pytest.approx(10037.808129201896)
