@@ -138,10 +138,11 @@ class BacktestSyncModel(SyncModel):
         """Calculate accrued interest of a position since last update."""
         # get relevant candles for the position period since last update until now
         collateral_interest = position.loan.collateral_interest
+        previous_update_at = collateral_interest.last_event_at
 
         df = universe.universe.lending_candles.supply_apr.df.copy()
         supply_df = df[
-            (df["timestamp"] >= collateral_interest.last_updated_at)
+            (df["timestamp"] >= previous_update_at)
             & (df["timestamp"] <= timestamp)
         ]
 
@@ -152,14 +153,14 @@ class BacktestSyncModel(SyncModel):
                 & (df["timestamp"] <= timestamp)
             ]
 
-        assert len(supply_df) > 0, f"No lending data for {position} from {collateral_interest.last_updated_at} to {timestamp}"
+        assert len(supply_df) > 0, f"No lending data for {position} from {previous_update_at} to {timestamp}"
 
         # get average APR from high and low
         supply_df["avg"] = supply_df[["high", "low"]].mean(axis=1)
         avg_apr = Decimal(supply_df["avg"].mean() / 100)
 
         amount = Decimal(collateral_interest.last_atoken_amount)
-        duration = Decimal((timestamp - collateral_interest.last_updated_at).total_seconds())
+        duration = Decimal((timestamp - previous_update_at).total_seconds())
         accrued_interest_estimation = amount * avg_apr * duration / SECONDS_PER_YEAR
 
         return accrued_interest_estimation
