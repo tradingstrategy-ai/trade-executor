@@ -929,7 +929,7 @@ class PositionManager:
         position, trade, _ = self.state.trade_short(
             self.timestamp,
             pair=shorting_pair,
-            borrowed_quantity=-borrowed_size,
+            borrowed_quantity=-borrowed_quantity,
             collateral_quantity=collateral_size,
             borrowed_asset_price=price_structure.price,
             trade_type=TradeType.rebalance,
