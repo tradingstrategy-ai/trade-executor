@@ -86,8 +86,6 @@ def test_backtest_open_only_short_real_data(
         """A simple strategy that puts all in to our lending reserve."""
         trade_pair = strategy_universe.universe.pairs.get_single()
 
-        short_pair = strategy_universe.get_short_pair(trade_pair)
-
         cash = state.portfolio.get_cash()
         
         position_manager = PositionManager(timestamp, strategy_universe, state, pricing_model)
@@ -96,7 +94,7 @@ def test_backtest_open_only_short_real_data(
 
         if not position_manager.is_any_open():
             # buy_amount = cash * position_size
-            trades += position_manager.open_short(short_pair, cash, leverage=2)
+            trades += position_manager.open_short(trade_pair, cash, leverage=2)
 
         return trades
 

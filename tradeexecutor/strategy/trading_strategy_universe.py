@@ -20,12 +20,8 @@ from typing import List, Optional, Callable, Tuple, Set, Dict, Iterable, Collect
 import pandas as pd
 
 from eth_defi.uniswap_v2.utils import ZERO_ADDRESS
-from tradeexecutor.strategy.execution_context import ExecutionMode, ExecutionContext
 from tradingstrategy.lending import LendingReserveUniverse, LendingReserveDescription, LendingCandleType, LendingCandleUniverse
 from tradingstrategy.token import Token
-
-from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind
-from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse, UniverseModel, DataTooOld, UniverseOptions
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId
 from tradingstrategy.client import Client, BaseClient
@@ -37,6 +33,10 @@ from tradingstrategy.pair import DEXPair, PandasPairUniverse, resolve_pairs_base
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
 from tradingstrategy.utils.groupeduniverse import filter_for_pairs
+
+from tradeexecutor.strategy.execution_context import ExecutionMode, ExecutionContext
+from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind, AssetType
+from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse, UniverseModel, DataTooOld, UniverseOptions
 
 logger = logging.getLogger(__name__)
 
@@ -770,10 +770,9 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             kind=TradingPairKind.credit_supply,
         )
     
-    def get_short_pair(self, pair: DEXPair) -> TradingPairIdentifier:
-        """Get the trading pair for shorting"""
-    
-        pair = translate_trading_pair(pair)
+    def get_shorting_pair(self, pair: TradingPairIdentifier) -> TradingPairIdentifier:
+        """Get the shorting pair from trading pair"""
+
         assert pair.kind == TradingPairKind.spot_market_hold
 
         borrow_token = pair.base
@@ -791,11 +790,19 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             collateral_token.address,
         )
 
-        vtoken = translate_token(borrow_reserve.get_vtoken(), underlying=pair.base)
-        atoken = translate_token(collateral_reserve.get_atoken(), underlying=collateral_token)
+        vtoken = translate_token(
+            borrow_reserve.get_vtoken(),
+            underlying=borrow_token,
+            type=AssetType.borrowed,
+        )
+        atoken = translate_token(
+            collateral_reserve.get_atoken(),
+            underlying=collateral_token,
+            type=AssetType.collateral,
+        )
 
         return TradingPairIdentifier(
-            atoken,
+            vtoken,
             atoken,
             pool_address=borrow_token.address,
             exchange_address=borrow_token.address,
@@ -1039,9 +1046,10 @@ class DefaultTradingStrategyUniverseModel(TradingStrategyUniverseModel):
 
 
 def translate_token(
-        token: Token,
-        require_decimals=True,
-        underlying: AssetIdentifier | None = None,
+    token: Token,
+    require_decimals=True,
+    underlying: AssetIdentifier | None = None,
+    type: AssetType | None = AssetType.token,
 ) -> AssetIdentifier:
     """Translate Trading Strategy token data definition to trade executor.
 
@@ -1070,6 +1078,7 @@ def translate_token(
         token.symbol,
         token.decimals,
         underlying=underlying,
+        type=type,
     )
 
 

@@ -915,6 +915,8 @@ class PositionManager:
         else:
             executor_pair = pair
 
+        shorting_pair = self.strategy_universe.get_shorting_pair(executor_pair)
+
         if type(value) == float:
             value = Decimal(value)
 
@@ -924,7 +926,7 @@ class PositionManager:
 
         position, trade, _ = self.state.trade_short(
             self.timestamp,
-            pair=executor_pair,
+            pair=shorting_pair,
             borrowed_quantity=-borrowed_quantity,
             collateral_quantity=Decimal(value),
             borrowed_asset_price=price_structure.price,
