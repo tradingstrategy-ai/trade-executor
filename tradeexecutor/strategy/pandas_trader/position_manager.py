@@ -12,7 +12,8 @@ from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.position import TradingPosition, TriggerPriceUpdate
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeType, TradeExecution
-from tradeexecutor.state.types import USDollarAmount, Percent, USDollarPrice
+from tradeexecutor.state.loan import calculate_sizes_for_leverage
+from tradeexecutor.state.types import USDollarAmount, Percent, LeverageMultiplier
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradingstrategy.candle import CandleSampleUnavailable
 from tradingstrategy.pair import DEXPair
@@ -877,7 +878,7 @@ class PositionManager:
         pair: Union[DEXPair, TradingPairIdentifier],
         value: USDollarAmount,
         *,
-        leverage: float = 1.0,
+        leverage: LeverageMultiplier = 1.0,
         take_profit_pct: float | None = None,
         stop_loss_pct: float | None = None,
     ) -> list[TradeExecution]:
@@ -922,13 +923,14 @@ class PositionManager:
 
         # TODO: verify calculation here
         price_structure = self.pricing_model.get_sell_price(self.timestamp, executor_pair, value)
-        borrowed_quantity = value * leverage / Decimal(price_structure.price)
+        borrowed_size, collateral_size = calculate_sizes_for_leverage(value, leverage)
+        borrowed_quantity = borrowed_size / Decimal(price_structure.price)
 
         position, trade, _ = self.state.trade_short(
             self.timestamp,
             pair=shorting_pair,
-            borrowed_quantity=-borrowed_quantity,
-            collateral_quantity=Decimal(value),
+            borrowed_quantity=-borrowed_size,
+            collateral_quantity=collateral_size,
             borrowed_asset_price=price_structure.price,
             trade_type=TradeType.rebalance,
             reserve_currency=self.reserve_currency,
