@@ -107,7 +107,7 @@ class Loan:
         return self.borrowed.get_usd_value()
 
     def get_borrow_interest(self) -> USDollarAmount:
-        """How much interest we have paid on borrows
+        """How much interest we have paid on borrows.
 
         :return:
             Always positive

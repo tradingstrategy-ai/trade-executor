@@ -1352,6 +1352,8 @@ class TradingPosition(GenericPosition):
           been moved to reserves from this position.
 
         :return:
+            Net interest PnL in USD.
+
             Positive if we have earned interest, negative if we have paid it.
         """
 

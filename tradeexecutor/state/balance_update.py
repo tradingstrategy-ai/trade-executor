@@ -15,7 +15,7 @@ from typing import Optional
 from dataclasses_json import dataclass_json
 
 from tradeexecutor.state.identifier import AssetIdentifier
-from tradingstrategy.types import USDollarAmount
+from tradingstrategy.types import USDollarAmount, Percent
 
 
 class BalanceUpdateCause(enum.Enum):
@@ -82,7 +82,6 @@ class BalanceUpdate:
     #:
     #: The strategy cycle timestamp.
     #:
-    #:
     #: It might be outside the cycle frequency if treasuries were processed
     #: in a cron job outside the cycle for slow moving strategies.
     #:
@@ -113,6 +112,15 @@ class BalanceUpdate:
     #: Wall clock time when this event was created
     #:
     created_at: datetime.datetime | None = field(default_factory=datetime.datetime.utcnow)
+
+    #: What was the event time of the previous update.
+    #:
+    #: This allows us to calculate the effective interest rate
+    #: between the update cycles.
+    #:
+    #: This is the same as :py:attr:`block_mined_at` of the previous event.
+    #:
+    previous_update_at: datetime.datetime | None = None
 
     #: Investor address that the balance update is related to
     #:
@@ -146,6 +154,9 @@ class BalanceUpdate:
     def __post_init__(self):
         assert self.quantity != 0, "Balance update cannot be zero: {self}"
 
+        if self.previous_update_at:
+            assert self.previous_update_at <= self.block_mined_at, f"Travelling back in time: {self.previous_update_at} - {self.block_mined_at}"
+
     def __repr__(self):
         if self.position_id:
             position_name = f"position #{self.position_id}"
@@ -177,4 +188,38 @@ class BalanceUpdate:
         """Return whether this event updates reserve balance or open position balance"""
         return self.position_type == BalanceUpdatePositionType.reserve
 
+    def get_update_period(self) -> datetime.timedelta | None:
+        """How long it was between this event and previous sync event.
 
+        :return:
+            None if only inital update made
+        """
+        if not self.previous_update_at:
+            return None
+
+        return (self.block_mined_at - self.previous_update_at)
+
+    def get_effective_yearly_yield(self, year=datetime.timedelta(days=360)) -> Percent | None:
+        """How much we are gaining % yearly.
+
+        - Based on the this balance update and the previous balance update
+
+        - Mostly useful for interest rate events
+
+        - Calculated in tokens (exchange rate immune)
+
+        :return:
+            1-based interest.
+
+            E.g. 1.02 for 2% yearly gained interest. 0.9 for 10% yearly paid interest.
+
+            Positive if we are gaining interest, negative if we are paying interest.
+
+            ``None``  if no update period available
+        """
+
+        period = self.get_update_period()
+        if not period:
+            return None
+        gain = self.quantity / self.old_balance
+        return float(gain) / (period / year)
