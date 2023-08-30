@@ -209,7 +209,9 @@ class BalanceUpdate:
         - Calculated in tokens (exchange rate immune)
 
         :return:
-            E.g. 2% for 2% yearly interest.
+            1-based interest.
+
+            E.g. 1.02 for 2% yearly gained interest. 0.9 for 10% yearly paid interest.
 
             Positive if we are gaining interest, negative if we are paying interest.
 

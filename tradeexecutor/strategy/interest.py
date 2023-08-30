@@ -128,6 +128,8 @@ def update_leveraged_position_interest(
 ) -> Tuple[BalanceUpdate, BalanceUpdate]:
     """Updates accrued interest on lending protocol leveraged positions.
 
+    Updates loan interest state for both collateral and debt.
+
     :param atoken_price:
         What is the current price of aToken.
 
@@ -192,6 +194,8 @@ def estimate_interest(
 
         E.g. 1.02 for 2% yearly gained interest.
 
+        Always positive.
+
     :param start_quantity:
         Tokens at the start of the period
 
@@ -199,6 +203,9 @@ def estimate_interest(
         Year length.
 
         Default to the financial year.
+
+    :return:
+        Amount of token quantity with principal + interest after the period.
     """
 
     # 150x

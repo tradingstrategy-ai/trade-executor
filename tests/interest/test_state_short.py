@@ -1150,7 +1150,7 @@ def test_short_unrealised_interest_and_profit(
     """Opening a short position and get some unrealised profit.
 
     - ETH price goes 1500 -> 1400 so we get unrealised PnL
-    - We have 10% interest cost on the short position
+    - We have 10% borrow cost on the ETH short position
     - We have 2% interest income on the USDC collateral
     - See ``test_short_unrealised_profit`` for a comparison calculations
       with interest payments ignored
@@ -1193,8 +1193,8 @@ def test_short_unrealised_interest_and_profit(
         1400.0,
     )
 
-    atoken_interest = 1.02
-    vtoken_interest = 1.10
+    atoken_interest = 1.02  # Receive 2% on USD collateral
+    vtoken_interest = 1.10  # Pay 10% on ETH loan
 
     # Calculate simulated interest gains
     new_atoken = estimate_interest(
@@ -1211,8 +1211,7 @@ def test_short_unrealised_interest_and_profit(
         vtoken_interest,
     )
 
-    # We have gained 15 USDC on our dollar long
-    assert new_atoken == Decimal('1815.113089799044876389054071')
+    assert new_atoken == Decimal('1815.113089799044876389054071')  # We have gained 15 USDC on our dollar long
     assert new_vtoken == Decimal('0.5552334719541217745270929036')
 
     # Tell strategy state about interest gains
@@ -1231,7 +1230,8 @@ def test_short_unrealised_interest_and_profit(
     # We gain around 15 USDC in half a year
     assert aevt.quantity == pytest.approx(Decimal('15.113089799044887491284317'))
 
-    # We need to pay ~ 0.02 ETH half a year
+    # We need to pay ~ 0.02 ETH half a year,
+    # worth 30 USD at 1400 ETH/USD
     assert vevt.quantity == pytest.approx(Decimal('0.0219001386207884485952464011'))
 
     assert aevt.get_update_period() == datetime.timedelta(days=152)
