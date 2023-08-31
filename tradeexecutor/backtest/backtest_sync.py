@@ -192,12 +192,17 @@ class BacktestSyncModel(SyncModel):
                 assert len(p.trades) <= 2, "This interest calculation does not support increase/reduce position"
                 new_amount = interest.last_atoken_amount + accrued
 
+                # TODO: the collateral is stablecoin so this can be hardcode for now
+                # but make sure to fetch it from somewhere later
+                price = 1.0
+
                 evt = update_credit_supply_interest(
                     state,
                     p,
                     p.pair.base,
                     new_atoken_amount=new_amount,
                     event_at=timestamp,
+                    asset_price=price,
                 )
                 events.append(evt)
 
