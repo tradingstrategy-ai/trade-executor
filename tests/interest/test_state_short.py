@@ -1365,3 +1365,89 @@ def test_short_unrealised_interest_and_losses(
     # We go red
     assert state.portfolio.get_loan_net_asset_value() == pytest.approx(556.2666666666667)
     assert state.portfolio.get_net_asset_value() == pytest.approx(9556.266666666666)
+
+
+def test_short_realised_interest_and_profit(
+        state: State,
+        weth_short_identifier: TradingPairIdentifier,
+        usdc: AssetIdentifier,
+):
+    """Opening a short position and get some unrealised profit.
+
+    - ETH price goes 1500 -> 1400 so we get unrealised PnL
+    - We have 10% borrow cost on the ETH short position
+    - We have 2% interest income on the USDC collateral
+    - Wait half a year
+    - Close the position
+    """
+
+    trader = UnitTestTrader(state)
+    start_ltv = 0.8
+    expected_eth_shorted_amount = 1000 * start_ltv / 1500
+
+    start_at = datetime.datetime(2020, 1, 1)
+    short_position, trade, created = state.trade_short(
+        strategy_cycle_at=start_at,
+        pair=weth_short_identifier,
+        borrowed_quantity=-Decimal(expected_eth_shorted_amount),
+        collateral_quantity=Decimal(1000),
+        borrowed_asset_price=float(1500),  # USDC/ETH price we are going to sell
+        trade_type=TradeType.rebalance,
+        reserve_currency=usdc,
+        collateral_asset_price=1.0,
+    )
+
+    trader.set_perfectly_executed(trade)
+    assert state.portfolio.get_total_equity() == 10000
+
+    # Move forward half a year
+    now_at = datetime.datetime(2020, 6, 1)
+
+    # ETH price 1500 -> 1400
+    short_position.revalue_base_asset(
+        datetime.datetime.utcnow(),
+        1400.0,
+    )
+
+    atoken_interest = 1.02  # Receive 2% on USD collateral
+    vtoken_interest = 1.10  # Pay 10% on ETH loan
+
+    # Calculate simulated interest gains
+    new_atoken = estimate_interest(
+        start_at,
+        now_at,
+        short_position.loan.collateral.quantity,
+        atoken_interest,
+    )
+
+    new_vtoken = estimate_interest(
+        start_at,
+        now_at,
+        short_position.loan.borrowed.quantity,
+        vtoken_interest,
+    )
+
+    assert new_atoken == Decimal('1815.113089799044876389054071')  # We have gained 15 USDC on our dollar long
+    assert new_vtoken == Decimal('0.5552334719541217745270929036')
+
+    # Tell strategy state about interest gains
+    # Note that this BalanceUpdate event
+    # is not stored with the state
+    update_leveraged_position_interest(
+        state,
+        short_position,
+        new_vtoken,
+        new_atoken,
+        now_at,
+        vtoken_price=1400.0,
+        atoken_price=1.0,
+    )
+
+    assert short_position.get_base_token_balance_update_quantity() == pytest.approx(Decimal('0.0219001386207884485952464011'))
+    assert short_position.get_quantity() == pytest.approx(Decimal('-0.5114331947125448773366001014'))
+    assert short_position.get_accrued_interest() == pytest.approx(-15.525204131438151)
+    assert short_position.get_unrealised_profit_usd(include_interest=False) == pytest.approx(51.143319471254486)
+    assert short_position.get_unrealised_profit_usd() == pytest.approx(35.61811533981633)
+    assert short_position.get_realised_profit_usd() is None
+
+    # TODO: Close position

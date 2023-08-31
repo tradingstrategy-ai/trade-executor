@@ -50,7 +50,7 @@ class GenericPosition(ABC):
         """
 
     @abstractmethod
-    def get_balance_update_quantity(self) -> Decimal:
+    def get_base_token_balance_update_quantity(self) -> Decimal:
         """Get quantity of all balance updates for this position.
 
         Balance update events are

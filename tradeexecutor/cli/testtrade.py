@@ -173,7 +173,7 @@ def make_test_trade(
         if not trade.is_success() or not position.is_open():
             # Alot of diagnostics to debug Arbitrum / WBTC issues
             trades = sum_decimal([t.get_position_quantity() for t in position.trades.values() if t.is_success()])
-            direct_balance_updates = position.get_balance_update_quantity()
+            direct_balance_updates = position.get_base_token_balance_update_quantity()
 
             logger.error("Trade quantity: %s, direct balance updates: %s", trades, direct_balance_updates)
 
