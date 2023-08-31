@@ -413,15 +413,20 @@ class TradingPosition(GenericPosition):
     def get_balance_update_events(self) -> Iterable[BalanceUpdate]:
         return self.balance_updates.values()
 
-    def get_balance_update_quantity(self) -> Decimal:
-        """Get quantity of all balance udpdates for this position.
+    def get_base_token_balance_update_quantity(self) -> Decimal:
+        """Get quantity of all balance updates for this position.
+
+        - How much non-trade events have changed our base token balance
+
+        - This includes interest events and accounting corrections
 
         :return:
             How much in-kind redemption events have affected this position.
 
             Decimal zero epsilon noted.
         """
-        return sum_decimal([b.quantity for b in self.balance_updates.values()])
+        base = self.pair.base
+        return sum_decimal([b.quantity for b in self.balance_updates.values() if b.asset == base])
 
     def get_quantity(self) -> Decimal:
         """Get the tied up token quantity in all successfully executed trades.
@@ -445,7 +450,7 @@ class TradingPosition(GenericPosition):
             Rounded down to zero if the sum of
         """
         trades = sum_decimal([t.get_position_quantity() for t in self.trades.values() if t.is_success()])
-        direct_balance_updates = self.get_balance_update_quantity()
+        direct_balance_updates = self.get_base_token_balance_update_quantity()
         s = trades + direct_balance_updates
 
         # TODO:
