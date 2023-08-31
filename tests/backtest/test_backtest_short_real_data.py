@@ -73,7 +73,8 @@ def test_backtest_open_only_short_real_data(
 ):
     """Run the strategy backtest using inline decide_trades function.
 
-    - How much interest we can get on USDC on Polygon in one month
+    - Open short position
+    - Check unrealised PnL after a month
     """
 
     def decide_trades(
@@ -83,7 +84,7 @@ def test_backtest_open_only_short_real_data(
         pricing_model: PricingModel,
         cycle_debug_data: Dict
     ) -> List[TradeExecution]:
-        """A simple strategy that puts all in to our lending reserve."""
+        """A simple strategy that opens a single 2x short position."""
         trade_pair = strategy_universe.universe.pairs.get_single()
 
         cash = state.portfolio.get_cash()
@@ -93,7 +94,6 @@ def test_backtest_open_only_short_real_data(
         trades = []
 
         if not position_manager.is_any_open():
-            # buy_amount = cash * position_size
             trades += position_manager.open_short(trade_pair, cash, leverage=2)
 
         return trades
@@ -114,5 +114,9 @@ def test_backtest_open_only_short_real_data(
 
     portfolio = state.portfolio
     assert len(portfolio.open_positions) == 1
-    credit_position = portfolio.open_positions[1]
-    assert credit_position.is_short()
+    position = portfolio.open_positions[1]
+    assert position.is_short()
+
+    assert position.get_value_at_open() == 10000
+    assert position.get_accrued_interest() == 0  # TODO: this is incorrect, need to plugin accrued interst logic
+    assert position.get_value() == Decimal(13104.708248204075)  # TODO: this is incorrect as well

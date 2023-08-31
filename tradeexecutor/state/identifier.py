@@ -292,6 +292,12 @@ class TradingPairIdentifier:
     #:
     kind: TradingPairKind = TradingPairKind.spot_market_hold
 
+    #: Underlying spot trading pair
+    #: 
+    #: This can be used to track price of assets in shorting pair
+    #:
+    underlying_spot_pair: Optional["TradingPairIdentifier"] = None
+
     def __post_init__(self):
         assert self.base.chain_id == self.quote.chain_id, "Cross-chain trading pairs are not possible"
 

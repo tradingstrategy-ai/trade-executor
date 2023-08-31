@@ -4,6 +4,7 @@ from typing import Tuple
 from tradeexecutor.backtest.backtest_pricing import BacktestSimplePricingModel
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.types import USDollarAmount
+from tradeexecutor.state.identifier import TradingPairKind
 from tradeexecutor.strategy.valuation import ValuationModel
 
 
@@ -31,12 +32,10 @@ class BacktestValuationModel(ValuationModel):
             trade_price = self.pricing_model.get_sell_price(ts, pair, quantity)
             return ts, float(trade_price.price)
         else:
+            assert pair.kind == TradingPairKind.lending_protocol_short
+            
             quantity = -position.get_quantity()
-
-            # TODO: this is still incorrect since
-            # we don't have price from this shorting pair
-            # probably need to track original pair?
-            trade_price = self.pricing_model.get_sell_price(ts, pair, quantity)
+            trade_price = self.pricing_model.get_sell_price(ts, pair.underlying_spot_pair, quantity)
             return ts, float(trade_price.price)
 
 

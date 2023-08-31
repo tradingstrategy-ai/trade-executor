@@ -127,6 +127,7 @@ flaky = "^3.7.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest-reverse = "^1.5.0"
+pytest-mock = "^3.11.1"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
