@@ -35,15 +35,13 @@ pytestmark = pytest.mark.skipif(os.environ.get("TRADING_STRATEGY_API_KEY") is No
 
 
 @pytest.fixture()
-def interest_rate_mock():
+def interest_rate_mock(mocker):
     """Patch backtest sync to use fixed interest rate for every call"""
+    interest_mock = mocker.patch(
+        "tradeexecutor.backtest.backtest_sync.BacktestSyncModel.calculate_accrued_interest"
+    )
 
-    daily_interest = Decimal("1")
-    with patch(
-        "tradeexecutor.backtest.backtest_sync.BacktestSyncModel.calculate_accrued_interest",
-        return_value=daily_interest,
-    ):
-        yield
+    interest_mock.return_value = Decimal("1")
 
 
 def create_trading_universe(

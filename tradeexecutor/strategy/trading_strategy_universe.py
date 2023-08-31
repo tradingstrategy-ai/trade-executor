@@ -821,6 +821,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             exchange_address=borrow_token.address,
             internal_id=borrow_reserve.reserve_id,
             kind=TradingPairKind.lending_protocol_short,
+            underlying_spot_pair=pair,
         )
 
 

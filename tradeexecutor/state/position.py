@@ -1024,12 +1024,19 @@ class TradingPosition(GenericPosition):
 
         :return: 0 if profit calculation cannot be made yet
         """
-        assert self.is_long(), f"Profit pct for shorts unimplemented, got {self}, first trade was {self.get_first_trade()}"
-        profit = self.get_total_profit_usd()
-        bought = self.get_total_bought_usd()
-        if bought == 0:
-            return 0
-        return profit / bought
+        if self.is_long():
+            profit = self.get_total_profit_usd()
+            bought = self.get_total_bought_usd()
+            if bought == 0:
+                return 0
+            return profit / bought
+        else:
+            # TODO: this is not correct yet since it doesn't factor in interest
+            profit = -self.get_total_profit_usd()
+            bought = self.get_total_bought_usd()
+            if bought == 0:
+                return 0
+            return profit / bought
 
     def get_total_profit_at_timestamp(self, timestamp: datetime.datetime) -> USDollarAmount:
         """Get the profit of the position what it was at a certain point of time.
