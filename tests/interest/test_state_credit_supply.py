@@ -167,6 +167,7 @@ def test_accrue_interest(
         ausdc,
         new_atoken_amount=Decimal(9000.01),
         event_at=interest_event_1_at,
+        asset_price=1.0,
     )
 
     # The position has refreshed its accrued interest once
@@ -226,6 +227,7 @@ def test_close_credit_position(
         ausdc,
         new_atoken_amount=Decimal(9000.50),
         event_at=interest_event_1_at,
+        asset_price=1.0,
     )
 
     assert state.portfolio.get_net_asset_value() == 10000.50
