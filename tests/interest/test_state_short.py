@@ -1152,6 +1152,7 @@ def test_short_unrealised_interest_and_profit(
     - ETH price goes 1500 -> 1400 so we get unrealised PnL
     - We have 10% borrow cost on the ETH short position
     - We have 2% interest income on the USDC collateral
+    - Wait half a year
     - See ``test_short_unrealised_profit`` for a comparison calculations
       with interest payments ignored
     """
@@ -1262,3 +1263,105 @@ def test_short_unrealised_interest_and_profit(
     assert state.portfolio.get_loan_net_asset_value() == pytest.approx(1037.8081292018953)
     assert state.portfolio.get_cash() == 9000
     assert state.portfolio.get_net_asset_value() == pytest.approx(10037.808129201896)
+
+
+def test_short_unrealised_interest_and_losses(
+        state: State,
+        weth_short_identifier: TradingPairIdentifier,
+        usdc: AssetIdentifier,
+):
+    """Opening a short position and get some unrealised profit.
+
+    - ETH price goes 1500 -> 1600 so we get unrealised PnL
+    - We have 50% borrow cost on the ETH short position
+    - We have 2% interest income on the USDC collateral
+    - Wait 3 months
+    """
+
+    trader = UnitTestTrader(state)
+
+    # Aave allows us to borrow 80% ETH against our USDC collateral
+    start_ltv = 0.8
+
+    # How many ETH (vWETH) we expect when we go in
+    # with our max leverage available
+    # based on the collateral ratio
+    expected_eth_shorted_amount = 1000 * start_ltv / 1500
+
+    start_at = datetime.datetime(2020, 1, 1)
+
+    # Take 1000 USDC reserves and open a ETH short using it.
+    # We should get 800 USDC worth of ETH for this.
+    short_position, trade, created = state.trade_short(
+        strategy_cycle_at=start_at,
+        pair=weth_short_identifier,
+        borrowed_quantity=-Decimal(expected_eth_shorted_amount),
+        collateral_quantity=Decimal(1000),
+        borrowed_asset_price=float(1500),  # USDC/ETH price we are going to sell
+        trade_type=TradeType.rebalance,
+        reserve_currency=usdc,
+        collateral_asset_price=1.0,
+    )
+
+    trader.set_perfectly_executed(trade)
+    assert state.portfolio.get_total_equity() == 10000
+
+    # Move forward a financial year
+    now_at = datetime.datetime(2020, 1, 1) + datetime.timedelta(days=360)
+
+    # ETH price 1500 -> 1600,
+    # cause short to go negative
+    short_position.revalue_base_asset(
+        datetime.datetime.utcnow(),
+        1600.0,
+    )
+
+    atoken_interest = 1.02  # Receive 2% on USD collateral
+    vtoken_interest = 1.50  # Pay 10% on ETH loan
+
+    # Calculate simulated interest gains
+    new_atoken = estimate_interest(
+        start_at,
+        now_at,
+        short_position.loan.collateral.quantity,
+        atoken_interest,
+    )
+
+    new_vtoken = estimate_interest(
+        start_at,
+        now_at,
+        short_position.loan.borrowed.quantity,
+        vtoken_interest,
+    )
+
+    old_vtoken = short_position.loan.borrowed.quantity
+    # assert new_atoken == Decimal('1809.032784100456570042034639')  # We have gained 15 USDC on our dollar long
+    # assert new_vtoken == Decimal('0.5463385917812319708720691214')
+    assert new_vtoken / old_vtoken == Decimal("1.5")
+
+    # Tell strategy state about interest gains
+    # Note that this BalanceUpdate event
+    # is not stored with the state
+    vevt, aevt = update_leveraged_position_interest(
+        state,
+        short_position,
+        new_vtoken,
+        new_atoken,
+        now_at,
+        vtoken_price=1600.0,
+        atoken_price=1.0,
+    )
+
+    # We gain around 15 USDC in half a year
+    assert aevt.quantity == pytest.approx(Decimal('36.000000000000031752378504'))
+    assert aevt.get_update_period() == datetime.timedelta(days=360)
+    assert aevt.get_effective_yearly_yield() == pytest.approx(0.02)
+    assert vevt.get_effective_yearly_yield() == pytest.approx(0.50)
+
+    assert short_position.get_current_price() == 1600
+
+    assert short_position.loan.get_borrow_interest() == pytest.approx(426.6666666666667)
+
+    # We go red
+    assert state.portfolio.get_loan_net_asset_value() == pytest.approx(556.2666666666667)
+    assert state.portfolio.get_net_asset_value() == pytest.approx(9556.266666666666)
