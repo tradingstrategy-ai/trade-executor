@@ -1450,4 +1450,19 @@ def test_short_realised_interest_and_profit(
     assert short_position.get_unrealised_profit_usd() == pytest.approx(35.61811533981633)
     assert short_position.get_realised_profit_usd() is None
 
-    # TODO: Close position
+    # Close position fully at 1400 price
+    _, trade_2, _ = state.trade_short(
+        closing=True,
+        strategy_cycle_at=datetime.datetime.utcnow(),
+        pair=weth_short_identifier,
+        borrowed_asset_price=float(1400),
+        trade_type=TradeType.rebalance,
+        reserve_currency=usdc,
+        collateral_asset_price=1.0,
+    )
+
+    trader.set_perfectly_executed(trade_2)
+    assert trade_2.is_success()
+    assert short_position.get_quantity() == 0
+    assert short_position.is_closed()
+    assert short_position.get_realised_profit_usd() is None

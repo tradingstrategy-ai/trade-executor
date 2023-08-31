@@ -14,7 +14,7 @@ from dataclasses_json import dataclass_json
 from tradeexecutor.state.identifier import AssetIdentifier, AssetWithTrackedValue, TradingPairIdentifier
 from tradeexecutor.state.interest import Interest
 from tradeexecutor.state.types import LeverageMultiplier, USDollarAmount
-from tradeexecutor.utils.accuracy import ZERO_DECIMAL
+from tradeexecutor.utils.accuracy import ZERO_DECIMAL, ensure_exact_zero
 
 #: Health Factor: hF=dC/d, if lower than 1, the account can be liquidated
 #:
@@ -116,6 +116,14 @@ class Loan:
             return float(self.borrowed_interest.last_accrued_interest) * self.borrowed.last_usd_price
         return 0
 
+    def get_borrowed_principal_and_interest_quantity(self) -> Decimal:
+        """Get how much borrow there is left to repay.
+
+        - Round to zero
+        """
+        total = self.borrowed.quantity + self.borrowed_interest.last_accrued_interest
+        return ensure_exact_zero(total)
+
     def get_net_interest(self) -> USDollarAmount:
         """How many dollars of interest we have accumulated.
 
@@ -159,7 +167,8 @@ class Loan:
 
         If the health factor goes below 1, the liquidation of your collateral might be triggered.
         """
-        if self.borrowed is None or self.borrowed.quantity == 0:
+        if self.borrowed is None or self.get_borrowed_principal_and_interest_quantity() == 0:
+            # Already closed
             return math.inf
         return self.collateral.asset.liquidation_threshold * self.collateral.get_usd_value() / self.borrowed.get_usd_value()
 

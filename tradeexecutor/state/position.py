@@ -746,7 +746,7 @@ class TradingPosition(GenericPosition):
                         assert not planned_collateral_consumption, "planned_collateral_consumption set automatically when closing a short position"
 
                         # Buy back all the debt
-                        quantity = self.loan.borrowed.quantity
+                        quantity = self.loan.borrowed_interest.get_principal_and_interest_quantity()
 
                         # Release collateral is the current collateral
                         reserve = 0
@@ -756,6 +756,8 @@ class TradingPosition(GenericPosition):
 
                         # Any leftover USD from the collateral is released to the reserves
                         planned_collateral_allocation = -(self.loan.collateral.quantity + planned_collateral_consumption)
+
+                        import ipdb ; ipdb.set_trace()
 
                     else:
                         assert quantity is not None, "For increasing/reducing short position quantity must be given"
@@ -873,7 +875,8 @@ class TradingPosition(GenericPosition):
         Perform additional check for token amount dust caused by rounding errors.
         """
         epsilon = get_dust_epsilon_for_pair(self.pair)
-        return abs(self.get_quantity()) <= epsilon
+        quantity = self.get_quantity()
+        return abs(quantity) <= epsilon
 
     def get_total_bought_usd(self) -> USDollarAmount:
         """How much money we have used on buys"""

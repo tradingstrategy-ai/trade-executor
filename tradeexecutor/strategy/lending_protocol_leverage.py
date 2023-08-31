@@ -192,6 +192,11 @@ def plan_loan_update_for_short(
         -trade.planned_quantity,
         trade.planned_price,
         trade.opened_at,
+        # Because of interest events, and the fact that we need
+        # to pay the interest back on closing the loan,
+        # the tracked underlying amount can go negative when closing a short
+        # position
+        allow_negative=True,
     )
 
     # Sanity check
