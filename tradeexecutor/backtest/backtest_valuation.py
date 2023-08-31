@@ -26,10 +26,18 @@ class BacktestValuationModel(ValuationModel):
 
         pair = position.pair
 
-        assert position.is_long(), "Short not supported"
-        quantity = position.get_quantity()
-        trade_price = self.pricing_model.get_sell_price(ts, pair, quantity)
-        return ts, float(trade_price.price)
+        if position.is_long():
+            quantity = position.get_quantity()
+            trade_price = self.pricing_model.get_sell_price(ts, pair, quantity)
+            return ts, float(trade_price.price)
+        else:
+            quantity = -position.get_quantity()
+
+            # TODO: this is still incorrect since
+            # we don't have price from this shorting pair
+            # probably need to track original pair?
+            trade_price = self.pricing_model.get_sell_price(ts, pair, quantity)
+            return ts, float(trade_price.price)
 
 
 def backtest_valuation_factory(pricing_model):
