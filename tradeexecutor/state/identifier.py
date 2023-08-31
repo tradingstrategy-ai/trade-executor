@@ -445,6 +445,8 @@ class AssetWithTrackedValue:
 
     #: How many token units we have.
     #:
+    #: In the case of loans this represents the underlying asset (WETH),
+    #: not any gained interest (vWETH).
     #:
     quantity: Decimal
 
@@ -498,6 +500,7 @@ class AssetWithTrackedValue:
 
         if not allow_negative:
             assert sum_decimal((self.quantity, delta,)) >= 0, f"Tracked asset cannot go negative: {self}. Quantity: {self.quantity}, delta: {delta}"
+
         self.quantity += delta
 
         # Fix decimal math issues
