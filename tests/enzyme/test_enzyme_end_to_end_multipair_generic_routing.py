@@ -60,7 +60,7 @@ weth_usdc_uniswap_v3_fee = 500
 @pytest.fixture()
 def uniswap_v3(web3, deployer, weth) -> UniswapV3Deployment:
     """Uniswap v3 deployment."""
-    return deploy_uniswap_v3(web3, deployer, weth=weth, give_weth=None)
+    return deploy_uniswap_v3(web3, deployer, weth=weth, give_weth=1000)
 
 
 @pytest.fixture
@@ -77,22 +77,32 @@ def weth_usdc_uniswap_v3_pool(web3, deployer, uniswap_v3, weth, usdc) -> HexAddr
         fee=weth_usdc_uniswap_v3_fee,
     )
 
+    # TODO: investigate why amount0 and amount1 need to be swapped here
     add_liquidity(
         web3,
         deployer,
         deployment=uniswap_v3,
         pool=pool_contract,
-        amount0=1000 * 10**18,  # 1000 ETH liquidity
-        amount1=1_700_000 * 10**6,  # 1.7M USDC liquidity
+        amount0=1_700_000 * 10**6,  # 1.7M USDC liquidity
+        amount1=1000 * 10**18,  # 1000 ETH liquidity
         lower_tick=min_tick,
         upper_tick=max_tick,
     )
+
     return pool_contract
 
 
 @pytest.fixture
 def weth_usdc_uniswap_v3_trading_pair(uniswap_v3, weth_usdc_uniswap_v3_pool, usdc_asset, weth_asset) -> TradingPairIdentifier:
-    return TradingPairIdentifier(weth_asset, usdc_asset, weth_usdc_uniswap_v3_pool, uniswap_v3.factory.address, fee=0.0005)
+    return TradingPairIdentifier(
+        weth_asset, 
+        usdc_asset, 
+        weth_usdc_uniswap_v3_pool, 
+        uniswap_v3.factory.address, 
+        fee=0.0005,
+        internal_exchange_id=2,
+        internal_id=5,
+    )
 
 
 @pytest.fixture()

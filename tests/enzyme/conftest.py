@@ -501,22 +501,22 @@ def vault(
 
 @pytest.fixture
 def weth_usdc_trading_pair(uniswap_v2, weth_usdc_uniswap_pair, usdc_asset, weth_asset) -> TradingPairIdentifier:
-    return TradingPairIdentifier(weth_asset, usdc_asset, weth_usdc_uniswap_pair, uniswap_v2.factory.address, fee=0.0030)
+    return TradingPairIdentifier(weth_asset, usdc_asset, weth_usdc_uniswap_pair, uniswap_v2.factory.address, fee=0.0030, internal_exchange_id=1, internal_id=1)
 
 
 @pytest.fixture()
 def pepe_usdc_trading_pair(uniswap_v2, pepe_usdc_uniswap_pair, usdc_asset, pepe_asset) -> TradingPairIdentifier:
-    return TradingPairIdentifier(pepe_asset, usdc_asset, pepe_usdc_uniswap_pair, uniswap_v2.factory.address, fee=0.0030)
+    return TradingPairIdentifier(pepe_asset, usdc_asset, pepe_usdc_uniswap_pair, uniswap_v2.factory.address, fee=0.0030, internal_exchange_id=1, internal_id=2)
 
 
 @pytest.fixture()
 def bob_usdc_trading_pair(uniswap_v2, bob_usdc_uniswap_pair, usdc_asset, bob_asset) -> TradingPairIdentifier:
-    return TradingPairIdentifier(bob_asset, usdc_asset, bob_usdc_uniswap_pair, uniswap_v2.factory.address, fee=0.0030)
+    return TradingPairIdentifier(bob_asset, usdc_asset, bob_usdc_uniswap_pair, uniswap_v2.factory.address, fee=0.0030, internal_exchange_id=1, internal_id=3)
 
 
 @pytest.fixture()
 def biao_usdt_trading_pair(uniswap_v2, biao_usdt_uniswap_pair, usdt_asset, biao_asset) -> TradingPairIdentifier:
-    return TradingPairIdentifier(biao_asset, usdt_asset, biao_usdt_uniswap_pair, uniswap_v2.factory.address, fee=0.0030)
+    return TradingPairIdentifier(biao_asset, usdt_asset, biao_usdt_uniswap_pair, uniswap_v2.factory.address, fee=0.0030, internal_exchange_id=1, internal_id=4)
 
 
 # Exchange
