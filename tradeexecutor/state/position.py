@@ -998,23 +998,14 @@ class TradingPosition(GenericPosition):
                     # realised profit is zero
                     trade_profit = 0
             else:
-
-                #if self.is_short():
-                #    # We calculate the trade profit of values of all transactions
-                #    total_transacted = sum([t.get_value() * t.get_sign() for t in self.trades.values() if t.is_success()])
-                #    trade_profit = -total_transacted
-                #else:
-                # TODO: Likely need to be updated for margined long
                 trade_profit = (self.get_average_sell() - self.get_average_buy()) * float(self.get_buy_quantity())
-                # trade_profit -= self.get_repaid_interest()
         else:
             # No closes yet, only unrealised PnL
             trade_profit = 0.0
 
         if include_interest:
-            # Interest that is claimed is realised
-            trade_profit += self.get_claimed_interest()
-            trade_profit -= self.get_repaid_interest()
+            trade_profit += self.get_claimed_interest()  # Profit gained from collateral interest
+            trade_profit -= self.get_repaid_interest()  # Loss made from borrowed asset interest payments
 
         return trade_profit
 
