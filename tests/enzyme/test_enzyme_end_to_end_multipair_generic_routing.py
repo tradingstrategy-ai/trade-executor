@@ -4,6 +4,8 @@ import os
 import secrets
 import tempfile
 import logging
+import datetime
+import pandas as pd
 
 from pathlib import Path
 from unittest.mock import patch
@@ -26,18 +28,184 @@ from eth_defi.enzyme.vault import Vault
 from eth_defi.hotwallet import HotWallet
 from eth_defi.trace import assert_transaction_success_with_explanation
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment
+from eth_defi.uniswap_v3.deployment import UniswapV3Deployment, deploy_uniswap_v3, add_liquidity, deploy_pool
+from eth_defi.uniswap_v3.utils import get_default_tick_range
 
 from tradingstrategy.pair import PandasPairUniverse
 from tradingstrategy.chain import ChainId
+from tradingstrategy.exchange import Exchange, ExchangeType
+from tradingstrategy.timebucket import TimeBucket
+from tradingstrategy.universe import Universe
+from tradingstrategy.candle import GroupedCandleUniverse
 
 from tradeexecutor.cli.main import app
 from tradeexecutor.state.blockhain_transaction import BlockchainTransactionType
 from tradeexecutor.state.trade import TradeType
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.state.state import State
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, load_partial_data, create_pair_universe_from_code
+from tradeexecutor.strategy.universe_model import UniverseOptions
+from tradeexecutor.testing.synthetic_price_data import generate_ohlcv_candles
 
 
 logger = logging.getLogger(__name__)
+
+
+weth_usdc_uniswap_v3_fee = 500
+
+
+# Uniswap v2 assets set up in conftest.py
+# So we set up uniswap v3 assets here
+
+@pytest.fixture()
+def uniswap_v3(web3, deployer, weth) -> UniswapV3Deployment:
+    """Uniswap v3 deployment."""
+    return deploy_uniswap_v3(web3, deployer, weth=weth, give_weth=None)
+
+
+@pytest.fixture
+def weth_usdc_uniswap_v3_pool(web3, deployer, uniswap_v3, weth, usdc) -> HexAddress:
+    """ETH-USDC pool with 1.7M liquidity."""
+    min_tick, max_tick = get_default_tick_range(weth_usdc_uniswap_v3_fee)
+
+    pool_contract = deploy_pool(
+        web3,
+        deployer,
+        deployment=uniswap_v3,
+        token0=weth,
+        token1=usdc,
+        fee=weth_usdc_uniswap_v3_fee,
+    )
+
+    add_liquidity(
+        web3,
+        deployer,
+        deployment=uniswap_v3,
+        pool=pool_contract,
+        amount0=1000 * 10**18,  # 1000 ETH liquidity
+        amount1=1_700_000 * 10**6,  # 1.7M USDC liquidity
+        lower_tick=min_tick,
+        upper_tick=max_tick,
+    )
+    return pool_contract
+
+
+@pytest.fixture
+def weth_usdc_uniswap_v3_trading_pair(uniswap_v3, weth_usdc_uniswap_v3_pool, usdc_asset, weth_asset) -> TradingPairIdentifier:
+    return TradingPairIdentifier(weth_asset, usdc_asset, weth_usdc_uniswap_v3_pool, uniswap_v3.factory.address, fee=0.0005)
+
+
+@pytest.fixture()
+def uniswap_v3_exchange(uniswap_v3: UniswapV3Deployment) -> Exchange:
+    return Exchange(
+        chain_id=ChainId.anvil,
+        chain_slug="tester",
+        exchange_id=int(uniswap_v3.factory.address, 16),
+        exchange_slug="UniswapV3MockClient",
+        address=uniswap_v3.factory.address,
+        exchange_type=ExchangeType.uniswap_v3,
+        pair_count=99999,
+    )
+
+
+# synthetic candles for both uniswap v2 and uniswap v3 pairs
+
+@pytest.fixture()
+def synthetic_candles_weth_usdc_uniswap_v2(weth_usdc) -> pd.DataFrame:
+    # Generate candles for pair_id = 1
+    start_date = datetime.datetime(2021, 6, 1)
+    end_date = datetime.datetime(2023, 8, 20)
+    time_bucket = TimeBucket.h1
+    return generate_ohlcv_candles(time_bucket, start_date, end_date, pair_id=weth_usdc.internal_id)
+
+
+@pytest.fixture()
+def synthetic_candles_weth_usdc_uniswap_v3(weth_usdc_uniswap_v3) -> pd.DataFrame:
+    # Generate candles for pair_id = 1
+    start_date = datetime.datetime(2021, 6, 1)
+    end_date = datetime.datetime(2023, 8, 20)
+    time_bucket = TimeBucket.h1
+    return generate_ohlcv_candles(time_bucket, start_date, end_date, pair_id=weth_usdc_uniswap_v3.internal_id)
+
+
+@pytest.fixture()
+def synthetic_candles_bob_usdc_uniswap_v2(bob_usdc_uniswap_v2) -> pd.DataFrame:
+    # Generate candles for pair_id = 1
+    start_date = datetime.datetime(2021, 6, 1)
+    end_date = datetime.datetime(2023, 8, 20)
+    time_bucket = TimeBucket.h1
+    return generate_ohlcv_candles(time_bucket, start_date, end_date, pair_id=bob_usdc_uniswap_v2.internal_id)
+
+
+@pytest.fixture()
+def synthetic_candles_pepe_usdc_uniswap_v2(pepe_usdc_uniswap_v2) -> pd.DataFrame:
+    # Generate candles for pair_id = 1
+    start_date = datetime.datetime(2021, 6, 1)
+    end_date = datetime.datetime(2023, 8, 20)
+    time_bucket = TimeBucket.h1
+    return generate_ohlcv_candles(time_bucket, start_date, end_date, pair_id=pepe_usdc_uniswap_v2.internal_id)
+
+
+@pytest.fixture()
+def grouped_candle_universe(
+    synthetic_candles_weth_usdc_uniswap_v2,
+    synthetic_candles_weth_usdc_uniswap_v3,
+    synthetic_candles_bob_usdc_uniswap_v2,
+    synthetic_candles_pepe_usdc_uniswap_v2,
+) -> GroupedCandleUniverse:
+    return GroupedCandleUniverse.create_from_multiple_candle_datafarames(
+        [
+            synthetic_candles_weth_usdc_uniswap_v2,
+            synthetic_candles_weth_usdc_uniswap_v3,
+            synthetic_candles_bob_usdc_uniswap_v2,
+            synthetic_candles_pepe_usdc_uniswap_v2,
+        ]
+    )
+
+
+@pytest.fixture()
+def multichain_universe(
+    persistent_test_client, 
+    uniswap_v2_exchange, 
+    uniswap_v3_exchange, 
+    usdc_asset,
+    weth_usdc_trading_pair,
+    weth_usdc_uniswap_v3_trading_pair,
+    bob_usdc_trading_pair,
+    pepe_usdc_trading_pair,
+) -> PandasPairUniverse:
+    
+    client = persistent_test_client
+
+    pairs = [
+        weth_usdc_trading_pair,
+        weth_usdc_uniswap_v3_trading_pair,
+        bob_usdc_trading_pair,
+        pepe_usdc_trading_pair,
+    ]
+
+    pair_universe = create_pair_universe_from_code(ChainId.anvil, pairs)
+
+    return pair_universe
+
+    # TODO: get this info from fixtures so we don't repeat ourselves
+    # trading_pairs = (
+    #     (ChainId.anvil, "UniswapV2MockClient", "WETH", "USDC", 0.003), # HarryPotterObamaSonic10Inu-Ether https://tradingstrategy.ai/trading-view/ethereum/uniswap-v2/bitcoin-eth, 
+    #     (ChainId.anvil, "UniswapV3MockClient", "WETH", "USDC", 0.0005), # Ether-USD Coin https://tradingstrategy.ai/trading-view/ethereum/uniswap-v3/eth-usdc-fee-5 
+    #     (ChainId.anvil, "UniswapV2MockClient", "BOB", "USDC", 0.003), # BAD IDEA AI-Ether https://tradingstrategy.ai/trading-view/ethereum/uniswap-v2/bad-eth
+    #     (ChainId.anvil, "UniswapV2MockClient", "PEPE", "USDC", 0.003), # SHIA-Ether https://tradingstrategy.ai/trading-view/ethereum/uniswap-v2/shia-eth 
+    # )
+
+    # universe = Universe(
+    #     time_bucket=TimeBucket.h1,
+    #     chains={ChainId.anvil},
+    #     exchanges={uniswap_v2_exchange, uniswap_v3_exchange},
+    #     pairs=pair_universe,
+    #     candles=grouped_candle_universe,
+    #     liquidity=None
+    # )
+
+    # return TradingStrategyUniverse(universe=universe, reserve_assets=[usdc_asset])
 
 
 @pytest.fixture
@@ -81,20 +249,20 @@ def state_file() -> Path:
 
 
 @pytest.fixture()
-def multipair_environment(
+def multichain_environment(
     anvil: AnvilLaunch,
     deployer: HexAddress,
     vault: Vault,
     user_1: HexAddress,
     uniswap_v2: UniswapV2Deployment,
-    multipair_universe: PandasPairUniverse,
+    multichain_universe: PandasPairUniverse,
     hot_wallet: HotWallet,
     state_file: Path,
     strategy_file: Path,
     ) -> dict:
-    """Passed to init and start commands as multipair_environment variables"""
+    """Passed to init and start commands as multichain_environment variables"""
     # Set up the configuration for the live trader
-    multipair_environment = {
+    multichain_environment = {
         "EXECUTOR_ID": "test_enzyme_live_trading_init",
         "NAME": "test_enzyme_live_trading_init",
         "STRATEGY_FILE": strategy_file.as_posix(),
@@ -112,20 +280,20 @@ def multipair_environment(
         "TEST_EVM_UNISWAP_V2_INIT_CODE_HASH": uniswap_v2.init_code_hash,
         "CONFIRMATION_BLOCK_COUNT": "0",  # Needed for test backend, Anvil
         "MAX_CYCLES": "5",  # Run decide_trades() 5 times
-        "PAIR": '(ChainId.anvil, "UniswapV2MockClient", "WETH", "USDC", 0.003)',
+        # "PAIR": '(ChainId.anvil, "UniswapV2MockClient", "WETH", "USDC", 0.003)',
     }
-    return multipair_environment
+    return multichain_environment
 
 
-def run_init(multipair_environment: dict) -> Result:
+def run_init(multichain_environment: dict) -> Result:
     """Run vault init command"""
 
     # https://typer.tiangolo.com/tutorial/testing/
     runner = CliRunner()
 
     # Need to use patch here, or parent shell env vars will leak in and cause random test failres
-    with patch.dict(os.environ, multipair_environment, clear=True):
-        result = runner.invoke(app, "init", env=multipair_environment)
+    with patch.dict(os.environ, multichain_environment, clear=True):
+        result = runner.invoke(app, "init", env=multichain_environment)
 
     if result.exception:
         raise result.exception
@@ -134,7 +302,7 @@ def run_init(multipair_environment: dict) -> Result:
 
 
 def test_enzyme_generic_live_trading_init(
-    multipair_environment: dict,
+    multichain_environment: dict,
     state_file: Path,
 ):
     """Initialize Enzyme vault for live trading.
@@ -142,7 +310,7 @@ def test_enzyme_generic_live_trading_init(
     Provide faux chain using Anvil with one pool that a sample strategy is trading.
     """
 
-    result = run_init(multipair_environment)
+    result = run_init(multichain_environment)
     assert result.exit_code == 0
 
     # Check the initial state sync set some of the variables
@@ -154,7 +322,7 @@ def test_enzyme_generic_live_trading_init(
 
 
 def test_enzyme_generic_live_trading_start(
-    multipair_environment: dict,
+    multichain_environment: dict,
     state_file: Path,
     usdc: Contract,
     weth: Contract,
@@ -182,7 +350,7 @@ def test_enzyme_generic_live_trading_start(
 
 
     # Need to be initialised first
-    result = run_init(multipair_environment)
+    result = run_init(multichain_environment)
     assert result.exit_code == 0
 
     # Deposit some money in the vault
@@ -193,7 +361,7 @@ def test_enzyme_generic_live_trading_start(
     # Manually call the main() function so that Typer's CliRunner.invoke() does not steal
     # stdin and we can still set breakpoints
     cli = get_command(app)
-    with patch.dict(os.environ, multipair_environment, clear=True):
+    with patch.dict(os.environ, multichain_environment, clear=True):
         with pytest.raises(SystemExit) as e:
             cli.main(args=["start"])
 
@@ -232,7 +400,7 @@ def test_enzyme_generic_live_trading_start(
 
 
 def test_enzyme_generic_perform_test_trade(
-    multipair_environment: dict,
+    multichain_environment: dict,
     web3: Web3,
     state_file: Path,
     usdc: Contract,
@@ -249,7 +417,7 @@ def test_enzyme_generic_perform_test_trade(
 
     - Perform a test trade on this fault
 
-    You can edit the multipair_environment to choose from 
+    You can edit the multichain_environment to choose from 
     
     - weth_usdc_trading_pair (ChainId.anvil, "UniswapV2MockClient", "WETH", "USDC", 0.003)
     - bob_usdc_trading_pair (ChainId.anvil, "UniswapV2MockClient", "BOB", "USDC", 0.003)
@@ -257,7 +425,7 @@ def test_enzyme_generic_perform_test_trade(
     - biao_usdc_trading_pair (ChainId.anvil, "UniswapV2MockClient", "BIAO", "USDC", 0.003)
     """
 
-    env = multipair_environment.copy()
+    env = multichain_environment.copy()
     env["VAULT_ADDRESS"] = vault.address
     env["VAULT_ADAPTER_ADDRESS"] = vault.generic_adapter.address
 
@@ -302,7 +470,7 @@ def test_enzyme_generic_perform_test_trade(
 
 
 def test_enzyme_generic_live_trading_reinit(
-    multipair_environment: dict,
+    multichain_environment: dict,
     state_file: Path,
     vault,
     deployer,
@@ -316,7 +484,7 @@ def test_enzyme_generic_live_trading_reinit(
     if os.path.exists("/tmp/test_enzyme_end_to_end_multipair.reinit-backup-1.json"):
         os.remove("/tmp/test_enzyme_end_to_end_multipair.reinit-backup-1.json")
 
-    result = run_init(multipair_environment)
+    result = run_init(multichain_environment)
     assert result.exit_code == 0
 
     assert os.path.exists("/tmp/test_enzyme_end_to_end_multipair.json")
@@ -327,7 +495,7 @@ def test_enzyme_generic_live_trading_reinit(
     usdc.functions.approve(vault.comptroller.address, 500 * 10**6).transact({"from": deployer})
     vault.comptroller.functions.buyShares(500 * 10**6, 1).transact({"from": deployer})
 
-    with patch.dict(os.environ, multipair_environment, clear=True):
+    with patch.dict(os.environ, multichain_environment, clear=True):
         with pytest.raises(SystemExit) as e:
             cli.main(args=["reinit"])
         assert e.value.code == 0
