@@ -601,6 +601,7 @@ class State:
 
             if position.loan:
                 trade.claimed_interest = position.loan.claim_interest()
+                trade.paid_interest = position.loan.borrowed_interest.last_accrued_interest
 
     def mark_trade_failed(self, failed_at: datetime.datetime, trade: TradeExecution):
         """Unroll the allocated capital."""
