@@ -454,6 +454,9 @@ class TradeExecution:
     #:
     #: Expressed in base token quantity.
     #:
+    #: This is used to mark the token debt in the last trade
+    #: that closes a leveraged position.
+    #:
     #: See also :py:attr:`claimed_interest`
     #:
     paid_interest: Optional[Decimal] = None
