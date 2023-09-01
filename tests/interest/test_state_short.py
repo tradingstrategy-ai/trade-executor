@@ -1443,14 +1443,26 @@ def test_short_realised_interest_and_profit(
         atoken_price=1.0,
     )
 
+    # How much total increment vToken has seen
     assert short_position.get_base_token_balance_update_quantity() == pytest.approx(Decimal('0.0219001386207884485952464011'))
-    assert short_position.get_quantity() == pytest.approx(Decimal('-0.5114331947125448773366001014'))
+
+    # All vToken left
+    assert short_position.get_quantity() == pytest.approx(Decimal('-0.5552334719541217745270929036'))
+
+    # Calculate unrealised and realised PnL
+    assert short_position.loan.get_collateral_interest() == pytest.approx(15.134989937665676)
+    assert short_position.loan.get_borrow_interest() == pytest.approx(30.66019406910382)
     assert short_position.get_accrued_interest() == pytest.approx(-15.525204131438151)
-    assert short_position.get_unrealised_profit_usd(include_interest=False) == pytest.approx(51.143319471254486)
-    assert short_position.get_unrealised_profit_usd() == pytest.approx(35.61811533981633)
+    assert short_position.get_unrealised_profit_usd(include_interest=False) == pytest.approx(55.52334719541218)
+    assert short_position.get_unrealised_profit_usd(include_interest=True) == pytest.approx(39.99814306397403)
     assert short_position.get_realised_profit_usd() is None
 
-    # Close position fully at 1400 price
+    # Prepare a closing trade and check it matches full vToken amount
+    assert short_position.loan.borrowed.quantity == pytest.approx(Decimal('0.5333333333333333259318465025'))
+    assert short_position.loan.borrowed_interest.last_accrued_interest == pytest.approx(Decimal('0.0219001386207884485952464011'))
+    principal_and_interest = short_position.loan.get_borrowed_principal_and_interest_quantity()
+    assert principal_and_interest == pytest.approx(Decimal('0.5552334719541217745270929036'))
+
     _, trade_2, _ = state.trade_short(
         closing=True,
         strategy_cycle_at=datetime.datetime.utcnow(),
@@ -1461,8 +1473,37 @@ def test_short_realised_interest_and_profit(
         collateral_asset_price=1.0,
     )
 
+    # Check that the position closes for vToken principal + interest amount
+    assert short_position.get_quantity() == -principal_and_interest
+
     trader.set_perfectly_executed(trade_2)
+
+    # Trade executes, value and quantity checks out
     assert trade_2.is_success()
+    assert trade_2.executed_quantity == principal_and_interest
+    assert trade_2.get_position_quantity() == principal_and_interest
+    assert trade_2.get_value() == pytest.approx(777.3268607357704)
+
+    # How much USDC gained we got from the collateral
+    assert trade_2.claimed_interest == pytest.approx(Decimal('15.13498993766567593987956340'))
+
+    # How much ETH this trade paid in interest cose
+    assert trade_2.paid_interest == pytest.approx(Decimal('0.0219001386207884485952464011'))
+
+    # The difference between opening and closing trades quantity
+    # is the interest amount
+    assert trade.executed_quantity + trade_2.executed_quantity == pytest.approx(Decimal('0.0219001386207884485952464011'))
+
+    # This trade included repaid interest
+    assert trade_2.get_repaid_interest() == pytest.approx(30.660194069103827)
+
+    # Position is properly closed
     assert short_position.get_quantity() == 0
     assert short_position.is_closed()
-    assert short_position.get_realised_profit_usd() is None
+    assert short_position.get_unrealised_profit_usd() == 0
+    assert short_position.get_repaid_interest() == pytest.approx(30.660194069103827)
+    assert short_position.get_claimed_interest() == pytest.approx(15.134989937665676)  # Profit we got from collateral interest
+    assert short_position.get_realised_profit_usd(include_interest=False) == pytest.approx(55.52334719541218)
+    assert short_position.get_realised_profit_usd(include_interest=True) == pytest.approx(39.99814306397403)
+
+

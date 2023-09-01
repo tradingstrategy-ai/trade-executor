@@ -441,7 +441,14 @@ class TradeExecution:
     #:
     closing: bool = None
 
-    #: For interest bearing positions, how much of accrued interest was moved to reserves in this trade.
+    #: How much interest we have claimed from collateral for this position.
+    #:
+    #: - For interest bearing positions, how much of accrued interest was moved to reserves in this trade.
+    #:
+    #: - Concerns only collateral, not borrow
+    #:
+    #: - Borrow interest is closed in the final trade (trade size == position quantity
+    #:   == principal + interest)
     #:
     #: This is the realised interest. Any accured interest
     #: must be realised by claiming it in some trade.
@@ -450,7 +457,17 @@ class TradeExecution:
     #:
     #: Expressed in reserve tokens.
     #:
+    #: See also :py:attr:`paid_interest`
+    #:
     claimed_interest: Optional[Decimal] = None
+
+    #: How much interest this trade paid back on the debt.
+    #:
+    #: Expressed in base token quantity.
+    #:
+    #: See also :py:attr:`claimed_interest`
+    #:
+    paid_interest: Optional[Decimal] = None
 
     def __repr__(self) -> str:
         if self.is_spot():
@@ -591,6 +608,16 @@ class TradeExecution:
             1.0 if not set
         """
         return self.reserve_currency_exchange_rate or 1.0
+
+    def get_sign(self) -> int:
+        """Return the sign of the trade.
+
+        - ``1`` for buy
+
+        - ``-1` for sell
+        """
+        sign = 1 if self.get_position_quantity() > 0 else -1
+        return sign
 
     def is_sell(self) -> bool:
         assert self.planned_quantity != 0, "Buy/sell concept does not exist for zero quantity"
@@ -864,10 +891,26 @@ class TradeExecution:
             return 0.0
 
     def get_claimed_interest(self) -> USDollarAmount:
-        """How much US interest we have claimed in this trade."""
+        """How much US interest we have claimed in this trade.
+
+        - Interest can be only claimed on collateral
+
+        - Borrow interest is paid back in the final trade
+        """
         if not self.claimed_interest:
             return 0.0
         return float(self.claimed_interest) * self.reserve_currency_exchange_rate
+
+    def get_repaid_interest(self) -> USDollarAmount:
+        """How much USD interest payments this trade made.
+
+        - Interest can be only claimed on collateral
+
+        - Borrow interest is paid back in the final trade
+        """
+        if not self.paid_interest:
+            return 0.0
+        return float(self.paid_interest) * self.executed_price
 
     def get_fees_paid(self) -> USDollarAmount:
         """

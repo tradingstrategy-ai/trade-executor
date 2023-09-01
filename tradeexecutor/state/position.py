@@ -451,7 +451,13 @@ class TradingPosition(GenericPosition):
         """
         trades = sum_decimal([t.get_position_quantity() for t in self.trades.values() if t.is_success()])
         direct_balance_updates = self.get_base_token_balance_update_quantity()
-        s = trades + direct_balance_updates
+
+        # Because short position is modelled as negative quantity,
+        # any added interest payments must make the position more negative
+        if self.is_short():
+            s = trades - direct_balance_updates
+        else:
+            s = trades + direct_balance_updates
 
         # TODO:
         # We should not have math that ends up with a trading position with dust left,
@@ -745,8 +751,8 @@ class TradingPosition(GenericPosition):
                         assert quantity is None, "quantity calculated automatically when closing a short position"
                         assert not planned_collateral_consumption, "planned_collateral_consumption set automatically when closing a short position"
 
-                        # Buy back all the debt
-                        quantity = self.loan.borrowed_interest.get_principal_and_interest_quantity()
+                        # Pay back all the debt and its interest
+                        quantity = self.loan.get_borrowed_principal_and_interest_quantity()
 
                         # Release collateral is the current collateral
                         reserve = 0
@@ -757,7 +763,7 @@ class TradingPosition(GenericPosition):
                         # Any leftover USD from the collateral is released to the reserves
                         planned_collateral_allocation = -(self.loan.collateral.quantity + planned_collateral_consumption)
 
-                        import ipdb ; ipdb.set_trace()
+                        # claimed_interest =
 
                     else:
                         assert quantity is not None, "For increasing/reducing short position quantity must be given"
@@ -992,7 +998,15 @@ class TradingPosition(GenericPosition):
                     # realised profit is zero
                     trade_profit = 0
             else:
+
+                #if self.is_short():
+                #    # We calculate the trade profit of values of all transactions
+                #    total_transacted = sum([t.get_value() * t.get_sign() for t in self.trades.values() if t.is_success()])
+                #    trade_profit = -total_transacted
+                #else:
+                # TODO: Likely need to be updated for margined long
                 trade_profit = (self.get_average_sell() - self.get_average_buy()) * float(self.get_buy_quantity())
+                # trade_profit -= self.get_repaid_interest()
         else:
             # No closes yet, only unrealised PnL
             trade_profit = 0.0
@@ -1000,6 +1014,7 @@ class TradingPosition(GenericPosition):
         if include_interest:
             # Interest that is claimed is realised
             trade_profit += self.get_claimed_interest()
+            trade_profit -= self.get_repaid_interest()
 
         return trade_profit
 
@@ -1010,14 +1025,18 @@ class TradingPosition(GenericPosition):
         in the remaining non-zero quantity of assets, due to the current
         market price.
 
-        :return: profit in dollar
+        :return:
+            profit in dollar
         """
         avg_price = self.get_average_price()
         if avg_price is None:
             return 0
+
         unrealised_equity = (self.get_current_price() - avg_price) * float(self.get_net_quantity())
+
         if include_interest:
-            return unrealised_equity + self.get_accrued_interest() - self.get_claimed_interest()
+            return unrealised_equity + self.get_accrued_interest() - self.get_claimed_interest() + self.get_repaid_interest()
+
         return unrealised_equity
 
     def get_total_profit_usd(self) -> USDollarAmount:
@@ -1383,6 +1402,14 @@ class TradingPosition(GenericPosition):
         See also :py:meth:`get_accrued_interest` for the life-time interest accumulation.
         """
         interest = sum([t.get_claimed_interest() for t in self.trades.values() if t.is_success()])
+        return interest
+
+    def get_repaid_interest(self) -> USDollarAmount:
+        """How much interest payments we have made in total.
+
+        See also :py:meth:`get_claimed_interest`.
+        """
+        interest = sum([t.get_repaid_interest() for t in self.trades.values() if t.is_success()])
         return interest
 
     def get_borrowed(self) -> USDollarAmount:
