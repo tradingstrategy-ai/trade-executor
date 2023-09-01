@@ -41,7 +41,7 @@ class BalanceUpdatePositionType(enum.Enum):
 
 @dataclass_json
 @dataclass
-class BalanceUpdate:
+class   BalanceUpdate:
     """Processed balance update event.
 
     Events that are generated on

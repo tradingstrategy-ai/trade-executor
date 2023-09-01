@@ -202,7 +202,8 @@ def estimate_interest(
     :param year:
         Year length.
 
-        Default to the financial year.
+        Default to the financial year or 360 days, 30 * 12 months,
+        not calendar year.
 
     :return:
         Amount of token quantity with principal + interest after the period.

@@ -59,6 +59,13 @@ class Interest:
         assert isinstance(self.opening_amount, Decimal)
         assert isinstance(self.last_accrued_interest, Decimal)
 
+    def get_principal_and_interest_quantity(self) -> Decimal:
+        """Return how many tokens exactly we have on the loan.
+
+        Assuming any aToken/vToken will be fully converted to the underlying.
+        """
+        return self.last_atoken_amount
+
     @staticmethod
     def open_new(opening_amount: Decimal, timestamp: datetime.datetime) -> "Interest":
         assert opening_amount > 0

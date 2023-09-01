@@ -413,15 +413,20 @@ class TradingPosition(GenericPosition):
     def get_balance_update_events(self) -> Iterable[BalanceUpdate]:
         return self.balance_updates.values()
 
-    def get_balance_update_quantity(self) -> Decimal:
-        """Get quantity of all balance udpdates for this position.
+    def get_base_token_balance_update_quantity(self) -> Decimal:
+        """Get quantity of all balance updates for this position.
+
+        - How much non-trade events have changed our base token balance
+
+        - This includes interest events and accounting corrections
 
         :return:
             How much in-kind redemption events have affected this position.
 
             Decimal zero epsilon noted.
         """
-        return sum_decimal([b.quantity for b in self.balance_updates.values()])
+        base = self.pair.base
+        return sum_decimal([b.quantity for b in self.balance_updates.values() if b.asset == base])
 
     def get_quantity(self) -> Decimal:
         """Get the tied up token quantity in all successfully executed trades.
@@ -445,8 +450,14 @@ class TradingPosition(GenericPosition):
             Rounded down to zero if the sum of
         """
         trades = sum_decimal([t.get_position_quantity() for t in self.trades.values() if t.is_success()])
-        direct_balance_updates = self.get_balance_update_quantity()
-        s = trades + direct_balance_updates
+        direct_balance_updates = self.get_base_token_balance_update_quantity()
+
+        # Because short position is modelled as negative quantity,
+        # any added interest payments must make the position more negative
+        if self.is_short():
+            s = trades - direct_balance_updates
+        else:
+            s = trades + direct_balance_updates
 
         # TODO:
         # We should not have math that ends up with a trading position with dust left,
@@ -740,8 +751,8 @@ class TradingPosition(GenericPosition):
                         assert quantity is None, "quantity calculated automatically when closing a short position"
                         assert not planned_collateral_consumption, "planned_collateral_consumption set automatically when closing a short position"
 
-                        # Buy back all the debt
-                        quantity = self.loan.borrowed.quantity
+                        # Pay back all the debt and its interest
+                        quantity = self.loan.get_borrowed_principal_and_interest_quantity()
 
                         # Release collateral is the current collateral
                         reserve = 0
@@ -751,6 +762,8 @@ class TradingPosition(GenericPosition):
 
                         # Any leftover USD from the collateral is released to the reserves
                         planned_collateral_allocation = -(self.loan.collateral.quantity + planned_collateral_consumption)
+
+                        # claimed_interest =
 
                     else:
                         assert quantity is not None, "For increasing/reducing short position quantity must be given"
@@ -868,7 +881,8 @@ class TradingPosition(GenericPosition):
         Perform additional check for token amount dust caused by rounding errors.
         """
         epsilon = get_dust_epsilon_for_pair(self.pair)
-        return abs(self.get_quantity()) <= epsilon
+        quantity = self.get_quantity()
+        return abs(quantity) <= epsilon
 
     def get_total_bought_usd(self) -> USDollarAmount:
         """How much money we have used on buys"""
@@ -990,8 +1004,8 @@ class TradingPosition(GenericPosition):
             trade_profit = 0.0
 
         if include_interest:
-            # Interest that is claimed is realised
-            trade_profit += self.get_claimed_interest()
+            trade_profit += self.get_claimed_interest()  # Profit gained from collateral interest
+            trade_profit -= self.get_repaid_interest()  # Loss made from borrowed asset interest payments
 
         return trade_profit
 
@@ -1002,14 +1016,18 @@ class TradingPosition(GenericPosition):
         in the remaining non-zero quantity of assets, due to the current
         market price.
 
-        :return: profit in dollar
+        :return:
+            profit in dollar
         """
         avg_price = self.get_average_price()
         if avg_price is None:
             return 0
+
         unrealised_equity = (self.get_current_price() - avg_price) * float(self.get_net_quantity())
+
         if include_interest:
-            return unrealised_equity + self.get_accrued_interest() - self.get_claimed_interest()
+            return unrealised_equity + self.get_accrued_interest() - self.get_claimed_interest() + self.get_repaid_interest()
+
         return unrealised_equity
 
     def get_total_profit_usd(self) -> USDollarAmount:
@@ -1375,6 +1393,14 @@ class TradingPosition(GenericPosition):
         See also :py:meth:`get_accrued_interest` for the life-time interest accumulation.
         """
         interest = sum([t.get_claimed_interest() for t in self.trades.values() if t.is_success()])
+        return interest
+
+    def get_repaid_interest(self) -> USDollarAmount:
+        """How much interest payments we have made in total.
+
+        See also :py:meth:`get_claimed_interest`.
+        """
+        interest = sum([t.get_repaid_interest() for t in self.trades.values() if t.is_success()])
         return interest
 
     def get_borrowed(self) -> USDollarAmount:

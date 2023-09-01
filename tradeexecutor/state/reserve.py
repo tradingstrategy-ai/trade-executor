@@ -81,7 +81,7 @@ class ReservePosition(GenericPosition):
         """Approximation of total equity of this reserve."""
         return self.get_value()
 
-    def get_balance_update_quantity(self) -> Decimal:
+    def get_base_token_balance_update_quantity(self) -> Decimal:
         """Get quantity of all balance udpdates for this position.
 
         :return:
@@ -104,7 +104,7 @@ class ReservePosition(GenericPosition):
         :param exchange_rate:
             USD exchange rate of the reserve asset
         """
-        quantity = self.get_balance_update_quantity()
+        quantity = self.get_base_token_balance_update_quantity()
         self.quantity = quantity
         self.reserve_token_price = exchange_rate
         self.last_pricing_at = datetime.datetime.utcnow()
