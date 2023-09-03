@@ -302,6 +302,8 @@ class TradingPairIdentifier:
     def __post_init__(self):
         assert self.base.chain_id == self.quote.chain_id, "Cross-chain trading pairs are not possible"
 
+        assert type(self.pool_address) == str, f"Got pool_address {self.pool_address} as {type(self.pool_address)}"
+
         # float/int zero fix
         # TODO: Can be carefully removed later
         if self.fee == 0:
