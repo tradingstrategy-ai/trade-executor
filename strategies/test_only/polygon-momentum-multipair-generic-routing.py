@@ -94,43 +94,45 @@ initial_deposit = 10_000
 # List of trading pairs that we consider "DeFi blueschips" for this strategy
 # For token ordering, wrappign see https://tradingstrategy.ai/docs/programming/market-data/trading-pairs.html
 # If pairs changed, make sure to update pairs in tests/enzyme/conftest/multichain_universe.py 
-# pairs = (
-#     (ChainId.polygon, "quickswap", "WMATIC", "USDC"),  # Matic
-#     #(ChainId.polygon, "quickswap", "KLIMA", "USDC"), 
-#     #(ChainId.polygon, "quickswap", "CHC", "USDC"), 
-#     (ChainId.polygon, "uniswap-v3", "WMATIC", "USDC", 0.0005), 
-#     (ChainId.polygon, "quickswap", "SAND", "WMATIC"), 
-#     (ChainId.polygon, "quickswap", "WBTC", "WETH"), 
-#     #(ChainId.polygon, "quickswap", "NASMG", "WMATIC"), 
-#     (ChainId.polygon, "uniswap-v3", "WETH", "USDC", 0.0005),  
-#     #(ChainId.polygon, "quickswap", "GHST", "USDC"), 
-#     #(ChainId.polygon, "sushi", "NCT", "USDC"), 
-#     #(ChainId.polygon, "quickswap", "QI", "WMATIC"), 
-#     (ChainId.polygon, "quickswap", "mOCEAN", "WMATIC"), 
-#     #(ChainId.polygon, "quickswap", "ICE", "USDC"), 
-#     #(ChainId.polygon, "sushi", "GIDDY", "USDC"), 
-#     (ChainId.polygon, "quickswap", "DG", "WMATIC"), 
-#     #(ChainId.polygon, "quickswap", "ORBS", "USDC"), 
-# )
 pairs = (
-    (ChainId.anvil, "UniswapV2MockClient", "WETH", "USDC", 0.003), # HarryPotterObamaSonic10Inu-Ether https://tradingstrategy.ai/trading-view/ethereum/uniswap-v2/bitcoin-eth, 
-    (ChainId.anvil, "UniswapV3MockClient", "WETH", "USDC", 0.0005), # Ether-USD Coin https://tradingstrategy.ai/trading-view/ethereum/uniswap-v3/eth-usdc-fee-5 
-    (ChainId.anvil, "UniswapV2MockClient", "BOB", "USDC", 0.003), # BAD IDEA AI-Ether https://tradingstrategy.ai/trading-view/ethereum/uniswap-v2/bad-eth
-    (ChainId.anvil, "UniswapV2MockClient", "PEPE", "USDC", 0.003), # SHIA-Ether https://tradingstrategy.ai/trading-view/ethereum/uniswap-v2/shia-eth 
+    (ChainId.polygon, "quickswap", "WMATIC", "USDC"),  # Matic
+    #(ChainId.polygon, "quickswap", "KLIMA", "USDC"), 
+    #(ChainId.polygon, "quickswap", "CHC", "USDC"), 
+    (ChainId.polygon, "uniswap-v3", "WMATIC", "USDC", 0.0005), 
+    (ChainId.polygon, "quickswap", "SAND", "WMATIC"), 
+    (ChainId.polygon, "quickswap", "WBTC", "WETH"), 
+    #(ChainId.polygon, "quickswap", "NASMG", "WMATIC"), 
+    (ChainId.polygon, "uniswap-v3", "WETH", "USDC", 0.0005),  
+    #(ChainId.polygon, "quickswap", "GHST", "USDC"), 
+    #(ChainId.polygon, "sushi", "NCT", "USDC"), 
+    #(ChainId.polygon, "quickswap", "QI", "WMATIC"), 
+    (ChainId.polygon, "quickswap", "mOCEAN", "WMATIC"), 
+    #(ChainId.polygon, "quickswap", "ICE", "USDC"), 
+    #(ChainId.polygon, "sushi", "GIDDY", "USDC"), 
+    (ChainId.polygon, "quickswap", "DG", "WMATIC"), 
+    #(ChainId.polygon, "quickswap", "ORBS", "USDC"), 
 )
+# pairs = (
+#     (ChainId.anvil, "UniswapV2MockClient", "WETH", "USDC", 0.003), # HarryPotterObamaSonic10Inu-Ether https://tradingstrategy.ai/trading-view/ethereum/uniswap-v2/bitcoin-eth, 
+#     (ChainId.anvil, "UniswapV3MockClient", "WETH", "USDC", 0.0005), # Ether-USD Coin https://tradingstrategy.ai/trading-view/ethereum/uniswap-v3/eth-usdc-fee-5 
+#     (ChainId.anvil, "UniswapV2MockClient", "BOB", "USDC", 0.003), # BAD IDEA AI-Ether https://tradingstrategy.ai/trading-view/ethereum/uniswap-v2/bad-eth
+#     (ChainId.anvil, "UniswapV2MockClient", "PEPE", "USDC", 0.003), # SHIA-Ether https://tradingstrategy.ai/trading-view/ethereum/uniswap-v2/shia-eth 
+# )
 
 
 
 def decide_trades(
         timestamp: pd.Timestamp,
-        universe: Universe,
+        strategy_universe: TradingStrategyUniverse,
         state: State,
-        pricing_model: PricingModel,
+        pricing_models: PricingModel,
         cycle_debug_data: Dict) -> List[TradeExecution]:
+
+    universe = strategy_universe.universe
 
     # Create a position manager helper class that allows us easily to create
     # opening/closing trades for different positions
-    position_manager = PositionManager(timestamp, universe, state, pricing_model)
+    position_manager = PositionManager(timestamp, universe, state, pricing_models)
 
     alpha_model = AlphaModel(timestamp)
 
