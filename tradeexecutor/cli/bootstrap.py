@@ -26,8 +26,10 @@ from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_live_pricing import uniswap_v2
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2SimpleRoutingModel
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_valuation import uniswap_v2_sell_valuation_factory
 from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_execution import UniswapV3ExecutionModel
+from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_routing import UniswapV3SimpleRoutingModel
 from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_live_pricing import uniswap_v3_live_pricing_factory
 from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_valuation import uniswap_v3_sell_valuation_factory
+from tradeexecutor.ethereum.routing_data import get_routing_model
 from tradeexecutor.ethereum.web3config import Web3Config
 from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
 from tradeexecutor.state.metadata import Metadata, OnChainData
@@ -39,6 +41,8 @@ from tradeexecutor.strategy.routing import RoutingModel
 from tradeexecutor.strategy.strategy_module import StrategyModuleInformation
 from tradeexecutor.strategy.sync_model import SyncModel, DummySyncModel
 from tradeexecutor.strategy.valuation import ValuationModelFactory
+from tradeexecutor.strategy.reserve_currency import ReserveCurrency
+from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.testing.dummy_wallet import DummyWalletSyncer
 from tradeexecutor.strategy.approval import UncheckedApprovalModel, ApprovalType, ApprovalModel
 from tradeexecutor.strategy.dummy import DummyExecutionModel
@@ -46,6 +50,7 @@ from tradeexecutor.strategy.execution_model import AssetManagementMode, Executio
 from tradingstrategy.chain import ChainId
 from tradingstrategy.client import BaseClient, Client
 from tradingstrategy.testing.uniswap_v2_mock_client import UniswapV2MockClient
+from tradingstrategy.testing.generic_mock_client import GenericMockClient
 
 logger = logging.getLogger(__name__)
 
@@ -146,14 +151,14 @@ def create_generic_execution_model(
         confirmation_block_count: int,
         max_slippage: float,
         min_gas_balance: Optional[Decimal],
+        execution_context: ExecutionContext,
+        reserve_currency: ReserveCurrency,
         mainnet_fork=False,
 ):
     """Set up the code transaction building logic.
 
     Choose between Uniswap v2 and v3 trade routing.
     """
-
-    # TODO: execution models can be shared between dexs of the same type
 
     generic_routing_data = []
 
@@ -187,7 +192,17 @@ def create_generic_execution_model(
         else:
             raise RuntimeError(f"Does not know how to route: {routing_hint}")
         
-        generic_routing_data.append(dict(execution_model=execution_model, valuation_model_factory=valuation_model_factory, pricing_model_factory=pricing_model_factory, routing_hint=routing_hint))
+        # Routing model can come with hardcoded Python tables of addresses (see default_routes.py)
+        # or it is dynamically generated for any local dev chain.
+        # If it is not dynamically generated, here set up one of the default routing models from
+        # strategy module's trade_routing var.
+        routing_model = get_routing_model(
+            execution_context,
+            routing_hint,
+            reserve_currency,
+        )
+        
+        generic_routing_data.append(dict(execution_model=execution_model, valuation_model_factory=valuation_model_factory, pricing_model_factory=pricing_model_factory, routing_hint=routing_hint, routing_model=routing_model))
 
     return generic_routing_data
 
@@ -262,7 +277,9 @@ def create_backtest_execution_model(wallet: SimulatedWallet):
 
 def create_generic_backtest_execution_and_sync_model(
     asset_management_mode: AssetManagementMode,
-    routing_hints: Optional[list[TradeRouting]],
+    routing_hints: list[TradeRouting],
+    execution_context: ExecutionContext,
+    reserve_currency: ReserveCurrency,
 ) -> Tuple[list[dict], BacktestSyncModel]:
     """
     TODO: currently unused in any code paths
@@ -287,7 +304,12 @@ def create_generic_backtest_execution_and_sync_model(
 
     for routing_hint in routing_hints:
         execution_model, valuation_model_factory, pricing_model_factory = create_backtest_execution_model(wallet)
-        generic_routing_data.append(dict(execution_model=execution_model, valuation_model_factory=valuation_model_factory, pricing_model_factory=pricing_model_factory, routing_hint=routing_hint))
+        routing_model = get_routing_model(
+            execution_context,
+            routing_hint,
+            reserve_currency,
+        )
+        generic_routing_data.append(dict(execution_model=execution_model, valuation_model_factory=valuation_model_factory, pricing_model_factory=pricing_model_factory, routing_hint=routing_hint, routing_model=routing_model))
 
     return generic_routing_data, sync_model
 
@@ -303,14 +325,16 @@ def create_generic_execution_and_sync_model(
     vault_address: Optional[str],
     vault_adapter_address: Optional[str],
     vault_payment_forwarder_address: Optional[str],
-    routing_hints: Optional[list[TradeRouting]] = None,
+    routing_hints: Optional[list[TradeRouting]],
+    execution_context: ExecutionContext,
+    reserve_currency: ReserveCurrency,
 ):
     """Set up the wallet sync and execution mode for the command line client for a trading universe with multiple dexes."""
     
     assert len(routing_hints) > 1, "At least two dexes are needed for generic routing"
     
     if asset_management_mode == AssetManagementMode.backtest:
-        generic_routing_data, sync_model = create_generic_backtest_execution_and_sync_model(asset_management_mode, routing_hints)
+        generic_routing_data, sync_model = create_generic_backtest_execution_and_sync_model(asset_management_mode, routing_hints, execution_context, reserve_currency)
     else:
         assert asset_management_mode in (AssetManagementMode.hot_wallet, AssetManagementMode.enzyme)
         assert private_key, "Private key is needed for live trading"
@@ -335,8 +359,9 @@ def create_generic_execution_and_sync_model(
             max_slippage=max_slippage,
             min_gas_balance=min_gas_balance,
             mainnet_fork=web3config.is_mainnet_fork(),
+            execution_context=execution_context,
+            reserve_currency=reserve_currency,
         )
-
 
     return generic_routing_data, sync_model
 
@@ -538,6 +563,10 @@ def create_client(
     # Create our data client
     if test_evm_uniswap_v2_factory:
         # Running against a local dev chain
+        
+        assert type(test_evm_uniswap_v2_factory) != list, "Use create_generic_client()"
+        assert len(mod.trade_routing) == 1, "Use create_generic_client()"
+
         client = UniswapV2MockClient(
             web3config.get_default(),
             test_evm_uniswap_v2_factory,
@@ -545,13 +574,16 @@ def create_client(
             test_evm_uniswap_v2_init_code_hash,
         )
 
-        if len(mod.trade_routing) == 1 and mod.trade_routing[0] == TradeRouting.user_supplied_routing_model:
+        if mod.trade_routing[0] == TradeRouting.user_supplied_routing_model:
             routing_model = UniswapV2SimpleRoutingModel(
                 factory_router_map={
                     test_evm_uniswap_v2_factory: (test_evm_uniswap_v2_router, test_evm_uniswap_v2_init_code_hash)},
                 allowed_intermediary_pairs={},
                 reserve_token_address=client.get_default_quote_token_address(),
             )
+    # elif type(test_evm_uniswap_v2_factory) == list:
+        
+    #    raise NotImplementedError("Use create_generic_client()")
 
     elif trading_strategy_api_key:
         # Backtest / real trading
@@ -563,3 +595,68 @@ def create_client(
         pass
 
     return client, routing_model
+
+
+def create_generic_client(
+    mod: StrategyModuleInformation,
+    web3config: Web3Config,
+    trading_strategy_api_key: Optional[str],
+    cache_path: Optional[Path],
+    uniswap_v2_data: Optional[list[dict]],
+    uniswap_v3_data: Optional[list[dict]],
+    test_evm_uniswap_v2_factories: Optional[str | list[str]],
+    test_evm_uniswap_v2_routers: Optional[str | list[str]],
+    test_evm_uniswap_v2_init_code_hashes: Optional[str | list[str]],
+    test_evm_exchange_slugs: Optional[list[str]],
+    clear_caches: bool,
+) -> Tuple[BaseClient | None, list[RoutingModel] | None]:
+    # Don't think this is needed
+    pass
+
+    # if uniswap_v2_data or uniswap_v3_data:
+        
+    #     assert type(test_evm_uniswap_factories) == list and len(test_evm_uniswap_factories) > 1, "Use create_client() if test_evm_uniswap_factories is a single string"
+
+    #     assert len(test_evm_uniswap_factories) == len(test_evm_uniswap_routers) == len(test_evm_uniswap_v2_init_code_hashes) == len(test_evm_exchange_slugs), "test_evm_uniswap_factories, test_evm_uniswap_routers and test_evm_uniswap_v2_init_code_hashes must have the same length"
+
+
+    #     client = GenericMockClient(
+    #         web3config.get_default(),
+    #         test_evm_uniswap_factories,
+    #         test_evm_uniswap_routers,
+    #         test_evm_uniswap_v2_init_code_hashes,
+    #         test_evm_exchange_slugs,
+    #     )
+
+    #     if any(mod.trade_routing) == TradeRouting.user_supplied_routing_model:
+    #         assert all(mod.trade_routing) == TradeRouting.user_supplied_routing_model, "If user_supplied_routing_model is used, it must be the only routing model"
+
+    #         routing_models = []
+
+    #         for i, factory in enumerate(test_evm_uniswap_factories):
+    #             router = test_evm_uniswap_routers[i]
+    #             init_code_hash = test_evm_uniswap_v2_init_code_hashes[i]
+
+    #             # TODO: find more robust way, maybe extra argument to identify v2 vs v3
+    #             if init_code_hash:
+    #                 routing_model = UniswapV2SimpleRoutingModel(
+    #                     factory_router_map={
+    #                         factory: (router, init_code_hash)},
+    #                     allowed_intermediary_pairs={},
+    #                     reserve_token_address=client.get_default_quote_token_address(factory),
+    #                 )
+    #             else:
+    #                 address_map = {
+    #                     "factory": uniswap_v3.factory.address,
+    #                     "router": uniswap_v3.swap_router.address,
+    #                     "position_manager": uniswap_v3.position_manager.address,
+    #                     "quoter": uniswap_v3.quoter.address
+    #                     # "router02":"0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45",
+    #                     # "quoterV2":"0x61fFE014bA17989E743c5F6cB21bF9697530B21e"
+    #                 } # TODO create address_map class
+
+    #                 routing_model = UniswapV3SimpleRoutingModel(
+    #                     address_map=
+    #                 )
+
+    #     return client, routing_models
