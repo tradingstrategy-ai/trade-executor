@@ -160,4 +160,6 @@ filterwarnings = [
     #  DeprecationWarning: abi.decode_single() is deprecated and will be removed in version 4.0.0 in favor of abi.decode()
     "ignore::DeprecationWarning:eth_abi.*:",
     "ignore:::.*.codec",
+    "ignore::DeprecationWarning:pandas.*:",
+    "ignore::DeprecationWarning:quantstats.*:",
 ]

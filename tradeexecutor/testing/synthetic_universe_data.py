@@ -1,12 +1,16 @@
+import pandas as pd
+
 from tradingstrategy.chain import ChainId
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
-from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradingstrategy.candle import GroupedCandleUniverse
+from tradingstrategy.lending import LendingCandleUniverse
+from tradingstrategy.exchange import Exchange
+
+from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, \
     create_pair_universe_from_code
-from tradingstrategy.exchange import Exchange
-import pandas as pd
+
 
 
 def create_synthetic_single_pair_universe(
@@ -15,6 +19,7 @@ def create_synthetic_single_pair_universe(
     exchange: Exchange,
     time_bucket: TimeBucket,
     pair: TradingPairIdentifier,
+    lending_candles: LendingCandleUniverse,
 ) -> TradingStrategyUniverse:
     """Creates a synthetic universe with a single pair and a single chain.
     
@@ -62,7 +67,8 @@ def create_synthetic_single_pair_universe(
         exchanges={exchange},
         pairs=pair_universe,
         candles=candle_universe,
-        liquidity=None
+        liquidity=None,
+        lending_candles=lending_candles,
     )
 
     return TradingStrategyUniverse(universe=universe, reserve_assets=[pair.quote])
