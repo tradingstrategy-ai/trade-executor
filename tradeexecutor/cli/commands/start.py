@@ -116,6 +116,8 @@ def start(
     test_evm_uniswap_v2_router: Optional[str] = shared_options.test_evm_uniswap_v2_router,
     test_evm_uniswap_v2_factory: Optional[str] = shared_options.test_evm_uniswap_v2_factory,
     test_evm_uniswap_v2_init_code_hash: Optional[str] = shared_options.test_evm_uniswap_v2_init_code_hash,
+    test_evm_uniswap_v3_router: Optional[str] = shared_options.test_evm_uniswap_v3_router,
+    test_evm_uniswap_v3_factory: Optional[str] = shared_options.test_evm_uniswap_v3_factory,
 
     # Live trading configuration
     max_slippage: float = shared_options.max_slippage,
@@ -143,6 +145,30 @@ def start(
     ):
     """Launch Trade Executor instance."""
     global logger
+
+    if backtest_start:
+
+        assert asset_management_mode == AssetManagementMode.backtest, f"Expected backtest mode, got {asset_management_mode}"
+
+        # We cannot have real-time triggered trades when doing backtestin
+        strategy_cycle_trigger = StrategyCycleTrigger.cycle_offset
+
+        # Running as a backtest
+        execution_context = ExecutionContext(
+            mode=ExecutionMode.backtesting,
+            timed_task_context_manager=timed_task,
+        )
+    else:
+        if unit_testing:
+            execution_context = ExecutionContext(
+                mode=ExecutionMode.unit_testing_trading,
+                timed_task_context_manager=timed_task,
+            )
+        else:
+            execution_context = ExecutionContext(
+                mode=ExecutionMode.real_trading,
+                timed_task_context_manager=timed_task,
+            )
 
     started_at = datetime.datetime.utcnow()
 
@@ -261,6 +287,7 @@ def start(
         assert type(mod.trade_routing) == list, "Expected trade_routing to be a list"
 
         if len(mod.trade_routing) > 1:
+
             generic_routing_data, sync_model = create_generic_execution_and_sync_model(
                 asset_management_mode=asset_management_mode,
                 private_key=private_key,
@@ -273,6 +300,8 @@ def start(
                 vault_adapter_address=vault_adapter_address,
                 vault_payment_forwarder_address=vault_payment_forwarder_address,
                 routing_hints=mod.trade_routing,
+                execution_context=execution_context,
+                reserve_currency=mod.reserve_currency,
             )
         else:
 
@@ -365,7 +394,8 @@ def start(
         else:
             logger.info("Web server disabled")
             server = None
-
+        
+        # if not generic_routing_data:
         # Routing model comes usually from the strategy and hard-coded blockchain defaults,
         # but for local dev chains it is dynamically constructed from the deployed contracts
         routing_model: RoutingModel = None
@@ -380,6 +410,9 @@ def start(
             test_evm_uniswap_v2_init_code_hash=test_evm_uniswap_v2_init_code_hash,
             clear_caches=clear_caches,
         )
+        # else:
+            # client = create_generic_client()
+
 
         # Currently, all actions require us to have a valid API key
         # might change in the future
@@ -406,30 +439,6 @@ def start(
             strategy_factory = import_strategy_file(strategy_file)
 
         logger.trade("%s (%s): trade execution starting", name, id)
-
-        if backtest_start:
-
-            assert asset_management_mode == AssetManagementMode.backtest, f"Expected backtest mode, got {asset_management_mode}"
-
-            # We cannot have real-time triggered trades when doing backtestin
-            strategy_cycle_trigger = StrategyCycleTrigger.cycle_offset
-
-            # Running as a backtest
-            execution_context = ExecutionContext(
-                mode=ExecutionMode.backtesting,
-                timed_task_context_manager=timed_task,
-            )
-        else:
-            if unit_testing:
-                execution_context = ExecutionContext(
-                    mode=ExecutionMode.unit_testing_trading,
-                    timed_task_context_manager=timed_task,
-                )
-            else:
-                execution_context = ExecutionContext(
-                    mode=ExecutionMode.real_trading,
-                    timed_task_context_manager=timed_task,
-                )
 
     except Exception as e:
         # Logging is set up is in this point, so we can log this exception that
