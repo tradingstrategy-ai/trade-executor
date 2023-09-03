@@ -262,6 +262,8 @@ class ExecutionLoop:
         Perform preflight checks e.g. to see if our trading accounts look sane.
         """
 
+        assert not self.generic_routing_data, "Generic routing data must not be set"
+
         self.execution_model.initialize()
         self.execution_model_preflight_check(self.execution_model)
 
