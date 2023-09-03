@@ -2,7 +2,7 @@ import logging
 import datetime
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import List, Optional
+from typing import List, Optional, Literal
 
 from eth_defi.aave_v3.rates import SECONDS_PER_YEAR
 
@@ -13,7 +13,7 @@ from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
 from tradeexecutor.state.types import JSONHexAddress
-from tradeexecutor.strategy.interest import update_credit_supply_interest
+from tradeexecutor.strategy.interest import update_credit_supply_interest, update_leveraged_position_interest
 from tradeexecutor.strategy.sync_model import SyncModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.testing.dummy_wallet import apply_sync_events
@@ -134,24 +134,31 @@ class BacktestSyncModel(SyncModel):
         universe: TradingStrategyUniverse,
         position: TradingPosition,
         timestamp: datetime.datetime,
+        interest_type: Literal["collateral"] | Literal["borrow"],
     ) -> Decimal:
         """Calculate accrued interest of a position since last update."""
         # get relevant candles for the position period since last update until now
-        collateral_interest = position.loan.collateral_interest
-        previous_update_at = collateral_interest.last_event_at
+        if interest_type == "collateral":
+            interest = position.loan.collateral_interest
+            amount = Decimal(interest.last_atoken_amount)
+        elif interest_type == "borrow":
+            interest = position.loan.borrowed_interest
+            amount = Decimal(interest.last_atoken_amount)
+
+        previous_update_at = interest.last_event_at
 
         df = universe.universe.lending_candles.supply_apr.df.copy()
         supply_df = df[
             (df["timestamp"] >= previous_update_at)
             & (df["timestamp"] <= timestamp)
-        ]
+        ].copy()
 
         if len(supply_df) == 0:
             # TODO: this is a temporary hack, we should make it better
             supply_df = df[
                 (df["timestamp"] >= position.opened_at)
                 & (df["timestamp"] <= timestamp)
-            ]
+            ].copy()
 
         assert len(supply_df) > 0, f"No lending data for {position} from {previous_update_at} to {timestamp}"
 
@@ -159,7 +166,6 @@ class BacktestSyncModel(SyncModel):
         supply_df["avg"] = supply_df[["high", "low"]].mean(axis=1)
         avg_apr = Decimal(supply_df["avg"].mean() / 100)
 
-        amount = Decimal(collateral_interest.last_atoken_amount)
         duration = Decimal((timestamp - previous_update_at).total_seconds())
         accrued_interest_estimation = amount * avg_apr * duration / SECONDS_PER_YEAR
 
@@ -177,20 +183,17 @@ class BacktestSyncModel(SyncModel):
 
         events = []
         for p in positions:
-
             if p.is_credit_supply():
+                assert len(p.trades) <= 2, "This interest calculation does not support increase/reduce position"
+
                 accrued = self.calculate_accrued_interest(
                     universe,
                     p,
                     timestamp,
+                    "collateral",
                 )
 
-                interest = p.loan.collateral_interest
-
-                # TODO: replace with a real interest calculation,
-                # based on universe.lending_candles
-                assert len(p.trades) <= 2, "This interest calculation does not support increase/reduce position"
-                new_amount = interest.last_atoken_amount + accrued
+                new_amount = p.loan.collateral_interest.last_atoken_amount + accrued
 
                 # TODO: the collateral is stablecoin so this can be hardcode for now
                 # but make sure to fetch it from somewhere later
@@ -210,5 +213,44 @@ class BacktestSyncModel(SyncModel):
                 # backtest wallet. The amount must be updated, or
                 # otherwise we get errors when closing the position.
                 self.wallet.update_balance(p.pair.base.address, new_amount)
+            elif p.is_leverage() and p.is_short():
+                assert len(p.trades) <= 2, "This interest calculation does not support increase/reduce position"
+
+                accrued_collateral_interest = self.calculate_accrued_interest(
+                    universe,
+                    p,
+                    timestamp,
+                    "collateral",
+                )
+                accrued_borrow_interest = self.calculate_accrued_interest(
+                    universe,
+                    p,
+                    timestamp,
+                    "borrow",
+                )
+
+                new_atoken_amount = p.loan.collateral_interest.last_atoken_amount + accrued_collateral_interest
+                new_vtoken_amount = p.loan.borrowed_interest.last_atoken_amount + accrued_borrow_interest
+
+                # TODO: hardcode, need to replace with proper price
+                atoken_price = 1.0
+                vtoken_price = 1800.0
+
+                vevt, aevt = update_leveraged_position_interest(
+                    state,
+                    p,
+                    new_vtoken_amount=new_vtoken_amount,
+                    new_atoken_amount=new_atoken_amount,
+                    vtoken_price=vtoken_price,
+                    atoken_price=atoken_price,
+                    event_at=timestamp,
+                )
+                events.append(vevt)
+                events.append(aevt)
+
+                # Make atokens magically appear in the simulated
+                # backtest wallet. The amount must be updated, or
+                # otherwise we get errors when closing the position.
+                self.wallet.update_balance(p.pair.base.address, new_atoken_amount)
 
         return events

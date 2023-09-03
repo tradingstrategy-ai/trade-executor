@@ -974,6 +974,10 @@ class Portfolio:
         """Return currently open credit positions."""
         credit_positions = [p for p in self.get_open_and_frozen_positions() if p.is_credit_supply()]
         return credit_positions
+    
+    def get_leverage_positions(self) -> List[TradingPosition]:
+        """Return currently open credit positions."""
+        return [p for p in self.get_open_and_frozen_positions() if p.is_leverage()]
 
     def get_borrowed(self) -> USDollarAmount:
         return sum([p.get_borrowed() for p in self.get_open_and_frozen_positions()])
