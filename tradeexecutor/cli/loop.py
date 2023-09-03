@@ -444,15 +444,18 @@ class ExecutionLoop:
         # Sync credit supply information before each tick.
         # This will update the latest accrued interest.
         credit_positions = state.portfolio.get_current_credit_positions()
-        if credit_positions:
-            logger.info("We have %d credit positions open", len(credit_positions))
-            credit_events = self.sync_model.sync_interests(
+        leverage_positions = state.portfolio.get_leverage_positions()
+        
+        to_be_synced = credit_positions + leverage_positions
+        if to_be_synced:
+            logger.info("We have %d credit positions and %d leverage positions open", len(credit_positions), len(leverage_positions))
+            sync_events = self.sync_model.sync_interests(
                 strategy_cycle_timestamp,
                 state,
                 cast(TradingStrategyUniverse, universe),
-                credit_positions,
+                to_be_synced,
             )
-            logger.info("Generated %d credit events", len(credit_events))
+            logger.info("Generated %d sync interest events", len(sync_events))
 
         # Execute the strategy tick and trades
         self.runner.tick(
