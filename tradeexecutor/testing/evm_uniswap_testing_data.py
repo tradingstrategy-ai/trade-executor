@@ -1,15 +1,20 @@
 import json
+from tradingstrategy.chain import ChainId
 
 
 class UniswapV2TestData:
-    def __init__(self, version, factory, router, init_code_hash, exchange_slug):
+    def __init__(self, version: str, factory: str, router: str, init_code_hash: str, exchange_slug: str, exchange_id: int, chain_id: ChainId):
         assert (
             type(factory)
             == type(router)
             == type(init_code_hash)
             == type(exchange_slug)
             == str
-        ), "UniswapV2TestData: All arguments must be strings."
+        ), "UniswapV2TestData: all arguments except exchange_id must be strings."
+        assert type(exchange_id) == int, "UniswapV2TestData: exchange_id must be int."
+
+        if type(chain_id) == int:
+            chain_id = ChainId(chain_id)
 
         assert version == "V2", "UniswapV2TestData: version must be V2"
         self.version = "V2"
@@ -17,19 +22,26 @@ class UniswapV2TestData:
         self.router = router
         self.init_code_hash = init_code_hash
         self.exchange_slug = exchange_slug
+        self.exchange_id = exchange_id
+        self.chain_id = chain_id
 
 
 class UniswapV3TestData:
     def __init__(
-        self, version, factory, router, position_manager, quoter, exchange_slug
+        self, version: str, factory: str, router: str, position_manager: str, quoter: str, exchange_slug: str, exchange_id: int, chain_id: ChainId
     ):
         assert (
             type(factory)
             == type(router)
             == type(position_manager)
             == type(quoter)
+            == type(exchange_slug)
             == str
-        ), "UniswapV3TestData: All arguments must be strings."
+        ), "UniswapV3TestData: All arguments except exchange_id must be strings."
+        assert type(exchange_id) == int, "UniswapV3TestData: exchange_id must be int."
+        
+        if type(chain_id) == int:
+            chain_id = ChainId(chain_id)
 
         assert version == "V3", "UniswapV3TestData: version must be V3"
         self.version = "V3"
@@ -38,6 +50,8 @@ class UniswapV3TestData:
         self.position_manager = position_manager
         self.quoter = quoter
         self.exchange_slug = exchange_slug
+        self.exchange_id = exchange_id
+        self.chain_id = chain_id
 
 
 def serialize_uniswap_test_data(data: UniswapV2TestData | UniswapV3TestData) -> str:
