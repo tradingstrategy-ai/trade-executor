@@ -28,6 +28,7 @@ from tradeexecutor.strategy.strategy_type import StrategyType
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.trading_strategy_universe import translate_trading_pair
+from tradeexecutor.testing.generic_mock_client import GenericMockClient
 
 
 trading_strategy_engine_version = "0.1" # TODO, also adjust based on env var
@@ -35,20 +36,22 @@ trading_strategy_type = StrategyType.managed_positions
 trading_strategy_cycle = CycleDuration.cycle_1s
 reserve_currency = ReserveCurrency.usdc
 
-trade_routing = [TradeRouting.user_supplied_routing_model_uniswap_v3, TradeRouting.user_supplied_routing_model_uniswap_v2]
+trade_routing = [TradeRouting.user_supplied_routing_model_uniswap_v2, TradeRouting.user_supplied_routing_model_uniswap_v3]
 
 def decide_trades(
         timestamp: pd.Timestamp,
-        universe: Universe,
+        strategy_universe: TradingStrategyUniverse,
         state: State,
-        pricing_model: PricingModel,
+        pricing_models: list[PricingModel],
         cycle_debug_data: Dict) -> List[TradeExecution]:
+
+    universe = strategy_universe.universe
 
     # Create a position manager helper class that allows us easily to create
         # opening/closing trades for different positions
         # Create a position manager helper class that allows us easily to create
     # opening/closing trades for different positions
-    position_manager = PositionManager(timestamp, universe, state, pricing_model, default_slippage_tolerance=0.02)
+    position_manager = PositionManager(timestamp, universe, state, pricing_models, default_slippage_tolerance=0.02)
 
     # The array of trades we are going to perform in this cycle.
     trades = []
@@ -91,7 +94,7 @@ def create_trading_universe(
         execution_context: ExecutionContext,
         universe_options: UniverseOptions,
 ):
-    assert isinstance(client, UniswapV2MockClient), f"Looks like we are not running on EVM testing backend. Got: {client}"
+    assert isinstance(client, GenericMockClient), f"Looks like we are not running on EVM testing backend. Got: {client}"
 
     # Load exchange and pair data
     dataset = load_all_data(
@@ -113,7 +116,7 @@ def create_trading_universe(
     pairs: HumanReadableTradingPairDescription = []
     for row in dataset.pairs.itertuples():
         assert row.chain_id == pair.chain_id, "All pairs must be on the same chain"
-        assert row.exchange_slug == pair.exchange_slug, "All pairs must be on the same exchange"
+        # assert row.exchange_slug == pair.exchange_slug, "All pairs must be on the same exchange"
         
         pairs.append([row.base_token_symbol, row.quote_token_symbol])
 
