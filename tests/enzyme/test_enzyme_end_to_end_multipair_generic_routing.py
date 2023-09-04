@@ -266,6 +266,7 @@ def uniswap_v2_test_data(uniswap_v2: UniswapV2Deployment):
         factory=uniswap_v2.factory.address,
         router=uniswap_v2.router.address,
         init_code_hash=uniswap_v2.init_code_hash,
+        exchange_slug="UniswapV2MockClient"
     )
 
 
@@ -277,6 +278,7 @@ def uniswap_v3_test_data(uniswap_v3: UniswapV3Deployment):
         router=uniswap_v3.swap_router.address,
         position_manager=uniswap_v3.position_manager.address,
         quoter=uniswap_v3.quoter.address,
+        exchange_slug="UniswapV3MockClient"
     )
 
 
