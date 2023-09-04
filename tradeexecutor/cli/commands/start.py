@@ -146,6 +146,12 @@ def start(
     """Launch Trade Executor instance."""
     global logger
 
+    user_supplied_routing_options = TradeRouting.is_user_supplied()
+    trade_routing_set = set(mod.trade_routing)
+
+    if trade_routing_set & user_supplied_routing_options:
+        assert trade_routing_set <= user_supplied_routing_options, "Expected all routing hints to be user supplied, if one is user supplied"
+
     if backtest_start:
 
         assert asset_management_mode == AssetManagementMode.backtest, f"Expected backtest mode, got {asset_management_mode}"
