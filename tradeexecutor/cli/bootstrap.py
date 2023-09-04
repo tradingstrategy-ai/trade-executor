@@ -44,6 +44,7 @@ from tradeexecutor.strategy.valuation import ValuationModelFactory
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.testing.dummy_wallet import DummyWalletSyncer
+from tradeexecutor.testing.evm_uniswap_testing_data import UniswapV2TestData, UniswapV3TestData
 from tradeexecutor.strategy.approval import UncheckedApprovalModel, ApprovalType, ApprovalModel
 from tradeexecutor.strategy.dummy import DummyExecutionModel
 from tradeexecutor.strategy.execution_model import AssetManagementMode, ExecutionModel
@@ -51,6 +52,7 @@ from tradingstrategy.chain import ChainId
 from tradingstrategy.client import BaseClient, Client
 from tradingstrategy.testing.uniswap_v2_mock_client import UniswapV2MockClient
 from tradingstrategy.testing.generic_mock_client import GenericMockClient
+
 
 logger = logging.getLogger(__name__)
 
@@ -197,7 +199,7 @@ def create_generic_execution_model(
         # If it is not dynamically generated, here set up one of the default routing models from
         # strategy module's trade_routing var.
         
-        if routing_hint not in TradeRouting.is_user_supplied():
+        if routing_hint not in TradeRouting.get_user_supplied():
             # routing model will be set later when client is created
             routing_model = get_routing_model(
                 execution_context,
@@ -310,7 +312,7 @@ def create_generic_backtest_execution_and_sync_model(
     for routing_hint in routing_hints:
         execution_model, valuation_model_factory, pricing_model_factory = create_backtest_execution_model(wallet)
         
-        if routing_hint not in TradeRouting.is_user_supplied():
+        if routing_hint not in TradeRouting.get_user_supplied():
             # routing model will be set later when client is created
             routing_model = get_routing_model(
                 execution_context,
