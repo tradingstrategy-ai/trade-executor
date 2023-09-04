@@ -396,7 +396,9 @@ class PositionManager:
         if type(value) == float:
             value = Decimal(value)
 
-        price_structure = self.get_pricing_model(executor_pair).get_buy_price(self.timestamp, executor_pair, value)
+        pricing_model: PricingModel = self.get_pricing_model(executor_pair)
+
+        price_structure = pricing_model.get_buy_price(self.timestamp, executor_pair, value)
 
         assert type(price_structure.mid_price) == float
 
@@ -419,6 +421,8 @@ class PositionManager:
             price_structure=price_structure,
             slippage_tolerance=slippage_tolerance,
         )
+
+        trade.routing_model = pricing_model.routing_model
 
         assert created, f"There was conflicting open position for pair: {executor_pair}"
 
@@ -901,33 +905,38 @@ class PositionManager:
 
         locked = False
         rm = None
+        routing_model = None
+        final_pricing_model = None
 
         for pricing_model in self.pricing_models:
 
             rm = pricing_model.routing_model
 
             if hasattr(rm, "factory_router_map"):  # uniswap v2 like
-                keys = list(rm["factory_router_map"].keys())
+                keys = list(rm.factory_router_map.keys())
                 assert len(keys) == 1, "Only one factory router map supported for now"
                 factory_address = keys[0]
             elif hasattr(rm, "address_map"):  # uniswap v3 like
-                factory_address = rm["address_map"]["factory"] 
+                factory_address = rm.address_map["factory"] 
             else:
                 raise NotImplementedError("Routing model not supported")
 
-            if factory_address.lower() == pair.exchange_address.lower() and rm["chain_id"] == pair.chain_id:
+            if factory_address.lower() == pair.exchange_address.lower() and rm.chain_id == pair.chain_id:
                 if locked == True:
                     raise LookupError("Multiple routing models for same exchange (on same chain) not supported")
 
                 routing_model = rm
+                final_pricing_model = pricing_model
                 locked = True
 
         if not routing_model:
             raise NotImplementedError("Unable to find routing_model for pair, make sure to add correct routing models for the pairs that you want to trade")
 
         if isinstance(routing_model, (UniswapV2SimpleRoutingModel, UniswapV3SimpleRoutingModel, BacktestRoutingModel, BacktestRoutingIgnoredModel)):
-            pair.routing_model = routing_model
+            pair.routing_model = routing_model  # TODO: check if unnecessary. Think so
         else:
             raise NotImplementedError("Routing model not supported")
 
-        return routing_model
+        assert final_pricing_model is not None, "Unable to find pricing model for pair"
+
+        return final_pricing_model
