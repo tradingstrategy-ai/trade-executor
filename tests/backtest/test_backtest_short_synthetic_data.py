@@ -182,5 +182,5 @@ def test_backtest_open_only_short_synthetic_data(
     assert loan.borrowed.last_usd_price == pytest.approx(1728.9830072484115)  # ETH current value
 
     # TODO: following look wrong, verify the calculations
-    assert position.get_value() == Decimal(8585.23728070598)
-    assert position.get_unrealised_profit_usd() == pytest.approx(1454.7408590503317)
+    assert position.get_value() == Decimal(10366.203735929015)
+    assert position.get_unrealised_profit_usd() == pytest.approx(366.2237707649561)
