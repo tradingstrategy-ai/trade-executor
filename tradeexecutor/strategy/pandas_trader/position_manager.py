@@ -917,10 +917,10 @@ class PositionManager:
             executor_pair = pair
 
         shorting_pair = self.strategy_universe.get_shorting_pair(executor_pair)
+        assert shorting_pair.kind.is_shorting()
 
         if type(value) == float:
             value = Decimal(value)
-
 
         price_structure = self.pricing_model.get_sell_price(self.timestamp, executor_pair, value)
 
@@ -928,6 +928,20 @@ class PositionManager:
         # so it should be taken into account for stoploss
         borrowed_size, collateral_size = calculate_sizes_for_leverage(value, leverage)
         borrowed_quantity = borrowed_size / Decimal(price_structure.price)
+
+        collateral_price = self.reserve_price
+        borrowed_asset_price = price_structure.price
+
+        logger.info("Opening a short position.\n"
+                    "Collateral amount: %s USD\n"
+                    "Borrow amount: %s USD (%s %s)\n"
+                    "Collateral asset price: %s %s/USD\n"
+                    "Borrowed asset price: %s %s/USD (with assumed execution)\n",
+                    collateral_size,
+                    borrowed_size, borrowed_quantity, executor_pair.base.token_symbol,
+                    collateral_price, executor_pair.quote.token_symbol,
+                    borrowed_asset_price, executor_pair.base.token_symbol,
+                    )
 
         position, trade, _ = self.state.trade_short(
             self.timestamp,
@@ -937,7 +951,7 @@ class PositionManager:
             borrowed_asset_price=price_structure.price,
             trade_type=TradeType.rebalance,
             reserve_currency=self.reserve_currency,
-            collateral_asset_price=self.reserve_price,
+            collateral_asset_price=collateral_price,
         )
 
         if take_profit_pct:
