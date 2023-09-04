@@ -46,6 +46,7 @@ from tradeexecutor.state.state import State
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, load_partial_data, create_pair_universe_from_code
 from tradeexecutor.strategy.universe_model import UniverseOptions
 from tradeexecutor.testing.synthetic_price_data import generate_ohlcv_candles
+from tradeexecutor.testing.evm_uniswap_testing_data import UniswapV2TestData, UniswapV3TestData, serialize_uniswap_test_data_list
 
 
 logger = logging.getLogger(__name__)
@@ -243,7 +244,7 @@ def hot_wallet(web3, deployer, user_1, usdc: Contract, vault: Vault) -> HotWalle
 @pytest.fixture()
 def strategy_file() -> Path:
     """Where do we load our strategy file."""
-    return Path(os.path.dirname(__file__)) / "../../strategies/test_only" / "enzyme_end_to_end_multipair.py"
+    return Path(os.path.dirname(__file__)) / "../../strategies/test_only" / "enzyme_end_to_end_multipair_generic_routing.py"
 
 
 @pytest.fixture()
@@ -259,6 +260,27 @@ def state_file() -> Path:
 
 
 @pytest.fixture()
+def uniswap_v2_test_data(uniswap_v2: UniswapV2Deployment):
+    return UniswapV2TestData(
+        version="V2",
+        factory=uniswap_v2.factory.address,
+        router=uniswap_v2.router.address,
+        init_code_hash=uniswap_v2.init_code_hash,
+    )
+
+
+@pytest.fixture()
+def uniswap_v3_test_data(uniswap_v3: UniswapV3Deployment):
+    return UniswapV3TestData(
+        version="V3",
+        factory=uniswap_v3.factory.address,
+        router=uniswap_v3.swap_router.address,
+        position_manager=uniswap_v3.position_manager.address,
+        quoter=uniswap_v3.quoter.address,
+    )
+
+
+@pytest.fixture()
 def multichain_environment(
     anvil: AnvilLaunch,
     deployer: HexAddress,
@@ -270,6 +292,8 @@ def multichain_environment(
     hot_wallet: HotWallet,
     state_file: Path,
     strategy_file: Path,
+    uniswap_v2_test_data: UniswapV2TestData,
+    uniswap_v3_test_data: UniswapV3TestData,
     ) -> dict:
     """Passed to init and start commands as multichain_environment variables"""
     # Set up the configuration for the live trader
@@ -286,11 +310,12 @@ def multichain_environment(
         "LOG_LEVEL": "disabled",
         "VAULT_ADDRESS": vault.address,
         "VAULT_ADAPTER_ADDRESS": vault.generic_adapter.address,
-        "TEST_EVM_UNISWAP_V2_ROUTER": uniswap_v2.router.address, 
-        "TEST_EVM_UNISWAP_V2_FACTORY": uniswap_v2.factory.address,
-        "TEST_EVM_UNISWAP_V2_INIT_CODE_HASH": uniswap_v2.init_code_hash,
-        "TEST_EVM_UNISWAP_V3_ROUTER": uniswap_v3.swap_router.address,
-        "TEST_EVM_UNISWAP_V3_FACTORY": uniswap_v3.factory.address,
+        "TEST_EVM_UNISWAP_DATA": serialize_uniswap_test_data_list([uniswap_v2_test_data, uniswap_v3_test_data]),
+        # "TEST_EVM_UNISWAP_V2_ROUTER": uniswap_v2.router.address, 
+        # "TEST_EVM_UNISWAP_V2_FACTORY": uniswap_v2.factory.address,
+        # "TEST_EVM_UNISWAP_V2_INIT_CODE_HASH": uniswap_v2.init_code_hash,
+        # "TEST_EVM_UNISWAP_V3_ROUTER": uniswap_v3.swap_router.address,
+        # "TEST_EVM_UNISWAP_V3_FACTORY": uniswap_v3.factory.address,
         "CONFIRMATION_BLOCK_COUNT": "0",  # Needed for test backend, Anvil
         "MAX_CYCLES": "5",  # Run decide_trades() 5 times
         # "PAIR": '(ChainId.anvil, "UniswapV2MockClient", "WETH", "USDC", 0.003)',
@@ -360,7 +385,6 @@ def test_enzyme_generic_live_trading_start(
 
     - 1 closed position, id 1
     """
-
 
     # Need to be initialised first
     result = run_init(multichain_environment)
