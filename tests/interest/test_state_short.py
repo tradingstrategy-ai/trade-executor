@@ -1246,8 +1246,8 @@ def test_short_unrealised_interest_and_profit(
 
     assert short_position.loan.get_collateral_interest() == pytest.approx(15.113089799044888)
     assert short_position.loan.get_borrow_interest() == pytest.approx(30.660194069103827)
-
     assert short_position.get_accrued_interest() == pytest.approx(-15.54710427005894)
+    assert short_position.get_value() == pytest.approx(1037.7862290632745)
 
     #  assert short_position.get_unrealised_profit_usd() == pytest.approx(800 - 746.6666666666666)
     assert short_position.get_realised_profit_usd() is None

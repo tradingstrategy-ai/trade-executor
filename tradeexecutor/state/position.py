@@ -564,6 +564,10 @@ class TradingPosition(GenericPosition):
 
         :param include_interest:
             Include accrued interest in the valuation
+
+        :return:
+            The value of the position if any remaining open amount
+            would be completely closed/unwind.
         """
 
         if include_interest:
@@ -584,14 +588,8 @@ class TradingPosition(GenericPosition):
                     include_interest=False,
                 )
             case TradingPairKind.lending_protocol_short:
-                # Value for leveraged positions is
-                #
-                # Short
-                value -= self.calculate_value_using_price(
-                    self.last_token_price,
-                    self.last_reserve_price,
-                    include_interest=False,
-                )
+                # Value for leveraged positions is net asset value from its two loans
+                return self.loan.get_net_asset_value(include_interest)
             case _:
                 raise NotImplementedError(f"Does not know how to value position for {self.pair}")
 
