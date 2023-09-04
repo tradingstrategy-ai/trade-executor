@@ -144,11 +144,9 @@ def start(
     """Launch Trade Executor instance."""
     global logger
 
-    user_supplied_routing_options = TradeRouting.is_user_supplied()
-    trade_routing_set = set(mod.trade_routing)
+    test_evm_uniswap_data = get_test_evm_uniswap_data()
 
-    if trade_routing_set & user_supplied_routing_options:
-        assert trade_routing_set <= user_supplied_routing_options, "Expected all routing hints to be user supplied, if one is user supplied"
+    validate_trade_routing_with_user_supplied(mod.trade_routing)
 
     if backtest_start:
 
@@ -567,3 +565,20 @@ def start(
         if server:
             logger.info("Closing the web server")
             server.close()
+
+def validate_trade_routing_with_user_supplied(trade_routing: list[TradeRouting]):
+    """Validate that the user supplied routing options are valid
+    
+    :param trade_routing:
+        list of TradeRouting options
+
+    :return:
+        None
+    """
+    user_supplied_routing_options = TradeRouting.is_user_supplied()
+    trade_routing_set = set(trade_routing)
+
+    if trade_routing_set & user_supplied_routing_options:
+        assert trade_routing_set <= user_supplied_routing_options, "Expected all routing hints to be user supplied, if one is user supplied"
+
+
