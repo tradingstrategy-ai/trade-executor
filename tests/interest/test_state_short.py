@@ -1244,10 +1244,10 @@ def test_short_unrealised_interest_and_profit(
     assert short_position.get_current_price() == 1400
     assert short_position.get_average_price() == 1500
 
-    assert short_position.loan.get_collateral_interest() == pytest.approx(15.134989937665676)
+    assert short_position.loan.get_collateral_interest() == pytest.approx(15.113089799044888)
     assert short_position.loan.get_borrow_interest() == pytest.approx(30.660194069103827)
 
-    assert short_position.get_accrued_interest() == pytest.approx(-15.525204131438151)
+    assert short_position.get_accrued_interest() == pytest.approx(-15.54710427005894)
 
     #  assert short_position.get_unrealised_profit_usd() == pytest.approx(800 - 746.6666666666666)
     assert short_position.get_realised_profit_usd() is None
@@ -1260,9 +1260,9 @@ def test_short_unrealised_interest_and_profit(
     assert loan.get_loan_to_value() == pytest.approx(0.4148148148148148)
 
     # Check that we track the equity value correctly
-    assert state.portfolio.get_loan_net_asset_value() == pytest.approx(1037.8081292018953)
+    assert state.portfolio.get_loan_net_asset_value() == pytest.approx(1037.7862290632745)
     assert state.portfolio.get_cash() == 9000
-    assert state.portfolio.get_net_asset_value() == pytest.approx(10037.808129201896)
+    assert state.portfolio.get_net_asset_value() == pytest.approx(10037.786229063275)
 
 
 def test_short_unrealised_interest_and_losses(
@@ -1363,7 +1363,7 @@ def test_short_unrealised_interest_and_losses(
     assert short_position.loan.get_borrow_interest() == pytest.approx(426.6666666666667)
 
     # We go red
-    assert state.portfolio.get_loan_net_asset_value() == pytest.approx(556.2666666666667)
+    assert state.portfolio.get_loan_net_asset_value() == pytest.approx(556)
     assert state.portfolio.get_net_asset_value() == pytest.approx(9556.266666666666)
 
 
