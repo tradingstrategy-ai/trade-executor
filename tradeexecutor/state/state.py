@@ -503,10 +503,26 @@ class State:
         )
         return position, trade, created
 
-    def start_execution(self, ts: datetime.datetime, trade: TradeExecution, txid: str, nonce: int):
+    def start_execution(self,
+                        ts: datetime.datetime,
+                        trade: TradeExecution,
+                        txid: str | None = None,
+                        nonce: int | None = None):
         """Update our balances and mark the trade execution as started.
 
-        Called before a transaction is broadcasted.
+        - Called before a transaction is broadcasted.
+
+        - Updates internal accounting and moves capital from the reserve account locked on a trade
+
+        :param trade:
+            Trade to
+
+        :param txid:
+            Legacy. Do not use.
+
+        :param nonce:
+            Legacy. Do not use.
+
         """
 
         assert trade.get_status() == TradeStatus.planned
@@ -532,8 +548,11 @@ class State:
         trade.started_at = ts
 
         # TODO: Legacy attributes that need to go away
-        trade.txid = txid
-        trade.nonce = nonce
+        if txid is not None:
+            trade.txid = txid
+
+        if nonce is not None:
+            trade.nonce = nonce
 
     def mark_broadcasted(self, broadcasted_at: datetime.datetime, trade: TradeExecution):
         """"""
@@ -658,29 +677,47 @@ class State:
         for pos_stat_id in self.stats.positions.keys():
             assert pos_stat_id in position_ids, f"Stats had position id {pos_stat_id} for which actual trades are missing"
 
-    def start_trades(self, ts: datetime.datetime, trades: List[TradeExecution], max_slippage: float=0.01, underflow_check=False):
-        """Mark trades ready to go.
+    def start_trades(self,
+                     ts: datetime.datetime,
+                     trades: List[TradeExecution],
+                     max_slippage: float=None,
+                     underflow_check=False):
+        """Mark a bunch of trades ready to go.
 
         Update any internal accounting of capital allocation from reseves to trades.
 
         Sets the execution model specific parameters like `max_slippage` on the trades.
 
+        See also :py:meth:`start_execution`
+
+        :param ts:
+            Strategy cycle timestamp
+
+        :param trades:
+            List of trades to prepare
+
         :param max_slippage:
+
+            Legacy. Do not use.
+
             The slippage allowed for this trade before it fails in execution.
             0.01 is 1%.
 
         :param underflow_check:
+
+            Legacy. Do not use.
+
             If true warn us if we do not have enough reserves to perform the trades.
             This does not consider new reserves released from the closed positions
             in this cycle.
         """
 
         for t in trades:
-            if t.is_buy():
-                self.portfolio.move_capital_from_reserves_to_spot_trade(t, underflow_check=underflow_check)
 
-            t.started_at = ts
-            t.planned_max_slippage = max_slippage
+            self.start_execution(ts, t)
+
+            if max_slippage is not None:
+                t.planned_max_slippage = max_slippage
 
     def check_if_clean(self):
         """Check that the state data is intact.
