@@ -1350,7 +1350,7 @@ class TradingPosition(GenericPosition):
 
         self.balance_updates[event.balance_update_id] = event
 
-    def calculate_accrued_interest_quantity(self) -> Decimal:
+    def calculate_accrued_interest_quantity(self, asset: AssetIdentifier) -> Decimal:
         """Calculate the gained interest in tokens.
 
         This is done as the sum of all interest events.
@@ -1360,7 +1360,11 @@ class TradingPosition(GenericPosition):
         :return:
             Number of quote tokens this position has gained interest
         """
-        return sum_decimal([b.quantity for b in self.balance_updates.values() if b.cause == BalanceUpdateCause.interest])
+        return sum_decimal([
+            b.quantity
+            for b in self.balance_updates.values()
+            if b.cause == BalanceUpdateCause.interest and b.asset == asset
+        ])
 
     def get_accrued_interest(self) -> USDollarAmount:
         """Get the USD value of currently accrued interest for this position so far.

@@ -10,11 +10,11 @@ from tradeexecutor.state.state import State
 from tradeexecutor.state.types import USDollarPrice
 
 
-def update_credit_supply_interest(
+def update_interest(
     state: State,
     position: TradingPosition,
     asset: AssetIdentifier,
-    new_atoken_amount: Decimal,
+    new_token_amount: Decimal,
     event_at: datetime.datetime,
     asset_price: USDollarPrice,
     block_number: int | None = None,
@@ -31,7 +31,7 @@ def update_credit_supply_interest(
 
         aToken for collateral, vToken for debt.
 
-    :param new_atoken_amount:
+    :param new_token_amount:
         The new on-chain value of aToken/vToken tracking the loan.
 
     :param asset_price:
@@ -51,7 +51,7 @@ def update_credit_supply_interest(
                                                        f"Position closed at: {position.closed_at}\n" \
                                                        f"Interest event at: {event_at}"
     assert type(asset_price) == float, f"Got {asset_price.__class__}"
-    assert isinstance(new_atoken_amount, Decimal), f"Got {new_atoken_amount.__class__}"
+    assert isinstance(new_token_amount, Decimal), f"Got {new_token_amount.__class__}"
 
     loan = position.loan
     assert loan
@@ -78,11 +78,11 @@ def update_credit_supply_interest(
 
     previous_update_at = interest.last_event_at
 
-    old_balance = interest.last_atoken_amount
-    gained_interest = new_atoken_amount - old_balance
-    usd_value = float(new_atoken_amount) * asset_price
+    old_balance = interest.last_token_amount
+    gained_interest = new_token_amount - old_balance
+    usd_value = float(new_token_amount) * asset_price
 
-    assert 0 < abs(gained_interest) < 999, f"Unlikely gained_interest: {gained_interest}, old quantity: {old_balance}, new quantity: {new_atoken_amount}"
+    assert 0 < abs(gained_interest) < 999, f"Unlikely gained_interest: {gained_interest}, old quantity: {old_balance}, new quantity: {new_token_amount}"
 
     evt = BalanceUpdate(
         balance_update_id=event_id,
@@ -106,11 +106,11 @@ def update_credit_supply_interest(
     position.add_balance_update_event(evt)
 
     # Update interest stats
-    interest.last_accrued_interest = position.calculate_accrued_interest_quantity()
+    interest.last_accrued_interest = position.calculate_accrued_interest_quantity(asset)
     interest.last_updated_at = event_at
     interest.last_event_at = event_at
     interest.last_updated_block_number = block_number
-    interest.last_atoken_amount = new_atoken_amount
+    interest.last_token_amount = new_token_amount
     return evt
 
 
@@ -118,7 +118,7 @@ def update_leveraged_position_interest(
     state: State,
     position: TradingPosition,
     new_vtoken_amount: Decimal,
-    new_atoken_amount: Decimal,
+    new_token_amount: Decimal,
     event_at: datetime.datetime,
     vtoken_price: USDollarPrice,
     atoken_price: USDollarPrice = 1.0,
@@ -149,7 +149,7 @@ def update_leveraged_position_interest(
     pair = position.pair
 
     # vToken
-    vevt = update_credit_supply_interest(
+    vevt = update_interest(
         state,
         position,
         pair.base,
@@ -162,11 +162,11 @@ def update_leveraged_position_interest(
     )
 
     # aToken
-    aevt = update_credit_supply_interest(
+    aevt = update_interest(
         state,
         position,
         pair.quote,
-        new_atoken_amount,
+        new_token_amount,
         event_at,
         atoken_price,
         block_number,

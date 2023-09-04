@@ -921,8 +921,11 @@ class PositionManager:
         if type(value) == float:
             value = Decimal(value)
 
-        # TODO: verify calculation here
+
         price_structure = self.pricing_model.get_sell_price(self.timestamp, executor_pair, value)
+
+        # TODO: verify calculation here and we should output the liquidation price here
+        # so it should be taken into account for stoploss
         borrowed_size, collateral_size = calculate_sizes_for_leverage(value, leverage)
         borrowed_quantity = borrowed_size / Decimal(price_structure.price)
 
@@ -930,7 +933,7 @@ class PositionManager:
             self.timestamp,
             pair=shorting_pair,
             borrowed_quantity=-borrowed_quantity,
-            collateral_quantity=collateral_size,
+            collateral_quantity=value,
             borrowed_asset_price=price_structure.price,
             trade_type=TradeType.rebalance,
             reserve_currency=self.reserve_currency,

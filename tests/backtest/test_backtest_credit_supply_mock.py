@@ -199,7 +199,7 @@ def test_backtest_open_and_close_credit_supply_mock_data(
     interest = credit_position.loan.collateral_interest
     assert interest.opening_amount == Decimal("10000.00")
     assert credit_position.calculate_accrued_interest_quantity() == Decimal('14')  # Non-denormalised interest
-    assert interest.last_atoken_amount == Decimal('10014')
+    assert interest.last_token_amount == Decimal('10014')
     assert interest.last_accrued_interest == Decimal('14')
 
     assert credit_position.get_accrued_interest() == pytest.approx(14)  # Denormalised interest
