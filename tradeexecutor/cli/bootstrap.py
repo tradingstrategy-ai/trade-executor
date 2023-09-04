@@ -659,18 +659,17 @@ def create_generic_client(
             
             data = test_evm_uniswap_data[i]
 
-
             routing_data = generic_routing_data[i]
 
             if trade_routing == TradeRouting.user_supplied_routing_model_uniswap_v2:
 
                 assert isinstance(data, UniswapV2TestData)
                 assert isinstance(routing_data["execution_model"], UniswapV2ExecutionModel)
-                assert isinstance(routing_data["pricing_model_factory"], uniswap_v2_live_pricing_factory)
-                assert isinstance(routing_data["valudation_model_factory"], uniswap_v2_sell_valuation_factory)
+                assert routing_data["pricing_model_factory"] == uniswap_v2_live_pricing_factory
+                assert routing_data["valuation_model_factory"] == uniswap_v2_sell_valuation_factory
 
-                factory_address = data.factory_address
-                router_address = data.router_address
+                factory_address = data.factory
+                router_address = data.router
                 init_code_hash = data.init_code_hash
 
                 routing_model = UniswapV2SimpleRoutingModel(
@@ -682,12 +681,17 @@ def create_generic_client(
             elif trade_routing == TradeRouting.user_supplied_routing_model_uniswap_v3:
                 assert isinstance(test_evm_uniswap_data[i], UniswapV3TestData)
                 assert isinstance(routing_data["execution_model"], UniswapV3ExecutionModel)
-                assert isinstance(routing_data["pricing_model_factory"], uniswap_v3_live_pricing_factory)
-                assert isinstance(routing_data["valudation_model_factory"], uniswap_v3_sell_valuation_factory)
+                assert routing_data["pricing_model_factory"] == uniswap_v3_live_pricing_factory
+                assert routing_data["valuation_model_factory"] == uniswap_v3_sell_valuation_factory
 
-                address_map = data.address_map
-
-                reserve_token_address=client.get_default_quote_token_address(address_map["factory"])
+                address_map = {
+                    "factory": data.factory,
+                    "router": data.router,
+                    "position_manager": data.position_manager,
+                    "quoter": data.quoter,
+                }
+                
+                reserve_token_address=client.get_default_quote_token_address(data.factory)
                 
                 routing_model = UniswapV3SimpleRoutingModel(
                     address_map = address_map,
