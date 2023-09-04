@@ -5,7 +5,6 @@ except it uses a different trade_routing value.
 
 Here, trade_routing is a list, not a single value
 """
-import os
 import datetime
 from typing import Dict, List
 
