@@ -67,7 +67,8 @@ class PandasTraderRunner(StrategyRunner):
         # Call the strategy script decide_trades()
         # callback
         #if self.execution_context.is_version_greater_or_equal_than(0, 4, 0):
-        if len(pricing_models) > 1 and self.execution_context.is_version_greater_or_equal_than(0, 3, 0):
+        # TODO: make robust
+        if len(pricing_models) > 1: #and self.execution_context.is_version_greater_or_equal_than(0, 3, 0):
             return self.decide_trades(
                 timestamp=pd_timestamp,
                 strategy_universe=strategy_universe,
