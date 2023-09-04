@@ -514,6 +514,8 @@ class State:
 
         - Updates internal accounting and moves capital from the reserve account locked on a trade
 
+        See also :py:meth:`start_execution_all`.
+
         :param trade:
             Trade to
 
@@ -530,7 +532,9 @@ class State:
         position = self.portfolio.find_position_for_trade(trade)
         assert position, f"Trade does not belong to an open position {trade}"
 
-        self.portfolio.check_for_nonce_reuse(nonce)
+        # Legacy check
+        if nonce is not None:
+            self.portfolio.check_for_nonce_reuse(nonce)
 
         # Allocate reserve capital for this trade.
         # Reserve capital cannot be double spent until the trades are execured.
@@ -677,11 +681,11 @@ class State:
         for pos_stat_id in self.stats.positions.keys():
             assert pos_stat_id in position_ids, f"Stats had position id {pos_stat_id} for which actual trades are missing"
 
-    def start_trades(self,
-                     ts: datetime.datetime,
-                     trades: List[TradeExecution],
-                     max_slippage: float=None,
-                     underflow_check=False):
+    def start_execution_all(self,
+                            ts: datetime.datetime,
+                            trades: List[TradeExecution],
+                            max_slippage: float=None,
+                            underflow_check=False):
         """Mark a bunch of trades ready to go.
 
         Update any internal accounting of capital allocation from reseves to trades.

@@ -181,6 +181,8 @@ def test_backtest_open_only_short_synthetic_data(
     assert loan.collateral.get_usd_value() == 20000
     assert loan.borrowed.get_usd_value() == pytest.approx(9634.364244112401)
     assert loan.borrowed.last_usd_price == pytest.approx(1728.9830072484115)  # ETH current value
+    assert loan.get_collateral_interest() == pytest.approx(1.095890410958904)
+    assert loan.get_borrow_interest() == pytest.approx(0.5279103695404056)
 
     # Check that the portfolio looks good
     assert portfolio.get_cash() == 0

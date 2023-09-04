@@ -822,7 +822,7 @@ def test_stateful_routing_three_legs(
     assert t.reserve_currency == usdc_asset
     assert t.pair == eth_matic_trading_pair
 
-    state.start_trades(datetime.datetime.utcnow(), trades)
+    state.start_execution_all(datetime.datetime.utcnow(), trades)
     routing_model.execute_trades_internal(
         pair_universe, routing_state, trades, check_balances=True
     )
@@ -849,7 +849,7 @@ def test_stateful_routing_three_legs(
     assert t.pair == eth_matic_trading_pair
     assert t.planned_quantity == -eth_position.get_quantity()
 
-    state.start_trades(datetime.datetime.utcnow(), trades)
+    state.start_execution_all(datetime.datetime.utcnow(), trades)
     routing_model.execute_trades_internal(
         pair_universe, routing_state, trades, check_balances=True
     )
@@ -902,7 +902,7 @@ def test_stateful_routing_two_legs(
     assert t.reserve_currency == usdc_asset
     assert t.pair == eth_usdc_trading_pair
 
-    state.start_trades(datetime.datetime.utcnow(), trades)
+    state.start_execution_all(datetime.datetime.utcnow(), trades)
     routing_model.execute_trades_internal(
         pair_universe, routing_state, trades, check_balances=True
     )
@@ -929,7 +929,7 @@ def test_stateful_routing_two_legs(
     assert t.pair == eth_usdc_trading_pair
     assert t.planned_quantity == -eth_position.get_quantity()
 
-    state.start_trades(datetime.datetime.utcnow(), trades)
+    state.start_execution_all(datetime.datetime.utcnow(), trades)
     routing_model.execute_trades_internal(
         pair_universe, routing_state, trades, check_balances=True
     )
