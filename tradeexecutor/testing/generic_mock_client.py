@@ -182,6 +182,7 @@ class GenericMockClient(MockClient):
         # Only suitable for test EVM backends.
         pairs = []
         log: LogResult
+        hardcoded_pair_id = 1  # TODO: fix hardcoded pair id
         for log in read_events(
             web3,
             start_block,
@@ -242,7 +243,7 @@ class GenericMockClient(MockClient):
             exchange_slug = GenericMockClient.get_exchange_slug(factory_address, factory_addresses, exchange_slugs)
 
             pair = DEXPair(
-                    pair_id=pair_id,
+                    pair_id=hardcoded_pair_id,
                     chain_id=chain_id,
                     exchange_id=1,
                     exchange_slug=exchange_slug,
@@ -263,6 +264,7 @@ class GenericMockClient(MockClient):
                     transfer_tax=0,
                     fee=int(fee * 10_000),  #  Convert to BPS
                 )
+            hardcoded_pair_id += 1
             pairs.append(pair)
 
         exchanges = []

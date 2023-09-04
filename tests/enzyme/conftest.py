@@ -506,7 +506,7 @@ def weth_usdc_trading_pair(uniswap_v2, weth_usdc_uniswap_pair, usdc_asset, weth_
 
 @pytest.fixture()
 def pepe_usdc_trading_pair(uniswap_v2, pepe_usdc_uniswap_pair, usdc_asset, pepe_asset) -> TradingPairIdentifier:
-    return TradingPairIdentifier(pepe_asset, usdc_asset, pepe_usdc_uniswap_pair, uniswap_v2.factory.address, fee=0.0030, internal_exchange_id=1, internal_id=2)
+    return TradingPairIdentifier(pepe_asset, usdc_asset, pepe_usdc_uniswap_pair, uniswap_v2.factory.address, fee=0.0030, internal_exchange_id=1, internal_id=4)
 
 
 @pytest.fixture()

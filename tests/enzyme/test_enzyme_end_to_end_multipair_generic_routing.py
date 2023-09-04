@@ -102,7 +102,7 @@ def weth_usdc_uniswap_v3_trading_pair(uniswap_v3, weth_usdc_uniswap_v3_pool, usd
         uniswap_v3.factory.address, 
         fee=0.0005,
         internal_exchange_id=2,
-        internal_id=4,
+        internal_id=2,
     )
 
 
@@ -190,9 +190,9 @@ def multichain_universe(
 
     pairs = [
         weth_usdc_trading_pair,
-        weth_usdc_uniswap_v3_trading_pair,
         bob_usdc_trading_pair,
         pepe_usdc_trading_pair,
+        weth_usdc_uniswap_v3_trading_pair,
     ]
 
     pair_universe = create_pair_universe_from_code(ChainId.anvil, pairs)
@@ -268,6 +268,7 @@ def uniswap_v2_test_data(uniswap_v2: UniswapV2Deployment):
         init_code_hash=uniswap_v2.init_code_hash,
         exchange_slug="UniswapV2MockClient",
         exchange_id=1,
+        chain_id=ChainId.anvil,
     )
 
 
@@ -281,6 +282,7 @@ def uniswap_v3_test_data(uniswap_v3: UniswapV3Deployment):
         quoter=uniswap_v3.quoter.address,
         exchange_slug="UniswapV3MockClient",
         exchange_id=2,
+        chain_id=ChainId.anvil,
     )
 
 
