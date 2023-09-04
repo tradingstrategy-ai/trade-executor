@@ -89,7 +89,7 @@ def weth_usdc_uniswap_v3_pool(web3, deployer, uniswap_v3, weth, usdc) -> HexAddr
         upper_tick=max_tick,
     )
 
-    return pool_contract
+    return pool_contract.address
 
 
 @pytest.fixture
@@ -101,7 +101,7 @@ def weth_usdc_uniswap_v3_trading_pair(uniswap_v3, weth_usdc_uniswap_v3_pool, usd
         uniswap_v3.factory.address, 
         fee=0.0005,
         internal_exchange_id=2,
-        internal_id=5,
+        internal_id=4,
     )
 
 
@@ -120,57 +120,57 @@ def uniswap_v3_exchange(uniswap_v3: UniswapV3Deployment) -> Exchange:
 
 # synthetic candles for both uniswap v2 and uniswap v3 pairs
 
-@pytest.fixture()
-def synthetic_candles_weth_usdc_uniswap_v2(weth_usdc) -> pd.DataFrame:
-    # Generate candles for pair_id = 1
-    start_date = datetime.datetime(2021, 6, 1)
-    end_date = datetime.datetime(2023, 8, 20)
-    time_bucket = TimeBucket.h1
-    return generate_ohlcv_candles(time_bucket, start_date, end_date, pair_id=weth_usdc.internal_id)
+# @pytest.fixture()
+# def synthetic_candles_weth_usdc_uniswap_v2(weth_usdc) -> pd.DataFrame:
+#     # Generate candles for pair_id = 1
+#     start_date = datetime.datetime(2021, 6, 1)
+#     end_date = datetime.datetime(2023, 8, 20)
+#     time_bucket = TimeBucket.h1
+#     return generate_ohlcv_candles(time_bucket, start_date, end_date, pair_id=weth_usdc.internal_id)
 
 
-@pytest.fixture()
-def synthetic_candles_weth_usdc_uniswap_v3(weth_usdc_uniswap_v3) -> pd.DataFrame:
-    # Generate candles for pair_id = 1
-    start_date = datetime.datetime(2021, 6, 1)
-    end_date = datetime.datetime(2023, 8, 20)
-    time_bucket = TimeBucket.h1
-    return generate_ohlcv_candles(time_bucket, start_date, end_date, pair_id=weth_usdc_uniswap_v3.internal_id)
+# @pytest.fixture()
+# def synthetic_candles_weth_usdc_uniswap_v3(weth_usdc_uniswap_v3) -> pd.DataFrame:
+#     # Generate candles for pair_id = 1
+#     start_date = datetime.datetime(2021, 6, 1)
+#     end_date = datetime.datetime(2023, 8, 20)
+#     time_bucket = TimeBucket.h1
+#     return generate_ohlcv_candles(time_bucket, start_date, end_date, pair_id=weth_usdc_uniswap_v3.internal_id)
 
 
-@pytest.fixture()
-def synthetic_candles_bob_usdc_uniswap_v2(bob_usdc_uniswap_v2) -> pd.DataFrame:
-    # Generate candles for pair_id = 1
-    start_date = datetime.datetime(2021, 6, 1)
-    end_date = datetime.datetime(2023, 8, 20)
-    time_bucket = TimeBucket.h1
-    return generate_ohlcv_candles(time_bucket, start_date, end_date, pair_id=bob_usdc_uniswap_v2.internal_id)
+# @pytest.fixture()
+# def synthetic_candles_bob_usdc_uniswap_v2(bob_usdc_uniswap_v2) -> pd.DataFrame:
+#     # Generate candles for pair_id = 1
+#     start_date = datetime.datetime(2021, 6, 1)
+#     end_date = datetime.datetime(2023, 8, 20)
+#     time_bucket = TimeBucket.h1
+#     return generate_ohlcv_candles(time_bucket, start_date, end_date, pair_id=bob_usdc_uniswap_v2.internal_id)
 
 
-@pytest.fixture()
-def synthetic_candles_pepe_usdc_uniswap_v2(pepe_usdc_uniswap_v2) -> pd.DataFrame:
-    # Generate candles for pair_id = 1
-    start_date = datetime.datetime(2021, 6, 1)
-    end_date = datetime.datetime(2023, 8, 20)
-    time_bucket = TimeBucket.h1
-    return generate_ohlcv_candles(time_bucket, start_date, end_date, pair_id=pepe_usdc_uniswap_v2.internal_id)
+# @pytest.fixture()
+# def synthetic_candles_pepe_usdc_uniswap_v2(pepe_usdc_uniswap_v2) -> pd.DataFrame:
+#     # Generate candles for pair_id = 1
+#     start_date = datetime.datetime(2021, 6, 1)
+#     end_date = datetime.datetime(2023, 8, 20)
+#     time_bucket = TimeBucket.h1
+#     return generate_ohlcv_candles(time_bucket, start_date, end_date, pair_id=pepe_usdc_uniswap_v2.internal_id)
 
 
-@pytest.fixture()
-def grouped_candle_universe(
-    synthetic_candles_weth_usdc_uniswap_v2,
-    synthetic_candles_weth_usdc_uniswap_v3,
-    synthetic_candles_bob_usdc_uniswap_v2,
-    synthetic_candles_pepe_usdc_uniswap_v2,
-) -> GroupedCandleUniverse:
-    return GroupedCandleUniverse.create_from_multiple_candle_datafarames(
-        [
-            synthetic_candles_weth_usdc_uniswap_v2,
-            synthetic_candles_weth_usdc_uniswap_v3,
-            synthetic_candles_bob_usdc_uniswap_v2,
-            synthetic_candles_pepe_usdc_uniswap_v2,
-        ]
-    )
+# @pytest.fixture()
+# def grouped_candle_universe(
+#     synthetic_candles_weth_usdc_uniswap_v2,
+#     synthetic_candles_weth_usdc_uniswap_v3,
+#     synthetic_candles_bob_usdc_uniswap_v2,
+#     synthetic_candles_pepe_usdc_uniswap_v2,
+# ) -> GroupedCandleUniverse:
+#     return GroupedCandleUniverse.create_from_multiple_candle_datafarames(
+#         [
+#             synthetic_candles_weth_usdc_uniswap_v2,
+#             synthetic_candles_weth_usdc_uniswap_v3,
+#             synthetic_candles_bob_usdc_uniswap_v2,
+#             synthetic_candles_pepe_usdc_uniswap_v2,
+#         ]
+#     )
 
 
 @pytest.fixture()
@@ -243,7 +243,7 @@ def hot_wallet(web3, deployer, user_1, usdc: Contract, vault: Vault) -> HotWalle
 @pytest.fixture()
 def strategy_file() -> Path:
     """Where do we load our strategy file."""
-    return Path(os.path.dirname(__file__)) / "../../strategies/test_only" / "polygon-momentum-multipair-generic-routing.py"
+    return Path(os.path.dirname(__file__)) / "../../strategies/test_only" / "enzyme_end_to_end_multipair.py"
 
 
 @pytest.fixture()
@@ -265,6 +265,7 @@ def multichain_environment(
     vault: Vault,
     user_1: HexAddress,
     uniswap_v2: UniswapV2Deployment,
+    uniswap_v3: UniswapV3Deployment,
     multichain_universe: PandasPairUniverse,
     hot_wallet: HotWallet,
     state_file: Path,
@@ -285,9 +286,11 @@ def multichain_environment(
         "LOG_LEVEL": "disabled",
         "VAULT_ADDRESS": vault.address,
         "VAULT_ADAPTER_ADDRESS": vault.generic_adapter.address,
-        "TEST_EVM_UNISWAP_V2_ROUTER": uniswap_v2.router.address,
+        "TEST_EVM_UNISWAP_V2_ROUTER": uniswap_v2.router.address, 
         "TEST_EVM_UNISWAP_V2_FACTORY": uniswap_v2.factory.address,
         "TEST_EVM_UNISWAP_V2_INIT_CODE_HASH": uniswap_v2.init_code_hash,
+        "TEST_EVM_UNISWAP_V3_ROUTER": uniswap_v3.swap_router.address,
+        "TEST_EVM_UNISWAP_V3_FACTORY": uniswap_v3.factory.address,
         "CONFIRMATION_BLOCK_COUNT": "0",  # Needed for test backend, Anvil
         "MAX_CYCLES": "5",  # Run decide_trades() 5 times
         # "PAIR": '(ChainId.anvil, "UniswapV2MockClient", "WETH", "USDC", 0.003)',
@@ -491,13 +494,13 @@ def test_enzyme_generic_live_trading_reinit(
     Check that reinitialise works and accounting information is read from the chain state.
     """
 
-    if os.path.exists("/tmp/test_enzyme_end_to_end_multipair.reinit-backup-1.json"):
-        os.remove("/tmp/test_enzyme_end_to_end_multipair.reinit-backup-1.json")
+    if os.path.exists("/tmp/test_enzyme_end_to_end_multipair_generic_routing.reinit-backup-1.json"):
+        os.remove("/tmp/test_enzyme_end_to_end_multipair_generic_routing.reinit-backup-1.json")
 
     result = run_init(multichain_environment)
     assert result.exit_code == 0
 
-    assert os.path.exists("/tmp/test_enzyme_end_to_end_multipair.json")
+    assert os.path.exists("/tmp/test_enzyme_end_to_end_multipair_generic_routing.json")
 
     cli = get_command(app)
 
@@ -510,7 +513,7 @@ def test_enzyme_generic_live_trading_reinit(
             cli.main(args=["reinit"])
         assert e.value.code == 0
 
-    assert os.path.exists("/tmp/test_enzyme_end_to_end_multipair.reinit-backup-1.json")
+    assert os.path.exists("/tmp/test_enzyme_end_to_end_multipair_generic_routing.reinit-backup-1.json")
 
     # See that the reinitialised state looks correct
     with state_file.open("rt") as inp:
