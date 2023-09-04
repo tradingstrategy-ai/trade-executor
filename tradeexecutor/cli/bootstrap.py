@@ -51,7 +51,7 @@ from tradeexecutor.strategy.execution_model import AssetManagementMode, Executio
 from tradingstrategy.chain import ChainId
 from tradingstrategy.client import BaseClient, Client
 from tradingstrategy.testing.uniswap_v2_mock_client import UniswapV2MockClient
-from tradingstrategy.testing.generic_mock_client import GenericMockClient
+from tradeexecutor.testing.generic_mock_client import GenericMockClient
 
 
 logger = logging.getLogger(__name__)
