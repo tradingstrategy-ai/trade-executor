@@ -23,7 +23,7 @@ from tradingstrategy.timebucket import TimeBucket
 from . import shared_options
 from .app import app, TRADE_EXECUTOR_VERSION
 from ..bootstrap import prepare_executor_id, prepare_cache, create_web3_config, create_state_store, \
-    create_execution_and_sync_model, create_metadata, create_approval_model, create_client, create_generic_execution_and_sync_model
+    create_execution_and_sync_model, create_metadata, create_approval_model, create_client, create_generic_execution_and_sync_model, create_generic_client
 from ..log import setup_logging, setup_discord_logging, setup_logstash_logging, setup_file_logging, \
     setup_custom_log_levels
 from ..loop import ExecutionLoop
@@ -116,8 +116,6 @@ def start(
     test_evm_uniswap_v2_router: Optional[str] = shared_options.test_evm_uniswap_v2_router,
     test_evm_uniswap_v2_factory: Optional[str] = shared_options.test_evm_uniswap_v2_factory,
     test_evm_uniswap_v2_init_code_hash: Optional[str] = shared_options.test_evm_uniswap_v2_init_code_hash,
-    test_evm_uniswap_v3_router: Optional[str] = shared_options.test_evm_uniswap_v3_router,
-    test_evm_uniswap_v3_factory: Optional[str] = shared_options.test_evm_uniswap_v3_factory,
 
     # Live trading configuration
     max_slippage: float = shared_options.max_slippage,
