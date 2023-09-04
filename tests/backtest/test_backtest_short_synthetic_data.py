@@ -160,27 +160,29 @@ def test_backtest_open_only_short_synthetic_data(
 
     portfolio = state.portfolio
     assert len(portfolio.open_positions) == 1
+
+    # Check that the unrealised position looks good
     position = portfolio.open_positions[1]
     assert position.is_short()
     assert position.is_open()
     assert position.pair.kind.is_shorting()
-
-    #assert portfolio.get_cash() == 0
-    #assert portfolio.get_net_asset_value() == 0
-
     assert position.get_value_at_open() == capital
     assert position.get_collateral() == pytest.approx(capital * leverage)
     assert position.get_borrowed() == pytest.approx(9634.364244112401)
     assert position.get_accrued_interest() == pytest.approx(0.5679800414184984)
     assert position.get_claimed_interest() == pytest.approx(0)
     assert position.get_realised_profit_usd() is None
+    assert position.get_value() == Decimal(10366.203735929015)
+    assert position.get_unrealised_profit_usd() == pytest.approx(366.2237707649561)
 
+    # Check that the loan object looks good
     loan = position.loan
     assert loan.get_net_asset_value() == pytest.approx(10366.203735929015)
     assert loan.collateral.get_usd_value() == 20000
     assert loan.borrowed.get_usd_value() == pytest.approx(9634.364244112401)
     assert loan.borrowed.last_usd_price == pytest.approx(1728.9830072484115)  # ETH current value
 
-    # TODO: following look wrong, verify the calculations
-    assert position.get_value() == Decimal(10366.203735929015)
-    assert position.get_unrealised_profit_usd() == pytest.approx(366.2237707649561)
+    # Check that the portfolio looks good
+    assert portfolio.get_cash() == 0
+    assert portfolio.get_net_asset_value(include_interest=True) == pytest.approx(10366.203735929015)
+    assert portfolio.get_net_asset_value(include_interest=False) == pytest.approx(10365.635755887599)
