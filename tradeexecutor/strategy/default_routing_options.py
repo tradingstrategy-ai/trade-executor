@@ -185,6 +185,8 @@ class TradeRouting(enum.Enum):
     #: - Open positions with WETH quote token.
     uniswap_v3_usdt_arbitrum = "uniswap_v3_usdt_arbitrum"
 
+    #: TODO: deprecate
+    #:
     #: Use user supplied routing model
     #:
     #: The routing table is constructed by the developer in the
@@ -192,6 +194,22 @@ class TradeRouting(enum.Enum):
     #:
     #: Mostly useful for unit testing.
     user_supplied_routing_model = "user_supplied_routing_model"
+
+    #: Use user supplied routing model for Uniswap V2
+    #:
+    #: The routing table is constructed by the developer in the
+    #: Python code.
+    #:
+    #: Mostly useful for unit testing. 
+    user_supplied_routing_model_uniswap_v2 = "user_supplied_routing_model_uniswap_v2"
+
+    #: Use user supplied routing model for Uniswap V3
+    #:
+    #: The routing table is constructed by the developer in the
+    #: Python code.
+    #:
+    #: Mostly useful for unit testing.
+    user_supplied_routing_model_uniswap_v3 = "user_supplied_routing_model_uniswap_v3"
 
     #: Backtesting only
     #:
@@ -221,4 +239,14 @@ class TradeRouting(enum.Enum):
             TradeRouting.uniswap_v3_usdc_arbitrum_bridged,
             TradeRouting.uniswap_v3_usdc_arbitrum_native,
             TradeRouting.uniswap_v3_usdt_arbitrum,
+        }
+    
+    @staticmethod
+    def get_user_supplied() -> set:
+        """Get the set of user supplied routing models."""
+
+        return {
+            TradeRouting.user_supplied_routing_model, 
+            TradeRouting.user_supplied_routing_model_uniswap_v2, 
+            TradeRouting.user_supplied_routing_model_uniswap_v3
         }
