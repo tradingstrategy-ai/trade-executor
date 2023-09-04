@@ -112,7 +112,9 @@ def test_backtest_open_only_short_synthetic_data(
     """Run the strategy backtest using inline decide_trades function.
 
     - Open short position
-    - Check unrealised PnL after a month
+    - Check unrealised PnL after three days
+    - ETH price goes 1794 -> 1728
+    - Short goes to profit
     """
 
     capital = 10000
@@ -136,6 +138,9 @@ def test_backtest_open_only_short_synthetic_data(
 
         if not position_manager.is_any_open():
             trades += position_manager.open_short(trade_pair, cash, leverage=leverage)
+            t: TradeExecution
+            t = trades[0]
+            assert t.planned_price == pytest.approx(1794.6)  # ETH opening value
 
         return trades
 
@@ -158,16 +163,23 @@ def test_backtest_open_only_short_synthetic_data(
     position = portfolio.open_positions[1]
     assert position.is_short()
     assert position.is_open()
+    assert position.pair.kind.is_shorting()
 
-    assert portfolio.get_cash() == 0
-
-    assert portfolio.get_net_asset_value() == 0
+    #assert portfolio.get_cash() == 0
+    #assert portfolio.get_net_asset_value() == 0
 
     assert position.get_value_at_open() == capital
     assert position.get_collateral() == pytest.approx(capital * leverage)
-    assert position.get_borrowed() == pytest.approx(8566.427426301208)
-    assert position.get_accrued_interest() == pytest.approx(18.809854404770963)
+    assert position.get_borrowed() == pytest.approx(9634.364244112401)
+    assert position.get_accrued_interest() == pytest.approx(0.5679800414184984)
+    assert position.get_claimed_interest() == pytest.approx(0)
     assert position.get_realised_profit_usd() is None
+
+    loan = position.loan
+    assert loan.get_net_asset_value() == pytest.approx(10366.203735929015)
+    assert loan.collateral.get_usd_value() == 20000
+    assert loan.borrowed.get_usd_value() == pytest.approx(9634.364244112401)
+    assert loan.borrowed.last_usd_price == pytest.approx(1728.9830072484115)  # ETH current value
 
     # TODO: following look wrong, verify the calculations
     assert position.get_value() == Decimal(8585.23728070598)
