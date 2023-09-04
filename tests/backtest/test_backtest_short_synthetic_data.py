@@ -79,8 +79,8 @@ def universe() -> TradingStrategyUniverse:
         end_at,
         reserves=[usdc_reserve, weth_reserve],
         aprs={
-            "supply": 2.5,
-            "variable": 3.5,
+            "supply": 2,
+            "variable": 5,
         }
     )
 
@@ -115,6 +115,9 @@ def test_backtest_open_only_short_synthetic_data(
     - Check unrealised PnL after a month
     """
 
+    capital = 10000
+    leverage = 2
+
     def decide_trades(
         timestamp: pd.Timestamp,
         strategy_universe: TradingStrategyUniverse,
@@ -132,7 +135,7 @@ def test_backtest_open_only_short_synthetic_data(
         trades = []
 
         if not position_manager.is_any_open():
-            trades += position_manager.open_short(trade_pair, cash, leverage=2)
+            trades += position_manager.open_short(trade_pair, cash, leverage=leverage)
 
         return trades
 
@@ -144,7 +147,7 @@ def test_backtest_open_only_short_synthetic_data(
         cycle_duration=CycleDuration.cycle_1d,
         decide_trades=decide_trades,
         universe=universe,
-        initial_deposit=10_000,
+        initial_deposit=capital,
         reserve_currency=ReserveCurrency.usdc,
         trade_routing=TradeRouting.uniswap_v3_usdc_poly,
         engine_version="0.3",
@@ -154,13 +157,14 @@ def test_backtest_open_only_short_synthetic_data(
     assert len(portfolio.open_positions) == 1
     position = portfolio.open_positions[1]
     assert position.is_short()
+    assert position.is_open()
 
-    assert position.get_value_at_open() == 10000
-    print("Collateral", position.get_collateral())
-    print("borrow", position.get_borrowed())
-    # print(position.get_accrued_interest())
-    print(position.get_accrued_interest())
-    assert position.get_accrued_interest() < 0  # TODO: this is incorrect, need to plugin accrued interst logic
-    assert position.get_value() == Decimal(13104.708248204075)  # TODO: this is incorrect as well
-    print(position.get_unrealised_profit_usd())  # TODO
+    assert position.get_value_at_open() == capital
+    assert position.get_collateral() == pytest.approx(capital * leverage)
+    assert position.get_borrowed() == pytest.approx(8566.427426301208)
+    assert position.get_accrued_interest() == pytest.approx(18.809854404770963)
     assert position.get_realised_profit_usd() is None
+
+    # TODO: following look wrong, verify the calculations
+    assert position.get_value() == Decimal(8585.23728070598)
+    assert position.get_unrealised_profit_usd() == pytest.approx(1454.7408590503317)

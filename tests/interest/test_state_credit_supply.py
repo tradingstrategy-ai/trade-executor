@@ -12,7 +12,7 @@ from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifie
 from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeType
-from tradeexecutor.strategy.interest import update_credit_supply_interest
+from tradeexecutor.strategy.interest import update_interest
 from tradeexecutor.testing.unit_test_trader import UnitTestTrader
 from tradingstrategy.chain import ChainId
 
@@ -161,11 +161,11 @@ def test_accrue_interest(
 
     # Generate first interest accruing event
     interest_event_1_at = datetime.datetime(2020, 1, 2)
-    update_credit_supply_interest(
+    update_interest(
         state,
         credit_supply_position,
         ausdc,
-        new_atoken_amount=Decimal(9000.01),
+        new_token_amount=Decimal(9000.01),
         event_at=interest_event_1_at,
         asset_price=1.0,
     )
@@ -221,11 +221,11 @@ def test_close_credit_position(
 
     # Generate first interest accruing event
     interest_event_1_at = datetime.datetime(2020, 1, 2)
-    update_credit_supply_interest(
+    update_interest(
         state,
         credit_supply_position,
         ausdc,
-        new_atoken_amount=Decimal(9000.50),
+        new_token_amount=Decimal(9000.50),
         event_at=interest_event_1_at,
         asset_price=1.0,
     )

@@ -120,3 +120,5 @@ def test_backtest_open_only_short_real_data(
     assert position.get_value_at_open() == 10000
     assert position.get_accrued_interest() == 0  # TODO: this is incorrect, need to plugin accrued interst logic
     assert position.get_value() == Decimal(13104.708248204075)  # TODO: this is incorrect as well
+    print(position.get_unrealised_profit_usd())  # TODO
+    assert position.get_realised_profit_usd() is None

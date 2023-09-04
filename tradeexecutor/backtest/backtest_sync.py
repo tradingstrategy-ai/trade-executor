@@ -13,7 +13,7 @@ from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
 from tradeexecutor.state.types import JSONHexAddress
-from tradeexecutor.strategy.interest import update_credit_supply_interest, update_leveraged_position_interest
+from tradeexecutor.strategy.interest import update_interest, update_leveraged_position_interest
 from tradeexecutor.strategy.sync_model import SyncModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.testing.dummy_wallet import apply_sync_events
@@ -140,10 +140,10 @@ class BacktestSyncModel(SyncModel):
         # get relevant candles for the position period since last update until now
         if interest_type == "collateral":
             interest = position.loan.collateral_interest
-            amount = Decimal(interest.last_atoken_amount)
+            amount = Decimal(interest.last_token_amount)
         elif interest_type == "borrow":
             interest = position.loan.borrowed_interest
-            amount = Decimal(interest.last_atoken_amount)
+            amount = Decimal(interest.last_token_amount)
 
         previous_update_at = interest.last_event_at
 
@@ -193,17 +193,17 @@ class BacktestSyncModel(SyncModel):
                     "collateral",
                 )
 
-                new_amount = p.loan.collateral_interest.last_atoken_amount + accrued
+                new_amount = p.loan.collateral_interest.last_token_amount + accrued
 
                 # TODO: the collateral is stablecoin so this can be hardcode for now
                 # but make sure to fetch it from somewhere later
                 price = 1.0
 
-                evt = update_credit_supply_interest(
+                evt = update_interest(
                     state,
                     p,
                     p.pair.base,
-                    new_atoken_amount=new_amount,
+                    new_token_amount=new_amount,
                     event_at=timestamp,
                     asset_price=price,
                 )
@@ -229,8 +229,11 @@ class BacktestSyncModel(SyncModel):
                     "borrow",
                 )
 
-                new_atoken_amount = p.loan.collateral_interest.last_atoken_amount + accrued_collateral_interest
-                new_vtoken_amount = p.loan.borrowed_interest.last_atoken_amount + accrued_borrow_interest
+                new_atoken_amount = p.loan.collateral_interest.last_token_amount + accrued_collateral_interest
+                new_vtoken_amount = p.loan.borrowed_interest.last_token_amount + accrued_borrow_interest
+
+                # print("Opened", p.loan.borrowed_interest.opening_amount)
+                # print("New interest", new_atoken_amount, new_vtoken_amount)
 
                 # TODO: hardcode, need to replace with proper price
                 atoken_price = 1.0
@@ -240,7 +243,7 @@ class BacktestSyncModel(SyncModel):
                     state,
                     p,
                     new_vtoken_amount=new_vtoken_amount,
-                    new_atoken_amount=new_atoken_amount,
+                    new_token_amount=new_atoken_amount,
                     vtoken_price=vtoken_price,
                     atoken_price=atoken_price,
                     event_at=timestamp,

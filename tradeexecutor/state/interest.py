@@ -27,7 +27,7 @@ class Interest:
     #:
     #: This is principal + interest.
     #:
-    last_atoken_amount: Decimal
+    last_token_amount: Decimal
 
     #: When the denormalised data was last updated.
     #:
@@ -53,7 +53,7 @@ class Interest:
     last_updated_block_number: int | None = None
 
     def __repr__(self):
-        return f"<Interest, current principal + interest {self.last_atoken_amount}>"
+        return f"<Interest, current principal + interest {self.last_token_amount}>"
 
     def __post_init__(self):
         assert isinstance(self.opening_amount, Decimal)
@@ -64,7 +64,7 @@ class Interest:
 
         Assuming any aToken/vToken will be fully converted to the underlying.
         """
-        return self.last_atoken_amount
+        return self.last_token_amount
 
     @staticmethod
     def open_new(opening_amount: Decimal, timestamp: datetime.datetime) -> "Interest":
@@ -74,7 +74,7 @@ class Interest:
             last_updated_at=timestamp,
             last_event_at=timestamp,
             last_accrued_interest=Decimal(0),
-            last_atoken_amount=opening_amount,
+            last_token_amount=opening_amount,
         )
 
 
