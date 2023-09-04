@@ -399,11 +399,13 @@ def start(
         else:
             logger.info("Web server disabled")
             server = None
+
+        # Routing model comes usually from the strategy and hard-coded blockchain defaults,
+        # but for local dev chains it is dynamically constructed from the deployed contracts
+        routing_model: RoutingModel = None
         
         if not generic_routing_data:
-            # Routing model comes usually from the strategy and hard-coded blockchain defaults,
-            # but for local dev chains it is dynamically constructed from the deployed contracts
-            routing_model: RoutingModel = None
+            
 
             client, routing_model = create_client(
                 mod=mod,
