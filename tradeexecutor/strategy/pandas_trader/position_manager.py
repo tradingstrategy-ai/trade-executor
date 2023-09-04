@@ -917,7 +917,11 @@ class PositionManager:
             executor_pair = pair
 
         shorting_pair = self.strategy_universe.get_shorting_pair(executor_pair)
+
+        # Check that pair data looks good
         assert shorting_pair.kind.is_shorting()
+        assert shorting_pair.base.underlying is not None, f"Lacks underlying asset: {shorting_pair.base}"
+        assert shorting_pair.quote.underlying is not None, f"Lacks underlying asset: {shorting_pair.quote}"
 
         if type(value) == float:
             value = Decimal(value)
@@ -932,11 +936,16 @@ class PositionManager:
         collateral_price = self.reserve_price
         borrowed_asset_price = price_structure.price
 
-        logger.info("Opening a short position.\n"
+        logger.info("Opening a short position at timetamp %s\n"
+                    "Shorting pair is %s\n"
+                    "Execution pair is %s\n"
                     "Collateral amount: %s USD\n"
                     "Borrow amount: %s USD (%s %s)\n"
                     "Collateral asset price: %s %s/USD\n"
-                    "Borrowed asset price: %s %s/USD (with assumed execution)\n",
+                    "Borrowed asset price: %s %s/USD (assumed execution)\n",
+                    self.timestamp,
+                    shorting_pair,
+                    executor_pair,
                     collateral_size,
                     borrowed_size, borrowed_quantity, executor_pair.base.token_symbol,
                     collateral_price, executor_pair.quote.token_symbol,
