@@ -43,7 +43,7 @@ from tradeexecutor.testing.synthetic_lending_data import generate_lending_reserv
 pytestmark = pytest.mark.skipif(os.environ.get("TRADING_STRATEGY_API_KEY") is None, reason="Set TRADING_STRATEGY_API_KEY environment variable to run this test")
 
 start_at = datetime.datetime(2023, 1, 1)
-end_at = datetime.datetime(2023, 2, 1)
+end_at = datetime.datetime(2023, 1, 3)
 
 @pytest.fixture(scope="module")
 def universe() -> TradingStrategyUniverse:
@@ -158,6 +158,10 @@ def test_backtest_open_only_short_synthetic_data(
     position = portfolio.open_positions[1]
     assert position.is_short()
     assert position.is_open()
+
+    assert portfolio.get_cash() == 0
+
+    assert portfolio.get_net_asset_value() == 0
 
     assert position.get_value_at_open() == capital
     assert position.get_collateral() == pytest.approx(capital * leverage)
