@@ -46,6 +46,7 @@ from ...strategy.strategy_cycle_trigger import StrategyCycleTrigger
 from ...strategy.strategy_module import read_strategy_module, StrategyModuleInformation
 from ...utils.timer import timed_task
 from ...webhook.server import create_webhook_server
+from ...testing.evm_uniswap_testing_data import deserialize_uniswap_test_data_list
 
 
 logger = logging.getLogger(__name__)
@@ -116,6 +117,7 @@ def start(
     test_evm_uniswap_v2_router: Optional[str] = shared_options.test_evm_uniswap_v2_router,
     test_evm_uniswap_v2_factory: Optional[str] = shared_options.test_evm_uniswap_v2_factory,
     test_evm_uniswap_v2_init_code_hash: Optional[str] = shared_options.test_evm_uniswap_v2_init_code_hash,
+    test_evm_uniswap_data: Optional[str] = shared_options.test_evm_uniswap_data,
 
     # Live trading configuration
     max_slippage: float = shared_options.max_slippage,
@@ -144,9 +146,8 @@ def start(
     """Launch Trade Executor instance."""
     global logger
 
-    test_evm_uniswap_data = get_test_evm_uniswap_data()
-
-    validate_trade_routing_with_user_supplied(mod.trade_routing)
+    if test_evm_uniswap_data is not None:
+        test_evm_uniswap_data = deserialize_uniswap_test_data_list(test_evm_uniswap_data)
 
     if backtest_start:
 
@@ -258,6 +259,8 @@ def start(
         # Clean this up in the future versions, by changing the order of initialzation.
         mod = read_strategy_module(strategy_file)
 
+        validate_trade_routing_with_user_supplied(mod.trade_routing)
+
         if web3config is not None:
 
             if isinstance(mod, StrategyModuleInformation):
@@ -286,8 +289,6 @@ def start(
 
         execution_model, sync_model, valuation_model_factory, pricing_model_factory, generic_routing_data = None, None, None, None, None
 
-        assert type(mod.trade_routing) == list, "Expected trade_routing to be a list"
-
         if len(mod.trade_routing) > 1:
 
             generic_routing_data, sync_model = create_generic_execution_and_sync_model(
@@ -306,6 +307,8 @@ def start(
                 reserve_currency=mod.reserve_currency,
             )
         else:
+
+            assert not test_evm_uniswap_data, "test_evm_uniswap_data is not supported with single routing model"
 
             trade_routing = mod.trade_routing[0]
 
@@ -566,8 +569,9 @@ def start(
             logger.info("Closing the web server")
             server.close()
 
+
 def validate_trade_routing_with_user_supplied(trade_routing: list[TradeRouting]):
-    """Validate that the user supplied routing options are valid
+    """Validate that the user supplied routing options are valid. Also, validate that trade_routing is a list.
     
     :param trade_routing:
         list of TradeRouting options
@@ -575,7 +579,10 @@ def validate_trade_routing_with_user_supplied(trade_routing: list[TradeRouting])
     :return:
         None
     """
-    user_supplied_routing_options = TradeRouting.is_user_supplied()
+
+    assert type(trade_routing) == list, "Expected trade_routing to be a list"
+
+    user_supplied_routing_options = TradeRouting.get_user_supplied()
     trade_routing_set = set(trade_routing)
 
     if trade_routing_set & user_supplied_routing_options:
