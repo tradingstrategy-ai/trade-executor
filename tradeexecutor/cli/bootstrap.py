@@ -648,58 +648,72 @@ def create_generic_client(
         Client only
     """
 
-    if test_evm_uniswap_data:
-        
-        client = GenericMockClient(
-            web3config.get_default(),
-            test_evm_uniswap_data,
-        )
+    if not test_evm_uniswap_data:
+        raise RuntimeError("No test EVM Uniswap data given for generic client")
+    
+    client = GenericMockClient(
+        web3config.get_default(),
+        test_evm_uniswap_data,
+    )
 
-        for i, trade_routing in enumerate(mod.trade_routing):
+    for i, trade_routing in enumerate(mod.trade_routing):
             
-            data = test_evm_uniswap_data[i]
+        data = test_evm_uniswap_data[i]
 
-            routing_data = generic_routing_data[i]
+        routing_data = generic_routing_data[i]
 
-            if trade_routing == TradeRouting.user_supplied_routing_model_uniswap_v2:
+        if trade_routing == TradeRouting.user_supplied_routing_model_uniswap_v2:
 
-                assert isinstance(data, UniswapV2TestData)
-                assert isinstance(routing_data["execution_model"], UniswapV2ExecutionModel)
-                assert routing_data["pricing_model_factory"] == uniswap_v2_live_pricing_factory
-                assert routing_data["valuation_model_factory"] == uniswap_v2_sell_valuation_factory
+            assert isinstance(data, UniswapV2TestData)
+            validate_routing_data(
+                routing_data,
+                UniswapV2ExecutionModel,
+                uniswap_v2_live_pricing_factory,
+                uniswap_v2_sell_valuation_factory,
+            )
+            factory_address = data.factory
+            router_address = data.router
+            init_code_hash = data.init_code_hash
 
-                factory_address = data.factory
-                router_address = data.router
-                init_code_hash = data.init_code_hash
+            routing_model = UniswapV2SimpleRoutingModel(
+                factory_router_map={
+                    factory_address: (router_address, init_code_hash)},
+                allowed_intermediary_pairs={},
+                reserve_token_address=client.get_default_quote_token_address(factory_address),
+                chain_id=data.chain_id,
+            )
+        elif trade_routing == TradeRouting.user_supplied_routing_model_uniswap_v3:
+            assert isinstance(test_evm_uniswap_data[i], UniswapV3TestData)
+            validate_routing_data(
+                routing_data,
+                UniswapV3ExecutionModel,
+                uniswap_v3_live_pricing_factory,
+                uniswap_v3_sell_valuation_factory,
+            )
+            address_map = {
+                "factory": data.factory,
+                "router": data.router,
+                "position_manager": data.position_manager,
+                "quoter": data.quoter,
+            }
 
-                routing_model = UniswapV2SimpleRoutingModel(
-                    factory_router_map={
-                        factory_address: (router_address, init_code_hash)},
-                    allowed_intermediary_pairs={},
-                    reserve_token_address=client.get_default_quote_token_address(factory_address),
-                )
-            elif trade_routing == TradeRouting.user_supplied_routing_model_uniswap_v3:
-                assert isinstance(test_evm_uniswap_data[i], UniswapV3TestData)
-                assert isinstance(routing_data["execution_model"], UniswapV3ExecutionModel)
-                assert routing_data["pricing_model_factory"] == uniswap_v3_live_pricing_factory
-                assert routing_data["valuation_model_factory"] == uniswap_v3_sell_valuation_factory
+            reserve_token_address=client.get_default_quote_token_address(data.factory)
 
-                address_map = {
-                    "factory": data.factory,
-                    "router": data.router,
-                    "position_manager": data.position_manager,
-                    "quoter": data.quoter,
-                }
-                
-                reserve_token_address=client.get_default_quote_token_address(data.factory)
-                
-                routing_model = UniswapV3SimpleRoutingModel(
-                    address_map = address_map,
-                    allowed_intermediary_pairs={},
-                    reserve_token_address=reserve_token_address,
-                )
+            routing_model = UniswapV3SimpleRoutingModel(
+                address_map = address_map,
+                allowed_intermediary_pairs={},
+                reserve_token_address=reserve_token_address,
+                chain_id=data.chain_id,
+            )
 
-            assert generic_routing_data[i]["routing_model"] is None, "Routing model already set up"
-            generic_routing_data[i]["routing_model"] = routing_model
+        assert generic_routing_data[i]["routing_model"] is None, "Routing model already set up"
+        generic_routing_data[i]["routing_model"] = routing_model
 
-        return client
+    return client
+
+
+# TODO Rename this here and in `create_generic_client`
+def validate_routing_data(routing_data, arg1, arg2, arg3):
+    assert isinstance(routing_data["execution_model"], arg1)
+    assert routing_data["pricing_model_factory"] == arg2
+    assert routing_data["valuation_model_factory"] == arg3
