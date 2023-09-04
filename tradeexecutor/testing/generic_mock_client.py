@@ -71,7 +71,7 @@ class GenericMockClient(MockClient):
             fee,
         )
 
-        assert len(self.pairs_table) > 0, f"Could not read any pairs from on-chain data. Factories: {factory_addresses}, routers: {router_addresses}."
+        assert len(self.pairs_table) > 0, f"Could not read any pairs from on-chain data. Test_evm_uniswap_data: {test_evm_uniswap_data}."
 
     def get_default_quote_token_address(self, factory_address: str | None = None) -> str:
         """Get the quote token address used in the generated pair map.
@@ -89,7 +89,7 @@ class GenericMockClient(MockClient):
         assert pair_universe.get_count() > 0, "Pair universe has no trading pairs"
         for pair in pair_universe.iterate_pairs():
             if factory_address:
-                if pair.exchange_address == factory_address:
+                if pair.exchange_address.lower() == factory_address.lower():
                     quote_tokens.append(pair.quote_token_address)
             else:
                 quote_tokens.append(pair.quote_token_address)
@@ -110,20 +110,22 @@ class GenericMockClient(MockClient):
             The test evm uniswap data to get the items from. Each element in the list is either an instance of UniswapV2TestData or UniswapV3TestData.
         
         :param item:
-            The item to get from the test evm uniswap data. Should be one of "factory" or "exchange_slug" or "router" or "init_code_hash".
+            The item to get from the test evm uniswap data. Should be one of "factory" or "exchange_slug" or "router" or "init_code_hash" or "exchange_id".
 
         :returns:
             The relevant items as a list of strings.
         """
-        assert item in {"factory", "exchange_slug", "router", "init_code_hash"}, f"item should be either factory or exchange_slug, got {item}"
-        items: list[str] = []
+        assert item in {"factory", "exchange_slug", "router", "init_code_hash", "exchange_id"}, f"item should be either factory or exchange_slug or router or init_code_hash or exchange_id, got {item}"
+        items: list[str | None] = []
         for data_item in test_evm_uniswap_data:
-            if isinstance(data_item, UniswapV2TestData | UniswapV3TestData):
-                items.append(data_item.get(item, None))
-            else:
+            if not isinstance(data_item, UniswapV2TestData | UniswapV3TestData):
                 raise NotImplementedError(f"data_item should be of type UniswapV2TestData or UniswapV3TestData, got {data_item}")
-            
-            return items
+
+            if item in data_item.__dict__:
+                items.append(data_item.__dict__[item])
+            else:
+                items.append(None)
+        return items
 
     @staticmethod
     def read_onchain_data(
@@ -146,15 +148,14 @@ class GenericMockClient(MockClient):
         chain_id = ChainId(web3.eth.chain_id)
 
         factory_addresses = GenericMockClient.get_item_for_all_test_data_members(test_evm_uniswap_data, "factory")
-
         exchange_slugs = GenericMockClient.get_item_for_all_test_data_members(test_evm_uniswap_data, "exchange_slug")
-
         router_addresses = GenericMockClient.get_item_for_all_test_data_members(test_evm_uniswap_data, "router")
-
         init_code_hashes = GenericMockClient.get_item_for_all_test_data_members(test_evm_uniswap_data, "init_code_hash")
+        exchange_ids = GenericMockClient.get_item_for_all_test_data_members(test_evm_uniswap_data, "exchange_id")
 
         # Get contracts
-        Factory = get_contract(web3, "sushi/UniswapV2Factory.json")
+        Factory_v2 = get_contract(web3, "sushi/UniswapV2Factory.json")
+        Factory_v3 = get_contract(web3, 'uniswap_v3/UniswapV3Factory.json')
 
         start_block = 1
         end_block = web3.eth.block_number
@@ -174,7 +175,7 @@ class GenericMockClient(MockClient):
 
         my_filter = Filter.create_filter(
             factory_addresses,
-            [Factory.events.PairCreated],
+            [Factory_v2.events.PairCreated, Factory_v3.events.PoolCreated],
         )
 
         # Read through all the events, all the chain, using a single threaded slow loop.
@@ -238,13 +239,13 @@ class GenericMockClient(MockClient):
             else:
                 raise NotImplementedError(f"Does not know how to handle base-quote pairing for {token0_details} - {token1_details}.")
 
-
+            exchange_slug = GenericMockClient.get_exchange_slug(factory_address, factory_addresses, exchange_slugs)
 
             pair = DEXPair(
                     pair_id=pair_id,
                     chain_id=chain_id,
                     exchange_id=1,
-                    exchange_slug=GenericMockClient.get_exchange_slug(factory_address, factory_addresses, exchange_slugs),
+                    exchange_slug=exchange_slug,
                     exchange_address=factory_address.lower(),
                     pair_slug=f"{base_token_details.symbol.lower()}-{quote_token_details.symbol.lower()}",
                     address=pair_address.lower(),
@@ -270,19 +271,17 @@ class GenericMockClient(MockClient):
 
             exchange_slug = exchange_slugs[i]
 
-            assert exchange_slug in {"UniswapV2MockClient", "UniswapV3MockClient"}, "exchange_slug must be either UniswapV2MockClient or UniswapV3MockClient" 
-
-            exchanges += Exchange(
+            exchanges.append(Exchange(
                 chain_id=chain_id,
                 chain_slug=chain_id.get_slug(),
                 exchange_slug=exchange_slug,
-                exchange_id=1,
+                exchange_id=exchange_ids[i],
                 address=factory_address.lower(),
                 exchange_type=GenericMockClient.get_exchange_type(exchange_slug),
                 pair_count=len(pairs),
                 default_router_address=router_address.lower(),
                 init_code_hash=init_code_hashes[i],
-            )
+            ))
 
         exchange_universe = ExchangeUniverse(exchanges=dict(enumerate(exchanges)))
 
@@ -322,7 +321,7 @@ class GenericMockClient(MockClient):
         assert len(factory_addresses) == len(exchange_slugs), f"factory_addresses and exchange_slugs should be of the same length, got {len(factory_addresses)} and {len(exchange_slugs)}"
 
         for i, factory in enumerate(factory_addresses):
-            if factory_address == factory:
+            if factory_address.lower() == factory.lower():
                 return exchange_slugs[i]
             
         raise NotImplementedError(f"factory_address should be in factory_addresses, got {factory_address} not in {factory_addresses}")
