@@ -585,7 +585,7 @@ def test_revalue(usdc, weth_usdc, start_ts: datetime.datetime):
         # ETH drops 50%
         return revalue_date, 850.0
 
-    revalue_state(state, start_ts, value_asset)
+    revalue_state(state, revalue_date, value_asset)
 
     assert position.last_pricing_at == revalue_date
     assert position.last_token_price == 850.0
