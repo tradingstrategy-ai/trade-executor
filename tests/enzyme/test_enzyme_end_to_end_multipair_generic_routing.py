@@ -100,7 +100,7 @@ def weth_usdc_uniswap_v3_trading_pair(uniswap_v3, weth_usdc_uniswap_v3_pool, usd
         usdc_asset, 
         weth_usdc_uniswap_v3_pool, 
         uniswap_v3.factory.address, 
-        fee=0.0005,
+        fee=0.003,
         internal_exchange_id=2,
         internal_id=2,
     )
@@ -111,7 +111,7 @@ def uniswap_v3_exchange(uniswap_v3: UniswapV3Deployment) -> Exchange:
     return Exchange(
         chain_id=ChainId.anvil,
         chain_slug="tester",
-        exchange_id=int(uniswap_v3.factory.address, 16),
+        exchange_id=2,
         exchange_slug="UniswapV3MockClient",
         address=uniswap_v3.factory.address,
         exchange_type=ExchangeType.uniswap_v3,
@@ -323,7 +323,7 @@ def multichain_environment(
         # "TEST_EVM_UNISWAP_V3_ROUTER": uniswap_v3.swap_router.address,
         # "TEST_EVM_UNISWAP_V3_FACTORY": uniswap_v3.factory.address,
         "CONFIRMATION_BLOCK_COUNT": "0",  # Needed for test backend, Anvil
-        "MAX_CYCLES": "5",  # Run decide_trades() 5 times
+        "MAX_CYCLES": "10",  # Run decide_trades() 10 times
         # "PAIR": '(ChainId.anvil, "UniswapV2MockClient", "WETH", "USDC", 0.003)',
     }
     return multichain_environment
