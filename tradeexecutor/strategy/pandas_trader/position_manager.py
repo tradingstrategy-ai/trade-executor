@@ -935,7 +935,8 @@ class PositionManager:
         if type(value) == float:
             value = Decimal(value)
 
-        price_structure = self.pricing_model.get_sell_price(self.timestamp, executor_pair, value)
+        pricing_pair = shorting_pair.get_pricing_pair()  # should be effectively the same as executor_pair
+        price_structure = self.pricing_model.get_sell_price(self.timestamp, pricing_pair, value)
 
         # TODO: verify calculation here and we should output the liquidation price here
         # so it should be taken into account for stoploss

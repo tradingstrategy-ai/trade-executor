@@ -2,15 +2,14 @@
 
 import datetime
 import copy
-import warnings
 from dataclasses import dataclass, field
 from decimal import Decimal
 from itertools import chain
-from typing import Dict, Iterable, Optional, Tuple, List, Callable
-from pandas import Timestamp
+from typing import Dict, Iterable, Optional, Tuple, List
 
 from dataclasses_json import dataclass_json
 
+from tradingstrategy.types import PrimaryKey
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
 from tradeexecutor.state.loan import Loan
 from tradeexecutor.state.position import TradingPosition
@@ -20,15 +19,11 @@ from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.types import USDollarAmount, BPS, USDollarPrice
 from tradeexecutor.strategy.dust import get_dust_epsilon_for_pair
 from tradeexecutor.strategy.trade_pricing import TradePricing
-from tradingstrategy.types import PrimaryKey
+
 
 
 class NotEnoughMoney(Exception):
     """We try to allocate reserve for a buy trade, but do not have cash."""
-
-
-class InvalidValuationOutput(Exception):
-    """Valuation model did not generate proper price value."""
 
 
 class MultipleOpenPositionsWithAsset(Exception):
@@ -763,31 +758,6 @@ class Portfolio:
             for t in p.trades.values():
                 for tx in t.blockchain_transactions:
                     assert tx.nonce != nonce, f"Nonce {nonce} is already being used by trade {t} with txinfo {t.tx_info}"
-
-    def revalue_positions(self, ts: datetime.datetime, valuation_method: Callable, revalue_frozen=True):
-        """Revalue all open positions in the portfolio.
-
-        - Reserves are not revalued
-        - Credit supply positions are not revalued
-
-        :param revalue_frozen:
-            Revalue frozen positions as well
-        """
-        try:
-            for p in self.open_positions.values():
-                # TODO: How to handle credit supply position revaluation
-                if not p.is_credit_supply():
-                    ts, price = valuation_method(ts, p)
-                    p.revalue_base_asset(ts, price)
-
-            if revalue_frozen:
-                for p in self.frozen_positions.values():
-                    # TODO: How to handle credit supply position revaluation
-                    if not p.is_credit_supply():
-                        ts, price = valuation_method(ts, p)
-                        p.revalue_base_asset(ts, price)
-        except Exception as e:
-            raise InvalidValuationOutput(f"Valuation model failed to output proper price: {valuation_method}: {e}") from e
 
     def get_default_reserve_asset(self) -> Tuple[Optional[AssetIdentifier], Optional[USDollarPrice]]:
         """Gets the default reserve currency associated with this state.
