@@ -16,6 +16,7 @@ from tradingstrategy.chain import ChainId
 from web3 import Web3
 
 from tradeexecutor.state.types import JSONHexAddress, USDollarAmount, LeverageMultiplier, USDollarPrice, Percent
+from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradingstrategy.lending import LendingProtocolType
 from tradingstrategy.stablecoin import is_stablecoin_like
 from tradingstrategy.types import PrimaryKey
@@ -296,8 +297,8 @@ class TradingPairIdentifier:
     #:
     #: Always initially set to None, but can be set later
     #:
-    #: Actually of type RoutingModel, but we cannot import it here
-    routing_model: Optional[str] = None
+    #: TODO, make sure never overwritten once set
+    routing_hint: Optional[TradeRouting] = None
 
     def __post_init__(self):
         assert self.base.chain_id == self.quote.chain_id, "Cross-chain trading pairs are not possible"

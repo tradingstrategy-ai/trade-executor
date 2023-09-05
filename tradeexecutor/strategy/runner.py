@@ -550,12 +550,13 @@ class StrategyRunner(abc.ABC):
                     for item in self.generic_routing_data:
                         routing_model = item["routing_model"]
                         execution_model = item["execution_model"]
+                        routing_hint = item["routing_hint"]
                         
                         trades_to_execute = []
                         
                         # get trades corresponding to routing model
                         for trade in approved_trades:
-                            if trade.routing_model == routing_model:
+                            if trade.routing_hint == routing_hint:
                                 trades_to_execute.append(trade)
 
                         # get execution details corresponding to routing model

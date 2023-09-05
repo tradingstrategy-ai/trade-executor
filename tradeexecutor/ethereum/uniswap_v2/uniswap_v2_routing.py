@@ -15,6 +15,7 @@ from eth_defi.uniswap_v2.swap import swap_with_slippage_protection
 from tradeexecutor.ethereum.tx import HotWalletTransactionBuilder
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
+from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradingstrategy.pair import PandasPairUniverse
 
 from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
@@ -176,7 +177,8 @@ class UniswapV2SimpleRoutingModel(EthereumRoutingModel):
                  allowed_intermediary_pairs: Dict[str, str],
                  reserve_token_address: str,
                  chain_id: Optional[ChainId] = None,
-                 trading_fee: Optional[BPS] = None # TODO remove
+                 trading_fee: Optional[BPS] = None, # TODO remove
+                 routing_hint: Optional[TradeRouting] = None,
                  ):
         """
         :param factory_router_map:
@@ -212,7 +214,7 @@ class UniswapV2SimpleRoutingModel(EthereumRoutingModel):
         """
 
         super().__init__(allowed_intermediary_pairs, reserve_token_address, chain_id)
-
+    
         assert type(factory_router_map) == dict
         self.factory_router_map = self.convert_address_dict_to_lower(factory_router_map)
         
@@ -222,6 +224,7 @@ class UniswapV2SimpleRoutingModel(EthereumRoutingModel):
             assert trading_fee <= 1, f"Got fee: {trading_fee}"
 
         self.trading_fee = trading_fee
+        self.routing_hint = routing_hint
 
     def get_default_trading_fee(self) -> Optional[float]:
         return self.trading_fee

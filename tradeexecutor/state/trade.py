@@ -441,6 +441,10 @@ class TradeExecution:
     #:
     claimed_interest: Optional[Decimal] = None
 
+    #: The TradeRouting option that was used for this trade.
+    #:
+    routing_hint: Optional[str] = None
+
     def __repr__(self) -> str:
         if self.is_spot():
             if self.is_buy():

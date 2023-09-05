@@ -10,6 +10,7 @@ from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.routing import RoutingModel, RoutingState
+from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.ethereum.routing_model import EthereumRoutingModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_token
 from tradingstrategy.pair import PandasPairUniverse
@@ -49,6 +50,7 @@ class BacktestRoutingModel(RoutingModel):
                  allowed_intermediary_pairs: Dict[str, str],
                  reserve_token_address: str,
                  trading_fee: Optional[float] = None,
+                 routing_hint: Optional[TradeRouting] = None,
                  ):
         """
         :param factory_router_map:
@@ -75,6 +77,9 @@ class BacktestRoutingModel(RoutingModel):
         :param trading_fee:
             The trading fee applied to all trades by default,
             unless a pair overrides.
+
+        :param routing_hint:
+            Default TradeRouting option for all trades using this routing model.
         """
 
         assert type(factory_router_map) == dict
@@ -83,6 +88,8 @@ class BacktestRoutingModel(RoutingModel):
         self.factory_router_map = self.convert_address_dict_to_lower(factory_router_map)
 
         self.trading_fee = trading_fee
+
+        self.routing_hint = routing_hint
 
     def get_default_trading_fee(self) -> Optional[float]:
         return self.trading_fee

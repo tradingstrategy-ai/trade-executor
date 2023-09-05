@@ -593,6 +593,7 @@ def create_client(
                     test_evm_uniswap_v2_factory: (test_evm_uniswap_v2_router, test_evm_uniswap_v2_init_code_hash)},
                 allowed_intermediary_pairs={},
                 reserve_token_address=client.get_default_quote_token_address(),
+                routing_hint = mod.trade_routing[0],
             )
     # elif type(test_evm_uniswap_v2_factory) == list:
         
@@ -681,6 +682,7 @@ def create_generic_client(
                 allowed_intermediary_pairs={},
                 reserve_token_address=client.get_default_quote_token_address(factory_address),
                 chain_id=data.chain_id,
+                routing_hint = trade_routing,
             )
         elif trade_routing == TradeRouting.user_supplied_routing_model_uniswap_v3:
             assert isinstance(test_evm_uniswap_data[i], UniswapV3TestData)
@@ -704,6 +706,7 @@ def create_generic_client(
                 allowed_intermediary_pairs={},
                 reserve_token_address=reserve_token_address,
                 chain_id=data.chain_id,
+                routing_hint = trade_routing,
             )
 
         assert generic_routing_data[i]["routing_model"] is None, "Routing model already set up"

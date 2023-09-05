@@ -422,7 +422,9 @@ class PositionManager:
             slippage_tolerance=slippage_tolerance,
         )
 
-        trade.routing_model = pricing_model.routing_model
+        assert pricing_model.routing_model.routing_hint is not None, "Routing hint is not set for the routing model"
+
+        trade.routing_hint = pricing_model.routing_model.routing_hint
 
         assert created, f"There was conflicting open position for pair: {executor_pair}"
 
@@ -932,10 +934,11 @@ class PositionManager:
         if not routing_model:
             raise NotImplementedError("Unable to find routing_model for pair, make sure to add correct routing models for the pairs that you want to trade")
 
-        if isinstance(routing_model, (UniswapV2SimpleRoutingModel, UniswapV3SimpleRoutingModel, BacktestRoutingModel, BacktestRoutingIgnoredModel)):
-            pair.routing_model = routing_model  # TODO: check if unnecessary. Think so
-        else:
+        if not isinstance(routing_model, (UniswapV2SimpleRoutingModel, UniswapV3SimpleRoutingModel, BacktestRoutingModel, BacktestRoutingIgnoredModel)):
             raise NotImplementedError("Routing model not supported")
+        
+        # Needed in tradeexecutor/state/portfolio.py::choose_valudation_method_and_revalue_position
+        pair.routing_hint = routing_model.routing_hint  
 
         assert final_pricing_model is not None, "Unable to find pricing model for pair"
 

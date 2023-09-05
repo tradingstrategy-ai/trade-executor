@@ -621,12 +621,14 @@ def get_backtest_routing_model(
             real_routing_model.factory_router_map,
             real_routing_model.allowed_intermediary_pairs,
             real_routing_model.reserve_token_address,
+            routing_hint = routing_type,
         )
     elif isinstance(real_routing_model, UniswapV3SimpleRoutingModel):
         return BacktestRoutingModel(
             real_routing_model.address_map,
             real_routing_model.allowed_intermediary_pairs,
-            real_routing_model.reserve_token_address
+            real_routing_model.reserve_token_address,
+            routing_hint = routing_type,
         )
     else:
         raise TypeError(f"Routing model must either be of type UniswapV2SimpleRoutingModel, \
@@ -682,6 +684,7 @@ def create_uniswap_v2_compatible_routing(
         params["reserve_token_address"],
         params["chain_id"],
         params["trading_fee"],
+        routing_hint = routing_type
     )
 
     return routing_model
@@ -718,6 +721,7 @@ def create_uniswap_v3_compatible_routing(
         params["allowed_intermediary_pairs"],
         params["reserve_token_address"],
         params["chain_id"],
+        routing_hint = routing_type
     )
 
     return routing_model

@@ -17,6 +17,7 @@ from web3.exceptions import ContractLogicError
 from tradeexecutor.ethereum.tx import HotWalletTransactionBuilder
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
+from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradingstrategy.pair import PandasPairUniverse
 
 from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
@@ -146,6 +147,7 @@ class UniswapV3SimpleRoutingModel(EthereumRoutingModel):
                  allowed_intermediary_pairs: Dict[str, str],
                  reserve_token_address: str,
                  chain_id: Optional[ChainId] = None,
+                 routing_hint: Optional[TradeRouting] = None,
                  ):
         """
         
@@ -179,6 +181,7 @@ class UniswapV3SimpleRoutingModel(EthereumRoutingModel):
         
         assert type(address_map) == dict
         self.address_map = self.convert_address_dict_to_lower(address_map)
+        self.routing_hint = routing_hint
 
     def create_routing_state(self,
                              universe: StrategyExecutionUniverse,
