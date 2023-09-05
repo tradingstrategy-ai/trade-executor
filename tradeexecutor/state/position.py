@@ -539,7 +539,7 @@ class TradingPosition(GenericPosition):
         token_quantity = sum([t.get_equity_for_position() for t in self.trades.values() if t.is_accounted_for_equity()])
 
         if include_interest:
-            token_quantity += self.calculate_accrued_interest_quantity()
+            raise NotImplementedError()
 
         reserve_quantity = sum([t.get_equity_for_reserve() for t in self.trades.values() if t.is_accounted_for_equity()])
 
@@ -548,13 +548,23 @@ class TradingPosition(GenericPosition):
     def get_equity(self) -> USDollarAmount:
         """Get equity tied to this position.
 
+        TODO: Use :py:meth:`TradingPosition.loan.get_net_asset_value` for collateral based positions.
+
         :return:
+            How much equity we have tied in this position.
+
+            TODO: Does not work for collateral positions.
         """
 
         match self.pair.kind:
             case TradingPairKind.spot_market_hold:
-                return self.calculate_value_using_price(self.last_token_price, self.last_reserve_price)
+                return self.calculate_value_using_price(
+                    self.last_token_price,
+                    self.last_reserve_price,
+                    include_interest=False,
+                )
             case _:
+                # TODO: U
                 return 0
 
     def get_value(self, include_interest=True) -> USDollarAmount:

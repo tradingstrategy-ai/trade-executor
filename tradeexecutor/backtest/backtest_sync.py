@@ -14,6 +14,7 @@ from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
 from tradeexecutor.state.types import JSONHexAddress
 from tradeexecutor.strategy.interest import update_interest, update_leveraged_position_interest
+from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.sync_model import SyncModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.testing.dummy_wallet import apply_sync_events
@@ -177,6 +178,7 @@ class BacktestSyncModel(SyncModel):
         state: State,
         universe: TradingStrategyUniverse,
         positions: List[TradingPosition],
+        pricing_model: PricingModel,
     ) -> List[BalanceUpdate]:
 
         assert universe.has_lending_data(), "Cannot update credit positions if no data is available"
@@ -232,9 +234,14 @@ class BacktestSyncModel(SyncModel):
                 new_atoken_amount = p.loan.collateral_interest.last_token_amount + accrued_collateral_interest
                 new_vtoken_amount = p.loan.borrowed_interest.last_token_amount + accrued_borrow_interest
 
-                # TODO: hardcode, need to replace with proper price
                 atoken_price = 1.0
-                vtoken_price = 1800.0
+
+                vtoken_price_structure = pricing_model.get_sell_price(
+                    timestamp,
+                    p.pair.get_pricing_pair(),
+                    p.loan.borrowed.quantity,
+                )
+                vtoken_price = vtoken_price_structure.price
 
                 vevt, aevt = update_leveraged_position_interest(
                     state,

@@ -648,7 +648,7 @@ class State:
 
         Reserves are not revalued.
         """
-        self.portfolio.revalue_positions(ts, valuation_method)
+        raise RuntimeError(f"Removed. Use valuation.revalue_state()")
 
     def blacklist_asset(self, asset: AssetIdentifier):
         """Add a asset to the blacklist."""
