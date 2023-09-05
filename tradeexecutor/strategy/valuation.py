@@ -11,6 +11,7 @@ This is important for
 For the simplest case, we take all open positions and estimate their sell
 value at the open market.
 """
+import logging
 import datetime
 from abc import abstractmethod, ABC
 from typing import Protocol, Tuple, Callable
@@ -21,6 +22,9 @@ from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.pricing_model import PricingModel
+
+
+logger = logging.getLogger(__name__)
 
 
 class InvalidValuationOutput(Exception):
@@ -53,11 +57,12 @@ class ValuationModel(ABC):
         - For leveraged positions, refresh both collateral and borrowed asset
         """
         if not position.is_credit_supply():
-            spot_pair = position.pair.get_pricing_pair()
-            ts, price = self(ts, spot_pair)
-
+            logger.info("Re-valuing position %s", position)
+            ts, price = self(ts, position)
             position.revalue_base_asset(ts, price)
             # TODO: Query price for the collateral asset and set it
+        else:
+            logger.info("No updates to credit supply position pricing: %s", position)
 
     def revalue_portfolio(
         self,
@@ -82,16 +87,15 @@ class ValuationModel(ABC):
         :param revalue_frozen:
             Revalue frozen positions as well
         """
-        try:
-            for p in portfolio.open_positions.values():
+
+        positions = portfolio.get_open_and_frozen_positions() if revalue_frozen else portfolio.open_positions.values()
+
+
+        for p in positions:
+            try:
                 self.revalue_position(ts, p)
-
-            if revalue_frozen:
-                for portfolio in self.frozen_positions.values():
-                    self.revalue_position(ts, p)
-
-        except Exception as e:
-            raise InvalidValuationOutput(f"Valuation model failed to output proper price: {valuation_model}: {e}") from e
+            except Exception as e:
+                raise InvalidValuationOutput(f"Valuation model failed to output proper price: {self}: {p} -> {e}") from e
 
     @abstractmethod
     def __call__(self,
@@ -112,19 +116,7 @@ class ValuationModel(ABC):
             Note that revaluation date may differ from the wantead timestamp if
             there is no data available.
         """
-        assert isinstance(ts, datetime.datetime)
-        pair = position.pair
-
-        assert position.is_long(), "Short not supported"
-
-        quantity = position.get_quantity()
-        # Cannot do pricing for zero quantity
-        if quantity == 0:
-            return ts, 0.0
-
-        price_structure = self.pricing_model.get_sell_price(ts, pair, position)
-
-        return ts, price_structure.price
+        raise NotImplementedError()
 
 
 class ValuationModelFactory(Protocol):

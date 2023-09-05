@@ -1364,7 +1364,7 @@ def test_short_unrealised_interest_and_losses(
 
     # We go red
     assert state.portfolio.get_loan_net_asset_value() == pytest.approx(556)
-    assert state.portfolio.get_net_asset_value() == pytest.approx(9556.266666666666)
+    assert state.portfolio.get_net_asset_value() == pytest.approx(9556)
 
 
 def test_short_realised_interest_and_profit(
@@ -1450,11 +1450,11 @@ def test_short_realised_interest_and_profit(
     assert short_position.get_quantity() == pytest.approx(Decimal('-0.5552334719541217745270929036'))
 
     # Calculate unrealised and realised PnL
-    assert short_position.loan.get_collateral_interest() == pytest.approx(15.134989937665676)
+    assert short_position.loan.get_collateral_interest() == pytest.approx(15.113089799044888)
     assert short_position.loan.get_borrow_interest() == pytest.approx(30.66019406910382)
-    assert short_position.get_accrued_interest() == pytest.approx(-15.525204131438151)
+    assert short_position.get_accrued_interest() == pytest.approx(-15.54710427005894)
     assert short_position.get_unrealised_profit_usd(include_interest=False) == pytest.approx(55.52334719541218)
-    assert short_position.get_unrealised_profit_usd(include_interest=True) == pytest.approx(39.99814306397403)
+    assert short_position.get_unrealised_profit_usd(include_interest=True) == pytest.approx(39.97624292535324)
     assert short_position.get_realised_profit_usd() is None
 
     # Prepare a closing trade and check it matches full vToken amount
@@ -1485,7 +1485,7 @@ def test_short_realised_interest_and_profit(
     assert trade_2.get_value() == pytest.approx(777.3268607357704)
 
     # How much USDC gained we got from the collateral
-    assert trade_2.claimed_interest == pytest.approx(Decimal('15.13498993766567593987956340'))
+    assert trade_2.claimed_interest == pytest.approx(Decimal('15.113089799044887491284317'))
 
     # How much ETH this trade paid in interest cose
     assert trade_2.paid_interest == pytest.approx(Decimal('0.0219001386207884485952464011'))
@@ -1502,6 +1502,6 @@ def test_short_realised_interest_and_profit(
     assert short_position.is_closed()
     assert short_position.get_unrealised_profit_usd() == 0
     assert short_position.get_repaid_interest() == pytest.approx(30.660194069103827)
-    assert short_position.get_claimed_interest() == pytest.approx(15.134989937665676)  # Profit we got from collateral interest
+    assert short_position.get_claimed_interest() == pytest.approx(15.113089799044887491284317)  # Profit we got from collateral interest
     assert short_position.get_realised_profit_usd(include_interest=False) == pytest.approx(55.52334719541218)
-    assert short_position.get_realised_profit_usd(include_interest=True) == pytest.approx(39.99814306397403)
+    assert short_position.get_realised_profit_usd(include_interest=True) == pytest.approx(39.97624292535325)
