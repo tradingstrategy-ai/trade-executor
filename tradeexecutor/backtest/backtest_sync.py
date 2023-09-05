@@ -212,7 +212,7 @@ class BacktestSyncModel(SyncModel):
                 # Make atokens magically appear in the simulated
                 # backtest wallet. The amount must be updated, or
                 # otherwise we get errors when closing the position.
-                self.wallet.update_balance(p.pair.base.address, new_amount)
+                self.wallet.update_balance(p.pair.base.address, accrued)
             elif p.is_leverage() and p.is_short():
                 assert len(p.trades) <= 2, "This interest calculation does not support increase/reduce position"
 
@@ -232,9 +232,6 @@ class BacktestSyncModel(SyncModel):
                 new_atoken_amount = p.loan.collateral_interest.last_token_amount + accrued_collateral_interest
                 new_vtoken_amount = p.loan.borrowed_interest.last_token_amount + accrued_borrow_interest
 
-                # print("Opened", p.loan.borrowed_interest.opening_amount)
-                # print("New interest", new_atoken_amount, new_vtoken_amount)
-
                 # TODO: hardcode, need to replace with proper price
                 atoken_price = 1.0
                 vtoken_price = 1800.0
@@ -251,9 +248,10 @@ class BacktestSyncModel(SyncModel):
                 events.append(vevt)
                 events.append(aevt)
 
-                # Make atokens magically appear in the simulated
+                # Make aToken and vToken magically appear in the simulated
                 # backtest wallet. The amount must be updated, or
                 # otherwise we get errors when closing the position.
-                self.wallet.update_balance(p.pair.base.address, new_atoken_amount)
+                self.wallet.update_balance(p.pair.base.address, accrued_collateral_interest)
+                self.wallet.update_balance(p.pair.quote.address, accrued_borrow_interest)
 
         return events

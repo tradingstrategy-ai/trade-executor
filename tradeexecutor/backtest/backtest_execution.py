@@ -155,38 +155,46 @@ class BacktestExecutionModel(ExecutionModel):
         :raise OutOfSimulatedBalance:
             Wallet does not have enough tokens to do the trade
         """
+        assert trade.is_short(), "Leverage long is not supported yet"
+
         borrowed_token = trade.pair.base
         collateral_token = trade.pair.quote
         reserve = trade.reserve_currency
 
+        print(trade.is_buy())
+        print(self.wallet.get_balance(collateral_token.address))
+        print(self.wallet.get_balance(borrowed_token.address))
+        print(self.wallet.get_balance(reserve.address))
+
         borrowed_balance = self.wallet.get_balance(borrowed_token.address)
-        collateral_balance = self.wallet.get_balance(collateral_token.address)
-        reserve_balance = self.wallet.get_balance(reserve.address)
+        # collateral_balance = self.wallet.get_balance(collateral_token.address)
+        # reserve_balance = self.wallet.get_balance(reserve.address)
 
-        # position = state.portfolio.get_existing_open_position_by_trading_pair(trade.pair)
+        position = state.portfolio.get_existing_open_position_by_trading_pair(trade.pair)
 
-        sell_amount_epsilon_fix = False
+        buy_amount_epsilon_fix = False
 
-        if trade.is_buy():
-            pass
-            # executed_reserve = trade.planned_reserve
-            # executed_quantity = trade.planned_quantity
+        if trade.is_sell():
+            executed_reserve = trade.planned_reserve
+            executed_quantity = trade.planned_quantity
         else:
-        #     assert position and position.is_open(), f"Tried to execute sell on position that is not open: {trade}"
-            executed_quantity, sell_amount_epsilon_fix = fix_sell_token_amount(borrowed_balance, trade.planned_quantity)
+            assert position and position.is_open(), f"Tried to execute buy on short position that is not open: {trade}"
+            executed_quantity, buy_amount_epsilon_fix = fix_sell_token_amount(borrowed_balance, -trade.planned_quantity)
             executed_reserve = abs(Decimal(trade.planned_quantity) * Decimal(trade.planned_price))
 
-        if trade.is_buy():
-            # TODO: handle
-            pass
+        if trade.is_sell():
+            self.wallet.update_balance(borrowed_token.address, -executed_quantity)
+            self.wallet.update_balance(collateral_token.address, -executed_quantity)
+            self.wallet.update_balance(reserve.address, -executed_reserve)
         else:
             self.wallet.update_balance(borrowed_token.address, -executed_quantity)
             self.wallet.update_balance(collateral_token.address, -executed_quantity)
             self.wallet.update_balance(reserve.address, -executed_reserve)
 
+
         assert abs(executed_quantity) > 0, f"Expected executed_quantity for the trade to be above zero, got executed_quantity:{executed_quantity}, planned_quantity:{trade.planned_quantity}, trade is {trade}"
 
-        return executed_quantity, executed_reserve, sell_amount_epsilon_fix
+        return executed_quantity, executed_reserve, buy_amount_epsilon_fix
 
     def simulate_trade(self,
                        ts: datetime.datetime,
@@ -328,6 +336,8 @@ class BacktestExecutionModel(ExecutionModel):
                 executed_price = float(abs(executed_reserve / executed_quantity))
             else:
                 executed_price = 0
+
+            print(executed_quantity, executed_reserve, executed_price)
 
             state.mark_trade_success(
                 ts,
