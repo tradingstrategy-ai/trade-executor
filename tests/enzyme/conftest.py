@@ -391,14 +391,48 @@ def usdc_usd_mock_chainlink_aggregator(web3, deployer) -> Contract:
 
 
 @pytest.fixture()
+def pepe_usd_mock_chainlink_aggregator(web3, deployer) -> Contract:
+    """Fake PEPE/USDC Chainlink price feed.
+
+    Start with 1 PEPE = 100 USD.
+    """
+    aggregator = deploy_contract(
+        web3,
+        "MockChainlinkAggregator.json",
+        deployer,
+    )
+    aggregator.functions.setValue(100 * 10**18).transact({"from": deployer})
+    return aggregator
+
+
+@pytest.fixture()
+def bob_usd_mock_chainlink_aggregator(web3, deployer) -> Contract:
+    """Fake BOB/USDC Chainlink price feed.
+
+    Start with 1 BOB = 234 USD.
+    """
+    aggregator = deploy_contract(
+        web3,
+        "MockChainlinkAggregator.json",
+        deployer,
+    )
+    aggregator.functions.setValue(234 * 10**18).transact({"from": deployer})
+    return aggregator
+
+
+@pytest.fixture()
 def enzyme_deployment(
         web3,
         deployer,
         mln,
         weth,
         usdc,
+        pepe,
+        bob,
         usdc_usd_mock_chainlink_aggregator,
         weth_usd_mock_chainlink_aggregator,
+        pepe_usd_mock_chainlink_aggregator,
+        bob_usd_mock_chainlink_aggregator,
 ) -> EnzymeDeployment:
     """Enzyme deployment on a test VM fixture.
 
@@ -417,6 +451,18 @@ def enzyme_deployment(
     deployment.add_primitive(
         usdc,
         usdc_usd_mock_chainlink_aggregator,
+        RateAsset.USD,
+    )
+
+    deployment.add_primitive(
+        pepe,
+        pepe_usd_mock_chainlink_aggregator,
+        RateAsset.USD,
+    )
+
+    deployment.add_primitive(
+        bob,
+        bob_usd_mock_chainlink_aggregator,
         RateAsset.USD,
     )
 
@@ -516,7 +562,7 @@ def bob_usdc_trading_pair(uniswap_v2, bob_usdc_uniswap_pair, usdc_asset, bob_ass
 
 @pytest.fixture()
 def biao_usdt_trading_pair(uniswap_v2, biao_usdt_uniswap_pair, usdt_asset, biao_asset) -> TradingPairIdentifier:
-    return TradingPairIdentifier(biao_asset, usdt_asset, biao_usdt_uniswap_pair, uniswap_v2.factory.address, fee=0.0030, internal_exchange_id=1, internal_id=4)
+    return TradingPairIdentifier(biao_asset, usdt_asset, biao_usdt_uniswap_pair, uniswap_v2.factory.address, fee=0.0030, internal_exchange_id=1, internal_id=5)
 
 
 # Exchange
@@ -527,7 +573,7 @@ def uniswap_v2_exchange(uniswap_v2: UniswapV2Deployment) -> Exchange:
     return Exchange(
         chain_id=ChainId.anvil,
         chain_slug="tester",
-        exchange_id=int(uniswap_v2.factory.address, 16),
+        exchange_id=1,
         exchange_slug="UniswapV2MockClient",
         address=uniswap_v2.factory.address,
         exchange_type=ExchangeType.uniswap_v2,
