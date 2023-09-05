@@ -579,7 +579,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
 
         x: Exchange
         avail_exchanges = dataset.exchanges.exchanges
-        our_exchanges = {x for x in avail_exchanges.values() if (x.chain_id in chain_ids) and (x.exchange_slug in exchange_slugs)}
+        our_exchanges = [x for x in avail_exchanges.values() if (x.chain_id in chain_ids) and (x.exchange_slug in exchange_slugs)]
         exchange_universe = ExchangeUniverse.from_collection(our_exchanges)
 
         # Check we got all exchanges in the dataset
@@ -692,7 +692,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         chain_ids = {d[0] for d in pairs}
         pair_ids = {p.pair_id for p in our_pairs}
         exchange_ids = {p.exchange_id for p in our_pairs}
-        our_exchanges = {dataset.exchanges.get_by_id(id) for id in exchange_ids}
+        our_exchanges = [dataset.exchanges.get_by_id(id) for id in exchange_ids]
         filtered_pairs_df = dataset.pairs.loc[dataset.pairs["pair_id"].isin(pair_ids)]
 
         # Recreate universe again, now with limited pairs
@@ -1400,7 +1400,7 @@ def load_partial_data(
         our_pairs = {pair_universe.get_pair_by_human_description(exchange_universe, d) for d in pairs}
         our_pair_ids = {p.pair_id for p in our_pairs}
         exchange_ids = {p.exchange_id for p in our_pairs}
-        our_exchanges = {exchange_universe.get_by_id(id) for id in exchange_ids}
+        our_exchanges = [exchange_universe.get_by_id(id) for id in exchange_ids]
         our_exchange_universe = ExchangeUniverse.from_collection(our_exchanges)
 
         # Eliminate the pairs we are not interested in from the database
