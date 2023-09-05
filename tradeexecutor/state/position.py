@@ -536,9 +536,10 @@ class TradingPosition(GenericPosition):
     ) -> USDollarAmount:
         """Calculate the value of this position using the given prices."""
 
+        assert self.is_spot_market()
+
         token_quantity = sum([t.get_equity_for_position() for t in self.trades.values() if t.is_accounted_for_equity()])
 
-        if
         if include_interest:
             raise NotImplementedError()
 
