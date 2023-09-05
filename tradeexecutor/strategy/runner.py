@@ -158,6 +158,19 @@ class StrategyRunner(abc.ABC):
         state.revalue_positions(ts, valuation_method)
         logger.info("After revaluation at %s our equity is %f", ts, state.portfolio.get_total_equity())
 
+    def collect_post_execution_data(self, pricing_model: PricingModel, trades: List[TradeExecution]):
+        """Collect post execution data for all trades.
+
+        - Collect prices after the execution
+        - Mostly matters for failed execution only, but we collect for everything
+        """
+
+        for t in trades:
+            if t.is_buy():
+                t.post_execution_price_structure = pricing_model.get_buy_price(t.pair, t.planned_reserve)
+            else:
+                t.post_execution_price_structure = pricing_model.get_sell_price(t.pair, t.planned_quantity)
+
     def on_clock(self,
                  clock: datetime.datetime,
                  universe: StrategyExecutionUniverse,
@@ -465,6 +478,13 @@ class StrategyRunner(abc.ABC):
                     self.routing_model,
                     routing_state,
                     check_balances=check_balances)
+
+            # Run any logic we need to run after the trades have been executd
+            with self.timed_task_context_manager("post_execution"):
+                self.collect_post_execution_data(
+                    pricing_model,
+                    approved_trades,
+                )
 
             # Log output
             if self.is_progress_report_needed():

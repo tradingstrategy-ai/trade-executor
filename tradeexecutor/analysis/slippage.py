@@ -161,7 +161,7 @@ def display_slippage(trades: Iterable[TradeExecution]) -> pd.DataFrame:
             #"Executed": _ftime(t.executed_at),
             # "Block": f"{block_number:,}" if block_number else "",
             "Lag": lag.total_seconds() if lag else np.NaN,
-            "Slippage": int(t.slippage_tolerance * 10000) if t.slippage_tolerance else np.NaN,
+            "Slippage tolerance": int(t.slippage_tolerance * 10000) if t.slippage_tolerance else np.NaN,
             "amountIn": amount_in,
             "amountOut": amount_out,
             "Enzyme amountOut": enzyme_expected_amount,
