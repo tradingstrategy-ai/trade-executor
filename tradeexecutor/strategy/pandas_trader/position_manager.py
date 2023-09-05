@@ -743,7 +743,7 @@ class PositionManager:
 
         """
 
-        assert position.is_long(), "Only long supported for now"
+        # assert position.is_long(), "Only long supported for now"
         assert position.is_open(), f"Tried to close already closed position {position}"
 
         quantity_left = position.get_available_trading_quantity()
@@ -771,6 +771,15 @@ class PositionManager:
                 trade_type = TradeType.rebalance
 
             return self.close_credit_supply_position(
+                position,
+                trade_type=trade_type,
+                notes=notes,
+            )
+        elif position.is_short():
+            if trade_type is None:
+                trade_type = TradeType.rebalance
+
+            return self.close_short_position(
                 position,
                 trade_type=trade_type,
                 notes=notes,
@@ -969,5 +978,61 @@ class PositionManager:
         if stop_loss_pct is not None:
             assert 0 <= stop_loss_pct <= 1, f"stop_loss_pct must be 0..1, got {stop_loss_pct}"
             self.update_stop_loss(position, price_structure.mid_price * stop_loss_pct)
+
+        return [trade]
+    
+    def close_short_position(
+        self,
+        position: TradingPosition,
+        quantity: float | Decimal | None = None,
+        notes: Optional[str] = None,
+        trade_type: TradeType = TradeType.rebalance,
+    ) -> List[TradeExecution]:
+        """Close a short position
+
+        :param position:
+            Position to close.
+
+            Must be a credit supply position.
+
+        :param quantity:
+            How much of the quantity we reduce.
+
+            If not given close the full position.
+
+        :return:
+            New trades to be executed
+        """
+
+        assert self.strategy_universe, "Make sure trading_strategy_engine_version = 0.3. Credit supply does not work with old decide_trades()."
+        
+        # Check that pair data looks good
+        pair = position.pair
+        assert pair.kind.is_shorting()
+        assert pair.base.underlying is not None, f"Lacks underlying asset: {pair.base}"
+        assert pair.quote.underlying is not None, f"Lacks underlying asset: {pair.quote}"
+
+        if quantity is None:
+            quantity = position.get_quantity()
+
+        if type(quantity) == float:
+            # TODO: Snap the amount to the full position size if rounding errors
+            quantity = Decimal(quantity)
+
+        # TODO: Hardcoded USD exchange rate
+        reserve_asset = self.strategy_universe.get_reserve_asset()
+        price_structure = self.pricing_model.get_sell_price(self.timestamp, pair.underlying_spot_pair, 1)
+
+        position, trade, _ = self.state.trade_short(
+            self.timestamp,
+            closing=True,
+            pair=pair,
+            borrowed_asset_price=price_structure.price,
+            trade_type=TradeType.rebalance,
+            reserve_currency=self.reserve_currency,
+            collateral_asset_price=1.0,
+            notes=notes,
+            position=position,
+        )
 
         return [trade]
