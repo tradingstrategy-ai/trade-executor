@@ -404,6 +404,8 @@ class TradeExecution:
     #: Mostly interesting on failed trades, so we can diagnose why they might have failed
     #: due to slippage tolerance.
     #:
+    #: For backtesting, this data is filled in, but is not meaningful.
+    #:
     post_execution_price_structure: Optional[TradePricing] = None
 
     #: Cost of gas in terms of native token
