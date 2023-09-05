@@ -803,7 +803,6 @@ class Portfolio:
             for position in self.open_positions.values():
                 if position.is_credit_supply():
                     continue
-
                 
                 self.choose_valuation_method_and_revalue_position(ts, valuation_methods, position)
                 
@@ -834,17 +833,17 @@ class Portfolio:
             If no valuation method is found for the position
         """
 
-        assert position.pair.routing_model, "Routing model not set for position pair"
+        assert position.pair.routing_hint, "Routing model not set for position pair"
 
         is_revalued = False
         for valuation_method in valuation_methods:
-            if valuation_method.pricing_model.routing_model == position.pair.routing_model:
-                ts, price = valuation_method.pricing_model(ts, position)
-                position.set_revaluation_data(ts, price)
+            if valuation_method.pricing_model.routing_model.routing_hint == position.pair.routing_hint:
+                ts, price = valuation_method(ts, position)
+                position.revalue_base_asset(ts, price)
                 is_revalued = True
 
         if not is_revalued:
-            raise NotImplementedError(f"Valuation model not found for {position.pair.routing_model}")
+            raise NotImplementedError(f"Valuation model not found for {position.pair.routing_hint}")
 
     def get_default_reserve_asset(self) -> Tuple[Optional[AssetIdentifier], Optional[USDollarPrice]]:
         """Gets the default reserve currency associated with this state.
