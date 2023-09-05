@@ -34,6 +34,10 @@ ipywidgets = ">=7.0,<8.0"
 # Last checked 2023-07, still broken
 urllib3 = "<2"
 
+# Breaks OpenAPI package for now 2023-09
+# AttributeError: module 'jsonschema._utils' has no attribute 'load_schema'
+jsonschema = "4.17.3"
+
 #
 # Execution deps
 #
