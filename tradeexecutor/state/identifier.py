@@ -421,6 +421,26 @@ class TradingPairIdentifier:
         """
         return self.get_liquidation_threshold()
 
+    def get_pricing_pair(self) -> Optional["TradingPairIdentifier"]:
+        """Get the the trading pair that determines the price for the asset.
+
+        - For spot pairs this is the trading pair itself
+
+        - For pairs that may lack price feed data like USDC/USD
+          pairs used in credit supply, return None
+
+        :return:
+            The trading pair we can use to query underlying asset price.
+
+            Return ``None`` if the trading pair does not have price information.
+        """
+        if self.is_spot():
+            return self
+        elif self.is_leverage():
+            assert self.underlying_spot_pair is not None, f"For a leveraged pair, we lack the price feed for the underlying spot: {self}"
+            return self.underlying_spot_pair
+        return None
+
 
 @dataclass_json
 @dataclass(slots=True)
