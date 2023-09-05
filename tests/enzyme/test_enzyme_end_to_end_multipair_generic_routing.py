@@ -52,7 +52,7 @@ from tradeexecutor.testing.evm_uniswap_testing_data import UniswapV2TestData, Un
 logger = logging.getLogger(__name__)
 
 
-weth_usdc_uniswap_v3_fee = 500
+weth_usdc_uniswap_v3_fee = 3000  # NB: do not change
 
 
 # Uniswap v2 assets set up in conftest.py
