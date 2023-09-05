@@ -12,8 +12,8 @@ For the simplest case, we take all open positions and estimate their sell
 value at the open market.
 """
 import datetime
-from abc import abstractmethod
-from typing import Protocol, Tuple
+from abc import abstractmethod, ABC
+from typing import Protocol, Tuple, Callable
 
 from tradingstrategy.types import USDollarAmount
 
@@ -28,7 +28,7 @@ class InvalidValuationOutput(Exception):
 
 
 
-class ValuationModel(Protocol):
+class ValuationModel(ABC):
     """Revalue a current position.
 
     TODO: See if this should be moved inside state module, as it is referred by state.revalue_positions.
@@ -141,9 +141,34 @@ class ValuationModelFactory(Protocol):
         pass
 
 
-def revalue_state(state: State, ts: datetime.datetime, valuation_model: ValuationModel):
+def revalue_state(
+        state: State,
+        ts: datetime.datetime,
+        valuation_model: ValuationModel | Callable):
     """Revalue all open positions in the portfolio.
 
-    Reserves are not revalued.
+    - Write new valuations for all positions in the state
+
+    - Reserves are not revalued.
+
+    :param ts:
+        Strategy timestamp pre-tick, or wall clock time.
+
+    :param valuation_model:
+        Model that pulls out new values for positions.
+
+        For legacy tests, this is a callable.
     """
-    state.portfolio.revalue_positions(ts, valuation_model)
+
+    if not isinstance(valuation_model, ValuationModel):
+        # Legacy call only valuation.
+        # Used in legacy tests only.
+        for p in state.portfolio.get_open_and_frozen_positions():
+            if not p.is_credit_supply():
+                ts, price = valuation_model(ts, p.pair)
+                p.revalue_base_asset(ts, price)
+        return
+
+    valuation_model.revalue_portfolio(
+        ts,
+        state.portfolio)
