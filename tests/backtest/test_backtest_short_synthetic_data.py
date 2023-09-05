@@ -19,7 +19,10 @@ from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.universe import Universe
 
+from tradeexecutor.backtest.backtest_pricing import BacktestSimplePricingModel
+from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel
 from tradeexecutor.backtest.backtest_runner import run_backtest_inline
+from tradeexecutor.ethereum.routing_data import get_backtest_routing_model
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.state import State
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind
@@ -307,3 +310,36 @@ def test_backtest_open_and_close_short_synthetic_data(
     # # net value should equal capital + net unrealised profit (no interest)
     # assert portfolio.get_net_asset_value(include_interest=False) == capital + (trade.get_planned_value() - loan.borrowed.get_usd_value())
 
+
+def test_backtest_short_underlying_price_feed(
+    persistent_test_client: Client,
+    universe: TradingStrategyUniverse,
+):
+    """Query the price for a short pair.
+
+    - We need to resolve the underlying trading pair and ask its price
+    """
+
+    routing_model = get_backtest_routing_model(
+        TradeRouting.ignore,
+        ReserveCurrency.usdc,
+    )
+
+    pricing_model = BacktestSimplePricingModel(
+        universe.universe.candles,
+        routing_model,
+    )
+
+    spot_pair = universe.get_single_pair()
+    shorting_pair = universe.get_shorting_pair(spot_pair)
+
+    spot_pair_two = shorting_pair.get_pricing_pair()
+    assert spot_pair == spot_pair_two
+
+    price_structure = pricing_model.get_buy_price(
+        start_at,
+        spot_pair_two,
+        Decimal(10_000)
+    )
+
+    assert price_structure.mid_price == pytest.approx(1800.0)
