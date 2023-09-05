@@ -32,10 +32,12 @@ class BacktestValuationModel(ValuationModel):
             trade_price = self.pricing_model.get_sell_price(ts, pair, quantity)
             return ts, float(trade_price.price)
         else:
+
+            # TODO: Use position net asset pricing for leveraged positions
             assert pair.kind == TradingPairKind.lending_protocol_short
-            
             quantity = -position.get_quantity()
             trade_price = self.pricing_model.get_sell_price(ts, pair.underlying_spot_pair, quantity)
+
             return ts, float(trade_price.price)
 
 

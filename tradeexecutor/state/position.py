@@ -538,8 +538,9 @@ class TradingPosition(GenericPosition):
 
         token_quantity = sum([t.get_equity_for_position() for t in self.trades.values() if t.is_accounted_for_equity()])
 
+        if
         if include_interest:
-            token_quantity += self.calculate_accrued_interest_quantity()
+            raise NotImplementedError()
 
         reserve_quantity = sum([t.get_equity_for_reserve() for t in self.trades.values() if t.is_accounted_for_equity()])
 

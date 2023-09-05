@@ -57,6 +57,7 @@ from tradeexecutor.strategy.bootstrap import import_strategy_file
 from tradeexecutor.strategy.description import StrategyExecutionDescription
 from tradeexecutor.strategy.runner import StrategyRunner
 from tradeexecutor.cli.log import setup_pytest_logging
+from tradeexecutor.strategy.valuation import revalue_state
 
 # https://docs.pytest.org/en/latest/how-to/skipping.html#skip-all-test-functions-of-a-class-or-module
 from tradeexecutor.utils.timer import timed_task
@@ -390,7 +391,7 @@ def test_buy_and_sell_blacklisted_asset(
     # 2nd day - cannot sell BIT
     #
     ts = datetime.datetime(2020, 1, 2)
-    state.revalue_positions(ts, UniswapV2PoolValuationMethodV0(pancakeswap_v2))
+    revalue_state(state, ts, UniswapV2PoolValuationMethodV0(pancakeswap_v2))
     debug_details = runner.tick(ts, executor_universe, state, {"cycle": 2, "check_balances": True})
     weights = debug_details["alpha_model_weights"]
 
@@ -428,7 +429,7 @@ def test_buy_and_sell_blacklisted_asset(
     # the alpha model ignores it as a blacklisted asset
     #
     ts = datetime.datetime(2020, 1, 3)
-    state.revalue_positions(ts, UniswapV2PoolValuationMethodV0(pancakeswap_v2))
+    revalue_state(state, ts, UniswapV2PoolValuationMethodV0(pancakeswap_v2))
     debug_details = runner.tick(ts, executor_universe, state, {"cycle": 3})
     weights = debug_details["alpha_model_weights"]
     assert weights[wbnb_busd.pair_id] == 1.0

@@ -449,11 +449,17 @@ class ExecutionLoop:
         to_be_synced = credit_positions + leverage_positions
         if to_be_synced:
             logger.info("We have %d credit positions and %d leverage positions open", len(credit_positions), len(leverage_positions))
+
+            # TODO: This setup repeated in tick().
+            # Modify tick() to take these as argument
+            routing_state, pricing_model, valuation_model = self.runner.setup_routing(universe)
+
             sync_events = self.sync_model.sync_interests(
                 strategy_cycle_timestamp,
                 state,
                 cast(TradingStrategyUniverse, universe),
                 to_be_synced,
+                pricing_model,
             )
             logger.info("Generated %d sync interest events", len(sync_events))
 
@@ -539,7 +545,7 @@ class ExecutionLoop:
 
         with self.timed_task_context_manager("revalue_portfolio_statistics"):
             logger.info("Updating position valuations")
-            self.runner.revalue_portfolio(clock, state, valuation_method)
+            self.runner.revalue_state(clock, state, valuation_method)
 
         with self.timed_task_context_manager("update_statistics"):
             logger.info("Updating position statistics after revaluation")
