@@ -183,6 +183,7 @@ class GenericMockClient(MockClient):
         pairs = []
         log: LogResult
         hardcoded_pair_id = 1  # TODO: fix hardcoded pair id
+        exchange_id_to_pair_count = {}
         for log in read_events(
             web3,
             start_block,
@@ -240,12 +241,15 @@ class GenericMockClient(MockClient):
             else:
                 raise NotImplementedError(f"Does not know how to handle base-quote pairing for {token0_details} - {token1_details}.")
 
-            exchange_slug = GenericMockClient.get_exchange_slug(factory_address, factory_addresses, exchange_slugs)
+            exchange_slug = GenericMockClient.get_item_from_factory(factory_address, factory_addresses, exchange_slugs)
+            exchange_id = GenericMockClient.get_item_from_factory(factory_address, factory_addresses, exchange_ids)
+            
+            # TODO: fix hardcoded pair id
 
             pair = DEXPair(
                     pair_id=hardcoded_pair_id,
                     chain_id=chain_id,
-                    exchange_id=1,
+                    exchange_id=exchange_id,
                     exchange_slug=exchange_slug,
                     exchange_address=factory_address.lower(),
                     pair_slug=f"{base_token_details.symbol.lower()}-{quote_token_details.symbol.lower()}",
@@ -266,26 +270,28 @@ class GenericMockClient(MockClient):
                 )
             hardcoded_pair_id += 1
             pairs.append(pair)
+            exchange_id_to_pair_count[exchange_id] = exchange_id_to_pair_count.get(exchange_id, 0) + 1
 
         exchanges = []
 
         for i, router_address in enumerate(router_addresses):
 
             exchange_slug = exchange_slugs[i]
+            exchange_id = exchange_ids[i]
 
             exchanges.append(Exchange(
                 chain_id=chain_id,
                 chain_slug=chain_id.get_slug(),
                 exchange_slug=exchange_slug,
-                exchange_id=exchange_ids[i],
-                address=factory_address.lower(),
+                exchange_id=exchange_id,
+                address=factory_addresses[i].lower(),
                 exchange_type=GenericMockClient.get_exchange_type(exchange_slug),
-                pair_count=len(pairs),
+                pair_count=exchange_id_to_pair_count[exchange_id],
                 default_router_address=router_address.lower(),
                 init_code_hash=init_code_hashes[i],
             ))
 
-        exchange_universe = ExchangeUniverse(exchanges=dict(enumerate(exchanges)))
+        exchange_universe = ExchangeUniverse(exchanges={exchange.exchange_id: exchange for exchange in exchanges})
 
         pair_table = DEXPair.convert_to_pyarrow_table(pairs, check_schema=False)
 
@@ -310,8 +316,8 @@ class GenericMockClient(MockClient):
             raise NotImplementedError(f"exchange_slug should be of type UniswapV2MockClient or UniswapV3MockClient, got {exchange_slug}")
         
     @staticmethod
-    def get_exchange_slug(factory_address: str, factory_addresses: list[str], exchange_slugs: list[str]) -> str:
-        """Get the exchange slug from the factory address.
+    def get_item_from_factory(factory_address: str, factory_addresses: list[str], other: list[str]) -> str:
+        """Get a pairs corresponding item from the factory address.
         
         :param factory_address:
             The factory address to get the exchange slug from.
@@ -320,11 +326,11 @@ class GenericMockClient(MockClient):
             The exchange slug.
         """
 
-        assert len(factory_addresses) == len(exchange_slugs), f"factory_addresses and exchange_slugs should be of the same length, got {len(factory_addresses)} and {len(exchange_slugs)}"
+        assert len(factory_addresses) == len(other), f"factory_addresses and exchange_slugs should be of the same length, got {len(factory_addresses)} and {len(other)}"
 
         for i, factory in enumerate(factory_addresses):
             if factory_address.lower() == factory.lower():
-                return exchange_slugs[i]
+                return other[i]
             
         raise NotImplementedError(f"factory_address should be in factory_addresses, got {factory_address} not in {factory_addresses}")
 
