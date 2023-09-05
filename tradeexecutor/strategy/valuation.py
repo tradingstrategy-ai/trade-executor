@@ -90,7 +90,6 @@ class ValuationModel(ABC):
 
         positions = portfolio.get_open_and_frozen_positions() if revalue_frozen else portfolio.open_positions.values()
 
-
         for p in positions:
             try:
                 self.revalue_position(ts, p)
