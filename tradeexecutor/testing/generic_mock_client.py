@@ -224,8 +224,14 @@ class GenericMockClient(MockClient):
             topics = log["topics"]
             token0 = convert_uint256_hex_string_to_address(topics[1])
             token1 = convert_uint256_hex_string_to_address(topics[2])
-            pair_address = convert_uint256_bytes_to_address(arguments[0])
-            pair_id = convert_int256_bytes_to_int(arguments[1])
+
+            if len(topics) == 3:
+                # uniswap v2
+                pair_address = convert_uint256_bytes_to_address(arguments[0])
+                pair_id = convert_int256_bytes_to_int(arguments[1])
+            elif len(topics) == 4:
+                # uniswap v3
+                pair_address = convert_uint256_bytes_to_address(arguments[1])
 
             token0_details = fetch_erc20_details(web3, token0)
             token1_details = fetch_erc20_details(web3, token1)

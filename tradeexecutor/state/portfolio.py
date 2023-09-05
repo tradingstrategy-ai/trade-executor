@@ -335,7 +335,7 @@ class Portfolio:
         for each trading pair.
         """
         # https://stackoverflow.com/a/2364277/315168
-        return next((p for p in self.open_positions.values() if p.pair == pair), None)
+        return next((p for p in self.open_positions.values() if p.pair == pair and p.pair.exchange_address == pair.exchange_address), None)
         #for p in self.open_positions.values():
             # TODO: Check with
             # if p.pair.pool_address.lower() == pair.pool_address.lower():
