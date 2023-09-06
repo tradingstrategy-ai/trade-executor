@@ -96,6 +96,9 @@ class RoutingModel(abc.ABC):
             Token address of our reserve currency.
             Relevent for buy/sell routing.
             Lowercase.
+
+        :param routing_hint:
+            The trade_routing option to use for this routing model.
         """
 
         assert type(allowed_intermediary_pairs) == dict
@@ -106,6 +109,8 @@ class RoutingModel(abc.ABC):
         self.allowed_intermediary_pairs = self.convert_address_dict_to_lower(allowed_intermediary_pairs)
         
         self.reserve_token_address = reserve_token_address
+
+        self.routing_hint = routing_hint
     
     @staticmethod
     def convert_address_dict_to_lower(address_dict) -> dict:
