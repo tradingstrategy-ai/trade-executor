@@ -228,31 +228,36 @@ def perform_test_trade(
         generic_execution_data = runner.setup_generic_routing(universe)
         pricing_models = [item["pricing_model"] for item in generic_execution_data]
 
-        traded = False
         for _pair in universe.universe.pairs.iterate_pairs():
 
-            if not all_pairs and get_pair_identifier_from_dex_pair(_pair) != pair:
-                if traded:
-                    raise RuntimeError("Test trade has already been made. This should not happen.")
-                continue
+            pricing_model_to_compare = get_pricing_model_for_pair(_pair, pricing_models, set_routing_hint=False) 
 
-            pricing_model = get_pricing_model_for_pair(_pair, pricing_models, set_routing_hint=False) 
+            # for item in generic_routing_data:
+            #     routing_model = item["routing_model"]
+            #     execution_model = item["execution_model"]
+            
+            routing_state, routing_model, execution_model, pricing_model = None, None, None, None
+            
+            for item in generic_execution_data:
+                if item["pricing_model"] == pricing_model_to_compare:
+                    assert item["routing_model"] == pricing_model_to_compare.routing_model, "routing_model mismatch"
+                    routing_state = item["routing_state"]
+                    routing_model = item["routing_model"]
+                    pricing_model = item["pricing_model"]
+                    break
 
-            for item in generic_routing_data:
-                routing_model = item["routing_model"]
-                execution_model = item["execution_model"]
+            assert routing_state, "routing_state not found"
 
-                # get execution details corresponding to routing model
-                for item in generic_execution_data:
-                    if item["pricing_model"] == pricing_model:
-                        assert item["routing_model"] == routing_model, "routing_model mismatch"
-                        routing_state = item["routing_state"]
-                        break
+            for my_item in generic_routing_data:
+                if my_item["routing_model"] == routing_model:
+                    execution_model = my_item["execution_model"]
+                    break
 
-                assert routing_state, "routing_state not found"
+            assert execution_model, "execution_model not found"
 
-                p = get_pair_identifier_from_dex_pair(_pair)
+            p = get_pair_identifier_from_dex_pair(_pair)
 
+            if p == pair or all_pairs:
                 make_test_trade(
                     web3config.get_default(),
                     execution_model,
@@ -265,7 +270,6 @@ def perform_test_trade(
                     pair=p,
                     buy_only=buy_only,
                 )
-                traded = True
 
     else:
 
