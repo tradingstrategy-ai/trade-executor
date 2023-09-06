@@ -72,8 +72,6 @@ def decide_trades(
 
         cycle_number = cycle_debug_data["cycle"]
 
-        trades = []
-
         # For odd seconds buy, for even seconds sell
         if cycle_number % 2 == 0:
             # buy on even days
