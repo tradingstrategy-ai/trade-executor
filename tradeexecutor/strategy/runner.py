@@ -162,6 +162,36 @@ class StrategyRunner(abc.ABC):
         state.revalue_positions(ts, valuation_method)
         logger.info("After revaluation at %s our equity is %f", ts, state.portfolio.get_total_equity())
 
+    def collect_post_execution_data(
+            self,
+            execution_context: ExecutionContext,
+            pricing_model: PricingModel,
+            trades: List[TradeExecution]):
+        """Collect post execution data for all trades.
+
+        - Collect prices after the execution
+        - Mostly matters for failed execution only, but we collect for everything
+        """
+
+        # Rerun price estimations for the latest block data
+        # after the trade has been executed
+        for t in trades:
+
+            if execution_context.mode.is_live_trading():
+                ts = datetime.datetime.utcnow()
+            else:
+                # Backtesting does not yet have a way
+                # to simulate slippage
+                ts = t.strategy_cycle_at
+
+            # Credit supply pairs do not have pricing ATM
+            if not t.pair.is_credit_supply():
+
+                if t.is_buy():
+                    t.post_execution_price_structure = pricing_model.get_buy_price(ts, t.pair, t.planned_reserve)
+                else:
+                    t.post_execution_price_structure = pricing_model.get_sell_price(ts, t.pair, -t.planned_quantity)
+
     def on_clock(self,
                  clock: datetime.datetime,
                  universe: StrategyExecutionUniverse,
@@ -580,6 +610,14 @@ class StrategyRunner(abc.ABC):
                             check_balances=check_balances,
                         )
                     assert executed_trades == len(approved_trades), "Not all trades were executed"
+
+            # Run any logic we need to run after the trades have been executd
+            with self.timed_task_context_manager("post_execution"):
+                self.collect_post_execution_data(
+                    self.execution_context,
+                    pricing_model,
+                    approved_trades,
+                )
 
             # Log output
             if self.is_progress_report_needed():

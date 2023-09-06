@@ -451,6 +451,11 @@ class EthereumExecutionModel(ExecutionModel):
                     cost_of_gas=result.get_cost_of_gas(),
                 )
             else:
+                # Trade failed
+
+
+
+
                 report_failure(ts, state, trade, stop_on_execution_failure)
 
 

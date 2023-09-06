@@ -69,7 +69,15 @@ class UniswapV3RoutingState(EthereumRoutingState):
             self.check_has_enough_tokens(quote_token, reserve_amount)
 
         raw_fee = int(target_pair.fee * 1_000_000)
-        
+
+        logger.info(
+            "Creating a trade for %s, slippage tolerance %f, trade reserve %s, amount in %d",
+            target_pair,
+            max_slippage,
+            reserve_asset,
+            reserve_amount,
+        )
+
         bound_swap_func = swap_with_slippage_protection(
             uniswap,
             recipient_address=self.tx_builder.get_token_delivery_address(),

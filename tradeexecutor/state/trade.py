@@ -397,6 +397,17 @@ class TradeExecution:
     #: TradePricing instance can refer to more than one swap
     price_structure: Optional[TradePricing] = None
 
+    #: TradePricing after the trade was executed.
+    #:
+    #: Collected by :py:class:`StrategyRunner` after all trades have been executed.
+    #:
+    #: Mostly interesting on failed trades, so we can diagnose why they might have failed
+    #: due to slippage tolerance.
+    #:
+    #: For backtesting, this data is filled in, but is not meaningful.
+    #:
+    post_execution_price_structure: Optional[TradePricing] = None
+
     #: Cost of gas in terms of native token
     #:
     #: E.g. on Ethereum, this is the amount of ETH spent on gas

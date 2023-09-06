@@ -24,7 +24,7 @@ matplotlib = "^3.6.0"
 jupyterlab = "^3.5.0"
 pandas-ta = "^0.3.14b"
 tqdm-loggable = "0.1.4"
-web3-ethereum-defi = {version="0.22.7", extras=["data"]}
+web3-ethereum-defi = {version="0.22.8", extras=["data"]}
 
 # tqdm progress bar doesn't show up in VScode Jupyter with ipywidgets>=8
 # https://github.com/microsoft/vscode-jupyter/issues/11014
@@ -33,6 +33,10 @@ ipywidgets = ">=7.0,<8.0"
 # https://github.com/apache/arrow/pull/35412
 # Last checked 2023-07, still broken
 urllib3 = "<2"
+
+# Breaks OpenAPI package for now 2023-09
+# AttributeError: module 'jsonschema._utils' has no attribute 'load_schema'
+jsonschema = "4.17.3"
 
 #
 # Execution deps
