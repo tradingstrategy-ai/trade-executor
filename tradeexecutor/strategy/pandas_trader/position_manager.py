@@ -897,7 +897,12 @@ class PositionManager:
             Trading pair where we take the position
 
         :param value:
-            How large position to open, in US dollar terms
+            How much cash reserves we allocate to open this position.
+
+            In US dollars.
+
+            For example to open 2x short where we allocate $1000
+            from our reserves, this value is $1000.
 
         :param leverage:
             Leverage level to use for the short position
@@ -939,7 +944,7 @@ class PositionManager:
         price_structure = self.pricing_model.get_sell_price(self.timestamp, pricing_pair, value)
 
         # TODO: verify calculation here and we should output the liquidation price here
-        # so it should be taken into account for stoploss
+        # so it should be takesn into account for stoploss
         borrowed_size, collateral_size = calculate_sizes_for_leverage(value, leverage)
         borrowed_quantity = borrowed_size / Decimal(price_structure.price)
 
@@ -971,7 +976,10 @@ class PositionManager:
             trade_type=TradeType.rebalance,
             reserve_currency=self.reserve_currency,
             collateral_asset_price=collateral_price,
+            planned_collateral_consumption=Decimal(collateral_size) - value,  # This is amount how much aToken is leverated besides our starting collateral
         )
+
+        import ipdb ; ipdb.set_trace()
 
         if take_profit_pct:
             position.take_profit = price_structure.mid_price * take_profit_pct

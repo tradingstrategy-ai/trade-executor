@@ -107,7 +107,7 @@ def universe() -> TradingStrategyUniverse:
     )
 
 
-    def test_backtest_open_only_short_synthetic_data(
+def test_backtest_open_only_short_synthetic_data(
     persistent_test_client: Client,
     universe,
 ):
@@ -206,18 +206,19 @@ def universe() -> TradingStrategyUniverse:
     # net value should equal capital + net unrealised profit (no interest)
     assert portfolio.get_net_asset_value(include_interest=False) == capital + (trade.get_planned_value() - loan.borrowed.get_usd_value())
 
+    # Check token balances in the wallet
     wallet = debug_dump["wallet"]
     balances = wallet.balances
-
     pair = position.pair
     usdc = pair.quote.underlying
     ausdc = pair.quote
     vweth = pair.base
+    weth = pair.base.underlying
 
-    # TODO: Finish ausdc and vweth accounting
     assert balances[usdc.address] == 0
     assert balances[ausdc.address] == pytest.approx(Decimal(20003.28785138253598178646851))
     assert balances[vweth.address] == pytest.approx(Decimal(5.573188412844794660521435197))
+    assert balances.get(weth.address, Decimal(0)) == pytest.approx(Decimal(0))
 
 
 def test_backtest_open_and_close_short_synthetic_data(
@@ -227,9 +228,9 @@ def test_backtest_open_and_close_short_synthetic_data(
     """Run the strategy backtest using inline decide_trades function.
 
     - Open short position
-    - Close short position after 4 days
     - ETH price goes 1794 -> 1712
     - Short goes to profit
+    - Close short position after 4 days
     """
 
     capital = 10000
@@ -320,8 +321,18 @@ def test_backtest_open_and_close_short_synthetic_data(
     assert portfolio.get_cash() == 0  # TODO: should we have more already?
     assert portfolio.get_net_asset_value(include_interest=True) == 0
 
-    wallet: SimulatedWallet = debug_dump["wallet"]
-    import ipdb ; ipdb.set_trace()
+    # Check token balances in the wallet
+    wallet = debug_dump["wallet"]
+    balances = wallet.balances
+    pair = position.pair
+    usdc = pair.quote.underlying
+    ausdc = pair.quote
+    vweth = pair.base
+    weth = pair.base.underlying
+    assert balances[ausdc.address] == pytest.approx(Decimal(0))
+    assert balances[vweth.address] == pytest.approx(Decimal(0))
+    assert balances.get(weth.address, Decimal(0)) == pytest.approx(Decimal(0))
+    assert balances[usdc.address] == pytest.approx(Decimal(20003.28785138253598178646851))
 
 
 def test_backtest_short_underlying_price_feed(

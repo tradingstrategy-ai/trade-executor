@@ -959,7 +959,7 @@ def test_short_unrealised_profit_leveraged(
     assert portfolio.get_cash() == pytest.approx(10133.333333)
 
 
-def test_short_unrealised_profit(
+def test_short_unrealised_profit_no_leverage(
         state: State,
         weth_short_identifier: TradingPairIdentifier,
         usdc: AssetIdentifier,
@@ -1019,6 +1019,92 @@ def test_short_unrealised_profit(
     assert state.portfolio.get_loan_net_asset_value() == pytest.approx(1053.3333333333335)
     assert state.portfolio.get_cash() == 9000
     assert state.portfolio.get_net_asset_value() == pytest.approx(10053.333333333334)
+
+
+def test_short_unrealised_profit_leverage_all(
+        state: State,
+        weth_short_identifier: TradingPairIdentifier,
+        usdc: AssetIdentifier,
+):
+    """Opening a short position and get some unrealised profit.
+
+    - Use our all 10,000 USDC as collateral
+
+    - Open a short with 3x leveragge
+
+    - ETH price goes 1500 -> 1400 so we get unrealised PnL
+    """
+
+    trader = UnitTestTrader(state)
+    portfolio = state.portfolio
+
+    start_collateral = Decimal(10000)
+    leverage = 3.0
+    eth_price = 1500.0
+    eth_short_value, collateral_value = calculate_sizes_for_leverage(
+        float(start_collateral),
+        leverage
+    )
+
+    # Check our loan parameters
+    assert eth_short_value == pytest.approx(6666.6667 * 3)
+    assert collateral_value == 30000
+
+    eth_quantity = Decimal(eth_short_value / eth_price)
+
+    short_position, trade, _ = state.trade_short(
+        strategy_cycle_at=datetime.datetime.utcnow(),
+        pair=weth_short_identifier,
+        borrowed_quantity=-eth_quantity,
+        collateral_quantity=start_collateral,
+        borrowed_asset_price=eth_price,
+        trade_type=TradeType.rebalance,
+        reserve_currency=usdc,
+        collateral_asset_price=1.0,
+        # We loop our collateral this much more
+        # to achieve our target collateral level
+        planned_collateral_consumption=Decimal(collateral_value) - start_collateral,
+    )
+
+    # We move 1000 USDC from reserves to loan deposits
+    assert trade.planned_reserve == start_collateral
+    assert trade.planned_collateral_consumption == pytest.approx(Decimal(20000))
+    assert trade.planned_quantity == pytest.approx(-eth_quantity)  # We loop the collateral this many USD to get our required level
+
+    trader.set_perfectly_executed(trade)
+
+    loan = short_position.loan
+    assert loan.collateral.get_usd_value() == pytest.approx(30000)
+    # assert loan.borrowed.get_usd_value() == pytest.approx(666.66667)
+    assert loan.get_net_asset_value() == pytest.approx(10000)
+    assert loan.get_leverage() == pytest.approx(leverage)
+    assert portfolio.get_cash() == 0
+    assert portfolio.get_net_asset_value() == 10_000
+
+    # ETH price 1500 -> 1400, make profit
+    short_position.revalue_base_asset(
+        datetime.datetime.utcnow(),
+        1400.0,
+    )
+
+    loan = short_position.loan
+    assert loan.get_net_asset_value() == pytest.approx(11333.333333333332)
+    assert short_position.get_unrealised_profit_usd() == pytest.approx(1333.333333)
+
+    _, trade_2, _ = state.trade_short(
+        closing=True,
+        strategy_cycle_at=datetime.datetime.utcnow(),
+        pair=weth_short_identifier,
+        borrowed_asset_price=loan.borrowed.last_usd_price,
+        trade_type=TradeType.rebalance,
+        reserve_currency=usdc,
+        collateral_asset_price=1.0,
+    )
+    trader.set_perfectly_executed(trade_2)
+    assert short_position.is_closed()
+    assert short_position.get_realised_profit_usd() == pytest.approx(1333.333333)
+    assert short_position.get_unrealised_profit_usd() == 0
+    assert portfolio.get_cash() == pytest.approx(11333.333333)
 
 
 def test_short_unrealised_profit_partially_closed_keep_collateral(

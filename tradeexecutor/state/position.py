@@ -762,8 +762,6 @@ class TradingPosition(GenericPosition):
                         assert quantity is None, "quantity calculated automatically when closing a short position"
                         assert not planned_collateral_consumption, "planned_collateral_consumption set automatically when closing a short position"
 
-                        import ipdb ; ipdb.set_trace()
-
                         # Pay back all the debt and its interest
                         quantity = self.loan.get_borrowed_principal_and_interest_quantity()
 
@@ -1430,7 +1428,8 @@ class TradingPosition(GenericPosition):
         """How much interest payments we have made in total.
 
         See also
-        :py:meth:`get_claimed_interest`.
+
+        - :py:meth:`get_claimed_interest`.
 
         - :py:meth:`Loan.get_net_asset_value` for notes about loan interest tracking
         """

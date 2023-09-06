@@ -161,21 +161,29 @@ class BacktestExecutionModel(ExecutionModel):
         collateral_address = trade.pair.quote.address
         reserve_address = trade.reserve_currency.address
 
-        position = state.portfolio.get_existing_open_position_by_trading_pair(trade.pair)
+        # position = state.portfolio.get_existing_open_position_by_trading_pair(trade.pair)
         executed_reserve = trade.planned_reserve
         executed_quantity = trade.planned_quantity
-        executed_collateral_quantity = trade.planned_collateral_consumption
+        executed_collateral_consumption = trade.planned_collateral_consumption
+        executed_collateral_allocation = trade.planned_collateral_allocation
 
-        if trade.is_sell():
-            import ipdb ; ipdb.set_trace()
+        # Here is a mismatch between spot and leverage:
+        # base.underlying token, or executed_quantity, never appears in the wallet
+        # as we do loan based trading
+
+        self.wallet.update_balance(reserve_address, -executed_reserve)
+
+        # The leveraged tokens appear in the wallet
+
+        # aToken amount is original deposit + any leverage we do
+        self.wallet.update_balance(collateral_address, executed_collateral_consumption)
+        self.wallet.update_balance(collateral_address, executed_reserve)
+
+        # vToken amount us whatever quantity we execute
+        if trade.is_short():
             self.wallet.update_balance(borrowed_address, -executed_quantity)
-            self.wallet.update_balance(collateral_address, executed_collateral_quantity)
-            self.wallet.update_balance(reserve_address, -executed_reserve)
         else:
-            # reducing or closing the position
-            assert position and position.is_open(), f"Tried to execute buy on short position that is not open: {trade}"
-            self.wallet.update_balance(borrowed_address, -executed_quantity)
-            self.wallet.update_balance(collateral_address, executed_collateral_quantity)
+            self.wallet.update_balance(borrowed_address, executed_quantity)
 
         # move all leftover atoken to reserve when the position is closing
         # TODO: check if this is correct place to do this
@@ -188,13 +196,13 @@ class BacktestExecutionModel(ExecutionModel):
 
         # for leverage short, we use collateral token as the reserve currency
         # so return executed_collateral_quantity here to correctly calculate the price
-        return executed_quantity, executed_collateral_quantity, False
+        return executed_quantity, executed_reserve, executed_collateral_allocation, executed_collateral_consumption
 
     def simulate_trade(self,
                        ts: datetime.datetime,
                        state: State,
                        idx: int,
-                       trade: TradeExecution) -> Tuple[Decimal, Decimal]:
+                       trade: TradeExecution) -> Tuple[Decimal, Decimal, Decimal, Decimal]:
         """Set backtesting trade state from planned to executed.
         
         Currently, always executes trades "perfectly" i.e. no different slipppage
@@ -226,12 +234,13 @@ class BacktestExecutionModel(ExecutionModel):
         state.mark_broadcasted(ts, trade)
 
         executed_quantity = executed_reserve = sell_amount_epsilon_fix = Decimal(0)
+        executed_collateral_allocation = executed_collateral_consumption = None
 
         try:
             if trade.is_spot() or trade.is_credit_supply():
                 executed_quantity, executed_reserve, sell_amount_epsilon_fix = self.simulate_spot(state, trade)
             elif trade.is_leverage():
-                executed_quantity, executed_reserve, sell_amount_epsilon_fix = self.simulate_leverage(state, trade)
+                executed_quantity, executed_reserve, executed_collateral_allocation, executed_collateral_consumption = self.simulate_leverage(state, trade)
             else:
                 raise NotImplementedError(f"Does not know how to simulate: {trade}")
 
@@ -281,7 +290,7 @@ class BacktestExecutionModel(ExecutionModel):
                 f"  {extra_help_message}\n"
             ) from e
 
-        return executed_quantity, executed_reserve
+        return executed_quantity, executed_reserve, executed_collateral_allocation, executed_collateral_consumption
 
     def execute_trades(self,
                        ts: datetime.datetime,
@@ -322,7 +331,7 @@ class BacktestExecutionModel(ExecutionModel):
         for idx, trade in enumerate(trades):
 
             # 3. Simulate tx broadcast
-            executed_quantity, executed_reserve = self.simulate_trade(ts, state, idx, trade)
+            executed_quantity, executed_reserve, executed_collateral_allocation, executed_collateral_consumption = self.simulate_trade(ts, state, idx, trade)
 
             # 4. execution is dummy operation where planned execution becomes actual execution
             # Assume we always get the same execution we planned
@@ -331,6 +340,8 @@ class BacktestExecutionModel(ExecutionModel):
             else:
                 executed_price = 0
 
+            import ipdb ; ipdb.set_trace()
+
             state.mark_trade_success(
                 ts,
                 trade,
@@ -338,7 +349,10 @@ class BacktestExecutionModel(ExecutionModel):
                 executed_quantity,
                 executed_reserve,
                 lp_fees=trade.lp_fees_estimated,
-                native_token_price=1)
+                native_token_price=1,
+                executed_collateral_allocation=executed_collateral_allocation,
+                executed_collateral_consumption=executed_collateral_consumption,
+            )
 
     def get_routing_state_details(self) -> dict:
         return {"wallet": self.wallet}
