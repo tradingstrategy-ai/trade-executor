@@ -1497,6 +1497,10 @@ def test_short_realised_interest_and_profit(
     # This trade included repaid interest
     assert trade_2.get_repaid_interest() == pytest.approx(30.660194069103827)
 
+    # Net asset value does not correctly work when the interest is repaid
+    loan = short_position.loan
+    assert loan.get_net_asset_value() == pytest.approx(-15.54710427005894)
+
     # Position is properly closed
     assert short_position.get_quantity() == 0
     assert short_position.is_closed()

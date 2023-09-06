@@ -1401,7 +1401,12 @@ class TradingPosition(GenericPosition):
     def get_claimed_interest(self) -> USDollarAmount:
         """How much interest we have claimed from this position and moved back to reserves.
 
-        See also :py:meth:`get_accrued_interest` for the life-time interest accumulation.
+        See also
+
+        - :py:meth:`get_accrued_interest` for the life-time interest accumulation.
+
+        - :py:meth:`Loan.get_net_asset_value` for notes about loan interest tracking
+
         """
         interest = sum([t.get_claimed_interest() for t in self.trades.values() if t.is_success()])
         return interest
@@ -1409,7 +1414,11 @@ class TradingPosition(GenericPosition):
     def get_repaid_interest(self) -> USDollarAmount:
         """How much interest payments we have made in total.
 
-        See also :py:meth:`get_claimed_interest`.
+        See also
+
+        - :py:meth:`get_claimed_interest`.
+
+        - :py:meth:`Loan.get_net_asset_value` for notes about loan interest tracking
         """
         interest = sum([t.get_repaid_interest() for t in self.trades.values() if t.is_success()])
         return interest

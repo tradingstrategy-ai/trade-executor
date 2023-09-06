@@ -140,7 +140,23 @@ class Loan:
             return self.get_collateral_interest()
 
     def get_net_asset_value(self, include_interest=True) -> USDollarAmount:
-        """What's the withdrawable amount of the position is closed."""
+        """What's the withdrawable amount of the position is closed.
+
+        .. warning ::
+
+            For closed position the behavior here is a bit weird.
+
+            The value reflects any reminder of interest that was paid
+            off when the position was closed. It is negative if borrowing costed
+            more than collateral interest gained.
+
+            This is later fixed in :py:meth:`TradingPosition.get_claimed_interest()`
+            and the position accounts the difference in the final trade that pays
+            principal + interest back.
+
+        :return:
+            The current net asset value or remaining interest that was paid off when the position was closed.
+        """
 
         if self.borrowed:
             # Margined trading
