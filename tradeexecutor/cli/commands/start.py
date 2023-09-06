@@ -404,20 +404,7 @@ def start(
         # but for local dev chains it is dynamically constructed from the deployed contracts
         routing_model: RoutingModel = None
         
-        if not generic_routing_data:
-            
-
-            client, routing_model = create_client(
-                mod=mod,
-                web3config=web3config,
-                trading_strategy_api_key=trading_strategy_api_key,
-                cache_path=cache_path,
-                test_evm_uniswap_v2_factory=test_evm_uniswap_v2_factory,
-                test_evm_uniswap_v2_router=test_evm_uniswap_v2_router,
-                test_evm_uniswap_v2_init_code_hash=test_evm_uniswap_v2_init_code_hash,
-                clear_caches=clear_caches,
-            )
-        else:
+        if generic_routing_data:
             assert test_evm_uniswap_data, "test_evm_uniswap_data is needed for generic routing data"
 
             client = create_generic_client(
@@ -429,6 +416,19 @@ def start(
                 generic_routing_data=generic_routing_data,
                 clear_caches=clear_caches,
             )
+
+        else:
+            client, routing_model = create_client(
+                mod=mod,
+                web3config=web3config,
+                trading_strategy_api_key=trading_strategy_api_key,
+                cache_path=cache_path,
+                test_evm_uniswap_v2_factory=test_evm_uniswap_v2_factory,
+                test_evm_uniswap_v2_router=test_evm_uniswap_v2_router,
+                test_evm_uniswap_v2_init_code_hash=test_evm_uniswap_v2_init_code_hash,
+                clear_caches=clear_caches,
+            )
+            
 
         # Currently, all actions require us to have a valid API key
         # might change in the future
