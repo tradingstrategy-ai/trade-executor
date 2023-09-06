@@ -432,8 +432,6 @@ class PositionManager:
 
         assert pricing_model.routing_model.routing_hint is not None, "Routing hint is not set for the routing model"
 
-        trade.routing_hint = pricing_model.routing_model.routing_hint
-
         assert created, f"There was conflicting open position for pair: {executor_pair}"
 
         if take_profit_pct:

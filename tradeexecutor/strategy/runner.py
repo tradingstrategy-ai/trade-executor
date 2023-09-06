@@ -479,6 +479,7 @@ class StrategyRunner(abc.ABC):
 
             # Run the strategy cycle
             with self.timed_task_context_manager("decide_trades"):
+                # TODO: use tradeexecutor version to decide
                 if not self.generic_routing_data:
                     rebalance_trades = self.on_clock(strategy_cycle_timestamp, universe, [pricing_model], state, debug_details)
                 else:
@@ -547,6 +548,7 @@ class StrategyRunner(abc.ABC):
                 else:
                     assert generic_execution_data, "generic_execution_data should be set"
                     
+                    executed_trades = 0
                     for item in self.generic_routing_data:
                         routing_model = item["routing_model"]
                         execution_model = item["execution_model"]
@@ -556,8 +558,11 @@ class StrategyRunner(abc.ABC):
                         
                         # get trades corresponding to routing model
                         for trade in approved_trades:
-                            if trade.routing_hint == routing_hint:
+                            assert trade.pair.routing_hint is not None, "Trade pair routing_hint is None"
+                            assert routing_hint is not None, "routing_hint is None"
+                            if trade.pair.routing_hint == routing_hint:
                                 trades_to_execute.append(trade)
+                                executed_trades += 1
 
                         # get execution details corresponding to routing model
                         for item in generic_execution_data:
@@ -574,6 +579,7 @@ class StrategyRunner(abc.ABC):
                             routing_state,
                             check_balances=check_balances,
                         )
+                    assert executed_trades == len(approved_trades), "Not all trades were executed"
 
             # Log output
             if self.is_progress_report_needed():
