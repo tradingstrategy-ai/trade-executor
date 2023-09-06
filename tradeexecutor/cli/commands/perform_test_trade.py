@@ -10,11 +10,11 @@ from typer import Option
 
 from .app import app
 from ..bootstrap import prepare_executor_id, prepare_cache, create_web3_config, create_state_store, \
-    create_execution_and_sync_model, create_client
+    create_execution_and_sync_model, create_client, create_generic_execution_and_sync_model, create_generic_client
 from ..log import setup_logging
 from ..testtrade import make_test_trade
 from ...strategy.approval import UncheckedApprovalModel
-from ...strategy.bootstrap import make_factory_from_strategy_mod
+from ...strategy.bootstrap import make_factory_from_strategy_mod, make_generic_factory_from_strategy_mod
 from ...strategy.description import StrategyExecutionDescription
 from ...strategy.execution_context import ExecutionContext, ExecutionMode
 from ...strategy.execution_model import AssetManagementMode
@@ -22,8 +22,10 @@ from ...strategy.run_state import RunState
 from ...strategy.strategy_module import read_strategy_module, StrategyModuleInformation
 from ...strategy.trading_strategy_universe import TradingStrategyUniverseModel
 from ...strategy.universe_model import UniverseOptions
+from ...strategy.pandas_trader.position_manager import get_pricing_model_for_pair
 from ...utils.timer import timed_task
 from tradeexecutor.cli.commands import shared_options
+from tradeexecutor.testing.evm_uniswap_testing_data import deserialize_uniswap_test_data_list
 from tradingstrategy.chain import ChainId
 from tradingstrategy.pair import DEXPair
 
@@ -60,6 +62,7 @@ def perform_test_trade(
     test_evm_uniswap_v2_router: Optional[str] = shared_options.test_evm_uniswap_v2_router,
     test_evm_uniswap_v2_factory: Optional[str] = shared_options.test_evm_uniswap_v2_factory,
     test_evm_uniswap_v2_init_code_hash: Optional[str] = shared_options.test_evm_uniswap_v2_init_code_hash,
+    test_evm_uniswap_data: Optional[str] = shared_options.test_evm_uniswap_data,
 
     # for multipair strategies
     pair: Optional[str] = shared_options.pair,
@@ -78,6 +81,9 @@ def perform_test_trade(
     if pair:
         assert not all_pairs, "Cannot specify both --pair and --all-pairs"
         pair = parse_pair_data(pair)
+
+    if test_evm_uniswap_data is not None:
+        test_evm_uniswap_data = deserialize_uniswap_test_data_list(test_evm_uniswap_data)
 
     id = prepare_executor_id(id, strategy_file)
 
@@ -106,32 +112,68 @@ def perform_test_trade(
 
     web3config.choose_single_chain()
 
-    assert len(mod.trade_routing) == 1, "Test trade only works with single routing strategies for now"
+    # assert len(mod.trade_routing) == 1, "Test trade only works with single routing strategies for now"
 
-    execution_model, sync_model, valuation_model_factory, pricing_model_factory = create_execution_and_sync_model(
-        asset_management_mode=asset_management_mode,
-        private_key=private_key,
-        web3config=web3config,
-        confirmation_timeout=datetime.timedelta(seconds=60),
-        confirmation_block_count=confirmation_block_count,
-        min_gas_balance=min_gas_balance,
-        max_slippage=max_slippage,
-        vault_address=vault_address,
-        vault_adapter_address=vault_adapter_address,
-        vault_payment_forwarder_address=vault_payment_forwarder_address,
-        routing_hint=mod.trade_routing[0],
-    )
+    confirmation_timeout = datetime.timedelta(seconds=60)
 
-    client, routing_model = create_client(
-        mod=mod,
-        web3config=web3config,
-        trading_strategy_api_key=trading_strategy_api_key,
-        cache_path=cache_path,
-        test_evm_uniswap_v2_factory=test_evm_uniswap_v2_factory,
-        test_evm_uniswap_v2_router=test_evm_uniswap_v2_router,
-        test_evm_uniswap_v2_init_code_hash=test_evm_uniswap_v2_init_code_hash,
-        clear_caches=False,
-    )
+    if len(mod.trade_routing) > 1:
+        generic_routing_data, sync_model = create_generic_execution_and_sync_model(
+                asset_management_mode=asset_management_mode,
+                private_key=private_key,
+                web3config=web3config,
+                confirmation_timeout=confirmation_timeout,
+                confirmation_block_count=confirmation_block_count,
+                max_slippage=max_slippage,
+                min_gas_balance=min_gas_balance,
+                vault_address=vault_address,
+                vault_adapter_address=vault_adapter_address,
+                vault_payment_forwarder_address=vault_payment_forwarder_address,
+                routing_hints=mod.trade_routing,
+                execution_context=execution_context,
+                reserve_currency=mod.reserve_currency,
+            )
+    else:
+        execution_model, sync_model, valuation_model_factory, pricing_model_factory = \
+            create_execution_and_sync_model(
+                asset_management_mode=asset_management_mode,
+                private_key=private_key,
+                web3config=web3config,
+                confirmation_timeout=confirmation_timeout,
+                confirmation_block_count=confirmation_block_count,
+                min_gas_balance=min_gas_balance,
+                max_slippage=max_slippage,
+                vault_address=vault_address,
+                vault_adapter_address=vault_adapter_address,
+                vault_payment_forwarder_address=vault_payment_forwarder_address,
+                routing_hint=mod.trade_routing[0],
+            )
+
+    clear_caches = False
+    if generic_routing_data:
+        assert test_evm_uniswap_data, "test_evm_uniswap_data is needed for generic routing data"
+
+        client = create_generic_client(
+            mod=mod,
+            web3config=web3config,
+            trading_strategy_api_key=trading_strategy_api_key,
+            cache_path=cache_path,
+            test_evm_uniswap_data=test_evm_uniswap_data,
+            generic_routing_data=generic_routing_data,
+            clear_caches=clear_caches,
+        )
+
+    else:
+        client, routing_model = create_client(
+            mod=mod,
+            web3config=web3config,
+            trading_strategy_api_key=trading_strategy_api_key,
+            cache_path=cache_path,
+            test_evm_uniswap_v2_factory=test_evm_uniswap_v2_factory,
+            test_evm_uniswap_v2_router=test_evm_uniswap_v2_router,
+            test_evm_uniswap_v2_init_code_hash=test_evm_uniswap_v2_init_code_hash,
+            clear_caches=clear_caches,
+        )
+
     assert client is not None, "You need to give details for TradingStrategy.ai client"
 
     if not state_file:
@@ -146,19 +188,31 @@ def perform_test_trade(
         state = store.load()
 
     # Set up the strategy engine
-    factory = make_factory_from_strategy_mod(mod)
-    run_description: StrategyExecutionDescription = factory(
-        execution_model=execution_model,
-        execution_context=execution_context,
-        timed_task_context_manager=execution_context.timed_task_context_manager,
-        sync_model=sync_model,
-        valuation_model_factory=valuation_model_factory,
-        pricing_model_factory=pricing_model_factory,
-        approval_model=UncheckedApprovalModel(),
-        client=client,
-        routing_model=routing_model,
-        run_state=RunState(),
-    )
+    if generic_routing_data:
+        generic_factory = make_generic_factory_from_strategy_mod(mod)
+        run_description = generic_factory(
+            execution_context=execution_context,
+            timed_task_context_manager=execution_context.timed_task_context_manager,
+            sync_model=sync_model,
+            approval_model=UncheckedApprovalModel(),
+            client=client,
+            run_state=RunState(),
+            generic_routing_data=generic_routing_data,
+        )
+    else:
+        factory = make_factory_from_strategy_mod(mod)
+        run_description: StrategyExecutionDescription = factory(
+            execution_model=execution_model,
+            execution_context=execution_context,
+            timed_task_context_manager=execution_context.timed_task_context_manager,
+            sync_model=sync_model,
+            valuation_model_factory=valuation_model_factory,
+            pricing_model_factory=pricing_model_factory,
+            approval_model=UncheckedApprovalModel(),
+            client=client,
+            routing_model=routing_model,
+            run_state=RunState(),
+        )
 
     # We construct the trading universe to know what's our reserve asset
     universe_model: TradingStrategyUniverseModel = run_description.universe_model
@@ -169,14 +223,73 @@ def perform_test_trade(
         UniverseOptions())
 
     runner = run_description.runner
-    routing_state, pricing_model, valuation_method = runner.setup_routing(universe)
 
-    if all_pairs:
+    if generic_routing_data:
+        generic_execution_data = runner.setup_generic_routing(universe)
+        pricing_models = [item["pricing_model"] for item in generic_execution_data]
 
-        for pair in universe.universe.pairs.iterate_pairs():
+        traded = False
+        for _pair in universe.universe.pairs.iterate_pairs():
 
-            _p = construct_identifier_from_pair(pair)
-            p = parse_pair_data(_p)
+            if not all_pairs and get_pair_identifier_from_dex_pair(_pair) != pair:
+                if traded:
+                    raise RuntimeError("Test trade has already been made. This should not happen.")
+                continue
+
+            pricing_model = get_pricing_model_for_pair(_pair, pricing_models, set_routing_hint=False) 
+
+            for item in generic_routing_data:
+                routing_model = item["routing_model"]
+                execution_model = item["execution_model"]
+
+                # get execution details corresponding to routing model
+                for item in generic_execution_data:
+                    if item["pricing_model"] == pricing_model:
+                        assert item["routing_model"] == routing_model, "routing_model mismatch"
+                        routing_state = item["routing_state"]
+                        break
+
+                assert routing_state, "routing_state not found"
+
+                p = get_pair_identifier_from_dex_pair(_pair)
+
+                make_test_trade(
+                    web3config.get_default(),
+                    execution_model,
+                    pricing_model,
+                    sync_model,
+                    state,
+                    universe,
+                    routing_model,
+                    routing_state,
+                    pair=p,
+                    buy_only=buy_only,
+                )
+                traded = True
+
+    else:
+
+        routing_state, pricing_model, valuation_method = runner.setup_routing(universe)
+
+        if all_pairs:
+
+            for _pair in universe.universe.pairs.iterate_pairs():
+
+                p = get_pair_identifier_from_dex_pair(_pair)
+
+                make_test_trade(
+                    web3config.get_default(),
+                    execution_model,
+                    pricing_model,
+                    sync_model,
+                    state,
+                    universe,
+                    runner.routing_model,
+                    routing_state,
+                    pair=p,
+                    buy_only=buy_only,
+                )
+        else:
 
             make_test_trade(
                 web3config.get_default(),
@@ -187,28 +300,18 @@ def perform_test_trade(
                 universe,
                 runner.routing_model,
                 routing_state,
-                pair=p,
+                pair=pair,
                 buy_only=buy_only,
             )
-    else:
-
-        make_test_trade(
-            web3config.get_default(),
-            execution_model,
-            pricing_model,
-            sync_model,
-            state,
-            universe,
-            runner.routing_model,
-            routing_state,
-            pair=pair,
-            buy_only=buy_only,
-        )
 
     # Store the test trade data in the strategy history
     store.sync(state)
 
     logger.info("All ok")
+
+def get_pair_identifier_from_dex_pair(_pair):
+    p = (_pair.chain_id, _pair.exchange_slug, _pair.base_token_symbol, _pair.quote_token_symbol, _pair.fee/10_000)
+    return p
 
 
 def parse_pair_data(s: str):
@@ -248,7 +351,7 @@ def parse_pair_data(s: str):
     return (chain_id, exchange_slug, base_token, quote_token, fee)
 
 
-def construct_identifier_from_pair(pair: DEXPair) -> str:
+def get_string_identifier_from_pair(pair: DEXPair) -> str:
     """Construct pair identifier from pair data.
     
     :param pair:
