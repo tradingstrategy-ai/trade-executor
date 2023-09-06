@@ -526,4 +526,8 @@ class AssetWithTrackedValue:
         # Fix decimal math issues
         self.quantity = ensure_exact_zero(self.quantity)
 
+        # TODO: this is a temp hack for testing to make sure the borrowed quantity can be minimum 0
+        if self.quantity < 0:
+            self.quantity = 0
+
 

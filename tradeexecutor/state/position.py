@@ -1032,7 +1032,6 @@ class TradingPosition(GenericPosition):
             return 0
 
         unrealised_equity = (self.get_current_price() - avg_price) * float(self.get_net_quantity())
-
         if include_interest:
             return unrealised_equity + self.get_accrued_interest() - self.get_claimed_interest() + self.get_repaid_interest()
 
