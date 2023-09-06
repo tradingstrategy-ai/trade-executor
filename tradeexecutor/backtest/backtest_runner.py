@@ -600,7 +600,11 @@ def run_backtest_inline(
         engine_version=engine_version,
     )
 
-    return run_backtest(backtest_setup, client, allow_missing_fees=True)
+    state, universe, debug_dump = run_backtest(backtest_setup, client, allow_missing_fees=True)
+
+    debug_dump["wallet"] = wallet
+
+    return state, universe, debug_dump
 
 
 def guess_data_delay_tolerance(universe: TradingStrategyUniverse) -> pd.Timedelta:

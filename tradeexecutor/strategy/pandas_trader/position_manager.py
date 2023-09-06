@@ -1029,7 +1029,7 @@ class PositionManager:
             closing=True,
             pair=pair,
             borrowed_asset_price=price_structure.price,
-            trade_type=TradeType.rebalance,
+            trade_type=trade_type,
             reserve_currency=self.reserve_currency,
             collateral_asset_price=1.0,
             notes=notes,

@@ -573,7 +573,10 @@ class TradingPosition(GenericPosition):
         If the position is closed, the value should be zero.
 
         :param include_interest:
-            Include accrued interest in the valuation
+            Include accrued interest in the valuation.
+
+            This will add any interest earned/lost in loans,
+            plus their repayments.
 
         :return:
             The value of the position if any remaining open amount
@@ -581,7 +584,7 @@ class TradingPosition(GenericPosition):
         """
 
         if include_interest:
-            value = self.get_accrued_interest() - self.get_claimed_interest()
+            value = self.get_accrued_interest_with_repayments()
         else:
             value = 0
 
@@ -758,6 +761,8 @@ class TradingPosition(GenericPosition):
                         assert reserve is None, "reserve calculated automatically when closing a short position"
                         assert quantity is None, "quantity calculated automatically when closing a short position"
                         assert not planned_collateral_consumption, "planned_collateral_consumption set automatically when closing a short position"
+
+                        import ipdb ; ipdb.set_trace()
 
                         # Pay back all the debt and its interest
                         quantity = self.loan.get_borrowed_principal_and_interest_quantity()
@@ -1376,6 +1381,8 @@ class TradingPosition(GenericPosition):
     def get_accrued_interest(self) -> USDollarAmount:
         """Get the USD value of currently accrued interest for this position so far.
 
+        See :py:meth:`get_accrued_interest_with_repayments` to account any interest payments.
+
         - The accrued interest is included as the position accounting item until the position is completely closed
 
         - When the position is completed closed,
@@ -1387,6 +1394,7 @@ class TradingPosition(GenericPosition):
         - See :py:meth:`get_claimed_interest` to get the interest that has
           been moved to reserves from this position.
 
+
         :return:
             Net interest PnL in USD.
 
@@ -1395,8 +1403,15 @@ class TradingPosition(GenericPosition):
 
         if self.loan is not None:
             return self.loan.get_net_interest()
-
         return 0.0
+
+    def get_accrued_interest_with_repayments(self) -> USDollarAmount:
+        """Return the net from collateral and borrowed interest plus their interest payments.
+
+        - See also :py:meth:`get_accrued_interest`
+
+        """
+        return self.get_accrued_interest() - self.get_claimed_interest() + self.get_repaid_interest()
 
     def get_claimed_interest(self) -> USDollarAmount:
         """How much interest we have claimed from this position and moved back to reserves.
@@ -1415,8 +1430,7 @@ class TradingPosition(GenericPosition):
         """How much interest payments we have made in total.
 
         See also
-
-        - :py:meth:`get_claimed_interest`.
+        :py:meth:`get_claimed_interest`.
 
         - :py:meth:`Loan.get_net_asset_value` for notes about loan interest tracking
         """
