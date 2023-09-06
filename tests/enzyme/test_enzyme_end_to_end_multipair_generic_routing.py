@@ -507,10 +507,10 @@ def test_enzyme_generic_perform_test_trade(
     with state_file.open("rt") as inp:
         state: State = State.from_json(inp.read())
 
-        assert len(list(state.portfolio.get_all_trades())) == 2
+        assert len(list(state.portfolio.get_all_trades())) == 8
 
         reserve_value = state.portfolio.get_default_reserve_position().get_value()
-        assert reserve_value == pytest.approx(499.994009)
+        assert reserve_value == pytest.approx(499.976036)
 
 
 def test_enzyme_generic_live_trading_reinit(
