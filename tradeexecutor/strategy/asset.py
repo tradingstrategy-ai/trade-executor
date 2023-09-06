@@ -62,7 +62,7 @@ def get_relevant_assets(
     return assets
 
 
-def map_onchain_asset_to_position(
+def map_onchain_asset_to_positions(
         asset: AssetIdentifier,
         state: State,
 ) -> TradingPosition | ReservePosition | None:
@@ -89,19 +89,21 @@ def map_onchain_asset_to_position(
         positions we know of.
     """
 
+    positions = []
+
     for p in state.portfolio.open_positions.values():
         if asset == p.pair.base:
-            return p
+            positions.append(p)
 
     # Frozen position should be considered open positions,
     # when trying to assign tokens to a position they need to be in
     for p in state.portfolio.frozen_positions.values():
         if asset == p.pair.base:
-            return p
+            positions.append(p)
 
     r: ReservePosition
     for r in state.portfolio.reserves.values():
         if asset == r.asset:
-            return r
-
-    return None
+            positions.append(r)
+    
+    return positions

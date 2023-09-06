@@ -35,7 +35,7 @@ from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.state import State
 from tradeexecutor.state.sync import BalanceEventRef
 from tradeexecutor.state.types import USDollarAmount
-from tradeexecutor.strategy.asset import get_relevant_assets, map_onchain_asset_to_position
+from tradeexecutor.strategy.asset import get_relevant_assets, map_onchain_asset_to_positions
 from tradeexecutor.strategy.sync_model import SyncModel
 
 
@@ -88,7 +88,7 @@ class AccountingBalanceCheck:
     #: Related position
     #:
     #: Set none if no open position was found
-    position: TradingPosition | ReservePosition | None
+    positions: list[TradingPosition | ReservePosition | None]
 
     expected_amount: Decimal
 
@@ -234,28 +234,31 @@ def calculate_account_corrections(
 
         reserve = ab.asset in reserve_assets
 
-        position = map_onchain_asset_to_position(ab.asset, state)
+        positions = map_onchain_asset_to_positions(ab.asset, state)
 
-        if isinstance(position, TradingPosition):
-            if position.is_closed():
-                raise UnexpectedAccountingCorrectionIssue(f"Mapped found tokens to already closed position:\n"
-                                                          f"{ab}\n"
-                                                          f"{position}")
+        if len(positions) == 1:
+            position = positions[0]
+
+            # this can happen in generic routing
+            if isinstance(position, TradingPosition):
+                if position.is_closed():
+                    raise UnexpectedAccountingCorrectionIssue(f"Mapped found tokens to already closed position:\n"
+                                                            f"{ab}\n"
+                                                            f"{position}")
 
         actual_amount = ab.amount
-        expected_amount = position.get_quantity() if position else 0
+        if positions:
+            expected_amount = sum(position.get_quantity() for position in positions)
+        else:
+            expected_amount = 0
         diff = actual_amount - expected_amount
 
-        if isinstance(position, TradingPosition):
-            dust_epsilon = get_dust_epsilon_for_pair(position.pair)
-        elif isinstance(position, ReservePosition):
-            dust_epsilon = get_dust_epsilon_for_asset(position.asset)
-        elif position is None:
-            dust_epsilon = DEFAULT_DUST_EPSILON
-        else:
-            raise NotImplementedError(f"Could not figure out position: {position}")
+        dust_epsilon = get_dust_epsilon(positions[0])
 
-        usd_value = position.calculate_quantity_usd_value(diff) if position else None
+        if positions:
+            usd_value = sum(position.calculate_quantity_usd_value(diff) for position in positions)
+        else:
+            usd_value = None
 
         logger.debug("Correction check worth of %s worth of %f USD, actual amount %s, expected amount %s", ab.asset, usd_value or 0, actual_amount, expected_amount)
 
@@ -266,7 +269,7 @@ def calculate_account_corrections(
                 AccountingCorrectionCause.unknown_cause,
                 sync_model.get_token_storage_address(),
                 ab.asset,
-                position,
+                positions,
                 expected_amount,
                 actual_amount,
                 dust_epsilon,
@@ -277,6 +280,27 @@ def calculate_account_corrections(
                 reserve,
                 mismatch,
             )
+
+def get_dust_epsilon(position) -> Decimal:
+    """Get the dust epsilon for a position.
+    
+    In the case of generic routing and multiple positions match to a single asset, we can still use any of the positions to get the dust epsilon
+
+    :param position:
+        Position to get the dust epsilon for
+
+    :return:
+        Dust epsilon
+    """
+    if isinstance(position, TradingPosition):
+        dust_epsilon = get_dust_epsilon_for_pair(position.pair)
+    elif isinstance(position, ReservePosition):
+        dust_epsilon = get_dust_epsilon_for_asset(position.asset)
+    elif position is None:
+        dust_epsilon = DEFAULT_DUST_EPSILON
+    else:
+        raise NotImplementedError(f"Could not figure out position: {position}")
+    return dust_epsilon
 
 
 def apply_accounting_correction(
@@ -506,21 +530,24 @@ def check_accounts(
     for c in corrections:
         idx.append(c.asset.token_symbol)
 
-        match c.position:
-            case None:
-                position_label = "No open position"
-            case ReservePosition():
-                position_label = "Reserves"
-            case TradingPosition():
-                position_label = c.position.pair.get_ticker()
-            case _:
-                raise NotImplementedError()
+        position_labels = []
+        for position in c.positions:
+            match position:
+                case None:
+                    position_label = "No open position"
+                case ReservePosition():
+                    position_label = "Reserves"
+                case TradingPosition():
+                    position_label = position.pair.get_ticker()
+                case _:
+                    raise NotImplementedError()
+            position_labels.append(position_label)
 
         dust = c.is_dusty()
 
         items.append({
             "Address": c.asset.address,
-            "Position": position_label,
+            "Positions": position_labels,
             "Actual amount": c.actual_amount,
             "Expected amount": c.expected_amount,
             "Diff": c.quantity,
