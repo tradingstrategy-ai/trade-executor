@@ -20,7 +20,7 @@ from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.strategy.sync_model import SyncMethodV0, SyncModel
 from tradeexecutor.strategy.run_state import RunState
 from tradeexecutor.strategy.output import output_positions, DISCORD_BREAK_CHAR, output_trades
-from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
+from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager, get_pricing_model_for_pair
 from tradeexecutor.strategy.pricing_model import PricingModelFactory, PricingModel
 from tradeexecutor.strategy.routing import RoutingModel, RoutingState
 from tradeexecutor.strategy.stop_loss import check_position_triggers
@@ -165,7 +165,7 @@ class StrategyRunner(abc.ABC):
     def collect_post_execution_data(
             self,
             execution_context: ExecutionContext,
-            pricing_model: PricingModel,
+            pricing_models: list[PricingModel],
             trades: List[TradeExecution]):
         """Collect post execution data for all trades.
 
@@ -188,9 +188,9 @@ class StrategyRunner(abc.ABC):
             if not t.pair.is_credit_supply():
 
                 if t.is_buy():
-                    t.post_execution_price_structure = pricing_model.get_buy_price(ts, t.pair, t.planned_reserve)
+                    t.post_execution_price_structure = get_pricing_model_for_pair(t.pair, pricing_models).get_buy_price(ts, t.pair, t.planned_reserve)
                 else:
-                    t.post_execution_price_structure = pricing_model.get_sell_price(ts, t.pair, -t.planned_quantity)
+                    t.post_execution_price_structure = get_pricing_model_for_pair(t.pair, pricing_models).get_sell_price(ts, t.pair, -t.planned_quantity)
 
     def on_clock(self,
                  clock: datetime.datetime,
@@ -615,7 +615,7 @@ class StrategyRunner(abc.ABC):
             with self.timed_task_context_manager("post_execution"):
                 self.collect_post_execution_data(
                     self.execution_context,
-                    pricing_model,
+                    pricing_models,
                     approved_trades,
                 )
 
