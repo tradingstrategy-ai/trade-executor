@@ -200,6 +200,7 @@ def plan_loan_update_for_short(
     )
 
     # Sanity check
-    loan.check_health()
+    if loan.borrowed.quantity > 0:
+        loan.check_health()
 
     return loan

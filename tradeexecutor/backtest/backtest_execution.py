@@ -157,44 +157,37 @@ class BacktestExecutionModel(ExecutionModel):
         """
         assert trade.is_short(), "Leverage long is not supported yet"
 
-        borrowed_token = trade.pair.base
-        collateral_token = trade.pair.quote
-        reserve = trade.reserve_currency
-
-        print(trade.is_buy())
-        print(self.wallet.get_balance(collateral_token.address))
-        print(self.wallet.get_balance(borrowed_token.address))
-        print(self.wallet.get_balance(reserve.address))
-
-        borrowed_balance = self.wallet.get_balance(borrowed_token.address)
-        # collateral_balance = self.wallet.get_balance(collateral_token.address)
-        # reserve_balance = self.wallet.get_balance(reserve.address)
+        borrowed_address = trade.pair.base.address
+        collateral_address = trade.pair.quote.address
+        reserve_address = trade.reserve_currency.address
 
         position = state.portfolio.get_existing_open_position_by_trading_pair(trade.pair)
-
-        buy_amount_epsilon_fix = False
+        executed_reserve = trade.planned_reserve
+        executed_quantity = trade.planned_quantity
+        executed_collateral_quantity = trade.planned_collateral_consumption
 
         if trade.is_sell():
-            executed_reserve = trade.planned_reserve
-            executed_quantity = trade.planned_quantity
+            self.wallet.update_balance(borrowed_address, -executed_quantity)
+            self.wallet.update_balance(collateral_address, executed_collateral_quantity)
+            self.wallet.update_balance(reserve_address, -executed_reserve)
         else:
+            # reducing or closing the position
             assert position and position.is_open(), f"Tried to execute buy on short position that is not open: {trade}"
-            executed_quantity, buy_amount_epsilon_fix = fix_sell_token_amount(borrowed_balance, -trade.planned_quantity)
-            executed_reserve = abs(Decimal(trade.planned_quantity) * Decimal(trade.planned_price))
+            self.wallet.update_balance(borrowed_address, -executed_quantity)
+            self.wallet.update_balance(collateral_address, executed_collateral_quantity)
 
-        if trade.is_sell():
-            self.wallet.update_balance(borrowed_token.address, -executed_quantity)
-            self.wallet.update_balance(collateral_token.address, -executed_quantity)
-            self.wallet.update_balance(reserve.address, -executed_reserve)
-        else:
-            self.wallet.update_balance(borrowed_token.address, -executed_quantity)
-            self.wallet.update_balance(collateral_token.address, -executed_quantity)
-            self.wallet.update_balance(reserve.address, -executed_reserve)
-
+        # move all leftover atoken to reserve when the position is closing
+        # TODO: check if this is correct place to do this
+        if self.wallet.get_balance(borrowed_address) == 0:
+            remaining_collateral = self.wallet.get_balance(collateral_address)
+            self.wallet.update_balance(reserve_address, remaining_collateral)
+            self.wallet.update_balance(collateral_address, -remaining_collateral)
 
         assert abs(executed_quantity) > 0, f"Expected executed_quantity for the trade to be above zero, got executed_quantity:{executed_quantity}, planned_quantity:{trade.planned_quantity}, trade is {trade}"
 
-        return executed_quantity, executed_reserve, buy_amount_epsilon_fix
+        # for leverage short, we use collateral token as the reserve currency
+        # so return executed_collateral_quantity here to correctly calculate the price
+        return executed_quantity, executed_collateral_quantity, False
 
     def simulate_trade(self,
                        ts: datetime.datetime,
@@ -336,8 +329,6 @@ class BacktestExecutionModel(ExecutionModel):
                 executed_price = float(abs(executed_reserve / executed_quantity))
             else:
                 executed_price = 0
-
-            print(executed_quantity, executed_reserve, executed_price)
 
             state.mark_trade_success(
                 ts,
