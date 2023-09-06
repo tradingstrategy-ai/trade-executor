@@ -325,6 +325,7 @@ def multichain_environment(
         "CONFIRMATION_BLOCK_COUNT": "0",  # Needed for test backend, Anvil
         "MAX_CYCLES": "11",  # Run decide_trades() 11 times
         # "PAIR": '(ChainId.anvil, "UniswapV2MockClient", "WETH", "USDC", 0.003)',
+        "ALL_PAIRS": 'true',
     }
     return multichain_environment
 
