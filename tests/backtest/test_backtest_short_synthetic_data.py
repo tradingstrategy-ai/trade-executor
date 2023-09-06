@@ -22,6 +22,7 @@ from tradingstrategy.universe import Universe
 from tradeexecutor.backtest.backtest_pricing import BacktestSimplePricingModel
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel
 from tradeexecutor.backtest.backtest_runner import run_backtest_inline
+from tradeexecutor.backtest.simulated_wallet import SimulatedWallet
 from tradeexecutor.ethereum.routing_data import get_backtest_routing_model
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.state import State
@@ -191,6 +192,8 @@ def test_backtest_open_only_short_synthetic_data(
     assert loan.borrowed.get_usd_value() == pytest.approx(9540.86179207702)
     assert loan.borrowed.last_usd_price == pytest.approx(1712.203057206142)  # ETH current value
     assert loan.get_collateral_interest() == pytest.approx(3.287851382535982)
+    assert loan.get_collateral_quantity() == pytest.approx(Decimal(20003.28785138253598178646851))
+    assert loan.get_borrowed_quantity() == pytest.approx(Decimal(5.573188412844794660521435197))
     assert loan.get_borrow_interest() == pytest.approx(1.568446781683258)
     assert loan.get_net_interest() == pytest.approx(1.719404600852724)
 
@@ -202,6 +205,19 @@ def test_backtest_open_only_short_synthetic_data(
     assert portfolio.get_net_asset_value(include_interest=True) - portfolio.get_net_asset_value(include_interest=False) == pytest.approx(loan.get_net_interest())
     # net value should equal capital + net unrealised profit (no interest)
     assert portfolio.get_net_asset_value(include_interest=False) == capital + (trade.get_planned_value() - loan.borrowed.get_usd_value())
+
+    wallet = debug_dump["wallet"]
+    balances = wallet.balances
+
+    pair = position.pair
+    usdc = pair.quote.underlying
+    ausdc = pair.quote
+    vweth = pair.base
+
+    # TODO: Finish ausdc and vweth accounting
+    assert balances[usdc.address] == 0
+    assert balances[ausdc.address] == pytest.approx(Decimal(20003.28785138253598178646851))
+    assert balances[vweth.address] == pytest.approx(Decimal(5.573188412844794660521435197))
 
 
 def test_backtest_open_and_close_short_synthetic_data(
@@ -274,7 +290,7 @@ def test_backtest_open_and_close_short_synthetic_data(
     assert position.get_repaid_interest() == pytest.approx(1.568446781683258)
     assert position.get_realised_profit_usd() == pytest.approx(460.9330914334175)
     assert position.get_unrealised_profit_usd() == 0
-    assert position.get_value() == pytest.approx(-1.568446781683258)  # TODO: this seems wrong
+    assert position.get_value() == pytest.approx(0)
 
     # Check opening trade looks good
     assert len(position.trades) == 2
@@ -303,6 +319,9 @@ def test_backtest_open_and_close_short_synthetic_data(
     # # Check that the portfolio looks good
     assert portfolio.get_cash() == 0  # TODO: should we have more already?
     assert portfolio.get_net_asset_value(include_interest=True) == 0
+
+    wallet: SimulatedWallet = debug_dump["wallet"]
+    import ipdb ; ipdb.set_trace()
 
 
 def test_backtest_short_underlying_price_feed(

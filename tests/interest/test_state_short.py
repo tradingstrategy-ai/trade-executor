@@ -1509,3 +1509,6 @@ def test_short_realised_interest_and_profit(
     assert short_position.get_claimed_interest() == pytest.approx(15.113089799044887491284317)  # Profit we got from collateral interest
     assert short_position.get_realised_profit_usd(include_interest=False) == pytest.approx(55.52334719541218)
     assert short_position.get_realised_profit_usd(include_interest=True) == pytest.approx(39.97624292535325)
+
+    portfolio = state.portfolio
+    assert portfolio.get_cash() == pytest.approx(10022.673139264229)

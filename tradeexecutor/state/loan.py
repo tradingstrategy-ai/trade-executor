@@ -94,6 +94,14 @@ class Loan:
             return self.collateral.get_usd_value() + self.get_collateral_interest()
         return self.collateral.get_usd_value()
 
+    def get_collateral_quantity(self) -> Decimal:
+        """Get abs number of atokens we have."""
+        return self.collateral_interest.last_token_amount
+
+    def get_borrowed_quantity(self) -> Decimal:
+        """Get abs number of atokens we have."""
+        return self.borrowed_interest.last_token_amount
+
     def get_borrow_value(self, include_interest=True) -> USDollarAmount:
         """Get the outstanding debt amount.
 
