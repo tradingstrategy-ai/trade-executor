@@ -907,45 +907,60 @@ class PositionManager:
 
     def get_pricing_model(self, pair: TradingPairIdentifier):
         """Get the pricing model used by this strategy."""
+        return get_pricing_model_for_pair(pair, self.pricing_models)       
 
-        if len(self.pricing_models) == 1:
-            return self.pricing_models[0]
 
-        locked = False
-        rm = None
-        routing_model = None
-        final_pricing_model = None
+def get_pricing_model_for_pair(pair: TradingPairIdentifier | DEXPair, pricing_models: List[PricingModel], set_routing_hint: bool = True) -> PricingModel:
+    """Get the pricing model for a pair.
+    
+    :param pair:
+        Trading pair for which we want to have the pricing model
 
-        for pricing_model in self.pricing_models:
+    :param pricing_models:
+        List of pricing models to choose from
 
-            rm = pricing_model.routing_model
+    :return:
+        Pricing model for the pair
+    """
+    if len(pricing_models) == 1:
+        return pricing_models[0]
 
-            if hasattr(rm, "factory_router_map"):  # uniswap v2 like
-                keys = list(rm.factory_router_map.keys())
-                assert len(keys) == 1, "Only one factory router map supported for now"
-                factory_address = keys[0]
-            elif hasattr(rm, "address_map"):  # uniswap v3 like
-                factory_address = rm.address_map["factory"] 
-            else:
-                raise NotImplementedError("Routing model not supported")
+    locked = False
+    rm = None
+    routing_model = None
+    final_pricing_model = None
 
-            if factory_address.lower() == pair.exchange_address.lower() and rm.chain_id == pair.chain_id:
-                if locked == True:
-                    raise LookupError("Multiple routing models for same exchange (on same chain) not supported")
+    for pricing_model in pricing_models:
 
-                routing_model = rm
-                final_pricing_model = pricing_model
-                locked = True
+        rm = pricing_model.routing_model
 
-        if not routing_model:
-            raise NotImplementedError("Unable to find routing_model for pair, make sure to add correct routing models for the pairs that you want to trade")
-
-        if not isinstance(routing_model, (UniswapV2SimpleRoutingModel, UniswapV3SimpleRoutingModel, BacktestRoutingModel, BacktestRoutingIgnoredModel)):
+        if hasattr(rm, "factory_router_map"):  # uniswap v2 like
+            keys = list(rm.factory_router_map.keys())
+            assert len(keys) == 1, "Only one factory router map supported for now"
+            factory_address = keys[0]
+        elif hasattr(rm, "address_map"):  # uniswap v3 like
+            factory_address = rm.address_map["factory"] 
+        else:
             raise NotImplementedError("Routing model not supported")
-        
-        # Needed in tradeexecutor/state/portfolio.py::choose_valudation_method_and_revalue_position
+
+        if factory_address.lower() == pair.exchange_address.lower() and rm.chain_id == pair.chain_id:
+            if locked == True:
+                raise LookupError("Multiple routing models for same exchange (on same chain) not supported")
+
+            routing_model = rm
+            final_pricing_model = pricing_model
+            locked = True
+
+    if not routing_model:
+        raise NotImplementedError("Unable to find routing_model for pair, make sure to add correct routing models for the pairs that you want to trade")
+
+    if not isinstance(routing_model, (UniswapV2SimpleRoutingModel, UniswapV3SimpleRoutingModel, BacktestRoutingModel, BacktestRoutingIgnoredModel)):
+        raise NotImplementedError("Routing model not supported")
+    
+    # Needed in tradeexecutor/state/portfolio.py::choose_valudation_method_and_revalue_position
+    if set_routing_hint:
         pair.routing_hint = routing_model.routing_hint  
 
-        assert final_pricing_model is not None, "Unable to find pricing model for pair"
+    assert final_pricing_model is not None, "Unable to find pricing model for pair"
 
-        return final_pricing_model
+    return final_pricing_model
