@@ -323,7 +323,7 @@ def multichain_environment(
         # "TEST_EVM_UNISWAP_V3_ROUTER": uniswap_v3.swap_router.address,
         # "TEST_EVM_UNISWAP_V3_FACTORY": uniswap_v3.factory.address,
         "CONFIRMATION_BLOCK_COUNT": "0",  # Needed for test backend, Anvil
-        "MAX_CYCLES": "10",  # Run decide_trades() 10 times
+        "MAX_CYCLES": "11",  # Run decide_trades() 11 times
         # "PAIR": '(ChainId.anvil, "UniswapV2MockClient", "WETH", "USDC", 0.003)',
     }
     return multichain_environment
@@ -419,15 +419,15 @@ def test_enzyme_generic_live_trading_start(
             for p in state.portfolio.frozen_positions.values():
                 raise AssertionError(f"Frozen position {p}: {p.get_freeze_reason()}")
 
-        assert len(state.portfolio.closed_positions) == 1
-        assert len(state.portfolio.open_positions) == 1
+        assert len(state.portfolio.closed_positions) == 16
+        assert len(state.portfolio.open_positions) == 4
 
         # Pick an example trade to examine
-        p = state.portfolio.open_positions[2]
-        t = p.trades[3]
+        p = state.portfolio.open_positions[17]
+        t = p.trades[33]
         assert t.is_success()
-        assert t.lp_fees_estimated == pytest.approx(0.14991015720000014)
-        assert t.lp_fees_paid == pytest.approx(0.14991015600000002)
+        assert t.lp_fees_estimated == pytest.approx(0.14856758566080014)
+        assert t.lp_fees_paid == pytest.approx(0.148567584)
         assert t.trade_type == TradeType.rebalance
         assert t.slippage_tolerance == 0.02  # Set in enzyme_end_to_end.py strategy module
 
@@ -438,8 +438,8 @@ def test_enzyme_generic_live_trading_start(
     usdc_balance = usdc.functions.balanceOf(vault.vault.address).call()
     weth_balance = weth.functions.balanceOf(vault.vault.address).call()
 
-    assert usdc_balance == pytest.approx(10**6 * 449.730472)
-    assert weth_balance == pytest.approx(10**18 * 0.03112978758721282)
+    assert usdc_balance == pytest.approx(297135180)
+    assert weth_balance == pytest.approx(59893566995512734)
 
 
 def test_enzyme_generic_perform_test_trade(
