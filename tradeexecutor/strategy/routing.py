@@ -16,6 +16,7 @@ from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifie
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
 from tradeexecutor.strategy.trading_strategy_universe import translate_token, translate_trading_pair
+from tradeexecutor.strategy.default_routing_options import TradeRouting
 
 from tradingstrategy.pair import PandasPairUniverse
 
@@ -64,6 +65,7 @@ class RoutingModel(abc.ABC):
     def __init__(self,
                  allowed_intermediary_pairs: dict[str, str],
                  reserve_token_address: str,
+                 routing_hint: Optional[TradeRouting] = None,
                  ):
         """
         
