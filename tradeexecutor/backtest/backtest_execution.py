@@ -167,6 +167,7 @@ class BacktestExecutionModel(ExecutionModel):
         executed_collateral_quantity = trade.planned_collateral_consumption
 
         if trade.is_sell():
+            import ipdb ; ipdb.set_trace()
             self.wallet.update_balance(borrowed_address, -executed_quantity)
             self.wallet.update_balance(collateral_address, executed_collateral_quantity)
             self.wallet.update_balance(reserve_address, -executed_reserve)

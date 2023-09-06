@@ -258,7 +258,7 @@ class BacktestSyncModel(SyncModel):
                 # Make aToken and vToken magically appear in the simulated
                 # backtest wallet. The amount must be updated, or
                 # otherwise we get errors when closing the position.
-                self.wallet.update_balance(p.pair.base.address, accrued_collateral_interest)
-                self.wallet.update_balance(p.pair.quote.address, accrued_borrow_interest)
+                self.wallet.rebase(p.pair.base.address, new_vtoken_amount)
+                self.wallet.rebase(p.pair.quote.address, new_atoken_amount)
 
         return events
