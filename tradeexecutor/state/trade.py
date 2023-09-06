@@ -902,6 +902,9 @@ class TradeExecution:
         """
         if not self.paid_interest:
             return 0.0
+
+        assert self.executed_price, f"executed_price missing: {self}"
+
         return float(self.paid_interest) * self.executed_price
 
     def get_fees_paid(self) -> USDollarAmount:

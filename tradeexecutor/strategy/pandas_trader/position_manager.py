@@ -979,8 +979,6 @@ class PositionManager:
             planned_collateral_consumption=Decimal(collateral_size) - value,  # This is amount how much aToken is leverated besides our starting collateral
         )
 
-        import ipdb ; ipdb.set_trace()
-
         if take_profit_pct:
             position.take_profit = price_structure.mid_price * take_profit_pct
 

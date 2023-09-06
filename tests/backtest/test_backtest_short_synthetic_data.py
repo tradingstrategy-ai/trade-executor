@@ -318,8 +318,8 @@ def test_backtest_open_and_close_short_synthetic_data(
     assert loan.get_net_interest() == pytest.approx(1.719404600852724)
 
     # # Check that the portfolio looks good
-    assert portfolio.get_cash() == 0  # TODO: should we have more already?
-    assert portfolio.get_net_asset_value(include_interest=True) == 0
+    assert portfolio.get_cash() == pytest.approx(10457.569761141296)  # TODO: should we have more already?
+    assert portfolio.get_net_asset_value(include_interest=True) == pytest.approx(10457.569761141296)
 
     # Check token balances in the wallet
     wallet = debug_dump["wallet"]
@@ -332,7 +332,7 @@ def test_backtest_open_and_close_short_synthetic_data(
     assert balances[ausdc.address] == pytest.approx(Decimal(0))
     assert balances[vweth.address] == pytest.approx(Decimal(0))
     assert balances.get(weth.address, Decimal(0)) == pytest.approx(Decimal(0))
-    assert balances[usdc.address] == pytest.approx(Decimal(20003.28785138253598178646851))
+    assert balances[usdc.address] == pytest.approx(Decimal(10457.569761141296))
 
 
 def test_backtest_short_underlying_price_feed(

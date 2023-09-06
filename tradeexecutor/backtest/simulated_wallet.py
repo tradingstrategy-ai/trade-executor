@@ -7,7 +7,10 @@ class OutOfSimulatedBalance(Exception):
 
 
 class SimulatedWallet:
-    """A wallet that keeps token balances by ERC-20 address."""
+    """A wallet that keeps token balances by ERC-20 address.
+
+    - We also simulate incoming and outgoing aToken and vToken amounts with :py:meth:`rebalance`.
+    """
 
     def __init__(self):
         self.balances: Dict[str, Decimal] = {}

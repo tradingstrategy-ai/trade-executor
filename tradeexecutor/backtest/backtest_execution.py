@@ -333,14 +333,18 @@ class BacktestExecutionModel(ExecutionModel):
             # 3. Simulate tx broadcast
             executed_quantity, executed_reserve, executed_collateral_allocation, executed_collateral_consumption = self.simulate_trade(ts, state, idx, trade)
 
+            # TODO: Use colleteral values here
+
             # 4. execution is dummy operation where planned execution becomes actual execution
             # Assume we always get the same execution we planned
             if executed_quantity:
-                executed_price = float(abs(executed_reserve / executed_quantity))
+                if trade.is_short():
+                    executed_price = trade.planned_price
+                else:
+                    executed_price = float(abs(executed_reserve / executed_quantity))
+
             else:
                 executed_price = 0
-
-            import ipdb ; ipdb.set_trace()
 
             state.mark_trade_success(
                 ts,
