@@ -488,6 +488,7 @@ class AssetWithTrackedValue:
         return f"<AssetWithTrackedValue {self.asset.token_symbol} {self.quantity} at price {self.last_usd_price} USD>"
 
     def __post_init__(self):
+        assert isinstance(self.quantity, Decimal), f"Got {self.quantity.__class__}"
         assert self.quantity > 0, f"Any tracked asset must have positive quantity, received {self.asset} = {self.quantity}"
         assert self.last_usd_price is not None, "Price is None - asset price must set during initialisation"
         assert self.last_usd_price > 0
@@ -528,6 +529,6 @@ class AssetWithTrackedValue:
 
         # TODO: this is a temp hack for testing to make sure the borrowed quantity can be minimum 0
         if self.quantity < 0:
-            self.quantity = 0
+            self.quantity = Decimal(0)
 
 

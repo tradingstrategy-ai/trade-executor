@@ -459,6 +459,9 @@ class TradeExecution:
     #:
     #: See also :py:attr:`paid_interest`
     #:
+    #: TODO This must be converted to planned_paid_interest / executed_paid_interest,
+    #: because the actual amount may change after execution.
+    #:
     claimed_interest: Optional[Decimal] = None
 
     #: How much interest this trade paid back on the debt.
@@ -469,6 +472,9 @@ class TradeExecution:
     #: that closes a leveraged position.
     #:
     #: See also :py:attr:`claimed_interest`
+    #:
+    #: TODO This must be converted to planned_paid_interest / executed_paid_interest
+    #: because the actual amount may change after execution.
     #:
     paid_interest: Optional[Decimal] = None
 
@@ -804,6 +810,7 @@ class TradeExecution:
         return abs(float(self.executed_quantity) * (self.executed_price or 0))
 
     def get_planned_value(self) -> USDollarAmount:
+        """How much we plan to swap in this trade."""
         return abs(self.planned_price * float(abs(self.planned_quantity)))
 
     def get_planned_reserve(self) -> Decimal:
@@ -913,6 +920,9 @@ class TradeExecution:
         """
         if not self.paid_interest:
             return 0.0
+
+        assert self.executed_price, f"executed_price missing: {self}"
+
         return float(self.paid_interest) * self.executed_price
 
     def get_fees_paid(self) -> USDollarAmount:
