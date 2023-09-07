@@ -25,13 +25,13 @@ class ExportedRecord(TypedDict):
     #: Log message, formatted
     message: str
 
-    levelno: int
 
     exception_type: Optional[str]
 
     #: Log message, formatted
     traceback_data: Optional[dict]
 
+    level_number: int
 
     @staticmethod
     def get_symbolic_log_level(log_level: int) -> str:
@@ -56,9 +56,9 @@ class ExportedRecord(TypedDict):
             "timestamp": record.created,
             "level": record.levelname.lower(),
             "message": message,
-            "level": record.levelno,
             "exception_type": exception_type,
             "traceback_data": traceback_data,
+            "level_number": record.levelno,
         }
 
 
