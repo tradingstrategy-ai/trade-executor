@@ -25,7 +25,7 @@ class ExportedRecord(TypedDict):
     #: Log message, formatted
     message: str
 
-    name: str
+    levelno: int
 
     exception_type: Optional[str]
 
@@ -56,7 +56,7 @@ class ExportedRecord(TypedDict):
             "timestamp": record.created,
             "level": record.levelname.lower(),
             "message": message,
-            "name": record.name,
+            "level": record.levelno,
             "exception_type": exception_type,
             "traceback_data": traceback_data,
         }
