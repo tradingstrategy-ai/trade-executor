@@ -605,10 +605,12 @@ class State:
         if trade.is_spot() and trade.is_sell():
             self.portfolio.return_capital_to_reserves(trade)
         elif trade.is_leverage():
-            # Release any collateral
+
+            # Release any collateral and move it back to the wallet
             if executed_collateral_allocation:
                 assert trade.pair.quote.underlying
                 self.portfolio.adjust_reserves(trade.pair.quote.underlying, -executed_collateral_allocation)
+
         elif trade.is_credit_supply():
             if trade.is_sell():
                 self.portfolio.adjust_reserves(trade.pair.quote, executed_reserve)
@@ -632,6 +634,9 @@ class State:
                 # on the debt
                 if position.loan.borrowed:
                     trade.paid_interest = position.loan.borrowed_interest.last_accrued_interest
+
+                if trade.claimed_interest:
+                    self.portfolio.adjust_reserves(trade.pair.quote.underlying, trade.claimed_interest)
 
     def mark_trade_failed(self, failed_at: datetime.datetime, trade: TradeExecution):
         """Unroll the allocated capital."""
