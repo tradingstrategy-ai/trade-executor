@@ -1089,6 +1089,8 @@ def test_short_unrealised_profit_leverage_all(
 
     loan = short_position.loan
     assert loan.get_net_asset_value() == pytest.approx(11333.333333333332)
+    assert loan.get_collateral_interest() == pytest.approx(0)
+    assert loan.collateral_interest.last_accrued_interest == 0
     assert short_position.get_unrealised_profit_usd() == pytest.approx(1333.333333)
 
     _, trade_2, _ = state.trade_short(
@@ -1105,6 +1107,9 @@ def test_short_unrealised_profit_leverage_all(
     assert short_position.get_realised_profit_usd() == pytest.approx(1333.333333)
     assert short_position.get_unrealised_profit_usd() == 0
     assert portfolio.get_cash() == pytest.approx(11333.333333)
+
+    # How much USDC gained we got from the collateral
+    assert trade_2.claimed_interest == pytest.approx(0)
 
 
 def test_short_unrealised_profit_partially_closed_keep_collateral(
@@ -1542,6 +1547,7 @@ def test_short_realised_interest_and_profit(
     assert short_position.get_unrealised_profit_usd(include_interest=False) == pytest.approx(55.52334719541218)
     assert short_position.get_unrealised_profit_usd(include_interest=True) == pytest.approx(39.97624292535324)
     assert short_position.get_realised_profit_usd() is None
+    assert short_position.get_value() == pytest.approx(1037.7862290632745)
 
     # Prepare a closing trade and check it matches full vToken amount
     assert short_position.loan.borrowed.quantity == pytest.approx(Decimal('0.5333333333333333259318465025'))

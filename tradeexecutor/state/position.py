@@ -570,7 +570,7 @@ class TradingPosition(GenericPosition):
     def get_value(self, include_interest=True) -> USDollarAmount:
         """Get the current net asset value of this position.
 
-        If the position is closed, the value should be zero.
+        If the position is closed, the value should be zero
 
         :param include_interest:
             Include accrued interest in the valuation.

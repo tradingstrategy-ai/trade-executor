@@ -176,6 +176,7 @@ class BacktestExecutionModel(ExecutionModel):
         # The leveraged tokens appear in the wallet
 
         # aToken amount is original deposit + any leverage we do
+
         self.wallet.update_balance(collateral_address, executed_collateral_consumption)
         self.wallet.update_balance(collateral_address, executed_reserve)
 

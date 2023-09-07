@@ -605,10 +605,15 @@ class State:
         if trade.is_spot() and trade.is_sell():
             self.portfolio.return_capital_to_reserves(trade)
         elif trade.is_leverage():
-            # Release any collateral
+
+            # Release any collateral and move it back to the wallet
             if executed_collateral_allocation:
                 assert trade.pair.quote.underlying
                 self.portfolio.adjust_reserves(trade.pair.quote.underlying, -executed_collateral_allocation)
+
+            if trade.claimed_interest:
+                self.portfolio.adjust_reserves(trade.pair.quote.underlying, trade.claimed_interest)
+
         elif trade.is_credit_supply():
             if trade.is_sell():
                 self.portfolio.adjust_reserves(trade.pair.quote, executed_reserve)

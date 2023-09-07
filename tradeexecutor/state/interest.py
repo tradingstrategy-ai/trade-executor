@@ -53,7 +53,7 @@ class Interest:
     last_updated_block_number: int | None = None
 
     def __repr__(self):
-        return f"<Interest, current principal + interest {self.last_token_amount}>"
+        return f"<Interest, current principal + interest {self.last_token_amount}, current tracked interest gains {self.last_accrued_interest}>"
 
     def __post_init__(self):
         assert isinstance(self.opening_amount, Decimal)
