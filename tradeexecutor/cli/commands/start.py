@@ -405,8 +405,6 @@ def start(
         routing_model: RoutingModel = None
         
         if generic_routing_data:
-            assert test_evm_uniswap_data, "test_evm_uniswap_data is needed for generic routing data"
-
             client = create_generic_client(
                 mod=mod,
                 web3config=web3config,

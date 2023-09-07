@@ -595,10 +595,6 @@ def create_client(
                 reserve_token_address=client.get_default_quote_token_address(),
                 routing_hint = mod.trade_routing[0],
             )
-    # elif type(test_evm_uniswap_v2_factory) == list:
-        
-    #    raise NotImplementedError("Use create_generic_client()")
-
     elif trading_strategy_api_key:
         # Backtest / real trading
         client = Client.create_live_client(trading_strategy_api_key, cache_path=cache_path)
@@ -648,9 +644,14 @@ def create_generic_client(
     :return:
         Client only
     """
+    client = None
+    if trading_strategy_api_key:
+        # Backtest / real trading
+        client = Client.create_live_client(trading_strategy_api_key, cache_path=cache_path)
+        if clear_caches:
+            client.clear_caches()
+        return client        
 
-    if not test_evm_uniswap_data:
-        raise RuntimeError("No test EVM Uniswap data given for generic client")
     
     client = GenericMockClient(
         web3config.get_default(),
