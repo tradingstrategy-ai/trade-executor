@@ -107,7 +107,7 @@ def universe() -> TradingStrategyUniverse:
     )
 
 
-    def test_backtest_open_only_short_synthetic_data(
+def test_backtest_open_only_short_synthetic_data(
     persistent_test_client: Client,
     universe,
 ):

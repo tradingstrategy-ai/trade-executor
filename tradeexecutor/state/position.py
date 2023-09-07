@@ -776,8 +776,6 @@ class TradingPosition(GenericPosition):
                         # Any leftover USD from the collateral is released to the reserves
                         planned_collateral_allocation = -(self.loan.collateral.quantity + planned_collateral_consumption)
 
-                        # claimed_interest =
-
                     else:
                         assert quantity is not None, "For increasing/reducing short position quantity must be given"
                         planned_collateral_consumption = -quantity * Decimal(self.loan.borrowed.last_usd_price)
@@ -787,7 +785,7 @@ class TradingPosition(GenericPosition):
                 assert assumed_price, f"Short token price missing"
 
                 planned_reserve = reserve or Decimal(0)
-                planned_quantity = quantity or Decimal(0)
+                planned_quantity = (quantity or Decimal(0))
 
                 # From now on, we need meaningful values for math
                 planned_collateral_consumption = planned_collateral_consumption or Decimal(0)
