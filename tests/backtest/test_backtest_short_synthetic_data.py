@@ -323,8 +323,8 @@ def test_backtest_open_and_close_short_synthetic_data_no_fee(
     assert float(close_trade.planned_quantity) == pytest.approx(5.573188412844795)
 
     # # Check that the portfolio looks good
-    assert portfolio.get_cash() == pytest.approx(10460.85761252383273372716427)  # TODO: should we have more already?
-    assert portfolio.get_net_asset_value(include_interest=True) == pytest.approx(10457.569761141296)
+    assert portfolio.get_cash() == pytest.approx(10460.85761252383273372716427)
+    assert portfolio.get_net_asset_value(include_interest=True) == pytest.approx(10460.857612523832)
 
     # Check token balances in the wallet
     wallet = debug_dump["wallet"]
