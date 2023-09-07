@@ -7,13 +7,20 @@ class OutOfSimulatedBalance(Exception):
 
 
 class SimulatedWallet:
-    """A wallet that keeps token balances by ERC-20 address."""
+    """A wallet that keeps token balances by ERC-20 address.
+
+    - We also simulate incoming and outgoing aToken and vToken amounts with :py:meth:`rebalance`.
+    """
 
     def __init__(self):
         self.balances: Dict[str, Decimal] = {}
         self.nonce = 0
 
     def update_balance(self, token_address: str, delta: Decimal):
+        """Change the token balance of some delta.
+
+        Check that balance does not go zero.
+        """
         assert token_address.lower() == token_address, "No checksummed addresses"
         assert isinstance(delta, Decimal), f"Expected decimal got: {delta.__class__}: {delta}"
         old_balance = self.balances.get(token_address, Decimal(0))
@@ -23,9 +30,14 @@ class SimulatedWallet:
         self.balances[token_address] = new_balance
 
     def set_balance(self, token_address: str, amount: Decimal):
+        """Directly set balance."""
         assert token_address.lower() == token_address, "No checksummed addresses"
         assert isinstance(amount, Decimal), f"Expected decimal got: {amount.__class__}: {amount}"
         self.balances[token_address] = amount
+
+    def rebase(self, token_address: str, new_amount: Decimal):
+        """Set rebase token amount."""
+        self.set_balance(token_address, new_amount)
 
     def get_balance(self, token_address: str) -> Decimal:
         assert token_address.lower() == token_address, "No checksummed addresses"

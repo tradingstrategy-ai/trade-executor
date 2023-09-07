@@ -116,6 +116,7 @@ def calculate_statistics(
         pf_stats = PortfolioStatistics(
             calculated_at=clock,
             total_equity=portfolio.get_total_equity(),
+            net_asset_value=portfolio.get_net_asset_value(),
             free_cash=float(portfolio.get_cash()),
             open_position_count=len(portfolio.open_positions),
             open_position_equity=portfolio.get_position_equity_and_loan_nav(),
@@ -132,6 +133,7 @@ def calculate_statistics(
         pf_stats = PortfolioStatistics(
             calculated_at=clock,
             total_equity=portfolio.get_total_equity(),
+            net_asset_value=portfolio.get_net_asset_value(),
         )
 
     stats = TimestampedStatistics(

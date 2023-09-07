@@ -2,12 +2,16 @@
 import datetime
 from decimal import Decimal
 from typing import Tuple
+import logging
 
 from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdatePositionType, BalanceUpdateCause
 from tradeexecutor.state.identifier import TradingPairKind, AssetIdentifier
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
 from tradeexecutor.state.types import USDollarPrice
+
+
+logger = logging.getLogger(__name__)
 
 
 def update_interest(
@@ -111,6 +115,7 @@ def update_interest(
     interest.last_event_at = event_at
     interest.last_updated_block_number = block_number
     interest.last_token_amount = new_token_amount
+
     return evt
 
 
@@ -161,6 +166,8 @@ def update_leveraged_position_interest(
         log_index,
     )
 
+    logger.info("Updated leveraged interest %s for %s", pair.base, vevt)
+
     # aToken
     aevt = update_interest(
         state,
@@ -173,6 +180,8 @@ def update_leveraged_position_interest(
         tx_hash,
         log_index,
     )
+
+    logger.info("Updated leveraged interest %s for %s", pair.quote, aevt)
 
     return (vevt, aevt)
 

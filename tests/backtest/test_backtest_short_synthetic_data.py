@@ -206,30 +206,31 @@ def test_backtest_open_only_short_synthetic_data(
     # net value should equal capital + net unrealised profit (no interest)
     assert portfolio.get_net_asset_value(include_interest=False) == capital + (trade.get_planned_value() - loan.borrowed.get_usd_value())
 
+    # Check token balances in the wallet
     wallet = debug_dump["wallet"]
     balances = wallet.balances
-
     pair = position.pair
     usdc = pair.quote.underlying
     ausdc = pair.quote
     vweth = pair.base
+    weth = pair.base.underlying
 
-    # TODO: Finish ausdc and vweth accounting
     assert balances[usdc.address] == 0
     assert balances[ausdc.address] == pytest.approx(Decimal(20003.28785138253598178646851))
     assert balances[vweth.address] == pytest.approx(Decimal(5.573188412844794660521435197))
+    assert balances.get(weth.address, Decimal(0)) == pytest.approx(Decimal(0))
 
 
-def test_backtest_open_and_close_short_synthetic_data(
+def test_backtest_open_and_close_short_synthetic_data_no_fee(
     persistent_test_client: Client,
     universe,
 ):
     """Run the strategy backtest using inline decide_trades function.
 
     - Open short position
-    - Close short position after 4 days
     - ETH price goes 1794 -> 1712
     - Short goes to profit
+    - Close short position after 4 days
     """
 
     capital = 10000
@@ -255,6 +256,20 @@ def test_backtest_open_and_close_short_synthetic_data(
             trades += position_manager.open_short(trade_pair, cash, leverage=leverage)
         else:
             if timestamp == datetime.datetime(2023, 1, 4):
+
+                # Check that how much total collateral we should receive
+                position = position_manager.get_current_position()
+                loan = position.loan
+                assert loan.get_net_asset_value() == pytest.approx(10460.857612523832)
+                assert loan.get_collateral_interest() == pytest.approx(3.287851382535982)
+                assert loan.get_borrow_interest() == pytest.approx(1.568446781683258)
+                assert loan.get_net_interest() == pytest.approx(1.719404600852724)
+
+                received_cash = loan.get_collateral_value(include_interest=False) + loan.get_collateral_interest() - loan.get_borrow_value(include_interest=False) - loan.get_borrow_interest()
+                # Interest double counted: 10462
+                # assert received_cash == pytest.approx(10462.577017124684)
+                assert received_cash == pytest.approx(10460.857612523832)
+
                 trades += position_manager.close_all()
 
         return trades
@@ -307,21 +322,22 @@ def test_backtest_open_and_close_short_synthetic_data(
     assert close_trade.get_planned_value() == pytest.approx(9542.430238858704)
     assert float(close_trade.planned_quantity) == pytest.approx(5.573188412844795)
 
-    # Check that the loan object looks good
-    loan = position.loan
-    assert loan.get_net_asset_value() == pytest.approx(1.719404600852724)
-    assert loan.collateral.get_usd_value() == 0
-    assert loan.borrowed.get_usd_value() == 0
-    assert loan.get_collateral_interest() == pytest.approx(3.287851382535982)
-    assert loan.get_borrow_interest() == pytest.approx(1.568446781683258)
-    assert loan.get_net_interest() == pytest.approx(1.719404600852724)
-
     # # Check that the portfolio looks good
-    assert portfolio.get_cash() == 0  # TODO: should we have more already?
-    assert portfolio.get_net_asset_value(include_interest=True) == 0
+    assert portfolio.get_cash() == pytest.approx(10460.85761252383273372716427)
+    assert portfolio.get_net_asset_value(include_interest=True) == pytest.approx(10460.857612523832)
 
-    wallet: SimulatedWallet = debug_dump["wallet"]
-    import ipdb ; ipdb.set_trace()
+    # Check token balances in the wallet
+    wallet = debug_dump["wallet"]
+    balances = wallet.balances
+    pair = position.pair
+    usdc = pair.quote.underlying
+    ausdc = pair.quote
+    vweth = pair.base
+    weth = pair.base.underlying
+    assert balances[ausdc.address] == pytest.approx(Decimal(0))
+    assert balances[vweth.address] == pytest.approx(Decimal(0))
+    assert balances.get(weth.address, Decimal(0)) == pytest.approx(Decimal(0))
+    assert balances[usdc.address] == pytest.approx(Decimal(10460.85761252383273372716427))
 
 
 def test_backtest_short_underlying_price_feed(
