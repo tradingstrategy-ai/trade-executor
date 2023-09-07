@@ -1541,13 +1541,30 @@ def test_short_realised_interest_and_profit(
     assert short_position.get_quantity() == pytest.approx(Decimal('-0.5552334719541217745270929036'))
 
     # Calculate unrealised and realised PnL
+    assert short_position.loan.get_collateral_value() == pytest.approx(1815.113089799045)
+    assert short_position.loan.get_borrow_value() == pytest.approx(777.3268607357704)
     assert short_position.loan.get_collateral_interest() == pytest.approx(15.113089799044888)
     assert short_position.loan.get_borrow_interest() == pytest.approx(30.66019406910382)
+    assert short_position.loan.get_net_interest() == pytest.approx(-15.54710427005894)
+    assert short_position.loan.get_net_asset_value(include_interest=False) == pytest.approx(1053.3333333333335)
+    assert short_position.loan.get_net_asset_value(include_interest=True) == pytest.approx(1037.786229063274)
     assert short_position.get_accrued_interest() == pytest.approx(-15.54710427005894)
+    assert short_position.get_quantity() == Decimal('-0.5552334719541217745270929036')
+
+    assert short_position.loan.borrowed.quantity == Decimal('0.5333333333333333259318465025')
+    assert short_position.loan.get_borrowed_principal_and_interest_quantity() == Decimal('0.5552334719541217745270929036')
+    assert short_position.get_net_quantity() == Decimal('-0.5552334719541217745270929036')
+
+    unrealised_equity = (short_position.get_current_price() - short_position.get_average_price()) * float(short_position.get_net_quantity())
+    assert unrealised_equity == pytest.approx(55.52334719541218)
+
+    assert short_position.get_accrued_interest_with_repayments() == pytest.approx(-15.54710427005894)
     assert short_position.get_unrealised_profit_usd(include_interest=False) == pytest.approx(55.52334719541218)
     assert short_position.get_unrealised_profit_usd(include_interest=True) == pytest.approx(39.97624292535324)
+
     assert short_position.get_realised_profit_usd() is None
     assert short_position.get_value() == pytest.approx(1037.7862290632745)
+    assert short_position.loan.get_net_asset_value() == pytest.approx(1037.7862290632745)
 
     # Prepare a closing trade and check it matches full vToken amount
     assert short_position.loan.borrowed.quantity == pytest.approx(Decimal('0.5333333333333333259318465025'))
@@ -1603,4 +1620,4 @@ def test_short_realised_interest_and_profit(
     assert short_position.get_realised_profit_usd(include_interest=True) == pytest.approx(39.97624292535325)
 
     portfolio = state.portfolio
-    assert portfolio.get_cash() == pytest.approx(10022.673139264229)
+    assert portfolio.get_cash() == pytest.approx(10037.786229063275)

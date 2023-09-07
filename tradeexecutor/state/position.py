@@ -595,11 +595,13 @@ class TradingPosition(GenericPosition):
 
         match self.pair.kind:
             case TradingPairKind.spot_market_hold | TradingPairKind.credit_supply:
+
                 value += self.calculate_value_using_price(
                     self.last_token_price,
                     self.last_reserve_price,
                     include_interest=False,
                 )
+
             case TradingPairKind.lending_protocol_short:
                 # Value for leveraged positions is net asset value from its two loans
                 return self.loan.get_net_asset_value(include_interest)
@@ -1035,6 +1037,7 @@ class TradingPosition(GenericPosition):
             return 0
 
         unrealised_equity = (self.get_current_price() - avg_price) * float(self.get_net_quantity())
+
         if include_interest:
             return unrealised_equity + self.get_accrued_interest() - self.get_claimed_interest() + self.get_repaid_interest()
 
@@ -1377,7 +1380,7 @@ class TradingPosition(GenericPosition):
         ])
 
     def get_accrued_interest(self) -> USDollarAmount:
-        """Get the USD value of currently accrued interest for this position so far.
+        """Get the USD value of currently net accrued interest for this position so far.
 
         See :py:meth:`get_accrued_interest_with_repayments` to account any interest payments.
 
