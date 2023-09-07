@@ -217,6 +217,10 @@ class State:
             For short positions, negative quantity means increase the position of this much,
             positive quantity means decrease the position.
 
+            Any fees have been already reduced away from this quantity,
+            as :py:class:`PriceModel` gives the planned price that includes
+            fees.
+
         :param assumed_price:
             The planned execution price.
 
