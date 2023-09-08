@@ -124,12 +124,24 @@ class AccountingBalanceCheck:
 
     def __repr__(self):
 
-        if self.position:
-            position_name = self.position.get_human_readable_name()
+        
+        position_names = []
+        if self.positions:
+            position_names.extend(
+                position.get_human_readable_name() for position in self.positions
+            )
         else:
-            position_name = "unknown trading position"
+            position_names = "unknown trading positions"
 
-        return f"<Accounting correction type {self.type.value} for {position_name}, expected {self.expected_amount}, actual {self.actual_amount} at {self.timestamp}>"
+        return f"<Accounting correction type {self.type.value} for {position_names}, expected {self.expected_amount}, actual {self.actual_amount} at {self.timestamp}>"
+    
+    @property
+    def position(self):
+        if not self.positions:
+            return None
+
+        assert len(self.positions) == 1, "This is not a single position"
+        return self.positions[0]
 
     @property
     def quantity(self):
@@ -253,7 +265,10 @@ def calculate_account_corrections(
             expected_amount = 0
         diff = actual_amount - expected_amount
 
-        dust_epsilon = get_dust_epsilon(positions[0])
+        if len(positions) > 1:
+            dust_epsilon = get_dust_epsilon(positions[0])
+        else:
+            dust_epsilon = get_dust_epsilon(None)
 
         if positions:
             usd_value = sum(position.calculate_quantity_usd_value(diff) for position in positions)
@@ -307,7 +322,7 @@ def apply_accounting_correction(
         state: State,
         correction: AccountingBalanceCheck,
         strategy_cycle_included_at: datetime.datetime | None,
-):
+) -> list[BalanceUpdate]:
     """Update the state to reflect the true on-chain balances."""
 
     assert correction.type == AccountingCorrectionCause.unknown_cause, f"Not supported: {correction}"
@@ -315,85 +330,88 @@ def apply_accounting_correction(
 
     portfolio = state.portfolio
     asset = correction.asset
-    position = correction.position
     block_number = correction.block_number
 
     event_id = portfolio.next_balance_update_id
     portfolio.next_balance_update_id += 1
 
-    logger.info("Corrected %s", position)
+    evts = []
+    for position in correction.positions:
+        logger.info("Corrected %s", position)
 
-    if isinstance(position, TradingPosition):
-        position_type = BalanceUpdatePositionType.open_position
-        position_id = correction.position.position_id
-    elif isinstance(position, ReservePosition):
-        position_type = BalanceUpdatePositionType.reserve
-        position_id = None
-    elif position is None:
-        # Tokens were for a trading position, but no position was open.
-        # Open a new position
-        portfolio.create_trade(
-            strategy_cycle_at=strategy_cycle_included_at,
+        if isinstance(position, TradingPosition):
+            position_type = BalanceUpdatePositionType.open_position
+            position_id = correction.position.position_id
+        elif isinstance(position, ReservePosition):
+            position_type = BalanceUpdatePositionType.reserve
+            position_id = None
+        elif position is None:
+            # Tokens were for a trading position, but no position was open.
+            # Open a new position
+            portfolio.create_trade(
+                strategy_cycle_at=strategy_cycle_included_at,
+            )
+        else:
+            raise NotImplementedError()
+
+        notes = f"Accounting correction based on the actual on-chain balances.\n" \
+            f"The internal ledger balance was  {correction.expected_amount} {asset.token_symbol}\n" \
+            f"On-chain balance was {correction.actual_amount} {asset.token_symbol} at block {block_number or 0:,}\n" \
+            f"Balance was updated {correction.quantity} {asset.token_symbol}\n"
+
+        evt = BalanceUpdate(
+            balance_update_id=event_id,
+            position_type=position_type,
+            cause=BalanceUpdateCause.correction,
+            asset=correction.asset,
+            block_mined_at=correction.timestamp,
+            strategy_cycle_included_at=strategy_cycle_included_at,
+            chain_id=asset.chain_id,
+            old_balance=correction.actual_amount,
+            usd_value=correction.usd_value,
+            quantity=correction.quantity,
+            owner_address=None,
+            tx_hash=None,
+            log_index=None,
+            position_id=position_id,
+            block_number=correction.block_number,
+            notes=notes,
         )
-    else:
-        raise NotImplementedError()
 
-    notes = f"Accounting correction based on the actual on-chain balances.\n" \
-        f"The internal ledger balance was  {correction.expected_amount} {asset.token_symbol}\n" \
-        f"On-chain balance was {correction.actual_amount} {asset.token_symbol} at block {block_number or 0:,}\n" \
-        f"Balance was updated {correction.quantity} {asset.token_symbol}\n"
-
-    evt = BalanceUpdate(
-        balance_update_id=event_id,
-        position_type=position_type,
-        cause=BalanceUpdateCause.correction,
-        asset=correction.asset,
-        block_mined_at=correction.timestamp,
-        strategy_cycle_included_at=strategy_cycle_included_at,
-        chain_id=asset.chain_id,
-        old_balance=correction.actual_amount,
-        usd_value=correction.usd_value,
-        quantity=correction.quantity,
-        owner_address=None,
-        tx_hash=None,
-        log_index=None,
-        position_id=position_id,
-        block_number=correction.block_number,
-        notes=notes,
-    )
-
-    assert evt.balance_update_id not in position.balance_updates, f"Alreaddy written: {evt}"
-    position.balance_updates[evt.balance_update_id] = evt
-
-    ref = BalanceEventRef(
-        balance_event_id=evt.balance_update_id,
-        strategy_cycle_included_at=strategy_cycle_included_at,
-        cause=evt.cause,
-        position_type=position_type,
-        position_id=evt.position_id,
-        usd_value=evt.usd_value,
-    )
-
-    if isinstance(position, TradingPosition):
-        # Balance_updates toggle is enough
+        assert evt.balance_update_id not in position.balance_updates, f"Alreaddy written: {evt}"
         position.balance_updates[evt.balance_update_id] = evt
 
-        # TODO: Close position if the new balance is zero
-        assert position.get_quantity() > 0, "Position closing logic missing"
+        ref = BalanceEventRef(
+            balance_event_id=evt.balance_update_id,
+            strategy_cycle_included_at=strategy_cycle_included_at,
+            cause=evt.cause,
+            position_type=position_type,
+            position_id=evt.position_id,
+            usd_value=evt.usd_value,
+        )
 
-    elif isinstance(position, ReservePosition):
-        # No fancy method to correct reserves
-        position.quantity += correction.quantity
-    else:
-        raise NotImplementedError()
+        if isinstance(position, TradingPosition):
+            # Balance_updates toggle is enough
+            position.balance_updates[evt.balance_update_id] = evt
 
-    # Bump our last updated date
-    accounting = state.sync.accounting
-    accounting.balance_update_refs.append(ref)
-    accounting.last_updated_at = datetime.datetime.utcnow()
-    accounting.last_block_scanned = evt.block_number
+            # TODO: Close position if the new balance is zero
+            assert position.get_quantity() > 0, "Position closing logic missing"
 
-    return evt
+        elif isinstance(position, ReservePosition):
+            # No fancy method to correct reserves
+            position.quantity += correction.quantity
+        else:
+            raise NotImplementedError()
+        
+        # Bump our last updated date
+        accounting = state.sync.accounting
+        accounting.last_updated_at = datetime.datetime.utcnow()
+        accounting.balance_update_refs.append(ref)
+        accounting.last_block_scanned = evt.block_number
+
+        evts.append(evt)
+        
+    return evts
 
 
 def correct_accounts(
@@ -435,7 +453,7 @@ def correct_accounts(
         # Could not map to open position,
         # but we do not have code to open new positions yet.
         # Just deal with it by transferring away.
-        if correction.position is None:
+        if correction.positions is None:
             transfer_away_assets_without_position(
                 correction,
                 unknown_token_receiver,
@@ -443,7 +461,7 @@ def correct_accounts(
             )
         else:
             # Change open position balance to match the on-chain balance
-            yield apply_accounting_correction(state, correction, strategy_cycle_included_at)
+            yield from apply_accounting_correction(state, correction, strategy_cycle_included_at)
 
 
 def transfer_away_assets_without_position(

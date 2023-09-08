@@ -491,6 +491,7 @@ def test_enzyme_correct_accounting_no_open_position(
     balance_updates = list(balance_updates)
     assert len(balance_updates) == 0
 
+    # TODO investigate why this is not working
     assert weth.functions.balanceOf(user_1).call() == pytest.approx(Decimal(2*10**18))
 
     #
