@@ -12,7 +12,7 @@ from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.position import TradingPosition, TriggerPriceUpdate
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeType, TradeExecution
-from tradeexecutor.state.loan import calculate_sizes_for_leverage
+from tradeexecutor.strategy.lending_protocol_leverage import calculate_sizes_for_leverage
 from tradeexecutor.state.types import USDollarAmount, Percent, LeverageMultiplier
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradingstrategy.candle import CandleSampleUnavailable

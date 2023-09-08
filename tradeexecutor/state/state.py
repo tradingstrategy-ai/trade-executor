@@ -417,6 +417,7 @@ class State:
             assert borrowed_quantity is not None, "borrowed_quantity must be always set"
             assert collateral_quantity is not None, "collateral_quantity must be always set. Set to zero if you do not want to have change to the amount of collateral"
 
+
         return self.create_trade(
             strategy_cycle_at=strategy_cycle_at,
             pair=pair,
