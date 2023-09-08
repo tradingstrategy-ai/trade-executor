@@ -610,6 +610,13 @@ class TradingPosition(GenericPosition):
 
         return value
 
+    def get_loan_based_nav(self, include_interest=True, include_fees=True):
+        """Calculate NAV for a lona based position."""
+        nav = self.loan.get_net_asset_value(include_interest)
+        # TODO: Do we need to include fees
+        return nav
+
+
     def get_trades_by_strategy_cycle(self, timestamp: datetime.datetime) -> Iterable[TradeExecution]:
         """Get all trades made for this position at a specific time.
 

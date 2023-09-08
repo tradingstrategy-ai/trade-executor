@@ -7,11 +7,11 @@ import copy
 import math
 from _decimal import Decimal
 from dataclasses import dataclass
-from typing import TypeAlias, Tuple
+from typing import TypeAlias
 
 from dataclasses_json import dataclass_json
 
-from tradeexecutor.state.identifier import AssetIdentifier, AssetWithTrackedValue, TradingPairIdentifier
+from tradeexecutor.state.identifier import AssetWithTrackedValue, TradingPairIdentifier
 from tradeexecutor.state.interest import Interest
 from tradeexecutor.state.types import LeverageMultiplier, USDollarAmount
 from tradeexecutor.utils.accuracy import ZERO_DECIMAL, ensure_exact_zero
@@ -300,53 +300,4 @@ class Loan:
                 f"Borrowed {self.borrowed.quantity} {self.borrowed.asset.token_symbol} {self.borrowed.get_usd_value()} USD.\n"
             )
 
-
-def calculate_sizes_for_leverage(
-    starting_reserve: USDollarAmount,
-    leverage: LeverageMultiplier,
-) -> Tuple[USDollarAmount, USDollarAmount]:
-    """Calculate the collateral and borrow loan size to hit the target leverage with a starting capital.
-
-    - When calculating the loan size using this function,
-      the loan net asset value will be the same as starting capital
-
-    - Because loan net asset value is same is deposited reserve,
-      portfolio total NAV stays intact
-
-    Notes:
-
-    .. code-block:: text
-
-            col / (col - borrow) = leverage
-            col = (col - borrow) * leverage
-            col = col * leverage - borrow * leverage
-            col - col * leverage = - borrow * levereage
-            col(1 - leverage) = - borrow * leverage
-            col = -(borrow * leverage) / (1 - leverage)
-
-            # Calculate leverage for 4x and 1000 USD collateral
-            col - borrow = 1000
-            col = 1000
-            leverage = 3
-
-            col / (col - borrow) = 3
-            3(col - borrow) = col
-            3borrow = 3col - col
-            borrow = col - col/3
-
-            col / (col - (col - borrow)) = leverage
-            col / borrow = leverage
-            borrow = leverage * 1000
-
-
-    :param starting_reserve:
-        Initial deposit in lending protocol
-
-    :return:
-        Tuple (borrow value, collateral value) in dollars
-    """
-
-    collateral_size = starting_reserve * leverage
-    borrow_size = (collateral_size - (collateral_size / leverage))
-    return borrow_size, collateral_size
 
