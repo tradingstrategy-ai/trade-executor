@@ -328,16 +328,15 @@ def apply_accounting_correction(
     assert correction.type == AccountingCorrectionCause.unknown_cause, f"Not supported: {correction}"
     assert correction.timestamp
 
-    portfolio = state.portfolio
-    asset = correction.asset
-    block_number = correction.block_number
-
-    event_id = portfolio.next_balance_update_id
-    portfolio.next_balance_update_id += 1
-
     evts = []
     for position in correction.positions:
         logger.info("Corrected %s", position)
+
+        portfolio = state.portfolio
+        asset = correction.asset
+        block_number = correction.block_number
+        event_id = portfolio.next_balance_update_id
+        portfolio.next_balance_update_id += 1
 
         if isinstance(position, TradingPosition):
             position_type = BalanceUpdatePositionType.open_position
