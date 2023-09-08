@@ -116,6 +116,7 @@ def perform_test_trade(
 
     confirmation_timeout = datetime.timedelta(seconds=60)
 
+    generic_routing_data = None
     if len(mod.trade_routing) > 1:
         generic_routing_data, sync_model = create_generic_execution_and_sync_model(
                 asset_management_mode=asset_management_mode,
