@@ -1642,8 +1642,9 @@ def test_short_open_with_fee(
         weth_short_identifier_5bps: TradingPairIdentifier,
         usdc: AssetIdentifier,
 ):
-    """Opening a short position and get some unrealised profit.
+    """Opening a short position and loss some money on trading fees..
 
+    See :py:class:`LeverageEstimate` docstring for the explanation.
     """
 
     trader = UnitTestTrader(state)
@@ -1702,3 +1703,85 @@ def test_short_open_with_fee(
     assert loan.get_leverage() == pytest.approx(3.002002002002002)
     assert portfolio.get_cash() == 0
     assert portfolio.get_net_asset_value() == 9990.0
+
+
+def test_short_close_with_fee_no_price_movement(
+        state: State,
+        weth_short_identifier_5bps: TradingPairIdentifier,
+        usdc: AssetIdentifier,
+):
+    """Close a short position and calculate money lost on trading fees.
+
+    - Price does not move between open and close
+
+    See :py:class:`LeverageEstimate` docstring for the explanation.
+    """
+
+    trader = UnitTestTrader(state)
+    portfolio = state.portfolio
+
+    open_estimate = LeverageEstimate.open_short(
+        starting_reserve=Decimal(10_000),
+        leverage=3.0,
+        borrowed_asset_price=1500.0,
+        fee=weth_short_identifier_5bps.fee,
+    )
+
+    short_position, trade, _ = state.trade_short(
+        strategy_cycle_at=datetime.datetime.utcnow(),
+        pair=weth_short_identifier_5bps,
+        borrowed_quantity=-open_estimate.borrowed_quantity,
+        collateral_quantity=open_estimate.starting_reserve,
+        borrowed_asset_price=open_estimate.borrowed_asset_price,
+        trade_type=TradeType.rebalance,
+        reserve_currency=usdc,
+        collateral_asset_price=1.0,
+        planned_collateral_consumption=open_estimate.additional_collateral_quantity,
+        lp_fees_estimated=open_estimate.lp_fees,
+    )
+
+    trader.set_perfectly_executed(trade)
+
+    assert portfolio.get_cash() == 0
+    assert portfolio.get_net_asset_value() == 9990.0
+
+    assert short_position.loan.collateral.quantity == pytest.approx(Decimal(29990))
+    assert short_position.loan.borrowed.quantity == pytest.approx(Decimal(13.33333333333333333333333333))
+
+    #
+    # Close the short position with trading fees
+    #
+
+    estimate = LeverageEstimate.close_short(
+        start_collateral=short_position.loan.collateral.quantity,
+        start_borrowed=short_position.loan.borrowed.quantity,
+        close_size=short_position.loan.borrowed.quantity,
+        fee=weth_short_identifier_5bps.fee,
+        borrowed_asset_price=1500.0,
+    )
+
+    assert estimate.leverage == 1.0  # Reduced USDC leverage to 1.0
+    assert estimate.borrowed_quantity == pytest.approx(Decimal(-13.33333333333333333333333333))
+    assert estimate.total_collateral_quantity == pytest.approx(Decimal(29979.99499749874937427080171))
+    assert estimate.total_borrowed_quantity == 0
+
+    # Now close the position
+    _, trade_2, _ = state.trade_short(
+        closing=True,
+        strategy_cycle_at=datetime.datetime.utcnow(),
+        pair=weth_short_identifier_5bps,
+        borrowed_asset_price=open_estimate.borrowed_asset_price,
+        trade_type=TradeType.rebalance,
+        reserve_currency=usdc,
+        collateral_asset_price=1.0,
+        lp_fees_estimated=estimate.lp_fees,
+    )
+
+    trader.set_perfectly_executed(trade)
+
+    assert portfolio.get_cash() == 0
+    assert portfolio.get_net_asset_value() == 9990.0
+
+
+
+
