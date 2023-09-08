@@ -37,7 +37,7 @@ from ...state.store import NoneStore, JSONFileStore
 from ...strategy.approval import ApprovalType
 from ...strategy.bootstrap import import_strategy_file, import_generic_strategy_file
 from ...strategy.cycle import CycleDuration
-from ...strategy.default_routing_options import TradeRouting
+from ...strategy.default_routing_options import TradeRouting, validate_trade_routing_with_user_supplied
 from ...strategy.execution_context import ExecutionContext, ExecutionMode
 from ...strategy.execution_model import AssetManagementMode
 from ...strategy.routing import RoutingModel
@@ -568,24 +568,3 @@ def start(
         if server:
             logger.info("Closing the web server")
             server.close()
-
-
-def validate_trade_routing_with_user_supplied(trade_routing: list[TradeRouting]):
-    """Validate that the user supplied routing options are valid. Also, validate that trade_routing is a list.
-    
-    :param trade_routing:
-        list of TradeRouting options
-
-    :return:
-        None
-    """
-
-    assert type(trade_routing) == list, "Expected trade_routing to be a list"
-
-    user_supplied_routing_options = TradeRouting.get_user_supplied()
-    trade_routing_set = set(trade_routing)
-
-    if trade_routing_set & user_supplied_routing_options:
-        assert trade_routing_set <= user_supplied_routing_options, "Expected all routing hints to be user supplied, if one is user supplied"
-
-

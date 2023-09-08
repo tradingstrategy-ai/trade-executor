@@ -32,7 +32,7 @@ from tradeexecutor.strategy.strategy_module import parse_strategy_module, \
     DecideTradesProtocol, CreateTradingUniverseProtocol, CURRENT_ENGINE_VERSION, StrategyModuleInformation, DecideTradesProtocol2
 from tradeexecutor.strategy.engine_version import TradingStrategyEngineVersion
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
-from tradeexecutor.strategy.default_routing_options import TradeRouting
+from tradeexecutor.strategy.default_routing_options import TradeRouting, validate_trade_routing_with_user_supplied
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse,  \
     DefaultTradingStrategyUniverseModel
 from tradeexecutor.strategy.universe_model import StaticUniverseModel, UniverseOptions
@@ -319,6 +319,8 @@ def run_backtest(
         Tuple(the final state of the backtest, trading universe, debug dump)
     """
 
+    validate_trade_routing_with_user_supplied(setup.trade_routing)
+
     # State is pristine and not used yet
     assert len(list(setup.state.portfolio.get_all_trades())) == 0
 
@@ -518,6 +520,8 @@ def run_backtest_inline(
     :return:
         tuple (State of a completely executed strategy, trading strategy universe, debug dump dict)
     """
+
+    validate_trade_routing_with_user_supplied(trade_routing)
 
     if ignore:
         # https://www.python.org/dev/peps/pep-3102/

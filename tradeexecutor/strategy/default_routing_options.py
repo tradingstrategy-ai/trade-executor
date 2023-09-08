@@ -250,3 +250,22 @@ class TradeRouting(enum.Enum):
             TradeRouting.user_supplied_routing_model_uniswap_v2, 
             TradeRouting.user_supplied_routing_model_uniswap_v3
         }
+    
+    
+def validate_trade_routing_with_user_supplied(trade_routing: list[TradeRouting]):
+    """Validate that the user supplied routing options are valid. Also, validate that trade_routing is a list.
+
+    :param trade_routing:
+        list of TradeRouting options
+
+    :return:
+        None
+    """
+
+    assert type(trade_routing) == list, "Expected trade_routing to be a list"
+
+    user_supplied_routing_options = TradeRouting.get_user_supplied()
+    trade_routing_set = set(trade_routing)
+
+    if trade_routing_set & user_supplied_routing_options:
+        assert trade_routing_set <= user_supplied_routing_options, "Expected all routing hints to be user supplied, if one is user supplied"
