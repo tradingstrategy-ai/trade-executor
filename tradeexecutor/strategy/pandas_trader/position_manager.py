@@ -932,7 +932,6 @@ def get_pricing_model_for_pair(pair: TradingPairIdentifier | DEXPair, pricing_mo
 
         rm = pricing_model.routing_model
 
-        assert hasattr(routing_model, "routing_hint"), "all routing models must have routing_hint attribute"
 
         if hasattr(rm, "factory_router_map"):  # uniswap v2 like
             keys = list(rm.factory_router_map.keys())
