@@ -18,6 +18,7 @@ from tradingstrategy.client import Client
 from tradeexecutor.ethereum.routing_data import get_routing_model
 from tradeexecutor.strategy.sync_model import SyncMethodV0, SyncModel
 from tradeexecutor.strategy.approval import ApprovalModel
+from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.description import StrategyExecutionDescription
 from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.strategy.execution_model import ExecutionModel
@@ -137,8 +138,9 @@ def make_factory_from_strategy_mod(mod: StrategyModuleInformation) -> StrategyFa
         # or it is dynamically generated for any local dev chain.
         # If it is not dynamically generated, here set up one of the default routing models from
         # strategy module's trade_routing var.
-        if routing_model is None:
-            assert len(mod_info.trade_routing) == 1, "this should not happen"
+        assert len(mod_info.trade_routing) == 1, "this should not happen"
+        trade_routing = mod_info.trade_routing[0]
+        if routing_model is None and trade_routing not in TradeRouting.get_user_supplied():
             routing_model = get_routing_model(
                 execution_context,
                 mod_info.trade_routing[0],

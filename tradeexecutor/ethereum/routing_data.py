@@ -612,7 +612,7 @@ def get_backtest_routing_model(
 
     if routing_type == TradeRouting.ignore:
         params = get_uniswap_v2_default_routing_parameters(reserve_currency)
-        return BacktestRoutingIgnoredModel(params["reserve_token_address"])
+        return BacktestRoutingIgnoredModel(params["reserve_token_address"], routing_hint = routing_type)
 
     real_routing_model = create_compatible_routing(routing_type, reserve_currency)
     

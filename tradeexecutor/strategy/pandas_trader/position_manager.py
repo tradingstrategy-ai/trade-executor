@@ -430,8 +430,6 @@ class PositionManager:
             slippage_tolerance=slippage_tolerance,
         )
 
-        assert pricing_model.routing_model.routing_hint is not None, "Routing hint is not set for the routing model"
-
         assert created, f"There was conflicting open position for pair: {executor_pair}"
 
         if take_profit_pct:
@@ -933,6 +931,8 @@ def get_pricing_model_for_pair(pair: TradingPairIdentifier | DEXPair, pricing_mo
     for pricing_model in pricing_models:
 
         rm = pricing_model.routing_model
+
+        assert hasattr(routing_model, "routing_hint"), "all routing models must have routing_hint attribute"
 
         if hasattr(rm, "factory_router_map"):  # uniswap v2 like
             keys = list(rm.factory_router_map.keys())
