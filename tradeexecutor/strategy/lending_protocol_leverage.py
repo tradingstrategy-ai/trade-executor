@@ -277,7 +277,7 @@ class LeverageEstimate:
         - Deposit in Aave
         - ETH price is 1,500 USD/ETH
         - Using swap exact out method
-        - The short should be 20k USD worth of ETH, 30k USD collateral
+        - The short should be 20 USD worth of ETH, 29.99 USD collateral
 
     - Deposit 10 USDC to Aave
 
@@ -286,7 +286,7 @@ class LeverageEstimate:
         - 1delta initiates swap for 0.0133333333333 WETH to 20 USDC (minus fees)
         - Uniswap v3 calls back 1delta
         - 1delta mints out USDC aToken from USDC we received from the swap
-        - We have now total 10 + 19.99 USDC in Aave
+        - We have now total 10 (originak deposit) + 19.99 USDC (new loan) in Aave
         - 1delta borrows WETH for 0.0133333333333 WETH
         - Uniswap is happy has we have WETH we did not have at the start of the process
 
@@ -295,20 +295,55 @@ class LeverageEstimate:
         - Token out: 19.99 USDC (0.01 USD paid in fees)
     - Final outcome
         - vWETH 0.0133333333
-        - aUSDC 19.99
+        - aUSDC 29.99
 
-    Example transaction
+    - `Example transaction <https://dashboard.tenderly.co/tx/polygon/0xaf9bddedc174dc051abcdb28e6be6bf7f337ce73a9d9ba47bf51b42c04fe0df1?trace=0.0.0>`__
 
-    - https://dashboard.tenderly.co/tx/polygon/0xaf9bddedc174dc051abcdb28e6be6bf7f337ce73a9d9ba47bf51b42c04fe0df1?trace=0.0.0
+    ** Close short **
+
+    - Closing 3x short as described above
+
+    - Closing position with 1delta
+        - Assume price is
+        - Get exact wWETH debt amount: 0.0112236255452078143 vWETH
+        - Start a swap process on Uniswap with WETH -> USDC for this amount
+            - There is no WETH yet in this point
+            - Uniswap will tell us how much USDC we will need later down the chain
+        - Uniswap calls 1delta fallback called with incoming WETH from the swap
+            - Aave loan is repaid with WETH
+            - Uniswap tells os the USDC needed to cover the swap cost
+            - Atoken USDC colleteral is converted back to USDC to cover the cost of the swap
+            - The amount of USDC here is fee inclusive to match 0.0112236255452078143 vWETH,
+              so it is wWETH price + fees
+
+        - Total swap cost is = (0.0112236255452078143 / 0.9995) * ETH price
+
+        - Fees are 0.0005 * (0.0112236255452078143 / 0.9995) * ETH price = ETH amount * (fee / (1-fee))
+
+    - `Example transaction <https://dashboard.tenderly.co/tx/polygon/0x887bafca8fbe39a5188e385e638fa522146065b57e4ca6aa495926a840566272>`__
     """
 
-    #: Amount of USDC reserve we use for this position
+    #: Amount of USDC reserve we use for this position.
+    #:
+    #: Set to 0 when closing/reducing short position as the position is covered from the collateral.
+    #:
     starting_reserve: Decimal
 
-    #: What was the leverage multiplier we used
+    #: What was the leverage multiplier we used.
+    #:
+    #: Short open: This is the leverage the user desired.
+    #:
+    #: Short close/reduce: This is the leverage remaining.
+    #:
+    #:
     leverage: LeverageMultiplier
 
-    #: Amount of the borrowed token we short
+    #: Amount of the borrowed token we short.
+    #:
+    #: Positive if we increase our borrow.
+    #:
+    #: Negative if we reduce or borrow.
+    #:
     borrowed_quantity: Decimal
 
     #: What is the borrowed asset value in USD
@@ -317,15 +352,27 @@ class LeverageEstimate:
 
     #: How much additional collateral we are going to take.
     #
-    #: This is the output when we sell borrowed asset.
+    #: This is the output when we buy/sell borrowed asset.
+    #:
+    #: Positive: We are selling WETH and adding this USDC to our debt.
+    #:
+    #: Negative: We are buying WETH and need to convert this much of collateral to USDC to match the
+    #: cost.
     #:
     additional_collateral_quantity: Decimal
 
     #: Amount of total collateral we have
     #:
-    #: This is starting reserve +
+    #: Short open: This is starting reserve + additional collateral borrowed.
+    #:
+    #: Short close: This is remaining collateral after converting it to
+    #: cover the trade to close the short.
     #:
     total_collateral_quantity: Decimal
+
+    #: What is the total borrow amount after this ooperation
+    #:
+    total_borrowed_quantity: Decimal
 
     #: What's the price for the borrowed token.
     #:
@@ -373,23 +420,36 @@ class LeverageEstimate:
 
         .. code-block:: python
 
-            from tradeexecutor.strategy.lending_protocol_leverage import calculate_quantities_for_leverage
+            from tradeexecutor.strategy.lending_protocol_leverage import LeverageEstimate
 
             # Start with 10 USD
             starting_capital = 10.0
             leverage = 3.0
-            eth_price = 1629.43
+            eth_price = 1634.4869
 
             # This will borrow additional
             # - 20 USDC as collateral
             # - 0.01228645 WETH
-            borrow_quantity, collateral_quantity = calculate_quantities_for_leverage(
+            estimate = LeverageEstimate.open_short(
                 starting_capital,
                 leverage,
                 eth_price,
+                fee=0.0005,
             )
 
-            print(f"Borrowing {borrow_quantity:,.8f} token using {collateral_quantity:,.8f} USD as collateral")
+            print("Estimated amounts for the short:", estimate)
+
+        Example output:
+
+        .. code-block:: text
+
+            Estimated amounts for the short: <Leverage estimate
+                leverage: 3.0
+                reserve allocated (USDC): 10
+                borrowed (vToken): 0.01223625591615325807353339610
+                total collateral (aToken): 29.98999999999999999979183318
+                LP fees: 0.01 USD
+            >
 
         :param starting_capital:
             How much USDC we are going to deposit
@@ -408,7 +468,8 @@ class LeverageEstimate:
 
         """
 
-        assert isinstance(starting_reserve, Decimal)
+        if type(starting_reserve) == float:
+            starting_reserve = Decimal(starting_reserve)
 
         # Assume collateral is USDC
         total_collateral_quantity = starting_reserve * Decimal(leverage)
@@ -427,7 +488,58 @@ class LeverageEstimate:
             borrowed_value=float(borrow_value_usdc),
             additional_collateral_quantity=swapped_out,
             total_collateral_quantity=swapped_out + starting_reserve,
+            total_borrowed_quantity=borrow_quantity,
             borrowed_asset_price=borrowed_asset_price,
             fee_tier=fee,
             lp_fees=paid_fee,
+        )
+
+    @staticmethod
+    def close_short(
+        start_collateral: Decimal,
+        start_borrowed: Decimal,
+        close_size: Decimal,
+        borrowed_asset_price: USDollarAmount,
+        fee: Percent = 0,
+    ) -> "LeverageEstimate":
+        """Reduce or close short position.
+
+        Assumes collateral is 1:1 USD.
+
+        See :py:class:`LeverageEstimate` for fee calculation example.
+
+        :param start_collateral:
+            How much collateral we have at start.
+
+        :param close_size:
+            How much debt to reduce.
+
+            Expressed in the amount of borrowed token quantity.
+
+        """
+
+        matching_usdc_amount = Decimal(borrowed_asset_price) * close_size
+        fee_decimal = Decimal(fee)
+        matching_usdc_amount_with_fees = matching_usdc_amount * fee_decimal / (Decimal(1) - fee_decimal)
+
+        paid_fee = Decimal(matching_usdc_amount_with_fees * fee_decimal)
+
+        total_collateral_quantity = start_collateral - matching_usdc_amount_with_fees
+        total_borrowed_quantity = start_borrowed - close_size
+
+        total_borrowed_usd = total_borrowed_quantity * Decimal(borrowed_asset_price)
+
+        leverage = total_collateral_quantity / (total_collateral_quantity - total_borrowed_usd)
+
+        return LeverageEstimate(
+            starting_reserve=Decimal(0),
+            leverage=float(leverage),
+            borrowed_quantity=-close_size,
+            borrowed_value=float(matching_usdc_amount),
+            additional_collateral_quantity=-matching_usdc_amount_with_fees,
+            total_collateral_quantity=total_collateral_quantity,
+            total_borrowed_quantity=total_borrowed_quantity,
+            borrowed_asset_price=borrowed_asset_price,
+            fee_tier=fee,
+            lp_fees=float(paid_fee),
         )
