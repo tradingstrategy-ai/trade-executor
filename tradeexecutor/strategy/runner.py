@@ -470,6 +470,8 @@ class StrategyRunner(abc.ABC):
             Mostly useful for integration testing.
         """
 
+        pricing_model, pricing_models = None, None
+
         assert isinstance(universe, StrategyExecutionUniverse)
 
         assert isinstance(strategy_cycle_timestamp, datetime.datetime)
@@ -615,7 +617,7 @@ class StrategyRunner(abc.ABC):
             with self.timed_task_context_manager("post_execution"):
                 self.collect_post_execution_data(
                     self.execution_context,
-                    pricing_models,
+                    pricing_models or [pricing_model],
                     approved_trades,
                 )
 

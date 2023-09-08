@@ -115,12 +115,12 @@ class QSTraderRunner(StrategyRunner):
     def on_clock(self,
                  clock: datetime.datetime,
                  executor_universe: TradingStrategyUniverse,
-                 pricing_model: PricingModel,
+                 pricing_models: list[PricingModel],
                  state: State,
                  debug_details: dict) -> List[TradeExecution]:
         """Run one strategy cycle.
 
-        - Takes universe, pricing model and state as an input
+        - Takes universe, pricing models and state as an input
 
         - Generates a list of new trades to change the current state
         """
@@ -131,14 +131,15 @@ class QSTraderRunner(StrategyRunner):
         reserve_assets = executor_universe.reserve_assets
         logger.info("QSTrader on_clock %s", clock)
         optimiser = FixedWeightPortfolioOptimiser()
-        order_sizer = CashBufferedOrderSizer(state, pricing_model, self.cash_buffer)
+        assert len(pricing_models) == 1, "Only one pricing model supported in this method"
+        order_sizer = CashBufferedOrderSizer(state, pricing_models[0], self.cash_buffer)
         pcm = PortfolioConstructionModel(
             universe=universe,
             state=state,
             order_sizer=order_sizer,
             optimiser=optimiser,
             alpha_model=self.alpha_model,
-            pricing_model=pricing_model,
+            pricing_model=pricing_models[0],
             reserve_currency=reserve_assets[0],
             risk_model=None,
             cost_model=None)
