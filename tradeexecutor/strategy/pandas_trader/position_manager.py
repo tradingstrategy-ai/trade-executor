@@ -945,7 +945,7 @@ class PositionManager:
 
         # TODO: verify calculation here and we should output the liquidation price here
         # so it should be takesn into account for stoploss
-        borrowed_size, collateral_size = calculate_sizes_for_leverage(value, leverage)
+        borrowed_size, collateral_size, liquidation_price = calculate_sizes_for_leverage(value, leverage, shorting_pair)
         borrowed_quantity = borrowed_size / Decimal(price_structure.price)
 
         collateral_price = self.reserve_price
@@ -958,6 +958,7 @@ class PositionManager:
                     "Borrow amount: %s USD (%s %s)\n"
                     "Collateral asset price: %s %s/USD\n"
                     "Borrowed asset price: %s %s/USD (assumed execution)\n",
+                    "Liquidation price: %s %s/USD\n",
                     self.timestamp,
                     shorting_pair,
                     executor_pair,
@@ -965,6 +966,7 @@ class PositionManager:
                     borrowed_size, borrowed_quantity, executor_pair.base.token_symbol,
                     collateral_price, executor_pair.quote.token_symbol,
                     borrowed_asset_price, executor_pair.base.token_symbol,
+                    liquidation_price, executor_pair.base.token_symbol,
                     )
 
         position, trade, _ = self.state.trade_short(
