@@ -30,7 +30,7 @@ from tradeexecutor.state.state import State
 
 
 # https://docs.pytest.org/en/latest/how-to/skipping.html#skip-all-test-functions-of-a-class-or-module
-pytestmark = pytest.mark.skipif(os.environ.get("TRADING_STRATEGY_API_KEY") is None or os.environ.get("LENDING_UNFINISHED") is None, reason="Set TRADING_STRATEGY_API_KEY environment variable to run this test")
+pytestmark = pytest.mark.skipif(os.environ.get("TRADING_STRATEGY_API_KEY") is None, reason="Set TRADING_STRATEGY_API_KEY environment variable to run this test")
 
 
 def create_trading_universe(
@@ -179,11 +179,11 @@ def test_backtest_open_and_close_credit_supply_real_data(
 
     interest = credit_position.loan.collateral_interest
     assert interest.opening_amount == Decimal("10000.00")
-    assert credit_position.calculate_accrued_interest_quantity() == Decimal('2.67867669078453209820818')  # Non-denormalised interest
+    assert credit_position.calculate_accrued_interest_quantity(credit_position.loan.collateral.asset) == Decimal('2.67867669078453209820818')  # Non-denormalised interest
     assert interest.last_token_amount == Decimal('10002.67867669078453209820818')
     assert interest.last_accrued_interest == Decimal('2.67867669078453209820818')
 
-    assert credit_position.get_accrued_interest() == pytest.approx(2.678676690784532)  # Denormalised interest
+    assert credit_position.get_accrued_interest() == Decimal(0)  # Accrued interest should be 0 for closed position
     assert credit_position.get_quantity() == Decimal('0')  # Closed positions do not have quantity left
     assert credit_position.get_value() == pytest.approx(0)  # Closed positions do not have value left
 
