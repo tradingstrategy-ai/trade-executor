@@ -1404,6 +1404,9 @@ class TradingPosition(GenericPosition):
     def get_accrued_interest(self) -> USDollarAmount:
         """Get the USD value of currently net accrued interest for this position so far.
 
+        Get any unclaimed interest on this position. After position is closed,
+        all remaining accrued interest is claimed.
+
         See :py:meth:`get_accrued_interest_with_repayments` to account any interest payments.
 
         - The accrued interest is included as the position accounting item until the position is completely closed

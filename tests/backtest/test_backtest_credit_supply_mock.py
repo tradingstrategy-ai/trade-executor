@@ -18,7 +18,7 @@ from tradingstrategy.lending import LendingProtocolType
 from tradingstrategy.timebucket import TimeBucket
 
 from tradeexecutor.backtest.backtest_runner import run_backtest_inline
-from tradeexecutor.state.balance_update import BalanceUpdateCause
+from tradeexecutor.state.balance_update import BalanceUpdateCause, BalanceUpdate
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, load_partial_data
 from tradeexecutor.strategy.execution_context import ExecutionContext, unit_test_execution_context
@@ -198,22 +198,24 @@ def test_backtest_open_and_close_credit_supply_mock_data(
     assert credit_position.trades[2].executed_reserve == pytest.approx(Decimal(10014))
     assert credit_position.trades[2].get_claimed_interest() == pytest.approx(14)
 
+
+    ausdc = universe.get_credit_supply_pair().base
+
     interest = credit_position.loan.collateral_interest
     assert interest.opening_amount == Decimal("10000.00")
+    b: BalanceUpdate
     interest_events = [b for b in credit_position.balance_updates.values() if b.cause == BalanceUpdateCause.interest]
     assert len(interest_events) > 0, "No interest added on the position"
+    assert interest_events[0].asset == ausdc
 
-    usdc = universe.get_single_pair().quote
-    assert interest_events[0].asset.get_pricing_asset() == usdc
-
-    assert credit_position.calculate_accrued_interest_quantity(usdc) == Decimal('14')  # Non-denormalised interest
+    assert credit_position.calculate_accrued_interest_quantity(ausdc) == Decimal('14')  # Non-denormalised interest
     assert interest.last_token_amount == Decimal('10014')
     assert interest.last_accrued_interest == Decimal('14')
 
-    assert credit_position.get_accrued_interest() == pytest.approx(14)  # Denormalised interest
-    assert credit_position.get_claimed_interest() == pytest.approx(14)  # Interest was claimed during closing
     assert credit_position.get_quantity() == Decimal('0')  # Closed positions do not have quantity left
     assert credit_position.get_value() == pytest.approx(0)  # Closed positions do not have value left
+    assert credit_position.get_claimed_interest() == pytest.approx(14)  # Interest was claimed during closing
+    assert credit_position.get_accrued_interest() == pytest.approx(0)  # Denormalised interest
 
     assert portfolio.get_cash() == pytest.approx(10014)
     assert portfolio.get_net_asset_value() == pytest.approx(10014)
