@@ -699,6 +699,9 @@ class Portfolio:
         :param amount:
             Negative to reduce portfolio reserves, positive to increase
         """
+
+        assert asset is not None, "Asset missing"
+
         assert isinstance(amount, Decimal), f"Got amount {amount}"
         reserve = self.get_reserve_position(asset)
         assert reserve, f"No reserves available for {asset}"

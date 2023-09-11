@@ -71,15 +71,31 @@ def lending_protocol_address() -> str:
     return ZERO_ADDRESS
 
 
+
+@pytest.fixture()
+def weth_usdc_spot(weth: AssetIdentifier, usdc: AssetIdentifier) -> TradingPairIdentifier:
+    """Sets up a lending pool short trading pair 0% fee"""
+    return TradingPairIdentifier(
+        weth,
+        usdc,
+        "0x1",
+        ZERO_ADDRESS,
+        internal_id=2,
+        kind=TradingPairKind.lending_protocol_short,
+        fee=0,  # See
+    )
+
+
+
 @pytest.fixture()
 def weth_short_identifier(ausdc: AssetIdentifier, vweth: AssetIdentifier) -> TradingPairIdentifier:
     """Sets up a lending pool short trading pair 0% fee"""
     return TradingPairIdentifier(
         vweth,
         ausdc,
-        "0x1",
+        "0x2",
         ZERO_ADDRESS,
-        internal_id=1,
+        internal_id=3,
         kind=TradingPairKind.lending_protocol_short,
     )
 
@@ -90,9 +106,9 @@ def weth_short_identifier_5bps(ausdc: AssetIdentifier, vweth: AssetIdentifier) -
     return TradingPairIdentifier(
         vweth,
         ausdc,
-        "0x1",
+        "0x3",
         ZERO_ADDRESS,
-        internal_id=1,
+        internal_id=4,
         kind=TradingPairKind.lending_protocol_short,
         fee=0.0005,
     )
@@ -1623,7 +1639,11 @@ def test_short_realised_interest_and_profit(
 
     # Net asset value does not correctly work when the interest is repaid
     loan = short_position.loan
-    assert loan.get_net_asset_value() == pytest.approx(-15.54710427005894)
+    assert loan.collateral_interest.get_open_interest() == 0
+    assert loan.borrowed_interest.get_open_interest() == 0
+    assert loan.collateral_interest.interest_payments == pytest.approx(Decimal('15.113089799044887491284317'))
+    assert loan.borrowed_interest.interest_payments == pytest.approx(Decimal('0.0219001386207884485952464011'))
+    assert loan.get_net_asset_value() == 0
 
     # Position is properly closed
     assert short_position.get_quantity() == 0

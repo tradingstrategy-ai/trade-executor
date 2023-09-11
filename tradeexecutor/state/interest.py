@@ -5,6 +5,8 @@ from decimal import Decimal
 
 from dataclasses_json import dataclass_json
 
+from tradeexecutor.utils.accuracy import ZERO_DECIMAL
+
 
 @dataclass_json
 @dataclass(slots=True)
@@ -52,6 +54,17 @@ class Interest:
     #:
     last_updated_block_number: int | None = None
 
+    #: How much repayments this loan has received.
+    #:
+    #: - If this is collateral, then this is how much interest we have claimed
+    #:
+    #: - If this is borrow, then this is how much interest we have paid back
+    #:
+    #: TODO: This must be reset when there is change to underlying aToken/vToken amount
+    #  e.g. when partially closing a position.
+    #:
+    interest_payments: Decimal = ZERO_DECIMAL
+
     def __repr__(self):
         return f"<Interest, current principal + interest {self.last_token_amount}, current tracked interest gains {self.last_accrued_interest}>"
 
@@ -77,4 +90,17 @@ class Interest:
             last_token_amount=opening_amount,
         )
 
+    def get_open_interest(self) -> Decimal:
+        """GEt the amount of interest this position has still left.
 
+        This is total lifetime interest + repayments / claims.
+        """
+        return self.last_accrued_interest - self.interest_payments
+
+    def claim_interest(self, quantity: Decimal):
+        """Update interest claims from profit from accuring interest on collateral/"""
+        self.interest_payments += quantity
+
+    def repay_interest(self, quantity: Decimal):
+        """Update interest payments needed to maintain the borrowed debt."""
+        self.interest_payments += quantity
