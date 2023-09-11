@@ -83,7 +83,7 @@ class Loan:
 
     def get_collateral_interest(self) -> USDollarAmount:
         """How much interest we have received on collateral."""
-        return float(self.collateral_interest.get_open_interest()) * self.collateral.last_usd_price
+        return float(self.collateral_interest.get_remaining_interest()) * self.collateral.last_usd_price
 
     def get_collateral_value(self, include_interest=True) -> USDollarAmount:
         """How much value the collateral for this loan has.
@@ -125,7 +125,7 @@ class Loan:
             Always positive
         """
         if self.borrowed:
-            return float(self.borrowed_interest.get_open_interest()) * self.borrowed.last_usd_price
+            return float(self.borrowed_interest.get_remaining_interest()) * self.borrowed.last_usd_price
         return 0
 
     def get_borrowed_principal_and_interest_quantity(self) -> Decimal:

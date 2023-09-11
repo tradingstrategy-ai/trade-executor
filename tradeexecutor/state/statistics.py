@@ -125,7 +125,9 @@ class PortfolioStatistics:
         return self.total_equity
 
     def __post_init__(self):
-        assert (self.total_equity or self.net_asset_value), "PortfolioStatistics: could not calculate value for the portfolio"
+        pass
+        # TODO: Cannot do this yet because of legacy data
+        # assert (self.total_equity or self.net_asset_value), "PortfolioStatistics: could not calculate value for the portfolio"
 
 
 @dataclass_json

@@ -1639,8 +1639,8 @@ def test_short_realised_interest_and_profit(
 
     # Net asset value does not correctly work when the interest is repaid
     loan = short_position.loan
-    assert loan.collateral_interest.get_open_interest() == 0
-    assert loan.borrowed_interest.get_open_interest() == 0
+    assert loan.collateral_interest.get_remaining_interest() == 0
+    assert loan.borrowed_interest.get_remaining_interest() == 0
     assert loan.collateral_interest.interest_payments == pytest.approx(Decimal('15.113089799044887491284317'))
     assert loan.borrowed_interest.interest_payments == pytest.approx(Decimal('0.0219001386207884485952464011'))
     assert loan.get_net_asset_value() == 0
