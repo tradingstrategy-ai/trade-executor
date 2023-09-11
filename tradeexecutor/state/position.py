@@ -1387,12 +1387,12 @@ class TradingPosition(GenericPosition):
         This is also denormalised as `position.interest.accrued_interest`.
 
         :return:
-            Number of quote tokens this position has gained interest
+            Number of quote tokens this position has gained interest.
         """
         return sum_decimal([
             b.quantity
             for b in self.balance_updates.values()
-            if b.cause == BalanceUpdateCause.interest and b.asset == asset
+            if b.cause == BalanceUpdateCause.interest and b.asset.get_pricing_asset() == asset
         ])
 
     def get_accrued_interest(self) -> USDollarAmount:
