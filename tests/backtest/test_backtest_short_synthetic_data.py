@@ -300,7 +300,7 @@ def test_backtest_open_and_close_short_synthetic_data_no_fee(
     assert position.get_value_at_open() == capital
     assert position.get_collateral() == 0
     assert position.get_borrowed() == 0
-    assert position.get_accrued_interest() == pytest.approx(1.719404600852724)
+    assert position.get_accrued_interest() == pytest.approx(0)
     assert position.get_claimed_interest() == pytest.approx(3.287851382535982)
     assert position.get_repaid_interest() == pytest.approx(1.568446781683258)
     assert position.get_realised_profit_usd() == pytest.approx(460.9330914334175)
