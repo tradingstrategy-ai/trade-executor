@@ -452,7 +452,7 @@ def correct_accounts(
         # Could not map to open position,
         # but we do not have code to open new positions yet.
         # Just deal with it by transferring away.
-        if correction.positions is None:
+        if not correction.positions:
             transfer_away_assets_without_position(
                 correction,
                 unknown_token_receiver,
