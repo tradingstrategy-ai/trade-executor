@@ -545,7 +545,9 @@ class State:
         # Reserve capital cannot be double spent until the trades are execured.
         if trade.is_spot():
             if trade.is_buy():
-                self.portfolio.move_capital_from_reserves_to_spot_trade(trade)
+                # Spot trade reserves can go to negative before execution,
+                # because reservs will be there after we have executed some sell trades first
+                self.portfolio.move_capital_from_reserves_to_spot_trade(trade, underflow_check=False)
         elif trade.is_leverage():
             self.portfolio.move_capital_from_reserves_to_spot_trade(trade)
         elif trade.is_credit_supply():
