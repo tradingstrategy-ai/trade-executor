@@ -72,35 +72,6 @@ class GenericMockClient(MockClient):
         )
 
         assert len(self.pairs_table) > 0, f"Could not read any pairs from on-chain data. Test_evm_uniswap_data: {test_evm_uniswap_data}."
-
-    def get_default_quote_token_address(self, factory_address: str | None = None) -> str:
-        """Get the quote token address used in the generated pair map.
-
-        Helper method for setting up simple local dev routing.
-
-        Returns a the first quote token address found in the pair universe.
-
-        :param factory_address:
-            The factory address to get the quote token address from.
-        """
-        quote_tokens = []
-        pairs_df = self.fetch_pair_universe().to_pandas()
-        pair_universe = PandasPairUniverse(pairs_df)
-        assert pair_universe.get_count() > 0, "Pair universe has no trading pairs"
-        for pair in pair_universe.iterate_pairs():
-            if factory_address:
-                if pair.exchange_address.lower() == factory_address.lower():
-                    quote_tokens.append(pair.quote_token_address)
-            else:
-                quote_tokens.append(pair.quote_token_address)
-        #assert len(quote_tokens) == 1, f"Got {len(quote_tokens)} quote tokens in the pair universe, the pair universe is total {pair_universe.get_count()} pairs"
-        return quote_tokens[0]
-
-    def fetch_exchange_universe(self) -> ExchangeUniverse:
-        return self.exchange_universe
-
-    def fetch_pair_universe(self) -> Table:
-        return self.pairs_table
     
     @staticmethod
     def get_item_for_all_test_data_members(test_evm_uniswap_data: list[UniswapV2TestData | UniswapV3TestData], item: str) -> list[str]:
