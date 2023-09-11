@@ -18,6 +18,8 @@ from tradingstrategy.lending import LendingProtocolType
 from tradingstrategy.timebucket import TimeBucket
 
 from tradeexecutor.backtest.backtest_runner import run_backtest_inline
+from tradeexecutor.state.balance_update import BalanceUpdateCause
+from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, load_partial_data
 from tradeexecutor.strategy.execution_context import ExecutionContext, unit_test_execution_context
 from tradeexecutor.strategy.cycle import CycleDuration
@@ -192,13 +194,19 @@ def test_backtest_open_and_close_credit_supply_mock_data(
     assert credit_position.is_credit_supply()
     assert len(credit_position.balance_updates) == 14
 
-    assert credit_position.trades[2].get_claimed_interest() == pytest.approx(14)
     assert credit_position.trades[2].planned_reserve == pytest.approx(Decimal(10014))
     assert credit_position.trades[2].executed_reserve == pytest.approx(Decimal(10014))
+    assert credit_position.trades[2].get_claimed_interest() == pytest.approx(14)
 
     interest = credit_position.loan.collateral_interest
     assert interest.opening_amount == Decimal("10000.00")
-    assert credit_position.calculate_accrued_interest_quantity() == Decimal('14')  # Non-denormalised interest
+    interest_events = [b for b in credit_position.balance_updates.values() if b.cause == BalanceUpdateCause.interest]
+    assert len(interest_events) > 0, "No interest added on the position"
+
+    usdc = universe.get_single_pair().quote
+    assert interest_events[0].asset.get_pricing_asset() == usdc
+
+    assert credit_position.calculate_accrued_interest_quantity(usdc) == Decimal('14')  # Non-denormalised interest
     assert interest.last_token_amount == Decimal('10014')
     assert interest.last_accrued_interest == Decimal('14')
 
