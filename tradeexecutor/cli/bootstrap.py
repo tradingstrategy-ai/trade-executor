@@ -667,7 +667,7 @@ def create_generic_client(
         if trade_routing == TradeRouting.user_supplied_routing_model_uniswap_v2:
 
             assert isinstance(data, UniswapV2TestData)
-            validate_routing_data(
+            _validate_routing_data(
                 routing_data,
                 UniswapV2ExecutionModel,
                 uniswap_v2_live_pricing_factory,
@@ -687,7 +687,7 @@ def create_generic_client(
             )
         elif trade_routing == TradeRouting.user_supplied_routing_model_uniswap_v3:
             assert isinstance(test_evm_uniswap_data[i], UniswapV3TestData)
-            validate_routing_data(
+            _validate_routing_data(
                 routing_data,
                 UniswapV3ExecutionModel,
                 uniswap_v3_live_pricing_factory,
@@ -716,8 +716,7 @@ def create_generic_client(
     return client
 
 
-# TODO Rename this here and in `create_generic_client`
-def validate_routing_data(routing_data, arg1, arg2, arg3):
+def _validate_routing_data(routing_data, arg1, arg2, arg3):
     assert isinstance(routing_data["execution_model"], arg1)
     assert routing_data["pricing_model_factory"] == arg2
     assert routing_data["valuation_model_factory"] == arg3
