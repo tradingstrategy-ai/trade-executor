@@ -12,7 +12,8 @@ import pytest
 
 from eth_defi.uniswap_v2.utils import ZERO_ADDRESS
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier, TradingPairKind, AssetType
-from tradeexecutor.strategy.lending_protocol_leverage import calculate_sizes_for_leverage, LeverageEstimate
+from tradeexecutor.strategy.lending_protocol_leverage import calculate_sizes_for_leverage
+from tradeexecutor.utils.leverage_calculations import LeverageEstimate
 from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeType
@@ -1727,6 +1728,8 @@ def test_short_close_with_fee_no_price_movement(
         fee=weth_short_identifier_5bps.fee,
     )
 
+    assert open_estimate.lp_fees == pytest.approx(Decimal(10))
+
     short_position, trade, _ = state.trade_short(
         strategy_cycle_at=datetime.datetime.utcnow(),
         pair=weth_short_identifier_5bps,
@@ -1761,9 +1764,11 @@ def test_short_close_with_fee_no_price_movement(
     )
 
     assert estimate.leverage == 1.0  # Reduced USDC leverage to 1.0
-    assert estimate.borrowed_quantity == pytest.approx(Decimal(-13.33333333333333333333333333))
-    assert estimate.total_collateral_quantity == pytest.approx(Decimal(29979.99499749874937427080171))
-    assert estimate.total_borrowed_quantity == 0
+    assert estimate.additional_collateral_quantity == pytest.approx(Decimal(-20010.00500250125062552103147))  # USDC needed to reduce from collateral to close position + fees
+    assert estimate.borrowed_quantity == pytest.approx(Decimal(-13.33333333333333333333333333))  # How much ETH is bought to close the short
+    assert estimate.total_collateral_quantity == pytest.approx(Decimal(9979.99499749874937427080171))  # Collateral left after closing the position
+    assert estimate.total_borrowed_quantity == 0  # open vWETH debt left after close
+    assert estimate.lp_fees == pytest.approx(10.005002501250626)
 
     # Now close the position
     _, trade_2, _ = state.trade_short(
@@ -1777,10 +1782,11 @@ def test_short_close_with_fee_no_price_movement(
         lp_fees_estimated=estimate.lp_fees,
     )
 
-    trader.set_perfectly_executed(trade)
+    trader.set_perfectly_executed(trade_2)
 
-    assert portfolio.get_cash() == 0
-    assert portfolio.get_net_asset_value() == 9990.0
+    # After opening and closing short, we have lost money on fees
+    assert portfolio.get_cash() == pytest.approx(9979.994997498748)
+    assert portfolio.get_net_asset_value() == pytest.approx(9979.994997498748)
 
 
 
