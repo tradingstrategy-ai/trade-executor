@@ -26,6 +26,8 @@ from tradeexecutor.strategy.trade_pricing import TradePricing
 from tradeexecutor.utils.accuracy import sum_decimal
 from tradingstrategy.lending import LendingProtocolType
 
+from tradeexecutor.utils.leverage_calculations import LeverageEstimate
+
 logger = logging.getLogger(__name__)
 
 
@@ -768,20 +770,29 @@ class TradingPosition(GenericPosition):
 
                     if closing:
                         assert reserve is None, "reserve calculated automatically when closing a short position"
-                        assert quantity is None, "quantity calculated automatically when closing a short position"
+                        # assert quantity is None, "quantity calculated automatically when closing a short position"
                         assert not planned_collateral_consumption, "planned_collateral_consumption set automatically when closing a short position"
 
                         # Pay back all the debt and its interest
-                        quantity = self.loan.get_borrowed_principal_and_interest_quantity()
+                        if not quantity:
+                            quantity = self.loan.get_borrowed_principal_and_interest_quantity()
+
+                        leverage_estimate = LeverageEstimate.close_short(
+                            start_collateral=self.loan.collateral.quantity,
+                            start_borrowed=self.loan.borrowed.quantity,
+                            close_size=quantity,
+                            borrowed_asset_price=assumed_price,
+                            fee=self.pair.fee,
+                        )
 
                         # Release collateral is the current collateral
                         reserve = 0
 
                         # We need to use USD from the collateral to pay back the loan
-                        planned_collateral_consumption = -quantity * Decimal(self.loan.borrowed.last_usd_price)
+                        planned_collateral_consumption = leverage_estimate.additional_collateral_quantity
 
                         # Any leftover USD from the collateral is released to the reserves
-                        planned_collateral_allocation = -(self.loan.collateral.quantity + planned_collateral_consumption)
+                        planned_collateral_allocation = -leverage_estimate.total_collateral_quantity
 
                     else:
                         assert quantity is not None, "For increasing/reducing short position quantity must be given"
