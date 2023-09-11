@@ -610,6 +610,8 @@ def get_backtest_routing_model(
     At the moment, just create a real router and copy parameters from there.
     """
 
+    assert type(routing_type) == TradeRouting, f"Expected TradeRouting, got {type(routing_type)}"
+
     if routing_type == TradeRouting.ignore:
         params = get_uniswap_v2_default_routing_parameters(reserve_currency)
         return BacktestRoutingIgnoredModel(params["reserve_token_address"], routing_hint = routing_type)

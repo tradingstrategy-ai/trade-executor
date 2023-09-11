@@ -164,6 +164,8 @@ def console(
     )
     assert client is not None, "You need to give details for TradingStrategy.ai client"
 
+    assert len(mod.trade_routing) == 1, f"Expected exactly one routing hint in the strategy module {strategy_file}"
+
     execution_model, sync_model, valuation_model_factory, pricing_model_factory = create_execution_and_sync_model(
         asset_management_mode=asset_management_mode,
         private_key=private_key,
@@ -175,7 +177,7 @@ def console(
         vault_address=vault_address,
         vault_adapter_address=vault_adapter_address,
         vault_payment_forwarder_address=vault_payment_forwarder_address,
-        routing_hint=mod.trade_routing,
+        routing_hint=mod.trade_routing[0],
     )
 
     logger.info("Valuation model factory is %s, pricing model factory is %s", valuation_model_factory, pricing_model_factory)
