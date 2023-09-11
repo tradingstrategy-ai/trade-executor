@@ -1386,13 +1386,19 @@ class TradingPosition(GenericPosition):
 
         This is also denormalised as `position.interest.accrued_interest`.
 
+        :param asset:
+            aToken/vToken for which we calculate the interest for
+
         :return:
             Number of quote tokens this position has gained interest.
         """
+
+        assert asset.underlying is not None, "asset argument must be aToken/vToken"
+
         return sum_decimal([
             b.quantity
             for b in self.balance_updates.values()
-            if b.cause == BalanceUpdateCause.interest and b.asset.get_pricing_asset() == asset
+            if b.cause == BalanceUpdateCause.interest and b.asset == asset
         ])
 
     def get_accrued_interest(self) -> USDollarAmount:

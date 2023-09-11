@@ -1572,18 +1572,23 @@ def test_short_realised_interest_and_profit(
     assert short_position.get_quantity() == pytest.approx(Decimal('-0.5552334719541217745270929036'))
 
     # Calculate unrealised and realised PnL
-    assert short_position.loan.get_collateral_value() == pytest.approx(1815.113089799045)
-    assert short_position.loan.get_borrow_value() == pytest.approx(777.3268607357704)
-    assert short_position.loan.get_collateral_interest() == pytest.approx(15.113089799044888)
-    assert short_position.loan.get_borrow_interest() == pytest.approx(30.66019406910382)
-    assert short_position.loan.get_net_interest() == pytest.approx(-15.54710427005894)
-    assert short_position.loan.get_net_asset_value(include_interest=False) == pytest.approx(1053.3333333333335)
-    assert short_position.loan.get_net_asset_value(include_interest=True) == pytest.approx(1037.786229063274)
+    loan = short_position.loan
+    assert loan.collateral_interest.last_token_amount == pytest.approx(Decimal(1815.113089799045))
+    assert loan.collateral_interest.last_event_at == now_at
+    assert loan.collateral_interest.last_accrued_interest == pytest.approx(Decimal(15.113089799044887491284317))
+    assert loan.get_collateral_quantity() == pytest.approx(Decimal(1815.113089799044876389054071))
+    assert loan.get_collateral_value() == pytest.approx(1815.113089799045)
+    assert loan.get_borrow_value() == pytest.approx(777.3268607357704)
+    assert loan.get_collateral_interest() == pytest.approx(15.113089799044888)
+    assert loan.get_borrow_interest() == pytest.approx(30.66019406910382)
+    assert loan.get_net_interest() == pytest.approx(-15.54710427005894)
+    assert loan.get_net_asset_value(include_interest=False) == pytest.approx(1053.3333333333335)
+    assert loan.get_net_asset_value(include_interest=True) == pytest.approx(1037.786229063274)
+    assert loan.borrowed.quantity == Decimal('0.5333333333333333259318465025')
+    assert loan.get_borrowed_principal_and_interest_quantity() == Decimal('0.5552334719541217745270929036')
+
     assert short_position.get_accrued_interest() == pytest.approx(-15.54710427005894)
     assert short_position.get_quantity() == Decimal('-0.5552334719541217745270929036')
-
-    assert short_position.loan.borrowed.quantity == Decimal('0.5333333333333333259318465025')
-    assert short_position.loan.get_borrowed_principal_and_interest_quantity() == Decimal('0.5552334719541217745270929036')
     assert short_position.get_net_quantity() == Decimal('-0.5552334719541217745270929036')
 
     unrealised_equity = (short_position.get_current_price() - short_position.get_average_price()) * float(short_position.get_net_quantity())
