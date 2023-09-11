@@ -249,13 +249,32 @@ class LeverageEstimate:
         start_borrowed: Decimal,
         close_size: Decimal,
         borrowed_asset_price: USDollarAmount,
-        fee: Percent = 0,
+        fee: Percent | None = 0,
     ) -> "LeverageEstimate":
         """Reduce or close short position.
 
         Assumes collateral is 1:1 USD.
 
         See :py:class:`LeverageEstimate` for fee calculation example.
+
+        Example:
+
+        .. code-block:: python
+
+            estimate = LeverageEstimate.close_short(
+                start_collateral=short_position.loan.collateral.quantity,
+                start_borrowed=short_position.loan.borrowed.quantity,
+                close_size=short_position.loan.borrowed.quantity,
+                fee=weth_short_identifier_5bps.fee,
+                borrowed_asset_price=1500.0,
+            )
+
+            assert estimate.leverage == 1.0  # Reduced USDC leverage to 1.0
+            assert estimate.additional_collateral_quantity == pytest.approx(Decimal(-20010.00500250125062552103147))  # USDC needed to reduce from collateral to close position + fees
+            assert estimate.borrowed_quantity == pytest.approx(Decimal(-13.33333333333333333333333333))  # How much ETH is bought to close the short
+            assert estimate.total_collateral_quantity == pytest.approx(Decimal(9979.99499749874937427080171))  # Collateral left after closing the position
+            assert estimate.total_borrowed_quantity == 0  # open vWETH debt left after close
+            assert estimate.lp_fees == pytest.approx(10.005002501250626)
 
         :param start_collateral:
             How much collateral we have at start.
@@ -267,8 +286,16 @@ class LeverageEstimate:
 
         """
 
+        assert close_size > 0
+
         matching_usdc_amount = Decimal(borrowed_asset_price) * close_size
-        fee_decimal = Decimal(fee)
+
+        if fee:
+            assert fee > 0
+            fee_decimal = Decimal(fee)
+        else:
+            fee_decimal = Decimal(0)
+
         matching_usdc_amount_with_fees = matching_usdc_amount / (Decimal(1) - fee_decimal)
 
         paid_fee = Decimal(matching_usdc_amount_with_fees * fee_decimal)
