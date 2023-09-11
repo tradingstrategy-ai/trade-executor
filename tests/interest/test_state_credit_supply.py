@@ -266,7 +266,7 @@ def test_close_credit_position(
     # Loan is now repaid
     loan = credit_supply_position.loan
     assert loan.collateral_interest.interest_payments == Decimal(0.50)
-    assert loan.collateral_interest.get_open_interest() == 0
+    assert loan.collateral_interest.get_remaining_interest() == 0
     assert loan.get_collateral_value() == 0.0  # TODO: This value is incorrect as loan object currently does not track repaid interest perfectly
     assert loan.get_net_asset_value(include_interest=True) == 0.0
     assert loan.get_net_asset_value(include_interest=False) == 0.0

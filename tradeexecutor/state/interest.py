@@ -90,7 +90,7 @@ class Interest:
             last_token_amount=opening_amount,
         )
 
-    def get_open_interest(self) -> Decimal:
+    def get_remaining_interest(self) -> Decimal:
         """GEt the amount of interest this position has still left.
 
         This is total lifetime interest + repayments / claims.
