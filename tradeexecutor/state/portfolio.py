@@ -610,6 +610,9 @@ class Portfolio:
         - Equity hold in spot positions
 
         - Net asset value hold in leveraged positions
+
+        TODO: Net asset value calculation does not account for fees
+        paid to close a short position.
         """
         return self.get_position_equity_and_loan_nav(include_interest) + self.get_cash()
 
