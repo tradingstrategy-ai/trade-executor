@@ -73,10 +73,6 @@ class Loan:
     #:
     borrowed_interest: Interest | None = None
 
-    #: How much accrued interest we have moved to the cast reserves from this position.
-    #:
-    realised_interest: Decimal = ZERO_DECIMAL
-
     def __repr__(self):
         asset_symbol = self.borrowed.asset.token_symbol if self.borrowed else ""
         return f"<Loan, borrowed ${self.get_borrow_value()} {asset_symbol} for collateral ${self.get_collateral_value()}, at leverage {self.get_leverage()}>"
@@ -87,9 +83,17 @@ class Loan:
 
     def get_collateral_interest(self) -> USDollarAmount:
         """How much interest we have received on collateral."""
-        return float(self.collateral_interest.last_accrued_interest) * self.collateral.last_usd_price
+        return float(self.collateral_interest.get_open_interest()) * self.collateral.last_usd_price
 
     def get_collateral_value(self, include_interest=True) -> USDollarAmount:
+        """How much value the collateral for this loan has.
+
+        .. warning::
+
+            TODO: Does not account for repaid interest at this point.
+            Please use TradingPosition functions to get amounts with repaid interest.
+
+        """
         if include_interest:
             return self.collateral.get_usd_value() + self.get_collateral_interest()
         return self.collateral.get_usd_value()
@@ -121,7 +125,7 @@ class Loan:
             Always positive
         """
         if self.borrowed:
-            return float(self.borrowed_interest.last_accrued_interest) * self.borrowed.last_usd_price
+            return float(self.borrowed_interest.get_open_interest()) * self.borrowed.last_usd_price
         return 0
 
     def get_borrowed_principal_and_interest_quantity(self) -> Decimal:
@@ -223,7 +227,30 @@ class Loan:
 
         if not quantity:
             quantity = self.collateral_interest.last_accrued_interest
-        self.realised_interest += quantity
+
+        self.collateral_interest.claim_interest(quantity)
+
+        return quantity
+
+    def repay_interest(self, quantity: Decimal | None = None) -> Decimal:
+        """Repay interest for this position.
+
+        Pay any open interest on vToken position.
+
+        :param quantity:
+            How many vTokens worth of interest we pay.
+
+            If not given assume any remaining open interest.
+
+        :return:
+            Repaid interest.
+        """
+
+        if not quantity:
+            quantity = self.borrowed_interest.last_accrued_interest
+
+        self.borrowed_interest.repay_interest(quantity)
+
         return quantity
 
     def calculate_collateral_for_target_ltv(

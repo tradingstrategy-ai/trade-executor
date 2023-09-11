@@ -596,7 +596,7 @@ class TradingPosition(GenericPosition):
             return value
 
         match self.pair.kind:
-            case TradingPairKind.spot_market_hold | TradingPairKind.credit_supply:
+            case TradingPairKind.spot_market_hold:
 
                 value += self.calculate_value_using_price(
                     self.last_token_price,
@@ -604,7 +604,7 @@ class TradingPosition(GenericPosition):
                     include_interest=False,
                 )
 
-            case TradingPairKind.lending_protocol_short:
+            case TradingPairKind.lending_protocol_short | TradingPairKind.credit_supply:
                 # Value for leveraged positions is net asset value from its two loans
                 return self.loan.get_net_asset_value(include_interest)
             case _:
@@ -1055,7 +1055,7 @@ class TradingPosition(GenericPosition):
         unrealised_equity = (self.get_current_price() - avg_price) * float(self.get_net_quantity())
 
         if include_interest:
-            return unrealised_equity + self.get_accrued_interest() - self.get_claimed_interest() + self.get_repaid_interest()
+            return unrealised_equity + self.get_accrued_interest()
 
         return unrealised_equity
 
@@ -1405,12 +1405,10 @@ class TradingPosition(GenericPosition):
         - When the position is completed closed,
           the accured interest tokens are traded and moved to reserves
 
-        - After position is closed calling `get_accrued_interest()` Keeps returning
-          the lifetime interest of the position.
+        - After position is closed calling `get_accrued_interest()`
+          should return zero
 
-        - See :py:meth:`get_claimed_interest` to get the interest that has
-          been moved to reserves from this position.
-
+        TODO: This might not work correctly for partially closed positions.
 
         :return:
             Net interest PnL in USD.
@@ -1428,7 +1426,7 @@ class TradingPosition(GenericPosition):
         - See also :py:meth:`get_accrued_interest`
 
         """
-        return self.get_accrued_interest() - self.get_claimed_interest() + self.get_repaid_interest()
+        return self.get_accrued_interest()
 
     def get_claimed_interest(self) -> USDollarAmount:
         """How much interest we have claimed from this position and moved back to reserves.

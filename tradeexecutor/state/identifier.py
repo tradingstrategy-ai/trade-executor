@@ -139,6 +139,16 @@ class AssetIdentifier:
         """Do we think this asset reprents a stablecoin"""
         return is_stablecoin_like(self.token_symbol)
 
+    def get_pricing_asset(self) -> "AssetIdentifier":
+        """Get the asset that delivers price for this asset.
+
+        :return:
+
+            If this asset is a derivative of another,
+            then get the underlying, otherwise return self.
+        """
+        return self.underlying if self.underlying else self
+
 
 class TradingPairKind(enum.Enum):
     """What kind of trading position this is.
@@ -295,6 +305,8 @@ class TradingPairIdentifier:
     #: Underlying spot trading pair
     #: 
     #: This can be used to track price of assets in shorting pair
+    #:
+    #: TODO: Currently "mostly" unused.
     #:
     underlying_spot_pair: Optional["TradingPairIdentifier"] = None
 
