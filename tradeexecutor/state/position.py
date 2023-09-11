@@ -26,6 +26,8 @@ from tradeexecutor.strategy.trade_pricing import TradePricing
 from tradeexecutor.utils.accuracy import sum_decimal
 from tradingstrategy.lending import LendingProtocolType
 
+from tradeexecutor.utils.leverage_calculations import LeverageEstimate
+
 logger = logging.getLogger(__name__)
 
 
@@ -594,7 +596,7 @@ class TradingPosition(GenericPosition):
             return value
 
         match self.pair.kind:
-            case TradingPairKind.spot_market_hold | TradingPairKind.credit_supply:
+            case TradingPairKind.spot_market_hold:
 
                 value += self.calculate_value_using_price(
                     self.last_token_price,
@@ -602,13 +604,20 @@ class TradingPosition(GenericPosition):
                     include_interest=False,
                 )
 
-            case TradingPairKind.lending_protocol_short:
+            case TradingPairKind.lending_protocol_short | TradingPairKind.credit_supply:
                 # Value for leveraged positions is net asset value from its two loans
                 return self.loan.get_net_asset_value(include_interest)
             case _:
                 raise NotImplementedError(f"Does not know how to value position for {self.pair}")
 
         return value
+
+    def get_loan_based_nav(self, include_interest=True, include_fees=True):
+        """Calculate NAV for a lona based position."""
+        nav = self.loan.get_net_asset_value(include_interest)
+        # TODO: Do we need to include fees
+        return nav
+
 
     def get_trades_by_strategy_cycle(self, timestamp: datetime.datetime) -> Iterable[TradeExecution]:
         """Get all trades made for this position at a specific time.
@@ -761,22 +770,29 @@ class TradingPosition(GenericPosition):
 
                     if closing:
                         assert reserve is None, "reserve calculated automatically when closing a short position"
-                        assert quantity is None, "quantity calculated automatically when closing a short position"
+                        # assert quantity is None, "quantity calculated automatically when closing a short position"
                         assert not planned_collateral_consumption, "planned_collateral_consumption set automatically when closing a short position"
 
                         # Pay back all the debt and its interest
-                        quantity = self.loan.get_borrowed_principal_and_interest_quantity()
+                        if not quantity:
+                            quantity = self.loan.get_borrowed_principal_and_interest_quantity()
+
+                        leverage_estimate = LeverageEstimate.close_short(
+                            start_collateral=self.loan.collateral.quantity,
+                            start_borrowed=self.loan.borrowed.quantity,
+                            close_size=quantity,
+                            borrowed_asset_price=assumed_price,
+                            fee=self.pair.fee,
+                        )
 
                         # Release collateral is the current collateral
                         reserve = 0
 
                         # We need to use USD from the collateral to pay back the loan
-                        planned_collateral_consumption = -quantity * Decimal(self.loan.borrowed.last_usd_price)
+                        planned_collateral_consumption = leverage_estimate.additional_collateral_quantity
 
                         # Any leftover USD from the collateral is released to the reserves
-                        planned_collateral_allocation = -(self.loan.collateral.quantity + planned_collateral_consumption)
-
-                        # claimed_interest =
+                        planned_collateral_allocation = -leverage_estimate.total_collateral_quantity
 
                     else:
                         assert quantity is not None, "For increasing/reducing short position quantity must be given"
@@ -787,7 +803,7 @@ class TradingPosition(GenericPosition):
                 assert assumed_price, f"Short token price missing"
 
                 planned_reserve = reserve or Decimal(0)
-                planned_quantity = quantity or Decimal(0)
+                planned_quantity = (quantity or Decimal(0))
 
                 # From now on, we need meaningful values for math
                 planned_collateral_consumption = planned_collateral_consumption or Decimal(0)
@@ -1039,7 +1055,7 @@ class TradingPosition(GenericPosition):
         unrealised_equity = (self.get_current_price() - avg_price) * float(self.get_net_quantity())
 
         if include_interest:
-            return unrealised_equity + self.get_accrued_interest() - self.get_claimed_interest() + self.get_repaid_interest()
+            return unrealised_equity + self.get_accrued_interest()
 
         return unrealised_equity
 
@@ -1370,9 +1386,15 @@ class TradingPosition(GenericPosition):
 
         This is also denormalised as `position.interest.accrued_interest`.
 
+        :param asset:
+            aToken/vToken for which we calculate the interest for
+
         :return:
-            Number of quote tokens this position has gained interest
+            Number of quote tokens this position has gained interest.
         """
+
+        assert asset.underlying is not None, "asset argument must be aToken/vToken"
+
         return sum_decimal([
             b.quantity
             for b in self.balance_updates.values()
@@ -1382,6 +1404,9 @@ class TradingPosition(GenericPosition):
     def get_accrued_interest(self) -> USDollarAmount:
         """Get the USD value of currently net accrued interest for this position so far.
 
+        Get any unclaimed interest on this position. After position is closed,
+        all remaining accrued interest is claimed.
+
         See :py:meth:`get_accrued_interest_with_repayments` to account any interest payments.
 
         - The accrued interest is included as the position accounting item until the position is completely closed
@@ -1389,12 +1414,10 @@ class TradingPosition(GenericPosition):
         - When the position is completed closed,
           the accured interest tokens are traded and moved to reserves
 
-        - After position is closed calling `get_accrued_interest()` Keeps returning
-          the lifetime interest of the position.
+        - After position is closed calling `get_accrued_interest()`
+          should return zero
 
-        - See :py:meth:`get_claimed_interest` to get the interest that has
-          been moved to reserves from this position.
-
+        TODO: This might not work correctly for partially closed positions.
 
         :return:
             Net interest PnL in USD.
@@ -1412,7 +1435,7 @@ class TradingPosition(GenericPosition):
         - See also :py:meth:`get_accrued_interest`
 
         """
-        return self.get_accrued_interest() - self.get_claimed_interest() + self.get_repaid_interest()
+        return self.get_accrued_interest()
 
     def get_claimed_interest(self) -> USDollarAmount:
         """How much interest we have claimed from this position and moved back to reserves.

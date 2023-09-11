@@ -5,11 +5,13 @@
 
 import datetime
 from _decimal import Decimal
+from typing import Tuple
 
 from tradeexecutor.state.identifier import AssetWithTrackedValue, AssetType
 from tradeexecutor.state.interest import Interest
 from tradeexecutor.state.loan import Loan
 from tradeexecutor.state.trade import TradeExecution
+from tradeexecutor.state.types import USDollarAmount, LeverageMultiplier
 
 
 def create_credit_supply_loan(
@@ -204,3 +206,55 @@ def plan_loan_update_for_short(
         loan.check_health()
 
     return loan
+
+
+def calculate_sizes_for_leverage(
+    starting_reserve: USDollarAmount,
+    leverage: LeverageMultiplier,
+) -> Tuple[USDollarAmount, USDollarAmount]:
+    """Calculate the collateral and borrow loan size to hit the target leverage with a starting capital.
+
+    - When calculating the loan size using this function,
+      the loan net asset value will be the same as starting capital
+
+    - Because loan net asset value is same is deposited reserve,
+      portfolio total NAV stays intact
+
+    Notes:
+
+    .. code-block:: text
+
+            col / (col - borrow) = leverage
+            col = (col - borrow) * leverage
+            col = col * leverage - borrow * leverage
+            col - col * leverage = - borrow * levereage
+            col(1 - leverage) = - borrow * leverage
+            col = -(borrow * leverage) / (1 - leverage)
+
+            # Calculate leverage for 4x and 1000 USD collateral
+            col - borrow = 1000
+            col = 1000
+            leverage = 3
+
+            col / (col - borrow) = 3
+            3(col - borrow) = col
+            3borrow = 3col - col
+            borrow = col - col/3
+
+            col / (col - (col - borrow)) = leverage
+            col / borrow = leverage
+            borrow = leverage * 1000
+
+
+    :param starting_reserve:
+        Initial deposit in lending protocol
+
+    :return:
+        Tuple (borrow value, collateral value) in dollars
+    """
+
+    collateral_size = starting_reserve * leverage
+    borrow_size = (collateral_size - (collateral_size / leverage))
+    return borrow_size, collateral_size
+
+

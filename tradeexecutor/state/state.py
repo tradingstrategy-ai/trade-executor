@@ -217,6 +217,10 @@ class State:
             For short positions, negative quantity means increase the position of this much,
             positive quantity means decrease the position.
 
+            Any fees have been already reduced away from this quantity,
+            as :py:class:`PriceModel` gives the planned price that includes
+            fees.
+
         :param assumed_price:
             The planned execution price.
 
@@ -413,6 +417,7 @@ class State:
             assert borrowed_quantity is not None, "borrowed_quantity must be always set"
             assert collateral_quantity is not None, "collateral_quantity must be always set. Set to zero if you do not want to have change to the amount of collateral"
 
+
         return self.create_trade(
             strategy_cycle_at=strategy_cycle_at,
             pair=pair,
@@ -540,7 +545,9 @@ class State:
         # Reserve capital cannot be double spent until the trades are execured.
         if trade.is_spot():
             if trade.is_buy():
-                self.portfolio.move_capital_from_reserves_to_spot_trade(trade)
+                # Spot trade reserves can go to negative before execution,
+                # because reservs will be there after we have executed some sell trades first
+                self.portfolio.move_capital_from_reserves_to_spot_trade(trade, underflow_check=False)
         elif trade.is_leverage():
             self.portfolio.move_capital_from_reserves_to_spot_trade(trade)
         elif trade.is_credit_supply():
@@ -626,17 +633,21 @@ class State:
 
             if position.loan:
 
+                trade.claimed_interest = position.loan.claim_interest()
+
                 # Mark that the trade claimed any interest
                 # that was available on the collateral
-                trade.claimed_interest = position.loan.claim_interest()
+                if trade.is_leverage():
+                    # TODO: Currently there is minor difference between credit supply and leveraged positions.
+                    # Credit supply positions put any claimed interest in executed_reserve,
+                    # whereas leveraged closing trade assumes interest will be automatically claimed.
+                    self.portfolio.adjust_reserves(trade.pair.quote.get_pricing_asset(), trade.claimed_interest)
 
                 # Mark that the trade paid any remaining interest
                 # on the debt
                 if position.loan.borrowed:
-                    trade.paid_interest = position.loan.borrowed_interest.last_accrued_interest
-
-                if trade.claimed_interest:
-                    self.portfolio.adjust_reserves(trade.pair.quote.underlying, trade.claimed_interest)
+                    # TODO: Add planned interest payments
+                    trade.paid_interest = position.loan.repay_interest()
 
     def mark_trade_failed(self, failed_at: datetime.datetime, trade: TradeExecution):
         """Unroll the allocated capital."""

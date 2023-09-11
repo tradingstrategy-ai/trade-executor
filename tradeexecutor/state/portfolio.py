@@ -555,9 +555,20 @@ class Portfolio:
 
         return spot_values + leveraged_values
 
-    def get_all_loan_nav(self, include_interest=True) -> USDollarAmount:
-        """Get net asset value we can theoretically free from leveraged positions."""
-        return sum([p.loan.get_net_asset_value(include_interest) for p in self.open_positions.values() if p.is_loan_based()])
+    def get_all_loan_nav(self,
+                         include_interest=True,
+                         include_trading_fees=True,
+                         ) -> USDollarAmount:
+        """Get net asset value we can theoretically free from leveraged positions.
+
+        :param include_interest:
+            Include accumulated interest in the calculations
+
+        :param include_trading_fees:
+            Include trading fees in the calculations
+
+        """
+        return sum([p.get_loan_based_nav(include_interest, include_trading_fees) for p in self.open_positions.values() if p.is_loan_based()])
 
     def get_frozen_position_equity(self) -> USDollarAmount:
         """Get the value of trading positions that are frozen currently."""
@@ -599,6 +610,9 @@ class Portfolio:
         - Equity hold in spot positions
 
         - Net asset value hold in leveraged positions
+
+        TODO: Net asset value calculation does not account for fees
+        paid to close a short position.
         """
         return self.get_position_equity_and_loan_nav(include_interest) + self.get_cash()
 
@@ -685,6 +699,9 @@ class Portfolio:
         :param amount:
             Negative to reduce portfolio reserves, positive to increase
         """
+
+        assert asset is not None, "Asset missing"
+
         assert isinstance(amount, Decimal), f"Got amount {amount}"
         reserve = self.get_reserve_position(asset)
         assert reserve, f"No reserves available for {asset}"
