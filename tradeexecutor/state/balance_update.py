@@ -27,6 +27,9 @@ class BalanceUpdateCause(enum.Enum):
     redemption = "redemption"
 
     #: Position value has change due to accrued interest
+    #:
+    #:
+    #:
     interest = "interest"
 
     #: Accounting correction from on-chain balances to the state (internal ledger)
@@ -70,6 +73,7 @@ class   BalanceUpdate:
 
     #: Asset that was updated
     #:
+    #: If this an interest event, this is aToken/vToken asset
     #:
     asset: AssetIdentifier
 
