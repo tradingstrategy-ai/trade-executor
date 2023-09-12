@@ -49,7 +49,10 @@ def export_trade_for_dataframe(p: Portfolio, t: TradeExecution) -> dict:
     label = []
 
     if t.is_failed():
-        label += [f"Failed trade"]
+        label += ["Failed trade"]
+        type = "failed"
+    elif t.is_repaired():
+        label += ["Repaired trade"]
         type = "failed"
     else:
         if t.is_sell():
