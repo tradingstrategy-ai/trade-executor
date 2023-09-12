@@ -297,7 +297,6 @@ class TradingPairIdentifier:
     #:
     #: Always initially set to None, but can be set later
     #:
-    #: TODO, make sure never overwritten once set
     routing_hint: Optional[TradeRouting] = None
 
     def __post_init__(self):

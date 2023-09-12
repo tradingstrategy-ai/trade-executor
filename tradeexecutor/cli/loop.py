@@ -771,11 +771,6 @@ class ExecutionLoop:
                 ts += tick_size.to_timedelta()
 
         return tp, sl
-        
-
-        
-
-        
 
     def run_backtest(self, state: State) -> dict:
         """Backtest loop."""

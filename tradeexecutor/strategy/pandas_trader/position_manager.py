@@ -157,8 +157,8 @@ class PositionManager:
         :param state: 
             Current state of the trade execution
             
-        :param pricing_model:
-            The model to estimate prices for any trades
+        :param pricing_models:
+            The list of models to estimate prices for any trades
          
         :param default_slippage_tolerance: 
             Slippage tolerance parameter set for any trades if not overriden trade-by-trade basis.
@@ -903,8 +903,12 @@ class PositionManager:
 
         return [trade]
 
-    def get_pricing_model(self, pair: TradingPairIdentifier):
-        """Get the pricing model used by this strategy."""
+    def get_pricing_model(self, pair: TradingPairIdentifier) -> PricingModel:
+        """Get the pricing model used by this strategy.
+        
+        :param pair:
+            Trading pair for which we want to have the pricing model
+        """
         return get_pricing_model_for_pair(pair, self.pricing_models)       
 
 
@@ -916,6 +920,9 @@ def get_pricing_model_for_pair(pair: TradingPairIdentifier | DEXPair, pricing_mo
 
     :param pricing_models:
         List of pricing models to choose from
+        
+    :set_routing_hint:
+        Whether to set the routing hint for the pricing model. This is useful when we have multiple pricing models that could apply to the same pair, and we want to make sure that the correct pricing model is used for the pair.
 
     :return:
         Pricing model for the pair

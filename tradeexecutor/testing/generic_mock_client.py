@@ -1,7 +1,5 @@
 """Mock testing client that supports multiple exchanges' on-chain data to generate datasets.
 
-TODO: refactor repeated code from UniswapV2MockClient
-
 Needed to be in trade-executor due to working with UniswapV2TestingData and UniswapV3TestingData classes.
 """
 
@@ -33,12 +31,10 @@ logger = logging.getLogger(__name__)
 
 
 class GenericMockClient(MockClient):
-    """A mock client that reads data from a single Uniswap v2 exchange directly from the chain.
+    """A mock client that reads data from multiple exchanges directly from the chain.
 
     Designed to run tests against test EVM backends where we cannot generate
-    proper test data because of the backends being temporary. This way we can skip the ETL
-    step and pretend that the data is just there, but still have meaningful interaction
-    with trading strategies with pairs and trade execution and such.
+    proper test data because of the backends being temporary. This way we can skip the ETL step and pretend that the data is just there, but still have meaningful interaction with trading strategies with pairs and trade execution and such.
 
     Currently supported
 

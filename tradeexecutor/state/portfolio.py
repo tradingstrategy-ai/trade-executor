@@ -795,8 +795,17 @@ class Portfolio:
         - Reserves are not revalued
         - Credit supply positions are not revalued
 
+        :param ts:
+            Timestamp to use for valuation
+        
         :param revalue_frozen:
             Revalue frozen positions as well
+            
+        :param valuation_methods:
+            List of valuation methods to try
+            
+        :raise InvalidValuationOutput:
+            When none of the valuation methods output a valid price
         """
         try:
             # revalue normal positions

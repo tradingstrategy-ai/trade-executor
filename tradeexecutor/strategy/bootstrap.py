@@ -56,6 +56,12 @@ def import_generic_strategy_file(path: Path) -> StrategyFactory:
 
     All exports will be lowercased for further processing,
     so we do not care if constant variables are written in upper or lowercase.
+    
+    :param path:
+        path to the strategy module
+        
+    :return:
+        a factory function that can be used to instantiate the strategy
     """
     logger.info("Importing strategy %s", path)
     assert isinstance(path, Path)

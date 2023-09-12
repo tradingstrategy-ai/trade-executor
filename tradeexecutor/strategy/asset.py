@@ -65,7 +65,7 @@ def get_relevant_assets(
 def map_onchain_asset_to_positions(
         asset: AssetIdentifier,
         state: State,
-) -> TradingPosition | ReservePosition | None:
+) -> list[TradingPosition | ReservePosition | None]:
     """Map an on-chain found asset to a trading position.
 
     - Any reserve currency deposits go to the reserve

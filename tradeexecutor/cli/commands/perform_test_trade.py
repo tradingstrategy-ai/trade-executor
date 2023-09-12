@@ -256,7 +256,7 @@ def perform_test_trade(
 
             assert execution_model, "execution_model not found"
 
-            p = get_pair_identifier_from_dex_pair(_pair)
+            p = _get_pair_identifier_from_dex_pair(_pair)
 
             if p == pair or all_pairs:
                 make_test_trade(
@@ -280,7 +280,7 @@ def perform_test_trade(
 
             for _pair in universe.universe.pairs.iterate_pairs():
 
-                p = get_pair_identifier_from_dex_pair(_pair)
+                p = _get_pair_identifier_from_dex_pair(_pair)
 
                 make_test_trade(
                     web3config.get_default(),
@@ -314,8 +314,20 @@ def perform_test_trade(
 
     logger.info("All ok")
 
-def get_pair_identifier_from_dex_pair(_pair):
-    p = (_pair.chain_id, _pair.exchange_slug, _pair.base_token_symbol, _pair.quote_token_symbol, _pair.fee/10_000)
+def _get_pair_identifier_from_dex_pair(_pair) -> tuple[int, str, str, str, float]:
+    """Gets the pair identifier from a DEX pair.
+    
+    :param _pair:
+        DEX pair.
+    """
+    p = [
+        _pair.chain_id,
+        _pair.exchange_slug,
+        _pair.base_token_symbol,
+        _pair.quote_token_symbol,
+    ]
+    if _pair.fee:
+        p.append(_pair.fee/10_000)
     return p
 
 

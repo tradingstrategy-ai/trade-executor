@@ -1,8 +1,12 @@
+"""This module contains classes and functions for serializing and deserializing Uniswap test data. This is important for generic routing testing, which needs to know the addresses of the Uniswap contracts on the blockchain."""
+
 import json
 from tradingstrategy.chain import ChainId
 
 
 class UniswapV2TestData:
+    """Class for serializing and deserializing Uniswap V2 test data."""
+    
     def __init__(self, version: str, factory: str, router: str, init_code_hash: str, exchange_slug: str, exchange_id: int, chain_id: ChainId):
         assert (
             type(factory)
@@ -27,6 +31,8 @@ class UniswapV2TestData:
 
 
 class UniswapV3TestData:
+    """Class for serializing and deserializing Uniswap V3 test data."""
+    
     def __init__(
         self, version: str, factory: str, router: str, position_manager: str, quoter: str, exchange_slug: str, exchange_id: int, chain_id: ChainId
     ):

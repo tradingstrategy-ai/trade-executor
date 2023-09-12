@@ -183,6 +183,9 @@ class UniswapV3SimpleRoutingModel(EthereumRoutingModel):
             Token address of our reserve currency.
             Relevent for buy/sell routing.
             Lowercase.
+            
+        :param routing_hint:
+            TradeRouting option to be used for all trades on this routing model.
         """
 
         super().__init__(allowed_intermediary_pairs, reserve_token_address, chain_id)
