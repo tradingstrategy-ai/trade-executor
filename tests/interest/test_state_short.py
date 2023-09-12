@@ -45,7 +45,7 @@ def ausdc(usdc: AssetIdentifier) -> AssetIdentifier:
         18,
         underlying=usdc,
         type=AssetType.collateral,
-        liquidation_threshold=0.85,  # From Aave UI
+        liquidation_threshold=85,  # From Aave UI
     )
 
 
@@ -155,7 +155,7 @@ def test_open_short(
     assert weth_short_identifier.base.underlying.token_symbol == "WETH"
     assert weth_short_identifier.quote.token_symbol == "aPolUSDC"
     assert weth_short_identifier.quote.underlying.token_symbol == "USDC"
-    assert weth_short_identifier.get_max_leverage_at_open() == pytest.approx(6.6666666666)
+    assert weth_short_identifier.get_max_leverage_at_open() == pytest.approx(5.6666666666)
 
     trader = UnitTestTrader(state)
 
@@ -924,10 +924,15 @@ def test_short_unrealised_profit_leveraged(
     start_collateral = Decimal(1000)
     leverage = 3.0
     eth_price = 1500.0
-    eth_short_value, collateral_value = calculate_sizes_for_leverage(
+    eth_short_value, collateral_value, liquidation_price = calculate_sizes_for_leverage(
         float(start_collateral),
-        leverage
+        leverage,
+        weth_short_identifier,
     )
+
+    liquidation_price = float(start_collateral) * weth_short_identifier.get_collateral_factor() / eth_short_value * 1500
+    # TODO: compare with result from 1delta
+    print(liquidation_price)
 
     # Check our loan parameters
     assert eth_short_value == pytest.approx(666.6667 * 3)
@@ -1072,9 +1077,10 @@ def test_short_unrealised_profit_leverage_all(
     start_collateral = Decimal(10000)
     leverage = 3.0
     eth_price = 1500.0
-    eth_short_value, collateral_value = calculate_sizes_for_leverage(
+    eth_short_value, collateral_value, _ = calculate_sizes_for_leverage(
         float(start_collateral),
-        leverage
+        leverage,
+        weth_short_identifier,
     )
 
     # Check our loan parameters

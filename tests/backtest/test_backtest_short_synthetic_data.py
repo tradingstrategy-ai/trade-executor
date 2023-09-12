@@ -372,3 +372,45 @@ def test_backtest_short_underlying_price_feed(
     )
 
     assert price_structure.mid_price == pytest.approx(1800.0)
+
+
+def test_backtest_open_short_failure(persistent_test_client: Client, universe):
+    """Backtest should raise exception if leverage is too high."""
+
+    def decide_trades(
+        timestamp: pd.Timestamp,
+        strategy_universe: TradingStrategyUniverse,
+        state: State,
+        pricing_model: PricingModel,
+        cycle_debug_data: Dict
+    ) -> List[TradeExecution]:
+        """A simple strategy that opens a single 2x short position."""
+        trade_pair = strategy_universe.universe.pairs.get_single()
+
+        cash = state.portfolio.get_cash()
+        
+        position_manager = PositionManager(timestamp, strategy_universe, state, pricing_model)
+
+        trades = []
+
+        if not position_manager.is_any_open():
+            trades += position_manager.open_short(trade_pair, cash, leverage=10)
+
+        return trades
+
+    # backtest should raise exception when trying to open short position
+    with pytest.raises(AssertionError) as e:
+        _, universe, _ = run_backtest_inline(
+            start_at=start_at,
+            end_at=end_at,
+            client=persistent_test_client,
+            cycle_duration=CycleDuration.cycle_1d,
+            decide_trades=decide_trades,
+            universe=universe,
+            initial_deposit=10000,
+            reserve_currency=ReserveCurrency.usdc,
+            trade_routing=TradeRouting.uniswap_v3_usdc_poly,
+            engine_version="0.3",
+        )
+
+        assert e.value == "Max short leverage for USDC is 5.666666666666666, got 10"
