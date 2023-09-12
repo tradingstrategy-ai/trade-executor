@@ -5,9 +5,12 @@
 
 import datetime
 from _decimal import Decimal
-from typing import Tuple
+from typing import TypeAlias, Tuple, Literal
 
-from tradeexecutor.state.identifier import AssetWithTrackedValue, AssetType
+from tradeexecutor.state.identifier import (
+    AssetIdentifier, AssetWithTrackedValue, TradingPairIdentifier, 
+    TradingPairKind, AssetType,
+)
 from tradeexecutor.state.interest import Interest
 from tradeexecutor.state.loan import Loan
 from tradeexecutor.state.trade import TradeExecution
@@ -211,7 +214,8 @@ def plan_loan_update_for_short(
 def calculate_sizes_for_leverage(
     starting_reserve: USDollarAmount,
     leverage: LeverageMultiplier,
-) -> Tuple[USDollarAmount, USDollarAmount]:
+    shorting_pair: TradingPairIdentifier,
+) -> Tuple[USDollarAmount, USDollarAmount, Decimal]:
     """Calculate the collateral and borrow loan size to hit the target leverage with a starting capital.
 
     - When calculating the loan size using this function,
@@ -246,15 +250,31 @@ def calculate_sizes_for_leverage(
             borrow = leverage * 1000
 
 
+    Liquidation price:
+
+    lP=buy_USD*cfBuy/sell; 
+    buy_USD=buy/deposit asset amount in USD; 
+    sell=sell/borrow asset amount in sell currency
+
+    - `See 1delta documentation <https://docs.1delta.io/lenders/metrics>`__.
+
     :param starting_reserve:
         Initial deposit in lending protocol
 
+    :param shorting_pair:
+        Leverage short trading pair
+
     :return:
-        Tuple (borrow value, collateral value) in dollars
+        Tuple (borrow value, collateral value, liquidation price) in dollars
     """
+    assert shorting_pair.kind == TradingPairKind.lending_protocol_short
+
+    max_leverage = shorting_pair.get_max_leverage_at_open(side="short")
+    assert leverage < max_leverage, f"Max short leverage for {shorting_pair.quote.underlying.token_symbol} is {max_leverage}, got {leverage}"
 
     collateral_size = starting_reserve * leverage
-    borrow_size = (collateral_size - (collateral_size / leverage))
-    return borrow_size, collateral_size
+    borrow_size = collateral_size - (collateral_size / leverage)
 
+    liquidation_price = starting_reserve * shorting_pair.get_collateral_factor() / borrow_size
 
+    return borrow_size, collateral_size, liquidation_price

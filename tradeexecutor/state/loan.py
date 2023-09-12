@@ -201,7 +201,7 @@ class Loan:
         if self.borrowed is None or self.get_borrowed_principal_and_interest_quantity() == 0:
             # Already closed
             return math.inf
-        return self.collateral.asset.liquidation_threshold * self.collateral.get_usd_value() / self.borrowed.get_usd_value()
+        return self.collateral.asset.liquidation_threshold / 100 * self.collateral.get_usd_value() / self.borrowed.get_usd_value()
 
     def get_max_size(self) -> USDollarAmount:
         raise NotImplementedError()
@@ -329,74 +329,3 @@ class Loan:
                 f"Collateral {self.collateral.get_usd_value()} USD.\n"
                 f"Borrowed {self.borrowed.quantity} {self.borrowed.asset.token_symbol} {self.borrowed.get_usd_value()} USD.\n"
             )
-
-
-def calculate_sizes_for_leverage(
-    starting_reserve: USDollarAmount,
-    leverage: LeverageMultiplier,
-    shorting_pair: TradingPairIdentifier,
-) -> Tuple[USDollarAmount, USDollarAmount, Decimal]:
-    """Calculate the collateral and borrow loan size to hit the target leverage with a starting capital.
-
-    - When calculating the loan size using this function,
-      the loan net asset value will be the same as starting capital
-
-    - Because loan net asset value is same is deposited reserve,
-      portfolio total NAV stays intact
-
-    Notes:
-
-    .. code-block:: text
-
-            col / (col - borrow) = leverage
-            col = (col - borrow) * leverage
-            col = col * leverage - borrow * leverage
-            col - col * leverage = - borrow * levereage
-            col(1 - leverage) = - borrow * leverage
-            col = -(borrow * leverage) / (1 - leverage)
-
-            # Calculate leverage for 4x and 1000 USD collateral
-            col - borrow = 1000
-            col = 1000
-            leverage = 3
-
-            col / (col - borrow) = 3
-            3(col - borrow) = col
-            3borrow = 3col - col
-            borrow = col - col/3
-
-            col / (col - (col - borrow)) = leverage
-            col / borrow = leverage
-            borrow = leverage * 1000
-
-
-    :param starting_reserve:
-        Initial deposit in lending protocol
-
-    :return:
-        Tuple (borrow value, collateral value, liquidation price) in dollars
-    """
-    assert shorting_pair.kind == TradingPairKind.lending_protocol_short
-
-    collateral_token = shorting_pair.quote
-    max_leverage = calculate_max_leverage(collateral_token)
-    assert leverage < max_leverage, f"Max short leverage for {collateral_token.token_symbol} is {max_leverage}, got {leverage}"
-
-    collateral_size = starting_reserve * leverage
-    borrow_size = (collateral_size - (collateral_size / leverage))
-
-    liquidation_price = 0
-
-    return borrow_size, collateral_size, liquidation_price
-
-
-def calculate_max_leverage(
-    collateral_token: AssetIdentifier,
-    side: Literal["long", "short"] = "short",
-) -> LeverageMultiplier:
-    collateral_factor = collateral_token.liquidation_threshold / 100
-
-    max_long_leverage = 1 / (1 - collateral_factor)
-    max_short_leverage = max_long_leverage - 1
-
-    return max_short_leverage if side == "short" else max_long_leverage
