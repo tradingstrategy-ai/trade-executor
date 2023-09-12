@@ -145,6 +145,14 @@ def start(
     ):
     """Launch Trade Executor instance."""
     global logger
+    
+    # TODO: This strategy file is reloaded again in ExecutionLoop.run()
+    # We do an extra hop here, because we need to know chain_id associated with the strategy,
+    # because there is an inversion of control issue for passing web3 connection around.
+    # Clean this up in the future versions, by changing the order of initialzation.
+    mod = read_strategy_module(strategy_file)
+
+    validate_trade_routing_with_user_supplied(mod.trade_routing)
 
     if test_evm_uniswap_data is not None:
         test_evm_uniswap_data = deserialize_uniswap_test_data_list(test_evm_uniswap_data)
@@ -160,17 +168,20 @@ def start(
         execution_context = ExecutionContext(
             mode=ExecutionMode.backtesting,
             timed_task_context_manager=timed_task,
+            engine_version=mod.trading_strategy_engine_version
         )
     else:
         if unit_testing:
             execution_context = ExecutionContext(
                 mode=ExecutionMode.unit_testing_trading,
                 timed_task_context_manager=timed_task,
+                engine_version=mod.trading_strategy_engine_version
             )
         else:
             execution_context = ExecutionContext(
                 mode=ExecutionMode.real_trading,
                 timed_task_context_manager=timed_task,
+                engine_version=mod.trading_strategy_engine_version
             )
 
     started_at = datetime.datetime.utcnow()
@@ -252,14 +263,6 @@ def start(
                 raise RuntimeError("Live trading requires that you pass JSON-RPC connection to one of the networks")
         else:
             web3config = None
-
-        # TODO: This strategy file is reloaded again in ExecutionLoop.run()
-        # We do an extra hop here, because we need to know chain_id associated with the strategy,
-        # because there is an inversion of control issue for passing web3 connection around.
-        # Clean this up in the future versions, by changing the order of initialzation.
-        mod = read_strategy_module(strategy_file)
-
-        validate_trade_routing_with_user_supplied(mod.trade_routing)
 
         if web3config is not None:
 
