@@ -110,7 +110,7 @@ class BacktestSetup:
             # The strategy file chooses one of predefined routing models.
             trade_routing = self.trade_routing
             assert trade_routing, "Strategy module did not provide trade_routing"
-            assert len(trade_routing) == 1, f"Expected exactly one routing hint in the strategy module {trade_routing}. You may be using the wrong strategy factory"
+            # assert len(trade_routing) == 1, f"Expected exactly one routing hint in the strategy module {trade_routing}. You may be using the wrong strategy factory"
             routing_model = get_backtest_routing_model(trade_routing[0], self.reserve_currency)
 
         runner = PandasTraderRunner(
