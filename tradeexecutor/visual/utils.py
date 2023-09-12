@@ -51,6 +51,9 @@ def export_trade_for_dataframe(p: Portfolio, t: TradeExecution) -> dict:
     if t.is_failed():
         label += [f"Failed trade"]
         type = "failed"
+    elif t.is_repaired():
+        label += [f"Repaired trade"]
+        type = "repaired"
     else:
         if t.is_sell():
             if t.is_stop_loss():
@@ -82,7 +85,7 @@ def export_trade_for_dataframe(p: Portfolio, t: TradeExecution) -> dict:
             f"Quantity: {abs(t.get_position_quantity()):.6f} {t.pair.base.token_symbol}",
             "",
         ]
-
+        
         label += [
             f"Mid-price: {t.planned_mid_price:.4f} {price_prefix}"
             if t.planned_mid_price
