@@ -215,7 +215,7 @@ class TradingPosition(GenericPosition):
     #:
     trigger_updates: List[TriggerPriceUpdate] = field(default_factory=list)
 
-    #: The loan underlying the position leverage or crdit supply.
+    #: The loan underlying the position leverage or credit supply.
     #:
     #: Applicable for
     #:
@@ -224,6 +224,15 @@ class TradingPosition(GenericPosition):
     #: - credit supply (collateral without borrow)
     #:
     loan: Optional[Loan] = None
+
+    #: What is the liquidation price for this position.
+    #: If the price goes below this, the position is liquidated.
+    #:
+    #: Applicable for
+    #:
+    #: - short/long positions using lending protocols
+    #: 
+    liquidation_price: USDollarAmount | None = None
 
     def __repr__(self):
         if self.is_open():

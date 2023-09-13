@@ -4,10 +4,13 @@
 
 - Fees needed to pay
 
+- Liquidation price
+
 """
 from decimal import Decimal
 from dataclasses import dataclass
 
+from tradeexecutor.state.identifier import TradingPairIdentifier, TradingPairKind
 from tradeexecutor.state.types import LeverageMultiplier, USDollarAmount, USDollarPrice, Percent
 
 
@@ -141,6 +144,11 @@ class LeverageEstimate:
     #:
     lp_fees: USDollarAmount
 
+    #: What is the liquidation price for this position.
+    #: If the price goes below this, the loan is liquidated.
+    #:
+    liquidation_price: USDollarAmount | None = None
+
     def __repr__(self):
         return f"<Leverage estimate\n" \
                f"    leverage: {self.leverage}\n" \
@@ -155,6 +163,7 @@ class LeverageEstimate:
         starting_reserve: USDollarAmount | Decimal,
         leverage: LeverageMultiplier,
         borrowed_asset_price: USDollarAmount,
+        shorting_pair: TradingPairIdentifier,
         fee: Percent = 0,
     ) -> "LeverageEstimate":
         """Get borrow and colleteral size for a loan in leverage protocol trading.
@@ -217,6 +226,11 @@ class LeverageEstimate:
 
         """
 
+        assert shorting_pair.kind == TradingPairKind.lending_protocol_short
+
+        max_leverage = shorting_pair.get_max_leverage_at_open(side="short")
+        assert leverage < max_leverage, f"Max short leverage for {shorting_pair.quote.underlying.token_symbol} is {max_leverage}, got {leverage}"
+
         if type(starting_reserve) == float:
             starting_reserve = Decimal(starting_reserve)
 
@@ -230,6 +244,12 @@ class LeverageEstimate:
 
         borrow_quantity = borrow_value_usdc / Decimal(borrowed_asset_price)
 
+        liquidation_price = calculate_liquidation_price(
+            collateral_size=total_collateral_quantity,
+            borrow_quantity=borrow_quantity,
+            shorting_pair=shorting_pair,
+        )
+
         return LeverageEstimate(
             starting_reserve=Decimal(starting_reserve),
             leverage=leverage,
@@ -241,6 +261,7 @@ class LeverageEstimate:
             borrowed_asset_price=borrowed_asset_price,
             fee_tier=fee,
             lp_fees=paid_fee,
+            liquidation_price=liquidation_price,
         )
 
     @staticmethod
@@ -319,3 +340,33 @@ class LeverageEstimate:
             fee_tier=fee,
             lp_fees=float(paid_fee),
         )
+
+
+def calculate_liquidation_price(
+    collateral_size: USDollarAmount,
+    borrow_quantity: Decimal,
+    shorting_pair: TradingPairIdentifier,
+) -> USDollarAmount:
+    """Calculate the liquidation price for a short position.
+
+    lP=buy_USD*cfBuy/sell
+        buy_USD=buy/deposit asset amount in USD; 
+        sell=sell/borrow asset amount in sell currency
+
+    - `See 1delta documentation <https://docs.1delta.io/lenders/metrics>`__.
+
+    :param collateral_size:
+        Collateral size in USD
+
+    :param borrow_size:
+        Borrow size in USD
+
+    :param shorting_pair:
+        Leverage short trading pair
+
+    :return:
+        Liquidation price in USD
+    """
+    assert shorting_pair.kind in [TradingPairKind.lending_protocol_short, TradingPairKind.lending_protocol_long]
+
+    return Decimal(collateral_size) * Decimal(shorting_pair.get_collateral_factor()) / Decimal(borrow_quantity)

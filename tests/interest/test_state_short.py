@@ -12,7 +12,6 @@ import pytest
 
 from eth_defi.uniswap_v2.utils import ZERO_ADDRESS
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier, TradingPairKind, AssetType
-from tradeexecutor.strategy.lending_protocol_leverage import calculate_sizes_for_leverage
 from tradeexecutor.utils.leverage_calculations import LeverageEstimate
 from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.state import State
@@ -924,15 +923,16 @@ def test_short_unrealised_profit_leveraged(
     start_collateral = Decimal(1000)
     leverage = 3.0
     eth_price = 1500.0
-    eth_short_value, collateral_value, liquidation_price = calculate_sizes_for_leverage(
-        float(start_collateral),
-        leverage,
-        weth_short_identifier,
+    estimation = LeverageEstimate.open_short(
+        starting_reserve=float(start_collateral),
+        leverage=leverage,
+        borrowed_asset_price=eth_price,
+        shorting_pair=weth_short_identifier,
     )
+    eth_short_value = estimation.borrowed_value
+    collateral_value = estimation.total_collateral_quantity
 
-    liquidation_price = float(start_collateral) * weth_short_identifier.get_collateral_factor() / eth_short_value * 1500
-    # TODO: compare with result from 1delta
-    print(liquidation_price)
+    assert estimation.liquidation_price == pytest.approx(Decimal(1912.49999))
 
     # Check our loan parameters
     assert eth_short_value == pytest.approx(666.6667 * 3)
@@ -1077,11 +1077,14 @@ def test_short_unrealised_profit_leverage_all(
     start_collateral = Decimal(10000)
     leverage = 3.0
     eth_price = 1500.0
-    eth_short_value, collateral_value, _ = calculate_sizes_for_leverage(
-        float(start_collateral),
-        leverage,
-        weth_short_identifier,
+    estimation = LeverageEstimate.open_short(
+        starting_reserve=float(start_collateral),
+        leverage=leverage,
+        borrowed_asset_price=eth_price,
+        shorting_pair=weth_short_identifier,
     )
+    eth_short_value = estimation.borrowed_value
+    collateral_value = estimation.total_collateral_quantity
 
     # Check our loan parameters
     assert eth_short_value == pytest.approx(6666.6667 * 3)
@@ -1690,6 +1693,7 @@ def test_short_open_with_fee(
         leverage,
         borrowed_asset_price=eth_price,
         fee=weth_short_identifier_5bps.fee,
+        shorting_pair=weth_short_identifier_5bps,
     )
 
     # Check our loan parameters
@@ -1757,6 +1761,7 @@ def test_short_close_with_fee_no_price_movement(
         leverage=3.0,
         borrowed_asset_price=1500.0,
         fee=weth_short_identifier_5bps.fee,
+        shorting_pair=weth_short_identifier_5bps,
     )
 
     assert open_estimate.lp_fees == pytest.approx(Decimal(10))
@@ -1845,6 +1850,7 @@ def test_short_close_profit_with_fee(
         leverage=3.0,
         borrowed_asset_price=1500.0,
         fee=weth_short_identifier_5bps.fee,
+        shorting_pair=weth_short_identifier_5bps,
     )
 
     assert open_estimate.lp_fees == pytest.approx(Decimal(10))
