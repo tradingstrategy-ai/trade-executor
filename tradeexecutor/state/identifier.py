@@ -434,7 +434,9 @@ class TradingPairIdentifier:
         """What's the liqudation threshold for this leveraged pair"""
         assert self.kind.is_leverage()
         # Liquidation threshold comes from the collateral token
-        return self.quote.liquidation_threshold / 100
+        threshold = self.quote.liquidation_threshold
+        assert 0 < threshold < 1, f"Liquidation theshold must be 0..1, got {threshold}"
+        return threshold
 
     def get_collateral_factor(self) -> Percent:
         """Same as liquidation threshold.
