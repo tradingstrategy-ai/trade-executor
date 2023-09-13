@@ -8,6 +8,7 @@ from logging import Handler, LogRecord, NOTSET
 from typing import Deque, List, TypedDict, Optional
 
 from tblib import Traceback
+from traceback import format_exception
 
 
 class ExportedRecord(TypedDict):
@@ -59,6 +60,7 @@ class ExportedRecord(TypedDict):
             "exception_type": exception_type,
             "traceback_data": traceback_data,
             "level_number": record.levelno,
+            "formatted_data": format_exception(traceback_data)
         }
 
 
