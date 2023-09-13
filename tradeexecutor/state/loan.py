@@ -201,7 +201,7 @@ class Loan:
         if self.borrowed is None or self.get_borrowed_principal_and_interest_quantity() == 0:
             # Already closed
             return math.inf
-        return self.collateral.asset.liquidation_threshold / 100 * self.collateral.get_usd_value() / self.borrowed.get_usd_value()
+        return self.collateral.asset.liquidation_threshold * self.collateral.get_usd_value() / self.borrowed.get_usd_value()
 
     def get_max_size(self) -> USDollarAmount:
         raise NotImplementedError()
