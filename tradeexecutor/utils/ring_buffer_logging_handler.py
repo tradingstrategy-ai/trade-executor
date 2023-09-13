@@ -8,6 +8,7 @@ from logging import Handler, LogRecord, NOTSET
 from typing import Deque, List, TypedDict, Optional
 
 from tblib import Traceback
+from traceback import format_exception
 
 
 class ExportedRecord(TypedDict):
@@ -52,6 +53,8 @@ class ExportedRecord(TypedDict):
             exception_type = traceback_data = None
             message = record.getMessage()  # Expand log args
 
+        exception_data = format_exception(record.exc_info[0], record.exc_info[1], record.exc_info[2]) if record.exc_info else None
+    
         return {
             "timestamp": record.created,
             "level": record.levelname.lower(),
@@ -59,6 +62,7 @@ class ExportedRecord(TypedDict):
             "exception_type": exception_type,
             "traceback_data": traceback_data,
             "level_number": record.levelno,
+            "formatted_data": exception_data,
         }
 
 
