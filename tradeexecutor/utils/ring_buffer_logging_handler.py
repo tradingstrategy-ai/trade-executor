@@ -60,7 +60,7 @@ class ExportedRecord(TypedDict):
             "exception_type": exception_type,
             "traceback_data": traceback_data,
             "level_number": record.levelno,
-            "formatted_data": format_exception(traceback_data)
+            "formatted_data": format_exception(record.stack_info),
         }
 
 
