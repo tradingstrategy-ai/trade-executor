@@ -39,8 +39,14 @@ def test_ring_buffer_logger():
     assert data[0]["level"] == "error"
     assert data[0]["message"] == "RuntimeError('Big Bada Boom')"
     assert data[0]["level_number"] == 40
-    assert data[0]["formatted_data"] == ['NoneType: None\n']
-
+    #assert data[0]["formatted_data"] == ['NoneType: None\n']
+    
+    
+    x = data[0]["formatted_data"]
+    assert type(x) == list
+    assert len(x) == 3
+    assert x[0] == 'Traceback (most recent call last):\n'
+    
     # Check that we can serialise JSON
     json.dumps(data)
 
