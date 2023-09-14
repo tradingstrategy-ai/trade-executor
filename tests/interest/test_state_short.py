@@ -44,7 +44,7 @@ def ausdc(usdc: AssetIdentifier) -> AssetIdentifier:
         18,
         underlying=usdc,
         type=AssetType.collateral,
-        liquidation_threshold=85,  # From Aave UI
+        liquidation_threshold=0.85,  # From Aave UI
     )
 
 
