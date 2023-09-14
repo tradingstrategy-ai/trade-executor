@@ -48,6 +48,7 @@ pytestmark = pytest.mark.skipif(os.environ.get("TRADING_STRATEGY_API_KEY") is No
 
 start_at = datetime.datetime(2023, 1, 1)
 end_at = datetime.datetime(2023, 1, 5)
+end_at2 = end_at + datetime.timedelta(days=10)
 
 @pytest.fixture(scope="module")
 def universe() -> TradingStrategyUniverse:
@@ -80,7 +81,7 @@ def universe() -> TradingStrategyUniverse:
     _, lending_candle_universe = generate_lending_universe(
         time_bucket,
         start_at,
-        end_at,
+        end_at2,
         reserves=[usdc_reserve, weth_reserve],
         aprs={
             "supply": 2,
@@ -91,11 +92,13 @@ def universe() -> TradingStrategyUniverse:
     candles = generate_ohlcv_candles(
         time_bucket,
         start_at,
-        end_at,
+        end_at2,
         start_price=1800,
         pair_id=weth_usdc.internal_id,
         exchange_id=mock_exchange.exchange_id,
     )
+
+    print(candles.tail(20))
     
     return create_synthetic_single_pair_universe(
         candles=candles,
@@ -469,19 +472,20 @@ def test_backtest_short_stoploss_hit(persistent_test_client: Client, universe):
         trade_pair = strategy_universe.universe.pairs.get_single()
 
         cash = state.portfolio.get_cash()
-        
+        position_size = cash * 0.8
+
         position_manager = PositionManager(timestamp, strategy_universe, state, pricing_model)
 
         trades = []
 
-        if not position_manager.is_any_open():
-            trades += position_manager.open_short(trade_pair, cash, leverage=4, stop_loss_pct=0.1)
+        if not position_manager.is_any_open() and timestamp == datetime.datetime(2023, 1, 3):
+            trades += position_manager.open_short(trade_pair, position_size, leverage=4, stop_loss_pct=0.99)
 
         return trades
 
-    _, universe, _ = run_backtest_inline(
+    state, universe, _ = run_backtest_inline(
         start_at=start_at,
-        end_at=end_at,
+        end_at=end_at2,
         client=persistent_test_client,
         cycle_duration=CycleDuration.cycle_1d,
         decide_trades=decide_trades,
@@ -492,4 +496,23 @@ def test_backtest_short_stoploss_hit(persistent_test_client: Client, universe):
         engine_version="0.3",
     )
 
-    # assert str(e.value) == "stop_loss_pct must be smaller than liquidation distance 0.1299, got 0.5"
+    portfolio = state.portfolio
+    assert len(portfolio.open_positions) == 0
+    assert len(portfolio.closed_positions) == 1
+
+    # Check that the unrealised position looks good
+    position = portfolio.closed_positions[1]
+    assert position.is_short()
+    assert position.is_closed()
+    assert position.pair.kind.is_shorting()
+    assert position.is_stop_loss()
+
+    assert position.liquidation_price == pytest.approx(Decimal(1911.5195057377280))
+    assert position.stop_loss == pytest.approx(Decimal(1708.6270878474588))
+
+    # assert position.get_value_at_open() == capital
+    assert position.get_collateral() == 0
+    assert position.get_borrowed() == 0
+    assert position.get_accrued_interest() == pytest.approx(0)
+    assert position.get_unrealised_profit_usd() == 0
+    assert position.get_realised_profit_usd() == pytest.approx(-363.82313453462916) # TODO
