@@ -96,7 +96,7 @@ def universe() -> TradingStrategyUniverse:
         pair_id=weth_usdc.internal_id,
         exchange_id=mock_exchange.exchange_id,
     )
-    
+
     return create_synthetic_single_pair_universe(
         candles=candles,
         chain_id=chain_id,
@@ -433,7 +433,7 @@ def test_backtest_open_short_failure_too_far_stoploss(persistent_test_client: Cl
         trades = []
 
         if not position_manager.is_any_open():
-            trades += position_manager.open_short(trade_pair, cash, leverage=4, stop_loss_pct=1.5)
+            trades += position_manager.open_short(trade_pair, cash, leverage=4, stop_loss_pct=0.6)
 
         return trades
 
@@ -452,7 +452,7 @@ def test_backtest_open_short_failure_too_far_stoploss(persistent_test_client: Cl
             engine_version="0.3",
         )
 
-    assert str(e.value) == "stop_loss_pct must be smaller than liquidation distance 1.1299, got 1.5"
+    assert str(e.value) == "stop_loss_pct must be bigger than liquidation distance 0.8701, got 0.6"
 
 
 def test_backtest_short_stop_loss_triggered(persistent_test_client: Client, universe):
@@ -481,7 +481,7 @@ def test_backtest_short_stop_loss_triggered(persistent_test_client: Client, univ
         trades = []
 
         if not position_manager.is_any_open() and timestamp == datetime.datetime(2023, 1, 3):
-            trades += position_manager.open_short(trade_pair, position_size, leverage=4, stop_loss_pct=1.01)
+            trades += position_manager.open_short(trade_pair, position_size, leverage=4, stop_loss_pct=0.99)
 
         return trades
 
@@ -581,7 +581,7 @@ def test_backtest_short_take_profit_triggered(persistent_test_client: Client, un
         trades = []
 
         if not position_manager.is_any_open() and timestamp == datetime.datetime(2023, 1, 1):
-            trades += position_manager.open_short(trade_pair, position_size, leverage=4, take_profit_pct=0.98)
+            trades += position_manager.open_short(trade_pair, position_size, leverage=4, take_profit_pct=1.02)
 
         return trades
 

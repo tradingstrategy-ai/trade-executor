@@ -367,6 +367,6 @@ def calculate_liquidation_price(
     :return:
         Liquidation price in USD
     """
-    assert shorting_pair.kind in [TradingPairKind.lending_protocol_short, TradingPairKind.lending_protocol_long]
+    assert shorting_pair.is_leverage()
 
     return Decimal(collateral_size) * Decimal(shorting_pair.get_collateral_factor()) / Decimal(borrow_quantity)
