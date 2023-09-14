@@ -992,17 +992,18 @@ class PositionManager:
         position.liquidation_price = estimation.liquidation_price
 
         if take_profit_pct:
+            assert 0 < take_profit_pct < 1, f"Short position's take_profit_pct must be 0..1, got {take_profit_pct}"
             position.take_profit = price_structure.mid_price * take_profit_pct
 
         if stop_loss_pct is not None:
-            assert 0 <= stop_loss_pct <= 1, f"stop_loss_pct must be 0..1, got {stop_loss_pct}"
+            assert 1 < stop_loss_pct < 2, f"Short position's stop_loss_pct must be 1..2, got {stop_loss_pct}"
 
             # calculate distance to liquidation price and make sure stoploss is far from that
             mid_price = Decimal(price_structure.mid_price)
-            liquidation_distance = 1 - (estimation.liquidation_price - mid_price) / mid_price
-            assert stop_loss_pct > liquidation_distance, f"stop_loss_pct must be bigger than liquidation distance {liquidation_distance:.4f}, got {stop_loss_pct}"
+            liquidation_distance = (estimation.liquidation_price - mid_price) / mid_price
+            assert stop_loss_pct - 1 < liquidation_distance, f"stop_loss_pct must be smaller than liquidation distance {1 + liquidation_distance:.4f}, got {stop_loss_pct}"
 
-            self.update_stop_loss(position, price_structure.mid_price * (2 - stop_loss_pct))
+            self.update_stop_loss(position, price_structure.mid_price * stop_loss_pct)
 
         return [trade]
     

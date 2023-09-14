@@ -48,7 +48,6 @@ pytestmark = pytest.mark.skipif(os.environ.get("TRADING_STRATEGY_API_KEY") is No
 
 start_at = datetime.datetime(2023, 1, 1)
 end_at = datetime.datetime(2023, 1, 5)
-end_at2 = end_at + datetime.timedelta(days=10)
 
 @pytest.fixture(scope="module")
 def universe() -> TradingStrategyUniverse:
@@ -81,7 +80,7 @@ def universe() -> TradingStrategyUniverse:
     _, lending_candle_universe = generate_lending_universe(
         time_bucket,
         start_at,
-        end_at2,
+        end_at,
         reserves=[usdc_reserve, weth_reserve],
         aprs={
             "supply": 2,
@@ -92,13 +91,11 @@ def universe() -> TradingStrategyUniverse:
     candles = generate_ohlcv_candles(
         time_bucket,
         start_at,
-        end_at2,
+        end_at,
         start_price=1800,
         pair_id=weth_usdc.internal_id,
         exchange_id=mock_exchange.exchange_id,
     )
-
-    print(candles.tail(20))
     
     return create_synthetic_single_pair_universe(
         candles=candles,
@@ -222,7 +219,7 @@ def test_backtest_open_only_short_synthetic_data(
     assert balances.get(weth.address, Decimal(0)) == pytest.approx(Decimal(0))
 
 
-def test_backtest_open_and_close_short_synthetic_data_no_fee(
+def test_backtest_open_and_close_short_synthetic_data(
     persistent_test_client: Client,
     universe,
 ):
@@ -436,7 +433,7 @@ def test_backtest_open_short_failure_too_far_stoploss(persistent_test_client: Cl
         trades = []
 
         if not position_manager.is_any_open():
-            trades += position_manager.open_short(trade_pair, cash, leverage=4, stop_loss_pct=0.5)
+            trades += position_manager.open_short(trade_pair, cash, leverage=4, stop_loss_pct=1.5)
 
         return trades
 
@@ -455,11 +452,16 @@ def test_backtest_open_short_failure_too_far_stoploss(persistent_test_client: Cl
             engine_version="0.3",
         )
 
-    assert str(e.value) == "stop_loss_pct must be smaller than liquidation distance 0.1299, got 0.5"
+    assert str(e.value) == "stop_loss_pct must be smaller than liquidation distance 1.1299, got 1.5"
 
 
-def test_backtest_short_stoploss_hit(persistent_test_client: Client, universe):
-    """Backtest should raise exception if stoploss is higher than liquidation price."""
+def test_backtest_short_stop_loss_triggered(persistent_test_client: Client, universe):
+    """Run the strategy backtest using inline decide_trades function.
+
+    - Open short position, set a 1% stoploss
+    - ETH price goes 1686 -> 1712
+    - Position should be closed automatically with a loss
+    """
 
     def decide_trades(
         timestamp: pd.Timestamp,
@@ -468,7 +470,7 @@ def test_backtest_short_stoploss_hit(persistent_test_client: Client, universe):
         pricing_model: PricingModel,
         cycle_debug_data: Dict
     ) -> List[TradeExecution]:
-        """A simple strategy that opens a single 10x short position."""
+        """A simple strategy that opens a single 4x short position."""
         trade_pair = strategy_universe.universe.pairs.get_single()
 
         cash = state.portfolio.get_cash()
@@ -479,13 +481,13 @@ def test_backtest_short_stoploss_hit(persistent_test_client: Client, universe):
         trades = []
 
         if not position_manager.is_any_open() and timestamp == datetime.datetime(2023, 1, 3):
-            trades += position_manager.open_short(trade_pair, position_size, leverage=4, stop_loss_pct=0.99)
+            trades += position_manager.open_short(trade_pair, position_size, leverage=4, stop_loss_pct=1.01)
 
         return trades
 
-    state, universe, _ = run_backtest_inline(
+    state, universe, debug_dump = run_backtest_inline(
         start_at=start_at,
-        end_at=end_at2,
+        end_at=end_at,
         client=persistent_test_client,
         cycle_duration=CycleDuration.cycle_1d,
         decide_trades=decide_trades,
@@ -510,9 +512,143 @@ def test_backtest_short_stoploss_hit(persistent_test_client: Client, universe):
     assert position.liquidation_price == pytest.approx(Decimal(1911.5195057377280))
     assert position.stop_loss == pytest.approx(Decimal(1708.6270878474588))
 
+    # assert position.get_value_at_open() == 8000
+    assert position.get_collateral() == 0
+    assert position.get_borrowed() == 0
+    assert position.get_accrued_interest() == pytest.approx(0)
+    assert position.get_unrealised_profit_usd() == 0
+    assert position.get_realised_profit_usd() == pytest.approx(-363.82313453462916)
+    assert position.get_claimed_interest() == pytest.approx(0)
+    assert position.get_repaid_interest() == pytest.approx(0)
+    assert position.get_value() == pytest.approx(0)
+
+    # Check opening trade looks good
+    assert len(position.trades) == 2
+    open_trade = position.get_first_trade()
+    assert open_trade.opened_at == datetime.datetime(2023, 1, 3)
+    assert open_trade.planned_price == pytest.approx(1686.634)  # ETH opening value
+    assert open_trade.get_planned_value() == 24000
+    assert open_trade.planned_quantity == pytest.approx(Decimal(-14.22951736477441))
+
+    # Check closing trade looks good
+    close_trade = position.get_last_trade()
+    assert close_trade.opened_at == datetime.datetime(2023, 1, 4)
+    assert close_trade.planned_price == pytest.approx(1712.203057206142)  # ETH current value
+    assert close_trade.get_planned_value() == pytest.approx(24363.82313453463)
+    assert close_trade.planned_quantity == pytest.approx(Decimal(14.22951736477441))
+
+    # Check that the portfolio looks good
+    assert portfolio.get_cash() == pytest.approx(9564.176865465372)
+    assert portfolio.get_net_asset_value(include_interest=True) == pytest.approx(9564.176865465372)
+
+    # Check token balances in the wallet
+    wallet = debug_dump["wallet"]
+    balances = wallet.balances
+    pair = position.pair
+    usdc = pair.quote.underlying
+    ausdc = pair.quote
+    vweth = pair.base
+    weth = pair.base.underlying
+    assert balances[ausdc.address] == pytest.approx(Decimal(0))
+    assert balances[vweth.address] == pytest.approx(Decimal(0))
+    assert balances.get(weth.address, Decimal(0)) == pytest.approx(Decimal(0))
+    assert balances[usdc.address] == pytest.approx(Decimal(9564.176865465372))
+
+
+def test_backtest_short_take_profit_triggered(persistent_test_client: Client, universe):
+    """Run the strategy backtest using inline decide_trades function.
+
+    - Open short position, set a 2% take profit
+    - ETH price goes 1794 -> 1712
+    - Position should be closed automatically with profit
+    """
+
+    def decide_trades(
+        timestamp: pd.Timestamp,
+        strategy_universe: TradingStrategyUniverse,
+        state: State,
+        pricing_model: PricingModel,
+        cycle_debug_data: Dict
+    ) -> List[TradeExecution]:
+        """A simple strategy that opens a single 4x short position."""
+        trade_pair = strategy_universe.universe.pairs.get_single()
+
+        cash = state.portfolio.get_cash()
+        position_size = cash * 0.8
+
+        position_manager = PositionManager(timestamp, strategy_universe, state, pricing_model)
+
+        trades = []
+
+        if not position_manager.is_any_open() and timestamp == datetime.datetime(2023, 1, 1):
+            trades += position_manager.open_short(trade_pair, position_size, leverage=4, take_profit_pct=0.98)
+
+        return trades
+
+    state, universe, debug_dump = run_backtest_inline(
+        start_at=start_at,
+        end_at=end_at,
+        client=persistent_test_client,
+        cycle_duration=CycleDuration.cycle_1d,
+        decide_trades=decide_trades,
+        universe=universe,
+        initial_deposit=10000,
+        reserve_currency=ReserveCurrency.usdc,
+        trade_routing=TradeRouting.uniswap_v3_usdc_poly,
+        engine_version="0.3",
+    )
+
+    portfolio = state.portfolio
+    assert len(portfolio.open_positions) == 0
+    assert len(portfolio.closed_positions) == 1
+
+    # Check that the unrealised position looks good
+    position = portfolio.closed_positions[1]
+    assert position.is_short()
+    assert position.is_closed()
+    assert position.pair.kind.is_shorting()
+    assert position.is_take_profit()
+    assert position.take_profit == pytest.approx(1764.0)
+    assert position.liquidation_price == pytest.approx(Decimal(2033.879999999999843))
+
     # assert position.get_value_at_open() == capital
     assert position.get_collateral() == 0
     assert position.get_borrowed() == 0
     assert position.get_accrued_interest() == pytest.approx(0)
     assert position.get_unrealised_profit_usd() == 0
-    assert position.get_realised_profit_usd() == pytest.approx(-363.82313453462916) # TODO
+    assert position.get_realised_profit_usd() == pytest.approx(877.5258141302367)
+    assert position.get_claimed_interest() == pytest.approx(0)
+    assert position.get_repaid_interest() == pytest.approx(0)
+    assert position.get_value() == pytest.approx(0)
+
+    # Check opening trade looks good
+    assert len(position.trades) == 2
+    open_trade = position.get_first_trade()
+    assert open_trade.opened_at == datetime.datetime(2023, 1, 1)
+    assert open_trade.planned_price == pytest.approx(1794.6)  # ETH opening value
+    assert open_trade.get_planned_value() == 24000
+    assert open_trade.planned_quantity == pytest.approx(Decimal(-13.373453694416584))
+
+    # Check closing trade looks good
+    close_trade = position.get_last_trade()
+    assert close_trade.opened_at == datetime.datetime(2023, 1, 2)
+    assert close_trade.planned_price == pytest.approx(1728.9830072484115)  # ETH current value
+    assert close_trade.get_planned_value() == pytest.approx(23122.474185869763)
+    assert close_trade.planned_quantity == pytest.approx(Decimal(13.373453694416584))
+
+    # Check that the portfolio looks good
+    assert portfolio.get_cash() == pytest.approx(10805.525814130237)
+    assert portfolio.get_net_asset_value(include_interest=True) == pytest.approx(10805.525814130237)
+
+    # Check token balances in the wallet
+    wallet = debug_dump["wallet"]
+    balances = wallet.balances
+    pair = position.pair
+    usdc = pair.quote.underlying
+    ausdc = pair.quote
+    vweth = pair.base
+    weth = pair.base.underlying
+    assert balances[ausdc.address] == pytest.approx(Decimal(0))
+    assert balances[vweth.address] == pytest.approx(Decimal(0))
+    assert balances.get(weth.address, Decimal(0)) == pytest.approx(Decimal(0))
+    assert balances[usdc.address] == pytest.approx(Decimal(10805.525814130237))
