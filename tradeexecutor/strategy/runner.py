@@ -510,7 +510,7 @@ class StrategyRunner(abc.ABC):
             # to generate trades to close stop loss positions
             position_manager = PositionManager(
                 clock,
-                universe.universe,
+                universe,
                 state,
                 stop_loss_pricing_model,
             )
