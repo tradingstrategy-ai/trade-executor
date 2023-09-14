@@ -411,3 +411,85 @@ def test_backtest_open_short_failure_too_high_leverage(persistent_test_client: C
         )
 
     assert str(e.value) == "Max short leverage for USDC is 5.666666666666666, got 10"
+
+
+def test_backtest_open_short_failure_too_far_stoploss(persistent_test_client: Client, universe):
+    """Backtest should raise exception if stoploss is higher than liquidation price."""
+
+    def decide_trades(
+        timestamp: pd.Timestamp,
+        strategy_universe: TradingStrategyUniverse,
+        state: State,
+        pricing_model: PricingModel,
+        cycle_debug_data: Dict
+    ) -> List[TradeExecution]:
+        """A simple strategy that opens a single 10x short position."""
+        trade_pair = strategy_universe.universe.pairs.get_single()
+
+        cash = state.portfolio.get_cash()
+        
+        position_manager = PositionManager(timestamp, strategy_universe, state, pricing_model)
+
+        trades = []
+
+        if not position_manager.is_any_open():
+            trades += position_manager.open_short(trade_pair, cash, leverage=4, stop_loss_pct=0.5)
+
+        return trades
+
+    # backtest should raise exception when trying to open short position
+    with pytest.raises(AssertionError) as e:
+        _, universe, _ = run_backtest_inline(
+            start_at=start_at,
+            end_at=end_at,
+            client=persistent_test_client,
+            cycle_duration=CycleDuration.cycle_1d,
+            decide_trades=decide_trades,
+            universe=universe,
+            initial_deposit=10000,
+            reserve_currency=ReserveCurrency.usdc,
+            trade_routing=TradeRouting.uniswap_v3_usdc_poly,
+            engine_version="0.3",
+        )
+
+    assert str(e.value) == "stop_loss_pct must be smaller than liquidation distance 0.1299, got 0.5"
+
+
+def test_backtest_short_stoploss_hit(persistent_test_client: Client, universe):
+    """Backtest should raise exception if stoploss is higher than liquidation price."""
+
+    def decide_trades(
+        timestamp: pd.Timestamp,
+        strategy_universe: TradingStrategyUniverse,
+        state: State,
+        pricing_model: PricingModel,
+        cycle_debug_data: Dict
+    ) -> List[TradeExecution]:
+        """A simple strategy that opens a single 10x short position."""
+        trade_pair = strategy_universe.universe.pairs.get_single()
+
+        cash = state.portfolio.get_cash()
+        
+        position_manager = PositionManager(timestamp, strategy_universe, state, pricing_model)
+
+        trades = []
+
+        if not position_manager.is_any_open():
+            trades += position_manager.open_short(trade_pair, cash, leverage=4, stop_loss_pct=0.1)
+
+        return trades
+
+    _, universe, _ = run_backtest_inline(
+        start_at=start_at,
+        end_at=end_at,
+        client=persistent_test_client,
+        cycle_duration=CycleDuration.cycle_1d,
+        decide_trades=decide_trades,
+        universe=universe,
+        initial_deposit=10000,
+        reserve_currency=ReserveCurrency.usdc,
+        trade_routing=TradeRouting.uniswap_v3_usdc_poly,
+        engine_version="0.3",
+    )
+
+    # assert str(e.value) == "stop_loss_pct must be smaller than liquidation distance 0.1299, got 0.5"

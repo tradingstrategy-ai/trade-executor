@@ -1000,7 +1000,7 @@ class PositionManager:
             # calculate distance to liquidation price and make sure stoploss is far from that
             mid_price = Decimal(price_structure.mid_price)
             liquidation_distance = (estimation.liquidation_price - mid_price) / mid_price
-            assert stop_loss_pct < liquidation_distance, f"stop_loss_pct must be smaller than liquidation distance {liquidation_distance}, got {stop_loss_pct}"
+            assert stop_loss_pct < liquidation_distance, f"stop_loss_pct must be smaller than liquidation distance {liquidation_distance:.4f}, got {stop_loss_pct}"
 
             self.update_stop_loss(position, price_structure.mid_price * stop_loss_pct)
 
@@ -1018,7 +1018,7 @@ class PositionManager:
         :param position:
             Position to close.
 
-            Must be a credit supply position.
+            Must be a short position.
 
         :param quantity:
             How much of the quantity we reduce.
@@ -1029,7 +1029,7 @@ class PositionManager:
             New trades to be executed
         """
 
-        assert self.strategy_universe, "Make sure trading_strategy_engine_version = 0.3. Credit supply does not work with old decide_trades()."
+        assert self.strategy_universe, "Make sure trading_strategy_engine_version = 0.3. Short does not work with old decide_trades()."
         
         # Check that pair data looks good
         pair = position.pair

@@ -69,8 +69,8 @@ def generate_lending_reserve(
         vtoken_decimals=vtoken.decimals,
 
         additional_details=LendingReserveAdditionalDetails(
-            ltv=80,
-            liquidation_threshold=85,
+            ltv=0.8,
+            liquidation_threshold=0.85,
         ),
     )
 
