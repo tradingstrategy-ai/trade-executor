@@ -71,4 +71,9 @@ def create_synthetic_single_pair_universe(
         lending_candles=lending_candles,
     )
 
-    return TradingStrategyUniverse(universe=universe, reserve_assets=[pair.quote])
+    return TradingStrategyUniverse(
+        universe=universe,
+        reserve_assets=[pair.quote],
+        backtest_stop_loss_time_bucket=time_bucket,
+        backtest_stop_loss_candles=candle_universe,
+    )

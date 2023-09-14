@@ -6,7 +6,7 @@ import datetime
 import enum
 from dataclasses import dataclass, field
 from decimal import Decimal
-from typing import Optional
+from typing import Optional, Literal
 
 from dataclasses_json import dataclass_json
 from eth_typing import HexAddress
@@ -397,7 +397,10 @@ class TradingPairIdentifier:
         assert self.reverse_token_order is not None, f"reverse_token_order not set for: {self}"
         return self.reverse_token_order
 
-    def get_max_leverage_at_open(self) -> LeverageMultiplier:
+    def get_max_leverage_at_open(
+        self,
+        side: Literal["long", "short"] = "short",
+    ) -> LeverageMultiplier:
         """Return the max leverage we can set for this position at open.
 
         E.g. for AAVE WETH short this is 0.8 because we can supply
@@ -407,9 +410,16 @@ class TradingPairIdentifier:
         Max Leverage in pair: l=1/(1-cfBuy); cfBuy = collateralFacor of Buy Asset
 
         - `See 1delta documentation <https://docs.1delta.io/lenders/metrics>`__.
+
+        :param side:
+            Order side: long or short
         """
         assert self.kind in (TradingPairKind.lending_protocol_short, TradingPairKind.lending_protocol_long)
-        return 1 / (1 - self.get_collateral_factor())
+
+        max_long_leverage = 1 / (1 - self.get_collateral_factor())
+        max_short_leverage = max_long_leverage - 1
+
+        return max_short_leverage if side == "short" else max_long_leverage
 
     def is_leverage(self) -> bool:
         return self.kind.is_leverage()
@@ -424,7 +434,9 @@ class TradingPairIdentifier:
         """What's the liqudation threshold for this leveraged pair"""
         assert self.kind.is_leverage()
         # Liquidation threshold comes from the collateral token
-        return self.quote.liquidation_threshold
+        threshold = self.quote.liquidation_threshold
+        assert 0 < threshold < 1, f"Liquidation theshold must be 0..1, got {threshold}"
+        return threshold
 
     def get_collateral_factor(self) -> Percent:
         """Same as liquidation threshold.

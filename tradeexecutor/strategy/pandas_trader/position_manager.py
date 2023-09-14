@@ -7,18 +7,19 @@ import logging
 
 import pandas as pd
 
-from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
+from tradingstrategy.candle import CandleSampleUnavailable
+from tradingstrategy.pair import DEXPair
+from tradingstrategy.universe import Universe
+
+from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.position import TradingPosition, TriggerPriceUpdate
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeType, TradeExecution
-from tradeexecutor.strategy.lending_protocol_leverage import calculate_sizes_for_leverage
 from tradeexecutor.state.types import USDollarAmount, Percent, LeverageMultiplier
 from tradeexecutor.strategy.pricing_model import PricingModel
-from tradingstrategy.candle import CandleSampleUnavailable
-from tradingstrategy.pair import DEXPair
-from tradingstrategy.universe import Universe
 from tradeexecutor.strategy.trading_strategy_universe import translate_trading_pair, TradingStrategyUniverse
+from tradeexecutor.utils.leverage_calculations import LeverageEstimate
 
 logger = logging.getLogger(__name__)
 
@@ -846,7 +847,11 @@ class PositionManager:
             Mid price of the pair (https://tradingstrategy.ai/glossary/mid-price). Provide when possible for most complete statistical analysis. In certain cases, it may not be easily available, so it's optional.
         """
 
-        mid_price =  self.pricing_model.get_mid_price(self.timestamp, position.pair)
+        spot_pair = position.pair
+        if position.pair.kind in [TradingPairKind.lending_protocol_long, TradingPairKind.lending_protocol_short]:
+            spot_pair = spot_pair.underlying_spot_pair
+
+        mid_price =  self.pricing_model.get_mid_price(self.timestamp, spot_pair)
 
         position.trigger_updates.append(TriggerPriceUpdate(
             timestamp=self.timestamp,
@@ -942,14 +947,16 @@ class PositionManager:
 
         pricing_pair = shorting_pair.get_pricing_pair()  # should be effectively the same as executor_pair
         price_structure = self.pricing_model.get_sell_price(self.timestamp, pricing_pair, value)
-
-        # TODO: verify calculation here and we should output the liquidation price here
-        # so it should be takesn into account for stoploss
-        borrowed_size, collateral_size = calculate_sizes_for_leverage(value, leverage)
-        borrowed_quantity = borrowed_size / Decimal(price_structure.price)
-
         collateral_price = self.reserve_price
         borrowed_asset_price = price_structure.price
+
+        estimation: LeverageEstimate = LeverageEstimate.open_short(
+            starting_reserve=value,
+            leverage=leverage,
+            borrowed_asset_price=borrowed_asset_price,
+            shorting_pair=shorting_pair,
+            fee=executor_pair.fee,
+        )
 
         logger.info("Opening a short position at timetamp %s\n"
                     "Shorting pair is %s\n"
@@ -958,32 +965,43 @@ class PositionManager:
                     "Borrow amount: %s USD (%s %s)\n"
                     "Collateral asset price: %s %s/USD\n"
                     "Borrowed asset price: %s %s/USD (assumed execution)\n",
+                    "Liquidation price: %s %s/USD\n",
                     self.timestamp,
                     shorting_pair,
                     executor_pair,
-                    collateral_size,
-                    borrowed_size, borrowed_quantity, executor_pair.base.token_symbol,
+                    estimation.total_collateral_quantity,
+                    estimation.borrowed_value, estimation.total_borrowed_quantity, executor_pair.base.token_symbol,
                     collateral_price, executor_pair.quote.token_symbol,
                     borrowed_asset_price, executor_pair.base.token_symbol,
+                    estimation.liquidation_price, executor_pair.base.token_symbol,
                     )
 
         position, trade, _ = self.state.trade_short(
             self.timestamp,
             pair=shorting_pair,
-            borrowed_quantity=-borrowed_quantity,
+            borrowed_quantity=-estimation.total_borrowed_quantity,
             collateral_quantity=value,
             borrowed_asset_price=price_structure.price,
             trade_type=TradeType.rebalance,
             reserve_currency=self.reserve_currency,
             collateral_asset_price=collateral_price,
-            planned_collateral_consumption=Decimal(collateral_size) - value,  # This is amount how much aToken is leverated besides our starting collateral
+            planned_collateral_consumption=estimation.additional_collateral_quantity,  # This is amount how much aToken is leverated besides our starting collateral
         )
+
+        # record liquidation price into the position
+        position.liquidation_price = estimation.liquidation_price
 
         if take_profit_pct:
             position.take_profit = price_structure.mid_price * take_profit_pct
 
         if stop_loss_pct is not None:
             assert 0 <= stop_loss_pct <= 1, f"stop_loss_pct must be 0..1, got {stop_loss_pct}"
+
+            # calculate distance to liquidation price and make sure stoploss is far from that
+            mid_price = Decimal(price_structure.mid_price)
+            liquidation_distance = (estimation.liquidation_price - mid_price) / mid_price
+            assert stop_loss_pct < liquidation_distance, f"stop_loss_pct must be smaller than liquidation distance {liquidation_distance}, got {stop_loss_pct}"
+
             self.update_stop_loss(position, price_structure.mid_price * stop_loss_pct)
 
         return [trade]

@@ -5,9 +5,12 @@
 
 import datetime
 from _decimal import Decimal
-from typing import Tuple
+from typing import TypeAlias, Tuple, Literal
 
-from tradeexecutor.state.identifier import AssetWithTrackedValue, AssetType
+from tradeexecutor.state.identifier import (
+    AssetIdentifier, AssetWithTrackedValue, TradingPairIdentifier, 
+    TradingPairKind, AssetType,
+)
 from tradeexecutor.state.interest import Interest
 from tradeexecutor.state.loan import Loan
 from tradeexecutor.state.trade import TradeExecution
@@ -211,7 +214,7 @@ def plan_loan_update_for_short(
 def calculate_sizes_for_leverage(
     starting_reserve: USDollarAmount,
     leverage: LeverageMultiplier,
-) -> Tuple[USDollarAmount, USDollarAmount]:
+) -> Tuple[USDollarAmount, USDollarAmount, Decimal]:
     """Calculate the collateral and borrow loan size to hit the target leverage with a starting capital.
 
     - When calculating the loan size using this function,
@@ -245,16 +248,16 @@ def calculate_sizes_for_leverage(
             col / borrow = leverage
             borrow = leverage * 1000
 
-
     :param starting_reserve:
         Initial deposit in lending protocol
+
+    :param shorting_pair:
+        Leverage short trading pair
 
     :return:
         Tuple (borrow value, collateral value) in dollars
     """
-
     collateral_size = starting_reserve * leverage
-    borrow_size = (collateral_size - (collateral_size / leverage))
+    borrow_size = collateral_size - (collateral_size / leverage)
+
     return borrow_size, collateral_size
-
-

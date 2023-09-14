@@ -7,11 +7,14 @@ import copy
 import math
 from _decimal import Decimal
 from dataclasses import dataclass
-from typing import TypeAlias
+from typing import TypeAlias, Tuple, Literal
 
 from dataclasses_json import dataclass_json
 
-from tradeexecutor.state.identifier import AssetWithTrackedValue, TradingPairIdentifier
+from tradeexecutor.state.identifier import (
+    AssetIdentifier, AssetWithTrackedValue, TradingPairIdentifier, 
+    TradingPairKind,
+)
 from tradeexecutor.state.interest import Interest
 from tradeexecutor.state.types import LeverageMultiplier, USDollarAmount
 from tradeexecutor.utils.accuracy import ZERO_DECIMAL, ensure_exact_zero
@@ -326,5 +329,3 @@ class Loan:
                 f"Collateral {self.collateral.get_usd_value()} USD.\n"
                 f"Borrowed {self.borrowed.quantity} {self.borrowed.asset.token_symbol} {self.borrowed.get_usd_value()} USD.\n"
             )
-
-
