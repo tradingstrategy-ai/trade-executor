@@ -110,7 +110,7 @@ class BacktestSetup:
             # The strategy file chooses one of predefined routing models.
             trade_routing = self.trade_routing
             assert trade_routing, "Strategy module did not provide trade_routing"
-            # assert len(trade_routing) == 1, f"Expected exactly one routing hint in the strategy module {trade_routing}. You may be using the wrong strategy factory"
+            # which trade_routing option we use doesn't matter for backtesting
             routing_model = get_backtest_routing_model(trade_routing[0], self.reserve_currency)
 
         runner = PandasTraderRunner(
@@ -552,7 +552,7 @@ def run_backtest_inline(
         max_slippage,
         stop_loss_data_available=stop_loss_data_available,
     )
-
+    
     if type(trade_routing) == TradeRouting:
         trade_routing = [trade_routing]
 
@@ -560,7 +560,8 @@ def run_backtest_inline(
         if not routing_model:
             assert trade_routing, "You just give either routing_mode or trade_routing"
             assert reserve_currency, "Reserve current must be given to generate routing model"
-            routing_model = get_backtest_routing_model(trade_routing, reserve_currency)
+            # which trade_routing we use for backtesting doesn't matter
+            routing_model = get_backtest_routing_model(trade_routing[0], reserve_currency)
 
         if data_delay_tolerance is None:
             data_delay_tolerance = guess_data_delay_tolerance(universe)
