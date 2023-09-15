@@ -5,7 +5,7 @@ import copy
 from dataclasses import dataclass, field
 from decimal import Decimal
 from itertools import chain
-from typing import Dict, Iterable, Optional, Tuple, List
+from typing import Dict, Iterable, Optional, Tuple, List, Callable
 
 from dataclasses_json import dataclass_json
 
