@@ -784,7 +784,7 @@ def test_stateful_routing_three_legstest_stateful_routing_three_legs(
     assert t.reserve_currency == busd_asset
     assert t.pair == cake_bnb_trading_pair
 
-    state.start_trades(datetime.datetime.utcnow(), trades)
+    state.start_execution_all(datetime.datetime.utcnow(), trades)
     routing_model.execute_trades_internal(pair_universe, routing_state, trades, check_balances=True)
     execution_model.broadcast_and_resolve(state, trades, stop_on_execution_failure=True)
 
@@ -811,7 +811,7 @@ def test_stateful_routing_three_legstest_stateful_routing_three_legs(
     assert t.pair == cake_bnb_trading_pair
     assert t.planned_quantity == -cake_position.get_quantity()
 
-    state.start_trades(datetime.datetime.utcnow(), trades)
+    state.start_execution_all(datetime.datetime.utcnow(), trades)
     routing_model.execute_trades_internal(pair_universe, routing_state, trades, check_balances=True)
     execution_model.broadcast_and_resolve(state, trades, stop_on_execution_failure=True)
 
@@ -864,7 +864,7 @@ def test_stateful_routing_two_legs(
     assert t.reserve_currency == busd_asset
     assert t.pair == cake_busd_trading_pair
 
-    state.start_trades(datetime.datetime.utcnow(), trades)
+    state.start_execution_all(datetime.datetime.utcnow(), trades)
     routing_model.execute_trades_internal(pair_universe, routing_state, trades, check_balances=True)
     execution_model.broadcast_and_resolve(state, trades, stop_on_execution_failure=True)
 
@@ -896,7 +896,7 @@ def test_stateful_routing_two_legs(
     assert t.pair == cake_busd_trading_pair
     assert t.planned_quantity == -cake_position.get_quantity()
 
-    state.start_trades(datetime.datetime.utcnow(), trades)
+    state.start_execution_all(datetime.datetime.utcnow(), trades)
     routing_model.execute_trades_internal(pair_universe, routing_state, trades, check_balances=True)
     execution_model.broadcast_and_resolve(state, trades, stop_on_execution_failure=True)
 
@@ -948,7 +948,7 @@ def test_stateful_routing_out_of_balance(
         trader.buy(cake_busd_trading_pair, Decimal(100))
     ]
 
-    state.start_trades(datetime.datetime.utcnow(), trades)
+    state.start_execution_all(datetime.datetime.utcnow(), trades)
 
     with pytest.raises(OutOfBalance):
         routing_model.execute_trades_internal(pair_universe, routing_state, trades, check_balances=True)
@@ -995,7 +995,7 @@ def test_stateful_routing_adjust_epsilon(
     assert t.reserve_currency == busd_asset
     assert t.pair == cake_busd_trading_pair
 
-    state.start_trades(datetime.datetime.utcnow(), trades)
+    state.start_execution_all(datetime.datetime.utcnow(), trades)
     routing_model.execute_trades_internal(pair_universe, routing_state, trades, check_balances=True)
     execution_model.broadcast_and_resolve(state, trades, stop_on_execution_failure=True)
 
@@ -1038,7 +1038,7 @@ def test_stateful_routing_adjust_epsilon_sell(
         trader.buy(cake_busd_trading_pair, Decimal(100))
     ]
 
-    state.start_trades(datetime.datetime.utcnow(), trades)
+    state.start_execution_all(datetime.datetime.utcnow(), trades)
     routing_model.execute_trades_internal(pair_universe, routing_state, trades, check_balances=True)
     execution_model.broadcast_and_resolve(state, trades, stop_on_execution_failure=True)
 
@@ -1056,7 +1056,7 @@ def test_stateful_routing_adjust_epsilon_sell(
     assert t.is_sell()
 
     trades = [t]
-    state.start_trades(datetime.datetime.utcnow(), trades)
+    state.start_execution_all(datetime.datetime.utcnow(), trades)
     routing_model.execute_trades_internal(pair_universe, routing_state, trades, check_balances=True)
     execution_model.broadcast_and_resolve(state, trades, stop_on_execution_failure=True)
     assert t.is_success()

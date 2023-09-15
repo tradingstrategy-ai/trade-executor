@@ -5,16 +5,22 @@
 
 import datetime
 from _decimal import Decimal
+from typing import TypeAlias, Tuple, Literal
 
-from tradeexecutor.state.identifier import AssetWithTrackedValue, AssetType
+from tradeexecutor.state.identifier import (
+    AssetIdentifier, AssetWithTrackedValue, TradingPairIdentifier, 
+    TradingPairKind, AssetType,
+)
 from tradeexecutor.state.interest import Interest
 from tradeexecutor.state.loan import Loan
 from tradeexecutor.state.trade import TradeExecution
+from tradeexecutor.state.types import USDollarAmount, LeverageMultiplier
 
 
 def create_credit_supply_loan(
-    position: "tradeexeecutor.state.position.TradingPosition",
+    position: "tradeexecutor.state.position.TradingPosition",
     trade: TradeExecution,
+    timestamp: datetime.datetime,
 ):
     """Create a loan that supplies credit to a lending protocol.
 
@@ -49,7 +55,7 @@ def create_credit_supply_loan(
     loan = Loan(
         pair=trade.pair,
         collateral=collateral,
-        collateral_interest=Interest.open_new(trade.planned_reserve),
+        collateral_interest=Interest.open_new(trade.planned_reserve, timestamp),
         borrowed=None,
         borrowed_interest=None,
     )
@@ -61,8 +67,9 @@ def create_credit_supply_loan(
 
 
 def update_credit_supply_loan(
-    position: "tradeexeecutor.state.position.TradingPosition",
+    position: "tradeexecutor.state.position.TradingPosition",
     trade: TradeExecution,
+    timestamp: datetime.datetime,
 ):
     """Close/increase/reduce credit supply loan.
 
@@ -90,8 +97,9 @@ def update_credit_supply_loan(
 
 
 def create_short_loan(
-    position: "tradeexeecutor.state.position.TradingPosition",
+    position: "tradeexecutor.state.position.TradingPosition",
     trade: TradeExecution,
+    timestamp: datetime.datetime,
 ) -> Loan:
     """Create the loan data tracking for short position.
 
@@ -114,7 +122,7 @@ def create_short_loan(
     assert pair.quote.underlying, "Quote token lacks underlying asset"
 
     assert pair.base.type == AssetType.borrowed, f"Trading pair base asset is not borrowed: {pair.base}"
-    assert pair.quote.type == AssetType.collateral, f"Trading pair quote asset is not collateral: {pair.base}"
+    assert pair.quote.type == AssetType.collateral, f"Trading pair quote asset is not collateral: {pair.quote}"
 
     assert pair.quote.underlying.is_stablecoin(), f"Only stablecoin collateral supported for shorts: {pair.quote}"
 
@@ -152,8 +160,8 @@ def create_short_loan(
         pair=trade.pair,
         collateral=collateral,
         borrowed=borrowed,
-        collateral_interest=Interest.open_new(collateral.quantity),
-        borrowed_interest=Interest.open_new(borrowed.quantity),
+        collateral_interest=Interest.open_new(collateral.quantity, timestamp),
+        borrowed_interest=Interest.open_new(borrowed.quantity, timestamp),
     )
 
     # Sanity check
@@ -164,7 +172,7 @@ def create_short_loan(
 
 def plan_loan_update_for_short(
     loan: Loan,
-    position: "tradeexeecutor.state.position.TradingPosition",
+    position: "tradeexecutor.state.position.TradingPosition",
     trade: TradeExecution,
 ):
     """Update the loan data tracking for short position.
@@ -189,9 +197,67 @@ def plan_loan_update_for_short(
         -trade.planned_quantity,
         trade.planned_price,
         trade.opened_at,
+        # Because of interest events, and the fact that we need
+        # to pay the interest back on closing the loan,
+        # the tracked underlying amount can go negative when closing a short
+        # position
+        allow_negative=True,
     )
 
     # Sanity check
-    loan.check_health()
+    if loan.borrowed.quantity > 0:
+        loan.check_health()
 
     return loan
+
+
+def calculate_sizes_for_leverage(
+    starting_reserve: USDollarAmount,
+    leverage: LeverageMultiplier,
+) -> Tuple[USDollarAmount, USDollarAmount, Decimal]:
+    """Calculate the collateral and borrow loan size to hit the target leverage with a starting capital.
+
+    - When calculating the loan size using this function,
+      the loan net asset value will be the same as starting capital
+
+    - Because loan net asset value is same is deposited reserve,
+      portfolio total NAV stays intact
+
+    Notes:
+
+    .. code-block:: text
+
+            col / (col - borrow) = leverage
+            col = (col - borrow) * leverage
+            col = col * leverage - borrow * leverage
+            col - col * leverage = - borrow * levereage
+            col(1 - leverage) = - borrow * leverage
+            col = -(borrow * leverage) / (1 - leverage)
+
+            # Calculate leverage for 4x and 1000 USD collateral
+            col - borrow = 1000
+            col = 1000
+            leverage = 3
+
+            col / (col - borrow) = 3
+            3(col - borrow) = col
+            3borrow = 3col - col
+            borrow = col - col/3
+
+            col / (col - (col - borrow)) = leverage
+            col / borrow = leverage
+            borrow = leverage * 1000
+
+    :param starting_reserve:
+        Initial deposit in lending protocol
+
+    :param shorting_pair:
+        Leverage short trading pair
+
+    :return:
+        Tuple (borrow value, collateral value) in dollars
+    """
+    collateral_size = starting_reserve * leverage
+    borrow_size = collateral_size - (collateral_size / leverage)
+
+    return borrow_size, collateral_size

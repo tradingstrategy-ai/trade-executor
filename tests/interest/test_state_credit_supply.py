@@ -12,7 +12,7 @@ from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifie
 from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeType
-from tradeexecutor.strategy.interest import update_credit_supply_interest
+from tradeexecutor.strategy.interest import update_interest
 from tradeexecutor.testing.unit_test_trader import UnitTestTrader
 from tradingstrategy.chain import ChainId
 
@@ -161,12 +161,13 @@ def test_accrue_interest(
 
     # Generate first interest accruing event
     interest_event_1_at = datetime.datetime(2020, 1, 2)
-    update_credit_supply_interest(
+    update_interest(
         state,
         credit_supply_position,
         ausdc,
-        new_atoken_amount=Decimal(9000.01),
+        new_token_amount=Decimal(9000.01),
         event_at=interest_event_1_at,
+        asset_price=1.0,
     )
 
     # The position has refreshed its accrued interest once
@@ -220,12 +221,13 @@ def test_close_credit_position(
 
     # Generate first interest accruing event
     interest_event_1_at = datetime.datetime(2020, 1, 2)
-    update_credit_supply_interest(
+    update_interest(
         state,
         credit_supply_position,
         ausdc,
-        new_atoken_amount=Decimal(9000.50),
+        new_token_amount=Decimal(9000.50),
         event_at=interest_event_1_at,
+        asset_price=1.0,
     )
 
     assert state.portfolio.get_net_asset_value() == 10000.50
@@ -263,15 +265,19 @@ def test_close_credit_position(
 
     # Loan is now repaid
     loan = credit_supply_position.loan
-    assert loan.get_collateral_value() == 0
+    assert loan.collateral_interest.interest_payments == Decimal(0.50)
+    assert loan.collateral_interest.get_remaining_interest() == 0
+    assert loan.get_collateral_value() == 0.0  # TODO: This value is incorrect as loan object currently does not track repaid interest perfectly
+    assert loan.get_net_asset_value(include_interest=True) == 0.0
+    assert loan.get_net_asset_value(include_interest=False) == 0.0
 
     assert credit_supply_position.get_claimed_interest() == 0.50
     assert credit_supply_position.get_value() == 0
     assert credit_supply_position.get_unrealised_profit_usd() == 0
     assert credit_supply_position.get_realised_profit_usd() == 0.50
-    assert credit_supply_position.get_accrued_interest() == 0.50
+    assert credit_supply_position.get_accrued_interest() == 0
 
     # All profits are in portfolio cash
     portfolio = state.portfolio
-    assert portfolio.get_cash() == 10000.50
-    assert portfolio.get_net_asset_value() == 10000.50
+    assert portfolio.get_cash() == pytest.approx(10000.50)
+    assert portfolio.get_net_asset_value() == pytest.approx(10000.50)

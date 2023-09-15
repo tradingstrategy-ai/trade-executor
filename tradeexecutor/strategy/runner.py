@@ -31,8 +31,7 @@ from tradeexecutor.state.state import State
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.reserve import ReservePosition
-from tradeexecutor.strategy.valuation import ValuationModelFactory, ValuationModel
-
+from tradeexecutor.strategy.valuation import ValuationModelFactory, ValuationModel, revalue_state
 
 logger = logging.getLogger(__name__)
 
@@ -153,9 +152,9 @@ class StrategyRunner(abc.ABC):
         debug_details["total_equity_at_start"] = state.portfolio.get_total_equity()
         debug_details["total_cash_at_start"] = state.portfolio.get_cash()
 
-    def revalue_portfolio(self, ts: datetime.datetime, state: State, valuation_method: ValuationModel):
-        """Revalue portfolio based on the data."""
-        state.revalue_positions(ts, valuation_method)
+    def revalue_state(self, ts: datetime.datetime, state: State, valuation_method: ValuationModel):
+        """Revalue portfolio based on the latest prices."""
+        revalue_state(state, ts, valuation_method)
         logger.info("After revaluation at %s our equity is %f", ts, state.portfolio.get_total_equity())
 
     def collect_post_execution_data(
@@ -181,12 +180,17 @@ class StrategyRunner(abc.ABC):
                 ts = t.strategy_cycle_at
 
             # Credit supply pairs do not have pricing ATM
-            if not t.pair.is_credit_supply():
-
+            if t.pair.is_spot():
                 if t.is_buy():
                     t.post_execution_price_structure = pricing_model.get_buy_price(ts, t.pair, t.planned_reserve)
                 else:
                     t.post_execution_price_structure = pricing_model.get_sell_price(ts, t.pair, -t.planned_quantity)
+            elif t.pair.is_leverage() and t.is_short():
+                spot_pair = t.pair.underlying_spot_pair
+                if t.is_sell():
+                    t.post_execution_price_structure = pricing_model.get_buy_price(ts, spot_pair, t.planned_collateral_consumption)
+                else:
+                    t.post_execution_price_structure = pricing_model.get_sell_price(ts, spot_pair, t.planned_quantity)
 
     def on_clock(self,
                  clock: datetime.datetime,
@@ -432,7 +436,7 @@ class StrategyRunner(abc.ABC):
 
             # Assing a new value for every existing position
             with self.timed_task_context_manager("revalue_portfolio"):
-                self.revalue_portfolio(strategy_cycle_timestamp, state, valuation_model)
+                self.revalue_state(strategy_cycle_timestamp, state, valuation_model)
 
             # Log output
             if self.is_progress_report_needed():
@@ -549,7 +553,7 @@ class StrategyRunner(abc.ABC):
             # to generate trades to close stop loss positions
             position_manager = PositionManager(
                 clock,
-                universe.universe,
+                universe,
                 state,
                 stop_loss_pricing_model,
             )

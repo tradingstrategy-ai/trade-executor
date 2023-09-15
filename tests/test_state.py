@@ -23,6 +23,7 @@ from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.state.validator import validate_nested_state_dict, BadStateData
 from tradeexecutor.statistics.core import update_statistics
+from tradeexecutor.strategy.valuation import revalue_state
 from tradeexecutor.testing.unit_test_trader import UnitTestTrader
 from tradingstrategy.chain import ChainId
 from tradingstrategy.types import USDollarAmount
@@ -584,7 +585,7 @@ def test_revalue(usdc, weth_usdc, start_ts: datetime.datetime):
         # ETH drops 50%
         return revalue_date, 850.0
 
-    state.revalue_positions(start_ts, value_asset)
+    revalue_state(state, revalue_date, value_asset)
 
     assert position.last_pricing_at == revalue_date
     assert position.last_token_price == 850.0
@@ -688,7 +689,7 @@ def test_unrealised_profit_calculation(usdc, weth_usdc, start_ts: datetime.datet
             return ts, float(self.price)
 
     # Revalue ETH to 1500 USD
-    state.revalue_positions(start_ts, EthValuator(1500))
+    revalue_state(state, start_ts, EthValuator(1500))
     assert position.is_open()
     assert position.is_long()  # No change here
     assert position.get_realised_profit_usd() is None
@@ -696,12 +697,12 @@ def test_unrealised_profit_calculation(usdc, weth_usdc, start_ts: datetime.datet
     assert position.get_total_profit_percent() == pytest.approx(-0.15094339622641514)
 
     # Revalue ETH to 2000 USD, we are on green
-    state.revalue_positions(start_ts, EthValuator(2000))
+    revalue_state(state, start_ts, EthValuator(2000))
     assert position.get_unrealised_profit_usd() == pytest.approx(350)
     assert position.get_total_profit_percent() == pytest.approx(0.13207547169811318)
 
     # Sell half, gain 50% of the profit of the test_realised_profit_calculation
-    state.revalue_positions(start_ts, EthValuator(1850))
+    revalue_state(state, start_ts, EthValuator(1850))
     position, trade = trader.sell(weth_usdc, Decimal("0.75"), 1850.0)
     received = 1850 * 0.75
     assert not position.is_closed()

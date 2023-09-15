@@ -30,7 +30,7 @@ from tradeexecutor.state.state import State
 
 
 # https://docs.pytest.org/en/latest/how-to/skipping.html#skip-all-test-functions-of-a-class-or-module
-pytestmark = pytest.mark.skipif(os.environ.get("TRADING_STRATEGY_API_KEY") is None or os.environ.get("LENDING_UNFINISHED") is None, reason="Set TRADING_STRATEGY_API_KEY environment variable to run this test")
+pytestmark = pytest.mark.skipif(os.environ.get("TRADING_STRATEGY_API_KEY") is None, reason="Set TRADING_STRATEGY_API_KEY environment variable to run this test")
 
 
 def create_trading_universe(
@@ -113,12 +113,12 @@ def test_backtest_open_only_credit_supply_real_data(
 
     # Backtest creates one event before each tick
     assert len(credit_position.balance_updates) == 30
-
-    assert credit_position.interest.opening_amount == Decimal("10000.00")
-    assert credit_position.get_accrued_interest() == pytest.approx(5.869650453189491)
-    assert credit_position.get_quantity() == Decimal('10005.86965045318949110985913')
-    assert credit_position.get_value() == pytest.approx(10005.869650453189491)
-    assert portfolio.get_total_equity() == pytest.approx(10005.869650453189491)
+    
+    assert credit_position.loan.collateral_interest.opening_amount == Decimal("10000.00")
+    assert credit_position.get_accrued_interest() == pytest.approx(5.8392619598023785)
+    assert credit_position.get_quantity() == Decimal('10005.83926195980237824844199')
+    assert credit_position.get_value() == pytest.approx(10005.8392619598023785)
+    assert portfolio.get_total_equity() == pytest.approx(10005.8392619598023785)
 
 
 def test_backtest_open_and_close_credit_supply_real_data(
@@ -176,13 +176,15 @@ def test_backtest_open_and_close_credit_supply_real_data(
     credit_position = portfolio.closed_positions[1]
     assert credit_position.is_credit_supply()
     assert len(credit_position.balance_updates) == 14
-    assert credit_position.interest.opening_amount == Decimal("10000.00")
-    assert credit_position.calculate_accrued_interest_quantity() == Decimal('2.66358076134408362987523')  # Non-denormalised interest
-    assert credit_position.interest.last_atoken_amount == Decimal('10002.66358076134408362987523')
-    assert credit_position.interest.last_accrued_interest == Decimal('2.66358076134408362987523')
 
-    assert credit_position.get_accrued_interest() == pytest.approx(2.663580761344)  # Denormalised interest
+    interest = credit_position.loan.collateral_interest
+    assert interest.opening_amount == Decimal("10000.00")
+    assert credit_position.calculate_accrued_interest_quantity(credit_position.loan.collateral.asset) == Decimal('2.67867669078453209820818')  # Non-denormalised interest
+    assert interest.last_token_amount == Decimal('10002.67867669078453209820818')
+    assert interest.last_accrued_interest == Decimal('2.67867669078453209820818')
+
+    assert credit_position.get_accrued_interest() == Decimal(0)  # Accrued interest should be 0 for closed position
     assert credit_position.get_quantity() == Decimal('0')  # Closed positions do not have quantity left
     assert credit_position.get_value() == pytest.approx(0)  # Closed positions do not have value left
 
-    assert portfolio.get_total_equity() == pytest.approx(10002.663580761344)
+    assert portfolio.get_total_equity() == pytest.approx(10002.678676690784532)

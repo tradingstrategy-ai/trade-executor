@@ -4,6 +4,7 @@ from typing import Tuple
 from tradeexecutor.backtest.backtest_pricing import BacktestSimplePricingModel
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.types import USDollarAmount
+from tradeexecutor.state.identifier import TradingPairKind
 from tradeexecutor.strategy.valuation import ValuationModel
 
 
@@ -26,10 +27,18 @@ class BacktestValuationModel(ValuationModel):
 
         pair = position.pair
 
-        assert position.is_long(), "Short not supported"
-        quantity = position.get_quantity()
-        trade_price = self.pricing_model.get_sell_price(ts, pair, quantity)
-        return ts, float(trade_price.price)
+        if position.is_long():
+            quantity = position.get_quantity()
+            trade_price = self.pricing_model.get_sell_price(ts, pair, quantity)
+            return ts, float(trade_price.price)
+        else:
+
+            # TODO: Use position net asset pricing for leveraged positions
+            assert pair.kind == TradingPairKind.lending_protocol_short
+            quantity = -position.get_quantity()
+            trade_price = self.pricing_model.get_sell_price(ts, pair.underlying_spot_pair, quantity)
+
+            return ts, float(trade_price.price)
 
 
 def backtest_valuation_factory(pricing_model):

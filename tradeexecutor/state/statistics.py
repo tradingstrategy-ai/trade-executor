@@ -96,7 +96,12 @@ class PortfolioStatistics:
 
     #: Real-time clock when these stats were calculated
     calculated_at: datetime.datetime
+
+
+    # Deprecated: Use net_asset_value
     total_equity: USDollarAmount
+
+    net_asset_value: Optional[USDollarAmount] = None
     
     free_cash: Optional[USDollarAmount] = None
     open_position_count: Optional[int] = None
@@ -111,6 +116,18 @@ class PortfolioStatistics:
 
     realised_profit_usd: Optional[USDollarAmount] = 0
     summary: Optional[TradeSummary] = None
+
+    def get_value(self) -> USDollarAmount:
+        if self.net_asset_value is not None:
+            return self.net_asset_value
+
+        # Legacy
+        return self.total_equity
+
+    def __post_init__(self):
+        pass
+        # TODO: Cannot do this yet because of legacy data
+        # assert (self.total_equity or self.net_asset_value), "PortfolioStatistics: could not calculate value for the portfolio"
 
 
 @dataclass_json
@@ -225,7 +242,7 @@ class Statistics:
         if len(self.portfolio) == 0:
             return 0.0
 
-        return (self.portfolio[-1].total_equity - self.portfolio[0].total_equity) / self.portfolio[0].total_equity
+        return (self.portfolio[-1].get_value() - self.portfolio[0].get_value()) / self.portfolio[0].get_value()
 
 
 def calculate_naive_profitability(

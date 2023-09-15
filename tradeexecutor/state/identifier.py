@@ -6,7 +6,7 @@ import datetime
 import enum
 from dataclasses import dataclass, field
 from decimal import Decimal
-from typing import Optional
+from typing import Optional, Literal
 
 from dataclasses_json import dataclass_json
 from eth_typing import HexAddress
@@ -138,6 +138,16 @@ class AssetIdentifier:
     def is_stablecoin(self) -> bool:
         """Do we think this asset reprents a stablecoin"""
         return is_stablecoin_like(self.token_symbol)
+
+    def get_pricing_asset(self) -> "AssetIdentifier":
+        """Get the asset that delivers price for this asset.
+
+        :return:
+
+            If this asset is a derivative of another,
+            then get the underlying, otherwise return self.
+        """
+        return self.underlying if self.underlying else self
 
 
 class TradingPairKind(enum.Enum):
@@ -292,6 +302,14 @@ class TradingPairIdentifier:
     #:
     kind: TradingPairKind = TradingPairKind.spot_market_hold
 
+    #: Underlying spot trading pair
+    #: 
+    #: This can be used to track price of assets in shorting pair
+    #:
+    #: TODO: Currently "mostly" unused.
+    #:
+    underlying_spot_pair: Optional["TradingPairIdentifier"] = None
+
     def __post_init__(self):
         assert self.base.chain_id == self.quote.chain_id, "Cross-chain trading pairs are not possible"
 
@@ -379,7 +397,10 @@ class TradingPairIdentifier:
         assert self.reverse_token_order is not None, f"reverse_token_order not set for: {self}"
         return self.reverse_token_order
 
-    def get_max_leverage_at_open(self) -> LeverageMultiplier:
+    def get_max_leverage_at_open(
+        self,
+        side: Literal["long", "short"] = "short",
+    ) -> LeverageMultiplier:
         """Return the max leverage we can set for this position at open.
 
         E.g. for AAVE WETH short this is 0.8 because we can supply
@@ -389,9 +410,16 @@ class TradingPairIdentifier:
         Max Leverage in pair: l=1/(1-cfBuy); cfBuy = collateralFacor of Buy Asset
 
         - `See 1delta documentation <https://docs.1delta.io/lenders/metrics>`__.
+
+        :param side:
+            Order side: long or short
         """
         assert self.kind in (TradingPairKind.lending_protocol_short, TradingPairKind.lending_protocol_long)
-        return 1 / (1 - self.get_collateral_factor())
+
+        max_long_leverage = 1 / (1 - self.get_collateral_factor())
+        max_short_leverage = max_long_leverage - 1
+
+        return max_short_leverage if side == "short" else max_long_leverage
 
     def is_leverage(self) -> bool:
         return self.kind.is_leverage()
@@ -406,7 +434,9 @@ class TradingPairIdentifier:
         """What's the liqudation threshold for this leveraged pair"""
         assert self.kind.is_leverage()
         # Liquidation threshold comes from the collateral token
-        return self.quote.liquidation_threshold
+        threshold = self.quote.liquidation_threshold
+        assert 0 < threshold < 1, f"Liquidation theshold must be 0..1, got {threshold}"
+        return threshold
 
     def get_collateral_factor(self) -> Percent:
         """Same as liquidation threshold.
@@ -414,6 +444,26 @@ class TradingPairIdentifier:
         Alias for :py:meth:`get_liquidation_threshold`
         """
         return self.get_liquidation_threshold()
+
+    def get_pricing_pair(self) -> Optional["TradingPairIdentifier"]:
+        """Get the the trading pair that determines the price for the asset.
+
+        - For spot pairs this is the trading pair itself
+
+        - For pairs that may lack price feed data like USDC/USD
+          pairs used in credit supply, return None
+
+        :return:
+            The trading pair we can use to query underlying asset price.
+
+            Return ``None`` if the trading pair does not have price information.
+        """
+        if self.is_spot():
+            return self
+        elif self.is_leverage():
+            assert self.underlying_spot_pair is not None, f"For a leveraged pair, we lack the price feed for the underlying spot: {self}"
+            return self.underlying_spot_pair
+        return None
 
 
 @dataclass_json
@@ -439,6 +489,8 @@ class AssetWithTrackedValue:
 
     #: How many token units we have.
     #:
+    #: In the case of loans this represents the underlying asset (WETH),
+    #: not any gained interest (vWETH).
     #:
     quantity: Decimal
 
@@ -460,6 +512,7 @@ class AssetWithTrackedValue:
         return f"<AssetWithTrackedValue {self.asset.token_symbol} {self.quantity} at price {self.last_usd_price} USD>"
 
     def __post_init__(self):
+        assert isinstance(self.quantity, Decimal), f"Got {self.quantity.__class__}"
         assert self.quantity > 0, f"Any tracked asset must have positive quantity, received {self.asset} = {self.quantity}"
         assert self.last_usd_price is not None, "Price is None - asset price must set during initialisation"
         assert self.last_usd_price > 0
@@ -492,9 +545,14 @@ class AssetWithTrackedValue:
 
         if not allow_negative:
             assert sum_decimal((self.quantity, delta,)) >= 0, f"Tracked asset cannot go negative: {self}. Quantity: {self.quantity}, delta: {delta}"
+
         self.quantity += delta
 
         # Fix decimal math issues
         self.quantity = ensure_exact_zero(self.quantity)
+
+        # TODO: this is a temp hack for testing to make sure the borrowed quantity can be minimum 0
+        if self.quantity < 0:
+            self.quantity = Decimal(0)
 
 

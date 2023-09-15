@@ -96,4 +96,7 @@ class SimulatedTestTrader:
             executed_quantity,
             executed_reserve,
             lp_fees=0,
-            native_token_price=1)
+            native_token_price=1,
+            executed_collateral_allocation=trade.planned_collateral_allocation,
+            executed_collateral_consumption=trade.executed_collateral_consumption,
+        )

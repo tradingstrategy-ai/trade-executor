@@ -217,6 +217,10 @@ class State:
             For short positions, negative quantity means increase the position of this much,
             positive quantity means decrease the position.
 
+            Any fees have been already reduced away from this quantity,
+            as :py:class:`PriceModel` gives the planned price that includes
+            fees.
+
         :param assumed_price:
             The planned execution price.
 
@@ -413,6 +417,7 @@ class State:
             assert borrowed_quantity is not None, "borrowed_quantity must be always set"
             assert collateral_quantity is not None, "collateral_quantity must be always set. Set to zero if you do not want to have change to the amount of collateral"
 
+
         return self.create_trade(
             strategy_cycle_at=strategy_cycle_at,
             pair=pair,
@@ -503,10 +508,35 @@ class State:
         )
         return position, trade, created
 
-    def start_execution(self, ts: datetime.datetime, trade: TradeExecution, txid: str, nonce: int):
+    def start_execution(self,
+                        ts: datetime.datetime,
+                        trade: TradeExecution,
+                        txid: str | None = None,
+                        nonce: int | None = None,
+                        underflow_check=False,
+                        ):
         """Update our balances and mark the trade execution as started.
 
-        Called before a transaction is broadcasted.
+        - Called before a transaction is broadcasted.
+
+        - Updates internal accounting and moves capital from the reserve account locked on a trade
+
+        See also :py:meth:`start_execution_all`.
+
+        :param trade:
+            Trade to
+
+        :param underflow_check:
+            Raise exception if we have not enough cash to allocate.
+
+            The check disabled by default. Might be legit for portfolio strats that need to sell old assets before buying new assets.
+
+        :param txid:
+            Legacy. Do not use.
+
+        :param nonce:
+            Legacy. Do not use.
+
         """
 
         assert trade.get_status() == TradeStatus.planned
@@ -514,13 +544,17 @@ class State:
         position = self.portfolio.find_position_for_trade(trade)
         assert position, f"Trade does not belong to an open position {trade}"
 
-        self.portfolio.check_for_nonce_reuse(nonce)
+        # Legacy check
+        if nonce is not None:
+            self.portfolio.check_for_nonce_reuse(nonce)
 
         # Allocate reserve capital for this trade.
         # Reserve capital cannot be double spent until the trades are execured.
         if trade.is_spot():
             if trade.is_buy():
-                self.portfolio.move_capital_from_reserves_to_spot_trade(trade)
+                # Spot trade reserves can go to negative before execution,
+                # because reservs will be there after we have executed some sell trades first
+                self.portfolio.move_capital_from_reserves_to_spot_trade(trade, underflow_check=underflow_check)
         elif trade.is_leverage():
             self.portfolio.move_capital_from_reserves_to_spot_trade(trade)
         elif trade.is_credit_supply():
@@ -532,8 +566,11 @@ class State:
         trade.started_at = ts
 
         # TODO: Legacy attributes that need to go away
-        trade.txid = txid
-        trade.nonce = nonce
+        if txid is not None:
+            trade.txid = txid
+
+        if nonce is not None:
+            trade.nonce = nonce
 
     def mark_broadcasted(self, broadcasted_at: datetime.datetime, trade: TradeExecution):
         """"""
@@ -582,10 +619,12 @@ class State:
         if trade.is_spot() and trade.is_sell():
             self.portfolio.return_capital_to_reserves(trade)
         elif trade.is_leverage():
-            # Release any collateral
+
+            # Release any collateral and move it back to the wallet
             if executed_collateral_allocation:
                 assert trade.pair.quote.underlying
                 self.portfolio.adjust_reserves(trade.pair.quote.underlying, -executed_collateral_allocation)
+
         elif trade.is_credit_supply():
             if trade.is_sell():
                 self.portfolio.adjust_reserves(trade.pair.quote, executed_reserve)
@@ -600,7 +639,22 @@ class State:
             self.portfolio.closed_positions[position.position_id] = position
 
             if position.loan:
+
                 trade.claimed_interest = position.loan.claim_interest()
+
+                # Mark that the trade claimed any interest
+                # that was available on the collateral
+                if trade.is_leverage():
+                    # TODO: Currently there is minor difference between credit supply and leveraged positions.
+                    # Credit supply positions put any claimed interest in executed_reserve,
+                    # whereas leveraged closing trade assumes interest will be automatically claimed.
+                    self.portfolio.adjust_reserves(trade.pair.quote.get_pricing_asset(), trade.claimed_interest)
+
+                # Mark that the trade paid any remaining interest
+                # on the debt
+                if position.loan.borrowed:
+                    # TODO: Add planned interest payments
+                    trade.paid_interest = position.loan.repay_interest()
 
     def mark_trade_failed(self, failed_at: datetime.datetime, trade: TradeExecution):
         """Unroll the allocated capital."""
@@ -617,7 +671,7 @@ class State:
 
         Reserves are not revalued.
         """
-        self.portfolio.revalue_positions(ts, valuation_method)
+        raise RuntimeError(f"Removed. Use valuation.revalue_state()")
 
     def blacklist_asset(self, asset: AssetIdentifier):
         """Add a asset to the blacklist."""
@@ -650,29 +704,47 @@ class State:
         for pos_stat_id in self.stats.positions.keys():
             assert pos_stat_id in position_ids, f"Stats had position id {pos_stat_id} for which actual trades are missing"
 
-    def start_trades(self, ts: datetime.datetime, trades: List[TradeExecution], max_slippage: float=0.01, underflow_check=False):
-        """Mark trades ready to go.
+    def start_execution_all(self,
+                            ts: datetime.datetime,
+                            trades: List[TradeExecution],
+                            max_slippage: float=None,
+                            underflow_check=False):
+        """Mark a bunch of trades ready to go.
 
         Update any internal accounting of capital allocation from reseves to trades.
 
         Sets the execution model specific parameters like `max_slippage` on the trades.
 
+        See also :py:meth:`start_execution`
+
+        :param ts:
+            Strategy cycle timestamp
+
+        :param trades:
+            List of trades to prepare
+
         :param max_slippage:
+
+            Legacy. Do not use.
+
             The slippage allowed for this trade before it fails in execution.
             0.01 is 1%.
 
         :param underflow_check:
+
+            Legacy. Do not use.
+
             If true warn us if we do not have enough reserves to perform the trades.
             This does not consider new reserves released from the closed positions
             in this cycle.
         """
 
         for t in trades:
-            if t.is_buy():
-                self.portfolio.move_capital_from_reserves_to_spot_trade(t, underflow_check=underflow_check)
 
-            t.started_at = ts
-            t.planned_max_slippage = max_slippage
+            self.start_execution(ts, t)
+
+            if max_slippage is not None:
+                t.planned_max_slippage = max_slippage
 
     def check_if_clean(self):
         """Check that the state data is intact.
