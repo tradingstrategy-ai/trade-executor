@@ -586,6 +586,7 @@ def create_client(
             test_evm_uniswap_v2_router,
             test_evm_uniswap_v2_init_code_hash,
         )
+        client.initialise_mock_data()
 
         if mod.trade_routing[0] == TradeRouting.user_supplied_routing_model:
             routing_model = UniswapV2SimpleRoutingModel(
@@ -657,6 +658,7 @@ def create_generic_client(
         web3config.get_default(),
         test_evm_uniswap_data,
     )
+    client.initialise_mock_data()
 
     for i, trade_routing in enumerate(mod.trade_routing):
             

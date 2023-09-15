@@ -58,16 +58,23 @@ class GenericMockClient(MockClient):
         test_evm_uniswap_data: list[UniswapV2TestData | UniswapV3TestData],
         fee: float = 0.0030,
     ):
-
+        self.web3 = web3
         self.test_evm_uniswap_data = test_evm_uniswap_data
+        self.fee = fee
+    
+    def initialise_mock_data(self) -> None:
+        """Initialise the mock client.
 
+        :returns:
+            None.
+        """
         self.exchange_universe, self.pairs_table = GenericMockClient.read_onchain_data(
-            web3,
-            test_evm_uniswap_data,
-            fee,
+            self.web3,
+            self.test_evm_uniswap_data,
+            self.fee,
         )
 
-        assert len(self.pairs_table) > 0, f"Could not read any pairs from on-chain data. Test_evm_uniswap_data: {test_evm_uniswap_data}."
+        assert len(self.pairs_table) > 0, f"Could not read any pairs from on-chain data. Test_evm_uniswap_data: {self.test_evm_uniswap_data}."
     
     @staticmethod
     def get_item_for_all_test_data_members(test_evm_uniswap_data: list[UniswapV2TestData | UniswapV3TestData], item: str) -> list[str]:
