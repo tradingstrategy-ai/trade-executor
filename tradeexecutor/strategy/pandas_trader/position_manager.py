@@ -878,15 +878,19 @@ class PositionManager:
             Mid price of the pair (https://tradingstrategy.ai/glossary/mid-price). Provide when possible for most complete statistical analysis. In certain cases, it may not be easily available, so it's optional.
         """
 
-        mid_price =  self.get_pricing_model(position.pair).get_mid_price(self.timestamp, position.pair)
+        spot_pair = position.pair
+        if position.pair.kind.is_leverage():
+            spot_pair = position.pair.underlying_spot_pair
+
+        mid_price =  self.get_pricing_model(spot_pair).get_mid_price(self.timestamp, spot_pair)
 
         position.trigger_updates.append(TriggerPriceUpdate(
             timestamp=self.timestamp,
-            stop_loss_before = position.stop_loss,
-            stop_loss_after = stop_loss,
-            mid_price = mid_price,
-            take_profit_before = position.take_profit,
-            take_profit_after = position.take_profit,  # No changes to take profit
+            stop_loss_before=position.stop_loss,
+            stop_loss_after=stop_loss,
+            mid_price=mid_price,
+            take_profit_before=position.take_profit,
+            take_profit_after=position.take_profit,  # No changes to take profit
         ))
 
         position.stop_loss = stop_loss

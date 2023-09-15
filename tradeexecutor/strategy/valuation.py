@@ -170,11 +170,12 @@ def revalue_portfolio(
 
         for p in positions:
             valuation_method = get_valuation_method(valuation_models, p)
-            try:
-                ts, price = valuation_method(ts, p)
-                p.revalue_base_asset(ts, price)
-            except Exception as e:
-                raise InvalidValuationOutput(f"Valuation model failed to output proper price: {valuation_method}: {p} -> {e}") from e
+            if not p.is_credit_supply():
+                try:
+                    ts, price = valuation_method(ts, p)
+                    p.revalue_base_asset(ts, price)
+                except Exception as e:
+                    raise InvalidValuationOutput(f"Valuation model failed to output proper price: {valuation_method}: {p} -> {e}") from e
     
 
 def get_valuation_method(valuation_methods: list[Callable], position: TradingPosition) -> ValuationModel:
