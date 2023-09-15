@@ -1092,6 +1092,14 @@ class PositionManager:
         )
 
         return [trade]
+    
+    def get_pricing_model(self, pair: TradingPairIdentifier) -> PricingModel:
+        """Get the pricing model used by this strategy.
+        
+        :param pair:
+            Trading pair for which we want to have the pricing model
+        """
+        return get_pricing_model_for_pair(pair, self.pricing_models)  
 
 def get_pricing_model_for_pair(pair: TradingPairIdentifier | DEXPair, pricing_models: List[PricingModel], set_routing_hint: bool = True) -> PricingModel:
     """Get the pricing model for a pair.
