@@ -512,7 +512,9 @@ class State:
                         ts: datetime.datetime,
                         trade: TradeExecution,
                         txid: str | None = None,
-                        nonce: int | None = None):
+                        nonce: int | None = None,
+                        underflow_check=False,
+                        ):
         """Update our balances and mark the trade execution as started.
 
         - Called before a transaction is broadcasted.
@@ -523,6 +525,11 @@ class State:
 
         :param trade:
             Trade to
+
+        :param underflow_check:
+            Raise exception if we have not enough cash to allocate.
+
+            The check disabled by default. Might be legit for portfolio strats that need to sell old assets before buying new assets.
 
         :param txid:
             Legacy. Do not use.
@@ -547,7 +554,7 @@ class State:
             if trade.is_buy():
                 # Spot trade reserves can go to negative before execution,
                 # because reservs will be there after we have executed some sell trades first
-                self.portfolio.move_capital_from_reserves_to_spot_trade(trade, underflow_check=False)
+                self.portfolio.move_capital_from_reserves_to_spot_trade(trade, underflow_check=underflow_check)
         elif trade.is_leverage():
             self.portfolio.move_capital_from_reserves_to_spot_trade(trade)
         elif trade.is_credit_supply():
