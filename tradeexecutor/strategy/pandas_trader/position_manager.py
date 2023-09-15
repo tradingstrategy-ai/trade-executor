@@ -880,8 +880,6 @@ class PositionManager:
 
         mid_price =  self.get_pricing_model(position.pair).get_mid_price(self.timestamp, position.pair)
 
-        mid_price =  self.pricing_model.get_mid_price(self.timestamp, spot_pair)
-
         position.trigger_updates.append(TriggerPriceUpdate(
             timestamp=self.timestamp,
             stop_loss_before = position.stop_loss,

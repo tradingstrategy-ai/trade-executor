@@ -143,7 +143,6 @@ def revalue_state(
     
 
 def revalue_portfolio(
-        self,
         ts: datetime.datetime,
         portfolio: Portfolio,
         valuation_models: list[ValuationModel],
@@ -170,15 +169,15 @@ def revalue_portfolio(
         positions = portfolio.get_open_and_frozen_positions() if revalue_frozen else portfolio.open_positions.values()
 
         for p in positions:
+            valuation_method = get_valuation_method(valuation_models, p)
             try:
-                valuation_method = get_valuation_method(ts, valuation_models, p)
-                price = valuation_method(ts, p)
+                ts, price = valuation_method(ts, p)
                 p.revalue_base_asset(ts, price)
             except Exception as e:
                 raise InvalidValuationOutput(f"Valuation model failed to output proper price: {valuation_method}: {p} -> {e}") from e
     
 
-def get_valuation_method(ts: datetime.datetime, valuation_methods: list[Callable], position: TradingPosition) -> ValuationModel:
+def get_valuation_method(valuation_methods: list[Callable], position: TradingPosition) -> ValuationModel:
     """Choose the correct valuation method and revalue the position.
     
     :param ts:
@@ -193,6 +192,9 @@ def get_valuation_method(ts: datetime.datetime, valuation_methods: list[Callable
     :raise NotImplementedError:
         If no valuation method is found for the position
     """
+    
+    if len(valuation_methods) == 1:
+        return valuation_methods[0]
 
     assert position.pair.routing_hint, "Routing model not set for position pair"
 

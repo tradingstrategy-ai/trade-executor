@@ -186,15 +186,15 @@ class StrategyRunner(abc.ABC):
             # Credit supply pairs do not have pricing ATM
             if t.pair.is_spot():
                 if t.is_buy():
-                    t.post_execution_price_structure = pricing_model.get_buy_price(ts, t.pair, t.planned_reserve)
+                    t.post_execution_price_structure = get_pricing_model_for_pair(t.pair, pricing_models).get_buy_price(ts, t.pair, t.planned_reserve)
                 else:
-                    t.post_execution_price_structure = pricing_model.get_sell_price(ts, t.pair, -t.planned_quantity)
+                    t.post_execution_price_structure = get_pricing_model_for_pair(t.pair, pricing_models).get_sell_price(ts, t.pair, -t.planned_quantity)
             elif t.pair.is_leverage() and t.is_short():
                 spot_pair = t.pair.underlying_spot_pair
                 if t.is_sell():
-                    t.post_execution_price_structure = pricing_model.get_buy_price(ts, spot_pair, t.planned_collateral_consumption)
+                    t.post_execution_price_structure = get_pricing_model_for_pair(t.pair, pricing_models).get_buy_price(ts, spot_pair, t.planned_collateral_consumption)
                 else:
-                    t.post_execution_price_structure = pricing_model.get_sell_price(ts, spot_pair, t.planned_quantity)
+                    t.post_execution_price_structure = get_pricing_model_for_pair(t.pair, pricing_models).get_sell_price(ts, spot_pair, t.planned_quantity)
 
     def on_clock(self,
                  clock: datetime.datetime,
