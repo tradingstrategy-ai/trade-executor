@@ -334,7 +334,7 @@ def test_run_inline_backtest(
 
     state, universe, debug_dump = backtest_result
 
-    assert len(debug_dump) == 151
+    assert len(debug_dump) == 152
 
 
 @pytest.fixture(scope = "module")
@@ -364,6 +364,7 @@ def test_summary(
     multipair_summary = analyse_multipair(state)
     format_multipair_summary(multipair_summary)
     
+    # should have data for 7 pairs
     assert len(multipair_summary) == 7
     
     return summary
