@@ -57,7 +57,7 @@ def make_test_trade(
     reserve_asset = universe.get_reserve_asset()
 
     if data_universe.pairs.get_count() > 1 and not pair:
-        raise RuntimeError("You are using a multipair universe. Provide pair argument to perform a test trade on a specific pair.")
+        raise RuntimeError("You are using a multipair universe. Use the --pair flag to perform a test trade on a specific pair. Alternatively, use the --all-pairs flag to perform the test trade on all pairs.")
     
     if pair:
         if data_universe.exchanges:
@@ -173,7 +173,7 @@ def make_test_trade(
         if not trade.is_success() or not position.is_open():
             # Alot of diagnostics to debug Arbitrum / WBTC issues
             trades = sum_decimal([t.get_position_quantity() for t in position.trades.values() if t.is_success()])
-            direct_balance_updates = position.get_balance_update_quantity()
+            direct_balance_updates = position.get_base_token_balance_update_quantity()
 
             logger.error("Trade quantity: %s, direct balance updates: %s", trades, direct_balance_updates)
 

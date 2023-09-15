@@ -51,7 +51,7 @@ def calculate_position_statistics(clock: datetime.datetime, position: TradingPos
     first_trade = position.get_first_trade()
     if position.is_open() and first_trade.is_success():
         # Normally opened positions should always have some value
-        assert value > 0, f"Position {position} reported value {value}. Last token price: {position.last_token_price}. Last reserve price: {position.last_reserve_price}"
+        assert value != 0, f"Position {position} reported value {value}. Last token price: {position.last_token_price}. Last reserve price: {position.last_reserve_price}"
 
     stats = PositionStatistics(
         calculated_at=clock,
@@ -116,6 +116,7 @@ def calculate_statistics(
         pf_stats = PortfolioStatistics(
             calculated_at=clock,
             total_equity=portfolio.get_total_equity(),
+            net_asset_value=portfolio.get_net_asset_value(),
             free_cash=float(portfolio.get_cash()),
             open_position_count=len(portfolio.open_positions),
             open_position_equity=portfolio.get_position_equity_and_loan_nav(),
@@ -132,6 +133,7 @@ def calculate_statistics(
         pf_stats = PortfolioStatistics(
             calculated_at=clock,
             total_equity=portfolio.get_total_equity(),
+            net_asset_value=portfolio.get_net_asset_value(),
         )
 
     stats = TimestampedStatistics(

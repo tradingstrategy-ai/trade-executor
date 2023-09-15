@@ -8,6 +8,7 @@ from logging import Handler, LogRecord, NOTSET
 from typing import Deque, List, TypedDict, Optional
 
 from tblib import Traceback
+from traceback import format_exception
 
 
 class ExportedRecord(TypedDict):
@@ -25,10 +26,13 @@ class ExportedRecord(TypedDict):
     #: Log message, formatted
     message: str
 
+
     exception_type: Optional[str]
 
     #: Log message, formatted
     traceback_data: Optional[dict]
+
+    level_number: int
 
     @staticmethod
     def get_symbolic_log_level(log_level: int) -> str:
@@ -49,12 +53,16 @@ class ExportedRecord(TypedDict):
             exception_type = traceback_data = None
             message = record.getMessage()  # Expand log args
 
+        exception_data = format_exception(record.exc_info[0], record.exc_info[1], record.exc_info[2]) if record.exc_info else None
+    
         return {
             "timestamp": record.created,
             "level": record.levelname.lower(),
             "message": message,
             "exception_type": exception_type,
             "traceback_data": traceback_data,
+            "level_number": record.levelno,
+            "formatted_data": exception_data,
         }
 
 

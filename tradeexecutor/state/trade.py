@@ -194,7 +194,7 @@ class TradeExecution:
     #: when our routing model supports this.
     reserve_currency: AssetIdentifier
 
-    #: Planned amount of reserve currency that goes in out or out to collateral.
+    #: Planned amount of reserve currency that goes in or out to collateral.
     #:
     #: - Negative if collateral is released and added to the reserves
     #:
@@ -441,7 +441,14 @@ class TradeExecution:
     #:
     closing: bool = None
 
-    #: For interest bearing positions, how much of accrued interest was moved to reserves in this trade.
+    #: How much interest we have claimed from collateral for this position.
+    #:
+    #: - For interest bearing positions, how much of accrued interest was moved to reserves in this trade.
+    #:
+    #: - Concerns only collateral, not borrow
+    #:
+    #: - Borrow interest is closed in the final trade (trade size == position quantity
+    #:   == principal + interest)
     #:
     #: This is the realised interest. Any accured interest
     #: must be realised by claiming it in some trade.
@@ -450,11 +457,30 @@ class TradeExecution:
     #:
     #: Expressed in reserve tokens.
     #:
+    #: See also :py:attr:`paid_interest`
+    #:
+    #: TODO This must be converted to planned_paid_interest / executed_paid_interest,
+    #: because the actual amount may change after execution.
+    #:
     claimed_interest: Optional[Decimal] = None
 
     #: The TradeRouting option that was used for this trade.
     #:
     routing_hint: Optional[str] = None
+
+    #: How much interest this trade paid back on the debt.
+    #:
+    #: Expressed in base token quantity.
+    #:
+    #: This is used to mark the token debt in the last trade
+    #: that closes a leveraged position.
+    #:
+    #: See also :py:attr:`claimed_interest`
+    #:
+    #: TODO This must be converted to planned_paid_interest / executed_paid_interest
+    #: because the actual amount may change after execution.
+    #:
+    paid_interest: Optional[Decimal] = None
 
     def __repr__(self) -> str:
         if self.is_spot():
@@ -595,6 +621,16 @@ class TradeExecution:
             1.0 if not set
         """
         return self.reserve_currency_exchange_rate or 1.0
+
+    def get_sign(self) -> int:
+        """Return the sign of the trade.
+
+        - ``1`` for buy
+
+        - ``-1` for sell
+        """
+        sign = 1 if self.get_position_quantity() > 0 else -1
+        return sign
 
     def is_sell(self) -> bool:
         assert self.planned_quantity != 0, "Buy/sell concept does not exist for zero quantity"
@@ -778,6 +814,7 @@ class TradeExecution:
         return abs(float(self.executed_quantity) * (self.executed_price or 0))
 
     def get_planned_value(self) -> USDollarAmount:
+        """How much we plan to swap in this trade."""
         return abs(self.planned_price * float(abs(self.planned_quantity)))
 
     def get_planned_reserve(self) -> Decimal:
@@ -868,10 +905,29 @@ class TradeExecution:
             return 0.0
 
     def get_claimed_interest(self) -> USDollarAmount:
-        """How much US interest we have claimed in this trade."""
+        """How much US interest we have claimed in this trade.
+
+        - Interest can be only claimed on collateral
+
+        - Borrow interest is paid back in the final trade
+        """
         if not self.claimed_interest:
             return 0.0
         return float(self.claimed_interest) * self.reserve_currency_exchange_rate
+
+    def get_repaid_interest(self) -> USDollarAmount:
+        """How much USD interest payments this trade made.
+
+        - Interest can be only claimed on collateral
+
+        - Borrow interest is paid back in the final trade
+        """
+        if not self.paid_interest:
+            return 0.0
+
+        assert self.executed_price, f"executed_price missing: {self}"
+
+        return float(self.paid_interest) * self.executed_price
 
     def get_fees_paid(self) -> USDollarAmount:
         """

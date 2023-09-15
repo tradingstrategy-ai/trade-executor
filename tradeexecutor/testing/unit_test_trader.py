@@ -50,7 +50,7 @@ class UnitTestTrader:
         self.ts += datetime.timedelta(seconds=1)
         return position, trade
 
-    def create_and_execute(self, pair: TradingPairIdentifier, quantity: Decimal, price: float) -> Tuple[TradingPosition, TradeExecution]:
+    def create_and_execute(self, pair: TradingPairIdentifier, quantity: Decimal, price: float, underflow_check=True) -> Tuple[TradingPosition, TradeExecution]:
 
         assert price > 0
         assert quantity != 0
@@ -66,7 +66,7 @@ class UnitTestTrader:
         # 2. Capital allocation
         txid = hex(self.nonce)
         nonce = self.nonce
-        self.state.start_execution(self.ts, trade, txid, nonce)
+        self.state.start_execution(self.ts, trade, txid, nonce, underflow_check=underflow_check)
 
         # 3. broadcast
         self.nonce += 1
@@ -103,7 +103,7 @@ class UnitTestTrader:
         # 2. Capital allocation
         txid = hex(self.nonce)
         nonce = self.nonce
-        self.state.start_execution(self.ts, trade, txid, nonce)
+        self.state.start_execution(self.ts, trade, txid, nonce, underflow_check=False)
 
         # 3. broadcast
         self.nonce += 1
@@ -132,13 +132,15 @@ class UnitTestTrader:
         if trade.planned_loan_update:
             trade.executed_loan_update = trade.planned_loan_update
 
+        lp_fees = trade.lp_fees_estimated or self.lp_fees
+
         self.state.mark_trade_success(
             self.ts,
             trade,
             executed_price,
             executed_quantity,
             executed_reserve,
-            self.lp_fees,
+            lp_fees,
             self.native_token_price,
             executed_collateral_consumption=executed_collateral_consumption,
             executed_collateral_allocation=executed_collateral_allocation,

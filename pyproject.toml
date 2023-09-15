@@ -17,9 +17,9 @@ python = ">=3.10,<3.11"
 
 # Use these during development
 # web3-ethereum-defi = {path = "deps/web3-ethereum-defi", develop = true}
-# trading-strategy = {path = "deps/trading-strategy", develop = true}
-requests = "^2.27.1"
+#trading-strategy = {path = "deps/trading-strategy", develop = true}
 trading-strategy = "^0.20.4"
+requests = "^2.27.1"
 matplotlib = "^3.6.0"
 jupyterlab = "^3.5.0"
 pandas-ta = "^0.3.14b"
@@ -131,6 +131,7 @@ flaky = "^3.7.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest-reverse = "^1.5.0"
+pytest-mock = "^3.11.1"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
@@ -159,4 +160,6 @@ filterwarnings = [
     #  DeprecationWarning: abi.decode_single() is deprecated and will be removed in version 4.0.0 in favor of abi.decode()
     "ignore::DeprecationWarning:eth_abi.*:",
     "ignore:::.*.codec",
+    "ignore::DeprecationWarning:pandas.*:",
+    "ignore::DeprecationWarning:quantstats.*:",
 ]

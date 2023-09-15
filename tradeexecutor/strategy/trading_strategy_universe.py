@@ -20,12 +20,8 @@ from typing import List, Optional, Callable, Tuple, Set, Dict, Iterable, Collect
 import pandas as pd
 
 from eth_defi.uniswap_v2.utils import ZERO_ADDRESS
-from tradeexecutor.strategy.execution_context import ExecutionMode, ExecutionContext
 from tradingstrategy.lending import LendingReserveUniverse, LendingReserveDescription, LendingCandleType, LendingCandleUniverse
 from tradingstrategy.token import Token
-
-from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind
-from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse, UniverseModel, DataTooOld, UniverseOptions
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId
 from tradingstrategy.client import Client, BaseClient
@@ -37,6 +33,10 @@ from tradingstrategy.pair import DEXPair, PandasPairUniverse, resolve_pairs_base
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
 from tradingstrategy.utils.groupeduniverse import filter_for_pairs
+
+from tradeexecutor.strategy.execution_context import ExecutionMode, ExecutionContext
+from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind, AssetType
+from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse, UniverseModel, DataTooOld, UniverseOptions
 
 logger = logging.getLogger(__name__)
 
@@ -773,6 +773,60 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             internal_id=reserve.reserve_id,
             kind=TradingPairKind.credit_supply,
         )
+    
+    def get_shorting_pair(self, pair: TradingPairIdentifier) -> TradingPairIdentifier:
+        """Get the shorting pair from trading pair
+
+        This trading pair identifies the trades where we borrow asset from Aave against 
+        collateral.
+        
+        :param pair:
+            Trading pair of the asset to be shorted
+        
+        :return:
+            Short pair with ticker (vToken for borrowed asseet, aToken for reserve asset)
+        """
+
+        assert pair.kind == TradingPairKind.spot_market_hold
+
+        borrow_token = pair.base
+        collateral_token = pair.quote
+        assert collateral_token == self.get_reserve_asset()
+
+        # Will raise exception if not available
+        borrow_reserve = self.universe.lending_reserves.get_by_chain_and_address(
+            ChainId(borrow_token.chain_id),
+            borrow_token.address,
+        )
+
+        collateral_reserve = self.universe.lending_reserves.get_by_chain_and_address(
+            ChainId(collateral_token.chain_id),
+            collateral_token.address,
+        )
+
+        vtoken = translate_token(
+            borrow_reserve.get_vtoken(),
+            underlying=borrow_token,
+            type=AssetType.borrowed,
+        )
+        atoken = translate_token(
+            collateral_reserve.get_atoken(),
+            underlying=collateral_token,
+            type=AssetType.collateral,
+            # TODO: this is only the latest liquidation theshold, for historical data
+            # for backtesting we neend to plugin some other logic later
+            liquidation_threshold=collateral_reserve.additional_details.liquidation_threshold,
+        )
+
+        return TradingPairIdentifier(
+            vtoken,
+            atoken,
+            pool_address=borrow_token.address,
+            exchange_address=borrow_token.address,
+            internal_id=borrow_reserve.reserve_id,
+            kind=TradingPairKind.lending_protocol_short,
+            underlying_spot_pair=pair,
+        )
 
 
 class TradingStrategyUniverseModel(UniverseModel):
@@ -1010,9 +1064,11 @@ class DefaultTradingStrategyUniverseModel(TradingStrategyUniverseModel):
 
 
 def translate_token(
-        token: Token,
-        require_decimals=True,
-        underlying: AssetIdentifier | None = None,
+    token: Token,
+    require_decimals=True,
+    underlying: AssetIdentifier | None = None,
+    type: AssetType | None = AssetType.token,
+    liquidation_threshold: float | None = None,
 ) -> AssetIdentifier:
     """Translate Trading Strategy token data definition to trade executor.
 
@@ -1029,11 +1085,19 @@ def translate_token(
         Assume decimals is in place. If not then raise AssertionError.
         This check allows some early error catching on bad data.
 
+    :param type:
+        What kind of asset this is.
+
+    :param liquidation_theshold:
+        Aave liquidation threhold for this asset, only collateral type asset can have this.
     """
 
     if require_decimals:
         assert token.decimals, f"Bad token: {token}"
         assert token.decimals > 0, f"Bad token: {token}"
+
+    if liquidation_threshold:
+        assert type == AssetType.collateral, f"Only collateral tokens can have liquidation threshold, got {type}"
 
     return AssetIdentifier(
         token.chain_id.value,
@@ -1041,6 +1105,8 @@ def translate_token(
         token.symbol,
         token.decimals,
         underlying=underlying,
+        type=type,
+        liquidation_threshold=liquidation_threshold,
     )
 
 

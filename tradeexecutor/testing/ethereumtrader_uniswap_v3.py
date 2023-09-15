@@ -159,7 +159,7 @@ class UniswapV3TestTrader(EthereumTrader):
             reserve_token_address=reserve_asset.address,
         )
 
-        state.start_trades(datetime.datetime.utcnow(), trades)
+        state.start_execution_all(datetime.datetime.utcnow(), trades)
         routing_state = UniswapV3RoutingState(pair_universe, tx_builder)
         routing_model.execute_trades_internal(pair_universe, routing_state, trades)
         

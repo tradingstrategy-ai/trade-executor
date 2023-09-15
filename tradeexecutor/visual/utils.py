@@ -49,7 +49,10 @@ def export_trade_for_dataframe(p: Portfolio, t: TradeExecution) -> dict:
     label = []
 
     if t.is_failed():
-        label += [f"Failed trade"]
+        label += ["Failed trade"]
+        type = "failed"
+    elif t.is_repaired():
+        label += ["Repaired trade"]
         type = "failed"
     else:
         if t.is_sell():
@@ -87,8 +90,12 @@ def export_trade_for_dataframe(p: Portfolio, t: TradeExecution) -> dict:
             f"Mid-price: {t.planned_mid_price:.4f} {price_prefix}"
             if t.planned_mid_price
             else "",
-            f"Executed at price: {t.executed_price:.4f} {price_prefix}",
-            f"Estimated execution price: {t.planned_price:.4f} {price_prefix}",
+            f"Executed at price: {t.executed_price:.4f} {price_prefix}"
+            if t.executed_price
+            else "",
+            f"Estimated execution price: {t.planned_price:.4f} {price_prefix}"
+            if t.planned_price
+            else "",
             "",
         ]
 

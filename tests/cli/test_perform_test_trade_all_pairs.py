@@ -1,9 +1,6 @@
 """Perform a hot-wallet based test trade on all pairs in the trading universe."""
-import json
 import os
-import secrets
 import tempfile
-import logging
 
 from pathlib import Path
 from unittest.mock import patch
@@ -11,7 +8,7 @@ from unittest.mock import patch
 import pytest
 from typer.main import get_command
 
-from eth_defi.anvil import AnvilLaunch
+from eth_defi.provider.anvil import AnvilLaunch
 from eth_typing import HexAddress
 
 from eth_defi.hotwallet import HotWallet

@@ -18,6 +18,7 @@ from tradeexecutor.state.state import State
 from tradeexecutor.state.sync import BalanceEventRef
 from tradeexecutor.state.types import JSONHexAddress
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
+from tradeexecutor.strategy.pricing_model import PricingModel
 
 # Prototype sync method that is not applicable to the future production usage
 SyncMethodV0 = Callable[[Portfolio, datetime.datetime, List[AssetIdentifier]], List[ReserveUpdateEvent]]
@@ -136,12 +137,14 @@ class SyncModel(ABC):
             - :py:class:`tradeexecutor.ethereum.enzyme.tx.EnzymeTransactionBuilder`
         """
 
-    def sync_credit_supply(self,
-                           timestamp: datetime.datetime,
-                           state: State,
-                           universe: TradingStrategyUniverse,
-                           credit_positions: List[TradingPosition],
-                           ) -> List[BalanceUpdate]:
+    def sync_interests(
+            self,
+            timestamp: datetime.datetime,
+            state: State,
+            universe: TradingStrategyUniverse,
+            credit_positions: List[TradingPosition],
+            pricing_model: PricingModel,
+    ) -> List[BalanceUpdate]:
         """Update all credit supply positions.
 
         :param timestamp:
@@ -157,6 +160,9 @@ class SyncModel(ABC):
 
         :param credit_positions:
             Prefiltered list of credit positions to update.
+
+        :param pricing_model:
+            Used to re-value loans
 
         :return:
             All triggered balance update events

@@ -216,5 +216,5 @@ def test_run_inline_real_backtest(
         trade_routing=TradeRouting.pancakeswap_busd,
     )
 
-    assert len(debug_dump) == 214
+    assert len(debug_dump) == 215
 

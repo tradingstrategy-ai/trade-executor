@@ -588,7 +588,9 @@ def create_client(
         )
         client.initialise_mock_data()
 
-        if mod.trade_routing[0] == TradeRouting.user_supplied_routing_model:
+        client.initialise_mock_data()
+
+        if mod.trade_routing == TradeRouting.user_supplied_routing_model:
             routing_model = UniswapV2SimpleRoutingModel(
                 factory_router_map={
                     test_evm_uniswap_v2_factory: (test_evm_uniswap_v2_router, test_evm_uniswap_v2_init_code_hash)},

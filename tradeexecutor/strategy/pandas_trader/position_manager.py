@@ -7,21 +7,23 @@ import logging
 
 import pandas as pd
 
-from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
+from tradingstrategy.candle import CandleSampleUnavailable
+from tradingstrategy.pair import DEXPair
+from tradingstrategy.universe import Universe
+
+from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.position import TradingPosition, TriggerPriceUpdate
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeType, TradeExecution
-from tradeexecutor.state.types import USDollarAmount, Percent, USDollarPrice
+from tradeexecutor.state.types import USDollarAmount, Percent, LeverageMultiplier
 from tradeexecutor.strategy.pricing_model import PricingModel
-from tradingstrategy.candle import CandleSampleUnavailable
-from tradingstrategy.pair import DEXPair
-from tradingstrategy.universe import Universe
 from tradeexecutor.strategy.trading_strategy_universe import translate_trading_pair, TradingStrategyUniverse
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2SimpleRoutingModel
 from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_routing import UniswapV3SimpleRoutingModel
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingIgnoredModel
+from tradeexecutor.utils.leverage_calculations import LeverageEstimate
 
 
 logger = logging.getLogger(__name__)
@@ -205,6 +207,7 @@ class PositionManager:
         reserve_currency, reserve_price = state.portfolio.get_default_reserve_asset()
 
         self.reserve_currency = reserve_currency
+        self.reserve_price = reserve_price
 
     @property
     def pricing_model(self):
@@ -772,7 +775,7 @@ class PositionManager:
 
         """
 
-        assert position.is_long(), "Only long supported for now"
+        # assert position.is_long(), "Only long supported for now"
         assert position.is_open(), f"Tried to close already closed position {position}"
 
         quantity_left = position.get_available_trading_quantity()
@@ -800,6 +803,15 @@ class PositionManager:
                 trade_type = TradeType.rebalance
 
             return self.close_credit_supply_position(
+                position,
+                trade_type=trade_type,
+                notes=notes,
+            )
+        elif position.is_short():
+            if trade_type is None:
+                trade_type = TradeType.rebalance
+
+            return self.close_short_position(
                 position,
                 trade_type=trade_type,
                 notes=notes,
@@ -868,6 +880,8 @@ class PositionManager:
 
         mid_price =  self.get_pricing_model(position.pair).get_mid_price(self.timestamp, position.pair)
 
+        mid_price =  self.pricing_model.get_mid_price(self.timestamp, spot_pair)
+
         position.trigger_updates.append(TriggerPriceUpdate(
             timestamp=self.timestamp,
             stop_loss_before = position.stop_loss,
@@ -889,12 +903,11 @@ class PositionManager:
             List of trades that will open this credit position
         """
 
-        lending_pool_identifier = self.strategy_universe.get_credit_supply_pair()
-        state = self.state
+        lending_reserve_identifier = self.strategy_universe.get_credit_supply_pair()
 
-        credit_supply_position, trade, _ = state.supply_credit(
+        _, trade, _ = self.state.supply_credit(
             self.timestamp,
-            lending_pool_identifier,
+            lending_reserve_identifier,
             collateral_quantity=Decimal(amount),
             trade_type=TradeType.rebalance,
             reserve_currency=self.strategy_universe.get_reserve_asset(),
@@ -902,71 +915,180 @@ class PositionManager:
         )
 
         return [trade]
+    
+    def open_short(
+        self,
+        pair: Union[DEXPair, TradingPairIdentifier],
+        value: USDollarAmount,
+        *,
+        leverage: LeverageMultiplier = 1.0,
+        take_profit_pct: float | None = None,
+        stop_loss_pct: float | None = None,
+    ) -> list[TradeExecution]:
+        """Open a short position.
 
-    def get_pricing_model(self, pair: TradingPairIdentifier) -> PricingModel:
-        """Get the pricing model used by this strategy.
-        
+        NOTE: take_profit_pct and stop_loss_pct are more related to capital at risk
+        percentage than to the price. So this will likely be changed in the future.
+
         :param pair:
-            Trading pair for which we want to have the pricing model
+            Trading pair where we take the position
+
+        :param value:
+            How much cash reserves we allocate to open this position.
+
+            In US dollars.
+
+            For example to open 2x short where we allocate $1000
+            from our reserves, this value is $1000.
+
+        :param leverage:
+            Leverage level to use for the short position
+
+        :param take_profit_pct:
+            If set, set the position take profit relative to the current market price.
+            1.0 is the current market price.
+            If asset opening price is $1000, take_profit_pct=1.05
+            will buy back the asset when price reaches $950.
+
+        :param stop_loss_pct:
+            If set, set the position to trigger stop loss relative to the current market price.
+            1.0 is the current market price.
+            If asset opening price is $1000, stop_loss_pct=0.98
+            will buy back the asset when price reaches $1020.
+
+        :return:
+            List of trades that will open this credit position
         """
-        return get_pricing_model_for_pair(pair, self.pricing_models)       
 
-
-def get_pricing_model_for_pair(pair: TradingPairIdentifier | DEXPair, pricing_models: List[PricingModel], set_routing_hint: bool = True) -> PricingModel:
-    """Get the pricing model for a pair.
-    
-    :param pair:
-        Trading pair for which we want to have the pricing model
-
-    :param pricing_models:
-        List of pricing models to choose from
-        
-    :set_routing_hint:
-        Whether to set the routing hint for the pricing model. This is useful when we have multiple pricing models that could apply to the same pair, and we want to make sure that the correct pricing model is used for the pair.
-
-    :return:
-        Pricing model for the pair
-    """
-    if len(pricing_models) == 1:
-        return pricing_models[0]
-
-    locked = False
-    rm = None
-    routing_model = None
-    final_pricing_model = None
-
-    for pricing_model in pricing_models:
-
-        rm = pricing_model.routing_model
-
-
-        if hasattr(rm, "factory_router_map"):  # uniswap v2 like
-            keys = list(rm.factory_router_map.keys())
-            assert len(keys) == 1, "Only one factory router map supported for now"
-            factory_address = keys[0]
-        elif hasattr(rm, "address_map"):  # uniswap v3 like
-            factory_address = rm.address_map["factory"] 
+        if isinstance(pair, DEXPair):
+            executor_pair = translate_trading_pair(pair)
         else:
-            raise NotImplementedError("Routing model not supported")
+            executor_pair = pair
 
-        if factory_address.lower() == pair.exchange_address.lower() and rm.chain_id == pair.chain_id:
-            if locked == True:
-                raise LookupError("Multiple routing models for same exchange (on same chain) not supported")
+        shorting_pair = self.strategy_universe.get_shorting_pair(executor_pair)
 
-            routing_model = rm
-            final_pricing_model = pricing_model
-            locked = True
+        # Check that pair data looks good
+        assert shorting_pair.kind.is_shorting()
+        assert shorting_pair.base.underlying is not None, f"Lacks underlying asset: {shorting_pair.base}"
+        assert shorting_pair.quote.underlying is not None, f"Lacks underlying asset: {shorting_pair.quote}"
 
-    if not routing_model:
-        raise NotImplementedError("Unable to find routing_model for pair, make sure to add correct routing models for the pairs that you want to trade")
+        if type(value) == float:
+            value = Decimal(value)
 
-    if not isinstance(routing_model, (UniswapV2SimpleRoutingModel, UniswapV3SimpleRoutingModel, BacktestRoutingModel, BacktestRoutingIgnoredModel)):
-        raise NotImplementedError("Routing model not supported")
+        pricing_pair = shorting_pair.get_pricing_pair()  # should be effectively the same as executor_pair
+        price_structure = self.pricing_model.get_sell_price(self.timestamp, pricing_pair, value)
+        collateral_price = self.reserve_price
+        borrowed_asset_price = price_structure.price
+
+        estimation: LeverageEstimate = LeverageEstimate.open_short(
+            starting_reserve=value,
+            leverage=leverage,
+            borrowed_asset_price=borrowed_asset_price,
+            shorting_pair=shorting_pair,
+            fee=executor_pair.fee,
+        )
+
+        logger.info("Opening a short position at timetamp %s\n"
+                    "Shorting pair is %s\n"
+                    "Execution pair is %s\n"
+                    "Collateral amount: %s USD\n"
+                    "Borrow amount: %s USD (%s %s)\n"
+                    "Collateral asset price: %s %s/USD\n"
+                    "Borrowed asset price: %s %s/USD (assumed execution)\n",
+                    "Liquidation price: %s %s/USD\n",
+                    self.timestamp,
+                    shorting_pair,
+                    executor_pair,
+                    estimation.total_collateral_quantity,
+                    estimation.borrowed_value, estimation.total_borrowed_quantity, executor_pair.base.token_symbol,
+                    collateral_price, executor_pair.quote.token_symbol,
+                    borrowed_asset_price, executor_pair.base.token_symbol,
+                    estimation.liquidation_price, executor_pair.base.token_symbol,
+                    )
+
+        position, trade, _ = self.state.trade_short(
+            self.timestamp,
+            pair=shorting_pair,
+            borrowed_quantity=-estimation.total_borrowed_quantity,
+            collateral_quantity=value,
+            borrowed_asset_price=price_structure.price,
+            trade_type=TradeType.rebalance,
+            reserve_currency=self.reserve_currency,
+            collateral_asset_price=collateral_price,
+            planned_collateral_consumption=estimation.additional_collateral_quantity,  # This is amount how much aToken is leverated besides our starting collateral
+        )
+
+        # record liquidation price into the position
+        position.liquidation_price = estimation.liquidation_price
+
+        if take_profit_pct:
+            assert take_profit_pct > 1, f"Short position's take_profit_pct must be greater than 1, got {take_profit_pct}"
+            position.take_profit = price_structure.mid_price * (2 - take_profit_pct)
+
+        if stop_loss_pct is not None:
+            assert 0 < stop_loss_pct < 1, f"Short position's stop_loss_pct must be 0..1, got {stop_loss_pct}"
+
+            # calculate distance to liquidation price and make sure stoploss is far from that
+            mid_price = Decimal(price_structure.mid_price)
+            liquidation_distance = (estimation.liquidation_price - mid_price) / mid_price
+            assert 1 - stop_loss_pct < liquidation_distance, f"stop_loss_pct must be bigger than liquidation distance {1 - liquidation_distance:.4f}, got {stop_loss_pct}"
+
+            self.update_stop_loss(position, price_structure.mid_price * (2 - stop_loss_pct))
+
+        return [trade]
     
-    # Needed in tradeexecutor/state/portfolio.py::choose_valudation_method_and_revalue_position
-    if set_routing_hint:
-        pair.routing_hint = routing_model.routing_hint  
+    def close_short_position(
+        self,
+        position: TradingPosition,
+        quantity: float | Decimal | None = None,
+        notes: Optional[str] = None,
+        trade_type: TradeType = TradeType.rebalance,
+    ) -> List[TradeExecution]:
+        """Close a short position
 
-    assert final_pricing_model is not None, "Unable to find pricing model for pair"
+        :param position:
+            Position to close.
 
-    return final_pricing_model
+            Must be a short position.
+
+        :param quantity:
+            How much of the quantity we reduce.
+
+            If not given close the full position.
+
+        :return:
+            New trades to be executed
+        """
+
+        assert self.strategy_universe, "Make sure trading_strategy_engine_version = 0.3. Short does not work with old decide_trades()."
+        
+        # Check that pair data looks good
+        pair = position.pair
+        assert pair.kind.is_shorting()
+        assert pair.base.underlying is not None, f"Lacks underlying asset: {pair.base}"
+        assert pair.quote.underlying is not None, f"Lacks underlying asset: {pair.quote}"
+
+        if quantity is None:
+            quantity = position.get_quantity()
+
+        if type(quantity) == float:
+            # TODO: Snap the amount to the full position size if rounding errors
+            quantity = Decimal(quantity)
+
+        # TODO: Hardcoded USD exchange rate
+        reserve_asset = self.strategy_universe.get_reserve_asset()
+        price_structure = self.pricing_model.get_sell_price(self.timestamp, pair.underlying_spot_pair, 1)
+
+        position, trade, _ = self.state.trade_short(
+            self.timestamp,
+            closing=True,
+            pair=pair,
+            borrowed_asset_price=price_structure.price,
+            trade_type=trade_type,
+            reserve_currency=self.reserve_currency,
+            collateral_asset_price=1.0,
+            notes=notes,
+            position=position,
+        )
+
+        return [trade]

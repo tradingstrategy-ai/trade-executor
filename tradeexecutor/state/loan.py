@@ -7,14 +7,17 @@ import copy
 import math
 from _decimal import Decimal
 from dataclasses import dataclass
-from typing import TypeAlias, Tuple
+from typing import TypeAlias, Tuple, Literal
 
 from dataclasses_json import dataclass_json
 
-from tradeexecutor.state.identifier import AssetIdentifier, AssetWithTrackedValue, TradingPairIdentifier
+from tradeexecutor.state.identifier import (
+    AssetIdentifier, AssetWithTrackedValue, TradingPairIdentifier, 
+    TradingPairKind,
+)
 from tradeexecutor.state.interest import Interest
 from tradeexecutor.state.types import LeverageMultiplier, USDollarAmount
-from tradeexecutor.utils.accuracy import ZERO_DECIMAL
+from tradeexecutor.utils.accuracy import ZERO_DECIMAL, ensure_exact_zero
 
 #: Health Factor: hF=dC/d, if lower than 1, the account can be liquidated
 #:
@@ -73,10 +76,6 @@ class Loan:
     #:
     borrowed_interest: Interest | None = None
 
-    #: How much accrued interest we have moved to the cast reserves from this position.
-    #:
-    realised_interest: Decimal = ZERO_DECIMAL
-
     def __repr__(self):
         asset_symbol = self.borrowed.asset.token_symbol if self.borrowed else ""
         return f"<Loan, borrowed ${self.get_borrow_value()} {asset_symbol} for collateral ${self.get_collateral_value()}, at leverage {self.get_leverage()}>"
@@ -87,12 +86,28 @@ class Loan:
 
     def get_collateral_interest(self) -> USDollarAmount:
         """How much interest we have received on collateral."""
-        return float(self.collateral_interest.last_accrued_interest) * self.collateral.last_usd_price
+        return float(self.collateral_interest.get_remaining_interest()) * self.collateral.last_usd_price
 
     def get_collateral_value(self, include_interest=True) -> USDollarAmount:
+        """How much value the collateral for this loan has.
+
+        .. warning::
+
+            TODO: Does not account for repaid interest at this point.
+            Please use TradingPosition functions to get amounts with repaid interest.
+
+        """
         if include_interest:
             return self.collateral.get_usd_value() + self.get_collateral_interest()
         return self.collateral.get_usd_value()
+
+    def get_collateral_quantity(self) -> Decimal:
+        """Get abs number of atokens we have."""
+        return self.collateral_interest.last_token_amount
+
+    def get_borrowed_quantity(self) -> Decimal:
+        """Get abs number of atokens we have."""
+        return self.borrowed_interest.last_token_amount
 
     def get_borrow_value(self, include_interest=True) -> USDollarAmount:
         """Get the outstanding debt amount.
@@ -107,14 +122,22 @@ class Loan:
         return self.borrowed.get_usd_value()
 
     def get_borrow_interest(self) -> USDollarAmount:
-        """How much interest we have paid on borrows
+        """How much interest we have paid on borrows.
 
         :return:
             Always positive
         """
         if self.borrowed:
-            return float(self.borrowed_interest.last_accrued_interest) * self.borrowed.last_usd_price
+            return float(self.borrowed_interest.get_remaining_interest()) * self.borrowed.last_usd_price
         return 0
+
+    def get_borrowed_principal_and_interest_quantity(self) -> Decimal:
+        """Get how much borrow there is left to repay.
+
+        - Round to zero
+        """
+        total = self.borrowed.quantity + self.borrowed_interest.last_accrued_interest
+        return ensure_exact_zero(total)
 
     def get_net_interest(self) -> USDollarAmount:
         """How many dollars of interest we have accumulated.
@@ -132,7 +155,23 @@ class Loan:
             return self.get_collateral_interest()
 
     def get_net_asset_value(self, include_interest=True) -> USDollarAmount:
-        """What's the withdrawable amount of the position is closed."""
+        """What's the withdrawable amount of the position is closed.
+
+        .. warning ::
+
+            For closed position the behavior here is a bit weird.
+
+            The value reflects any reminder of interest that was paid
+            off when the position was closed. It is negative if borrowing costed
+            more than collateral interest gained.
+
+            This is later fixed in :py:meth:`TradingPosition.get_claimed_interest()`
+            and the position accounts the difference in the final trade that pays
+            principal + interest back.
+
+        :return:
+            The current net asset value or remaining interest that was paid off when the position was closed.
+        """
 
         if self.borrowed:
             # Margined trading
@@ -159,7 +198,8 @@ class Loan:
 
         If the health factor goes below 1, the liquidation of your collateral might be triggered.
         """
-        if self.borrowed is None or self.borrowed.quantity == 0:
+        if self.borrowed is None or self.get_borrowed_principal_and_interest_quantity() == 0:
+            # Already closed
             return math.inf
         return self.collateral.asset.liquidation_threshold * self.collateral.get_usd_value() / self.borrowed.get_usd_value()
 
@@ -190,7 +230,30 @@ class Loan:
 
         if not quantity:
             quantity = self.collateral_interest.last_accrued_interest
-        self.realised_interest += quantity
+
+        self.collateral_interest.claim_interest(quantity)
+
+        return quantity
+
+    def repay_interest(self, quantity: Decimal | None = None) -> Decimal:
+        """Repay interest for this position.
+
+        Pay any open interest on vToken position.
+
+        :param quantity:
+            How many vTokens worth of interest we pay.
+
+            If not given assume any remaining open interest.
+
+        :return:
+            Repaid interest.
+        """
+
+        if not quantity:
+            quantity = self.borrowed_interest.last_accrued_interest
+
+        self.borrowed_interest.repay_interest(quantity)
+
         return quantity
 
     def calculate_collateral_for_target_ltv(
@@ -266,54 +329,3 @@ class Loan:
                 f"Collateral {self.collateral.get_usd_value()} USD.\n"
                 f"Borrowed {self.borrowed.quantity} {self.borrowed.asset.token_symbol} {self.borrowed.get_usd_value()} USD.\n"
             )
-
-
-def calculate_sizes_for_leverage(
-    starting_reserve: USDollarAmount,
-    leverage: LeverageMultiplier,
-) -> Tuple[USDollarAmount, USDollarAmount]:
-    """Calculate the collateral and borrow loan size to hit the target leverage with a starting capital.
-
-    - When calculating the loan size using this function,
-      the loan net asset value will be the same as starting capital
-
-    - Because loan net asset value is same is deposited reserve,
-      portfolio total NAV stays intact
-
-    Notes:
-
-    .. code-block:: text
-
-            col / (col - borrow) = leverage
-            col = (col - borrow) * leverage
-            col = col * leverage - borrow * leverage
-            col - col * leverage = - borrow * levereage
-            col(1 - leverage) = - borrow * leverage
-            col = -(borrow * leverage) / (1 - leverage)
-
-            # Calculate leverage for 4x and 1000 USD collateral
-            col - borrow = 1000
-            col = 1000
-            leverage = 3
-
-            col / (col - borrow) = 3
-            3(col - borrow) = col
-            3borrow = 3col - col
-            borrow = col - col/3
-
-            col / (col - (col - borrow)) = leverage
-            col / borrow = leverage
-            borrow = leverage * 1000
-
-
-    :param starting_reserve:
-        Initial deposit in lending protocol
-
-    :return:
-        Tuple (borrow value, collateral value) in dollars
-    """
-
-    collateral_size = starting_reserve * leverage
-    borrow_size = (collateral_size - (collateral_size / leverage))
-    return borrow_size, collateral_size
-
