@@ -504,10 +504,12 @@ class StrategyRunner(abc.ABC):
             # Assing a new value for every existing position
             with self.timed_task_context_manager("revalue_portfolio"):
                 if not self.generic_routing_data:
-                    self.revalue_state(strategy_cycle_timestamp, state, valuation_model)
+                    assert valuation_model, "valuation_model not set"
+                    valuation_models = [valuation_model]
                 else:
                     valuation_models = [item["valuation_model"] for item in generic_execution_data]
-                    state.portfolio.revalue_positions_generic(strategy_cycle_timestamp, valuation_models)
+                
+                self.revalue_state(strategy_cycle_timestamp, state, valuation_models)
 
             # Log output
             if self.is_progress_report_needed():
