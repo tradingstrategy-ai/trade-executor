@@ -569,17 +569,15 @@ class ExecutionLoop:
 
         if len(state.portfolio.reserves) == 0:
             logger.info("The strategy has no reserves or deposits yet")
-
-        if not self.runner.generic_routing_data:
-            routing_state, pricing_model, valuation_method = self.runner.setup_routing(universe)
-        
-            with self.timed_task_context_manager("revalue_portfolio_statistics"):
-                logger.info("Updating position valuations")
-                self.runner.revalue_portfolio(clock, state, valuation_method)
-
-        else:
-            valuation_models = [item["valuation_model"] for item in self.runner.generic_execution_data]
-            state.portfolio.revalue_positions_generic(clock, valuation_models)
+        with self.timed_task_context_manager("revalue_portfolio_statistics"):
+            logger.info("Updating position valuations")
+            if not self.runner.generic_routing_data:
+                routing_state, pricing_model, valuation_method = self.runner.setup_routing(universe)
+                valuation_models = [valuation_method]
+            else:
+                valuation_models = [item["valuation_model"] for item in self.runner.generic_execution_data]
+            
+            self.runner.revalue_state(clock, state, valuation_models)
 
         with self.timed_task_context_manager("update_statistics"):
             logger.info("Updating position statistics after revaluation")

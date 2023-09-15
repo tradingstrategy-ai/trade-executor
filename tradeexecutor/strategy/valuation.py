@@ -56,6 +56,8 @@ class ValuationModel(ABC):
 
         - For leveraged positions, refresh both collateral and borrowed asset
         """
+        raise NotImplementedError("no longer used. Use revalue_portfolio instead")
+        
         if not position.is_credit_supply():
             logger.info("Re-valuing position %s", position)
             ts, price = self(ts, position)
@@ -63,38 +65,6 @@ class ValuationModel(ABC):
             # TODO: Query price for the collateral asset and set it
         else:
             logger.info("No updates to credit supply position pricing: %s", position)
-
-    def revalue_portfolio(
-        self,
-        ts: datetime.datetime,
-        portfolio: Portfolio,
-        revalue_frozen=True,
-    ):
-        """Revalue all open positions in the portfolio.
-
-        - Reserves are not revalued
-        - Credit supply positions are not revalued
-
-        :param ts:
-            Timestamp.
-
-            Strategy cycle time if valuation performed in pre-tick.
-            otherwise wall clock time.
-
-        :param valuation_model:
-            The model we use to reassign values to the positions
-
-        :param revalue_frozen:
-            Revalue frozen positions as well
-        """
-
-        positions = portfolio.get_open_and_frozen_positions() if revalue_frozen else portfolio.open_positions.values()
-
-        for p in positions:
-            try:
-                self.revalue_position(ts, p)
-            except Exception as e:
-                raise InvalidValuationOutput(f"Valuation model failed to output proper price: {self}: {p} -> {e}") from e
 
     @abstractmethod
     def __call__(self,
@@ -135,7 +105,7 @@ class ValuationModelFactory(Protocol):
 def revalue_state(
         state: State,
         ts: datetime.datetime,
-        valuation_model: ValuationModel | Callable):
+        valuation_models: list[ValuationModel | Callable],):
     """Revalue all open positions in the portfolio.
 
     - Write new valuations for all positions in the state
@@ -150,16 +120,85 @@ def revalue_state(
 
         For legacy tests, this is a callable.
     """
+    
+    if not isinstance(valuation_models, list):
+        valuation_models = [valuation_models]
 
-    if not isinstance(valuation_model, ValuationModel):
+    if len(valuation_models) == 1 and not isinstance(valuation_models[0], ValuationModel):
         # Legacy call only valuation.
         # Used in legacy tests only.
         for p in state.portfolio.get_open_and_frozen_positions():
             if not p.is_credit_supply():
-                ts, price = valuation_model(ts, p.pair)
+                ts, price = valuation_models[0](ts, p.pair)
                 p.revalue_base_asset(ts, price)
         return
+    
+    assert all(isinstance(v, ValuationModel) for v in valuation_models), "All valuation models must be ValuationModel"
 
-    valuation_model.revalue_portfolio(
+    revalue_portfolio(
         ts,
-        state.portfolio)
+        state.portfolio,
+        valuation_models,
+    )
+    
+
+def revalue_portfolio(
+        self,
+        ts: datetime.datetime,
+        portfolio: Portfolio,
+        valuation_models: list[ValuationModel],
+        revalue_frozen=True,
+    ):
+        """Revalue all open positions in the portfolio.
+
+        - Reserves are not revalued
+        - Credit supply positions are not revalued
+
+        :param ts:
+            Timestamp.
+
+            Strategy cycle time if valuation performed in pre-tick.
+            otherwise wall clock time.
+
+        :param valuation_model:
+            The model we use to reassign values to the positions
+
+        :param revalue_frozen:
+            Revalue frozen positions as well
+        """
+
+        positions = portfolio.get_open_and_frozen_positions() if revalue_frozen else portfolio.open_positions.values()
+
+        for p in positions:
+            try:
+                valuation_method = get_valuation_method(ts, valuation_models, p)
+                price = valuation_method(ts, p)
+                p.revalue_base_asset(ts, price)
+            except Exception as e:
+                raise InvalidValuationOutput(f"Valuation model failed to output proper price: {valuation_method}: {p} -> {e}") from e
+    
+
+def get_valuation_method(ts: datetime.datetime, valuation_methods: list[Callable], position: TradingPosition) -> ValuationModel:
+    """Choose the correct valuation method and revalue the position.
+    
+    :param ts:
+        Timestamp to use for valuation
+
+    :param valuation_methods:
+        List of valuation methods to choose from
+
+    :param position:
+        Position to revalue
+
+    :raise NotImplementedError:
+        If no valuation method is found for the position
+    """
+
+    assert position.pair.routing_hint, "Routing model not set for position pair"
+
+    for valuation_method in valuation_methods:
+        if valuation_method.pricing_model.routing_model.routing_hint == position.pair.routing_hint:
+            return valuation_method
+
+    raise NotImplementedError(f"Valuation model not found for {position.pair.routing_hint}")
+    
