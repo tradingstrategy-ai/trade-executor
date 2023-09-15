@@ -180,12 +180,17 @@ class StrategyRunner(abc.ABC):
                 ts = t.strategy_cycle_at
 
             # Credit supply pairs do not have pricing ATM
-            if not t.pair.is_credit_supply():
-
+            if t.pair.is_spot():
                 if t.is_buy():
                     t.post_execution_price_structure = pricing_model.get_buy_price(ts, t.pair, t.planned_reserve)
                 else:
                     t.post_execution_price_structure = pricing_model.get_sell_price(ts, t.pair, -t.planned_quantity)
+            elif t.pair.is_leverage() and t.is_short():
+                spot_pair = t.pair.underlying_spot_pair
+                if t.is_sell():
+                    t.post_execution_price_structure = pricing_model.get_buy_price(ts, spot_pair, t.planned_collateral_consumption)
+                else:
+                    t.post_execution_price_structure = pricing_model.get_sell_price(ts, spot_pair, t.planned_quantity)
 
     def on_clock(self,
                  clock: datetime.datetime,
@@ -548,7 +553,7 @@ class StrategyRunner(abc.ABC):
             # to generate trades to close stop loss positions
             position_manager = PositionManager(
                 clock,
-                universe.universe,
+                universe,
                 state,
                 stop_loss_pricing_model,
             )

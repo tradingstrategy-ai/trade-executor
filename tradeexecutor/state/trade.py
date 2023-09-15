@@ -194,7 +194,7 @@ class TradeExecution:
     #: when our routing model supports this.
     reserve_currency: AssetIdentifier
 
-    #: Planned amount of reserve currency that goes in out or out to collateral.
+    #: Planned amount of reserve currency that goes in or out to collateral.
     #:
     #: - Negative if collateral is released and added to the reserves
     #:

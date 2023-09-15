@@ -56,7 +56,7 @@ def check_position_triggers(
 
     - Take profit
 
-    What dots this do.
+    What does this do:
 
     - Get the real-time price of an assets that are currently hold in the portfolio
 
@@ -81,7 +81,7 @@ def check_position_triggers(
         The rounding error to zero
 
     :return:
-        List of triggered trades for all positions, like market sell on a stop loss triggered.s
+        List of triggered trades for all positions, like market sell on a stop loss triggered.
     """
 
     ts: datetime.datetime = position_manager.timestamp
@@ -98,7 +98,10 @@ def check_position_triggers(
             # This position does not have take profit/stop loss set
             continue
 
-        assert p.is_long(), "Stop loss supported only for long positions"
+        assert any([
+            p.is_long(),
+            p.is_short() and p.is_leverage(),
+        ]), "Trigger only supports long and leveraged short positions"
 
         size = p.get_quantity()
 
@@ -111,9 +114,13 @@ def check_position_triggers(
             logger.warning("Got bad size %s: %s", size, size.__class__)
             size = Decimal(size)
 
+        spot_pair = p.pair
+        if p.is_short():
+            spot_pair = spot_pair.underlying_spot_pair
+            
         try:
-            mid_price = pricing_model.get_mid_price(ts, p.pair)
-            expected_sell_price = pricing_model.get_sell_price(ts, p.pair, size)
+            mid_price = pricing_model.get_mid_price(ts, spot_pair)
+            expected_sell_price = pricing_model.get_sell_price(ts, spot_pair, abs(size))
         except CandleSampleUnavailable:
             # Backtest does not have price available for this timestamp,
             # because there has not been any trades.
@@ -128,6 +135,7 @@ def check_position_triggers(
 
         # Check for trailing stop loss updates
         if p.trailing_stop_loss_pct:
+            assert p.is_long(), "Traing stop loss only supported for long positions at the moment"
             new_stop_loss = mid_price * p.trailing_stop_loss_pct
             if not p.stop_loss or (new_stop_loss > p.stop_loss):
                 stop_loss_before = p.stop_loss
@@ -149,17 +157,29 @@ def check_position_triggers(
 
         # Check we need to close position for take profit
         if p.take_profit:
-            if mid_price >= p.take_profit:
-                trigger_type = TradeType.take_profit
-                trigger_price = p.take_profit
-                trades.extend(position_manager.close_position(p, TradeType.take_profit))
+            if p.is_long():
+                if mid_price >= p.take_profit:
+                    trigger_type = TradeType.take_profit
+                    trigger_price = p.take_profit
+                    trades.extend(position_manager.close_position(p, TradeType.take_profit))
+            else:
+                if mid_price <= p.take_profit:
+                    trigger_type = TradeType.take_profit
+                    trigger_price = p.take_profit
+                    trades.extend(position_manager.close_position(p, TradeType.take_profit))
 
         # Check we need to close position for stop loss
         if p.stop_loss:
-            if mid_price <= p.stop_loss:
-                trigger_type = TradeType.stop_loss
-                trigger_price = p.stop_loss
-                trades.extend(position_manager.close_position(p, TradeType.stop_loss))
+            if p.is_long():
+                if mid_price <= p.stop_loss:
+                    trigger_type = TradeType.stop_loss
+                    trigger_price = p.stop_loss
+                    trades.extend(position_manager.close_position(p, TradeType.stop_loss))
+            else:
+                if mid_price >= p.stop_loss:
+                    trigger_type = TradeType.stop_loss
+                    trigger_price = p.stop_loss
+                    trades.extend(position_manager.close_position(p, TradeType.stop_loss))
 
         if trigger_type:
             # We got triggered
