@@ -20,12 +20,13 @@ from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.strategy.sync_model import SyncMethodV0, SyncModel
 from tradeexecutor.strategy.run_state import RunState
 from tradeexecutor.strategy.output import output_positions, DISCORD_BREAK_CHAR, output_trades
-from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager, get_pricing_model_for_pair
+from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.strategy.pricing_model import PricingModelFactory, PricingModel
 from tradeexecutor.strategy.routing import RoutingModel, RoutingState
 from tradeexecutor.strategy.stop_loss import check_position_triggers
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
+from tradeexecutor.ethereum.generic_pricing_model import GenericPricingModel, get_pricing_model_for_pair
 
 from tradeexecutor.state.state import State
 from tradeexecutor.state.position import TradingPosition
@@ -518,11 +519,12 @@ class StrategyRunner(abc.ABC):
             # Run the strategy cycle
             with self.timed_task_context_manager("decide_trades"):
                 # TODO: use tradeexecutor version to decide
-                if not self.generic_routing_data:
-                    rebalance_trades = self.on_clock(strategy_cycle_timestamp, universe, [pricing_model], state, debug_details)
-                else:
+                if self.generic_routing_data:
+                    assert not pricing_model, "pricing_model should not be set"
                     pricing_models = [item["pricing_model"] for item in generic_execution_data]
-                    rebalance_trades = self.on_clock(strategy_cycle_timestamp, universe, pricing_models, state, debug_details)
+                    pricing_model = GenericPricingModel(pricing_models)
+                    
+                rebalance_trades = self.on_clock(strategy_cycle_timestamp, universe, pricing_model, state, debug_details)
 
                 assert type(rebalance_trades) == list
                 debug_details["rebalance_trades"] = rebalance_trades
@@ -692,7 +694,8 @@ class StrategyRunner(abc.ABC):
                     check_balances=False)
 
             return approved_trades
-        
+    
+    # TODO: assimilate into check_position_triggers
     def check_generic_position_triggers(self,
         clock: datetime.datetime,
         state: State,
@@ -729,13 +732,15 @@ class StrategyRunner(abc.ABC):
 
             # TODO: Sync the treasury here
 
+            generic_pricing_model = GenericPricingModel(stop_loss_pricing_models)
+            
             # We use PositionManager.close_position()
             # to generate trades to close stop loss positions
             position_manager = PositionManager(
                 clock,
                 universe.universe,
                 state,
-                stop_loss_pricing_models,
+                generic_pricing_model,
             )
 
             triggered_trades = check_position_triggers(position_manager)

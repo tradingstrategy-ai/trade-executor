@@ -31,7 +31,7 @@ from tradeexecutor.strategy.universe_model import UniverseOptions
 
 # Tell what trade execution engine version this strategy needs to use
 # NOTE: this setting has currently no effect
-TRADING_STRATEGY_ENGINE_VERSION = "0.2"
+TRADING_STRATEGY_ENGINE_VERSION = "0.4"
 BACKTEST_START=datetime.datetime(2022,1,1)
 BACKTEST_END=datetime.datetime(2023,1,1)
 INITIAL_CASH=5000
@@ -125,14 +125,14 @@ def decide_trades(
         timestamp: pd.Timestamp,
         strategy_universe: TradingStrategyUniverse,
         state: State,
-        pricing_models: PricingModel,
+        pricing_model: PricingModel,
         cycle_debug_data: Dict) -> List[TradeExecution]:
 
     universe = strategy_universe.universe
 
     # Create a position manager helper class that allows us easily to create
     # opening/closing trades for different positions
-    position_manager = PositionManager(timestamp, universe, state, pricing_models)
+    position_manager = PositionManager(timestamp, universe, state, pricing_model)
 
     alpha_model = AlphaModel(timestamp)
 

@@ -43,7 +43,7 @@ def decide_trades(
         timestamp: pd.Timestamp,
         strategy_universe: TradingStrategyUniverse,
         state: State,
-        pricing_models: list[PricingModel],
+        pricing_model: PricingModel,
         cycle_debug_data: Dict) -> List[TradeExecution]:
 
     universe = strategy_universe.universe
@@ -52,7 +52,7 @@ def decide_trades(
         # opening/closing trades for different positions
         # Create a position manager helper class that allows us easily to create
     # opening/closing trades for different positions
-    position_manager = PositionManager(timestamp, universe, state, pricing_models, default_slippage_tolerance=0.02)
+    position_manager = PositionManager(timestamp, universe, state, pricing_model, default_slippage_tolerance=0.02)
 
     # The array of trades we are going to perform in this cycle.
     trades = []
