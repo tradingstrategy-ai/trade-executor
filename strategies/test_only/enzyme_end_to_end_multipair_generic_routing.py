@@ -32,7 +32,7 @@ from tradeexecutor.strategy.trading_strategy_universe import translate_trading_p
 from tradeexecutor.testing.generic_mock_client import GenericMockClient
 
 
-trading_strategy_engine_version = "0.4"
+trading_strategy_engine_version = "0.3"
 trading_strategy_type = StrategyType.managed_positions
 trading_strategy_cycle = CycleDuration.cycle_1s
 reserve_currency = ReserveCurrency.usdc

@@ -31,7 +31,7 @@ from tradeexecutor.strategy.universe_model import UniverseOptions
 
 # Tell what trade execution engine version this strategy needs to use
 # NOTE: this setting has currently no effect
-TRADING_STRATEGY_ENGINE_VERSION = "0.4"
+TRADING_STRATEGY_ENGINE_VERSION = "0.3"
 BACKTEST_START=datetime.datetime(2022,1,1)
 BACKTEST_END=datetime.datetime(2023,1,1)
 INITIAL_CASH=5000
