@@ -1,7 +1,4 @@
 """This GenericPricingModel class follows the PricingModel interface, and is able to choose between different pricing models based on the trading pair. This is useful for when we want to use different pricing models for different pairs, such as Uniswap v2 for ETH/DAI and Uniswap v3 for ETH/USDC.
-
-TODO: check if this needs to be moved to a different file location (yep)
-TODO: check if docstrings need to be copied from the PricingModel interface
 """
 import datetime
 from decimal import Decimal, ROUND_DOWN

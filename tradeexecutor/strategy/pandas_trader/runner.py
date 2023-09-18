@@ -8,7 +8,7 @@ import logging
 import pandas as pd
 
 from tradeexecutor.cli.discord import post_logging_discord_image
-from tradeexecutor.ethereum.generic_pricing_model import GenericPricingModel
+from tradeexecutor.strategy.generic_pricing_model import GenericPricingModel
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.strategy_module import DecideTradesProtocol, DecideTradesProtocol2
 from tradeexecutor.strategy.sync_model import SyncModel

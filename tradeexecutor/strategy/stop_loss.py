@@ -10,7 +10,7 @@ from typing import List, Dict
 
 from tradingstrategy.candle import CandleSampleUnavailable
 
-from tradeexecutor.ethereum.generic_pricing_model import GenericPricingModel
+from tradeexecutor.strategy.generic_pricing_model import GenericPricingModel
 from tradeexecutor.state.position import TradingPosition, TriggerPriceUpdate, CLOSED_POSITION_DUST_EPSILON
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution, TradeType

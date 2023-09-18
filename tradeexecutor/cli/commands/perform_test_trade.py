@@ -22,7 +22,7 @@ from ...strategy.run_state import RunState
 from ...strategy.strategy_module import read_strategy_module, StrategyModuleInformation
 from ...strategy.trading_strategy_universe import TradingStrategyUniverseModel
 from ...strategy.universe_model import UniverseOptions
-from ...ethereum.generic_pricing_model import get_pricing_model_for_pair
+from ...strategy.generic_pricing_model import get_pricing_model_for_pair
 from ...utils.timer import timed_task
 from tradeexecutor.cli.commands import shared_options
 from tradeexecutor.testing.evm_uniswap_testing_data import deserialize_uniswap_test_data_list

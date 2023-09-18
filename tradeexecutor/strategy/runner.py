@@ -26,7 +26,7 @@ from tradeexecutor.strategy.routing import RoutingModel, RoutingState
 from tradeexecutor.strategy.stop_loss import check_position_triggers
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
-from tradeexecutor.ethereum.generic_pricing_model import GenericPricingModel, get_pricing_model_for_pair
+from tradeexecutor.strategy.generic_pricing_model import GenericPricingModel, get_pricing_model_for_pair
 
 from tradeexecutor.state.state import State
 from tradeexecutor.state.position import TradingPosition
@@ -695,7 +695,6 @@ class StrategyRunner(abc.ABC):
 
             return approved_trades
     
-    # TODO: assimilate into check_position_triggers
     def check_generic_position_triggers(self,
         clock: datetime.datetime,
         state: State,
@@ -759,8 +758,6 @@ class StrategyRunner(abc.ABC):
                         return
                     
                     assert isinstance(routing_state, RoutingState)
-
-
 
                     # get trades corresponding to routing model
                     for trade in approved_trades:

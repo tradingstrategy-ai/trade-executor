@@ -11,7 +11,7 @@ from tradingstrategy.candle import CandleSampleUnavailable
 from tradingstrategy.pair import DEXPair
 from tradingstrategy.universe import Universe
 
-from tradeexecutor.ethereum.generic_pricing_model import GenericPricingModel
+from tradeexecutor.strategy.generic_pricing_model import GenericPricingModel
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.position import TradingPosition, TriggerPriceUpdate
