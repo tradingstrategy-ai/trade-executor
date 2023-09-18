@@ -30,57 +30,20 @@ class GenericPricingModel(PricingModel):
         
     
     def get_buy_price(self, ts: datetime.datetime, pair: TradingPairIdentifier, reserve: Optional[Decimal]) -> TradePricing:
-        """Get live price for a buy on relevant exchange.
-        
-        :param ts:
-            Timestamp for which we want to get the price
-        
-        :param reserve:
-            The buy size in quote token e.g. in dollars
-            
-        :return:
-            Price for one reserve unit e.g. a dollar
-        """
         pricing_model = get_pricing_model_for_pair(pair, self.pricing_models)
         return pricing_model.get_buy_price(ts, pair, reserve)
     
     def get_sell_price(self, ts: datetime.datetime, pair: TradingPairIdentifier, quantity: Decimal) -> TradePricing:
-        """Get live price for a sell on relevant exchange.
-        
-        :param ts:
-            Timestamp for which we want to get the price
-        
-        :param reserve:
-            The buy size in quote token e.g. in dollars
-            
-        :return:
-            Price for one reserve unit e.g. a dollar
-        """
         pricing_model = get_pricing_model_for_pair(pair, self.pricing_models)
         return pricing_model.get_sell_price(ts, pair, quantity)
     
     def get_mid_price(self,
                       ts: datetime.datetime,
                       pair: TradingPairIdentifier) -> USDollarPrice:
-        """Get the mid-price for an asset.
-
-        Mid price is an non-trddeable price between the best ask
-        and the best pid.
-
-        :param ts:
-            Timestamp. Ignored for live pricing models.
-
-        :param pair:
-            Which trading pair price we query.
-
-        :return:
-            The mid price for the pair at a timestamp.
-        """
         pricing_model = get_pricing_model_for_pair(pair, self.pricing_models)
         return pricing_model.get_mid_price(ts, pair)
     
     def quantize_base_quantity(self, pair: TradingPairIdentifier, quantity: Decimal, rounding=ROUND_DOWN) -> Decimal:
-        """Convert any base token quantity to the native token units by its ERC-20 decimals."""
         pricing_model = get_pricing_model_for_pair(pair, self.pricing_models)
         return pricing_model.quantize_base_quantity(pair, quantity, rounding)
 
@@ -88,31 +51,6 @@ class GenericPricingModel(PricingModel):
                      ts: datetime.datetime,
                      pair: TradingPairIdentifier,
                      ) -> Optional[float]:
-        """Estimate the trading/LP fees for a trading pair.
-
-        This information can come either from the exchange itself (Uni v2 compatibles),
-        or from the trading pair (Uni v3).
-
-        The return value is used to fill the
-        fee values for any newly opened trades.
-
-        :param ts:
-            Timestamp of the trade. Note that currently
-            fees do not vary over time, but might
-            do so in the future.
-
-        :param pair:
-            Trading pair for which we want to have the fee.
-
-            Can be left empty if the underlying exchange is always
-            offering the same fee.
-
-        :return:
-            The estimated trading fee, expressed as %.
-
-            Returns None if the fee information is not available.
-            This can be different from zero fees.
-        """
         pricing_model = get_pricing_model_for_pair(pair, self.pricing_models)
         return pricing_model.get_pair_fee(ts, pair)
     
