@@ -8,6 +8,7 @@ import logging
 import pandas as pd
 
 from tradeexecutor.cli.discord import post_logging_discord_image
+from tradeexecutor.ethereum.generic_pricing_model import GenericPricingModel
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.strategy_module import DecideTradesProtocol, DecideTradesProtocol2
 from tradeexecutor.strategy.sync_model import SyncModel
@@ -47,13 +48,13 @@ class PandasTraderRunner(StrategyRunner):
     def on_clock(self,
                  clock: datetime.datetime,
                  strategy_universe: TradingStrategyUniverse,
-                 pricing_models: list[PricingModel],
+                 pricing_model: list[PricingModel],
                  state: State,
                  debug_details: dict,
             ) -> List[TradeExecution]:
         """Run one strategy tick."""
 
-        assert type(pricing_models) == list, "Used for testing to fix all code paths"
+        assert isinstance(pricing_model, PricingModel | GenericPricingModel), "Used for testing to fix all code paths"
 
         assert isinstance(strategy_universe, TradingStrategyUniverse)
         universe = strategy_universe.universe
@@ -66,33 +67,20 @@ class PandasTraderRunner(StrategyRunner):
 
         # Call the strategy script decide_trades()
         # callback
-        # alternative: if len(pricing_models) > 1:
-        if self.execution_context.is_version_greater_or_equal_than(0, 4, 0):
+        if self.execution_context.is_version_greater_or_equal_than(0, 3, 0):
             return self.decide_trades(
                 timestamp=pd_timestamp,
                 strategy_universe=strategy_universe,
                 state=state,
-                pricing_models=pricing_models,
-                cycle_debug_data=debug_details,
-            )
-        elif self.execution_context.is_version_greater_or_equal_than(0, 3, 0):
-            assert len(pricing_models) == 1, "Only one pricing model supported"
-            
-            return self.decide_trades(
-                timestamp=pd_timestamp,
-                strategy_universe=strategy_universe,
-                state=state,
-                pricing_model=pricing_models[0],
+                pricing_model=pricing_model,
                 cycle_debug_data=debug_details,
             )
         else:
-            assert len(pricing_models) == 1, "Only one pricing model supported"
-
             return self.decide_trades(
                 timestamp=pd_timestamp,
                 universe=universe,
                 state=state,
-                pricing_model=pricing_models[0],
+                pricing_model=pricing_model,
                 cycle_debug_data=debug_details,
             )
 

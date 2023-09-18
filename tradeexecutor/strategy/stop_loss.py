@@ -10,6 +10,7 @@ from typing import List, Dict
 
 from tradingstrategy.candle import CandleSampleUnavailable
 
+from tradeexecutor.ethereum.generic_pricing_model import GenericPricingModel
 from tradeexecutor.state.position import TradingPosition, TriggerPriceUpdate, CLOSED_POSITION_DUST_EPSILON
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution, TradeType
@@ -93,12 +94,9 @@ def check_position_triggers(
 
     for p in positions:
 
-        if len(position_manager.pricing_models) == 1:
-            pricing_model: PricingModel = position_manager.pricing_model
-        else:
-            pricing_model: PricingModel = position_manager.get_pricing_model(p.pair)
+        pricing_model = position_manager.pricing_model
         
-        assert isinstance(pricing_model, PricingModel), f"Got bad pricing model: {pricing_model} {type(pricing_model)}"
+        assert isinstance(pricing_model, PricingModel | GenericPricingModel), f"Got bad pricing model: {pricing_model} {type(pricing_model)}"
 
         if not p.has_trigger_conditions():
             # This position does not have take profit/stop loss set

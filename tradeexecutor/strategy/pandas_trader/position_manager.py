@@ -11,6 +11,7 @@ from tradingstrategy.candle import CandleSampleUnavailable
 from tradingstrategy.pair import DEXPair
 from tradingstrategy.universe import Universe
 
+from tradeexecutor.ethereum.generic_pricing_model import GenericPricingModel
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.position import TradingPosition, TriggerPriceUpdate
@@ -19,12 +20,7 @@ from tradeexecutor.state.trade import TradeType, TradeExecution
 from tradeexecutor.state.types import USDollarAmount, Percent, LeverageMultiplier
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.trading_strategy_universe import translate_trading_pair, TradingStrategyUniverse
-from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2SimpleRoutingModel
-from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_routing import UniswapV3SimpleRoutingModel
-from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel
-from tradeexecutor.backtest.backtest_routing import BacktestRoutingIgnoredModel
 from tradeexecutor.utils.leverage_calculations import LeverageEstimate
-
 
 logger = logging.getLogger(__name__)
 
@@ -142,7 +138,7 @@ class PositionManager:
                  timestamp: Union[datetime.datetime, pd.Timestamp],
                  universe: Universe | TradingStrategyUniverse,
                  state: State,
-                 pricing_models: list[PricingModel] | PricingModel,
+                 pricing_model: PricingModel,
                  default_slippage_tolerance=0.05,  # Slippage tole
                  ):
 
@@ -159,8 +155,8 @@ class PositionManager:
         :param state: 
             Current state of the trade execution
             
-        :param pricing_models:
-            The list of models to estimate prices for any trades
+        :param pricing_model:
+            The model to estimate prices for any trades
          
         :param default_slippage_tolerance: 
             Slippage tolerance parameter set for any trades if not overriden trade-by-trade basis.
@@ -171,12 +167,7 @@ class PositionManager:
             
         """
 
-        assert pricing_models, "pricing_models is needed in order to know buy/sell price of new positions"
-
-        if type(pricing_models) != list:
-            pricing_models = [pricing_models]
-
-        assert all(isinstance(p, PricingModel) for p in pricing_models), "pricing_models must be a list of PricingModel objects"
+        assert isinstance(pricing_model, PricingModel | GenericPricingModel), "pricing_model is needed in order to know buy/sell price of new positions"
 
         if isinstance(timestamp, pd.Timestamp):
             timestamp = timestamp.to_pydatetime().replace(tzinfo=None)
@@ -197,11 +188,7 @@ class PositionManager:
             raise RuntimeError(f"Does not know the universe: {universe}")
 
         self.state = state
-
-        if isinstance(pricing_models, PricingModel):
-            self.pricing_models = [pricing_models]
-
-        self.pricing_models = pricing_models
+        self.pricing_model = pricing_model
         self.default_slippage_tolerance = default_slippage_tolerance
 
         reserve_currency, reserve_price = state.portfolio.get_default_reserve_asset()
@@ -209,24 +196,9 @@ class PositionManager:
         self.reserve_currency = reserve_currency
         self.reserve_price = reserve_price
 
-    @property
-    def pricing_model(self):
-        if len(self.pricing_models) == 1:
-            return self.pricing_models[0]
-        else:
-            raise RuntimeError("Cannot use pricing_model property when there are multiple pricing models")
-
     def is_any_open(self) -> bool:
         """Do we have any positions open."""
         return len(self.state.portfolio.open_positions) > 0
-    
-    def is_any_open_for_pair(self, pair: TradingPairIdentifier) -> bool:
-        """Do we have any positions open for the given pair.
-        
-        :param pair: Trading pair to check for open positions
-        :return: True if there is any open position for the given pair
-        """
-        return len([position for position in self.state.portfolio.open_positions.values() if position.pair.pool_address == pair.pool_address]) > 0
 
     def get_current_position(self) -> TradingPosition:
         """Get the current single position.
@@ -331,7 +303,7 @@ class PositionManager:
             Returns None if the fee information is not available.
             This can be different from zero fees.
         """
-        return self.get_pricing_model(pair).get_pair_fee(self.timestamp, pair)
+        return self.pricing_model.get_pair_fee(self.timestamp, pair)
 
     def open_1x_long(self,
                      pair: Union[DEXPair, TradingPairIdentifier],
@@ -407,9 +379,7 @@ class PositionManager:
         if type(value) == float:
             value = Decimal(value)
 
-        pricing_model: PricingModel = self.get_pricing_model(executor_pair)
-
-        price_structure = pricing_model.get_buy_price(self.timestamp, executor_pair, value)
+        price_structure = self.pricing_model.get_buy_price(self.timestamp, executor_pair, value)
 
         assert type(price_structure.mid_price) == float
 
@@ -544,15 +514,15 @@ class PositionManager:
         try:
             if dollar_delta > 0:
                 dollar_delta = Decimal(dollar_delta) if isinstance(dollar_delta, float | int) else dollar_delta
-                price_structure = self.get_pricing_model(pair).get_buy_price(self.timestamp, pair, dollar_delta)
+                price_structure = self.pricing_model.get_buy_price(self.timestamp, pair, dollar_delta)
             else:
                 quantity_delta = Decimal(quantity_delta) if isinstance(quantity_delta, float | int) else quantity_delta
-                price_structure = self.get_pricing_model(pair).get_sell_price(self.timestamp, pair, abs(quantity_delta))
+                price_structure = self.pricing_model.get_sell_price(self.timestamp, pair, abs(quantity_delta))
 
         except CandleSampleUnavailable as e:
             # Backtesting cannot fetch price for an asset,
             # probably not enough data and the pair is trading early?
-            data_delay_tolerance = getattr(self.get_pricing_model(pair), "data_delay_tolerance", None)
+            data_delay_tolerance = getattr(self.pricing_model, "data_delay_tolerance", None)
             raise CandleSampleUnavailable(
                 f"Could not fetch price for {pair} at {self.timestamp}\n"
                 f"\n"
@@ -657,7 +627,7 @@ class PositionManager:
 
         pair = position.pair
         quantity = quantity_left
-        price_structure = self.get_pricing_model(pair).get_sell_price(self.timestamp, pair, quantity=quantity)
+        price_structure = self.pricing_model.get_sell_price(self.timestamp, pair, quantity=quantity)
 
         reserve_asset, reserve_price = self.state.portfolio.get_default_reserve_asset()
 
@@ -861,7 +831,7 @@ class PositionManager:
         """
         assert dollar_amount, f"Got dollar amount: {dollar_amount}"
         timestamp = self.timestamp
-        pricing_model = self.get_pricing_model(pair)
+        pricing_model = self.pricing_model
         price = pricing_model.get_mid_price(timestamp, pair)
         return float(dollar_amount / price)
 
@@ -879,18 +849,18 @@ class PositionManager:
         """
 
         spot_pair = position.pair
-        if position.pair.kind.is_leverage():
-            spot_pair = position.pair.underlying_spot_pair
+        if position.pair.kind in [TradingPairKind.lending_protocol_long, TradingPairKind.lending_protocol_short]:
+            spot_pair = spot_pair.underlying_spot_pair
 
-        mid_price =  self.get_pricing_model(spot_pair).get_mid_price(self.timestamp, spot_pair)
+        mid_price =  self.pricing_model.get_mid_price(self.timestamp, spot_pair)
 
         position.trigger_updates.append(TriggerPriceUpdate(
             timestamp=self.timestamp,
-            stop_loss_before=position.stop_loss,
-            stop_loss_after=stop_loss,
-            mid_price=mid_price,
-            take_profit_before=position.take_profit,
-            take_profit_after=position.take_profit,  # No changes to take profit
+            stop_loss_before = position.stop_loss,
+            stop_loss_after = stop_loss,
+            mid_price = mid_price,
+            take_profit_before = position.take_profit,
+            take_profit_after = position.take_profit,  # No changes to take profit
         ))
 
         position.stop_loss = stop_loss
@@ -1095,71 +1065,10 @@ class PositionManager:
 
         return [trade]
     
-    def get_pricing_model(self, pair: TradingPairIdentifier) -> PricingModel:
-        """Get the pricing model used by this strategy.
+    def is_any_open_for_pair(self, pair: TradingPairIdentifier) -> bool:
+        """Do we have any positions open for the given pair.
         
-        :param pair:
-            Trading pair for which we want to have the pricing model
+        :param pair: Trading pair to check for open positions
+        :return: True if there is any open position for the given pair
         """
-        return get_pricing_model_for_pair(pair, self.pricing_models)  
-
-def get_pricing_model_for_pair(pair: TradingPairIdentifier | DEXPair, pricing_models: List[PricingModel], set_routing_hint: bool = True) -> PricingModel:
-    """Get the pricing model for a pair.
-    
-    :param pair:
-        Trading pair for which we want to have the pricing model
-
-
-    :param pricing_models:
-        List of pricing models to choose from
-        
-    :set_routing_hint:
-        Whether to set the routing hint for the pricing model. This is useful when we have multiple pricing models that could apply to the same pair, and we want to make sure that the correct pricing model is used for the pair.
-
-
-    :return:
-        Pricing model for the pair
-    """
-    if len(pricing_models) == 1:
-        return pricing_models[0]
-
-
-    locked = False
-    rm = None
-    routing_model = None
-    final_pricing_model = None
-
-    for pricing_model in pricing_models:
-
-        rm = pricing_model.routing_model
-
-        if hasattr(rm, "factory_router_map"):  # uniswap v2 like
-            keys = list(rm.factory_router_map.keys())
-            assert len(keys) == 1, "Only one factory router map supported for now"
-            factory_address = keys[0]
-        elif hasattr(rm, "address_map"):  # uniswap v3 like
-            factory_address = rm.address_map["factory"] 
-        else:
-            raise NotImplementedError("Routing model not supported")
-
-        if factory_address.lower() == pair.exchange_address.lower() and rm.chain_id == pair.chain_id:
-            if locked == True:
-                raise LookupError("Multiple routing models for same exchange (on same chain) not supported")
-
-            routing_model = rm
-            final_pricing_model = pricing_model
-            locked = True
-
-    if not routing_model:
-        raise NotImplementedError("Unable to find routing_model for pair, make sure to add correct routing models for the pairs that you want to trade")
-
-    if not isinstance(routing_model, (UniswapV2SimpleRoutingModel, UniswapV3SimpleRoutingModel, BacktestRoutingModel, BacktestRoutingIgnoredModel)):
-        raise NotImplementedError("Routing model not supported")
-    
-    # Needed in tradeexecutor/state/portfolio.py::choose_valudation_method_and_revalue_position
-    if set_routing_hint:
-        pair.routing_hint = routing_model.routing_hint  
-
-    assert final_pricing_model is not None, "Unable to find pricing model for pair"
-
-    return final_pricing_model
+        return len([position for position in self.state.portfolio.open_positions.values() if position.pair.pool_address == pair.pool_address]) > 0
