@@ -48,7 +48,7 @@ class PandasTraderRunner(StrategyRunner):
     def on_clock(self,
                  clock: datetime.datetime,
                  strategy_universe: TradingStrategyUniverse,
-                 pricing_model: list[PricingModel],
+                 pricing_model: PricingModel | GenericPricingModel,
                  state: State,
                  debug_details: dict,
             ) -> List[TradeExecution]:
