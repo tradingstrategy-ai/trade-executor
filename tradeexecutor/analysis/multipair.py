@@ -130,7 +130,7 @@ def format_multipair_summary(
         "Stop losses": str,
         "Trailing stop losses": str,
         "Volatility": format_percent_2_decimals,
-        "Total returns": format_percent_2_decimals,
+        "Total return": format_percent_2_decimals,
     }
 
     for col, format_func in formatters.items():
@@ -151,9 +151,9 @@ def format_multipair_summary(
             ("Losses", None),
             ("Take profits", "https://tradingstrategy.ai/glossary/take-profit"),
             ("Stop losses", "https://tradingstrategy.ai/glossary/stop-loss"),
-            ("Trailing stop losses", "https://tradingstrategy.ai/glossary/trailing-stop-loss")
+            ("Trailing stop losses", "https://tradingstrategy.ai/glossary/trailing-stop-loss"),
             ("Volatility", None),
-            ("Total returns", "https://tradingstrategy.ai/glossary/aggregate-return")
+            ("Total return", "https://tradingstrategy.ai/glossary/aggregate-return")
         ]
 
         df.columns = [make_clickable(h, url) if url else h for h, url in headings]
