@@ -92,7 +92,7 @@ class Portfolio:
     def __repr__(self):
         reserve_asset, _ = self.get_default_reserve_asset()
         reserve_position = self.get_reserve_position(reserve_asset)
-        return f"<Portfolio with positions open:{len(self.open_positions)} frozen:{len(self.frozen_positions)} closed:{len(self.frozen_positions)} and reserve {reserve_position.quantity} {reserve_position.asset.token_symbol}>"
+        return f"<Portfolio with positions open:{len(self.open_positions)} frozen:{len(self.frozen_positions)} closed:{len(self.closed_positions)} and reserve {reserve_position.quantity} {reserve_position.asset.token_symbol}>"
 
     def is_empty(self):
         """This portfolio has no open or past trades or any reserves."""

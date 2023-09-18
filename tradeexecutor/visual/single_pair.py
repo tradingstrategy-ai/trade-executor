@@ -70,7 +70,8 @@ def get_position_hover_text(p: TradingPosition) -> str:
         ]
 
     text += [
-        f"Entry price: {first_trade.planned_mid_price:.2f} USD (mid price)",
+        # TODO: not sure why this failed for short position
+        # f"Entry price: {first_trade.planned_mid_price:.2f} USD (mid price)",
         f"Entry price: {first_trade.planned_price:.2f} USD (expected)",
         f"Entry price: {first_trade.executed_price:.2f} USD (executed)",
         f"Entry slippage: {entry_diff * 100:.4f} %",
