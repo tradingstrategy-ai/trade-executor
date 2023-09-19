@@ -98,6 +98,11 @@ def export_trade_for_dataframe(p: Portfolio, t: TradeExecution) -> dict:
             else "",
             "",
         ]
+        
+        label += [
+            
+            "",
+        ]
 
         if t.lp_fees_estimated is not None:
             if t.executed_price and t.planned_mid_price:
@@ -112,6 +117,9 @@ def export_trade_for_dataframe(p: Portfolio, t: TradeExecution) -> dict:
                     f"Fees paid: {format_fees_dollars(t.get_fees_paid())}",
                     f"Fees planned: {format_fees_dollars(t.lp_fees_estimated)}",
                 ]
+        
+        if t.cost_of_gas:
+            label += ["Gas fee: {:.4f}".format(t.cost_of_gas)]
 
     # See Plotly Scatter usage https://stackoverflow.com/a/61349739/315168
     return {
