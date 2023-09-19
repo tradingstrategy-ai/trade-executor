@@ -309,6 +309,7 @@ def test_backtest_open_and_close_short_synthetic_data(
     open_trade = position.get_first_trade()
     assert open_trade.opened_at == datetime.datetime(2023, 1, 1)
     assert open_trade.planned_price == pytest.approx(1794.6)  # ETH opening value
+    assert open_trade.planned_mid_price == pytest.approx(1800.0)  # ETH opening mid price
     assert open_trade.get_planned_value() == 10000
     assert float(open_trade.planned_quantity) == pytest.approx(-5.572272372673576)
 
