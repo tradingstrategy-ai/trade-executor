@@ -5,6 +5,7 @@ import logging
 import sys
 from typing import Optional, cast
 
+from eth_defi.provider.broken_provider import get_block_tip_latency
 from typer import Option
 
 from eth_defi.chainlink.round_data import fetch_chainlink_round_data
@@ -81,7 +82,7 @@ def enzyme_asset_list(
     start_block = deployment_info["deployed_at"]
 
     if not end_block:
-        end_block = web3.eth.block_number
+        end_block = max(1, web3.eth.block_number - get_block_tip_latency(web3))
 
     # Set up multithreaded Polygon event reader.
     # Print progress to the console how many blocks there are left to read.

@@ -7,6 +7,7 @@ from _decimal import Decimal
 from functools import partial
 from typing import cast, List, Optional, Tuple, Iterable
 
+from eth_defi.provider.broken_provider import get_block_tip_latency
 from web3 import Web3, HTTPProvider
 
 from eth_defi.chain import fetch_block_timestamp, has_graphql_support
@@ -496,9 +497,11 @@ class EnzymeVaultSyncModel(SyncModel):
         else:
             start_block = sync.deployment.block_number
 
-        end_block = web3.eth.block_number
+        web3 = self.web3
+        latency = get_block_tip_latency(web3)
+        end_block = max(1, web3.eth.block_number - latency)
 
-        logger.info(f"Starting sync for vault %s, comptroller %s, looking block range {start_block:,} - {end_block:,}", self.vault.address, self.vault.comptroller.address)
+        logger.info(f"Starting sync for vault %s, comptroller %s, looking block range {start_block:,} - {end_block:,}, block tip latency is %d", self.vault.address, self.vault.comptroller.address, latency)
 
         reader, broken_quicknode = self.create_event_reader()
 

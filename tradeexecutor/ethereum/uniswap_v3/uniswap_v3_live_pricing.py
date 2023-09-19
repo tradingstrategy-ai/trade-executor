@@ -8,6 +8,7 @@ import datetime
 from decimal import Decimal
 from typing import Optional, Dict
 
+from eth_defi.provider.broken_provider import get_block_tip_latency
 from web3 import Web3
 
 from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_execution import UniswapV3ExecutionModel
@@ -134,7 +135,8 @@ class UniswapV3LivePricing(EthereumPricingModel):
             fees = [target_pair.fee]
             total_fee_pct = 1 - (1-fees[0])
 
-            block_number = self.web3.eth.block_number
+            web3 = self.web3
+            block_number = max(1, web3.eth.block_number - get_block_tip_latency(web3))
 
             received_raw = estimate_sell_received_amount(
                 uniswap=self.get_uniswap(target_pair),
@@ -238,7 +240,8 @@ class UniswapV3LivePricing(EthereumPricingModel):
 
         else:
 
-            block_number = self.web3.eth.block_number
+            web3 = self.web3
+            block_number = max(1, web3.eth.block_number - get_block_tip_latency(web3))
 
             reserve_raw = target_pair.quote.convert_to_raw_amount(reserve)
             self.check_supported_quote_token(pair)
