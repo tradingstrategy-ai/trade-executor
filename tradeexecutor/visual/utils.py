@@ -98,7 +98,7 @@ def export_trade_for_dataframe(p: Portfolio, t: TradeExecution) -> dict:
             else "",
             "",
         ]
-        
+
         if t.lp_fees_estimated is not None:
             if t.executed_price and t.planned_mid_price:
                 realised_fees = abs(1 - t.planned_mid_price / t.executed_price)
