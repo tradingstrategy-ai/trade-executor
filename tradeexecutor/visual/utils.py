@@ -43,12 +43,7 @@ def export_trade_for_dataframe(p: Portfolio, t: TradeExecution) -> dict:
     """
 
     position = p.get_position_by_id(t.position_id)
-
-    if t.is_short():
-        base_token_symbol = t.pair.base.underlying.token_symbol
-    else:
-        base_token_symbol = t.pair.base.token_symbol
-
+    base_token_symbol = position.pair.get_pricing_pair().base.token_symbol
     price_prefix = f"{base_token_symbol} / USD"
 
     label = []
@@ -151,12 +146,8 @@ def export_trades_as_dataframe(
     data = []
 
     for t in portfolio.get_all_trades():
-        if pair_id is not None:
-            if t.is_short():
-                if t.pair.underlying_spot_pair.internal_id != pair_id:
-                    continue
-            elif t.pair.internal_id != pair_id:
-                continue
+        if pair_id is not None and t.pair.get_pricing_pair().internal_id != pair_id:
+            continue
 
         # Crop
         if start or end:
@@ -289,14 +280,12 @@ def get_all_positions(state: State, pair_id):
     """Get all positions for a given pair"""
     assert type(pair_id) == int
 
-    positions = []
-    for p in state.portfolio.get_all_positions():
-        if p.is_long():
-            if p.pair.internal_id == pair_id:
-                positions.append(p)
-        else:
-            if p.pair.underlying_spot_pair.internal_id == pair_id:
-                positions.append(p)
+    positions = [
+        p 
+        for p in state.portfolio.get_all_positions() 
+        if p.pair.get_pricing_pair().internal_id == pair_id
+    ]
+
     return positions
 
 

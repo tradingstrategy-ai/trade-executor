@@ -846,10 +846,7 @@ def expand_timeline(
     def expander(row):
         position: TradingPosition = row["position"]
         # timestamp = row.name  # ???
-        if position.is_short():
-            pair_id = position.pair.underlying_spot_pair.internal_id
-        else:
-            pair_id = position.pair.internal_id
+        pair_id = position.pair.get_pricing_pair().internal_id
         pair_info = pair_universe.get_pair_by_id(pair_id)
         exchange = exchange_map.get(pair_info.exchange_id)
         if not exchange:
