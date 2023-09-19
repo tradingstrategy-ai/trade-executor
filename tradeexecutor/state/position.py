@@ -1210,10 +1210,10 @@ class TradingPosition(GenericPosition):
         :return:
             Dollar value of the risked capital
         """
-        assert self.is_long(), "Only long positions supported"
+        # assert self.is_long(), "Only long positions supported"
         assert self.stop_loss, f"Stop loss price must be set to calculate the maximum risk"
         # Calculate how much value we can lose
-        price_diff = ( self.get_price_at_open() - self.stop_loss)
+        price_diff = abs(self.get_price_at_open() - self.stop_loss)
         risked_value = price_diff * float(self.get_quantity_at_open())
         return risked_value
 

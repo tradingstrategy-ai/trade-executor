@@ -43,8 +43,8 @@ def export_trade_for_dataframe(p: Portfolio, t: TradeExecution) -> dict:
     """
 
     position = p.get_position_by_id(t.position_id)
-
-    price_prefix = f"{t.pair.base.token_symbol} / USD"
+    base_token_symbol = position.pair.get_pricing_pair().base.token_symbol
+    price_prefix = f"{base_token_symbol} / USD"
 
     label = []
 
@@ -58,31 +58,31 @@ def export_trade_for_dataframe(p: Portfolio, t: TradeExecution) -> dict:
         if t.is_sell():
             if t.is_stop_loss():
                 label += [
-                    f"Stop loss {t.pair.base.token_symbol}",
+                    f"Stop loss {base_token_symbol}",
                     "",
                     f"Trigger was at {position.stop_loss:.4f} {price_prefix}",
                 ]
                 type = "stop-loss"
             else:
-                label += [f"Sell {t.pair.base.token_symbol}"]
+                label += [f"Sell {base_token_symbol}"]
                 type = "sell"
         else:
             if t.is_take_profit():
                 type = "take-profit"
                 label += [
-                    f"Take profit {t.pair.base.token_symbol}",
+                    f"Take profit {base_token_symbol}",
                     "",
                     "Trigger was at {position.take_profit:.4f} {price_prefix}",
                 ]
             else:
                 type = "buy"
-                label += [f"Buy {t.pair.base.token_symbol}"]
+                label += [f"Buy {base_token_symbol}"]
 
         label += [
             "",
             f"Executed at: {t.executed_at}",
             f"Value: {t.get_value():.4f} USD",
-            f"Quantity: {abs(t.get_position_quantity()):.6f} {t.pair.base.token_symbol}",
+            f"Quantity: {abs(t.get_position_quantity()):.6f} {base_token_symbol}",
             "",
         ]
 
@@ -146,7 +146,7 @@ def export_trades_as_dataframe(
     data = []
 
     for t in portfolio.get_all_trades():
-        if pair_id is not None and t.pair.internal_id != pair_id:
+        if pair_id is not None and t.pair.get_pricing_pair().internal_id != pair_id:
             continue
 
         # Crop
@@ -279,9 +279,13 @@ def visualise_trades(
 def get_all_positions(state: State, pair_id):
     """Get all positions for a given pair"""
     assert type(pair_id) == int
+
     positions = [
-        p for p in state.portfolio.get_all_positions() if p.pair.internal_id == pair_id
+        p 
+        for p in state.portfolio.get_all_positions() 
+        if p.pair.get_pricing_pair().internal_id == pair_id
     ]
+
     return positions
 
 
