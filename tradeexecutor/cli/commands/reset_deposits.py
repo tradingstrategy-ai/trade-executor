@@ -1,4 +1,5 @@
-"""Reinitialise a strategy state.
+
+"""Reset account balances.
 
 """
 import os
@@ -18,7 +19,7 @@ from . import shared_options
 
 
 @app.command()
-def reinit(
+def reset_deposits(
     id: str = shared_options.id,
     name: str = shared_options.name,
 
@@ -39,15 +40,11 @@ def reinit(
     json_rpc_anvil: Optional[str] = shared_options.json_rpc_anvil,
 
 ):
-    """Reinitialise a strategy state.
+    """Reset account balances.
 
-    Deletes all the state history of a state and starts tracking the strategy again.
-
-    This command will start the internal ledger accounting from the scratch.
-    All strategy live execution history is lost.
+    Resets account balances from on-chain data.
+    Does not lose trade history, but lose any unprocessed deposit and redemption events.
     """
-
-    global logger
 
     id = prepare_executor_id(id, strategy_file)
 
@@ -100,25 +97,14 @@ def reinit(
             start_block = vault_deployment_block_number
             logger.info("  Vault deployment block number is %d", start_block)
 
-    if not state_file:
-        state_file = f"state/{id}.json"
-
-    store = backup_state(id, state_file)
-
-    old_state = store.load()
-    name = old_state.name
-
-    os.remove(store.path)
-
-    state = store.create(name)
-
-    logger.info("Resetting initial strategy chain state: %s", name)
+    logger.info("Syncing initial strategy chain state: %s", name)
     logger.info(f"Vault deployment block number hint is {start_block or 0:,}.")
 
-    assert isinstance(sync_model, EnzymeVaultSyncModel), f"reinit currently only supports EnzymeVaultSyncModel, got {sync_model}"
+    store = backup_state(id, state_file)
+    state = store.load()
 
     # Perform reconstruction of state
-    sync_model.sync_reinit(state, start_block=start_block)
+    sync_model.sync_reinit(state, start_block=start_block, allow_override=True)
     store.sync(state)
     web3config.close()
 

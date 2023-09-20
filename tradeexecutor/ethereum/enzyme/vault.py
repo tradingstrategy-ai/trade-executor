@@ -339,7 +339,7 @@ class EnzymeVaultSyncModel(SyncModel):
             case _:
                 raise RuntimeError(f"Unsupported event: {event}")
 
-    def sync_initial(self, state: State, **kwargs):
+    def sync_initial(self, state: State, allow_override=False, **kwargs):
         """Get the deployment event by scanning the whole chain from the start.
 
         Updates `state.sync.deployment` structure.
@@ -357,7 +357,10 @@ class EnzymeVaultSyncModel(SyncModel):
 
         """
         sync = state.sync
-        assert not sync.is_initialised(), "Initialisation twice is not allowed"
+
+
+        if not allow_override:
+            assert not sync.is_initialised(), "Initialisation twice is not allowed"
 
         web3 = self.web3
         deployment = state.sync.deployment
@@ -562,7 +565,7 @@ class EnzymeVaultSyncModel(SyncModel):
 
         return events
 
-    def sync_reinit(self, state: State, **kwargs):
+    def sync_reinit(self, state: State, allow_override=False, **kwargs):
         """Reinitiliase the vault.
 
         Fixes broken accounting. Only needs to be used if internal state and blockchain
@@ -585,6 +588,9 @@ class EnzymeVaultSyncModel(SyncModel):
         :param state:
             Empty state
 
+        :param allow_override:
+            Allow init twice.
+
         :param kwargs:
             Initial sync hints.
 
@@ -592,7 +598,7 @@ class EnzymeVaultSyncModel(SyncModel):
         """
 
         # First set the vault creation date etc.
-        self.sync_initial(state, **kwargs)
+        self.sync_initial(state, allow_override=allow_override, **kwargs)
 
         # Then proceed to construct the balacnes from the EVM state
         web3 = self.web3

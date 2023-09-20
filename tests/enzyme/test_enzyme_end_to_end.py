@@ -457,3 +457,55 @@ def test_enzyme_check_accounts(
         with pytest.raises(SystemExit) as e:
             cli.main(args=["check-accounts"])
         assert e.value.code == 1
+
+
+def test_enzyme_live_trading_reset_deposits(
+    environment: dict,
+    state_file: Path,
+    vault,
+    deployer,
+    usdc,
+):
+    """Reinitialise position balances from on-chain.
+
+    """
+
+    if os.path.exists("/tmp/test_enzyme_end_to_end.reinit-backup-1.json"):
+        os.remove("/tmp/test_enzyme_end_to_end.reinit-backup-1.json")
+
+    result = run_init(environment)
+    assert result.exit_code == 0
+
+    assert os.path.exists("/tmp/test_enzyme_end_to_end.json")
+
+    cli = get_command(app)
+
+    # Buy and redeem some tokens
+
+    web3 = vault.web3
+    usdc.functions.approve(vault.comptroller.address, 500 * 10**6).transact({"from": deployer})
+    vault.comptroller.functions.buyShares(500 * 10**6, 1).transact({"from": deployer})
+
+    tx_hash = vault.comptroller.functions.redeemSharesInKind(deployer, 250 * 10**18, [], []).transact({"from": deployer})
+    assert_transaction_success_with_explanation(web3, tx_hash)
+
+    with patch.dict(os.environ, environment, clear=True):
+        with pytest.raises(SystemExit) as e:
+            cli.main(args=["reset-deposits"])
+        assert e.value.code == 0
+
+    assert os.path.exists("/tmp/test_enzyme_end_to_end.reinit-backup-1.json")
+
+    # See that the reinitialised state looks correct
+    with state_file.open("rt") as inp:
+        state: State = State.from_json(inp.read())
+        reserve_position = state.portfolio.get_default_reserve_position()
+        assert reserve_position.quantity == 250
+
+        treasury = state.sync.treasury
+        deployment = state.sync.deployment
+        assert deployment.initialised_at
+        assert treasury.last_block_scanned > 1
+        assert treasury.last_updated_at
+        assert len(treasury.balance_update_refs) == 1
+        assert len(reserve_position.balance_updates) == 1
