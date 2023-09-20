@@ -4,6 +4,7 @@ import os
 import secrets
 import tempfile
 import logging
+from _decimal import Decimal
 
 from pathlib import Path
 from unittest.mock import patch
@@ -473,24 +474,36 @@ def test_enzyme_live_trading_reset_deposits(
     if os.path.exists("/tmp/test_enzyme_end_to_end.reinit-backup-1.json"):
         os.remove("/tmp/test_enzyme_end_to_end.reinit-backup-1.json")
 
-    result = run_init(environment)
-    assert result.exit_code == 0
 
-    assert os.path.exists("/tmp/test_enzyme_end_to_end.json")
-
-    cli = get_command(app)
-
-    # Buy and redeem some tokens
-
+    # Buy and redeem some tokens in order to mess up the sync queue
     web3 = vault.web3
     usdc.functions.approve(vault.comptroller.address, 500 * 10**6).transact({"from": deployer})
     vault.comptroller.functions.buyShares(500 * 10**6, 1).transact({"from": deployer})
 
+    result = run_init(environment)
+    assert result.exit_code == 0
+
+    cli = get_command(app)
+    with patch.dict(os.environ, environment, clear=True):
+        with pytest.raises(SystemExit) as e:
+            cli.main(args=["start"])
+
+        assert e.value.code == 0
+
+    # See that the initial deposit looks correct
+    with state_file.open("rt") as inp:
+        state: State = State.from_json(inp.read())
+        reserve_position = state.portfolio.get_default_reserve_position()
+        assert reserve_position.quantity == pytest.approx(Decimal('449.7304715999999998521161615'))
+
+    # Mess up by doing unsynced redemption
     tx_hash = vault.comptroller.functions.redeemSharesInKind(deployer, 250 * 10**18, [], []).transact({"from": deployer})
     assert_transaction_success_with_explanation(web3, tx_hash)
 
+    # Reset deposits from the on-chain state
     with patch.dict(os.environ, environment, clear=True):
         with pytest.raises(SystemExit) as e:
+            cli = get_command(app)
             cli.main(args=["reset-deposits"])
         assert e.value.code == 0
 
@@ -509,3 +522,11 @@ def test_enzyme_live_trading_reset_deposits(
         assert treasury.last_updated_at
         assert len(treasury.balance_update_refs) == 1
         assert len(reserve_position.balance_updates) == 1
+
+    # Run strategy for few cycles to see it still starts after reset-deposits
+    cli = get_command(app)
+    with patch.dict(os.environ, environment, clear=True):
+        with pytest.raises(SystemExit) as e:
+            cli.main(args=["start"])
+
+        assert e.value.code == 0
