@@ -302,6 +302,9 @@ def apply_accounting_correction(
     if isinstance(position, TradingPosition):
         position_type = BalanceUpdatePositionType.open_position
         position_id = correction.position.position_id
+
+        assert position.is_spot_market(), f"Correction not yet implemented for leveraged positions"
+
     elif isinstance(position, ReservePosition):
         position_type = BalanceUpdatePositionType.reserve
         position_id = None
@@ -313,6 +316,7 @@ def apply_accounting_correction(
         )
     else:
         raise NotImplementedError()
+
 
     notes = f"Accounting correction based on the actual on-chain balances.\n" \
         f"The internal ledger balance was  {correction.expected_amount} {asset.token_symbol}\n" \
