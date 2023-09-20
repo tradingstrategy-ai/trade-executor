@@ -4828,24 +4828,25 @@ testing-integration = ["build[virtualenv]", "filelock (>=3.4.0)", "jaraco.envs (
 
 [[package]]
 name = "setuptools-scm"
-version = "7.1.0"
+version = "8.0.0"
 description = "the blessed package to manage your versions by scm tags"
 optional = false
-python-versions = ">=3.7"
+python-versions = ">=3.8"
 files = [
-    {file = "setuptools_scm-7.1.0-py3-none-any.whl", hash = "sha256:73988b6d848709e2af142aa48c986ea29592bbcfca5375678064708205253d8e"},
-    {file = "setuptools_scm-7.1.0.tar.gz", hash = "sha256:6c508345a771aad7d56ebff0e70628bf2b0ec7573762be9960214730de278f27"},
+    {file = "setuptools-scm-8.0.0.tar.gz", hash = "sha256:40d5508fddd34e2ca6e44eefc0148ff76c80a66560c453c1eff9d5a6fc99c8f8"},
+    {file = "setuptools_scm-8.0.0-py3-none-any.whl", hash = "sha256:f6b9d6deb0f006681d4454bf20c950d333362ade49f7219e75ee75510ac35cf1"},
 ]
 
 [package.dependencies]
-packaging = ">=20.0"
+packaging = ">=20"
 setuptools = "*"
-tomli = {version = ">=1.0.0", markers = "python_version < \"3.11\""}
-typing-extensions = "*"
+tomli = {version = ">=1", markers = "python_version < \"3.11\""}
+typing-extensions = {version = "*", markers = "python_version < \"3.11\""}
 
 [package.extras]
-test = ["pytest (>=6.2)", "virtualenv (>20)"]
-toml = ["setuptools (>=42)"]
+docs = ["entangled-cli[rich]", "mkdocs", "mkdocs-entangled-plugin", "mkdocs-material", "mkdocstrings[python]", "pygments"]
+rich = ["rich"]
+test = ["pytest", "rich", "virtualenv (>20)"]
 
 [[package]]
 name = "sigfig"
@@ -5487,13 +5488,13 @@ tester = ["eth-tester[py-evm] (==v0.8.0-b.3)", "py-geth (>=3.11.0)"]
 
 [[package]]
 name = "web3-ethereum-defi"
-version = "0.22.10"
+version = "0.22.11"
 description = "Python library for Uniswap, Aave, ChainLink, Enzyme and other protocols on BNB Chain, Polygon, Ethereum and other blockchains"
 optional = false
 python-versions = ">=3.10,<3.11"
 files = [
-    {file = "web3_ethereum_defi-0.22.10-py3-none-any.whl", hash = "sha256:7e18c4d1fcc63108f493fc3525a43bdd4a486c810bace1f93a60283a9c586545"},
-    {file = "web3_ethereum_defi-0.22.10.tar.gz", hash = "sha256:e143ca7eab818c63b595206b2bbf6ebab41ce3fbb3b87946eaab7fc1d9e7b6f0"},
+    {file = "web3_ethereum_defi-0.22.11-py3-none-any.whl", hash = "sha256:04a471e759e3e82319eb87fbd3dfac7bd5788c0e0c4a8143e993dedd38846bc4"},
+    {file = "web3_ethereum_defi-0.22.11.tar.gz", hash = "sha256:28b9b0ca8dbc62d7b86eb2d4bc63083be9e3bce71727a8ff0ad1928c36705adb"},
 ]
 
 [package.dependencies]
@@ -5983,4 +5984,4 @@ web-server = ["WebTest", "openapi-core", "pyramid", "pyramid-openapi3", "waitres
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.10,<3.11"
-content-hash = "edbece3894d2588c7cc8d53ed54c5bc6fd6af7bc1112f2c2e18c0a224aab0f88"
+content-hash = "8337b9c407ca03953fafdefe4255377d3b0a978b5663e511711b81f2c1328870"
