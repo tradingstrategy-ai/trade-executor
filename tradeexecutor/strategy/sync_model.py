@@ -169,6 +169,10 @@ class SyncModel(ABC):
         """
         raise NotImplementedError()
 
+    def reset_deposits(self, state: State):
+        """Clear out pending withdrawals/deposits events."""
+        raise NotImplementedError()
+
 
 class DummySyncModel(SyncModel):
     """Do nothing sync model.

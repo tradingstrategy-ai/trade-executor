@@ -469,6 +469,19 @@ def test_enzyme_live_trading_reset_deposits(
 ):
     """Reinitialise position balances from on-chain.
 
+    - Start with 500 USDC
+
+    - Run strat
+
+    - End up with 449 USDC, and open position
+
+    - Do unsynced redemption and mess up the open position balance
+
+    - Get rid of unprocessed redemption with reset-deposits
+
+    - Correct wrong balance with correct-accounts
+
+    - Run the strat again to see it starts correctly after reset-deposits
     """
 
     if os.path.exists("/tmp/test_enzyme_end_to_end.reinit-backup-1.json"):
@@ -509,11 +522,18 @@ def test_enzyme_live_trading_reset_deposits(
 
     assert os.path.exists("/tmp/test_enzyme_end_to_end.reinit-backup-1.json")
 
+    # Reset deposits from the on-chain state
+    with patch.dict(os.environ, environment, clear=True):
+        with pytest.raises(SystemExit) as e:
+            cli = get_command(app)
+            cli.main(args=["correct-accounts"])
+        assert e.value.code == 0
+
     # See that the reinitialised state looks correct
     with state_file.open("rt") as inp:
         state: State = State.from_json(inp.read())
         reserve_position = state.portfolio.get_default_reserve_position()
-        assert reserve_position.quantity == 250
+        assert reserve_position.quantity == pytest.approx(Decimal('224.8652360000000000000000000'))
 
         treasury = state.sync.treasury
         deployment = state.sync.deployment
@@ -521,7 +541,7 @@ def test_enzyme_live_trading_reset_deposits(
         assert treasury.last_block_scanned > 1
         assert treasury.last_updated_at
         assert len(treasury.balance_update_refs) == 1
-        assert len(reserve_position.balance_updates) == 1
+        assert len(reserve_position.balance_updates) == 2
 
     # Run strategy for few cycles to see it still starts after reset-deposits
     cli = get_command(app)

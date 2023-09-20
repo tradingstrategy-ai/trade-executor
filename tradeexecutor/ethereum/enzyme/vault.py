@@ -702,6 +702,17 @@ class EnzymeVaultSyncModel(SyncModel):
         if owner != hot_wallet.address:
             assert vault.vault.functions.isAssetManager(hot_wallet.address).call(), f"Address is not set up as Enzyme asset manager: {hot_wallet.address}"
 
+    def reset_deposits(self, state: State):
+        """Clear out pending withdrawals/deposits events."""
+        web3 = self.web3
+        current_block = web3.eth.block_number
+
+        # Skip all deposit/redemption events between the last scanned block and now
+        sync = state.sync
+        treasury_sync = sync.treasury
+        treasury_sync.last_block_scanned = current_block
+        treasury_sync.last_updated_at = datetime.datetime.utcnow()
+        treasury_sync.last_cycle_at = None
 
 def _dump_enzyme_event(e: EnzymeBalanceEvent) -> str:
     """Format enzyme events in the error / log output."""

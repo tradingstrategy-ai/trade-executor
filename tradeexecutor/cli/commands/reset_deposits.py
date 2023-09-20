@@ -2,8 +2,6 @@
 """Reset account balances.
 
 """
-import os
-import shutil
 from pathlib import Path
 from typing import Optional
 
@@ -11,11 +9,11 @@ from eth_defi.hotwallet import HotWallet
 
 from .app import app
 from ..backup import backup_state
-from ..bootstrap import prepare_executor_id, create_web3_config, create_sync_model, create_state_store
+from ..bootstrap import prepare_executor_id, create_web3_config, create_sync_model
 from ..log import setup_logging
-from ...ethereum.enzyme.vault import EnzymeVaultSyncModel
 from ...strategy.execution_model import AssetManagementMode
 from . import shared_options
+from tradeexecutor.strategy.account_correction import correct_accounts as _correct_accounts
 
 
 @app.command()
@@ -42,7 +40,7 @@ def reset_deposits(
 ):
     """Reset account balances.
 
-    Resets account balances from on-chain data.
+    Resets account balances from on-chain data. This includes reserve and spot market balances.
     Does not lose trade history, but lose any unprocessed deposit and redemption events.
     """
 
@@ -103,15 +101,11 @@ def reset_deposits(
     store = backup_state(id, state_file)
     state = store.load()
 
-    # Perform reconstruction of state
-    sync_model.sync_reinit(state, start_block=start_block, allow_override=True)
-    store.sync(state)
-    web3config.close()
+    # Skip all deposit/redemption events between last scanend block and current block
+    sync_model.reset_deposits(state)
+    logger.info(f"Deposits and redemptions skipped until block {state.sync.treasury.last_block_scanned:,}")
 
-    reserve_position = state.portfolio.get_default_reserve_position()
-    asset, rate = state.portfolio.get_default_reserve_asset()
-    logger.info("Reserve position is %s", reserve_position)
-    logger.info("Balance is %s %s", reserve_position.get_quantity(), asset.token_symbol)
-    assert reserve_position.quantity > 0, f"Reinitialisation did not see any deposits in vault: {sync_model.vault}, reserve position is {reserve_position}"
+    store.sync(state)
 
     logger.info("All done: State deployment info is %s", state.sync.deployment)
+    logger.info("Please run correct-accounts next")
