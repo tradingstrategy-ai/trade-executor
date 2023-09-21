@@ -272,5 +272,6 @@ def web_chart(request: Request):
 def web_icon(request: Request):
     """Render the icon of the executor."""
     path = Path(os.path.join(os.path.dirname(__file__), "default_logo.png"))
+    assert path.exists(), f"Does not exist {path}"
     r = FileResponse(path.as_posix(), content_type="image/png")
     return r
