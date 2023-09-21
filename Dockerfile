@@ -29,6 +29,13 @@ RUN echo $GIT_VERSION_HASH > GIT_VERSION_HASH.txt
 # package source code
 COPY . .
 
+# 2022 workaround for JSONDecodedErrors when doing poetry install
+# JSONDecodedErrors still present but not sure if helps,
+# testing out now
+# https://stackoverflow.com/a/73080089/315168
+# https://github.com/python-poetry/poetry/issues/4210#issuecomment-1178776203
+RUN poetry config experimental.new-installer false
+
 RUN poetry config virtualenvs.create false
 RUN poetry install --no-dev --no-interaction --no-ansi -E web-server -E execution -E quantstats
 
