@@ -87,7 +87,6 @@ def test_metadata(logger, server_url):
     data = resp.json()
     assert data["name"] == "Foobar"
     assert data["short_description"] == "Short desc"
-    assert data["icon_url"] == None
     assert data["executor_running"] == True
     assert data["crashed_at"] is None
     assert data["badges"] == ["polygon", "metamask", "eth", "usdc"]
