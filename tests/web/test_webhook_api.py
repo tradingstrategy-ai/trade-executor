@@ -87,7 +87,6 @@ def test_metadata(logger, server_url):
     data = resp.json()
     assert data["name"] == "Foobar"
     assert data["short_description"] == "Short desc"
-    assert data["icon_url"] == None
     assert data["executor_running"] == True
     assert data["crashed_at"] is None
     assert data["badges"] == ["polygon", "metamask", "eth", "usdc"]
@@ -203,3 +202,16 @@ def test_web_chart_backtest(logger, server_url):
     """Export backtest chart data for visualisation."""
     resp = requests.get(f"{server_url}/chart", {"type": "compounding_realised_profitability", "source": "backtest"})
     assert resp.status_code == 404  # Backtest data is not available on the webhook test server
+
+
+def test_icon(logger, server_url):
+    """Get icon"""
+    resp = requests.get(f"{server_url}/metadata")
+    assert resp.status_code == 200
+    data = resp.json()
+    icon_url = data["icon_url"]
+    assert icon_url == 'http://127.0.0.1:5000/icon'
+    resp = requests.get(f"{server_url}/icon")
+    assert resp.status_code == 200, f"Got: {icon_url} {resp.text}"
+    assert resp.headers.get("content-type") == "image/png"
+    assert int(resp.headers["content-length"]) > 100
