@@ -231,7 +231,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         # TODO: Make a stupid assumption here
         # as our strategies currently have 1 or 2 pairs for single pair trading.
         # Convert this to a proper flag later.
-        return self.universe.pairs.get_count() <= 2
+        return self.universe.pairs.get_count() == 1
 
     def has_stop_loss_data(self) -> bool:
         """Do we have data available to determine trade stop losses.

@@ -111,14 +111,19 @@ class PandasTraderRunner(StrategyRunner):
             logger.info("Could not update strategy thinking image data, self.run_state not available")
             return
 
-        logger.info("Refreshing strategy visualisations: %s", self.run_state.visualisation)
+        pair_count = universe.get_pair_count()
+
+        logger.info("Refreshing strategy visualisations: %s, pair count is %d",
+                    self.run_state.visualisation,
+                    pair_count
+                    )
 
         if universe.is_empty():
             # TODO: Not sure how we end up here
             logger.info("Strategy universe is empty - nothing to report")
             return
 
-        if universe.is_single_pair_universe():
+        if pair_count == 1:
 
             small_figure = draw_single_pair_strategy_state(state, universe, height=512)
             # Draw the inline plot and expose them tot he web server
@@ -127,22 +132,22 @@ class PandasTraderRunner(StrategyRunner):
 
             self.update_strategy_thinking_image_data(small_figure, large_figure)
 
-        elif 1 < universe.get_pair_count() <= 3:
+        elif 1 < pair_count <= 3:
             
             small_figure_combined = draw_multi_pair_strategy_state(state, universe, height=1024)
             large_figure_combined = draw_multi_pair_strategy_state(state, universe, height=2048)
 
             self.update_strategy_thinking_image_data(small_figure_combined, large_figure_combined)
 
-        elif 3 < universe.get_pair_count() <=5 :
-            
+        elif 3 < pair_count <=5:
+
             small_figure_combined = draw_multi_pair_strategy_state(state, universe, height=2048, detached_indicators = False)
             large_figure_combined = draw_multi_pair_strategy_state(state, universe, height=3840, width = 2160, detached_indicators = False)
 
             self.update_strategy_thinking_image_data(small_figure_combined, large_figure_combined)
 
         else:
-            logger.warning("Charts not yet available for this strategy type. Pair count: %s", universe.get_pair_count())
+            logger.warning("Charts not yet available for this strategy type. Pair count: %d", pair_count)
     
     def update_strategy_thinking_image_data(self, small_figure, large_figure):
         """Update the strategy thinking image data with small, small dark theme, large, and large dark theme images.
