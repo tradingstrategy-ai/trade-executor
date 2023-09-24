@@ -227,26 +227,18 @@ def calculate_sizes_for_leverage(
 
     .. code-block:: text
 
-            col / (col - borrow) = leverage
-            col = (col - borrow) * leverage
-            col = col * leverage - borrow * leverage
-            col - col * leverage = - borrow * levereage
-            col(1 - leverage) = - borrow * leverage
-            col = -(borrow * leverage) / (1 - leverage)
+            nav = col - borrow
+            leverage = borrow / nav
+            leverage = col / nav - 1
 
-            # Calculate leverage for 4x and 1000 USD collateral
-            col - borrow = 1000
-            col = 1000
-            leverage = 3
+            borrow = nav * leverage
+            col = nav * leverage + nav
 
-            col / (col - borrow) = 3
-            3(col - borrow) = col
-            3borrow = 3col - col
-            borrow = col - col/3
-
-            col / (col - (col - borrow)) = leverage
-            col / borrow = leverage
-            borrow = leverage * 1000
+            # Calculate leverage for 4x and 1000 USD nav (starting reserve)
+            nav = 1000
+            borrow = 1000 * 4 = 4000
+            col = 1000 * 4 + 1000 = 5000
+            col = 1000 + 4000 = 5000
 
     :param starting_reserve:
         Initial deposit in lending protocol
@@ -257,7 +249,7 @@ def calculate_sizes_for_leverage(
     :return:
         Tuple (borrow value, collateral value) in dollars
     """
-    collateral_size = starting_reserve * leverage
-    borrow_size = collateral_size - (collateral_size / leverage)
+    collateral_size = (starting_reserve + 1) * leverage
+    borrow_size = collateral_size - starting_reserve
 
     return borrow_size, collateral_size

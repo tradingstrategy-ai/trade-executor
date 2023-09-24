@@ -186,7 +186,7 @@ class Loan:
         Using formula ``(collateral / (collateral - borrow))``.
 
         """
-        return self.collateral.get_usd_value() / self.get_net_asset_value()
+        return self.borrowed.get_usd_value() / self.get_net_asset_value()
 
     def get_free_margin(self) -> USDollarAmount:
         raise NotImplementedError()
