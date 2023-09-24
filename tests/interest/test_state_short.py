@@ -87,7 +87,7 @@ def weth_usdc_spot(weth: AssetIdentifier, usdc: AssetIdentifier) -> TradingPairI
 
 
 @pytest.fixture()
-def weth_short_identifier(ausdc: AssetIdentifier, vweth: AssetIdentifier) -> TradingPairIdentifier:
+def weth_short_identifier(ausdc: AssetIdentifier, vweth: AssetIdentifier, weth_usdc_spot) -> TradingPairIdentifier:
     """Sets up a lending pool short trading pair 0% fee"""
     return TradingPairIdentifier(
         vweth,
@@ -96,12 +96,14 @@ def weth_short_identifier(ausdc: AssetIdentifier, vweth: AssetIdentifier) -> Tra
         ZERO_ADDRESS,
         internal_id=3,
         kind=TradingPairKind.lending_protocol_short,
+        underlying_spot_pair=weth_usdc_spot,
     )
 
 
 @pytest.fixture()
-def weth_short_identifier_5bps(ausdc: AssetIdentifier, vweth: AssetIdentifier) -> TradingPairIdentifier:
+def weth_short_identifier_5bps(ausdc: AssetIdentifier, vweth: AssetIdentifier, weth_usdc_spot) -> TradingPairIdentifier:
     """Sets up a lending pool 5 BPS fee"""
+    weth_usdc_spot.fee = 0.0005
     return TradingPairIdentifier(
         vweth,
         ausdc,
@@ -109,7 +111,7 @@ def weth_short_identifier_5bps(ausdc: AssetIdentifier, vweth: AssetIdentifier) -
         ZERO_ADDRESS,
         internal_id=4,
         kind=TradingPairKind.lending_protocol_short,
-        fee=0.0005,
+        underlying_spot_pair=weth_usdc_spot,
     )
 
 
@@ -859,9 +861,9 @@ def test_short_increase_leverage_and_close(
     )
 
     # Amount of USDC we can return from the collateral to the cash reserves
-    assert trade_2.planned_collateral_allocation == pytest.approx(Decimal(-400))
+    assert trade_2.planned_collateral_allocation == pytest.approx(Decimal(-577.7777))
     assert trade_2.planned_collateral_consumption== pytest.approx(Decimal(0))
-    assert trade_2.planned_loan_update.collateral.quantity == pytest.approx(Decimal(1600))
+    assert trade_2.planned_loan_update.collateral.quantity == pytest.approx(Decimal(1422.2222))
     assert trade_2.planned_loan_update.borrowed.quantity == pytest.approx(Decimal(0.6666666666))
 
     trader.set_perfectly_executed(trade_2)
@@ -872,7 +874,7 @@ def test_short_increase_leverage_and_close(
     # Loan leverage has changed, but our portfolio net asset value stays same
     loan = short_position.loan
     assert loan.get_leverage() == pytest.approx(3.0)
-    assert loan.get_health_factor() == pytest.approx(1.275)
+    assert loan.get_health_factor() == pytest.approx(1.1333333)
     assert portfolio.get_net_asset_value() == pytest.approx(9933.333333333334)
 
     # Even more losses
@@ -883,8 +885,8 @@ def test_short_increase_leverage_and_close(
     )
 
     loan = short_position.loan
-    assert loan.get_leverage() == pytest.approx(3.4285714285714293)
-    assert loan.get_health_factor() == pytest.approx(1.2)  # Risky
+    assert loan.get_leverage() == pytest.approx(3.9230769230769256)
+    assert loan.get_health_factor() == pytest.approx(1.0666666666666667)  # Risky
     assert portfolio.get_net_asset_value() == pytest.approx(9866.66666)
 
     # Close all
@@ -1570,7 +1572,7 @@ def test_short_open_with_fee(
         start_collateral,
         leverage,
         borrowed_asset_price=eth_price,
-        fee=weth_short_identifier_5bps.fee,
+        fee=weth_short_identifier_5bps.get_pricing_pair().fee,
         shorting_pair=weth_short_identifier_5bps,
     )
 
@@ -1637,7 +1639,7 @@ def test_short_close_with_fee_no_price_movement(
         starting_reserve=Decimal(10_000),
         leverage=3.0,
         borrowed_asset_price=1500.0,
-        fee=weth_short_identifier_5bps.fee,
+        fee=weth_short_identifier_5bps.get_pricing_pair().fee,
         shorting_pair=weth_short_identifier_5bps,
     )
 
@@ -1672,7 +1674,7 @@ def test_short_close_with_fee_no_price_movement(
         start_collateral=short_position.loan.collateral.quantity,
         start_borrowed=short_position.loan.borrowed.quantity,
         close_size=short_position.loan.borrowed.quantity,
-        fee=weth_short_identifier_5bps.fee,
+        fee=weth_short_identifier_5bps.get_pricing_pair().fee,
         borrowed_asset_price=1500.0,
     )
 
@@ -1726,7 +1728,7 @@ def test_short_close_profit_with_fee(
         starting_reserve=Decimal(10_000),
         leverage=3.0,
         borrowed_asset_price=1500.0,
-        fee=weth_short_identifier_5bps.fee,
+        fee=weth_short_identifier_5bps.get_pricing_pair().fee,
         shorting_pair=weth_short_identifier_5bps,
     )
 
@@ -1771,7 +1773,7 @@ def test_short_close_profit_with_fee(
         start_collateral=short_position.loan.collateral.quantity,
         start_borrowed=short_position.loan.borrowed.quantity,
         close_size=short_position.loan.borrowed.quantity,
-        fee=weth_short_identifier_5bps.fee,
+        fee=weth_short_identifier_5bps.get_pricing_pair().fee,
         borrowed_asset_price=1400.0,
     )
 

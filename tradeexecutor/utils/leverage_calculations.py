@@ -340,6 +340,53 @@ class LeverageEstimate:
             fee_tier=fee,
             lp_fees=float(paid_fee),
         )
+    
+
+def calculate_sizes_for_leverage(
+    starting_reserve: USDollarAmount,
+    leverage: LeverageMultiplier,
+) -> tuple[USDollarAmount, USDollarAmount, Decimal]:
+    """Calculate the collateral and borrow loan size to hit the target leverage with a starting capital.
+
+    - When calculating the loan size using this function,
+      the loan net asset value will be the same as starting capital
+
+    - Because loan net asset value is same is deposited reserve,
+      portfolio total NAV stays intact
+
+    Notes:
+
+    .. code-block:: text
+
+            nav = col - borrow
+            leverage = borrow / nav
+            leverage = col / nav - 1
+
+            borrow = nav * leverage
+            col = nav * leverage + nav
+            col = nav * (leverage + 1)
+
+            # Calculate leverage for 4x and 1000 USD nav (starting reserve)
+            nav = 1000
+            borrow = 1000 * 4 = 4000
+            col = 1000 * 4 + 1000 = 5000
+            col = 1000 * (4 + 1) = 5000
+            col = 1000 + 4000 = 5000
+
+    :param starting_reserve:
+        Initial deposit in lending protocol
+
+    :param shorting_pair:
+        Leverage short trading pair
+
+    :return:
+        Tuple (borrow value, collateral value) in dollars
+    """
+    collateral_size = starting_reserve + (leverage + 1)
+    borrow_size = collateral_size - starting_reserve
+
+    return borrow_size, collateral_size
+
 
 
 def calculate_liquidation_price(

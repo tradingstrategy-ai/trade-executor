@@ -277,7 +277,7 @@ class Loan:
             US dollars worth of collateral needed
         """
         borrowed_usd = self.borrowed.last_usd_price  * float(borrowed_quantity)
-        usd_value = borrowed_usd/ target_ltv
+        usd_value = borrowed_usd / target_ltv
         return Decimal(usd_value / self.collateral.last_usd_price)
 
     def calculate_collateral_for_target_leverage(
@@ -292,12 +292,14 @@ class Loan:
 
         .. code-block:: text
 
-            col / (col - borrow) = leverage
-            col = (col - borrow) * leverage
-            col = col * leverage - borrow * leverage
-            col - col * leverage = - borrow * levereage
-            col(1 - leverage) = - borrow * leverage
-            col = -(borrow * leverage) / (1 - leverage)
+            nav = col - borrow
+            leverage = borrow / nav
+            leverage = col / nav - 1
+
+            borrow = nav * leverage
+            col = borrow + nav
+            col = borrow + borrow / leverage
+            col = borrow * (1 + 1 / leverage)
 
         See also :py:func:`calculate_leverage_for_target_size`
 
@@ -308,7 +310,7 @@ class Loan:
             US dollars worth of collateral needed
         """
         borrowed_usd = self.borrowed.last_usd_price  * float(borrowed_quantity)
-        usd_value = -(borrowed_usd * leverage) / (1 - leverage)
+        usd_value = borrowed_usd * (1 + 1 / leverage)
         return Decimal(usd_value / self.collateral.last_usd_price)
 
     def check_health(self, desired_health_factor=1):
