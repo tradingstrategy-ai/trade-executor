@@ -988,6 +988,7 @@ class PositionManager:
             planned_mid_price=price_structure.mid_price,
             collateral_asset_price=collateral_price,
             planned_collateral_consumption=estimation.additional_collateral_quantity,  # This is amount how much aToken is leverated besides our starting collateral
+            lp_fees_estimated=estimation.lp_fees,
         )
 
         # record liquidation price into the position
