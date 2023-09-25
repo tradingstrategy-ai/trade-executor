@@ -432,6 +432,7 @@ class StrategyRunner(abc.ABC):
 
             # Double check we handled deposits correctly
             with self.timed_task_context_manager("check_accounts_pre_trade"):
+                logger.info("Pre-trade accounts balance check")
                 self.check_accounts(universe, state)
 
             # Assing a new value for every existing position
@@ -459,6 +460,7 @@ class StrategyRunner(abc.ABC):
 
             # Double check we handled incoming trade balances correctly
             with self.timed_task_context_manager("check_accounts_pre_post_trade"):
+                logger.info("Post-trade accounts balance check")
                 self.check_accounts(universe, state)
 
             # Log what our strategy decided
