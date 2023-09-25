@@ -431,7 +431,7 @@ class StrategyRunner(abc.ABC):
                 self.sync_portfolio(strategy_cycle_timestamp, universe, state, debug_details)
 
             # Double check we handled deposits correctly
-            with self.timed_task_context_manager("check_accounts"):
+            with self.timed_task_context_manager("check_accounts_pre_trade"):
                 self.check_accounts(universe, state)
 
             # Assing a new value for every existing position
@@ -456,6 +456,10 @@ class StrategyRunner(abc.ABC):
                             state.visualisation.get_total_points(),
                             last_point_at
                             )
+
+            # Double check we handled incoming trade balances correctly
+            with self.timed_task_context_manager("check_accounts_pre_post_trade"):
+                self.check_accounts(universe, state)
 
             # Log what our strategy decided
             if self.is_progress_report_needed():

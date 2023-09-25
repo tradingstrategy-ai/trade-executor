@@ -245,6 +245,7 @@ def wait_for_universe_data_availability_jsonl(
 
         # Move any pairs with new complete data to the completed set
         pairs_to_move = set()
+        diff = None
         for p in incompleted_pairs:    
             latest_timestamp = avail_map[p.pair_id]["last_candle_at"]
             last_supposed_candle_at = avail_map[p.pair_id]["last_supposed_candle_at"]
