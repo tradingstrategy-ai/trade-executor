@@ -3451,6 +3451,16 @@ six = "*"
 test = ["pytest", "pytest-cov", "scipy"]
 
 [[package]]
+name = "peewee"
+version = "3.16.3"
+description = "a little orm"
+optional = true
+python-versions = "*"
+files = [
+    {file = "peewee-3.16.3.tar.gz", hash = "sha256:12b30e931193bc37b11f7c2ac646e3f67125a8b1a543ad6ab37ad124c8df7d16"},
+]
+
+[[package]]
 name = "pexpect"
 version = "4.8.0"
 description = "Pexpect allows easy control of interactive console applications."
@@ -4828,13 +4838,13 @@ testing-integration = ["build[virtualenv]", "filelock (>=3.4.0)", "jaraco.envs (
 
 [[package]]
 name = "setuptools-scm"
-version = "8.0.0"
+version = "8.0.3"
 description = "the blessed package to manage your versions by scm tags"
 optional = false
 python-versions = ">=3.8"
 files = [
-    {file = "setuptools-scm-8.0.0.tar.gz", hash = "sha256:40d5508fddd34e2ca6e44eefc0148ff76c80a66560c453c1eff9d5a6fc99c8f8"},
-    {file = "setuptools_scm-8.0.0-py3-none-any.whl", hash = "sha256:f6b9d6deb0f006681d4454bf20c950d333362ade49f7219e75ee75510ac35cf1"},
+    {file = "setuptools-scm-8.0.3.tar.gz", hash = "sha256:0169fd70197efda2f8c4d0b2a7a3d614431b488116f37b79d031e9e7ec884d8c"},
+    {file = "setuptools_scm-8.0.3-py3-none-any.whl", hash = "sha256:813822234453438a13c78d05c8af29918fbc06f88efb33d38f065340bbb48c39"},
 ]
 
 [package.dependencies]
@@ -5488,13 +5498,13 @@ tester = ["eth-tester[py-evm] (==v0.8.0-b.3)", "py-geth (>=3.11.0)"]
 
 [[package]]
 name = "web3-ethereum-defi"
-version = "0.22.11"
+version = "0.22.12"
 description = "Python library for Uniswap, Aave, ChainLink, Enzyme and other protocols on BNB Chain, Polygon, Ethereum and other blockchains"
 optional = false
 python-versions = ">=3.10,<3.11"
 files = [
-    {file = "web3_ethereum_defi-0.22.11-py3-none-any.whl", hash = "sha256:04a471e759e3e82319eb87fbd3dfac7bd5788c0e0c4a8143e993dedd38846bc4"},
-    {file = "web3_ethereum_defi-0.22.11.tar.gz", hash = "sha256:28b9b0ca8dbc62d7b86eb2d4bc63083be9e3bce71727a8ff0ad1928c36705adb"},
+    {file = "web3_ethereum_defi-0.22.12-py3-none-any.whl", hash = "sha256:8b82c33dcd3856ed098e9a5011b775eeb8fdd191d1b7c97cdb31fbeb64d43903"},
+    {file = "web3_ethereum_defi-0.22.12.tar.gz", hash = "sha256:3d1394fe687d3eae75f772efce92cf6e376db04f5f8824c043873e2da1ba83e0"},
 ]
 
 [package.dependencies]
@@ -5870,13 +5880,13 @@ multidict = ">=4.0"
 
 [[package]]
 name = "yfinance"
-version = "0.2.28"
+version = "0.2.30"
 description = "Download market data from Yahoo! Finance API"
 optional = true
 python-versions = "*"
 files = [
-    {file = "yfinance-0.2.28-py2.py3-none-any.whl", hash = "sha256:9697dcbc38d67d1172a905fd5787c65bf049d87e18a709be788485ad7886791c"},
-    {file = "yfinance-0.2.28.tar.gz", hash = "sha256:be89cd2a4d55c0a2a6227c32915b355bde59f85c569dca9123320322445901ff"},
+    {file = "yfinance-0.2.30-py2.py3-none-any.whl", hash = "sha256:bf310002e2523a08148118b61f442bc2eb3467e5244e31e4cfefe6bb575dd02e"},
+    {file = "yfinance-0.2.30.tar.gz", hash = "sha256:9b980cfb20beb903c4e3dee212de305f3d6fea96e5c571bf424239da974970fe"},
 ]
 
 [package.dependencies]
@@ -5888,6 +5898,7 @@ lxml = ">=4.9.1"
 multitasking = ">=0.0.7"
 numpy = ">=1.16.5"
 pandas = ">=1.3.0"
+peewee = ">=3.16.2"
 pytz = ">=2022.5"
 requests = ">=2.31"
 
@@ -5984,4 +5995,4 @@ web-server = ["WebTest", "openapi-core", "pyramid", "pyramid-openapi3", "waitres
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.10,<3.11"
-content-hash = "8337b9c407ca03953fafdefe4255377d3b0a978b5663e511711b81f2c1328870"
+content-hash = "9d488b57deee4323707ce6e39a4aeefd96845456c54f7289895672ec518b30e5"
