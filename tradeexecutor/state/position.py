@@ -791,7 +791,7 @@ class TradingPosition(GenericPosition):
                             start_borrowed=self.loan.borrowed.quantity,
                             close_size=quantity,
                             borrowed_asset_price=assumed_price,
-                            fee=self.pair.fee,
+                            fee=self.pair.get_pricing_pair().fee,
                         )
 
                         # Release collateral is the current collateral
@@ -802,6 +802,8 @@ class TradingPosition(GenericPosition):
 
                         # Any leftover USD from the collateral is released to the reserves
                         planned_collateral_allocation = -leverage_estimate.total_collateral_quantity
+
+                        lp_fees_estimated = leverage_estimate.lp_fees
 
                     else:
                         assert quantity is not None, "For increasing/reducing short position quantity must be given"
@@ -1313,26 +1315,12 @@ class TradingPosition(GenericPosition):
         return False
     
     def get_max_size(self) -> USDollarAmount:
-        """Get the largest size of this position over the time"""
-        cur_size = 0
-        max_size = 0
-
-        for t in self.trades.values():
-            executed_value = t.get_executed_value()
-            
-            # skip trade if we don't have the executed value
-            if not executed_value:
-                continue
-            
-            if t.is_buy():
-                cur_size += executed_value
-            else:
-                cur_size -= executed_value
-            
-            if cur_size > max_size:
-                max_size = cur_size
+        """Get the largest size of this position over time
         
-        return max_size
+        NOTE: This metric doesn't work for positions with more than 2 trades
+        i.e: positions which have been increased and reduced in size
+        """
+        return self.get_first_trade().get_executed_value()
 
     def get_trade_count(self) -> int:
         """Get the number of trades in this position."""

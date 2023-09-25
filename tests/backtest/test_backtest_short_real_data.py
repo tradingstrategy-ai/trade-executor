@@ -117,10 +117,7 @@ def test_backtest_open_only_short_real_data(
     position = portfolio.open_positions[1]
     assert position.is_short()
 
-    assert position.get_value_at_open() == 10000
-    # assert position.get_accrued_interest() == pytest.approx(2.674760130598975)
-    assert position.get_accrued_interest() == pytest.approx(2.6728205751552903)
-    # assert position.get_value() == Decimal(6897.966511926523)
-    assert position.get_value() == Decimal(6892.964572371082)
+    assert position.get_value_at_open() == 10000 * 2
+    assert position.get_accrued_interest() == pytest.approx(1.4665302629397647)
+    assert position.get_value() == Decimal(3782.05003385479)
 
-    # TODO: extend the test
