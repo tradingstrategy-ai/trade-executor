@@ -235,8 +235,8 @@ class LeverageEstimate:
             starting_reserve = Decimal(starting_reserve)
 
         # Assume collateral is USDC
-        total_collateral_quantity = starting_reserve * Decimal(leverage)
-        borrow_value_usdc = (total_collateral_quantity - (total_collateral_quantity / Decimal(leverage)))
+        total_collateral_quantity = starting_reserve * (Decimal(leverage) + 1)
+        borrow_value_usdc = total_collateral_quantity - starting_reserve
 
         additional_collateral_quantity_no_fee = total_collateral_quantity - starting_reserve
         swapped_out = additional_collateral_quantity_no_fee * (Decimal(1) - Decimal(fee))
@@ -340,6 +340,53 @@ class LeverageEstimate:
             fee_tier=fee,
             lp_fees=float(paid_fee),
         )
+    
+
+def calculate_sizes_for_leverage(
+    starting_reserve: USDollarAmount,
+    leverage: LeverageMultiplier,
+) -> tuple[USDollarAmount, USDollarAmount, Decimal]:
+    """Calculate the collateral and borrow loan size to hit the target leverage with a starting capital.
+
+    - When calculating the loan size using this function,
+      the loan net asset value will be the same as starting capital
+
+    - Because loan net asset value is same is deposited reserve,
+      portfolio total NAV stays intact
+
+    Notes:
+
+    .. code-block:: text
+
+            nav = col - borrow
+            leverage = borrow / nav
+            leverage = col / nav - 1
+
+            borrow = nav * leverage
+            col = nav * leverage + nav
+            col = nav * (leverage + 1)
+
+            # Calculate leverage for 4x and 1000 USD nav (starting reserve)
+            nav = 1000
+            borrow = 1000 * 4 = 4000
+            col = 1000 * 4 + 1000 = 5000
+            col = 1000 * (4 + 1) = 5000
+            col = 1000 + 4000 = 5000
+
+    :param starting_reserve:
+        Initial deposit in lending protocol
+
+    :param shorting_pair:
+        Leverage short trading pair
+
+    :return:
+        Tuple (borrow value, collateral value) in dollars
+    """
+    collateral_size = starting_reserve + (leverage + 1)
+    borrow_size = collateral_size - starting_reserve
+
+    return borrow_size, collateral_size
+
 
 
 def calculate_liquidation_price(
@@ -349,17 +396,18 @@ def calculate_liquidation_price(
 ) -> USDollarAmount:
     """Calculate the liquidation price for a short position.
 
-    lP=buy_USD*cfBuy/sell
-        buy_USD=buy/deposit asset amount in USD; 
-        sell=sell/borrow asset amount in sell currency
+    lP = buy_USD * cfBuy / sell
+        where:
+        buy_USD: buy/deposit asset amount in USD
+        sell: sell/borrow asset amount in sell currency
 
     - `See 1delta documentation <https://docs.1delta.io/lenders/metrics>`__.
 
     :param collateral_size:
         Collateral size in USD
 
-    :param borrow_size:
-        Borrow size in USD
+    :param borrow_quantity:
+        Borrow quantity in sell currency
 
     :param shorting_pair:
         Leverage short trading pair
