@@ -492,11 +492,10 @@ class TradingPosition(GenericPosition):
         This gives you remaining token balance, even if there are some earlier
         sell orders that have not been executed yet.
         """
-        planned = sum([t.get_position_quantity() for t in self.trades.values() if t.is_planned()])
-        live = self.get_quantity()
+        planned = sum([t.get_position_quantity() for t in self.trades.values() if t.is_planned()])  # Sell values sum to negative
+        live = self.get_quantity()  # What was the position quantity before executing any of planned trades
         # Temporary logging to track down SAND token errors
-        logger.info("Planned quantity: %s", planned)
-        logger.info("get_available_trading_quantity(): Figuring out available position size to trade. Planned quantity: %s, live quantity:", planned, live)
+        logger.info("get_available_trading_quantity(): Figuring out available position size to trade. Planned quantity: %s, live quantity: %s", planned, live)
         return planned + live
 
     def get_current_price(self) -> USDollarAmount:
