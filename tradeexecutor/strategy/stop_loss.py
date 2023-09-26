@@ -188,7 +188,7 @@ def check_position_triggers(
                 trigger_type,
                 trigger_price,
                 mid_price,
-                expected_sell_price,
+                expected_sell_price.price,
             )
 
     return trades
