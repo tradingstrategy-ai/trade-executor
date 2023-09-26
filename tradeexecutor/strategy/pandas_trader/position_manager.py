@@ -2,7 +2,7 @@
 
 import datetime
 from decimal import Decimal
-from typing import List, Optional, Union
+from typing import List, Optional, Union, Literal
 import logging
 
 import pandas as pd
@@ -195,15 +195,36 @@ class PositionManager:
         self.reserve_currency = reserve_currency
         self.reserve_price = reserve_price
 
-    def is_any_open(self) -> bool:
-        """Do we have any positions open."""
-        return len(self.state.portfolio.open_positions) > 0
+    def is_any_open(
+        self, 
+        kind: str | None = None,
+    ) -> bool:
+        """Do we have any positions open.
+        
+        :param kind:
+            If set, check only positions of this kind.   
+        """
+        assert kind in ["long", "short", "credit_supply", None], "Unknown kind received"
+        
+        for position in self.state.portfolio.open_positions.values():
+            if any([
+                kind is None,
+                kind == "long" and position.is_long(),
+                kind == "short" and position.is_short(),
+                kind == "credit_supply" and position.is_credit_supply(),
+            ]):
+                return True
+        else:
+            return False
 
-    def get_current_position(self) -> TradingPosition:
+    def get_current_position(self, kind: str | None = None) -> TradingPosition:
         """Get the current single position.
 
         This is a shortcut function for trading strategies
-        that operate only a single trading pair and a single position.
+        that operate only  a single position of any kind.
+
+        :param kind:
+            If set, get only position of this kind.
 
         :return:
             Currently open trading position
@@ -211,8 +232,17 @@ class PositionManager:
         :raise NoSingleOpenPositionError:
             If you do not have a position open or there are multiple positions open.
         """
+        assert kind in ["long", "short", "credit_supply", None], "Unknown kind received"
 
-        open_positions = self.state.portfolio.open_positions
+        open_positions = []
+        for position in self.state.portfolio.open_positions.values():
+            if any([
+                kind is None,
+                kind == "long" and position.is_long(),
+                kind == "short" and position.is_short(),
+                kind == "credit_supply" and position.is_credit_supply(),
+            ]):
+                open_positions.append(position)
 
         if len(open_positions) == 0:
             raise NoSingleOpenPositionException(f"No positions open at {self.timestamp}")
@@ -220,7 +250,7 @@ class PositionManager:
         if len(open_positions) > 1:
             raise NoSingleOpenPositionException(f"Multiple positions ({len(open_positions)}) open at {self.timestamp}")
 
-        return next(iter(open_positions.values()))
+        return open_positions[0]
 
     def get_current_position_for_pair(self, pair: TradingPairIdentifier) -> Optional[TradingPosition]:
         """Get the current open position for a specific trading pair.
