@@ -494,6 +494,9 @@ class TradingPosition(GenericPosition):
         """
         planned = sum([t.get_position_quantity() for t in self.trades.values() if t.is_planned()])
         live = self.get_quantity()
+        # Temporary logging to track down SAND token errors
+        logger.info("Planned quantity: %s", planned)
+        logger.info("get_available_trading_quantity(): Figuring out available position size to trade. Planned quantity: %s, live quantity:", planned, live)
         return planned + live
 
     def get_current_price(self) -> USDollarAmount:
