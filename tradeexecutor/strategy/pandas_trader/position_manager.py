@@ -2,7 +2,7 @@
 
 import datetime
 from decimal import Decimal
-from typing import List, Optional, Union
+from typing import List, Optional, Union, Literal
 import logging
 
 import pandas as pd
@@ -196,8 +196,59 @@ class PositionManager:
         self.reserve_price = reserve_price
 
     def is_any_open(self) -> bool:
-        """Do we have any positions open."""
+        """Do we have any positions open.
+        
+        See also
+
+        - :py:meth:`is_any_long_position_open`
+
+        - :py:meth:`is_any_short_position_open`
+        
+        - :py:meth:`is_any_credit_supply_position_open`
+        """
         return len(self.state.portfolio.open_positions) > 0
+        
+    def is_any_long_position_open(self) -> bool:
+        """Do we have any long positions open.
+        
+        See also
+
+        - :py:meth:`is_any_short_position_open`
+        
+        - :py:meth:`is_any_credit_supply_position_open`
+        """
+        return len([
+            p for p in self.state.portfolio.open_positions.values()
+            if p.is_long()
+        ]) > 0
+    
+    def is_any_short_position_open(self) -> bool:
+        """Do we have any short positions open.
+        
+        See also
+
+        - :py:meth:`is_any_long_position_open`
+        
+        - :py:meth:`is_any_credit_supply_position_open`
+        """
+        return len([
+            p for p in self.state.portfolio.open_positions.values()
+            if p.is_short()
+        ]) > 0
+    
+    def is_any_credit_supply_position_open(self) -> bool:
+        """Do we have any credit supply positions open.
+        
+        See also
+
+        - :py:meth:`is_any_long_position_open`
+
+        - :py:meth:`is_any_short_position_open`
+        """
+        return len([
+            p for p in self.state.portfolio.open_positions.values()
+            if p.is_credit_supply()
+        ]) > 0
 
     def get_current_position(self) -> TradingPosition:
         """Get the current single position.
@@ -205,13 +256,20 @@ class PositionManager:
         This is a shortcut function for trading strategies
         that operate only a single trading pair and a single position.
 
+        See also
+
+        - :py:meth:`get_current_long_position`
+
+        - :py:meth:`get_current_short_position`
+        
+        - :py:meth:`get_current_credit_supply_position`
+
         :return:
             Currently open trading position
 
         :raise NoSingleOpenPositionError:
             If you do not have a position open or there are multiple positions open.
         """
-
         open_positions = self.state.portfolio.open_positions
 
         if len(open_positions) == 0:
@@ -221,6 +279,94 @@ class PositionManager:
             raise NoSingleOpenPositionException(f"Multiple positions ({len(open_positions)}) open at {self.timestamp}")
 
         return next(iter(open_positions.values()))
+    
+    def _get_single_open_position_for_kind(self, kind: str) -> TradingPosition:
+        """Get the current single position for the given kind.
+        
+        This is underlying method, do not use directly
+        """
+        assert kind in ["long", "short", "credit_supply"], f"Unknown kind received: {kind}"
+
+        open_positions = [
+            position
+            for position in self.state.portfolio.open_positions.values()
+            if any([
+                kind == "long" and position.is_long(),
+                kind == "short" and position.is_short(),
+                kind == "credit_supply" and position.is_credit_supply(),
+            ])
+        ]
+
+        if len(open_positions) == 0:
+            raise NoSingleOpenPositionException(f"No {kind} position open at {self.timestamp}")
+
+        if len(open_positions) > 1:
+            raise NoSingleOpenPositionException(f"Multiple {kind} positions ({len(open_positions)}) open at {self.timestamp}")
+
+        return open_positions[0]
+    
+    def get_current_long_position(self):
+        """Get the current single long position.
+
+        This is a shortcut function for trading strategies
+        that operate only a single trading pair and a single long position.
+
+        See also
+
+        - :py:meth:`get_current_short_position`
+        
+        - :py:meth:`get_current_credit_supply_position`
+
+
+        :return:
+            Currently open long trading position
+
+        :raise NoSingleOpenPositionError:
+            If you do not have a position open or there are multiple positions open.
+        """
+        return self._get_single_open_position_for_kind("long")
+    
+    def get_current_short_position(self):
+        """Get the current single short position.
+
+        This is a shortcut function for trading strategies
+        that operate only a single trading pair and a single short position.
+
+        See also
+
+        - :py:meth:`get_current_long_position`
+        
+        - :py:meth:`get_current_credit_supply_position`
+
+
+        :return:
+            Currently open short trading position
+
+        :raise NoSingleOpenPositionError:
+            If you do not have a position open or there are multiple positions open.
+        """
+        return self._get_single_open_position_for_kind("short")
+
+    def get_current_credit_supply_position(self):
+        """Get the current single credit supply position.
+
+        This is a shortcut function for trading strategies
+        that operate only a single trading pair and a single credit supply position.
+
+        See also
+
+        - :py:meth:`get_current_long_position`
+
+        - :py:meth:`get_current_short_position`
+
+
+        :return:
+            Currently open credit supply trading position
+
+        :raise NoSingleOpenPositionError:
+            If you do not have a position open or there are multiple positions open.
+        """
+        return self._get_single_open_position_for_kind("credit_supply")
 
     def get_current_position_for_pair(self, pair: TradingPairIdentifier) -> Optional[TradingPosition]:
         """Get the current open position for a specific trading pair.
