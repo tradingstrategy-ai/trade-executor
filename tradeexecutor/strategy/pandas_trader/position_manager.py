@@ -195,36 +195,36 @@ class PositionManager:
         self.reserve_currency = reserve_currency
         self.reserve_price = reserve_price
 
-    def is_any_open(
-        self, 
-        kind: str | None = None,
-    ) -> bool:
-        """Do we have any positions open.
+    def is_any_open(self) -> bool:
+        """Do we have any positions open."""
+        return len(self.state.portfolio.open_positions) > 0
         
-        :param kind:
-            If set, check only positions of this kind.   
-        """
-        assert kind in ["long", "short", "credit_supply", None], "Unknown kind received"
-        
-        for position in self.state.portfolio.open_positions.values():
-            if any([
-                kind is None,
-                kind == "long" and position.is_long(),
-                kind == "short" and position.is_short(),
-                kind == "credit_supply" and position.is_credit_supply(),
-            ]):
-                return True
-        else:
-            return False
+    def is_any_long_position_open(self) -> bool:
+        """Do we have any long positions open."""
+        return len([
+            p for p in self.state.portfolio.open_positions.values()
+            if p.is_long()
+        ]) > 0
+    
+    def is_any_short_position_open(self) -> bool:
+        """Do we have any short positions open."""
+        return len([
+            p for p in self.state.portfolio.open_positions.values()
+            if p.is_short()
+        ]) > 0
+    
+    def is_any_credit_supply_position_open(self) -> bool:
+        """Do we have any credit supply positions open."""
+        return len([
+            p for p in self.state.portfolio.open_positions.values()
+            if p.is_credit_supply()
+        ]) > 0
 
-    def get_current_position(self, kind: str | None = None) -> TradingPosition:
+    def get_current_position(self) -> TradingPosition:
         """Get the current single position.
 
         This is a shortcut function for trading strategies
-        that operate only  a single position of any kind.
-
-        :param kind:
-            If set, get only position of this kind.
+        that operate only a single trading pair and a single position.
 
         :return:
             Currently open trading position
@@ -232,17 +232,7 @@ class PositionManager:
         :raise NoSingleOpenPositionError:
             If you do not have a position open or there are multiple positions open.
         """
-        assert kind in ["long", "short", "credit_supply", None], "Unknown kind received"
-
-        open_positions = []
-        for position in self.state.portfolio.open_positions.values():
-            if any([
-                kind is None,
-                kind == "long" and position.is_long(),
-                kind == "short" and position.is_short(),
-                kind == "credit_supply" and position.is_credit_supply(),
-            ]):
-                open_positions.append(position)
+        open_positions = self.state.portfolio.open_positions
 
         if len(open_positions) == 0:
             raise NoSingleOpenPositionException(f"No positions open at {self.timestamp}")
@@ -250,7 +240,74 @@ class PositionManager:
         if len(open_positions) > 1:
             raise NoSingleOpenPositionException(f"Multiple positions ({len(open_positions)}) open at {self.timestamp}")
 
+        return next(iter(open_positions.values()))
+    
+    def _get_single_open_position_for_kind(self, kind: str) -> TradingPosition:
+        """Get the current single position for the given kind.
+        
+        This is underlying method, do not use directly
+        """
+        assert kind in ["long", "short", "credit_supply"], f"Unknown kind received: {kind}"
+
+        open_positions = [
+            position
+            for position in self.state.portfolio.open_positions.values()
+            if any([
+                kind == "long" and position.is_long(),
+                kind == "short" and position.is_short(),
+                kind == "credit_supply" and position.is_credit_supply(),
+            ])
+        ]
+
+        if len(open_positions) == 0:
+            raise NoSingleOpenPositionException(f"No {kind} position open at {self.timestamp}")
+
+        if len(open_positions) > 1:
+            raise NoSingleOpenPositionException(f"Multiple {kind} positions ({len(open_positions)}) open at {self.timestamp}")
+
         return open_positions[0]
+    
+    def get_current_long_position(self):
+        """Get the current single long position.
+
+        This is a shortcut function for trading strategies
+        that operate only a single trading pair and a single long position.
+
+        :return:
+            Currently open long trading position
+
+        :raise NoSingleOpenPositionError:
+            If you do not have a position open or there are multiple positions open.
+        """
+        return self._get_single_open_position_for_kind("long")
+    
+    def get_current_short_position(self):
+        """Get the current single short position.
+
+        This is a shortcut function for trading strategies
+        that operate only a single trading pair and a single short position.
+
+        :return:
+            Currently open short trading position
+
+        :raise NoSingleOpenPositionError:
+            If you do not have a position open or there are multiple positions open.
+        """
+        return self._get_single_open_position_for_kind("short")
+
+    def get_current_credit_supply_position(self):
+        """Get the current single credit supply position.
+
+        This is a shortcut function for trading strategies
+        that operate only a single trading pair and a single credit supply position.
+
+        :return:
+            Currently open credit supply trading position
+
+        :raise NoSingleOpenPositionError:
+            If you do not have a position open or there are multiple positions open.
+        """
+        return self._get_single_open_position_for_kind("credit_supply")
 
     def get_current_position_for_pair(self, pair: TradingPairIdentifier) -> Optional[TradingPosition]:
         """Get the current open position for a specific trading pair.
