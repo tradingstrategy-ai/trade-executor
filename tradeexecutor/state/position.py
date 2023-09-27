@@ -622,7 +622,7 @@ class TradingPosition(GenericPosition):
 
             case TradingPairKind.lending_protocol_short | TradingPairKind.credit_supply:
                 # Value for leveraged positions is net asset value from its two loans
-                return self.loan.get_net_asset_value(include_interest)
+                return self.get_loan_based_nav(include_interest=include_interest)
             case _:
                 raise NotImplementedError(f"Does not know how to value position for {self.pair}")
 

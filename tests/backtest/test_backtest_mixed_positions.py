@@ -125,7 +125,6 @@ def test_backtest_open_both_long_short(
         pricing_model: PricingModel,
         cycle_debug_data: Dict
     ) -> List[TradeExecution]:
-        """A simple strategy that opens a single 2x short position."""
         trade_pair = strategy_universe.universe.pairs.get_single()
 
         cash = state.portfolio.get_cash()
@@ -135,14 +134,14 @@ def test_backtest_open_both_long_short(
         trades = []
 
         if not position_manager.is_any_open():
-            trades += position_manager.open_short(trade_pair, cash, leverage=leverage)
+            amount = cash * 0.5
+
+            trades += position_manager.open_short(trade_pair, amount, leverage=leverage)
             
-            trades += position_manager.open_1x_long(trade_pair, cash)
+            trades += position_manager.open_1x_long(trade_pair, amount)
 
         return trades
 
-    # NOTE: currently do something with portfolio equity right after opening a short
-    # position would raise an exception since the loan isn't attached to the position yet
     state, universe, debug_dump = run_backtest_inline(
         start_at=start_at,
         end_at=end_at,
@@ -155,3 +154,9 @@ def test_backtest_open_both_long_short(
         trade_routing=TradeRouting.uniswap_v3_usdc_poly,
         engine_version="0.3",
     )
+
+    portfolio = state.portfolio
+    assert len(portfolio.open_positions) == 2
+    assert portfolio.get_cash() == 0
+    assert portfolio.get_net_asset_value(include_interest=True) == pytest.approx(10171.924639486764)
+    assert portfolio.get_total_equity() == pytest.approx(10171.924639486764)
