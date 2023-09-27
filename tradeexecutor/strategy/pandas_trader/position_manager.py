@@ -196,25 +196,55 @@ class PositionManager:
         self.reserve_price = reserve_price
 
     def is_any_open(self) -> bool:
-        """Do we have any positions open."""
+        """Do we have any positions open.
+        
+        See also
+
+        - :py:meth:`is_any_long_position_open`
+
+        - :py:meth:`is_any_short_position_open`
+        
+        - :py:meth:`is_any_credit_supply_position_open`
+        """
         return len(self.state.portfolio.open_positions) > 0
         
     def is_any_long_position_open(self) -> bool:
-        """Do we have any long positions open."""
+        """Do we have any long positions open.
+        
+        See also
+
+        - :py:meth:`is_any_short_position_open`
+        
+        - :py:meth:`is_any_credit_supply_position_open`
+        """
         return len([
             p for p in self.state.portfolio.open_positions.values()
             if p.is_long()
         ]) > 0
     
     def is_any_short_position_open(self) -> bool:
-        """Do we have any short positions open."""
+        """Do we have any short positions open.
+        
+        See also
+
+        - :py:meth:`is_any_long_position_open`
+        
+        - :py:meth:`is_any_credit_supply_position_open`
+        """
         return len([
             p for p in self.state.portfolio.open_positions.values()
             if p.is_short()
         ]) > 0
     
     def is_any_credit_supply_position_open(self) -> bool:
-        """Do we have any credit supply positions open."""
+        """Do we have any credit supply positions open.
+        
+        See also
+
+        - :py:meth:`is_any_long_position_open`
+
+        - :py:meth:`is_any_short_position_open`
+        """
         return len([
             p for p in self.state.portfolio.open_positions.values()
             if p.is_credit_supply()
@@ -225,6 +255,14 @@ class PositionManager:
 
         This is a shortcut function for trading strategies
         that operate only a single trading pair and a single position.
+
+        See also
+
+        - :py:meth:`get_current_long_position`
+
+        - :py:meth:`get_current_short_position`
+        
+        - :py:meth:`get_current_credit_supply_position`
 
         :return:
             Currently open trading position
@@ -273,6 +311,13 @@ class PositionManager:
         This is a shortcut function for trading strategies
         that operate only a single trading pair and a single long position.
 
+        See also
+
+        - :py:meth:`get_current_short_position`
+        
+        - :py:meth:`get_current_credit_supply_position`
+
+
         :return:
             Currently open long trading position
 
@@ -287,6 +332,13 @@ class PositionManager:
         This is a shortcut function for trading strategies
         that operate only a single trading pair and a single short position.
 
+        See also
+
+        - :py:meth:`get_current_long_position`
+        
+        - :py:meth:`get_current_credit_supply_position`
+
+
         :return:
             Currently open short trading position
 
@@ -300,6 +352,13 @@ class PositionManager:
 
         This is a shortcut function for trading strategies
         that operate only a single trading pair and a single credit supply position.
+
+        See also
+
+        - :py:meth:`get_current_long_position`
+
+        - :py:meth:`get_current_short_position`
+
 
         :return:
             Currently open credit supply trading position
