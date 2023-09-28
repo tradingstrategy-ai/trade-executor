@@ -444,75 +444,81 @@ class StrategyRunner(abc.ABC):
                 self.report_after_sync_and_revaluation(strategy_cycle_timestamp, universe, state, debug_details)
 
             # Run the strategy cycle
-            with self.timed_task_context_manager("decide_trades"):
-                rebalance_trades = self.on_clock(strategy_cycle_timestamp, universe, pricing_model, state, debug_details)
-                assert type(rebalance_trades) == list
-                debug_details["rebalance_trades"] = rebalance_trades
 
-                # Make some useful diagnostics output for log files to troubleshoot if something
-                # when wrong internally
-                _, last_point_at = state.visualisation.get_timestamp_range()
-                logger.info("We have %d new trades, %d total visualisation points, last visualisation point at %s",
-                            len(rebalance_trades),
-                            state.visualisation.get_total_points(),
-                            last_point_at
-                            )
+            if state.portfolio.has_trading_capital():
 
-            # Double check we handled incoming trade balances correctly
-            with self.timed_task_context_manager("check_accounts_post_trade"):
-                logger.info("Post-trade accounts balance check")
-                self.check_accounts(universe, state)
+                with self.timed_task_context_manager("decide_trades"):
+                    rebalance_trades = self.on_clock(strategy_cycle_timestamp, universe, pricing_model, state, debug_details)
+                    assert type(rebalance_trades) == list
+                    debug_details["rebalance_trades"] = rebalance_trades
 
-            # Log what our strategy decided
-            if self.is_progress_report_needed():
-                self.report_strategy_thinking(
-                    strategy_cycle_timestamp=strategy_cycle_timestamp,
-                    cycle=cycle,
-                    universe=universe,
-                    state=state,
-                    trades=rebalance_trades,
-                    debug_details=debug_details)
+                    # Make some useful diagnostics output for log files to troubleshoot if something
+                    # when wrong internally
+                    _, last_point_at = state.visualisation.get_timestamp_range()
+                    logger.info("We have %d new trades, %d total visualisation points, last visualisation point at %s",
+                                len(rebalance_trades),
+                                state.visualisation.get_total_points(),
+                                last_point_at
+                                )
 
-            # Shortcut quit here if no trades are needed
-            if len(rebalance_trades) == 0:
-                logger.trade("No action taken: strategy decided not to open or close any positions")
-                return debug_details
+                # Double check we handled incoming trade balances correctly
+                with self.timed_task_context_manager("check_accounts_post_trade"):
+                    logger.info("Post-trade accounts balance check")
+                    self.check_accounts(universe, state)
 
-            # Ask user confirmation for any trades
-            with self.timed_task_context_manager("confirm_trades"):
-                approved_trades = self.approval_model.confirm_trades(state, rebalance_trades)
-                assert type(approved_trades) == list
-                logger.info("After approval we have %d trades left", len(approved_trades))
-                debug_details["approved_trades"] = approved_trades
+                # Log what our strategy decided
+                if self.is_progress_report_needed():
+                    self.report_strategy_thinking(
+                        strategy_cycle_timestamp=strategy_cycle_timestamp,
+                        cycle=cycle,
+                        universe=universe,
+                        state=state,
+                        trades=rebalance_trades,
+                        debug_details=debug_details)
 
-            # Log output
-            if self.is_progress_report_needed():
-                self.report_before_execution(strategy_cycle_timestamp, universe, state, approved_trades, debug_details)
+                # Shortcut quit here if no trades are needed
+                if len(rebalance_trades) == 0:
+                    logger.trade("No action taken: strategy decided not to open or close any positions")
+                    return debug_details
 
-            # Physically execute the trades
-            with self.timed_task_context_manager("execute_trades", trade_count=len(approved_trades)):
+                # Ask user confirmation for any trades
+                with self.timed_task_context_manager("confirm_trades"):
+                    approved_trades = self.approval_model.confirm_trades(state, rebalance_trades)
+                    assert type(approved_trades) == list
+                    logger.info("After approval we have %d trades left", len(approved_trades))
+                    debug_details["approved_trades"] = approved_trades
 
-                # Unit tests can turn this flag to make it easier to see why trades fail
-                check_balances = debug_details.get("check_balances", False)
+                # Log output
+                if self.is_progress_report_needed():
+                    self.report_before_execution(strategy_cycle_timestamp, universe, state, approved_trades, debug_details)
 
-                # Make sure our hot wallet nonce is up to date
-                self.sync_model.resync_nonce()
+                # Physically execute the trades
+                with self.timed_task_context_manager("execute_trades", trade_count=len(approved_trades)):
 
-                self.execution_model.execute_trades(
-                    strategy_cycle_timestamp,
-                    state,
-                    approved_trades,
-                    self.routing_model,
-                    routing_state,
-                    check_balances=check_balances)
+                    # Unit tests can turn this flag to make it easier to see why trades fail
+                    check_balances = debug_details.get("check_balances", False)
 
-            # Run any logic we need to run after the trades have been executd
-            with self.timed_task_context_manager("post_execution"):
-                self.collect_post_execution_data(
-                    self.execution_context,
-                    pricing_model,
-                    approved_trades,
-                )
+                    # Make sure our hot wallet nonce is up to date
+                    self.sync_model.resync_nonce()
+
+                    self.execution_model.execute_trades(
+                        strategy_cycle_timestamp,
+                        state,
+                        approved_trades,
+                        self.routing_model,
+                        routing_state,
+                        check_balances=check_balances)
+
+                # Run any logic we need to run after the trades have been executd
+                with self.timed_task_context_manager("post_execution"):
+                    self.collect_post_execution_data(
+                        self.execution_context,
+                        pricing_model,
+                        approved_trades,
+                    )
+            else:
+                equity = state.portfolio.get_total_equity()
+                logger.trade("Strategy has no trading capital and trade decision step was skipped. The total equity is %f USD", equity)
 
             # Log output
             if self.is_progress_report_needed():

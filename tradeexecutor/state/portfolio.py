@@ -973,5 +973,16 @@ class Portfolio:
         """What is our Net Asset Value (NAV) across all open loan positions."""
         return sum(l.get_net_asset_value() for l in self.get_open_loans())
 
-    def get_total_collateral(self) -> USDollarAmount:
-        raise NotImplementedError()
+    def has_trading_capital(self, threshold_usd=0.15) -> bool:
+        """Does this strategy have non-zero deposits and total equity?
+
+        Check the reserves.
+
+        - If we have zero deposits, do not attempt to trade
+
+        - The actual amount is a bit above zero to account for rounding errors
+
+        :return:
+            If we have any capital to trade
+        """
+        return self.get_total_equity() >= threshold_usd
