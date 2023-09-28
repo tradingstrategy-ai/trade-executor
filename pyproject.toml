@@ -25,6 +25,7 @@ jupyterlab = "^3.5.0"
 pandas-ta = "^0.3.14b"
 tqdm-loggable = "0.1.4"
 
+
 # data pulls in gql needed with some nodes
 web3-ethereum-defi = {version="^0.22.14", extras=["data"]}
 
