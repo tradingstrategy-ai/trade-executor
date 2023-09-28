@@ -449,7 +449,7 @@ class StrategyRunner(abc.ABC):
 
             # TODO: Due to the legacy some tests assume they run with zero capital,
             # and we have a flag to check it for here
-            if state.portfolio.has_trading_capital() and not execution_context.mode.is_unit_testing():
+            if state.portfolio.has_trading_capital() or execution_context.mode.is_unit_testing():
 
                 # Run the strategy cycle main trading decision cycle
                 with self.timed_task_context_manager("decide_trades"):
