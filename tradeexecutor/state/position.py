@@ -223,6 +223,11 @@ class TradingPosition(GenericPosition):
     #:
     #: - credit supply (collateral without borrow)
     #:
+    #: This reflects the latest :py:attr:`tradeexecutor.state.trade.TradeExecution.executed_loan`
+    #: of a successful trade. This object is updated with accrued interest information from on-chain
+    #: data outside trades. If the position does not have successfully executed trades yet,
+    #: this is ``None``.
+    #:
     loan: Optional[Loan] = None
 
     #: What is the liquidation price for this position.
@@ -617,18 +622,33 @@ class TradingPosition(GenericPosition):
 
             case TradingPairKind.lending_protocol_short | TradingPairKind.credit_supply:
                 # Value for leveraged positions is net asset value from its two loans
-                return self.loan.get_net_asset_value(include_interest)
+                return self.get_loan_based_nav(include_interest=include_interest)
             case _:
                 raise NotImplementedError(f"Does not know how to value position for {self.pair}")
 
         return value
 
-    def get_loan_based_nav(self, include_interest=True, include_fees=True):
-        """Calculate NAV for a lona based position."""
-        nav = self.loan.get_net_asset_value(include_interest)
-        # TODO: Do we need to include fees
-        return nav
+    def get_loan_based_nav(self, include_interest=True, include_fees=True) -> USDollarAmount:
+        """Calculate net asset value (NAV) for a loan based position.
 
+        :param include_interest:
+            Should interest should be included in the NAV
+
+        :param include_fees:
+            TODO
+
+        :return:
+            Zero if this position is not yet opened.
+
+            When the first trade of position is executed,
+            :py:attr:`loan` attribute becomes available.
+        """
+        assert self.is_loan_based(), f"Not loan based position: {self}"
+        if not self.loan:
+            return 0.0
+
+        nav = self.loan.get_net_asset_value(include_interest)
+        return nav
 
     def get_trades_by_strategy_cycle(self, timestamp: datetime.datetime) -> Iterable[TradeExecution]:
         """Get all trades made for this position at a specific time.
