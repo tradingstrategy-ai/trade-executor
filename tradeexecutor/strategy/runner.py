@@ -64,6 +64,7 @@ class StrategyRunner(abc.ABC):
                  routing_model: Optional[RoutingModel] = None,
                  run_state: Optional[RunState] = None,
                  accounting_checks=False,
+                 unit_testing=False,
                  ):
         """
         :param engine_version:
@@ -71,9 +72,7 @@ class StrategyRunner(abc.ABC):
 
             Changes function arguments based on this.
             See `StrategyModuleInformation.trading_strategy_engine_version`.
-
         """
-
         assert isinstance(execution_context, ExecutionContext)
 
         if sync_model is not None:
@@ -89,6 +88,7 @@ class StrategyRunner(abc.ABC):
         self.run_state = run_state
         self.execution_context = execution_context
         self.accounting_checks = accounting_checks
+        self.unit_testing = unit_testing
 
         logger.info("Created strategy runner %s, engine version %s", self, self.execution_context.engine_version)
 
@@ -443,10 +443,15 @@ class StrategyRunner(abc.ABC):
             if self.is_progress_report_needed():
                 self.report_after_sync_and_revaluation(strategy_cycle_timestamp, universe, state, debug_details)
 
-            # Run the strategy cycle
+            # Check if we do have any money yo trade or not.
+            # Otherwise we are going to crash with "not enough USDC to open a trade" errors
+            execution_context = self.execution_context
 
-            if state.portfolio.has_trading_capital():
+            # TODO: Due to the legacy some tests assume they run with zero capital,
+            # and we have a flag to check it for here
+            if state.portfolio.has_trading_capital() and not execution_context.mode.is_unit_testing():
 
+                # Run the strategy cycle main trading decision cycle
                 with self.timed_task_context_manager("decide_trades"):
                     rebalance_trades = self.on_clock(strategy_cycle_timestamp, universe, pricing_model, state, debug_details)
                     assert type(rebalance_trades) == list
