@@ -629,7 +629,10 @@ class TradingPosition(GenericPosition):
         return value
 
     def get_loan_based_nav(self, include_interest=True, include_fees=True) -> USDollarAmount:
-        """Calculate NAV for a loan based position.
+        """Calculate net asset value (NAV) for a loan based position.
+
+        :param include_interest:
+            Should interest should be included in the NAV
 
         :param include_fees:
             TODO
@@ -640,7 +643,7 @@ class TradingPosition(GenericPosition):
             When the first trade of position is executed,
             :py:attr:`loan` attribute becomes available.
         """
-        assert self.pair.is_leverage() or self.pair.is_credit_supply(), f"Not loan based position: {self}"
+        assert self.is_loan_based(), f"Not loan based position: {self}"
         if not self.loan:
             return 0.0
 
