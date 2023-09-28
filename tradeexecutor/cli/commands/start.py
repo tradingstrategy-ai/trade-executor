@@ -403,6 +403,8 @@ def start(
                     timed_task_context_manager=timed_task,
                 )
 
+        logger.info("Starting with execution mode: %s, unit testing is %s", execution_context.mode.name, unit_testing)
+
     except Exception as e:
         # Logging is set up is in this point, so we can log this exception that
         # caused the start up to fail

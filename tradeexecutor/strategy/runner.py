@@ -523,7 +523,7 @@ class StrategyRunner(abc.ABC):
                     )
             else:
                 equity = state.portfolio.get_total_equity()
-                logger.trade("Strategy has no trading capital and trade decision step was skipped. The total equity is %f USD", equity)
+                logger.trade("Strategy has no trading capital and trade decision step was skipped. The total equity is %f USD, execution mode is %s", equity, execution_context.mode.name)
 
             # Log output
             if self.is_progress_report_needed():

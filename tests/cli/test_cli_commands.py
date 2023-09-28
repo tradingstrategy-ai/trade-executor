@@ -48,6 +48,7 @@ def test_cli_check_universe(
         "STRATEGY_FILE": strategy_path,
         "CACHE_PATH": unit_test_cache_path,
         "LOG_LEVEL": "disabled",
+        "UNIT_TESTING": "true",
     }
 
     runner = CliRunner()
