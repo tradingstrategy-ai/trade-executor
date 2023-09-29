@@ -55,28 +55,27 @@ def export_trade_for_dataframe(p: Portfolio, t: TradeExecution) -> dict:
         label += ["Repaired trade"]
         type = "failed"
     else:
-        if t.is_sell():
-            if t.is_stop_loss():
-                label += [
-                    f"Stop loss {base_token_symbol}",
-                    "",
-                    f"Trigger was at {position.stop_loss:.4f} {price_prefix}",
-                ]
-                type = "stop-loss"
-            else:
-                label += [f"Sell {base_token_symbol}"]
-                type = "sell"
-        else:
-            if t.is_take_profit():
-                type = "take-profit"
-                label += [
-                    f"Take profit {base_token_symbol}",
-                    "",
-                    "Trigger was at {position.take_profit:.4f} {price_prefix}",
-                ]
-            else:
-                type = "buy"
-                label += [f"Buy {base_token_symbol}"]
+        
+        if t.is_stop_loss():
+            type = "stop-loss"
+            label += [
+                f"Stop loss {base_token_symbol}",
+                "",
+                f"Trigger was at {position.stop_loss:.4f} {price_prefix}",
+            ]
+        elif t.is_take_profit():
+            type = "take-profit"
+            label += [
+                f"Take profit {base_token_symbol}",
+                "",
+                f"Trigger was at {position.take_profit:.4f} {price_prefix}",
+            ]
+        elif t.is_sell():
+            type = "sell"
+            label += [f"Sell {base_token_symbol}"]
+        elif t.is_buy():
+            type = "buy"
+            label += [f"Buy {base_token_symbol}"]
 
         label += [
             "",
@@ -242,9 +241,10 @@ def visualise_trades(
                 y=stop_loss_df["price"],
                 text=stop_loss_df["label"],
                 marker={
-                    "symbol": "triangle-left",
+                    "symbol": "arrow-down",
                     "size": 12,
                     "line": {"width": 1, "color": "black"},
+                    "color": "orangered",
                 },
                 hoverinfo="text",
             ),
@@ -262,9 +262,10 @@ def visualise_trades(
                 y=take_profit_df["price"],
                 text=take_profit_df["label"],
                 marker={
-                    "symbol": "triangle-left",
+                    "symbol": "arrow-up",
                     "size": 12,
                     "line": {"width": 1, "color": "black"},
+                    "color": "lightgreen",
                 },
                 hoverinfo="text",
             ),

@@ -870,6 +870,7 @@ def expand_timeline(
             # "timestamp": timestamp,
             "Id": position.position_id,
             "Remarks": remarks,
+            "Type": "Long" if position.is_long() else "Short",
             "Opened at": position.opened_at.strftime(timestamp_format),
             "Duration": format_duration_days_hours_mins(duration) if duration else np.nan,
             "Exchange": exchange.name,
