@@ -260,14 +260,24 @@ class BlockchainTransaction:
         )
     )
 
+    #: Human-readable debug information about this transaction.
+    #:
+    #: Currently may contain the human description of the trade that
+    #: triggered this transaction.
+    #:
+    note: Optional[str] = None
+
     #: Any other metadata associated with this transaction.
     #:
     #: Currently used for `vault_slippage_tolerance`.
     other: dict = field(default_factory=dict)
 
     def __repr__(self):
+        tx_hash = self.tx_hash or ""
+        note = self.note or ""
         if self.status is True:
             return f"<Tx \n" \
+                   f"    hash:{tx_hash}\n" \
                    f"    from:{self.from_address}\n" \
                    f"    nonce:{self.nonce}\n" \
                    f"    to:{self.contract_address}\n" \
@@ -276,10 +286,12 @@ class BlockchainTransaction:
                    f"    wrapped args:{_clean_print_args(self.wrapped_args)}\n" \
                    f"    gas limit:{self.get_gas_limit():,}\n" \
                    f"    gas spent:{self.realised_gas_units_consumed:,}\n" \
+                   f"    note:{note}\n" \
                    f"    success\n" \
                    f"    >"
         elif self.status is False:
             return f"<Tx \n" \
+                   f"    hash:{tx_hash}\n" \
                    f"    from:{self.from_address}\n" \
                    f"    nonce:{self.nonce}\n" \
                    f"    to:{self.contract_address}\n" \
@@ -289,15 +301,18 @@ class BlockchainTransaction:
                    f"    fail reason:{self.revert_reason}\n" \
                    f"    gas limit:{self.get_gas_limit():,}\n" \
                    f"    gas spent:{self.realised_gas_units_consumed:,}\n" \
+                   f"    note:{note}\n" \
                    f"    >"
         else:
             return f"<Tx \n" \
+                   f"    hash:{tx_hash}\n" \
                    f"    from:{self.from_address}\n" \
                    f"    nonce:{self.nonce}\n" \
                    f"    to:{self.contract_address}\n" \
                    f"    func:{self.function_selector}\n" \
                    f"    args:{_clean_print_args(self.transaction_args)}\n" \
                    f"    wrapped args:{_clean_print_args(self.wrapped_args)}\n" \
+                   f"    note:{note}\n" \
                    f"    unresolved\n" \
                    f"    >"
 

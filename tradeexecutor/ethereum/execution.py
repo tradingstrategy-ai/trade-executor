@@ -763,7 +763,12 @@ def broadcast(
         confirmation_block_count: int=0,
         ganache_sleep=0.5,
 ) -> Dict[HexBytes, Tuple[TradeExecution, BlockchainTransaction]]:
-    """Broadcast multiple transations and manage the trade executor state for them.
+    """Broadcast multiple transactions and manage the trade executor state for them.
+
+    .. note ::
+
+        The node provider may or may not support broadcasting multiple transactions without confirming existing ones.
+        For example, LlamaNode will give nonce too low error. We will try to deal with this in the middleware.
 
     :return: Map of transaction hashes to watch
     """
@@ -787,7 +792,7 @@ def broadcast(
             # Only SignedTransaction.rawTransaction attribute is intresting in this point
             signed_tx = SignedTransaction(rawTransaction=tx.signed_bytes, hash=None, r=0, s=0, v=0)
             broadcast_batch.append(signed_tx)
-            logger.info("Broadcasting:\n %s", tx)
+            logger.info("Broadcasting transaction for trade %s:\n %s", t, tx)
         t.mark_broadcasted(datetime.datetime.utcnow())
 
     try:
