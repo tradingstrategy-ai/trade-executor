@@ -114,7 +114,7 @@ def export_trade_for_dataframe(p: Portfolio, t: TradeExecution) -> dict:
                 ]
         
         if t.cost_of_gas:
-            label += ["Gas fee: {:.4f}".format(t.cost_of_gas)]
+            label += [f"Gas fee: {t.cost_of_gas:.4f}"]
 
     # See Plotly Scatter usage https://stackoverflow.com/a/61349739/315168
     return {
