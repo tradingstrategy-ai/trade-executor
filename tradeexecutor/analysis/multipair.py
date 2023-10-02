@@ -49,6 +49,8 @@ def analyse_pair_trades(pair: TradingPairIdentifier, portfolio: Portfolio) -> di
     take_profits = sum([1 for p in positions if p.is_take_profit()])
     stop_losses = sum([1 for p in positions if p.is_stop_loss()])
     trailing_stop_losses = sum([1 for p in positions if p.is_trailing_stop_loss()])
+    total_return = sum(profits)
+    volatility = np.std(profits)
 
     return {
         "Trading pair": pair.get_human_description(),
@@ -65,6 +67,8 @@ def analyse_pair_trades(pair: TradingPairIdentifier, portfolio: Portfolio) -> di
         "Take profits": take_profits,
         "Stop losses": stop_losses,
         "Trailing stop losses": trailing_stop_losses,
+        "Volatility": volatility,
+        "Total return %": total_return,
     }
 
 
@@ -125,6 +129,8 @@ def format_multipair_summary(
         "Take profits": str,
         "Stop losses": str,
         "Trailing stop losses": str,
+        "Volatility": format_percent_2_decimals,
+        "Total return %": format_percent_2_decimals,
     }
 
     for col, format_func in formatters.items():
@@ -145,7 +151,9 @@ def format_multipair_summary(
             ("Losses", None),
             ("Take profits", "https://tradingstrategy.ai/glossary/take-profit"),
             ("Stop losses", "https://tradingstrategy.ai/glossary/stop-loss"),
-            ("Trailing stop losses", "https://tradingstrategy.ai/glossary/trailing-stop-loss")
+            ("Trailing stop losses", "https://tradingstrategy.ai/glossary/trailing-stop-loss"),
+            ("Volatility", None),
+            ("Total return %", "https://tradingstrategy.ai/glossary/aggregate-return")
         ]
 
         df.columns = [make_clickable(h, url) if url else h for h, url in headings]
