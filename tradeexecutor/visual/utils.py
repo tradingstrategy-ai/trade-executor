@@ -46,7 +46,7 @@ def export_trade_for_dataframe(p: Portfolio, t: TradeExecution) -> dict:
     base_token_symbol = position.pair.get_pricing_pair().base.token_symbol
     price_prefix = f"{base_token_symbol} / USD"
 
-    label = []
+    label = ["", "-" * 60, ""]
 
     if t.is_failed():
         label += ["Failed trade"]
@@ -72,10 +72,14 @@ def export_trade_for_dataframe(p: Portfolio, t: TradeExecution) -> dict:
             ]
         elif t.is_sell():
             type = "sell"
-            label += [f"Sell {base_token_symbol}"]
+            label += [
+                f"Sell {base_token_symbol}",
+            ]
         elif t.is_buy():
             type = "buy"
-            label += [f"Buy {base_token_symbol}"]
+            label += [
+                f"Buy {base_token_symbol}"
+            ]
 
         label += [
             "",
