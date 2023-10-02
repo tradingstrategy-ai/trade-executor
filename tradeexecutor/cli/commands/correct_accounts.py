@@ -98,6 +98,7 @@ def correct_accounts(
         json_rpc_ethereum=json_rpc_ethereum,
         json_rpc_arbitrum=json_rpc_arbitrum,
         json_rpc_anvil=json_rpc_anvil,
+        unit_testing=unit_testing,
     )
 
     assert web3config, "No RPC endpoints given. A working JSON-RPC connection is needed for check-wallet"

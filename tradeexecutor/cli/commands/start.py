@@ -217,6 +217,7 @@ def start(
                 json_rpc_anvil=json_rpc_anvil,
                 json_rpc_arbitrum=json_rpc_arbitrum,
                 gas_price_method=gas_price_method,
+                unit_testing=unit_testing,
             )
 
             if not web3config.has_any_connection():
