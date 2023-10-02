@@ -517,7 +517,7 @@ class PositionManager:
         else:
             executor_pair = pair
 
-        assert value > 0, f"Negative value: {value} on {pair}"
+        assert value > 0, f"For opening long, the value must be positive. Got: {value} on {pair}"
 
         # Convert amount of reserve currency to the decimal
         # so we can have exact numbers from this point forward
