@@ -29,7 +29,6 @@ def anvil() -> AnvilLaunch:
     anvil = launch_anvil(
         hardfork="london",
         gas_limit=15_000_000,  # Max 5M gas per block, or per transaction in test automining
-        port=20001,
     )
     try:
         # Make the initial snapshot ("zero state") to which we revert between tests

@@ -37,10 +37,11 @@ jobs:
         # download too much data
         run: |          
           poetry install --no-interaction -E web-server -E execution -E quantstats
+      # Run testa parallel and do not run slow tests before the build
       - name: Run test scripts
         run: |
           # Run tests and print 20 slowest
-          poetry run pytest --tb=native --durations=20 -m "not slow_test_group"
+          poetry run pytest --tb=native --dist loadscope -n 6 --durations=20 -m "not slow_test_group"
         env:
           TRADING_STRATEGY_API_KEY: ${{ secrets.TRADING_STRATEGY_API_KEY }}
           BNB_CHAIN_JSON_RPC: ${{ secrets.BNB_CHAIN_JSON_RPC }}      
