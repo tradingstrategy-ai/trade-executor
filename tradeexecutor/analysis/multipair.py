@@ -68,7 +68,7 @@ def analyse_pair_trades(pair: TradingPairIdentifier, portfolio: Portfolio) -> di
         "Stop losses": stop_losses,
         "Trailing stop losses": trailing_stop_losses,
         "Volatility": volatility,
-        "Total return": total_return,
+        "Total return %": total_return,
     }
 
 
@@ -130,7 +130,7 @@ def format_multipair_summary(
         "Stop losses": str,
         "Trailing stop losses": str,
         "Volatility": format_percent_2_decimals,
-        "Total return": format_percent_2_decimals,
+        "Total return %": format_percent_2_decimals,
     }
 
     for col, format_func in formatters.items():
@@ -153,7 +153,7 @@ def format_multipair_summary(
             ("Stop losses", "https://tradingstrategy.ai/glossary/stop-loss"),
             ("Trailing stop losses", "https://tradingstrategy.ai/glossary/trailing-stop-loss"),
             ("Volatility", None),
-            ("Total return", "https://tradingstrategy.ai/glossary/aggregate-return")
+            ("Total return %", "https://tradingstrategy.ai/glossary/aggregate-return")
         ]
 
         df.columns = [make_clickable(h, url) if url else h for h, url in headings]
