@@ -11,6 +11,7 @@ from unittest.mock import patch
 import flaky
 import pytest
 import requests
+from eth_defi.utils import find_free_port
 from hexbytes import HexBytes
 from typer.main import get_command
 
@@ -83,7 +84,7 @@ def test_main_loop_crash(
     - Webhook server tells the  main loop has crashed
     """
 
-    port = 5001 + random.randint(1, 1000)  # Randomly picked
+    port = find_free_port(20_000, 40_000, 20)
     server = f"http://localhost:{port}"
 
     # Set up the configuration for the live trader

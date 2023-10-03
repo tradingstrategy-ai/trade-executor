@@ -7,6 +7,7 @@ from queue import Queue
 
 import pytest
 import requests
+from eth_defi.utils import find_free_port
 
 from tradeexecutor.cli.log import setup_in_memory_logging, get_ring_buffer_handler
 from tradeexecutor.state.metadata import Metadata
@@ -58,8 +59,9 @@ def server_url(store):
     metadata.backtest_notebook = notebook_result
     metadata.backtest_html = html_result
 
-    server = create_webhook_server("127.0.0.1", 5000, "test", "test", queue, store, metadata, execution_state)
-    server_url = "http://test:test@127.0.0.1:5000"
+    port = find_free_port(20_000, 40_000, 20)
+    server = create_webhook_server("127.0.0.1", port, "test", "test", queue, store, metadata, execution_state)
+    server_url = f"http://test:test@127.0.0.1:{port}"
     yield server_url
     server.shutdown()
 
@@ -210,7 +212,7 @@ def test_icon(logger, server_url):
     assert resp.status_code == 200
     data = resp.json()
     icon_url = data["icon_url"]
-    assert icon_url == 'http://127.0.0.1:5000/icon'
+    assert icon_url.endswith("/icon")
     resp = requests.get(f"{server_url}/icon")
     assert resp.status_code == 200, f"Got: {icon_url} {resp.text}"
     assert resp.headers.get("content-type") == "image/png"
