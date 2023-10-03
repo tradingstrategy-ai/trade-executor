@@ -43,6 +43,7 @@ def test_data_fresh(universe_model: DataAgeTestUniverseModel):
     universe_model.check_data_age(ts, universe, best_before_duration)
 
 
+@pytest.mark.slow_test_group
 def test_data_aged(universe_model: DataAgeTestUniverseModel):
     """Aged data raises an exception."""
     ts = datetime.datetime.utcnow()
