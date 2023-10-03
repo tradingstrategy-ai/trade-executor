@@ -38,7 +38,9 @@ jobs:
         run: |          
           poetry install --no-interaction -E web-server -E execution -E quantstats
       # Run testa parallel, do not run slow tests before Docker image build.
-      # Print 20 slowests test.
+      # Note that we limit concurrency to 2 workers as 4 workers crashed without an error message on Github CI.
+      # I suspect out of memory situation that is not reported to the user.
+      # Print 20 slowest tests when done.
       - name: Run test scripts
         run: |
           poetry run pytest --tb=native --dist loadscope -n 2 --durations=20 -m "not slow_test_group"
