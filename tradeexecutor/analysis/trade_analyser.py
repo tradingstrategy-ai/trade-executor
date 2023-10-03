@@ -281,7 +281,7 @@ class TradeSummary:
             '% of total': [
                 as_percent(self.win_percent), 
                 as_percent(self.lost_percent), 
-                as_percent((self.won + self.lost)/self.total_positions)
+                as_percent((self.won + self.lost)/self.total_positions) if self.total_positions else as_percent(0)
             ],
             'Average PnL %': [
                 as_percent(self.average_winning_trade_profit_pc), 
