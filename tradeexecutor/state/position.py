@@ -68,9 +68,6 @@ class TriggerPriceUpdate:
 
         if self.mid_price:
             assert type(self.mid_price) == float
-        
-        if self.stop_loss_before:
-            assert self.stop_loss_before < self.stop_loss_after
 
 
 @dataclass_json

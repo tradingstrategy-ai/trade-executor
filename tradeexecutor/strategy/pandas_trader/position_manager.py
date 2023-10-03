@@ -993,19 +993,16 @@ class PositionManager:
             Mid price of the pair (https://tradingstrategy.ai/glossary/mid-price). Provide when possible for most complete statistical analysis. In certain cases, it may not be easily available, so it's optional.
         """
 
-        spot_pair = position.pair
-        if position.pair.kind in [TradingPairKind.lending_protocol_long, TradingPairKind.lending_protocol_short]:
-            spot_pair = spot_pair.underlying_spot_pair
-
-        mid_price =  self.pricing_model.get_mid_price(self.timestamp, spot_pair)
+        pair = position.pair.get_pricing_pair()
+        mid_price =  self.pricing_model.get_mid_price(self.timestamp, pair)
 
         position.trigger_updates.append(TriggerPriceUpdate(
             timestamp=self.timestamp,
-            stop_loss_before = position.stop_loss,
-            stop_loss_after = stop_loss,
-            mid_price = mid_price,
-            take_profit_before = position.take_profit,
-            take_profit_after = position.take_profit,  # No changes to take profit
+            stop_loss_before=position.stop_loss,
+            stop_loss_after=stop_loss,
+            mid_price=mid_price,
+            take_profit_before=position.take_profit,
+            take_profit_after=position.take_profit,  # No changes to take profit
         ))
 
         position.stop_loss = stop_loss
@@ -1041,6 +1038,7 @@ class PositionManager:
         leverage: LeverageMultiplier = 1.0,
         take_profit_pct: float | None = None,
         stop_loss_pct: float | None = None,
+        trailing_stop_loss_pct: float | None = None,
     ) -> list[TradeExecution]:
         """Open a short position.
 
@@ -1072,6 +1070,10 @@ class PositionManager:
             1.0 is the current market price.
             If asset opening price is $1000, stop_loss_pct=0.98
             will buy back the asset when price reaches $1020.
+
+        :param trailing_stop_loss_pct:
+            If set, set the position to trigger trailing stop loss relative to
+            the current market price. Cannot be used with stop_loss_pct.
 
         :return:
             List of trades that will open this credit position
@@ -1153,6 +1155,18 @@ class PositionManager:
             assert 1 - stop_loss_pct < liquidation_distance, f"stop_loss_pct must be bigger than liquidation distance {1 - liquidation_distance:.4f}, got {stop_loss_pct}"
 
             self.update_stop_loss(position, price_structure.mid_price * (2 - stop_loss_pct))
+
+        if trailing_stop_loss_pct:
+            assert stop_loss_pct is None, "You cannot give both stop_loss_pct and trailing_stop_loss_pct"
+            assert 0 < trailing_stop_loss_pct < 1, f"trailing_stop_loss_pct must be 0..1, got {trailing_stop_loss_pct}"
+
+            # calculate distance to liquidation price and make sure stoploss is far from that
+            mid_price = Decimal(price_structure.mid_price)
+            liquidation_distance = (estimation.liquidation_price - mid_price) / mid_price
+            assert 1 - trailing_stop_loss_pct < liquidation_distance, f"trailing_stop_loss_pct must be bigger than liquidation distance {1 - liquidation_distance:.4f}, got {trailing_stop_loss_pct}"
+
+            self.update_stop_loss(position, price_structure.mid_price * (2 - trailing_stop_loss_pct))
+            position.trailing_stop_loss_pct = trailing_stop_loss_pct
 
         return [trade]
     
