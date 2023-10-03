@@ -133,19 +133,29 @@ def check_position_triggers(
 
         # Check for trailing stop loss updates
         if p.trailing_stop_loss_pct:
+            stop_loss_before = p.stop_loss
+            
             if p.is_long():
                 new_stop_loss = mid_price * p.trailing_stop_loss_pct
             else:
-                # TODO: check and add test
                 new_stop_loss = mid_price * (2 - p.trailing_stop_loss_pct)
 
-            if not p.stop_loss or new_stop_loss != p.stop_loss:
+            if any([
+                not p.stop_loss,
+                p.is_long() and new_stop_loss > p.stop_loss,
+                p.is_short() and new_stop_loss < p.stop_loss,
+            ]):
                 stop_loss_before = p.stop_loss
                 stop_loss_after = new_stop_loss
 
         # Update dynamic triggers if needed
         if stop_loss_after is not None:
             assert stop_loss_after > 0
+            if p.is_long():
+                assert stop_loss_after > stop_loss_before
+            else:
+                assert stop_loss_after < stop_loss_before
+
             trigger_update = TriggerPriceUpdate(
                 ts,
                 mid_price,
@@ -172,7 +182,7 @@ def check_position_triggers(
         if p.stop_loss:
             if any([
                 p.is_long() and mid_price <= p.stop_loss,
-                p.is_short() and mid_price >= p.take_profit,
+                p.is_short() and mid_price >= p.stop_loss,
             ]):
                 trigger_type = TradeType.stop_loss
                 trigger_price = p.stop_loss
