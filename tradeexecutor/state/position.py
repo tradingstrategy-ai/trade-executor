@@ -444,7 +444,8 @@ class TradingPosition(GenericPosition):
     def get_quantity(self) -> Decimal:
         """Get the tied up token quantity in all successfully executed trades.
 
-        - Does not account for trades that are currently being executed.
+        - Does not account for trades that are currently being executed (in started,
+          or planned state).
 
         - Does some fixing for rounding errors in the form of epsilon checks
 
@@ -960,7 +961,12 @@ class TradingPosition(GenericPosition):
         return sum_decimal([abs(t.get_position_quantity()) for t in self.trades.values() if t.is_success() if t.is_sell()])
 
     def get_net_quantity(self) -> Decimal:
-        """The difference in the quantity of assets bought and sold to date."""
+        """The difference in the quantity of assets bought and sold to date.
+
+        .. note::
+
+            To be deprecated. Please use :py:method:`get_quantity` instead.
+        """
         return self.get_quantity()
 
     def get_average_buy(self) -> Optional[USDollarAmount]:

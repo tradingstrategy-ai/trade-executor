@@ -566,6 +566,11 @@ class StrategyRunner(abc.ABC):
 
             # TODO: Sync the treasury here
 
+            # Check that our on-chain balances are good
+            with self.timed_task_context_manager("check_accounts_position_triggers"):
+                logger.info("Position trigger pre-trade accounts balance check")
+                self.check_accounts(universe, state)
+
             # We use PositionManager.close_position()
             # to generate trades to close stop loss positions
             position_manager = PositionManager(

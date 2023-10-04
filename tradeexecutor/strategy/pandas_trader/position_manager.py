@@ -778,7 +778,7 @@ class PositionManager:
 
         slippage_tolerance = slippage_tolerance or self.default_slippage_tolerance
 
-        logger.info("Preparing to close position %s, quantity %s, pricing %s, slippage tolerance %f", position, quantity, price_structure, slippage_tolerance)
+        logger.info("Preparing to close position %s, quantity %s, pricing %s, slippage tolerance: %f %", position, quantity, price_structure, slippage_tolerance * 100)
 
         position2, trade, created = self.state.create_trade(
             self.timestamp,
