@@ -667,7 +667,7 @@ def _get_grid_with_candles_volume_indicators(
         )
 
     fig.update_yaxes(showspikes=True, spikemode='across', spikesnap='cursor', spikedash='dot', spikethickness=1)
-    fig.update_layout(hovermode='x unified')
+    # fig.update_layout(hovermode='x unified')
     fig.update_traces(xaxis='x')
         
     return fig
