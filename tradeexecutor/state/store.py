@@ -103,7 +103,8 @@ class JSONFileStore(StateStore):
                 raise
 
             out.write(txt)
-            logger.info("Saved state to %s, total %d chars", self.path, len(txt))
+            written = len(txt)
+            logger.info(f"Saved state to %s, total {written:,} chars", self.path)
         temp.close()
         shutil.move(temp.name, self.path)
 

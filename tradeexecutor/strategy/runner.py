@@ -96,7 +96,7 @@ class StrategyRunner(abc.ABC):
     def __repr__(self):
         """Get a long presentation of internal runner state."""
         dump = pformat(self.__dict__)
-        return f"<{self.__class__}\n" \
+        return f"<{self.__class__.__name__}\n" \
                f"{dump}\n" \
                f">"
 
