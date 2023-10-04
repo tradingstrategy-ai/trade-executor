@@ -80,8 +80,9 @@ class JSONFileStore(StateStore):
         return State.read_json_file(self.path)
 
     def sync(self, state: State):
-        """Write new JSON state dump using Linux atomic file replacement."""
+        """Write new JSON state dump using Linux atomic filereplacement."""
         dirname, basename = os.path.split(self.path)
+        # Prepare for an atomic replacement
         temp = tempfile.NamedTemporaryFile(mode='wt', delete=False, dir=dirname)
         with open(temp.name, "wt") as out:
 

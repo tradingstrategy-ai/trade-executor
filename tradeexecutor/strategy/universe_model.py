@@ -84,7 +84,7 @@ class UniverseOptions:
     end_at: Optional[datetime.datetime] = None
 
 
-#: Shorthand method
+#: Shorthand method for no specifc trading univese fine tuning options set
 #:
 default_universe_options = UniverseOptions()
 
