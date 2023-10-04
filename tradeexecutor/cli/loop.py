@@ -1164,14 +1164,6 @@ class ExecutionLoop:
         self.runner: StrategyRunner = run_description.runner
         self.universe_model = run_description.universe_model
 
-        # TODO: Pass this as a constructor argument
-        # TODO: Accounting checks only supports Enzyme currently
-        self.runner.accounting_checks = self.check_accounts and isinstance(self.sync_model, EnzymeVaultSyncModel)
-
-        # TODO: Pass this as a constructor argument
-        # TODO: Accounting checks only supports Enzyme currently
-        self.runner.accounting_checks = self.check_accounts and isinstance(self.sync_model, EnzymeVaultSyncModel)
-
         # TODO: Do this only when doing backtesting in a notebook
         # self.set_start_and_end()
 
