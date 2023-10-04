@@ -8,6 +8,7 @@ import datetime
 from contextlib import AbstractContextManager
 import logging
 from io import StringIO
+from pprint import pformat
 
 from typing import List, Optional, Tuple
 
@@ -91,6 +92,13 @@ class StrategyRunner(abc.ABC):
         self.unit_testing = unit_testing
 
         logger.info("Created strategy runner %s, engine version %s", self, self.execution_context.engine_version)
+
+    def __repr__(self):
+        """Get a long presentation of internal runner state."""
+        dump = pformat(self.__dict__)
+        return f"<{self.__class__}\n" \
+               f"{dump}\n" \
+               f">"
 
     @abc.abstractmethod
     def pretick_check(self, ts: datetime.datetime, universe: StrategyExecutionUniverse):
