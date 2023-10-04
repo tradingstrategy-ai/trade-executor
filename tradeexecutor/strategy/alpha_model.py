@@ -554,7 +554,7 @@ class AlphaModel:
                         dollar_diff)
 
             if abs(dollar_diff) < min_trade_threshold:
-                logger.info("Not doing anything, value %f below trade threshold %f", value, min_trade_threshold)
+                logger.info("Not doing anything, diff %f (value %f) below trade threshold %f", dollar_diff, value, min_trade_threshold)
                 signal.position_adjust_ignored = True
             else:
 
