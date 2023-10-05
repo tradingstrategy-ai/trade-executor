@@ -196,7 +196,24 @@ def test_load_trading_and_lending_data_live(persistent_test_client: Client):
     lending_candles = data_universe.lending_candles.variable_borrow_apr
     rates = lending_candles.get_rates_by_reserve(usdc_reserve)
 
-    two_days_ago = pd.Timestamp.utcnow().floor(freq="D") - pd.Timedelta(days=2)
+    # Check that we did not load too old lending data
+    first_rate_sample = rates.index[0]
+    assert first_rate_sample.to_pydatetime() > datetime.datetime.utcnow() - datetime.timedelta(days=8)
 
+    # Check that we did not load too old price data
+    trading_pair = (ChainId.polygon, "uniswap-v3", "WETH", "USDC", 0.0005)
+    pair = data_universe.pairs.get_pair_by_human_description(trading_pair)
+    price_feed = data_universe.candles.get_candles_by_pair(pair.pair_id)
+    first_price_sample = price_feed.index[0]
+    assert first_price_sample.to_pydatetime() > datetime.datetime.utcnow() - datetime.timedelta(days=8)
+
+    # Check a single data sample looks correct
+    # Lending rate data
+    two_days_ago = pd.Timestamp(datetime.datetime.utcnow() - datetime.timedelta(days=2)).floor("D")
     assert rates["open"][two_days_ago] > 0
     assert rates["open"][two_days_ago] < 10  # Erdogan warnings
+
+    # Check a single data sample looks correct
+    # Price feed
+    assert price_feed["open"][two_days_ago] > 0
+    assert price_feed["open"][two_days_ago] < 10_000  # To the moon warning

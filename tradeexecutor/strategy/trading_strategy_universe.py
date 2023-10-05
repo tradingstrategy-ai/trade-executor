@@ -689,20 +689,22 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         assert len(chain_ids) == 1, f"Currently only single chain datasets supported, got chains {chain_ids}"
         chain_id = chain_ids[0]
 
-        pairs = PandasPairUniverse(dataset.pairs)
+        pairs = PandasPairUniverse(dataset.pairs, exchange_universe=dataset.exchanges)
 
         quote_token = pairs.get_single_quote_token()
         reserve_asset = translate_token(quote_token)
+
+        candle_universe = GroupedCandleUniverse(dataset.candles)
 
         universe = Universe(
             time_bucket=dataset.time_bucket,
             chains=chain_id,
             pairs=pairs,
-            exchanges=dataset.exchanges,
-            candles=dataset.candles,
+            candles=candle_universe,
             liquidity=dataset.liquidity,
             resampled_liquidity=dataset,
             exchange_universe=dataset.exchanges,
+            exchanges=dataset.exchanges.exchanges,
             lending_candles=dataset.lending_candles,
         )
 
@@ -1529,6 +1531,13 @@ def load_partial_data(
     if not required_history_period:
         required_history_period = universe_options.history_period
 
+    assert (start_at and end_at) or required_history_period, \
+        f"You need to give either history period or backtesting start_at - end_at range. We got {start_at}, {end_at}, {required_history_period}"
+
+    # Where the data loading start can come from the hard backtesting range (start - end)
+    # or how many days of historical data we ask for
+    data_load_start_at = start_at or (datetime.datetime.utcnow() - required_history_period)
+
     with execution_context.timed_task_context_manager("load_partial_pair_data", time_bucket=time_bucket.value):
 
         exchange_universe = client.fetch_exchange_universe()
@@ -1549,7 +1558,7 @@ def load_partial_data(
             # and then recontruct a new pair universe with only few selected pairs with full indexes
             # later. The whole purpose of this here is to
             # go around lack of good look up functions of raw DataFrame pairs data.
-            pair_universe = PandasPairUniverse(pairs_df, build_index=False)
+            pair_universe = PandasPairUniverse(pairs_df, build_index=False, exchange_universe=exchange_universe)
 
             # Filter pairs first and then rest by the resolved pairs
             our_pairs = {pair_universe.get_pair_by_human_description(exchange_universe, d) for d in pairs}
@@ -1571,7 +1580,7 @@ def load_partial_data(
             our_pair_ids,
             time_bucket,
             progress_bar_description=progress_bar_desc,
-            start_time=start_at,
+            start_time=data_load_start_at,
             end_time=end_at,
         )
 
@@ -1581,7 +1590,7 @@ def load_partial_data(
                 our_pair_ids,
                 stop_loss_time_bucket,
                 progress_bar_description=stop_loss_desc,
-                start_time=start_at,
+                start_time=data_load_start_at,
                 end_time=end_at,
             )
         else:
@@ -1601,7 +1610,7 @@ def load_partial_data(
                 lending_reserve_universe,
                 bucket=time_bucket,
                 candle_types=lending_candle_types,
-                start_time=start_at,
+                start_time=data_load_start_at,
                 end_time=end_at,
             )
             lending_candles = LendingCandleUniverse(lending_candles_map, lending_reserve_universe)
