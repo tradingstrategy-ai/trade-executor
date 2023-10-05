@@ -19,8 +19,7 @@ from typing import List, Optional, Callable, Tuple, Set, Dict, Iterable, Collect
 
 import pandas as pd
 
-from eth_defi.uniswap_v2.utils import ZERO_ADDRESS
-from tradingstrategy.lending import LendingReserveUniverse, LendingReserveDescription, LendingCandleType, LendingCandleUniverse, LendingProtocolType
+from tradingstrategy.lending import LendingReserveUniverse, LendingReserveDescription, LendingCandleType, LendingCandleUnivers
 from tradingstrategy.token import Token
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId
@@ -38,6 +37,7 @@ from tradingstrategy.utils.groupeduniverse import filter_for_pairs
 from tradeexecutor.strategy.execution_context import ExecutionMode, ExecutionContext
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind, AssetType
 from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse, UniverseModel, DataTooOld, UniverseOptions, default_universe_options
+
 
 logger = logging.getLogger(__name__)
 
