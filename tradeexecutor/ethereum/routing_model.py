@@ -85,6 +85,7 @@ class EthereumRoutingModel(RoutingModel):
                           address_map: Dict,
                           check_balances=False,
                           asset_deltas: Optional[List[AssetDelta]] = None,
+                          notes="",
                           ) -> List[BlockchainTransaction]:
         """Prepare a trade where target pair has out reserve asset as a quote token.
 
@@ -117,6 +118,7 @@ class EthereumRoutingModel(RoutingModel):
             max_slippage,
             check_balances,
             asset_deltas=asset_deltas,
+            notes=notes,
             )
 
         # Leave note of adjustment.
@@ -130,18 +132,17 @@ class EthereumRoutingModel(RoutingModel):
         return txs
 
     def make_multihop_trade(self,
-                          routing_state: EthereumRoutingState, # doesn't get full typing
-                              # EthereumRoutingState throws error
-                              # due to circular import
-                          target_pair: TradingPairIdentifier,
-                          intermediary_pair: TradingPairIdentifier,
-                          reserve_asset: AssetIdentifier,
-                          reserve_amount: int,
-                          max_slippage: float,
-                          address_map: Dict,
-                          check_balances=False,
-                          asset_deltas: Optional[List[AssetDelta]] = None,
-                          ) -> List[BlockchainTransaction]:
+          routing_state: EthereumRoutingState,
+          target_pair: TradingPairIdentifier,
+          intermediary_pair: TradingPairIdentifier,
+          reserve_asset: AssetIdentifier,
+          reserve_amount: int,
+          max_slippage: float,
+          address_map: Dict,
+          check_balances=False,
+          asset_deltas: Optional[List[AssetDelta]] = None,
+          notes="",
+          ) -> List[BlockchainTransaction]:
         """Prepare a trade where target pair has out reserve asset as a quote token.
 
         :return:
@@ -172,6 +173,7 @@ class EthereumRoutingModel(RoutingModel):
             max_slippage,
             check_balances,
             asset_deltas=asset_deltas,
+            notes=notes,
             )
 
         txs += trade_txs
@@ -193,6 +195,7 @@ class EthereumRoutingModel(RoutingModel):
               check_balances=False,
               intermediary_pair: Optional[TradingPairIdentifier] = None,
               asset_deltas: Optional[List[AssetDelta]] = None,
+              notes="",
               ) -> List[BlockchainTransaction]:
         """
 
@@ -235,6 +238,7 @@ class EthereumRoutingModel(RoutingModel):
                     max_slippage=max_slippage,
                     check_balances=check_balances,
                     asset_deltas=asset_deltas,
+                    notes=notes,
                 )
             raise RuntimeError(f"Do not how to trade reserve {reserve_asset} with {target_pair}")
         else:
@@ -250,6 +254,7 @@ class EthereumRoutingModel(RoutingModel):
                 max_slippage=max_slippage,
                 check_balances=check_balances,
                 asset_deltas=asset_deltas,
+                notes=notes,
             )
     
     def execute_trades_internal(self,
@@ -291,6 +296,9 @@ class EthereumRoutingModel(RoutingModel):
 
             target_pair, intermediary_pair = self.route_trade(pair_universe, t)
 
+            notes = f"For trade: {t}\n" \
+                    f"Asset deltas: {asset_deltas}"
+
             if intermediary_pair is None:
                 # Two way trade
                 # Decide between buying and selling
@@ -303,6 +311,7 @@ class EthereumRoutingModel(RoutingModel):
                         check_balances=check_balances,
                         asset_deltas=asset_deltas,
                         max_slippage=max_slippage,
+                        notes=notes,
                     )
                     if t.is_buy()
                     else self.trade(
@@ -313,6 +322,7 @@ class EthereumRoutingModel(RoutingModel):
                         check_balances=check_balances,
                         asset_deltas=asset_deltas,
                         max_slippage=max_slippage,
+                        notes=notes,
                     )
                 )
             elif t.is_buy():
@@ -324,6 +334,7 @@ class EthereumRoutingModel(RoutingModel):
                     check_balances=check_balances,
                     intermediary_pair=intermediary_pair,
                     max_slippage=max_slippage,
+                    notes=notes,
                 )
             else:
                 trade_txs = self.trade(
@@ -335,6 +346,7 @@ class EthereumRoutingModel(RoutingModel):
                     intermediary_pair=intermediary_pair,
                     asset_deltas=asset_deltas,
                     max_slippage=max_slippage,
+                    notes=notes,
                 )
 
             t.set_blockchain_transactions(trade_txs)

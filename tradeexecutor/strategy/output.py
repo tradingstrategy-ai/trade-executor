@@ -52,7 +52,7 @@ def format_trade(portfolio: Portfolio, trade: TradeExecution) -> List[str]:
         ]
 
     if link:
-        lines.append(f"      link: {link}")
+        lines.append(f"Trading pair link: {link}")
 
     return lines
 

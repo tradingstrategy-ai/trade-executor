@@ -475,6 +475,7 @@ def transfer_away_assets_without_position(
         args_bound_func,
         gas_limit=250_000,
         asset_deltas=[asset_delta],
+        notes="Accounting correction transaction, removing assets",
     )
 
     tx_hash = web3.eth.send_raw_transaction(blockchain_data.get_prepared_raw_transaction())
