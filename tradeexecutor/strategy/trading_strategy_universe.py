@@ -1376,19 +1376,21 @@ def load_all_data(
 
 
 def load_partial_data(
-        client: BaseClient,
-        execution_context: ExecutionContext,
-        time_bucket: TimeBucket,
-        pairs: Collection[HumanReadableTradingPairDescription] | pd.DataFrame,
-        universe_options: UniverseOptions,
-        liquidity=False,
-        stop_loss_time_bucket: Optional[TimeBucket] = None,
-        required_history_period: datetime.timedelta | None = None,
-        lending_reserves: LendingReserveUniverse | Collection[LendingReserveDescription] | None = None,
-        lending_candle_types: Collection[LendingCandleType] = (LendingCandleType.supply_apr, LendingCandleType.variable_borrow_apr),
-        start_at: datetime.datetime | None = None,
-        end_at: datetime.datetime | None = None,
-        name: str | None = None,
+    client: BaseClient,
+    execution_context: ExecutionContext,
+    time_bucket: TimeBucket,
+    pairs: Collection[HumanReadableTradingPairDescription] | pd.DataFrame,
+    universe_options: UniverseOptions,
+    liquidity=False,
+    stop_loss_time_bucket: Optional[TimeBucket] = None,
+    required_history_period: datetime.timedelta | None = None,
+    lending_reserves: LendingReserveUniverse | Collection[LendingReserveDescription] | None = None,
+    lending_candle_types: Collection[LendingCandleType] = (LendingCandleType.supply_apr, LendingCandleType.variable_borrow_apr),
+    start_at: datetime.datetime | None = None,
+    end_at: datetime.datetime | None = None,
+    name: str | None = None,
+    candle_progress_bar_desc: str | None = None,
+    lending_candle_progress_bar_desc: str | None = None,
 ) -> Dataset:
     """Load pair data for given trading pairs.
 
@@ -1504,6 +1506,12 @@ def load_partial_data(
     :param name:
         The loading operation name used in progress bars
 
+    :param candle_progress_bar_desc:
+        Override the default progress bar message
+
+    :param lending_candle_progress_bar_desc:
+        Override the default progress bar message
+
     :return:
         Datataset containing the requested data
 
@@ -1577,17 +1585,19 @@ def load_partial_data(
         if not name:
             name = f"{len(filtered_pairs_df)} pairs"
 
-        progress_bar_desc = f"Loading OHLCV data for {name}"
+        if not candle_progress_bar_desc:
+            candle_progress_bar_desc = f"Loading OHLCV data for {name}"
+
         candles = client.fetch_candles_by_pair_ids(
             our_pair_ids,
             time_bucket,
-            progress_bar_description=progress_bar_desc,
+            progress_bar_description=candle_progress_bar_desc,
             start_time=data_load_start_at,
             end_time=end_at,
         )
 
         if stop_loss_time_bucket:
-            stop_loss_desc = f"Loading stop loss/take granular data for {name}"
+            stop_loss_desc = f"Loading stop loss/take profit granular trigge data for {name}"
             stop_loss_candles = client.fetch_candles_by_pair_ids(
                 our_pair_ids,
                 stop_loss_time_bucket,
@@ -1608,12 +1618,16 @@ def load_partial_data(
                 lending_reserve_universe = client.fetch_lending_reserve_universe()
                 lending_reserve_universe = lending_reserve_universe.limit(lending_reserves)
 
+            if not lending_candle_progress_bar_desc:
+                lending_candle_progress_bar_desc = f"Downloading lending rate data for {lending_reserve_universe.get_count()} assets"
+
             lending_candles_map = client.fetch_lending_candles_for_universe(
                 lending_reserve_universe,
                 bucket=time_bucket,
                 candle_types=lending_candle_types,
                 start_time=data_load_start_at,
                 end_time=end_at,
+                progress_bar_description=lending_candle_progress_bar_desc,
             )
             lending_candles = LendingCandleUniverse(lending_candles_map, lending_reserve_universe)
         else:
@@ -2015,6 +2029,8 @@ def load_trading_and_lending_data(
         lending_candle_types=(LendingCandleType.supply_apr, LendingCandleType.variable_borrow_apr,),
         lending_reserves=lending_reserves,
         name=name,
+        candle_progress_bar_desc=f"Downloading OHLCV data for {len(pairs_df)} trading pairs",
+        lending_candle_progress_bar_desc=f"Downloading interest rate data for {lending_reserves.get_count()} assets",
         )
 
     return dataset

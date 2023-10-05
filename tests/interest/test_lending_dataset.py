@@ -42,7 +42,7 @@ def test_load_lending_dataset(persistent_test_client: Client):
     assert len(dataset.pairs) == 1
 
     # Lending reserves ok
-    assert dataset.lending_reserves.get_size() == 1
+    assert dataset.lending_reserves.get_count() == 1
     rates = dataset.lending_candles.supply_apr.get_rates_by_reserve(
         (ChainId.polygon, LendingProtocolType.aave_v3, "USDC")
     )
@@ -80,7 +80,7 @@ def test_construct_trading_universe_with_lending(persistent_test_client: Client)
     assert data_universe.chains == {ChainId.polygon}
 
     # Lending reserves ok
-    assert data_universe.lending_reserves.get_size() == 1
+    assert data_universe.lending_reserves.get_count() == 1
     rates = data_universe.lending_candles.supply_apr.get_rates_by_reserve(
         (ChainId.polygon, LendingProtocolType.aave_v3, "USDC")
     )
