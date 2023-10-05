@@ -216,7 +216,7 @@ def universe(web3, exchange_universe: ExchangeUniverse, pair_universe: PandasPai
     return Universe(
         time_bucket=TimeBucket.d1,
         chains=[ChainId(web3.eth.chain_id)],
-        exchanges=list(exchange_universe.exchanges.values()),
+        exchanges=set(exchange_universe.exchanges.values()),
         pairs=pair_universe,
         candles=GroupedCandleUniverse.create_empty_qstrader(),
         liquidity=GroupedLiquidityUniverse.create_empty(),
