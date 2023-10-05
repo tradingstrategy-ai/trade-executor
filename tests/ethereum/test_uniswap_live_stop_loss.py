@@ -433,6 +433,11 @@ def test_live_stop_loss(
     # We are ~500 USD on loss after stop loss trigger
     assert state.portfolio.reserves[usdc_token.address.lower()].quantity == pytest.approx(Decimal('8588.500854'))
 
+    # Check that transaction notes is filled correctly
+    assert len(t.blockchain_transactions) == 2  # Approve + swap
+    tx = t.blockchain_transactions[1]
+    assert "Sell #2" in tx.notes
+
 
 def test_live_stop_loss_missing(
         logger,

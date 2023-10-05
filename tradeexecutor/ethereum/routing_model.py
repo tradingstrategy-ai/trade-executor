@@ -85,6 +85,7 @@ class EthereumRoutingModel(RoutingModel):
                           address_map: Dict,
                           check_balances=False,
                           asset_deltas: Optional[List[AssetDelta]] = None,
+                          notes="",
                           ) -> List[BlockchainTransaction]:
         """Prepare a trade where target pair has out reserve asset as a quote token.
 
@@ -117,6 +118,7 @@ class EthereumRoutingModel(RoutingModel):
             max_slippage,
             check_balances,
             asset_deltas=asset_deltas,
+            notes=notes,
             )
 
         # Leave note of adjustment.

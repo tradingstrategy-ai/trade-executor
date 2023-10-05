@@ -54,6 +54,7 @@ class UniswapV3RoutingState(EthereumRoutingState):
             max_slippage: float,
             check_balances: False,
             asset_deltas: Optional[List[AssetDelta]] = None,
+            notes="",
         ):
         """Prepare the actual swap. Same for Uniswap V2 and V3.
 
@@ -91,7 +92,9 @@ class UniswapV3RoutingState(EthereumRoutingState):
             uniswap.swap_router,
             bound_swap_func,
             self.swap_gas_limit,
-            asset_deltas)
+            asset_deltas,
+            notes=notes,
+        )
 
     def trade_on_router_three_way(self,
             uniswap: UniswapV3Deployment,
@@ -102,6 +105,7 @@ class UniswapV3RoutingState(EthereumRoutingState):
             max_slippage: float,
             check_balances: False,
             asset_deltas: Optional[List[AssetDelta]] = None,
+            notes="",
         ):
         """Prepare the actual swap for three way trade.
 
@@ -137,7 +141,9 @@ class UniswapV3RoutingState(EthereumRoutingState):
             uniswap.swap_router,
             bound_swap_func,
             self.swap_gas_limit,
-            asset_deltas)
+            asset_deltas,
+            notes=notes,
+        )
 
 
 class UniswapV3SimpleRoutingModel(EthereumRoutingModel):
@@ -226,6 +232,7 @@ class UniswapV3SimpleRoutingModel(EthereumRoutingModel):
         max_slippage: float,
         check_balances=False,
         asset_deltas: Optional[List[AssetDelta]] = None,
+        notes="",
     ) -> list[BlockchainTransaction]:
         
         return super().make_direct_trade(
@@ -237,6 +244,7 @@ class UniswapV3SimpleRoutingModel(EthereumRoutingModel):
             self.address_map,
             check_balances,
             asset_deltas=asset_deltas,
+            notes="",
         )
     
     def make_multihop_trade(
@@ -249,6 +257,7 @@ class UniswapV3SimpleRoutingModel(EthereumRoutingModel):
         max_slippage: float,
         check_balances=False,
         asset_deltas: Optional[List[AssetDelta]] = None,
+        notes="",
     ) -> list[BlockchainTransaction]:
         
         return super().make_multihop_trade(
@@ -261,6 +270,7 @@ class UniswapV3SimpleRoutingModel(EthereumRoutingModel):
             self.address_map,
             check_balances,
             asset_deltas=asset_deltas,
+            notes="",
         )
 
 def get_uniswap_for_pair(web3: Web3, address_map: dict, target_pair: TradingPairIdentifier) -> UniswapV3Deployment:

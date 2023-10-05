@@ -57,6 +57,7 @@ class UniswapV2RoutingState(EthereumRoutingState):
             max_slippage: float,
             check_balances: False,
             asset_deltas: Optional[List[AssetDelta]] = None,
+            notes="",
         ):
         """Prepare the actual swap. Same for Uniswap V2 and V3.
 
@@ -98,6 +99,7 @@ class UniswapV2RoutingState(EthereumRoutingState):
             bound_swap_func,
             self.swap_gas_limit,
             asset_deltas,
+            notes=notes,
         )
 
     def trade_on_router_three_way(self,

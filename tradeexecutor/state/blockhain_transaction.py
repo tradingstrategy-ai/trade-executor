@@ -9,6 +9,7 @@
 """
 import datetime
 import enum
+import textwrap
 from dataclasses import dataclass, field
 from typing import Optional, Any, Dict, Tuple, List
 
@@ -277,6 +278,9 @@ class BlockchainTransaction:
     notes: str = ""
 
     def __repr__(self):
+
+        notes = "\n" + textwrap.indent(self.notes, prefix="      ")
+
         if self.status is True:
             return f"<Tx success \n" \
                    f"    from:{self.from_address}\n" \
@@ -287,7 +291,7 @@ class BlockchainTransaction:
                    f"    wrapped args:{_clean_print_args(self.wrapped_args)}\n" \
                    f"    gas limit:{self.get_gas_limit():,}\n" \
                    f"    gas spent:{self.realised_gas_units_consumed:,}\n" \
-                   f"    notes:{self.notes}\n" \
+                   f"    notes:{notes}\n" \
                    f"    >"
         elif self.status is False:
             return f"<Tx reverted \n" \
@@ -300,7 +304,7 @@ class BlockchainTransaction:
                    f"    fail reason:{self.revert_reason}\n" \
                    f"    gas limit:{self.get_gas_limit():,}\n" \
                    f"    gas spent:{self.realised_gas_units_consumed:,}\n" \
-                   f"    notes:{self.notes}\n" \
+                   f"    notes:{notes}\n" \
                    f"    >"
         else:
             return f"<Tx unresolved\n" \
@@ -310,7 +314,7 @@ class BlockchainTransaction:
                    f"    func:{self.function_selector}\n" \
                    f"    args:{_clean_print_args(self.transaction_args)}\n" \
                    f"    wrapped args:{_clean_print_args(self.wrapped_args)}\n" \
-                   f"    notes:{self.notes}\n" \
+                   f"    notes:{notes}\n" \
                    f"    >"
 
     def get_transaction(self) -> dict:
