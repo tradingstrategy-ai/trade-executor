@@ -76,19 +76,26 @@ class UniverseOptions:
     See :ref:`command-line-backtest` how these options are used.
     """
 
+    #: Allow us to override candle timeframe despite what strategy module says
     candle_time_bucket_override: Optional[TimeBucket] = None
 
+    #: Allow us to stop loss timeframe despite what strategy module says
     stop_loss_time_bucket_override: Optional[TimeBucket] = None
 
     #: Optionally passed backtest start time.
     #:
     #: Can be used in create_trading_universe() to set the data range.
     #:
+    #: See also :py:attr:`history_period`.
+    #:
     start_at: Optional[datetime.datetime] = None
 
     #: Optionally passed backtest end time
     #:
     #: Can be used in create_trading_universe() to set the data range.
+    #:
+    #: This timestamp is inclusive i.e. for daily data ``2023-10-01`` will
+    #: also load the data for this particular day.
     #:
     end_at: Optional[datetime.datetime] = None
 
@@ -110,7 +117,7 @@ class UniverseOptions:
         else:
             return f"{self.history_period} back from today"
 
-#: Shorthand method for no specifc trading univese fine tuning options set
+#: Shorthand method for no specifc trading universe without any fine-tuning options set
 #:
 default_universe_options = UniverseOptions()
 
