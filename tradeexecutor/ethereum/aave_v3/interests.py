@@ -5,6 +5,7 @@ import pandas as pd
 
 from eth_defi.aave_v3.rates import SECONDS_PER_YEAR
 
+from tradingstrategy.chain import ChainId
 from tradingstrategy.lending import LendingReserve, LendingCandleType
 from tradingstrategy.client import Client
 from tradingstrategy.timebucket import TimeBucket
@@ -18,7 +19,7 @@ def get_aave_v3_candles_for_period(
     end_time: datetime.datetime = datetime.datetime.utcnow(),
 ):
     reserve_universe = client.fetch_lending_reserve_universe()
-    reserve: LendingReserve = reserve_universe.get_reserve_by_symbol_and_chain(token, chain_id)
+    reserve: LendingReserve = reserve_universe.get_by_chain_and_symbol(token, ChainId(chain_id))
 
     lending_candles = client.fetch_lending_candles_by_reserve_id(
         reserve.reserve_id,
@@ -39,7 +40,7 @@ def get_aave_v3_raw_data_for_period(
     end_time: datetime.datetime = datetime.datetime.utcnow(),
 ):
     reserve_universe = client.fetch_lending_reserve_universe()
-    reserve: LendingReserve = reserve_universe.get_reserve_by_symbol_and_chain(token, chain_id)
+    reserve: LendingReserve = reserve_universe.get_by_chain_and_symbol(token, ChainId(chain_id))
 
     # NOTE: This is very slow the 1st time
     pq_table = client.fetch_lending_reserves_all_time()
