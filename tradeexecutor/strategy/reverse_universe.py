@@ -150,7 +150,7 @@ def reverse_trading_universe_from_state(
     reserve_assets = {reserve_position.asset for reserve_position in state.portfolio.reserves.values()}
 
     ts_universe = TradingStrategyUniverse(
-        universe=universe,
+        data_universe=universe,
         reserve_assets=reserve_assets,
     )
 

@@ -309,7 +309,7 @@ class RoutingModelBase(RoutingModel):
 
         assert isinstance(universe, TradingStrategyUniverse)
         assert universe is not None, "Universe is required"
-        assert universe.universe.pairs is not None, "Pairs are required"
+        assert universe.data_universe.pairs is not None, "Pairs are required"
 
         web3 = execution_details["web3"]
 
@@ -325,10 +325,10 @@ class RoutingModelBase(RoutingModel):
         logger.info("Estimated gas fees for chain %d: %s", web3.eth.chain_id, fees)
         if hot_wallet:
             tx_builder = HotWalletTransactionBuilder(web3, hot_wallet, fees)
-            routing_state = StateClass(universe.universe.pairs, tx_builder)
+            routing_state = StateClass(universe.data_universe.pairs, tx_builder)
         else:
             # Dummy execution model cannot create transactions, because it has no private key
-            routing_state = StateClass(universe.universe.pairs, web3=web3)
+            routing_state = StateClass(universe.data_universe.pairs, web3=web3)
 
         return routing_state
     

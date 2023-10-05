@@ -182,7 +182,7 @@ class PositionManager:
             # Engine version 0.3
             # See tradeexecutor.strategy.engine_version
             self.strategy_universe = universe
-            self.data_universe = universe.universe
+            self.data_universe = universe.data_universe
         else:
             raise RuntimeError(f"Does not know the universe: {universe}")
 

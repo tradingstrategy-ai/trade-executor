@@ -141,12 +141,12 @@ def test_trade_analysis(
 
     fig = visualise_single_pair(
         state,
-        universe.universe.candles,
+        universe.data_universe.candles,
         pair_id=crv_usd.internal_id,
     )
     assert isinstance(fig, go.Figure)
 
-    candles = universe.universe.candles.get_candles_by_pair(crv_usd.internal_id)
+    candles = universe.data_universe.candles.get_candles_by_pair(crv_usd.internal_id)
     fig = visualise_single_pair_positions_with_duration_and_slippage(
         state,
         candles=candles,

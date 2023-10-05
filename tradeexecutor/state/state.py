@@ -818,7 +818,7 @@ class State:
         """
         
         if not self.stats.portfolio:
-            logger.warn("No portfolio statistics, this is required for the time range")
+            logger.warning("No portfolio statistics, this is required for the time range")
             return None, None
 
 

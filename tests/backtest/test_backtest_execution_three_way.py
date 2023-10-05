@@ -152,21 +152,21 @@ def stop_loss_universe(request, persistent_test_client, execution_context) -> Tr
 @pytest.fixture(scope="module")
 def wbnb(request, universe) -> AssetIdentifier:
     """WBNB asset."""
-    token = translate_token(universe.universe.pairs.get_token("0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c"))
+    token = translate_token(universe.data_universe.pairs.get_token("0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c"))
     return token
 
 
 @pytest.fixture(scope="module")
 def busd(request, universe) -> AssetIdentifier:
     """bUSD asset."""
-    token = translate_token(universe.universe.pairs.get_token("0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56"))
+    token = translate_token(universe.data_universe.pairs.get_token("0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56"))
     return token
 
 
 @pytest.fixture(scope="module")
 def cake(request, universe) -> AssetIdentifier:
     """Cake asset."""
-    token = translate_token(universe.universe.pairs.get_token("0x0E09FaBB73Bd3Ade0a17ECC321fD13a19e81cE82"))
+    token = translate_token(universe.data_universe.pairs.get_token("0x0E09FaBB73Bd3Ade0a17ECC321fD13a19e81cE82"))
     return token
 
 
@@ -235,7 +235,7 @@ def test_create_and_execute_backtest_three_way_trade(
     ts = datetime.datetime(2021, 6, 1)
     execution_model = BacktestExecutionModel(wallet, max_slippage=0.01)
     trader = BacktestTrader(ts, state, universe, execution_model, routing_model, pricing_model)
-    cake_wbnb = translate_trading_pair(universe.universe.pairs.get_by_symbols("Cake", "WBNB"))
+    cake_wbnb = translate_trading_pair(universe.data_universe.pairs.get_by_symbols("Cake", "WBNB"))
 
     cake_wbnb.fee = 0.0025
 
@@ -274,7 +274,7 @@ def test_buy_sell_three_way_backtest(
     ts = datetime.datetime(2021, 6, 1)
     execution_model = BacktestExecutionModel(wallet, max_slippage=0.01)
     trader = BacktestTrader(ts, state, universe, execution_model, routing_model, pricing_model)
-    cake_wbnb = translate_trading_pair(universe.universe.pairs.get_by_symbols("Cake", "WBNB"))
+    cake_wbnb = translate_trading_pair(universe.data_universe.pairs.get_by_symbols("Cake", "WBNB"))
     cake_wbnb.fee = 0.0025
 
     # Create trade for buying Cake for 1000 USD thru WBNB
@@ -305,6 +305,6 @@ def test_load_backtesting_data_with_stop_loss(stop_loss_universe: TradingStrateg
     assert stop_loss_universe.backtest_stop_loss_time_bucket == TimeBucket.h4
 
     # there should be ~6 times 4h candles than 1d candles in the same period
-    backtest_candle_count = len(stop_loss_universe.universe.candles.df)
+    backtest_candle_count = len(stop_loss_universe.data_universe.candles.df)
     stop_loss_candle_count = len(stop_loss_universe.backtest_stop_loss_candles.df)
     assert math.ceil(stop_loss_candle_count / backtest_candle_count) == 6

@@ -112,7 +112,7 @@ def synthetic_universe(mock_chain_id, mock_exchange, weth_usdc) -> TradingStrate
         liquidity=None
     )
 
-    return TradingStrategyUniverse(universe=universe, reserve_assets=[weth_usdc.quote])
+    return TradingStrategyUniverse(data_universe=universe, reserve_assets=[weth_usdc.quote])
 
 
 @pytest.fixture()
@@ -127,11 +127,11 @@ def test_synthetic_candles(
     ):
     """Generate synthetic candle data."""
 
-    start, end = synthetic_universe.universe.candles.get_timestamp_range()
+    start, end = synthetic_universe.data_universe.candles.get_timestamp_range()
     assert start == pd.Timestamp('2021-06-01 00:00:00')
     assert end == pd.Timestamp('2021-12-31 00:00:00')
 
-    candles_for_pair = synthetic_universe.universe.candles.get_candles_by_pair(555)
+    candles_for_pair = synthetic_universe.data_universe.candles.get_candles_by_pair(555)
     start = candles_for_pair.iloc[0]["timestamp"]
     end = candles_for_pair.iloc[-1]["timestamp"]
     assert start == pd.Timestamp('2021-06-01 00:00:00')

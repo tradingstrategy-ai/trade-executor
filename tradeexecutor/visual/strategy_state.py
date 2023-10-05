@@ -63,14 +63,14 @@ def draw_single_pair_strategy_state(
 
     if start_at is None and end_at is None:
         # Get
-        target_pair_candles = universe.universe.candles.get_single_pair_data(sample_count=candle_count, raise_on_not_enough_data=False)
+        target_pair_candles = universe.data_universe.candles.get_single_pair_data(sample_count=candle_count, raise_on_not_enough_data=False)
         start_at = target_pair_candles.iloc[0]["timestamp"]
         end_at = target_pair_candles.iloc[-1]["timestamp"]
     else:
         assert start_at, "Must have start_at with end_at"
         assert end_at, "Must have start_at with end_at"
-        assert universe.universe.candles.get_pair_count() == 1
-        target_pair_candles = universe.universe.candles.df.loc[pd.Timestamp(start_at):pd.Timestamp(end_at)]
+        assert universe.data_universe.candles.get_pair_count() == 1
+        target_pair_candles = universe.data_universe.candles.df.loc[pd.Timestamp(start_at):pd.Timestamp(end_at)]
 
     pair = universe.get_single_pair()
     title = f"{pair.base.token_symbol}/{pair.quote.token_symbol}"
@@ -132,10 +132,10 @@ def draw_multi_pair_strategy_state(
         The strategy state visualisation as a single Plotly figure with multiple subplots
     """
 
-    data = universe.universe.candles.df
+    data = universe.data_universe.candles.df
 
     if not pair_ids:
-        pair_ids = universe.universe.pairs.get_all_pair_ids()
+        pair_ids = universe.data_universe.pairs.get_all_pair_ids()
 
     if start_at is None and end_at is None:
             # Get

@@ -145,3 +145,6 @@ class ExecutionContext:
 
 #: Shorthand for unit testing
 unit_test_execution_context = ExecutionContext(ExecutionMode.unit_testing_trading)
+
+#: Shorthand for unit testing
+ExecutionContext.unit_test = unit_test_execution_context

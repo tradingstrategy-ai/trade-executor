@@ -95,12 +95,12 @@ def create_alpha_model_timeline_all_assets(
         "Equity",
     ]
 
-    for pair in universe.universe.pairs.iterate_pairs():
+    for pair in universe.data_universe.pairs.iterate_pairs():
         headers.append(f"{pair.base_token_symbol}")
 
     rows = []
 
-    pair_universe = universe.universe.pairs
+    pair_universe = universe.data_universe.pairs
 
     equity_curve = calculate_equity_curve(state)
 
@@ -313,7 +313,7 @@ def analyse_alpha_model_weights(
     """
 
     assert isinstance(universe, TradingStrategyUniverse)
-    pair_universe = universe.universe.pairs
+    pair_universe = universe.data_universe.pairs
 
     alpha_model_collection = state.visualisation.calculations
     assert alpha_model_collection is not None
