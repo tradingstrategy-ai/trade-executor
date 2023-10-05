@@ -158,7 +158,7 @@ def universe() -> TradingStrategyUniverse:
         liquidity=None
     )
 
-    return TradingStrategyUniverse(universe=universe, reserve_assets=[usdc])
+    return TradingStrategyUniverse(data_universe=universe, reserve_assets=[usdc])
 
 
 @pytest.fixture(scope="module")
@@ -177,7 +177,7 @@ def state(
     Then one can calculate different statistics over this.
     """
 
-    start_at, end_at = universe.universe.candles.get_timestamp_range()
+    start_at, end_at = universe.data_universe.candles.get_timestamp_range()
 
     routing_model = generate_simple_routing_model(universe)
 
@@ -202,7 +202,7 @@ def state(
 
 def test_precheck_universe(universe: TradingStrategyUniverse):
     """Check our generated data looks correct."""
-    universe = universe.universe
+    universe = universe.data_universe
     assert universe.pairs.get_count() == 2
     assert universe.candles.get_pair_count() == 2
     assert len(universe.pairs.pair_map) == 2

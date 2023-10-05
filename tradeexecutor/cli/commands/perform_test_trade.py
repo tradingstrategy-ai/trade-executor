@@ -173,7 +173,7 @@ def perform_test_trade(
 
     if all_pairs:
 
-        for pair in universe.universe.pairs.iterate_pairs():
+        for pair in universe.data_universe.pairs.iterate_pairs():
 
             _p = construct_identifier_from_pair(pair)
             p = parse_pair_data(_p)

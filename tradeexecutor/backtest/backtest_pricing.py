@@ -89,7 +89,7 @@ class BacktestSimplePricingModel(PricingModel):
 
         # TODO: Remove later - now to support some old code111
         if isinstance(candle_universe, TradingStrategyUniverse):
-            candle_universe = candle_universe.universe.candles
+            candle_universe = candle_universe.data_universe.candles
 
         assert isinstance(candle_universe, GroupedCandleUniverse), f"Got candles in wrong format: {candle_universe.__class__}"
 
@@ -259,6 +259,6 @@ def backtest_pricing_factory(
     assert isinstance(routing_model, (BacktestRoutingModel, UniswapV2SimpleRoutingModel)), f"This pricing method only works with Uniswap routing model, we received {routing_model}"
 
     return BacktestSimplePricingModel(
-        universe.universe.candles,
+        universe.data_universe.candles,
         routing_model)
 

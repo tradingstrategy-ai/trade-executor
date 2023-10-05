@@ -125,7 +125,7 @@ def test_backtest_open_both_long_short(
         pricing_model: PricingModel,
         cycle_debug_data: Dict
     ) -> List[TradeExecution]:
-        trade_pair = strategy_universe.universe.pairs.get_single()
+        trade_pair = strategy_universe.data_universe.pairs.get_single()
 
         cash = state.portfolio.get_cash()
         

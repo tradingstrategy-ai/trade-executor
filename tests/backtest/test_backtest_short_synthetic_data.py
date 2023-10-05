@@ -131,7 +131,7 @@ def test_backtest_open_only_short_synthetic_data(
         cycle_debug_data: Dict
     ) -> List[TradeExecution]:
         """A simple strategy that opens a single 2x short position."""
-        trade_pair = strategy_universe.universe.pairs.get_single()
+        trade_pair = strategy_universe.data_universe.pairs.get_single()
 
         cash = state.portfolio.get_cash()
         
@@ -243,7 +243,7 @@ def test_backtest_open_and_close_short_synthetic_data(
         cycle_debug_data: Dict
     ) -> List[TradeExecution]:
         """A simple strategy that opens and closes a single 2x short position."""
-        trade_pair = strategy_universe.universe.pairs.get_single()
+        trade_pair = strategy_universe.data_universe.pairs.get_single()
 
         cash = state.portfolio.get_cash()
         
@@ -354,7 +354,7 @@ def test_backtest_short_underlying_price_feed(
     )
 
     pricing_model = BacktestSimplePricingModel(
-        universe.universe.candles,
+        universe.data_universe.candles,
         routing_model,
     )
 
@@ -384,7 +384,7 @@ def test_backtest_open_short_failure_too_high_leverage(persistent_test_client: C
         cycle_debug_data: Dict
     ) -> List[TradeExecution]:
         """A simple strategy that opens a single 10x short position."""
-        trade_pair = strategy_universe.universe.pairs.get_single()
+        trade_pair = strategy_universe.data_universe.pairs.get_single()
 
         cash = state.portfolio.get_cash()
         
@@ -426,7 +426,7 @@ def test_backtest_open_short_failure_too_far_stoploss(persistent_test_client: Cl
         cycle_debug_data: Dict
     ) -> List[TradeExecution]:
         """A simple strategy that opens a single 10x short position."""
-        trade_pair = strategy_universe.universe.pairs.get_single()
+        trade_pair = strategy_universe.data_universe.pairs.get_single()
 
         cash = state.portfolio.get_cash()
         
@@ -473,7 +473,7 @@ def test_backtest_short_stop_loss_triggered(persistent_test_client: Client, univ
         cycle_debug_data: Dict
     ) -> List[TradeExecution]:
         """A simple strategy that opens a single 4x short position."""
-        trade_pair = strategy_universe.universe.pairs.get_single()
+        trade_pair = strategy_universe.data_universe.pairs.get_single()
 
         cash = state.portfolio.get_cash()
         position_size = cash * 0.8
@@ -575,7 +575,7 @@ def test_backtest_short_take_profit_triggered(persistent_test_client: Client, un
         cycle_debug_data: Dict
     ) -> List[TradeExecution]:
         """A simple strategy that opens a single 4x short position."""
-        trade_pair = strategy_universe.universe.pairs.get_single()
+        trade_pair = strategy_universe.data_universe.pairs.get_single()
 
         cash = state.portfolio.get_cash()
         position_size = cash * 0.8
@@ -676,7 +676,7 @@ def test_backtest_short_trailing_stop_loss_triggered(persistent_test_client: Cli
         cycle_debug_data: Dict
     ) -> List[TradeExecution]:
         """A simple strategy that opens a single 4x short position."""
-        trade_pair = strategy_universe.universe.pairs.get_single()
+        trade_pair = strategy_universe.data_universe.pairs.get_single()
 
         cash = state.portfolio.get_cash()
         position_size = cash * 0.8

@@ -160,7 +160,7 @@ def check_accounts(
         UniverseOptions()
     )
 
-    logger.info("Universe contains %d pairs", universe.universe.pairs.get_count())
+    logger.info("Universe contains %d pairs", universe.data_universe.pairs.get_count())
     logger.info("Reserve assets are: %s", universe.reserve_assets)
 
     assert len(universe.reserve_assets) == 1, "Need exactly one reserve asset"
@@ -174,7 +174,7 @@ def check_accounts(
             state.portfolio.initialise_reserves(universe.reserve_assets[0])
 
     clean, df = _check_accounts(
-        universe.universe.pairs,
+        universe.data_universe.pairs,
         universe.reserve_assets,
         state,
         sync_model,

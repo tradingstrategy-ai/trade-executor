@@ -148,10 +148,10 @@ def test_reverse_trading_universe_from_state(
     )
 
     assert universe.reserve_assets == {AssetIdentifier(chain_id=137, address='0x2791bca1f2de4661ed88a30c99a7a9449aa84174', token_symbol='USDC', decimals=6, internal_id=None, info_url=None)}
-    assert len(universe.universe.exchanges) == 1
-    assert universe.universe.pairs.get_count() == 1
-    assert universe.universe.pairs.get_count() == 1
-    start, end = universe.universe.candles.get_timestamp_range()
+    assert len(universe.data_universe.exchanges) == 1
+    assert universe.data_universe.pairs.get_count() == 1
+    assert universe.data_universe.pairs.get_count() == 1
+    start, end = universe.data_universe.candles.get_timestamp_range()
     assert start == pd.Timestamp('2023-01-17 00:00:00')
     assert end == pd.Timestamp('2023-02-03 00:00:00')
 

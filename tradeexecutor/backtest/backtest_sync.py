@@ -148,7 +148,7 @@ class BacktestSyncModel(SyncModel):
 
         previous_update_at = interest.last_event_at
 
-        df = universe.universe.lending_candles.supply_apr.df.copy()
+        df = universe.data_universe.lending_candles.supply_apr.df.copy()
         supply_df = df[
             (df["timestamp"] >= previous_update_at)
             & (df["timestamp"] <= timestamp)

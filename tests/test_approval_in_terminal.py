@@ -281,7 +281,7 @@ def test_cli_approve_trades(
 
     valuation_model_factory = uniswap_v2_sell_valuation_factory
     pricing_model_factory = uniswap_v2_live_pricing_factory
-    executor_universe = TradingStrategyUniverse(universe=universe, reserve_assets=supported_reserves)
+    executor_universe = TradingStrategyUniverse(data_universe=universe, reserve_assets=supported_reserves)
     universe_model = StaticUniverseModel(executor_universe)
 
     description: StrategyExecutionDescription = factory(
@@ -336,7 +336,7 @@ def test_cli_disapprove_trades(
     sync_model = HotWalletSyncModel(web3, hot_wallet)
     valuation_model_factory = uniswap_v2_sell_valuation_factory
     pricing_model_factory = uniswap_v2_live_pricing_factory
-    executor_universe = TradingStrategyUniverse(universe=universe, reserve_assets=supported_reserves)
+    executor_universe = TradingStrategyUniverse(data_universe=universe, reserve_assets=supported_reserves)
     universe_model = StaticUniverseModel(executor_universe)
 
     description: StrategyExecutionDescription = factory(

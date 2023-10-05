@@ -10,6 +10,12 @@ from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.strategy.execution_context import ExecutionMode, ExecutionContext
 
 
+#: If no date range is given for the data load, load this much of data.
+#:
+#: Defaults to 90 days.
+#:
+DEFAULT_HISTORY_PERIOD_TODAY = datetime.timedelta(days=90)
+
 class DataTooOld(Exception):
     """We try to execute live trades, but our data is too old for us to work with."""
 
@@ -51,6 +57,9 @@ class StrategyExecutionUniverse:
 class UniverseOptions:
     """Options that we can pass for the trading strategy universe creation.
 
+    Describe the dataset loading options,
+    or override options for the internal testing purposes.
+
     These can be given on the command line, or from the parent
     execution context. It allows to override parameters
     given in the strategy file easily without need to edit the file.
@@ -83,6 +92,23 @@ class UniverseOptions:
     #:
     end_at: Optional[datetime.datetime] = None
 
+    #: How much data we look back if we look the current data
+    #:
+    #:
+    #: Give only :py:attr:`history_period` or both :py:attr:`start_at` and :py:attr:`end_at`.
+    #:
+    history_period: Optional[datetime.timedelta] = None
+
+    def __post_init__(self):
+        if self.history_period:
+            assert self.start_at is None and self.end_at is None, f"You can only give history_period or backtesting range"
+
+    def get_range_description(self) -> str:
+        """Get the human description of the time range for these universe load options."""
+        if self.start_at and self.end_at:
+            return f"{self.start_at} - {self.end_at}"
+        else:
+            return f"{self.history_period} back from today"
 
 #: Shorthand method for no specifc trading univese fine tuning options set
 #:

@@ -465,7 +465,7 @@ def run_grid_search_backtest(
     if name is None:
         name = combination.get_label()
 
-    universe_range = universe.universe.candles.get_timestamp_range()
+    universe_range = universe.data_universe.candles.get_timestamp_range()
     if not start_at:
         start_at = universe_range[0]
 
@@ -479,7 +479,7 @@ def run_grid_search_backtest(
         end_at = pd.Timestamp(end_at)
 
     if not cycle_duration:
-        cycle_duration = CycleDuration.from_timebucket(universe.universe.candles.time_bucket)
+        cycle_duration = CycleDuration.from_timebucket(universe.data_universe.candles.time_bucket)
     else:
         assert isinstance(cycle_duration, CycleDuration)
 

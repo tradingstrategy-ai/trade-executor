@@ -657,7 +657,7 @@ class StrategyRunner(abc.ABC):
 
         if self.accounting_checks:
             clean, df = check_accounts(
-                universe.universe.pairs,
+                universe.data_universe.pairs,
                 [universe.get_reserve_asset()],
                 state,
                 self.sync_model,

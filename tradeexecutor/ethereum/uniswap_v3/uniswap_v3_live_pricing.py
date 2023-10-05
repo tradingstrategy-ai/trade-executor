@@ -319,6 +319,6 @@ def uniswap_v3_live_pricing_factory(
     web3 = execution_model.web3
     return UniswapV3LivePricing(
         web3,
-        universe.universe.pairs,
+        universe.data_universe.pairs,
         routing_model
     )

@@ -52,9 +52,9 @@ def test_create_multipair_universe(persistent_test_client):
         factory_router_map,
     )
 
-    assert universe.universe.pairs.get_count() > 1000
+    assert universe.data_universe.pairs.get_count() > 1000
     assert universe.reserve_assets[0].address.lower() == "0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56".lower()
-    range = universe.universe.candles.get_timestamp_range()
+    range = universe.data_universe.candles.get_timestamp_range()
     assert range[0] < pd.Timestamp('2022-01-01 00:00:00')
     assert range[1] > pd.Timestamp('2022-01-01 00:00:00')
 
@@ -96,8 +96,8 @@ def test_create_multipair_universe_by_pair_descriptions(persistent_test_client):
         "USDC",
     )
 
-    assert universe.universe.pairs.get_count() == 10
-    assert universe.universe.candles.get_pair_count() == 10
+    assert universe.data_universe.pairs.get_count() == 10
+    assert universe.data_universe.candles.get_pair_count() == 10
     assert universe.reserve_assets[0].token_symbol == "USDC"
 
 

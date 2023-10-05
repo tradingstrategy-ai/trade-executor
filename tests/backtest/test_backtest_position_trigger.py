@@ -364,7 +364,7 @@ def synthetic_universe(mock_chain_id, mock_exchange, weth_usdc) -> TradingStrate
     )
 
     return TradingStrategyUniverse(
-        universe=universe,
+        data_universe=universe,
         reserve_assets=[weth_usdc.quote],
         backtest_stop_loss_candles=GroupedCandleUniverse(stop_loss_candles),
         backtest_stop_loss_time_bucket=stop_loss_time_bucket,
@@ -386,7 +386,7 @@ def test_synthetic_data_backtest_stop_loss(
 
     assert synthetic_universe.has_stop_loss_data()
 
-    start_at, end_at = synthetic_universe.universe.candles.get_timestamp_range()
+    start_at, end_at = synthetic_universe.data_universe.candles.get_timestamp_range()
 
     routing_model = generate_simple_routing_model(synthetic_universe)
 
@@ -445,7 +445,7 @@ def test_synthetic_data_backtest_stop_loss(
     assert universe.backtest_stop_loss_candles
     assert universe.backtest_stop_loss_time_bucket
 
-    assert len(universe.universe.candles.df) == 214
+    assert len(universe.data_universe.candles.df) == 214
     assert len(universe.backtest_stop_loss_candles.df) == 5136
 
     # Expect backtesting for 213 days
@@ -486,7 +486,7 @@ def test_synthetic_data_backtest_take_profit(
 
     And see the results make sense.
     """
-    start_at, end_at = synthetic_universe.universe.candles.get_timestamp_range()
+    start_at, end_at = synthetic_universe.data_universe.candles.get_timestamp_range()
 
     routing_model = generate_simple_routing_model(synthetic_universe)
 
@@ -579,7 +579,7 @@ def test_synthetic_data_backtest_stop_loss_data_missing(
 
     assert not synthetic_universe.has_stop_loss_data()
 
-    start_at, end_at = synthetic_universe.universe.candles.get_timestamp_range()
+    start_at, end_at = synthetic_universe.data_universe.candles.get_timestamp_range()
 
     routing_model = generate_simple_routing_model(synthetic_universe)
 
@@ -614,7 +614,7 @@ def test_synthetic_data_backtest_trailing_stop_loss(
 
     assert synthetic_universe.has_stop_loss_data()
 
-    start_at, end_at = synthetic_universe.universe.candles.get_timestamp_range()
+    start_at, end_at = synthetic_universe.data_universe.candles.get_timestamp_range()
 
     routing_model = generate_simple_routing_model(synthetic_universe)
 
@@ -680,7 +680,7 @@ def test_synthetic_data_backtest_stop_loss_usd(
 
     assert synthetic_universe.has_stop_loss_data()
 
-    start_at, end_at = synthetic_universe.universe.candles.get_timestamp_range()
+    start_at, end_at = synthetic_universe.data_universe.candles.get_timestamp_range()
 
     routing_model = generate_simple_routing_model(synthetic_universe)
 
@@ -739,7 +739,7 @@ def test_synthetic_data_backtest_stop_loss_usd(
     assert universe.backtest_stop_loss_candles
     assert universe.backtest_stop_loss_time_bucket
 
-    assert len(universe.universe.candles.df) == 214
+    assert len(universe.data_universe.candles.df) == 214
     assert len(universe.backtest_stop_loss_candles.df) == 5136
 
     # Expect backtesting for 213 days
