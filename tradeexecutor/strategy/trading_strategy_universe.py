@@ -682,6 +682,8 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
 
         - If dataset has trading pairs with different quote tokens,
           aborts
+
+        For code example see :py:func:`load_trading_and_lending_data`.
         """
 
         chain_ids = dataset.pairs["chain_id"].unique()
@@ -1859,7 +1861,7 @@ def load_trading_and_lending_data(
     reserve_asset_symbols: Set[TokenSymbol]={"USDC",},
     name: str | None = None,
 ):
-    """Load trading and lending market for a single chain for all supported lending reserves.
+    """Load trading and lending market for a single chain for all long/short pairs.
 
     - A shortcut method for constructing trading universe for multipair long/short strategy
 
@@ -1870,7 +1872,77 @@ def load_trading_and_lending_data(
 
     - Will log output regarding the universe construction for diagnostics
 
-    For parameter documentation see :py:func:`load_partial_data`.
+    More information
+
+    - For parameter documentation see :py:func:`load_partial_data`.
+
+    - See also :py:meth:`TradingStrategyUniverse.create_from_dataset`
+
+    Example for historical data:
+
+    .. code-block:: python
+
+        start_at = datetime.datetime(2023, 9, 1)
+        end_at = datetime.datetime(2023, 10, 1)
+
+        # Load all trading and lending data on Polygon
+        # for all lending markets on a relevant time period
+        dataset = load_trading_and_lending_data(
+            client,
+            execution_context=unit_test_execution_context,
+            universe_options=UniverseOptions(start_at=start_at, end_at=end_at),
+            chain_id=ChainId.polygon,
+            exchange_slug="uniswap-v3",
+        )
+
+        strategy_universe = TradingStrategyUniverse.create_from_dataset(dataset)
+        data_universe = strategy_universe.data_universe
+
+        # Check one loaded reserve metadata
+        usdc_reserve = data_universe.lending_reserves.get_by_chain_and_symbol(ChainId.polygon, "USDC")
+
+        # Check the historical rates
+        lending_candles = data_universe.lending_candles.variable_borrow_apr
+        rates = lending_candles.get_rates_by_reserve(usdc_reserve)
+
+        assert rates["open"][pd.Timestamp("2023-09-01")] == pytest.approx(3.222019)
+        assert rates["open"][pd.Timestamp("2023-10-01")] == pytest.approx(3.446714)
+
+    Example for current data:
+
+    .. code-block: python
+
+        # Load all trading and lending data on Polygon
+        # for all lending markets on a relevant time period
+        dataset = load_trading_and_lending_data(
+            client,
+            execution_context=unit_test_execution_context,
+            universe_options=UniverseOptions(history_period=datetime.timedelta(days=7)),
+            chain_id=ChainId.polygon,
+            exchange_slug="uniswap-v3",
+        )
+
+        assert dataset.history_period == datetime.timedelta(days=7)
+
+        strategy_universe = TradingStrategyUniverse.create_from_dataset(dataset)
+        data_universe = strategy_universe.data_universe
+
+        # Check one loaded reserve metadata
+        usdc_reserve = data_universe.lending_reserves.get_by_chain_and_symbol(ChainId.polygon, "USDC")
+
+        # Check the historical rates
+        lending_candles = data_universe.lending_candles.variable_borrow_apr
+        rates = lending_candles.get_rates_by_reserve(usdc_reserve)
+
+        trading_pair = (ChainId.polygon, "uniswap-v3", "WETH", "USDC", 0.0005)
+        pair = data_universe.pairs.get_pair_by_human_description(trading_pair)
+        price_feed = data_universe.candles.get_candles_by_pair(pair.pair_id)
+
+        two_days_ago = pd.Timestamp(datetime.datetime.utcnow() - datetime.timedelta(days=2)).floor("D")
+        assert rates["open"][two_days_ago] > 0
+        assert rates["open"][two_days_ago] < 10  # Erdogan warnings
+        assert price_feed["open"][two_days_ago] > 0
+        assert price_feed["open"][two_days_ago] < 10_000  # To the moon warning
 
     :param reserve_asset_symbols:
         In which currency, the trading pairs must be quoted for the lending pool.
