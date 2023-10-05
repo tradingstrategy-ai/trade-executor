@@ -265,9 +265,20 @@ class BlockchainTransaction:
     #: Currently used for `vault_slippage_tolerance`.
     other: dict = field(default_factory=dict)
 
+    #: Human readable notes on this transaction.
+    #:
+    #: - Used for diagnostics
+    #:
+    #: - E.g. the text line of the controlling trade that is causing this transaction,
+    #:   with information about expected tokens, slippage, etc.
+    #:
+    #: - Newline separated
+    #:
+    notes: str = ""
+
     def __repr__(self):
         if self.status is True:
-            return f"<Tx \n" \
+            return f"<Tx success \n" \
                    f"    from:{self.from_address}\n" \
                    f"    nonce:{self.nonce}\n" \
                    f"    to:{self.contract_address}\n" \
@@ -276,10 +287,10 @@ class BlockchainTransaction:
                    f"    wrapped args:{_clean_print_args(self.wrapped_args)}\n" \
                    f"    gas limit:{self.get_gas_limit():,}\n" \
                    f"    gas spent:{self.realised_gas_units_consumed:,}\n" \
-                   f"    success\n" \
+                   f"    notes:{self.notes}\n" \
                    f"    >"
         elif self.status is False:
-            return f"<Tx \n" \
+            return f"<Tx reverted \n" \
                    f"    from:{self.from_address}\n" \
                    f"    nonce:{self.nonce}\n" \
                    f"    to:{self.contract_address}\n" \
@@ -289,16 +300,17 @@ class BlockchainTransaction:
                    f"    fail reason:{self.revert_reason}\n" \
                    f"    gas limit:{self.get_gas_limit():,}\n" \
                    f"    gas spent:{self.realised_gas_units_consumed:,}\n" \
+                   f"    notes:{self.notes}\n" \
                    f"    >"
         else:
-            return f"<Tx \n" \
+            return f"<Tx unresolved\n" \
                    f"    from:{self.from_address}\n" \
                    f"    nonce:{self.nonce}\n" \
                    f"    to:{self.contract_address}\n" \
                    f"    func:{self.function_selector}\n" \
                    f"    args:{_clean_print_args(self.transaction_args)}\n" \
                    f"    wrapped args:{_clean_print_args(self.wrapped_args)}\n" \
-                   f"    unresolved\n" \
+                   f"    notes:{self.notes}\n" \
                    f"    >"
 
     def get_transaction(self) -> dict:

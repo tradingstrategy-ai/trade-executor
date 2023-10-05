@@ -125,6 +125,7 @@ class EthereumRoutingState(RoutingState):
             max_slippage: float,
             check_balances: False,
             asset_deltas: Optional[List[AssetDelta]] = None,
+            notes="",
         ):
         """Prepare the actual swap. Same for Uniswap V2 and V3."""
         
@@ -138,6 +139,7 @@ class EthereumRoutingState(RoutingState):
             max_slippage: float,
             check_balances: False,
             asset_deltas: Optional[List[AssetDelta]] = None,
+            notes="",
         ):
         """Prepare the actual swap for three way trade."""
 
