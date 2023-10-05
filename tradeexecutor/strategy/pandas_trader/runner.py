@@ -97,7 +97,7 @@ class PandasTraderRunner(StrategyRunner):
         # Don't assume we have candle or liquidity data e.g. for the testing strategies
         if universe.candles is not None:
             if universe.candles.get_candle_count() > 0:
-                start, end = universe.get_candle_availability()
+                start, end = universe.candles.get_timestamp_range()
 
                 if self.max_data_age is not None:
                     if now_ - end > self.max_data_age:

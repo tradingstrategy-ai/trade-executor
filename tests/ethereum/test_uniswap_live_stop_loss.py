@@ -350,9 +350,8 @@ def test_live_stop_loss(
     # Sanity check for the trading universe
     # that we start with 1705 USD/ETH price
     pair_universe = trading_strategy_universe.data_universe.pairs
-    exchanges = trading_strategy_universe.data_universe.exchanges
     pricing_method = UniswapV2LivePricing(web3, pair_universe, routing_model)
-    exchange = exchanges[0] # Get the first exchange from the universe
+    exchange = trading_strategy_universe.data_universe.exchange_universe.get_single()
     weth_usdc = pair_universe.get_one_pair_from_pandas_universe(exchange.exchange_id, "WETH", "USDC")
     pair = translate_trading_pair(weth_usdc)
 
