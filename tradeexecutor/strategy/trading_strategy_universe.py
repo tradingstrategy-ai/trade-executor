@@ -1869,11 +1869,12 @@ def load_trading_and_lending_data(
     chain_id: ChainId,
     time_bucket: TimeBucket = TimeBucket.d1,
     universe_options: UniverseOptions = default_universe_options,
-    exchange_slug: str | None = None,
+    exchange_slugs: Set[str] | str | None = None,
     liquidity=False,
     stop_loss_time_bucket: Optional[TimeBucket] = None,
     reserve_asset_symbols: Set[TokenSymbol]={"USDC",},
     name: str | None = None,
+    volatile_only=False,
 ):
     """Load trading and lending market for a single chain for all long/short pairs.
 
@@ -1967,6 +1968,9 @@ def load_trading_and_lending_data(
 
         For trading, we need to have at least one trading pair with this quote token.
         The best fee is always picked.
+
+    :param volatile_only:
+        If set to False, ignore stablecoin-stablecoin trading pairs.
     """
 
     assert isinstance(client, Client)
@@ -1977,8 +1981,11 @@ def load_trading_and_lending_data(
     assert len(reserve_asset_symbols) == 1, f"Currently only one reserve asset is supported, got {reserve_asset_symbols}"
     (reserve_asset_symbol,) = reserve_asset_symbols
 
-    if exchange_slug is not None:
-        assert isinstance(exchange_slug, str)
+    if exchange_slugs is not None:
+        if type(exchange_slugs) == str:
+            exchange_slugs = {exchange_slugs}
+
+        assert isinstance(exchange_slugs, set)
 
     lending_reserves = client.fetch_lending_reserve_universe()
     lending_reserves = lending_reserves.limit_to_chain(chain_id)
@@ -1998,8 +2005,8 @@ def load_trading_and_lending_data(
     pairs_df = filter_for_quote_tokens(pairs_df, {reserve_asset.asset_address})
     pairs_df = filter_for_base_tokens(pairs_df, lending_reserves.get_asset_addresses())
 
-    if exchange_slug:
-        pairs_df = filter_for_exchange(pairs_df, exchange_slug)
+    if exchange_slugs:
+        pairs_df = filter_for_exchange(pairs_df, exchange_slugs)
 
     if not name:
         symbols = pairs_df["base_token_symbol"].unique()
