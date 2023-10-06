@@ -145,7 +145,7 @@ def test_load_trading_and_lending_data_historical(persistent_test_client: Client
         execution_context=unit_test_execution_context,
         universe_options=UniverseOptions(start_at=start_at, end_at=end_at),
         chain_id=ChainId.polygon,
-        exchange_slug="uniswap-v3",
+        exchange_slugs="uniswap-v3",
     )
 
     strategy_universe = TradingStrategyUniverse.create_from_dataset(dataset)
@@ -181,7 +181,7 @@ def test_load_trading_and_lending_data_live(persistent_test_client: Client):
         execution_context=unit_test_execution_context,
         universe_options=UniverseOptions(history_period=datetime.timedelta(days=7)),
         chain_id=ChainId.polygon,
-        exchange_slug="uniswap-v3",
+        exchange_slugs="uniswap-v3",
     )
 
     assert dataset.history_period == datetime.timedelta(days=7)
