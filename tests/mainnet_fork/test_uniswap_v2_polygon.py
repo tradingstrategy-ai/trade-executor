@@ -328,7 +328,29 @@ def test_simple_routing_three_leg_live(
     # We received the tokens we bought
     assert eth_token.functions.balanceOf(hot_wallet.address).call() > 0
 
-    # Check that expected amounts match
+    # Check that expected amounts match when doing buy and hold
+    clean, df = check_accounts(strategy_universe.data_universe.pairs, [usdc_asset], state, sync_model)
+    assert clean is True, f"Accounts are not clean:\n{df}"
+
+    #
+    # Close the postiion back to USDC
+    #
+    trades = position_manager.close_all()
+    execution_model.execute_trades(
+        datetime.datetime.utcnow(),
+        state,
+        trades,
+        routing_model,
+        routing_state,
+        check_balances=True,
+    )
+
+    trade_2 = trades[0]
+
+    assert trade_2.is_executed()
+    assert trade_2.is_success(), f"Trade failed:\n {trade_1.get_revert_reason()}"
+
+    # Check that expected amounts match after closing the position
     clean, df = check_accounts(strategy_universe.data_universe.pairs, [usdc_asset], state, sync_model)
     assert clean is True, f"Accounts are not clean:\n{df}"
 
