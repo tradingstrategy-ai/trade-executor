@@ -452,7 +452,7 @@ class PositionManager:
 
     def open_1x_long(self,
                      pair: Union[DEXPair, TradingPairIdentifier],
-                     value: USDollarAmount,
+                     value: USDollarAmount | Decimal,
                      take_profit_pct: Optional[float] = None,
                      stop_loss_pct: Optional[float] = None,
                      trailing_stop_loss_pct: Optional[float] = None,

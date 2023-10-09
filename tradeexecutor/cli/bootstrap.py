@@ -346,8 +346,8 @@ def monkey_patch():
 def create_sync_model(
         asset_management_mode: AssetManagementMode,
         web3: Web3,
-        hot_wallet: Optional[HotWallet],
-        vault_address: Optional[str],
+        hot_wallet: HotWallet,
+        vault_address: Optional[str] = None,
         vault_adapter_address: Optional[str] = None,
         vault_payment_forwarder_address: Optional[str] = None,
 ) -> SyncModel:
