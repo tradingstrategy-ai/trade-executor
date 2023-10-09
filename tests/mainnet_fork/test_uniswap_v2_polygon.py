@@ -325,6 +325,10 @@ def test_simple_routing_three_leg_live(
     assert trade_1.is_executed()
     assert trade_1.is_success(), f"Trade failed:\n {trade_1.get_revert_reason()}"
 
+    swap_tx = trade_1.blockchain_transactions[1]
+    path = swap_tx.args[2]
+    assert len(path) == 3  # Three-legged trade
+
     # We received the tokens we bought
     assert eth_token.functions.balanceOf(hot_wallet.address).call() > 0
 
