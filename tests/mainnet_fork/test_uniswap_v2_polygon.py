@@ -1,11 +1,6 @@
-"""Uniswap v2 routing model tests.
+"""Live trading three-way trade tests.
 
-To run these tests, we need to connect to polygon Chain:
-
-.. code-block::  shell
-
-    export polygon_CHAIN_JSON_RPC="https://bsc-dataseed.binance.org/"
-    pytest -k test_uniswap_v2_routing
+- USDC->WMATIC->ETH routing
 
 """
 
@@ -13,15 +8,14 @@ import datetime
 import os
 from decimal import Decimal
 
-import flaky
 import pytest
 from eth_account import Account
-from eth_defi.provider.anvil import fork_network_anvil
-from eth_defi.chain import install_chain_middleware
-from eth_defi.abi import get_deployed_contract
 from eth_defi.confirmation import wait_transactions_to_complete
 from eth_typing import HexAddress, HexStr
-from web3 import Web3, HTTPProvider
+from tradingstrategy.exchange import ExchangeUniverse
+from tradingstrategy.timebucket import TimeBucket
+from tradingstrategy.universe import Universe
+from web3 import Web3
 from web3.contract import Contract
 
 from eth_defi.hotwallet import HotWallet
@@ -31,35 +25,29 @@ from eth_defi.uniswap_v2.deployment import (
 )
 
 from tradeexecutor.ethereum.tx import HotWalletTransactionBuilder
+from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_live_pricing import UniswapV2LivePricing
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import (
     UniswapV2RoutingState,
     UniswapV2SimpleRoutingModel,
-    OutOfBalance,
 )
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_execution import UniswapV2ExecutionModel
-from tradeexecutor.ethereum.wallet import sync_reserves
-from tradeexecutor.testing.dummy_wallet import apply_sync_events
-from tradeexecutor.state.portfolio import Portfolio
+from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.state.state import State
-from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
-from tradeexecutor.state.position import TradingPosition
+from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
 from tradeexecutor.strategy.account_correction import check_accounts
 from tradeexecutor.strategy.execution_model import AssetManagementMode
 from tradeexecutor.strategy.sync_model import SyncModel
-
-from tradeexecutor.cli.log import setup_pytest_logging
 from tradeexecutor.cli.bootstrap import create_sync_model
 
 
 # https://docs.pytest.org/en/latest/how-to/skipping.html#skip-all-test-functions-of-a-class-or-module
 from tradeexecutor.strategy.trading_strategy_universe import (
-    create_pair_universe_from_code,
+    create_pair_universe_from_code, TradingStrategyUniverse,
 )
-from tradeexecutor.testing.pairuniversetrader import PairUniverseTestTrader
-from tradeexecutor.testing.pytest_helpers import is_failed_test
 from tradingstrategy.chain import ChainId
 from tradingstrategy.pair import PandasPairUniverse
 
+from tradeexecutor.testing.synthetic_exchange_data import generate_exchange
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("JSON_RPC_POLYGON") is None,
@@ -102,7 +90,9 @@ def matic_usdc_trading_pair_address() -> HexAddress:
 
 @pytest.fixture()
 def hot_wallet(
-    web3: Web3, usdc_token: Contract, large_usdc_holder: HexAddress
+    web3: Web3,
+        usdc_token: Contract,
+        large_usdc_holder: HexAddress
 ) -> HotWallet:
     """Our trading Ethereum account.
 
@@ -176,7 +166,7 @@ def pair_universe(
 
 
 @pytest.fixture()
-def routing_model(usdc_asset):
+def routing_model(usdc_asset) -> UniswapV2SimpleRoutingModel:
 
     # Allowed exchanges as factory -> router pairs
     factory_router_map = {
@@ -201,24 +191,72 @@ def routing_model(usdc_asset):
     )
 
 
+@pytest.fixture
+def strategy_universe(
+    quickswap,
+    pair_universe,
+    usdc_asset,
+) -> TradingStrategyUniverse:
+    """Construct a trading strategy universe with a single Uniswap v2 DEX and our pairs
+
+    - Use real on-chain routing data and forked EVM
+
+    - Set up USDC as a reserve asset
+    """
+
+    exchange = generate_exchange(exchange_id=1, chain_id=ChainId.polygon, address=quickswap.factory.address)
+    exchange_universe = ExchangeUniverse({exchange.exchange_id: exchange})
+
+    data_universe = Universe(
+        time_bucket=TimeBucket.not_applicable,
+        chains={ChainId.polygon},
+        pairs=pair_universe,
+        exchange_universe=exchange_universe,
+    )
+
+    strategy_universe = TradingStrategyUniverse(
+        data_universe=data_universe,
+        reserve_assets={usdc_asset}
+    )
+
+    return strategy_universe
+
+
+@pytest.fixture()
+def pricing_model(web3, pair_universe, routing_model) -> UniswapV2LivePricing:
+    """Pull the live price data from on-chain.
+
+    - The price feed is frozen to the point when we fork the chain,
+      only our own trades will modify the price
+    """
+    return UniswapV2LivePricing(web3, pair_universe, routing_model)
+
+
 @pytest.fixture()
 def execution_model(web3, hot_wallet) -> UniswapV2ExecutionModel:
+    """Create an execution model that waits zero blocks for confirmation.
+
+    Because we are using Anvil mainnet fork, there are not going to be any new blocks.
+    """
     tx_builder = HotWalletTransactionBuilder(web3, hot_wallet)
-    return UniswapV2ExecutionModel(tx_builder)
+    return UniswapV2ExecutionModel(
+        tx_builder,
+        confirmation_timeout=datetime.timedelta(seconds=10.00),  # Anvil has total 10 seconds to mine all txs in a batch
+        confirmation_block_count=0,
+        mainnet_fork=True,
+    )
 
 
 @pytest.fixture
-def state(web3, hot_wallet, usdc_asset) -> State:
-    """State used in the tests."""
-    state = State()
+def state(web3, hot_wallet, usdc_asset, sync_model) -> State:
+    """State used in the tests.
 
-    events = sync_reserves(
-        web3, datetime.datetime.utcnow(), hot_wallet.address, [], [usdc_asset]
-    )
-    assert len(events) > 0
-    apply_sync_events(state, events)
-    reserve_currency, exchange_rate = state.portfolio.get_default_reserve_asset()
-    assert reserve_currency == usdc_asset
+    Start with USDC and some gas MATIC in the wallet.
+    """
+    state = State()
+    sync_model.sync_initial(state)
+    sync_model.sync_treasury(datetime.datetime.utcnow(), state, supported_reserves=[usdc_asset])
+    assert state.portfolio.get_default_reserve_position().get_value() == 10_000_000.0  # We are Anvil rich
     return state
 
 
@@ -231,568 +269,66 @@ def sync_model(web3, hot_wallet) -> SyncModel:
     )
 
 
-def test_simple_routing_three_leg(
-        web3,
-        hot_wallet,
-        usdc_asset,
-        matic_asset,
-        eth_asset,
-        eth_token,
-        routing_model,
-        eth_matic_trading_pair,
-        matic_usdc_trading_pair,
-        pair_universe,
-        state: State,
-        sync_model: SyncModel,
+def test_simple_routing_three_leg_live(
+    web3,
+    strategy_universe: TradingStrategyUniverse,
+    state: State,
+    sync_model: SyncModel,
+    execution_model: UniswapV2ExecutionModel,
+    pricing_model: UniswapV2LivePricing,
+    eth_matic_trading_pair: TradingPairIdentifier,
+    routing_model:  UniswapV2SimpleRoutingModel,
+    eth_token: Contract,
+    usdc_asset: AssetIdentifier,
+    hot_wallet: HotWallet,
 ):
-    """Make 1x two way trade USDC -> BNB -> Eth."""
+    """Perform a three-legged trade USDC->WMATIC-ETH on a live mainnet forked Quickswap.
 
-    # Prepare a transaction builder
-    tx_builder = HotWalletTransactionBuilder(
-        web3,
-        hot_wallet,
+    - Try to use as little as possible unit testing infrastructure
+      and rely on real execution model.
+
+    - We initialise all components except ``PandasStrategyRunner``
+      as we do not have a strategy to run
+
+    - Perform accounting checks in each phase
+    """
+
+    position_manager = PositionManager(
+        datetime.datetime.utcnow(),
+        strategy_universe,
+        state,
+        pricing_model,
     )
 
-    routing_state = UniswapV2RoutingState(pair_universe, tx_builder)
+    routing_state = UniswapV2RoutingState(
+        strategy_universe.data_universe.pairs,
+        execution_model.tx_builder,
+    )
 
-    # We start out with 0 Eth balance
-    balance = eth_token.functions.balanceOf(hot_wallet.address).call()
-    assert balance == 0, f"Expected balance of 0. Balance is {balance}" 
-
-    txs = routing_model.trade(
-        routing_state,
+    # Buy 100 USD worth of ETH, going thru ETH->MATIC
+    trades = position_manager.open_1x_long(
         eth_matic_trading_pair,
-        usdc_asset,
-        100 * 10 ** 6,  # Buy Eth worth of 100 USDC,
+        Decimal(100),
+    )
+
+    execution_model.execute_trades(
+        datetime.datetime.utcnow(),
+        state,
+        trades,
+        routing_model,
+        routing_state,
         check_balances=True,
-        intermediary_pair=matic_usdc_trading_pair,
     )
 
-    # We should have 1 approve, 1 swap
-    assert len(txs) == 2
+    trade_1 = trades[0]
 
-    # Execute
-    tx_builder.broadcast_and_wait_transactions_to_complete(
-        web3,
-        txs,
-        revert_reasons=True
-    )
-
-    # Check all transactions succeeded
-    for tx in txs:
-        assert tx.is_success(), f"Transaction failed: {tx}"
+    assert trade_1.is_executed()
+    assert trade_1.is_success(), f"Trade failed:\n {trade_1.get_revert_reason()}"
 
     # We received the tokens we bought
     assert eth_token.functions.balanceOf(hot_wallet.address).call() > 0
 
-    clean, df = check_accounts(pair_universe, [usdc_asset], state, sync_model)
-    
-    assert clean is True, f"Accounts are not clean: {df}"
+    # Check that expected amounts match
+    clean, df = check_accounts(strategy_universe.data_universe.pairs, [usdc_asset], state, sync_model)
+    assert clean is True, f"Accounts are not clean:\n{df}"
 
-
-def test_three_leg_buy_sell(
-        web3,
-        hot_wallet,
-        usdc_asset,
-        matic_asset,
-        eth_asset,
-        eth_token,
-        usdc_token,
-        routing_model,
-        eth_matic_trading_pair,
-        matic_usdc_trading_pair,
-        pair_universe,
-        state,
-        sync_model,
-):
-    """Make trades USDC -> BNB -> Eth and Eth -> BNB -> USDC."""
-
-    # We start without Eth
-    balance = eth_token.functions.balanceOf(hot_wallet.address).call()
-    assert balance == 0
-
-    # Prepare a transaction builder
-    tx_builder = HotWalletTransactionBuilder(
-        web3,
-        hot_wallet,
-    )
-
-    routing_state = UniswapV2RoutingState(pair_universe, tx_builder)
-
-    txs = routing_model.trade(
-        routing_state,
-        eth_matic_trading_pair,
-        usdc_asset,
-        100 * 10 ** 6,  # Buy Eth worth of 100 USDC,
-        check_balances=True,
-        intermediary_pair=matic_usdc_trading_pair,
-    )
-
-    # We should have 1 approve, 1 swap
-    assert len(txs) == 2
-
-    # # Check for three legs
-    buy_tx = txs[1]
-    path = buy_tx.transaction_args[2]
-    assert len(path) == 3
-
-    # Execute
-    tx_builder.broadcast_and_wait_transactions_to_complete(
-        web3,
-        txs,
-        revert_reasons=True
-    )
-
-    # Check all transactions succeeded
-    for tx in txs:
-        assert tx.is_success(), f"Transaction failed: {tx}"
-
-    # We received the tokens we bought
-    balance = eth_token.functions.balanceOf(hot_wallet.address).call()
-    assert balance > 0
-
-    txs = routing_model.trade(
-        routing_state,
-        eth_matic_trading_pair,
-        eth_asset,
-        balance,
-        check_balances=True,
-        intermediary_pair=matic_usdc_trading_pair,
-    )
-
-    # We should have 1 approve, 1 swap
-    assert len(txs) == 2
-
-    # Check for three legs
-    sell_tx = txs[1]
-    path = sell_tx.transaction_args[2]
-    assert len(path) == 3, f"Bad sell tx {sell_tx}"
-
-    # Execute
-    tx_builder.broadcast_and_wait_transactions_to_complete(
-        web3,
-        txs,
-        revert_reasons=True
-    )
-
-    # Check all transactions succeeded
-    for tx in txs:
-        assert tx.is_success(), f"Transaction failed: {tx}"
-
-    # We started with 10_000 USDC
-    balance = usdc_token.functions.balanceOf(hot_wallet.address).call()
-    assert balance == pytest.approx(9999998805591)
-
-    clean, df = check_accounts(pair_universe, [usdc_asset], state, sync_model)
-
-    assert clean is True, f"Accounts are not clean: {df}"
-
-
-# def test_three_leg_buy_sell_twice_on_chain(
-#         web3,
-#         hot_wallet,
-#         usdc_asset,
-#         matic_asset,
-#         eth_asset,
-#         eth_token,
-#         usdc_token,
-#         routing_model,
-#         eth_matic_trading_pair,
-#         matic_usdc_trading_pair,
-#         pair_universe,
-# ):
-#     """Make trades 2x USDC -> BNB -> Eth and Eth -> BNB -> USDC.
-
-#     Because we do the round trip 2x, we should not need approvals
-#     on the second time and we need one less transactions.
-
-#     We reset the routing state between, forcing
-#     the routing state to read the approval information
-#     back from the chain.
-#     """
-
-#     # Prepare a transaction builder
-#     tx_builder = HotWalletTransactionBuilder(
-#         web3,
-#         hot_wallet,
-#     )
-
-#     routing_state = None
-
-#     def trip():
-
-#         txs = routing_model.trade(
-#             routing_state,
-#             eth_matic_trading_pair,
-#             usdc_asset,
-#             100 * 10 ** 18,  # Buy Eth worth of 100 USDC,
-#             check_balances=True,
-#             intermediary_pair=matic_usdc_trading_pair,
-#         )
-
-#         # Execute
-#         tx_builder.broadcast_and_wait_transactions_to_complete(
-#             web3,
-#             txs,
-#             revert_reasons=True
-#         )
-
-#         # Check all transactions succeeded
-#         for tx in txs:
-#             assert tx.is_success(), f"Transaction failed: {tx}"
-
-#         # We received the tokens we bought
-#         balance = eth_token.functions.balanceOf(hot_wallet.address).call()
-#         assert balance > 0
-
-#         txs2 = routing_model.trade(
-#             routing_state,
-#             eth_matic_trading_pair,
-#             eth_asset,
-#             balance,
-#             check_balances=True,
-#             intermediary_pair=matic_usdc_trading_pair,
-#         )
-
-#         # Execute
-#         tx_builder.broadcast_and_wait_transactions_to_complete(
-#             web3,
-#             txs2,
-#             revert_reasons=True
-#         )
-
-#         # Check all transactions succeeded
-#         for tx in txs2:
-#             assert tx.is_success(), f"Transaction failed: {tx}"
-
-#         return txs + txs2
-
-#     routing_state = UniswapV2RoutingState(pair_universe, tx_builder)
-#     txs_1 = trip()
-#     assert len(txs_1) == 4
-#     routing_state = UniswapV2RoutingState(pair_universe, tx_builder)
-#     txs_2 = trip()
-#     assert len(txs_2) == 2
-
-
-# def test_three_leg_buy_sell_twice(
-#         web3,
-#         hot_wallet,
-#         usdc_asset,
-#         matic_asset,
-#         eth_asset,
-#         eth_token,
-#         usdc_token,
-#         routing_model,
-#         eth_matic_trading_pair,
-#         matic_usdc_trading_pair,
-#         pair_universe,
-# ):
-#     """Make trades 2x USDC -> BNB -> Eth and Eth -> BNB -> USDC.
-
-#     Because we do the round trip 2x, we should not need approvals
-#     on the second time and we need one less transactions.
-#     """
-
-#     # Prepare a transaction builder
-#     tx_builder = HotWalletTransactionBuilder(
-#         web3,
-#         hot_wallet,
-#     )
-
-#     routing_state = UniswapV2RoutingState(pair_universe, tx_builder)
-
-#     def trip():
-
-#         txs = routing_model.trade(
-#             routing_state,
-#             eth_matic_trading_pair,
-#             usdc_asset,
-#             100 * 10 ** 18,  # Buy Eth worth of 100 USDC,
-#             check_balances=True,
-#             intermediary_pair=matic_usdc_trading_pair,
-#         )
-
-#         # Execute
-#         tx_builder.broadcast_and_wait_transactions_to_complete(
-#             web3,
-#             txs,
-#             revert_reasons=True
-#         )
-
-#         # Check all transactions succeeded
-#         for tx in txs:
-#             assert tx.is_success(), f"Transaction failed: {tx}"
-
-#         # We received the tokens we bought
-#         balance = eth_token.functions.balanceOf(hot_wallet.address).call()
-#         assert balance > 0
-
-#         txs2 = routing_model.trade(
-#             routing_state,
-#             eth_matic_trading_pair,
-#             eth_asset,
-#             balance,
-#             check_balances=True,
-#             intermediary_pair=matic_usdc_trading_pair,
-#         )
-
-#         # Execute
-#         tx_builder.broadcast_and_wait_transactions_to_complete(
-#             web3,
-#             txs2,
-#             revert_reasons=True
-#         )
-
-#         # Check all transactions succeeded
-#         for tx in txs2:
-#             assert tx.is_success(), f"Transaction failed: {tx}"
-
-#         return txs + txs2
-
-#     txs_1 = trip()
-#     assert len(txs_1) == 4
-#     txs_2 = trip()
-#     assert len(txs_2) == 2
-
-
-# def test_stateful_routing_three_legstest_stateful_routing_three_legs(
-#         web3,
-#         pair_universe,
-#         hot_wallet,
-#         usdc_asset,
-#         matic_asset,
-#         eth_asset,
-#         eth_token,
-#         routing_model,
-#         eth_matic_trading_pair,
-#         matic_usdc_trading_pair,
-#         state: State,
-#         execution_model: UniswapV2ExecutionModel
-# ):
-#     """Perform 3-leg buy/sell using RoutingModel.execute_trades().
-
-#     This also shows how blockchain native transactions
-#     and state management integrate.
-#     """
-
-#     # Prepare a transaction builder
-#     tx_builder = HotWalletTransactionBuilder(web3, hot_wallet)
-
-#     routing_state = UniswapV2RoutingState(pair_universe, tx_builder)
-
-#     trader = PairUniverseTestTrader(state)
-
-#     reserve = pair_universe.get_token(usdc_asset.address)
-#     if not reserve:
-#         all_tokens = pair_universe.get_all_tokens()
-#         assert reserve, f"Reserve asset {usdc_asset.address} missing in the universe {usdc_asset}, we have {all_tokens}"
-
-#     # Buy Eth via USDC -> BNB pool for 100 USD
-#     trades = [
-#         trader.buy(eth_matic_trading_pair, Decimal(100))
-#     ]
-
-#     t = trades[0]
-#     assert t.is_buy()
-#     assert t.reserve_currency == usdc_asset
-#     assert t.pair == eth_matic_trading_pair
-
-#     state.start_execution_all(datetime.datetime.utcnow(), trades)
-#     routing_model.execute_trades_internal(pair_universe, routing_state, trades, check_balances=True)
-#     execution_model.broadcast_and_resolve(state, trades, stop_on_execution_failure=True)
-
-#     # Check all all trades and transactions completed
-#     for t in trades:
-#         assert t.is_success()
-#         for tx in t.blockchain_transactions:
-#             assert tx.is_success()
-
-#     # We received the tokens we bought
-#     assert eth_token.functions.balanceOf(hot_wallet.address).call() > 0
-
-#     eth_position: TradingPosition = state.portfolio.open_positions[1]
-#     assert eth_position
-
-#     # Buy Eth via USDC -> BNB pool for 100 USD
-#     trades = [
-#         trader.sell(eth_matic_trading_pair, eth_position.get_quantity())
-#     ]
-
-#     t = trades[0]
-#     assert t.is_sell()
-#     assert t.reserve_currency == usdc_asset
-#     assert t.pair == eth_matic_trading_pair
-#     assert t.planned_quantity == -eth_position.get_quantity()
-
-#     state.start_execution_all(datetime.datetime.utcnow(), trades)
-#     routing_model.execute_trades_internal(pair_universe, routing_state, trades, check_balances=True)
-#     execution_model.broadcast_and_resolve(state, trades, stop_on_execution_failure=True)
-
-#     # Check all all trades and transactions completed
-#     for t in trades:
-#         assert t.is_success()
-#         for tx in t.blockchain_transactions:
-#             assert tx.is_success()
-
-#     # On-chain balance is zero after the sell
-#     assert eth_token.functions.balanceOf(hot_wallet.address).call() == 0
-
-
-# def test_stateful_routing_out_of_balance(
-#         web3,
-#         pair_universe,
-#         hot_wallet,
-#         usdc_asset,
-#         matic_asset,
-#         eth_asset,
-#         eth_token,
-#         routing_model,
-#         eth_usdc_trading_pair,
-#         state: State,
-#         execution_model: UniswapV2ExecutionModel,
-#         usdc_token,
-#         user_2
-# ):
-#     """Abort trade because we do not have enough tokens on-chain.
-
-#     - Clear the tokens before the trade
-#     """
-
-#     # Prepare a transaction builder
-#     tx_builder = HotWalletTransactionBuilder(web3, hot_wallet)
-
-#     # Move all USDC expect 1 unit out from the wallet
-#     balance = usdc_token.functions.balanceOf(hot_wallet.address).call()
-#     remove_tokens_tx = usdc_token.functions.transfer(user_2, balance - 1)
-#     signed_tx = hot_wallet.sign_bound_call_with_new_nonce(remove_tokens_tx)
-#     web3.eth.send_raw_transaction(signed_tx.rawTransaction)
-
-#     routing_state = UniswapV2RoutingState(pair_universe, tx_builder)
-
-#     trader = PairUniverseTestTrader(state)
-
-#     # Buy Eth via USDC -> BNB pool for 100 USD
-#     trades = [
-#         trader.buy(eth_usdc_trading_pair, Decimal(100))
-#     ]
-
-#     state.start_execution_all(datetime.datetime.utcnow(), trades)
-
-#     with pytest.raises(OutOfBalance):
-#         routing_model.execute_trades_internal(pair_universe, routing_state, trades, check_balances=True)
-
-
-# def test_stateful_routing_adjust_epsilon(
-#         web3,
-#         pair_universe,
-#         hot_wallet,
-#         usdc_asset,
-#         matic_asset,
-#         eth_asset,
-#         eth_token,
-#         routing_model,
-#         eth_usdc_trading_pair,
-#         state: State,
-#         execution_model: UniswapV2ExecutionModel,
-#         usdc_token,
-#         user_2,
-# ):
-#     """Perform a trade where we have a rounding error in our reserves.
-#     """
-
-#     # Prepare a transaction builder
-#     tx_builder = HotWalletTransactionBuilder(web3, hot_wallet)
-
-#     # Move 1 unit of USDC out from the wallet
-#     balance = usdc_token.functions.balanceOf(hot_wallet.address).call()
-#     diff = (balance - 100 * 10 ** 18) + 1
-#     remove_tokens_tx = usdc_token.functions.transfer(user_2, diff)
-#     signed_tx = hot_wallet.sign_bound_call_with_new_nonce(remove_tokens_tx)
-#     web3.eth.send_raw_transaction(signed_tx.rawTransaction)
-#     routing_state = UniswapV2RoutingState(pair_universe, tx_builder)
-
-#     trader = PairUniverseTestTrader(state)
-
-#     # Buy Eth via USDC -> BNB pool for 100 USD
-#     trades = [
-#         trader.buy(eth_usdc_trading_pair, Decimal(100))
-#     ]
-
-#     t = trades[0]
-#     assert t.is_buy()
-#     assert t.reserve_currency == usdc_asset
-#     assert t.pair == eth_usdc_trading_pair
-
-#     state.start_execution_all(datetime.datetime.utcnow(), trades)
-#     routing_model.execute_trades_internal(pair_universe, routing_state, trades, check_balances=True)
-#     execution_model.broadcast_and_resolve(state, trades, stop_on_execution_failure=True)
-
-#     # Check all all trades and transactions completed
-#     for t in trades:
-#         assert t.is_success()
-#         for tx in t.blockchain_transactions:
-#             assert tx.is_success()
-
-#     # Check that we recorded spending amount correctly
-#     trade_tx = trades[0].blockchain_transactions[-1]
-#     assert trade_tx.other["reserve_amount"] == str(100 * 10 ** 18)
-#     assert trade_tx.other["adjusted_reserve_amount"] == str(100 * 10 ** 18 - 1)
-
-
-# def test_stateful_routing_adjust_epsilon_sell(
-#         web3,
-#         pair_universe,
-#         hot_wallet,
-#         usdc_asset,
-#         matic_asset,
-#         eth_asset,
-#         eth_token,
-#         routing_model,
-#         eth_usdc_trading_pair,
-#         state: State,
-#         execution_model: UniswapV2ExecutionModel,
-#         user_2,
-# ):
-#     """Perform a trade where we have a rounding error in our reserves, sell side.
-#     """
-
-#     # Prepare a transaction builder
-#     tx_builder = HotWalletTransactionBuilder(web3, hot_wallet)
-#     routing_state = UniswapV2RoutingState(pair_universe, tx_builder)
-#     trader = PairUniverseTestTrader(state)
-
-#     # Buy Eth via USDC -> BNB pool for 100 USD
-#     trades = [
-#         trader.buy(eth_usdc_trading_pair, Decimal(100))
-#     ]
-
-#     state.start_execution_all(datetime.datetime.utcnow(), trades)
-#     routing_model.execute_trades_internal(pair_universe, routing_state, trades, check_balances=True)
-#     execution_model.broadcast_and_resolve(state, trades, stop_on_execution_failure=True)
-
-#     # We received the tokens we bought
-#     assert eth_token.functions.balanceOf(hot_wallet.address).call() > 0
-
-#     eth_position: TradingPosition = state.portfolio.open_positions[1]
-
-#     # Move 0.000001 Eth away to simulate rounding error
-#     remove_tokens_tx = eth_token.functions.transfer(user_2, 1)
-#     signed_tx = hot_wallet.sign_bound_call_with_new_nonce(remove_tokens_tx)
-#     web3.eth.send_raw_transaction(signed_tx.rawTransaction)
-
-#     t = trader.sell(eth_usdc_trading_pair, eth_position.get_quantity())
-#     assert t.is_sell()
-
-#     trades = [t]
-#     state.start_execution_all(datetime.datetime.utcnow(), trades)
-#     routing_model.execute_trades_internal(pair_universe, routing_state, trades, check_balances=True)
-#     execution_model.broadcast_and_resolve(state, trades, stop_on_execution_failure=True)
-#     assert t.is_success()
-
-#     # On-chain balance is zero after the sell
-#     assert eth_token.functions.balanceOf(hot_wallet.address).call() == eth_position.get_quantity() * 10 ** 187
-
-#     # Check that we recorded spending amount correctly
-#     trade_tx = t.blockchain_transactions[-1]
-#     assert int(trade_tx.other["reserve_amount"]) == int(trade_tx.other["adjusted_reserve_amount"]) + 1

@@ -47,9 +47,11 @@ def anvil_polygon_chain_fork(request, logger, large_usdc_holder) -> str:
         verbose_anvil_exit = is_failed_test(request)
         stdout, stderr = launch.close()
 
+        # Disabled for now as it causes too much noise in the output
         if verbose_anvil_exit:
             print(f"Anvil stdout:\n{stdout.decode('utf-8')}")
             print(f"Anvil stderr:\n{stderr.decode('utf-8')}")
+        pass
 
 
 @pytest.fixture

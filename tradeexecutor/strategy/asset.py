@@ -3,7 +3,7 @@
 Figure how to map different tokens related to their trading positions.
 """
 
-from typing import List, Collection
+from typing import List, Collection, Set
 
 from tradingstrategy.pair import PandasPairUniverse
 
@@ -24,7 +24,7 @@ def get_relevant_assets(
         pair_universe: PandasPairUniverse,
         reserve_assets: Collection[AssetIdentifier],
         state: State,
-) -> List[AssetIdentifier]:
+) -> Set[AssetIdentifier]:
     """Get list of tokens that are relevant for the straegy.
 
     We need to know the list of tokens we need to scan for the strategy
@@ -46,18 +46,20 @@ def get_relevant_assets(
     assert isinstance(pair_universe, PandasPairUniverse)
     assert isinstance(state, State)
 
-    assets = []
+    assets = set()
 
     for asset in reserve_assets:
-        assets.append(asset)
+        assets.add(asset)
 
     if _is_open_ended_universe(pair_universe):
+        # For open ended universe we can have thousands of assets
+        # so we cannot query them all
         for p in state.portfolio.get_all_positions():
-            assets.append(p.pair.base)
+            assets.add(p.pair.base)
     else:
         for p in pair_universe.iterate_pairs():
             pair = translate_trading_pair(p)
-            assets.append(pair.base)
+            assets.add(pair.base)
 
     return assets
 
