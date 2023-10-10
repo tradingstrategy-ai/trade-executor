@@ -293,7 +293,6 @@ class StrategyRunner(abc.ABC):
         else:
             logger.info("No positions opened")
 
-
         closed_positions = list(portfolio.get_positions_closed_at(clock))
         if len(closed_positions) > 0:
             print(f"Closed positions:", file=buf)
@@ -301,7 +300,7 @@ class StrategyRunner(abc.ABC):
 
             print(DISCORD_BREAK_CHAR, file=buf)
         else:
-            logger.info("No closed positions")
+            logger.info("The clock tick %s did not close any positions", clock)
 
         print("Reserves:", file=buf)
         print("", file=buf)

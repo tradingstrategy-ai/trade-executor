@@ -589,7 +589,16 @@ class State:
                            executed_collateral_consumption: Optional[Decimal] = None,
                            executed_collateral_allocation: Optional[Decimal] = None,
                         ):
-        """"""
+        """After trade has been successfully executed, update the state of our internal ledged to reflect this.
+
+        - Trade is marked as successfully complete
+
+        - All position sizes are updated to match executed values (instead of planned values)
+
+        - Mark any LP and gas fees from the trade
+
+        - If this was the final trade of the position, mark the position closed
+        """
 
         position = self.portfolio.find_position_for_trade(trade)
 
@@ -633,6 +642,9 @@ class State:
             raise NotImplementedError()
 
         if position.can_be_closed():
+
+            logger.info("Marking position to closed: %s", position)
+
             # Move position to closed
             position.closed_at = executed_at
             del self.portfolio.open_positions[position.position_id]
@@ -655,6 +667,9 @@ class State:
                 if position.loan.borrowed:
                     # TODO: Add planned interest payments
                     trade.paid_interest = position.loan.repay_interest()
+
+        else:
+            logger.info("Position still open after a trade: %s", position)
 
     def mark_trade_failed(self, failed_at: datetime.datetime, trade: TradeExecution):
         """Unroll the allocated capital."""
