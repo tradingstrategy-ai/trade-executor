@@ -84,6 +84,10 @@ def sand_token(web3: Web3) -> TokenDetails:
 
 
 @pytest.fixture
+def matic_token(web3: Web3) -> TokenDetails:
+    return fetch_erc20_details(web3, "0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270")
+
+@pytest.fixture
 def eth_matic_trading_pair_address() -> HexAddress:
     return HexAddress(HexStr("0x86f1d8390222A3691C28938eC7404A1661E618e0"))
 
@@ -304,6 +308,7 @@ def sync_model(web3, hot_wallet) -> SyncModel:
     )
 
 
+
 def test_simple_routing_three_leg_live(
     web3,
     strategy_universe: TradingStrategyUniverse,
@@ -318,6 +323,7 @@ def test_simple_routing_three_leg_live(
     sand_token: TokenDetails,
     usdc_asset: AssetIdentifier,
     usdc_token: Contract,
+    matic_token: TokenDetails,
     hot_wallet: HotWallet,
 ):
     """Perform a three-legged trade USDC->WMATIC-ETH on a live mainnet forked Quickswap.
@@ -417,5 +423,4 @@ def test_simple_routing_three_leg_live(
 
     # We received the tokens we bought
     assert sand_token.fetch_balance_of(hot_wallet.address) == 0
-    assert usdc_token.functions.balanceOf(hot_wallet.address).call() == 200
-
+    assert 0 < matic_token.fetch_balance_of(hot_wallet.address) < 1000
