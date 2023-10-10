@@ -163,7 +163,7 @@ class StrategyRunner(abc.ABC):
     def revalue_state(self, ts: datetime.datetime, state: State, valuation_method: ValuationModel):
         """Revalue portfolio based on the latest prices."""
         revalue_state(state, ts, valuation_method)
-        logger.info("After revaluation at %s our equity is %f", ts, state.portfolio.get_total_equity())
+        logger.info("After revaluation at %s our portfolio value is %f USD", ts, state.portfolio.get_total_equity())
 
     def collect_post_execution_data(
             self,
@@ -293,7 +293,6 @@ class StrategyRunner(abc.ABC):
         else:
             logger.info("No positions opened")
 
-
         closed_positions = list(portfolio.get_positions_closed_at(clock))
         if len(closed_positions) > 0:
             print(f"Closed positions:", file=buf)
@@ -301,7 +300,7 @@ class StrategyRunner(abc.ABC):
 
             print(DISCORD_BREAK_CHAR, file=buf)
         else:
-            logger.info("No closed positions")
+            logger.info("The clock tick %s did not close any positions", clock)
 
         print("Reserves:", file=buf)
         print("", file=buf)
@@ -474,11 +473,6 @@ class StrategyRunner(abc.ABC):
                                 last_point_at
                                 )
 
-                # Double check we handled incoming trade balances correctly
-                with self.timed_task_context_manager("check_accounts_post_trade"):
-                    logger.info("Post-trade accounts balance check")
-                    self.check_accounts(universe, state)
-
                 # Log what our strategy decided
                 if self.is_progress_report_needed():
                     self.report_strategy_thinking(
@@ -529,6 +523,12 @@ class StrategyRunner(abc.ABC):
                         pricing_model,
                         approved_trades,
                     )
+
+                # Double check we handled incoming trade balances correctly
+                with self.timed_task_context_manager("check_accounts_post_trade"):
+                    logger.info("Post-trade accounts balance check")
+                    self.check_accounts(universe, state)
+
             else:
                 equity = state.portfolio.get_total_equity()
                 logger.trade("Strategy has no trading capital and trade decision step was skipped. The total equity is %f USD, execution mode is %s", equity, execution_context.mode.name)

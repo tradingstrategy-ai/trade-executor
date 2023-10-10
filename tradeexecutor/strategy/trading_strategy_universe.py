@@ -1251,11 +1251,15 @@ def create_pair_universe_from_code(chain_id: ChainId, pairs: List[TradingPairIde
     Used in unit testing.
     """
     data = []
+    used_ids = set()
     for idx, p in enumerate(pairs):
         assert p.base.decimals
         assert p.quote.decimals
         assert p.internal_exchange_id, f"All trading pairs must have internal_exchange_id set, did not have it set {p}"
         assert p.internal_id
+
+        assert p.internal_id not in used_ids, f"Duplicate internal id {p}: {p.internal_id}"
+
         dex_pair = DEXPair(
             pair_id=p.internal_id,
             chain_id=chain_id,
@@ -1273,6 +1277,7 @@ def create_pair_universe_from_code(chain_id: ChainId, pairs: List[TradingPairIde
             token1_decimals=p.quote.decimals,
             fee=int(p.fee * 10_000) if p.fee else None,  # Convert to bps according to the documentation
         )
+        used_ids.add(p.internal_id)
         data.append(dex_pair.to_dict())
     df = pd.DataFrame(data)
     return PandasPairUniverse(df)

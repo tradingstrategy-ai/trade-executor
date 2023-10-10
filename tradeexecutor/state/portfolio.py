@@ -1,5 +1,6 @@
 """Portfolio state management."""
 
+import logging
 import datetime
 import copy
 from dataclasses import dataclass, field
@@ -20,6 +21,8 @@ from tradeexecutor.state.types import USDollarAmount, BPS, USDollarPrice
 from tradeexecutor.strategy.dust import get_dust_epsilon_for_pair
 from tradeexecutor.strategy.trade_pricing import TradePricing
 
+
+logger = logging.getLogger(__name__)
 
 
 class NotEnoughMoney(Exception):
@@ -714,7 +717,10 @@ class Portfolio:
 
         reserve.quantity += amount
 
-    def move_capital_from_reserves_to_spot_trade(self, trade: TradeExecution, underflow_check=True):
+    def move_capital_from_reserves_to_spot_trade(
+            self,
+            trade: TradeExecution,
+            underflow_check=True):
         """Allocate capital from reserves to trade instance.
 
         Total equity of the porfolio stays the same.
@@ -738,14 +744,23 @@ class Portfolio:
                 raise NotEnoughMoney(f"Not enough reserves. We have {available}, trade wants {reserve}")
 
         trade.reserve_currency_allocated = reserve
+
+        logger.info("Moving %s USD from reserves to the trade %s", reserve, trade)
         self.adjust_reserves(trade.reserve_currency, -reserve)
 
-    def return_capital_to_reserves(self, trade: TradeExecution, underflow_check=True):
+    def return_capital_to_reserves(
+            self,
+            trade: TradeExecution,
+            underflow_check=True):
         """Return capital to reserves after a spot sell or collateral returned.
 
         """
         if trade.is_spot():
             assert trade.is_sell()
+
+        logger.info("Returning %s USD to reserves from trade", trade.executed_reserve, trade)
+
+        assert trade.executed_reserve > 0
 
         self.adjust_reserves(trade.reserve_currency, trade.executed_reserve)
 

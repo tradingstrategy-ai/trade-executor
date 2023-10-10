@@ -12,6 +12,8 @@ import pytest
 from eth_account import Account
 from eth_defi.confirmation import wait_transactions_to_complete
 from eth_typing import HexAddress, HexStr
+
+from eth_defi.token import TokenDetails, fetch_erc20_details
 from tradingstrategy.exchange import ExchangeUniverse
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
@@ -77,15 +79,49 @@ def wmatic_token(quickswap: UniswapV2Deployment) -> Contract:
 
 
 @pytest.fixture
+def sand_token(web3: Web3) -> TokenDetails:
+    return fetch_erc20_details(web3, "0xbbba073c31bf03b8acf7c28ef0738decf3695683")
+
+
+@pytest.fixture
+def matic_token(web3: Web3) -> TokenDetails:
+    return fetch_erc20_details(web3, "0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270")
+
+@pytest.fixture
 def eth_matic_trading_pair_address() -> HexAddress:
-    """See https://tradingstrategy.ai/trading-view/polygon/quickswap/matic-usdc"""
     return HexAddress(HexStr("0x86f1d8390222A3691C28938eC7404A1661E618e0"))
 
 
 @pytest.fixture
 def matic_usdc_trading_pair_address() -> HexAddress:
-    """See https://tradingstrategy.ai/trading-view/polygon/quickswap/matic-usdc"""
     return HexAddress(HexStr("0x6e7a5fafcec6bb1e78bae2a1f0b612012bf14827"))
+
+
+@pytest.fixture
+def sand_asset(sand_token, chain_id) -> AssetIdentifier:
+    return AssetIdentifier(
+        chain_id,
+        sand_token.address,
+        sand_token.symbol,
+        sand_token.decimals,
+    )
+
+
+@pytest.fixture
+def sand_matic_trading_pair(
+    quickswap,
+    sand_asset,
+    matic_asset,
+) -> TradingPairIdentifier:
+    return TradingPairIdentifier(
+        sand_asset,
+        matic_asset,
+        "0x369582d2010b6ed950b571f4101e3bb9b554876f",  #  https://tradingstrategy.ai/trading-view/polygon/quickswap/sand-matic-2
+        internal_id=2000,
+        internal_exchange_id=1000,
+        exchange_address=quickswap.factory.address,
+        fee=0.003
+    )
 
 
 @pytest.fixture()
@@ -156,12 +192,15 @@ def eth_matic_trading_pair(eth_asset, matic_asset, quickswap) -> TradingPairIden
 
 @pytest.fixture
 def pair_universe(
-    eth_usdc_trading_pair, matic_usdc_trading_pair, eth_matic_trading_pair
+    eth_usdc_trading_pair,
+    matic_usdc_trading_pair,
+    eth_matic_trading_pair,
+    sand_matic_trading_pair,
 ) -> PandasPairUniverse:
     """Pair universe needed for the trade routing."""
     return create_pair_universe_from_code(
         ChainId.polygon,
-        [eth_usdc_trading_pair, matic_usdc_trading_pair, eth_matic_trading_pair],
+        [eth_usdc_trading_pair, matic_usdc_trading_pair, eth_matic_trading_pair, sand_matic_trading_pair],
     )
 
 
@@ -269,6 +308,7 @@ def sync_model(web3, hot_wallet) -> SyncModel:
     )
 
 
+
 def test_simple_routing_three_leg_live(
     web3,
     strategy_universe: TradingStrategyUniverse,
@@ -277,9 +317,13 @@ def test_simple_routing_three_leg_live(
     execution_model: UniswapV2ExecutionModel,
     pricing_model: UniswapV2LivePricing,
     eth_matic_trading_pair: TradingPairIdentifier,
+    matic_usdc_trading_pair: TradingPairIdentifier,
+    sand_matic_trading_pair: TradingPairIdentifier,
     routing_model:  UniswapV2SimpleRoutingModel,
-    eth_token: Contract,
+    sand_token: TokenDetails,
     usdc_asset: AssetIdentifier,
+    usdc_token: Contract,
+    matic_token: TokenDetails,
     hot_wallet: HotWallet,
 ):
     """Perform a three-legged trade USDC->WMATIC-ETH on a live mainnet forked Quickswap.
@@ -307,7 +351,12 @@ def test_simple_routing_three_leg_live(
 
     # Buy 100 USD worth of ETH, going thru ETH->MATIC
     trades = position_manager.open_1x_long(
-        eth_matic_trading_pair,
+        matic_usdc_trading_pair,
+        Decimal(100),
+    )
+
+    trades += position_manager.open_1x_long(
+        sand_matic_trading_pair,
         Decimal(100),
     )
 
@@ -320,26 +369,43 @@ def test_simple_routing_three_leg_live(
         check_balances=True,
     )
 
-    trade_1 = trades[0]
+    assert all(t.is_success() for t in trades)
 
-    assert trade_1.is_executed()
-    assert trade_1.is_success(), f"Trade failed:\n {trade_1.get_revert_reason()}"
+    # Inspect SAND-WMATIC trade
+    trade_2 = trades[1]
+    assert trade_2.is_executed()
+    assert trade_2.is_success(), f"Trade failed:\n {trade_2.get_revert_reason()}"
 
-    swap_tx = trade_1.blockchain_transactions[1]
+    swap_tx = trade_2.blockchain_transactions[0]
     path = swap_tx.args[2]
     assert len(path) == 3  # Three-legged trade
 
     # We received the tokens we bought
-    assert eth_token.functions.balanceOf(hot_wallet.address).call() > 0
+    assert sand_token.fetch_balance_of(hot_wallet.address) > 0
 
     # Check that expected amounts match when doing buy and hold
     clean, df = check_accounts(strategy_universe.data_universe.pairs, [usdc_asset], state, sync_model)
     assert clean is True, f"Accounts are not clean:\n{df}"
 
     #
-    # Close the postiion back to USDC
+    # Cycle 2
     #
-    trades = position_manager.close_all()
+    # - Close SAND position
+    # - Increase WMATIC position
+    #
+
+    trades = []
+
+    sand_position = position_manager.get_current_position_for_pair(sand_matic_trading_pair)
+    trades += position_manager.close_position(sand_position)
+
+    trades += position_manager.adjust_position(
+        matic_usdc_trading_pair,
+        100.0,  # +100 USD
+        quantity_delta=None,
+        weight=1.0,
+    )
+
     execution_model.execute_trades(
         datetime.datetime.utcnow(),
         state,
@@ -349,12 +415,12 @@ def test_simple_routing_three_leg_live(
         check_balances=True,
     )
 
-    trade_2 = trades[0]
-
-    assert trade_2.is_executed()
-    assert trade_2.is_success(), f"Trade failed:\n {trade_1.get_revert_reason()}"
+    assert all(t.is_success() for t in trades)
 
     # Check that expected amounts match after closing the position
     clean, df = check_accounts(strategy_universe.data_universe.pairs, [usdc_asset], state, sync_model)
     assert clean is True, f"Accounts are not clean:\n{df}"
 
+    # We received the tokens we bought
+    assert sand_token.fetch_balance_of(hot_wallet.address) == 0
+    assert 0 < matic_token.fetch_balance_of(hot_wallet.address) < 1000
