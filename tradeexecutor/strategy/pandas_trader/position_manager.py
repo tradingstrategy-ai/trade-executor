@@ -468,6 +468,12 @@ class PositionManager:
 
         - Checks that there is not existing position - cannot increase position
 
+        See also
+
+        - :py:meth:`adjust_position` if you want increase/decrease an existing position size
+
+        - :py:meth:`close_position` if you want exit an position
+
         :param pair:
             Trading pair where we take the position
 
@@ -595,14 +601,16 @@ class PositionManager:
 
         Used to rebalance positions.
 
+        This method rarely needs to be called directly,
+        but is usually part of portfolio construction strategy
+        that is using :py:class:`tradeexecutor.strategy.alpha_model.AlphaModel`.
+
         A new position is opened if no existing position is open.
         If everything is sold, the old position is closed
 
         If the rebalance is sell (`dollar_amount_delta` is negative),
         then calculate the quantity of the asset to sell based
         on the latest available market price on the position.
-
-        This method is called by :py:func:`~tradeexecutor.strategy.pandas_trades.rebalance.rebalance_portfolio`.
 
         .. warning ::
 
@@ -615,15 +623,21 @@ class PositionManager:
         :param dollar_delta:
             How much we want to increase/decrease the position in US dollar terms.
 
+            TODO: If you are selling the assets, you need to calculate the expected
+            dollar estimate yourself at the moment.
+
         :param quantity_delta:
             How much we want to increase/decrease the position in the asset unit terms.
 
             Used only when decreasing existing positions (selling).
+            Set to ``None`` if not selling.
 
         :param weight:
             What is the weight of the asset in the new target portfolio 0....1.
             Currently only used to detect condition "sell all" instead of
             trying to match quantity/price conversion.
+
+            If unsure and buying, set to ``1``.
 
         :param stop_loss:
             Set the stop loss for the position.

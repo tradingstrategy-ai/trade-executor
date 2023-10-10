@@ -203,8 +203,14 @@ class EthereumRoutingModel(RoutingModel):
         :param target_pair:
         :param reserve_asset:
         :param reserve_asset_amount:
+
         :param max_slippage:
-            Max slippage per trade. 0.01 is 1%.
+            Max slippage per trade.
+
+            Set the slippage tolerance for this trade.
+
+            0.01 is 100 BPS is 1%.
+
         :param check_balances:
             Check on-chain balances that the account has enough tokens
             and raise exception if not.
@@ -217,7 +223,7 @@ class EthereumRoutingModel(RoutingModel):
             transactions in the `routing_state`.
         """
 
-        logger.info("trade() %s %s %s %s",
+        logger.info("trade() pair: %s reserve: %s reserve allocated: %s max slippage: %s %%",
                     target_pair,
                     reserve_asset,
                     reserve_asset_amount,
@@ -292,7 +298,7 @@ class EthereumRoutingModel(RoutingModel):
 
             max_slippage = t.slippage_tolerance or DEFAULT_SLIPPAGE_TOLERANCE
 
-            logger.info("Slippage tolerance is: %f, expected asset deltas: %s", max_slippage, asset_deltas)
+            logger.info("Slippage tolerance is: %f %%, expected asset deltas: %s", max_slippage * 100, asset_deltas)
 
             target_pair, intermediary_pair = self.route_trade(pair_universe, t)
 
@@ -448,7 +454,7 @@ class EthereumRoutingModel(RoutingModel):
     
     @staticmethod
     def route_pair_assertions(trading_pair, pair_universe):
-        assert isinstance(trading_pair, TradingPairIdentifier)
+        assert isinstance(trading_pair, TradingPairIdentifier), f"Not a trading pair: {trading_pair}: {trading_pair.__class__}"
 
         # Only issue for legacy code
         assert pair_universe, "PairUniverse must be given so that we know how to route three way trades"
