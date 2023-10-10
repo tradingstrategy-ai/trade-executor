@@ -142,6 +142,7 @@ def make_factory_from_strategy_mod(mod: StrategyModuleInformation) -> StrategyFa
             execution_context=execution_context,
             run_state=run_state,
             accounting_checks=execution_context.mode.is_live_trading(),
+            unit_testing=execution_context.mode.is_unit_testing(),
         )
 
         logger.info("Starting strategy runner in execution mode %s:\n%s", execution_context.mode.name, runner)

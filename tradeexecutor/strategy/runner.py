@@ -93,12 +93,21 @@ class StrategyRunner(abc.ABC):
         self.accounting_checks = accounting_checks
         self.unit_testing = unit_testing
 
-        if unit_testing:
+        # We need 60 seconds wait to read balances
+        # after trades only on a real trading,
+        # Anvil and test nodes are immune for this AFAIK
+        if unit_testing or not execution_context.mode.is_live_trading():
             self.trade_settle_wait = datetime.timedelta(0)
         else:
             self.trade_settle_wait = datetime.timedelta(seconds=60)
+            import ipdb ; ipdb.set_trace()
 
-        logger.info("Created strategy runner %s, engine version %s", self, self.execution_context.engine_version)
+        logger.info(
+            "Created strategy runner %s, engine version %s, running mode %s",
+            self,
+            self.execution_context.engine_version,
+            self.execution_context.mode.name,
+        )
 
     def __repr__(self):
         """Get a long presentation of internal runner state."""
