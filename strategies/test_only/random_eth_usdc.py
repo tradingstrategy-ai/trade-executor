@@ -83,6 +83,7 @@ def strategy_factory(
         routing_model=routing_model,
         cash_buffer=0.5,
         execution_context=execution_context,
+        unit_testing=True,
     )
 
     return StrategyExecutionDescription(
