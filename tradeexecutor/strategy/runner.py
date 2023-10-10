@@ -100,7 +100,6 @@ class StrategyRunner(abc.ABC):
             self.trade_settle_wait = datetime.timedelta(0)
         else:
             self.trade_settle_wait = datetime.timedelta(seconds=60)
-            import ipdb ; ipdb.set_trace()
 
         logger.info(
             "Created strategy runner %s, engine version %s, running mode %s",
