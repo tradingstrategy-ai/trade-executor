@@ -269,10 +269,11 @@ def summary(
 
     state, universe, debug_dump = backtest_result
 
-    summary = analysis.calculate_summary_statistics(state = state)
+    summary = analysis.calculate_summary_statistics(state = state, time_bucket=time_bucket)
 
     # Should not cause exception
     summary.to_dataframe()
+    summary.display()
 
     return summary
 
