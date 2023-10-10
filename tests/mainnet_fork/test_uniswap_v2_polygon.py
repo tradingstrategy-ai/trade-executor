@@ -317,6 +317,7 @@ def test_simple_routing_three_leg_live(
     routing_model:  UniswapV2SimpleRoutingModel,
     sand_token: TokenDetails,
     usdc_asset: AssetIdentifier,
+    usdc_token: Contract,
     hot_wallet: HotWallet,
 ):
     """Perform a three-legged trade USDC->WMATIC-ETH on a live mainnet forked Quickswap.
@@ -416,4 +417,5 @@ def test_simple_routing_three_leg_live(
 
     # We received the tokens we bought
     assert sand_token.fetch_balance_of(hot_wallet.address) == 0
+    assert usdc_token.functions.balanceOf(hot_wallet.address).call() == 200
 
