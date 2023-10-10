@@ -341,9 +341,9 @@ class TradeSummary:
             'Biggest realized risk': as_percent(self.max_loss_risk),
             'Average realized risk': as_percent(self.avg_realised_risk),
             'Max pullback of capital': as_percent(self.max_pullback),
-            'Sharpe Ratio': self.sharpe_ratio,
-            'Sortino Ratio': self.sortino_ratio,
-            'Profit Factor': self.profit_factor,
+            'Sharpe Ratio': as_decimal(self.sharpe_ratio),
+            'Sortino Ratio': as_decimal(self.sortino_ratio),
+            'Profit Factor':as_decimal(self.profit_factor),
         }
 
         df5 = create_summary_table(data5, "", "Risk Analysis")
@@ -690,9 +690,9 @@ class TradeAnalysis:
             losing_stop_losses=losing_stop_losses,
             winning_take_profits=winning_take_profits,
             losing_take_profits=losing_take_profits,
-            sharpe_ratio=as_decimal(sharpe_ratio),
-            sortino_ratio=as_decimal(sortino_ratio),
-            profit_factor=as_decimal(profit_factor),
+            sharpe_ratio=sharpe_ratio,
+            sortino_ratio=sortino_ratio,
+            profit_factor=profit_factor,
         )
 
     @staticmethod
