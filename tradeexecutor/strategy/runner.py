@@ -5,6 +5,7 @@ Define the runner model for different strategy types.
 
 import abc
 import datetime
+import time
 from contextlib import AbstractContextManager
 import logging
 from io import StringIO
@@ -66,6 +67,7 @@ class StrategyRunner(abc.ABC):
                  run_state: Optional[RunState] = None,
                  accounting_checks=False,
                  unit_testing=False,
+                 trade_settle_wait=None,
                  ):
         """
         :param engine_version:
@@ -90,6 +92,11 @@ class StrategyRunner(abc.ABC):
         self.execution_context = execution_context
         self.accounting_checks = accounting_checks
         self.unit_testing = unit_testing
+
+        if unit_testing:
+            self.trade_settle_wait = datetime.timedelta(0)
+        else:
+            self.trade_settle_wait = datetime.timedelta(seconds=60)
 
         logger.info("Created strategy runner %s, engine version %s", self, self.execution_context.engine_version)
 
@@ -199,6 +206,15 @@ class StrategyRunner(abc.ABC):
                     t.post_execution_price_structure = pricing_model.get_buy_price(ts, spot_pair, t.planned_collateral_consumption)
                 else:
                     t.post_execution_price_structure = pricing_model.get_sell_price(ts, spot_pair, t.planned_quantity)
+
+            logger.info(
+                "Trade %s, estimated reserve %s, executed reserve %s, estimated quantity %s, executed quantity %s",
+                t,
+                t.planned_reserve,
+                t.executed_reserve,
+                t.planned_quantity,
+                t.executed_quantity,
+            )
 
     def on_clock(self,
                  clock: datetime.datetime,
@@ -516,7 +532,6 @@ class StrategyRunner(abc.ABC):
                         routing_state,
                         check_balances=check_balances)
 
-                # Run any logic we need to run after the trades have been executd
                 with self.timed_task_context_manager("post_execution"):
                     self.collect_post_execution_data(
                         self.execution_context,
@@ -524,10 +539,19 @@ class StrategyRunner(abc.ABC):
                         approved_trades,
                     )
 
-                # Double check we handled incoming trade balances correctly
-                with self.timed_task_context_manager("check_accounts_post_trade"):
-                    logger.info("Post-trade accounts balance check")
-                    self.check_accounts(universe, state)
+                # Run any logic we need to run after the trades have been executed
+                if approved_trades:
+
+                    # We cannot call account check right after the trades,
+                    # as meny low quality nodes might still report old token balances
+                    # from eth_call
+                    logger.info("Waiting on-chain balances to settle for %f before performing accounting checks", self.trade_settle_wait)
+                    time.sleep(self.trade_settle_wait.total_seconds())
+
+                    # Double check we handled incoming trade balances correctly
+                    with self.timed_task_context_manager("check_accounts_post_trade"):
+                        logger.info("Post-trade accounts balance check")
+                        self.check_accounts(universe, state)
 
             else:
                 equity = state.portfolio.get_total_equity()
