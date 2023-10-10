@@ -420,10 +420,14 @@ class EnzymeVaultSyncModel(SyncModel):
 
         sorted_assets = sorted(assets, key=lambda a: a.address)
 
+        # Latest block fails on LlamaNodes.com
+        block_number = max(1, self.web3.eth.block_number - get_block_tip_latency(self.web3))
+
         return fetch_address_balances(
             self.web3,
             self.get_vault_address(),
             sorted_assets,
+            block_number=block_number,
             filter_zero=filter_zero,
         )
 
