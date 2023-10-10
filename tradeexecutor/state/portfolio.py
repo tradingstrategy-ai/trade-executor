@@ -758,7 +758,7 @@ class Portfolio:
         if trade.is_spot():
             assert trade.is_sell()
 
-        logger.info("Returning %s USD to reserves from trade", trade.executed_reserve, trade)
+        logger.info("Returning %s USD to reserves from trade %s", trade.executed_reserve, trade)
 
         assert trade.executed_reserve > 0
 
