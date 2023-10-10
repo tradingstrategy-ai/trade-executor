@@ -45,7 +45,7 @@ from tradingstrategy.pair import PandasPairUniverse
 from tradingstrategy.types import PrimaryKey, USDollarAmount
 from tradingstrategy.utils.format import format_value, format_price, format_duration_days_hours_mins, \
     format_percent_2_decimals
-from tradeexecutor.utils.summarydataframe import as_dollar, as_integer, create_summary_table, as_percent, as_duration, as_bars
+from tradeexecutor.utils.summarydataframe import as_dollar, as_integer, create_summary_table, as_percent, as_duration, as_bars, as_decimal
 
 
 try:
@@ -341,9 +341,9 @@ class TradeSummary:
             'Biggest realized risk': as_percent(self.max_loss_risk),
             'Average realized risk': as_percent(self.avg_realised_risk),
             'Max pullback of capital': as_percent(self.max_pullback),
-            'Sharpe Ratio': as_percent(self.sharpe_ratio),
-            'Sortino Ratio': as_percent(self.sortino_ratio),
-            'Profit Factor': as_percent(self.profit_factor),
+            'Sharpe Ratio': as_decimal(self.sharpe_ratio),
+            'Sortino Ratio': as_decimal(self.sortino_ratio),
+            'Profit Factor':as_decimal(self.profit_factor),
         }
 
         df5 = create_summary_table(data5, "", "Risk Analysis")
