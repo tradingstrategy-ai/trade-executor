@@ -62,7 +62,13 @@ def export():
 
     # TODO: We do not deal with the case if env var contains "
     for env in env_vars:
-        print(f"""export {env}="{os.environ.get(env, '')}" """)
+
+        val = os.environ.get(env, '')
+
+        if val:
+            print(f"""export {env}="{val}" """)
+        else:
+            print(f"""# export {env}="{val}" """)
 
 
 
