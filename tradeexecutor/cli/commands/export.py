@@ -40,8 +40,9 @@ def export():
 
     The export is in bash shell script source format.
 
-    Besides the settings export, you need to copy over the state file and
-    you have encapsulated everything a trade executor takes as inputs.
+    Besides the settings export, you need to copy over the state file
+    and Python strategy module, and you have
+    encapsulated everything a trade executor takes as inputs.
     """
 
     env_var_set = set()
