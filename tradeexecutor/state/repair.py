@@ -96,45 +96,6 @@ def make_counter_trade(portfolio: Portfolio, p: TradingPosition, t: TradeExecuti
     return counter_trade
 
 
-def make_counter_trade(portfolio: Portfolio, p: TradingPosition, t: TradeExecution) -> TradeExecution:
-    """Make a virtual trade that fixes the total balances of a position and unwinds the broken trade."""
-
-    # Note: we do not negate the values of the original trade,
-    # because get_quantity() and others will return 0 to repaired spot trades for now.
-    # This behavior may change in the future for more complex trades.
-    position, counter_trade, created = portfolio.create_trade(
-        strategy_cycle_at=t.strategy_cycle_at,
-        pair=t.pair,
-        quantity=-t.planned_quantity,
-        assumed_price=t.planned_price,
-        trade_type=TradeType.repair,
-        reserve_currency=t.reserve_currency,
-        planned_mid_price=t.planned_mid_price,
-        price_structure=t.price_structure,
-        reserve=None,
-        reserve_currency_price=t.get_reserve_currency_exchange_rate(),
-        position=p,
-    )
-    counter_trade.started_at = datetime.datetime.utcnow()
-    assert created is False
-    assert position == p
-
-    counter_trade.mark_success(
-        datetime.datetime.utcnow(),
-        t.planned_price,
-        Decimal(0),
-        Decimal(0),
-        0,
-        t.native_token_price,
-        force=True,
-    )
-    assert counter_trade.is_success()
-    assert counter_trade.get_value() == 0
-    assert counter_trade.get_position_quantity() == 0
-    assert counter_trade.trade_type == TradeType.repair
-    return counter_trade
-
-
 def repair_trade(portfolio: Portfolio, t: TradeExecution) -> TradeExecution:
     """Repair a trade.
 
