@@ -1,5 +1,6 @@
 
 """Export CLI command."""
+import datetime
 import os
 from typing import Iterable
 
@@ -44,6 +45,11 @@ def export():
     """
 
     env_var_set = set()
+
+    print(f"# Trade excutor settings export, created {datetime.datetime.utcnow()} UTC")
+    print("# ")
+    print("# Save to a local file and then import with Bash source command")
+    print("# ")
 
     for param in walk_all_typer_options(app):
         if not param.envvar:
