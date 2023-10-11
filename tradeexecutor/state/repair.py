@@ -133,8 +133,14 @@ def close_position_with_empty_trade(portfolio: Portfolio, p: TradingPosition) ->
     - Closes an open position that has lost it tokens,
       in accounting correction
 
-    - We assume closed positions must have at least 2 trades
-      (TODO: Should be fixed)
+    - This trade has size of 0 and pricing data from the opening trade
+
+    - :py:attr:`TradeExecution.repaired_trade_id` is set for this trade to be the opening trade
+
+    - We assume closed positions must have at least 2 trades,
+      so this function will generate the final trade and now
+      the position has at least opening trade + this trade
+      (TODO: This assumption should be changed)
 
     """
 
