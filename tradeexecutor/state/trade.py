@@ -634,12 +634,18 @@ class TradeExecution:
         return sign
 
     def is_sell(self) -> bool:
-        assert self.planned_quantity != 0, "Buy/sell concept does not exist for zero quantity"
-        return self.planned_quantity < 0
+        """Trade is considered sell or short if planned quantity is set negative.
+
+        For some of the repaired trades the quantity is set to zero,
+        just to create accounting reference when correcting the total balances.
+        These trades are considered sell trades.
+        """
+        return self.planned_quantity <= 0
 
     def is_buy(self) -> bool:
-        assert self.planned_quantity != 0, "Buy/sell concept does not exist for zero quantity"
-        return self.planned_quantity >= 0
+        """Trade is considered spot buy or long if the planned quantity is positive.
+        """
+        return self.planned_quantity > 0
 
     def is_success(self) -> bool:
         """This trade was succcessfully completed."""

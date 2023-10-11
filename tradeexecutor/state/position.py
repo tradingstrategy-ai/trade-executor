@@ -1278,6 +1278,7 @@ class TradingPosition(GenericPosition):
         """
         
         assert not self.is_open(), "Cannot calculate realised profit for open positions"
+
         buy_value = self.get_buy_value()
         sell_value = self.get_sell_value()
 
