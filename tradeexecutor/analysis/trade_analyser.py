@@ -38,6 +38,7 @@ from tradeexecutor.state.trade import TradeExecution, TradeType
 from tradeexecutor.state.types import USDollarPrice, Percent
 from tradeexecutor.utils.format import calculate_percentage
 from tradeexecutor.utils.timestamp import json_encode_timedelta, json_decode_timedelta
+from tradeexecutor.utils.summarydataframe import format_value as format_value_for_summary_table
 from tradingstrategy.timebucket import TimeBucket
 
 from tradingstrategy.exchange import Exchange
@@ -179,8 +180,7 @@ class TradeSummary:
         self.end_value = self.open_value + self.uninvested_cash
         initial_cash = self.initial_cash or 0
         self.return_percent = calculate_percentage(self.end_value - initial_cash, initial_cash)
-        self.annualised_return_percent = calculate_percentage(self.return_percent * datetime.timedelta(days=365),
-                                                              self.duration) if self.return_percent else None
+        self.annualised_return_percent = calculate_annualised_return(self.return_percent, self.duration)
 
         self.winning_stop_losses_percent = calculate_percentage(self.winning_stop_losses, self.stop_losses)
         self.losing_stop_losses_percent = calculate_percentage(self.losing_stop_losses, self.stop_losses)
@@ -351,6 +351,10 @@ class TradeSummary:
         display(self.single_column_dfs(df1, df2, df3, df4, df5))
 
     def format_duration(self, duration_timedelta):
+
+        if not duration_timedelta:
+            return as_duration(datetime.timedelta(0))
+
         if self.time_bucket is not None:
             return as_bars(duration_timedelta/self.time_bucket.to_timedelta())
         else:
@@ -419,10 +423,85 @@ class TradeAnalysis:
                 # pair_id, position
                 yield position.pair.internal_id, position
 
+    def get_short_positions(self) -> Iterable[Tuple[PrimaryKey, TradingPosition]]:
+        """Return short positions over all traded assets.
+        
+        Positions are sorted by position_id."""
+        
+        for position in self.filtered_sorted_positions:
+            if position.is_short():
+                # pair_id, position
+                yield position.pair.internal_id, position
+
+    def get_long_positions(self) -> Iterable[Tuple[PrimaryKey, TradingPosition]]:
+        """Return long positions over all traded assets.
+        
+        Positions are sorted by position_id."""
+        
+        for position in self.filtered_sorted_positions:
+            if position.is_long():
+                # pair_id, position
+                yield position.pair.internal_id, position
+
     def calculate_summary_statistics(
-        self, 
+        self,
         time_bucket: Optional[TimeBucket] = None,
-        state = None
+        state = None,
+    ) -> TradeSummary:
+        """Calculate some statistics how our trades went.
+
+        :param time_bucket:
+            Optional, used to display average duration as 'number of bars' instead of 'number of days'.
+
+        :param state:
+            Optional, should be specified if user would like to see advanced statistics
+        
+        :return:
+            TradeSummary instance
+        """
+        return self.calculate_summary_statistics_for_positions(time_bucket, state, self.get_all_positions())
+    
+    def calculate_short_summary_statistics(
+        self,
+        time_bucket,
+        state,
+    ) -> TradeSummary:
+        """Calculate some statistics how our short trades went.
+
+        :param time_bucket:
+            Optional, used to display average duration as 'number of bars' instead of 'number of days'.
+
+        :param state:
+            Optional, should be specified if user would like to see advanced statistics
+        
+        :return:
+            TradeSummary instance
+        """
+        return self.calculate_summary_statistics_for_positions(time_bucket, state, self.get_short_positions())
+    
+    def calculate_long_summary_statistics(
+        self,
+        time_bucket,
+        state,
+    ) -> TradeSummary:
+        """Calculate some statistics how our long trades went.
+
+        :param time_bucket:
+            Optional, used to display average duration as 'number of bars' instead of 'number of days'.
+
+        :param state:
+            Optional, should be specified if user would like to see advanced statistics
+        
+        :return:
+            TradeSummary instance
+        """
+        return self.calculate_summary_statistics_for_positions(time_bucket, state, self.get_long_positions())
+
+    def calculate_summary_statistics_for_positions(
+        self, 
+        time_bucket: Optional[TimeBucket],
+        state,
+        positions: Iterable[Tuple[PrimaryKey, TradingPosition]]
     ) -> TradeSummary:
         """Calculate some statistics how our trades went.
 
@@ -521,7 +600,7 @@ class TradeAnalysis:
         winning_take_profits = 0
         losing_take_profits = 0
 
-        for pair_id, position in self.get_all_positions():
+        for pair_id, position in positions:
             
             portfolio_value_at_open = position.portfolio_value_at_open
             
@@ -694,6 +773,52 @@ class TradeAnalysis:
             sortino_ratio=sortino_ratio,
             profit_factor=profit_factor,
         )
+    
+    def calculate_all_summary_stats_by_side(
+        self,
+        time_bucket: Optional[TimeBucket] = None,
+        state = None,
+    ) -> pd.DataFrame:
+        """Calculate some statistics how our trades went."""
+
+        all_stats_trade_summary = self.calculate_summary_statistics(time_bucket, state)
+        long_stats_trade_summary = self.calculate_long_summary_statistics(time_bucket, state)
+        short_stats_trade_summary = self.calculate_short_summary_statistics(time_bucket, state)
+        
+        all_stats = all_stats_trade_summary.to_dataframe()
+        long_stats = long_stats_trade_summary.to_dataframe()
+        short_stats = short_stats_trade_summary.to_dataframe()
+
+        all_stats['Long'] = long_stats[0]
+        all_stats['Short'] = short_stats[0]
+
+        # left blank in long and short
+        blank_rows = ['Trading period length', 'Cash at start', 'Value at end', 'Cash left at the end']
+
+        for row in blank_rows:
+            all_stats.loc[row, 'Long'] = '-'
+            all_stats.loc[row, 'Short'] = '-'
+            
+        new_columns = all_stats.columns.to_list()
+        new_columns[0] = 'All'
+        all_stats.columns = new_columns
+
+        # get return % stats for long and short
+        duration = all_stats_trade_summary.duration
+        cash_at_start = all_stats_trade_summary.initial_cash
+        
+        realised_profit_long = long_stats_trade_summary.realised_profit
+        realised_profit_short = short_stats_trade_summary.realised_profit
+        
+        profit_long_pct = ((cash_at_start + realised_profit_long) - cash_at_start)/cash_at_start
+        profit_short_pct = ((cash_at_start + realised_profit_short) - cash_at_start)/cash_at_start
+        
+        all_stats.loc['Return %', 'Long'] = format_value_for_summary_table(as_percent(profit_long_pct))
+        all_stats.loc['Return %', 'Short'] = format_value_for_summary_table(as_percent(profit_short_pct))
+        all_stats.loc['Annualised return %', 'Long'] = format_value_for_summary_table(as_percent(calculate_annualised_return(profit_long_pct, duration)))
+        all_stats.loc['Annualised return %', 'Short'] = format_value_for_summary_table(as_percent(calculate_annualised_return(profit_short_pct, duration)))
+
+        return all_stats
 
     @staticmethod
     def get_capital_tied_at_open(position) -> Percent | None:
@@ -718,7 +843,10 @@ class TradeAnalysis:
         df = pd.DataFrame(gen_events(), columns=["position_id", "position"])
         return df
 
-   
+
+def calculate_annualised_return(profit_pct, duration) -> float | None:
+    return calculate_percentage(profit_pct * datetime.timedelta(days=365), duration) if profit_pct else None
+
 
 class TimelineRowStylingMode(enum.Enum):
     #: Style using Pandas background_gradient
