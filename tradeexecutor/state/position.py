@@ -129,6 +129,9 @@ class TradingPosition(GenericPosition):
     trades: Dict[int, TradeExecution] = field(default_factory=dict)
 
     #: When this position was closed
+    #:
+    #: Execution time of the trade or wall-clock time if not available.
+    #:
     closed_at: Optional[datetime.datetime] = None
 
     #: Timestamp when this position was moved to a frozen state.
@@ -233,6 +236,8 @@ class TradingPosition(GenericPosition):
     #: Applicable for
     #:
     #: - short/long positions using lending protocols
+    #:
+    #: TODO: When this is set and when this is updated.
     #: 
     liquidation_price: USDollarAmount | None = None
 

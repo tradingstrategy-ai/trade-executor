@@ -643,12 +643,7 @@ class State:
 
         if position.can_be_closed():
 
-            logger.info("Marking position to closed: %s", position)
-
-            # Move position to closed
-            position.closed_at = executed_at
-            del self.portfolio.open_positions[position.position_id]
-            self.portfolio.closed_positions[position.position_id] = position
+            self.portfolio.close_position(position, executed_at)
 
             if position.loan:
 

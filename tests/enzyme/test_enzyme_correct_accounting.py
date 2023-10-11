@@ -605,12 +605,12 @@ def test_correct_accounting_errors_for_zero_position(
 
     assert len(corrections) == 1
 
-    # WETH correction
+    # WETH correction 0.31 -> 0
     position_correction = corrections[0]
     assert position_correction.type == AccountingCorrectionCause.unknown_cause
     assert isinstance(position_correction.position, TradingPosition)
     assert position_correction.expected_amount == pytest.approx(Decimal('0.310787860635789571'))
-    assert position_correction.actual_amount == pytest.approx(Decimal('0.2107878606357895711'))
+    assert position_correction.actual_amount == pytest.approx(Decimal('0'))
 
     #
     # Correct state (internal ledger)
@@ -627,7 +627,7 @@ def test_correct_accounting_errors_for_zero_position(
         interactive=False,
     )
     balance_updates = list(balance_updates)
-    assert len(balance_updates) == 2
+    assert len(balance_updates) == 1
 
     #
     # Check state serialises afterwards
@@ -646,3 +646,12 @@ def test_correct_accounting_errors_for_zero_position(
         sync_model))
 
     assert len(further_corrections) == 0
+
+    portfolio = state.portfolio
+    assert len(portfolio.open_positions) == 0
+    assert len(portfolio.closed_positions) == 1
+
+    position = portfolio.closed_positions[1]
+    position.is_closed()
+    assert position.get_quantity() == 0
+    assert position.get_value() == 0

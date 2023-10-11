@@ -96,6 +96,45 @@ def make_counter_trade(portfolio: Portfolio, p: TradingPosition, t: TradeExecuti
     return counter_trade
 
 
+def make_counter_trade(portfolio: Portfolio, p: TradingPosition, t: TradeExecution) -> TradeExecution:
+    """Make a virtual trade that fixes the total balances of a position and unwinds the broken trade."""
+
+    # Note: we do not negate the values of the original trade,
+    # because get_quantity() and others will return 0 to repaired spot trades for now.
+    # This behavior may change in the future for more complex trades.
+    position, counter_trade, created = portfolio.create_trade(
+        strategy_cycle_at=t.strategy_cycle_at,
+        pair=t.pair,
+        quantity=-t.planned_quantity,
+        assumed_price=t.planned_price,
+        trade_type=TradeType.repair,
+        reserve_currency=t.reserve_currency,
+        planned_mid_price=t.planned_mid_price,
+        price_structure=t.price_structure,
+        reserve=None,
+        reserve_currency_price=t.get_reserve_currency_exchange_rate(),
+        position=p,
+    )
+    counter_trade.started_at = datetime.datetime.utcnow()
+    assert created is False
+    assert position == p
+
+    counter_trade.mark_success(
+        datetime.datetime.utcnow(),
+        t.planned_price,
+        Decimal(0),
+        Decimal(0),
+        0,
+        t.native_token_price,
+        force=True,
+    )
+    assert counter_trade.is_success()
+    assert counter_trade.get_value() == 0
+    assert counter_trade.get_position_quantity() == 0
+    assert counter_trade.trade_type == TradeType.repair
+    return counter_trade
+
+
 def repair_trade(portfolio: Portfolio, t: TradeExecution) -> TradeExecution:
     """Repair a trade.
 
@@ -104,6 +143,7 @@ def repair_trade(portfolio: Portfolio, t: TradeExecution) -> TradeExecution:
     - Set the original trade to repaired state (instead of failed state)
     """
     p = portfolio.get_position_by_id(t.position_id)
+
     c = make_counter_trade(portfolio, p, t)
     now = datetime.datetime.utcnow()
     t.repaired_at = t.executed_at = datetime.datetime.utcnow()
@@ -122,6 +162,69 @@ def repair_trade(portfolio: Portfolio, t: TradeExecution) -> TradeExecution:
     if t.is_buy():
         portfolio.adjust_reserves(t.reserve_currency, +t.planned_reserve)
         t.planned_reserve = 0
+
+    return c
+
+
+def close_position_with_empty_trade(portfolio: Portfolio, p: TradingPosition) -> TradeExecution:
+    """Make a trade that closes the position.
+
+    - Closes an open position that has lost it tokens,
+      in accounting correction
+
+    - We assume closed positions must have at least 2 trades
+      (TODO: Should be fixed)
+
+    """
+
+    assert p.pair.is_spot(), f"Only spot supported for now"
+
+    opening_trade = p.get_first_trade()
+
+    assert opening_trade.is_success(), f"Cannot make a repairingn trade, because opening trade {t} was not success"
+
+    # We copy any price structure from opening trade, though it should be meaningfull
+    position, counter_trade, created = portfolio.create_trade(
+        strategy_cycle_at=opening_trade.strategy_cycle_at,
+        pair=p.pair,
+        quantity=Decimal(0),
+        assumed_price=opening_trade.planned_price,
+        trade_type=TradeType.repair,
+        reserve_currency=opening_trade.reserve_currency,
+        planned_mid_price=opening_trade.planned_mid_price,
+        price_structure=opening_trade.price_structure,
+        reserve=None,
+        reserve_currency_price=opening_trade.get_reserve_currency_exchange_rate(),
+        position=p,
+    )
+    counter_trade.started_at = datetime.datetime.utcnow()
+    assert created is False
+    assert position == p
+
+    counter_trade.mark_success(
+        datetime.datetime.utcnow(),
+        opening_trade.planned_price,
+        Decimal(0),
+        Decimal(0),
+        0,
+        opening_trade.native_token_price,
+        force=True,
+    )
+    assert counter_trade.is_success()
+    assert counter_trade.get_value() == 0
+    assert counter_trade.get_position_quantity() == 0
+    assert counter_trade.trade_type == TradeType.repair
+
+    c = counter_trade
+
+    now = datetime.datetime.utcnow()
+
+    assert c.trade_id
+    c.repaired_trade_id = opening_trade.trade_id
+    opening_trade.notes = f"Repaired at {now.strftime('%Y-%m-%d %H:%M')}, by #{c.trade_id}"
+    c.notes = f"Repairing to close the position, full position size gone missing"
+
+    portfolio.close_position(position, datetime.datetime.utcnow())
 
     return c
 
