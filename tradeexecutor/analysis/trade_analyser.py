@@ -224,9 +224,18 @@ class TradeSummary:
             "Biggest losing position %": as_percent(self.biggest_losing_trade_pc),
             "Average duration of winning positions": self.format_duration(self.average_duration_of_winning_trades),
             "Average duration of losing positions": self.format_duration(self.average_duration_of_losing_trades),
+        }
+
+        if self.time_bucket:
+            human_data.update({
+                "Average bars of winning positions": self.format_bars(self.average_duration_of_winning_trades),
+                "Average bars of losing positions": self.format_bars(self.average_duration_of_losing_trades),
+            })
+
+        human_data.update({
             "LP fees paid": as_dollar(self.lp_fees_paid),
             "LP fees paid % of volume": as_percent(self.lp_fees_average_pc),
-        }
+        })
 
         def add_prop(value, key: str, formatter: Callable):
             human_data[key] = (
@@ -243,6 +252,9 @@ class TradeSummary:
         add_prop(self.avg_realised_risk, 'Avg realised risk', as_percent)
         add_prop(self.max_pullback, 'Max pullback of total capital', as_percent)
         add_prop(self.max_loss_risk, 'Max loss risk at opening of position', as_percent)
+
+        if self.daily_returns is not None:
+            add_prop(self.max_drawdown, "Max drawdown", as_percent)
 
         df = create_summary_table(human_data)
         return df
@@ -351,14 +363,20 @@ class TradeSummary:
         display(self.single_column_dfs(df1, df2, df3, df4, df5))
 
     def format_duration(self, duration_timedelta):
-
         if not duration_timedelta:
             return as_duration(datetime.timedelta(0))
+
+        return as_duration(duration_timedelta)
+        
+    def format_bars(self, duration_timedelta):
+        if not duration_timedelta:
+            return as_bars(0)
 
         if self.time_bucket is not None:
             return as_bars(duration_timedelta/self.time_bucket.to_timedelta())
         else:
-            return as_duration(duration_timedelta)
+            raise ValueError("Time bucket not specified")
+
 
     @staticmethod
     def single_column_dfs(*dfs):
@@ -515,9 +533,8 @@ class TradeAnalysis:
                 TradeSummary instance
         """
 
-        if(time_bucket is not None):
+        if time_bucket is not None:
             assert isinstance(time_bucket, TimeBucket), "Not a valid time bucket"
-
         
         if state is not None:
             # for advanced statistics
@@ -793,11 +810,12 @@ class TradeAnalysis:
         all_stats['Short'] = short_stats[0]
 
         # left blank in long and short
-        blank_rows = ['Trading period length', 'Cash at start', 'Value at end', 'Cash left at the end']
+        blank_rows = ['Trading period length', 'Cash at start', 'Value at end', 'Cash left at the end', 'Max drawdown']
 
         for row in blank_rows:
-            all_stats.loc[row, 'Long'] = '-'
-            all_stats.loc[row, 'Short'] = '-'
+            if row in all_stats.index:
+                all_stats.loc[row, 'Long'] = '-'
+                all_stats.loc[row, 'Short'] = '-'
             
         new_columns = all_stats.columns.to_list()
         new_columns[0] = 'All'
