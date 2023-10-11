@@ -46,7 +46,7 @@ def export():
 
     env_var_set = set()
 
-    print(f"# Trade excutor settings export, created {datetime.datetime.utcnow()} UTC")
+    print(f"# Trade executor settings export, created {datetime.datetime.utcnow()} UTC")
     print("# ")
     print("# Save to a local file and then import with Bash source command")
     print("# ")
@@ -57,8 +57,11 @@ def export():
         else:
             env_var_set.add(param.envvar)
 
+    env_vars = [e for e in env_var_set]
+    env_vars.sort()
+
     # TODO: We do not deal with the case if env var contains "
-    for env in env_var_set:
+    for env in env_vars:
         print(f"""export {env}="{os.environ.get(env, '')}" """)
 
 
