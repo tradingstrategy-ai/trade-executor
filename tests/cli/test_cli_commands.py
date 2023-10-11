@@ -387,5 +387,5 @@ def test_cli_export(
         assert e.value.code == 0
 
     captured = capsys.readouterr()
-    assert "export LOG_LEVEL" in captured
-    assert "STRATEGY_FILE" in captured
+    assert "export LOG_LEVEL" in captured.out
+    assert "STRATEGY_FILE" in captured.out
