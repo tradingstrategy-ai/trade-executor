@@ -390,6 +390,11 @@ class TradeExecution:
     #:
     #: - Strategy cycle is set to the original broken trade
     #:
+    #: - Trade at ``repaired_trade_id`` may or may not have ``repaired_at`` set
+    #:
+    #: - This is used to mark position closed in accounting correction,
+    #:   although the trade itself does not carry any value
+    #:
     repaired_trade_id: Optional[datetime.datetime] = None
 
     #: Related TradePricing instance

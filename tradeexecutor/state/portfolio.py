@@ -691,6 +691,33 @@ class Portfolio:
             return Decimal(0)
         return position.get_quantity_old()
 
+    def close_position(
+        self,
+        position: TradingPosition,
+        executed_at: datetime.datetime,
+    ):
+        """Move a position from open positions to closed ones.
+
+        See also :py:meth:`TradingPosition.can_be_closed`.
+
+        :param position:
+            Trading position where the trades and balance updates quantity equals to zero
+
+        :param executed_at:
+            Wall clock time
+
+        """
+
+        assert position.position_id in self.open_positions, f"Not in open positions: {position}"
+
+        # Move position to closed
+        logger.info("Marking position to closed: %s at %s", position, executed_at)
+        position.closed_at = executed_at
+        del self.open_positions[position.position_id]
+        self.closed_positions[position.position_id] = position
+
+        assert position.is_closed()
+
     def adjust_reserves(self, asset: AssetIdentifier, amount: Decimal):
         """Remove currency from reserved.
 

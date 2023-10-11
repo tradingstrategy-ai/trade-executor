@@ -59,6 +59,7 @@ def get_relevant_assets(
     else:
         for p in pair_universe.iterate_pairs():
             pair = translate_trading_pair(p)
+            assert pair.is_spot(), f"Can only match spot positions, got {pair}"
             assets.add(pair.base)
 
     return assets

@@ -505,3 +505,153 @@ def test_enzyme_correct_accounting_no_open_position(
     assert len(further_corrections) == 0
 
 
+@flaky.flaky()
+def test_correct_accounting_errors_for_zero_position(
+    web3: Web3,
+    deployer: HexAddress,
+    vault: Vault,
+    usdc: Contract,
+    weth: Contract,
+    usdc_asset: AssetIdentifier,
+    weth_asset: AssetIdentifier,
+    user_1: HexAddress,
+    user_2: HexAddress,
+    uniswap_v2: UniswapV2Deployment,
+    weth_usdc_trading_pair: TradingPairIdentifier,
+    pair_universe: PandasPairUniverse,
+    hot_wallet: HotWallet,
+):
+    """Correct accounting errors on a position which on-chain balance has gone zero.
+
+    - Position has lost all its tokens
+    """
+
+    reorg_mon = create_reorganisation_monitor(web3)
+
+    tx_hash = vault.vault.functions.addAssetManagers([hot_wallet.address]).transact({"from": user_1})
+    assert_transaction_success_with_explanation(web3, tx_hash)
+
+    sync_model = EnzymeVaultSyncModel(
+        web3,
+        vault.address,
+        reorg_mon,
+    )
+
+    state = State()
+    sync_model.sync_initial(state)
+
+    # Make two deposits from separate parties
+    usdc.functions.transfer(user_1, 1000 * 10**6).transact({"from": deployer})
+    usdc.functions.approve(vault.comptroller.address, 500 * 10**6).transact({"from": user_1})
+    vault.comptroller.functions.buyShares(500 * 10**6, 1).transact({"from": user_1})
+
+    # Strategy has its reserve balances updated
+    sync_model.sync_treasury(datetime.datetime.utcnow(), state)
+    assert state.portfolio.get_total_equity() == pytest.approx(500)
+
+    reserve_position: ReservePosition = state.portfolio.get_default_reserve_position()
+    assert reserve_position.get_quantity() == pytest.approx(Decimal(500))
+
+    tx_builder = EnzymeTransactionBuilder(hot_wallet, vault)
+
+    # Check we have balance
+    assert usdc.functions.balanceOf(tx_builder.get_erc_20_balance_address()).call() == 500 * 10**6
+
+    # Now make a trade
+    trader = UniswapV2TestTrader(
+        uniswap_v2,
+        state=state,
+        pair_universe=pair_universe,
+        tx_builder=tx_builder,
+    )
+
+    position, trade = trader.buy(
+        weth_usdc_trading_pair,
+        Decimal(500),
+        execute=False,
+        slippage_tolerance=0.999,
+    )
+
+    trader.execute_trades_simple([trade], broadcast=True)
+
+    reserve_position: ReservePosition = state.portfolio.get_default_reserve_position()
+    assert reserve_position.get_quantity() == pytest.approx(Decimal(0))
+
+    on_chain_balance = weth.functions.balanceOf(vault.vault.address).call()
+    assert weth.functions.balanceOf(vault.vault.address).call() > 0
+
+    #
+    # Mess up accounting by not correctly syncing it
+    #
+
+    # Move away tokens from the vault without selling them
+    prepared_tx = prepare_transfer(
+        vault.deployment,
+        vault,
+        vault.generic_adapter,
+        weth,
+        user_2,
+        on_chain_balance,
+    )
+    tx_hash = prepared_tx.transact({"from": hot_wallet.address})
+    assert_transaction_success_with_explanation(web3, tx_hash)
+
+    # Now both USDC and WETH balances should be out of sync
+    corrections = list(calculate_account_corrections(
+        pair_universe,
+        state.portfolio.get_reserve_assets(),
+        state,
+        sync_model))
+
+    assert len(corrections) == 1
+
+    # WETH correction 0.31 -> 0
+    position_correction = corrections[0]
+    assert position_correction.type == AccountingCorrectionCause.unknown_cause
+    assert isinstance(position_correction.position, TradingPosition)
+    assert position_correction.expected_amount == pytest.approx(Decimal('0.310787860635789571'))
+    assert position_correction.actual_amount == pytest.approx(Decimal('0'))
+
+    #
+    # Correct state (internal ledger)
+    #
+
+    vault = sync_model.vault
+    tx_builder = EnzymeTransactionBuilder(hot_wallet, vault)
+
+    balance_updates = correct_accounts(
+        state,
+        corrections,
+        strategy_cycle_included_at=None,
+        tx_builder=tx_builder,
+        interactive=False,
+    )
+    balance_updates = list(balance_updates)
+    assert len(balance_updates) == 1
+
+    #
+    # Check state serialises afterwards
+    #
+    text = state.to_json_safe()
+    state2 = State.read_json_blob(text)
+    assert not state2.is_empty()
+
+    #
+    # No further accounting errors
+    #
+    further_corrections = list(calculate_account_corrections(
+        pair_universe,
+        state.portfolio.get_reserve_assets(),
+        state,
+        sync_model))
+
+    assert len(further_corrections) == 0
+
+    portfolio = state.portfolio
+    assert len(portfolio.open_positions) == 0
+    assert len(portfolio.closed_positions) == 1
+
+    position = portfolio.closed_positions[1]
+    position.is_closed()
+    assert position.get_quantity() == 0
+    assert position.get_value() == 0
