@@ -141,7 +141,8 @@ class SyncModel(ABC):
     def fetch_onchain_balances(
             self,
             assets: Collection[AssetIdentifier],
-            filter_zero=True) -> Iterable[OnChainBalance]:
+            filter_zero=True
+    ) -> Iterable[OnChainBalance]:
         """Read the on-chain asset details.
 
         - Mark the block we are reading at the start
