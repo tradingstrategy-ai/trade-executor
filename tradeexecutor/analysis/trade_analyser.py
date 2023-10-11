@@ -45,7 +45,7 @@ from tradingstrategy.pair import PandasPairUniverse
 from tradingstrategy.types import PrimaryKey, USDollarAmount
 from tradingstrategy.utils.format import format_value, format_price, format_duration_days_hours_mins, \
     format_percent_2_decimals
-from tradeexecutor.utils.summarydataframe import as_dollar, as_integer, create_summary_table, as_percent, as_duration, as_bars
+from tradeexecutor.utils.summarydataframe import as_dollar, as_integer, create_summary_table, as_percent, as_duration, as_bars, as_decimal
 
 
 try:
@@ -281,7 +281,7 @@ class TradeSummary:
             '% of total': [
                 as_percent(self.win_percent), 
                 as_percent(self.lost_percent), 
-                as_percent((self.won + self.lost)/self.total_positions)
+                as_percent((self.won + self.lost)/self.total_positions) if self.total_positions else as_percent(0)
             ],
             'Average PnL %': [
                 as_percent(self.average_winning_trade_profit_pc), 
@@ -341,9 +341,9 @@ class TradeSummary:
             'Biggest realized risk': as_percent(self.max_loss_risk),
             'Average realized risk': as_percent(self.avg_realised_risk),
             'Max pullback of capital': as_percent(self.max_pullback),
-            'Sharpe Ratio': as_percent(self.sharpe_ratio),
-            'Sortino Ratio': as_percent(self.sortino_ratio),
-            'Profit Factor': as_percent(self.profit_factor),
+            'Sharpe Ratio': as_decimal(self.sharpe_ratio),
+            'Sortino Ratio': as_decimal(self.sortino_ratio),
+            'Profit Factor':as_decimal(self.profit_factor),
         }
 
         df5 = create_summary_table(data5, "", "Risk Analysis")
@@ -870,6 +870,7 @@ def expand_timeline(
             # "timestamp": timestamp,
             "Id": position.position_id,
             "Remarks": remarks,
+            "Type": "Long" if position.is_long() else "Short",
             "Opened at": position.opened_at.strftime(timestamp_format),
             "Duration": format_duration_days_hours_mins(duration) if duration else np.nan,
             "Exchange": exchange.name,

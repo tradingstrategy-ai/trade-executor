@@ -31,14 +31,14 @@ def generate_simple_routing_model(universe: TradingStrategyUniverse, trading_fee
     - Assumes all pairs in the trading universe have the same quote token and its stablecoin
     """
 
-    assert len(universe.universe.exchanges) == 1
+    assert len(universe.data_universe.exchanges) == 1
     assert len(universe.reserve_assets) == 1
 
     reserve_asset = universe.reserve_assets[0]
-    exchange = next(iter(universe.universe.exchanges))
+    exchange = next(iter(universe.data_universe.exchanges))
 
     pair: DEXPair
-    for pair in universe.universe.pairs.iterate_pairs():
+    for pair in universe.data_universe.pairs.iterate_pairs():
         assert pair.exchange_id == exchange.exchange_id, f"Pair had exchange_id {pair.exchange_id}, expected {exchange.exchange_id}"
         assert pair.quote_token_symbol == reserve_asset.token_symbol
         assert pair.quote_token_address == reserve_asset.address

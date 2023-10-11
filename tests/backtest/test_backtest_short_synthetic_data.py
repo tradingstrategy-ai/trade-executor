@@ -48,6 +48,7 @@ pytestmark = pytest.mark.skipif(os.environ.get("TRADING_STRATEGY_API_KEY") is No
 
 start_at = datetime.datetime(2023, 1, 1)
 end_at = datetime.datetime(2023, 1, 5)
+candle_end_at = datetime.datetime(2023, 1, 30)
 
 @pytest.fixture(scope="module")
 def universe() -> TradingStrategyUniverse:
@@ -80,7 +81,7 @@ def universe() -> TradingStrategyUniverse:
     _, lending_candle_universe = generate_lending_universe(
         time_bucket,
         start_at,
-        end_at,
+        candle_end_at,
         reserves=[usdc_reserve, weth_reserve],
         aprs={
             "supply": 2,
@@ -91,7 +92,7 @@ def universe() -> TradingStrategyUniverse:
     candles = generate_ohlcv_candles(
         time_bucket,
         start_at,
-        end_at,
+        candle_end_at,
         start_price=1800,
         pair_id=weth_usdc.internal_id,
         exchange_id=mock_exchange.exchange_id,
@@ -130,7 +131,7 @@ def test_backtest_open_only_short_synthetic_data(
         cycle_debug_data: Dict
     ) -> List[TradeExecution]:
         """A simple strategy that opens a single 2x short position."""
-        trade_pair = strategy_universe.universe.pairs.get_single()
+        trade_pair = strategy_universe.data_universe.pairs.get_single()
 
         cash = state.portfolio.get_cash()
         
@@ -242,7 +243,7 @@ def test_backtest_open_and_close_short_synthetic_data(
         cycle_debug_data: Dict
     ) -> List[TradeExecution]:
         """A simple strategy that opens and closes a single 2x short position."""
-        trade_pair = strategy_universe.universe.pairs.get_single()
+        trade_pair = strategy_universe.data_universe.pairs.get_single()
 
         cash = state.portfolio.get_cash()
         
@@ -353,7 +354,7 @@ def test_backtest_short_underlying_price_feed(
     )
 
     pricing_model = BacktestSimplePricingModel(
-        universe.universe.candles,
+        universe.data_universe.candles,
         routing_model,
     )
 
@@ -383,7 +384,7 @@ def test_backtest_open_short_failure_too_high_leverage(persistent_test_client: C
         cycle_debug_data: Dict
     ) -> List[TradeExecution]:
         """A simple strategy that opens a single 10x short position."""
-        trade_pair = strategy_universe.universe.pairs.get_single()
+        trade_pair = strategy_universe.data_universe.pairs.get_single()
 
         cash = state.portfolio.get_cash()
         
@@ -425,7 +426,7 @@ def test_backtest_open_short_failure_too_far_stoploss(persistent_test_client: Cl
         cycle_debug_data: Dict
     ) -> List[TradeExecution]:
         """A simple strategy that opens a single 10x short position."""
-        trade_pair = strategy_universe.universe.pairs.get_single()
+        trade_pair = strategy_universe.data_universe.pairs.get_single()
 
         cash = state.portfolio.get_cash()
         
@@ -472,7 +473,7 @@ def test_backtest_short_stop_loss_triggered(persistent_test_client: Client, univ
         cycle_debug_data: Dict
     ) -> List[TradeExecution]:
         """A simple strategy that opens a single 4x short position."""
-        trade_pair = strategy_universe.universe.pairs.get_single()
+        trade_pair = strategy_universe.data_universe.pairs.get_single()
 
         cash = state.portfolio.get_cash()
         position_size = cash * 0.8
@@ -574,7 +575,7 @@ def test_backtest_short_take_profit_triggered(persistent_test_client: Client, un
         cycle_debug_data: Dict
     ) -> List[TradeExecution]:
         """A simple strategy that opens a single 4x short position."""
-        trade_pair = strategy_universe.universe.pairs.get_single()
+        trade_pair = strategy_universe.data_universe.pairs.get_single()
 
         cash = state.portfolio.get_cash()
         position_size = cash * 0.8
@@ -657,3 +658,73 @@ def test_backtest_short_take_profit_triggered(persistent_test_client: Client, un
     assert balances[vweth.address] == pytest.approx(Decimal(0))
     assert balances.get(weth.address, Decimal(0)) == pytest.approx(Decimal(0))
     assert balances[usdc.address] == pytest.approx(Decimal(10981.266217492794))
+
+
+def test_backtest_short_trailing_stop_loss_triggered(persistent_test_client: Client, universe):
+    """Run the strategy backtest using inline decide_trades function.
+
+    - Open short position, set a 2% trailing stoploss
+    - ETH price goes 1800 -> 1636 -> 1679
+    - Position should be closed automatically with a profit since new stoploss is lowered than original opening price
+    """
+
+    def decide_trades(
+        timestamp: pd.Timestamp,
+        strategy_universe: TradingStrategyUniverse,
+        state: State,
+        pricing_model: PricingModel,
+        cycle_debug_data: Dict
+    ) -> List[TradeExecution]:
+        """A simple strategy that opens a single 4x short position."""
+        trade_pair = strategy_universe.data_universe.pairs.get_single()
+
+        cash = state.portfolio.get_cash()
+        position_size = cash * 0.8
+
+        position_manager = PositionManager(timestamp, strategy_universe, state, pricing_model)
+
+        trades = []
+
+        if not position_manager.is_any_open() and timestamp == datetime.datetime(2023, 1, 1):
+            trades += position_manager.open_short(
+                trade_pair,
+                position_size,
+                leverage=4,
+                trailing_stop_loss_pct=0.98,
+            )
+        else:
+            if timestamp == datetime.datetime(2023, 1, 2):
+                position = position_manager.get_current_position()
+                assert position.stop_loss == pytest.approx(1768.8692752190368)
+
+        return trades
+
+    state, universe, debug_dump = run_backtest_inline(
+        start_at=start_at,
+        end_at=datetime.datetime(2023, 1, 10),
+        client=persistent_test_client,
+        cycle_duration=CycleDuration.cycle_1d,
+        decide_trades=decide_trades,
+        universe=universe,
+        initial_deposit=10000,
+        reserve_currency=ReserveCurrency.usdc,
+        trade_routing=TradeRouting.uniswap_v3_usdc_poly,
+        engine_version="0.3",
+    )
+
+    portfolio = state.portfolio
+
+    assert len(portfolio.open_positions) == 0
+    assert len(portfolio.closed_positions) == 1
+
+    # Check that the unrealised position looks good
+    position = portfolio.closed_positions[1]
+    assert position.is_short()
+    assert position.is_closed()
+    assert position.pair.kind.is_shorting()
+    assert position.is_stop_loss()
+
+    assert position.liquidation_price == pytest.approx(Decimal(1906.762499999999853556031937))
+    assert position.stop_loss == pytest.approx(1669.082747543819)
+
+    assert portfolio.get_cash() == pytest.approx(11962.592797114034)

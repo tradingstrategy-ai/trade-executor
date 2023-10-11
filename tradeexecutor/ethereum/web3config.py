@@ -7,6 +7,7 @@ from typing import Dict, Optional, List
 from eth_defi.gas import GasPriceMethod, node_default_gas_price_strategy
 from eth_defi.hotwallet import HotWallet
 from eth_defi.middleware import http_retry_request_with_sleep_middleware
+from eth_defi.provider.broken_provider import set_block_tip_latency
 from eth_defi.provider.multi_provider import MultiProviderWeb3, create_multi_provider_web3
 from tradeexecutor.monkeypatch.web3 import construct_sign_and_send_raw_middleware
 from tradingstrategy.chain import ChainId
@@ -51,7 +52,11 @@ class Web3Config:
     default_chain_id: Optional[ChainId] = None
 
     @staticmethod
-    def create_web3(configuration_line: str, gas_price_method: Optional[GasPriceMethod] = None) -> MultiProviderWeb3:
+    def create_web3(
+            configuration_line: str,
+            gas_price_method: Optional[GasPriceMethod] = None,
+            unit_testing: bool=False,
+    ) -> MultiProviderWeb3:
         """Create a new Web3.py connection.
 
         :param configuration_line:
@@ -62,6 +67,11 @@ class Web3Config:
         :param gas_price_method:
             How do we estimate gas for a transaction
             If not given autodetect the method.
+
+        :parma unit_testing:
+            Are we executing against unit testing JSON-RPC endpoints.
+
+            If so set latency to zero.
         """
 
         assert type(configuration_line) == str, f"Got: {configuration_line.__class__}"
@@ -109,6 +119,9 @@ class Web3Config:
         if gas_price_method == GasPriceMethod.legacy:
             logger.info("Setting up gas price middleware for Web3")
             web3.eth.set_gas_price_strategy(node_default_gas_price_strategy)
+
+        if unit_testing:
+            set_block_tip_latency(web3, 0)
 
         return web3
 
@@ -170,6 +183,7 @@ class Web3Config:
     @classmethod
     def setup_from_environment(cls,
                                gas_price_method: Optional[GasPriceMethod],
+                               unit_testing: bool=False,
                                **kwargs) -> "Web3Config":
         """Setup connections based on given RPC URLs.
 
@@ -192,7 +206,8 @@ class Web3Config:
             key = f"json_rpc_{chain_id.get_slug()}"
             configuration_line = kwargs.get(key)
             if configuration_line:
-                web3config.connections[chain_id] = Web3Config.create_web3(configuration_line, gas_price_method)
+                web3config.connections[chain_id] = Web3Config.create_web3(configuration_line, gas_price_method, unit_testing=unit_testing)
+
 
         return web3config
 

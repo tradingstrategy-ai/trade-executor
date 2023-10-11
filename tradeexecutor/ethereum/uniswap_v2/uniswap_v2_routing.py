@@ -12,7 +12,7 @@ from web3.exceptions import ContractLogicError
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, fetch_deployment
 from eth_defi.uniswap_v2.swap import swap_with_slippage_protection
 
-from tradeexecutor.ethereum.tx import HotWalletTransactionBuilder
+from tradeexecutor.ethereum.tx import HotWalletTransactionBuilder, TransactionBuilder
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradingstrategy.pair import PandasPairUniverse
@@ -34,7 +34,7 @@ class UniswapV2RoutingState(EthereumRoutingState):
 
     def __init__(self,
                  pair_universe: PandasPairUniverse,
-                 tx_builder: Optional[HotWalletTransactionBuilder] = None,
+                 tx_builder: Optional[TransactionBuilder] = None,
                  web3: Optional[Web3] = None,
                  swap_gas_limit=2_000_000):
         super().__init__(pair_universe=pair_universe,
@@ -57,6 +57,7 @@ class UniswapV2RoutingState(EthereumRoutingState):
             max_slippage: float,
             check_balances: False,
             asset_deltas: Optional[List[AssetDelta]] = None,
+            notes="",
         ):
         """Prepare the actual swap. Same for Uniswap V2 and V3.
 
@@ -98,6 +99,7 @@ class UniswapV2RoutingState(EthereumRoutingState):
             bound_swap_func,
             self.swap_gas_limit,
             asset_deltas,
+            notes=notes,
         )
 
     def trade_on_router_three_way(self,
@@ -108,7 +110,9 @@ class UniswapV2RoutingState(EthereumRoutingState):
             reserve_amount: int,
             max_slippage: float,
             check_balances: False,
-            asset_deltas: Optional[List[AssetDelta]] = None):
+            asset_deltas: Optional[List[AssetDelta]] = None,
+            notes: str = "",
+        ):
         """Prepare the actual swap for three way trade.
 
         :param check_balances:
@@ -157,7 +161,8 @@ class UniswapV2RoutingState(EthereumRoutingState):
             uniswap.router,
             bound_swap_func,
             self.swap_gas_limit,
-            asset_deltas=asset_deltas
+            asset_deltas=asset_deltas,
+            notes=notes,
         )
         return [tx]
 
@@ -262,6 +267,7 @@ class UniswapV2SimpleRoutingModel(EthereumRoutingModel):
         max_slippage: float,
         check_balances=False,
         asset_deltas: Optional[List[AssetDelta]] = None,
+        notes="",
     ) -> List[BlockchainTransaction]:
         
         return super().make_direct_trade(
@@ -273,6 +279,7 @@ class UniswapV2SimpleRoutingModel(EthereumRoutingModel):
             self.factory_router_map,
             check_balances,
             asset_deltas=asset_deltas,
+            notes=notes,
         )
     
     def make_multihop_trade(
@@ -285,6 +292,7 @@ class UniswapV2SimpleRoutingModel(EthereumRoutingModel):
         max_slippage: float,
         check_balances=False,
         asset_deltas: Optional[List[AssetDelta]] = None,
+        notes="",
     ) -> List[BlockchainTransaction]:
         
         return super().make_multihop_trade(
@@ -297,6 +305,7 @@ class UniswapV2SimpleRoutingModel(EthereumRoutingModel):
             self.factory_router_map,
             check_balances,
             asset_deltas=asset_deltas,
+            notes=notes,
         )
     
     

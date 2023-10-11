@@ -162,6 +162,7 @@ class TransactionBuilder(ABC):
             gas_limit: Optional[int] = None,
             gas_price_suggestion: Optional[GasPriceSuggestion] = None,
             asset_deltas: Optional[List[AssetDelta]] = None,
+            notes: str = "",
     ) -> BlockchainTransaction:
         """Createa a signed tranaction and set up tx broadcast parameters.
 
@@ -259,6 +260,7 @@ class HotWalletTransactionBuilder(TransactionBuilder):
             gas_limit: Optional[int] = None,
             gas_price_suggestion: Optional[GasPriceSuggestion] = None,
             asset_deltas: Optional[List[AssetDelta]] = None,
+            notes: str = "",
     ) -> BlockchainTransaction:
         """Sign a transaction with the hot wallet private key."""
 
@@ -300,4 +302,5 @@ class HotWalletTransactionBuilder(TransactionBuilder):
             nonce=signed_tx.nonce,
             details=tx,
             asset_deltas=[JSONAssetDelta.from_asset_delta(a) for a in asset_deltas],
+            notes=notes,
         )

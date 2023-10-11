@@ -125,6 +125,7 @@ class EthereumRoutingState(RoutingState):
             max_slippage: float,
             check_balances: False,
             asset_deltas: Optional[List[AssetDelta]] = None,
+            notes="",
         ):
         """Prepare the actual swap. Same for Uniswap V2 and V3."""
         
@@ -138,6 +139,7 @@ class EthereumRoutingState(RoutingState):
             max_slippage: float,
             check_balances: False,
             asset_deltas: Optional[List[AssetDelta]] = None,
+            notes="",
         ):
         """Prepare the actual swap for three way trade."""
 
@@ -225,13 +227,16 @@ class EthereumRoutingState(RoutingState):
             contract: Contract,
             swap_func: ContractFunction,
             gas_limit: int,
-            asset_deltas: List[AssetDelta]):
+            asset_deltas: List[AssetDelta],
+            notes="",
+    ):
         signed_tx = self.tx_builder.sign_transaction(
             contract,
             swap_func,
             gas_limit,
             gas_price_suggestion=None,
             asset_deltas=asset_deltas,
+            notes=notes,
         )
         return [signed_tx]
 

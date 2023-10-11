@@ -400,18 +400,34 @@ class EnzymeVaultSyncModel(SyncModel):
         deployment.chain_id = ChainId(web3.eth.chain_id)
         deployment.initialised_at = datetime.datetime.utcnow()
 
-    def fetch_onchain_balances(self, assets: List[AssetIdentifier], filter_zero=True) -> Iterable[OnChainBalance]:
+    def fetch_onchain_balances(
+            self,
+            assets: List[AssetIdentifier],
+            filter_zero=True) -> Iterable[OnChainBalance]:
         """Read the on-chain asset details.
 
         - Mark the block we are reading at the start
 
+        - Asset list is sorted to be by address to make sure
+          the return order is deterministic
+
         :param filter_zero:
             Do not return zero balances
+
+        :return:
+            Iterator for assets by the sort order.
         """
+
+        sorted_assets = sorted(assets, key=lambda a: a.address)
+
+        # Latest block fails on LlamaNodes.com
+        block_number = max(1, self.web3.eth.block_number - get_block_tip_latency(self.web3))
+
         return fetch_address_balances(
             self.web3,
             self.get_vault_address(),
-            assets,
+            sorted_assets,
+            block_number=block_number,
             filter_zero=filter_zero,
         )
 

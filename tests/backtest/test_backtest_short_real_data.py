@@ -85,7 +85,7 @@ def test_backtest_open_only_short_real_data(
         cycle_debug_data: Dict
     ) -> List[TradeExecution]:
         """A simple strategy that opens a single 2x short position."""
-        trade_pair = strategy_universe.universe.pairs.get_single()
+        trade_pair = strategy_universe.data_universe.pairs.get_single()
 
         cash = state.portfolio.get_cash()
         

@@ -311,7 +311,7 @@ def core_universe(web3,
 @pytest.fixture()
 def trading_strategy_universe(core_universe: Universe, asset_usdc) -> TradingStrategyUniverse:
     """Universe that also contains data about our reserve assets."""
-    return TradingStrategyUniverse(universe=core_universe, reserve_assets=[asset_usdc])
+    return TradingStrategyUniverse(data_universe=core_universe, reserve_assets=[asset_usdc])
 
 
 
@@ -349,10 +349,9 @@ def test_live_stop_loss(
 
     # Sanity check for the trading universe
     # that we start with 1705 USD/ETH price
-    pair_universe = trading_strategy_universe.universe.pairs
-    exchanges = trading_strategy_universe.universe.exchanges
+    pair_universe = trading_strategy_universe.data_universe.pairs
     pricing_method = UniswapV2LivePricing(web3, pair_universe, routing_model)
-    exchange = exchanges[0] # Get the first exchange from the universe
+    exchange = trading_strategy_universe.data_universe.exchange_universe.get_single()
     weth_usdc = pair_universe.get_one_pair_from_pandas_universe(exchange.exchange_id, "WETH", "USDC")
     pair = translate_trading_pair(weth_usdc)
 
@@ -432,6 +431,11 @@ def test_live_stop_loss(
 
     # We are ~500 USD on loss after stop loss trigger
     assert state.portfolio.reserves[usdc_token.address.lower()].quantity == pytest.approx(Decimal('8588.500854'))
+
+    # Check that transaction notes is filled correctly
+    assert len(t.blockchain_transactions) == 2  # Approve + swap
+    tx = t.blockchain_transactions[1]
+    assert "Sell #2" in tx.notes
 
 
 def test_live_stop_loss_missing(

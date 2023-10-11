@@ -53,7 +53,7 @@ class PandasTraderRunner(StrategyRunner):
         """Run one strategy tick."""
 
         assert isinstance(strategy_universe, TradingStrategyUniverse)
-        universe = strategy_universe.universe
+        universe = strategy_universe.data_universe
         pd_timestamp = pd.Timestamp(clock)
 
         assert state.sync.treasury.last_updated_at is not None, "Cannot do trades before treasury is synced at least once"
@@ -84,7 +84,7 @@ class PandasTraderRunner(StrategyRunner):
         """Check the data looks more or less sane."""
 
         assert isinstance(universe, TradingStrategyUniverse)
-        universe = universe.universe
+        universe = universe.data_universe
 
         now_ = ts
 
@@ -97,7 +97,7 @@ class PandasTraderRunner(StrategyRunner):
         # Don't assume we have candle or liquidity data e.g. for the testing strategies
         if universe.candles is not None:
             if universe.candles.get_candle_count() > 0:
-                start, end = universe.get_candle_availability()
+                start, end = universe.candles.get_timestamp_range()
 
                 if self.max_data_age is not None:
                     if now_ - end > self.max_data_age:
@@ -243,7 +243,7 @@ class PandasTraderRunner(StrategyRunner):
             buf = StringIO()
 
             pair = universe.get_single_pair()
-            candles = universe.universe.candles.get_candles_by_pair(pair.internal_id)
+            candles = universe.data_universe.candles.get_candles_by_pair(pair.internal_id)
             last_candle = candles.iloc[-1]
             lag = pd.Timestamp.utcnow().tz_localize(None) - last_candle["timestamp"]
 
@@ -271,9 +271,9 @@ class PandasTraderRunner(StrategyRunner):
             print("Strategy thinking", file=buf)
             print(f"  Strategy cycle #{cycle}: {strategy_cycle_timestamp} UTC, now is {datetime.datetime.utcnow()}", file=buf)
 
-            for pair_id, candles in universe.universe.candles.get_all_pairs():
+            for pair_id, candles in universe.data_universe.candles.get_all_pairs():
                 
-                pair = universe.universe.pairs.get_pair_by_id(pair_id)
+                pair = universe.data_universe.pairs.get_pair_by_id(pair_id)
                 pair_slug = f"{pair.base_token_symbol} / {pair.quote_token_symbol}"
 
                 print(f"\n  {pair_slug}", file=buf)
@@ -281,7 +281,7 @@ class PandasTraderRunner(StrategyRunner):
                 last_candle = candles.iloc[-1]
                 lag = pd.Timestamp.utcnow().tz_localize(None) - last_candle["timestamp"]
 
-                dex_pair = universe.universe.pairs.get_pair_by_id(pair_id)
+                dex_pair = universe.data_universe.pairs.get_pair_by_id(pair_id)
                 pair = translate_trading_pair(dex_pair)
 
                 if not pair:

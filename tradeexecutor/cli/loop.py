@@ -954,10 +954,10 @@ class ExecutionLoop:
                     # This is not 100% fool-proof check for multipair strategies,
                     # as we randomly pick one pair. However it should detect most of market data feed
                     # stale situtations.
-                    last_candle_timestamp = universe.universe.candles.df.iloc[-1]["timestamp"].to_pydatetime().replace(tzinfo=None)
+                    last_candle_timestamp = universe.data_universe.candles.df.iloc[-1]["timestamp"].to_pydatetime().replace(tzinfo=None)
                     # We allow 30 minutes + time bucket size lag
                     if last_candle_timestamp is not None:
-                        max_allowed_lag = self.max_live_data_lag_tolerance + universe.universe.time_bucket.to_timedelta()
+                        max_allowed_lag = self.max_live_data_lag_tolerance + universe.data_universe.time_bucket.to_timedelta()
                         lag = strategy_cycle_timestamp - last_candle_timestamp
                         if lag > max_allowed_lag:
                             logger.error("Aborting and waiting for manual restart after the data feed is fixed")
@@ -1163,14 +1163,6 @@ class ExecutionLoop:
         # Deconstruct strategy input
         self.runner: StrategyRunner = run_description.runner
         self.universe_model = run_description.universe_model
-
-        # TODO: Pass this as a constructor argument
-        # TODO: Accounting checks only supports Enzyme currently
-        self.runner.accounting_checks = self.check_accounts and isinstance(self.sync_model, EnzymeVaultSyncModel)
-
-        # TODO: Pass this as a constructor argument
-        # TODO: Accounting checks only supports Enzyme currently
-        self.runner.accounting_checks = self.check_accounts and isinstance(self.sync_model, EnzymeVaultSyncModel)
 
         # TODO: Do this only when doing backtesting in a notebook
         # self.set_start_and_end()

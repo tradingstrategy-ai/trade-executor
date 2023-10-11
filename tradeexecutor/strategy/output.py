@@ -29,17 +29,30 @@ def format_trade(portfolio: Portfolio, trade: TradeExecution) -> List[str]:
 
     existing_position = portfolio.get_existing_open_position_by_trading_pair(trade.pair)
     if existing_position:
-        amount = abs(trade.planned_quantity / existing_position.get_net_quantity())
+        # Quantity returns the total balance of unexecuted trades
+        existing_balance = existing_position.get_quantity()
+        amount = abs(trade.planned_quantity / existing_balance)
         existing_text = f", {amount*100:,.2f}% of existing position"
     else:
         existing_text = ""
+        existing_balance = 0
 
     lines = [
         f"{trade_type:5} #{trade.trade_id} {pair.get_human_description()} ${trade.get_planned_value():,.2f} ({abs(trade.get_position_quantity())} {pair.base.token_symbol}){existing_text}",
     ]
 
+    # Add existing balance
+    if existing_position:
+        lines += [
+            f"Exiting position: {existing_position}, with pre-trade balance: {existing_balance}"
+        ]
+    else:
+        lines += [
+            f"This trade will open a new position"
+        ]
+
     if link:
-        lines.append(f"      link: {link}")
+        lines.append(f"Trading pair link: {link}")
 
     return lines
 
@@ -57,14 +70,16 @@ def format_position(position: TradingPosition, up_symbol="ðŸŒ²", down_symbol="ðŸ
     else:
         link = ""
 
+    base_token_ticker = position.pair.base.token_symbol
+
     lines =[
-        f"{symbol} #{position.position_id} {position.pair.get_human_description()} size:${position.get_value():,.2f}, profit:{(position.get_total_profit_percent()*100):.2f}% ({position.get_total_profit_usd():,.4f} USD)"
+        f"{symbol} #{position.position_id} {position.pair.get_human_description()} value: ${position.get_value():,.2f}, size: {position.get_quantity():,.4f}, {base_token_ticker} profit: {(position.get_total_profit_percent()*100):.2f}% ({position.get_total_profit_usd():,.4f} USD)"
     ]
 
     if position.has_executed_trades():
         price_diff = position.get_current_price() - position.get_opening_price()
-        lines.append(f"   current price:${position.get_current_price():,.8f}, open price:${position.get_opening_price():,.8f}, diff:{price_diff:,.8f} USD")
-        lines.append(f"   last tx:${position.get_last_tx_hash()}")
+        lines.append(f"   current price: ${position.get_current_price():,.8f}, opened: ${position.get_opening_price():,.8f}, diff: {price_diff:,.8f} USD")
+        lines.append(f"   last tx: {position.get_last_tx_hash()}")
 
     if position.is_frozen():
         last_trade = "buy" if position.get_last_trade().is_buy() else "sell"

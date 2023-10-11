@@ -1,6 +1,6 @@
-# Export the latest trade-executor tag
+# Export the latest trade-executor release tag
 #
-# This will set TRADE_EXECUTOR_VERSION environment variable
+# This will set TRADE_EXECUTOR_VERSION environment variable to the latest release.
 #
 # Usage:
 #

@@ -328,13 +328,13 @@ class OurUniverseModel(TradingStrategyUniverseModel):
                 liquidity=liquidity_universe,
             )
 
-            return TradingStrategyUniverse(universe=universe, reserve_assets=reserve_assets)
+            return TradingStrategyUniverse(data_universe=universe, reserve_assets=reserve_assets)
 
     def construct_universe(self, execution_model: ExecutionModel, mode: ExecutionMode, universe_options) -> TradingStrategyUniverse:
         assert isinstance(mode, ExecutionMode)
         dataset = self.load_data(TimeBucket.d1, mode)
         universe = self.filter_universe(dataset)
-        self.log_universe(universe.universe)
+        self.log_universe(universe.data_universe)
         return universe
 
 

@@ -474,9 +474,13 @@ def update_confirmation_status(
         # as we now have receipt for them
         for tx_hash, receipt in receipts.items():
             trade, tx = tx_map[tx_hash.hex()]
-            logger.info("Resolved tx %s for trade %s", tx_hash.hex(), trade)
             # Update the transaction confirmation status
             status = receipt["status"] == 1
+            logger.info(
+                "Resolved tx %s as %s for trade %s",
+                tx_hash.hex(),
+                "success" if status else "reverted",
+                trade)
             reason = None
             stack_trace = None
 

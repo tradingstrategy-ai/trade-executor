@@ -5,9 +5,11 @@ Define the runner model for different strategy types.
 
 import abc
 import datetime
+import time
 from contextlib import AbstractContextManager
 import logging
 from io import StringIO
+from pprint import pformat
 
 from typing import List, Optional, Tuple
 
@@ -65,6 +67,7 @@ class StrategyRunner(abc.ABC):
                  run_state: Optional[RunState] = None,
                  accounting_checks=False,
                  unit_testing=False,
+                 trade_settle_wait=None,
                  ):
         """
         :param engine_version:
@@ -90,7 +93,27 @@ class StrategyRunner(abc.ABC):
         self.accounting_checks = accounting_checks
         self.unit_testing = unit_testing
 
-        logger.info("Created strategy runner %s, engine version %s", self, self.execution_context.engine_version)
+        # We need 60 seconds wait to read balances
+        # after trades only on a real trading,
+        # Anvil and test nodes are immune for this AFAIK
+        if unit_testing or not execution_context.mode.is_live_trading():
+            self.trade_settle_wait = datetime.timedelta(0)
+        else:
+            self.trade_settle_wait = datetime.timedelta(seconds=60)
+
+        logger.info(
+            "Created strategy runner %s, engine version %s, running mode %s",
+            self,
+            self.execution_context.engine_version,
+            self.execution_context.mode.name,
+        )
+
+    def __repr__(self):
+        """Get a long presentation of internal runner state."""
+        dump = pformat(self.__dict__)
+        return f"<{self.__class__.__name__}\n" \
+               f"{dump}\n" \
+               f">"
 
     @abc.abstractmethod
     def pretick_check(self, ts: datetime.datetime, universe: StrategyExecutionUniverse):
@@ -155,7 +178,7 @@ class StrategyRunner(abc.ABC):
     def revalue_state(self, ts: datetime.datetime, state: State, valuation_method: ValuationModel):
         """Revalue portfolio based on the latest prices."""
         revalue_state(state, ts, valuation_method)
-        logger.info("After revaluation at %s our equity is %f", ts, state.portfolio.get_total_equity())
+        logger.info("After revaluation at %s our portfolio value is %f USD", ts, state.portfolio.get_total_equity())
 
     def collect_post_execution_data(
             self,
@@ -191,6 +214,15 @@ class StrategyRunner(abc.ABC):
                     t.post_execution_price_structure = pricing_model.get_buy_price(ts, spot_pair, t.planned_collateral_consumption)
                 else:
                     t.post_execution_price_structure = pricing_model.get_sell_price(ts, spot_pair, t.planned_quantity)
+
+            logger.info(
+                "Trade %s, estimated reserve %s, executed reserve %s, estimated quantity %s, executed quantity %s",
+                t,
+                t.planned_reserve,
+                t.executed_reserve,
+                t.planned_quantity,
+                t.executed_quantity,
+            )
 
     def on_clock(self,
                  clock: datetime.datetime,
@@ -285,7 +317,6 @@ class StrategyRunner(abc.ABC):
         else:
             logger.info("No positions opened")
 
-
         closed_positions = list(portfolio.get_positions_closed_at(clock))
         if len(closed_positions) > 0:
             print(f"Closed positions:", file=buf)
@@ -293,7 +324,7 @@ class StrategyRunner(abc.ABC):
 
             print(DISCORD_BREAK_CHAR, file=buf)
         else:
-            logger.info("No closed positions")
+            logger.info("The clock tick %s did not close any positions", clock)
 
         print("Reserves:", file=buf)
         print("", file=buf)
@@ -466,11 +497,6 @@ class StrategyRunner(abc.ABC):
                                 last_point_at
                                 )
 
-                # Double check we handled incoming trade balances correctly
-                with self.timed_task_context_manager("check_accounts_post_trade"):
-                    logger.info("Post-trade accounts balance check")
-                    self.check_accounts(universe, state)
-
                 # Log what our strategy decided
                 if self.is_progress_report_needed():
                     self.report_strategy_thinking(
@@ -514,13 +540,27 @@ class StrategyRunner(abc.ABC):
                         routing_state,
                         check_balances=check_balances)
 
-                # Run any logic we need to run after the trades have been executd
                 with self.timed_task_context_manager("post_execution"):
                     self.collect_post_execution_data(
                         self.execution_context,
                         pricing_model,
                         approved_trades,
                     )
+
+                # Run any logic we need to run after the trades have been executed
+                if approved_trades:
+
+                    # We cannot call account check right after the trades,
+                    # as meny low quality nodes might still report old token balances
+                    # from eth_call
+                    logger.info("Waiting on-chain balances to settle for %f before performing accounting checks", self.trade_settle_wait)
+                    time.sleep(self.trade_settle_wait.total_seconds())
+
+                    # Double check we handled incoming trade balances correctly
+                    with self.timed_task_context_manager("check_accounts_post_trade"):
+                        logger.info("Post-trade accounts balance check")
+                        self.check_accounts(universe, state)
+
             else:
                 equity = state.portfolio.get_total_equity()
                 logger.trade("Strategy has no trading capital and trade decision step was skipped. The total equity is %f USD, execution mode is %s", equity, execution_context.mode.name)
@@ -565,6 +605,11 @@ class StrategyRunner(abc.ABC):
         with self.timed_task_context_manager("check_position_triggers"):
 
             # TODO: Sync the treasury here
+
+            # Check that our on-chain balances are good
+            with self.timed_task_context_manager("check_accounts_position_triggers"):
+                logger.info("Position trigger pre-trade accounts balance check")
+                self.check_accounts(universe, state)
 
             # We use PositionManager.close_position()
             # to generate trades to close stop loss positions
@@ -644,7 +689,7 @@ class StrategyRunner(abc.ABC):
 
         if self.accounting_checks:
             clean, df = check_accounts(
-                universe.universe.pairs,
+                universe.data_universe.pairs,
                 [universe.get_reserve_asset()],
                 state,
                 self.sync_model,

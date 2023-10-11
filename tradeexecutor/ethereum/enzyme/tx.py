@@ -97,6 +97,7 @@ class EnzymeTransactionBuilder(TransactionBuilder):
             gas_limit: Optional[int] = None,
             gas_price_suggestion: Optional[GasPriceSuggestion] = None,
             asset_deltas: Optional[List[AssetDelta]] = None,
+            notes: str = "",
     ) -> BlockchainTransaction:
         """Createa a signed tranaction and set up tx broadcast parameters.
 
@@ -166,5 +167,6 @@ class EnzymeTransactionBuilder(TransactionBuilder):
             nonce=signed_tx.nonce,
             details=enzyme_tx.as_json_friendly_dict(),
             asset_deltas=[JSONAssetDelta.from_asset_delta(a) for a in vault_asset_deltas],
-            other={"vault_slippage_tolerance": self.vault_slippage_tolerance}
+            other={"vault_slippage_tolerance": self.vault_slippage_tolerance},
+            notes=notes,
         )

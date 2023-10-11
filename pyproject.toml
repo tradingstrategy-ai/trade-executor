@@ -18,7 +18,7 @@ python = ">=3.10,<3.11"
 # Use these during development
 # web3-ethereum-defi = {path = "deps/web3-ethereum-defi", develop = true}
 #trading-strategy = {path = "deps/trading-strategy", develop = true}
-trading-strategy = "^0.20.4"
+trading-strategy = "^0.20.8"
 requests = "^2.27.1"
 matplotlib = "^3.6.0"
 jupyterlab = "^3.5.0"
@@ -27,7 +27,7 @@ tqdm-loggable = "0.1.4"
 
 
 # data pulls in gql needed with some nodes
-web3-ethereum-defi = {version="^0.22.15", extras=["data"]}
+web3-ethereum-defi = {version="0.22.19", extras=["data", "test"]}
 
 # tqdm progress bar doesn't show up in VScode Jupyter with ipywidgets>=8
 # https://github.com/microsoft/vscode-jupyter/issues/11014

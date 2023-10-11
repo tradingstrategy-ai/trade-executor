@@ -98,6 +98,7 @@ def correct_accounts(
         json_rpc_ethereum=json_rpc_ethereum,
         json_rpc_arbitrum=json_rpc_arbitrum,
         json_rpc_anvil=json_rpc_anvil,
+        unit_testing=unit_testing,
     )
 
     assert web3config, "No RPC endpoints given. A working JSON-RPC connection is needed for check-wallet"
@@ -199,7 +200,7 @@ def correct_accounts(
         UniverseOptions()
     )
 
-    logger.info("Universe contains %d pairs", universe.universe.pairs.get_count())
+    logger.info("Universe contains %d pairs", universe.data_universe.pairs.get_count())
     logger.info("Reserve assets are: %s", universe.reserve_assets)
 
     assert len(universe.reserve_assets) == 1, "Need exactly one reserve asset"
@@ -213,7 +214,7 @@ def correct_accounts(
             state.portfolio.initialise_reserves(universe.reserve_assets[0])
 
     corrections = calculate_account_corrections(
-        universe.universe.pairs,
+        universe.data_universe.pairs,
         universe.reserve_assets,
         state,
         sync_model,
@@ -259,7 +260,7 @@ def correct_accounts(
     web3config.close()
 
     clean, df = check_accounts(
-        universe.universe.pairs,
+        universe.data_universe.pairs,
         universe.reserve_assets,
         state,
         sync_model,

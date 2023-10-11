@@ -28,6 +28,12 @@ class ExecutionMode(enum.Enum):
     #: This offers great performance benefits for backtesting. 
     backtesting = "backtesting"
 
+    #: We are doing data research.
+    #:
+    #: There is not going to be any trading,
+    #: we are only interested in datsets.
+    data_research = "data_research"
+
     #: We are loading and caching datasets before a backtesting session can begin.
     #: We call create_trading_universe() and assume :py:class:`tradingstrategy.client.Client`
     #: class is set to a such state it can display nice progress bar when loading
@@ -145,3 +151,6 @@ class ExecutionContext:
 
 #: Shorthand for unit testing
 unit_test_execution_context = ExecutionContext(ExecutionMode.unit_testing_trading)
+
+#: Shorthand for unit testing
+ExecutionContext.unit_test = unit_test_execution_context

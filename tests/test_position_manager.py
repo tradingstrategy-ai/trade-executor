@@ -65,7 +65,7 @@ def synthetic_universe() -> TradingStrategyUniverse:
         liquidity=None
     )
 
-    return TradingStrategyUniverse(universe=universe, reserve_assets=[usdc])
+    return TradingStrategyUniverse(data_universe=universe, reserve_assets=[usdc])
 
 @pytest.fixture()
 def routing_model(synthetic_universe) -> BacktestRoutingModel:
@@ -75,7 +75,7 @@ def routing_model(synthetic_universe) -> BacktestRoutingModel:
 @pytest.fixture()
 def pricing_model(synthetic_universe, routing_model) -> BacktestRoutingModel:
     pricing_model = BacktestSimplePricingModel(
-        synthetic_universe.universe.candles,
+        synthetic_universe.data_universe.candles,
         routing_model,
         allow_missing_fees=True,
     )
@@ -95,7 +95,7 @@ def state(synthetic_universe: TradingStrategyUniverse):
 def position_manager(state, synthetic_universe, pricing_model):
     # Assume position manager is played on the second day
     ts = datetime.datetime(2021, 6, 2)
-    p = PositionManager(ts, synthetic_universe.universe, state, pricing_model)
+    p = PositionManager(ts, synthetic_universe.data_universe, state, pricing_model)
     return p
 
 
@@ -176,12 +176,12 @@ def test_estimate_fee_from_router(state, synthetic_universe, position_manager):
 
     routing_model = generate_simple_routing_model(synthetic_universe, trading_fee=0.0025)
     pricing_model = BacktestSimplePricingModel(
-        synthetic_universe.universe.candles,
+        synthetic_universe.data_universe.candles,
         routing_model
     )
     eth_usdc = synthetic_universe.get_single_pair()
     ts = datetime.datetime(2021, 6, 2)
-    position_manager = PositionManager(ts, synthetic_universe.universe, state, pricing_model)
+    position_manager = PositionManager(ts, synthetic_universe.data_universe, state, pricing_model)
     fee = position_manager.get_pair_fee(eth_usdc)
     assert fee == 0.0025
 

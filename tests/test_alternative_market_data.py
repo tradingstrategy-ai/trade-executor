@@ -98,7 +98,7 @@ def synthetic_universe(
         liquidity=None
     )
 
-    return TradingStrategyUniverse(universe=universe, reserve_assets=[usdc])
+    return TradingStrategyUniverse(data_universe=universe, reserve_assets=[usdc])
 
 
 @pytest.fixture()
@@ -113,7 +113,7 @@ def test_replace_candles(
 ):
     """Replace candles for WBTC-USDC from the Binance hourly feed."""
 
-    assert synthetic_universe.universe.candles.time_bucket == TimeBucket.h1
+    assert synthetic_universe.data_universe.candles.time_bucket == TimeBucket.h1
 
     new_candles, _ = load_candle_universe_from_parquet(
         wbtc_usdc,
@@ -122,7 +122,7 @@ def test_replace_candles(
 
     replace_candles(synthetic_universe, new_candles)
 
-    start, end = synthetic_universe.universe.candles.get_timestamp_range()
+    start, end = synthetic_universe.data_universe.candles.get_timestamp_range()
     assert start == pd.Timestamp('2017-08-17 04:00:00')
     assert end == pd.Timestamp('2023-08-02 13:00:00')
 
@@ -136,7 +136,7 @@ def test_replace_candles_resample(
 ):
     """Replace candles for WBTC-USDC from the Binance hourly feed."""
 
-    assert synthetic_universe.universe.candles.time_bucket == TimeBucket.h1
+    assert synthetic_universe.data_universe.candles.time_bucket == TimeBucket.h1
 
     new_candles, stop_loss_candles = load_candle_universe_from_parquet(
         wbtc_usdc,
@@ -151,7 +151,7 @@ def test_replace_candles_resample(
     assert synthetic_universe.backtest_stop_loss_candles.time_bucket == TimeBucket.h1
 
     # Readjusted to 4h candles
-    start, end = synthetic_universe.universe.candles.get_timestamp_range()
+    start, end = synthetic_universe.data_universe.candles.get_timestamp_range()
     assert start == pd.Timestamp('2017-08-17 04:00:00')
     assert end == pd.Timestamp('2023-08-02 12:00:00')
 
@@ -163,7 +163,7 @@ def test_replace_candles_resample_no_stop_loss(
 ):
     """Replace candles for WBTC-USDC from the Binance hourly feed."""
 
-    assert synthetic_universe.universe.candles.time_bucket == TimeBucket.h1
+    assert synthetic_universe.data_universe.candles.time_bucket == TimeBucket.h1
 
     new_candles, stop_loss_candles = load_candle_universe_from_parquet(
         wbtc_usdc,
@@ -176,7 +176,7 @@ def test_replace_candles_resample_no_stop_loss(
 
     replace_candles(synthetic_universe, new_candles, ignore_time_bucket_mismatch=True)
 
-    start, end = synthetic_universe.universe.candles.get_timestamp_range()
+    start, end = synthetic_universe.data_universe.candles.get_timestamp_range()
 
     # Readjusted to 4h candles
     assert start == pd.Timestamp('2017-08-17 04:00:00')

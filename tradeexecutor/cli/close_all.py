@@ -101,7 +101,7 @@ def close_all(
     # that helps open and close positions
     position_manager = PositionManager(
         ts,
-        universe.universe,
+        universe.data_universe,
         state,
         pricing_model,
     )

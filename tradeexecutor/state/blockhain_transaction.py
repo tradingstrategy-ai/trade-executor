@@ -9,6 +9,7 @@
 """
 import datetime
 import enum
+import textwrap
 from dataclasses import dataclass, field
 from typing import Optional, Any, Dict, Tuple, List
 
@@ -260,24 +261,28 @@ class BlockchainTransaction:
         )
     )
 
-    #: Human-readable debug information about this transaction.
-    #:
-    #: Currently may contain the human description of the trade that
-    #: triggered this transaction.
-    #:
-    note: Optional[str] = None
-
     #: Any other metadata associated with this transaction.
     #:
     #: Currently used for `vault_slippage_tolerance`.
     other: dict = field(default_factory=dict)
 
+    #: Human readable notes on this transaction.
+    #:
+    #: - Used for diagnostics
+    #:
+    #: - E.g. the text line of the controlling trade that is causing this transaction,
+    #:   with information about expected tokens, slippage, etc.
+    #:
+    #: - Newline separated
+    #:
+    notes: str = ""
+
     def __repr__(self):
-        tx_hash = self.tx_hash or ""
-        note = self.note or ""
+
+        notes = "\n" + textwrap.indent(self.notes, prefix="      ")
+
         if self.status is True:
-            return f"<Tx \n" \
-                   f"    hash:{tx_hash}\n" \
+            return f"<Tx success \n" \
                    f"    from:{self.from_address}\n" \
                    f"    nonce:{self.nonce}\n" \
                    f"    to:{self.contract_address}\n" \
@@ -286,12 +291,10 @@ class BlockchainTransaction:
                    f"    wrapped args:{_clean_print_args(self.wrapped_args)}\n" \
                    f"    gas limit:{self.get_gas_limit():,}\n" \
                    f"    gas spent:{self.realised_gas_units_consumed:,}\n" \
-                   f"    note:{note}\n" \
-                   f"    success\n" \
+                   f"    notes:{notes}\n" \
                    f"    >"
         elif self.status is False:
-            return f"<Tx \n" \
-                   f"    hash:{tx_hash}\n" \
+            return f"<Tx reverted \n" \
                    f"    from:{self.from_address}\n" \
                    f"    nonce:{self.nonce}\n" \
                    f"    to:{self.contract_address}\n" \
@@ -301,19 +304,17 @@ class BlockchainTransaction:
                    f"    fail reason:{self.revert_reason}\n" \
                    f"    gas limit:{self.get_gas_limit():,}\n" \
                    f"    gas spent:{self.realised_gas_units_consumed:,}\n" \
-                   f"    note:{note}\n" \
+                   f"    notes:{notes}\n" \
                    f"    >"
         else:
-            return f"<Tx \n" \
-                   f"    hash:{tx_hash}\n" \
+            return f"<Tx unresolved\n" \
                    f"    from:{self.from_address}\n" \
                    f"    nonce:{self.nonce}\n" \
                    f"    to:{self.contract_address}\n" \
                    f"    func:{self.function_selector}\n" \
                    f"    args:{_clean_print_args(self.transaction_args)}\n" \
                    f"    wrapped args:{_clean_print_args(self.wrapped_args)}\n" \
-                   f"    note:{note}\n" \
-                   f"    unresolved\n" \
+                   f"    notes:{notes}\n" \
                    f"    >"
 
     def get_transaction(self) -> dict:

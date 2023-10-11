@@ -269,9 +269,9 @@ def replace_candles(
     assert isinstance(candles, GroupedCandleUniverse)
 
     if not ignore_time_bucket_mismatch:
-        assert candles.time_bucket == universe.universe.candles.time_bucket, f"TimeBucket mismatch. Old {universe.universe.candles.time_bucket}, new: {candles.time_bucket}"
+        assert candles.time_bucket == universe.data_universe.candles.time_bucket, f"TimeBucket mismatch. Old {universe.data_universe.candles.time_bucket}, new: {candles.time_bucket}"
 
-    universe.universe.candles = candles
+    universe.data_universe.candles = candles
     if stop_loss_candles:
         universe.backtest_stop_loss_candles = stop_loss_candles
         universe.backtest_stop_loss_time_bucket = stop_loss_candles.time_bucket

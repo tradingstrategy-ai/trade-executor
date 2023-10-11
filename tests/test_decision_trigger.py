@@ -106,8 +106,8 @@ def test_decision_trigger_ready_data(persistent_test_client, universe):
     assert updated_universe_result.ready_at <=  datetime.datetime.utcnow()
     assert updated_universe_result.poll_cycles == 1
 
-    pair = updated_universe_result.updated_universe.universe.pairs.get_single()
-    candles = updated_universe_result.updated_universe.universe.candles.get_candles_by_pair(pair.pair_id)
+    pair = updated_universe_result.updated_universe.data_universe.pairs.get_single()
+    candles = updated_universe_result.updated_universe.data_universe.candles.get_candles_by_pair(pair.pair_id)
 
     last_possible_timestamp = timestamp -  TimeBucket.d1.to_timedelta()
 
@@ -135,8 +135,8 @@ def test_decision_trigger_multipair(persistent_test_client, multipair_universe: 
     assert updated_universe_result.ready_at <= datetime.datetime.utcnow()
     assert updated_universe_result.poll_cycles == 1
 
-    for pair in universe.universe.pairs.iterate_pairs():
-        candles = updated_universe_result.updated_universe.universe.candles.get_candles_by_pair(pair.pair_id)
+    for pair in universe.data_universe.pairs.iterate_pairs():
+        candles = updated_universe_result.updated_universe.data_universe.candles.get_candles_by_pair(pair.pair_id)
 
         last_possible_timestamp = timestamp - TimeBucket.d1.to_timedelta()
 

@@ -24,6 +24,10 @@ from tradeexecutor.ethereum.routing_state import EthereumRoutingStateBase
 logger = logging.getLogger(__name__)
 
 
+class TradeFailed(Exception):
+    """An exception to mark an individual trade that failed in routing and pre-trade checks."""
+
+
 class RoutingModelBase(RoutingModel):
     """A simple router that does not optimise the trade execution cost. Designed for uniswap-v2 forks.
 
@@ -219,49 +223,54 @@ class RoutingModelBase(RoutingModel):
         for t in trades:
             assert len(t.blockchain_transactions) == 0, f"Trade {t} had already blockchain transactions associated with it"
 
-            target_pair, intermediary_pair = self.route_trade(pair_universe, t)
+            try:
 
-            if intermediary_pair is None:
-                # Two way trade
-                # Decide betwen buying and selling
-                trade_txs = (
-                    self.trade(
+                target_pair, intermediary_pair = self.route_trade(pair_universe, t)
+
+                if intermediary_pair is None:
+                    # Two way trade
+                    # Decide betwen buying and selling
+                    trade_txs = (
+                        self.trade(
+                            routing_state,
+                            target_pair=target_pair,
+                            reserve_asset=reserve_asset,
+                            reserve_asset_amount=t.get_raw_planned_reserve(),
+                            check_balances=check_balances,
+                        )
+                        if t.is_buy()
+                        else self.trade(
+                            routing_state,
+                            target_pair=target_pair,
+                            reserve_asset=target_pair.base,
+                            reserve_asset_amount=-t.get_raw_planned_quantity(),
+                            check_balances=check_balances,
+                        )
+                    )
+                elif t.is_buy():
+                    trade_txs = self.trade(
                         routing_state,
                         target_pair=target_pair,
                         reserve_asset=reserve_asset,
                         reserve_asset_amount=t.get_raw_planned_reserve(),
                         check_balances=check_balances,
+                        intermediary_pair=intermediary_pair,
                     )
-                    if t.is_buy()
-                    else self.trade(
+                else:
+                    trade_txs = self.trade(
                         routing_state,
                         target_pair=target_pair,
                         reserve_asset=target_pair.base,
                         reserve_asset_amount=-t.get_raw_planned_quantity(),
                         check_balances=check_balances,
+                        intermediary_pair=intermediary_pair,
                     )
-                )
-            elif t.is_buy():
-                trade_txs = self.trade(
-                    routing_state,
-                    target_pair=target_pair,
-                    reserve_asset=reserve_asset,
-                    reserve_asset_amount=t.get_raw_planned_reserve(),
-                    check_balances=check_balances,
-                    intermediary_pair=intermediary_pair,
-                )
-            else:
-                trade_txs = self.trade(
-                    routing_state,
-                    target_pair=target_pair,
-                    reserve_asset=target_pair.base,
-                    reserve_asset_amount=-t.get_raw_planned_quantity(),
-                    check_balances=check_balances,
-                    intermediary_pair=intermediary_pair,
-                )
 
-            t.set_blockchain_transactions(trade_txs)
-            txs += trade_txs
+                t.set_blockchain_transactions(trade_txs)
+                txs += trade_txs
+
+            except Exception as e:
+                raise TradeFailed(f"Trade {t} failed") from e
 
         # Now all trades have transactions associated with them.
         # We can start to execute transactions.
@@ -309,7 +318,7 @@ class RoutingModelBase(RoutingModel):
 
         assert isinstance(universe, TradingStrategyUniverse)
         assert universe is not None, "Universe is required"
-        assert universe.universe.pairs is not None, "Pairs are required"
+        assert universe.data_universe.pairs is not None, "Pairs are required"
 
         web3 = execution_details["web3"]
 
@@ -325,10 +334,10 @@ class RoutingModelBase(RoutingModel):
         logger.info("Estimated gas fees for chain %d: %s", web3.eth.chain_id, fees)
         if hot_wallet:
             tx_builder = HotWalletTransactionBuilder(web3, hot_wallet, fees)
-            routing_state = StateClass(universe.universe.pairs, tx_builder)
+            routing_state = StateClass(universe.data_universe.pairs, tx_builder)
         else:
             # Dummy execution model cannot create transactions, because it has no private key
-            routing_state = StateClass(universe.universe.pairs, web3=web3)
+            routing_state = StateClass(universe.data_universe.pairs, web3=web3)
 
         return routing_state
     

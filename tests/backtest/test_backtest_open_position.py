@@ -138,14 +138,14 @@ def universe() -> TradingStrategyUniverse:
         liquidity=None
     )
 
-    return TradingStrategyUniverse(universe=universe, reserve_assets=[usdc])
+    return TradingStrategyUniverse(data_universe=universe, reserve_assets=[usdc])
 
 
 def test_ema_on_universe(universe: TradingStrategyUniverse):
     """Calculate exponential moving average on single pair candle universe."""
     start_timestamp = pd.Timestamp("2021-6-1")
     batch_size = 20
-    candles = universe.universe.candles.get_single_pair_data(start_timestamp, sample_count=batch_size, allow_current=True, raise_on_not_enough_data=False)
+    candles = universe.data_universe.candles.get_single_pair_data(start_timestamp, sample_count=batch_size, allow_current=True, raise_on_not_enough_data=False)
     assert len(candles) == 1
 
     # Not enough data to calculate EMA - we haave only 1 sample
@@ -153,7 +153,7 @@ def test_ema_on_universe(universe: TradingStrategyUniverse):
     assert ema_20_series is None
 
     end_timestamp = pd.Timestamp("2021-12-31")
-    candles = universe.universe.candles.get_single_pair_data(end_timestamp, sample_count=batch_size, allow_current=True, raise_on_not_enough_data=False)
+    candles = universe.data_universe.candles.get_single_pair_data(end_timestamp, sample_count=batch_size, allow_current=True, raise_on_not_enough_data=False)
     assert len(candles) == batch_size
 
     ema_20_series = ema(candles["close"], length=20)
@@ -166,7 +166,7 @@ def test_ema_on_universe(universe: TradingStrategyUniverse):
 def backtest_result(
     universe: TradingStrategyUniverse
 ) -> tuple[State, TradingStrategyUniverse, dict]:
-    start_at, end_at = universe.universe.candles.get_timestamp_range()
+    start_at, end_at = universe.data_universe.candles.get_timestamp_range()
 
     routing_model = generate_simple_routing_model(universe)
 
@@ -263,8 +263,8 @@ def test_timeline(
 
     # Test expand timeline both colouring modes
     expanded_timeline, apply_styles = expand_timeline(
-        universe.universe.exchanges,
-        universe.universe.pairs,
+        universe.data_universe.exchanges,
+        universe.data_universe.pairs,
         timeline,
         row_styling_mode=TimelineRowStylingMode.simple,
     )
@@ -299,7 +299,7 @@ def test_benchmark_synthetic_trading_portfolio(
     TODO: Might move this test to its own module.
     """
 
-    start_at, end_at = universe.universe.candles.get_timestamp_range()
+    start_at, end_at = universe.data_universe.candles.get_timestamp_range()
 
     routing_model = generate_simple_routing_model(universe)
 
@@ -325,7 +325,7 @@ def test_benchmark_synthetic_trading_portfolio(
         portfolio_statistics=state.stats.portfolio,
         all_cash=100_000,
         buy_and_hold_asset_name="ETH",
-        buy_and_hold_price_series=universe.universe.candles.get_single_pair_data()["close"],
+        buy_and_hold_price_series=universe.data_universe.candles.get_single_pair_data()["close"],
     )
 
     # Check that the diagram has 3 plots

@@ -130,7 +130,7 @@ class BacktestRoutingModel(RoutingModel):
         """Create a new routing state for this cycle."""
         assert isinstance(universe, TradingStrategyUniverse)
         wallet = execution_details["wallet"]
-        return BacktestRoutingState(universe.universe.pairs, wallet)
+        return BacktestRoutingState(universe.data_universe.pairs, wallet)
 
 
 class BacktestRoutingIgnoredModel(BacktestRoutingModel):
@@ -240,4 +240,4 @@ class BacktestRoutingIgnoredModel(BacktestRoutingModel):
         """Create a new routing state for this cycle."""
         assert isinstance(universe, TradingStrategyUniverse)
         wallet = execution_details["wallet"]
-        return BacktestRoutingState(universe.universe.pairs, wallet)
+        return BacktestRoutingState(universe.data_universe.pairs, wallet)
