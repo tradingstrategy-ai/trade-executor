@@ -368,7 +368,7 @@ def apply_accounting_correction(
             # In a lot of places we assume that a position with 1 trade cannot be closed
             # Make a 0-sized trade so that we know the position is closed
             t = close_position_with_empty_trade(portfolio, position)
-            logger.info("Position %s closed with a trade %s", p, t)
+            logger.info("Position %s closed with a trade %s", position, t)
             assert position.is_closed()
         else:
             assert position.get_quantity() > 0, "Position should have quantity"
