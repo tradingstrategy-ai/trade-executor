@@ -1,5 +1,5 @@
 
-"""version CLi command."""
+"""Export CLI command."""
 import os
 from typing import Iterable
 
@@ -38,6 +38,9 @@ def export():
     give this export to anyone.
 
     The export is in bash shell script source format.
+
+    Besides the settings export, you need to copy over the state file and
+    you have encapsulated everything a trade executor takes as inputs.
     """
 
     env_var_set = set()
@@ -48,8 +51,9 @@ def export():
         else:
             env_var_set.add(param.envvar)
 
+    # TODO: We do not deal with the case if env var contains "
     for env in env_var_set:
-        print(f"export {env}={os.environ.get(env, '')}")
+        print(f"""export {env}="{os.environ.get(env, '')}" """)
 
 
 
