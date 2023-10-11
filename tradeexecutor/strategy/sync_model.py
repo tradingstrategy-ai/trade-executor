@@ -4,7 +4,7 @@ import datetime
 from _decimal import Decimal
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Callable, List, Optional
+from typing import Callable, List, Optional, Iterable, Collection
 
 from eth_defi.hotwallet import HotWallet
 from tradeexecutor.ethereum.tx import TransactionBuilder
@@ -135,6 +135,25 @@ class SyncModel(ABC):
             - :py:class:`tradeexecutor.ethereum.tx.HotWalletTransactionBuilder`
 
             - :py:class:`tradeexecutor.ethereum.enzyme.tx.EnzymeTransactionBuilder`
+        """
+
+    @abstractmethod
+    def fetch_onchain_balances(
+            self,
+            assets: Collection[AssetIdentifier],
+            filter_zero=True) -> Iterable[OnChainBalance]:
+        """Read the on-chain asset details.
+
+        - Mark the block we are reading at the start
+
+        - Asset list is sorted to be by address to make sure
+          the return order is deterministic
+
+        :param filter_zero:
+            Do not return zero balances
+
+        :return:
+            Iterator for assets by the sort order.
         """
 
     def sync_interests(

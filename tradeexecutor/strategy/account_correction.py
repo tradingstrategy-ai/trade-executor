@@ -180,6 +180,10 @@ def is_relative_mismatch(
     if abs(actual_amount) < dust_epsilon and abs(expected_amount) < dust_epsilon:
         return False
 
+    # Avoid division by zero
+    if actual_amount == 0 or expected_amount == 0:
+        return actual_amount != expected_amount
+
     return abs((expected_amount - actual_amount) / actual_amount) > relative_epsilon
 
 
@@ -223,10 +227,10 @@ def calculate_account_corrections(
     assert isinstance(state, State)
     assert len(state.portfolio.reserves) > 0, "No reserve positions. Did you run init for the strategy?"
 
-    logger.info("Scanning for account corrections")
+    logger.info("Scanning for account corrections, we have %d open positions", len(state.portfolio.open_positions))
 
     assets = get_relevant_assets(pair_universe, reserve_assets, state)
-    asset_balances = list(sync_model.fetch_onchain_balances(assets))
+    asset_balances = list(sync_model.fetch_onchain_balances(assets, filter_zero=False))
 
     logger.info("Found %d on-chain tokens", len(asset_balances))
 

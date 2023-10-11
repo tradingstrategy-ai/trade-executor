@@ -404,19 +404,6 @@ class EnzymeVaultSyncModel(SyncModel):
             self,
             assets: List[AssetIdentifier],
             filter_zero=True) -> Iterable[OnChainBalance]:
-        """Read the on-chain asset details.
-
-        - Mark the block we are reading at the start
-
-        - Asset list is sorted to be by address to make sure
-          the return order is deterministic
-
-        :param filter_zero:
-            Do not return zero balances
-
-        :return:
-            Iterator for assets by the sort order.
-        """
 
         sorted_assets = sorted(assets, key=lambda a: a.address)
 
