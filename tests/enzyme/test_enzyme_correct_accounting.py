@@ -32,8 +32,10 @@ from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifie
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.state import State
+from tradeexecutor.statistics.core import calculate_statistics
 from tradeexecutor.strategy.asset import get_relevant_assets
 from tradeexecutor.strategy.account_correction import calculate_account_corrections, AccountingCorrectionCause, correct_accounts
+from tradeexecutor.strategy.execution_context import ExecutionMode
 from tradeexecutor.testing.ethereumtrader_uniswap_v2 import UniswapV2TestTrader
 
 
@@ -505,7 +507,6 @@ def test_enzyme_correct_accounting_no_open_position(
     assert len(further_corrections) == 0
 
 
-@flaky.flaky()
 def test_correct_accounting_errors_for_zero_position(
     web3: Web3,
     deployer: HexAddress,
@@ -630,13 +631,6 @@ def test_correct_accounting_errors_for_zero_position(
     assert len(balance_updates) == 1
 
     #
-    # Check state serialises afterwards
-    #
-    text = state.to_json_safe()
-    state2 = State.read_json_blob(text)
-    assert not state2.is_empty()
-
-    #
     # No further accounting errors
     #
     further_corrections = list(calculate_account_corrections(
@@ -644,14 +638,41 @@ def test_correct_accounting_errors_for_zero_position(
         state.portfolio.get_reserve_assets(),
         state,
         sync_model))
-
     assert len(further_corrections) == 0
 
+    # Position has been closed in the portfolio
     portfolio = state.portfolio
     assert len(portfolio.open_positions) == 0
+    assert len(portfolio.frozen_positions) == 0
     assert len(portfolio.closed_positions) == 1
 
+    # Check the repaired position behaves correctly
     position = portfolio.closed_positions[1]
+    assert len(position.trades) == 2
     position.is_closed()
     assert position.get_quantity() == 0
     assert position.get_value() == 0
+    assert position.is_reduced()
+    assert position.get_realised_profit_usd() == 0.0
+
+    for p in portfolio.get_all_positions():
+        print(id(p), p)
+
+    # The position did not make any profit.
+    # Any losses are available as separate accounting entries
+    print(id(position), position)
+
+    # See that portfolio statistics calculations do not get screwed over because of
+    # manual repair entriesa
+    stats = calculate_statistics(
+        datetime.datetime.now(),
+        portfolio,
+        ExecutionMode.unit_testing_trading
+    )
+
+    #
+    # Check state serialises afterwards
+    #
+    text = state.to_json_safe()
+    state2 = State.read_json_blob(text)
+    assert not state2.is_empty()

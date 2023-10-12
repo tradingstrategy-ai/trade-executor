@@ -404,11 +404,6 @@ class TradeAnalysis:
     #: If not given assume daily for the legacy compatibilty
     decision_cycle_frequency: pd.DateOffset = field(default_factory=pd.offsets.Day)
 
-    def __post_init__(self):
-        _filtered_positions = self.portfolio.get_all_positions_filtered()
-        self.filtered_sorted_positions = sorted(_filtered_positions, key=lambda x: x.position_id)
-        #assert self.filtered_sorted_positions, "No positions found"
-    
     def get_first_opened_at(self) -> Optional[pd.Timestamp]:
         """Get the opened_at timestamp of the first position in the portfolio."""
         return min(
@@ -427,7 +422,7 @@ class TradeAnalysis:
         
         Positions are sorted by position_id."""
         
-        for position in self.filtered_sorted_positions:
+        for position in self.portfolio.get_all_positions():
             # pair_id, position
             yield position.pair.internal_id, position
 
@@ -650,8 +645,11 @@ class TradeAnalysis:
             if is_take_profit:
                 take_profits += 1
 
-            realised_profit_percent = position.get_realised_profit_percent()
+            import ipdb ; ipdb.set_trace()
             realised_profit_usd = position.get_realised_profit_usd()
+            assert realised_profit_usd is not None, f"Realised profit calculation failed for: {position}"
+            realised_profit_percent = position.get_realised_profit_percent()
+
             duration = position.get_duration()
             
             if position.is_profitable():

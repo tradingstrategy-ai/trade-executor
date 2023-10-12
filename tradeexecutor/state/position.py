@@ -256,6 +256,7 @@ class TradingPosition(GenericPosition):
         return self.position_id == other.position_id
 
     def __post_init__(self):
+        import ipdb ; ipdb.set_trace()
         assert self.position_id > 0
         assert self.last_pricing_at is not None
         assert self.reserve_currency is not None
@@ -1043,6 +1044,8 @@ class TradingPosition(GenericPosition):
 
         - Any avg buy and sell contains all fees we have paid in included in the price,
           so we do not need to add them to profit here
+
+        TODO: Handle account corrections
 
         :param include_interest:
             Include any accrued interest in PnL.
