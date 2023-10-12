@@ -19,6 +19,7 @@ from typing import List, Optional, Callable, Tuple, Set, Dict, Iterable, Collect
 
 import pandas as pd
 
+from tradeexecutor.state.types import JSONHexAddress
 from tradingstrategy.lending import LendingReserveUniverse, LendingReserveDescription, LendingCandleType, LendingCandleUniverse
 from tradingstrategy.token import Token
 from tradingstrategy.candle import GroupedCandleUniverse
@@ -264,7 +265,9 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         :return:
             True if we can open a spot position.
         """
-        return self.has_lending_market_available(timestamp, pair.base, liquidity_threshold) and self.has_lending_market_available(timestamp, pair.quote, liquidity_threshold)
+        assert isinstance(pair, TradingPairIdentifier), f"Expected TradingPairIdentifier, got: {pair.__class}: {pair}"
+        return self.has_lending_market_available(timestamp, pair.base, liquidity_threshold) \
+            and self.has_lending_market_available(timestamp, pair.quote, liquidity_threshold)
 
     def clone(self) -> "TradingStrategyUniverse":
         """Create a copy of this universe.
@@ -757,16 +760,25 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         )
 
     @staticmethod
-    def create_from_dataset(dataset: Dataset):
+    def create_from_dataset(
+            dataset: Dataset,
+            reserve_asset_desc: JSONHexAddress=None,
+    ):
         """Create a universe from loaded dataset.
 
-        - Assume all trading pairs have the same quote token
-          and that is our reserve asset
-
-        - If dataset has trading pairs with different quote tokens,
-          aborts
-
         For code example see :py:func:`load_trading_and_lending_data`.
+
+        :param reserve_asset:
+            Which reserve asset to use.
+
+            If not given try to guess from the dataset.
+
+            - Assume all trading pairs have the same quote token
+              and that is our reserve asset
+
+            - If dataset has trading pairs with different quote tokens,
+              aborts
+
         """
 
         chain_ids = dataset.pairs["chain_id"].unique()
@@ -776,8 +788,13 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
 
         pairs = PandasPairUniverse(dataset.pairs, exchange_universe=dataset.exchanges)
 
-        quote_token = pairs.get_single_quote_token()
-        reserve_asset = translate_token(quote_token)
+        if not reserve_asset_desc:
+            quote_token = pairs.get_single_quote_token()
+            reserve_asset = translate_token(quote_token)
+        else:
+            reserve_asset_token = pairs.get_token(reserve_asset_desc)
+            assert reserve_asset_token, f"Pairs dataset does not contain data for token: {reserve_asset_desc}"
+            reserve_asset = translate_token(reserve_asset_token)
 
         candle_universe = GroupedCandleUniverse(dataset.candles)
 
@@ -1963,6 +1980,7 @@ def load_trading_and_lending_data(
     reserve_asset_symbols: Set[TokenSymbol]={"USDC",},
     name: str | None = None,
     volatile_only=False,
+    any_quote=False,
 ):
     """Load trading and lending market for a single chain for all long/short pairs.
 
@@ -2059,6 +2077,12 @@ def load_trading_and_lending_data(
 
     :param volatile_only:
         If set to False, ignore stablecoin-stablecoin trading pairs.
+
+        TODO: Does not work correctly at the moment.
+
+    :param any_quote:
+        Include ETH, MATIC, etc. quoted trading pairs and three-legged trades.
+
     """
 
     assert isinstance(client, Client)
@@ -2090,7 +2114,8 @@ def load_trading_and_lending_data(
     # Find out all volatile pairs traded against USDC and USDT on Polygon
     pairs_df = filter_for_chain(pairs_df, ChainId.polygon)
     pairs_df = filter_for_stablecoins(pairs_df, StablecoinFilteringMode.only_volatile_pairs)
-    pairs_df = filter_for_quote_tokens(pairs_df, {reserve_asset.asset_address})
+    if not any_quote:
+        pairs_df = filter_for_quote_tokens(pairs_df, {reserve_asset.asset_address})
     pairs_df = filter_for_base_tokens(pairs_df, lending_reserves.get_asset_addresses())
 
     if exchange_slugs:

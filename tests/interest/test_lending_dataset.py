@@ -241,23 +241,39 @@ def test_can_open_short(persistent_test_client: Client):
         universe_options=UniverseOptions(start_at=start_at, end_at=end_at),
         chain_id=ChainId.polygon,
         exchange_slugs="quickswap",
-        time_bucket=TimeBucket.d7,
+        time_bucket=TimeBucket.d7,  # Optimise test speed
+        any_quote=True,
     )
 
-    strategy_universe = TradingStrategyUniverse.create_from_dataset(dataset)
+    # https://tradingstrategy.ai/trading-view/polygon/tokens/0x2791bca1f2de4661ed88a30c99a7a9449aa84174
+    usdc_address = "0x2791bca1f2de4661ed88a30c99a7a9449aa84174"
+
+    strategy_universe = TradingStrategyUniverse.create_from_dataset(
+        dataset,
+        reserve_asset_desc=usdc_address,
+    )
 
     data_universe = strategy_universe.data_universe
 
-    desc = (ChainId.polygon, "quickswap", "MaticX", "MATIC")
+    # https://tradingstrategy.ai/trading-view/polygon/quickswap/maticx-matic#7d
+    # Internal id 2648052
+    desc = (ChainId.polygon, "quickswap", "MaticX", "WMATIC")
     pair = data_universe.pairs.get_pair_by_human_description(desc)
 
+    # MaticX reserve not available, MATIC reserve not available
     assert not strategy_universe.can_open_short(
         pd.Timestamp("2023-02-01"),
         pair,
     )
 
+    # MaticX reserve not available, MATIC reserve available
+    assert not strategy_universe.can_open_short(
+        pd.Timestamp("2023-02-01"),
+        pair,
+    )
+
+    # Both reserves available
     assert strategy_universe.can_open_short(
         pd.Timestamp("2023-04-01"),
         pair,
     )
-
