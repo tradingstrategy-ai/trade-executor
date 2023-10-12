@@ -183,6 +183,89 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         """
         return self.data_universe.lending_reserves is not None
 
+    def can_open_spot(
+            self,
+            timestamp: pd.Timestamp,
+            pair: TradingPairIdentifier,
+            liquidity_threshold=None,
+    ) -> bool:
+        """Can we do a spot trade for a trading pair.
+
+        To be used with backtesting. We will
+        check a spot market exists at a certain historic point of time.
+
+        :param timestamp:
+            When
+
+        :param pair:
+            The wanted trading pair
+
+        :param liquidity_threshold:
+            Not implemented yet.
+
+        :return:
+            True if we can open a spot position.
+        """
+        raise NotImplementedError("This function is still TBD")
+
+    def has_lending_market_available(
+        self,
+        timestamp: pd.Timestamp,
+        asset: AssetIdentifier,
+        liquidity_threshold=None,
+    ) -> bool:
+        """Can we do a short trade for a trading pair.
+
+        To be used with backtesting. We will
+        check a lending market exists at a certain historic point of time.
+
+        Lending markets
+
+        :param timestamp:
+            When
+
+        :param pair:
+            The wanted trading pair
+
+        :param liquidity_threshold:
+            Not implemented yet.
+
+        :return:
+            True if we can open a spot position.
+        """
+
+        assert isinstance(timestamp, pd.Timestamp), f"Expected pd.Timestamp, got {timestamp.__class__}: {timestamp}"
+
+        assert self.data_universe.lending_candles, "Lending market data is not loaded - cannot determine if we can short or not"
+        return 0
+
+    def can_open_short(
+            self,
+            timestamp: pd.Timestamp,
+            pair: TradingPairIdentifier,
+            liquidity_threshold=None,
+    ) -> bool:
+        """Can we do a short trade for a trading pair.
+
+        To be used with backtesting. We will
+        check a lending market exists at a certain historic point of time.
+
+        Lending markets
+
+        :param timestamp:
+            When
+
+        :param pair:
+            The wanted trading pair
+
+        :param liquidity_threshold:
+            Not implemented yet.
+
+        :return:
+            True if we can open a spot position.
+        """
+        return self.has_lending_market_available(timestamp, pair.base, liquidity_threshold) and self.has_lending_market_available(timestamp, pair.quote, liquidity_threshold)
+
     def clone(self) -> "TradingStrategyUniverse":
         """Create a copy of this universe.
 

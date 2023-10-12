@@ -201,8 +201,8 @@ def test_load_trading_and_lending_data_live(persistent_test_client: Client):
     assert first_rate_sample.to_pydatetime() > datetime.datetime.utcnow() - datetime.timedelta(days=8)
 
     # Check that we did not load too old price data
-    trading_pair = (ChainId.polygon, "uniswap-v3", "WETH", "USDC", 0.0005)
-    pair = data_universe.pairs.get_pair_by_human_description(trading_pair)
+    desc = (ChainId.polygon, "uniswap-v3", "WETH", "USDC", 0.0005)
+    pair = data_universe.pairs.get_pair_by_human_description(desc)
     price_feed = data_universe.candles.get_candles_by_pair(pair.pair_id)
     first_price_sample = price_feed.index[0]
     assert first_price_sample.to_pydatetime() > datetime.datetime.utcnow() - datetime.timedelta(days=8)
@@ -217,3 +217,45 @@ def test_load_trading_and_lending_data_live(persistent_test_client: Client):
     # Price feed
     assert price_feed["open"][two_days_ago] > 0
     assert price_feed["open"][two_days_ago] < 10_000  # To the moon warning
+
+
+def test_can_open_short(persistent_test_client: Client):
+    """Check if we correctly detect when we have lending market data available.
+
+    - Aave v3 on Polygon enabled MaticX 2023-3-7 https://tradingstrategy.ai/trading-view/polygon/lending/aave_v3/maticx
+
+    - Aave v3 on Polygon enabled USDC 2022-3-16
+    -
+    """
+
+    client = persistent_test_client
+
+    # Load all trading and lending data on Polygon
+    # for all lending markets on a relevant time period
+    dataset = load_trading_and_lending_data(
+        client,
+        execution_context=unit_test_execution_context,
+        universe_options=UniverseOptions(history_period=datetime.timedelta(days=7)),
+        chain_id=ChainId.polygon,
+        exchange_slugs="uniswap-v3",
+    )
+
+    assert dataset.history_period == datetime.timedelta(days=7)
+
+    strategy_universe = TradingStrategyUniverse.create_from_dataset(dataset)
+
+    data_universe = strategy_universe.data_universe
+
+    desc = (ChainId.polygon, "quickswap", "MaticX", "MATIC")
+    pair = data_universe.pairs.get_pair_by_human_description(desc)
+
+    assert not strategy_universe.can_open_short(
+        pd.Timestamp("2023-02-01"),
+        pair,
+    )
+
+    assert strategy_universe.can_open_short(
+        pd.Timestamp("2023-04-01"),
+        pair,
+    )
+
