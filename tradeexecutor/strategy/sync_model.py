@@ -233,3 +233,10 @@ class DummySyncModel(SyncModel):
 
     def create_transaction_builder(self) -> Optional[TransactionBuilder]:
         return None
+
+    def fetch_onchain_balances(
+            self,
+            assets: Collection[AssetIdentifier],
+            filter_zero=True
+    ) -> Iterable[OnChainBalance]:
+        raise NotImplementedError("Backtesting does not know about on-chain balances")

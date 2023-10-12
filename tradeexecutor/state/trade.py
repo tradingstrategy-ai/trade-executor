@@ -815,10 +815,18 @@ class TradeExecution:
         - Exact quantity and exact crypto price we got executed at
 
         - USD exchange rate known at the time of the execution
+
+        :return:
+            0.0 if the trade is not executed, or repaired without proper quantity
+
         """
         # self.executed_price can be zero for frozen positions,
         # but the position may still be closed (self.closed_at set)
-        return abs(float(self.executed_quantity) * (self.executed_price or 0))
+
+        executed_quantity = self.executed_quantity or 0
+        executed_price = self.executed_price or 0
+
+        return abs(float(executed_quantity) * float(executed_price))
 
     def get_planned_value(self) -> USDollarAmount:
         """How much we plan to swap in this trade."""
