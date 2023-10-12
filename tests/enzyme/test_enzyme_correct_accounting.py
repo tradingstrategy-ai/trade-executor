@@ -655,13 +655,6 @@ def test_correct_accounting_errors_for_zero_position(
     assert position.is_reduced()
     assert position.get_realised_profit_usd() == 0.0
 
-    for p in portfolio.get_all_positions():
-        print(id(p), p)
-
-    # The position did not make any profit.
-    # Any losses are available as separate accounting entries
-    print(id(position), position)
-
     # See that portfolio statistics calculations do not get screwed over because of
     # manual repair entriesa
     stats = calculate_statistics(
@@ -669,6 +662,8 @@ def test_correct_accounting_errors_for_zero_position(
         portfolio,
         ExecutionMode.unit_testing_trading
     )
+
+    assert stats is not None
 
     #
     # Check state serialises afterwards
