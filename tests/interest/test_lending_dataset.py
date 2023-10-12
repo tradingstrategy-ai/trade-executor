@@ -230,17 +230,19 @@ def test_can_open_short(persistent_test_client: Client):
 
     client = persistent_test_client
 
+    start_at = datetime.datetime(2023, 1, 1)
+    end_at = datetime.datetime(2023, 10, 1)
+
     # Load all trading and lending data on Polygon
     # for all lending markets on a relevant time period
     dataset = load_trading_and_lending_data(
         client,
         execution_context=unit_test_execution_context,
-        universe_options=UniverseOptions(history_period=datetime.timedelta(days=7)),
+        universe_options=UniverseOptions(start_at=start_at, end_at=end_at),
         chain_id=ChainId.polygon,
-        exchange_slugs="uniswap-v3",
+        exchange_slugs="quickswap",
+        time_bucket=TimeBucket.d7,
     )
-
-    assert dataset.history_period == datetime.timedelta(days=7)
 
     strategy_universe = TradingStrategyUniverse.create_from_dataset(dataset)
 
