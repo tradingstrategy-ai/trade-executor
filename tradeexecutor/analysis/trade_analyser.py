@@ -629,7 +629,7 @@ class TradeAnalysis:
             lp_fees_paid += position.get_total_lp_fees_paid() or 0
             
             for t in position.trades.values():
-                trade_volume += abs(float(t.executed_quantity) * t.executed_price)
+                trade_volume += t.get_value()
 
             if position.is_open():
                 open_value += position.get_value()
