@@ -423,7 +423,6 @@ def test_simple_routing_three_leg_live(
 
     # Check that expected amounts match after closing the position
     clean, df = check_accounts(strategy_universe.data_universe.pairs, [usdc_asset], state, sync_model)
-    print(df)
     assert clean is True, f"Accounts are not clean:\n{df}"
 
     # We received the tokens we bought

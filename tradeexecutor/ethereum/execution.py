@@ -430,9 +430,9 @@ class EthereumExecutionModel(ExecutionModel):
                         price = result.get_human_price(quote_token_details.address == result.token0.address)
                     else:
                         price = result.price
-                    
+
                     executed_amount = -result.amount_in / Decimal(10**base_token_details.decimals)
-                    executed_reserve = result.amount_out / Decimal(10**quote_token_details.decimals)
+                    executed_reserve = result.amount_out / Decimal(10**reserve.decimals)
 
                     # convert lp fee to be in terms of quote token
                     lp_fee_paid = result.lp_fee_paid * float(price) if result.lp_fee_paid else None

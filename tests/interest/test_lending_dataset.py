@@ -7,7 +7,7 @@ import pytest
 
 from tradeexecutor.state.identifier import TradingPairKind
 from tradeexecutor.strategy.execution_context import unit_test_execution_context
-from tradeexecutor.strategy.trading_strategy_universe import load_partial_data, TradingStrategyUniverse, load_trading_and_lending_data
+from tradeexecutor.strategy.trading_strategy_universe import load_partial_data, TradingStrategyUniverse, load_trading_and_lending_data, translate_trading_pair
 from tradeexecutor.strategy.universe_model import default_universe_options, UniverseOptions
 from tradingstrategy.chain import ChainId
 from tradingstrategy.client import Client
@@ -258,7 +258,14 @@ def test_can_open_short(persistent_test_client: Client):
     # https://tradingstrategy.ai/trading-view/polygon/quickswap/maticx-matic#7d
     # Internal id 2648052
     desc = (ChainId.polygon, "quickswap", "MaticX", "WMATIC")
-    pair = data_universe.pairs.get_pair_by_human_description(desc)
+    pair = translate_trading_pair(data_universe.pairs.get_pair_by_human_description(desc))
+
+
+    # Does not exist
+    assert not strategy_universe.can_open_short(
+        pd.Timestamp("2000-1-1"),
+        pair,
+    )
 
     # MaticX reserve not available, MATIC reserve not available
     assert not strategy_universe.can_open_short(
@@ -275,5 +282,11 @@ def test_can_open_short(persistent_test_client: Client):
     # Both reserves available
     assert strategy_universe.can_open_short(
         pd.Timestamp("2023-04-01"),
+        pair,
+    )
+
+    # Does not exist
+    assert not strategy_universe.can_open_short(
+        pd.Timestamp("2099-1-1"),
         pair,
     )

@@ -20,7 +20,7 @@ from typing import List, Optional, Callable, Tuple, Set, Dict, Iterable, Collect
 import pandas as pd
 
 from tradeexecutor.state.types import JSONHexAddress
-from tradingstrategy.lending import LendingReserveUniverse, LendingReserveDescription, LendingCandleType, LendingCandleUniverse
+from tradingstrategy.lending import LendingReserveUniverse, LendingReserveDescription, LendingCandleType, LendingCandleUniverse, UnknownLendingReserve
 from tradingstrategy.token import Token
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId
@@ -33,7 +33,7 @@ from tradingstrategy.pair import DEXPair, PandasPairUniverse, resolve_pairs_base
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.types import TokenSymbol
 from tradingstrategy.universe import Universe
-from tradingstrategy.utils.groupeduniverse import filter_for_pairs
+from tradingstrategy.utils.groupeduniverse import filter_for_pairs, NoDataAvailable
 
 from tradeexecutor.strategy.execution_context import ExecutionMode, ExecutionContext
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind, AssetType
@@ -214,6 +214,8 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         timestamp: pd.Timestamp,
         asset: AssetIdentifier,
         liquidity_threshold=None,
+        market_metric: LendingCandleType=LendingCandleType.variable_borrow_apr,
+        data_lag_tolerance=pd.Timedelta("1w"),
     ) -> bool:
         """Did an asset have a lending market available at certain historic point of time.
 
@@ -236,7 +238,27 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         assert isinstance(timestamp, pd.Timestamp), f"Expected pd.Timestamp, got {timestamp.__class__}: {timestamp}"
 
         assert self.data_universe.lending_candles, "Lending market data is not loaded - cannot determine if we can short or not"
-        return 0
+
+        try:
+            reserve = self.data_universe.lending_reserves.get_by_chain_and_address(
+                asset.chain_id,
+                asset.address,
+            )
+        except UnknownLendingReserve as e:
+            raise RuntimeError(f"We do not have lending reserves for asset: {asset}") from e
+
+        assert market_metric == LendingCandleType.variable_borrow_apr, f"Not supported yet: {market_metric}"
+        candles = self.data_universe.lending_candles.variable_borrow_apr
+
+        try:
+            value, drift = candles.get_single_rate(
+                reserve,
+                timestamp,
+                data_lag_tolerance
+            )
+            return value > 0
+        except NoDataAvailable:
+            return False
 
     def can_open_short(
             self,
