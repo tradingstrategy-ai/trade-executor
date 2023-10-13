@@ -1997,7 +1997,7 @@ def load_trading_and_lending_data(
     liquidity=False,
     stop_loss_time_bucket: Optional[TimeBucket] = None,
     asset_symbols: Set[TokenSymbol] | None = None,
-    reserve_asset_symbols: Set[TokenSymbol]={"USDC",},
+    reserve_asset_symbols: Set[TokenSymbol] = frozenset({"USDC",}),
     name: str | None = None,
     volatile_only=False,
     any_quote=False,
