@@ -43,15 +43,16 @@ jobs:
           path: |
             /tmp/trading-strategy-tests
           key: ${{ runner.os }}-unit-test-dataset
-      .
+
+      # Needed for Anvil
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
+
       - name: Install dependencies
         if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
-        # We don't install -E qstrader and run legacy tests on CI as they
-        # download too much data
         run: |          
-          poetry install --no-interaction -E web-server -E execution -E quantstats
+          poetry install --no-interaction --all-extras
+
       # Run testa parallel, do not run slow tests before Docker image build.
       # Note that we limit concurrency to 2 workers as 4 workers crashed without an error message on Github CI.
       # I suspect out of memory situation that is not reported to the user.
