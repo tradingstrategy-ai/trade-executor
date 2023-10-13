@@ -27,6 +27,7 @@ jobs:
           virtualenvs-in-project: true
           installer-parallel: true
 
+      # Do not let Poetry to install again if we do not detect a lock file change
       - name: Load cached venv
         uses: actions/cache@v2
         with:
@@ -62,6 +63,7 @@ jobs:
           TRADING_STRATEGY_API_KEY: ${{ secrets.TRADING_STRATEGY_API_KEY }}
           BNB_CHAIN_JSON_RPC: ${{ secrets.BNB_CHAIN_JSON_RPC }}      
 
+      # Save our current datasets for the next test run
       - name: Save unit test datasets
         id: unit-test-dataset-save
         uses: actions/cache/save@v3
