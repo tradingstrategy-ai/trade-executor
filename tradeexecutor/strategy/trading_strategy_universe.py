@@ -215,12 +215,10 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         asset: AssetIdentifier,
         liquidity_threshold=None,
     ) -> bool:
-        """Can we do a short trade for a trading pair.
+        """Did an asset have a lending market available at certain historic point of time.
 
         To be used with backtesting. We will
         check a lending market exists at a certain historic point of time.
-
-        Lending markets
 
         :param timestamp:
             When
@@ -249,9 +247,8 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         """Can we do a short trade for a trading pair.
 
         To be used with backtesting. We will
-        check a lending market exists at a certain historic point of time.
-
-        Lending markets
+        check a lending market exists at a certain historic point of time
+        for both base and quote asset.
 
         :param timestamp:
             When

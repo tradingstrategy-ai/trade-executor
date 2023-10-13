@@ -20,10 +20,7 @@ from nbformat import NotebookNode
 
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
-from tradingstrategy.client import BaseClient
-
-from tradeexecutor.backtest.notebook import setup_charting_and_output
-from tradeexecutor.strategy.strategy_module import StrategyModuleInformation
+from tradeexecutor.utils.notebook import setup_charting_and_output
 
 
 logger = logging.getLogger(__name__)
