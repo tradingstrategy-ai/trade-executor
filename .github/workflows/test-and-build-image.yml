@@ -67,8 +67,7 @@ jobs:
         uses: actions/cache/save@v3
         with:
           path: |
-            path/to/dependencies
-            some/other/dependencies
+            /tmp/trading-strategy-tests
           key: ${{ steps.unit-test-dataset.outputs.cache-primary-key }}
 
   build:
