@@ -326,4 +326,4 @@ def test_analyse_long_short_universe(persistent_test_client: Client):
         strategy_universe,
     )
 
-    import ipdb ; ipdb.set_trace()
+    assert len(df) > 0

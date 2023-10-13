@@ -2,7 +2,6 @@
 import pandas as pd
 
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
-from tradeexecutor.strategy.universe_model import UniverseOptions
 from tradingstrategy.pair import PairNotFoundError
 from tradingstrategy.stablecoin import is_stablecoin_like
 
@@ -10,7 +9,7 @@ from tradingstrategy.stablecoin import is_stablecoin_like
 def analyse_long_short_universe(
     strategy_universe: TradingStrategyUniverse,
 ) -> pd.DataFrame:
-    """Display trading pairs and their lending reserves usde in long/short strategy.
+    """Display trading pairs and their lending reserves used in long/short strategy.
 
     Only available fpr backtesting for now.
 
@@ -31,7 +30,7 @@ def analyse_long_short_universe(
     assert data_universe.lending_reserves is not None, "Lending reserve data missing"
     assert data_universe.candles is not None, "Price data missing"
 
-    chain_id = data_universe[0]
+    chain_id = next(iter(data_universe.chains))
     quote_token = strategy_universe.reserve_assets[0]
 
     for reserve in data_universe.lending_reserves.iterate_reserves():
@@ -40,23 +39,29 @@ def analyse_long_short_universe(
 
         lending_link = reserve.get_link()
         rate_candles = data_universe.lending_candles.variable_borrow_apr.get_rates_by_reserve(reserve)
-        import ipdb ; ipdb.set_trace()
+
         lending_start = rate_candles.index[0]
 
         try:
-            trading_pair = data_universe.pairs.get_pair_by_human_description((chain_id, None, reserve.asset_symbol, quote_token))
+            trading_pair = data_universe.pairs.get_pair_by_human_description((chain_id, None, reserve.asset_symbol, quote_token.token_symbol))
             exchange = data_universe.pairs.get_exchange_for_pair(trading_pair)
             trading_pair_label = f"{trading_pair.base_token_symbol}-{trading_pair.quote_token_symbol} at {trading_pair.fee} BPS fee tier on {exchange.name}"
-            tradeable = trading_pair.is_tradeable()
             trading_pair_link = trading_pair.get_link()
+            price_candles = data_universe.candles.get_candles_by_pair(trading_pair.pair_id)
+
+            if price_candles is not None:
+                trading_start = price_candles.index[0]
+            else:
+                trading_start = "-"
 
         except PairNotFoundError as e:
-            trading_pair_label = "No markets available"
+            trading_pair_label = "No AMM pools found"
+            trading_start = ""
+            trading_pair_link = ""
 
         rows.append({
             "Lending asset": reserve.asset_symbol,
             "Stablecoin": "yes" if stablecoin else "no",
-            "Trading volume": "yes" if tradeable else "no",
             "Best trading pair": trading_pair_label,
             "Lending available at": lending_start,
             "Trading available at": trading_start,

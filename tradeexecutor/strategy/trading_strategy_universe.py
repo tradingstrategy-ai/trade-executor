@@ -803,7 +803,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         chain_ids = dataset.pairs["chain_id"].unique()
 
         assert len(chain_ids) == 1, f"Currently only single chain datasets supported, got chains {chain_ids}"
-        chain_id = chain_ids[0]
+        chain_id = ChainId(chain_ids[0])
 
         pairs = PandasPairUniverse(dataset.pairs, exchange_universe=dataset.exchanges)
 
@@ -819,7 +819,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
 
         universe = Universe(
             time_bucket=dataset.time_bucket,
-            chains=chain_id,
+            chains={chain_id},
             pairs=pairs,
             candles=candle_universe,
             liquidity=dataset.liquidity,
