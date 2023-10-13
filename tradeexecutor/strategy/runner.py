@@ -223,8 +223,15 @@ class StrategyRunner(abc.ABC):
             # Check if we got so bad trade execution we should worry about it
             #
 
-            reserve_drift = abs((t.executed_reserve - t.planned_reserve) / t.planned_reserve)
-            quantity_drift = abs((t.executed_quantity - t.planned_quantity) / t.planned_quantity)
+            if t.planned_reserve:
+                reserve_drift = abs((t.executed_reserve - t.planned_reserve) / t.planned_reserve)
+            else:
+                reserve_drift = 0
+
+            if t.planned_quantity:
+                quantity_drift = abs((t.executed_quantity - t.planned_quantity) / t.planned_quantity)
+            else:
+                quantity_drift = 0
 
             if reserve_drift >= self.execution_warning_tolerance or quantity_drift >= self.execution_warning_tolerance:
                 log_level = logging.WARNING
