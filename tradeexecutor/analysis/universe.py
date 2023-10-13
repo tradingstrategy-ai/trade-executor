@@ -38,9 +38,14 @@ def analyse_long_short_universe(
         stablecoin = is_stablecoin_like(reserve.asset_symbol)
 
         lending_link = reserve.get_link()
-        rate_candles = data_universe.lending_candles.variable_borrow_apr.get_rates_by_reserve(reserve)
 
-        lending_start = rate_candles.index[0]
+        try:
+            rate_candles = data_universe.lending_candles.variable_borrow_apr.get_rates_by_reserve(reserve)
+            lending_start = rate_candles.index[0]
+        except KeyError:
+            # Lending not available, lendign candles missing, reserve just added
+            # and data is not yet there?
+            lending_start = "-"
 
         try:
             trading_pair = data_universe.pairs.get_pair_by_human_description((chain_id, None, reserve.asset_symbol, quote_token.token_symbol))
@@ -49,15 +54,16 @@ def analyse_long_short_universe(
             trading_pair_link = trading_pair.get_link()
             price_candles = data_universe.candles.get_candles_by_pair(trading_pair.pair_id)
 
+            trading_start = "-"
             if price_candles is not None:
                 trading_start = price_candles.index[0]
-            else:
-                trading_start = "-"
+                if trading_start:
+                    trading_start = trading_start.strftime("%Y-%m-%d")
 
         except PairNotFoundError as e:
             trading_pair_label = "No AMM pools found"
-            trading_start = ""
-            trading_pair_link = ""
+            trading_start = "-"
+            trading_pair_link = "-"
 
         rows.append({
             "Lending asset": reserve.asset_symbol,

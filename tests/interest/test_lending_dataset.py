@@ -12,7 +12,7 @@ from tradeexecutor.strategy.trading_strategy_universe import load_partial_data, 
 from tradeexecutor.strategy.universe_model import default_universe_options, UniverseOptions
 from tradingstrategy.chain import ChainId
 from tradingstrategy.client import Client
-from tradingstrategy.lending import LendingProtocolType
+from tradingstrategy.lending import LendingProtocolType, UnknownLendingReserve
 from tradingstrategy.timebucket import TimeBucket
 
 
@@ -168,6 +168,47 @@ def test_load_trading_and_lending_data_historical(persistent_test_client: Client
 
     assert rates["open"][pd.Timestamp("2023-09-01")] == pytest.approx(3.222019)
     assert rates["open"][pd.Timestamp("2023-10-01")] == pytest.approx(3.446714)
+
+
+def test_load_trading_and_lending_data_historical_certain_assets_only(persistent_test_client: Client):
+    """Load historical lending market data for certain tokens."""
+
+    client = persistent_test_client
+    start_at = datetime.datetime(2023, 9, 1)
+    end_at = datetime.datetime(2023, 10, 1)
+
+    # Load all trading and lending data on Polygon
+    # for all lending markets on a relevant time period
+    dataset = load_trading_and_lending_data(
+        client,
+        execution_context=unit_test_execution_context,
+        universe_options=UniverseOptions(start_at=start_at, end_at=end_at),
+        chain_id=ChainId.polygon,
+        exchange_slugs="uniswap-v3",
+        asset_symbols={"LINK", "WETH"},
+    )
+
+    strategy_universe = TradingStrategyUniverse.create_from_dataset(dataset)
+    data_universe = strategy_universe.data_universe
+
+    usdc_reserve = data_universe.lending_reserves.get_by_chain_and_symbol(ChainId.polygon, "USDC")
+    assert usdc_reserve.atoken_symbol == "aPolUSDC"
+    assert usdc_reserve.vtoken_symbol == "variableDebtPolUSDC"
+
+    lending_reserves = data_universe.lending_reserves
+    assert lending_reserves.get_by_chain_and_symbol(ChainId.polygon, "LINK") is not None
+    assert lending_reserves.get_by_chain_and_symbol(ChainId.polygon, "WETH") is not None
+
+    with pytest.raises(UnknownLendingReserve):
+        lending_reserves.get_by_chain_and_symbol(ChainId.polygon, "WMATIC")
+
+    eth_reserve = data_universe.lending_reserves.get_by_chain_and_symbol(ChainId.polygon, "WETH")
+
+    # Check the historical rates
+    lending_candles = data_universe.lending_candles.variable_borrow_apr
+    rates = lending_candles.get_rates_by_reserve(eth_reserve)
+
+    assert rates["open"][pd.Timestamp("2023-09-01")] == pytest.approx(2.3803235973323122)
 
 
 def test_load_trading_and_lending_data_live(persistent_test_client: Client):

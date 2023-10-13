@@ -1996,6 +1996,7 @@ def load_trading_and_lending_data(
     exchange_slugs: Set[str] | str | None = None,
     liquidity=False,
     stop_loss_time_bucket: Optional[TimeBucket] = None,
+    asset_symbols: Set[TokenSymbol] | None = None,
     reserve_asset_symbols: Set[TokenSymbol]={"USDC",},
     name: str | None = None,
     volatile_only=False,
@@ -2084,6 +2085,11 @@ def load_trading_and_lending_data(
         assert price_feed["open"][two_days_ago] > 0
         assert price_feed["open"][two_days_ago] < 10_000  # To the moon warning
 
+    :param asset_symbols:
+        Load only these lending reserves.
+
+        If not given load all lending reserves available on a chain.
+
     :param reserve_asset_symbols:
         In which currency, the trading pairs must be quoted for the lending pool.
 
@@ -2121,10 +2127,16 @@ def load_trading_and_lending_data(
     lending_reserves = client.fetch_lending_reserve_universe()
     lending_reserves = lending_reserves.limit_to_chain(chain_id)
 
+    if asset_symbols:
+        lending_reserves = lending_reserves.limit_to_assets(asset_symbols | {reserve_asset_symbol})
+
     reserve_asset = lending_reserves.get_by_chain_and_symbol(
         chain_id,
         reserve_asset_symbol
     )
+
+    for r in lending_reserves.iterate_reserves():
+        print(r)
 
     assert reserve_asset, f"Reserve asset not in the lending reserve universe: {reserve_asset_symbol}"
 
