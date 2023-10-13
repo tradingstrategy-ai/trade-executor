@@ -14,7 +14,7 @@ import pytest
 import pandas as pd
 from nbformat import NotebookNode
 
-from tradeexecutor.backtest.report import export_backtest_report
+from tradeexecutor.backtest.tearsheet import export_backtest_report
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId
 from tradingstrategy.exchange import Exchange

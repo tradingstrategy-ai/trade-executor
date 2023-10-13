@@ -1,4 +1,4 @@
-"""Create Jupyter Notebook based report.
+"""Create Jupyter Notebook based report static HTML tearsheet for a strategy.
 
 Further reading
 
@@ -9,7 +9,6 @@ import logging
 import os.path
 from pathlib import Path
 from tempfile import NamedTemporaryFile
-from typing import Optional
 
 import nbformat
 from bs4 import BeautifulSoup

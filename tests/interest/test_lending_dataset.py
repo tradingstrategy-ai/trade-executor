@@ -5,6 +5,7 @@ import datetime
 import pandas as pd
 import pytest
 
+from tradeexecutor.analysis.universe import analyse_long_short_universe
 from tradeexecutor.state.identifier import TradingPairKind
 from tradeexecutor.strategy.execution_context import unit_test_execution_context
 from tradeexecutor.strategy.trading_strategy_universe import load_partial_data, TradingStrategyUniverse, load_trading_and_lending_data, translate_trading_pair
@@ -260,7 +261,6 @@ def test_can_open_short(persistent_test_client: Client):
     desc = (ChainId.polygon, "quickswap", "MaticX", "WMATIC")
     pair = translate_trading_pair(data_universe.pairs.get_pair_by_human_description(desc))
 
-
     # Does not exist
     assert not strategy_universe.can_open_short(
         pd.Timestamp("2000-1-1"),
@@ -290,3 +290,40 @@ def test_can_open_short(persistent_test_client: Client):
         pd.Timestamp("2099-1-1"),
         pair,
     )
+
+
+def test_analyse_long_short_universe(persistent_test_client: Client):
+    """Check analyse_long_short_universe() does not crash
+
+    """
+
+    client = persistent_test_client
+
+    start_at = datetime.datetime(2023, 1, 1)
+    end_at = datetime.datetime(2023, 10, 1)
+
+    # Load all trading and lending data on Polygon
+    # for all lending markets on a relevant time period
+    dataset = load_trading_and_lending_data(
+        client,
+        execution_context=unit_test_execution_context,
+        universe_options=UniverseOptions(start_at=start_at, end_at=end_at),
+        chain_id=ChainId.polygon,
+        exchange_slugs="quickswap",
+        time_bucket=TimeBucket.d7,  # Optimise test speed
+        any_quote=True,
+    )
+
+    # https://tradingstrategy.ai/trading-view/polygon/tokens/0x2791bca1f2de4661ed88a30c99a7a9449aa84174
+    usdc_address = "0x2791bca1f2de4661ed88a30c99a7a9449aa84174"
+
+    strategy_universe = TradingStrategyUniverse.create_from_dataset(
+        dataset,
+        reserve_asset_desc=usdc_address,
+    )
+
+    df = analyse_long_short_universe(
+        strategy_universe,
+    )
+
+    import ipdb ; ipdb.set_trace()
