@@ -280,6 +280,8 @@ class TradeExecution:
     #: This is because invalid trades (execution failed) may be marked
     #: close.
     #:
+    #: Set in :py:meth:`tradeexecutor.state.State.mark_trade_success`.
+    #:
     executed_price: Optional[USDollarPrice] = None
 
     #: How much underlying token we traded, the actual realised amount.

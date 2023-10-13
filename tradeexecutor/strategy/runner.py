@@ -108,6 +108,10 @@ class StrategyRunner(abc.ABC):
             self.execution_context.mode.name,
         )
 
+        # If planned and executed price is % off then
+        # make a warning in the post execution output
+        self.execution_warning_tolerance = 0.01
+
     def __repr__(self):
         """Get a long presentation of internal runner state."""
         dump = pformat(self.__dict__)
@@ -215,13 +219,35 @@ class StrategyRunner(abc.ABC):
                 else:
                     t.post_execution_price_structure = pricing_model.get_sell_price(ts, spot_pair, t.planned_quantity)
 
-            logger.info(
-                "Trade %s, estimated reserve %s, executed reserve %s, estimated quantity %s, executed quantity %s",
+            #
+            # Check if we got so bad trade execution we should worry about it
+            #
+
+            if t.planned_reserve and t.executed_reserve:
+                reserve_drift = abs((t.executed_reserve - t.planned_reserve) / t.planned_reserve)
+            else:
+                reserve_drift = 0
+
+            if t.planned_quantity and t.executed_quantity:
+                quantity_drift = abs((t.executed_quantity - t.planned_quantity) / t.planned_quantity)
+            else:
+                quantity_drift = 0
+
+            if reserve_drift >= self.execution_warning_tolerance or quantity_drift >= self.execution_warning_tolerance:
+                log_level = logging.WARNING
+            else:
+                log_level = logging.INFO
+
+            logger.log(
+                log_level,
+                "Trade %s, estimated reserve %s, executed reserve %s, estimated quantity %s, executed quantity %s, reserve drift %f %%, quantity drift %f %%",
                 t,
                 t.planned_reserve,
                 t.executed_reserve,
                 t.planned_quantity,
                 t.executed_quantity,
+                reserve_drift * 100,
+                quantity_drift * 100,
             )
 
     def on_clock(self,
