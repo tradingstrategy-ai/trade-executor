@@ -186,6 +186,7 @@ def test_load_trading_and_lending_data_historical_certain_assets_only(persistent
         chain_id=ChainId.polygon,
         exchange_slugs="uniswap-v3",
         asset_symbols={"LINK", "WETH"},
+        trading_fee=0.0005,
     )
 
     strategy_universe = TradingStrategyUniverse.create_from_dataset(dataset)
@@ -209,6 +210,9 @@ def test_load_trading_and_lending_data_historical_certain_assets_only(persistent
     rates = lending_candles.get_rates_by_reserve(eth_reserve)
 
     assert rates["open"][pd.Timestamp("2023-09-01")] == pytest.approx(2.3803235973323122)
+
+    link_usdc = data_universe.pairs.get_pair_by_human_description((ChainId.polygon, None, "LINK", "USDC"))
+    assert link_usdc.fee_tier == 0.0005
 
 
 def test_load_trading_and_lending_data_live(persistent_test_client: Client):
