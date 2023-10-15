@@ -90,8 +90,6 @@ def close_all(
 
     web3config.choose_single_chain()
 
-    assert len(mod.trade_routing) == 1, "Only one routing is supported for close-all"
-
     execution_model, sync_model, valuation_model_factory, pricing_model_factory = create_execution_and_sync_model(
         asset_management_mode=asset_management_mode,
         private_key=private_key,
@@ -103,7 +101,7 @@ def close_all(
         vault_address=vault_address,
         vault_adapter_address=vault_adapter_address,
         vault_payment_forwarder_address=vault_payment_forwarder_address,
-        routing_hint=mod.trade_routing[0],
+        routing_hint=mod.trade_routing,
     )
 
     client, routing_model = create_client(

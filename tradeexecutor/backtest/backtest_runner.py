@@ -86,6 +86,9 @@ class BacktestSetup:
 
     # strategy_module: StrategyModuleInformation
 
+    def __post_init__(self):
+        pass
+
     def backtest_static_universe_strategy_factory(
             self,
             *ignore,
@@ -553,15 +556,12 @@ def run_backtest_inline(
         stop_loss_data_available=stop_loss_data_available,
     )
     
-    if type(trade_routing) == TradeRouting:
-        trade_routing = [trade_routing]
-
     if universe:
         if not routing_model:
             assert trade_routing, "You just give either routing_mode or trade_routing"
             assert reserve_currency, "Reserve current must be given to generate routing model"
             # which trade_routing we use for backtesting doesn't matter
-            routing_model = get_backtest_routing_model(trade_routing[0], reserve_currency)
+            routing_model = get_backtest_routing_model(trade_routing, reserve_currency)
 
         if data_delay_tolerance is None:
             data_delay_tolerance = guess_data_delay_tolerance(universe)

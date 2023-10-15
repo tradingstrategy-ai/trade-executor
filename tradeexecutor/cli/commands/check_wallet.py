@@ -99,8 +99,6 @@ def check_wallet(
     web3config.set_default_chain(mod.chain_id)
     web3config.check_default_chain_id()
 
-    assert len(mod.trade_routing) == 1, f"Expected exactly one routing hint in the strategy module {strategy_file}"
-
     execution_model, sync_model, valuation_model_factory, pricing_model_factory = create_execution_and_sync_model(
         asset_management_mode=asset_management_mode,
         private_key=private_key,
@@ -112,7 +110,7 @@ def check_wallet(
         vault_address=vault_address,
         vault_adapter_address=vault_adapter_address,
         vault_payment_forwarder_address=vault_payment_forwarder_address,
-        routing_hint=mod.trade_routing[0],
+        routing_hint=mod.trade_routing,
     )
 
     assert asset_management_mode in (AssetManagementMode.hot_wallet, AssetManagementMode.enzyme), F"Cannot perform check wallet for non-real modes"

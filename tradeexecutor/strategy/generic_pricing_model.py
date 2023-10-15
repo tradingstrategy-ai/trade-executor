@@ -19,7 +19,8 @@ from tradingstrategy.pair import DEXPair
 LP_FEE_VALIDATION_EPSILON = 0.001
 
 class GenericPricingModel(PricingModel):
-    
+    """Chooses between different pricing models based on the trading pair. Useful for when we want to use different pricing models for different pairs, such as Uniswap v2 for ETH/DAI and Uniswap v3 for ETH/USDC.
+    """
     def __init__(
         self,
         pricing_models: list[PricingModel],
@@ -27,7 +28,6 @@ class GenericPricingModel(PricingModel):
         assert all(isinstance(model, PricingModel) for model in pricing_models), "pricing_models must be a list of PricingModel objects"
         
         self.pricing_models = pricing_models
-        
     
     def get_buy_price(self, ts: datetime.datetime, pair: TradingPairIdentifier, reserve: Optional[Decimal]) -> TradePricing:
         pricing_model = get_pricing_model_for_pair(pair, self.pricing_models)

@@ -115,8 +115,6 @@ def perform_test_trade(
 
     web3config.choose_single_chain()
 
-    # assert len(mod.trade_routing) == 1, "Test trade only works with single routing strategies for now"
-
     confirmation_timeout = datetime.timedelta(seconds=60)
 
     generic_routing_data = None
